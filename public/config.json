@@ -13,5 +13,6 @@
   "blacklist": [
     "fluidd.xyz",
     "fluidd.net"
-  ]
+  ],
+  "skipClientUpdates": false
 }
