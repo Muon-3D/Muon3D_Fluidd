@@ -7,32 +7,26 @@
           :title="$t('app.general.title.config_files')"
           icon="$files"
           :draggable="false"
-          :height="460"
         >
           <file-system
-            :roots="['config', 'config_examples', 'docs', 'logs']"
+            :roots="['config']"
+            :max-height="816"
             name="configure">
           </file-system>
         </collapsable-card>
-        <disk-usage-card></disk-usage-card>
       </v-col>
-
       <v-col cols="12" md="6" class="pt-0">
-
-        <klippy-status-card v-if="!klippyReady || hasWarnings"></klippy-status-card>
-
-        <system-usage-card v-if="hasGraphData"></system-usage-card>
-        <system-overview-card></system-overview-card>
-
-        <!-- <collapsable-card
-           v-if="klippyReady && !hasWarnings"
-          :title="$t('app.general.title.system_control')"
-          icon="$cogs">
-          <v-card-text>
-            <system-control></system-control>
-          </v-card-text>
-        </collapsable-card> -->
-
+        <collapsable-card
+          title="Other Files"
+          icon="$files"
+          :draggable="false"
+        >
+          <file-system
+            :roots="['logs', 'docs', 'config_examples']"
+            :max-height="816"
+            name="configure">
+          </file-system>
+        </collapsable-card>
       </v-col>
     </v-row>
 
