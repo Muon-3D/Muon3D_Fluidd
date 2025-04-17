@@ -71,6 +71,10 @@ export default class OutputFan extends Mixins(StateMixin, BrowserMixin) {
       target = target / 100
       this.sendGcode(`SET_FAN_SPEED FAN=${this.fan.name} SPEED=${target}`, `${this.$waits.onSetFanSpeed}${this.fan.name}`)
     }
+    if (this.fan.type === 'muon3d_fan') {
+      target = target / 100
+      this.sendGcode(`M106 S${target}`, `${this.$waits.onSetFanSpeed}${this.fan.name}`)
+    }
   }
 
   get rpm () {
