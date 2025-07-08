@@ -1,28 +1,28 @@
 <template>
     <collapsable-card :title="$t('app.general.title.wifi')" icon="$wifi">
-        <v-fade-transition mode="out-in">
-            <!-- Skeleton loader for connected networks -->
+        <!-- <v-fade-transition mode="out-in">
+            
             <template v-if="!wifi_avaliable_networks.length">
                 <v-skeleton-loader type="image" class="ma-4" :height="65" />
             </template>
-            <!-- Actual connected networks -->
+>
 
-            <template v-else>
+<template v-else>
                 <v-card v-for="network in sortedNetworks" v-if="network.in_use" :key="network.bssid"
                     class="connected-network ma-4" outlined link @click="toggleActions(network.bssid)" color="card-heading">
                     <div class="d-flex align-center pa-4">
-                        <!-- Icon -->
+                        
                         <v-icon large class="me-4" :color="getSignalColor(network.signal)">
                             {{ getWifiIconName(network) }}
                         </v-icon>
 
-                        <!-- SSID -->
+                        
                         <span class="me-6 font-weight-medium ssid">
                             {{ network.ssid }}
                         </span>
 
 
-                        <!-- ↓ this part swaps out ↓ -->
+                        
                         <div class="actions-container flex-grow-1 text-right d-flex justify-end">
                             <v-fade-transition mode="out-in">
                                 <template v-if="expandedBssid === network.bssid">
@@ -35,8 +35,8 @@
                                         </v-btn>
                                     </div>
                                 </template>
-                                <template v-else>
-                                    <!-- Frequency @ Rate -->
+<template v-else>
+
                                     <span class="me-6 subtitle-2 text--secondary">
                                         {{ network.freq }} MHz @ {{ network.rate }} Mbps
                                     </span>
@@ -44,24 +44,23 @@
                                         {{ network.security || $t('app.chart.label.unsecured') }}
                                     </v-chip>
                                 </template>
-                            </v-fade-transition>
-                        </div>
-                    </div>
-                </v-card>
-            </template>
-        </v-fade-transition>
+</v-fade-transition>
+</div>
+</div>
+</v-card>
+</template>
+</v-fade-transition>
 
-        <!-- Divider -->
-        <v-divider />
+
+<v-divider />-->
 
         <!-- Table of available networks -->
         <v-card>
             <v-simple-table class="temperature-table">
                 <thead>
                     <tr>
-                        <th />
+                        <th class="tick" />
                         <th width="100%">SSID</th>
-                        <th>{{ $t('app.chart.label.security') }}</th>
                         <th />
                     </tr>
                 </thead>
@@ -69,27 +68,69 @@
                     <!-- skeleton state -->
                     <tbody v-if="!wifi_avaliable_networks.length" key="skel">
                         <tr v-for="n in 5" :key="`avail-skel-${n}`">
-                            <td><v-skeleton-loader type="icon" /></td>
+                            <td class="tick"></td>
                             <td><v-skeleton-loader type="text" /></td>
-                            <td><v-skeleton-loader type="text" /></td>
+                            <td></td>
+                            <td></td>
                             <td></td>
                         </tr>
                     </tbody>
 
                     <!-- real rows -->
                     <tbody v-else key="real">
-                        <tr v-for="network in sortedNetworks" :key="network.bssid" :class="{ 'in-use': network.in_use }"
-                            v-if="!network.in_use" v-ripple>
+                        <tr v-for="network in sortedNetworks" :key="network.bssid"
+                            :class="{ 'card-heading': network.in_use }" v-ripple @click="openMenu(network.bssid)">
+                            <td class="tick">
+                                <v-icon dense v-if="network.in_use">$check</v-icon>
+                            </td>
+                            <td class="ssid">{{ network.ssid }}</td>
                             <td>
-                                <v-icon small :color="getSignalColor(network.signal)">
+                                <v-icon dense :color="getSignalColor(network.signal)">
                                     {{ getWifiIconName(network) }}
                                 </v-icon>
                             </td>
-                            <td class="ssid">{{ network.ssid }}</td>
-                            <td class="security">
-                                <span>{{ network.security || $t('app.chart.label.unsecured') }}</span>
+                            <td>
+                                <v-tooltip bottom>
+                                    <template v-slot:activator="{ on, attrs }">
+                                        <v-btn icon small v-bind="attrs" v-on="on" class="primary--text">
+                                            <v-icon small>$infoOutline</v-icon>
+                                        </v-btn>
+                                    </template>
+                                    <div class="px-2 py-1" style="max-width: 200px; white-space: normal;">
+                                        <div><strong>Security:</strong> {{ !network.security ? $t('app.chart.label.unsecured') : network.security }}</div>
+                                        <div><strong>Signal:</strong> {{ network.signal }}%</div>
+                                        <div><strong>Data rate:</strong> {{ network.rate }} Mbps</div>
+                                        <div><strong>Channel:</strong> {{ network.chan }}</div>
+                                        <div><strong>Frequency:</strong> {{ network.freq }} MHz</div>
+                                    </div>
+                                </v-tooltip>
                             </td>
-                            <td></td>
+                            <td class="pr-2">
+                                <v-menu offset-y v-model="menuOpen[network.bssid]" open-on-click close-on-content-click :nudge-width="300"
+                                    transition="fade-transition" max-width="200"
+                                    v-if="network.in_use || knownSsids.has(network.ssid)">
+                                    <template v-slot:activator="{ on, attrs }">
+                                        <v-btn icon small v-bind="attrs" v-on="on">
+                                            <v-icon dense>$menu</v-icon>
+                                        </v-btn>
+                                    </template>
+                                    <v-list>
+                                        <v-list-item @click="disconnect(network)" v-if="network.in_use">
+                                            <v-list-item-icon>
+                                                <v-icon dense color="warning">$linkOff</v-icon>
+                                            </v-list-item-icon>
+                                            <v-list-item-title>{{$t('app.general.btn.disconnect')}}</v-list-item-title>
+                                        </v-list-item>
+                                        <v-list-item @click="forget(network)">
+                                            <v-list-item-icon>
+                                                <v-icon dense color="error">$delete</v-icon>
+                                            </v-list-item-icon>
+                                            <v-list-item-title>{{$t('app.general.btn.forget')}}</v-list-item-title>
+                                        </v-list-item>
+                                    </v-list>
+                                </v-menu>
+                            </td>
+
                         </tr>
                     </tbody>
                 </v-fade-transition>
@@ -117,17 +158,44 @@ export default class WifiManagerCard extends Vue {
     @Prop({ type: Boolean })
     readonly menuCollapsed?: boolean
 
+    menuOpen: Record<string, boolean> = {}
+    // called when the row is clicked
+    openMenu(bssid: string) {
+            // close any others if you want single-open behavior:
+            Object.keys(this.menuOpen).forEach(k => {
+            if (k !== bssid) this.menuOpen[k] = false
+            })
+            // toggle or open
+            this.$set(this.menuOpen, bssid, true)
+    }
+
     auxApi = useAuxApi()
 
     // reactive data
     wifi_avaliable_networks: DeviceWifi[] = []
     private intervalId: ReturnType<typeof setInterval> | null = null
+    
+    knownSsids = new Set<string>()
 
     async fetchDevices() {
 
         try {
             const res = await this.auxApi.api.wifiScanWifiScanGet(true)
             this.wifi_avaliable_networks = res.data
+
+            for (const net of this.wifi_avaliable_networks) {
+                if (!this.knownSsids.has(net.ssid)){
+                    try {
+                        const details = await this.auxApi.api.getDetailsWifiShowGet(net.ssid)
+                        if (details.status === 200) {
+                            this.knownSsids.add(net.ssid)
+                        }
+                        // if 404, leave it out
+                    } catch {
+                        // network error → treat as unknown
+                    }
+                }
+            }
         } catch (e) {
             console.error('Wi-Fi scan failed', e)
         }
@@ -197,15 +265,7 @@ export default class WifiManagerCard extends Vue {
 .temperature-table {}
 
 .ssid {
-    font-size: 1rem;
-}
-
-.security {
-    font-size: 1rem;
-
-    span {
-        opacity: 0.45;
-    }
+    font-size: 1rem !important;
 }
 
 .v-fade-transition-enter-active,
@@ -219,18 +279,18 @@ export default class WifiManagerCard extends Vue {
 }
 
 
-.v-card--link::before{
+.v-card--link::before {
     border-radius: inherit
 }
 
 /* disable the focus‐overlay */
 .v-card--link:focus::before {
-  opacity: 0 !important;
+    opacity: 0 !important;
 }
 
 /* re-enable it on hover */
 .v-card--link:hover::before {
-  opacity: 0.08 !important;
+    opacity: 0.08 !important;
 }
 
 /* give your “available networks” rows a pointer cursor and light background on hover */
@@ -240,5 +300,16 @@ export default class WifiManagerCard extends Vue {
     &:hover {
         cursor: pointer;
     }
+}
+
+.temperature-table thead {
+    /* collapse the header row, but keep its layout hints */
+    visibility: collapse !important;
+    /* Some browsers need this: */
+    height: 0 !important;
+}
+
+td.tick {
+    padding-right: 0px !important;
 }
 </style>
