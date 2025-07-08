@@ -1,59 +1,5 @@
 <template>
     <collapsable-card :title="$t('app.general.title.wifi')" icon="$wifi">
-        <!-- <v-fade-transition mode="out-in">
-            
-            <template v-if="!wifi_avaliable_networks.length">
-                <v-skeleton-loader type="image" class="ma-4" :height="65" />
-            </template>
->
-
-<template v-else>
-                <v-card v-for="network in sortedNetworks" v-if="network.in_use" :key="network.bssid"
-                    class="connected-network ma-4" outlined link @click="toggleActions(network.bssid)" color="card-heading">
-                    <div class="d-flex align-center pa-4">
-                        
-                        <v-icon large class="me-4" :color="getSignalColor(network.signal)">
-                            {{ getWifiIconName(network) }}
-                        </v-icon>
-
-                        
-                        <span class="me-6 font-weight-medium ssid">
-                            {{ network.ssid }}
-                        </span>
-
-
-                        
-                        <div class="actions-container flex-grow-1 text-right d-flex justify-end">
-                            <v-fade-transition mode="out-in">
-                                <template v-if="expandedBssid === network.bssid">
-                                    <div class="d-flex align-center justify-space-between" style="width: 220px;">
-                                        <v-btn @click.stop="disconnect(network)" color="warning" text>
-                                            {{ $t('app.general.btn.disconnect') }}
-                                        </v-btn>
-                                        <v-btn @click.stop="forget(network)" color="error" text>
-                                            {{ $t('app.general.btn.forget') }}
-                                        </v-btn>
-                                    </div>
-                                </template>
-<template v-else>
-
-                                    <span class="me-6 subtitle-2 text--secondary">
-                                        {{ network.freq }} MHz @ {{ network.rate }} Mbps
-                                    </span>
-                                    <v-chip small color="default" icon="$lock">
-                                        {{ network.security || $t('app.chart.label.unsecured') }}
-                                    </v-chip>
-                                </template>
-</v-fade-transition>
-</div>
-</div>
-</v-card>
-</template>
-</v-fade-transition>
-
-
-<v-divider />-->
-
         <!-- Table of available networks -->
         <v-card>
             <v-simple-table class="temperature-table">
@@ -97,7 +43,8 @@
                                         </v-btn>
                                     </template>
                                     <div class="px-2 py-1" style="max-width: 200px; white-space: normal;">
-                                        <div><strong>Security:</strong> {{ !network.security ? $t('app.chart.label.unsecured') : network.security }}</div>
+                                        <div><strong>Security:</strong> {{ !network.security ?
+                                            $t('app.chart.label.unsecured') : network.security }}</div>
                                         <div><strong>Signal:</strong> {{ network.signal }}%</div>
                                         <div><strong>Data rate:</strong> {{ network.rate }} Mbps</div>
                                         <div><strong>Channel:</strong> {{ network.chan }}</div>
@@ -106,8 +53,8 @@
                                 </v-tooltip>
                             </td>
                             <td class="pr-2">
-                                <v-menu offset-y v-model="menuOpen[network.bssid]" open-on-click close-on-content-click :nudge-width="300"
-                                    transition="fade-transition" max-width="200"
+                                <v-menu offset-y v-model="menuOpen[network.bssid]" open-on-click close-on-content-click
+                                    :nudge-width="300" transition="fade-transition" max-width="200"
                                     v-if="network.in_use || knownSsids.has(network.ssid)">
                                     <template v-slot:activator="{ on, attrs }">
                                         <v-btn icon small v-bind="attrs" v-on="on">
@@ -115,17 +62,18 @@
                                         </v-btn>
                                     </template>
                                     <v-list>
-                                        <v-list-item @click="disconnect(network)" v-if="network.in_use">
+                                        <v-list-item @click="disconnectConfirmDialog = true" v-if="network.in_use">
                                             <v-list-item-icon>
                                                 <v-icon dense color="warning">$linkOff</v-icon>
                                             </v-list-item-icon>
-                                            <v-list-item-title>{{$t('app.general.btn.disconnect')}}</v-list-item-title>
+                                            <v-list-item-title>{{ $t('app.general.btn.disconnect')
+                                                }}</v-list-item-title>
                                         </v-list-item>
                                         <v-list-item @click="forget(network)">
                                             <v-list-item-icon>
                                                 <v-icon dense color="error">$delete</v-icon>
                                             </v-list-item-icon>
-                                            <v-list-item-title>{{$t('app.general.btn.forget')}}</v-list-item-title>
+                                            <v-list-item-title>{{ $t('app.general.btn.forget') }}</v-list-item-title>
                                         </v-list-item>
                                     </v-list>
                                 </v-menu>
@@ -144,6 +92,30 @@
                 <!-- menu buttons -->
             </app-btn-collapse-group>
         </template>
+
+        <v-dialog v-model="disconnectConfirmDialog" max-width="400">
+            <v-card>
+                <v-card-title class="headline">
+                    {{ $t('app.general.confirm.disconnect_title') }}
+                </v-card-title>
+
+                <v-card-text v-if="!onHotspot">
+                    {{ $t('app.general.confirm.disconnect_message') }}
+                </v-card-text>
+
+                <v-card-actions>
+                    <v-spacer />
+
+                    <v-btn text @click="disconnectConfirmDialog = false">
+                        {{ $t('app.general.btn.cancel') }}
+                    </v-btn>
+
+                    <v-btn color="error" @click="disconnect">
+                        {{ $t('app.general.btn.disconnect') }}
+                    </v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </collapsable-card>
 </template>
 
@@ -151,22 +123,30 @@
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
+import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
+const { onHotspot } = useHotspotCheck()
 // No need to import v-skeleton-loader if globally available
 
 @Component
 export default class WifiManagerCard extends Vue {
+    get onHotspot() {
+        return onHotspot.value
+    }
     @Prop({ type: Boolean })
-    readonly menuCollapsed?: boolean
+    readonly menuCollapsed?: boolean;
+
+    disconnectConfirmDialog: boolean = false
 
     menuOpen: Record<string, boolean> = {}
+
     // called when the row is clicked
     openMenu(bssid: string) {
-            // close any others if you want single-open behavior:
-            Object.keys(this.menuOpen).forEach(k => {
+        // close any others if you want single-open behavior:
+        Object.keys(this.menuOpen).forEach(k => {
             if (k !== bssid) this.menuOpen[k] = false
-            })
-            // toggle or open
-            this.$set(this.menuOpen, bssid, true)
+        })
+        // toggle or open
+        this.$set(this.menuOpen, bssid, true)
     }
 
     auxApi = useAuxApi()
@@ -174,8 +154,9 @@ export default class WifiManagerCard extends Vue {
     // reactive data
     wifi_avaliable_networks: DeviceWifi[] = []
     private intervalId: ReturnType<typeof setInterval> | null = null
-    
+
     knownSsids = new Set<string>()
+    testedSsids = new Set<string>()
 
     async fetchDevices() {
 
@@ -184,15 +165,18 @@ export default class WifiManagerCard extends Vue {
             this.wifi_avaliable_networks = res.data
 
             for (const net of this.wifi_avaliable_networks) {
-                if (!this.knownSsids.has(net.ssid)){
+                if (!this.knownSsids.has(net.ssid) && !this.testedSsids.has(net.ssid)) {
                     try {
                         const details = await this.auxApi.api.getDetailsWifiShowGet(net.ssid)
-                        if (details.status === 200) {
-                            this.knownSsids.add(net.ssid)
-                        }
+                        console.debug('Known SSID:', net.ssid, 'Details:', details)
+                        //error will get thrown if the SSID is not found
+                        this.knownSsids.add(net.ssid)
+                        
                         // if 404, leave it out
-                    } catch {
+                    } catch (e: any) {
+                        console.debug('SSID not found in known list:', net.ssid, e)
                         // network error → treat as unknown
+                        this.testedSsids.add(net.ssid)
                     }
                 }
             }
@@ -203,7 +187,7 @@ export default class WifiManagerCard extends Vue {
 
     mounted() {
         this.fetchDevices()
-        this.intervalId = setInterval(() => this.fetchDevices(), 10_000)
+        this.intervalId = setInterval(() => this.fetchDevices(), 5_000)
     }
 
     beforeDestroy() {
@@ -244,10 +228,36 @@ export default class WifiManagerCard extends Vue {
         this.expandedBssid = this.expandedBssid === bssid ? null : bssid
     }
 
-    disconnect(network: DeviceWifi) {
+
+    async disconnect(network: DeviceWifi) {
         // your logic here
-        console.log('disconnect', network)
-    }
+        try {
+            const resp = await this.auxApi.api.wifiDisconnectWifiDisconnectPost()
+            // AxiosResponse has `status`
+            if (resp.status === 200) {
+                // this.$toast.success(
+                //     this.$t('Disconnected from {ssid}.', { ssid: this.toDisconnect.ssid })
+                // )
+                await this.fetchDevices()
+            } else {
+                // this.$toast.error(
+                //     this.$t('Unexpected response status: {code}.', { code: resp.status })
+                // )
+            }
+        } catch (err: any) {
+            // AxiosError: err.response.data.detail or err.message
+            const msg =
+                err.response?.data?.detail ||
+                err.response?.statusText ||
+                err.message ||
+                this.$t('app.general.msg.disconnect_failed')
+            // this.$toast.error(
+            //     this.$t('Disconnect failed: {msg}', { msg })
+            // )
+        }
+    } //todo test properly
+
+
 
     forget(network: DeviceWifi) {
         // your logic here
