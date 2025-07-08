@@ -10,6 +10,7 @@ import content from '@originjs/vite-plugin-content'
 import monacoEditorPluginModule from 'vite-plugin-monaco-editor'
 import checker from 'vite-plugin-checker'
 import version from './vite.config.inject-version'
+import dns from 'dns/promises'
 
 // Fix for incorrect typings on vite-plugin-monaco-editor
 const isObjectWithDefaultFunction = (module: unknown): module is { default: typeof monacoEditorPluginModule } => (
@@ -23,7 +24,22 @@ const monacoEditorPlugin = isObjectWithDefaultFunction(monacoEditorPluginModule)
   ? monacoEditorPluginModule.default
   : monacoEditorPluginModule
 
-export default defineConfig({
+const MDNS_NAME = 'muon-m1-serialnumberhere.local'
+
+export default defineConfig(async ({ command }) => {
+  // only resolve when `vite serve` (dev mode)
+  let deviceIP = '192.168.55.112'
+  if (command === 'serve') {
+    try {
+      const { address } = await dns.lookup(MDNS_NAME)
+      deviceIP = address
+      console.log(`[vite] resolved ${MDNS_NAME} → ${deviceIP}`)
+    } catch (e) {
+      console.warn(`[vite] DNS lookup failed for ${MDNS_NAME}, falling back to ${deviceIP}`)
+    }
+  }
+
+  return {
   plugins: [
     VitePWA({
       srcDir: 'src',
@@ -161,6 +177,33 @@ export default defineConfig({
 
   server: {
     host: '0.0.0.0',
-    port: 8080
+    port: 8080,
+    // proxy: {
+    //     '/websocket': {
+    //       target: `ws://${deviceIP}:7125`,
+    //       ws: true,
+    //       changeOrigin: true,
+    //     },
+    //     // SK‐daemon WS
+    //     '/ws': {
+    //       target: `ws://${deviceIP}:5000`,
+    //       ws: true,
+    //       changeOrigin: true,
+    //     },
+    //     // HTTP APIs
+    //     '/server': {
+    //       target: `http://${deviceIP}:7125`,
+    //       changeOrigin: true,
+    //     },
+    //     '/printer': {
+    //       target: `http://${deviceIP}:7125`,
+    //       changeOrigin: true,
+    //     },
+    //   '/aux': {
+    //     target: `http://${deviceIP}:6789`,
+    //     changeOrigin: true,
+    //     rewrite: (path) => path.replace(/^\/aux/, ''),
+    //   },
+    // }
   }
-})
+}})

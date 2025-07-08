@@ -10,6 +10,7 @@ import sanitizeEndpoint from './util/sanitize-endpoint'
 import webSocketWrapper from './util/web-socket-wrapper'
 import promiseAny from './util/promise-any'
 import sleep from './util/sleep'
+import { setAuxApiBasePath } from './aux_api/useAuxApi'
 
 // Load API configuration
 /**
@@ -165,6 +166,8 @@ export const appInit = async (apiConfig?: ApiConfig, hostConfig?: HostConfig): P
 
   // Setup axios
   if (apiConfig.apiUrl) httpClientActions.defaults.baseURL = apiConfig.apiUrl
+
+  if (apiConfig.apiUrl) setAuxApiBasePath(apiConfig.apiUrl)
 
   // Just sets the api urls
   await store.dispatch('config/onInitApiConfig', apiConfig)

@@ -19,6 +19,7 @@ import FullscreenCamera from '@/views/FullscreenCamera.vue'
 import NotFound from '@/views/NotFound.vue'
 import Login from '@/views/Login.vue'
 import Icons from '@/views/Icons.vue'
+import Wifi from '@/views/Wifi.vue'
 
 Vue.use(VueRouter)
 
@@ -84,6 +85,12 @@ const routes: Array<RouteConfig> = [
     path: '/history',
     name: 'History',
     component: History,
+    ...defaultRouteConfig
+  },
+  {
+    path: '/wifi',
+    name: 'Wifi',
+    component: Wifi,
     ...defaultRouteConfig
   },
   {
