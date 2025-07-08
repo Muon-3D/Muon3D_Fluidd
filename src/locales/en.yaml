@@ -30,10 +30,13 @@ app:
       power: Power
       target: Target
       rate_of_change: Change
+      signal: Signal
+      security: Security
+      unsecured: Unsecured
     tooltip:
       help: >-
-        Hold <kbd>Shift</kbd> to zoom.<br />Click an item to toggle in the graph.<br
-        />Click a power to toggle in the graph.
+        Hold <kbd>Shift</kbd> to zoom.<br />Click an item to toggle in the
+        graph.<br />Click a power to toggle in the graph.
   console:
     label:
       auto_scroll: Auto scroll
@@ -41,7 +44,8 @@ app:
       hide_temp_waits: Hide temp waits
     tooltip:
       help: >-
-        Enter "help" for commands<br />Use <kbd>Tab</kbd> for autocomplete<br />Use <kbd>&uarr;</kbd> and <kbd>&darr;</kbd> for history
+        Enter "help" for commands<br />Use <kbd>Tab</kbd> for autocomplete<br
+        />Use <kbd>&uarr;</kbd> and <kbd>&darr;</kbd> for history
   endpoint:
     error:
       cant_connect: >-
@@ -85,8 +89,7 @@ app:
       file_name: Filename
       transfer_rate: Transfer rate
       uploaded: Uploaded
-      view_section_documentation: >-
-        View '%{section}' documentation
+      view_section_documentation: View '%{section}' documentation
     msg:
       not_found: No files found
       processing: Processing
@@ -111,9 +114,10 @@ app:
       root_disabled: '{root} root is not available. Please check your logs.'
     url:
       klipper_config: '%{klipperDomain}/Config_Reference.html#%{hash}'
-      moonraker_config: 'https://moonraker.readthedocs.io/en/latest/configuration/#%{hash}'
-      moonraker_telegram_bot_config: 'https://github.com/nlef/moonraker-telegram-bot/wiki/Sample-config#%{hash}'
-      crowsnest_config: 'https://crowsnest.mainsail.xyz/configuration/%{hash}-section'
+      moonraker_config: https://moonraker.readthedocs.io/en/latest/configuration/#%{hash}
+      moonraker_telegram_bot_config: >-
+        https://github.com/nlef/moonraker-telegram-bot/wiki/Sample-config#%{hash}
+      crowsnest_config: https://crowsnest.mainsail.xyz/configuration/%{hash}-section
   gcode:
     btn:
       load_current_file: Load Current File
@@ -220,6 +224,9 @@ app:
       upload_print: Upload & Print
       view: View
       reset_stats: Reset Stats
+      disconnect: Disconnect
+      forget: Forget
+      back: Back
     error:
       app_setup_link: >-
         Fluidd setup requirements can be found <a target="_blank"
@@ -342,20 +349,18 @@ app:
       edit_category: Edit category
       add_category: Add category
       file_time: File
-      stepper_driver: >-
-        %{name} Driver
+      stepper_driver: '%{name} Driver'
     msg:
       password_changed: Password changed
       wrong_password: Oops, something went wrong. Is your password correct?
       bed_screws_adjust: >-
-        Click <b>Adjusted</b> if a significant adjustment is necessary on the current screw; otherwise, click <b>Accept</b> to continue.
-      welcome_back: >-
-        Welcome back.<br>Sign in below to stay in touch with your printer.
+        Click <b>Adjusted</b> if a significant adjustment is necessary on the
+        current screw; otherwise, click <b>Accept</b> to continue.
+      welcome_back: Welcome back.<br>Sign in below to stay in touch with your printer.
       offline_ready: Fluidd is now ready to work offline.
       needs_refresh: New content available, please click the <b>Reload</b> button to update.
       pending_configuration_sections_deleted: The following sections are marked for deletion
-      rolledover_logs: >-
-        The following application logs have been rolled over: %{applications}
+      rolledover_logs: 'The following application logs have been rolled over: %{applications}'
       not_valid_fluidd_backup_file: Not a valid Fluidd backup file!
       fluidd_settings_backup_failed: Failed to backup Fluidd settings!
       fluidd_settings_restore_failed: Failed to restore Fluidd settings!
@@ -376,12 +381,18 @@ app:
       msg:
         confirm: Are you sure?
         confirm_cancel_print: Are you sure you want to cancel the current print?
-        confirm_clear_mesh: The printer is currently busy. Are you sure you want to clear the bed mesh?
-        confirm_delete: Are you sure? This will delete the selected item. | Are you sure? This will delete the {count} selected items.
+        confirm_clear_mesh: >-
+          The printer is currently busy. Are you sure you want to clear the bed
+          mesh?
+        confirm_delete: >-
+          Are you sure? This will delete the selected item. | Are you sure? This
+          will delete the {count} selected items.
         confirm_emergency_stop: Are you sure you want to emergency stop the printer?
         confirm_exclude_object: Are you sure you want to exclude this object from printing?
         confirm_forcemove_toggle: Are you sure? This can damage the printer.
-        confirm_load_bedmesh_profile: The printer is currently busy. Are you sure you want to load profile %{name}?
+        confirm_load_bedmesh_profile: >-
+          The printer is currently busy. Are you sure you want to load profile
+          %{name}?
         confirm_reboot_host: Are you sure? This will reboot your host system.
         confirm_remove_user: Are you sure you want to remove user %{username}?
         confirm_shutdown_host: Are you sure? This will shutdown your host system.
@@ -390,8 +401,7 @@ app:
         confirm_service_stop: Are you sure you want to stop the %{name} service?
         confirm_power_device_toggle: Are you sure? This will toggle the power of this device.
         unsaved_changes: You have unsaved changes. Are you sure you want to close this file?
-        no_file_preview: >-
-          %{name} cannot currently be previewed.
+        no_file_preview: '%{name} cannot currently be previewed.'
     table:
       header:
         actions: Actions
@@ -456,6 +466,7 @@ app:
       timelapse: Timelapse
       tool: Tool
       tune: Tune
+      wifi: Wifi
     tooltip:
       browse_metrics: Browse available metrics
       estop: Emergency Stop
@@ -467,9 +478,12 @@ app:
       run_collector: Run collector
       rollover_logs: Rollover logs
       file_browser_help: >-
-        Drag and drop files or folders from outside the browser to upload them here<br>Move files and folders by dragging and dropping them onto sub-folders or ".."
+        Drag and drop files or folders from outside the browser to upload them
+        here<br>Move files and folders by dragging and dropping them onto
+        sub-folders or ".."
       file_browser_configuration_help: >-
-        Copy files and folders to the Configuration Files by dragging them from here and dropping them there
+        Copy files and folders to the Configuration Files by dragging them from
+        here and dropping them there
   history:
     msg:
       confirm: Are you sure? This will clear all history, and printer statistics
@@ -484,7 +498,8 @@ app:
       multiply_job: Multiply Job | Multiply Jobs
     tooltip:
       help: >-
-        Queue jobs by dragging files from the Jobs and dropping them here<br>Adjust the order of queued jobs by dragging them up or down
+        Queue jobs by dragging files from the Jobs and dropping them
+        here<br>Adjust the order of queued jobs by dragging them up or down
   printer:
     state:
       busy: Busy
@@ -671,16 +686,20 @@ app:
       diagnostics_performance: '[BETA] Logging diagnostics info may impact performance'
       gcode_coords: Use GCode position instead of toolhead position on dashboard
       keyboard_shortcuts: >-
-        [BETA] Enable and press '?' to view the list of available keyboard shortcuts
+        [BETA] Enable and press '?' to view the list of available keyboard
+        shortcuts
       show_manual_probe_dialog_automatically: Automatically shows helper dialog if running a Manual Probe tool
       show_bed_screws_adjust_dialog_automatically: Automatically shows helper dialog if running BED_SCREWS_ADJUST tool
       show_screws_tilt_adjust_dialog_automatically: Automatically shows helper dialog if running SCREWS_TILT_CALCULATE tool
       theme_disclaimer: >-
-        These themes feature brand names and logos that are the intellectual property of their respective owners.<br>
-        The inclusion of these names and logos is done with permission from the brands.<br>
-        However, please note that these themes are not officially maintained by the respective brands.<br>
-        Any issues or inquiries related to the themes should be directed to the Fluidd team.<br>
-        The use of brand names and logos is for decorative and aesthetic purposes only, and no official association with or endorsement by the brands is implied.
+        These themes feature brand names and logos that are the intellectual
+        property of their respective owners.<br> The inclusion of these names
+        and logos is done with permission from the brands.<br> However, please
+        note that these themes are not officially maintained by the respective
+        brands.<br> Any issues or inquiries related to the themes should be
+        directed to the Fluidd team.<br> The use of brand names and logos is for
+        decorative and aesthetic purposes only, and no official association with
+        or endorsement by the brands is implied.
   socket:
     msg:
       connecting: Connecting to moonraker...
@@ -724,9 +743,11 @@ app:
       virtualization: Virtualization
     msg:
       canbus_warning: >-
-        Only unassigned CAN bus nodes can be detected.<br>
-        It is recommended to have only one unassigned device connected to the CAN bus to avoid communication issues.<br>
-        More information can be found <a target="_blank" href="https://moonraker.readthedocs.io/en/latest/web_api/#query-unassigned-canbus-uuids">here.</a>
+        Only unassigned CAN bus nodes can be detected.<br> It is recommended to
+        have only one unassigned device connected to the CAN bus to avoid
+        communication issues.<br> More information can be found <a
+        target="_blank"
+        href="https://moonraker.readthedocs.io/en/latest/web_api/#query-unassigned-canbus-uuids">here.</a>
       no_devices_found: No devices found
       no_devices_searched: Use the refresh button to search for devices
   tool:
@@ -750,23 +771,21 @@ app:
       tools: Tools
     label:
       stats_active_extruder: >-
-        <span class="secondary--text">The active extruder configuration is set for</span>
-        %{filamentDiameter} mm diameter filament
-        <span class="secondary--text">and</span>
-        %{nozzleDiameter} mm nozzle
+        <span class="secondary--text">The active extruder configuration is set
+        for</span> %{filamentDiameter} mm diameter filament <span
+        class="secondary--text">and</span> %{nozzleDiameter} mm nozzle
       stats_volumetric_flow: >-
-        Extruding at %{extrudeSpeed} mm/s<span class="secondary--text">,
-        the extruder should be able to provide an</span>
-        estimated volumetric flow of %{estimatedVolumetricFlow} mm³/s
+        Extruding at %{extrudeSpeed} mm/s<span class="secondary--text">, the
+        extruder should be able to provide an</span> estimated volumetric flow
+        of %{estimatedVolumetricFlow} mm³/s
       stats_extruded_length: >-
-        Extruding %{extrudeLength} mm of filament at
-        %{extrudeFactor} % flow<span class="secondary--text">,
-        will provide an</span>
-        estimated output length of %{estimatedExtrudedLength} mm
+        Extruding %{extrudeLength} mm of filament at %{extrudeFactor} %
+        flow<span class="secondary--text">, will provide an</span> estimated
+        output length of %{estimatedExtrudedLength} mm
       stats_max_speed: >-
-        <span class="secondary--text">Assuming a</span>
-        %{layerHeight} mm layer height<span class="secondary--text">,
-        the</span> estimated maximum print speed is %{estimatedMaxSpeed} mm/s
+        <span class="secondary--text">Assuming a</span> %{layerHeight} mm layer
+        height<span class="secondary--text">, the</span> estimated maximum print
+        speed is %{estimatedMaxSpeed} mm/s
   version:
     btn:
       check_for_updates: Check for updates
@@ -785,7 +804,8 @@ app:
       up_to_date: UP TO DATE
       updates_available: Updates are available
       old_component_version: >-
-        You are using an old version of %{name} that does not support all features of Fluidd.<br>Update %{name} to at least %{version}.
+        You are using an old version of %{name} that does not support all
+        features of Fluidd.<br>Update %{name} to at least %{version}.
     status:
       finished: Updates finished
       updating: Updating...
@@ -853,10 +873,10 @@ app:
     btn:
       manage_spools: Manage Spools
       scan_code: Scan Code
-      select: 'Select | Select for {macro}'
+      select: Select | Select for {macro}
     title:
       spoolman: Spoolman
-      spool_selection: 'Spool Selection | Spool Selection for macro {macro}'
+      spool_selection: Spool Selection | Spool Selection for macro {macro}
       scan_spool: Scan Spool
     label:
       active_spool: Active Spool
@@ -876,46 +896,45 @@ app:
       length: Length
     msg:
       no_spool: >-
-        You haven't selected a spool.
-        Are you sure you want to print without filament tracking?
+        You haven't selected a spool. Are you sure you want to print without
+        filament tracking?
       no_filament: >-
         The spool you selected may not have enough filament left on it to
-        successfully finish the print job.
-        Are you sure you want to continue?
+        successfully finish the print job. Are you sure you want to continue?
       no_required_length: >-
         The amount of filament required to print the selected file is unknown.
         Do you wish to continue?
       mismatched_filament: >-
-        The material of the selected filament does not match the selected material in the slicer.
-        Are you sure you want to continue?
-      tracking_inactive: >-
-        Filament tracking is inactive.
-        To get started, please select a spool.
+        The material of the selected filament does not match the selected
+        material in the slicer. Are you sure you want to continue?
+      tracking_inactive: Filament tracking is inactive. To get started, please select a spool.
       not_connected: Spoolman server not available.
       info:
         howto: >-
-          Show your spool's QR code to the camera.
-          This window will close as soon as a spool is detected.
+          Show your spool's QR code to the camera. This window will close as
+          soon as a spool is detected.
       warning:
         code_not_recognized: This code doesn't look like a compatible QR code.
         invalid_spool_id: The spool ID contained in this QR code is invalid.
       error:
         cors: >-
-          There was an error accessing the cameras feed.
-          Please make sure your webcam server allows CORS access.
+          There was an error accessing the cameras feed. Please make sure your
+          webcam server allows CORS access.
         spool_not_existant: The spool you scanned doesn't exist in the database.
         no_image_data: >-
-          There was an error accessing the cameras feed.
-          Please check your camera configuration or try another camera source.
+          There was an error accessing the cameras feed. Please check your
+          camera configuration or try another camera source.
     setting:
       auto_open_qr_camera: Automatically open camera for QR code detection
       auto_select_spool_on_match: Automatically commit spool selection on QR code match
       prefer_device_camera: Use device camera for QR code detection if available
       show_spool_selection_dialog_on_print_start: Show spool selection dialog on print start
       warn_on_not_enough_filament: >-
-        Show a warning when the selected spool doesn't have enough filament left on it to finish the print
+        Show a warning when the selected spool doesn't have enough filament left
+        on it to finish the print
       warn_on_filament_type_mismatch: >-
-        Show a warning when the spool's filament type and the one selected in the slicer don't match
+        Show a warning when the spool's filament type and the one selected in
+        the slicer don't match
       remaining_filament_unit: Show remaining filament as
   sensors:
     title:

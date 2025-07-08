@@ -59,6 +59,9 @@ Vue.use(HttpClientPlugin, {
   store
 })
 
+// import { AuxClientPlugin } from '@/plugins/auxClient'
+// Vue.use(AuxClientPlugin, { store })
+
 appInit()
   .then((config: InitConfig) => {
     consola.debug('Loaded App Configuration', config)

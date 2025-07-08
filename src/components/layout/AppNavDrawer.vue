@@ -99,6 +99,13 @@
           </app-nav-item>
 
           <app-nav-item
+            icon="$wifi"
+            to="/wifi"
+          >
+            {{ $t('app.general.title.wifi') }}
+          </app-nav-item>
+
+          <app-nav-item
             icon="$desktopTower"
             to="/system"
           >
