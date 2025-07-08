@@ -119,6 +119,14 @@
         <app-user-menu @change-password="userPasswordDialogOpen = true" />
       </div>
 
+      <div
+        v-if="supportsAuth && authenticated"
+        class="mr-1"
+      >
+        <app-wifi-button></app-wifi-button>
+      </div>
+
+
       <app-btn
         fab
         small
@@ -202,13 +210,15 @@ import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
 import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
+import AppWifiButton from '@/components/widgets/wifi/AppWifiButton.vue'
 
 @Component({
   components: {
     UserPasswordDialog,
     PendingChangesDialog,
     AppSaveConfigAndRestartBtn,
-    AppUploadAndPrintBtn
+    AppUploadAndPrintBtn,
+    AppWifiButton
   }
 })
 export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin, BrowserMixin) {

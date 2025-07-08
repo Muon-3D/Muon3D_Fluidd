@@ -484,6 +484,9 @@ app:
       file_browser_configuration_help: >-
         Copy files and folders to the Configuration Files by dragging them from
         here and dropping them there
+    confirm:
+      disconnect_title: Confirm Disconnect
+      disconnect_message: If you disconnect now, the web UI may lose connection. Continue?
   history:
     msg:
       confirm: Are you sure? This will clear all history, and printer statistics
