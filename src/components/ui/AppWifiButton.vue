@@ -6,7 +6,7 @@
       <!-- activator slot wraps your existing app-btn -->
       <template #activator="{ on, attrs }">
         <app-btn fab small :elevation="0" class="mr-1 bg-transparent" color="transparent" :loading="!ap_device_status || ap_toggling"
-          v-bind="attrs" v-on="on">
+          v-bind="attrs" v-on="isWifiPage ? {} : on">
           <v-icon>{{ ap_device_status?.state === 'connected' ? "$accessPoint" : "$accessPointOff" }}</v-icon>
         </app-btn>
       </template>
@@ -112,6 +112,13 @@ export default class AppWifiButton extends Vue {
     const lvl = this.getSignalLevel(this.wifi_current.signal)
     return lvl === 4 ? 'green' : lvl === 3 ? 'lime' : lvl === 2 ? 'orange' : 'red'
   }
+
+  get isWifiPage(): boolean {
+  // either by name…
+  return this.$route.name === 'Wifi'
+  // …or by path:
+  // return this.$route.path.startsWith('/wifi')
+}
 }
 </script>
 

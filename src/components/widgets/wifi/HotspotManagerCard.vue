@@ -49,7 +49,7 @@
                   </div>
                   <div class="pt-3">
                     <v-text-field v-model="form.ssid" label="SSID" dense />
-                    <v-text-field ref="passwordInput" v-model="form.password" label="Password" type="text"
+                    <v-text-field ref="passwordInput" v-model="form.password" label="{{ $t('app.general.label.password') }}" type="text"
                       :rules="passwordRules" dense :disabled="!form.securityEnabled || !editing || applying" />
                   </div>
                 </div>
@@ -60,8 +60,7 @@
                     <div key="actions"
                       class="actions-container d-flex flex-column text-right pl-4">
                       <v-btn color="primary" type="submit" :loading="applying" :disabled="!isDirty || applying" class="elevation-2">
-                        Change
-                      </v-btn>
+                        {{ $t('app.wifi.change') }} </v-btn>
                       <v-btn text type="button" @click.stop="undoChanges" :disabled="applying">
                         {{ isDirty ? "Undo" : "Back" }}
                       </v-btn>
@@ -94,6 +93,8 @@ import { Vue, Component, Watch } from 'vue-property-decorator';
 import { useAuxApi } from '@/aux_api/useAuxApi';
 import type { APCredentials, Device } from '@/aux_api';
 import QrcodeVue from 'qrcode.vue'
+import i18n from '@/plugins/i18n'
+
 
 
 @Component({
@@ -258,10 +259,10 @@ export default class HotspotManagerCard extends Vue {
 
         // 2) enforce length
         if (v.length < 8) {
-          return 'Too short'
+          return  i18n.t('app.wifi.password.too-short').toString()
         }
         if (v.length > 63) {
-          return 'Too long'
+          return i18n.t('app.wifi.password.too-long').toString()
         }
 
         // 3) catch any non-printable-ASCII chars
@@ -273,7 +274,7 @@ export default class HotspotManagerCard extends Vue {
           // dedupe same character in the list
           .filter((ch, idx, arr) => arr.indexOf(ch) === idx)
         if (invalidChars.length) {
-          return `Invalid character${invalidChars.length > 1 ? 's' : ''}: ` +
+          return i18n.t('app.wifi.password.invalid-character').toString() + ": " +
             invalidChars.map(c => {
               const code = c.charCodeAt(0)
               // show either the literal or its hex code if whitespace

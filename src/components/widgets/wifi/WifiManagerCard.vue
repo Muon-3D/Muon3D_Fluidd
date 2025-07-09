@@ -47,12 +47,12 @@
                     </v-btn>
                   </template>
                   <div class="px-2 py-1" style="max-width: 200px; white-space: normal;">
-                    <div><strong>Security:</strong> {{ !network.security ?
+                    <div><strong>{{$t('app.wifi.security')}}:</strong> {{ !network.security ?
                       $t('app.chart.label.unsecured') : network.security }}</div>
-                    <div><strong>Signal:</strong> {{ network.signal }}%</div>
-                    <div><strong>Data rate:</strong> {{ network.rate }} Mbps</div>
-                    <div><strong>Channel:</strong> {{ network.chan }}</div>
-                    <div><strong>Frequency:</strong> {{ network.freq }} MHz</div>
+                    <div><strong>{{$t('app.wifi.signal')}}:</strong> {{ network.signal }}%</div>
+                    <div><strong>{{$t('app.wifi.data rate')}}:</strong> {{ network.rate }} Mbps</div>
+                    <div><strong>{{$t('app.wifi.channel')}}:</strong> {{ network.chan }}</div>
+                    <div><strong>{{$t('app.wifi.freqency')}}:</strong> {{ network.freq }} MHz</div>
                   </div>
                 </v-tooltip>
               </td>
