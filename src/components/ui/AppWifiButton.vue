@@ -2,7 +2,7 @@
   <div>
 
 <!-- v-if="ap_current?.state === 'connected'" -->
-    <v-menu v-model="hotspotMenu" offset-y max-width="600" min-width="400" :close-on-content-click="false">
+    <v-menu v-model="hotspotMenu" offset-y max-width="450" min-width="400" content-class="full-width-menu" :close-on-content-click="false">
       <!-- activator slot wraps your existing app-btn -->
       <template #activator="{ on, attrs }">
         <app-btn fab small :elevation="0" class="mr-1 bg-transparent" color="transparent" :loading="!ap_device_status || ap_toggling"
@@ -21,12 +21,31 @@
 
     </v-menu>
 
-    <app-btn fab small :elevation="0" class="mr-1 bg-transparent" color="transparent" :loading="!wifi_current"
+    <!-- <app-btn fab small :elevation="0" class="mr-1 bg-transparent" color="transparent" :loading="!wifi_current"
       @click="goToWifiPage">
       <v-icon>
         {{ getWifiIconName() }}
       </v-icon>
-    </app-btn>
+    </app-btn> -->
+
+    <v-menu v-model="wifiMenu" offset-y max-width="450" min-width="400" content-class="full-width-menu" :close-on-content-click="false">
+      <!-- activator slot wraps your existing app-btn -->
+      <template #activator="{ on, attrs }">
+        <app-btn fab small :elevation="0" class="mr-1 bg-transparent" color="transparent" :loading="!wifi_current"
+          v-bind="attrs" v-on="isWifiPage ? {} : on">
+          <v-icon>{{ getWifiIconName() }}</v-icon>
+        </app-btn>
+      </template>
+
+      <!-- dropdown panel: your HotspotManagerCard -->
+
+      <wifi-manager-card
+      class="mt-1"
+      style="z-index: 20;"
+       @update:device-status="onDeviceStatus"
+        @update:toggling="onToggling" />
+
+    </v-menu>
   </div>
 
 
@@ -39,15 +58,18 @@ import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import type { APCredentials, Device } from '@/aux_api';
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import HotspotManagerCard from '@/components/widgets/wifi/HotspotManagerCard.vue';
+import WifiManagerCard from '@/components/widgets/wifi/WifiManagerCard.vue';
 // No need to import v-skeleton-loader if globally available
 
 @Component({
   components: {
     HotspotManagerCard,
+    WifiManagerCard,
   },
 })
 export default class AppWifiButton extends Vue {
   hotspotMenu: boolean = false
+  wifiMenu: boolean = false
 
   goToWifiPage() {
     // If you’ve named your route "wifi" in your router/index.ts:
@@ -122,4 +144,8 @@ export default class AppWifiButton extends Vue {
 }
 </script>
 
-<style scoped lang="scss"></style>
+<style scoped lang="scss">
+.full-width-menu {
+  width: 100% !important;
+}
+</style>
