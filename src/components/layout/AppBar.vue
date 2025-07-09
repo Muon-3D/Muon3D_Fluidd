@@ -210,7 +210,7 @@ import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
 import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
-import AppWifiButton from '@/components/widgets/wifi/AppWifiButton.vue'
+import AppWifiButton from '@/components/ui/AppWifiButton.vue'
 
 @Component({
   components: {
