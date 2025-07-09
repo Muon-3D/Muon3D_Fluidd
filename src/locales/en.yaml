@@ -467,6 +467,7 @@ app:
       tool: Tool
       tune: Tune
       wifi: Wifi
+      hotspot: Hotspot
     tooltip:
       browse_metrics: Browse available metrics
       estop: Emergency Stop
