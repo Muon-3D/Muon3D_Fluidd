@@ -406,6 +406,23 @@ export default class HotspotManagerCard extends Vue {
   transition: filter 0.3s ease;
 }
 
+.ap-card:not(.editing) {
+  cursor: pointer;
+}
+/* deep‐select every descendant and force pointer */
+.ap-card:not(.editing) ::v-deep * {
+  cursor: pointer !important;
+}
+.ap-card:not(.editing) ::v-deep .v-input__control,
+.ap-card:not(.editing) ::v-deep .v-input,
+.ap-card:not(.editing) ::v-deep input,
+.ap-card:not(.editing) ::v-deep textarea,
+.ap-card:not(.editing) ::v-deep .v-switch__thumb,
+.ap-card:not(.editing) ::v-deep .v-switch__track {
+  /* disable their own hit-testing so clicks fall through */
+  pointer-events: none !important;
+}
+
 .actions-container {
   min-width: 100px;
   justify-content: space-evenly;

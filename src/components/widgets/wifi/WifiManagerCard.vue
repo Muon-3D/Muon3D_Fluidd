@@ -358,8 +358,6 @@ export default class WifiManagerCard extends Vue {
   font-weight: 600;
 }
 
-.temperature-table {}
-
 .ssid {
   font-size: 1rem !important;
 }
