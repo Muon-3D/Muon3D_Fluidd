@@ -1,15 +1,23 @@
 <template>
+    <div>
     <app-btn fab small :elevation="0" class="mr-1 bg-transparent" color="transparent" :disabled="!wifi_current" @click="goToWifiPage">
         <v-icon >
             {{ getWifiIconName() }}
         </v-icon>
     </app-btn>
+    <app-btn v-if="ap_current?.state === 'connected'" fab small :elevation="0" class="mr-1 bg-transparent" color="transparent" :disabled="!wifi_current" @click="goToWifiPage">
+        <v-icon >
+            $accessPoint
+        </v-icon>
+    </app-btn>
+    </div>
 </template>
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
+import type { APCredentials, Device } from '@/aux_api';
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 // No need to import v-skeleton-loader if globally available
 
@@ -23,6 +31,7 @@ export default class AppWifiButton extends Vue {
     }
     // reactive data
     wifi_current: DeviceWifi | null = null
+    ap_current: Device | null = null
     private intervalId: ReturnType<typeof setInterval> | null = null
 
     knownSsids = new Set<string>()
@@ -32,6 +41,7 @@ export default class AppWifiButton extends Vue {
         try {
             const res = await useAuxApi().api.wifiCurrentWifiCurrentGet(true)
             this.wifi_current = res.data
+            this.ap_current = (await useAuxApi().api.wifiStatusWifiApDeviceStatusGet()).data
         } catch (e) {
             this.wifi_current = null
             console.error('Wi-Fi scan failed', e)
