@@ -1,10 +1,10 @@
 <template>
-  <collapsable-card :title="$t('app.general.title.hotspot')" icon="$accessPoint">
+  <collapsable-card :title="$t('app.general.title.hotspot')" icon="$accessPoint" class="component">
 
     <template #menu>
       <!-- hotspot on/off switch -->
-      <v-switch color="primary" v-model="switchState" :disabled="!apCredentials || !deviceStatus || toggling"
-        :loading="toggling" @change="onSwitchChange" class="hidden-md-and-up" />
+      <v-switch dense :hide-details="true" color="primary" v-model="switchState" :disabled="!apCredentials || !deviceStatus || toggling"
+        :loading="toggling" @change="onSwitchChange" class="mobile-only mt-0" />
     </template>
 
 
@@ -12,11 +12,11 @@
       <v-fade-transition mode="out-in">
         <!-- Skeleton until we have both deviceStatus & credentials -->
         <template v-if="!deviceStatus">
-          <v-skeleton-loader type="image" class="ma-4 mr-0 hidden-sm-and-down" style="height: 148px; width: 148px" />
+          <v-skeleton-loader type="image" class="ma-4 mr-0 desktop-only" style="height: 160px; width: 160px" />
         </template>
 
         <template v-else>
-          <v-card v-square class="ap-card ma-4 mr-0 hidden-sm-and-down" color="card-heading" @click="toggle"
+          <v-card v-square class="ap-card ma-4 mr-0 desktop-only" color="card-heading" @click="toggle"
             :loading="toggling ? 'primary' : false" :disabled="toggling" style="flex-shrink: 0;">
             <div class="d-flex align-center justify-center" style="height:100%">
               <v-icon size="60%"
@@ -31,7 +31,7 @@
 
       <v-fade-transition mode="out-in">
         <template v-if="!apCredentials">
-          <v-skeleton-loader type="image" class="ma-4 mr-0 flex-grow-1" style="height:148px" />
+          <v-skeleton-loader type="image" class="ma-4 mr-0 flex-grow-1" style="height:160px" />
         </template>
         <template v-else>
           <v-card class="ap-card ma-4 d-flex flex-row" color="card-heading" :loading="applying ? 'primary' : false"
@@ -371,10 +371,35 @@ export default class HotspotManagerCard extends Vue {
     }, 100)
   }
 
+
+
+    @Watch('deviceStatus', { immediate: true })
+  emitDeviceStatus(v: Device|null) {
+    this.$emit('update:device-status', v)
+  }
+
+  @Watch('toggling', { immediate: true })
+  emitToggling(v: boolean) {
+    this.$emit('update:toggling', v)
+  }
 }
 </script>
 
 <style scoped>
+.component {
+  container-type: inline-size;
+}
+
+@container (max-width: 600px) {
+  /* roughly sm breakpoint */
+  .component .desktop-only { display: none !important; }
+}
+
+@container (min-width: 601px) {
+  .component .mobile-only { display: none !important; }
+}
+
+
 .ap-card {
   cursor: pointer;
   transition: filter 0.3s ease;

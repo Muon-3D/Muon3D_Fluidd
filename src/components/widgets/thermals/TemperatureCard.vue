@@ -294,7 +294,7 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
   color: white;
   font-size: 1.2em;
   font-weight: bold;
-  z-index: 10; // Ensure it sits above other elements
+  z-index: 2; // Ensure it sits above other elements
   opacity: 0; // Hidden by default
   pointer-events: none; // Allow interactions with underlying elements when hidden
   transition: opacity 0.3s ease;
