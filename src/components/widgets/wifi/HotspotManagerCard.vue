@@ -49,7 +49,7 @@
                   </div>
                   <div class="pt-3">
                     <v-text-field v-model="form.ssid" label="SSID" dense />
-                    <v-text-field ref="passwordInput" v-model="form.password" label="$t('app.general.label.password')" type="text"
+                    <v-text-field ref="passwordInput" v-model="form.password" :label="$t('app.general.label.password')" type="text"
                       :rules="passwordRules" dense :disabled="!form.securityEnabled || !editing || applying" />
                   </div>
                 </div>
