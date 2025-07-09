@@ -956,3 +956,14 @@ app:
       pause: Pause
       printing: Printing
       tool: Tool
+  wifi:
+    security: Security
+    signal: Signal
+    data rate: Data Rate
+    channel: Channel
+    freqency: Freqency
+    change: Change
+    password:
+      too-short: Too short
+      too-long: Too long
+      invalid-character: Invalid character
