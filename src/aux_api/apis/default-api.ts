@@ -76,9 +76,9 @@ export const DefaultApiAxiosParamCreator = function (configuration?: Configurati
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        apModifyWifiApModifyPatch: async (aPCredentials: APCredentials, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        apModifyWifiApModifyPost: async (aPCredentials: APCredentials, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'aPCredentials' is not null or undefined
-            assertParamExists('apModifyWifiApModifyPatch', 'aPCredentials', aPCredentials)
+            assertParamExists('apModifyWifiApModifyPost', 'aPCredentials', aPCredentials)
             const localVarPath = `/wifi/ap/modify`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -87,7 +87,7 @@ export const DefaultApiAxiosParamCreator = function (configuration?: Configurati
                 baseOptions = configuration.baseOptions;
             }
 
-            const localVarRequestOptions = { method: 'PATCH', ...baseOptions, ...options};
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
 
@@ -138,11 +138,10 @@ export const DefaultApiAxiosParamCreator = function (configuration?: Configurati
         /**
          * Bring the AP connection up; optionally modify parameters first.
          * @summary Ap Up
-         * @param {APCredentials} [aPCredentials] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        apUpWifiApUpPost: async (aPCredentials?: APCredentials, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        apUpWifiApUpPost: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/wifi/ap/up`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -157,12 +156,9 @@ export const DefaultApiAxiosParamCreator = function (configuration?: Configurati
 
 
     
-            localVarHeaderParameter['Content-Type'] = 'application/json';
-
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-            localVarRequestOptions.data = serializeDataIfNeeded(aPCredentials, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -343,7 +339,7 @@ export const DefaultApiAxiosParamCreator = function (configuration?: Configurati
             };
         },
         /**
-         * Scan for available Wi-Fi networks. Set ?rescan=true to force a fresh scan.
+         * Scan for available Wi-Fi networks. Only performs a fresh scan if `rescan` is True and it hasn\'t rescanned in the last SCAN_TTL seconds.
          * @summary Wifi Scan
          * @param {boolean} [rescan] 
          * @param {*} [options] Override http request option.
@@ -503,10 +499,10 @@ export const DefaultApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async apModifyWifiApModifyPatch(aPCredentials: APCredentials, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.apModifyWifiApModifyPatch(aPCredentials, options);
+        async apModifyWifiApModifyPost(aPCredentials: APCredentials, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.apModifyWifiApModifyPost(aPCredentials, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['DefaultApi.apModifyWifiApModifyPatch']?.[localVarOperationServerIndex]?.url;
+            const localVarOperationServerBasePath = operationServerMap['DefaultApi.apModifyWifiApModifyPost']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -524,12 +520,11 @@ export const DefaultApiFp = function(configuration?: Configuration) {
         /**
          * Bring the AP connection up; optionally modify parameters first.
          * @summary Ap Up
-         * @param {APCredentials} [aPCredentials] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async apUpWifiApUpPost(aPCredentials?: APCredentials, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.apUpWifiApUpPost(aPCredentials, options);
+        async apUpWifiApUpPost(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.apUpWifiApUpPost(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['DefaultApi.apUpWifiApUpPost']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -599,7 +594,7 @@ export const DefaultApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Scan for available Wi-Fi networks. Set ?rescan=true to force a fresh scan.
+         * Scan for available Wi-Fi networks. Only performs a fresh scan if `rescan` is True and it hasn\'t rescanned in the last SCAN_TTL seconds.
          * @summary Wifi Scan
          * @param {boolean} [rescan] 
          * @param {*} [options] Override http request option.
@@ -674,8 +669,8 @@ export const DefaultApiFactory = function (configuration?: Configuration, basePa
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        apModifyWifiApModifyPatch(aPCredentials: APCredentials, options?: RawAxiosRequestConfig): AxiosPromise<any> {
-            return localVarFp.apModifyWifiApModifyPatch(aPCredentials, options).then((request) => request(axios, basePath));
+        apModifyWifiApModifyPost(aPCredentials: APCredentials, options?: RawAxiosRequestConfig): AxiosPromise<any> {
+            return localVarFp.apModifyWifiApModifyPost(aPCredentials, options).then((request) => request(axios, basePath));
         },
         /**
          * Get just the SSID, PSK (if any), and autoconnect flag from the AP profile.
@@ -689,12 +684,11 @@ export const DefaultApiFactory = function (configuration?: Configuration, basePa
         /**
          * Bring the AP connection up; optionally modify parameters first.
          * @summary Ap Up
-         * @param {APCredentials} [aPCredentials] 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        apUpWifiApUpPost(aPCredentials?: APCredentials, options?: RawAxiosRequestConfig): AxiosPromise<any> {
-            return localVarFp.apUpWifiApUpPost(aPCredentials, options).then((request) => request(axios, basePath));
+        apUpWifiApUpPost(options?: RawAxiosRequestConfig): AxiosPromise<any> {
+            return localVarFp.apUpWifiApUpPost(options).then((request) => request(axios, basePath));
         },
         /**
          * Show all connection profiles
@@ -746,7 +740,7 @@ export const DefaultApiFactory = function (configuration?: Configuration, basePa
             return localVarFp.wifiForgetWifiForgetDelete(ssid, options).then((request) => request(axios, basePath));
         },
         /**
-         * Scan for available Wi-Fi networks. Set ?rescan=true to force a fresh scan.
+         * Scan for available Wi-Fi networks. Only performs a fresh scan if `rescan` is True and it hasn\'t rescanned in the last SCAN_TTL seconds.
          * @summary Wifi Scan
          * @param {boolean} [rescan] 
          * @param {*} [options] Override http request option.
@@ -812,8 +806,8 @@ export class DefaultApi extends BaseAPI {
      * @throws {RequiredError}
      * @memberof DefaultApi
      */
-    public apModifyWifiApModifyPatch(aPCredentials: APCredentials, options?: RawAxiosRequestConfig) {
-        return DefaultApiFp(this.configuration).apModifyWifiApModifyPatch(aPCredentials, options).then((request) => request(this.axios, this.basePath));
+    public apModifyWifiApModifyPost(aPCredentials: APCredentials, options?: RawAxiosRequestConfig) {
+        return DefaultApiFp(this.configuration).apModifyWifiApModifyPost(aPCredentials, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -830,13 +824,12 @@ export class DefaultApi extends BaseAPI {
     /**
      * Bring the AP connection up; optionally modify parameters first.
      * @summary Ap Up
-     * @param {APCredentials} [aPCredentials] 
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      * @memberof DefaultApi
      */
-    public apUpWifiApUpPost(aPCredentials?: APCredentials, options?: RawAxiosRequestConfig) {
-        return DefaultApiFp(this.configuration).apUpWifiApUpPost(aPCredentials, options).then((request) => request(this.axios, this.basePath));
+    public apUpWifiApUpPost(options?: RawAxiosRequestConfig) {
+        return DefaultApiFp(this.configuration).apUpWifiApUpPost(options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -899,7 +892,7 @@ export class DefaultApi extends BaseAPI {
     }
 
     /**
-     * Scan for available Wi-Fi networks. Set ?rescan=true to force a fresh scan.
+     * Scan for available Wi-Fi networks. Only performs a fresh scan if `rescan` is True and it hasn\'t rescanned in the last SCAN_TTL seconds.
      * @summary Wifi Scan
      * @param {boolean} [rescan] 
      * @param {*} [options] Override http request option.

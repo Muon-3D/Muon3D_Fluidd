@@ -5,7 +5,7 @@ All URIs are relative to *http://localhost*
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
 |[**apDownWifiApDownPost**](#apdownwifiapdownpost) | **POST** /wifi/ap/down | Ap Down|
-|[**apModifyWifiApModifyPatch**](#apmodifywifiapmodifypatch) | **PATCH** /wifi/ap/modify | Ap Modify|
+|[**apModifyWifiApModifyPost**](#apmodifywifiapmodifypost) | **POST** /wifi/ap/modify | Ap Modify|
 |[**apShowCredentialsWifiApShowGet**](#apshowcredentialswifiapshowget) | **GET** /wifi/ap/show | Ap Show Credentials|
 |[**apUpWifiApUpPost**](#apupwifiapuppost) | **POST** /wifi/ap/up | Ap Up|
 |[**getDetailsWifiShowGet**](#getdetailswifishowget) | **GET** /wifi/show | Get Details|
@@ -62,8 +62,8 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **apModifyWifiApModifyPatch**
-> any apModifyWifiApModifyPatch(aPCredentials)
+# **apModifyWifiApModifyPost**
+> any apModifyWifiApModifyPost(aPCredentials)
 
 Modify AP settings: SSID, optional WPA2 PSK, and autoconnect flag.
 
@@ -81,7 +81,7 @@ const apiInstance = new DefaultApi(configuration);
 
 let aPCredentials: APCredentials; //
 
-const { status, data } = await apiInstance.apModifyWifiApModifyPatch(
+const { status, data } = await apiInstance.apModifyWifiApModifyPost(
     aPCredentials
 );
 ```
@@ -169,25 +169,17 @@ Bring the AP connection up; optionally modify parameters first.
 ```typescript
 import {
     DefaultApi,
-    Configuration,
-    APCredentials
+    Configuration
 } from './api';
 
 const configuration = new Configuration();
 const apiInstance = new DefaultApi(configuration);
 
-let aPCredentials: APCredentials; // (optional)
-
-const { status, data } = await apiInstance.apUpWifiApUpPost(
-    aPCredentials
-);
+const { status, data } = await apiInstance.apUpWifiApUpPost();
 ```
 
 ### Parameters
-
-|Name | Type | Description  | Notes|
-|------------- | ------------- | ------------- | -------------|
-| **aPCredentials** | **APCredentials**|  | |
+This endpoint does not have any parameters.
 
 
 ### Return type
@@ -200,7 +192,7 @@ No authorization required
 
 ### HTTP request headers
 
- - **Content-Type**: application/json
+ - **Content-Type**: Not defined
  - **Accept**: application/json
 
 
@@ -208,7 +200,6 @@ No authorization required
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
 |**200** | Successful Response |  -  |
-|**422** | Validation Error |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
@@ -468,7 +459,7 @@ No authorization required
 # **wifiScanWifiScanGet**
 > Array<DeviceWifi> wifiScanWifiScanGet()
 
-Scan for available Wi-Fi networks. Set ?rescan=true to force a fresh scan.
+Scan for available Wi-Fi networks. Only performs a fresh scan if `rescan` is True and it hasn\'t rescanned in the last SCAN_TTL seconds.
 
 ### Example
 
