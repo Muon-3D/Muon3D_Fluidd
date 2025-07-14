@@ -490,9 +490,7 @@ export const Icons = Object.freeze({
   accessPoint: mdiAccessPoint,
   accessPointOff: mdiAccessPointOff,
   accessPointNetwork: mdiAccessPointNetwork,
-  accessPointNetworkOff: mdiAccessPointNetworkOff,
-
-  
+  accessPointNetworkOff: mdiAccessPointNetworkOff
 })
 
 export const Waits = Object.freeze({
