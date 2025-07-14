@@ -123,9 +123,8 @@
         v-if="supportsAuth && authenticated"
         class="mr-1"
       >
-        <app-wifi-button></app-wifi-button>
+        <app-wifi-button />
       </div>
-
 
       <app-btn
         fab

@@ -1,14 +1,36 @@
 <template>
-  <collapsable-card :title="$t('app.general.title.temperature')" icon="$fire"
-    :help-tooltip="$t('app.chart.tooltip.help')" :lazy="false" draggable layout-path="dashboard.temperature-card">
+  <collapsable-card
+    :title="$t('app.general.title.temperature')"
+    icon="$fire"
+    :help-tooltip="$t('app.chart.tooltip.help')"
+    :lazy="false"
+    draggable
+    layout-path="dashboard.temperature-card"
+  >
     <template #menu>
       <app-btn-collapse-group :collapsed="menuCollapsed">
-        <temperature-presets-menu @applyOff="handleApplyOff" @applyPreset="handleApplyPreset" />
+        <temperature-presets-menu
+          @applyOff="handleApplyOff"
+          @applyPreset="handleApplyPreset"
+        />
       </app-btn-collapse-group>
 
-      <v-menu bottom left offset-y transition="slide-y-transition" :close-on-content-click="false">
+      <v-menu
+        bottom
+        left
+        offset-y
+        transition="slide-y-transition"
+        :close-on-content-click="false"
+      >
         <template #activator="{ on, attrs }">
-          <v-btn fab x-small text v-bind="attrs" class="ms-1 my-1" v-on="on">
+          <v-btn
+            fab
+            x-small
+            text
+            v-bind="attrs"
+            class="ms-1 my-1"
+            v-on="on"
+          >
             <v-icon>
               $cog
             </v-icon>
@@ -75,21 +97,32 @@
     </template>
 
     <div class="temperature-content">
-      <div class="temperature-container" :class="{ bedRemoved: bedRemoved }">
+      <div
+        class="temperature-container"
+        :class="{ bedRemoved: bedRemoved }"
+      >
         <!-- Temperature Targets Component -->
-        <temperature-targets @legendClick="legendToggleSelect" @legendPowerClick="legendTogglePowerSelect" />
+        <temperature-targets
+          @legendClick="legendToggleSelect"
+          @legendPowerClick="legendTogglePowerSelect"
+        />
 
         <!-- Thermal Chart Component -->
         <template v-if="chartReady && chartVisible">
           <v-divider />
-          <thermal-chart ref="thermalchart" :height="isMobileViewport ? '180px' : '260px'" />
+          <thermal-chart
+            ref="thermalchart"
+            :height="isMobileViewport ? '180px' : '260px'"
+          />
         </template>
       </div>
-      <div class="bed-overlay" :class="{ bedRemoved: bedRemoved }">
+      <div
+        class="bed-overlay"
+        :class="{ bedRemoved: bedRemoved }"
+      >
         <p>Bed Removed</p>
       </div>
     </div>
-
   </collapsable-card>
 </template>
 
@@ -118,26 +151,22 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
   @Ref('thermalchart')
   readonly thermalChartElement!: ThermalChart
 
-
-  bedRemoved: boolean = false;
+  bedRemoved: boolean = false
 
   // Watch the Vuex store's bedRemoved property
   @Watch('$store.state.printer.printer.bed_removal_detector.bedRemoved', { immediate: true })
-  onBedRemovedChange(newVal: boolean) {
-    console.log('bedRemoved', newVal);
-    this.bedRemoved = newVal; // Update the reactive property
+  onBedRemovedChange (newVal: boolean) {
+    console.log('bedRemoved', newVal)
+    this.bedRemoved = newVal // Update the reactive property
   }
 
-
-
-  get chartReady() {
+  get chartReady () {
     // try {
     //   // @ts-ignore
     //   console.log("LOGGING", this.$store.state.printer.printer.bed_removal_detector.bedRemoved);
     // } catch (error) {
     //   console.log("err");
     // }
-
 
     return (
       this.$store.state.socket.acceptingNotifications &&
@@ -147,7 +176,7 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
     )
   }
 
-  legendToggleSelect(item: Heater | Fan) {
+  legendToggleSelect (item: Heater | Fan) {
     // If this has a target, toggle that too.
     if (this.chartVisible) {
       if ('target' in item) {
@@ -157,7 +186,7 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
     }
   }
 
-  legendTogglePowerSelect(item: Heater | Fan) {
+  legendTogglePowerSelect (item: Heater | Fan) {
     if (this.chartVisible) {
       const name = ('speed' in item)
         ? item.key + 'Speed'
@@ -166,11 +195,11 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
     }
   }
 
-  get chartVisible() {
+  get chartVisible () {
     return this.$store.state.config.uiSettings.general.chartVisible
   }
 
-  set chartVisible(value: boolean) {
+  set chartVisible (value: boolean) {
     this.$store.dispatch('config/saveByPath', {
       path: 'uiSettings.general.chartVisible',
       value,
@@ -178,11 +207,11 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
     })
   }
 
-  get showRateOfChange() {
+  get showRateOfChange () {
     return this.$store.state.config.uiSettings.general.showRateOfChange
   }
 
-  set showRateOfChange(value: boolean) {
+  set showRateOfChange (value: boolean) {
     this.$store.dispatch('config/saveByPath', {
       path: 'uiSettings.general.showRateOfChange',
       value,
@@ -190,11 +219,11 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
     })
   }
 
-  get showRelativeHumidity() {
+  get showRelativeHumidity () {
     return this.$store.state.config.uiSettings.general.showRelativeHumidity
   }
 
-  set showRelativeHumidity(value: boolean) {
+  set showRelativeHumidity (value: boolean) {
     this.$store.dispatch('config/saveByPath', {
       path: 'uiSettings.general.showRelativeHumidity',
       value,
@@ -202,11 +231,11 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
     })
   }
 
-  get showBarometricPressure() {
+  get showBarometricPressure () {
     return this.$store.state.config.uiSettings.general.showBarometricPressure
   }
 
-  set showBarometricPressure(value: boolean) {
+  set showBarometricPressure (value: boolean) {
     this.$store.dispatch('config/saveByPath', {
       path: 'uiSettings.general.showBarometricPressure',
       value,
@@ -214,11 +243,11 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
     })
   }
 
-  get showGasResistance() {
+  get showGasResistance () {
     return this.$store.state.config.uiSettings.general.showGasResistance
   }
 
-  set showGasResistance(value: boolean) {
+  set showGasResistance (value: boolean) {
     this.$store.dispatch('config/saveByPath', {
       path: 'uiSettings.general.showGasResistance',
       value,
@@ -226,7 +255,7 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
     })
   }
 
-  handleApplyPreset(preset: TemperaturePreset) {
+  handleApplyPreset (preset: TemperaturePreset) {
     if (preset) {
       if (preset.values) {
         for (const key in preset.values) {
@@ -246,7 +275,7 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
     }
   }
 
-  async handleApplyOff() {
+  async handleApplyOff () {
     const result = (
       !['printing', 'busy', 'paused'].includes(this.$store.getters['printer/getPrinterState']) ||
       await this.$confirm(
@@ -261,11 +290,7 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
   }
 }
 
-
-
 </script>
-
-
 
 <style scoped lang="scss">
 .temperature-content {
@@ -298,7 +323,6 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
   opacity: 0; // Hidden by default
   pointer-events: none; // Allow interactions with underlying elements when hidden
   transition: opacity 0.3s ease;
-
 
   p {
     text-align: center;

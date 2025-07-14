@@ -1,87 +1,144 @@
 <template>
-  <collapsable-card :title="$t('app.general.title.wifi')" icon="$wifi">
+  <collapsable-card
+    :title="$t('app.general.title.wifi')"
+    icon="$wifi"
+  >
     <!-- Table of available networks -->
     <v-card>
       <v-simple-table class="temperature-table">
         <thead>
           <tr>
             <th class="tick" />
-            <th width="100%">SSID</th>
+            <th width="100%">
+              SSID
+            </th>
             <th />
           </tr>
         </thead>
 
         <v-fade-transition mode="out-in">
           <!-- skeleton state -->
-          <tbody v-if="!wifi_available_networks.length" key="skel">
-            <tr v-for="n in 5" :key="`avail-skel-${n}`">
-              <td class="tick"></td>
+          <tbody
+            v-if="!wifi_available_networks.length"
+            key="skel"
+          >
+            <tr
+              v-for="n in 5"
+              :key="`avail-skel-${n}`"
+            >
+              <td class="tick" />
               <td><v-skeleton-loader type="text" /></td>
-              <td></td><td></td><td></td>
+              <td /><td /><td />
             </tr>
           </tbody>
 
           <!-- real rows -->
-          <tbody v-else key="real">
+          <tbody
+            v-else
+            key="real"
+          >
             <tr
               v-for="network in sortedNetworks"
               :key="network.bssid"
-              :class="{ 'card-heading': network.in_use }"
               v-ripple
+              :class="{ 'card-heading': network.in_use }"
               @click="onNetworkClick(network)"
             >
               <td class="tick">
-                <v-icon dense v-if="network.in_use">$check</v-icon>
+                <v-icon
+                  v-if="network.in_use"
+                  dense
+                >
+                  $check
+                </v-icon>
               </td>
-              <td class="ssid">{{ network.ssid }}</td>
+              <td class="ssid">
+                {{ network.ssid }}
+              </td>
               <td>
-                <v-icon dense :color="getSignalColor(network.signal)">
+                <v-icon
+                  dense
+                  :color="getSignalColor(network.signal)"
+                >
                   {{ getWifiIconName(network) }}
                 </v-icon>
               </td>
               <td>
                 <v-tooltip bottom>
-                  <template v-slot:activator="{ on, attrs }">
-                    <v-btn icon small v-bind="attrs" v-on="on" class="primary--text">
-                      <v-icon small>$infoOutline</v-icon>
+                  <template #activator="{ on, attrs }">
+                    <v-btn
+                      icon
+                      small
+                      v-bind="attrs"
+                      class="primary--text"
+                      v-on="on"
+                    >
+                      <v-icon small>
+                        $infoOutline
+                      </v-icon>
                     </v-btn>
                   </template>
-                  <div class="px-2 py-1" style="max-width: 200px; white-space: normal;">
-                    <div><strong>{{$t('app.wifi.security')}}:</strong> {{ !network.security ?
-                      $t('app.chart.label.unsecured') : network.security }}</div>
-                    <div><strong>{{$t('app.wifi.signal')}}:</strong> {{ network.signal }}%</div>
-                    <div><strong>{{$t('app.wifi.data_rate')}}:</strong> {{ network.rate }} Mbps</div>
-                    <div><strong>{{$t('app.wifi.channel')}}:</strong> {{ network.chan }}</div>
-                    <div><strong>{{$t('app.wifi.freqency')}}:</strong> {{ network.freq }} MHz</div>
+                  <div
+                    class="px-2 py-1"
+                    style="max-width: 200px; white-space: normal;"
+                  >
+                    <div>
+                      <strong>{{ $t('app.wifi.security') }}:</strong> {{ !network.security ?
+                        $t('app.chart.label.unsecured') : network.security }}
+                    </div>
+                    <div><strong>{{ $t('app.wifi.signal') }}:</strong> {{ network.signal }}%</div>
+                    <div><strong>{{ $t('app.wifi.data_rate') }}:</strong> {{ network.rate }} Mbps</div>
+                    <div><strong>{{ $t('app.wifi.channel') }}:</strong> {{ network.chan }}</div>
+                    <div><strong>{{ $t('app.wifi.freqency') }}:</strong> {{ network.freq }} MHz</div>
                   </div>
                 </v-tooltip>
               </td>
               <td class="pr-2">
                 <v-menu
-                  offset-y
+                  v-if="network.in_use || knownSsids.has(network.ssid)"
                   v-model="menuOpen[network.bssid]"
+                  offset-y
                   open-on-click
                   close-on-content-click
                   :nudge-width="300"
                   transition="fade-transition"
                   max-width="200"
-                  v-if="network.in_use || knownSsids.has(network.ssid)"
                 >
-                  <template v-slot:activator="{ on, attrs }">
-                    <v-btn icon small v-bind="attrs" v-on="on">
-                      <v-icon dense>$menu</v-icon>
+                  <template #activator="{ on, attrs }">
+                    <v-btn
+                      icon
+                      small
+                      v-bind="attrs"
+                      v-on="on"
+                    >
+                      <v-icon dense>
+                        $menu
+                      </v-icon>
                     </v-btn>
                   </template>
                   <v-list>
-                    <v-list-item @click="disconnectConfirmDialog = true" v-if="network.in_use">
+                    <v-list-item
+                      v-if="network.in_use"
+                      @click="disconnectConfirmDialog = true"
+                    >
                       <v-list-item-icon>
-                        <v-icon dense color="warning">$linkOff</v-icon>
+                        <v-icon
+                          dense
+                          color="warning"
+                        >
+                          $linkOff
+                        </v-icon>
                       </v-list-item-icon>
                       <v-list-item-title>{{ $t('app.general.btn.disconnect') }}</v-list-item-title>
                     </v-list-item>
                     <v-list-item @click="forget(network)">
                       <v-list-item-icon>
-                        <v-icon dense color="error">$delete</v-icon>
+                        <v-icon
+                          dense
+                          color="error"
+                        >
+                          $delete
+                        </v-icon>
                       </v-list-item-icon>
                       <v-list-item-title>{{ $t('app.general.btn.forget') }}</v-list-item-title>
                     </v-list-item>
@@ -98,13 +155,22 @@
       <!-- <app-btn-collapse-group :collapsed="menuCollapsed">
 
       </app-btn-collapse-group> -->
-      <v-btn fab x-small text @click="fetchDevices" :loading="fetching">
+      <v-btn
+        fab
+        x-small
+        text
+        :loading="fetching"
+        @click="fetchDevices"
+      >
         <v-icon>$refresh</v-icon>
       </v-btn>
     </template>
 
     <!-- DISCONNECT CONFIRM DIALOG -->
-    <v-dialog v-model="disconnectConfirmDialog" max-width="400">
+    <v-dialog
+      v-model="disconnectConfirmDialog"
+      max-width="400"
+    >
       <v-card>
         <v-card-title class="headline">
           {{ $t('app.wifi.modal.disconnect.title') }}
@@ -114,10 +180,16 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn text @click="disconnectConfirmDialog = false">
+          <v-btn
+            text
+            @click="disconnectConfirmDialog = false"
+          >
             {{ $t('app.general.btn.cancel') }}
           </v-btn>
-          <v-btn color="error" @click="disconnect">
+          <v-btn
+            color="error"
+            @click="disconnect"
+          >
             {{ $t('app.general.btn.disconnect') }}
           </v-btn>
         </v-card-actions>
@@ -125,7 +197,10 @@
     </v-dialog>
 
     <!-- WARNING DIALOG WHEN NOT ON HOTSPOT -->
-    <v-dialog v-model="showWarningDialog" max-width="400">
+    <v-dialog
+      v-model="showWarningDialog"
+      max-width="400"
+    >
       <v-card>
         <v-card-title class="headline">
           {{ $t('app.wifi.modal.warning.title') }}
@@ -135,10 +210,18 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn text @click="showWarningDialog = false" :disabled="acceptWarning_loading">
+          <v-btn
+            text
+            :disabled="acceptWarning_loading"
+            @click="showWarningDialog = false"
+          >
             {{ $t('app.general.btn.cancel') }}
           </v-btn>
-          <v-btn color="warning" @click="acceptWarning" :loading="acceptWarning_loading">
+          <v-btn
+            color="warning"
+            :loading="acceptWarning_loading"
+            @click="acceptWarning"
+          >
             {{ $t('app.general.btn.Proceed') }}
           </v-btn>
         </v-card-actions>
@@ -146,7 +229,10 @@
     </v-dialog>
 
     <!-- PASSWORD PROMPT DIALOG -->
-    <v-dialog v-model="showPasswordDialog" max-width="400">
+    <v-dialog
+      v-model="showPasswordDialog"
+      max-width="400"
+    >
       <v-card>
         <v-card-title class="headline">
           {{ $t('app.general.confirm.enter_password', { ssid: selectedNetwork?.ssid }) }}
@@ -161,10 +247,16 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn text @click="showPasswordDialog = false">
+          <v-btn
+            text
+            @click="showPasswordDialog = false"
+          >
             {{ $t('app.general.btn.cancel') }}
           </v-btn>
-          <v-btn color="primary" @click="connectToSelected">
+          <v-btn
+            color="primary"
+            @click="connectToSelected"
+          >
             {{ $t('app.general.btn.connect') }}
           </v-btn>
         </v-card-actions>
@@ -203,33 +295,33 @@ export default class WifiManagerCard extends Vue {
   wifiOrder: string[] = []
   private intervalId: ReturnType<typeof setInterval> | null = null
 
-  refresh() {
+  refresh () {
     this.wifi_available_networks = []
     this.knownSsids.clear()
     this.testedSsids.clear()
     this.wifiOrder = []
   }
 
-  get onHotspot() {
+  get onHotspot () {
     return onHotspot.value
   }
 
   auxApi = useAuxApi()
 
   // Lifecycle
-  mounted() {
+  mounted () {
     this.fetchDevices()
     this.intervalId = setInterval(() => this.fetchDevices(), 5000)
   }
 
-  beforeDestroy() {
+  beforeDestroy () {
     if (this.intervalId) clearInterval(this.intervalId)
   }
 
   fetching: boolean = false
 
   // Fetch and mark known SSIDs
-  async fetchDevices() {
+  async fetchDevices () {
     if (this.fetching) return // Prevent multiple concurrent fetches
     this.fetching = true
     try {
@@ -239,14 +331,14 @@ export default class WifiManagerCard extends Vue {
         if (!this.knownSsids.has(net.ssid) && !this.testedSsids.has(net.ssid)) {
           try {
             await this.auxApi.api.getDetailsWifiShowGet(net.ssid)
-            console.log("Known SSID:", net)
+            console.log('Known SSID:', net)
             this.knownSsids.add(net.ssid)
           } catch {
             this.testedSsids.add(net.ssid)
           }
         }
       }
-      // —— new “first‐come” ordering logic ——  
+      // —— new “first‐come” ordering logic ——
       const current = new Set(this.wifi_available_networks.map(n => n.bssid))
       const bySignal = [...this.wifi_available_networks].sort((a, b) => b.signal - a.signal)
       for (const net of bySignal) {
@@ -264,7 +356,7 @@ export default class WifiManagerCard extends Vue {
   }
 
   // Sorting
-  get sortedNetworks(): DeviceWifi[] {
+  get sortedNetworks (): DeviceWifi[] {
     // return [...this.wifi_available_networks].sort((a, b) => {
     //   if (a.in_use && !b.in_use) return -1
     //   if (!a.in_use && b.in_use) return 1
@@ -285,14 +377,14 @@ export default class WifiManagerCard extends Vue {
   }
 
   // Signal icon logic
-  private getSignalLevel(signal: number): 1 | 2 | 3 | 4 {
+  private getSignalLevel (signal: number): 1 | 2 | 3 | 4 {
     if (signal >= 75) return 4
     if (signal >= 50) return 3
     if (signal >= 25) return 2
     return 1
   }
 
-  getWifiIconName(net: DeviceWifi): string {
+  getWifiIconName (net: DeviceWifi): string {
     const lvl = this.getSignalLevel(net.signal)
     if (net.in_use) return `$wifi-strength-${lvl}`
     const sec = net.security?.toLowerCase() || ''
@@ -300,13 +392,13 @@ export default class WifiManagerCard extends Vue {
     return `$wifi-strength-${lvl}${lockSuffix}`
   }
 
-  getSignalColor(signal: number): string {
+  getSignalColor (signal: number): string {
     const lvl = this.getSignalLevel(signal)
     return lvl === 4 ? 'green' : lvl === 3 ? 'lime' : lvl === 2 ? 'orange' : 'red'
   }
 
   // Existing menu toggle
-  openMenu(bssid: string) {
+  openMenu (bssid: string) {
     Object.keys(this.menuOpen).forEach(k => {
       if (k !== bssid) this.menuOpen[k] = false
     })
@@ -314,7 +406,7 @@ export default class WifiManagerCard extends Vue {
   }
 
   // NEW: handle row click
-  onNetworkClick(network: DeviceWifi) {
+  onNetworkClick (network: DeviceWifi) {
     if (network.in_use) {
       this.openMenu(network.bssid)
     } else {
@@ -328,21 +420,21 @@ export default class WifiManagerCard extends Vue {
   }
 
   acceptWarning_loading = false
-  async acceptWarning() {
+  async acceptWarning () {
     this.acceptWarning_loading = true
     this.showWarningDialog = false
-    try{
+    try {
       await this.promptOrConnect()
-    }catch {
+    } catch {
 
     }
     this.acceptWarning_loading = false
   }
 
-  async promptOrConnect() {
+  async promptOrConnect () {
     if (!this.selectedNetwork) return
     const sec = this.selectedNetwork.security?.toLowerCase() || ''
-    if (this.knownSsids.has(this.selectedNetwork.ssid)){
+    if (this.knownSsids.has(this.selectedNetwork.ssid)) {
       await this.auxApi.api.wifiSwitchWifiUpPost(this.selectedNetwork.ssid)
       this.refresh()
       await this.fetchDevices()
@@ -354,7 +446,7 @@ export default class WifiManagerCard extends Vue {
     }
   }
 
-  async connectToSelected() {
+  async connectToSelected () {
     if (!this.selectedNetwork) return
     this.showPasswordDialog = false
     try {
@@ -362,35 +454,35 @@ export default class WifiManagerCard extends Vue {
         ssid: this.selectedNetwork.ssid,
         password: this.password || undefined
       })
-      EventBus.$emit(this.$t('app.wifi.msg.connect.success') + " " + this.selectedNetwork.ssid, {type: "success", timeout: 2000})
+      EventBus.$emit(this.$t('app.wifi.msg.connect.success') + ' ' + this.selectedNetwork.ssid, { type: 'success', timeout: 2000 })
       await this.fetchDevices()
     } catch (err: any) {
-      EventBus.$emit(this.$t('app.wifi.msg.connect.error') + " " + err.response?.data?.detail || err.response?.statusText || err.message, {type: "error", timeout: 5000})
+      EventBus.$emit(this.$t('app.wifi.msg.connect.error') + ' ' + err.response?.data?.detail || err.response?.statusText || err.message, { type: 'error', timeout: 5000 })
     }
   }
 
   // Existing disconnect & forget
-  async disconnect() {
+  async disconnect () {
     try {
       const resp = await this.auxApi.api.wifiDisconnectWifiDisconnectPost()
       if (resp.status === 200) {
         await this.fetchDevices()
       }
     } catch (err: any) {
-      EventBus.$emit(this.$t('app.wifi.msg.disconnect.error') + " " + err.response?.data?.detail || err.response?.statusText || err.message, {type: "error", timeout: 5000})
+      EventBus.$emit(this.$t('app.wifi.msg.disconnect.error') + ' ' + err.response?.data?.detail || err.response?.statusText || err.message, { type: 'error', timeout: 5000 })
     }
     this.disconnectConfirmDialog = false
   }
 
-  async forget(network: DeviceWifi) {
+  async forget (network: DeviceWifi) {
     try {
       await this.auxApi.api.wifiForgetWifiForgetDelete(network.ssid)
       this.knownSsids.delete(network.ssid)
       this.testedSsids.delete(network.ssid)
       await this.fetchDevices()
-    } catch (e){
+    } catch (e) {
       console.error('Forget failed', e)
-    } 
+    }
   }
 }
 </script>
