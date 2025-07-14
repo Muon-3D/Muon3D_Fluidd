@@ -28,7 +28,7 @@
       </v-icon>
     </app-btn> -->
 
-    <v-menu v-model="wifiMenu" offset-y max-width="450" min-width="400" content-class="full-width-menu" :close-on-content-click="false">
+    <v-menu v-model="wifiMenu" offset-y max-width="450" min-width="300" content-class="full-width-menu" :close-on-content-click="false">
       <!-- activator slot wraps your existing app-btn -->
       <template #activator="{ on, attrs }">
         <app-btn fab small :elevation="0" class="mr-1 bg-transparent" color="transparent" :loading="!wifi_current"

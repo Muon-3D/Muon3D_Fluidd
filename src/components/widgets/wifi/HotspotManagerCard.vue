@@ -3,8 +3,8 @@
 
     <template #menu>
       <!-- hotspot on/off switch -->
-      <v-switch dense :hide-details="true" color="primary" v-model="switchState" :disabled="!apCredentials || !deviceStatus || toggling"
-        :loading="toggling" @change="onSwitchChange" class="mobile-only mt-0" />
+      <v-switch dense :hide-details="true" color="primary" :input-value="apState" :disabled="!apCredentials || !deviceStatus || toggling"
+        :loading="toggling" @click.native="requestToggle" class="mobile-only mt-0" readonly/>
     </template>
 
 
@@ -16,7 +16,7 @@
         </template>
 
         <template v-else>
-          <v-card v-square class="ap-card ma-4 mr-0 desktop-only" color="card-heading" @click="toggle"
+          <v-card v-square class="ap-card ma-4 mr-0 desktop-only" color="card-heading" @click="requestToggle"
             :loading="toggling ? 'primary' : false" :disabled="toggling" style="flex-shrink: 0;">
             <div class="d-flex align-center justify-center" style="height:100%">
               <v-icon size="60%"
@@ -35,10 +35,10 @@
         </template>
         <template v-else>
           <v-card class="ap-card ma-4 d-flex flex-row" color="card-heading" :loading="applying ? 'primary' : false"
-            :link="!editing" @click="!editing ? toggleEditing() : null" :ripple="!editing"
+            :link="!editing" @click="!editing ? toggleEditing() : null" :ripple="!editing" :disabled="toggling || applying"
             :class="{ editing: editing }">
             <div class="pa-4">
-              <v-form :disabled="!editing || applying" ref="apForm" @submit.prevent="applyChanges"
+              <v-form :disabled="!editing || applying" ref="apForm" @submit.prevent="requestApplyChanges" v-model="formIsValid" lazy-validation
                 class="d-flex flex-row flex-grow-1">
                 <!-- SSID + Password Inputs -->
                 <div class="d-flex flex-grow-1">
@@ -48,7 +48,7 @@
                     <v-switch v-model="form.securityEnabled" class="me-2" />
                   </div>
                   <div class="pt-3">
-                    <v-text-field v-model="form.ssid" label="SSID" dense />
+                    <v-text-field v-model="form.ssid" label="SSID" dense :rules="ssidRules"/>
                     <v-text-field ref="passwordInput" v-model="form.password" :label="$t('app.general.label.password')" type="text"
                       :rules="passwordRules" dense :disabled="!form.securityEnabled || !editing || applying" />
                   </div>
@@ -56,12 +56,12 @@
 
                 <!-- Change / Undo buttons -->
                 <v-expand-x-transition>
-                  <div key="actions" class="actions-outer" v-if="editing ? delayedEditing : editing">
+                  <div key="actions" class="actions-outer" v-if="(editing ? delayedEditing : editing) || !apState">
                     <div key="actions"
                       class="actions-container d-flex flex-column text-right pl-4">
-                      <v-btn color="primary" type="submit" :loading="applying" :disabled="!isDirty || applying" class="elevation-2">
+                      <v-btn color="primary" type="submit" :loading="applying" :disabled="!isDirty || !formIsValid || applying || !editing" class="elevation-2">
                         {{ $t('app.wifi.change') }} </v-btn>
-                      <v-btn text type="button" @click.stop="undoChanges" :disabled="applying">
+                      <v-btn text type="button" @click.stop="undoChanges" :disabled="applying || !editing" :class="{'editing': editing}" class="back-btn">
                         {{ isDirty ? "Undo" : "Back" }}
                       </v-btn>
                     </div>
@@ -70,7 +70,7 @@
                 </v-expand-x-transition>
                 <v-expand-x-transition>
 
-                  <div key="qr" class="d-flex" v-if="editing ? !editing : !delayedEditing">
+                  <div key="qr" class="d-flex" v-if="(editing ? !editing : !delayedEditing) && apState">
                     <v-divider vertical class="mx-4"></v-divider>
                     <div class="flex-grow-1" style="position: relative;">
                       <div class="qr-dummy-square" v-square></div>
@@ -85,6 +85,49 @@
         </template>
       </v-fade-transition>
     </div>
+
+
+    <v-dialog v-model="showToggleWarningDialog" max-width="400">
+      <v-card>
+        <v-card-title class="headline">
+          {{ $t('app.wifi.modal.warning.title') }}
+        </v-card-title>
+        <v-card-text v-if="!onHotspot">
+          {{ $t('app.wifi.modal.warning.message') }}
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn text @click="showToggleWarningDialog = false" :disabled="toggling || applying">
+            {{ $t('app.general.btn.cancel') }}
+          </v-btn>
+          <v-btn color="warning" @click="confirmToggle" :loading="toggling || applying">
+            {{ $t('app.general.btn.Proceed') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showChangeWarningDialog" max-width="400">
+      <v-card>
+        <v-card-title class="headline">
+          {{ $t('app.wifi.modal.warning.title') }}
+        </v-card-title>
+        <v-card-text v-if="!onHotspot">
+          {{ $t('app.wifi.modal.warning.message') }}
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn text @click="showChangeWarningDialog = false" :disabled="toggling || applying">
+            {{ $t('app.general.btn.cancel') }}
+          </v-btn>
+          <v-btn color="warning" @click="confirmApply" :loading="toggling || applying">
+            {{ $t('app.general.btn.Proceed') }}
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+
   </collapsable-card>
 </template>
 
@@ -94,6 +137,10 @@ import { useAuxApi } from '@/aux_api/useAuxApi';
 import type { APCredentials, Device } from '@/aux_api';
 import QrcodeVue from 'qrcode.vue'
 import i18n from '@/plugins/i18n'
+import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
+import type { VForm } from '@/types';
+
+const { onHotspot } = useHotspotCheck()
 
 
 
@@ -130,6 +177,59 @@ import i18n from '@/plugins/i18n'
   }
 })
 export default class HotspotManagerCard extends Vue {
+  formIsValid: boolean = false;
+
+  get onHotspot() {
+    return onHotspot.value
+  }
+  showToggleWarningDialog: boolean = false;
+  showChangeWarningDialog: boolean = false;
+
+ // “Request” methods show the warning dialog instead of immediately doing the thing
+  requestToggle() {
+    if (onHotspot.value) {
+      this.showToggleWarningDialog = true;
+    }
+    else {
+      // if not on hotspot, just toggle immediately
+      this.confirmToggle();
+    }
+  }
+  // “Confirm” methods perform the real action, then hide the dialog
+  async confirmToggle() {
+    this.showToggleWarningDialog = false;
+    // pass the new desired state explicitly
+    const prom = this.changeHotspotState(!this.apState);
+    this.apState = !this.apState; // toggle the local switch state
+    await prom; // wait for the API call to finish
+  }
+
+
+  async requestApplyChanges() {
+    // trigger Vuetify’s validation UI
+    const form = this.$refs.apForm as VForm;
+    if (!form || !(form.validate() && this.isDirty)) return;
+
+    if (onHotspot.value) {
+      // if we are on hotspot, show the warning dialog
+      this.showChangeWarningDialog = true;
+    }
+    else {
+      // if not on hotspot, apply changes immediately
+      await this.confirmApply();
+    }
+  }
+
+
+
+  async confirmApply() {
+    this.showChangeWarningDialog = false;
+    await this.applyChanges();
+    await this.auxApi.api.apUpWifiApUpPost();
+  }
+
+
+
   private auxApi = useAuxApi();
 
   deviceStatus: Device | null = null;
@@ -203,7 +303,7 @@ export default class HotspotManagerCard extends Vue {
       await this.fetchConfig() // re-fetch to get the latest config
       if (this.deviceStatus?.state !== 'connected') {
         // if we were connected, turn the hotspot on
-        await this.toggle()
+        await this.changeHotspotState()
       }
     } catch (e) {
       console.error('Failed to apply hotspot config', e)
@@ -241,6 +341,13 @@ export default class HotspotManagerCard extends Vue {
     }
   }
 
+
+
+  public get ssidRules(): Array<(v: string) => true | string> {
+    return [
+      (v: string) => !!v || i18n.t('app.general.simple_form.error.required').toString()
+    ]
+  }
 
   /**
    * WPA-PSK rule: either
@@ -295,19 +402,45 @@ export default class HotspotManagerCard extends Vue {
 
   toggling: boolean = false;
 
-  async toggle() {
+  private async changeHotspotState(wantsOn?: boolean) {
+    // guard: need credentials and not already toggling
+    if (!this.apCredentials || this.toggling) return;
+
+    // determine desired state
+    const turnOn = wantsOn !== undefined
+      ? wantsOn
+      : this.deviceStatus?.state !== 'connected';
+
+    this.toggling = true;
     try {
-      this.toggling = true;
-      if (this.deviceStatus && this.deviceStatus.state === 'connected') {
-        await this.auxApi.api.apDownWifiApDownPost()
-      } else if (this.deviceStatus) {
-        await this.auxApi.api.apUpWifiApUpPost()
+      if (turnOn) {
+        await this.auxApi.api.apUpWifiApUpPost();
+        
+        if (this.apCredentials && !this.apCredentials.autoconnect) {
+          const payload: APCredentials = {
+          ssid: this.apCredentials.ssid,
+          password: this.apCredentials.password,
+          autoconnect: true,
+          }
+          await this.auxApi.api.apModifyWifiApModifyPost(payload) //Set autoconnect to false
+        }
+      } else {
+        await this.auxApi.api.apDownWifiApDownPost();
+
+        if (this.apCredentials && this.apCredentials.autoconnect) {
+          const payload: APCredentials = {
+          ssid: this.apCredentials.ssid,
+          password: this.apCredentials.password,
+          autoconnect: false,
+          }
+          await this.auxApi.api.apModifyWifiApModifyPost(payload) //Set autoconnect to false
+        }
       }
+    } catch (e) {
+      console.error('Hotspot toggle failed', e);
     }
-    catch (e) {
-      console.error('Failed to toggle hotspot', e);
-      // optionally show error toast
-    }
+
+    // refresh status & UI
     await this.fetchConfig();
     this.toggling = false;
   }
@@ -316,38 +449,12 @@ export default class HotspotManagerCard extends Vue {
 
   // ------------------------------------------------------
   // NEW: local switch state for the v-switch
-  switchState: boolean = false;
+  apState: boolean = false;
 
   // Sync switch → deviceStatus whenever we re-fetch
   @Watch('deviceStatus', { immediate: true })
   private onDeviceStatusChanged(newStatus: Device | null) {
-    this.switchState = newStatus?.state === 'connected';
-  }
-  // ------------------------------------------------------
-
-  // ------------------------------------------------------
-  /**
-   * Fired whenever the user flips the v-switch.
-   * Optimistically shows the new position,
-   * disables & loads, then calls the API,
-   * then re-fetches the real status and clears loading.
-   */
-  private async onSwitchChange(wantsOn: boolean) {
-    if (!this.apCredentials || this.toggling) return;
-
-    this.toggling = true;
-    try {
-      if (wantsOn) {
-        await this.auxApi.api.apUpWifiApUpPost();
-      } else {
-        await this.auxApi.api.apDownWifiApDownPost();
-      }
-    } catch (e) {
-      console.error('Hotspot toggle failed', e);
-    }
-    // re-sync deviceStatus & switchState
-    await this.fetchConfig();
-    this.toggling = false;
+    this.apState = newStatus?.state === 'connected';
   }
   // ------------------------------------------------------
 
@@ -406,8 +513,12 @@ export default class HotspotManagerCard extends Vue {
   transition: filter 0.3s ease;
 }
 
+.ap-card.editing{
+  cursor: default;
+}
+
 .ap-card:not(.editing) {
-  cursor: pointer;
+  cursor: pointer !important;
 }
 /* deep‐select every descendant and force pointer */
 .ap-card:not(.editing) ::v-deep * {
@@ -479,4 +590,13 @@ export default class HotspotManagerCard extends Vue {
   width: 100% !important;
   height: 100% !important;
 }
+
+.back-btn {
+  transition: opacity 0.3s ease;
+  opacity: 1;
+  &:not(.editing){
+    opacity: 0;
+  }
+}
+
 </style>

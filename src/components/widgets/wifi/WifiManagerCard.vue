@@ -50,7 +50,7 @@
                     <div><strong>{{$t('app.wifi.security')}}:</strong> {{ !network.security ?
                       $t('app.chart.label.unsecured') : network.security }}</div>
                     <div><strong>{{$t('app.wifi.signal')}}:</strong> {{ network.signal }}%</div>
-                    <div><strong>{{$t('app.wifi.data rate')}}:</strong> {{ network.rate }} Mbps</div>
+                    <div><strong>{{$t('app.wifi.data_rate')}}:</strong> {{ network.rate }} Mbps</div>
                     <div><strong>{{$t('app.wifi.channel')}}:</strong> {{ network.chan }}</div>
                     <div><strong>{{$t('app.wifi.freqency')}}:</strong> {{ network.freq }} MHz</div>
                   </div>
@@ -95,19 +95,22 @@
     </v-card>
 
     <template #menu>
-      <app-btn-collapse-group :collapsed="menuCollapsed">
-        <!-- menu buttons -->
-      </app-btn-collapse-group>
+      <!-- <app-btn-collapse-group :collapsed="menuCollapsed">
+
+      </app-btn-collapse-group> -->
+      <v-btn fab x-small text @click="fetchDevices" :loading="fetching">
+        <v-icon>$refresh</v-icon>
+      </v-btn>
     </template>
 
     <!-- DISCONNECT CONFIRM DIALOG -->
     <v-dialog v-model="disconnectConfirmDialog" max-width="400">
       <v-card>
         <v-card-title class="headline">
-          {{ $t('app.general.confirm.disconnect_title') }}
+          {{ $t('app.wifi.modal.disconnect.title') }}
         </v-card-title>
         <v-card-text v-if="!onHotspot">
-          {{ $t('app.general.confirm.disconnect_message') }}
+          {{ $t('app.wifi.modal.disconnect.message') }}
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -125,18 +128,18 @@
     <v-dialog v-model="showWarningDialog" max-width="400">
       <v-card>
         <v-card-title class="headline">
-          {{ $t('app.general.confirm.warning_title') }}
+          {{ $t('app.wifi.modal.warning.title') }}
         </v-card-title>
-        <v-card-text>
-          {{ $t('app.general.confirm.warning_message') }}
+        <v-card-text v-if="!onHotspot">
+          {{ $t('app.wifi.modal.warning.message') }}
         </v-card-text>
         <v-card-actions>
           <v-spacer />
-          <v-btn text @click="showWarningDialog = false">
+          <v-btn text @click="showWarningDialog = false" :disabled="acceptWarning_loading">
             {{ $t('app.general.btn.cancel') }}
           </v-btn>
-          <v-btn color="primary" @click="acceptWarning">
-            {{ $t('app.general.btn.ok') }}
+          <v-btn color="warning" @click="acceptWarning" :loading="acceptWarning_loading">
+            {{ $t('app.general.btn.Proceed') }}
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -196,7 +199,15 @@ export default class WifiManagerCard extends Vue {
   wifi_available_networks: DeviceWifi[] = []
   knownSsids = new Set<string>()
   testedSsids = new Set<string>()
+  wifiOrder: string[] = []
   private intervalId: ReturnType<typeof setInterval> | null = null
+
+  refresh() {
+    this.wifi_available_networks = []
+    this.knownSsids.clear()
+    this.testedSsids.clear()
+    this.wifiOrder = []
+  }
 
   get onHotspot() {
     return onHotspot.value
@@ -214,8 +225,12 @@ export default class WifiManagerCard extends Vue {
     if (this.intervalId) clearInterval(this.intervalId)
   }
 
+  fetching: boolean = false
+
   // Fetch and mark known SSIDs
   async fetchDevices() {
+    if (this.fetching) return // Prevent multiple concurrent fetches
+    this.fetching = true
     try {
       const res = await this.auxApi.api.wifiScanWifiScanGet(true)
       this.wifi_available_networks = res.data
@@ -223,24 +238,49 @@ export default class WifiManagerCard extends Vue {
         if (!this.knownSsids.has(net.ssid) && !this.testedSsids.has(net.ssid)) {
           try {
             await this.auxApi.api.getDetailsWifiShowGet(net.ssid)
+            console.log("Known SSID:", net)
             this.knownSsids.add(net.ssid)
           } catch {
             this.testedSsids.add(net.ssid)
           }
         }
       }
+      // —— new “first‐come” ordering logic ——  
+      const current = new Set(this.wifi_available_networks.map(n => n.bssid))
+      const bySignal = [...this.wifi_available_networks].sort((a, b) => b.signal - a.signal)
+      for (const net of bySignal) {
+        if (!this.wifiOrder.includes(net.bssid)) {
+          this.wifiOrder.push(net.bssid)
+        }
+      }
+      // remove any that have vanished
+      this.wifiOrder = this.wifiOrder.filter(bssid => current.has(bssid))
+      // ——————————————————————————————
     } catch (e) {
       console.error('Wi-Fi scan failed', e)
     }
+    this.fetching = false
   }
 
   // Sorting
   get sortedNetworks(): DeviceWifi[] {
-    return [...this.wifi_available_networks].sort((a, b) => {
-      if (a.in_use && !b.in_use) return -1
-      if (!a.in_use && b.in_use) return 1
-      return b.signal - a.signal
-    })
+    // return [...this.wifi_available_networks].sort((a, b) => {
+    //   if (a.in_use && !b.in_use) return -1
+    //   if (!a.in_use && b.in_use) return 1
+    //   return b.signal - a.signal
+    // })
+
+    const connected = this.wifi_available_networks.find(n => n.in_use)
+    const map = new Map(this.wifi_available_networks.map(n => [n.bssid, n]))
+
+    const others = this.wifiOrder
+      .filter(bssid => {
+        const net = map.get(bssid)
+        return net !== undefined && !net.in_use
+      })
+      .map(bssid => map.get(bssid)!)
+
+    return connected ? [connected, ...others] : others
   }
 
   // Signal icon logic
@@ -286,15 +326,26 @@ export default class WifiManagerCard extends Vue {
     }
   }
 
-  acceptWarning() {
+  acceptWarning_loading = false
+  async acceptWarning() {
+    this.acceptWarning_loading = true
     this.showWarningDialog = false
-    this.promptOrConnect()
+    try{
+      await this.promptOrConnect()
+    }catch {
+
+    }
+    this.acceptWarning_loading = false
   }
 
-  promptOrConnect() {
+  async promptOrConnect() {
     if (!this.selectedNetwork) return
     const sec = this.selectedNetwork.security?.toLowerCase() || ''
-    if (!sec || sec.includes('open')) {
+    if (this.knownSsids.has(this.selectedNetwork.ssid)){
+      await this.auxApi.api.wifiSwitchWifiUpPost(this.selectedNetwork.ssid)
+      this.refresh()
+      await this.fetchDevices()
+    } else if (!sec || sec.includes('open')) {
       this.connectToSelected()
     } else {
       this.password = ''
@@ -344,10 +395,15 @@ export default class WifiManagerCard extends Vue {
     this.disconnectConfirmDialog = false
   }
 
-  forget(network: DeviceWifi) {
-    this.auxApi.api.wifiForgetWifiForgetDelete(network.ssid)
-      .then(() => this.fetchDevices())
-      .catch(e => console.error('Forget failed', e))
+  async forget(network: DeviceWifi) {
+    try {
+      await this.auxApi.api.wifiForgetWifiForgetDelete(network.ssid)
+      this.knownSsids.delete(network.ssid)
+      this.testedSsids.delete(network.ssid)
+      await this.fetchDevices()
+    } catch (e){
+      console.error('Forget failed', e)
+    } 
   }
 }
 </script>

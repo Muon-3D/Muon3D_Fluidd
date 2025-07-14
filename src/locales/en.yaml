@@ -227,6 +227,8 @@ app:
       disconnect: Disconnect
       forget: Forget
       back: Back
+      ok: Ok
+      Proceed: Proceed
     error:
       app_setup_link: >-
         Fluidd setup requirements can be found <a target="_blank"
@@ -485,9 +487,6 @@ app:
       file_browser_configuration_help: >-
         Copy files and folders to the Configuration Files by dragging them from
         here and dropping them there
-    confirm:
-      disconnect_title: Confirm Disconnect
-      disconnect_message: If you disconnect now, the web UI may lose connection. Continue?
   history:
     msg:
       confirm: Are you sure? This will clear all history, and printer statistics
@@ -967,3 +966,13 @@ app:
       too-short: Too short
       too-long: Too long
       invalid-character: Invalid character
+    data_rate: Data Rate
+    modal:
+      disconnect:
+        title: Confirm Disconnect
+        message: If you disconnect now, the web UI may lose connection. Continue?
+      warning:  
+        title: 'Warning: Modify Network'
+        message: >-
+          Modifying or changing the network connection may cause instability or
+          inaccessibility to this web interface.
