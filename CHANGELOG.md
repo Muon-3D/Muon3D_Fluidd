@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.31.0-rc.0](https://github.com/fluidd-core/fluidd/compare/v1.30.5...v1.31.0-rc.0) (2025-07-14)
+
+
+### Features
+
+* Added support for removable bed ([261be2a](https://github.com/fluidd-core/fluidd/commit/261be2a12157231efa8fca51edaf12c0410f3291))
+
 ### [1.30.5](https://github.com/fluidd-core/fluidd/compare/v1.33.0...v1.30.5) (2024-10-11)
 
 ### [1.30.1](https://github.com/fluidd-core/fluidd/compare/v1.33.0...v1.30.1) (2024-10-11)
