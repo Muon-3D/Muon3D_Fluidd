@@ -971,8 +971,14 @@ app:
       disconnect:
         title: Confirm Disconnect
         message: If you disconnect now, the web UI may lose connection. Continue?
-      warning:  
+      warning:
         title: 'Warning: Modify Network'
         message: >-
           Modifying or changing the network connection may cause instability or
           inaccessibility to this web interface.
+    msg:
+      connect:
+        success: Sucessfully Connected to
+        error: 'Error when connecting:'
+      disconnect:
+        error: 'Error when disconnecting:'
