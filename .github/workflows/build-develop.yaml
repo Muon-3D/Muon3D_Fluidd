@@ -1,0 +1,64 @@
+# .github/workflows/build-and-publish-develop.yml
+name: Build and Publish Develop Zip
+
+on:
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: write   # needed to create/update GitHub Releases
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint -- --no-fix
+
+      - name: Run tests
+        run: npm run test:unit
+
+      - name: Run circular references check
+        run: npm run circular-check
+
+      - name: Build
+        run: npm run build
+
+      # (optional) keep the original artifact for debug/downstream jobs
+      - name: Upload fluidd-${{ github.sha }}.zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluidd-${{ github.sha }}.zip
+          path: ./dist
+
+      - name: Zip build output
+        run: |
+          cd dist
+          zip -r ../fluidd.zip .
+
+      - name: Publish to “development” Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: development
+          name: Development build
+          body: Automated build of develop at commit ${{ github.sha }}
+          draft: false
+          prerelease: true
+          overwrite: true
+          files: |
+            ./fluidd.zip
