@@ -178,6 +178,7 @@ import { Component, Prop, Vue } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
+import { EventBus } from '@/eventBus'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -361,19 +362,10 @@ export default class WifiManagerCard extends Vue {
         ssid: this.selectedNetwork.ssid,
         password: this.password || undefined
       })
-    //   this.$toast.success(
-    //     this.$t('app.general.msg.connect_success', { ssid: this.selectedNetwork.ssid })
-    //   )
+      EventBus.$emit(this.$t('app.wifi.msg.connect.success') + " " + this.selectedNetwork.ssid, {type: "success", timeout: 2000})
       await this.fetchDevices()
     } catch (err: any) {
-      const msg =
-        err.response?.data?.detail ||
-        err.response?.statusText ||
-        err.message ||
-        this.$t('app.general.msg.connect_failed')
-    //   this.$toast.error(
-    //     this.$t('app.general.msg.connect_failed_detail', { msg })
-    //   )
+      EventBus.$emit(this.$t('app.wifi.msg.connect.error') + " " + err.response?.data?.detail || err.response?.statusText || err.message, {type: "error", timeout: 5000})
     }
   }
 
@@ -385,12 +377,7 @@ export default class WifiManagerCard extends Vue {
         await this.fetchDevices()
       }
     } catch (err: any) {
-      const msg =
-        err.response?.data?.detail ||
-        err.response?.statusText ||
-        err.message ||
-        this.$t('app.general.msg.disconnect_failed')
-    //   this.$toast.error(this.$t('app.general.msg.disconnect_failed_detail', { msg }))
+      EventBus.$emit(this.$t('app.wifi.msg.disconnect.error') + " " + err.response?.data?.detail || err.response?.statusText || err.message, {type: "error", timeout: 5000})
     }
     this.disconnectConfirmDialog = false
   }
