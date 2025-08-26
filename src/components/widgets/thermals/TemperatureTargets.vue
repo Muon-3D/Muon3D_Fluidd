@@ -42,15 +42,18 @@
           <td class="temp-name">
             <span
               :class="{ 'active': item.name === 'heater_bed'
-    ? !isBedDisconnected && ( !(item.key in chartSelectedLegends) || chartSelectedLegends[item.key] )
-    : !(item.key in chartSelectedLegends) || chartSelectedLegends[item.key] }"
+                ? !isBedDisconnected && ( !(item.key in chartSelectedLegends) || chartSelectedLegends[item.key] )
+                : !(item.key in chartSelectedLegends) || chartSelectedLegends[item.key] }"
               class="legend-item toggle"
               @click="onLegendClick(item)"
             >
               {{ item.prettyName }}
             </span>
           </td>
-          <td class="temp-power" v-if="!isRowDisabled(item)">
+          <td
+            v-if="!isRowDisabled(item)"
+            class="temp-power"
+          >
             <span
               :class="{ 'active': chartSelectedLegends[item.key + 'Power'], 'disabled': isRowDisabled(item) }"
               class="legend-item toggle"
@@ -74,7 +77,10 @@
               <span>{{ getRateOfChange(item) }}<small>&deg;C/s</small></span>
             </span>
           </td>
-          <td class="temp-actual" :colspan="isRowDisabled(item) ? 3 + (showRateOfChange ? 1 : 0): undefined">
+          <td
+            class="temp-actual"
+            :colspan="isRowDisabled(item) ? 3 + (showRateOfChange ? 1 : 0): undefined"
+          >
             <span v-if="!isRowDisabled(item)">
               {{ (item.temperature) ? item.temperature.toFixed(1) : 0 }}<small>°C</small>
             </span>
@@ -88,7 +94,9 @@
               Disconnected
             </v-chip>
           </td>
-          <td v-if="!isRowDisabled(item)">/</td>
+          <td v-if="!isRowDisabled(item)">
+            /
+          </td>
           <td>
             <app-text-field
               v-if="klippyReady"
@@ -263,7 +271,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins  } from 'vue-property-decorator'
+import { Component, Mixins } from 'vue-property-decorator'
 import TemperaturePresetsMenu from './TemperaturePresetsMenu.vue'
 import StateMixin from '@/mixins/state'
 import type { Heater, Sensor } from '@/store/printer/types'
@@ -276,23 +284,21 @@ import type { ChartData } from '@/store/charts/types'
   }
 })
 export default class TemperatureTargets extends Mixins(StateMixin) {
-
   get isBedDisconnected (): boolean {
     return !!this.$store.state.printer.printer?.bed_removal_detector?.bedRemoved
   }
-  
+
   get isToolheadDisconnected (): boolean {
-    return !!this.$store.state.printer.printer?.["mcu toolhead"]?.disconnected
+    return !!this.$store.state.printer.printer?.['mcu toolhead']?.disconnected
   }
 
   // Row-level predicate
   isRowDisabled (item: Heater | Sensor): boolean {
-    if (item.name === 'heater_bed'){
+    if (item.name === 'heater_bed') {
       return this.isBedDisconnected
-    } else if (item.name === 'extruder'){
+    } else if (item.name === 'extruder') {
       return this.isToolheadDisconnected
-    }
-    else{
+    } else {
       return false
     }
   }
@@ -302,11 +308,13 @@ export default class TemperatureTargets extends Mixins(StateMixin) {
     if (this.isRowDisabled(item)) return
     this.$emit('legendClick', item)
   }
+
   onLegendPowerClick (item: Heater | Sensor) {
     if (this.isRowDisabled(item)) return
     this.$emit('legendPowerClick', item)
   }
-  setHeaterTargetTempGuarded (item: Heater , target: number) {
+
+  setHeaterTargetTempGuarded (item: Heater, target: number) {
     if (this.isRowDisabled(item)) return
     this.setHeaterTargetTemp(item.name, target)
   }

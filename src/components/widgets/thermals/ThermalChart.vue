@@ -40,12 +40,12 @@ export default class ThermalChart extends Mixins(BrowserMixin) {
   }
 
   get isToolheadDisconnected (): boolean {
-    return !!this.$store.state.printer.printer?.["mcu toolhead"]?.disconnected
+    return !!this.$store.state.printer.printer?.['mcu toolhead']?.disconnected
   }
 
   private bedSeriesKeys (): string[] {
     // keep it minimal: main bed temp; add Target/Power/Speed if you want
-    return ['heater_bed', 'heater_bedTarget','heater_bedPower','heater_bedSpeed']
+    return ['heater_bed', 'heater_bedTarget', 'heater_bedPower', 'heater_bedSpeed']
   }
 
   private toolheadSeriesKeys (): string[] {
@@ -100,7 +100,7 @@ export default class ThermalChart extends Mixins(BrowserMixin) {
       blocked.forEach(name => {
         if (event.selected[name] === true) {
           this.chart.dispatchAction({ type: 'legendUnSelect', name }) // snap back visually
-          event.selected[name] = prev[name] !== false                 // preserve user pref in store
+          event.selected[name] = prev[name] !== false // preserve user pref in store
         }
       })
     }
@@ -137,10 +137,10 @@ export default class ThermalChart extends Mixins(BrowserMixin) {
     const min = this.bedMinDisplayTemp
     const filtered = Array.isArray(data)
       ? data.map((row: any) =>
-          (row && row[base] != null && row[base] < min)
-            ? { ...row, [base]: null } // null skips plotting that point
-            : row
-        )
+        (row && row[base] != null && row[base] < min)
+          ? { ...row, [base]: null } // null skips plotting that point
+          : row
+      )
       : data
 
     this.chart.setOption({ dataset: { source: filtered } })

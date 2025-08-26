@@ -120,7 +120,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins, Prop, Ref, Watch } from 'vue-property-decorator'
+import { Component, Mixins, Prop, Ref } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import BrowserMixin from '@/mixins/browser'
 import type { Fan, Heater } from '@/store/printer/types'
