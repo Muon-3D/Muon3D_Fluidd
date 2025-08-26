@@ -99,7 +99,6 @@
     <div class="temperature-content">
       <div
         class="temperature-container"
-        :class="{ bedRemoved: bedRemoved }"
       >
         <!-- Temperature Targets Component -->
         <temperature-targets
@@ -115,12 +114,6 @@
             :height="isMobileViewport ? '180px' : '260px'"
           />
         </template>
-      </div>
-      <div
-        class="bed-overlay"
-        :class="{ bedRemoved: bedRemoved }"
-      >
-        <p>Bed Removed</p>
       </div>
     </div>
   </collapsable-card>
@@ -151,23 +144,7 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
   @Ref('thermalchart')
   readonly thermalChartElement!: ThermalChart
 
-  bedRemoved: boolean = false
-
-  // Watch the Vuex store's bedRemoved property
-  @Watch('$store.state.printer.printer.bed_removal_detector.bedRemoved', { immediate: true })
-  onBedRemovedChange (newVal: boolean) {
-    console.log('bedRemoved', newVal)
-    this.bedRemoved = newVal // Update the reactive property
-  }
-
   get chartReady () {
-    // try {
-    //   // @ts-ignore
-    //   console.log("LOGGING", this.$store.state.printer.printer.bed_removal_detector.bedRemoved);
-    // } catch (error) {
-    //   console.log("err");
-    // }
-
     return (
       this.$store.state.socket.acceptingNotifications &&
       this.$store.state.socket.ready &&
@@ -300,37 +277,5 @@ export default class TemperatureCard extends Mixins(StateMixin, BrowserMixin) {
 .temperature-container{
   transition: opacity 0.3s ease;
   opacity: 1;
-  &.bedRemoved{
-    opacity: 0; // Show overlay when bed is removed
-    pointer-events: auto; // Prevent interactions with underlying elements when visible
-  }
-}
-
-.bed-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(255, 0, 0, 0); // Semi-transparent red
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  color: white;
-  font-size: 1.2em;
-  font-weight: bold;
-  z-index: 2; // Ensure it sits above other elements
-  opacity: 0; // Hidden by default
-  pointer-events: none; // Allow interactions with underlying elements when hidden
-  transition: opacity 0.3s ease;
-
-  p {
-    text-align: center;
-  }
-
-  &.bedRemoved {
-    opacity: 1; // Show overlay when bed is removed
-    pointer-events: auto; // Prevent interactions with underlying elements when visible
-  }
 }
 </style>
