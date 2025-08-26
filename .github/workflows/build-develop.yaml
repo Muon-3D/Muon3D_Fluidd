@@ -1,4 +1,4 @@
-# .github/workflows/build-and-publish-develop.yml
+# .github/workflows/build-develop.yml
 name: Build and Publish Develop Zip
 
 on:
@@ -39,8 +39,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      # (optional) keep the original artifact for debug/downstream jobs
-      - name: Upload fluidd-${{ github.sha }}.zip artifact
+      # (optional) keep the original artifact
+      - name: Upload interim dist artifact
         uses: actions/upload-artifact@v4
         with:
           name: fluidd-${{ github.sha }}.zip
@@ -57,8 +57,8 @@ jobs:
           tag: development
           name: Development build
           body: Automated build of develop at commit ${{ github.sha }}
+          artifacts: ./fluidd.zip          # tell the action exactly what to upload :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
+          allowUpdates: true               # replace the old asset if the Release already exists :contentReference[oaicite:2]{index=2}
+          token: ${{ secrets.GITHUB_TOKEN }}  
           draft: false
           prerelease: true
-          overwrite: true
-          files: |
-            ./fluidd.zip
