@@ -33,7 +33,78 @@ export default class ThermalChart extends Mixins(BrowserMixin) {
   series: any[] = []
   initialSelected: Record<string, boolean> = {}
 
+  @Prop({ type: Number, default: 0 }) readonly bedMinDisplayTemp!: number // filter floor (°C)
+
+  get isBedDisconnected (): boolean {
+    return !!this.$store.state.printer.printer?.bed_removal_detector?.bedRemoved
+  }
+
+  get isToolheadDisconnected (): boolean {
+    return !!this.$store.state.printer.printer?.["mcu toolhead"]?.disconnected
+  }
+
+  private bedSeriesKeys (): string[] {
+    // keep it minimal: main bed temp; add Target/Power/Speed if you want
+    return ['heater_bed', 'heater_bedTarget','heater_bedPower','heater_bedSpeed']
+  }
+
+  private toolheadSeriesKeys (): string[] {
+    return ['extruder', 'extruderTarget', 'extruderPower', 'extruderSpeed']
+  }
+
+  private get selectedLegends (): Record<string, boolean | undefined> {
+    return this.$store.getters['charts/getSelectedLegends'] as Record<string, boolean | undefined>
+  }
+
+  @Watch('isBedDisconnected', { immediate: true })
+  onBedConnChange (disconnected: boolean) {
+    if (!this.chart) return
+    this.bedSeriesKeys().forEach(name => {
+      if (disconnected) {
+        this.chart.dispatchAction({ type: 'legendUnSelect', name })
+      } else {
+        // Restore to user's stored preference on reconnect
+        const shouldBeOn = this.selectedLegends[name] !== false
+        this.chart.dispatchAction({
+          type: shouldBeOn ? 'legendSelect' : 'legendUnSelect',
+          name
+        })
+      }
+    })
+  }
+
+  @Watch('isToolheadDisconnected', { immediate: true })
+  onToolheadConnChange (disconnected: boolean) {
+    if (!this.chart) return
+    this.toolheadSeriesKeys().forEach(name => {
+      if (disconnected) {
+        this.chart.dispatchAction({ type: 'legendUnSelect', name })
+      } else {
+        const shouldBeOn = this.selectedLegends[name] !== false
+        this.chart.dispatchAction({
+          type: shouldBeOn ? 'legendSelect' : 'legendUnSelect',
+          name
+        })
+      }
+    })
+  }
+
   handleLegendSelectChanged (event: { selected: Record<string, boolean> }) {
+    if (this.chart) {
+      const prev = this.selectedLegends
+      // block re-enabling of any series that should be pseudo-disabled
+      const blocked = [
+        ...(this.isBedDisconnected ? this.bedSeriesKeys() : []),
+        ...(this.isToolheadDisconnected ? this.toolheadSeriesKeys() : [])
+      ]
+      blocked.forEach(name => {
+        if (event.selected[name] === true) {
+          this.chart.dispatchAction({ type: 'legendUnSelect', name }) // snap back visually
+          event.selected[name] = prev[name] !== false                 // preserve user pref in store
+        }
+      })
+    }
+
     this.$store.dispatch('charts/saveSelectedLegends', event.selected)
 
     let right = (this.isMobileViewport) ? 15 : 20
@@ -61,13 +132,18 @@ export default class ThermalChart extends Mixins(BrowserMixin) {
 
   @Watch('chartData')
   onDataChange (data: any) {
-    if (this.chart && !this.loading) {
-      this.chart.setOption({
-        dataset: {
-          source: data
-        }
-      })
-    }
+    if (!this.chart || this.loading) return
+    const base = 'heater_bed'
+    const min = this.bedMinDisplayTemp
+    const filtered = Array.isArray(data)
+      ? data.map((row: any) =>
+          (row && row[base] != null && row[base] < min)
+            ? { ...row, [base]: null } // null skips plotting that point
+            : row
+        )
+      : data
+
+    this.chart.setOption({ dataset: { source: filtered } })
   }
 
   mounted () {
