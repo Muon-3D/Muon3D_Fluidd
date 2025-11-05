@@ -333,7 +333,7 @@ export default class HotspotManagerCard extends Vue {
   async confirmApply () {
     this.showChangeWarningDialog = false
     await this.applyChanges()
-    await this.auxApi.api.apUpWifiApUpPost()
+    await this.auxApi.ap.apUpWifiApUpPost()
   }
 
   private auxApi = useAuxApi()
@@ -366,8 +366,8 @@ export default class HotspotManagerCard extends Vue {
 
   private async fetchConfig () {
     try {
-      this.deviceStatus = (await this.auxApi.api.wifiStatusWifiApDeviceStatusGet()).data
-      this.apCredentials = (await this.auxApi.api.apShowCredentialsWifiApShowGet()).data
+      this.deviceStatus = (await this.auxApi.ap.wifiStatusWifiApDeviceStatusGet()).data
+      this.apCredentials = (await this.auxApi.ap.apShowCredentialsWifiApShowGet()).data
       this.resetForm()
     } catch (e) {
       console.error('Failed to load hotspot config', e)
@@ -402,7 +402,7 @@ export default class HotspotManagerCard extends Vue {
           : null,
         autoconnect: true
       }
-      await this.auxApi.api.apModifyWifiApModifyPost(payload)
+      await this.auxApi.ap.apModifyWifiApModifyPost(payload)
       // on success, commit new “original” snapshot
       // this.original = { ...this.form }
       await this.fetchConfig() // re-fetch to get the latest config
@@ -514,7 +514,7 @@ export default class HotspotManagerCard extends Vue {
     this.toggling = true
     try {
       if (turnOn) {
-        await this.auxApi.api.apUpWifiApUpPost()
+        await this.auxApi.ap.apUpWifiApUpPost()
 
         if (this.apCredentials && !this.apCredentials.autoconnect) {
           const payload: APCredentials = {
@@ -522,10 +522,10 @@ export default class HotspotManagerCard extends Vue {
             password: this.apCredentials.password,
             autoconnect: true
           }
-          await this.auxApi.api.apModifyWifiApModifyPost(payload) // Set autoconnect to false
+          await this.auxApi.ap.apModifyWifiApModifyPost(payload) // Set autoconnect to false
         }
       } else {
-        await this.auxApi.api.apDownWifiApDownPost()
+        await this.auxApi.ap.apDownWifiApDownPost()
 
         if (this.apCredentials && this.apCredentials.autoconnect) {
           const payload: APCredentials = {
@@ -533,7 +533,7 @@ export default class HotspotManagerCard extends Vue {
             password: this.apCredentials.password,
             autoconnect: false
           }
-          await this.auxApi.api.apModifyWifiApModifyPost(payload) // Set autoconnect to false
+          await this.auxApi.ap.apModifyWifiApModifyPost(payload) // Set autoconnect to false
         }
       }
     } catch (e) {

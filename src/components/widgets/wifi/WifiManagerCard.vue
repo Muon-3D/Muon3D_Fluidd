@@ -325,12 +325,12 @@ export default class WifiManagerCard extends Vue {
     if (this.fetching) return // Prevent multiple concurrent fetches
     this.fetching = true
     try {
-      const res = await this.auxApi.api.wifiScanWifiScanGet(true)
+      const res = await this.auxApi.wifi.wifiScanWifiScanGet(true)
       this.wifi_available_networks = res.data
       for (const net of this.wifi_available_networks) {
         if (!this.knownSsids.has(net.ssid) && !this.testedSsids.has(net.ssid)) {
           try {
-            await this.auxApi.api.getDetailsWifiShowGet(net.ssid)
+            await this.auxApi.wifi.getDetailsWifiShowGet(net.ssid)
             console.log('Known SSID:', net)
             this.knownSsids.add(net.ssid)
           } catch {
@@ -435,7 +435,7 @@ export default class WifiManagerCard extends Vue {
     if (!this.selectedNetwork) return
     const sec = this.selectedNetwork.security?.toLowerCase() || ''
     if (this.knownSsids.has(this.selectedNetwork.ssid)) {
-      await this.auxApi.api.wifiSwitchWifiUpPost(this.selectedNetwork.ssid)
+      await this.auxApi.wifi.wifiSwitchWifiUpPost(this.selectedNetwork.ssid)
       this.refresh()
       await this.fetchDevices()
     } else if (!sec || sec.includes('open')) {
@@ -450,7 +450,7 @@ export default class WifiManagerCard extends Vue {
     if (!this.selectedNetwork) return
     this.showPasswordDialog = false
     try {
-      await this.auxApi.api.wifiConnectWifiConnectPost({
+      await this.auxApi.wifi.wifiConnectWifiConnectPost({
         ssid: this.selectedNetwork.ssid,
         password: this.password || undefined
       })
@@ -464,7 +464,7 @@ export default class WifiManagerCard extends Vue {
   // Existing disconnect & forget
   async disconnect () {
     try {
-      const resp = await this.auxApi.api.wifiDisconnectWifiDisconnectPost()
+      const resp = await this.auxApi.wifi.wifiDisconnectWifiDisconnectPost()
       if (resp.status === 200) {
         await this.fetchDevices()
       }
@@ -476,7 +476,7 @@ export default class WifiManagerCard extends Vue {
 
   async forget (network: DeviceWifi) {
     try {
-      await this.auxApi.api.wifiForgetWifiForgetDelete(network.ssid)
+      await this.auxApi.wifi.wifiForgetWifiForgetDelete(network.ssid)
       this.knownSsids.delete(network.ssid)
       this.testedSsids.delete(network.ssid)
       await this.fetchDevices()

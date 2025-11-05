@@ -14,5 +14,7 @@
 
 
 
-export * from './apis/default-api';
+export * from './apis/ap-api';
+export * from './apis/update-api';
+export * from './apis/wifi-api';
 
