@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.31.0-rc.2](https://github.com/fluidd-core/fluidd/compare/v1.31.0-rc.1...v1.31.0-rc.2) (2025-11-05)
+
 ## [1.31.0-rc.1](https://github.com/fluidd-core/fluidd/compare/v1.31.0-rc.0...v1.31.0-rc.1) (2025-08-27)
 
 ## [1.31.0-rc.0](https://github.com/fluidd-core/fluidd/compare/v1.30.5...v1.31.0-rc.0) (2025-07-14)
