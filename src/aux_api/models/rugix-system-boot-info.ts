@@ -14,7 +14,23 @@
 
 
 
-export * from './apis/ap-api';
-export * from './apis/update-api';
-export * from './apis/wifi-api';
+/**
+ * Boot information of the system.
+ * @export
+ * @interface RugixSystemBootInfo
+ */
+export interface RugixSystemBootInfo {
+    /**
+     * 
+     * @type {string}
+     * @memberof RugixSystemBootInfo
+     */
+    'defaultGroup'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof RugixSystemBootInfo
+     */
+    'activeGroup'?: string | null;
+}
 

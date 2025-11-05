@@ -14,7 +14,17 @@
 
 
 
-export * from './apis/ap-api';
-export * from './apis/update-api';
-export * from './apis/wifi-api';
+/**
+ * Request to set the progress of an OTA update.
+ * @export
+ * @interface OTASetProgressRequest
+ */
+export interface OTASetProgressRequest {
+    /**
+     * 
+     * @type {number}
+     * @memberof OTASetProgressRequest
+     */
+    'progress'?: number | null;
+}
 

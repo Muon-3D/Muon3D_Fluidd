@@ -14,7 +14,23 @@
 
 
 
-export * from './apis/ap-api';
-export * from './apis/update-api';
-export * from './apis/wifi-api';
+/**
+ * Rugix Bakery release information.
+ * @export
+ * @interface RugixReleaseInfo
+ */
+export interface RugixReleaseInfo {
+    /**
+     * 
+     * @type {string}
+     * @memberof RugixReleaseInfo
+     */
+    'id': string;
+    /**
+     * 
+     * @type {string}
+     * @memberof RugixReleaseInfo
+     */
+    'version': string;
+}
 

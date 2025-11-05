@@ -1,40 +1,37 @@
-# DefaultApi
+# WifiApi
 
 All URIs are relative to *http://localhost*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
-|[**apDownWifiApDownPost**](#apdownwifiapdownpost) | **POST** /wifi/ap/down | Ap Down|
-|[**apModifyWifiApModifyPost**](#apmodifywifiapmodifypost) | **POST** /wifi/ap/modify | Ap Modify|
-|[**apShowCredentialsWifiApShowGet**](#apshowcredentialswifiapshowget) | **GET** /wifi/ap/show | Ap Show Credentials|
-|[**apUpWifiApUpPost**](#apupwifiapuppost) | **POST** /wifi/ap/up | Ap Up|
+|[**apDownWifiDeviceDownPost**](#apdownwifidevicedownpost) | **POST** /wifi/device/down | Ap Down|
+|[**apUpWifiDeviceUpPost**](#apupwifideviceuppost) | **POST** /wifi/device/up | Ap Up|
 |[**getDetailsWifiShowGet**](#getdetailswifishowget) | **GET** /wifi/show | Get Details|
 |[**wifiConnectWifiConnectPost**](#wificonnectwificonnectpost) | **POST** /wifi/connect | Wifi Connect|
 |[**wifiCurrentWifiCurrentGet**](#wificurrentwificurrentget) | **GET** /wifi/current | Wifi Current|
 |[**wifiDisconnectWifiDisconnectPost**](#wifidisconnectwifidisconnectpost) | **POST** /wifi/disconnect | Wifi Disconnect|
 |[**wifiForgetWifiForgetDelete**](#wififorgetwififorgetdelete) | **DELETE** /wifi/forget | Wifi Forget|
 |[**wifiScanWifiScanGet**](#wifiscanwifiscanget) | **GET** /wifi/scan | Wifi Scan|
-|[**wifiStatusWifiApDeviceStatusGet**](#wifistatuswifiapdevicestatusget) | **GET** /wifi/ap/device_status | Wifi Status|
-|[**wifiStatusWifiDeviceStatusGet**](#wifistatuswifidevicestatusget) | **GET** /wifi/device_status | Wifi Status|
+|[**wifiStatusWifiDeviceStatusGet**](#wifistatuswifidevicestatusget) | **GET** /wifi/device/status | Wifi Status|
 |[**wifiSwitchWifiUpPost**](#wifiswitchwifiuppost) | **POST** /wifi/up | Wifi Switch|
 
-# **apDownWifiApDownPost**
-> any apDownWifiApDownPost()
+# **apDownWifiDeviceDownPost**
+> any apDownWifiDeviceDownPost()
 
-Bring the AP connection down.
+Bring the wifi device down.
 
 ### Example
 
 ```typescript
 import {
-    DefaultApi,
+    WifiApi,
     Configuration
 } from './api';
 
 const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
+const apiInstance = new WifiApi(configuration);
 
-const { status, data } = await apiInstance.apDownWifiApDownPost();
+const { status, data } = await apiInstance.apDownWifiDeviceDownPost();
 ```
 
 ### Parameters
@@ -62,120 +59,23 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **apModifyWifiApModifyPost**
-> any apModifyWifiApModifyPost(aPCredentials)
+# **apUpWifiDeviceUpPost**
+> any apUpWifiDeviceUpPost()
 
-Modify AP settings: SSID, optional WPA2 PSK, and autoconnect flag.
-
-### Example
-
-```typescript
-import {
-    DefaultApi,
-    Configuration,
-    APCredentials
-} from './api';
-
-const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
-
-let aPCredentials: APCredentials; //
-
-const { status, data } = await apiInstance.apModifyWifiApModifyPost(
-    aPCredentials
-);
-```
-
-### Parameters
-
-|Name | Type | Description  | Notes|
-|------------- | ------------- | ------------- | -------------|
-| **aPCredentials** | **APCredentials**|  | |
-
-
-### Return type
-
-**any**
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
- - **Content-Type**: application/json
- - **Accept**: application/json
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-|**200** | Successful Response |  -  |
-|**422** | Validation Error |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
-
-# **apShowCredentialsWifiApShowGet**
-> APCredentials apShowCredentialsWifiApShowGet()
-
-Get just the SSID, PSK (if any), and autoconnect flag from the AP profile.
+Bring the  wifi device up.
 
 ### Example
 
 ```typescript
 import {
-    DefaultApi,
+    WifiApi,
     Configuration
 } from './api';
 
 const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
+const apiInstance = new WifiApi(configuration);
 
-const { status, data } = await apiInstance.apShowCredentialsWifiApShowGet();
-```
-
-### Parameters
-This endpoint does not have any parameters.
-
-
-### Return type
-
-**APCredentials**
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
- - **Content-Type**: Not defined
- - **Accept**: application/json
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-|**200** | Successful Response |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
-
-# **apUpWifiApUpPost**
-> any apUpWifiApUpPost()
-
-Bring the AP connection up; optionally modify parameters first.
-
-### Example
-
-```typescript
-import {
-    DefaultApi,
-    Configuration
-} from './api';
-
-const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
-
-const { status, data } = await apiInstance.apUpWifiApUpPost();
+const { status, data } = await apiInstance.apUpWifiDeviceUpPost();
 ```
 
 ### Parameters
@@ -212,12 +112,12 @@ Show all connection profiles
 
 ```typescript
 import {
-    DefaultApi,
+    WifiApi,
     Configuration
 } from './api';
 
 const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
+const apiInstance = new WifiApi(configuration);
 
 let ssid: string; // (default to undefined)
 
@@ -264,13 +164,13 @@ Connect to an SSID (with optional password).
 
 ```typescript
 import {
-    DefaultApi,
+    WifiApi,
     Configuration,
     Credentials
 } from './api';
 
 const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
+const apiInstance = new WifiApi(configuration);
 
 let credentials: Credentials; //
 
@@ -317,12 +217,12 @@ Return the currently active Wi-Fi connection, or null if none.
 
 ```typescript
 import {
-    DefaultApi,
+    WifiApi,
     Configuration
 } from './api';
 
 const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
+const apiInstance = new WifiApi(configuration);
 
 let update: boolean; // (optional) (default to true)
 
@@ -369,12 +269,12 @@ Disconnect from the current Wi-Fi network.
 
 ```typescript
 import {
-    DefaultApi,
+    WifiApi,
     Configuration
 } from './api';
 
 const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
+const apiInstance = new WifiApi(configuration);
 
 const { status, data } = await apiInstance.wifiDisconnectWifiDisconnectPost();
 ```
@@ -413,12 +313,12 @@ Permanently delete the current Wi-Fi connection profile.
 
 ```typescript
 import {
-    DefaultApi,
+    WifiApi,
     Configuration
 } from './api';
 
 const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
+const apiInstance = new WifiApi(configuration);
 
 let ssid: string; // (optional) (default to undefined)
 
@@ -465,12 +365,12 @@ Scan for available Wi-Fi networks. Only performs a fresh scan if `rescan` is Tru
 
 ```typescript
 import {
-    DefaultApi,
+    WifiApi,
     Configuration
 } from './api';
 
 const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
+const apiInstance = new WifiApi(configuration);
 
 let rescan: boolean; // (optional) (default to true)
 
@@ -508,49 +408,6 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **wifiStatusWifiApDeviceStatusGet**
-> Device wifiStatusWifiApDeviceStatusGet()
-
-
-### Example
-
-```typescript
-import {
-    DefaultApi,
-    Configuration
-} from './api';
-
-const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
-
-const { status, data } = await apiInstance.wifiStatusWifiApDeviceStatusGet();
-```
-
-### Parameters
-This endpoint does not have any parameters.
-
-
-### Return type
-
-**Device**
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
- - **Content-Type**: Not defined
- - **Accept**: application/json
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-|**200** | Successful Response |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
-
 # **wifiStatusWifiDeviceStatusGet**
 > Device wifiStatusWifiDeviceStatusGet()
 
@@ -559,12 +416,12 @@ No authorization required
 
 ```typescript
 import {
-    DefaultApi,
+    WifiApi,
     Configuration
 } from './api';
 
 const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
+const apiInstance = new WifiApi(configuration);
 
 const { status, data } = await apiInstance.wifiStatusWifiDeviceStatusGet();
 ```
@@ -603,12 +460,12 @@ Start or switch to a known connection by its SSID.
 
 ```typescript
 import {
-    DefaultApi,
+    WifiApi,
     Configuration
 } from './api';
 
 const configuration = new Configuration();
-const apiInstance = new DefaultApi(configuration);
+const apiInstance = new WifiApi(configuration);
 
 let ssid: string; // (default to undefined)
 

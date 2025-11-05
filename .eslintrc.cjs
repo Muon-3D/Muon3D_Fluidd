@@ -15,5 +15,16 @@ module.exports = {
     'vue/no-v-html': 'off',
     'vue/no-v-text-v-html-on-component': 'off',
     '@typescript-eslint/no-explicit-any': 'off'
-  }
+  },
+
+  // 👇 add this
+  overrides: [
+    {
+      files: ['src/aux_api/models/**/*.ts'],
+      rules: {
+        semi: 'off',
+        '@typescript-eslint/semi': 'off'
+      }
+    }
+  ]
 }

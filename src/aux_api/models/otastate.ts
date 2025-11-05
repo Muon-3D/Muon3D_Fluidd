@@ -14,7 +14,20 @@
 
 
 
-export * from './apis/ap-api';
-export * from './apis/update-api';
-export * from './apis/wifi-api';
+/**
+ * State of the OTA update service.
+ * @export
+ * @enum {string}
+ */
+
+export const OTAState = {
+    Idle: 'idle',
+    Installing: 'installing',
+    Committing: 'committing',
+    Failed: 'failed'
+} as const;
+
+export type OTAState = typeof OTAState[keyof typeof OTAState];
+
+
 

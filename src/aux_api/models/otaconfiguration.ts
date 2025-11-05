@@ -14,7 +14,23 @@
 
 
 
-export * from './apis/ap-api';
-export * from './apis/update-api';
-export * from './apis/wifi-api';
+/**
+ * Configuration of the OTA update service.
+ * @export
+ * @interface OTAConfiguration
+ */
+export interface OTAConfiguration {
+    /**
+     * 
+     * @type {string}
+     * @memberof OTAConfiguration
+     */
+    'path': string;
+    /**
+     * 
+     * @type {number}
+     * @memberof OTAConfiguration
+     */
+    'check_interval'?: number;
+}
 

@@ -113,9 +113,9 @@ export default class AppWifiButton extends Vue {
 
   async fetchCurrent () {
     try {
-      const res = await useAuxApi().api.wifiCurrentWifiCurrentGet(true)
+      const res = await useAuxApi().wifi.wifiCurrentWifiCurrentGet(true)
       this.wifi_current = res.data
-      this.ap_device_status = (await useAuxApi().api.wifiStatusWifiApDeviceStatusGet()).data
+      this.ap_device_status = (await useAuxApi().ap.wifiStatusWifiApDeviceStatusGet()).data
     } catch (e) {
       this.wifi_current = null
       console.error('Wi-Fi scan failed', e)

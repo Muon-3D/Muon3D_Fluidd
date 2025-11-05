@@ -14,7 +14,17 @@
 
 
 
-export * from './apis/ap-api';
-export * from './apis/update-api';
-export * from './apis/wifi-api';
+/**
+ * Request to start an OTA update.
+ * @export
+ * @interface OTAStartRequest
+ */
+export interface OTAStartRequest {
+    /**
+     * 
+     * @type {string}
+     * @memberof OTAStartRequest
+     */
+    'url'?: string | null;
+}
 

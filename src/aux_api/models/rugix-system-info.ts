@@ -13,8 +13,21 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { RugixSystemBootInfo } from './rugix-system-boot-info';
 
-export * from './apis/ap-api';
-export * from './apis/update-api';
-export * from './apis/wifi-api';
+/**
+ * Rugix Bakery system information.
+ * @export
+ * @interface RugixSystemInfo
+ */
+export interface RugixSystemInfo {
+    /**
+     * 
+     * @type {RugixSystemBootInfo}
+     * @memberof RugixSystemInfo
+     */
+    'boot': RugixSystemBootInfo;
+}
 
