@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.31.0-rc.3](https://github.com/fluidd-core/fluidd/compare/v1.31.0-rc.2...v1.31.0-rc.3) (2025-11-08)
+
+
+### Features
+
+* aDDED Developer mode to configuration files ([6727598](https://github.com/fluidd-core/fluidd/commit/6727598d488846ad7576689c652033714a4ce8e2))
+
 ## [1.31.0-rc.2](https://github.com/fluidd-core/fluidd/compare/v1.31.0-rc.1...v1.31.0-rc.2) (2025-11-05)
 
 ## [1.31.0-rc.1](https://github.com/fluidd-core/fluidd/compare/v1.31.0-rc.0...v1.31.0-rc.1) (2025-08-27)
