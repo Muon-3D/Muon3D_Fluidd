@@ -38,66 +38,6 @@ import type { ResponseGetDetailsWifiShowGetValue } from '../models';
 export const WifiApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * Bring the wifi device down.
-         * @summary Ap Down
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        apDownWifiDeviceDownPost: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            const localVarPath = `/wifi/device/down`;
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-
-    
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
-         * Bring the  wifi device up.
-         * @summary Ap Up
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        apUpWifiDeviceUpPost: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
-            const localVarPath = `/wifi/device/up`;
-            // use dummy base URL string because the URL constructor only accepts absolute URLs.
-            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
-            let baseOptions;
-            if (configuration) {
-                baseOptions = configuration.baseOptions;
-            }
-
-            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
-            const localVarHeaderParameter = {} as any;
-            const localVarQueryParameter = {} as any;
-
-
-    
-            setSearchParams(localVarUrlObj, localVarQueryParameter);
-            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
-            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
-
-            return {
-                url: toPathString(localVarUrlObj),
-                options: localVarRequestOptions,
-            };
-        },
-        /**
          * Show all connection profiles
          * @summary Get Details
          * @param {string} ssid 
@@ -193,6 +133,66 @@ export const WifiApiAxiosParamCreator = function (configuration?: Configuration)
             if (update !== undefined) {
                 localVarQueryParameter['update'] = update;
             }
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Bring the wifi device down.
+         * @summary Wifi Device Down
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        wifiDeviceDownWifiDeviceDownPost: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/wifi/device/down`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Bring the  wifi device up.
+         * @summary Wifi Device Up
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        wifiDeviceUpWifiDeviceUpPost: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/wifi/device/up`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
 
 
     
@@ -383,30 +383,6 @@ export const WifiApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = WifiApiAxiosParamCreator(configuration)
     return {
         /**
-         * Bring the wifi device down.
-         * @summary Ap Down
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async apDownWifiDeviceDownPost(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.apDownWifiDeviceDownPost(options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['WifiApi.apDownWifiDeviceDownPost']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
-         * Bring the  wifi device up.
-         * @summary Ap Up
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        async apUpWifiDeviceUpPost(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.apUpWifiDeviceUpPost(options);
-            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
-            const localVarOperationServerBasePath = operationServerMap['WifiApi.apUpWifiDeviceUpPost']?.[localVarOperationServerIndex]?.url;
-            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
-        },
-        /**
          * Show all connection profiles
          * @summary Get Details
          * @param {string} ssid 
@@ -443,6 +419,30 @@ export const WifiApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.wifiCurrentWifiCurrentGet(update, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WifiApi.wifiCurrentWifiCurrentGet']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Bring the wifi device down.
+         * @summary Wifi Device Down
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async wifiDeviceDownWifiDeviceDownPost(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.wifiDeviceDownWifiDeviceDownPost(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WifiApi.wifiDeviceDownWifiDeviceDownPost']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Bring the  wifi device up.
+         * @summary Wifi Device Up
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async wifiDeviceUpWifiDeviceUpPost(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.wifiDeviceUpWifiDeviceUpPost(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WifiApi.wifiDeviceUpWifiDeviceUpPost']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -519,24 +519,6 @@ export const WifiApiFactory = function (configuration?: Configuration, basePath?
     const localVarFp = WifiApiFp(configuration)
     return {
         /**
-         * Bring the wifi device down.
-         * @summary Ap Down
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        apDownWifiDeviceDownPost(options?: RawAxiosRequestConfig): AxiosPromise<any> {
-            return localVarFp.apDownWifiDeviceDownPost(options).then((request) => request(axios, basePath));
-        },
-        /**
-         * Bring the  wifi device up.
-         * @summary Ap Up
-         * @param {*} [options] Override http request option.
-         * @throws {RequiredError}
-         */
-        apUpWifiDeviceUpPost(options?: RawAxiosRequestConfig): AxiosPromise<any> {
-            return localVarFp.apUpWifiDeviceUpPost(options).then((request) => request(axios, basePath));
-        },
-        /**
          * Show all connection profiles
          * @summary Get Details
          * @param {string} ssid 
@@ -565,6 +547,24 @@ export const WifiApiFactory = function (configuration?: Configuration, basePath?
          */
         wifiCurrentWifiCurrentGet(update?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<DeviceWifi> {
             return localVarFp.wifiCurrentWifiCurrentGet(update, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Bring the wifi device down.
+         * @summary Wifi Device Down
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        wifiDeviceDownWifiDeviceDownPost(options?: RawAxiosRequestConfig): AxiosPromise<any> {
+            return localVarFp.wifiDeviceDownWifiDeviceDownPost(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Bring the  wifi device up.
+         * @summary Wifi Device Up
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        wifiDeviceUpWifiDeviceUpPost(options?: RawAxiosRequestConfig): AxiosPromise<any> {
+            return localVarFp.wifiDeviceUpWifiDeviceUpPost(options).then((request) => request(axios, basePath));
         },
         /**
          * Disconnect from the current Wi-Fi network.
@@ -625,28 +625,6 @@ export const WifiApiFactory = function (configuration?: Configuration, basePath?
  */
 export class WifiApi extends BaseAPI {
     /**
-     * Bring the wifi device down.
-     * @summary Ap Down
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof WifiApi
-     */
-    public apDownWifiDeviceDownPost(options?: RawAxiosRequestConfig) {
-        return WifiApiFp(this.configuration).apDownWifiDeviceDownPost(options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
-     * Bring the  wifi device up.
-     * @summary Ap Up
-     * @param {*} [options] Override http request option.
-     * @throws {RequiredError}
-     * @memberof WifiApi
-     */
-    public apUpWifiDeviceUpPost(options?: RawAxiosRequestConfig) {
-        return WifiApiFp(this.configuration).apUpWifiDeviceUpPost(options).then((request) => request(this.axios, this.basePath));
-    }
-
-    /**
      * Show all connection profiles
      * @summary Get Details
      * @param {string} ssid 
@@ -680,6 +658,28 @@ export class WifiApi extends BaseAPI {
      */
     public wifiCurrentWifiCurrentGet(update?: boolean, options?: RawAxiosRequestConfig) {
         return WifiApiFp(this.configuration).wifiCurrentWifiCurrentGet(update, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Bring the wifi device down.
+     * @summary Wifi Device Down
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WifiApi
+     */
+    public wifiDeviceDownWifiDeviceDownPost(options?: RawAxiosRequestConfig) {
+        return WifiApiFp(this.configuration).wifiDeviceDownWifiDeviceDownPost(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Bring the  wifi device up.
+     * @summary Wifi Device Up
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WifiApi
+     */
+    public wifiDeviceUpWifiDeviceUpPost(options?: RawAxiosRequestConfig) {
+        return WifiApiFp(this.configuration).wifiDeviceUpWifiDeviceUpPost(options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

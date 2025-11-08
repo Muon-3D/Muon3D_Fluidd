@@ -15,6 +15,7 @@
 
 
 export * from './apis/ap-api';
+export * from './apis/dev-mode-api';
 export * from './apis/update-api';
 export * from './apis/wifi-api';
 
