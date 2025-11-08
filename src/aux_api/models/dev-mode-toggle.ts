@@ -14,8 +14,17 @@
 
 
 
-export * from './apis/ap-api';
-export * from './apis/dev-mode-api';
-export * from './apis/update-api';
-export * from './apis/wifi-api';
+/**
+ * 
+ * @export
+ * @interface DevModeToggle
+ */
+export interface DevModeToggle {
+    /**
+     * 
+     * @type {boolean}
+     * @memberof DevModeToggle
+     */
+    'enabled': boolean;
+}
 

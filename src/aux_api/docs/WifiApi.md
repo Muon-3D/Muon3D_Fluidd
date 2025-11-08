@@ -4,104 +4,16 @@ All URIs are relative to *http://localhost*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
-|[**apDownWifiDeviceDownPost**](#apdownwifidevicedownpost) | **POST** /wifi/device/down | Ap Down|
-|[**apUpWifiDeviceUpPost**](#apupwifideviceuppost) | **POST** /wifi/device/up | Ap Up|
 |[**getDetailsWifiShowGet**](#getdetailswifishowget) | **GET** /wifi/show | Get Details|
 |[**wifiConnectWifiConnectPost**](#wificonnectwificonnectpost) | **POST** /wifi/connect | Wifi Connect|
 |[**wifiCurrentWifiCurrentGet**](#wificurrentwificurrentget) | **GET** /wifi/current | Wifi Current|
+|[**wifiDeviceDownWifiDeviceDownPost**](#wifidevicedownwifidevicedownpost) | **POST** /wifi/device/down | Wifi Device Down|
+|[**wifiDeviceUpWifiDeviceUpPost**](#wifideviceupwifideviceuppost) | **POST** /wifi/device/up | Wifi Device Up|
 |[**wifiDisconnectWifiDisconnectPost**](#wifidisconnectwifidisconnectpost) | **POST** /wifi/disconnect | Wifi Disconnect|
 |[**wifiForgetWifiForgetDelete**](#wififorgetwififorgetdelete) | **DELETE** /wifi/forget | Wifi Forget|
 |[**wifiScanWifiScanGet**](#wifiscanwifiscanget) | **GET** /wifi/scan | Wifi Scan|
 |[**wifiStatusWifiDeviceStatusGet**](#wifistatuswifidevicestatusget) | **GET** /wifi/device/status | Wifi Status|
 |[**wifiSwitchWifiUpPost**](#wifiswitchwifiuppost) | **POST** /wifi/up | Wifi Switch|
-
-# **apDownWifiDeviceDownPost**
-> any apDownWifiDeviceDownPost()
-
-Bring the wifi device down.
-
-### Example
-
-```typescript
-import {
-    WifiApi,
-    Configuration
-} from './api';
-
-const configuration = new Configuration();
-const apiInstance = new WifiApi(configuration);
-
-const { status, data } = await apiInstance.apDownWifiDeviceDownPost();
-```
-
-### Parameters
-This endpoint does not have any parameters.
-
-
-### Return type
-
-**any**
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
- - **Content-Type**: Not defined
- - **Accept**: application/json
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-|**200** | Successful Response |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
-
-# **apUpWifiDeviceUpPost**
-> any apUpWifiDeviceUpPost()
-
-Bring the  wifi device up.
-
-### Example
-
-```typescript
-import {
-    WifiApi,
-    Configuration
-} from './api';
-
-const configuration = new Configuration();
-const apiInstance = new WifiApi(configuration);
-
-const { status, data } = await apiInstance.apUpWifiDeviceUpPost();
-```
-
-### Parameters
-This endpoint does not have any parameters.
-
-
-### Return type
-
-**any**
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
- - **Content-Type**: Not defined
- - **Accept**: application/json
-
-
-### HTTP response details
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-|**200** | Successful Response |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **getDetailsWifiShowGet**
 > { [key: string]: ResponseGetDetailsWifiShowGetValue; } getDetailsWifiShowGet()
@@ -257,6 +169,94 @@ No authorization required
 |-------------|-------------|------------------|
 |**200** | Successful Response |  -  |
 |**422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **wifiDeviceDownWifiDeviceDownPost**
+> any wifiDeviceDownWifiDeviceDownPost()
+
+Bring the wifi device down.
+
+### Example
+
+```typescript
+import {
+    WifiApi,
+    Configuration
+} from './api';
+
+const configuration = new Configuration();
+const apiInstance = new WifiApi(configuration);
+
+const { status, data } = await apiInstance.wifiDeviceDownWifiDeviceDownPost();
+```
+
+### Parameters
+This endpoint does not have any parameters.
+
+
+### Return type
+
+**any**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**200** | Successful Response |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **wifiDeviceUpWifiDeviceUpPost**
+> any wifiDeviceUpWifiDeviceUpPost()
+
+Bring the  wifi device up.
+
+### Example
+
+```typescript
+import {
+    WifiApi,
+    Configuration
+} from './api';
+
+const configuration = new Configuration();
+const apiInstance = new WifiApi(configuration);
+
+const { status, data } = await apiInstance.wifiDeviceUpWifiDeviceUpPost();
+```
+
+### Parameters
+This endpoint does not have any parameters.
+
+
+### Return type
+
+**any**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**200** | Successful Response |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

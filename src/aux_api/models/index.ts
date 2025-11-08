@@ -1,5 +1,7 @@
 export * from './apcredentials';
 export * from './credentials';
+export * from './dev-mode-status';
+export * from './dev-mode-toggle';
 export * from './device';
 export * from './device-wifi';
 export * from './httpvalidation-error';
@@ -15,3 +17,4 @@ export * from './rugix-system-boot-info';
 export * from './rugix-system-info';
 export * from './validation-error';
 export * from './validation-error-loc-inner';
+export * from './verify-request';

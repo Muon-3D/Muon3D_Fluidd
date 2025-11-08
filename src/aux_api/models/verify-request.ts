@@ -14,8 +14,29 @@
 
 
 
-export * from './apis/ap-api';
-export * from './apis/dev-mode-api';
-export * from './apis/update-api';
-export * from './apis/wifi-api';
+/**
+ * 
+ * @export
+ * @interface VerifyRequest
+ */
+export interface VerifyRequest {
+    /**
+     * 
+     * @type {number}
+     * @memberof VerifyRequest
+     */
+    'attempts'?: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof VerifyRequest
+     */
+    'delay_seconds'?: number;
+    /**
+     * 
+     * @type {number}
+     * @memberof VerifyRequest
+     */
+    'check_timeout'?: number;
+}
 

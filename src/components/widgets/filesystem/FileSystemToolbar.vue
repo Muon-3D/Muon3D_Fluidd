@@ -10,6 +10,8 @@
 
     <v-spacer />
 
+    <slot name="extra-actions" />
+
     <v-tooltip
       v-if="lowOnSpace && !loading"
       bottom

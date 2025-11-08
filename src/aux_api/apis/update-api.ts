@@ -29,6 +29,8 @@ import type { OTASetProgressRequest } from '../models';
 import type { OTAStartRequest } from '../models';
 // @ts-ignore
 import type { OTAStatus } from '../models';
+// @ts-ignore
+import type { VerifyRequest } from '../models';
 /**
  * UpdateApi - axios parameter creator
  * @export
@@ -197,6 +199,142 @@ export const UpdateApiAxiosParamCreator = function (configuration?: Configuratio
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * 
+         * @summary Ota Verify And Commit
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        otaVerifyAndCommitUpdateVerifyAndCommitPost: async (verifyRequest?: VerifyRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/update/verify-and-commit`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(verifyRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Ota Verify And Commit
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        otaVerifyAndCommitUpdateVerifyAndCommitPost_1: async (verifyRequest?: VerifyRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/update/verify-and-commit`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(verifyRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Ota Verify
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        otaVerifyUpdateVerifyPost: async (verifyRequest?: VerifyRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/update/verify`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(verifyRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @summary Ota Verify
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        otaVerifyUpdateVerifyPost_2: async (verifyRequest?: VerifyRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/update/verify`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(verifyRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -269,6 +407,58 @@ export const UpdateApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['UpdateApi.otaStatusUpdateStatusGet']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         * 
+         * @summary Ota Verify And Commit
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async otaVerifyAndCommitUpdateVerifyAndCommitPost(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.otaVerifyAndCommitUpdateVerifyAndCommitPost(verifyRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['UpdateApi.otaVerifyAndCommitUpdateVerifyAndCommitPost']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Ota Verify And Commit
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async otaVerifyAndCommitUpdateVerifyAndCommitPost_1(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.otaVerifyAndCommitUpdateVerifyAndCommitPost_1(verifyRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['UpdateApi.otaVerifyAndCommitUpdateVerifyAndCommitPost_1']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Ota Verify
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async otaVerifyUpdateVerifyPost(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.otaVerifyUpdateVerifyPost(verifyRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['UpdateApi.otaVerifyUpdateVerifyPost']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @summary Ota Verify
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async otaVerifyUpdateVerifyPost_2(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<any>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.otaVerifyUpdateVerifyPost_2(verifyRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['UpdateApi.otaVerifyUpdateVerifyPost_2']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -325,6 +515,46 @@ export const UpdateApiFactory = function (configuration?: Configuration, basePat
          */
         otaStatusUpdateStatusGet(options?: RawAxiosRequestConfig): AxiosPromise<OTAStatus> {
             return localVarFp.otaStatusUpdateStatusGet(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Ota Verify And Commit
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        otaVerifyAndCommitUpdateVerifyAndCommitPost(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig): AxiosPromise<any> {
+            return localVarFp.otaVerifyAndCommitUpdateVerifyAndCommitPost(verifyRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Ota Verify And Commit
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        otaVerifyAndCommitUpdateVerifyAndCommitPost_1(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig): AxiosPromise<any> {
+            return localVarFp.otaVerifyAndCommitUpdateVerifyAndCommitPost_1(verifyRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Ota Verify
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        otaVerifyUpdateVerifyPost(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig): AxiosPromise<any> {
+            return localVarFp.otaVerifyUpdateVerifyPost(verifyRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @summary Ota Verify
+         * @param {VerifyRequest} [verifyRequest] 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        otaVerifyUpdateVerifyPost_2(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig): AxiosPromise<any> {
+            return localVarFp.otaVerifyUpdateVerifyPost_2(verifyRequest, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -391,6 +621,54 @@ export class UpdateApi extends BaseAPI {
      */
     public otaStatusUpdateStatusGet(options?: RawAxiosRequestConfig) {
         return UpdateApiFp(this.configuration).otaStatusUpdateStatusGet(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Ota Verify And Commit
+     * @param {VerifyRequest} [verifyRequest] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof UpdateApi
+     */
+    public otaVerifyAndCommitUpdateVerifyAndCommitPost(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig) {
+        return UpdateApiFp(this.configuration).otaVerifyAndCommitUpdateVerifyAndCommitPost(verifyRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Ota Verify And Commit
+     * @param {VerifyRequest} [verifyRequest] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof UpdateApi
+     */
+    public otaVerifyAndCommitUpdateVerifyAndCommitPost_1(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig) {
+        return UpdateApiFp(this.configuration).otaVerifyAndCommitUpdateVerifyAndCommitPost_1(verifyRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Ota Verify
+     * @param {VerifyRequest} [verifyRequest] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof UpdateApi
+     */
+    public otaVerifyUpdateVerifyPost(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig) {
+        return UpdateApiFp(this.configuration).otaVerifyUpdateVerifyPost(verifyRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @summary Ota Verify
+     * @param {VerifyRequest} [verifyRequest] 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof UpdateApi
+     */
+    public otaVerifyUpdateVerifyPost_2(verifyRequest?: VerifyRequest, options?: RawAxiosRequestConfig) {
+        return UpdateApiFp(this.configuration).otaVerifyUpdateVerifyPost_2(verifyRequest, options).then((request) => request(this.axios, this.basePath));
     }
 }
 

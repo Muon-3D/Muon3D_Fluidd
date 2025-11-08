@@ -1,7 +1,7 @@
 // src/composables/useAuxApi.ts
 import { ref, watch } from 'vue'
 import axios from 'axios'
-import { ApApi, UpdateApi, WifiApi, Configuration } from '@/aux_api'
+import { ApApi, UpdateApi, WifiApi, DevModeApi, Configuration } from '@/aux_api'
 import consola from 'consola'
 
 const auxAxios = axios.create()
@@ -21,12 +21,14 @@ let _cachedBasePath = basePathRef.value
 let _cachedApClient = new ApApi(new Configuration({ basePath: _cachedBasePath }), undefined, auxAxios)
 let _cachedUpdateClient = new UpdateApi(new Configuration({ basePath: _cachedBasePath }), undefined, auxAxios)
 let _cachedWifiClient = new WifiApi(new Configuration({ basePath: _cachedBasePath }), undefined, auxAxios)
+let _cachedDevModeClient = new DevModeApi(new Configuration({ basePath: _cachedBasePath }), undefined, auxAxios)
 
 /** helper to rebuild all 3 */
 function recreateClients (newPath: string) {
   _cachedApClient = new ApApi(new Configuration({ basePath: newPath }), undefined, auxAxios)
   _cachedUpdateClient = new UpdateApi(new Configuration({ basePath: newPath }), undefined, auxAxios)
   _cachedWifiClient = new WifiApi(new Configuration({ basePath: newPath }), undefined, auxAxios)
+  _cachedDevModeClient = new DevModeApi(new Configuration({ basePath: newPath }), undefined, auxAxios)
   console.debug('[useAuxApi] re-created clients for', newPath)
 }
 
@@ -96,6 +98,7 @@ export function useAuxApi () {
     ap: apApiProxy,
     update: updateApiProxy,
     wifi: wifiApiProxy,
+    devMode: _cachedDevModeClient,
     isReachable
   }
 }

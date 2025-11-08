@@ -14,8 +14,23 @@
 
 
 
-export * from './apis/ap-api';
-export * from './apis/dev-mode-api';
-export * from './apis/update-api';
-export * from './apis/wifi-api';
+/**
+ * 
+ * @export
+ * @interface DevModeStatus
+ */
+export interface DevModeStatus {
+    /**
+     * 
+     * @type {boolean}
+     * @memberof DevModeStatus
+     */
+    'enabled': boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof DevModeStatus
+     */
+    'core_cfg': string;
+}
 

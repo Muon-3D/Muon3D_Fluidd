@@ -2,6 +2,7 @@
 .npmignore
 api.ts
 apis/ap-api.ts
+apis/dev-mode-api.ts
 apis/update-api.ts
 apis/wifi-api.ts
 base.ts
@@ -10,6 +11,9 @@ configuration.ts
 docs/APCredentials.md
 docs/ApApi.md
 docs/Credentials.md
+docs/DevModeApi.md
+docs/DevModeStatus.md
+docs/DevModeToggle.md
 docs/Device.md
 docs/DeviceWifi.md
 docs/HTTPValidationError.md
@@ -26,11 +30,14 @@ docs/RugixSystemInfo.md
 docs/UpdateApi.md
 docs/ValidationError.md
 docs/ValidationErrorLocInner.md
+docs/VerifyRequest.md
 docs/WifiApi.md
 git_push.sh
 index.ts
 models/apcredentials.ts
 models/credentials.ts
+models/dev-mode-status.ts
+models/dev-mode-toggle.ts
 models/device-wifi.ts
 models/device.ts
 models/httpvalidation-error.ts
@@ -47,3 +54,4 @@ models/rugix-system-boot-info.ts
 models/rugix-system-info.ts
 models/validation-error-loc-inner.ts
 models/validation-error.ts
+models/verify-request.ts

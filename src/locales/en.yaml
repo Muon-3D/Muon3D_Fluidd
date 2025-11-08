@@ -229,6 +229,9 @@ app:
       back: Back
       ok: Ok
       Proceed: Proceed
+      configuration:
+        advanced: Advanced
+      advanced: Advanced
     error:
       app_setup_link: >-
         Fluidd setup requirements can be found <a target="_blank"
@@ -352,6 +355,9 @@ app:
       add_category: Add category
       file_time: File
       stepper_driver: '%{name} Driver'
+      developer_mode: Developer Mode
+      enabled: Enabled
+      protected_mode: Protected Mode
     msg:
       password_changed: Password changed
       wrong_password: Oops, something went wrong. Is your password correct?
@@ -487,6 +493,35 @@ app:
       file_browser_configuration_help: >-
         Copy files and folders to the Configuration Files by dragging them from
         here and dropping them there
+    dev_mode:
+      enable-developer-mode: Enable Developer Mode
+      modal-1: >-
+        Developer Mode allows full access to all configuration settings,
+        including core system parameters normally protected by the OEM.
+      modal-2: >-
+        Changing these settings can affect safety, reliability, and print
+        quality. Incorrect configuration may cause hardware damage or unsafe
+        behaviour. Use only if you fully understand Klipper configuration and
+        machine operation.
+      modal-3: >-
+        Enabling Developer Mode may void warranty coverage for any damage or
+        malfunction caused by modified settings. The manufacturer accepts no
+        liability for damage to the printer, connected equipment, or property
+        resulting from custom configurations.
+      modal-warranty-liability: Warranty & Liability
+      modal-checkbox-message: >-
+        I understand the risks and accept full responsibility for any effects of
+        changing system configuration.
+      backup-config: Backup Config
+      restore-defaults: Restore Config to Defaults
+      disable-developer-mode: Disable Devloper Mode
+      disable-modal-3: >-
+        Because Developer Mode was enabled, warranty may remain limited for
+        issues caused by custom configuration.
+      disable-modal-2: >-
+        Your current custom configuration will be saved so you can switch back
+        later.
+      disable-modal-1: You’re returning to the default configuration.
   history:
     msg:
       confirm: Are you sure? This will clear all history, and printer statistics
