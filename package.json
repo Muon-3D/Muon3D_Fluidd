@@ -1,6 +1,6 @@
 {
   "name": "Muon3D_Fluidd",
-  "version": "1.31.0-rc.2",
+  "version": "1.31.0-rc.3",
   "private": true,
   "type": "module",
   "description": "fluidd, a klipper web client.",
@@ -16,6 +16,7 @@
     "serve:prod": "vite preview --port 5000",
     "serve:docs": "cd ./docs; bundle exec jekyll serve",
     "lint": "eslint --ext .ts,.js,.vue ./src",
+    "lint:fix": "eslint --ext .ts,.js,.vue ./src --fix",
     "bootstrap": "husky",
     "copy:host:config": "shx cp -f ./server/config.json ./dist/config.json",
     "i18n-extract": "vue-i18n-extract use-config",
