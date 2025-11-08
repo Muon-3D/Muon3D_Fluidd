@@ -28,10 +28,10 @@
       @filter="handleFilter"
       @go-to-file="handleGoToFileDialog"
     >
-  <template #extra-actions>
+      <template #extra-actions>
         <slot name="extra-actions" />
       </template>
-  </file-system-toolbar>
+    </file-system-toolbar>
 
     <file-system-bulk-actions
       v-if="selected.length > 0"

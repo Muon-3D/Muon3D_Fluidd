@@ -17,12 +17,13 @@
           name="configure"
           bulk-actions
         >
-        <template #extra-actions>
-          <file-system-configure-advanced-options-menu
-          @dev-mode="handleDevModeChanged"
-          @refresh-fs="refreshFS"/>
-        </template>
-      </file-system>
+          <template #extra-actions>
+            <file-system-configure-advanced-options-menu
+              @dev-mode="handleDevModeChanged"
+              @refresh-fs="refreshFS"
+            />
+          </template>
+        </file-system>
       </collapsable-card>
     </v-col>
     <v-col
@@ -93,7 +94,7 @@ export default class Configure extends Mixins(StateMixin) {
   }
 
   private configurationRoots = ['calibration', 'defaults']
-  handleDevModeChanged(devMode: boolean) {
+  handleDevModeChanged (devMode: boolean) {
     if (devMode) {
       if (!this.configurationRoots.includes('config')) {
         this.configurationRoots.unshift('config')
@@ -103,7 +104,7 @@ export default class Configure extends Mixins(StateMixin) {
     }
   }
 
-  refreshFS(){
+  refreshFS () {
     const fs = this.$refs.configFs as any
     if (fs && fs.currentPath) {
       fs.refreshPath(fs.currentPath)
