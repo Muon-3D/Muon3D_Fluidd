@@ -15,6 +15,7 @@ docs/DevModeApi.md
 docs/DevModeStatus.md
 docs/DevModeToggle.md
 docs/Device.md
+docs/DeviceStatus.md
 docs/DeviceWifi.md
 docs/HTTPValidationError.md
 docs/OTAConfiguration.md
@@ -38,6 +39,7 @@ models/apcredentials.ts
 models/credentials.ts
 models/dev-mode-status.ts
 models/dev-mode-toggle.ts
+models/device-status.ts
 models/device-wifi.ts
 models/device.ts
 models/httpvalidation-error.ts

@@ -24,7 +24,7 @@ import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError
 // @ts-ignore
 import type { Credentials } from '../models';
 // @ts-ignore
-import type { Device } from '../models';
+import type { DeviceStatus } from '../models';
 // @ts-ignore
 import type { DeviceWifi } from '../models';
 // @ts-ignore
@@ -489,7 +489,7 @@ export const WifiApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async wifiStatusWifiDeviceStatusGet(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Device>> {
+        async wifiStatusWifiDeviceStatusGet(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<DeviceStatus>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.wifiStatusWifiDeviceStatusGet(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WifiApi.wifiStatusWifiDeviceStatusGet']?.[localVarOperationServerIndex]?.url;
@@ -601,7 +601,7 @@ export const WifiApiFactory = function (configuration?: Configuration, basePath?
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        wifiStatusWifiDeviceStatusGet(options?: RawAxiosRequestConfig): AxiosPromise<Device> {
+        wifiStatusWifiDeviceStatusGet(options?: RawAxiosRequestConfig): AxiosPromise<DeviceStatus> {
             return localVarFp.wifiStatusWifiDeviceStatusGet(options).then((request) => request(axios, basePath));
         },
         /**
