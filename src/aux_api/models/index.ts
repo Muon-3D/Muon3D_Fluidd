@@ -3,6 +3,7 @@ export * from './credentials';
 export * from './dev-mode-status';
 export * from './dev-mode-toggle';
 export * from './device';
+export * from './device-status';
 export * from './device-wifi';
 export * from './httpvalidation-error';
 export * from './otaconfiguration';

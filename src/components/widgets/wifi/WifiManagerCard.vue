@@ -39,7 +39,7 @@
           >
             <tr
               v-for="network in sortedNetworks"
-              :key="network.bssid"
+              :key="network.ssid"
               v-ripple
               :class="{ 'card-heading': network.in_use }"
               @click="onNetworkClick(network)"
@@ -88,8 +88,8 @@
                     </div>
                     <div><strong>{{ $t('app.wifi.signal') }}:</strong> {{ network.signal }}%</div>
                     <div><strong>{{ $t('app.wifi.data_rate') }}:</strong> {{ network.rate }} Mbps</div>
-                    <div><strong>{{ $t('app.wifi.channel') }}:</strong> {{ network.chan }}</div>
-                    <div><strong>{{ $t('app.wifi.freqency') }}:</strong> {{ network.freq }} MHz</div>
+                    <div><strong>{{ $t('app.wifi.channel') }}:</strong> {{ network.chanList || network.chan }}</div>
+                    <div><strong>{{ $t('app.wifi.freqency') }}:</strong> {{ network.freqList || network.freq }} MHz</div>
                   </div>
                 </v-tooltip>
               </td>
@@ -274,6 +274,8 @@ import { EventBus } from '@/eventBus'
 
 const { onHotspot } = useHotspotCheck()
 
+type AggWifi = DeviceWifi & { chanList?: string; freqList?: string }
+
 @Component
 export default class WifiManagerCard extends Vue {
   @Prop({ type: Boolean }) readonly menuCollapsed?: boolean
@@ -322,58 +324,101 @@ export default class WifiManagerCard extends Vue {
 
   // Fetch and mark known SSIDs
   async fetchDevices () {
-    if (this.fetching) return // Prevent multiple concurrent fetches
+    if (this.fetching) return
     this.fetching = true
     try {
       const res = await this.auxApi.wifi.wifiScanWifiScanGet(true)
       this.wifi_available_networks = res.data
+
+      // Skip hidden SSIDs when probing for "known" status
       for (const net of this.wifi_available_networks) {
-        if (!this.knownSsids.has(net.ssid) && !this.testedSsids.has(net.ssid)) {
+        const ssid = (net.ssid || '').trim()        // NEW
+        if (!ssid) continue                         // NEW: hide hidden networks at source
+        if (!this.knownSsids.has(ssid) && !this.testedSsids.has(ssid)) {
           try {
-            await this.auxApi.wifi.getDetailsWifiShowGet(net.ssid)
-            console.log('Known SSID:', net)
-            this.knownSsids.add(net.ssid)
+            await this.auxApi.wifi.getDetailsWifiShowGet(ssid)
+            console.log('Known SSID:', ssid)
+            this.knownSsids.add(ssid)
           } catch {
-            this.testedSsids.add(net.ssid)
+            this.testedSsids.add(ssid)
           }
         }
       }
-      // —— new “first‐come” ordering logic ——
-      const current = new Set(this.wifi_available_networks.map(n => n.bssid))
-      const bySignal = [...this.wifi_available_networks].sort((a, b) => b.signal - a.signal)
+
+      // —— CHANGED: “first-come” ordering now tracked by SSID (after grouping) ——
+      const groups = this.groupedNetworks                       // NEW
+      const current = new Set(groups.map(g => g.ssid))          // NEW
+      const bySignal = [...groups].sort((a, b) => b.signal - a.signal)
       for (const net of bySignal) {
-        if (!this.wifiOrder.includes(net.bssid)) {
-          this.wifiOrder.push(net.bssid)
+        if (!this.wifiOrder.includes(net.ssid)) {
+          this.wifiOrder.push(net.ssid)
         }
       }
-      // remove any that have vanished
-      this.wifiOrder = this.wifiOrder.filter(bssid => current.has(bssid))
-      // ——————————————————————————————
+      this.wifiOrder = this.wifiOrder.filter(ssid => current.has(ssid))
+      // ————————————————————————————————————————————————————————————————
     } catch (e) {
       console.error('Wi-Fi scan failed', e)
     }
     this.fetching = false
   }
 
+  // NEW: one row per SSID with merged details
+  get groupedNetworks (): AggWifi[] {
+    const bySsid = new Map<string, AggWifi & { _chans: Set<string>, _freqs: Set<string> }>()
+    for (const n of this.wifi_available_networks) {
+      const ssid = (n.ssid || '').trim()
+      if (!ssid) continue // hide hidden networks altogether
+
+      const isSecured = !!(n.security && !/^\s*open\s*$/i.test(n.security))
+      if (!bySsid.has(ssid)) {
+        bySsid.set(ssid, {
+          ...n,
+          ssid,                       // normalized
+          in_use: !!n.in_use,
+          signal: n.signal,
+          rate: n.rate,
+          security: isSecured ? n.security : '', // empty => “unsecured” label
+          chanList: String(n.chan),
+          freqList: String(n.freq),
+          _chans: new Set([String(n.chan)]),
+          _freqs: new Set([String(n.freq)])
+        } as any)
+      } else {
+        const g = bySsid.get(ssid)!
+        g.in_use = g.in_use || !!n.in_use
+        // Prefer any secured label over “open”
+        if (isSecured && (!g.security || /^\s*open\s*$/i.test(g.security))) {
+          g.security = n.security
+        }
+        if (n.signal > g.signal) g.signal = n.signal
+        if (n.rate > g.rate) g.rate = n.rate
+        g._chans.add(String(n.chan))
+        g._freqs.add(String(n.freq))
+      }
+    }
+
+    // finalize readable lists
+    for (const g of bySsid.values()) {
+      g.chanList = Array.from(g._chans).join(', ')
+      g.freqList = Array.from(g._freqs).join(', ')
+      delete (g as any)._chans
+      delete (g as any)._freqs
+    }
+    return Array.from(bySsid.values())
+  }
+
   // Sorting
-  get sortedNetworks (): DeviceWifi[] {
-    // return [...this.wifi_available_networks].sort((a, b) => {
-    //   if (a.in_use && !b.in_use) return -1
-    //   if (!a.in_use && b.in_use) return 1
-    //   return b.signal - a.signal
-    // })
-
-    const connected = this.wifi_available_networks.find(n => n.in_use)
-    const map = new Map(this.wifi_available_networks.map(n => [n.bssid, n]))
-
+  get sortedNetworks (): AggWifi[] {
+    const groups = this.groupedNetworks
+    const connectedSsid = this.wifi_available_networks.find(n => n.in_use)?.ssid?.trim() || null
+    const map = new Map(groups.map(n => [n.ssid, n]))
     const others = this.wifiOrder
-      .filter(bssid => {
-        const net = map.get(bssid)
-        return net !== undefined && !net.in_use
-      })
-      .map(bssid => map.get(bssid)!)
+      .filter(ssid => map.has(ssid) && ssid !== connectedSsid)
+      .map(ssid => map.get(ssid)!)
 
-    return connected ? [connected, ...others] : others
+    return connectedSsid && map.has(connectedSsid)
+      ? [map.get(connectedSsid)!, ...others]
+      : others
   }
 
   // Signal icon logic
@@ -398,17 +443,17 @@ export default class WifiManagerCard extends Vue {
   }
 
   // Existing menu toggle
-  openMenu (bssid: string) {
+  openMenu (ssid: string) {
     Object.keys(this.menuOpen).forEach(k => {
-      if (k !== bssid) this.menuOpen[k] = false
+      if (k !== ssid) this.menuOpen[k] = false
     })
-    this.$set(this.menuOpen, bssid, true)
+    this.$set(this.menuOpen, ssid, true)
   }
 
-  // NEW: handle row click
+  // Unchanged signature *usage*, but pass SSID now
   onNetworkClick (network: DeviceWifi) {
     if (network.in_use) {
-      this.openMenu(network.bssid)
+      this.openMenu(network.ssid)          // CHANGED (was network.bssid)
     } else {
       this.selectedNetwork = network
       if (!this.onHotspot) {
