@@ -332,8 +332,8 @@ export default class WifiManagerCard extends Vue {
 
       // Skip hidden SSIDs when probing for "known" status
       for (const net of this.wifi_available_networks) {
-        const ssid = (net.ssid || '').trim()        // NEW
-        if (!ssid) continue                         // NEW: hide hidden networks at source
+        const ssid = (net.ssid || '').trim() // NEW
+        if (!ssid) continue // NEW: hide hidden networks at source
         if (!this.knownSsids.has(ssid) && !this.testedSsids.has(ssid)) {
           try {
             await this.auxApi.wifi.getDetailsWifiShowGet(ssid)
@@ -346,8 +346,8 @@ export default class WifiManagerCard extends Vue {
       }
 
       // —— CHANGED: “first-come” ordering now tracked by SSID (after grouping) ——
-      const groups = this.groupedNetworks                       // NEW
-      const current = new Set(groups.map(g => g.ssid))          // NEW
+      const groups = this.groupedNetworks // NEW
+      const current = new Set(groups.map(g => g.ssid)) // NEW
       const bySignal = [...groups].sort((a, b) => b.signal - a.signal)
       for (const net of bySignal) {
         if (!this.wifiOrder.includes(net.ssid)) {
@@ -373,7 +373,7 @@ export default class WifiManagerCard extends Vue {
       if (!bySsid.has(ssid)) {
         bySsid.set(ssid, {
           ...n,
-          ssid,                       // normalized
+          ssid, // normalized
           in_use: !!n.in_use,
           signal: n.signal,
           rate: n.rate,
@@ -453,7 +453,7 @@ export default class WifiManagerCard extends Vue {
   // Unchanged signature *usage*, but pass SSID now
   onNetworkClick (network: DeviceWifi) {
     if (network.in_use) {
-      this.openMenu(network.ssid)          // CHANGED (was network.bssid)
+      this.openMenu(network.ssid) // CHANGED (was network.bssid)
     } else {
       this.selectedNetwork = network
       if (!this.onHotspot) {
