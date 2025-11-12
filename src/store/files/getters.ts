@@ -115,6 +115,7 @@ export const getters: GetterTree<FilesState, RootState> = {
           filterTypes: ['hidden_files', 'print_start_time']
         }
       case 'config':
+      case 'calibration':
         return {
           readonly: false,
           accepts: ['.conf', '.cfg', '.md', '.css', '.jpg', '.jpeg', '.png', '.gif'],
