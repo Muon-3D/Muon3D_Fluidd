@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.31.0-rc.5](https://github.com/fluidd-core/fluidd/compare/v1.31.0-rc.4...v1.31.0-rc.5) (2026-02-14)
+
+
+### Features
+
+* add DeviceStatus model and update related API references ([8e899e7](https://github.com/fluidd-core/fluidd/commit/8e899e7ac9bc17f16c511da4d62d87382275fbf3))
+* add support for calibration files in config root caseons for editing the calibration file ([b55b1cd](https://github.com/fluidd-core/fluidd/commit/b55b1cd97a5b634527e88aa99b1fed13a29b4a28))
+
 ## [1.31.0-rc.4](https://github.com/fluidd-core/fluidd/compare/v1.31.0-rc.3...v1.31.0-rc.4) (2025-11-12)
 
 ## [1.31.0-rc.3](https://github.com/fluidd-core/fluidd/compare/v1.31.0-rc.2...v1.31.0-rc.3) (2025-11-08)
