@@ -40,7 +40,7 @@ export default class ThermalChart extends Mixins(BrowserMixin) {
   }
 
   get isToolheadDisconnected (): boolean {
-    return !!this.$store.state.printer.printer?.['mcu toolhead']?.disconnected
+    return !!this.$store.state.printer.printer?.['mcu toolhead']?.non_critical_disconnected
   }
 
   private bedSeriesKeys (): string[] {

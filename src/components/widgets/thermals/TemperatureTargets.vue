@@ -289,7 +289,7 @@ export default class TemperatureTargets extends Mixins(StateMixin) {
   }
 
   get isToolheadDisconnected (): boolean {
-    return !!this.$store.state.printer.printer?.['mcu toolhead']?.disconnected
+    return !!this.$store.state.printer.printer?.['mcu toolhead']?.non_critical_disconnected
   }
 
   // Row-level predicate
