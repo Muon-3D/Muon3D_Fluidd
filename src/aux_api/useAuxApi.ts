@@ -70,7 +70,7 @@ export function setAuxApiBasePath (raw: string) {
   }
 
   // force the port and path
-  url.port = '7125'
+  // url.port = '7125' // commented out as cuases cors issues
   url.pathname = '/server/aux'
   url.search = ''
   url.hash = ''
