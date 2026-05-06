@@ -51,6 +51,7 @@ export default class Outputs extends Vue {
       'temperature_fan',
       'controller_fan',
       'heater_fan',
+      'power_fan',
       'fan_generic',
       'fan'
     ]

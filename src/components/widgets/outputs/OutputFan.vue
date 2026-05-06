@@ -26,6 +26,10 @@
       </div>
       <div class="ml-auto">
         <small
+          v-if="power"
+          class="mr-2"
+        >{{ power }}</small>
+        <small
           v-if="rpm"
           class="mr-2"
         >{{ rpm }}</small>
@@ -80,6 +84,15 @@ export default class OutputFan extends Mixins(StateMixin, BrowserMixin) {
   get rpm () {
     return (this.fan.rpm)
       ? this.fan.rpm.toFixed() + ' rpm'
+      : undefined
+  }
+
+  get power () {
+    if (this.fan.type !== 'power_fan') return undefined
+
+    const power = this.fan.filtered_power ?? this.fan.instant_power
+    return (typeof power === 'number')
+      ? `${Math.round(power)} W`
       : undefined
   }
 

@@ -529,6 +529,7 @@ export const getters: GetterTree<PrinterState, RootState> = {
       'temperature_fan',
       'controller_fan',
       'heater_fan',
+      'power_fan',
       'fan_generic',
       'fan'
     ])
@@ -552,6 +553,7 @@ export const getters: GetterTree<PrinterState, RootState> = {
       'temperature_fan',
       'controller_fan',
       // 'heater_fan',
+      'power_fan',
       'fan_generic'
       // 'fan'
     ])
@@ -584,6 +586,7 @@ export const getters: GetterTree<PrinterState, RootState> = {
       'temperature_fan',
       'controller_fan',
       'heater_fan',
+      'power_fan',
       'fan_generic',
       'fan'
     ]
@@ -627,6 +630,7 @@ export const getters: GetterTree<PrinterState, RootState> = {
       'temperature_fan',
       'controller_fan',
       'heater_fan',
+      'power_fan',
       'fan_generic',
       'led',
       'neopixel',

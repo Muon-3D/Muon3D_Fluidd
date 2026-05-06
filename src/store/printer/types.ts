@@ -82,6 +82,12 @@ export interface Fan extends OutputType<FanConfig> {
   controllable: boolean;
   speed?: number;
   rpm?: number | null;
+  instant_power?: number;
+  filtered_power?: number;
+  resistive_power?: number;
+  stepper_power?: number;
+  fixed_power?: number;
+  dynamic_power?: number;
   temperature?: number;
   target?: number;
   minTemp?: number;
