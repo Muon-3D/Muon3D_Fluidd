@@ -204,5 +204,21 @@ export const httpClientActions = {
 
   serverFilesGet<T = unknown> (filepath: string, options?: AxiosRequestConfig) {
     return this.get<T>(`/server/files/${encodeURI(filepath)}?date=${Date.now()}`, options)
+  },
+
+  // Developer-mode state for a client that is not allowed to change it.
+  //
+  // DEV-4 wants the mode shown in the interface as well as on the panel, and
+  // SEC-2 keeps /server/aux/dev_mode on the floor -- a deny that covers reading
+  // the state, not only setting it. /server/muon/dev_mode is the read-only
+  // endpoint the Moonraker fork publishes off that floor for exactly this
+  // purpose: GET only, no request body forwarded, and no path from it to a
+  // write. MuonUI reads the same endpoint.
+  serverMuonDevModeGet (options?: AxiosRequestConfig) {
+    return this.get<{
+      result: {
+        enabled: boolean
+      }
+    }>('/server/muon/dev_mode', options)
   }
 }

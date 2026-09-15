@@ -28,21 +28,28 @@
       </template>
 
       <v-list dense>
-        <v-list-item @click="devModeClick">
+        <v-list-item
+          :disabled="!canManage"
+          @click="devModeClick"
+        >
           <v-list-item-action class="my-0">
             <v-checkbox
               :input-value="devMode"
               readonly
+              :disabled="!canManage"
             />
           </v-list-item-action>
           <v-list-item-content>
             <v-list-item-title>
               {{ $t('app.general.label.developer_mode') }}
             </v-list-item-title>
+            <v-list-item-subtitle v-if="!canManage">
+              {{ $t('app.general.dev_mode.manage-at-printer') }}
+            </v-list-item-subtitle>
           </v-list-item-content>
         </v-list-item>
 
-        <template v-if="devMode">
+        <template v-if="devMode && canManage">
           <v-divider class="my-1" />
           <v-list-item
             :disabled="loading"
@@ -162,12 +169,15 @@
 // TODO: IMPROOVE DEVELOPER MODE WARNING MESSAGES AND LEGAL DISCALIMER
 import { Component, Vue } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
+import { httpClientActions } from '@/api/httpClientActions'
 import consola from 'consola'
 
 @Component({})
 export default class FileSystemConfigureAdvancedOptionsMenu extends Vue {
   private api = useAuxApi().devMode
   private devMode = false
+  /** Whether this client may *change* the mode, not merely see it. See updateDevMode. */
+  private canManage = false
   private confirmDialog = false // enable modal
   private confirmDisableDialog = false // disable modal
   private confirmAccepted = false
@@ -178,19 +188,68 @@ export default class FileSystemConfigureAdvancedOptionsMenu extends Vue {
     await this.updateDevMode()
   }
 
+  // Two questions, and they are not the same question.
+  //
+  // "Is developer mode on?" is DEV-4, and it must be answerable here as well as
+  // on the panel. "May this client turn it on?" is DEV-1, and it must be
+  // answerable only at the machine. /server/aux/dev_mode answers the second one:
+  // SEC-2 keeps it on the floor, and that deny covers *reading* the state as
+  // well as setting it, so any caller over the network gets 403.
+  //
+  // This method used to ask only that endpoint and swallow the failure, which
+  // made the absence of an answer render as a confident "off". So a printer with
+  // developer mode ON showed an unticked box in Fluidd while the panel showed
+  // the amber rim. Measured on two M1s on 2026-09-15: /server/muon/dev_mode said
+  // enabled:true, /server/aux/dev_mode said 403.
+  //
+  // Aux stays, as the test of authority rather than as the source of truth: if
+  // it answers, this client is the machine and the actions in this menu work; if
+  // it does not, they cannot, and the menu hides them rather than offering
+  // buttons that fail in silence. The state itself comes from the read-only
+  // endpoint the Moonraker fork publishes off the floor for exactly this.
   async updateDevMode () {
     try {
       const result = await this.api.getDevModeStatusDevModeGet()
-      this.devMode = result.data.enabled
+      const enabled = result.data?.enabled
+      // Not merely defensive. When the Aux client still holds its initial '/aux'
+      // basePath, that path falls through the LAN vhost's SPA location and comes
+      // back as 200 text/html -- a success carrying no state at all. Treat
+      // anything that is not a boolean as no answer.
+      if (typeof enabled !== 'boolean') {
+        throw new Error('unexpected /server/aux/dev_mode payload')
+      }
+      this.devMode = enabled
+      this.canManage = true
     } catch (err) {
-      consola.error('Failed to get dev mode status:', err)
+      consola.debug('Developer mode is not manageable from this client:', err)
+      this.canManage = false
+      await this.readDevModeStateOffFloor()
     } finally {
       this.$emit('dev-mode', this.devMode)
-      consola.info('Dev mode status updated:', this.devMode)
+      consola.info('Dev mode status updated:', this.devMode, '- manageable:', this.canManage)
+    }
+  }
+
+  private async readDevModeStateOffFloor () {
+    try {
+      const response = await httpClientActions.serverMuonDevModeGet()
+      const enabled = response.data?.result?.enabled
+      if (typeof enabled === 'boolean') {
+        this.devMode = enabled
+      }
+    } catch (err) {
+      // Keep the last known state rather than asserting "off". A printer in
+      // developer mode that is briefly unreachable is still in developer mode,
+      // and this is the only warning the interface carries.
+      consola.error('Failed to get dev mode status:', err)
     }
   }
 
   devModeClick () {
+    // Panel-only by DEV-1: a client the floor refuses cannot toggle the mode,
+    // and a modal that ends in a silent 403 is worse than no modal.
+    if (!this.canManage) return
+
     // If dev mode is OFF, open the enable modal; if ON, open the disable modal.
     if (this.devMode) {
       this.confirmDisableDialog = true

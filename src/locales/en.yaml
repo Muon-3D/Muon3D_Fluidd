@@ -514,6 +514,7 @@ app:
         changing system configuration.
       backup-config: Backup Config
       restore-defaults: Restore Config to Defaults
+      manage-at-printer: Can only be changed at the printer
       disable-developer-mode: Disable Devloper Mode
       disable-modal-3: >-
         Because Developer Mode was enabled, warranty may remain limited for
