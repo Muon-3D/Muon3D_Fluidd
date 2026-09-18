@@ -26,5 +26,23 @@ export interface DevModeToggle {
      * @memberof DevModeToggle
      */
     'enabled': boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof DevModeToggle
+     */
+    'waiver_acknowledged'?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof DevModeToggle
+     */
+    'waiver_version'?: string | null;
+    /**
+     * 
+     * @type {string}
+     * @memberof DevModeToggle
+     */
+    'challenge_id'?: string | null;
 }
 

@@ -32,5 +32,17 @@ export interface DevModeStatus {
      * @memberof DevModeStatus
      */
     'core_cfg': string;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof DevModeStatus
+     */
+    'ever_enabled'?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof DevModeStatus
+     */
+    'otp_fuse'?: string | null;
 }
 
