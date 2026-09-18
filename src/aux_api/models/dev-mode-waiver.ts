@@ -17,32 +17,20 @@
 /**
  * 
  * @export
- * @interface DevModeStatus
+ * @interface DevModeWaiver
  */
-export interface DevModeStatus {
-    /**
-     * 
-     * @type {boolean}
-     * @memberof DevModeStatus
-     */
-    'enabled': boolean;
+export interface DevModeWaiver {
     /**
      * 
      * @type {string}
-     * @memberof DevModeStatus
+     * @memberof DevModeWaiver
      */
-    'core_cfg': string;
-    /**
-     * 
-     * @type {boolean}
-     * @memberof DevModeStatus
-     */
-    'ever_enabled'?: boolean;
+    'version': string;
     /**
      * 
      * @type {string}
-     * @memberof DevModeStatus
+     * @memberof DevModeWaiver
      */
-    'otp_fuse'?: string | null;
+    'text': string;
 }
 
