@@ -387,7 +387,9 @@ export default class HotspotManagerCard extends Vue {
     if (!this.apCredentials) return
     this.form.ssid = this.apCredentials.ssid
     this.form.password = this.apCredentials.password || ''
-    this.form.securityEnabled = !!this.apCredentials.password
+    // Remote Fluidd callers intentionally receive a redacted password from
+    // /wifi/ap/show. A null password therefore means "hidden", not "open".
+    this.form.securityEnabled = true
     this.original = { ...this.form }
   }
 
