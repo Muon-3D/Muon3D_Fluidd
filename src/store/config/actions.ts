@@ -8,6 +8,54 @@ import { Waits } from '@/globals'
 import type { AppTableHeader } from '@/types'
 import type { FileFilterType } from '../files/types'
 import { TinyColor } from '@ctrl/tinycolor'
+import { consola } from 'consola'
+
+const parseLanInstances = (value: unknown): InstanceConfig[] => {
+  if (typeof value !== 'object' || value == null || !('version' in value) || !('printers' in value)) return []
+  const feed = value as { version: unknown; printers: unknown }
+  if (feed.version !== 1 || !Array.isArray(feed.printers)) return []
+
+  const instances: InstanceConfig[] = []
+  const seen = new Set<string>()
+  for (const candidate of feed.printers) {
+    if (typeof candidate !== 'object' || candidate == null) continue
+    const item = candidate as Record<string, unknown>
+    if (
+      typeof item.name !== 'string' || item.name.trim() === '' ||
+      typeof item.apiUrl !== 'string' || typeof item.socketUrl !== 'string' ||
+      typeof item.authKey !== 'string'
+    ) continue
+
+    try {
+      const api = new URL(item.apiUrl)
+      const socket = new URL(item.socketUrl)
+      const identity = new URL(`http://${item.authKey}`)
+      if (
+        !['http:', 'https:'].includes(api.protocol) ||
+        !['ws:', 'wss:'].includes(socket.protocol) ||
+        api.hostname !== socket.hostname ||
+        api.username !== '' || api.password !== '' ||
+        socket.username !== '' || socket.password !== '' ||
+        socket.pathname !== '/websocket' ||
+        identity.hostname !== item.authKey || !identity.hostname.endsWith('.local') ||
+        seen.has(item.apiUrl)
+      ) continue
+    } catch {
+      continue
+    }
+
+    seen.add(item.apiUrl)
+    instances.push({
+      name: item.name.trim(),
+      apiUrl: item.apiUrl,
+      socketUrl: item.socketUrl,
+      authKey: item.authKey,
+      active: false,
+      discovered: true
+    })
+  }
+  return instances
+}
 
 export const actions: ActionTree<ConfigState, RootState> = {
   /**
@@ -15,6 +63,19 @@ export const actions: ActionTree<ConfigState, RootState> = {
    */
   async reset ({ commit }) {
     commit('setReset')
+  },
+
+  async discoverLanInstances ({ commit }) {
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}muon/lan-printers.json`, {
+        cache: 'no-store'
+      })
+      if (!response.ok) return
+      const instances = parseLanInstances(await response.json())
+      commit('setLanInstances', instances)
+    } catch (error) {
+      consola.debug('Local printer discovery is unavailable', error)
+    }
   },
 
   /**

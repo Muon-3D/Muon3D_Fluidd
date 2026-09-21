@@ -5,9 +5,11 @@ export interface ConfigState {
   [key: string]: any;
   apiUrl: string;
   socketUrl: string;
+  authKey: string;
   layoutMode: boolean;
   containerColumnCount: number;
   instances: InstanceConfig[];
+  lanInstances: InstanceConfig[];
   uiSettings: UiSettings;
   hostConfig: HostConfig;
 }
@@ -179,12 +181,14 @@ export interface InitConfig {
 export interface ApiConfig {
   apiUrl: string;
   socketUrl: string;
+  authKey?: string;
 }
 
 // Saved to localstorage.
 export interface InstanceConfig extends ApiConfig {
   name: string;
   active: boolean;
+  discovered?: boolean;
 }
 
 export interface TemperaturePreset {
