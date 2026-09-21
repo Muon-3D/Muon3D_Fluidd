@@ -65,6 +65,7 @@ export const mutations: MutationTree<ConfigState> = {
     state.apiUrl = payload.apiUrl
     state.socketUrl = payload.socketUrl
     state.authKey = payload.authKey || ''
+    state.discovered = payload.discovered === true
     if (payload.name && payload.name !== '') state.uiSettings.general.instanceName = payload.name
   },
 

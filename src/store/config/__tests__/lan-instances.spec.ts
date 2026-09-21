@@ -113,8 +113,9 @@ describe('LAN printer discovery', () => {
     }])
   })
 
-  it('keeps the cached session when DHCP gives the printer a new address', () => {
+  it('keeps a manually configured session when its stable key has an address change', () => {
     const state = defaultState()
+    state.discovered = false
     state.authKey = 'muon-boxwood-367a.local'
     state.apiUrl = 'http://192.168.1.21'
     const before = getTokenKeys(state)
@@ -123,6 +124,32 @@ describe('LAN printer discovery', () => {
     const after = getTokenKeys(state)
 
     expect(after).toEqual(before)
+  })
+
+  it('never reuses a discovered printer token after an mDNS endpoint change', () => {
+    const state = defaultState()
+    const init = mutations.setInitApiConfig
+
+    init(state, {
+      name: 'Boxwood',
+      apiUrl: 'http://192.168.1.21',
+      socketUrl: 'ws://192.168.1.21/websocket',
+      authKey: 'muon-boxwood-367a.local',
+      active: false,
+      discovered: true
+    })
+    const before = getTokenKeys(state)
+
+    init(state, {
+      name: 'Spoofed Boxwood',
+      apiUrl: 'http://192.168.1.84',
+      socketUrl: 'ws://192.168.1.84/websocket',
+      authKey: 'muon-boxwood-367a.local',
+      active: false,
+      discovered: true
+    })
+
+    expect(getTokenKeys(state)).not.toEqual(before)
   })
 
   it('keeps the previous snapshot when discovery is temporarily unavailable', async () => {
