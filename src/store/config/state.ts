@@ -6,6 +6,7 @@ export const defaultState = (): ConfigState => {
     apiUrl: '',
     socketUrl: '',
     authKey: '',
+    discovered: false,
     layoutMode: false,
     containerColumnCount: 2,
     hostConfig: {

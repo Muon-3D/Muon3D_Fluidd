@@ -115,7 +115,11 @@ export const getters: GetterTree<ConfigState, RootState> = {
   },
 
   getTokenKeys: (state) => {
-    const identity = state.authKey || state.apiUrl
+    // mDNS rows are unauthenticated network input.  Their hostname cannot
+    // attest to the resolved address, so a discovered endpoint may only reuse
+    // credentials previously stored for that exact endpoint.  Saved instances
+    // retain their stable user-configured key.
+    const identity = state.discovered ? state.apiUrl : (state.authKey || state.apiUrl)
     const hash = (identity) ? md5(identity) : ''
     return {
       'user-token': `user-token-${hash}`,
