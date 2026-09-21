@@ -22,9 +22,15 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
+import type { DevModeConsentChallenge } from '../models';
+// @ts-ignore
+import type { DevModeConsentState } from '../models';
+// @ts-ignore
 import type { DevModeStatus } from '../models';
 // @ts-ignore
 import type { DevModeToggle } from '../models';
+// @ts-ignore
+import type { DevModeWaiver } from '../models';
 // @ts-ignore
 import type { HTTPValidationError } from '../models';
 /**
@@ -33,6 +39,43 @@ import type { HTTPValidationError } from '../models';
  */
 export const DevModeApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
+        /**
+         * Poll whether a challenge has been confirmed at the printer yet.  Read-only: confirming still has to happen on the hardware, so polling this can never advance the state on its own.
+         * @summary Get Dev Mode Consent
+         * @param {string} challengeId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDevModeConsentDevModeConsentChallengeIdGet: async (challengeId: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'challengeId' is not null or undefined
+            assertParamExists('getDevModeConsentDevModeConsentChallengeIdGet', 'challengeId', challengeId)
+            const localVarPath = `/dev_mode/consent/{challenge_id}`
+                .replace(`{${"challenge_id"}}`, encodeURIComponent(String(challengeId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication AuxApiKey required
+            await setApiKeyToObject(localVarHeaderParameter, "X-Aux-Api-Key", configuration)
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
         /**
          * Dev mode is TRUE if CORE_CFG == DEV_MODE_CORE_CFG, FALSE if CORE_CFG == OEM_CORE_CFG, ERROR otherwise.
          * @summary Get Dev Mode Status
@@ -51,6 +94,42 @@ export const DevModeApiAxiosParamCreator = function (configuration?: Configurati
             const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
+
+            // authentication AuxApiKey required
+            await setApiKeyToObject(localVarHeaderParameter, "X-Aux-Api-Key", configuration)
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The exact text the panel must display before enabling (DEV-2).  Served rather than hard-coded in the UI so the wording, and the version the client has to echo back, have one home.
+         * @summary Get Dev Mode Waiver
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDevModeWaiverDevModeWaiverGet: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/dev_mode/waiver`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication AuxApiKey required
+            await setApiKeyToObject(localVarHeaderParameter, "X-Aux-Api-Key", configuration)
 
 
     
@@ -82,6 +161,42 @@ export const DevModeApiAxiosParamCreator = function (configuration?: Configurati
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
 
+            // authentication AuxApiKey required
+            await setApiKeyToObject(localVarHeaderParameter, "X-Aux-Api-Key", configuration)
+
+
+    
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Ask the operator, at the printer, to confirm entering Developer Mode.  Returns a short-lived single-use challenge id. Redeem it by passing `challenge_id` to `POST /dev_mode {\"enabled\": true}` once the operator has confirmed on the hardware. Nothing about the printer changes here.
+         * @summary Open Dev Mode Consent
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        openDevModeConsentDevModeConsentPost: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/dev_mode/consent`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication AuxApiKey required
+            await setApiKeyToObject(localVarHeaderParameter, "X-Aux-Api-Key", configuration)
+
 
     
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -112,6 +227,9 @@ export const DevModeApiAxiosParamCreator = function (configuration?: Configurati
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
 
+            // authentication AuxApiKey required
+            await setApiKeyToObject(localVarHeaderParameter, "X-Aux-Api-Key", configuration)
+
 
     
             setSearchParams(localVarUrlObj, localVarQueryParameter);
@@ -124,7 +242,7 @@ export const DevModeApiAxiosParamCreator = function (configuration?: Configurati
             };
         },
         /**
-         * Enable/disable Developer Mode.  - true from false:     * backup existing DEV_MODE_DIR if it exists     * refresh DEV_MODE_DIR from OEM_CORE_DIR     * set cm4 flag     * set CORE_CFG to DEV_MODE_CORE_CFG     * restart klipper - false from true:     * set CORE_CFG to OEM_CORE_CFG     * restart klipper - no state change: no-op
+         * Enable/disable Developer Mode.  - true from false (requires physical confirmation, see dev_mode_consent):     * redeem the operator\'s confirmation challenge     * durably record the entry (fails closed, see dev_mode_record)     * backup existing DEV_MODE_DIR if it exists     * refresh DEV_MODE_DIR from OEM_CORE_DIR     * set CORE_CFG to DEV_MODE_CORE_CFG     * restart klipper - false from true (deliberately ungated):     * set CORE_CFG to OEM_CORE_CFG     * restart klipper - no state change: no-op  Only the enable direction is gated. Enabling puts operator-supplied config in charge of the heaters; disabling puts the OEM config back. Getting *out* of Developer Mode must not depend on a working knob, a reachable operator, or an attacker\'s cooperation, so recovery stays a plain unconditional call.
          * @summary Set Dev Mode
          * @param {DevModeToggle} devModeToggle 
          * @param {*} [options] Override http request option.
@@ -144,6 +262,9 @@ export const DevModeApiAxiosParamCreator = function (configuration?: Configurati
             const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
             const localVarHeaderParameter = {} as any;
             const localVarQueryParameter = {} as any;
+
+            // authentication AuxApiKey required
+            await setApiKeyToObject(localVarHeaderParameter, "X-Aux-Api-Key", configuration)
 
 
     
@@ -170,6 +291,19 @@ export const DevModeApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = DevModeApiAxiosParamCreator(configuration)
     return {
         /**
+         * Poll whether a challenge has been confirmed at the printer yet.  Read-only: confirming still has to happen on the hardware, so polling this can never advance the state on its own.
+         * @summary Get Dev Mode Consent
+         * @param {string} challengeId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getDevModeConsentDevModeConsentChallengeIdGet(challengeId: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<DevModeConsentState>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getDevModeConsentDevModeConsentChallengeIdGet(challengeId, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['DevModeApi.getDevModeConsentDevModeConsentChallengeIdGet']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Dev mode is TRUE if CORE_CFG == DEV_MODE_CORE_CFG, FALSE if CORE_CFG == OEM_CORE_CFG, ERROR otherwise.
          * @summary Get Dev Mode Status
          * @param {*} [options] Override http request option.
@@ -179,6 +313,18 @@ export const DevModeApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.getDevModeStatusDevModeGet(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['DevModeApi.getDevModeStatusDevModeGet']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * The exact text the panel must display before enabling (DEV-2).  Served rather than hard-coded in the UI so the wording, and the version the client has to echo back, have one home.
+         * @summary Get Dev Mode Waiver
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getDevModeWaiverDevModeWaiverGet(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<DevModeWaiver>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getDevModeWaiverDevModeWaiverGet(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['DevModeApi.getDevModeWaiverDevModeWaiverGet']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -194,6 +340,18 @@ export const DevModeApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Ask the operator, at the printer, to confirm entering Developer Mode.  Returns a short-lived single-use challenge id. Redeem it by passing `challenge_id` to `POST /dev_mode {\"enabled\": true}` once the operator has confirmed on the hardware. Nothing about the printer changes here.
+         * @summary Open Dev Mode Consent
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async openDevModeConsentDevModeConsentPost(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<DevModeConsentChallenge>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.openDevModeConsentDevModeConsentPost(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['DevModeApi.openDevModeConsentDevModeConsentPost']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Refresh the developer-mode working copy from OEM core. Only valid while dev mode is enabled.  Steps:   * backup DEV_MODE_DIR to backups/<timestamp> (excluding backups)   * clear DEV_MODE_DIR except \'backups\'   * copy OEM_CORE_DIR into DEV_MODE_DIR
          * @summary Refresh Dev Mode Config
          * @param {*} [options] Override http request option.
@@ -206,7 +364,7 @@ export const DevModeApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Enable/disable Developer Mode.  - true from false:     * backup existing DEV_MODE_DIR if it exists     * refresh DEV_MODE_DIR from OEM_CORE_DIR     * set cm4 flag     * set CORE_CFG to DEV_MODE_CORE_CFG     * restart klipper - false from true:     * set CORE_CFG to OEM_CORE_CFG     * restart klipper - no state change: no-op
+         * Enable/disable Developer Mode.  - true from false (requires physical confirmation, see dev_mode_consent):     * redeem the operator\'s confirmation challenge     * durably record the entry (fails closed, see dev_mode_record)     * backup existing DEV_MODE_DIR if it exists     * refresh DEV_MODE_DIR from OEM_CORE_DIR     * set CORE_CFG to DEV_MODE_CORE_CFG     * restart klipper - false from true (deliberately ungated):     * set CORE_CFG to OEM_CORE_CFG     * restart klipper - no state change: no-op  Only the enable direction is gated. Enabling puts operator-supplied config in charge of the heaters; disabling puts the OEM config back. Getting *out* of Developer Mode must not depend on a working knob, a reachable operator, or an attacker\'s cooperation, so recovery stays a plain unconditional call.
          * @summary Set Dev Mode
          * @param {DevModeToggle} devModeToggle 
          * @param {*} [options] Override http request option.
@@ -229,6 +387,16 @@ export const DevModeApiFactory = function (configuration?: Configuration, basePa
     const localVarFp = DevModeApiFp(configuration)
     return {
         /**
+         * Poll whether a challenge has been confirmed at the printer yet.  Read-only: confirming still has to happen on the hardware, so polling this can never advance the state on its own.
+         * @summary Get Dev Mode Consent
+         * @param {string} challengeId 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDevModeConsentDevModeConsentChallengeIdGet(challengeId: string, options?: RawAxiosRequestConfig): AxiosPromise<DevModeConsentState> {
+            return localVarFp.getDevModeConsentDevModeConsentChallengeIdGet(challengeId, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Dev mode is TRUE if CORE_CFG == DEV_MODE_CORE_CFG, FALSE if CORE_CFG == OEM_CORE_CFG, ERROR otherwise.
          * @summary Get Dev Mode Status
          * @param {*} [options] Override http request option.
@@ -236,6 +404,15 @@ export const DevModeApiFactory = function (configuration?: Configuration, basePa
          */
         getDevModeStatusDevModeGet(options?: RawAxiosRequestConfig): AxiosPromise<DevModeStatus> {
             return localVarFp.getDevModeStatusDevModeGet(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * The exact text the panel must display before enabling (DEV-2).  Served rather than hard-coded in the UI so the wording, and the version the client has to echo back, have one home.
+         * @summary Get Dev Mode Waiver
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDevModeWaiverDevModeWaiverGet(options?: RawAxiosRequestConfig): AxiosPromise<DevModeWaiver> {
+            return localVarFp.getDevModeWaiverDevModeWaiverGet(options).then((request) => request(axios, basePath));
         },
         /**
          * Create a timestamped backup of the current dev-mode working directory. Only valid while dev mode is enabled.
@@ -247,6 +424,15 @@ export const DevModeApiFactory = function (configuration?: Configuration, basePa
             return localVarFp.manualBackupDevModeBackupPost(options).then((request) => request(axios, basePath));
         },
         /**
+         * Ask the operator, at the printer, to confirm entering Developer Mode.  Returns a short-lived single-use challenge id. Redeem it by passing `challenge_id` to `POST /dev_mode {\"enabled\": true}` once the operator has confirmed on the hardware. Nothing about the printer changes here.
+         * @summary Open Dev Mode Consent
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        openDevModeConsentDevModeConsentPost(options?: RawAxiosRequestConfig): AxiosPromise<DevModeConsentChallenge> {
+            return localVarFp.openDevModeConsentDevModeConsentPost(options).then((request) => request(axios, basePath));
+        },
+        /**
          * Refresh the developer-mode working copy from OEM core. Only valid while dev mode is enabled.  Steps:   * backup DEV_MODE_DIR to backups/<timestamp> (excluding backups)   * clear DEV_MODE_DIR except \'backups\'   * copy OEM_CORE_DIR into DEV_MODE_DIR
          * @summary Refresh Dev Mode Config
          * @param {*} [options] Override http request option.
@@ -256,7 +442,7 @@ export const DevModeApiFactory = function (configuration?: Configuration, basePa
             return localVarFp.refreshDevModeConfigDevModeRefreshPost(options).then((request) => request(axios, basePath));
         },
         /**
-         * Enable/disable Developer Mode.  - true from false:     * backup existing DEV_MODE_DIR if it exists     * refresh DEV_MODE_DIR from OEM_CORE_DIR     * set cm4 flag     * set CORE_CFG to DEV_MODE_CORE_CFG     * restart klipper - false from true:     * set CORE_CFG to OEM_CORE_CFG     * restart klipper - no state change: no-op
+         * Enable/disable Developer Mode.  - true from false (requires physical confirmation, see dev_mode_consent):     * redeem the operator\'s confirmation challenge     * durably record the entry (fails closed, see dev_mode_record)     * backup existing DEV_MODE_DIR if it exists     * refresh DEV_MODE_DIR from OEM_CORE_DIR     * set CORE_CFG to DEV_MODE_CORE_CFG     * restart klipper - false from true (deliberately ungated):     * set CORE_CFG to OEM_CORE_CFG     * restart klipper - no state change: no-op  Only the enable direction is gated. Enabling puts operator-supplied config in charge of the heaters; disabling puts the OEM config back. Getting *out* of Developer Mode must not depend on a working knob, a reachable operator, or an attacker\'s cooperation, so recovery stays a plain unconditional call.
          * @summary Set Dev Mode
          * @param {DevModeToggle} devModeToggle 
          * @param {*} [options] Override http request option.
@@ -276,6 +462,18 @@ export const DevModeApiFactory = function (configuration?: Configuration, basePa
  */
 export class DevModeApi extends BaseAPI {
     /**
+     * Poll whether a challenge has been confirmed at the printer yet.  Read-only: confirming still has to happen on the hardware, so polling this can never advance the state on its own.
+     * @summary Get Dev Mode Consent
+     * @param {string} challengeId 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DevModeApi
+     */
+    public getDevModeConsentDevModeConsentChallengeIdGet(challengeId: string, options?: RawAxiosRequestConfig) {
+        return DevModeApiFp(this.configuration).getDevModeConsentDevModeConsentChallengeIdGet(challengeId, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * Dev mode is TRUE if CORE_CFG == DEV_MODE_CORE_CFG, FALSE if CORE_CFG == OEM_CORE_CFG, ERROR otherwise.
      * @summary Get Dev Mode Status
      * @param {*} [options] Override http request option.
@@ -284,6 +482,17 @@ export class DevModeApi extends BaseAPI {
      */
     public getDevModeStatusDevModeGet(options?: RawAxiosRequestConfig) {
         return DevModeApiFp(this.configuration).getDevModeStatusDevModeGet(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The exact text the panel must display before enabling (DEV-2).  Served rather than hard-coded in the UI so the wording, and the version the client has to echo back, have one home.
+     * @summary Get Dev Mode Waiver
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DevModeApi
+     */
+    public getDevModeWaiverDevModeWaiverGet(options?: RawAxiosRequestConfig) {
+        return DevModeApiFp(this.configuration).getDevModeWaiverDevModeWaiverGet(options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -298,6 +507,17 @@ export class DevModeApi extends BaseAPI {
     }
 
     /**
+     * Ask the operator, at the printer, to confirm entering Developer Mode.  Returns a short-lived single-use challenge id. Redeem it by passing `challenge_id` to `POST /dev_mode {\"enabled\": true}` once the operator has confirmed on the hardware. Nothing about the printer changes here.
+     * @summary Open Dev Mode Consent
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof DevModeApi
+     */
+    public openDevModeConsentDevModeConsentPost(options?: RawAxiosRequestConfig) {
+        return DevModeApiFp(this.configuration).openDevModeConsentDevModeConsentPost(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * Refresh the developer-mode working copy from OEM core. Only valid while dev mode is enabled.  Steps:   * backup DEV_MODE_DIR to backups/<timestamp> (excluding backups)   * clear DEV_MODE_DIR except \'backups\'   * copy OEM_CORE_DIR into DEV_MODE_DIR
      * @summary Refresh Dev Mode Config
      * @param {*} [options] Override http request option.
@@ -309,7 +529,7 @@ export class DevModeApi extends BaseAPI {
     }
 
     /**
-     * Enable/disable Developer Mode.  - true from false:     * backup existing DEV_MODE_DIR if it exists     * refresh DEV_MODE_DIR from OEM_CORE_DIR     * set cm4 flag     * set CORE_CFG to DEV_MODE_CORE_CFG     * restart klipper - false from true:     * set CORE_CFG to OEM_CORE_CFG     * restart klipper - no state change: no-op
+     * Enable/disable Developer Mode.  - true from false (requires physical confirmation, see dev_mode_consent):     * redeem the operator\'s confirmation challenge     * durably record the entry (fails closed, see dev_mode_record)     * backup existing DEV_MODE_DIR if it exists     * refresh DEV_MODE_DIR from OEM_CORE_DIR     * set CORE_CFG to DEV_MODE_CORE_CFG     * restart klipper - false from true (deliberately ungated):     * set CORE_CFG to OEM_CORE_CFG     * restart klipper - no state change: no-op  Only the enable direction is gated. Enabling puts operator-supplied config in charge of the heaters; disabling puts the OEM config back. Getting *out* of Developer Mode must not depend on a working knob, a reachable operator, or an attacker\'s cooperation, so recovery stays a plain unconditional call.
      * @summary Set Dev Mode
      * @param {DevModeToggle} devModeToggle 
      * @param {*} [options] Override http request option.

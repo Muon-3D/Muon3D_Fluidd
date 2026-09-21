@@ -32,5 +32,23 @@ export interface DevModeStatus {
      * @memberof DevModeStatus
      */
     'core_cfg': string;
+    /**
+     * Whether enabling requires the warranty/OTP confirmation ceremony.
+     * @type {boolean}
+     * @memberof DevModeStatus
+     */
+    'guard_armed': boolean;
+    /**
+     * 
+     * @type {boolean}
+     * @memberof DevModeStatus
+     */
+    'ever_enabled'?: boolean;
+    /**
+     * 
+     * @type {string}
+     * @memberof DevModeStatus
+     */
+    'otp_fuse'?: string | null;
 }
 

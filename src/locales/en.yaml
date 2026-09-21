@@ -513,8 +513,15 @@ app:
         I understand the risks and accept full responsibility for any effects of
         changing system configuration.
       backup-config: Backup Config
-      restore-defaults: Restore Config to Defaults
+      restore-defaults: Reset Macros to Defaults
       manage-at-printer: Can only be changed at the printer
+      waiver-unavailable: >-
+        The printer's Developer Mode waiver could not be loaded, so it cannot be
+        accepted here. Developer Mode has not been changed.
+      consent-expires: Waiting for confirmation at the printer. {seconds}s remaining.
+      consent-expired: >-
+        Nobody confirmed at the printer in time, so Developer Mode stays off. Try
+        again when you are next to the machine.
       disable-developer-mode: Disable Devloper Mode
       disable-modal-3: >-
         Because Developer Mode was enabled, warranty may remain limited for
