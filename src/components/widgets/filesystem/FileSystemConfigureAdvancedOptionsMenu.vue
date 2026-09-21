@@ -248,6 +248,8 @@ const CONSENT_POLL_MS = 1500
 export default class FileSystemConfigureAdvancedOptionsMenu extends Vue {
   private api = useAuxApi().devMode
   private devMode = false
+  /** Missing means an older printer, where the guarded path is the safe fallback. */
+  private guardArmed = true
   /** Whether this client may *change* the mode, not merely see it. See updateDevMode. */
   private canManage = false
   private confirmDialog = false // enable modal
@@ -311,6 +313,7 @@ export default class FileSystemConfigureAdvancedOptionsMenu extends Vue {
         throw new Error('unexpected /server/aux/dev_mode payload')
       }
       this.devMode = enabled
+      this.guardArmed = result.data?.guard_armed !== false
       this.canManage = true
     } catch (err) {
       consola.debug('Developer mode is not manageable from this client:', err)
@@ -346,16 +349,32 @@ export default class FileSystemConfigureAdvancedOptionsMenu extends Vue {
     return typeof message === 'string' ? message : String(err)
   }
 
-  devModeClick () {
+  async devModeClick () {
     if (!this.canManage) return
 
     this.errorMessage = ''
     if (this.devMode) {
       this.confirmDisableDialog = true
+    } else if (!this.guardArmed) {
+      await this.enableWithoutGuard()
     } else {
       this.confirmDialog = true
-      this.loadWaiver()
-        .catch(err => consola.error('Failed to load the developer-mode waiver:', err))
+      await this.loadWaiver()
+    }
+  }
+
+  /** Development images deliberately ship the irreversible warranty/OTP guard off. */
+  private async enableWithoutGuard () {
+    this.loading = true
+    try {
+      await this.api.setDevModeDevModePost({ enabled: true })
+    } catch (err) {
+      consola.error('Failed to enable dev mode:', err)
+      this.notifyFailure(this.$t('app.general.dev_mode.enable-developer-mode') as string, err)
+    } finally {
+      this.loading = false
+      await this.updateDevMode()
+      this.$emit('refresh-fs')
     }
   }
 
