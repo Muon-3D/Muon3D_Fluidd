@@ -17,32 +17,20 @@
 /**
  * 
  * @export
- * @interface DevModeToggle
+ * @interface DevModeWaiver
  */
-export interface DevModeToggle {
-    /**
-     * 
-     * @type {boolean}
-     * @memberof DevModeToggle
-     */
-    'enabled': boolean;
-    /**
-     * 
-     * @type {boolean}
-     * @memberof DevModeToggle
-     */
-    'waiver_acknowledged'?: boolean;
+export interface DevModeWaiver {
     /**
      * 
      * @type {string}
-     * @memberof DevModeToggle
+     * @memberof DevModeWaiver
      */
-    'waiver_version'?: string | null;
+    'version': string;
     /**
      * 
      * @type {string}
-     * @memberof DevModeToggle
+     * @memberof DevModeWaiver
      */
-    'challenge_id'?: string | null;
+    'text': string;
 }
 

@@ -17,38 +17,32 @@
 /**
  * 
  * @export
- * @interface DevModeStatus
+ * @interface DevModeConsentChallenge
  */
-export interface DevModeStatus {
-    /**
-     * 
-     * @type {boolean}
-     * @memberof DevModeStatus
-     */
-    'enabled': boolean;
+export interface DevModeConsentChallenge {
     /**
      * 
      * @type {string}
-     * @memberof DevModeStatus
+     * @memberof DevModeConsentChallenge
      */
-    'core_cfg': string;
-    /**
-     * Whether enabling requires the warranty/OTP confirmation ceremony.
-     * @type {boolean}
-     * @memberof DevModeStatus
-     */
-    'guard_armed': boolean;
+    'challenge_id': string;
     /**
      * 
-     * @type {boolean}
-     * @memberof DevModeStatus
+     * @type {number}
+     * @memberof DevModeConsentChallenge
      */
-    'ever_enabled'?: boolean;
+    'expires_at': number;
+    /**
+     * 
+     * @type {number}
+     * @memberof DevModeConsentChallenge
+     */
+    'expires_in_seconds': number;
     /**
      * 
      * @type {string}
-     * @memberof DevModeStatus
+     * @memberof DevModeConsentChallenge
      */
-    'otp_fuse'?: string | null;
+    'instruction': string;
 }
 
