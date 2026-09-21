@@ -14,7 +14,10 @@ export const getters: GetterTree<ConfigState, RootState> = {
 
   getInstances: (state) => {
     const instances = [
-      ...state.instances
+      ...state.instances,
+      ...state.lanInstances.filter(discovered =>
+        !state.instances.some(known => known.apiUrl === discovered.apiUrl)
+      )
     ].sort((a, b) =>
       a.active
         ? -1
@@ -112,8 +115,8 @@ export const getters: GetterTree<ConfigState, RootState> = {
   },
 
   getTokenKeys: (state) => {
-    const url = state.apiUrl
-    const hash = (url) ? md5(url) : ''
+    const identity = state.authKey || state.apiUrl
+    const hash = (identity) ? md5(identity) : ''
     return {
       'user-token': `user-token-${hash}`,
       'refresh-token': `refresh-token-${hash}`

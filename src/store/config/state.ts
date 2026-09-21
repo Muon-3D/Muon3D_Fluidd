@@ -5,6 +5,7 @@ export const defaultState = (): ConfigState => {
   return {
     apiUrl: '',
     socketUrl: '',
+    authKey: '',
     layoutMode: false,
     containerColumnCount: 2,
     hostConfig: {
@@ -14,6 +15,7 @@ export const defaultState = (): ConfigState => {
       themePresets: []
     },
     instances: [],
+    lanInstances: [],
     uiSettings: {
       general: {
         instanceName: Globals.APP_NAME,

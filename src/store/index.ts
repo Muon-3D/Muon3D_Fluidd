@@ -87,7 +87,8 @@ export default new Vuex.Store<RootState>({
       // Init the host and local configs..
       return [
         await dispatch('config/initHost', payload),
-        await dispatch('config/initLocal', payload)
+        await dispatch('config/initLocal', payload),
+        await dispatch('config/discoverLanInstances')
       ]
     },
 

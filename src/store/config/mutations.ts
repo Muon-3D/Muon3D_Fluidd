@@ -64,6 +64,7 @@ export const mutations: MutationTree<ConfigState> = {
   setInitApiConfig (state, payload) {
     state.apiUrl = payload.apiUrl
     state.socketUrl = payload.socketUrl
+    state.authKey = payload.authKey || ''
     if (payload.name && payload.name !== '') state.uiSettings.general.instanceName = payload.name
   },
 
@@ -103,6 +104,10 @@ export const mutations: MutationTree<ConfigState> = {
     }
     localStorage.setItem(Globals.LOCAL_INSTANCES_STORAGE_KEY, JSON.stringify(instances))
     Vue.set(state, 'instances', instances)
+  },
+
+  setLanInstances (state, payload: InstanceConfig[]) {
+    Vue.set(state, 'lanInstances', payload)
   },
 
   setUpdateInstanceName (state, payload) {
