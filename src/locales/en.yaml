@@ -513,7 +513,7 @@ app:
         I understand the risks and accept full responsibility for any effects of
         changing system configuration.
       backup-config: Backup Config
-      restore-defaults: Restore Config to Defaults
+      restore-defaults: Reset Macros to Defaults
       manage-at-printer: Can only be changed at the printer
       waiver-unavailable: >-
         The printer's Developer Mode waiver could not be loaded, so it cannot be
