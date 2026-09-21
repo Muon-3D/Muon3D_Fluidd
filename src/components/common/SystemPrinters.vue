@@ -11,11 +11,10 @@
       >
         <v-list-item-content>
           <v-list-item-title>
-            {{ instance.name }}<br>
-            <small>{{ instance.apiUrl }}</small>
+            {{ instance.name }}
           </v-list-item-title>
         </v-list-item-content>
-        <v-list-item-action v-if="!instance.active">
+        <v-list-item-action v-if="!instance.active && !instance.discovered">
           <app-btn
             icon
             small
