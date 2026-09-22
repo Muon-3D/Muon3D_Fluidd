@@ -60,7 +60,7 @@ describe('managed printer transport selection', () => {
       tenantId: 'tenant-muon',
       printerId: 'printer-17',
       relayUrl: 'https://relay.example.test',
-      expiresAt: '2026-09-22T14:00:00.000Z'
+      expiresAt: futureExpiry()
     }
     const relaySessions: AuthorizedManagedRelaySession[] = []
     const createManagedEndpoint = vi.fn(async (): Promise<ManagedIrohEndpoint> => ({
@@ -118,7 +118,7 @@ describe('ManagedIrohPrinterTransport contract', () => {
         tenantId: 'tenant-muon',
         printerId: 'printer-17',
         relayUrl: 'https://relay.example.test',
-        expiresAt: '2026-09-22T14:00:00.000Z'
+        expiresAt: futureExpiry()
       },
       createEndpoint: async () => ({ openRelay, close: () => {} })
     })
@@ -152,7 +152,7 @@ describe('ManagedIrohPrinterTransport contract', () => {
         tenantId: 'tenant-muon',
         printerId: 'printer-17',
         relayUrl: 'https://relay.example.test',
-        expiresAt: '2026-09-22T14:00:00.000Z'
+        expiresAt: futureExpiry()
       },
       createEndpoint: async () => ({
         openRelay: async () => ({
@@ -197,7 +197,7 @@ describe('ManagedIrohPrinterTransport contract', () => {
         tenantId: 'tenant-muon',
         printerId: 'printer-17',
         relayUrl: 'https://relay.example.test',
-        expiresAt: '2026-09-22T14:00:00.000Z'
+        expiresAt: futureExpiry()
       },
       createEndpoint: () => endpointReady
     })
@@ -224,7 +224,7 @@ describe('ManagedIrohPrinterTransport contract', () => {
         tenantId: 'tenant-muon',
         printerId: 'printer-17',
         relayUrl: 'https://relay.example.test',
-        expiresAt: '2026-09-22T14:00:00.000Z'
+        expiresAt: futureExpiry()
       },
       createEndpoint: async () => ({
         openRelay: async () => ({
@@ -253,6 +253,10 @@ function contractSocket (): PrinterSocket {
     close: () => {},
     addEventListener: () => {}
   }
+}
+
+function futureExpiry (): string {
+  return new Date(Date.now() + 60 * 60 * 1000).toISOString()
 }
 
 const satisfiesTransport: PrinterTransport | undefined = undefined

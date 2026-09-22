@@ -138,7 +138,7 @@ function sessionFor (printerId: string): AuthorizedManagedRelaySession {
     tenantId: 'tenant-muon',
     printerId,
     relayUrl: 'https://relay.example.test',
-    expiresAt: '2026-09-22T15:00:00.000Z'
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
   }
 }
 
