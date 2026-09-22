@@ -445,8 +445,7 @@ export default class HotspotManagerCard extends Vue {
         ssid: this.form.ssid,
         password: this.form.securityEnabled
           ? this.form.password
-          : null,
-        autoconnect: true
+          : null
       }
       await this.auxApi.ap.apModifyWifiApModifyPost(payload)
       // on success, commit new “original” snapshot
