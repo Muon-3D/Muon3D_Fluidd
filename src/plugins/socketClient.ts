@@ -13,11 +13,15 @@ import { camelCase, mergeWith } from 'lodash-es'
 import { httpClientActions } from '@/api/httpClientActions'
 import type { Store } from 'vuex'
 import type { RootState } from '@/store/types'
+import {
+  PRINTER_SOCKET_OPEN,
+  type PrinterSocket
+} from '@/services/managed-transport'
 import axios from 'axios'
 
 export class WebSocketClient {
   url = ''
-  connection: WebSocket | null = null
+  connection: PrinterSocket | null = null
   reconnectEnabled = false
   reconnectInterval = 1000
   allowedReconnectAttempts = 3
@@ -27,6 +31,8 @@ export class WebSocketClient {
   store: any | null = null
   pingTimeout: any
   cache: CachedParams | null = null
+  private readonly openedConnections = new WeakSet<object>()
+  private transportReconnect: (() => Promise<PrinterSocket>) | null = null
 
   constructor (options: SocketPluginOptions) {
     this.url = options.url
@@ -82,113 +88,7 @@ export class WebSocketClient {
 
       // Good. Move on with setting up the socket.
       if (this.store) this.store.dispatch('socket/onSocketConnecting', true)
-      this.connection = new WebSocket(`${this.url}?token=${token}`)
-
-      this.connection.onopen = () => {
-        if (this.reconnectEnabled) {
-          this.reconnectCount = 1
-        }
-        if (this.store) {
-          this.store.dispatch('socket/onSocketConnecting', false)
-          this.store.dispatch('socket/onSocketOpen', true)
-        }
-      }
-
-      this.connection.onclose = (event) => {
-        consola.debug(`${this.logPrefix} Connection closed:`, event)
-        clearTimeout(this.pingTimeout)
-        if (this.store) this.store.dispatch('socket/onSocketClose', event)
-        if (!event.wasClean) {
-          this.reconnect()
-        }
-      }
-
-      this.connection.onerror = (event) => {
-        consola.error(`${this.logPrefix} Connection error:`, event)
-        if (this.store) this.store.dispatch('socket/onSocketError', event)
-      }
-
-      this.connection.onmessage = (m) => {
-        // Parse the data packet.
-        const d: SocketResponse = JSON.parse(m.data)
-
-        // Is this a socket notification, or an answer to a specific request?
-        let request: Request | undefined
-        const requestIndex = this.requests.findIndex(request => request.id === d.id)
-        if (requestIndex > -1) {
-          request = this.requests[requestIndex]
-          this.requests.splice(requestIndex, 1)
-        }
-
-        // Remove a wait if defined.
-        if (this.store && request && request.wait && request.wait.length) {
-          this.store.commit('wait/setRemoveWait', request.wait)
-        }
-
-        if (d.error) { // Is it in error?
-          if (request) {
-            Object.defineProperty(d.error, '__request__', { enumerable: false, value: request })
-          }
-          consola.debug(`${this.logPrefix} Response error:`, d.error)
-          if (this.store) this.store.dispatch('socket/onSocketError', d.error)
-          return
-        }
-
-        // we're still alive.
-        this.pong()
-
-        if (request) {
-          // these are specific answers to a request we've made.
-          // Build the response, including a non-enumerable ref of the original request.
-          let result = (d.result) ? d.result : d.params
-          if (typeof result === 'string') {
-            result = { result }
-          }
-
-          Object.defineProperty(result, '__request__', { enumerable: false, value: request })
-          consola.debug(`${this.logPrefix} Response:`, result)
-          if (request.dispatch && this.store) this.store?.dispatch(request.dispatch, result)
-          if (request.commit && this.store) this.store?.commit(request.commit, result)
-        } else {
-          // These are socket notifications (i.e., no specific request was made..)
-          // Dispatch with the name of the method, converted to camelCase.
-
-          if (d.params && d.params[0]) {
-            const [params, eventtime] = d.params
-
-            if (d.method !== 'notify_status_update') {
-              // Normally, we let notifications through with no cache...
-              if (this.store) this.store.dispatch('socket/' + camelCase(d.method), params)
-            } else {
-              // ...However, status notifications come through thick and fast,
-              // so we cache these and send them through every second.
-
-              // If any of these properties exist, bypass the cache and send immediately
-              for (const key of ['motion_report']) {
-                if (this.store && key in params) {
-                  this.store.dispatch('printer/onFastNotifyStatusUpdate', { key, payload: params[key] }, { root: true })
-                  delete params[key]
-                }
-              }
-
-              const timestamp = eventtime ? eventtime * 1000 : Date.now()
-
-              this.cache = (!this.cache)
-                ? { timestamp, params }
-                : { timestamp: this.cache.timestamp, params: mergeWith(this.cache.params, params, (dest, src) => Array.isArray(dest) ? src : undefined) }
-
-              // If there's a second or more difference, flush the cache.
-              if (timestamp - this.cache.timestamp >= 1000) {
-                if (this.store) this.store.dispatch('socket/' + camelCase(d.method), this.cache.params)
-                this.cache = { timestamp, params: {} }
-              }
-            }
-          } else {
-            // No params? Let it through.
-            if (this.store) this.store.dispatch('socket/' + camelCase(d.method))
-          }
-        }
-      }
+      this.bindConnection(new WebSocket(`${this.url}?token=${token}`))
     } catch (error: unknown) {
       // Bad. If this is a 401, then don't retry. Otherwise do.
       if (
@@ -197,6 +97,167 @@ export class WebSocketClient {
       ) {
         this.reconnect()
       }
+    }
+  }
+
+  /**
+   * Bind a socket returned by an authorized printer transport. Event handlers
+   * are installed before an already-open socket enters the normal open path.
+   */
+  adoptTransportSocket (
+    connection: PrinterSocket,
+    reconnect?: () => Promise<PrinterSocket>
+  ) {
+    this.bindConnection(connection, reconnect ?? null)
+  }
+
+  /** Ends an adopted session without allowing its close event to reconnect. */
+  releaseTransportSocket (closeConnection = true) {
+    const connection = this.connection
+    this.connection = null
+    this.transportReconnect = null
+    this.cache = null
+    this.reconnectCount = 0
+    if (connection) {
+      this.openedConnections.delete(connection as object)
+      if (closeConnection) connection.close()
+    }
+  }
+
+  private bindConnection (
+    connection: PrinterSocket,
+    reconnect: (() => Promise<PrinterSocket>) | null = null
+  ) {
+    this.connection = connection
+    this.transportReconnect = reconnect
+    connection.addEventListener('open', () => this.onConnectionOpen(connection))
+    connection.addEventListener('close', event => this.onConnectionClose(connection, event as SocketCloseEvent))
+    connection.addEventListener('error', event => this.onConnectionError(connection, event))
+    connection.addEventListener('message', event => this.onConnectionMessage(connection, event as SocketMessageEvent))
+
+    if (connection.readyState === PRINTER_SOCKET_OPEN) {
+      this.onConnectionOpen(connection)
+    }
+  }
+
+  private onConnectionOpen (connection: PrinterSocket) {
+    if (this.connection !== connection || this.openedConnections.has(connection as object)) return
+
+    this.openedConnections.add(connection as object)
+    if (this.reconnectEnabled) this.reconnectCount = 1
+    if (this.store) {
+      this.store.dispatch('socket/onSocketConnecting', false)
+      this.store.dispatch('socket/onSocketOpen', true)
+    }
+  }
+
+  private onConnectionClose (connection: PrinterSocket, event: SocketCloseEvent) {
+    if (this.connection !== connection) return
+
+    consola.debug(`${this.logPrefix} Connection closed:`, event)
+    clearTimeout(this.pingTimeout)
+    if (this.store) this.store.dispatch('socket/onSocketClose', event)
+    if (!event.wasClean) {
+      if (this.transportReconnect) {
+        this.reconnectTransport(this.transportReconnect)
+      } else {
+        this.reconnect()
+      }
+    }
+  }
+
+  private onConnectionError (connection: PrinterSocket, event: unknown) {
+    if (this.connection !== connection) return
+
+    consola.error(`${this.logPrefix} Connection error:`, event)
+    if (this.store) this.store.dispatch('socket/onSocketError', event)
+  }
+
+  private onConnectionMessage (connection: PrinterSocket, message: SocketMessageEvent) {
+    if (this.connection !== connection) return
+
+    // Parse the data packet.
+    const d: SocketResponse = JSON.parse(message.data)
+
+    // Is this a socket notification, or an answer to a specific request?
+    let request: Request | undefined
+    const requestIndex = this.requests.findIndex(request => request.id === d.id)
+    if (requestIndex > -1) {
+      request = this.requests[requestIndex]
+      this.requests.splice(requestIndex, 1)
+    }
+
+    // Remove a wait if defined.
+    if (this.store && request && request.wait && request.wait.length) {
+      this.store.commit('wait/setRemoveWait', request.wait)
+    }
+
+    if (d.error) {
+      if (request) {
+        Object.defineProperty(d.error, '__request__', { enumerable: false, value: request })
+      }
+      consola.debug(`${this.logPrefix} Response error:`, d.error)
+      if (this.store) this.store.dispatch('socket/onSocketError', d.error)
+      return
+    }
+
+    this.pong()
+
+    if (request) {
+      let result = (d.result) ? d.result : d.params
+      if (typeof result === 'string') result = { result }
+
+      Object.defineProperty(result, '__request__', { enumerable: false, value: request })
+      consola.debug(`${this.logPrefix} Response:`, result)
+      if (request.dispatch && this.store) this.store.dispatch(request.dispatch, result)
+      if (request.commit && this.store) this.store.commit(request.commit, result)
+    } else if (d.params && d.params[0]) {
+      const [params, eventtime] = d.params
+
+      if (d.method !== 'notify_status_update') {
+        if (this.store) this.store.dispatch('socket/' + camelCase(d.method), params)
+      } else {
+        for (const key of ['motion_report']) {
+          if (this.store && key in params) {
+            this.store.dispatch('printer/onFastNotifyStatusUpdate', { key, payload: params[key] }, { root: true })
+            delete params[key]
+          }
+        }
+
+        const timestamp = eventtime ? eventtime * 1000 : Date.now()
+        this.cache = (!this.cache)
+          ? { timestamp, params }
+          : { timestamp: this.cache.timestamp, params: mergeWith(this.cache.params, params, (dest, src) => Array.isArray(dest) ? src : undefined) }
+
+        if (timestamp - this.cache.timestamp >= 1000) {
+          if (this.store) this.store.dispatch('socket/' + camelCase(d.method), this.cache.params)
+          this.cache = { timestamp, params: {} }
+        }
+      }
+    } else {
+      if (this.store) this.store.dispatch('socket/' + camelCase(d.method))
+    }
+  }
+
+  private reconnectTransport (reconnect: () => Promise<PrinterSocket>) {
+    if (this.reconnectCount <= this.allowedReconnectAttempts) {
+      this.reconnectCount += 1
+      this.connection = null
+      setTimeout(async () => {
+        if (this.transportReconnect !== reconnect) return
+        try {
+          const connection = await reconnect()
+          if (this.transportReconnect === reconnect) {
+            this.bindConnection(connection, reconnect)
+          } else {
+            connection.close()
+          }
+        } catch (_error) {
+          if (this.transportReconnect === reconnect) this.reconnectTransport(reconnect)
+        }
+      }, this.reconnectInterval)
+    } else if (this.store) {
+      this.store.dispatch('socket/onSocketConnecting', false)
     }
   }
 
@@ -225,7 +286,7 @@ export class WebSocketClient {
       return
     }
 
-    if (this.connection?.readyState === WebSocket.OPEN) {
+    if (this.connection?.readyState === PRINTER_SOCKET_OPEN) {
       // moonraker expects a unique id for us to reference back to when data is returned.
       const getRandomNumber = (min: number, max: number) => {
         return Math.floor(Math.random() * (max - min + 1)) + min
@@ -326,4 +387,12 @@ interface SocketError {
 interface CachedParams {
   timestamp: number;
   params: any;
+}
+
+interface SocketCloseEvent {
+  wasClean: boolean;
+}
+
+interface SocketMessageEvent {
+  data: string;
 }
