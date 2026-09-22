@@ -169,8 +169,7 @@ describe('HotspotManagerCard', () => {
 
     expect(apModify).toHaveBeenCalledWith({
       ssid: 'Muon-M1',
-      password: 'new-password',
-      autoconnect: true
+      password: 'new-password'
     })
     expect(card.form.securityEnabled).toBe(true)
   })
