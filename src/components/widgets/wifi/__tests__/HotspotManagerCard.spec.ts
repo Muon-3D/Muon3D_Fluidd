@@ -174,4 +174,27 @@ describe('HotspotManagerCard', () => {
     })
     expect(card.form.securityEnabled).toBe(true)
   })
+
+  it('queues hotspot activation only once after saving while it is off', async () => {
+    apDeviceStatus.mockResolvedValue({
+      data: {
+        device: 'ap0',
+        device_type: 'wifi',
+        state: 'disconnected',
+        connection: null
+      }
+    })
+    const wrapper = shallowMount(HotspotManagerCard, {
+      mocks: { $t: (key: string) => key }
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const card = wrapper.vm as any
+    card.form.password = 'new-password'
+    await card.$nextTick()
+    await card.confirmApply()
+
+    expect(apModify).toHaveBeenCalledTimes(1)
+    expect(apUp).toHaveBeenCalledTimes(1)
+  })
 })

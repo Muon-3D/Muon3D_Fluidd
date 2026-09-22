@@ -332,7 +332,6 @@ export default class HotspotManagerCard extends Vue {
   async confirmApply () {
     this.showChangeWarningDialog = false
     await this.applyChanges()
-    await this.auxApi.ap.apUpWifiApUpPost()
   }
 
   private auxApi = useAuxApi()
@@ -453,10 +452,9 @@ export default class HotspotManagerCard extends Vue {
       // on success, commit new “original” snapshot
       // this.original = { ...this.form }
       await this.fetchConfig() // re-fetch to get the latest config
-      if (this.deviceStatus?.state !== 'connected') {
-        // if we were connected, turn the hotspot on
-        await this.changeHotspotState()
-      }
+      // Re-activate once so NetworkManager applies the saved profile. This is
+      // also the only activation request when the hotspot was previously off.
+      await this.changeHotspotState(true)
     } catch (e) {
       console.error('Failed to apply hotspot config', e)
     }
