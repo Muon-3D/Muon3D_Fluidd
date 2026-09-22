@@ -1,6 +1,7 @@
 <template>
   <v-navigation-drawer
     v-model="open"
+    class="muon-nav-shell"
     :color="$vuetify.theme.currentTheme.drawer"
     :mini-variant="!showSubNavigation"
     :floating="!showSubNavigation"
@@ -15,21 +16,24 @@
         :color="$vuetify.theme.currentTheme.drawer"
         mini-variant
         :value="open"
-        class="pb-16 pb-sm-0"
+        class="muon-nav-rail pb-16 pb-sm-0"
       >
         <div
           v-if="isMobileViewport"
           :style="`height: ${$globals.HEADER_HEIGHT}px;`"
-          class="app-icon"
+          class="app-icon muon-mobile-brand"
         >
           <router-link to="/">
             <app-icon />
+            <span class="muon-mobile-brand-copy">
+              <strong>MUON</strong><small>OS</small>
+            </span>
           </router-link>
         </div>
 
         <div
           v-show="authenticated && socketConnected"
-          class="nav-items"
+          class="nav-items muon-nav-items"
         >
           <app-nav-item
             icon="$dash"
@@ -113,6 +117,13 @@
           </app-nav-item>
 
           <app-nav-item
+            icon="$printer3d"
+            to="/fleet"
+          >
+            Fleet preview
+          </app-nav-item>
+
+          <app-nav-item
             icon="$cog"
             to="/settings"
           >
@@ -167,6 +178,78 @@ export default class AppNavDrawer extends Mixins(StateMixin, BrowserMixin) {
     display: flex;
     justify-content: center;
     align-items: center;
+  }
+
+  .muon-nav-shell {
+    background: var(--m3d-surface-1) !important;
+    border-right: 1px solid var(--m3d-border) !important;
+    color: var(--m3d-text);
+  }
+
+  .muon-nav-rail {
+    background: var(--m3d-surface-1) !important;
+  }
+
+  .muon-mobile-brand {
+    border-bottom: 1px solid var(--m3d-border);
+  }
+
+  .muon-mobile-brand a {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .muon-mobile-brand-copy {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 3px;
+    color: var(--m3d-text);
+    font-family: var(--m3d-font-display);
+    font-size: var(--m3d-text-xs);
+    letter-spacing: 0.13em;
+  }
+
+  .muon-mobile-brand-copy strong {
+    font-weight: var(--m3d-weight-regular);
+  }
+
+  .muon-mobile-brand-copy small {
+    color: var(--m3d-accent);
+    font-size: 0.56rem;
+    font-weight: var(--m3d-weight-bold);
+  }
+
+  .muon-nav-items {
+    padding: 10px 8px;
+  }
+
+  :deep(.muon-nav-items .v-list-item) {
+    min-height: 48px;
+    margin: 3px 0;
+    border-radius: var(--m3d-radius-md);
+    color: var(--m3d-text-muted);
+  }
+
+  :deep(.muon-nav-items .v-list-item:hover) {
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text);
+  }
+
+  :deep(.muon-nav-items .v-list-item--active) {
+    background: var(--m3d-accent-soft);
+    color: var(--m3d-accent) !important;
+  }
+
+  :deep(.muon-nav-items .v-list-item__icon) {
+    margin: 12px 16px 12px 8px;
+  }
+
+  :deep(.muon-nav-items .v-list-item__title) {
+    font-size: 0.88rem;
+    font-weight: 620;
   }
 
   :deep(.v-navigation-drawer.no-subnav > .v-navigation-drawer__border) {
