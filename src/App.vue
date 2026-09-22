@@ -1,26 +1,33 @@
 <template>
-  <v-app v-if="loading" />
+  <v-app v-if="loading && !managedConsoleRoute" />
   <v-app
     v-else
-    class="fluidd"
+    class="fluidd muon-shell"
     :class="{ 'no-pointer-events': dragState }"
   >
-    <app-tools-drawer v-model="toolsdrawer" />
-    <app-nav-drawer v-model="navdrawer" />
+    <app-tools-drawer
+      v-if="!managedConsoleRoute"
+      v-model="toolsdrawer"
+    />
+    <app-nav-drawer
+      v-if="!managedConsoleRoute"
+      v-model="navdrawer"
+    />
 
     <inline-svg
-      v-if="showBackgroundLogo && !isMobileViewport"
+      v-if="!managedConsoleRoute && showBackgroundLogo && !isMobileViewport"
       :src="logoSrc"
-      class="background-logo"
+      class="muon-background-logo"
     />
 
     <app-bar
+      v-if="!managedConsoleRoute"
       @toolsdrawer="handleToolsDrawerChange"
       @navdrawer="handleNavDrawerChange"
     />
 
     <flash-message
-      v-if="flashMessageState"
+      v-if="!managedConsoleRoute && flashMessageState"
       v-model="flashMessageState.open"
       :text="flashMessageState.text"
       :type="flashMessageState.type"
@@ -28,13 +35,13 @@
     />
 
     <v-btn
-      v-if="isMobileViewport && authenticated && socketConnected"
+      v-if="!managedConsoleRoute && isMobileViewport && authenticated && socketConnected"
       x-small
       fab
       fixed
       bottom
       left
-      class="ml-2 mb-2"
+      class="mobile-estop ml-2 mb-2"
       color="error"
       style="z-index: 2000"
       @click="emergencyStop()"
@@ -42,7 +49,10 @@
       <v-icon>$estop</v-icon>
     </v-btn>
 
-    <v-main :style="customBackgroundImageStyle">
+    <v-main
+      class="muon-main"
+      :style="customBackgroundImageStyle"
+    >
       <!-- <pre>authenticated {{ authenticated }}, socketConnected {{ socketConnected }}, apiConnected {{ apiConnected }}</pre> -->
       <v-container
         fluid
@@ -50,13 +60,14 @@
           'fill-height': $route.meta?.fillHeight ?? false,
           [['single', 'double', 'triple', 'quad'][columnCount - 1]]: true
         }"
-        class="constrained-width pa-2 pa-sm-4"
+        class="constrained-width muon-content pa-2 pa-sm-4"
       >
         <v-row
           v-if="
             (socketConnected && apiConnected) &&
               (!klippyReady || hasWarnings) &&
               !inLayout &&
+              !managedConsoleRoute &&
               $route.path !== '/login'
           "
         >
@@ -67,7 +78,8 @@
 
         <router-view
           v-if="
-            (socketConnected && apiConnected) ||
+            managedConsoleRoute ||
+              (socketConnected && apiConnected) ||
               (!authenticated && apiConnected)
           "
         />
@@ -77,20 +89,26 @@
 
       <socket-disconnected
         v-if="
-          (!socketConnected && !apiConnected) ||
-            (!socketConnected && authenticated)"
+          !managedConsoleRoute && (
+            (!socketConnected && !apiConnected) ||
+            (!socketConnected && authenticated)
+          )
+        "
       />
 
-      <file-system-download-dialog />
-      <updating-dialog />
-      <spool-selection-dialog />
-      <action-command-prompt-dialog />
-      <keyboard-shortcuts-dialog />
+      <template v-if="!managedConsoleRoute">
+        <file-system-download-dialog />
+        <updating-dialog />
+        <spool-selection-dialog />
+        <action-command-prompt-dialog />
+        <keyboard-shortcuts-dialog />
+      </template>
     </v-main>
 
-    <app-footer />
+    <app-footer v-if="!managedConsoleRoute" />
 
     <app-drag-overlay
+      v-if="!managedConsoleRoute"
       v-model="dragState"
       :message="$t('app.file_system.overlay.drag_files_folders_upload')"
       icon="$fileUpload"
@@ -113,6 +131,7 @@ import type { ThemeConfig } from '@/store/config/types'
 import ActionCommandPromptDialog from './components/common/ActionCommandPromptDialog.vue'
 import KeyboardShortcutsDialog from './components/common/KeyboardShortcutsDialog.vue'
 import { eventTargetIsContentEditable, keyboardEventToKeyboardShortcut } from './util/event-helpers'
+import { isManagedConsolePath } from '@/router/managedPath'
 
 @Component<App>({
   metaInfo () {
@@ -171,6 +190,10 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
     return (this.$store.state.config.layoutMode)
   }
 
+  get managedConsoleRoute (): boolean {
+    return isManagedConsolePath(this.$route.path)
+  }
+
   get columnCount (): number {
     return this.$store.state.config.containerColumnCount as number
   }
@@ -189,6 +212,10 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
   }
 
   get pageTitle () {
+    if (this.managedConsoleRoute) {
+      return `Muon | ${this.$route.name ?? 'Managed preview'}`
+    }
+
     const instanceName = this.$store.state.config.uiSettings.general.instanceName || ''
     const pageName = this.$route.name
 
@@ -200,6 +227,8 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
   }
 
   get pageIcon (): LinkPropertyHref[] {
+    if (this.managedConsoleRoute) return []
+
     const iconDataUrl = this.printInProgressIconDataUrl || this.defaultIconDataUrl
 
     return [
@@ -484,13 +513,35 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
 </script>
 
 <style lang="scss" scoped>
-  .background-logo {
+  .muon-shell {
+    background: var(--m3d-bg);
+    color: var(--m3d-text);
+  }
+
+  .muon-main {
+    background:
+      radial-gradient(circle at 92% 0%, var(--m3d-accent-soft), transparent 34rem),
+      var(--m3d-bg);
+  }
+
+  .muon-content {
+    position: relative;
+    z-index: 1;
+  }
+
+  .mobile-estop {
+    min-width: 48px !important;
+    min-height: 48px !important;
+    box-shadow: var(--m3d-shadow-lg);
+  }
+
+  .muon-background-logo {
     pointer-events: none;
     position: fixed;
     width: 50%;
     height: auto;
     right: -10%;
     bottom: -20%;
-    opacity: 8%;
+    opacity: 0.08;
   }
 </style>
