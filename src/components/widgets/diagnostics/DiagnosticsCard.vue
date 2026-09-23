@@ -93,7 +93,7 @@ export default class DiagnosticsCard extends Mixins(BrowserMixin) {
       grid,
       color,
       textStyle: {
-        fontFamily: 'Roboto'
+        fontFamily: this.$globals.CHART_FONT_FAMILY
       },
       legend: {
         show: false

@@ -460,6 +460,9 @@ app:
       limits: Printer Limits
       macros: Macros
       metrics_explorer: Metrics Explorer
+      nav_machine: Machine
+      nav_print: Print
+      nav_system: System
       not_found: 404 Not Found
       other_files: Other Files
       pending_configuration_changes: Pending Configuration Changes

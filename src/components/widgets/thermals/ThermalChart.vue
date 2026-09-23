@@ -216,7 +216,7 @@ export default class ThermalChart extends Mixins(BrowserMixin) {
     const options = {
       grid,
       textStyle: {
-        fontFamily: 'Roboto'
+        fontFamily: this.$globals.CHART_FONT_FAMILY
       },
       color,
       legend: {

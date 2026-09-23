@@ -101,9 +101,18 @@ export const actions: ActionTree<ConfigState, RootState> = {
   async onThemeChange (_, payload: ThemeConfig) {
     const vuetifyTheme = vuetify.framework.theme
 
+    // A pale accent that reads well on a dark surface is illegible as text on
+    // a white one, so the light theme uses a darkened copy of the same hue.
+    let primary = new TinyColor(payload.color)
+    if (!payload.isDark) {
+      while (primary.getLuminance() > 0.2) {
+        primary = primary.darken(4)
+      }
+    }
+
     vuetifyTheme.dark = payload.isDark
-    vuetifyTheme.currentTheme.primary = payload.color
-    vuetifyTheme.currentTheme['primary-offset'] = new TinyColor(payload.color)
+    vuetifyTheme.currentTheme.primary = primary.toHexString()
+    vuetifyTheme.currentTheme['primary-offset'] = primary.clone()
       .desaturate(5)
       .darken(10)
       .toHexString()
