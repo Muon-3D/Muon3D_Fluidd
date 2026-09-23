@@ -25,7 +25,7 @@ import { InlineSvgPlugin } from 'vue-inline-svg'
 // Init.
 import { appInit } from './init'
 import { cloudState, initCloud } from './services/muon-cloud/state'
-import { activateCloudPrinter } from './services/muon-cloud/activate'
+import { activateCloudPrinter, forgetManagedInstance } from './services/muon-cloud/activate'
 import type { InitConfig } from './store/config/types'
 
 // Import plugins
@@ -63,6 +63,10 @@ Vue.use(HttpClientPlugin, {
 
 // import { AuxClientPlugin } from '@/plugins/auxClient'
 // Vue.use(AuxClientPlugin, { store })
+
+// A cloud printer is selected through a placeholder API address that Fluidd
+// records as an instance. It must never be the instance Fluidd starts on.
+forgetManagedInstance()
 
 appInit()
   .then((config: InitConfig) => {
