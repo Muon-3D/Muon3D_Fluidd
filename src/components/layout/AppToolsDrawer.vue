@@ -41,7 +41,7 @@ export default class AppToolsDrawer extends Mixins(StateMixin) {
   }
 
   get instanceName () {
-    return this.$store.state.config.uiSettings.general.instanceName
+    return this.$store.getters['config/getDisplayName'] as string
   }
 
   get serverInfo () {

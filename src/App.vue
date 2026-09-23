@@ -216,7 +216,7 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
       return `Muon | ${this.$route.name ?? 'Managed preview'}`
     }
 
-    const instanceName = this.$store.state.config.uiSettings.general.instanceName || ''
+    const instanceName = this.$store.getters['config/getDisplayName'] as string
     const pageName = this.$route.name
 
     if (this.printerPrinting) {
