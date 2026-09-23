@@ -20,9 +20,11 @@
             cols="auto"
             align-self="center"
           >
-            <app-arc-progress
-              v-if="roundedStyle"
+            <app-ring-progress
+              v-if="glassStyle"
               :value="estimates.progress"
+              :size="112"
+              :width="12"
             />
             <v-progress-circular
               v-else
@@ -76,6 +78,7 @@
                 (progressVisible && $vuetify.breakpoint.mdAndDown)
             "
             no-gutters
+            class="status-tab__head"
           >
             <v-col>
               <status-label
@@ -105,6 +108,7 @@
           <v-row
             v-if="printerPrinting"
             no-gutters
+            class="status-tab__stats"
           >
             <v-col
               cols="12"
@@ -307,8 +311,8 @@ export default class StatusTab extends Mixins(StateMixin, FilesMixin, ToolheadMi
     return this.$store.state.config.uiSettings.general.printInProgressLayout as PrintInProgressLayout
   }
 
-  get roundedStyle (): boolean {
-    return this.$store.state.config.uiSettings.theme.style === 'rounded'
+  get glassStyle (): boolean {
+    return this.$store.getters['config/getUiStyle'] === 'glass'
   }
 
   /**

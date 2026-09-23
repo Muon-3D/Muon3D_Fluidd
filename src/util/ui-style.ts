@@ -2,14 +2,14 @@ import type { UiStyle } from '@/store/config/types'
 
 export const DEFAULT_UI_STYLE: UiStyle = 'flat'
 
-export const UI_STYLES: readonly UiStyle[] = ['flat', 'rounded']
+export const UI_STYLES: readonly UiStyle[] = ['flat', 'glass']
 
 const STORAGE_KEY = 'muon.uiStyle'
 
 export const isUiStyle = (value: unknown): value is UiStyle => UI_STYLES.includes(value as UiStyle)
 
 // The style is an attribute on <html> rather than a class on v-app, so the
-// rounded token layer also reaches the page background and every overlay
+// glass token layer also reaches the page background and every overlay
 // Vuetify detaches from the component that opened it.
 export const applyUiStyle = (style: unknown) => {
   const value = isUiStyle(style) ? style : DEFAULT_UI_STYLE
@@ -24,8 +24,9 @@ export const applyUiStyle = (style: unknown) => {
 }
 
 // The sign-in page renders before the printer's saved settings can be read,
-// so it uses the last style this browser applied.
-export const restoreUiStyle = () => {
+// so it uses the last style this browser applied. The caller puts the result
+// in the store, so components and stylesheet agree until settings load.
+export const restoreUiStyle = (): UiStyle => {
   let value: string | null = null
 
   try {
@@ -34,5 +35,9 @@ export const restoreUiStyle = () => {
     // Fall through to the default.
   }
 
-  document.documentElement.dataset.m3dStyle = isUiStyle(value) ? value : DEFAULT_UI_STYLE
+  const style = isUiStyle(value) ? value : DEFAULT_UI_STYLE
+
+  document.documentElement.dataset.m3dStyle = style
+
+  return style
 }

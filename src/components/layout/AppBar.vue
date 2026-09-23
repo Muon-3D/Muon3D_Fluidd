@@ -2,13 +2,13 @@
   <v-app-bar
     app
     class="muon-app-bar"
-    clipped-left
+    :clipped-left="!glass"
     extension-height="46"
     :color="$vuetify.theme.currentTheme.appbar"
     :height="$globals.HEADER_HEIGHT"
   >
     <router-link
-      v-if="!isMobileViewport"
+      v-if="!isMobileViewport && !glass"
       to="/"
       class="muon-brand"
       :class="{ 'muon-brand--compact': navRail }"
@@ -19,7 +19,7 @@
 
     <div class="toolbar-title">
       <v-btn
-        v-if="isMobileViewport"
+        v-if="isMobileViewport && !glass"
         icon
         class="mobile-nav-button"
         @click="$emit('navdrawer')"
@@ -27,7 +27,25 @@
         <v-icon>$menuAlt</v-icon>
       </v-btn>
 
-      <v-toolbar-title class="printer-title">
+      <!-- The glass style names the page, with the printer and its state under it. -->
+      <v-toolbar-title
+        v-if="glass"
+        class="glass-title"
+      >
+        <span class="glass-title__main">{{ pageTitle }}</span>
+        <span
+          class="glass-title__sub printer-status"
+          :class="`printer-status--${statusTone}`"
+        >
+          <span class="printer-status__dot" />
+          <span class="printer-status__text">{{ pageSubtitle }}</span>
+        </span>
+      </v-toolbar-title>
+
+      <v-toolbar-title
+        v-else
+        class="printer-title"
+      >
         <router-link
           to="/"
           class="printer-title__name"
@@ -97,60 +115,62 @@
         />
       </div>
 
-      <div v-if="authenticated && socketConnected && topNavPowerToggle">
-        <v-tooltip bottom>
-          <template #activator="{ on, attrs }">
-            <app-btn
-              fab
-              small
-              :elevation="0"
-              class="toolbar-action mr-1 bg-transparent"
-              color="transparent"
-              :disabled="topNavPowerDeviceDisabled"
-              v-bind="attrs"
-              v-on="on"
-              @click="handlePowerToggle()"
-            >
-              <v-icon>
-                {{ topNavPowerDeviceOn ? '$powerOn' : '$powerOff' }}
-              </v-icon>
-            </app-btn>
-          </template>
-          <span>{{ $t(`app.general.label.turn_device_${topNavPowerDeviceOn ? 'off' : 'on'}`, { device: topNavPowerToggle.name }) }}</span>
-        </v-tooltip>
-      </div>
+      <div class="muon-toolbar-group">
+        <div v-if="authenticated && socketConnected && topNavPowerToggle">
+          <v-tooltip bottom>
+            <template #activator="{ on, attrs }">
+              <app-btn
+                fab
+                small
+                :elevation="0"
+                class="toolbar-action mr-1 bg-transparent"
+                color="transparent"
+                :disabled="topNavPowerDeviceDisabled"
+                v-bind="attrs"
+                v-on="on"
+                @click="handlePowerToggle()"
+              >
+                <v-icon>
+                  {{ topNavPowerDeviceOn ? '$powerOn' : '$powerOff' }}
+                </v-icon>
+              </app-btn>
+            </template>
+            <span>{{ $t(`app.general.label.turn_device_${topNavPowerDeviceOn ? 'off' : 'on'}`, { device: topNavPowerToggle.name }) }}</span>
+          </v-tooltip>
+        </div>
 
-      <div
-        v-if="authenticated && socketConnected"
-        class="toolbar-action mr-1"
-      >
-        <app-notification-menu />
-      </div>
+        <div
+          v-if="authenticated && socketConnected"
+          class="toolbar-action mr-1"
+        >
+          <app-notification-menu />
+        </div>
 
-      <div
-        v-if="supportsAuth && authenticated"
-        class="toolbar-action mr-1"
-      >
-        <app-user-menu @change-password="userPasswordDialogOpen = true" />
-      </div>
+        <div
+          v-if="supportsAuth && authenticated"
+          class="toolbar-action mr-1"
+        >
+          <app-user-menu @change-password="userPasswordDialogOpen = true" />
+        </div>
 
-      <div
-        v-if="supportsAuth && authenticated && $vuetify.breakpoint.lgAndUp"
-        class="toolbar-action mr-1"
-      >
-        <app-wifi-button />
-      </div>
+        <div
+          v-if="supportsAuth && authenticated && $vuetify.breakpoint.lgAndUp"
+          class="toolbar-action mr-1"
+        >
+          <app-wifi-button />
+        </div>
 
-      <app-btn
-        fab
-        small
-        :elevation="0"
-        class="toolbar-action mr-1"
-        color="transparent"
-        @click="$emit('toolsdrawer')"
-      >
-        <v-icon>$menu</v-icon>
-      </app-btn>
+        <app-btn
+          fab
+          small
+          :elevation="0"
+          class="toolbar-action mr-1"
+          color="transparent"
+          @click="$emit('toolsdrawer')"
+        >
+          <v-icon>$menu</v-icon>
+        </app-btn>
+      </div>
     </div>
 
     <template
@@ -217,7 +237,7 @@ import PendingChangesDialog from '@/components/settings/PendingChangesDialog.vue
 import AppSaveConfigAndRestartBtn from './AppSaveConfigAndRestartBtn.vue'
 import AppUploadAndPrintBtn from './AppUploadAndPrintBtn.vue'
 import { defaultState } from '@/store/layout/state'
-import StateMixin from '@/mixins/state'
+import PrinterStatusMixin from '@/mixins/printer-status'
 import ServicesMixin from '@/mixins/services'
 import FilesMixin from '@/mixins/files'
 import BrowserMixin from '@/mixins/browser'
@@ -235,7 +255,7 @@ import AppWifiButton from '@/components/ui/AppWifiButton.vue'
     AppWifiButton
   }
 })
-export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin, BrowserMixin) {
+export default class AppBar extends Mixins(PrinterStatusMixin, ServicesMixin, FilesMixin, BrowserMixin) {
   menu = false
   userPasswordDialogOpen = false
   pendingChangesDialogOpen = false
@@ -256,45 +276,9 @@ export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin
     return !this.isMobileViewport && this.$vuetify.breakpoint.mdAndDown
   }
 
-  // "fluidd" is the stock default and names nothing; the hostname does.
-  get displayName (): string {
-    const name = (this.instanceName ?? '').trim()
-    const hostname = this.$store.state.printer.printer.info?.hostname as string | undefined
-
-    return (name && name !== this.$globals.APP_NAME) ? name : (hostname || name)
-  }
-
-  get printProgress (): number {
-    return Math.floor((this.$store.getters['printer/getPrintProgress'] as number) * 100)
-  }
-
-  get statusTone (): 'ok' | 'active' | 'warn' | 'fault' | 'off' {
-    if (!this.socketConnected) return 'off'
-    if (!this.klippyReady) {
-      return ['error', 'shutdown'].includes(this.klippyState) ? 'fault' : 'warn'
-    }
-
-    switch (this.printerState.toLowerCase()) {
-      case 'printing':
-      case 'busy':
-        return 'active'
-      case 'paused':
-        return 'warn'
-      case 'error':
-      case 'cancelled':
-        return 'fault'
-      default:
-        return 'ok'
-    }
-  }
-
-  get statusText (): string {
-    if (!this.socketConnected) return 'Offline'
-    if (!this.klippyReady) return `Klipper ${this.klippyState || 'offline'}`
-
-    const state = this.$filters.prettyCase(this.printerState)
-
-    return this.printerPrinting ? `${state} · ${this.printProgress}%` : state
+  // The glass toolbar starts beside the sidebar, which carries the wordmark.
+  get glass (): boolean {
+    return this.$store.getters['config/getUiStyle'] === 'glass'
   }
 
   get currentFile () {
@@ -547,6 +531,11 @@ export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin
     align-items: center;
     gap: 8px;
     padding: 0 20px;
+  }
+
+  // Only the glass style draws the icon actions as one group.
+  .muon-toolbar-group {
+    display: contents;
   }
 
   .toolbar-supplemental {

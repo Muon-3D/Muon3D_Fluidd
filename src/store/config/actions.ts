@@ -7,7 +7,7 @@ import { loadLocaleMessagesAsync, getStartingLocale } from '@/plugins/i18n'
 import { Waits } from '@/globals'
 import type { AppTableHeader } from '@/types'
 import type { FileFilterType } from '../files/types'
-import { TinyColor } from '@ctrl/tinycolor'
+import { TinyColor, readability } from '@ctrl/tinycolor'
 import { consola } from 'consola'
 import { applyUiStyle } from '@/util/ui-style'
 
@@ -119,6 +119,13 @@ export const actions: ActionTree<ConfigState, RootState> = {
       .toHexString()
     vuetifyTheme.themes.dark.logo = payload.logo.light
     vuetifyTheme.themes.light.logo = payload.logo.dark
+
+    // Text on a control filled with the accent (the glass style's prominent
+    // buttons): white where it reads, otherwise black.
+    document.documentElement.style.setProperty(
+      '--m3d-on-accent',
+      readability(primary, '#ffffff') >= 3 ? '#ffffff' : '#000000'
+    )
 
     applyUiStyle(payload.style)
   },

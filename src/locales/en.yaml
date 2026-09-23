@@ -177,6 +177,7 @@ app:
       load_all: Load all
       login: Login
       logout: Logout
+      more: More
       more_information: More information
       multiply: Multiply
       pause: Pause
@@ -651,7 +652,7 @@ app:
       icon: Icon
       interface_style: Interface style
       interface_style_flat: Flat
-      interface_style_rounded: Rounded
+      interface_style_glass: Glass
       invert_x_control: Invert X control
       invert_y_control: Invert Y control
       invert_z_control: Invert Z control

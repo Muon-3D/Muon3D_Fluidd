@@ -63,7 +63,7 @@ Vue.use(HttpClientPlugin, {
 // import { AuxClientPlugin } from '@/plugins/auxClient'
 // Vue.use(AuxClientPlugin, { store })
 
-restoreUiStyle()
+store.commit('config/setRestoredUiStyle', restoreUiStyle())
 
 appInit()
   .then((config: InitConfig) => {

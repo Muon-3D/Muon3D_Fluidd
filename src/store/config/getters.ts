@@ -1,5 +1,5 @@
 import type { GetterTree } from 'vuex'
-import type { ConfigState, TemperaturePreset } from './types'
+import type { ConfigState, TemperaturePreset, UiStyle } from './types'
 import type { RootState } from '../types'
 import type { Heater, Fan } from '../printer/types'
 import type { AppTableHeader } from '@/types'
@@ -31,10 +31,14 @@ export const getters: GetterTree<ConfigState, RootState> = {
     return state.hostConfig
   },
 
+  getUiStyle: (state): UiStyle => {
+    return state.uiSettings.theme.style
+  },
+
   // Charts measure and draw text themselves, so they are told the UI font.
   getChartFontFamily: (state): string => {
-    return state.uiSettings.theme.style === 'rounded'
-      ? Globals.CHART_FONT_FAMILY_ROUNDED
+    return state.uiSettings.theme.style === 'glass'
+      ? Globals.CHART_FONT_FAMILY_GLASS
       : Globals.CHART_FONT_FAMILY
   },
 

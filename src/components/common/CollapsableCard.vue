@@ -4,6 +4,7 @@
     :rounded="rounded"
     :loading="isLoading"
     :color="color"
+    :data-card="cardId"
   >
     <v-card-title
       class="collapsable-card-title card-heading"
@@ -225,6 +226,12 @@ export default class CollapsableCard extends Vue {
    */
   baseCardClasses = { 'collapsable-card': true }
   baseContentClasses = { 'overflow-hidden': true }
+
+  // The card's name in its layout (e.g. toolhead-card), so a style can tell
+  // the cards apart.
+  get cardId (): string | undefined {
+    return this.layoutPath?.split('.').pop()
+  }
 
   get _cardClasses () {
     // If user defined, format to an object based on the input.

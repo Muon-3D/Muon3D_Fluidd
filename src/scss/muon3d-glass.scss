@@ -1,0 +1,1588 @@
+/*
+ * Glass interface style: an Apple-style design built after iOS 27 and macOS
+ * 27. Chosen in Settings > Theme and applied as <html data-m3d-style="glass">
+ * by src/util/ui-style.ts; nothing here matches while the flat style is on.
+ *
+ * It is layered on muon3d.scss. Its tokens replace that file's values, and
+ * the rules below restyle what a token cannot. The rules it keeps:
+ *
+ *  - Surfaces are neutral black, white and grey, separated by tone and space,
+ *    never by borders. Colour is an accent: Apple's system colours on the
+ *    sidebar tiles and card glyphs, the theme's accent on controls, and red
+ *    only for the E-STOP and faults.
+ *  - Glass is only for chrome that floats over content: the toolbar (once
+ *    content scrolls under it), menus, tooltips, the phone tab bar and the
+ *    drawers. Cards and dialogs are opaque.
+ *  - Glass is painted on ::before where the element holds fixed children,
+ *    because backdrop-filter makes an element their containing block.
+ *  - Radii nest: an inset of P inside a radius of R uses R - P.
+ *  - Scrim opacity is never set here. Vuetify keeps inactive overlays mounted
+ *    at opacity 0.
+ */
+
+@import '@fontsource-variable/inter/opsz.css';
+
+$glass: "html[data-m3d-style='glass']";
+
+/* --------------------------------------------------------------- tokens -- */
+
+#{$glass},
+#{$glass} .v-application {
+  // SF on Apple devices, the bundled Inter elsewhere (the printer is often
+  // offline). Inter's optical sizes stand in for SF Text and SF Display.
+  // Keep --m3d-font-sans in step with Globals.CHART_FONT_FAMILY_GLASS.
+  --m3d-font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter Variable', 'Helvetica Neue', Arial, sans-serif;
+  --m3d-font-title: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Inter Variable', 'Helvetica Neue', Arial, sans-serif;
+  --m3d-font-rounded: ui-rounded, 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'Inter Variable', sans-serif;
+  --m3d-font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  // --m3d-font-display stays Krona One: it is the wordmark's.
+
+  --m3d-radius-xs: 6px;
+  --m3d-radius-sm: 10px;     // fields, list rows
+  --m3d-radius-float: 14px;  // menus, alerts
+  --m3d-radius-md: 22px;     // cards
+  --m3d-radius-lg: 28px;     // dialogs, the sign-in card
+  --m3d-radius-xl: 28px;
+  --m3d-radius-2xl: 28px;
+  --m3d-radius-pill: 999px;
+
+  --m3d-duration-fast: 160ms;
+  --m3d-duration-base: 340ms;
+  --m3d-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  // A spring that overshoots by a few percent and settles.
+  --m3d-spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+
+  --m3d-tracking-caps: 0;
+  --m3d-tracking-eyebrow: 0;
+
+  --m3d-glass-filter: blur(28px) saturate(190%);
+  --m3d-accent-soft: color-mix(in srgb, var(--m3d-accent) 16%, transparent);
+  --m3d-focus-ring: color-mix(in srgb, var(--m3d-accent) 55%, transparent);
+  --m3d-ring-track: color-mix(in srgb, var(--m3d-accent) 20%, transparent);
+  // White text on it reads at 4.7:1.
+  --m3d-estop: #e0241f;
+}
+
+// Dark: Apple's system colours and grouped backgrounds.
+#{$glass},
+#{$glass} .v-application.theme--dark {
+  --m3d-sys-red: rgb(255 66 69);
+  --m3d-sys-orange: rgb(255 146 48);
+  --m3d-sys-yellow: rgb(255 214 0);
+  --m3d-sys-green: rgb(48 209 88);
+  --m3d-sys-mint: rgb(0 218 195);
+  --m3d-sys-teal: rgb(0 210 224);
+  --m3d-sys-cyan: rgb(60 211 254);
+  --m3d-sys-blue: rgb(0 145 255);
+  --m3d-sys-indigo: rgb(109 124 255);
+  --m3d-sys-purple: rgb(219 52 242);
+  --m3d-sys-pink: rgb(255 55 95);
+  --m3d-sys-brown: rgb(183 138 102);
+  --m3d-sys-gray: rgb(142 142 147);
+  --m3d-sys-graphite: rgb(99 99 102);
+
+  --m3d-bg: #000;
+  --m3d-surface: #1c1c1e;
+  --m3d-surface-2: #2c2c2e;
+  --m3d-inset: rgb(118 118 128 / 24%);
+  --m3d-raised: #2c2c2e;
+  --m3d-sidebar: rgb(28 28 30 / 78%);
+  --m3d-fill: rgb(118 118 128 / 24%);
+  --m3d-fill-2: rgb(118 118 128 / 14%);
+  --m3d-fill-strong: rgb(118 118 128 / 36%);
+  --m3d-border: rgb(84 84 88 / 48%);
+  --m3d-border-strong: rgb(84 84 88 / 80%);
+  --m3d-text: #f5f5f7;
+  --m3d-text-muted: #98989d;
+  --m3d-text-subtle: #636366;
+  --m3d-hover: rgb(255 255 255 / 6%);
+  --m3d-success: var(--m3d-sys-green);
+  --m3d-warning: var(--m3d-sys-orange);
+  --m3d-danger: var(--m3d-sys-red);
+  --m3d-overlay: #000;
+  --m3d-segment: #636366;
+  --m3d-switch-off: rgb(120 120 128 / 32%);
+
+  --m3d-glass: rgb(44 44 48 / 56%);
+  --m3d-glass-thick: rgb(38 38 42 / 82%);
+  // iOS 27 glass: a bright specular rim inside, a darkened edge outside.
+  --m3d-glass-rim: inset 0 0.5px 0 rgb(255 255 255 / 24%), inset 0 0 0 0.5px rgb(255 255 255 / 10%);
+  --m3d-glass-edge: 0 0 0 0.5px rgb(0 0 0 / 70%);
+  --m3d-shadow-float: 0 18px 44px rgb(0 0 0 / 50%), 0 2px 8px rgb(0 0 0 / 30%);
+  --m3d-shadow-control: 0 3px 8px rgb(0 0 0 / 28%), 0 0.5px 1.5px rgb(0 0 0 / 36%);
+}
+
+#{$glass} .v-application.theme--light {
+  --m3d-sys-red: rgb(255 56 60);
+  --m3d-sys-orange: rgb(255 141 40);
+  --m3d-sys-yellow: rgb(255 204 0);
+  --m3d-sys-green: rgb(52 199 89);
+  --m3d-sys-mint: rgb(0 200 179);
+  --m3d-sys-teal: rgb(0 195 208);
+  --m3d-sys-cyan: rgb(0 192 232);
+  --m3d-sys-blue: rgb(0 136 255);
+  --m3d-sys-indigo: rgb(97 85 245);
+  --m3d-sys-purple: rgb(203 48 224);
+  --m3d-sys-pink: rgb(255 45 85);
+  --m3d-sys-brown: rgb(172 127 94);
+  --m3d-sys-gray: rgb(142 142 147);
+  --m3d-sys-graphite: rgb(72 72 74);
+
+  --m3d-bg: #f2f2f7;
+  --m3d-surface: #fff;
+  --m3d-surface-2: #f2f2f7;
+  --m3d-inset: rgb(118 118 128 / 12%);
+  --m3d-raised: #fff;
+  --m3d-sidebar: rgb(230 230 235 / 80%);
+  --m3d-fill: rgb(118 118 128 / 12%);
+  --m3d-fill-2: rgb(118 118 128 / 7%);
+  --m3d-fill-strong: rgb(118 118 128 / 20%);
+  --m3d-border: rgb(60 60 67 / 13%);
+  --m3d-border-strong: rgb(60 60 67 / 24%);
+  --m3d-text: #1d1d1f;
+  --m3d-text-muted: #6e6e73;
+  --m3d-text-subtle: #aeaeb2;
+  --m3d-hover: rgb(0 0 0 / 4%);
+  // The bright system colours are for fills and glyphs; as text on white
+  // they need the darker, accessible variants.
+  --m3d-success: rgb(0 137 50);
+  --m3d-warning: rgb(201 52 0);
+  --m3d-danger: rgb(215 0 21);
+  --m3d-overlay: #000;
+  --m3d-segment: #fff;
+  --m3d-switch-off: rgb(120 120 128 / 16%);
+
+  --m3d-glass: rgb(255 255 255 / 62%);
+  --m3d-glass-thick: rgb(252 252 253 / 86%);
+  --m3d-glass-rim: inset 0 0.5px 0 rgb(255 255 255 / 95%), inset 0 0 0 0.5px rgb(255 255 255 / 55%);
+  --m3d-glass-edge: 0 0 0 0.5px rgb(0 0 0 / 9%);
+  --m3d-shadow-float: 0 14px 36px rgb(0 0 0 / 12%), 0 2px 6px rgb(0 0 0 / 6%);
+  --m3d-shadow-control: 0 3px 8px rgb(0 0 0 / 12%), 0 0.5px 1.5px rgb(0 0 0 / 14%);
+}
+
+// The page behind the app (overscroll, the sign-in page's edges) follows the
+// theme too; the flat style leaves it dark.
+#{$glass}:has(.v-application.theme--light) {
+  --m3d-bg: #f2f2f7;
+}
+
+// Without backdrop-filter, glass would only be a dimmer surface.
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #{$glass},
+  #{$glass} .v-application.theme--dark,
+  #{$glass} .v-application.theme--light {
+    --m3d-glass: var(--m3d-surface);
+    --m3d-glass-thick: var(--m3d-raised);
+    --m3d-sidebar: var(--m3d-surface);
+  }
+}
+
+// Reduce Transparency: every glass surface turns opaque, as on Apple devices.
+@media (prefers-reduced-transparency: reduce) {
+  #{$glass},
+  #{$glass} .v-application.theme--dark,
+  #{$glass} .v-application.theme--light {
+    --m3d-glass: var(--m3d-surface);
+    --m3d-glass-thick: var(--m3d-raised);
+    --m3d-sidebar: var(--m3d-surface);
+    --m3d-glass-filter: none;
+  }
+}
+
+// Increase Contrast: separators and glass edges get firmer.
+@media (prefers-contrast: more) {
+  #{$glass},
+  #{$glass} .v-application.theme--dark,
+  #{$glass} .v-application.theme--light {
+    --m3d-border: var(--m3d-border-strong);
+    --m3d-glass-edge: 0 0 0 1px var(--m3d-border-strong);
+    --m3d-text-muted: var(--m3d-text);
+  }
+}
+
+#{$glass} {
+  scrollbar-color: color-mix(in srgb, var(--m3d-text) 28%, transparent) transparent;
+
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: var(--m3d-radius-pill);
+    background-clip: padding-box;
+    background-color: color-mix(in srgb, var(--m3d-text) 28%, transparent);
+  }
+
+  /* ------------------------------------------------------------- type -- */
+
+  .v-application {
+    font-optical-sizing: auto;
+
+    // Vuetify's typography classes load after this file with the compile-time
+    // font; the flat style never notices because that font is its own.
+    [class*='text-'] {
+      font-family: var(--m3d-font-sans) !important;
+    }
+
+    .text-body-1,
+    .text-body-2,
+    .text-subtitle-1,
+    .text-subtitle-2,
+    .text-caption,
+    .text-overline {
+      letter-spacing: 0 !important;
+    }
+
+    ::selection {
+      background-color: color-mix(in srgb, var(--m3d-accent) 32%, transparent);
+    }
+
+    :focus-visible {
+      outline: 3px solid var(--m3d-focus-ring);
+      outline-offset: 2px;
+    }
+
+    // Vuetify focuses a whole dialog, menu or drawer when it opens; a ring
+    // around an entire sheet marks nothing.
+    .v-dialog:focus-visible,
+    .v-menu__content:focus-visible,
+    .v-navigation-drawer:focus-visible {
+      outline: none;
+    }
+
+    // A focused field is marked by the ring around its well, not the text box.
+    .v-input input:focus-visible,
+    .v-input textarea:focus-visible {
+      outline: none;
+    }
+
+    kbd {
+      border: 0;
+      border-radius: var(--m3d-radius-xs);
+      background: var(--m3d-fill) !important;
+      font-family: var(--m3d-font-sans) !important;
+      font-weight: 500;
+    }
+  }
+
+  .v-subheader {
+    height: auto;
+    padding: 22px 20px 8px;
+    color: var(--m3d-text-muted) !important;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .muon-wordmark {
+    color: var(--m3d-text-muted);
+    font-size: 0.75rem;
+    letter-spacing: 0.24em;
+  }
+
+  /* ---------------------------------------------------------- toolbar -- */
+
+  // The toolbar is clear over the resting page and turns to frosted glass
+  // once content scrolls under it (macOS 27's uniform toolbar).
+  .v-app-bar.v-toolbar.muon-app-bar {
+    border-bottom: 0 !important;
+    background-color: transparent !important;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background-color: var(--m3d-glass-thick);
+      -webkit-backdrop-filter: var(--m3d-glass-filter);
+      backdrop-filter: var(--m3d-glass-filter);
+      box-shadow: inset 0 -0.5px 0 var(--m3d-border);
+      opacity: 0;
+      transition: opacity var(--m3d-duration-base) var(--m3d-ease);
+      pointer-events: none;
+    }
+
+    .v-toolbar__content {
+      padding: 0 14px 0 24px;
+    }
+  }
+
+  .muon-shell--scrolled .v-app-bar.v-toolbar.muon-app-bar::before {
+    opacity: 1;
+  }
+
+  .muon-app-bar .toolbar-title {
+    padding: 0;
+  }
+
+  .glass-title {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  .glass-title__main {
+    overflow: hidden;
+    color: var(--m3d-text);
+    font-family: var(--m3d-font-title);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: -0.012em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .glass-title__sub.printer-status {
+    gap: 6px;
+    min-width: 0;
+    margin-top: 1px;
+    color: var(--m3d-text-muted);
+    font-family: var(--m3d-font-sans);
+    font-size: 0.75rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+
+    .printer-status__dot {
+      width: 7px;
+      height: 7px;
+    }
+
+    .printer-status__text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  // The toolbar's icon actions share one glass capsule, as on macOS 26/27.
+  .muon-toolbar-actions {
+    gap: 10px;
+  }
+
+  .muon-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--m3d-radius-pill);
+    background-color: var(--m3d-glass);
+    -webkit-backdrop-filter: var(--m3d-glass-filter);
+    backdrop-filter: var(--m3d-glass-filter);
+    box-shadow: var(--m3d-glass-rim), var(--m3d-glass-edge), 0 1px 3px rgb(0 0 0 / 6%);
+  }
+
+  .muon-toolbar-actions .v-btn.v-btn--fab.v-size--small,
+  .muon-toolbar-actions .v-btn.v-btn--icon {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+
+    .v-icon {
+      color: var(--m3d-text) !important;
+      font-size: 20px;
+    }
+  }
+
+  .muon-toolbar-actions > div > .v-btn.v-btn--fab,
+  .muon-toolbar-actions > div > .v-btn.v-btn--icon {
+    background-color: var(--m3d-glass) !important;
+    box-shadow: var(--m3d-glass-rim), var(--m3d-glass-edge) !important;
+  }
+
+  // The E-STOP sits at the trailing edge, where the pointer ends up.
+  .muon-toolbar-actions > div:has(.estop-action) {
+    order: 99;
+  }
+
+  // The E-STOP is stained glass: the one saturated control in the chrome.
+  .v-btn.estop-action {
+    height: 36px !important;
+    margin: 0 !important;
+    padding: 0 18px !important;
+    border: 0 !important;
+    border-radius: var(--m3d-radius-pill) !important;
+    background-color: var(--m3d-estop) !important;
+    box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 35%), inset 0 0 0 0.5px rgb(255 255 255 / 12%), 0 2px 8px color-mix(in srgb, var(--m3d-estop) 30%, transparent) !important;
+    color: #fff !important;
+    font-size: 0.875rem !important;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+
+    .v-icon {
+      color: inherit !important;
+    }
+
+    &:not(.v-btn--disabled):hover {
+      background-color: color-mix(in srgb, var(--m3d-estop) 88%, #000) !important;
+    }
+
+    // Disabled (Klipper not ready) it is a red tint with red text, so it
+    // still reads as the E-STOP in both themes.
+    &.v-btn--disabled {
+      background-color: color-mix(in srgb, var(--m3d-estop) 16%, transparent) !important;
+      box-shadow: none !important;
+      color: var(--m3d-danger) !important;
+    }
+  }
+
+  // On a phone the tab bar holds navigation and the E-STOP; the toolbar keeps
+  // the page title, centred, once the large title has scrolled under it.
+  @media (max-width: 599px) {
+    .v-app-bar.v-toolbar.muon-app-bar .v-toolbar__content {
+      padding: 0 10px;
+    }
+
+    .muon-app-bar .toolbar-title {
+      padding-left: 8px;
+    }
+
+    .muon-app-bar .glass-title {
+      opacity: 0;
+      transition: opacity var(--m3d-duration-fast) var(--m3d-ease);
+    }
+
+    .muon-shell--past-title .muon-app-bar .glass-title {
+      opacity: 1;
+    }
+
+    .glass-title__sub.printer-status {
+      display: none;
+    }
+  }
+
+  /* ---------------------------------------------------------- sidebar -- */
+
+  // Edge to edge and full height, as macOS 27 sidebars are, with icons on
+  // coloured tiles as in System Settings.
+  .v-navigation-drawer.muon-nav {
+    background-color: transparent !important;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background-color: var(--m3d-sidebar);
+      -webkit-backdrop-filter: var(--m3d-glass-filter);
+      backdrop-filter: var(--m3d-glass-filter);
+      pointer-events: none;
+    }
+
+    .v-navigation-drawer__border {
+      display: none;
+    }
+  }
+
+  .muon-nav__brand {
+    padding: 0 24px;
+    border-bottom: 0;
+  }
+
+  .muon-nav--rail .muon-nav__brand {
+    visibility: hidden;
+  }
+
+  .muon-nav__body {
+    padding: 0 10px 24px;
+  }
+
+  .muon-nav__label {
+    padding: 16px 10px 5px;
+    color: var(--m3d-text-muted);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .muon-nav__group + .muon-nav__group {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .muon-nav--rail .muon-nav__group + .muon-nav__group {
+    margin-top: 12px;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .muon-nav-item {
+    min-height: 34px;
+    margin: 1px 0;
+    padding: 0 8px;
+    border-radius: var(--m3d-radius-sm);
+    color: var(--m3d-text) !important;
+    font-weight: 400;
+    transition: background-color var(--m3d-duration-fast) var(--m3d-ease);
+
+    &:hover {
+      background-color: var(--m3d-fill-2);
+    }
+
+    .v-list-item__icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      min-width: 24px;
+      height: 24px;
+      margin: 0 10px 0 0;
+      border-radius: 6.5px;
+      background-color: var(--nav-tile, var(--m3d-sys-gray));
+      box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 25%);
+    }
+
+    .v-list-item__icon .v-icon {
+      color: #fff !important;
+      font-size: 16px;
+    }
+
+    .v-list-item__title {
+      font-size: 0.84375rem;
+    }
+  }
+
+  .muon-nav-item.muon-nav-item--active,
+  .muon-nav-item.v-list-item--active {
+    background-color: var(--m3d-fill);
+    box-shadow: none;
+    color: var(--m3d-text) !important;
+    font-weight: 600;
+
+    .v-list-item__icon .v-icon {
+      color: #fff !important;
+    }
+  }
+
+  .muon-nav--rail .muon-nav-item {
+    min-height: 44px;
+    margin: 2px 0;
+
+    .v-list-item__icon {
+      width: 30px;
+      min-width: 30px;
+      height: 30px;
+      margin: 0;
+      border-radius: 8px;
+    }
+
+    .v-list-item__icon .v-icon {
+      font-size: 19px;
+    }
+  }
+
+  .muon-nav-item__kbd {
+    background: transparent !important;
+  }
+
+  // Settings sections sit under the Settings row, aligned with its label.
+  .settings-nav {
+    margin: 2px 0 6px 34px;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .settings-nav__item {
+    border-radius: 8px;
+  }
+
+  /* -------------------------------------------------- floating drawers -- */
+
+  // A drawer opened over the page is a floating glass panel, inset from the
+  // window edge like an iPad sidebar or inspector. It opens below the
+  // toolbar, and the toolbar rises above the drawer's scrim, so the E-STOP
+  // stays in view and one click away while a drawer is open.
+  // On a phone the navigation drawer is not --temporary but --is-mobile; it
+  // floats the same way.
+  .v-application:has(.v-navigation-drawer--temporary.v-navigation-drawer--open) .v-app-bar.muon-app-bar,
+  .v-application:has(.v-navigation-drawer--is-mobile.v-navigation-drawer--open) .v-app-bar.muon-app-bar {
+    z-index: 8 !important;
+  }
+
+  .v-navigation-drawer.v-navigation-drawer--temporary,
+  .v-navigation-drawer.v-navigation-drawer--is-mobile {
+    top: 64px !important;
+    height: calc(100% - 72px) !important;
+    max-height: calc(100% - 72px) !important;
+    overflow: hidden;
+    border-radius: 26px;
+    background-color: transparent !important;
+    transition-timing-function: var(--m3d-spring) !important;
+    transition-duration: 420ms !important;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background-color: var(--m3d-glass-thick);
+      -webkit-backdrop-filter: var(--m3d-glass-filter);
+      backdrop-filter: var(--m3d-glass-filter);
+      pointer-events: none;
+    }
+
+    &:not(.v-navigation-drawer--right) {
+      left: 8px !important;
+    }
+
+    &.v-navigation-drawer--right {
+      right: 8px !important;
+      left: auto !important;
+    }
+
+    // Closed, it must clear the inset as well as its own width.
+    &.v-navigation-drawer--close:not(.v-navigation-drawer--right) {
+      transform: translateX(calc(-100% - 16px)) !important;
+    }
+
+    &.v-navigation-drawer--close.v-navigation-drawer--right {
+      transform: translateX(calc(100% + 16px)) !important;
+    }
+
+    // Only an open drawer floats; a closed one's shadow would bleed back in.
+    &.v-navigation-drawer--open {
+      box-shadow: var(--m3d-glass-rim), var(--m3d-glass-edge), var(--m3d-shadow-float) !important;
+    }
+
+    .v-navigation-drawer__border {
+      display: none;
+    }
+
+    .v-divider {
+      margin: 4px 16px;
+    }
+
+    .v-list {
+      padding: 8px;
+    }
+
+    .v-list-item {
+      min-height: 40px;
+      border-radius: 12px;
+    }
+
+    .v-subheader {
+      padding: 14px 16px 6px;
+    }
+  }
+
+  /* ------------------------------------------------------------ content -- */
+
+  .muon-content {
+    padding: 20px 24px 32px !important;
+  }
+
+  @media (max-width: 599px) {
+    .muon-content {
+      padding: 8px 12px 24px !important;
+    }
+  }
+
+  /* -------------------------------------------------------------- cards -- */
+
+  .v-card {
+    border: 0 !important;
+    border-radius: var(--m3d-radius-md) !important;
+    background-color: var(--m3d-surface) !important;
+  }
+
+  .v-card .v-card:not(.v-card--outlined) {
+    border-radius: 0 !important;
+    background-color: transparent !important;
+  }
+
+  .v-card.v-card--outlined .v-card--outlined,
+  .v-card .v-card.v-card--outlined {
+    border: 0 !important;
+    border-radius: var(--m3d-radius-float) !important;
+    background-color: var(--m3d-fill-2) !important;
+  }
+
+  .v-application .card-heading {
+    background-color: transparent !important;
+  }
+
+  // Vuetify paints its sheets from the flat style's compile-time palette.
+  // Here a sheet is the glass surface, and a toolbar inside a card or dialog
+  // shares that card's background.
+  .theme--dark.v-sheet,
+  .theme--light.v-sheet {
+    background-color: var(--m3d-surface);
+  }
+
+  .v-card .v-toolbar:not(.v-app-bar) {
+    background-color: transparent !important;
+  }
+
+  .v-card > .v-card__title,
+  .v-card > .v-card__subtitle,
+  .v-card > .v-card__text,
+  .v-card > .v-card__actions {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .v-card__title {
+    font-family: var(--m3d-font-title);
+    font-size: 1.0625rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  // Widget headers: a coloured glyph and a title, no rule under them.
+  .v-card.collapsable-card {
+    --card-tint: var(--m3d-accent);
+
+    &[data-card='printer-status-card'] { --card-tint: var(--m3d-sys-green); }
+    &[data-card='temperature-card'] { --card-tint: var(--m3d-sys-orange); }
+    &[data-card='toolhead-card'] { --card-tint: var(--m3d-sys-blue); }
+    &[data-card='jobs-card'],
+    &[data-card='gcode-preview-card'] { --card-tint: var(--m3d-sys-indigo); }
+    &[data-card='job-queue-card'] { --card-tint: var(--m3d-sys-purple); }
+    &[data-card='macros-card'] { --card-tint: var(--m3d-sys-pink); }
+    &[data-card='console-card'],
+    &[data-card='camera-card'] { --card-tint: var(--m3d-sys-gray); }
+    &[data-card='outputs-card'] { --card-tint: var(--m3d-sys-teal); }
+    &[data-card='sensors-card'] { --card-tint: var(--m3d-sys-cyan); }
+    &[data-card='bed-mesh-card'] { --card-tint: var(--m3d-sys-mint); }
+    &[data-card='printer-limits-card'],
+    &[data-card='runout-sensors-card'] { --card-tint: var(--m3d-sys-yellow); }
+    &[data-card='retract-card'],
+    &[data-card='spoolman-card'] { --card-tint: var(--m3d-sys-brown); }
+  }
+
+  .v-card.collapsable-card .v-card__title.collapsable-card-title {
+    min-height: 56px;
+    padding: 6px 12px 0 20px;
+    border-bottom: 0 !important;
+    background-color: transparent !important;
+    font-family: var(--m3d-font-title);
+    font-size: 1.0625rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-transform: none;
+
+    .font-weight-light {
+      font-weight: 600 !important;
+    }
+
+    > .row > .col:first-child > .v-icon {
+      margin-right: 10px !important;
+      color: var(--card-tint) !important;
+      font-size: 22px !important;
+    }
+
+    .v-btn:not(.v-btn--icon):not(.v-btn--fab) {
+      letter-spacing: 0;
+    }
+  }
+
+  .v-card.collapsable-card.collapsed .v-card__title.collapsable-card-title,
+  .v-card.collapsable-card .v-card__title.collapsable-card-title:last-child {
+    padding-bottom: 6px;
+  }
+
+  // The content of a card clips to the card's lower corners, so a hovered
+  // last row or an edge-to-edge chart cannot poke past the curve.
+  .v-card.collapsable-card > #card-content {
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
+  }
+
+  .v-card > .v-card__progress {
+    overflow: hidden;
+    border-top-left-radius: inherit;
+    border-top-right-radius: inherit;
+  }
+
+  .v-card__subtitle {
+    font-size: 0.8125rem;
+  }
+
+  .v-divider {
+    border-color: var(--m3d-border) !important;
+  }
+
+  // A card's first divider under its header is a rule the design drops.
+  .v-card.collapsable-card > #card-content > .v-divider:first-child {
+    display: none;
+  }
+
+  /* ---------------------------------------------- settings (inset lists) -- */
+
+  .app-setting-control {
+    min-height: 52px;
+    padding: 0 20px;
+
+    .sc-label {
+      font-size: 0.9375rem !important;
+      line-height: 1.35;
+    }
+  }
+
+  // Separators are inset to the text, as in an inset grouped list.
+  .app-setting-control + .v-divider,
+  .v-card > .v-divider {
+    margin-left: 20px;
+  }
+
+  .v-card > .app-setting-control.sc-link:first-child::before {
+    border-top-left-radius: var(--m3d-radius-md);
+    border-top-right-radius: var(--m3d-radius-md);
+  }
+
+  .v-card > .app-setting-control.sc-link:last-child::before {
+    border-bottom-left-radius: var(--m3d-radius-md);
+    border-bottom-right-radius: var(--m3d-radius-md);
+  }
+
+  /* ----------------------------------------------------------- floating -- */
+
+  // Vuetify's elevation classes load after muon3d.scss and outrank its shadow
+  // reset; nothing but floating layers casts a shadow here.
+  [class*='elevation-']:not(.v-menu__content):not(.v-autocomplete__content):not(.v-snack__wrapper):not(.v-dialog) {
+    box-shadow: none !important;
+  }
+
+  .v-menu__content,
+  .v-autocomplete__content {
+    border: 0 !important;
+    border-radius: var(--m3d-radius-float) !important;
+    background-color: var(--m3d-glass-thick) !important;
+    -webkit-backdrop-filter: var(--m3d-glass-filter);
+    backdrop-filter: var(--m3d-glass-filter);
+    box-shadow: var(--m3d-glass-rim), var(--m3d-glass-edge), var(--m3d-shadow-float) !important;
+
+    > .v-card,
+    > .v-list,
+    > .v-sheet,
+    > .v-card .v-list,
+    > .v-select-list {
+      background-color: transparent !important;
+    }
+
+    .v-list {
+      padding: 6px;
+    }
+
+    .v-list-item {
+      min-height: 32px;
+      border-radius: calc(var(--m3d-radius-float) - 6px);
+      font-size: 0.875rem;
+    }
+
+    .v-list-item__title {
+      font-size: 0.875rem;
+    }
+  }
+
+  .v-dialog:not(.v-dialog--fullscreen) {
+    border-radius: var(--m3d-radius-lg) !important;
+    box-shadow: var(--m3d-glass-edge), var(--m3d-shadow-float) !important;
+    transition:
+      transform var(--m3d-duration-base) var(--m3d-spring),
+      opacity var(--m3d-duration-fast) var(--m3d-ease);
+
+    > .v-card {
+      border-radius: inherit !important;
+      background-color: var(--m3d-surface) !important;
+    }
+
+    > .v-card > .v-card__title {
+      padding-top: 22px;
+      font-size: 1.1875rem;
+      font-weight: 700;
+    }
+
+    > .v-card > .v-card__actions {
+      padding: 12px 20px 20px;
+    }
+  }
+
+  // Confirm dialogs (vuetify-confirm) hard-code a white title on a
+  // card-heading bar, which is white in the light theme.
+  .v-dialog > .v-card > .v-toolbar:first-child {
+    color: var(--m3d-text) !important;
+    background-color: transparent !important;
+
+    .v-toolbar__title,
+    .v-icon {
+      color: inherit !important;
+    }
+
+    .v-toolbar__title {
+      font-size: 1.1875rem;
+      font-weight: 700;
+    }
+  }
+
+  .dialog-transition-enter,
+  .dialog-transition-leave-to {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+
+  .v-tooltip__content {
+    padding: 5px 10px !important;
+    border-radius: 9px !important;
+    background: var(--m3d-glass-thick) !important;
+    -webkit-backdrop-filter: var(--m3d-glass-filter);
+    backdrop-filter: var(--m3d-glass-filter);
+    box-shadow: var(--m3d-glass-edge), 0 4px 14px rgb(0 0 0 / 16%) !important;
+    color: var(--m3d-text) !important;
+    font-size: 0.75rem !important;
+    font-weight: 500;
+  }
+
+  .v-snack__wrapper {
+    border: 0 !important;
+    border-radius: 18px !important;
+    background-color: var(--m3d-glass-thick) !important;
+    -webkit-backdrop-filter: var(--m3d-glass-filter);
+    backdrop-filter: var(--m3d-glass-filter);
+    box-shadow: var(--m3d-glass-rim), var(--m3d-glass-edge), var(--m3d-shadow-float) !important;
+  }
+
+  .v-alert {
+    border: 0 !important;
+    border-radius: var(--m3d-radius-float) !important;
+
+    // Tinted, not outlined, and the words stay in the label colour.
+    &.v-alert--text,
+    &.v-alert--outlined {
+      border-color: transparent !important;
+
+      .v-alert__content {
+        color: var(--m3d-text);
+      }
+    }
+
+    &.v-alert--text::before,
+    &.v-alert--outlined::before {
+      opacity: 0.14 !important;
+    }
+  }
+
+  /* ------------------------------------------------------------ buttons -- */
+
+  .v-btn {
+    border-radius: var(--m3d-radius-pill) !important;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    transition:
+      background-color var(--m3d-duration-fast) var(--m3d-ease),
+      color var(--m3d-duration-fast) var(--m3d-ease),
+      box-shadow var(--m3d-duration-fast) var(--m3d-ease),
+      transform var(--m3d-duration-base) var(--m3d-spring) !important;
+
+    &::before {
+      background-color: var(--m3d-text);
+    }
+
+    &:hover::before {
+      opacity: 0.06;
+    }
+
+    &:not(.v-btn--disabled):active {
+      transform: scale(0.96);
+    }
+
+    &:not(.v-btn--icon):not(.v-btn--fab) {
+      padding: 0 16px;
+      font-size: 0.875rem;
+    }
+
+    &.v-size--small:not(.v-btn--icon):not(.v-btn--fab) {
+      padding: 0 12px;
+      font-size: 0.8125rem;
+    }
+
+    &.v-size--x-small:not(.v-btn--icon):not(.v-btn--fab) {
+      padding: 0 9px;
+      font-size: 0.75rem;
+    }
+  }
+
+  .v-btn.v-btn--fab,
+  .v-btn.v-btn--icon,
+  .v-btn.v-btn--round {
+    border-radius: 50% !important;
+  }
+
+  // Grey buttons are a fill, not a box.
+  .v-btn.btncolor {
+    border: 0 !important;
+    background-color: var(--m3d-fill) !important;
+    color: var(--m3d-text) !important;
+
+    &:hover {
+      background-color: var(--m3d-fill-strong) !important;
+    }
+  }
+
+  // Prominent buttons: the accent fills the button.
+  // --m3d-on-accent is set on <html> for each theme colour (config actions).
+  .v-btn.primary:not(.v-btn--text):not(.v-btn--outlined):not(.v-btn--disabled) {
+    color: var(--m3d-on-accent, #fff) !important;
+
+    .v-icon {
+      color: inherit !important;
+    }
+  }
+
+  // Outlined buttons become tinted: a wash of their own colour.
+  .v-btn.v-btn--outlined:not(.estop-action) {
+    border-color: transparent !important;
+    background-color: color-mix(in srgb, currentColor 13%, transparent) !important;
+  }
+
+  .v-btn.v-btn--disabled:not(.v-btn--text):not(.v-btn--icon):not(.v-btn--outlined):not(.transparent) {
+    border: 0 !important;
+    background-color: var(--m3d-fill-2) !important;
+  }
+
+  .v-btn.v-btn--disabled,
+  .v-btn.v-btn--disabled .v-icon {
+    color: var(--m3d-text-subtle) !important;
+  }
+
+  // A segmented control: a recessed capsule, the selected segment raised.
+  .v-btn-toggle {
+    gap: 2px;
+    padding: 2px;
+    border: 0 !important;
+    border-radius: var(--m3d-radius-pill) !important;
+    background: var(--m3d-fill) !important;
+
+    max-width: 100%;
+
+    > .v-btn.v-btn {
+      flex: 1 1 auto;
+      min-width: 0 !important;
+      height: 28px !important;
+      margin: 0;
+      padding: 0 14px;
+      border: 0 !important;
+      border-radius: var(--m3d-radius-pill) !important;
+      background-color: transparent !important;
+      color: var(--m3d-text) !important;
+      font-weight: 500;
+      opacity: 1;
+      transition:
+        background-color var(--m3d-duration-base) var(--m3d-spring),
+        box-shadow var(--m3d-duration-base) var(--m3d-ease),
+        transform var(--m3d-duration-base) var(--m3d-spring) !important;
+    }
+
+    > .v-btn.v-btn + .v-btn {
+      border-left: 0 !important;
+    }
+
+    > .v-btn.v-btn--active {
+      background-color: var(--m3d-segment) !important;
+      box-shadow: var(--m3d-shadow-control) !important;
+      color: var(--m3d-text) !important;
+      font-weight: 600;
+
+      &::before {
+        opacity: 0 !important;
+      }
+    }
+  }
+
+  /* -------------------------------------------------------- lists, tabs -- */
+
+  .v-list-item {
+    border-radius: var(--m3d-radius-sm);
+
+    &::before {
+      background-color: var(--m3d-text);
+    }
+
+    &:hover::before {
+      opacity: 0.05;
+    }
+  }
+
+  .v-list-item--active {
+    &::before {
+      background-color: var(--m3d-text) !important;
+      opacity: 0.08 !important;
+    }
+  }
+
+  // Tabs are capsules, the selected one filled, as in a macOS toolbar.
+  .v-tabs-bar {
+    height: 40px;
+  }
+
+  .v-tab {
+    min-width: 0;
+    height: 30px;
+    margin: auto 2px;
+    padding: 0 14px;
+    border-radius: var(--m3d-radius-pill);
+    color: var(--m3d-text-muted) !important;
+    font-size: 0.875rem !important;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+
+    &::before {
+      border-radius: inherit;
+    }
+  }
+
+  .v-tab--active {
+    background-color: var(--m3d-fill);
+    color: var(--m3d-text) !important;
+    font-weight: 600;
+  }
+
+  .v-tabs-slider-wrapper {
+    display: none;
+  }
+
+  // A lone tab is a title, not a choice, so it gets no capsule.
+  .v-slide-group__content:not(:has(> .v-tab ~ .v-tab)) > .v-tab--active {
+    background-color: transparent;
+  }
+
+  .v-card.collapsable-card .v-card__title.collapsable-card-title .v-tabs {
+    margin-left: -12px;
+
+    .v-tab {
+      font-family: var(--m3d-font-title);
+      font-size: 1rem !important;
+    }
+  }
+
+  .v-data-table {
+    background-color: transparent !important;
+
+    > .v-data-table__wrapper > table > thead > tr > th {
+      height: 36px;
+      border-bottom: 0.5px solid var(--m3d-border) !important;
+      color: var(--m3d-text-muted) !important;
+      font-size: 0.75rem !important;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    > .v-data-table__wrapper > table > tbody > tr > td {
+      border-bottom: 0.5px solid var(--m3d-border) !important;
+    }
+
+    > .v-data-table__wrapper > table > tbody > tr:last-child > td {
+      border-bottom: 0 !important;
+    }
+
+    > .v-data-table__wrapper > table > tbody > tr:hover:not(.v-data-table__expanded__content):not(.v-data-table__empty-wrapper) {
+      background-color: var(--m3d-fill-2) !important;
+    }
+
+    > .v-data-table__wrapper > table > tbody > tr.v-data-table__selected {
+      background-color: var(--m3d-accent-soft) !important;
+    }
+  }
+
+  .v-data-footer {
+    border-top: 0.5px solid var(--m3d-border) !important;
+  }
+
+  .v-chip {
+    border: 0 !important;
+    border-radius: var(--m3d-radius-pill) !important;
+    font-weight: 500;
+    letter-spacing: 0;
+
+    &:not(.v-chip--outlined):not([class*='--text']):not(.primary):not(.error):not(.warning):not(.success):not(.info) {
+      border: 0;
+      background-color: var(--m3d-fill) !important;
+    }
+
+    &.v-chip--outlined {
+      background-color: color-mix(in srgb, currentColor 12%, transparent) !important;
+    }
+  }
+
+  .v-expansion-panel {
+    border-radius: var(--m3d-radius-float) !important;
+    background-color: var(--m3d-surface) !important;
+
+    &::before {
+      box-shadow: none !important;
+    }
+
+    &:not(:first-child)::after {
+      border-color: var(--m3d-border) !important;
+    }
+  }
+
+  .v-pagination__item,
+  .v-pagination__navigation {
+    border-radius: var(--m3d-radius-pill) !important;
+    box-shadow: none !important;
+  }
+
+  /* ------------------------------------------------------------- inputs -- */
+
+  // Filled fields are a grey well with no underline.
+  .v-text-field--filled > .v-input__control > .v-input__slot,
+  .v-text-field--solo > .v-input__control > .v-input__slot {
+    border-radius: var(--m3d-radius-sm) !important;
+    background-color: var(--m3d-fill) !important;
+    box-shadow: none !important;
+  }
+
+  // Outlined fields are wells too. A floated label stays inside the well,
+  // small, above the value, as in an iOS form.
+  .v-text-field--outlined > .v-input__control > .v-input__slot {
+    border-radius: var(--m3d-radius-sm) !important;
+    background-color: var(--m3d-fill) !important;
+  }
+
+  .v-text-field--outlined fieldset {
+    border: 0 !important;
+  }
+
+  .v-text-field--outlined {
+    .v-label--active {
+      transform: translateY(-13px) scale(0.72) !important;
+    }
+
+    &:has(.v-label--active) .v-text-field__slot input {
+      padding-top: 18px;
+    }
+
+    &.v-input--dense {
+      .v-label--active {
+        transform: translateY(-9px) scale(0.72) !important;
+      }
+
+      &:has(.v-label--active) {
+        > .v-input__control > .v-input__slot {
+          min-height: 46px !important;
+        }
+
+        .v-text-field__slot input {
+          padding-top: 15px;
+          padding-bottom: 3px;
+        }
+      }
+    }
+  }
+
+  // Focus is a soft accent ring around the field, as on macOS.
+  .v-text-field--filled.v-input--is-focused > .v-input__control > .v-input__slot,
+  .v-text-field--solo.v-input--is-focused > .v-input__control > .v-input__slot,
+  .v-text-field--outlined.v-input--is-focused > .v-input__control > .v-input__slot {
+    box-shadow: 0 0 0 3.5px var(--m3d-focus-ring) !important;
+  }
+
+  .v-input--has-state.error--text > .v-input__control > .v-input__slot {
+    box-shadow: 0 0 0 1px var(--m3d-danger) !important;
+  }
+
+  .v-input--is-focused .v-label {
+    color: var(--m3d-text-muted) !important;
+  }
+
+  .v-input__append-inner .v-icon,
+  .v-input__prepend-inner .v-icon {
+    color: var(--m3d-text-muted) !important;
+  }
+
+  // An iOS switch: a 44x26 capsule, green when on, with a white knob that
+  // springs across.
+  .v-input--switch {
+    .v-input--selection-controls__input {
+      width: 44px;
+    }
+
+    .v-input--switch__track {
+      top: calc(50% - 13px);
+      left: 0;
+      right: auto;
+      width: 44px;
+      height: 26px;
+      border-radius: var(--m3d-radius-pill);
+      opacity: 1;
+      background-color: var(--m3d-switch-off) !important;
+      color: transparent !important;
+      transition: background-color var(--m3d-duration-base) var(--m3d-ease);
+    }
+
+    .v-input--switch__thumb {
+      top: calc(50% - 11px);
+      left: 2px;
+      width: 22px;
+      height: 22px;
+      background-color: #fff !important;
+      color: #fff !important;
+      box-shadow: 0 3px 8px rgb(0 0 0 / 15%), 0 1px 1px rgb(0 0 0 / 16%), 0 0 0 0.5px rgb(0 0 0 / 4%) !important;
+      transition: transform var(--m3d-duration-base) var(--m3d-spring);
+    }
+
+    .v-input--selection-controls__ripple::before {
+      display: none;
+    }
+
+    &.v-input--is-dirty {
+      .v-input--switch__track {
+        background-color: var(--m3d-sys-green) !important;
+      }
+
+      .v-input--switch__thumb {
+        transform: translate(18px, 0) !important;
+      }
+    }
+
+    &.v-input--dense {
+      .v-input--selection-controls__input,
+      .v-input--switch__track {
+        width: 38px;
+      }
+
+      .v-input--switch__track {
+        top: calc(50% - 11px);
+        height: 22px;
+      }
+
+      .v-input--switch__thumb {
+        top: calc(50% - 9px);
+        width: 18px;
+        height: 18px;
+      }
+
+      &.v-input--is-dirty .v-input--switch__thumb {
+        transform: translate(16px, 0) !important;
+      }
+    }
+  }
+
+  // A slider: a thin capsule track and a white capsule knob (iOS 26).
+  .v-slider--horizontal .v-slider__track-container {
+    height: 5px;
+    overflow: hidden;
+    border-radius: var(--m3d-radius-pill);
+  }
+
+  .v-slider .v-slider__track-background {
+    border: 0 !important;
+    background-color: var(--m3d-fill-strong) !important;
+  }
+
+  .v-slider__thumb {
+    left: -14px;
+    width: 28px;
+    height: 20px;
+    border-radius: var(--m3d-radius-pill);
+    background-color: #fff !important;
+    border-color: #fff !important;
+    box-shadow: 0 3px 8px rgb(0 0 0 / 15%), 0 1px 1px rgb(0 0 0 / 16%), 0 0 0 0.5px rgb(0 0 0 / 6%) !important;
+    transition: transform var(--m3d-duration-base) var(--m3d-spring);
+
+    &::before {
+      display: none;
+    }
+  }
+
+  .v-slider__thumb-container--active .v-slider__thumb {
+    transform: translateY(-50%) scale(1.12);
+  }
+
+  .v-progress-linear {
+    border-radius: var(--m3d-radius-pill) !important;
+  }
+
+  .v-progress-linear__background {
+    background-color: var(--m3d-fill-strong) !important;
+    opacity: 1 !important;
+  }
+
+  .m3d-progress-inline.v-progress-linear {
+    width: auto !important;
+    margin: 0 20px;
+  }
+
+  .m3d-progress-inline--end.v-progress-linear {
+    margin-bottom: 18px;
+  }
+
+  .v-progress-circular__underlay {
+    stroke: var(--m3d-fill-strong) !important;
+  }
+
+  /* -------------------------------------------------------- print status -- */
+
+  // The print widget reads like an Activity summary: each figure a small grey
+  // label over a bold rounded number, in a grid beside the ring.
+  .status-tab__head,
+  .status-tab__stats {
+    .layout {
+      flex-direction: column;
+      align-items: flex-start !important;
+      margin: 0;
+    }
+
+    .label {
+      width: auto !important;
+      min-width: 0 !important;
+      color: var(--m3d-text-muted) !important;
+      font-size: 0.75rem !important;
+      line-height: 1.3;
+    }
+
+    .value {
+      max-width: 100%;
+      color: var(--m3d-text);
+      font-size: 1.0625rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      line-height: 1.35;
+    }
+  }
+
+  .status-tab__head .layout + .layout {
+    margin-top: 10px;
+  }
+
+  .status-tab__stats {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 14px 16px;
+    margin-top: 16px !important;
+
+    > [class*='col'] {
+      display: contents;
+    }
+
+    .value {
+      white-space: nowrap;
+      font-family: var(--m3d-font-rounded);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  /* ------------------------------------------------------------ sign-in -- */
+
+  // An Apple account sheet: centred, spacious, one prominent action.
+  .login-column {
+    max-width: 420px;
+  }
+
+  .login-card.v-card {
+    border-radius: var(--m3d-radius-lg) !important;
+    box-shadow: var(--m3d-glass-edge), var(--m3d-shadow-float) !important;
+  }
+
+  .login-head {
+    flex-direction: column;
+    gap: 6px;
+    padding: 36px 32px 0;
+    border-bottom: 0;
+  }
+
+  .login-head__tag {
+    color: var(--m3d-text-muted);
+    font-family: var(--m3d-font-sans);
+    font-size: 0.8125rem;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .login-body {
+    padding: 22px 32px 8px;
+    text-align: center;
+  }
+
+  .login-title {
+    margin-bottom: 6px;
+    font-family: var(--m3d-font-title);
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .login-note {
+    margin-bottom: 24px;
+    font-size: 0.875rem;
+  }
+
+  .login-body .v-text-field {
+    text-align: left;
+  }
+
+  .login-submit.v-btn {
+    height: 46px !important;
+    margin-top: 10px;
+    font-size: 1rem !important;
+  }
+
+  .login-links {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 32px 30px;
+    border-top: 0;
+  }
+
+  .login-links a:hover {
+    color: var(--m3d-text);
+  }
+
+  /* ------------------------------------------------------------ numbers -- */
+
+  // Live readouts use the rounded face, as Apple's widgets do.
+  .temperature-table .temp-actual {
+    font-family: var(--m3d-font-rounded);
+    font-size: 1.1875rem !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em;
+
+    small {
+      margin-left: 1px;
+      color: var(--m3d-text-muted);
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+  }
+
+  .temperature-table .temp-name {
+    font-size: 0.9375rem !important;
+  }
+
+  .temperature-table .temp-power {
+    color: var(--m3d-text-muted);
+    font-size: 0.875rem !important;
+  }
+
+  /* --------------------------------------------------------- phone chrome -- */
+
+  .mobile-estop.v-btn {
+    background-color: var(--m3d-estop) !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .v-btn:not(.v-btn--disabled):active {
+      transform: none;
+    }
+
+    .v-navigation-drawer.v-navigation-drawer--temporary {
+      transition-duration: 0ms !important;
+    }
+  }
+}
