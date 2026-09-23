@@ -58,10 +58,10 @@ export default defineConfig(async ({ command }) => {
         maximumFileSizeToCacheInBytes: 4 * 1024 ** 2
       },
       manifest: {
-        name: 'fluidd',
-        short_name: 'fluidd',
-        description: 'The Klipper web interface for managing your 3d printer',
-        theme_color: '#2196F3',
+        name: 'Muon3D',
+        short_name: 'Muon3D',
+        description: 'The web interface for your Muon3D printer',
+        theme_color: '#1A1F22',
         background_color: '#000000',
         icons: [
           {

@@ -6,8 +6,23 @@ import type { AppTableHeader } from '@/types'
 import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { MoonrakerRootFile } from '../files/types'
 import md5 from 'md5'
+import { Globals } from '@/globals'
 
 export const getters: GetterTree<ConfigState, RootState> = {
+  /**
+   * The name to show for this printer. The stock default instance name is
+   * Fluidd's client name and identifies nothing, so fall back to the
+   * printer's hostname, then the product name.
+   */
+  getDisplayName: (state, getters, rootState): string => {
+    const name = (state.uiSettings.general.instanceName ?? '').trim()
+    if (name && name !== Globals.APP_NAME) return name
+
+    const hostname = rootState.printer.printer.info?.hostname as string | undefined
+
+    return hostname || Globals.PRODUCT_NAME
+  },
+
   getCurrentInstance: (state) => {
     return state.instances.find(instance => instance.active)
   },
