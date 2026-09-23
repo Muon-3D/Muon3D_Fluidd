@@ -24,6 +24,8 @@ import { InlineSvgPlugin } from 'vue-inline-svg'
 
 // Init.
 import { appInit } from './init'
+import { cloudState, initCloud } from './services/muon-cloud/state'
+import { activateCloudPrinter } from './services/muon-cloud/activate'
 import type { InitConfig } from './store/config/types'
 
 // Import plugins
@@ -87,6 +89,14 @@ appInit()
       vuetify,
       render: (h) => h(App)
     }).$mount('#app')
+
+    // Restore the Muon account, and the cloud printer it was last showing.
+    initCloud().then(() => {
+      const active = cloudState.activePrinterId
+      if (active && cloudState.account && cloudState.printers.some(p => p.id === active)) {
+        activateCloudPrinter(active).catch((e) => consola.debug('Could not reopen the cloud printer', e))
+      }
+    })
   })
   .catch((e) => {
     consola.debug('Error attempting to init App:', e)

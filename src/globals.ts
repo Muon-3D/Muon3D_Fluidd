@@ -407,6 +407,7 @@ export const Icons = Object.freeze({
   filter: mdiFilterOutline,
   commit: mdiSourceCommit,
   cloudCheck: mdiCloudCheck,
+  fleet: mdiViewGridOutline,
   cloudAlert: mdiCloudAlert,
   cubeScan: mdiCubeScan,
   consoleLine: mdiConsoleLine,
