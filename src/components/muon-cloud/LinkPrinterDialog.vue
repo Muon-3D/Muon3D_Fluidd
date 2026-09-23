@@ -7,7 +7,17 @@
     <v-card class="muon-cloud-dialog">
       <template v-if="step === 'choose'">
         <v-card-title>Link a printer to your account</v-card-title>
-        <v-card-subtitle class="pt-1">
+        <v-card-subtitle
+          v-if="lanUnavailable"
+          class="pt-1"
+        >
+          Enter the six-digit code the printer's screen shows while it is linking,
+          or scan its QR code with your phone.
+        </v-card-subtitle>
+        <v-card-subtitle
+          v-else
+          class="pt-1"
+        >
           Pick a printer on this network and it asks you to confirm on its screen.
           Anywhere else, enter the six-digit code its screen shows.
         </v-card-subtitle>

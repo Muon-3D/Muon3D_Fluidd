@@ -41,7 +41,8 @@
           v-if="lanUnavailable"
           class="muon-welcome__empty"
         >
-          This page cannot search the network. Enter the printer's address instead.
+          A secure page cannot reach printers on your local network. Open a printer's own address
+          on your network to use it there, or link it to your account to open it here from anywhere.
         </div>
         <template v-else>
           <button
@@ -86,11 +87,14 @@
           {{ error }}
         </v-alert>
 
-        <div class="muon-welcome__actions">
+        <div
+          v-if="!lanUnavailable"
+          class="muon-welcome__actions"
+        >
           <v-btn
             small
             text
-            :disabled="scanning || lanUnavailable"
+            :disabled="scanning"
             @click="rescan"
           >
             Search again
