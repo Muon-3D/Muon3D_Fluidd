@@ -17,7 +17,7 @@
       <system-commands @click="open = false" />
     </v-list>
 
-    <system-printers @click="open = false" />
+    <printer-switcher @click="open = false" />
 
     <system-layout
       v-if="socketConnected && authenticated"
@@ -30,8 +30,9 @@
 import { Component, Mixins, VModel } from 'vue-property-decorator'
 
 import StateMixin from '@/mixins/state'
+import PrinterSwitcher from '@/components/muon-cloud/PrinterSwitcher.vue'
 
-@Component({})
+@Component({ components: { PrinterSwitcher } })
 export default class AppToolsDrawer extends Mixins(StateMixin) {
   @VModel({ type: Boolean })
     open?: boolean

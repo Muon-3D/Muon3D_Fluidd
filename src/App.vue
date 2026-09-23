@@ -68,6 +68,7 @@
               (!klippyReady || hasWarnings) &&
               !inLayout &&
               !managedConsoleRoute &&
+              !printerIndependentRoute &&
               $route.path !== '/login'
           "
         >
@@ -79,6 +80,7 @@
         <router-view
           v-if="
             managedConsoleRoute ||
+              printerIndependentRoute ||
               (socketConnected && apiConnected) ||
               (!authenticated && apiConnected)
           "
@@ -89,7 +91,7 @@
 
       <socket-disconnected
         v-if="
-          !managedConsoleRoute && (
+          !managedConsoleRoute && !printerIndependentRoute && (
             (!socketConnected && !apiConnected) ||
             (!socketConnected && authenticated)
           )
@@ -188,6 +190,10 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
 
   get inLayout (): boolean {
     return (this.$store.state.config.layoutMode)
+  }
+
+  get printerIndependentRoute (): boolean {
+    return this.$route.meta?.printerIndependent === true
   }
 
   get managedConsoleRoute (): boolean {
