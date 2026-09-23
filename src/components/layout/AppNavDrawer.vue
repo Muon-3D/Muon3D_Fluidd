@@ -30,7 +30,6 @@
 
         <app-nav-item
           icon="$dash"
-          tile="blue"
           exact
           to="/"
         >
@@ -39,7 +38,6 @@
 
         <app-nav-item
           icon="$files"
-          tile="orange"
           to="/jobs"
         >
           {{ $t('app.general.title.jobs') }}
@@ -47,7 +45,6 @@
 
         <app-nav-item
           icon="$cubeScan"
-          tile="indigo"
           to="/preview"
         >
           {{ $t('app.general.title.gcode_preview') }}
@@ -55,7 +52,6 @@
 
         <app-nav-item
           icon="$console"
-          tile="graphite"
           to="/console"
         >
           {{ $t('app.general.title.console') }}
@@ -64,7 +60,6 @@
         <app-nav-item
           v-if="supportsHistory"
           icon="$history"
-          tile="purple"
           to="/history"
         >
           {{ $t('app.general.title.history') }}
@@ -73,7 +68,6 @@
         <app-nav-item
           v-if="supportsTimelapse"
           icon="$video"
-          tile="pink"
           to="/timelapse"
         >
           {{ $t('app.general.title.timelapse') }}
@@ -87,7 +81,6 @@
 
         <app-nav-item
           icon="$tune"
-          tile="teal"
           to="/tune"
         >
           {{ $t('app.general.title.tune') }}
@@ -95,7 +88,6 @@
 
         <app-nav-item
           icon="$codeJson"
-          tile="yellow"
           to="/configure"
         >
           {{ $t('app.general.title.configure') }}
@@ -104,7 +96,6 @@
         <app-nav-item
           v-if="enableDiagnostics"
           icon="$chart"
-          tile="green"
           to="/diagnostics"
         >
           {{ $t('app.general.title.diagnostics') }}
@@ -118,7 +109,6 @@
 
         <app-nav-item
           icon="$wifi"
-          tile="blue"
           to="/wifi"
         >
           {{ $t('app.general.title.wifi') }}
@@ -126,7 +116,6 @@
 
         <app-nav-item
           icon="$desktopTower"
-          tile="gray"
           to="/system"
         >
           {{ $t('app.general.title.system') }}
@@ -134,7 +123,6 @@
 
         <app-nav-item
           icon="$cog"
-          tile="gray"
           to="/settings"
         >
           {{ $t('app.general.title.settings') }}
@@ -148,7 +136,6 @@
 
         <app-nav-item
           icon="$printer3d"
-          tile="mint"
           to="/fleet"
         >
           Fleet preview

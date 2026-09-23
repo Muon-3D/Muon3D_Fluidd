@@ -12,7 +12,6 @@
         class="muon-nav-item"
         active-class="muon-nav-item--active"
         :ripple="false"
-        :style="tileStyle"
         v-bind="attrs"
         v-on="on"
       >
@@ -63,23 +62,12 @@ export default class AppNavItem extends Mixins(StateMixin, BrowserMixin) {
   @Prop({ type: String })
   readonly icon?: string
 
-  // A system colour name (blue, orange, ...). The glass style draws the icon
-  // on a tile of that colour, as System Settings does.
-  @Prop({ type: String })
-  readonly tile?: string
-
   // Provided by AppNavDrawer; true while the drawer is an icon-only rail.
   @Inject({ from: 'isNavRail', default: () => () => false })
   readonly isNavRail!: () => boolean
 
   get rail (): boolean {
     return this.isNavRail()
-  }
-
-  get tileStyle () {
-    return this.tile
-      ? { '--nav-tile': `var(--m3d-sys-${this.tile})` }
-      : undefined
   }
 
   get accelerator (): string | undefined {

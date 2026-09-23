@@ -38,6 +38,7 @@ import App from './App.vue'
 // Register global directives.
 import Blur from '@/directives/blur'
 import { restoreUiStyle } from '@/util/ui-style'
+import { applyGlassIcons } from '@/util/glass-icons'
 
 // Directives...
 Vue.directive('blur', Blur)
@@ -63,7 +64,9 @@ Vue.use(HttpClientPlugin, {
 // import { AuxClientPlugin } from '@/plugins/auxClient'
 // Vue.use(AuxClientPlugin, { store })
 
-store.commit('config/setRestoredUiStyle', restoreUiStyle())
+const restoredUiStyle = restoreUiStyle()
+store.commit('config/setRestoredUiStyle', restoredUiStyle)
+applyGlassIcons(vuetify.framework.icons.values as unknown as Record<string, unknown>, restoredUiStyle === 'glass')
 
 appInit()
   .then((config: InitConfig) => {

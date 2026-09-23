@@ -24,6 +24,7 @@ declare module 'vue' {
     AppDragOverlay: typeof import('./src/components/ui/AppDragOverlay.vue')['default']
     AppFocusableContainer: typeof import('./src/components/ui/AppFocusableContainer.vue')['default']
     AppFooter: typeof import('./src/components/layout/AppFooter.vue')['default']
+    AppGlassIcon: typeof import('./src/components/ui/AppGlassIcon.vue')['default']
     AppIcon: typeof import('./src/components/ui/AppIcon.vue')['default']
     AppInlineHelp: typeof import('./src/components/ui/AppInlineHelp.vue')['default']
     AppIroColorPicker: typeof import('./src/components/ui/AppIroColorPicker.vue')['default']

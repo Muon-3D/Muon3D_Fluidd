@@ -10,6 +10,7 @@ import type { FileFilterType } from '../files/types'
 import { TinyColor, readability } from '@ctrl/tinycolor'
 import { consola } from 'consola'
 import { applyUiStyle } from '@/util/ui-style'
+import { applyGlassIcons } from '@/util/glass-icons'
 
 const parseLanInstances = (value: unknown): InstanceConfig[] => {
   if (typeof value !== 'object' || value == null || !('version' in value) || !('printers' in value)) return []
@@ -128,6 +129,7 @@ export const actions: ActionTree<ConfigState, RootState> = {
     )
 
     applyUiStyle(payload.style)
+    applyGlassIcons(vuetify.framework.icons.values as unknown as Record<string, unknown>, payload.style === 'glass')
   },
 
   /**
