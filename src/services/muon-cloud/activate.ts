@@ -11,6 +11,7 @@ import Vue from 'vue'
 import store from '@/store'
 import { appInit } from '@/init'
 import type { InstanceConfig } from '@/store/config/types'
+import { Globals } from '@/globals'
 import { bindHttpClientToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
 import {
   createPrinterTransportForSelection,
@@ -105,11 +106,30 @@ export async function activateLocalPrinter (instance: InstanceConfig) {
   activationState.error = null
   releaseCurrent()
   setActiveCloudPrinter(null)
+  forgetManagedInstance()
   Vue.$socket?.close()
   const config = await appInit(instance, store.state.config.hostConfig)
   if (config.apiConfig.socketUrl && config.apiConnected && config.apiAuthenticated) {
     Vue.$socket.connect(config.apiConfig.socketUrl)
   }
+}
+
+/**
+ * Removes the placeholder instance Fluidd records while a cloud printer is
+ * selected, and makes a real instance the active one again.
+ */
+export function forgetManagedInstance () {
+  try {
+    const key = Globals.LOCAL_INSTANCES_STORAGE_KEY
+    const raw = localStorage.getItem(key)
+    if (!raw) return
+    const instances: InstanceConfig[] = JSON.parse(raw)
+    const kept = instances.filter(i => i.apiUrl !== MANAGED_API_URL)
+    if (kept.length === instances.length) return
+    if (kept.length && !kept.some(i => i.active)) kept[0].active = true
+    if (kept.length) localStorage.setItem(key, JSON.stringify(kept))
+    else localStorage.removeItem(key)
+  } catch { /* no storage, or not ours to parse */ }
 }
 
 /** Whether Fluidd is showing a cloud printer now. */
