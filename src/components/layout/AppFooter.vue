@@ -7,8 +7,7 @@
     class="footer justify-end"
   >
     <span class="secondary--text">
-      &copy; {{ new Date().getFullYear() }}
-      fluidd: v{{ version }}-{{ hash }}
+      {{ $globals.PRODUCT_NAME }} &middot; built on Fluidd v{{ version }}-{{ hash }}
     </span>
   </v-footer>
 </template>
@@ -33,7 +32,7 @@ export default class AppFooter extends Vue {
   .footer {
     span {
       flex: 0 0 auto;
-      font-weight: 100;
+      font-size: 0.75rem;
     }
   }
 </style>

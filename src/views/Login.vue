@@ -13,7 +13,7 @@
           @submit.prevent="handleLogin"
         >
           <div class="login-head">
-            <span class="muon-wordmark">MUON</span>
+            <span class="muon-wordmark">MUON3D</span>
             <span class="login-head__tag">Printer sign-in</span>
           </div>
 
@@ -22,7 +22,7 @@
               {{ $t('app.general.btn.login') }}
             </h1>
             <p class="login-note">
-              This account belongs to this printer. It is not a Muon cloud account.
+              This account belongs to this printer. It is not a Muon3D cloud account.
             </p>
 
             <v-alert

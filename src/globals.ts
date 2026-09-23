@@ -191,7 +191,10 @@ const mdiFileImageLock = 'M 6 2 C 4.8900033 2 4 2.8900033 4 4 L 4 20 C 4 21.0999
  * Global, static constants.
  */
 export const Globals = Object.freeze({
+  // APP_NAME is the client_name sent to Moonraker; do not change it for
+  // branding. PRODUCT_NAME is what people see.
   APP_NAME: 'fluidd',
+  PRODUCT_NAME: 'Muon3D',
   HEADER_HEIGHT: 56,
   NAVIGATION_DRAWER_WIDTH: 224,
   NAVIGATION_RAIL_WIDTH: 56,
