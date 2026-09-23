@@ -37,6 +37,14 @@
         </app-nav-item>
 
         <app-nav-item
+          v-if="cloudSignedIn"
+          icon="$fleet"
+          to="/fleet"
+        >
+          Fleet
+        </app-nav-item>
+
+        <app-nav-item
           icon="$files"
           to="/jobs"
         >
@@ -150,6 +158,7 @@ import { Component, Mixins, VModel } from 'vue-property-decorator'
 
 import StateMixin from '@/mixins/state'
 import BrowserMixin from '@/mixins/browser'
+import { cloudState } from '@/services/muon-cloud/state'
 
 @Component<AppNavDrawer>({
   provide () {
@@ -166,6 +175,10 @@ export default class AppNavDrawer extends Mixins(StateMixin, BrowserMixin) {
   // screen, so it collapses to an icon rail with tooltips.
   get rail (): boolean {
     return !this.isMobileViewport && this.$vuetify.breakpoint.mdAndDown
+  }
+
+  get cloudSignedIn () {
+    return cloudState.account !== null
   }
 
   get supportsHistory () {

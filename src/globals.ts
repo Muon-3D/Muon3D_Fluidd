@@ -78,6 +78,8 @@ import {
   mdiOpenInApp,
   mdiDesktopTower,
   mdiDotsHorizontal,
+  mdiEye,
+  mdiEyeOff,
   mdiToggleSwitch,
   mdiToggleSwitchOffOutline,
   mdiMotionOutline,
@@ -410,6 +412,7 @@ export const Icons = Object.freeze({
   filter: mdiFilterOutline,
   commit: mdiSourceCommit,
   cloudCheck: mdiCloudCheck,
+  fleet: mdiViewGridOutline,
   cloudAlert: mdiCloudAlert,
   cubeScan: mdiCubeScan,
   consoleLine: mdiConsoleLine,
@@ -496,7 +499,9 @@ export const Icons = Object.freeze({
   accessPoint: mdiAccessPoint,
   accessPointOff: mdiAccessPointOff,
   accessPointNetwork: mdiAccessPointNetwork,
-  accessPointNetworkOff: mdiAccessPointNetworkOff
+  accessPointNetworkOff: mdiAccessPointNetworkOff,
+  eye: mdiEye,
+  eyeOff: mdiEyeOff
 })
 
 export const Waits = Object.freeze({
