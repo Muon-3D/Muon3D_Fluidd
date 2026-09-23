@@ -16,7 +16,7 @@
       class="muon-nav__brand"
       :style="`height: ${$globals.HEADER_HEIGHT}px;`"
     >
-      <span class="muon-wordmark">MUON</span>
+      <span class="muon-wordmark">MUON3D</span>
     </router-link>
 
     <nav

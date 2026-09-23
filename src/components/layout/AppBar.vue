@@ -14,7 +14,7 @@
       :class="{ 'muon-brand--compact': navRail }"
       :style="navRail ? '' : `width: ${$globals.NAVIGATION_DRAWER_WIDTH}px;`"
     >
-      <span class="muon-wordmark">MUON</span>
+      <span class="muon-wordmark">MUON3D</span>
     </router-link>
 
     <div class="toolbar-title">

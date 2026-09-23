@@ -98,7 +98,7 @@ export default class AppWarnings extends Mixins(StateMixin) {
   }
 
   get appName () {
-    return Globals.APP_NAME
+    return Globals.PRODUCT_NAME
   }
 
   get printerWarnings () {

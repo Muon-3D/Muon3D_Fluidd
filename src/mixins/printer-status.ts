@@ -21,12 +21,8 @@ const pageTitleKeys: Record<string, string> = {
 
 @Component
 export default class PrinterStatusMixin extends Mixins(StateMixin) {
-  // "fluidd" is the stock default and names nothing; the hostname does.
   get displayName (): string {
-    const name = (this.$store.state.config.uiSettings.general.instanceName ?? '').trim()
-    const hostname = this.$store.state.printer.printer.info?.hostname as string | undefined
-
-    return (name && name !== this.$globals.APP_NAME) ? name : (hostname || name)
+    return this.$store.getters['config/getDisplayName'] as string
   }
 
   get printProgress (): number {
