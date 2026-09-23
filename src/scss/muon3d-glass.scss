@@ -682,9 +682,11 @@ $glass: "html[data-m3d-style='glass']";
     padding: 20px 24px 32px !important;
   }
 
+  // Phones keep the flat style's 8px sides: Fluidd's toolhead controls need
+  // 380px and already overflow a 390px screen by a few pixels.
   @media (max-width: 599px) {
     .muon-content {
-      padding: 8px 12px 24px !important;
+      padding: 8px 8px 24px !important;
     }
   }
 
@@ -1087,6 +1089,12 @@ $glass: "html[data-m3d-style='glass']";
 
     > .v-btn.v-btn + .v-btn {
       border-left: 0 !important;
+    }
+
+    // Icon-only segments (the toolhead's absolute/relative toggle) sit in a
+    // quarter of a phone card, so they keep only a little padding.
+    > .v-btn.v-btn:has(> .v-btn__content > .v-icon:only-child) {
+      padding: 0 7px;
     }
 
     > .v-btn.v-btn--active {
