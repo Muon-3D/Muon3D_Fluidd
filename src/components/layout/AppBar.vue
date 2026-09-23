@@ -256,12 +256,8 @@ export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin
     return !this.isMobileViewport && this.$vuetify.breakpoint.mdAndDown
   }
 
-  // "fluidd" is the stock default and names nothing; the hostname does.
   get displayName (): string {
-    const name = (this.instanceName ?? '').trim()
-    const hostname = this.$store.state.printer.printer.info?.hostname as string | undefined
-
-    return (name && name !== this.$globals.APP_NAME) ? name : (hostname || name)
+    return this.$store.getters['config/getDisplayName'] as string
   }
 
   get printProgress (): number {
