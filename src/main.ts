@@ -24,6 +24,8 @@ import { InlineSvgPlugin } from 'vue-inline-svg'
 
 // Init.
 import { appInit } from './init'
+import { cloudState, initCloud } from './services/muon-cloud/state'
+import { activateCloudPrinter, forgetManagedInstance } from './services/muon-cloud/activate'
 import type { InitConfig } from './store/config/types'
 
 // Import plugins
@@ -62,6 +64,10 @@ Vue.use(HttpClientPlugin, {
 // import { AuxClientPlugin } from '@/plugins/auxClient'
 // Vue.use(AuxClientPlugin, { store })
 
+// A cloud printer is selected through a placeholder API address that Fluidd
+// records as an instance. It must never be the instance Fluidd starts on.
+forgetManagedInstance()
+
 appInit()
   .then((config: InitConfig) => {
     consola.debug('Loaded App Configuration', config)
@@ -87,6 +93,18 @@ appInit()
       vuetify,
       render: (h) => h(App)
     }).$mount('#app')
+
+    // Restore the Muon3D account, and the cloud printer it was last showing.
+    // With no printer to show at all, start on the welcome page, which finds
+    // printers on this network and offers the account.
+    initCloud().then(() => {
+      const active = cloudState.activePrinterId
+      if (active && cloudState.account && cloudState.printers.some(p => p.id === active)) {
+        activateCloudPrinter(active).catch((e) => consola.debug('Could not reopen the cloud printer', e))
+      } else if (!store.state.config.apiUrl && !router.currentRoute.meta?.printerIndependent) {
+        router.replace('/welcome').catch(() => {})
+      }
+    })
   })
   .catch((e) => {
     consola.debug('Error attempting to init App:', e)
