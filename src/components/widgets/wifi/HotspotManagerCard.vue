@@ -105,10 +105,12 @@
                       ref="passwordInput"
                       v-model="form.password"
                       :label="$t('app.general.label.password')"
-                      type="text"
+                      :type="passwordVisible ? 'text' : 'password'"
+                      :append-icon="passwordVisible ? '$eyeOff' : '$eye'"
                       :rules="passwordRules"
                       dense
                       :disabled="!form.securityEnabled || !editing || applying"
+                      @click:append.stop="passwordVisible = !passwordVisible"
                     />
                   </div>
                 </div>
@@ -310,10 +312,7 @@ export default class HotspotManagerCard extends Vue {
   // “Confirm” methods perform the real action, then hide the dialog
   async confirmToggle () {
     this.showToggleWarningDialog = false
-    // pass the new desired state explicitly
-    const prom = this.changeHotspotState(!this.apState)
-    this.apState = !this.apState // toggle the local switch state
-    await prom // wait for the API call to finish
+    await this.changeHotspotState(!this.apState)
   }
 
   async requestApplyChanges () {
@@ -333,7 +332,6 @@ export default class HotspotManagerCard extends Vue {
   async confirmApply () {
     this.showChangeWarningDialog = false
     await this.applyChanges()
-    await this.auxApi.ap.apUpWifiApUpPost()
   }
 
   private auxApi = useAuxApi()
@@ -360,18 +358,63 @@ export default class HotspotManagerCard extends Vue {
 
   private original = { ...this.form }
 
+  passwordVisible = false
+  private statusPollId: number | null = null
+  private destroyed = false
+  private requestedApState: boolean | null = null
+  private requestedApStateUntil = 0
+
   async mounted () {
     await this.fetchConfig()
+    if (!this.destroyed) {
+      this.statusPollId = window.setInterval(() => {
+        this.refreshStatus()
+      }, 1000)
+    }
+  }
+
+  beforeDestroy () {
+    this.destroyed = true
+    if (this.statusPollId !== null) {
+      window.clearInterval(this.statusPollId)
+      this.statusPollId = null
+    }
   }
 
   private async fetchConfig () {
     try {
-      this.deviceStatus = (await this.auxApi.ap.wifiStatusWifiApDeviceStatusGet()).data
-      this.apCredentials = (await this.auxApi.ap.apShowCredentialsWifiApShowGet()).data
+      const [statusResponse, credentialsResponse] = await Promise.all([
+        this.auxApi.ap.wifiStatusWifiApDeviceStatusGet(),
+        this.auxApi.ap.apShowCredentialsWifiApShowGet()
+      ])
+      this.applyDeviceStatus(statusResponse.data)
+      this.apCredentials = credentialsResponse.data
       this.resetForm()
     } catch (e) {
       console.error('Failed to load hotspot config', e)
     }
+  }
+
+  private async refreshStatus () {
+    try {
+      const response = await this.auxApi.ap.wifiStatusWifiApDeviceStatusGet()
+      this.applyDeviceStatus(response.data)
+    } catch (_) {
+      // Dropping the hotspot can briefly drop Fluidd's request transport too.
+      // A later poll reconciles when the printer is reachable again.
+    }
+  }
+
+  private applyDeviceStatus (status: Device) {
+    const observedState = status.state === 'connected'
+    if (
+      this.requestedApState !== null &&
+      Date.now() < this.requestedApStateUntil &&
+      observedState !== this.requestedApState
+    ) return
+
+    this.requestedApState = null
+    this.deviceStatus = status
   }
 
   get isDirty (): boolean {
@@ -387,9 +430,10 @@ export default class HotspotManagerCard extends Vue {
     if (!this.apCredentials) return
     this.form.ssid = this.apCredentials.ssid
     this.form.password = this.apCredentials.password || ''
-    // Remote Fluidd callers intentionally receive a redacted password from
-    // /wifi/ap/show. A null password therefore means "hidden", not "open".
-    this.form.securityEnabled = true
+    this.passwordVisible = false
+    // Older Aux versions do not expose the safe boolean. Keep the secure
+    // fallback until the matching OS update reaches the printer.
+    this.form.securityEnabled = this.apCredentials.security_enabled ?? true
     this.original = { ...this.form }
   }
 
@@ -401,17 +445,15 @@ export default class HotspotManagerCard extends Vue {
         ssid: this.form.ssid,
         password: this.form.securityEnabled
           ? this.form.password
-          : null,
-        autoconnect: true
+          : null
       }
       await this.auxApi.ap.apModifyWifiApModifyPost(payload)
       // on success, commit new “original” snapshot
       // this.original = { ...this.form }
       await this.fetchConfig() // re-fetch to get the latest config
-      if (this.deviceStatus?.state !== 'connected') {
-        // if we were connected, turn the hotspot on
-        await this.changeHotspotState()
-      }
+      // Re-activate once so NetworkManager applies the saved profile. This is
+      // also the only activation request when the hotspot was previously off.
+      await this.changeHotspotState(true)
     } catch (e) {
       console.error('Failed to apply hotspot config', e)
     }
@@ -514,37 +556,22 @@ export default class HotspotManagerCard extends Vue {
       : this.deviceStatus?.state !== 'connected'
 
     this.toggling = true
+    this.requestedApState = turnOn
+    this.requestedApStateUntil = Date.now() + 5000
+    this.apState = turnOn
     try {
       if (turnOn) {
         await this.auxApi.ap.apUpWifiApUpPost()
-
-        if (this.apCredentials && !this.apCredentials.autoconnect) {
-          const payload: APCredentials = {
-            ssid: this.apCredentials.ssid,
-            password: this.apCredentials.password,
-            autoconnect: true
-          }
-          await this.auxApi.ap.apModifyWifiApModifyPost(payload) // Set autoconnect to false
-        }
       } else {
         await this.auxApi.ap.apDownWifiApDownPost()
-
-        if (this.apCredentials && this.apCredentials.autoconnect) {
-          const payload: APCredentials = {
-            ssid: this.apCredentials.ssid,
-            password: this.apCredentials.password,
-            autoconnect: false
-          }
-          await this.auxApi.ap.apModifyWifiApModifyPost(payload) // Set autoconnect to false
-        }
       }
     } catch (e) {
+      this.requestedApState = null
+      this.apState = this.deviceStatus?.state === 'connected'
       console.error('Hotspot toggle failed', e)
+    } finally {
+      this.toggling = false
     }
-
-    // refresh status & UI
-    await this.fetchConfig()
-    this.toggling = false
   }
 
   // ------------------------------------------------------
