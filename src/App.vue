@@ -62,6 +62,13 @@
         }"
         class="constrained-width muon-content pa-2 pa-sm-4"
       >
+        <h1
+          v-if="largeTitle"
+          class="m3d-large-title"
+        >
+          {{ largeTitle }}
+        </h1>
+
         <v-row
           v-if="
             (socketConnected && apiConnected) &&
@@ -133,6 +140,18 @@ import KeyboardShortcutsDialog from './components/common/KeyboardShortcutsDialog
 import { eventTargetIsContentEditable, keyboardEventToKeyboardShortcut } from './util/event-helpers'
 import { isManagedConsolePath } from '@/router/managedPath'
 
+const largeTitleKeys: Record<string, string> = {
+  '/jobs': 'app.general.title.jobs',
+  '/history': 'app.general.title.history',
+  '/timelapse': 'app.general.title.timelapse',
+  '/tune': 'app.general.title.tune',
+  '/configure': 'app.general.title.configure',
+  '/diagnostics': 'app.general.title.diagnostics',
+  '/wifi': 'app.general.title.wifi',
+  '/system': 'app.general.title.system',
+  '/settings': 'app.general.title.settings'
+}
+
 @Component<App>({
   metaInfo () {
     return {
@@ -192,6 +211,17 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
 
   get managedConsoleRoute (): boolean {
     return isManagedConsolePath(this.$route.path)
+  }
+
+  // The rounded style names each page in a large title, as iPadOS and macOS
+  // System Settings do. Home is named by the printer in the header, and the
+  // console and G-code preview keep their height for the tool itself.
+  get largeTitle (): string | undefined {
+    if (this.theme.style !== 'rounded') return
+
+    const key = largeTitleKeys[this.$route.path]
+
+    return key ? this.$t(key).toString() : undefined
   }
 
   get columnCount (): number {

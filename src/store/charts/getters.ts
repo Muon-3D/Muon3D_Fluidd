@@ -34,7 +34,7 @@ export const getters: GetterTree<ChartState, RootState> = {
   /**
    * Return base chart options given a chart type.
    */
-  getBaseChartOptions: (state, getters, rootState) => (tooltipSuffix: { [index: string]: string } = {}) => {
+  getBaseChartOptions: (state, getters, rootState, rootGetters) => (tooltipSuffix: { [index: string]: string } = {}) => {
     // Common properties across all chart types.
     const isDark = rootState.config.uiSettings.theme.isDark
     const isMobile = vuetify.framework.breakpoint.mobile
@@ -78,7 +78,7 @@ export const getters: GetterTree<ChartState, RootState> = {
       color,
       grid,
       textStyle: {
-        fontFamily: Globals.CHART_FONT_FAMILY
+        fontFamily: rootGetters['config/getChartFontFamily']
       },
       tooltip: {
         ...tooltip,

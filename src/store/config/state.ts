@@ -1,5 +1,6 @@
 import type { ConfigState } from './types'
 import { Globals } from '@/globals'
+import { DEFAULT_UI_STYLE } from '@/util/ui-style'
 
 export const defaultState = (): ConfigState => {
   return {
@@ -77,7 +78,8 @@ export const defaultState = (): ConfigState => {
           src: 'logo_fluidd.svg'
         },
         color: '#80D6D1',
-        backgroundLogo: false
+        backgroundLogo: false,
+        style: DEFAULT_UI_STYLE
       },
       editor: {
         confirmDirtyEditorClose: true,

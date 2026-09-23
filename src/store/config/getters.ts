@@ -6,6 +6,7 @@ import type { AppTableHeader } from '@/types'
 import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { MoonrakerRootFile } from '../files/types'
 import md5 from 'md5'
+import { Globals } from '@/globals'
 
 export const getters: GetterTree<ConfigState, RootState> = {
   getCurrentInstance: (state) => {
@@ -28,6 +29,13 @@ export const getters: GetterTree<ConfigState, RootState> = {
 
   getHostConfig: (state) => {
     return state.hostConfig
+  },
+
+  // Charts measure and draw text themselves, so they are told the UI font.
+  getChartFontFamily: (state): string => {
+    return state.uiSettings.theme.style === 'rounded'
+      ? Globals.CHART_FONT_FAMILY_ROUNDED
+      : Globals.CHART_FONT_FAMILY
   },
 
   /**

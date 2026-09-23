@@ -1,0 +1,675 @@
+/*
+ * Rounded interface style: the Apple-style look that matches the printer's
+ * own knob panel (MuonUI). Chosen in Settings > Theme and applied as
+ * <html data-m3d-style="rounded"> by src/util/ui-style.ts; the flat style in
+ * muon3d.scss is untouched when it is off.
+ *
+ * It is layered on muon3d.scss, not beside it. Most of the difference is
+ * token values (MuonUI's ink palette, larger radii, the system type stack)
+ * that every muon3d.scss rule already reads. The rules below cover only what
+ * a token cannot express, and keep that file's guards:
+ *
+ *  - Radii nest. Anything inset by P inside a container of radius R uses
+ *    R - P: menu rows 14 - 5 = 9, segments 10 - 2 = 8, dialog cards inherit.
+ *  - Translucency only on chrome that content moves beneath: the header, the
+ *    sidebar and drawers. Cards, menus and dialogs stay opaque.
+ *  - Shadows only on floating layers, and soft: small offset, large blur.
+ *  - Scrim opacity is never set here. Vuetify keeps inactive overlays
+ *    mounted at opacity 0.
+ *  - The accent is still --v-primary-base, via --m3d-accent.
+ */
+
+@import '@fontsource-variable/inter/index.css';
+
+$rounded: "html[data-m3d-style='rounded']";
+
+/* --------------------------------------------------------------- tokens -- */
+
+#{$rounded},
+#{$rounded} .v-application {
+  // SF on Apple devices; the bundled Inter everywhere else, because the
+  // printer is often offline. Keep in step with CHART_FONT_FAMILY_ROUNDED.
+  --m3d-font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter Variable', 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+  --m3d-font-display: 'Krona One', var(--m3d-font-sans);
+  --m3d-font-mono: ui-monospace, 'SF Mono', 'SFMono-Regular', 'IBM Plex Mono', Menlo, Consolas, monospace;
+
+  --m3d-radius-xs: 6px;
+  --m3d-radius-sm: 10px;    // controls: buttons, fields, rows
+  --m3d-radius-float: 14px; // menus, alerts, snackbars
+  --m3d-radius-md: 18px;    // cards
+  --m3d-radius-lg: 22px;    // dialogs
+  --m3d-radius-xl: 22px;
+  --m3d-radius-2xl: 22px;
+
+  --m3d-duration-fast: 150ms;
+  --m3d-duration-base: 280ms;
+  --m3d-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  // A spring that settles with a few percent of overshoot.
+  --m3d-ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+
+  --m3d-tracking-caps: 0.02em;
+  --m3d-tracking-eyebrow: 0.02em;
+  --m3d-material-filter: saturate(180%) blur(20px);
+}
+
+// MuonUI's dark palette: ink-900 page, ink-800 cards, ink-700 floating.
+#{$rounded},
+#{$rounded} .v-application.theme--dark {
+  --m3d-bg: #101719;
+  --m3d-surface: #182123;
+  --m3d-surface-2: rgb(255 255 255 / 7%);
+  --m3d-inset: rgb(255 255 255 / 6%);
+  --m3d-raised: #1f2a2d;
+  --m3d-border: rgb(255 255 255 / 8%);
+  --m3d-border-strong: rgb(255 255 255 / 15%);
+  --m3d-card-border: rgb(255 255 255 / 5%);
+  --m3d-text: #f2f5f5;
+  --m3d-text-muted: #a8b3b5;
+  --m3d-text-subtle: #7c8789;
+  --m3d-hover: rgb(255 255 255 / 6%);
+  --m3d-success: #57c08a;
+  --m3d-warning: #e8b04b;
+  --m3d-danger: #e5695f;
+  --m3d-estop: #d23f33;
+  --m3d-overlay: #040809;
+  --m3d-material: rgb(24 33 35 / 72%);
+  --m3d-segment: rgb(255 255 255 / 16%);
+  --m3d-switch-off: rgb(120 128 130 / 40%);
+  --m3d-arc-track: rgb(255 255 255 / 9%);
+  --m3d-shadow-float: 0 18px 48px rgb(0 0 0 / 42%), 0 2px 10px rgb(0 0 0 / 24%);
+  --m3d-shadow-control: 0 1px 3px rgb(0 0 0 / 30%), 0 0 0 0.5px rgb(0 0 0 / 20%);
+}
+
+#{$rounded} .v-application.theme--light {
+  --m3d-bg: #f2f5f5;
+  --m3d-surface: #ffffff;
+  --m3d-surface-2: rgb(16 23 25 / 6%);
+  --m3d-inset: rgb(16 23 25 / 5%);
+  --m3d-raised: #ffffff;
+  --m3d-border: rgb(16 23 25 / 9%);
+  --m3d-border-strong: rgb(16 23 25 / 16%);
+  --m3d-card-border: rgb(16 23 25 / 6%);
+  --m3d-text: #101719;
+  --m3d-text-muted: #5a6668;
+  --m3d-text-subtle: #768284;
+  --m3d-hover: rgb(16 23 25 / 5%);
+  --m3d-success: #2f8a5b;
+  --m3d-warning: #a8761e;
+  --m3d-danger: #c04138;
+  --m3d-estop: #c9372c;
+  --m3d-overlay: #101719;
+  --m3d-material: rgb(250 252 252 / 72%);
+  --m3d-segment: #ffffff;
+  --m3d-switch-off: rgb(120 128 130 / 28%);
+  --m3d-arc-track: rgb(16 23 25 / 8%);
+  --m3d-shadow-float: 0 18px 48px rgb(16 23 25 / 14%), 0 2px 8px rgb(16 23 25 / 7%);
+  --m3d-shadow-control: 0 1px 3px rgb(16 23 25 / 16%), 0 0 0 0.5px rgb(16 23 25 / 8%);
+}
+
+// Without backdrop-filter a translucent bar would only be a dimmer one.
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #{$rounded},
+  #{$rounded} .v-application.theme--dark,
+  #{$rounded} .v-application.theme--light {
+    --m3d-material: var(--m3d-surface);
+  }
+}
+
+#{$rounded} {
+  /* ------------------------------------------------------------- type -- */
+
+  .v-application {
+    // Vuetify's typography classes load after this file with the compile-time
+    // font; the flat style never notices because that font is its own.
+    [class*='text-'] {
+      font-family: var(--m3d-font-sans) !important;
+    }
+
+    // Vuetify tracks body and caption text; SF and Inter are spaced for it.
+    .text-body-1,
+    .text-body-2,
+    .text-subtitle-1,
+    .text-subtitle-2,
+    .text-caption {
+      letter-spacing: 0 !important;
+    }
+  }
+
+  .m3d-large-title {
+    margin: 4px 4px 16px;
+    color: var(--m3d-text);
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+  }
+
+  .v-subheader {
+    height: auto;
+    padding: 18px 16px 8px;
+    color: var(--m3d-text-muted) !important;
+    font-size: 0.8125rem;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  /* ----------------------------------------------------------- chrome -- */
+
+  // The header and sidebar are one material that content scrolls beneath.
+  // It is painted on ::before, not the element: backdrop-filter on the bar
+  // itself would become the containing block for its fixed descendants.
+  .v-app-bar.v-toolbar.muon-app-bar,
+  .v-navigation-drawer.muon-nav,
+  .v-navigation-drawer.v-navigation-drawer--temporary {
+    background-color: transparent !important;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background-color: var(--m3d-material);
+      -webkit-backdrop-filter: var(--m3d-material-filter);
+      backdrop-filter: var(--m3d-material-filter);
+      pointer-events: none;
+    }
+  }
+
+  // A drawer opened over the page is denser, so saturated things beneath it
+  // (the E-STOP, for one) do not bloom through it as a coloured glow.
+  .v-navigation-drawer.v-navigation-drawer--temporary::before {
+    background-color: color-mix(in srgb, var(--m3d-material) 50%, var(--m3d-surface));
+  }
+
+  // A drawer only floats while it is open; closed, it sits off-screen and a
+  // shadow would bleed back in along the edge.
+  .v-navigation-drawer.v-navigation-drawer--temporary.v-navigation-drawer--open {
+    box-shadow: var(--m3d-shadow-float) !important;
+  }
+
+  .printer-title {
+    align-items: center;
+    gap: 12px;
+  }
+
+  .printer-title__name {
+    font-size: 1.0625rem;
+    letter-spacing: -0.01em;
+  }
+
+  // On a phone the name and status stack; keep them left-aligned and tight.
+  @media (max-width: 599px) {
+    .printer-title {
+      align-items: flex-start;
+      gap: 2px;
+    }
+
+    .printer-status {
+      padding: 1px 8px 1px 6px;
+      font-size: 0.6875rem;
+    }
+  }
+
+  .login-head__tag {
+    font-family: var(--m3d-font-sans);
+    font-size: 0.75rem;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .printer-status {
+    padding: 3px 10px 3px 8px;
+    border-radius: var(--m3d-radius-pill);
+    background-color: var(--m3d-surface-2);
+    font-family: var(--m3d-font-sans);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  // The E-STOP is the one filled, saturated control in the bar.
+  .v-btn.estop-action {
+    height: 32px !important;
+    padding: 0 14px !important;
+    border-color: transparent !important;
+    border-radius: var(--m3d-radius-pill) !important;
+    background-color: var(--m3d-estop) !important;
+    color: #fff !important;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+
+    .v-icon {
+      color: inherit !important;
+    }
+
+    &:not(.v-btn--disabled):hover {
+      background-color: color-mix(in srgb, var(--m3d-estop) 86%, #000) !important;
+    }
+
+    &.v-btn--disabled {
+      background-color: color-mix(in srgb, var(--m3d-estop) 32%, transparent) !important;
+      color: rgb(255 255 255 / 72%) !important;
+    }
+  }
+
+  .mobile-estop.v-btn {
+    background-color: var(--m3d-estop) !important;
+    box-shadow: var(--m3d-shadow-float) !important;
+  }
+
+  /* --------------------------------------------------------- sidebar -- */
+
+  .muon-nav__label {
+    padding: 14px 12px 4px;
+    font-size: 0.75rem;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  // Sections are separated by space and their labels, not rules.
+  .muon-nav__group + .muon-nav__group {
+    margin-top: 6px;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  // The rail has no labels, so it keeps a rule between sections.
+  .muon-nav--rail .muon-nav__group + .muon-nav__group {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--m3d-border);
+  }
+
+  .muon-nav-item {
+    min-height: 34px;
+    color: var(--m3d-text) !important;
+    font-weight: 400;
+    transition: background-color var(--m3d-duration-fast) var(--m3d-ease);
+
+    .v-list-item__icon .v-icon {
+      color: var(--m3d-text-muted) !important;
+    }
+  }
+
+  .muon-nav--rail .muon-nav-item {
+    min-height: 40px;
+  }
+
+  .muon-nav-item.muon-nav-item--active,
+  .muon-nav-item.v-list-item--active {
+    background-color: var(--m3d-accent-soft);
+    box-shadow: none;
+
+    .v-list-item__icon .v-icon {
+      color: var(--m3d-accent) !important;
+    }
+  }
+
+  // Settings sections line up under the Settings label, without a tree line.
+  .settings-nav {
+    margin-left: 34px;
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  /* ----------------------------------------------------------- cards --- */
+
+  .v-card {
+    border-color: var(--m3d-card-border) !important;
+  }
+
+  .v-card.collapsable-card .v-card__title.collapsable-card-title {
+    min-height: 52px;
+    border-bottom-color: transparent !important;
+    font-size: 1.0625rem;
+    letter-spacing: -0.01em;
+    text-transform: none;
+
+    .font-weight-light {
+      font-weight: 600 !important;
+    }
+
+    > .row > .col:first-child > .v-icon {
+      font-size: 20px !important;
+    }
+
+    .v-tab {
+      font-size: 1.0625rem !important;
+      letter-spacing: -0.01em;
+    }
+
+    .v-btn:not(.v-btn--icon):not(.v-btn--fab) {
+      letter-spacing: 0;
+    }
+  }
+
+  // A loading bar at the top edge of a card follows the card's corners.
+  .v-card > .v-card__progress {
+    overflow: hidden;
+    border-top-left-radius: inherit;
+    border-top-right-radius: inherit;
+  }
+
+  .v-progress-linear {
+    border-radius: var(--m3d-radius-pill) !important;
+  }
+
+  .v-progress-linear__background {
+    background-color: var(--m3d-border-strong) !important;
+  }
+
+  .m3d-progress-inline.v-progress-linear {
+    width: auto !important;
+    margin: 0 16px;
+    border-radius: var(--m3d-radius-pill) !important;
+  }
+
+  .m3d-progress-inline--end.v-progress-linear {
+    margin-bottom: 16px;
+  }
+
+  // Rows in a settings card are an inset grouped list: separators start at
+  // the text, and a highlighted row keeps the card's corner.
+  .app-setting-control + .v-divider {
+    margin-left: 16px;
+  }
+
+  .v-card > .app-setting-control.sc-link:first-child::before {
+    border-top-left-radius: calc(var(--m3d-radius-md) - 1px);
+    border-top-right-radius: calc(var(--m3d-radius-md) - 1px);
+  }
+
+  .v-card > .app-setting-control.sc-link:last-child::before {
+    border-bottom-left-radius: calc(var(--m3d-radius-md) - 1px);
+    border-bottom-right-radius: calc(var(--m3d-radius-md) - 1px);
+  }
+
+  /* ---------------------------------------------------------- floating -- */
+
+  // Vuetify's elevation classes load after muon3d.scss and so outrank its
+  // shadow reset; here they are removed from everything that does not float.
+  [class*='elevation-']:not(.v-menu__content):not(.v-autocomplete__content):not(.v-snack__wrapper) {
+    box-shadow: none !important;
+  }
+
+  .v-menu__content,
+  .v-autocomplete__content {
+    border-radius: var(--m3d-radius-float) !important;
+    box-shadow: var(--m3d-shadow-float) !important;
+
+    .v-list {
+      padding: 5px;
+    }
+
+    .v-list-item {
+      min-height: 34px;
+      border-radius: calc(var(--m3d-radius-float) - 5px);
+    }
+  }
+
+  .v-dialog:not(.v-dialog--fullscreen) {
+    border-radius: var(--m3d-radius-lg) !important;
+    transition:
+      transform var(--m3d-duration-base) var(--m3d-ease-spring),
+      opacity var(--m3d-duration-fast) var(--m3d-ease);
+
+    > .v-card {
+      border-color: var(--m3d-card-border) !important;
+      border-radius: inherit !important;
+    }
+  }
+
+  // Confirm dialogs (vuetify-confirm) hard-code a white title on a
+  // card-heading bar, which is white in the light theme.
+  .v-dialog > .v-card > .v-toolbar:first-child {
+    color: var(--m3d-text) !important;
+
+    .v-toolbar__title,
+    .v-icon {
+      color: inherit !important;
+    }
+  }
+
+  // Dialogs settle in from 94% rather than growing from half size.
+  .dialog-transition-enter,
+  .dialog-transition-leave-to {
+    transform: scale(0.94);
+    opacity: 0;
+  }
+
+  .v-tooltip__content {
+    border-radius: 8px !important;
+  }
+
+  .v-snack__wrapper {
+    border-radius: var(--m3d-radius-float) !important;
+  }
+
+  .v-alert {
+    border-radius: var(--m3d-radius-float) !important;
+
+    // Tinted, not outlined.
+    &.v-alert--text,
+    &.v-alert--outlined {
+      border-color: transparent !important;
+    }
+
+    &.v-alert--text::before,
+    &.v-alert--outlined::before {
+      opacity: 0.12 !important;
+    }
+  }
+
+  /* ---------------------------------------------------------- buttons -- */
+
+  .v-btn {
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    transition:
+      background-color var(--m3d-duration-fast) var(--m3d-ease),
+      border-color var(--m3d-duration-fast) var(--m3d-ease),
+      color var(--m3d-duration-fast) var(--m3d-ease),
+      transform var(--m3d-duration-base) var(--m3d-ease-spring) !important;
+
+    &:not(.v-btn--disabled):active {
+      transform: scale(0.97);
+    }
+
+    &:not(.v-btn--icon):not(.v-btn--fab) {
+      font-size: 0.8125rem;
+    }
+
+    &.v-size--small:not(.v-btn--icon):not(.v-btn--fab) {
+      font-size: 0.75rem;
+    }
+
+    &.v-size--x-small:not(.v-btn--icon):not(.v-btn--fab) {
+      font-size: 0.6875rem;
+    }
+  }
+
+  // Icon-only buttons are circles.
+  .v-btn.v-btn--fab,
+  .v-btn.v-btn--icon,
+  .v-btn.v-btn--round {
+    border-radius: 50% !important;
+  }
+
+  // Quiet buttons are a fill, not a box.
+  .v-btn.btncolor,
+  .v-btn.btncolor:hover {
+    border-color: transparent !important;
+  }
+
+  // Outlined buttons become tinted: a wash of their own colour.
+  .v-btn.v-btn--outlined:not(.estop-action) {
+    border-color: transparent !important;
+    background-color: color-mix(in srgb, currentColor 12%, transparent) !important;
+  }
+
+  // A segmented control: a recessed track, the selected segment raised.
+  .v-btn-toggle {
+    gap: 2px;
+    padding: 2px;
+    border: 0 !important;
+    border-radius: var(--m3d-radius-sm) !important;
+    background: var(--m3d-surface-2) !important;
+
+    > .v-btn.v-btn {
+      margin: 0;
+      border: 0 !important;
+      border-radius: calc(var(--m3d-radius-sm) - 2px) !important;
+      background-color: transparent !important;
+      color: var(--m3d-text-muted) !important;
+      transition:
+        background-color var(--m3d-duration-base) var(--m3d-ease-spring),
+        box-shadow var(--m3d-duration-base) var(--m3d-ease),
+        color var(--m3d-duration-fast) var(--m3d-ease) !important;
+    }
+
+    > .v-btn.v-btn + .v-btn {
+      border-left: 0 !important;
+    }
+
+    > .v-btn.v-btn--active {
+      background-color: var(--m3d-segment) !important;
+      color: var(--m3d-text) !important;
+      box-shadow: var(--m3d-shadow-control) !important;
+
+      &::before {
+        opacity: 0 !important;
+      }
+    }
+  }
+
+  /* ------------------------------------------------------ list / tabs -- */
+
+  .v-tab {
+    font-size: 0.8125rem !important;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .v-tabs-slider {
+    border-radius: var(--m3d-radius-pill);
+  }
+
+  .v-data-table > .v-data-table__wrapper > table > thead > tr > th {
+    color: var(--m3d-text-muted) !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .v-chip {
+    border-radius: var(--m3d-radius-pill) !important;
+    letter-spacing: 0;
+  }
+
+  kbd {
+    border-radius: var(--m3d-radius-xs);
+  }
+
+  /* ----------------------------------------------------------- inputs -- */
+
+  // An iOS switch: a 40x24 capsule with a 20px white knob that springs.
+  .v-input--switch {
+    .v-input--selection-controls__input {
+      width: 40px;
+    }
+
+    .v-input--switch__track {
+      top: calc(50% - 12px);
+      left: 0;
+      right: auto;
+      width: 40px;
+      height: 24px;
+      border-radius: var(--m3d-radius-pill);
+      opacity: 1;
+      background-color: var(--m3d-switch-off) !important;
+      color: transparent !important;
+    }
+
+    .v-input--switch__thumb {
+      top: calc(50% - 10px);
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background-color: #fff !important;
+      color: #fff !important;
+      box-shadow: 0 2px 4px rgb(0 0 0 / 22%), 0 0 1px rgb(0 0 0 / 14%) !important;
+      transition: transform var(--m3d-duration-base) var(--m3d-ease-spring);
+    }
+
+    .v-input--selection-controls__ripple::before {
+      display: none;
+    }
+
+    &.v-input--is-dirty {
+      .v-input--switch__track {
+        background-color: var(--m3d-accent) !important;
+      }
+
+      .v-input--switch__thumb {
+        transform: translate(16px, 0) !important;
+      }
+    }
+
+    &.v-input--dense {
+      .v-input--selection-controls__input,
+      .v-input--switch__track {
+        width: 36px;
+      }
+
+      .v-input--switch__track {
+        top: calc(50% - 11px);
+        height: 22px;
+      }
+
+      .v-input--switch__thumb {
+        top: calc(50% - 9px);
+        width: 18px;
+        height: 18px;
+      }
+
+      &.v-input--is-dirty .v-input--switch__thumb {
+        transform: translate(14px, 0) !important;
+      }
+    }
+  }
+
+  .v-slider--horizontal .v-slider__track-container {
+    height: 4px;
+    overflow: hidden;
+    border-radius: var(--m3d-radius-pill);
+  }
+
+  // The unfilled track is neutral; Vuetify tints it with a lightened
+  // accent class that outranks muon3d.scss.
+  .v-slider .v-slider__track-background {
+    background-color: var(--m3d-border-strong) !important;
+  }
+
+  .v-slider__thumb {
+    left: -10px;
+    width: 20px;
+    height: 20px;
+    background-color: #fff !important;
+    box-shadow: var(--m3d-shadow-control), 0 2px 6px rgb(0 0 0 / 16%) !important;
+
+    &::before {
+      top: -8px;
+      left: -8px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .v-btn:not(.v-btn--disabled):active {
+      transform: none;
+    }
+  }
+}

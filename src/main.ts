@@ -37,6 +37,7 @@ import App from './App.vue'
 
 // Register global directives.
 import Blur from '@/directives/blur'
+import { restoreUiStyle } from '@/util/ui-style'
 
 // Directives...
 Vue.directive('blur', Blur)
@@ -61,6 +62,8 @@ Vue.use(HttpClientPlugin, {
 
 // import { AuxClientPlugin } from '@/plugins/auxClient'
 // Vue.use(AuxClientPlugin, { store })
+
+restoreUiStyle()
 
 appInit()
   .then((config: InitConfig) => {

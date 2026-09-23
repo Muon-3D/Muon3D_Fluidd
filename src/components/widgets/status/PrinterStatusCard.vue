@@ -45,6 +45,7 @@
         :height="6"
         :value="estimates.progress"
         color="primary"
+        class="m3d-progress-inline m3d-progress-inline--end"
       />
     </template>
 
