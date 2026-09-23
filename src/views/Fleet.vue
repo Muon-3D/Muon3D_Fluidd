@@ -62,7 +62,7 @@
     >
       <v-card-title>Your printers, from anywhere</v-card-title>
       <v-card-text>
-        Sign in to your Muon account to see every printer you have linked, group them, and open any of them over the Muon network.
+        Sign in to your Muon3D account to see every printer you have linked, group them, and open any of them over the Muon3D network.
       </v-card-text>
       <v-card-actions>
         <app-btn

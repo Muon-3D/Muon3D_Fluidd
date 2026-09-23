@@ -6,7 +6,7 @@
     >
       <v-card-title>Link a printer</v-card-title>
       <v-card-text v-if="!signedIn">
-        Sign in to your Muon account to link the printer showing code
+        Sign in to your Muon3D account to link the printer showing code
         <strong class="muon-link-landing__code">{{ code || '—' }}</strong>.
       </v-card-text>
       <v-card-actions v-if="!signedIn">
