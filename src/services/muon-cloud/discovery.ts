@@ -4,9 +4,19 @@
  * A browser cannot browse mDNS, so this asks addresses directly. Every M1
  * answers `GET /server/muon/identity` on port 80. The search goes in order:
  * the printers Fluidd already knows, then the /24 networks those printers sit
- * on, then common home and hotspot networks. A network is swept only after its
- * `.1` address answered quickly, which is how a network the browser can reach
- * looks. A network that is not there leaves the probe waiting until it times out.
+ * on, then the common home networks whose gateway (.1 or .254) answers
+ * quickly, then the Windows hotspot network.
+ *
+ * An address nobody holds and an address on a network the browser has no route
+ * to both just time out, so only a gateway that answers says that a network is
+ * there. On a Windows hotspot the gateway is this machine, and its firewall
+ * drops the probe, so that network is swept without the check.
+ *
+ * The sweep is paced. Chromium slows down when it cancels many pending
+ * connections at once. Above about 25 a second, later probes wait in its queue
+ * past their own timeout, and a printer that answers in 60 ms is missed.
+ * Measured on 2026-09-23: 64 probes at a time with a 3 s timeout found the
+ * printer every time. At 0.8 s or 1.5 s it was missed.
  *
  * A page served over HTTPS cannot fetch plain HTTP on the LAN, so there the
  * search reports itself unavailable and the code is the way to link.
@@ -34,12 +44,16 @@ export interface LanPrinter {
 
 /** Networks worth trying when nothing else says where the printers are. */
 const COMMON_NETWORKS = [
-  '192.168.1', '192.168.0', '192.168.137', '10.0.0', '192.168.4', '192.168.68',
-  '192.168.86', '192.168.2', '192.168.10', '10.0.1', '172.20.10', '10.42.0'
+  '192.168.1', '192.168.0', '10.0.0', '192.168.4', '192.168.68', '192.168.86',
+  '192.168.2', '192.168.10', '10.0.1', '172.20.10', '192.168.43', '10.42.0'
 ]
 
-const PROBE_TIMEOUT_MS = 1500
-const ALIVE_WITHIN_MS = 900
+/** Windows Mobile Hotspot always uses this network, with this machine as .1. */
+const WINDOWS_HOTSPOT_NETWORK = '192.168.137'
+
+const PROBE_TIMEOUT_MS = 3000
+const GATEWAY_TIMEOUT_MS = 1500
+const GATEWAY_ANSWERS_WITHIN_MS = 900
 const CONCURRENCY = 64
 const FRESH_FOR_MS = 60_000
 
@@ -94,11 +108,11 @@ export async function lanLinkStatus (apiUrl: string): Promise<LanLinkStatus> {
 }
 
 /** Asks one address whether it is a Muon3D printer. */
-export async function probe (host: string): Promise<LanPrinter | null> {
+export async function probe (host: string, timeout = PROBE_TIMEOUT_MS): Promise<LanPrinter | null> {
   const apiUrl = apiUrlFor(host)
   let identity: any
   try {
-    identity = await getJson(`${apiUrl}/server/muon/identity`)
+    identity = await getJson(`${apiUrl}/server/muon/identity`, {}, timeout)
   } catch {
     return null
   }
@@ -107,25 +121,25 @@ export async function probe (host: string): Promise<LanPrinter | null> {
   return { host, apiUrl, name, link: await lanLinkStatus(apiUrl) }
 }
 
-function remember (printer: LanPrinter) {
-  const i = discoveryState.found.findIndex(p => p.host === printer.host)
-  if (i >= 0) discoveryState.found.splice(i, 1, printer)
-  else discoveryState.found.push(printer)
-}
-
-/** Whether something answered at `host` quickly: a refusal is an answer. */
+/** Whether something answered at `host` quickly. A refusal is an answer. */
 async function answersQuickly (host: string): Promise<boolean> {
   const controller = new AbortController()
   const started = performance.now()
-  const timer = window.setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS)
+  const timer = window.setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS)
   try {
     await fetch(`http://${host}/`, { mode: 'no-cors', signal: controller.signal, cache: 'no-store' })
     return true
   } catch {
-    return performance.now() - started < ALIVE_WITHIN_MS
+    return performance.now() - started < GATEWAY_ANSWERS_WITHIN_MS
   } finally {
     window.clearTimeout(timer)
   }
+}
+
+function remember (printer: LanPrinter) {
+  const i = discoveryState.found.findIndex(p => p.host === printer.host)
+  if (i >= 0) discoveryState.found.splice(i, 1, printer)
+  else discoveryState.found.push(printer)
 }
 
 async function pool<T> (items: T[], work: (item: T) => Promise<void>) {
@@ -156,29 +170,31 @@ async function sweep () {
       if (printer) remember(printer)
     })
 
-    const own = known.filter(isIpv4).map(h => h.split('.').slice(0, 3).join('.'))
-    const candidates = [...new Set([...own, ...COMMON_NETWORKS])]
-    const alive: string[] = [...new Set(own)]
-    await pool(candidates.filter(n => !alive.includes(n)), async network => {
-      if (await answersQuickly(`${network}.1`)) alive.push(network)
+    const own = [...new Set(known.filter(isIpv4).map(h => h.split('.').slice(0, 3).join('.')))]
+    discoveryState.network = 'this network'
+    const answering = new Set<string>()
+    await pool(COMMON_NETWORKS.filter(n => !own.includes(n)), async network => {
+      const [first, last] = await Promise.all([answersQuickly(`${network}.1`), answersQuickly(`${network}.254`)])
+      if (first || last) answering.add(network)
     })
-
+    const networks = [...new Set([
+      ...own,
+      ...COMMON_NETWORKS.filter(n => answering.has(n)),
+      WINDOWS_HOTSPOT_NETWORK
+    ])]
     const seen = new Set(discoveryState.found.map(p => p.host))
-    for (const network of alive) {
-      discoveryState.network = `${network}.x`
-      const hosts: string[] = []
+    const hosts: string[] = []
+    for (const network of networks) {
       for (let i = 1; i < 255; i++) {
         const host = `${network}.${i}`
         if (!seen.has(host)) hosts.push(host)
       }
-      await pool(hosts, async host => {
-        const printer = await probe(host)
-        if (printer) {
-          seen.add(host)
-          remember(printer)
-        }
-      })
     }
+    await pool(hosts, async host => {
+      discoveryState.network = `${host.slice(0, host.lastIndexOf('.'))}.x`
+      const printer = await probe(host)
+      if (printer) remember(printer)
+    })
   } finally {
     discoveryState.scanning = false
     discoveryState.network = ''
