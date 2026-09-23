@@ -107,11 +107,27 @@
         {{ localTemps }}
       </div>
     </div>
+    <button
+      v-for="p in foundPrinters"
+      :key="p.host"
+      type="button"
+      class="muon-switcher__item is-found"
+      @click="pickFound(p)"
+    >
+      <div class="muon-switcher__row">
+        <span class="muon-switcher__dot is-idle" />
+        <span class="muon-switcher__name">{{ p.name }}</span>
+        <span class="muon-switcher__badge">Found</span>
+      </div>
+      <div class="muon-switcher__meta">
+        {{ p.host }} · connect
+      </div>
+    </button>
     <div
-      v-if="!localInstances.length"
+      v-if="!localInstances.length && !foundPrinters.length"
       class="muon-switcher__empty"
     >
-      No printers added on this network.
+      {{ scanning ? 'Looking for printers on this network…' : 'No printers added on this network.' }}
     </div>
 
     <div class="muon-switcher__actions">
@@ -199,6 +215,7 @@ import {
   activationState,
   MANAGED_API_URL
 } from '@/services/muon-cloud/activate'
+import { discoverPrinters, discoveryState, instanceFor, type LanPrinter } from '@/services/muon-cloud/discovery'
 import CloudAccountDialog from './CloudAccountDialog.vue'
 import LinkPrinterDialog from './LinkPrinterDialog.vue'
 
@@ -234,10 +251,23 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     return all.filter(i => i.apiUrl !== MANAGED_API_URL)
   }
 
+  get scanning () {
+    return discoveryState.scanning
+  }
+
+  /** Printers the network search found that are not added yet. */
+  get foundPrinters (): LanPrinter[] {
+    const added = new Set(this.localInstances.map(i => this.hostOf(i.apiUrl)))
+    return discoveryState.found.filter(p => !added.has(p.host))
+  }
+
   mounted () {
-    if (this.$store.state.config.apiUrl === '' && !cloudState.account && !cloudState.activePrinterId) {
-      this.instanceDialogOpen = true
-    }
+    discoverPrinters().catch(() => {})
+  }
+
+  async pickFound (p: LanPrinter) {
+    this.$emit('click')
+    await activateLocalPrinter(instanceFor(p))
   }
 
   status (id: string): PrinterStatus | undefined {

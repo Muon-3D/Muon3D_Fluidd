@@ -94,11 +94,15 @@ appInit()
       render: (h) => h(App)
     }).$mount('#app')
 
-    // Restore the Muon account, and the cloud printer it was last showing.
+    // Restore the Muon3D account, and the cloud printer it was last showing.
+    // With no printer to show at all, start on the welcome page, which finds
+    // printers on this network and offers the account.
     initCloud().then(() => {
       const active = cloudState.activePrinterId
       if (active && cloudState.account && cloudState.printers.some(p => p.id === active)) {
         activateCloudPrinter(active).catch((e) => consola.debug('Could not reopen the cloud printer', e))
+      } else if (!store.state.config.apiUrl && !router.currentRoute.meta?.printerIndependent) {
+        router.replace('/welcome').catch(() => {})
       }
     })
   })

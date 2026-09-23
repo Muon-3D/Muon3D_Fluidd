@@ -1,5 +1,5 @@
 /**
- * The Muon account console's HTTP API.
+ * The Muon3D account console's HTTP API.
  *
  * Fluidd is served either by the printer (LAN) or by the console itself. In
  * both cases the console is reached at `cloudBaseUrl()`: the page's own origin
@@ -99,17 +99,17 @@ async function request<T> (method: string, path: string, body?: unknown): Promis
       body: body === undefined ? undefined : JSON.stringify(body)
     })
   } catch {
-    throw new CloudError('The Muon service could not be reached.', 0)
+    throw new CloudError('The Muon3D service could not be reached.', 0)
   }
   const text = await response.text()
   let data: any = {}
   try {
     data = text ? JSON.parse(text) : {}
   } catch {
-    throw new CloudError('The Muon service sent an unreadable answer.', response.status)
+    throw new CloudError('The Muon3D service sent an unreadable answer.', response.status)
   }
   if (!response.ok) {
-    throw new CloudError(data.error ?? `The Muon service answered ${response.status}.`, response.status)
+    throw new CloudError(data.error ?? `The Muon3D service answered ${response.status}.`, response.status)
   }
   return data as T
 }

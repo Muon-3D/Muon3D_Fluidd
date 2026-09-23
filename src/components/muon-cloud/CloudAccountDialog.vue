@@ -5,7 +5,7 @@
   >
     <v-card class="muon-cloud-dialog">
       <v-card-title class="pb-1">
-        {{ mode === 'sign-in' ? 'Sign in to Muon' : 'Create your Muon account' }}
+        {{ mode === 'sign-in' ? 'Sign in to Muon3D' : 'Create your Muon3D account' }}
       </v-card-title>
       <v-card-subtitle class="pt-1">
         Reach your linked printers from anywhere. Printers on this network keep working without an account.
@@ -66,7 +66,7 @@
 
       <v-card-actions class="justify-center pb-4">
         <span class="text-body-2 text--secondary">
-          {{ mode === 'sign-in' ? 'New to Muon?' : 'Already have an account?' }}
+          {{ mode === 'sign-in' ? 'New to Muon3D?' : 'Already have an account?' }}
         </span>
         <v-btn
           text

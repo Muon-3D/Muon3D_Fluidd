@@ -1,5 +1,5 @@
 /**
- * The Muon account, its linked printers, and their live status.
+ * The Muon3D account, its linked printers, and their live status.
  *
  * Kept outside Vuex on purpose: Fluidd resets its whole store every time it
  * switches printer, and the account must survive the switch.

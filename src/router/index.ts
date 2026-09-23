@@ -22,6 +22,7 @@ import Icons from '@/views/Icons.vue'
 import Wifi from '@/views/Wifi.vue'
 import Fleet from '@/views/Fleet.vue'
 import LinkLanding from '@/views/LinkLanding.vue'
+import Welcome from '@/views/Welcome.vue'
 
 Vue.use(VueRouter)
 
@@ -105,6 +106,14 @@ const routes: Array<RouteConfig> = [
     path: '/fleet',
     name: 'Fleet',
     component: Fleet,
+    meta: {
+      printerIndependent: true
+    }
+  },
+  {
+    path: '/welcome',
+    name: 'Welcome',
+    component: Welcome,
     meta: {
       printerIndependent: true
     }

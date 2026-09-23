@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import router from '@/router'
 
-describe('Muon account routes', () => {
+describe('Muon3D account routes', () => {
   test.each([
     ['/fleet', 'Fleet'],
     ['/link', 'Link a printer']
