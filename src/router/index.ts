@@ -20,11 +20,9 @@ import NotFound from '@/views/NotFound.vue'
 import Login from '@/views/Login.vue'
 import Icons from '@/views/Icons.vue'
 import Wifi from '@/views/Wifi.vue'
-import ManagedFleet from '@/views/ManagedFleet.vue'
-import ManagedOnboarding from '@/views/ManagedOnboarding.vue'
-import ManagedPrinterLink from '@/views/ManagedPrinterLink.vue'
-import ManagedSignIn from '@/views/ManagedSignIn.vue'
-import { managedConsoleState } from '@/store/managed/contractMock'
+import Fleet from '@/views/Fleet.vue'
+import LinkLanding from '@/views/LinkLanding.vue'
+import Welcome from '@/views/Welcome.vue'
 
 Vue.use(VueRouter)
 
@@ -45,21 +43,6 @@ const defaultRouteConfig: Partial<RouteConfig> = {
     fileDropRoot: 'gcodes'
   }
 }
-
-const managedRouteConfig = (requiresOnboarding: boolean): Partial<RouteConfig> => ({
-  beforeEnter: (to, from, next) => {
-    const session = managedConsoleState.session
-    if (!session) {
-      next({ name: 'Managed sign in', query: { next: to.fullPath } })
-      return
-    }
-    if (requiresOnboarding && !session.onboardingComplete) {
-      next({ name: 'Onboarding' })
-      return
-    }
-    next()
-  }
-})
 
 const routes: Array<RouteConfig> = [
   {
@@ -120,43 +103,27 @@ const routes: Array<RouteConfig> = [
     ...defaultRouteConfig
   },
   {
-    path: '/managed/sign-in',
-    name: 'Managed sign in',
-    component: ManagedSignIn,
-    meta: {
-      fillHeight: true
-    }
-  },
-  {
     path: '/fleet',
     name: 'Fleet',
-    component: ManagedFleet,
-    ...managedRouteConfig(true),
+    component: Fleet,
     meta: {
-      requiresPrinterSession: true,
-      requiresManagedSession: true,
-      requiresManagedOnboarding: true
+      printerIndependent: true
     }
   },
   {
-    path: '/onboarding',
-    name: 'Onboarding',
-    component: ManagedOnboarding,
-    ...managedRouteConfig(false),
+    path: '/welcome',
+    name: 'Welcome',
+    component: Welcome,
     meta: {
-      requiresPrinterSession: true,
-      requiresManagedSession: true
+      printerIndependent: true
     }
   },
   {
-    path: '/link-printer',
-    name: 'Link printer',
-    component: ManagedPrinterLink,
-    ...managedRouteConfig(true),
+    path: '/link',
+    name: 'Link a printer',
+    component: LinkLanding,
     meta: {
-      requiresPrinterSession: true,
-      requiresManagedSession: true,
-      requiresManagedOnboarding: true
+      printerIndependent: true
     }
   },
   {
@@ -256,9 +223,7 @@ declare module 'vue-router' {
     fillHeight?: boolean
     hasSubNavigation?: boolean
     fileDropRoot?: string
-    requiresPrinterSession?: boolean
-    requiresManagedSession?: boolean
-    requiresManagedOnboarding?: boolean
+    printerIndependent?: boolean
   }
 }
 

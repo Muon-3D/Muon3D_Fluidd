@@ -38,5 +38,11 @@ export interface APCredentials {
      * @memberof APCredentials
      */
     'autoconnect'?: boolean | null;
+    /**
+     * Whether the hotspot profile uses password-based security.
+     * @type {boolean}
+     * @memberof APCredentials
+     */
+    'security_enabled'?: boolean | null;
 }
 

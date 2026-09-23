@@ -1,0 +1,228 @@
+/**
+ * The browser's Iroh endpoint, and the transport Fluidd's managed seam uses.
+ *
+ * One endpoint per tab, one key per browser: the key is kept in localStorage
+ * so the grants the console issues for it survive a reload. Every printer is
+ * reached through the relay the console names; a browser has no other path.
+ */
+import type {
+  AuthorizedManagedRelaySession,
+  ManagedIrohEndpoint,
+  ManagedIrohRelay,
+  PrinterSocket
+} from '@/services/managed-transport'
+
+const KEY_STORAGE = 'muon.cloud.key'
+const WASM_URL = '/muon-link-web/muon_link_web.js'
+
+interface WasmSocket {
+  send (text: string): Promise<void>;
+  next (): Promise<string | Uint8Array | null>;
+  close (): Promise<void>;
+}
+
+interface WasmPrinter {
+  printerId (): string;
+  fetch (method: string, path: string, headers: string[], body: Uint8Array): Promise<{ status: number, headers: string[], body: Uint8Array }>;
+  openWebSocket (path: string): Promise<WasmSocket>;
+  close (): void;
+}
+
+interface WasmEndpoint {
+  endpointId (): string;
+  secretKey (): Uint8Array;
+  connect (printerId: string): Promise<WasmPrinter>;
+  close (): Promise<void>;
+}
+
+interface WasmModule {
+  default: (input?: unknown) => Promise<unknown>;
+  MuonEndpoint: { create (relayUrl: string, secret: Uint8Array | null | undefined): Promise<WasmEndpoint> };
+}
+
+let modulePromise: Promise<WasmModule> | null = null
+let endpointPromise: Promise<WasmEndpoint> | null = null
+let endpointRelay = ''
+
+function loadWasm (): Promise<WasmModule> {
+  if (!modulePromise) {
+    modulePromise = (async () => {
+      const mod = await import(/* @vite-ignore */ WASM_URL) as WasmModule
+      await mod.default()
+      return mod
+    })()
+    modulePromise.catch(() => { modulePromise = null })
+  }
+  return modulePromise
+}
+
+function hexToBytes (hex: string): Uint8Array | null {
+  if (!/^[0-9a-f]{64}$/i.test(hex)) return null
+  const out = new Uint8Array(32)
+  for (let i = 0; i < 32; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  return out
+}
+
+function bytesToHex (bytes: Uint8Array): string {
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** The tab's endpoint, bound to `relayUrl`. */
+export function browserEndpoint (relayUrl: string): Promise<WasmEndpoint> {
+  if (!endpointPromise || endpointRelay !== relayUrl) {
+    endpointRelay = relayUrl
+    endpointPromise = (async () => {
+      const mod = await loadWasm()
+      let secret: Uint8Array | null = null
+      try {
+        secret = hexToBytes(localStorage.getItem(KEY_STORAGE) ?? '')
+      } catch { /* no storage */ }
+      const endpoint = await mod.MuonEndpoint.create(relayUrl, secret)
+      try {
+        localStorage.setItem(KEY_STORAGE, bytesToHex(endpoint.secretKey()))
+      } catch { /* no storage */ }
+      return endpoint
+    })()
+    endpointPromise.catch(() => { endpointPromise = null })
+  }
+  return endpointPromise
+}
+
+/** Forgets this browser's key, so the next sign-in starts from a new one. */
+export function forgetBrowserKey () {
+  try {
+    localStorage.removeItem(KEY_STORAGE)
+  } catch { /* no storage */ }
+  endpointPromise?.then(e => e.close()).catch(() => {})
+  endpointPromise = null
+}
+
+/** A WebSocket-shaped object over a gateway WebSocket, for Fluidd's socket client. */
+class IrohSocket implements PrinterSocket {
+  readyState = 1
+  private readonly listeners = new Map<string, Array<(event: any) => void>>()
+
+  private readonly inner: WasmSocket
+
+  constructor (inner: WasmSocket) {
+    this.inner = inner
+    this.pump()
+  }
+
+  send (data: string) {
+    if (this.readyState !== 1) return
+    this.inner.send(data).catch(error => this.fail(error))
+  }
+
+  close () {
+    if (this.readyState >= 2) return
+    this.readyState = 2
+    this.inner.close().catch(() => {}).finally(() => this.closed(1000, ''))
+  }
+
+  addEventListener (type: string, listener: (event: any) => void) {
+    const list = this.listeners.get(type) ?? []
+    list.push(listener)
+    this.listeners.set(type, list)
+  }
+
+  private emit (type: string, event: any) {
+    for (const listener of this.listeners.get(type) ?? []) listener(event)
+  }
+
+  private async pump () {
+    // Let the caller attach listeners before the first message.
+    await Promise.resolve()
+    for (;;) {
+      let message: string | Uint8Array | null
+      try {
+        message = await this.inner.next()
+      } catch (error) {
+        this.fail(error)
+        return
+      }
+      if (message === null) {
+        this.closed(1000, '')
+        return
+      }
+      const data = typeof message === 'string' ? message : new TextDecoder().decode(message)
+      this.emit('message', { data })
+    }
+  }
+
+  private fail (error: unknown) {
+    if (this.readyState === 3) return
+    this.emit('error', { error })
+    this.closed(1006, String((error as Error)?.message ?? error))
+  }
+
+  private closed (code: number, reason: string) {
+    if (this.readyState === 3) return
+    this.readyState = 3
+    this.emit('close', { code, reason, wasClean: code === 1000 })
+  }
+}
+
+/** One printer's gateway connection, shaped as Fluidd's `ManagedIrohRelay`. */
+export class IrohPrinter implements ManagedIrohRelay {
+  private readonly printer: WasmPrinter
+
+  constructor (printer: WasmPrinter) {
+    this.printer = printer
+  }
+
+  async fetch (path: string, init?: RequestInit): Promise<Response> {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    const headers: string[] = []
+    const source = new Headers(init?.headers ?? {})
+    source.forEach((value, name) => {
+      // The gateway sets its own host and credentials.
+      if (name === 'host' || name === 'authorization') return
+      headers.push(name, value)
+    })
+    let body = new Uint8Array()
+    if (init?.body !== undefined && init.body !== null) {
+      const blob = await new Response(init.body as BodyInit).arrayBuffer()
+      body = new Uint8Array(blob)
+      if (init.body instanceof FormData) {
+        // A multipart body's boundary lives in the type Response computed.
+        const type = new Response(init.body).headers.get('content-type')
+        if (type) {
+          const i = headers.findIndex((h, n) => n % 2 === 0 && h.toLowerCase() === 'content-type')
+          if (i >= 0) headers.splice(i, 2)
+          headers.push('content-type', type)
+        }
+      } else if (typeof init.body === 'string' && !source.has('content-type')) {
+        headers.push('content-type', 'application/json')
+      }
+    }
+    const answer = await this.printer.fetch(method, path, headers, body)
+    const responseHeaders = new Headers()
+    for (let i = 0; i + 1 < answer.headers.length; i += 2) {
+      try {
+        responseHeaders.append(answer.headers[i], answer.headers[i + 1])
+      } catch { /* a header the browser refuses to hold */ }
+    }
+    const nullBody = answer.status === 204 || answer.status === 304
+    return new Response(nullBody ? null : answer.body, { status: answer.status, headers: responseHeaders })
+  }
+
+  async openWebSocket (path: string): Promise<PrinterSocket> {
+    return new IrohSocket(await this.printer.openWebSocket(path))
+  }
+
+  close () {
+    this.printer.close()
+  }
+}
+
+/** Fluidd's `ManagedIrohEndpoint`: dials the printer the handoff names. */
+export function managedEndpointFactory (): Promise<ManagedIrohEndpoint> {
+  return Promise.resolve({
+    async openRelay (session: AuthorizedManagedRelaySession) {
+      const endpoint = await browserEndpoint(session.relayUrl)
+      return new IrohPrinter(await endpoint.connect(session.printerId))
+    },
+    close () {}
+  })
+}
