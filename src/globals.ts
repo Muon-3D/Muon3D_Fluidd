@@ -191,6 +191,9 @@ const mdiFileImageLock = 'M 6 2 C 4.8900033 2 4 2.8900033 4 4 L 4 20 C 4 21.0999
 export const Globals = Object.freeze({
   APP_NAME: 'fluidd',
   HEADER_HEIGHT: 56,
+  NAVIGATION_DRAWER_WIDTH: 224,
+  NAVIGATION_RAIL_WIDTH: 56,
+  CHART_FONT_FAMILY: "'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif",
   DEFAULTS: {
     CAMERA_URL_STREAM: '/webcam/?action=stream',
     CAMERA_URL_SNAPSHOT: '/webcam/?action=snapshot'

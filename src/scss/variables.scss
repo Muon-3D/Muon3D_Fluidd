@@ -1,9 +1,13 @@
 // Muon3D foundation. Sass values are limited to Vuetify's compile-time API;
-// runtime component colours live in the semantic --m3d-* token layer.
+// runtime component colours live in the --m3d-* token layer (muon3d.scss).
+// Keep these in step with that file's dark palette.
+$body-font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+$heading-font-family: $body-font-family;
+
 $grid-gutter: 16px;
 $container-padding-x: 16px;
 $container-padding-y: 16px;
-$border-radius-root: 14px;
+$border-radius-root: 4px;
 
 $grid-gutters:
   (
@@ -16,45 +20,46 @@ $grid-gutters:
 
 // Standard height rows for our table should be..
 $data-table-regular-row-height: 40px;
-$data-table-border-radius: 20px;
+$data-table-border-radius: 0;
 
-$dialog-card-actions-padding: 0 24px 16px;
+$dialog-card-actions-padding: 0 16px 16px;
 
-$tooltip-background-color: #182123;
+$tooltip-background-color: #e8ecee;
 
 $material-dark: (
-  'background': #101719,
+  'background': #13171a,
+  'cards': #1a1f22,
   'table': (
-    'active': #1f2a2d,
-    'hover': #2b3739
+    'active': #212629,
+    'hover': #212629
   ),
   'text': (
-    'theme': rgba(#ffffff, 0.87),
-    'primary': rgba(#ffffff, 0.80), // standard text color (when not specifically set to primary--text)
+    'theme': #e8ecee,
+    'primary': #e8ecee,
   ),
   'icons': (
-    'active': rgba(#ffffff, 0.77) // incl checkboxes
+    'active': #c7cfd3
   ),
-  'text-color': rgba(#ffffff, 0.87),
-  'fg-color': rgba(#ffffff, 0.87)
+  'text-color': #e8ecee,
+  'fg-color': #e8ecee
 );
 
 $material-dark-elevation-colors: (
-  '0': #101719,
-  '1': #182123,
-  '2': #1f2a2d,
-  '3': #243033,
-  '4': #2b3739,
-  '6': #2b3739,
-  '8': #2b3739,
-  '12': #2b3739,
-  '16': #2b3739,
-  '24': #2b3739
+  '0': #13171a,
+  '1': #1a1f22,
+  '2': #1a1f22,
+  '3': #212629,
+  '4': #212629,
+  '6': #222729,
+  '8': #222729,
+  '12': #222729,
+  '16': #222729,
+  '24': #222729
 );
 
 $timeline-divider-width: 48px;
 
-$expansion-panel-active-margin: 16px;
+$expansion-panel-active-margin: 12px;
 $expansion-panel-header-padding: 12px 16px;
 $expansion-panel-content-padding: 0 16px 16px;
 $expansion-panel-header-min-height: none;

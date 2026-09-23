@@ -78,7 +78,7 @@ export const getters: GetterTree<ChartState, RootState> = {
       color,
       grid,
       textStyle: {
-        fontFamily: 'Roboto'
+        fontFamily: Globals.CHART_FONT_FAMILY
       },
       tooltip: {
         ...tooltip,

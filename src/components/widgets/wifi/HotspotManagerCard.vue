@@ -60,7 +60,7 @@
         <template v-if="!apCredentials">
           <v-skeleton-loader
             type="image"
-            class="ma-4 mr-0 flex-grow-1"
+            class="ma-4 flex-grow-1"
             style="height:160px"
           />
         </template>

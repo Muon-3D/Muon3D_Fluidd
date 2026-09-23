@@ -519,9 +519,7 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
   }
 
   .muon-main {
-    background:
-      radial-gradient(circle at 92% 0%, var(--m3d-accent-soft), transparent 34rem),
-      var(--m3d-bg);
+    background: var(--m3d-bg);
   }
 
   .muon-content {
@@ -532,16 +530,15 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
   .mobile-estop {
     min-width: 48px !important;
     min-height: 48px !important;
-    box-shadow: var(--m3d-shadow-lg);
   }
 
   .muon-background-logo {
     pointer-events: none;
     position: fixed;
-    width: 50%;
+    width: 40%;
     height: auto;
-    right: -10%;
-    bottom: -20%;
-    opacity: 0.08;
+    right: -8%;
+    bottom: -16%;
+    opacity: 0.04;
   }
 </style>
