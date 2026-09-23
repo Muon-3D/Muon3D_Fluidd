@@ -123,12 +123,17 @@ export type PrintProgressCalculation = 'file' | 'fileAbsolute' | 'slicer' | 'fil
 
 export type PrintEtaCalculation = 'file' | 'slicer'
 
+// 'flat' is the hairline graphite look; 'rounded' is the Apple-style look
+// that matches the printer's own panel (src/scss/muon3d-rounded.scss).
+export type UiStyle = 'flat' | 'rounded'
+
 // Config stored in moonraker db
 export interface ThemeConfig {
   color: string;
   isDark: boolean;
   logo: ThemeLogo;
   backgroundLogo: boolean;
+  style: UiStyle;
 }
 
 // Config defined in host

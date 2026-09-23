@@ -194,6 +194,8 @@ export const Globals = Object.freeze({
   NAVIGATION_DRAWER_WIDTH: 224,
   NAVIGATION_RAIL_WIDTH: 56,
   CHART_FONT_FAMILY: "'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif",
+  // Keep in step with --m3d-font-sans in src/scss/muon3d-rounded.scss.
+  CHART_FONT_FAMILY_ROUNDED: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter Variable', 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif",
   DEFAULTS: {
     CAMERA_URL_STREAM: '/webcam/?action=stream',
     CAMERA_URL_SNAPSHOT: '/webcam/?action=snapshot'

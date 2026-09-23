@@ -9,6 +9,7 @@
       :height="6"
       :value="estimates.progress"
       color="primary"
+      class="m3d-progress-inline"
     />
 
     <v-card-text v-if="visible">
@@ -19,7 +20,12 @@
             cols="auto"
             align-self="center"
           >
+            <app-arc-progress
+              v-if="roundedStyle"
+              :value="estimates.progress"
+            />
             <v-progress-circular
+              v-else
               :rotate="-90"
               :size="90"
               :width="7"
@@ -299,6 +305,10 @@ export default class StatusTab extends Mixins(StateMixin, FilesMixin, ToolheadMi
 
   get printInProgressLayout (): PrintInProgressLayout {
     return this.$store.state.config.uiSettings.general.printInProgressLayout as PrintInProgressLayout
+  }
+
+  get roundedStyle (): boolean {
+    return this.$store.state.config.uiSettings.theme.style === 'rounded'
   }
 
   /**

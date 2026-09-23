@@ -145,7 +145,7 @@ export default class BedMeshChart extends Mixins(BrowserMixin) {
         show: false
       },
       textStyle: {
-        fontFamily: this.$globals.CHART_FONT_FAMILY
+        fontFamily: this.$store.getters['config/getChartFontFamily']
       },
       darkMode,
       tooltip: {
