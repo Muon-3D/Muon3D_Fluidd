@@ -213,7 +213,7 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
 
   get pageTitle () {
     if (this.managedConsoleRoute) {
-      return `Muon | ${this.$route.name ?? 'Managed preview'}`
+      return `Muon3D | ${this.$route.name ?? 'Managed preview'}`
     }
 
     const instanceName = this.$store.getters['config/getDisplayName'] as string
