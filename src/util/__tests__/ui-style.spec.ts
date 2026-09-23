@@ -15,17 +15,17 @@ afterEach(() => {
 
 describe('interface style', () => {
   it('marks <html> with the style and remembers it for the sign-in page', () => {
-    applyUiStyle('rounded')
+    applyUiStyle('glass')
 
-    expect(document.documentElement.dataset.m3dStyle).toBe('rounded')
+    expect(document.documentElement.dataset.m3dStyle).toBe('glass')
 
     delete document.documentElement.dataset.m3dStyle
     restoreUiStyle()
 
-    expect(document.documentElement.dataset.m3dStyle).toBe('rounded')
+    expect(document.documentElement.dataset.m3dStyle).toBe('glass')
   })
 
-  it.each([undefined, 'glass', 42])('falls back to the default for %s', (value) => {
+  it.each([undefined, 'rounded', 42])('falls back to the default for %s', (value) => {
     applyUiStyle(value)
 
     expect(document.documentElement.dataset.m3dStyle).toBe(DEFAULT_UI_STYLE)
@@ -38,11 +38,17 @@ describe('interface style', () => {
   })
 
   it('ignores a stored value it does not recognise', () => {
-    localStorage.setItem('muon.uiStyle', 'glass')
+    localStorage.setItem('muon.uiStyle', 'rounded')
 
     restoreUiStyle()
 
     expect(document.documentElement.dataset.m3dStyle).toBe(DEFAULT_UI_STYLE)
+  })
+
+  it('returns the restored style, for the store to hold until settings load', () => {
+    localStorage.setItem('muon.uiStyle', 'glass')
+
+    expect(restoreUiStyle()).toBe('glass')
   })
 
   it('gives a theme saved before styles existed the default style', () => {
@@ -55,13 +61,27 @@ describe('interface style', () => {
     expect(state.uiSettings.theme.color).toBe('#2196F3')
   })
 
+  it("lets the printer's saved settings replace the style restored for sign-in", () => {
+    const withoutStyle = defaultState()
+    mutations.setRestoredUiStyle(withoutStyle, 'glass')
+    mutations.setInitUiSettings(withoutStyle, { theme: { color: '#2196F3', isDark: true, logo: { src: 'logo_fluidd.svg' }, backgroundLogo: false } } as unknown as Partial<UiSettings>)
+
+    expect(withoutStyle.uiSettings.theme.style).toBe(DEFAULT_UI_STYLE)
+
+    const withStyle = defaultState()
+    mutations.setRestoredUiStyle(withStyle, 'flat')
+    mutations.setInitUiSettings(withStyle, { theme: { style: 'glass' } } as unknown as Partial<UiSettings>)
+
+    expect(withStyle.uiSettings.theme.style).toBe('glass')
+  })
+
   it('tells the charts the font of the current style', () => {
     const state = defaultState()
 
     expect(getChartFontFamily(state)).toBe(Globals.CHART_FONT_FAMILY)
 
-    state.uiSettings.theme = { ...state.uiSettings.theme, style: 'rounded' } satisfies ThemeConfig
+    state.uiSettings.theme = { ...state.uiSettings.theme, style: 'glass' } satisfies ThemeConfig
 
-    expect(getChartFontFamily(state)).toBe(Globals.CHART_FONT_FAMILY_ROUNDED)
+    expect(getChartFontFamily(state)).toBe(Globals.CHART_FONT_FAMILY_GLASS)
   })
 })

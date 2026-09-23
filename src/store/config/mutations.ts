@@ -1,6 +1,6 @@
 import Vue from 'vue'
 import type { MutationTree } from 'vuex'
-import type { ConfigState, UiSettings, SaveByPath, InstanceConfig, InitConfig } from './types'
+import type { ConfigState, UiSettings, SaveByPath, InstanceConfig, InitConfig, UiStyle } from './types'
 import { defaultState } from './state'
 import { Globals } from '@/globals'
 import { cloneDeep, mergeWith, set } from 'lodash-es'
@@ -9,6 +9,7 @@ import type { AppTableHeader } from '@/types'
 import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { FileFilterType } from '../files/types'
 import consola from 'consola'
+import { DEFAULT_UI_STYLE } from '@/util/ui-style'
 
 export const mutations: MutationTree<ConfigState> = {
   /**
@@ -45,6 +46,12 @@ export const mutations: MutationTree<ConfigState> = {
         if (logoSrc?.startsWith('/')) {
           payload.theme.logo.src = logoSrc.substring(1)
         }
+
+        // A theme saved before styles existed has none, and is the default
+        // style; the style this browser restored for sign-in must not stick.
+        if (payload.theme.style == null) {
+          payload.theme.style = DEFAULT_UI_STYLE
+        }
       }
 
       const mergedSettings = mergeWith(
@@ -61,6 +68,11 @@ export const mutations: MutationTree<ConfigState> = {
    * Sets the API and Socket URLS on first load and
    * ensure the instance is configured in local storage
    */
+  // The style restored from this browser, until the printer's settings load.
+  setRestoredUiStyle (state, payload: UiStyle) {
+    state.uiSettings.theme.style = payload
+  },
+
   setInitApiConfig (state, payload) {
     state.apiUrl = payload.apiUrl
     state.socketUrl = payload.socketUrl

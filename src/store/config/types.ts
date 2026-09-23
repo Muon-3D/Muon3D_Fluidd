@@ -123,9 +123,10 @@ export type PrintProgressCalculation = 'file' | 'fileAbsolute' | 'slicer' | 'fil
 
 export type PrintEtaCalculation = 'file' | 'slicer'
 
-// 'flat' is the hairline graphite look; 'rounded' is the Apple-style look
-// that matches the printer's own panel (src/scss/muon3d-rounded.scss).
-export type UiStyle = 'flat' | 'rounded'
+// 'flat' is the hairline graphite look; 'glass' is the Apple-style look:
+// neutral surfaces, system colours and a glass chrome
+// (src/scss/muon3d-glass.scss).
+export type UiStyle = 'flat' | 'glass'
 
 // Config stored in moonraker db
 export interface ThemeConfig {
