@@ -1,26 +1,19 @@
 <template>
-  <v-list
-    dense
-    width="180"
-    class="grow pt-0"
-    :color="($vuetify.theme.dark) ? '#1E1E20' : '#FFFFFF'"
-  >
+  <div class="settings-nav">
     <template
       v-for="item in items"
     >
-      <v-list-item
+      <router-link
         v-if="item.visible"
         :key="item.name"
         :to="`/settings${item.hash}`"
-        :exact="false"
-        link
+        class="settings-nav__item"
+        :class="{ 'settings-nav__item--active': $route.hash === item.hash }"
       >
-        <v-list-item-content>
-          <v-list-item-title>{{ item.name }}</v-list-item-title>
-        </v-list-item-content>
-      </v-list-item>
+        {{ item.name }}
+      </router-link>
     </template>
-  </v-list>
+  </div>
 </template>
 
 <script lang="ts">
@@ -64,3 +57,31 @@ export default class AppSettingsNav extends Vue {
   }
 }
 </script>
+
+<style lang="scss" scoped>
+  .settings-nav {
+    margin-left: 21px;
+    padding-left: 12px;
+    border-left: 1px solid var(--m3d-border);
+  }
+
+  .settings-nav__item {
+    display: block;
+    padding: 6px 10px;
+    border-radius: var(--m3d-radius-sm);
+    color: var(--m3d-text-muted) !important;
+    font-size: 0.8125rem;
+    line-height: 1.3;
+    text-decoration: none;
+
+    &:hover {
+      background-color: var(--m3d-hover);
+      color: var(--m3d-text) !important;
+    }
+  }
+
+  .settings-nav__item--active {
+    color: var(--m3d-accent) !important;
+    font-weight: 600;
+  }
+</style>
