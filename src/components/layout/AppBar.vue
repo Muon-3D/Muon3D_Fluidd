@@ -160,6 +160,8 @@
           <app-wifi-button />
         </div>
 
+        <cloud-account-menu class="toolbar-action" />
+
         <app-btn
           fab
           small
@@ -231,6 +233,7 @@
 </template>
 
 <script lang="ts">
+import CloudAccountMenu from '@/components/muon-cloud/CloudAccountMenu.vue'
 import { Component, Mixins } from 'vue-property-decorator'
 import UserPasswordDialog from '@/components/settings/auth/UserPasswordDialog.vue'
 import PendingChangesDialog from '@/components/settings/PendingChangesDialog.vue'
@@ -248,6 +251,7 @@ import AppWifiButton from '@/components/ui/AppWifiButton.vue'
 
 @Component({
   components: {
+    CloudAccountMenu,
     UserPasswordDialog,
     PendingChangesDialog,
     AppSaveConfigAndRestartBtn,
