@@ -720,6 +720,13 @@ body {
     border-bottom: 1px solid var(--m3d-border) !important;
   }
 
+  /* Row headers (System and MCU information) are labels, not data. */
+  > .v-data-table__wrapper > table > tbody > tr > th {
+    color: var(--m3d-text-muted) !important;
+    font-size: 0.8125rem !important;
+    font-weight: 500 !important;
+  }
+
   > .v-data-table__wrapper > table > tbody > tr:last-child > td,
   > .v-data-table__wrapper > table > tbody > tr:last-child > th {
     border-bottom: 0 !important;
