@@ -198,10 +198,10 @@ export default class Console extends Mixins(StateMixin) {
   }
 
   .console-wrapper {
-    font-family: monospace;
-    font-size: 1rem; // 15 px
-    font-weight: 100 !important;
-    padding-left: 4px;
+    font-family: var(--m3d-font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    padding: 8px 16px;
   }
 
   .console-scroller {

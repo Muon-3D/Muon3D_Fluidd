@@ -1,142 +1,147 @@
 <template>
   <v-navigation-drawer
     v-model="open"
-    class="muon-nav-shell"
+    class="muon-nav"
+    :class="{ 'muon-nav--rail': rail }"
     :color="$vuetify.theme.currentTheme.drawer"
-    :mini-variant="!showSubNavigation"
-    :floating="!showSubNavigation"
+    :width="$globals.NAVIGATION_DRAWER_WIDTH"
+    :mini-variant="rail"
+    :mini-variant-width="$globals.NAVIGATION_RAIL_WIDTH"
     clipped
     app
   >
-    <v-row
-      class="fill-height"
-      no-gutters
+    <router-link
+      v-if="isMobileViewport"
+      to="/"
+      class="muon-nav__brand"
+      :style="`height: ${$globals.HEADER_HEIGHT}px;`"
     >
-      <v-navigation-drawer
-        :color="$vuetify.theme.currentTheme.drawer"
-        mini-variant
-        :value="open"
-        class="muon-nav-rail pb-16 pb-sm-0"
-      >
-        <div
-          v-if="isMobileViewport"
-          :style="`height: ${$globals.HEADER_HEIGHT}px;`"
-          class="app-icon muon-mobile-brand"
-        >
-          <router-link to="/">
-            <app-icon />
-            <span class="muon-mobile-brand-copy">
-              <strong>MUON</strong><small>OS</small>
-            </span>
-          </router-link>
+      <span class="muon-wordmark">MUON</span>
+    </router-link>
+
+    <nav
+      v-show="authenticated && socketConnected"
+      class="muon-nav__body"
+    >
+      <div class="muon-nav__group">
+        <div class="muon-nav__label">
+          {{ $t('app.general.title.nav_print') }}
         </div>
 
-        <div
-          v-show="authenticated && socketConnected"
-          class="nav-items muon-nav-items"
+        <app-nav-item
+          icon="$dash"
+          exact
+          to="/"
         >
-          <app-nav-item
-            icon="$dash"
-            exact
-            to="/"
-          >
-            {{ $t('app.general.title.home') }}
-          </app-nav-item>
+          {{ $t('app.general.title.home') }}
+        </app-nav-item>
 
-          <app-nav-item
-            icon="$console"
-            to="/console"
-          >
-            {{ $t('app.general.title.console') }}
-          </app-nav-item>
+        <app-nav-item
+          icon="$files"
+          to="/jobs"
+        >
+          {{ $t('app.general.title.jobs') }}
+        </app-nav-item>
 
-          <app-nav-item
-            icon="$cubeScan"
-            to="/preview"
-          >
-            {{ $t('app.general.title.gcode_preview') }}
-          </app-nav-item>
+        <app-nav-item
+          icon="$cubeScan"
+          to="/preview"
+        >
+          {{ $t('app.general.title.gcode_preview') }}
+        </app-nav-item>
 
-          <app-nav-item
-            icon="$files"
-            to="/jobs"
-          >
-            {{ $t('app.general.title.jobs') }}
-          </app-nav-item>
+        <app-nav-item
+          icon="$console"
+          to="/console"
+        >
+          {{ $t('app.general.title.console') }}
+        </app-nav-item>
 
-          <app-nav-item
-            v-if="supportsHistory"
-            icon="$history"
-            to="/history"
-          >
-            {{ $t('app.general.title.history') }}
-          </app-nav-item>
+        <app-nav-item
+          v-if="supportsHistory"
+          icon="$history"
+          to="/history"
+        >
+          {{ $t('app.general.title.history') }}
+        </app-nav-item>
 
-          <app-nav-item
-            v-if="supportsTimelapse"
-            icon="$video"
-            to="/timelapse"
-          >
-            {{ $t('app.general.title.timelapse') }}
-          </app-nav-item>
+        <app-nav-item
+          v-if="supportsTimelapse"
+          icon="$video"
+          to="/timelapse"
+        >
+          {{ $t('app.general.title.timelapse') }}
+        </app-nav-item>
+      </div>
 
-          <app-nav-item
-            icon="$tune"
-            to="/tune"
-          >
-            {{ $t('app.general.title.tune') }}
-          </app-nav-item>
-
-          <app-nav-item
-            v-if="enableDiagnostics"
-            icon="$chart"
-            to="/diagnostics"
-          >
-            {{ $t('app.general.title.diagnostics') }}
-          </app-nav-item>
-
-          <app-nav-item
-            icon="$codeJson"
-            to="/configure"
-          >
-            {{ $t('app.general.title.configure') }}
-          </app-nav-item>
-
-          <app-nav-item
-            icon="$wifi"
-            to="/wifi"
-          >
-            {{ $t('app.general.title.wifi') }}
-          </app-nav-item>
-
-          <app-nav-item
-            icon="$desktopTower"
-            to="/system"
-          >
-            {{ $t('app.general.title.system') }}
-          </app-nav-item>
-
-          <app-nav-item
-            icon="$printer3d"
-            to="/fleet"
-          >
-            Fleet preview
-          </app-nav-item>
-
-          <app-nav-item
-            icon="$cog"
-            to="/settings"
-          >
-            {{ $t('app.general.title.settings') }}
-          </app-nav-item>
+      <div class="muon-nav__group">
+        <div class="muon-nav__label">
+          {{ $t('app.general.title.nav_machine') }}
         </div>
-      </v-navigation-drawer>
 
-      <router-view
-        v-if="showSubNavigation"
-        name="navigation"
-      />
-    </v-row>
+        <app-nav-item
+          icon="$tune"
+          to="/tune"
+        >
+          {{ $t('app.general.title.tune') }}
+        </app-nav-item>
+
+        <app-nav-item
+          icon="$codeJson"
+          to="/configure"
+        >
+          {{ $t('app.general.title.configure') }}
+        </app-nav-item>
+
+        <app-nav-item
+          v-if="enableDiagnostics"
+          icon="$chart"
+          to="/diagnostics"
+        >
+          {{ $t('app.general.title.diagnostics') }}
+        </app-nav-item>
+      </div>
+
+      <div class="muon-nav__group">
+        <div class="muon-nav__label">
+          {{ $t('app.general.title.nav_system') }}
+        </div>
+
+        <app-nav-item
+          icon="$wifi"
+          to="/wifi"
+        >
+          {{ $t('app.general.title.wifi') }}
+        </app-nav-item>
+
+        <app-nav-item
+          icon="$desktopTower"
+          to="/system"
+        >
+          {{ $t('app.general.title.system') }}
+        </app-nav-item>
+
+        <app-nav-item
+          icon="$cog"
+          to="/settings"
+        >
+          {{ $t('app.general.title.settings') }}
+        </app-nav-item>
+
+        <router-view
+          v-if="showSubNavigation && !rail"
+          name="navigation"
+          class="muon-nav__sub"
+        />
+
+        <app-nav-item
+          icon="$printer3d"
+          to="/fleet"
+        >
+          Fleet preview
+        </app-nav-item>
+      </div>
+    </nav>
   </v-navigation-drawer>
 </template>
 
@@ -146,10 +151,22 @@ import { Component, Mixins, VModel } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import BrowserMixin from '@/mixins/browser'
 
-@Component({})
+@Component<AppNavDrawer>({
+  provide () {
+    return {
+      isNavRail: () => this.rail
+    }
+  }
+})
 export default class AppNavDrawer extends Mixins(StateMixin, BrowserMixin) {
   @VModel({ type: Boolean })
     open?: boolean
+
+  // Below the lg breakpoint the labelled sidebar would take a third of the
+  // screen, so it collapses to an icon rail with tooltips.
+  get rail (): boolean {
+    return !this.isMobileViewport && this.$vuetify.breakpoint.mdAndDown
+  }
 
   get supportsHistory () {
     return this.$store.getters['server/componentSupport']('history')
@@ -174,85 +191,67 @@ export default class AppNavDrawer extends Mixins(StateMixin, BrowserMixin) {
 </script>
 
 <style lang="scss" scoped>
-  .app-icon {
+  .muon-nav :deep(.v-navigation-drawer__border) {
+    background-color: var(--m3d-border) !important;
+  }
+
+  .muon-nav__brand {
     display: flex;
-    justify-content: center;
     align-items: center;
-  }
-
-  .muon-nav-shell {
-    background: var(--m3d-surface-1) !important;
-    border-right: 1px solid var(--m3d-border) !important;
-    color: var(--m3d-text);
-  }
-
-  .muon-nav-rail {
-    background: var(--m3d-surface-1) !important;
-  }
-
-  .muon-mobile-brand {
+    padding: 0 20px;
     border-bottom: 1px solid var(--m3d-border);
-  }
-
-  .muon-mobile-brand a {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    color: inherit;
+    color: var(--m3d-text);
     text-decoration: none;
   }
 
-  .muon-mobile-brand-copy {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 3px;
-    color: var(--m3d-text);
-    font-family: var(--m3d-font-display);
-    font-size: var(--m3d-text-xs);
-    letter-spacing: 0.13em;
+  .muon-nav__body {
+    padding: 8px 8px 24px;
   }
 
-  .muon-mobile-brand-copy strong {
-    font-weight: var(--m3d-weight-regular);
+  .muon-nav__group + .muon-nav__group {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--m3d-border);
   }
 
-  .muon-mobile-brand-copy small {
-    color: var(--m3d-accent);
-    font-size: 0.56rem;
-    font-weight: var(--m3d-weight-bold);
+  .muon-nav__label {
+    padding: 8px 12px 6px;
+    color: var(--m3d-text-subtle);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
   }
 
-  .muon-nav-items {
-    padding: 10px 8px;
+  .muon-nav--rail {
+    .muon-nav__label {
+      height: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .muon-nav__group + .muon-nav__group {
+      margin-top: 6px;
+      padding-top: 6px;
+    }
+
+    :deep(.muon-nav-item) {
+      justify-content: center;
+      padding: 0;
+    }
+
+    :deep(.muon-nav-item .v-list-item__icon) {
+      margin: 0;
+    }
+
+    :deep(.muon-nav-item .v-list-item__content),
+    :deep(.muon-nav-item .muon-nav-item__kbd) {
+      display: none;
+    }
   }
 
-  :deep(.muon-nav-items .v-list-item) {
-    min-height: 48px;
-    margin: 3px 0;
-    border-radius: var(--m3d-radius-md);
-    color: var(--m3d-text-muted);
-  }
-
-  :deep(.muon-nav-items .v-list-item:hover) {
-    background: var(--m3d-surface-2);
-    color: var(--m3d-text);
-  }
-
-  :deep(.muon-nav-items .v-list-item--active) {
-    background: var(--m3d-accent-soft);
-    color: var(--m3d-accent) !important;
-  }
-
-  :deep(.muon-nav-items .v-list-item__icon) {
-    margin: 12px 16px 12px 8px;
-  }
-
-  :deep(.muon-nav-items .v-list-item__title) {
-    font-size: 0.88rem;
-    font-weight: 620;
-  }
-
-  :deep(.v-navigation-drawer.no-subnav > .v-navigation-drawer__border) {
-     display: none;
+  .muon-nav__sub {
+    margin-top: 2px;
+    margin-bottom: 4px;
   }
 </style>

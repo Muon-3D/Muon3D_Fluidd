@@ -76,8 +76,8 @@ export const defaultState = (): ConfigState => {
         logo: {
           src: 'logo_fluidd.svg'
         },
-        color: '#2196F3',
-        backgroundLogo: true
+        color: '#80D6D1',
+        backgroundLogo: false
       },
       editor: {
         confirmDirtyEditorClose: true,

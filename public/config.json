@@ -8,6 +8,14 @@
   "hosted": false,
   "themePresets": [
     {
+      "name": "Muon",
+      "color": "#80D6D1",
+      "isDark": true,
+      "logo": {
+        "src": "logo_fluidd.svg"
+      }
+    },
+    {
       "name": "Fluidd",
       "color": "#2196F3",
       "isDark": true,

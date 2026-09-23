@@ -10,33 +10,37 @@
     <router-link
       v-if="!isMobileViewport"
       to="/"
-      class="toolbar-logo muon-brand"
+      class="muon-brand"
+      :class="{ 'muon-brand--compact': navRail }"
+      :style="navRail ? '' : `width: ${$globals.NAVIGATION_DRAWER_WIDTH}px;`"
     >
-      <app-icon />
-      <span class="muon-brand-wordmark">
-        <strong>MUON</strong><small>OS</small>
-      </span>
+      <span class="muon-wordmark">MUON</span>
     </router-link>
 
     <div class="toolbar-title">
-      <app-btn
+      <v-btn
         v-if="isMobileViewport"
-        fab
-        small
-        :elevation="0"
-        class="mobile-nav-button mx-1"
-        color="transparent"
+        icon
+        class="mobile-nav-button"
         @click="$emit('navdrawer')"
       >
         <v-icon>$menuAlt</v-icon>
-      </app-btn>
+      </v-btn>
 
       <v-toolbar-title class="printer-title">
         <router-link
           to="/"
-          v-html="instanceName"
-        />
-        <span class="muon-local-label">LOCAL PRINTER</span>
+          class="printer-title__name"
+        >
+          {{ displayName }}
+        </router-link>
+        <span
+          class="printer-status"
+          :class="`printer-status--${statusTone}`"
+        >
+          <span class="printer-status__dot" />
+          <span class="printer-status__text">{{ statusText }}</span>
+        </span>
       </v-toolbar-title>
     </div>
 
@@ -60,17 +64,20 @@
             <app-btn
               :disabled="!klippyReady"
               v-bind="attrs"
-              class="toolbar-action mx-1"
-              color=""
+              outlined
+              small
+              class="estop-action mx-1"
+              color="error"
               v-on="on"
               @click="emergencyStop()"
             >
               <v-icon
-                color="error"
-                class="danger-action"
+                small
+                left
               >
                 $estop
               </v-icon>
+              E-Stop
             </app-btn>
           </template>
           <span>
@@ -128,7 +135,7 @@
       </div>
 
       <div
-        v-if="supportsAuth && authenticated"
+        v-if="supportsAuth && authenticated && $vuetify.breakpoint.lgAndUp"
         class="toolbar-action mr-1"
       >
         <app-wifi-button />
@@ -243,6 +250,51 @@ export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin
 
   get instanceName () {
     return this.$store.state.config.uiSettings.general.instanceName
+  }
+
+  get navRail (): boolean {
+    return !this.isMobileViewport && this.$vuetify.breakpoint.mdAndDown
+  }
+
+  // "fluidd" is the stock default and names nothing; the hostname does.
+  get displayName (): string {
+    const name = (this.instanceName ?? '').trim()
+    const hostname = this.$store.state.printer.printer.info?.hostname as string | undefined
+
+    return (name && name !== this.$globals.APP_NAME) ? name : (hostname || name)
+  }
+
+  get printProgress (): number {
+    return Math.floor((this.$store.getters['printer/getPrintProgress'] as number) * 100)
+  }
+
+  get statusTone (): 'ok' | 'active' | 'warn' | 'fault' | 'off' {
+    if (!this.socketConnected) return 'off'
+    if (!this.klippyReady) {
+      return ['error', 'shutdown'].includes(this.klippyState) ? 'fault' : 'warn'
+    }
+
+    switch (this.printerState.toLowerCase()) {
+      case 'printing':
+      case 'busy':
+        return 'active'
+      case 'paused':
+        return 'warn'
+      case 'error':
+      case 'cancelled':
+        return 'fault'
+      default:
+        return 'ok'
+    }
+  }
+
+  get statusText (): string {
+    if (!this.socketConnected) return 'Offline'
+    if (!this.klippyReady) return `Klipper ${this.klippyState || 'offline'}`
+
+    const state = this.$filters.prettyCase(this.printerState)
+
+    return this.printerPrinting ? `${state} · ${this.printProgress}%` : state
   }
 
   get currentFile () {
@@ -464,100 +516,134 @@ export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin
   @import 'vuetify/src/styles/styles.sass';
 
   .muon-app-bar {
-    background: var(--m3d-surface-1) !important;
     border-bottom: 1px solid var(--m3d-border) !important;
-    box-shadow: var(--m3d-shadow-sm) !important;
-    color: var(--m3d-text);
   }
 
-  .toolbar-logo {
+  :deep(.v-toolbar__content) {
+    padding: 0 8px 0 0;
+  }
+
+  .muon-brand {
     display: flex;
-    justify-content: center;
+    flex: 0 0 auto;
     align-items: center;
-    width: 152px;
-    gap: 8px;
-    height: inherit;
-    color: inherit;
+    align-self: stretch;
+    padding: 0 20px;
+    border-right: 1px solid var(--m3d-border);
+    color: var(--m3d-text);
     text-decoration: none;
   }
 
-  .muon-brand-wordmark {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 3px;
-    letter-spacing: 0.14em;
-    line-height: 1;
-    color: var(--m3d-text);
-    font-family: var(--m3d-font-display);
-    font-size: var(--m3d-text-sm);
-  }
-
-  .muon-brand-wordmark strong {
-    font-weight: var(--m3d-weight-regular);
-  }
-
-  .muon-brand-wordmark small {
-    color: var(--m3d-accent);
-    font-size: var(--m3d-text-2xs);
-    font-weight: var(--m3d-weight-bold);
-    letter-spacing: 0.16em;
+  .muon-brand--compact {
+    border-right: 0;
+    padding-right: 0;
   }
 
   .toolbar-title {
     display: flex;
-    flex: 1 1;
-    max-width: 50%;
+    flex: 1 1 auto;
+    min-width: 0;
     height: inherit;
     align-items: center;
-    gap: 12px;
-    padding: 0 16px;
+    gap: 8px;
+    padding: 0 20px;
   }
 
   .toolbar-supplemental {
     display: flex;
+    flex: 0 0 auto;
     justify-content: flex-end;
-    flex: 0 0 50%;
-    max-width: 50%;
     align-items: center;
+    gap: 2px;
     height: inherit;
   }
 
   .printer-title {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     min-width: 0;
-    gap: 10px;
-    font-size: 1.05rem;
-    font-weight: var(--m3d-weight-semibold);
-    font-family: var(--m3d-font-sans);
+    gap: 14px;
     overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    @media #{map-get($display-breakpoints, 'sm-and-up')} {
-      font-size: 1.875rem;
-    }
   }
 
-  .printer-title > a {
-    color: inherit;
+  .printer-title__name {
+    overflow: hidden;
+    color: var(--m3d-text) !important;
+    font-size: 1rem;
+    font-weight: 600;
     text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .muon-local-label {
+  .printer-status {
+    display: inline-flex;
     flex: 0 0 auto;
-    border: 1px solid var(--m3d-border-strong);
-    border-radius: var(--m3d-radius-pill, 999px);
-    padding: 4px 8px;
+    align-items: center;
+    gap: 7px;
     color: var(--m3d-text-muted);
-    font-family: inherit;
-    font-size: 0.58rem;
-    font-weight: var(--m3d-weight-bold);
-    letter-spacing: 0.11em;
-    line-height: 1;
+    font-family: var(--m3d-font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
   }
 
-  .v-toolbar--extended :deep(.v-toolbar__content) {
-    box-shadow: 0px 2px 4px -1px rgb(0 0 0 / 20%), 0px 4px 5px 0px rgb(0 0 0 / 14%), 0px 1px 10px 0px rgb(0 0 0 / 12%);
+  .printer-status__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: currentColor;
+  }
+
+  .printer-status--ok .printer-status__dot { color: var(--m3d-success); }
+  .printer-status--active .printer-status__dot { color: var(--m3d-accent); }
+  .printer-status--warn .printer-status__dot { color: var(--m3d-warning); }
+  .printer-status--fault { color: var(--m3d-danger); }
+  .printer-status--off .printer-status__dot { color: var(--m3d-text-subtle); }
+
+  /* Every icon action in the bar is the same 36px square. */
+  .toolbar-supplemental :deep(.v-btn--fab.v-size--small),
+  .toolbar-supplemental :deep(.v-btn--icon),
+  .mobile-nav-button {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+  }
+
+  .toolbar-supplemental :deep(.v-btn--fab.v-size--small .v-icon),
+  .toolbar-supplemental :deep(.v-btn--icon .v-icon) {
+    color: var(--m3d-text-muted);
+  }
+
+  .toolbar-supplemental :deep(.v-btn--fab.v-size--small:hover .v-icon),
+  .toolbar-supplemental :deep(.v-btn--icon:hover .v-icon) {
+    color: var(--m3d-text);
+  }
+
+  .toolbar-supplemental :deep(.v-btn.btncolor) {
+    background-color: transparent !important;
+    border: 0 !important;
+  }
+
+  .toolbar-supplemental :deep(.mr-1) {
+    margin-right: 0 !important;
+  }
+
+  .estop-action {
+    height: 32px !important;
+    margin-right: 8px !important;
+    border-width: 1px;
+    letter-spacing: 0.08em;
+  }
+
+  .estop-action:not(.v-btn--disabled):hover {
+    background-color: var(--m3d-danger) !important;
+    color: #fff !important;
+  }
+
+  .v-toolbar--extended :deep(.v-toolbar__extension) {
+    border-top: 1px solid var(--m3d-border);
   }
 
   :deep(.v-toolbar__extension) {
@@ -567,29 +653,8 @@ export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin
     padding: 0;
   }
 
-  :deep(.v-toolbar__content) {
-    padding-left: 0;
-  }
-
-  .toolbar-action,
-  .mobile-nav-button {
-    min-width: 44px !important;
-    min-height: 44px !important;
-    border-radius: var(--m3d-radius-pill) !important;
-  }
-
-  .toolbar-action:hover,
-  .mobile-nav-button:hover {
-    background: var(--m3d-surface-2) !important;
-  }
-
-  .danger-action {
-    filter: drop-shadow(0 0 8px var(--m3d-danger));
-  }
-
   .layout-action {
-    min-height: 40px !important;
-    border-radius: var(--m3d-radius-pill) !important;
+    min-height: 32px !important;
   }
 
   .v-btn.v-btn--disabled.v-btn--has-bg.bg-transparent {
@@ -598,21 +663,20 @@ export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin
 
   @media #{map-get($display-breakpoints, 'xs-only')} {
     .toolbar-title {
-      max-width: 58%;
       padding: 0 4px;
     }
 
-    .toolbar-supplemental {
-      flex-basis: 42%;
-      max-width: 42%;
-    }
-
-    .muon-local-label {
-      display: none;
-    }
-
     .printer-title {
-      font-size: 0.94rem;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .printer-title__name {
+      font-size: 0.9375rem;
+    }
+
+    .printer-status {
+      font-size: 0.6875rem;
     }
   }
 </style>
