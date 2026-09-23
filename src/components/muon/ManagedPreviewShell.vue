@@ -2,7 +2,7 @@
   <main class="managed-preview-shell">
     <header class="managed-preview-shell__header">
       <p class="managed-preview-shell__eyebrow">
-        Muon managed connectivity
+        Muon3D managed connectivity
       </p>
       <p
         class="managed-preview-shell__status"

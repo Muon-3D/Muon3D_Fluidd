@@ -58,9 +58,9 @@ export default defineConfig(async ({ command }) => {
         maximumFileSizeToCacheInBytes: 4 * 1024 ** 2
       },
       manifest: {
-        name: 'Muon',
-        short_name: 'Muon',
-        description: 'The web interface for your Muon 3D printer',
+        name: 'Muon3D',
+        short_name: 'Muon3D',
+        description: 'The web interface for your Muon3D printer',
         theme_color: '#1A1F22',
         background_color: '#000000',
         icons: [

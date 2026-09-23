@@ -192,7 +192,7 @@ export const Globals = Object.freeze({
   // APP_NAME is the client_name sent to Moonraker; do not change it for
   // branding. PRODUCT_NAME is what people see.
   APP_NAME: 'fluidd',
-  PRODUCT_NAME: 'Muon',
+  PRODUCT_NAME: 'Muon3D',
   HEADER_HEIGHT: 56,
   NAVIGATION_DRAWER_WIDTH: 224,
   NAVIGATION_RAIL_WIDTH: 56,
