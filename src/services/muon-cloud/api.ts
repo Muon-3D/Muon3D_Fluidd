@@ -69,7 +69,7 @@ function writeStorage (key: string, value: string | null) {
 export function cloudBaseUrl (): string {
   const saved = readStorage(URL_KEY)
   if (saved) return saved.replace(/\/$/, '')
-  const configured = import.meta.env.VITE_MUON_CLOUD_URL as string | undefined
+  const configured = import.meta.env.VUE_MUON_CLOUD_URL as string | undefined
   if (configured) return configured.replace(/\/$/, '')
   return window.location.origin
 }
