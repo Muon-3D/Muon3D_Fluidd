@@ -123,8 +123,24 @@
         {{ p.host }} · connect
       </div>
     </button>
+    <button
+      v-for="p in unlinkedNearby"
+      :key="p.printerId"
+      type="button"
+      class="muon-switcher__item is-found"
+      @click="linkNearby(p.printerId)"
+    >
+      <div class="muon-switcher__row">
+        <span class="muon-switcher__dot is-idle" />
+        <span class="muon-switcher__name">{{ p.name }}</span>
+        <span class="muon-switcher__badge">Not linked</span>
+      </div>
+      <div class="muon-switcher__meta">
+        On your network · link it to open it here
+      </div>
+    </button>
     <div
-      v-if="!localInstances.length && !foundPrinters.length"
+      v-if="!localInstances.length && !foundPrinters.length && !unlinkedNearby.length"
       class="muon-switcher__empty"
     >
       {{ scanning ? 'Looking for printers on this network…' : 'No printers added on this network.' }}
@@ -136,7 +152,7 @@
         small
         text
         color="primary"
-        @click="linkDialog = true"
+        @click="linkPrinterId = ''; linkDialog = true"
       >
         <v-icon
           small
@@ -194,10 +210,12 @@
     <cloud-account-dialog
       v-if="accountDialog"
       v-model="accountDialog"
+      @signed-in="onSignedIn"
     />
     <link-printer-dialog
       v-if="linkDialog"
       v-model="linkDialog"
+      :initial-printer-id="linkPrinterId"
     />
     <v-divider class="mt-2" />
   </div>
@@ -215,7 +233,14 @@ import {
   activationState,
   MANAGED_API_URL
 } from '@/services/muon-cloud/activate'
-import { discoverPrinters, discoveryState, instanceFor, type LanPrinter } from '@/services/muon-cloud/discovery'
+import {
+  discoverPrinters,
+  discoveryState,
+  instanceFor,
+  sameNamedPrinter,
+  type CloudNearbyPrinter,
+  type LanPrinter
+} from '@/services/muon-cloud/discovery'
 import CloudAccountDialog from './CloudAccountDialog.vue'
 import LinkPrinterDialog from './LinkPrinterDialog.vue'
 
@@ -224,6 +249,7 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
   instanceDialogOpen = false
   accountDialog = false
   linkDialog = false
+  linkPrinterId = ''
   icons = { cloud: mdiCloudOutline, lan: mdiLan, link: mdiLinkVariantPlus }
 
   get account () {
@@ -261,8 +287,23 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     return discoveryState.found.filter(p => !added.has(p.host))
   }
 
+  /** Printers the service sees on this network that no account has linked. */
+  get unlinkedNearby (): CloudNearbyPrinter[] {
+    return discoveryState.cloud.filter(c => !c.linked && !discoveryState.found.some(l => sameNamedPrinter(c.name, l.name)))
+  }
+
   mounted () {
     discoverPrinters().catch(() => {})
+  }
+
+  onSignedIn () {
+    if (this.linkPrinterId) this.linkDialog = true
+  }
+
+  linkNearby (printerId: string) {
+    this.linkPrinterId = printerId
+    if (cloudState.account) this.linkDialog = true
+    else this.accountDialog = true
   }
 
   async pickFound (p: LanPrinter) {

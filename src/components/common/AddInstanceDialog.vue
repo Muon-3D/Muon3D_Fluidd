@@ -127,6 +127,15 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
 
       const { apiUrl, socketUrl } = this.$filters.getApiUrls(value)
 
+      // A browser never lets an HTTPS page fetch plain HTTP, so this would
+      // only spin. Say so, and point at what does work from here.
+      if (location.protocol === 'https:' && apiUrl.startsWith('http:')) {
+        this.verifying = false
+        this.error = 'This secure page cannot open a plain http:// printer address.'
+        this.note = 'Link the printer to your Muon3D account instead: it appears under "On your network" when you link a printer. Or open that address directly in a new tab.'
+        return
+      }
+
       // Handle cancelling axios requests.
       this.abortController?.abort()
 
