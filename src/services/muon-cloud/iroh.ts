@@ -11,9 +11,12 @@ import type {
   ManagedIrohRelay,
   PrinterSocket
 } from '@/services/managed-transport'
+import { cloudBaseUrl } from './api'
 
 const KEY_STORAGE = 'muon.cloud.key'
-const WASM_URL = '/muon-link-web/muon_link_web.js'
+// From the Muon3D service, not this page's origin: a printer serves its own
+// Fluidd, and the Iroh client lives with the service it talks to.
+const wasmUrl = () => `${cloudBaseUrl()}/muon-link-web/muon_link_web.js`
 
 interface WasmSocket {
   send (text: string): Promise<void>;
@@ -47,7 +50,7 @@ let endpointRelay = ''
 function loadWasm (): Promise<WasmModule> {
   if (!modulePromise) {
     modulePromise = (async () => {
-      const mod = await import(/* @vite-ignore */ WASM_URL) as WasmModule
+      const mod = await import(/* @vite-ignore */ wasmUrl()) as WasmModule
       await mod.default()
       return mod
     })()

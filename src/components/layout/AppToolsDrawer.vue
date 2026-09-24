@@ -23,6 +23,11 @@
       v-if="socketConnected && authenticated"
       @click="open = false"
     />
+
+    <app-user-menu
+      v-if="socketConnected && authenticated && supportsAuth"
+      @click="open = false"
+    />
   </v-navigation-drawer>
 </template>
 
@@ -36,6 +41,10 @@ import PrinterSwitcher from '@/components/muon-cloud/PrinterSwitcher.vue'
 export default class AppToolsDrawer extends Mixins(StateMixin) {
   @VModel({ type: Boolean })
     open?: boolean
+
+  get supportsAuth () {
+    return this.$store.getters['server/componentSupport']('authorization')
+  }
 
   get supportsHistory () {
     return this.$store.getters['server/componentSupport']('history')

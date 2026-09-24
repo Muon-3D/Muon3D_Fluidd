@@ -4,14 +4,14 @@
     class="muon-nav"
     :class="{ 'muon-nav--rail': rail }"
     :color="$vuetify.theme.currentTheme.drawer"
-    :width="$globals.NAVIGATION_DRAWER_WIDTH"
+    :width="glass ? $globals.NAVIGATION_DRAWER_WIDTH_GLASS : $globals.NAVIGATION_DRAWER_WIDTH"
     :mini-variant="rail"
-    :mini-variant-width="$globals.NAVIGATION_RAIL_WIDTH"
-    clipped
+    :mini-variant-width="glass ? $globals.NAVIGATION_RAIL_WIDTH_GLASS : $globals.NAVIGATION_RAIL_WIDTH"
+    :clipped="!glass"
     app
   >
     <router-link
-      v-if="isMobileViewport"
+      v-if="isMobileViewport || glass"
       to="/"
       class="muon-nav__brand"
       :style="`height: ${$globals.HEADER_HEIGHT}px;`"
@@ -143,6 +143,7 @@
         />
 
         <app-nav-item
+          v-if="!cloudSignedIn"
           icon="$printer3d"
           to="/fleet"
         >
@@ -175,6 +176,12 @@ export default class AppNavDrawer extends Mixins(StateMixin, BrowserMixin) {
   // screen, so it collapses to an icon rail with tooltips.
   get rail (): boolean {
     return !this.isMobileViewport && this.$vuetify.breakpoint.mdAndDown
+  }
+
+  // The glass sidebar runs the full height of the window, beside the toolbar
+  // rather than under it, as macOS sidebars do.
+  get glass (): boolean {
+    return this.$store.getters['config/getUiStyle'] === 'glass'
   }
 
   get cloudSignedIn () {

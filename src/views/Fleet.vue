@@ -202,7 +202,6 @@
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
-import { mdiLinkVariantPlus, mdiTuneVariant, mdiFolderPlusOutline } from '@mdi/js'
 import { cloudState, saveLayout, type FleetLayout } from '@/services/muon-cloud/state'
 import { activateCloudPrinter } from '@/services/muon-cloud/activate'
 import FleetCard from '@/components/muon-cloud/FleetCard.vue'
@@ -216,7 +215,7 @@ export default class Fleet extends Vue {
   linkDialog = false
   dragging: string | null = null
   dropTarget: string | null = null
-  icons = { link: mdiLinkVariantPlus, tune: mdiTuneVariant, group: mdiFolderPlusOutline }
+  icons = { link: '$linkPrinter', tune: '$tuneVariant', group: '$folderPlus' }
 
   widgetList = [
     { key: 'model', label: '3D model' },
