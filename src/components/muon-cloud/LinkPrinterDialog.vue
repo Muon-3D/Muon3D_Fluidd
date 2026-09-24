@@ -187,6 +187,7 @@ import { activateCloudPrinter } from '@/services/muon-cloud/activate'
 import {
   discoverPrinters,
   discoveryState,
+  lanLinkAvailability,
   refreshCloudNearby,
   refreshLinkStates,
   sameNamedPrinter,
@@ -206,6 +207,10 @@ export default class LinkPrinterDialog extends Vue {
   /** A printer the service found on this network, to ask for a code as soon as the dialog opens. */
   @Prop({ type: String, default: '' })
   readonly initialPrinterId!: string
+
+  /** A printer the LAN search found, by address, to ask for a code as soon as the dialog opens. */
+  @Prop({ type: String, default: '' })
+  readonly initialHost!: string
 
   step: 'choose' | 'confirm' | 'done' = 'choose'
   code = ''
@@ -242,14 +247,8 @@ export default class LinkPrinterDialog extends Vue {
     }
     for (const l of discoveryState.found) {
       if (discoveryState.cloud.some(c => sameNamedPrinter(c.name, l.name))) continue
-      const linked = l.link.phase === 'linked'
-      out.push({
-        key: l.host,
-        name: l.name,
-        lan: l,
-        canShow: ['unlinked', 'failed', 'code'].includes(l.link.phase),
-        note: linked ? 'Linked to an account' : `${l.host} · show its code`
-      })
+      const { canShow, note } = lanLinkAvailability(l.link)
+      out.push({ key: l.host, name: l.name, lan: l, canShow, note: `${l.host} · ${note}` })
     }
     return out
   }
@@ -258,25 +257,14 @@ export default class LinkPrinterDialog extends Vue {
     return discoveryState.scanning || !discoveryState.cloudChecked
   }
 
-  nearbyStatus (p: CloudNearbyPrinter) {
-    if (!p.linked) return 'Not linked yet · pick it, then confirm on its screen'
-    return cloudState.printers.some(c => c.id === p.printerId)
-      ? 'Already in your account'
-      : 'Linked to another account · its owner must unlink it first'
-  }
-
-  get scanning () {
-    return discoveryState.scanning
-  }
-
-  get scanNetwork () {
-    return discoveryState.network
-  }
-
   created () {
     this.code = (this.initialCode || '').replace(/\D/g, '').slice(0, 6)
     if (this.code.length === 6) this.claim(this.code)
     else if (this.initialPrinterId) this.askForCode(this.initialPrinterId, this.initialPrinterId)
+    else if (this.initialHost) {
+      const lan = discoveryState.found.find(l => l.host === this.initialHost)
+      if (lan) this.showCode({ key: lan.host, name: lan.name, lan })
+    }
     refreshLinkStates().catch(() => {})
     discoverPrinters().catch(() => {})
   }
