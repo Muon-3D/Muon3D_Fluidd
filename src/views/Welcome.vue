@@ -59,28 +59,28 @@
           <span
             v-else
             class="muon-welcome__go"
-          >{{ lanUnavailable ? 'Link' : 'Connect' }}</span>
+          >{{ lanUnavailable ? 'Open' : 'Connect' }}</span>
         </button>
         <button
           v-for="p in foundPrinters"
           :key="p.printerId"
           type="button"
           class="muon-welcome__printer"
-          :disabled="p.linked && !isMine(p.printerId)"
-          @click="p.linked ? openCloud(p.printerId) : linkFound(p.printerId)"
+          :disabled="!p.localAddrs.length"
+          @click="openLocal(p.localAddrs[0])"
         >
           <span
             class="muon-welcome__dot"
-            :class="{ 'is-waiting': !p.linked, 'is-offline': p.linked && !isMine(p.printerId) }"
+            :class="{ 'is-offline': !p.localAddrs.length }"
           />
           <span class="muon-welcome__printer-text">
             <span class="muon-welcome__printer-name">{{ p.name }}</span>
             <span class="muon-welcome__printer-meta">{{ foundNote(p) }}</span>
           </span>
           <span
-            v-if="!p.linked || isMine(p.printerId)"
+            v-if="p.localAddrs.length"
             class="muon-welcome__go"
-          >{{ p.linked ? 'Open' : 'Link' }}</span>
+          >Open</span>
         </button>
         <div
           v-if="!lanPrinters.length && !foundPrinters.length"
@@ -237,6 +237,7 @@ import {
   discoverPrinters,
   discoveryState,
   instanceFor,
+  localPageUrl,
   sameNamedPrinter,
   type CloudNearbyPrinter,
   type LanPrinter
@@ -303,16 +304,19 @@ export default class Welcome extends Vue {
   }
 
   foundNote (p: CloudNearbyPrinter) {
-    if (!p.linked) return 'not linked yet · confirm on its screen'
-    if (this.isMine(p.printerId)) return 'in your account'
-    return 'linked to another account · its owner must unlink it first'
+    const where = p.localAddrs[0] ?? 'address unknown'
+    if (!p.linked) return `${where} · not linked to an account`
+    if (this.isMine(p.printerId)) return `${where} · in your account`
+    return `${where} · linked to another account`
   }
 
-  /** Links a printer the service found: straight away when signed in, after sign-up otherwise. */
-  linkFound (printerId: string) {
-    this.linkPrinterId = printerId
-    if (this.account) this.linkDialog = true
-    else this.openAccount('sign-up')
+  /**
+   * Opens a printer's own page on this network. That is a local connection,
+   * open to anyone on the network unless the printer has a password, and
+   * needs no account.
+   */
+  openLocal (host: string) {
+    window.location.href = localPageUrl(host)
   }
 
   linkNote (p: LanPrinter) {
@@ -330,16 +334,14 @@ export default class Welcome extends Vue {
   onSignedIn () {
     // A printer picked before sign-in, or a new account with nothing to open
     // yet: go straight to linking.
-    if (this.linkPrinterId || this.lanUnavailable || !cloudState.printers.length) this.linkDialog = true
+    if (!cloudState.printers.length) this.linkDialog = true
   }
 
   async connect (p: LanPrinter) {
     // An HTTPS page cannot hold Fluidd's connection to a plain-HTTP printer,
-    // so from here a printer on the LAN is linked, then opened over Iroh.
+    // so from here the printer's own page is opened instead.
     if (this.lanUnavailable) {
-      this.linkPrinterId = ''
-      if (this.account) this.linkDialog = true
-      else this.openAccount('sign-up')
+      this.openLocal(p.host)
       return
     }
     await this.connectInstance(instanceFor(p), p.host)

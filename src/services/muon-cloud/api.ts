@@ -129,11 +129,14 @@ export const cloudApi = {
     request<{ ok: boolean, name: string }>('PATCH', `/v1/printers/${id}`, { name }),
   unlinkPrinter: (id: string) => request<{ ok: boolean }>('DELETE', `/v1/printers/${id}`),
   access: (id: string) => request<AccessHandoff>('POST', `/v1/printers/${id}/access`),
-  claim: (claim: { code?: string, printer_id?: string }) =>
-    request<{ printer_id: string, name: string, state: LinkState, expires_at: number }>('POST', '/v1/links/claim', claim),
+  /** Claims the printer showing `code` on its screen. The code is the only way to link. */
+  claim: (code: string) =>
+    request<{ printer_id: string, name: string, state: LinkState, expires_at: number }>('POST', '/v1/links/claim', { code }),
+  /** Asks a printer on this browser's network to show a link code. Links nothing by itself. */
+  startLink: (printerId: string) => request<{ ok: boolean }>('POST', '/v1/links/start', { printer_id: printerId }),
   /** Printers on this browser's network, as the Muon3D service sees them. No sign-in needed. */
   nearby: () =>
-    request<{ printers: Array<{ printer_id: string, name: string, model: string, linked: boolean }> }>('GET', '/v1/links/nearby'),
+    request<{ printers: Array<{ printer_id: string, name: string, model: string, linked: boolean, local_addrs?: string[] }> }>('GET', '/v1/links/nearby'),
   linkState: (id: string) => request<{ printer_id: string, state: LinkState }>('GET', `/v1/links/${id}`),
   getLayout: () => request<{ layout: any }>('GET', '/v1/fleet/layout'),
   putLayout: (layout: unknown) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout })
