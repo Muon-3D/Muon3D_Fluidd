@@ -298,7 +298,8 @@ export class WebSocketClient {
         jsonrpc: '2.0'
       }
       const request: Request = {
-        id
+        id,
+        method
       }
       if (options && options.wait) {
         request.wait = options.wait
@@ -357,6 +358,7 @@ export interface NotifyOptions {
 
 interface Request {
   id: number;
+  method?: string;
   dispatch?: string;
   commit?: string;
   params?: any;

@@ -12,6 +12,7 @@
         <general-settings />
         <theme-settings />
         <auth-settings v-if="supportsAuth" />
+        <protection-settings v-if="supportsProtection" />
         <console-settings />
         <file-browser-settings />
         <file-editor-settings />
@@ -46,9 +47,11 @@ import FileBrowserSettings from '@/components/settings/FileBrowserSettings.vue'
 import FileEditorSettings from '@/components/settings/FileEditorSettings.vue'
 import TimelapseSettings from '@/components/settings/timelapse/TimelapseSettings.vue'
 import SpoolmanSettings from '@/components/settings/SpoolmanSettings.vue'
+import ProtectionSettings from '@/components/settings/ProtectionSettings.vue'
 
 @Component({
   components: {
+    ProtectionSettings,
     SpoolmanSettings,
     TimelapseSettings,
     MacroSettings,
@@ -80,6 +83,10 @@ export default class Settings extends Mixins(StateMixin) {
 
   get supportsSpoolman () {
     return this.$store.getters['server/componentSupport']('spoolman')
+  }
+
+  get supportsProtection () {
+    return this.$store.getters['server/componentSupport']('muon_protection')
   }
 }
 </script>
