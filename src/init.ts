@@ -33,7 +33,7 @@ const getHostConfig = async () => {
   }
 }
 
-const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | InstanceConfig> => {
+export const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | InstanceConfig> => {
   // Local storage load
   if (Globals.LOCAL_INSTANCES_STORAGE_KEY in localStorage) {
     const instances = JSON.parse(localStorage[Globals.LOCAL_INSTANCES_STORAGE_KEY]) as InstanceConfig[]
@@ -73,6 +73,15 @@ const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | Instanc
     const port = document.location.protocol === 'https:' ? '7130' : '7125'
 
     endpoints.push(`${document.location.protocol}//${document.location.hostname}:${port}`)
+  }
+
+  // Nothing left to probe, as on a blacklisted host such as app.muon3d.com:
+  // no printer can answer, so don't hold the first paint for the timeout.
+  if (endpoints.length === 0) {
+    return {
+      apiUrl: '',
+      socketUrl: ''
+    } satisfies ApiConfig
   }
 
   const abortController = new AbortController()
