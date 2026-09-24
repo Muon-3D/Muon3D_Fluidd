@@ -19,17 +19,29 @@
  * printer every time. At 0.8 s or 1.5 s it was missed.
  *
  * A page served over HTTPS cannot fetch plain HTTP on the LAN, so there the
- * search reports itself unavailable and the code is the way to link.
+ * sweep reports itself unavailable. The Muon3D service fills the gap: it lists
+ * the unlinked printers that connect to it from this browser's public address
+ * (`refreshCloudNearby`), on any page, HTTPS included.
  */
 import Vue from 'vue'
 import store from '@/store'
 import type { InstanceConfig } from '@/store/config/types'
+import { cloudApi } from './api'
 
 export interface LanLinkStatus {
   phase: 'unavailable' | 'unlinked' | 'connecting' | 'code' | 'offer' | 'linked' | 'failed' | string;
   account?: string;
   code?: string;
   message?: string;
+}
+
+/** A printer the Muon3D service sees behind this browser's public address. */
+export interface CloudNearbyPrinter {
+  printerId: string;
+  name: string;
+  model: string;
+  /** Some account has linked it: this one's, or another's. */
+  linked: boolean;
 }
 
 export interface LanPrinter {
@@ -63,8 +75,35 @@ export const discoveryState = Vue.observable({
   /** The network being swept now, for the progress line. */
   network: '' as string,
   found: [] as LanPrinter[],
+  /** From the service, which works on an HTTPS page too. */
+  cloud: [] as CloudNearbyPrinter[],
+  cloudChecked: false,
   finishedAt: 0
 })
+
+/** Letters and digits only, lower case: "Boxwood · 367A" and "Muon-boxwood-367a" both contain "boxwood367a". */
+function nameKey (name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/** Whether a printer found on the LAN is the same one the service reported. */
+export function sameNamedPrinter (a: string, b: string) {
+  const x = nameKey(a)
+  const y = nameKey(b)
+  return !!x && !!y && (x.includes(y) || y.includes(x))
+}
+
+/** Asks the Muon3D service which unlinked printers share this browser's network. */
+export async function refreshCloudNearby () {
+  try {
+    const { printers } = await cloudApi.nearby()
+    discoveryState.cloud = printers.map(p => ({ printerId: p.printer_id, name: p.name, model: p.model, linked: !!p.linked }))
+  } catch {
+    discoveryState.cloud = []
+  } finally {
+    discoveryState.cloudChecked = true
+  }
+}
 
 let running: Promise<void> | null = null
 
@@ -207,6 +246,7 @@ async function sweep () {
  * finished in the last minute is reused unless `force` is set.
  */
 export function discoverPrinters (force = false): Promise<void> {
+  refreshCloudNearby().catch(() => {})
   if (location.protocol === 'https:') {
     discoveryState.unavailable = true
     return Promise.resolve()
