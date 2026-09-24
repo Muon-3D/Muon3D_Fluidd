@@ -47,6 +47,8 @@ export interface CloudNearbyPrinter {
   model: string;
   /** Some account has linked it: this one's, or another's. */
   linked: boolean;
+  /** Its addresses on this network, for opening it locally. */
+  localAddrs: string[];
 }
 
 export interface LanPrinter {
@@ -102,7 +104,13 @@ export function sameNamedPrinter (a: string, b: string) {
 export async function refreshCloudNearby () {
   try {
     const { printers } = await cloudApi.nearby()
-    discoveryState.cloud = printers.map(p => ({ printerId: p.printer_id, name: p.name, model: p.model, linked: !!p.linked }))
+    discoveryState.cloud = printers.map(p => ({
+      printerId: p.printer_id,
+      name: p.name,
+      model: p.model,
+      linked: !!p.linked,
+      localAddrs: p.local_addrs ?? []
+    }))
   } catch {
     discoveryState.cloud = []
   } finally {
@@ -280,11 +288,20 @@ export async function refreshLinkStates () {
 }
 
 /**
- * Starts a link on a printer through its own Moonraker and returns the code
- * its screen shows. Moonraker only lets the LAN start a link. Only the
- * printer's owner, at the printer, can confirm it.
+ * The printer's own page on this network. Opening it connects to the printer
+ * locally, as anyone on the network may: an open printer lets them straight
+ * in, and one with a password asks for it.
  */
-export async function startLanLink (apiUrl: string): Promise<string> {
+export function localPageUrl (host: string) {
+  return `http://${host}/`
+}
+
+/**
+ * Asks a printer, through its own Moonraker, to start linking, so that its
+ * screen shows a code. It does not read the code: linking takes the code as
+ * read off the screen, which is the proof that someone is at the printer.
+ */
+export async function showLanCode (apiUrl: string): Promise<void> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), 5000)
   try {
@@ -296,14 +313,6 @@ export async function startLanLink (apiUrl: string): Promise<string> {
   } finally {
     window.clearTimeout(timer)
   }
-  for (let i = 0; i < 30; i++) {
-    await new Promise(resolve => setTimeout(resolve, 700))
-    const s = await lanLinkStatus(apiUrl)
-    if (s.phase === 'code' && s.code) return s.code
-    if (s.phase === 'failed') throw new Error(s.message || 'The printer could not reach the Muon3D service.')
-    if (s.phase === 'unavailable') throw new Error('This printer cannot link to an account yet. Update it first.')
-  }
-  throw new Error('The printer did not get a code from the Muon3D service.')
 }
 
 /** A Fluidd instance for a printer found on the network. */
