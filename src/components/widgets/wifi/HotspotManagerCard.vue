@@ -4,6 +4,8 @@
     icon="$accessPoint"
     class="component"
   >
+    <protected-notice class="ma-4" />
+
     <template #menu>
       <!-- hotspot on/off switch -->
       <v-switch
@@ -11,7 +13,7 @@
         :hide-details="true"
         color="primary"
         :input-value="apState"
-        :disabled="!apCredentials || !deviceStatus || toggling"
+        :disabled="locked || !apCredentials || !deviceStatus || toggling"
         :loading="toggling"
         class="mobile-only mt-0"
         readonly
@@ -19,7 +21,10 @@
       />
     </template>
 
-    <div class="d-flex align-stretch">
+    <div
+      v-if="!locked"
+      class="d-flex align-stretch"
+    >
       <v-fade-transition mode="out-in">
         <!-- Skeleton until we have both deviceStatus & credentials -->
         <template v-if="!deviceStatus">
@@ -254,6 +259,8 @@ import QrcodeVue from 'qrcode.vue'
 import i18n from '@/plugins/i18n'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import type { VForm } from '@/types'
+import { EventBus } from '@/eventBus'
+import { moonrakerErrorMessage } from '@/store/protection/helpers'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -294,6 +301,20 @@ export default class HotspotManagerCard extends Vue {
 
   get onHotspot () {
     return onHotspot.value
+  }
+
+  // MuonOS network protection is on and this browser has no identity, so
+  // every hotspot request would be refused. The notice says so instead, and
+  // polling waits until that changes.
+  get locked (): boolean {
+    return this.$store.getters['protection/isLocked']
+  }
+
+  // Protection came off while this card was open. The config it skipped
+  // while locked is loaded now; the status poll only ever reads the state.
+  @Watch('locked')
+  onLockedChanged (locked: boolean) {
+    if (!locked) this.fetchConfig()
   }
 
   showToggleWarningDialog: boolean = false
@@ -382,6 +403,7 @@ export default class HotspotManagerCard extends Vue {
   }
 
   private async fetchConfig () {
+    if (this.locked) return
     try {
       const [statusResponse, credentialsResponse] = await Promise.all([
         this.auxApi.ap.wifiStatusWifiApDeviceStatusGet(),
@@ -392,10 +414,18 @@ export default class HotspotManagerCard extends Vue {
       this.resetForm()
     } catch (e) {
       console.error('Failed to load hotspot config', e)
+      if ((e as any)?.response?.status === 403) {
+        // A load nobody asked for, refused by network protection. The card
+        // says so once the level arrives; a toast would only repeat it.
+        this.$store.dispatch('protection/onRefused')
+      } else {
+        EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.load_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
+      }
     }
   }
 
   private async refreshStatus () {
+    if (this.locked) return
     try {
       const response = await this.auxApi.ap.wifiStatusWifiApDeviceStatusGet()
       this.applyDeviceStatus(response.data)
@@ -456,6 +486,8 @@ export default class HotspotManagerCard extends Vue {
       await this.changeHotspotState(true)
     } catch (e) {
       console.error('Failed to apply hotspot config', e)
+      if ((e as any)?.response?.status === 403) this.$store.dispatch('protection/onRefused')
+      EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.apply_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
     }
     this.applying = false
     this.toggleEditing() // close the form
@@ -569,6 +601,8 @@ export default class HotspotManagerCard extends Vue {
       this.requestedApState = null
       this.apState = this.deviceStatus?.state === 'connected'
       console.error('Hotspot toggle failed', e)
+      if ((e as any)?.response?.status === 403) this.$store.dispatch('protection/onRefused')
+      EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.toggle_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
     } finally {
       this.toggling = false
     }

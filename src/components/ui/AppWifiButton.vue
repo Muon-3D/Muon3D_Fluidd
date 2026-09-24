@@ -17,7 +17,7 @@
           :elevation="0"
           class="mr-1 bg-transparent"
           color="transparent"
-          :loading="!ap_device_status || ap_toggling"
+          :loading="!locked && (!ap_device_status || ap_toggling)"
           v-bind="attrs"
           v-on="isWifiPage ? {} : on"
         >
@@ -58,7 +58,7 @@
           :elevation="0"
           class="mr-1 bg-transparent"
           color="transparent"
-          :loading="!wifi_current"
+          :loading="!locked && !wifi_current"
           v-bind="attrs"
           v-on="isWifiPage ? {} : on"
         >
@@ -111,14 +111,23 @@ export default class AppWifiButton extends Vue {
 
   knownSsids = new Set<string>()
 
+  // MuonOS network protection is on and this browser has no identity. Both
+  // requests below would be refused, and a spinner waiting for them would
+  // spin forever; the cards behind these buttons say why instead.
+  get locked (): boolean {
+    return this.$store.getters['protection/isLocked']
+  }
+
   async fetchCurrent () {
+    if (this.locked) return
     try {
       const res = await useAuxApi().wifi.wifiCurrentWifiCurrentGet(true)
       this.wifi_current = res.data
       this.ap_device_status = (await useAuxApi().ap.wifiStatusWifiApDeviceStatusGet()).data
-    } catch (e) {
+    } catch (e: any) {
       this.wifi_current = null
       console.error('Wi-Fi scan failed', e)
+      if (e?.response?.status === 403) this.$store.dispatch('protection/onRefused')
     }
   }
 
