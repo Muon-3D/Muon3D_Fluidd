@@ -128,15 +128,17 @@
       :key="p.printerId"
       type="button"
       class="muon-switcher__item is-found"
+      :disabled="p.linked"
+      :class="{ 'is-offline': p.linked }"
       @click="linkNearby(p.printerId)"
     >
       <div class="muon-switcher__row">
         <span class="muon-switcher__dot is-idle" />
         <span class="muon-switcher__name">{{ p.name }}</span>
-        <span class="muon-switcher__badge">Not linked</span>
+        <span class="muon-switcher__badge">{{ p.linked ? 'Linked' : 'Not linked' }}</span>
       </div>
       <div class="muon-switcher__meta">
-        On your network · link it to open it here
+        {{ p.linked ? 'On your network · linked to another account, so its owner must unlink it first' : 'On your network · link it to open it here' }}
       </div>
     </button>
     <div
@@ -287,9 +289,15 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     return discoveryState.found.filter(p => !added.has(p.host))
   }
 
-  /** Printers the service sees on this network that no account has linked. */
+  /**
+   * Printers the service sees on this network that are not in this account:
+   * unlinked ones to link, and other accounts' ones, shown for information.
+   */
   get unlinkedNearby (): CloudNearbyPrinter[] {
-    return discoveryState.cloud.filter(c => !c.linked && !discoveryState.found.some(l => sameNamedPrinter(c.name, l.name)))
+    return discoveryState.cloud.filter(c =>
+      !cloudState.printers.some(p => p.id === c.printerId) &&
+      !discoveryState.found.some(l => sameNamedPrinter(c.name, l.name))
+    )
   }
 
   mounted () {

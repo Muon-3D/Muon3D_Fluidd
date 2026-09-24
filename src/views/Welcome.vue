@@ -59,7 +59,7 @@
           <span
             v-else
             class="muon-welcome__go"
-          >Connect</span>
+          >{{ lanUnavailable ? 'Link' : 'Connect' }}</span>
         </button>
         <button
           v-for="p in foundPrinters"
@@ -89,12 +89,9 @@
           <template v-if="searching">
             Looking for Muon3D printers…
           </template>
-          <template v-else-if="lanUnavailable">
-            No unlinked Muon3D printers found on your network. Check that the printer is on and
-            connected to Wi-Fi. Printers already linked to your account are on the right.
-          </template>
           <template v-else>
-            No Muon3D printers found on this network.
+            No Muon3D printers found on your network yet. Check that the printer is on and connected
+            to Wi-Fi. If your browser asks to look for devices on your local network, allow it.
           </template>
         </div>
 
@@ -334,10 +331,18 @@ export default class Welcome extends Vue {
   onSignedIn () {
     // A printer picked before sign-in, or a new account with nothing to open
     // yet: go straight to linking.
-    if (this.linkPrinterId || !cloudState.printers.length) this.linkDialog = true
+    if (this.linkPrinterId || this.lanUnavailable || !cloudState.printers.length) this.linkDialog = true
   }
 
   async connect (p: LanPrinter) {
+    // An HTTPS page cannot hold Fluidd's connection to a plain-HTTP printer,
+    // so from here a printer on the LAN is linked, then opened over Iroh.
+    if (this.lanUnavailable) {
+      this.linkPrinterId = ''
+      if (this.account) this.linkDialog = true
+      else this.openAccount('sign-up')
+      return
+    }
     await this.connectInstance(instanceFor(p), p.host)
   }
 
