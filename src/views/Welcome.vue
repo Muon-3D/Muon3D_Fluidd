@@ -209,7 +209,6 @@
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
-import { mdiCloudOutline, mdiLan } from '@mdi/js'
 import type { InstanceConfig } from '@/store/config/types'
 import { cloudState } from '@/services/muon-cloud/state'
 import { activateCloudPrinter, activateLocalPrinter } from '@/services/muon-cloud/activate'
@@ -230,7 +229,7 @@ export default class Welcome extends Vue {
   linkDialog = false
   connecting: string | null = null
   error: string | null = null
-  icons = { cloud: mdiCloudOutline, lan: mdiLan }
+  icons = { cloud: '$cloud', lan: '$lan' }
 
   get account () {
     return cloudState.account

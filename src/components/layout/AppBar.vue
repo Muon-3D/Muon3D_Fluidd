@@ -29,7 +29,7 @@
 
       <!-- The glass style names the page, with the printer and its state under it. -->
       <v-toolbar-title
-        v-if="glass"
+        v-if="glass && !navless"
         class="glass-title"
       >
         <span class="glass-title__main">{{ pageTitle }}</span>
@@ -43,7 +43,7 @@
       </v-toolbar-title>
 
       <v-toolbar-title
-        v-else
+        v-else-if="!glass"
         class="printer-title"
       >
         <router-link
@@ -108,9 +108,11 @@
         </v-tooltip>
       </div>
 
+      <app-status-alerts v-if="authenticated" />
+
       <div v-if="authenticated && socketConnected && showUploadAndPrint">
         <app-upload-and-print-btn
-          :disabled="printerPrinting || printerPaused || !klippyReady"
+          :tooltip="uploadTooltip"
           @upload="handleUploadAndPrint"
         />
       </div>
@@ -144,13 +146,6 @@
           class="toolbar-action mr-1"
         >
           <app-notification-menu />
-        </div>
-
-        <div
-          v-if="supportsAuth && authenticated"
-          class="toolbar-action mr-1"
-        >
-          <app-user-menu @change-password="userPasswordDialogOpen = true" />
         </div>
 
         <div
@@ -219,11 +214,6 @@
       </template>
     </template>
 
-    <user-password-dialog
-      v-if="userPasswordDialogOpen"
-      v-model="userPasswordDialogOpen"
-    />
-
     <pending-changes-dialog
       v-if="pendingChangesDialogOpen"
       v-model="pendingChangesDialogOpen"
@@ -235,7 +225,6 @@
 <script lang="ts">
 import CloudAccountMenu from '@/components/muon-cloud/CloudAccountMenu.vue'
 import { Component, Mixins } from 'vue-property-decorator'
-import UserPasswordDialog from '@/components/settings/auth/UserPasswordDialog.vue'
 import PendingChangesDialog from '@/components/settings/PendingChangesDialog.vue'
 import AppSaveConfigAndRestartBtn from './AppSaveConfigAndRestartBtn.vue'
 import AppUploadAndPrintBtn from './AppUploadAndPrintBtn.vue'
@@ -245,6 +234,7 @@ import ServicesMixin from '@/mixins/services'
 import FilesMixin from '@/mixins/files'
 import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
+import { EventBus } from '@/eventBus'
 import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
 import AppWifiButton from '@/components/ui/AppWifiButton.vue'
@@ -252,7 +242,6 @@ import AppWifiButton from '@/components/ui/AppWifiButton.vue'
 @Component({
   components: {
     CloudAccountMenu,
-    UserPasswordDialog,
     PendingChangesDialog,
     AppSaveConfigAndRestartBtn,
     AppUploadAndPrintBtn,
@@ -261,7 +250,6 @@ import AppWifiButton from '@/components/ui/AppWifiButton.vue'
 })
 export default class AppBar extends Mixins(PrinterStatusMixin, ServicesMixin, FilesMixin, BrowserMixin) {
   menu = false
-  userPasswordDialogOpen = false
   pendingChangesDialogOpen = false
 
   get supportsAuth () {
@@ -283,6 +271,13 @@ export default class AppBar extends Mixins(PrinterStatusMixin, ServicesMixin, Fi
   // The glass toolbar starts beside the sidebar, which carries the wordmark.
   get glass (): boolean {
     return this.$store.getters['config/getUiStyle'] === 'glass'
+  }
+
+  // App.vue's glassNavless: no printer and a page that needs none, so no
+  // sidebar and no page title; the page carries its own heading.
+  get navless (): boolean {
+    return this.glass && this.$route.meta?.printerIndependent === true &&
+      !(this.authenticated && this.socketConnected)
   }
 
   get currentFile () {
@@ -480,8 +475,39 @@ export default class AppBar extends Mixins(PrinterStatusMixin, ServicesMixin, Fi
     }
   }
 
-  handleUploadAndPrint (file: File) {
-    this.uploadFile(file, '/', 'gcodes', true)
+  // Idle, the file prints as soon as it is up. Mid-print, it goes to the job
+  // queue, and with Klipper down it is only uploaded, so the button always
+  // does something.
+  get uploadPrintsNow (): boolean {
+    return this.klippyReady && !this.printerPrinting && !this.printerPaused
+  }
+
+  get uploadQueues (): boolean {
+    return !this.uploadPrintsNow && this.klippyReady &&
+      this.$store.getters['server/componentSupport']('job_queue')
+  }
+
+  get uploadTooltip (): string {
+    if (this.uploadPrintsNow) return this.$tc('app.general.label.upload_and_print')
+    if (this.uploadQueues) return this.$tc('app.general.label.upload_and_queue')
+    return this.$tc('app.general.btn.upload')
+  }
+
+  async handleUploadAndPrint (file: File) {
+    if (this.uploadPrintsNow) {
+      await this.uploadFile(file, '/', 'gcodes', true)
+      return
+    }
+
+    const queue = this.uploadQueues
+    await this.uploadFile(file, '/', 'gcodes', false)
+
+    if (queue) {
+      await SocketActions.serverJobQueuePostJob([file.name])
+      EventBus.$emit(this.$t('app.general.msg.upload_queued', { name: file.name }).toString(), { timeout: 4000 })
+    } else {
+      EventBus.$emit(this.$t('app.general.msg.upload_saved', { name: file.name }).toString(), { timeout: 4000 })
+    }
   }
 
   saveConfigAndRestart (force = false) {

@@ -1,8 +1,9 @@
 import type { UiStyle } from '@/store/config/types'
 
-export const DEFAULT_UI_STYLE: UiStyle = 'flat'
+// Glass is the Muon3D interface; Flat stays in Settings as the alternative.
+export const DEFAULT_UI_STYLE: UiStyle = 'glass'
 
-export const UI_STYLES: readonly UiStyle[] = ['flat', 'glass']
+export const UI_STYLES: readonly UiStyle[] = ['glass', 'flat']
 
 const STORAGE_KEY = 'muon.uiStyle'
 

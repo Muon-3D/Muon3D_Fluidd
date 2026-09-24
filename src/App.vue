@@ -7,7 +7,8 @@
       'no-pointer-events': dragState,
       'muon-shell--scrolled': scrolled,
       'muon-shell--past-title': scrolledPastTitle || !showLargeTitle,
-      'muon-shell--tabbed': showTabBar
+      'muon-shell--tabbed': showTabBar,
+      'muon-shell--navless': glassNavless
     }"
   >
     <app-tools-drawer
@@ -15,7 +16,7 @@
       v-model="toolsdrawer"
     />
     <app-nav-drawer
-      v-if="!managedConsoleRoute"
+      v-if="!managedConsoleRoute && !glassNavless"
       v-model="navdrawer"
     />
 
@@ -73,21 +74,6 @@
         class="constrained-width muon-content pa-2 pa-sm-4"
       >
         <app-page-title v-if="showLargeTitle" />
-
-        <v-row
-          v-if="
-            (socketConnected && apiConnected) &&
-              (!klippyReady || hasWarnings) &&
-              !inLayout &&
-              !managedConsoleRoute &&
-              !printerIndependentRoute &&
-              $route.path !== '/login'
-          "
-        >
-          <v-col>
-            <klippy-status-card />
-          </v-col>
-        </v-row>
 
         <router-view
           v-if="
@@ -216,6 +202,13 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
 
   get glass (): boolean {
     return this.theme.style === 'glass'
+  }
+
+  // With no printer connected, the welcome, fleet and link pages have nothing
+  // to navigate, so the glass style draws no sidebar; they carry their own
+  // heading.
+  get glassNavless (): boolean {
+    return this.glass && this.printerIndependentRoute && !(this.authenticated && this.socketConnected)
   }
 
   get glassPhone (): boolean {

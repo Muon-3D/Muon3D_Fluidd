@@ -343,6 +343,7 @@ app:
       unretract_extra_length: Unretract Extra Length
       unretract_speed: Unretract Speed
       upload_and_print: Upload and Print
+      upload_and_queue: Upload and add to queue
       used: used
       username: Username
       velocity: Velocity
@@ -361,6 +362,8 @@ app:
       protected_mode: Protected Mode
     msg:
       password_changed: Password changed
+      upload_queued: '%{name} is uploaded and in the queue'
+      upload_saved: '%{name} is uploaded to Jobs'
       wrong_password: Oops, something went wrong. Is your password correct?
       bed_screws_adjust: >-
         Click <b>Adjusted</b> if a significant adjustment is necessary on the
