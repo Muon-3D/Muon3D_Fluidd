@@ -18,10 +18,15 @@
  * Measured on 2026-09-23: 64 probes at a time with a 3 s timeout found the
  * printer every time. At 0.8 s or 1.5 s it was missed.
  *
- * A page served over HTTPS cannot fetch plain HTTP on the LAN, so there the
- * sweep reports itself unavailable. The Muon3D service fills the gap: it lists
- * the unlinked printers that connect to it from this browser's public address
- * (`refreshCloudNearby`), on any page, HTTPS included.
+ * A page served over HTTPS may fetch plain HTTP on the LAN only in Chromium,
+ * only when a request declares `targetAddressSpace: 'local'`, and only after
+ * the person allows "look for devices on your local network". So on HTTPS
+ * every LAN request declares it, and Chrome asks once. Other browsers block
+ * those requests as mixed content, and the sweep finds nothing there.
+ *
+ * The Muon3D service fills that gap in any browser: it lists the printers
+ * that connect to it from this browser's public address
+ * (`refreshCloudNearby`), linked or not.
  */
 import Vue from 'vue'
 import store from '@/store'
@@ -119,11 +124,21 @@ function hostOf (url: string): string | null {
   }
 }
 
+/**
+ * `fetch` for an address on the LAN. On an HTTPS page it declares the request
+ * local, which Chromium's Local Network Access needs before it lets the
+ * request through.
+ */
+function lanFetch (url: string, init: RequestInit = {}): Promise<Response> {
+  const local = location.protocol === 'https:' ? { targetAddressSpace: 'local' } : {}
+  return fetch(url, { ...init, ...local } as RequestInit)
+}
+
 async function getJson (url: string, init: RequestInit = {}, timeout = PROBE_TIMEOUT_MS): Promise<any> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeout)
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal, cache: 'no-store' })
+    const response = await lanFetch(url, { ...init, signal: controller.signal, cache: 'no-store' })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const body = await response.json()
     return body?.result ?? body
@@ -166,7 +181,7 @@ async function answersQuickly (host: string): Promise<boolean> {
   const started = performance.now()
   const timer = window.setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS)
   try {
-    await fetch(`http://${host}/`, { mode: 'no-cors', signal: controller.signal, cache: 'no-store' })
+    await lanFetch(`http://${host}/`, { mode: 'no-cors', signal: controller.signal, cache: 'no-store' })
     return true
   } catch {
     return performance.now() - started < GATEWAY_ANSWERS_WITHIN_MS
@@ -247,10 +262,10 @@ async function sweep () {
  */
 export function discoverPrinters (force = false): Promise<void> {
   refreshCloudNearby().catch(() => {})
-  if (location.protocol === 'https:') {
-    discoveryState.unavailable = true
-    return Promise.resolve()
-  }
+  // On HTTPS the LAN sweep still runs; Chromium asks the person first, and
+  // Fluidd cannot hold a live connection to a plain-HTTP printer from here, so
+  // what it finds is offered for linking rather than connecting.
+  discoveryState.unavailable = location.protocol === 'https:'
   if (running) return running
   if (!force && Date.now() - discoveryState.finishedAt < FRESH_FOR_MS) return Promise.resolve()
   running = sweep().finally(() => { running = null })
@@ -273,7 +288,7 @@ export async function startLanLink (apiUrl: string): Promise<string> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), 5000)
   try {
-    const response = await fetch(`${apiUrl}/server/muon/link/start`, { method: 'POST', signal: controller.signal })
+    const response = await lanFetch(`${apiUrl}/server/muon/link/start`, { method: 'POST', signal: controller.signal })
     if (!response.ok) {
       const body = await response.json().catch(() => null)
       throw new Error(body?.error?.message ?? `The printer refused to start linking (HTTP ${response.status}).`)
