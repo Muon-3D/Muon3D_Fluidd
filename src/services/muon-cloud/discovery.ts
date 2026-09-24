@@ -18,18 +18,40 @@
  * Measured on 2026-09-23: 64 probes at a time with a 3 s timeout found the
  * printer every time. At 0.8 s or 1.5 s it was missed.
  *
- * A page served over HTTPS cannot fetch plain HTTP on the LAN, so there the
- * search reports itself unavailable and the code is the way to link.
+ * A page served over HTTPS may use plain HTTP and WebSockets on the LAN only
+ * in Chromium, and only after the person allows "look for devices on your
+ * local network". Chrome asks once, at the first local request. Measured on
+ * 2026-09-24 in Chrome 153 from app.muon3d.com: fetch and ws:// to a private
+ * address both worked, with or without `targetAddressSpace: 'local'`, so
+ * Fluidd connects to a printer on the LAN from the HTTPS site as it does
+ * from the printer's own page. The sweep still declares it. Other browsers
+ * block those requests as mixed content, and the sweep finds nothing there.
+ *
+ * The Muon3D service fills that gap in any browser: it lists the printers
+ * that connect to it from this browser's public address
+ * (`refreshCloudNearby`), linked or not.
  */
 import Vue from 'vue'
 import store from '@/store'
 import type { InstanceConfig } from '@/store/config/types'
+import { cloudApi } from './api'
 
 export interface LanLinkStatus {
   phase: 'unavailable' | 'unlinked' | 'connecting' | 'code' | 'offer' | 'linked' | 'failed' | string;
   account?: string;
   code?: string;
   message?: string;
+}
+
+/** A printer the Muon3D service sees behind this browser's public address. */
+export interface CloudNearbyPrinter {
+  printerId: string;
+  name: string;
+  model: string;
+  /** Some account has linked it: this one's, or another's. */
+  linked: boolean;
+  /** Its addresses on this network, for opening it locally. */
+  localAddrs: string[];
 }
 
 export interface LanPrinter {
@@ -59,12 +81,44 @@ const FRESH_FOR_MS = 60_000
 
 export const discoveryState = Vue.observable({
   scanning: false,
-  unavailable: false,
   /** The network being swept now, for the progress line. */
   network: '' as string,
   found: [] as LanPrinter[],
+  /** From the service, which works on an HTTPS page too. */
+  cloud: [] as CloudNearbyPrinter[],
+  cloudChecked: false,
   finishedAt: 0
 })
+
+/** Letters and digits only, lower case: "Boxwood · 367A" and "Muon-boxwood-367a" both contain "boxwood367a". */
+function nameKey (name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/** Whether a printer found on the LAN is the same one the service reported. */
+export function sameNamedPrinter (a: string, b: string) {
+  const x = nameKey(a)
+  const y = nameKey(b)
+  return !!x && !!y && (x.includes(y) || y.includes(x))
+}
+
+/** Asks the Muon3D service which unlinked printers share this browser's network. */
+export async function refreshCloudNearby () {
+  try {
+    const { printers } = await cloudApi.nearby()
+    discoveryState.cloud = printers.map(p => ({
+      printerId: p.printer_id,
+      name: p.name,
+      model: p.model,
+      linked: !!p.linked,
+      localAddrs: p.local_addrs ?? []
+    }))
+  } catch {
+    discoveryState.cloud = []
+  } finally {
+    discoveryState.cloudChecked = true
+  }
+}
 
 let running: Promise<void> | null = null
 
@@ -80,11 +134,21 @@ function hostOf (url: string): string | null {
   }
 }
 
+/**
+ * `fetch` for an address on the LAN. On an HTTPS page it declares the request
+ * local, which Chromium's Local Network Access needs before it lets the
+ * request through.
+ */
+function lanFetch (url: string, init: RequestInit = {}): Promise<Response> {
+  const local = location.protocol === 'https:' ? { targetAddressSpace: 'local' } : {}
+  return fetch(url, { ...init, ...local } as RequestInit)
+}
+
 async function getJson (url: string, init: RequestInit = {}, timeout = PROBE_TIMEOUT_MS): Promise<any> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeout)
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal, cache: 'no-store' })
+    const response = await lanFetch(url, { ...init, signal: controller.signal, cache: 'no-store' })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const body = await response.json()
     return body?.result ?? body
@@ -127,7 +191,7 @@ async function answersQuickly (host: string): Promise<boolean> {
   const started = performance.now()
   const timer = window.setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS)
   try {
-    await fetch(`http://${host}/`, { mode: 'no-cors', signal: controller.signal, cache: 'no-store' })
+    await lanFetch(`http://${host}/`, { mode: 'no-cors', signal: controller.signal, cache: 'no-store' })
     return true
   } catch {
     return performance.now() - started < GATEWAY_ANSWERS_WITHIN_MS
@@ -207,10 +271,7 @@ async function sweep () {
  * finished in the last minute is reused unless `force` is set.
  */
 export function discoverPrinters (force = false): Promise<void> {
-  if (location.protocol === 'https:') {
-    discoveryState.unavailable = true
-    return Promise.resolve()
-  }
+  refreshCloudNearby().catch(() => {})
   if (running) return running
   if (!force && Date.now() - discoveryState.finishedAt < FRESH_FOR_MS) return Promise.resolve()
   running = sweep().finally(() => { running = null })
@@ -225,15 +286,23 @@ export async function refreshLinkStates () {
 }
 
 /**
- * Starts a link on a printer through its own Moonraker and returns the code
- * its screen shows. Moonraker only lets the LAN start a link. Only the
- * printer's owner, at the printer, can confirm it.
+ * The printer's own page on this network. Fluidd connects from the page it
+ * is on where the browser allows it; this is the fallback where it does not.
  */
-export async function startLanLink (apiUrl: string): Promise<string> {
+export function localPageUrl (host: string) {
+  return `http://${host}/`
+}
+
+/**
+ * Asks a printer, through its own Moonraker, to start linking, so that its
+ * screen shows a code. It does not read the code: linking takes the code as
+ * read off the screen, which is the proof that someone is at the printer.
+ */
+export async function showLanCode (apiUrl: string): Promise<void> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), 5000)
   try {
-    const response = await fetch(`${apiUrl}/server/muon/link/start`, { method: 'POST', signal: controller.signal })
+    const response = await lanFetch(`${apiUrl}/server/muon/link/start`, { method: 'POST', signal: controller.signal })
     if (!response.ok) {
       const body = await response.json().catch(() => null)
       throw new Error(body?.error?.message ?? `The printer refused to start linking (HTTP ${response.status}).`)
@@ -241,22 +310,46 @@ export async function startLanLink (apiUrl: string): Promise<string> {
   } finally {
     window.clearTimeout(timer)
   }
-  for (let i = 0; i < 30; i++) {
-    await new Promise(resolve => setTimeout(resolve, 700))
-    const s = await lanLinkStatus(apiUrl)
-    if (s.phase === 'code' && s.code) return s.code
-    if (s.phase === 'failed') throw new Error(s.message || 'The printer could not reach the Muon3D service.')
-    if (s.phase === 'unavailable') throw new Error('This printer cannot link to an account yet. Update it first.')
-  }
-  throw new Error('The printer did not get a code from the Muon3D service.')
 }
 
-/** A Fluidd instance for a printer found on the network. */
-export function instanceFor (printer: LanPrinter): InstanceConfig {
+/**
+ * A Fluidd instance for a printer on the network. Connecting to it is a local
+ * connection, open to anyone on the network: an open printer lets them
+ * straight in, and one with a password asks for it.
+ */
+export function instanceForHost (host: string, name: string): InstanceConfig {
   return {
-    name: printer.name,
-    apiUrl: printer.apiUrl,
-    socketUrl: `ws://${printer.host}/websocket`,
+    name,
+    apiUrl: apiUrlFor(host),
+    socketUrl: `ws://${host}/websocket`,
     active: true
+  }
+}
+
+/** A Fluidd instance for a printer the LAN search found. */
+export function instanceFor (printer: LanPrinter): InstanceConfig {
+  return instanceForHost(printer.host, printer.name)
+}
+
+/**
+ * Whether a printer found on the LAN can show a link code now, and what to
+ * tell the person when it cannot.
+ */
+export function lanLinkAvailability (link: LanLinkStatus): { canShow: boolean, note: string } {
+  switch (link.phase) {
+    case 'unlinked':
+      return { canShow: true, note: 'not linked · show its code' }
+    case 'code':
+      return { canShow: true, note: 'showing a code on its screen now' }
+    case 'failed':
+      return { canShow: true, note: link.message ? `last try failed: ${link.message}` : 'last try failed · try again' }
+    case 'connecting':
+      return { canShow: false, note: 'getting a code from Muon3D…' }
+    case 'offer':
+      return { canShow: false, note: 'waiting for confirmation on its screen' }
+    case 'linked':
+      return { canShow: false, note: 'linked to an account · its owner must unlink it first' }
+    default:
+      return { canShow: false, note: 'needs a software update before it can link' }
   }
 }

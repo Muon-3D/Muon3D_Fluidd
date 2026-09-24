@@ -18,7 +18,7 @@
           </v-icon>
         </app-btn>
       </template>
-      <span>{{ $t('app.general.label.upload_and_print') }}</span>
+      <span>{{ tooltip || $t('app.general.label.upload_and_print') }}</span>
     </v-tooltip>
 
     <input
@@ -39,6 +39,9 @@ import { Component, Vue, Ref, Prop } from 'vue-property-decorator'
 export default class AppUploadAndPrintBtn extends Vue {
   @Prop({ type: Boolean })
   readonly disabled?: boolean
+
+  @Prop({ type: String })
+  readonly tooltip?: string
 
   @Ref('uploadFile')
   readonly uploadFile!: HTMLInputElement

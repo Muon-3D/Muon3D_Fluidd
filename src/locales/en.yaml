@@ -53,19 +53,18 @@ app:
         sure this is the correct address?
       cors_error: blocked by CORS policy
       cors_note: >-
-        This may mean you need to modify your moonraker configuration. Please
-        see the documentation on multi printer setups <a href="%{url}"
-        target="_blank">here</a>
+        The printer may need its Moonraker configuration changed to allow this
+        page. See <a href="%{url}" target="_blank">the Muon3D documentation</a>.
     hint:
-      add_printer: E.g., http://fluiddpi.local
+      add_printer: E.g., http://192.168.1.150
     msg:
       trouble: >-
         Having trouble? <a href="%{url}" target="_blank">See here</a> for more
         information.
     tooltip:
       endpoint_examples: >-
-        Enter your API URL.<br />Some examples might be;<br
-        /><blockquote>fluidd.local, https://192.168.1.150</blockquote>
+        Enter the printer's address.<br />For example:<br
+        /><blockquote>muon-boxwood-367a.local, http://192.168.1.150</blockquote>
   endstop:
     label:
       open: OPEN
@@ -177,6 +176,7 @@ app:
       load_all: Load all
       login: Login
       logout: Logout
+      more: More
       more_information: More information
       multiply: Multiply
       pause: Pause
@@ -254,7 +254,7 @@ app:
       add_user: Add user
       all: All
       api_key: Api Key
-      api_url: API URL
+      api_url: Printer address
       auth_source: Authentication Source
       bars: Bars
       category: Category
@@ -342,6 +342,7 @@ app:
       unretract_extra_length: Unretract Extra Length
       unretract_speed: Unretract Speed
       upload_and_print: Upload and Print
+      upload_and_queue: Upload and add to queue
       used: used
       username: Username
       velocity: Velocity
@@ -360,6 +361,8 @@ app:
       protected_mode: Protected Mode
     msg:
       password_changed: Password changed
+      upload_queued: '%{name} is uploaded and in the queue'
+      upload_saved: '%{name} is uploaded to Jobs'
       wrong_password: Oops, something went wrong. Is your password correct?
       bed_screws_adjust: >-
         Click <b>Adjusted</b> if a significant adjustment is necessary on the
@@ -649,6 +652,9 @@ app:
       hide_single_part_bounding_box: Hide part bounding box when printing a single part
       gcode_coords: Use GCode Coordinates
       icon: Icon
+      interface_style: Interface style
+      interface_style_flat: Flat
+      interface_style_glass: Glass
       invert_x_control: Invert X control
       invert_y_control: Invert Y control
       invert_z_control: Invert Z control

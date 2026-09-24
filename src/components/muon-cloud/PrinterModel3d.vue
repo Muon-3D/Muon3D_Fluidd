@@ -17,23 +17,25 @@ import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import type { PrinterStatus } from '@/services/muon-cloud/state'
 import { cloudPrinterConnection } from '@/services/muon-cloud/state'
 import { parseToolpath, segmentsPrinted, type Toolpath } from '@/services/muon-cloud/toolpath'
+import { cloudBaseUrl } from '@/services/muon-cloud/api'
 
 /* three.js is loaded at run time from the console's static assets, so the
    Fleet page costs nothing to a Fluidd that never opens it. */
-const THREE_URL = '/muon-3d/three.module.min.js'
-const MODEL_URL = '/muon-3d/m1.json'
+// From the Muon3D service, so the model also loads in a printer-served Fluidd.
+const THREE_URL = () => `${cloudBaseUrl()}/muon-3d/three.module.min.js`
+const MODEL_URL = () => `${cloudBaseUrl()}/muon-3d/m1.json`
 const MAX_GCODE_BYTES = 40 * 1024 * 1024
 
 let threePromise: Promise<any> | null = null
 let modelJsonPromise: Promise<any | null> | null = null
 
 function loadThree () {
-  threePromise ??= import(/* @vite-ignore */ THREE_URL)
+  threePromise ??= import(/* @vite-ignore */ THREE_URL())
   return threePromise
 }
 
 function loadModelJson () {
-  modelJsonPromise ??= fetch(MODEL_URL).then(r => (r.ok ? r.json() : null)).catch(() => null)
+  modelJsonPromise ??= fetch(MODEL_URL()).then(r => (r.ok ? r.json() : null)).catch(() => null)
   return modelJsonPromise
 }
 

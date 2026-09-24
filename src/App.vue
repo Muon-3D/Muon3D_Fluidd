@@ -3,14 +3,20 @@
   <v-app
     v-else
     class="fluidd muon-shell"
-    :class="{ 'no-pointer-events': dragState }"
+    :class="{
+      'no-pointer-events': dragState,
+      'muon-shell--scrolled': scrolled,
+      'muon-shell--past-title': scrolledPastTitle || !showLargeTitle,
+      'muon-shell--tabbed': showTabBar,
+      'muon-shell--navless': glassNavless
+    }"
   >
     <app-tools-drawer
       v-if="!managedConsoleRoute"
       v-model="toolsdrawer"
     />
     <app-nav-drawer
-      v-if="!managedConsoleRoute"
+      v-if="!managedConsoleRoute && !glassNavless"
       v-model="navdrawer"
     />
 
@@ -34,8 +40,13 @@
       :timeout="flashMessageState.timeout"
     />
 
+    <app-tab-bar
+      v-if="showTabBar"
+      @more="navdrawer = true"
+    />
+
     <v-btn
-      v-if="!managedConsoleRoute && isMobileViewport && authenticated && socketConnected"
+      v-if="!managedConsoleRoute && isMobileViewport && authenticated && socketConnected && !glass"
       x-small
       fab
       fixed
@@ -62,20 +73,7 @@
         }"
         class="constrained-width muon-content pa-2 pa-sm-4"
       >
-        <v-row
-          v-if="
-            (socketConnected && apiConnected) &&
-              (!klippyReady || hasWarnings) &&
-              !inLayout &&
-              !managedConsoleRoute &&
-              !printerIndependentRoute &&
-              $route.path !== '/login'
-          "
-        >
-          <v-col>
-            <klippy-status-card />
-          </v-col>
-        </v-row>
+        <app-page-title v-if="showLargeTitle" />
 
         <router-view
           v-if="
@@ -154,6 +152,8 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
   toolsdrawer: boolean | null = null
   navdrawer: boolean | null = null
   dragState = false
+  scrolled = false
+  scrolledPastTitle = false
   customBackgroundImageStyle: Record<string, string> = {}
 
   flashMessageState: FlashMessage = {
@@ -198,6 +198,32 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
 
   get managedConsoleRoute (): boolean {
     return isManagedConsolePath(this.$route.path)
+  }
+
+  get glass (): boolean {
+    return this.theme.style === 'glass'
+  }
+
+  // With no printer connected, the welcome, fleet and link pages have nothing
+  // to navigate, so the glass style draws no sidebar; they carry their own
+  // heading.
+  get glassNavless (): boolean {
+    return this.glass && this.printerIndependentRoute && !(this.authenticated && this.socketConnected)
+  }
+
+  get glassPhone (): boolean {
+    return this.glass && this.isMobileViewport && !this.managedConsoleRoute &&
+      this.authenticated && this.socketConnected
+  }
+
+  get showTabBar (): boolean {
+    return this.glassPhone
+  }
+
+  // On a phone the glass style names the page in a large title, as iOS does.
+  // The console and G-code preview keep that height for the tool itself.
+  get showLargeTitle (): boolean {
+    return this.glassPhone && !['/console', '/preview'].includes(this.$route.path)
   }
 
   get columnCount (): number {
@@ -365,6 +391,7 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
     window.addEventListener('dragleave', this.handleDragLeave)
     window.addEventListener('drop', this.handleDrop)
     window.addEventListener('keydown', this.handleKeyDown, false)
+    window.addEventListener('scroll', this.handleScroll, { passive: true })
 
     // this.onLoadLocale(this.$i18n.locale)
     EventBus.bus.$on('flashMessage', (payload: FlashMessage) => {
@@ -398,6 +425,14 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
     window.removeEventListener('dragleave', this.handleDragLeave)
     window.removeEventListener('drop', this.handleDrop)
     window.removeEventListener('keydown', this.handleKeyDown)
+    window.removeEventListener('scroll', this.handleScroll)
+  }
+
+  // The glass toolbar turns to frosted glass once content is under it, and
+  // on a phone shows the page title once the large title has gone under it.
+  handleScroll () {
+    this.scrolled = window.scrollY > 1
+    this.scrolledPastTitle = window.scrollY > 44
   }
 
   handleToolsDrawerChange () {
@@ -536,6 +571,11 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
   .mobile-estop {
     min-width: 48px !important;
     min-height: 48px !important;
+  }
+
+  // Room for the tab bar, so the last card can scroll clear of it.
+  .muon-shell--tabbed .muon-content {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important;
   }
 
   .muon-background-logo {

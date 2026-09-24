@@ -83,7 +83,6 @@
 
 <script lang="ts">
 import { Component, Prop, VModel, Vue } from 'vue-property-decorator'
-import { mdiEye, mdiEyeOff } from '@mdi/js'
 import { signIn, signUp } from '@/services/muon-cloud/state'
 
 @Component({})
@@ -101,7 +100,7 @@ export default class CloudAccountDialog extends Vue {
   showPassword = false
   busy = false
   error: string | null = null
-  icons = { eye: mdiEye, eyeOff: mdiEyeOff }
+  icons = { eye: '$eye', eyeOff: '$eyeOff' }
 
   created () {
     this.mode = this.initialMode

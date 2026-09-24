@@ -9,6 +9,7 @@
       :height="6"
       :value="estimates.progress"
       color="primary"
+      class="m3d-progress-inline"
     />
 
     <v-card-text v-if="visible">
@@ -19,7 +20,14 @@
             cols="auto"
             align-self="center"
           >
+            <app-ring-progress
+              v-if="glassStyle"
+              :value="estimates.progress"
+              :size="112"
+              :width="12"
+            />
             <v-progress-circular
+              v-else
               :rotate="-90"
               :size="90"
               :width="7"
@@ -70,6 +78,7 @@
                 (progressVisible && $vuetify.breakpoint.mdAndDown)
             "
             no-gutters
+            class="status-tab__head"
           >
             <v-col>
               <status-label
@@ -99,6 +108,7 @@
           <v-row
             v-if="printerPrinting"
             no-gutters
+            class="status-tab__stats"
           >
             <v-col
               cols="12"
@@ -299,6 +309,10 @@ export default class StatusTab extends Mixins(StateMixin, FilesMixin, ToolheadMi
 
   get printInProgressLayout (): PrintInProgressLayout {
     return this.$store.state.config.uiSettings.general.printInProgressLayout as PrintInProgressLayout
+  }
+
+  get glassStyle (): boolean {
+    return this.$store.getters['config/getUiStyle'] === 'glass'
   }
 
   /**
