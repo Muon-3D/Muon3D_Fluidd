@@ -8,6 +8,25 @@
       dense
       class="mb-4"
     >
+      <app-setting :title="$t('app.setting.label.interface_style')">
+        <v-btn-toggle
+          v-model="uiStyle"
+          mandatory
+          dense
+        >
+          <v-btn
+            v-for="style in uiStyles"
+            :key="style"
+            :value="style"
+            small
+          >
+            {{ $t(`app.setting.label.interface_style_${style}`) }}
+          </v-btn>
+        </v-btn-toggle>
+      </app-setting>
+
+      <v-divider />
+
       <app-setting>
         <template #title>
           <span>{{ $t('app.setting.label.theme_preset') }}</span>
@@ -78,7 +97,8 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
-import type { ThemePreset, ThemeConfig } from '@/store/config/types'
+import type { ThemePreset, ThemeConfig, UiStyle } from '@/store/config/types'
+import { UI_STYLES } from '@/util/ui-style'
 import ThemePicker from '../ui/AppColorPicker.vue'
 
 @Component({
@@ -120,6 +140,20 @@ export default class ThemeSettings extends Mixins(StateMixin) {
         color: value
       })
     }
+  }
+
+  get uiStyles () {
+    return UI_STYLES
+  }
+
+  get uiStyle (): UiStyle {
+    return this.theme.style
+  }
+
+  set uiStyle (value: UiStyle) {
+    this.updateTheme({
+      style: value
+    })
   }
 
   get isDark () {

@@ -8,71 +8,75 @@
       <template v-if="step === 'choose'">
         <v-card-title>Link a printer to your account</v-card-title>
         <v-card-subtitle class="pt-1">
-          Pick a printer on this network and it asks you to confirm on its screen.
-          Anywhere else, enter the six-digit code its screen shows.
+          Enter the six-digit code the printer's screen shows while it is linking, or scan its
+          QR code with your phone. Then confirm on the printer with the knob.
         </v-card-subtitle>
 
         <v-card-text>
-          <template v-if="!lanUnavailable">
-            <div class="muon-cloud-dialog__label">
-              On this network
-              <v-spacer />
-              <span
-                v-if="scanning"
-                class="muon-cloud-dialog__scan"
-              >
-                <v-progress-circular
-                  indeterminate
-                  size="11"
-                  width="2"
-                  class="mr-1"
-                />
-                Searching {{ scanNetwork }}
-              </span>
-              <v-btn
-                v-else
-                x-small
-                text
-                @click="rescan"
-              >
-                Search again
-              </v-btn>
-            </div>
-            <v-list
-              v-if="lanPrinters.length"
-              dense
-              class="mb-4 muon-cloud-dialog__list"
+          <div class="muon-cloud-dialog__label">
+            Show the code on a printer near you
+            <v-spacer />
+            <span
+              v-if="searching"
+              class="muon-cloud-dialog__scan"
             >
-              <v-list-item
-                v-for="p in lanPrinters"
-                :key="p.host"
-                :disabled="busy || !canLink(p)"
-                @click="linkLan(p)"
-              >
-                <v-list-item-icon>
-                  <v-progress-circular
-                    v-if="linking === p.host"
-                    indeterminate
-                    size="20"
-                    width="2"
-                  />
-                  <v-icon v-else>
-                    {{ icons.printer }}
-                  </v-icon>
-                </v-list-item-icon>
-                <v-list-item-content>
-                  <v-list-item-title>{{ p.name }}</v-list-item-title>
-                  <v-list-item-subtitle>{{ p.host }} · {{ lanStatus(p) }}</v-list-item-subtitle>
-                </v-list-item-content>
-              </v-list-item>
-            </v-list>
-            <div
+              <v-progress-circular
+                indeterminate
+                size="11"
+                width="2"
+                class="mr-1"
+              />
+              Searching
+            </span>
+            <v-btn
               v-else
-              class="muon-cloud-dialog__empty mb-4"
+              x-small
+              text
+              @click="rescan"
             >
-              {{ scanning ? 'Looking for Muon3D printers…' : 'No Muon3D printers answered on this network.' }}
-            </div>
-          </template>
+              Search again
+            </v-btn>
+          </div>
+          <v-list
+            v-if="nearby.length"
+            dense
+            class="mb-2 muon-cloud-dialog__list"
+          >
+            <v-list-item
+              v-for="p in nearby"
+              :key="p.key"
+              :disabled="busy || !p.canShow"
+              @click="showCode(p)"
+            >
+              <v-list-item-icon>
+                <v-progress-circular
+                  v-if="asking === p.key"
+                  indeterminate
+                  size="20"
+                  width="2"
+                />
+                <v-icon v-else>
+                  {{ icons.printer }}
+                </v-icon>
+              </v-list-item-icon>
+              <v-list-item-content>
+                <v-list-item-title>{{ p.name }}</v-list-item-title>
+                <v-list-item-subtitle>{{ p.note }}</v-list-item-subtitle>
+              </v-list-item-content>
+            </v-list-item>
+          </v-list>
+          <div
+            v-else
+            class="muon-cloud-dialog__empty mb-2"
+          >
+            {{ searching ? 'Looking for Muon3D printers…' : 'No Muon3D printers found on your network.' }}
+          </div>
+          <div
+            v-if="shown"
+            class="text-caption mb-3"
+          >
+            {{ shown }} is showing a code on its screen now. Type it below.
+          </div>
 
           <div class="muon-cloud-dialog__label">
             Or enter the code on the printer's screen
@@ -82,7 +86,7 @@
             length="6"
             type="number"
             :disabled="busy"
-            @finish="claim({ code })"
+            @finish="claim(code)"
           />
           <div class="text-caption text--secondary mt-1">
             Scanning the QR code on the screen with your phone opens this page with the code filled in.
@@ -108,8 +112,8 @@
           <app-btn
             color="primary"
             :disabled="code.length !== 6"
-            :loading="busy && !linking"
-            @click="claim({ code })"
+            :loading="busy"
+            @click="claim(code)"
           >
             Link
           </app-btn>
@@ -176,15 +180,18 @@
 
 <script lang="ts">
 import { Component, Prop, VModel, Vue, Watch } from 'vue-property-decorator'
-import { mdiPrinter3d } from '@mdi/js'
 import { cloudApi } from '@/services/muon-cloud/api'
 import { cloudState, refreshPrinters } from '@/services/muon-cloud/state'
 import { activateCloudPrinter } from '@/services/muon-cloud/activate'
 import {
   discoverPrinters,
   discoveryState,
+  lanLinkAvailability,
+  refreshCloudNearby,
   refreshLinkStates,
-  startLanLink,
+  sameNamedPrinter,
+  showLanCode,
+  type CloudNearbyPrinter,
   type LanPrinter
 } from '@/services/muon-cloud/discovery'
 
@@ -196,38 +203,67 @@ export default class LinkPrinterDialog extends Vue {
   @Prop({ type: String, default: '' })
   readonly initialCode!: string
 
+  /** A printer the service found on this network, to ask for a code as soon as the dialog opens. */
+  @Prop({ type: String, default: '' })
+  readonly initialPrinterId!: string
+
+  /** A printer the LAN search found, by address, to ask for a code as soon as the dialog opens. */
+  @Prop({ type: String, default: '' })
+  readonly initialHost!: string
+
   step: 'choose' | 'confirm' | 'done' = 'choose'
   code = ''
   busy = false
   error: string | null = null
   claimed: { printer_id: string, name: string } | null = null
-  linking: string | null = null
+  asking: string | null = null
+  /** The printer just asked to show its code. */
+  shown = ''
   timer: number | null = null
-  icons = { printer: mdiPrinter3d }
+  icons = { printer: '$printer3d' }
 
   get accountEmail () {
     return cloudState.account?.email ?? ''
   }
 
-  get lanPrinters (): LanPrinter[] {
-    return discoveryState.found
+  /**
+   * Printers near this browser that could show a code: from the service, and
+   * from the LAN search where the page can run one. Each may be linked already.
+   */
+  get nearby (): Array<{ key: string, name: string, note: string, canShow: boolean, cloud?: CloudNearbyPrinter, lan?: LanPrinter }> {
+    const out: Array<{ key: string, name: string, note: string, canShow: boolean, cloud?: CloudNearbyPrinter, lan?: LanPrinter }> = []
+    for (const c of discoveryState.cloud) {
+      const mine = cloudState.printers.some(p => p.id === c.printerId)
+      out.push({
+        key: c.printerId,
+        name: c.name,
+        cloud: c,
+        canShow: !c.linked,
+        note: !c.linked
+          ? 'Not linked · show its code'
+          : mine ? 'Already in your account' : 'Linked to another account · its owner must unlink it first'
+      })
+    }
+    for (const l of discoveryState.found) {
+      if (discoveryState.cloud.some(c => sameNamedPrinter(c.name, l.name))) continue
+      const { canShow, note } = lanLinkAvailability(l.link)
+      out.push({ key: l.host, name: l.name, lan: l, canShow, note: `${l.host} · ${note}` })
+    }
+    return out
   }
 
-  get scanning () {
-    return discoveryState.scanning
-  }
-
-  get scanNetwork () {
-    return discoveryState.network
-  }
-
-  get lanUnavailable () {
-    return discoveryState.unavailable
+  get searching () {
+    return discoveryState.scanning || !discoveryState.cloudChecked
   }
 
   created () {
     this.code = (this.initialCode || '').replace(/\D/g, '').slice(0, 6)
-    if (this.code.length === 6) this.claim({ code: this.code })
+    if (this.code.length === 6) this.claim(this.code)
+    else if (this.initialPrinterId) this.askForCode(this.initialPrinterId, this.initialPrinterId)
+    else if (this.initialHost) {
+      const lan = discoveryState.found.find(l => l.host === this.initialHost)
+      if (lan) this.showCode({ key: lan.host, name: lan.name, lan })
+    }
     refreshLinkStates().catch(() => {})
     discoverPrinters().catch(() => {})
   }
@@ -242,57 +278,51 @@ export default class LinkPrinterDialog extends Vue {
   }
 
   rescan () {
+    discoveryState.cloudChecked = false
     discoverPrinters(true).catch(() => {})
   }
 
-  canLink (p: LanPrinter) {
-    return ['unlinked', 'code', 'failed', 'connecting'].includes(p.link.phase)
-  }
-
-  lanStatus (p: LanPrinter) {
-    switch (p.link.phase) {
-      case 'unlinked': return 'link it now'
-      case 'connecting': return 'starting…'
-      case 'code': return 'showing a code · link it now'
-      case 'offer': return 'waiting for confirmation on its screen'
-      case 'failed': return 'could not reach the Muon3D service · try again'
-      case 'linked':
-        return p.link.account && p.link.account === this.accountEmail
-          ? 'already in your account'
-          : 'linked to another account'
-      default: return 'needs an update before it can link'
-    }
-  }
-
-  /** Starts the link on a printer on this network, reads its code, and claims it. */
-  async linkLan (p: LanPrinter) {
-    if (this.busy) return
+  /** Makes a printer show its link code, so that the person can read it and type it here. */
+  async showCode (p: { key: string, name: string, cloud?: CloudNearbyPrinter, lan?: LanPrinter }) {
+    if (p.cloud) return this.askForCode(p.cloud.printerId, p.key, p.name)
+    if (!p.lan) return
     this.error = null
-    this.busy = true
-    this.linking = p.host
+    this.asking = p.key
     try {
-      const code = p.link.phase === 'code' && p.link.code ? p.link.code : await startLanLink(p.apiUrl)
-      this.busy = false
-      await this.claim({ code })
+      await showLanCode(p.lan.apiUrl)
+      this.shown = p.name
     } catch (error) {
       this.error = (error as Error).message
     } finally {
-      this.busy = false
-      this.linking = null
+      this.asking = null
     }
   }
 
-  async claim (what: { code?: string, printer_id?: string }) {
-    if (this.busy) return
+  async askForCode (printerId: string, key: string, name?: string) {
+    this.error = null
+    this.asking = key
+    try {
+      await cloudApi.startLink(printerId)
+      this.shown = name ?? discoveryState.cloud.find(c => c.printerId === printerId)?.name ?? 'The printer'
+    } catch (error) {
+      this.error = (error as Error).message
+    } finally {
+      this.asking = null
+    }
+  }
+
+  async claim (code: string) {
+    if (this.busy || code.length !== 6) return
     this.error = null
     this.busy = true
     try {
-      const claimed = await cloudApi.claim(what)
+      const claimed = await cloudApi.claim(code)
       this.claimed = { printer_id: claimed.printer_id, name: claimed.name }
       this.step = 'confirm'
       this.startPolling()
     } catch (error) {
       this.error = (error as Error).message
+      refreshCloudNearby().catch(() => {})
     } finally {
       this.busy = false
     }
@@ -308,6 +338,7 @@ export default class LinkPrinterDialog extends Vue {
           this.stopPolling()
           await refreshPrinters()
           refreshLinkStates().catch(() => {})
+          refreshCloudNearby().catch(() => {})
           this.step = 'done'
         } else if (state === 'declined' || state === 'expired') {
           this.stopPolling()

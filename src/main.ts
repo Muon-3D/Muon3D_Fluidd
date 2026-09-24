@@ -39,6 +39,8 @@ import App from './App.vue'
 
 // Register global directives.
 import Blur from '@/directives/blur'
+import { restoreUiStyle } from '@/util/ui-style'
+import { applyGlassIcons } from '@/util/glass-icons'
 
 // Directives...
 Vue.directive('blur', Blur)
@@ -67,6 +69,10 @@ Vue.use(HttpClientPlugin, {
 // A cloud printer is selected through a placeholder API address that Fluidd
 // records as an instance. It must never be the instance Fluidd starts on.
 forgetManagedInstance()
+
+const restoredUiStyle = restoreUiStyle()
+store.commit('config/setRestoredUiStyle', restoredUiStyle)
+applyGlassIcons(vuetify.framework.icons.values as unknown as Record<string, unknown>, restoredUiStyle === 'glass')
 
 appInit()
   .then((config: InitConfig) => {

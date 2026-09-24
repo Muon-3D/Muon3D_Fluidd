@@ -13,7 +13,7 @@
     <header class="hud-card__head">
       <div>
         <div class="hud-card__unit">
-          UNIT {{ unitCode }} · {{ printer.model }}
+          {{ glass ? printer.model : `UNIT ${unitCode} · ${printer.model}` }}
         </div>
         <div class="hud-card__name">
           {{ printer.name }}
@@ -23,7 +23,7 @@
         class="hud-card__state"
         :class="`is-${tone}`"
       >
-        [ {{ stateLabel }} ]
+        {{ glass ? stateText : `[ ${stateLabel} ]` }}
       </div>
     </header>
 
@@ -43,7 +43,7 @@
       class="hud-card__block"
     >
       <div class="hud-card__row">
-        <span class="hud-card__label">PROGRESS</span>
+        <span class="hud-card__label">{{ label.progress }}</span>
         <span class="hud-card__value hud-card__big">{{ percent }}<small>%</small></span>
       </div>
       <div class="hud-card__bar">
@@ -62,47 +62,47 @@
 
     <dl class="hud-card__grid">
       <template v-if="widgets.file && status && status.filename">
-        <dt>FILE</dt>
+        <dt>{{ label.file }}</dt>
         <dd class="is-wide">
           {{ status.filename }}
         </dd>
       </template>
       <template v-if="widgets.eta && printing">
-        <dt>ELAPSED</dt>
+        <dt>{{ label.elapsed }}</dt>
         <dd>{{ clock(status && status.printDuration) }}</dd>
-        <dt>REMAINING</dt>
+        <dt>{{ label.remaining }}</dt>
         <dd>{{ remaining }}</dd>
       </template>
       <template v-if="widgets.layer && status && status.layer">
-        <dt>LAYER</dt>
+        <dt>{{ label.layer }}</dt>
         <dd>{{ status.layer }}<span class="hud-card__dim"> / {{ status.totalLayers || '—' }}</span></dd>
       </template>
       <template v-if="widgets.temps && status && status.extruder">
-        <dt>NOZZLE</dt>
+        <dt>{{ label.nozzle }}</dt>
         <dd>
           {{ status.extruder.temperature.toFixed(1) }}°<span class="hud-card__dim"> → {{ status.extruder.target.toFixed(0) }}°</span>
         </dd>
         <template v-if="status.bed">
-          <dt>BED</dt>
+          <dt>{{ label.bed }}</dt>
           <dd>
             {{ status.bed.temperature.toFixed(1) }}°<span class="hud-card__dim"> → {{ status.bed.target.toFixed(0) }}°</span>
           </dd>
         </template>
       </template>
       <template v-if="widgets.position && status && status.position">
-        <dt>POS</dt>
+        <dt>{{ label.position }}</dt>
         <dd class="is-wide">
           X{{ fmt(status.position[0]) }} Y{{ fmt(status.position[1]) }} Z{{ fmt(status.position[2]) }}
         </dd>
       </template>
       <template v-if="widgets.factors && status && status.speedFactor !== undefined">
-        <dt>SPEED</dt>
+        <dt>{{ label.speed }}</dt>
         <dd>{{ Math.round(status.speedFactor * 100) }}%</dd>
-        <dt>FLOW</dt>
+        <dt>{{ label.flow }}</dt>
         <dd>{{ Math.round((status.extrudeFactor || 1) * 100) }}%</dd>
       </template>
       <template v-if="!printer.online">
-        <dt>LAST SEEN</dt>
+        <dt>{{ label.lastSeen }}</dt>
         <dd class="is-wide">
           {{ lastSeen }}
         </dd>
@@ -110,7 +110,10 @@
     </dl>
 
     <footer class="hud-card__foot">
-      <span class="hud-card__link">IROH · {{ printer.id.slice(0, 8).toUpperCase() }}</span>
+      <span
+        v-if="!glass"
+        class="hud-card__link"
+      >IROH · {{ printer.id.slice(0, 8).toUpperCase() }}</span>
       <v-spacer />
       <button
         type="button"
@@ -118,7 +121,7 @@
         :disabled="!printer.online"
         @click="$emit('open', printer.id)"
       >
-        OPEN ▸
+        {{ glass ? 'Open' : 'OPEN ▸' }}
       </button>
     </footer>
   </div>
@@ -146,6 +149,38 @@ export default class FleetCard extends Vue {
 
   @Prop({ type: Boolean, default: false })
   readonly compact!: boolean
+
+  // The glass style draws the card as a plain grouped card, so its labels
+  // are in sentence case and the console's brackets and arrows go.
+  get glass (): boolean {
+    return this.$store.getters['config/getUiStyle'] === 'glass'
+  }
+
+  get label (): Record<string, string> {
+    const labels = {
+      progress: 'Progress',
+      file: 'File',
+      elapsed: 'Elapsed',
+      remaining: 'Remaining',
+      layer: 'Layer',
+      nozzle: 'Nozzle',
+      bed: 'Bed',
+      position: 'Position',
+      speed: 'Speed',
+      flow: 'Flow',
+      lastSeen: 'Last seen'
+    }
+    if (this.glass) return labels
+    return {
+      ...Object.fromEntries(Object.entries(labels).map(([key, text]) => [key, text.toUpperCase()])),
+      position: 'POS'
+    }
+  }
+
+  get stateText (): string {
+    const label = this.stateLabel.toLowerCase()
+    return label.charAt(0).toUpperCase() + label.slice(1)
+  }
 
   get unitCode () {
     return String(this.index).padStart(2, '0')

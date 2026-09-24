@@ -2,13 +2,13 @@
   <v-app-bar
     app
     class="muon-app-bar"
-    clipped-left
+    :clipped-left="!glass"
     extension-height="46"
     :color="$vuetify.theme.currentTheme.appbar"
     :height="$globals.HEADER_HEIGHT"
   >
     <router-link
-      v-if="!isMobileViewport"
+      v-if="!isMobileViewport && !glass"
       to="/"
       class="muon-brand"
       :class="{ 'muon-brand--compact': navRail }"
@@ -19,7 +19,7 @@
 
     <div class="toolbar-title">
       <v-btn
-        v-if="isMobileViewport"
+        v-if="isMobileViewport && !glass"
         icon
         class="mobile-nav-button"
         @click="$emit('navdrawer')"
@@ -27,7 +27,25 @@
         <v-icon>$menuAlt</v-icon>
       </v-btn>
 
-      <v-toolbar-title class="printer-title">
+      <!-- The glass style names the page, with the printer and its state under it. -->
+      <v-toolbar-title
+        v-if="glass && !navless"
+        class="glass-title"
+      >
+        <span class="glass-title__main">{{ pageTitle }}</span>
+        <span
+          class="glass-title__sub printer-status"
+          :class="`printer-status--${statusTone}`"
+        >
+          <span class="printer-status__dot" />
+          <span class="printer-status__text">{{ pageSubtitle }}</span>
+        </span>
+      </v-toolbar-title>
+
+      <v-toolbar-title
+        v-else-if="!glass"
+        class="printer-title"
+      >
         <router-link
           to="/"
           class="printer-title__name"
@@ -90,69 +108,66 @@
         </v-tooltip>
       </div>
 
+      <app-status-alerts v-if="authenticated" />
+
       <div v-if="authenticated && socketConnected && showUploadAndPrint">
         <app-upload-and-print-btn
-          :disabled="printerPrinting || printerPaused || !klippyReady"
+          :tooltip="uploadTooltip"
           @upload="handleUploadAndPrint"
         />
       </div>
 
-      <div v-if="authenticated && socketConnected && topNavPowerToggle">
-        <v-tooltip bottom>
-          <template #activator="{ on, attrs }">
-            <app-btn
-              fab
-              small
-              :elevation="0"
-              class="toolbar-action mr-1 bg-transparent"
-              color="transparent"
-              :disabled="topNavPowerDeviceDisabled"
-              v-bind="attrs"
-              v-on="on"
-              @click="handlePowerToggle()"
-            >
-              <v-icon>
-                {{ topNavPowerDeviceOn ? '$powerOn' : '$powerOff' }}
-              </v-icon>
-            </app-btn>
-          </template>
-          <span>{{ $t(`app.general.label.turn_device_${topNavPowerDeviceOn ? 'off' : 'on'}`, { device: topNavPowerToggle.name }) }}</span>
-        </v-tooltip>
+      <div class="muon-toolbar-group">
+        <div v-if="authenticated && socketConnected && topNavPowerToggle">
+          <v-tooltip bottom>
+            <template #activator="{ on, attrs }">
+              <app-btn
+                fab
+                small
+                :elevation="0"
+                class="toolbar-action mr-1 bg-transparent"
+                color="transparent"
+                :disabled="topNavPowerDeviceDisabled"
+                v-bind="attrs"
+                v-on="on"
+                @click="handlePowerToggle()"
+              >
+                <v-icon>
+                  {{ topNavPowerDeviceOn ? '$powerOn' : '$powerOff' }}
+                </v-icon>
+              </app-btn>
+            </template>
+            <span>{{ $t(`app.general.label.turn_device_${topNavPowerDeviceOn ? 'off' : 'on'}`, { device: topNavPowerToggle.name }) }}</span>
+          </v-tooltip>
+        </div>
+
+        <div
+          v-if="authenticated && socketConnected"
+          class="toolbar-action mr-1"
+        >
+          <app-notification-menu />
+        </div>
+
+        <div
+          v-if="supportsAuth && authenticated && $vuetify.breakpoint.lgAndUp"
+          class="toolbar-action mr-1"
+        >
+          <app-wifi-button />
+        </div>
+
+        <cloud-account-menu class="toolbar-action" />
+
+        <app-btn
+          fab
+          small
+          :elevation="0"
+          class="toolbar-action mr-1"
+          color="transparent"
+          @click="$emit('toolsdrawer')"
+        >
+          <v-icon>$menu</v-icon>
+        </app-btn>
       </div>
-
-      <div
-        v-if="authenticated && socketConnected"
-        class="toolbar-action mr-1"
-      >
-        <app-notification-menu />
-      </div>
-
-      <div
-        v-if="supportsAuth && authenticated"
-        class="toolbar-action mr-1"
-      >
-        <app-user-menu @change-password="userPasswordDialogOpen = true" />
-      </div>
-
-      <div
-        v-if="supportsAuth && authenticated && $vuetify.breakpoint.lgAndUp"
-        class="toolbar-action mr-1"
-      >
-        <app-wifi-button />
-      </div>
-
-      <cloud-account-menu class="toolbar-action" />
-
-      <app-btn
-        fab
-        small
-        :elevation="0"
-        class="toolbar-action mr-1"
-        color="transparent"
-        @click="$emit('toolsdrawer')"
-      >
-        <v-icon>$menu</v-icon>
-      </app-btn>
     </div>
 
     <template
@@ -199,11 +214,6 @@
       </template>
     </template>
 
-    <user-password-dialog
-      v-if="userPasswordDialogOpen"
-      v-model="userPasswordDialogOpen"
-    />
-
     <pending-changes-dialog
       v-if="pendingChangesDialogOpen"
       v-model="pendingChangesDialogOpen"
@@ -215,16 +225,16 @@
 <script lang="ts">
 import CloudAccountMenu from '@/components/muon-cloud/CloudAccountMenu.vue'
 import { Component, Mixins } from 'vue-property-decorator'
-import UserPasswordDialog from '@/components/settings/auth/UserPasswordDialog.vue'
 import PendingChangesDialog from '@/components/settings/PendingChangesDialog.vue'
 import AppSaveConfigAndRestartBtn from './AppSaveConfigAndRestartBtn.vue'
 import AppUploadAndPrintBtn from './AppUploadAndPrintBtn.vue'
 import { defaultState } from '@/store/layout/state'
-import StateMixin from '@/mixins/state'
+import PrinterStatusMixin from '@/mixins/printer-status'
 import ServicesMixin from '@/mixins/services'
 import FilesMixin from '@/mixins/files'
 import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
+import { EventBus } from '@/eventBus'
 import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
 import AppWifiButton from '@/components/ui/AppWifiButton.vue'
@@ -232,16 +242,14 @@ import AppWifiButton from '@/components/ui/AppWifiButton.vue'
 @Component({
   components: {
     CloudAccountMenu,
-    UserPasswordDialog,
     PendingChangesDialog,
     AppSaveConfigAndRestartBtn,
     AppUploadAndPrintBtn,
     AppWifiButton
   }
 })
-export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin, BrowserMixin) {
+export default class AppBar extends Mixins(PrinterStatusMixin, ServicesMixin, FilesMixin, BrowserMixin) {
   menu = false
-  userPasswordDialogOpen = false
   pendingChangesDialogOpen = false
 
   get supportsAuth () {
@@ -260,41 +268,16 @@ export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin
     return !this.isMobileViewport && this.$vuetify.breakpoint.mdAndDown
   }
 
-  get displayName (): string {
-    return this.$store.getters['config/getDisplayName'] as string
+  // The glass toolbar starts beside the sidebar, which carries the wordmark.
+  get glass (): boolean {
+    return this.$store.getters['config/getUiStyle'] === 'glass'
   }
 
-  get printProgress (): number {
-    return Math.floor((this.$store.getters['printer/getPrintProgress'] as number) * 100)
-  }
-
-  get statusTone (): 'ok' | 'active' | 'warn' | 'fault' | 'off' {
-    if (!this.socketConnected) return 'off'
-    if (!this.klippyReady) {
-      return ['error', 'shutdown'].includes(this.klippyState) ? 'fault' : 'warn'
-    }
-
-    switch (this.printerState.toLowerCase()) {
-      case 'printing':
-      case 'busy':
-        return 'active'
-      case 'paused':
-        return 'warn'
-      case 'error':
-      case 'cancelled':
-        return 'fault'
-      default:
-        return 'ok'
-    }
-  }
-
-  get statusText (): string {
-    if (!this.socketConnected) return 'Offline'
-    if (!this.klippyReady) return `Klipper ${this.klippyState || 'offline'}`
-
-    const state = this.$filters.prettyCase(this.printerState)
-
-    return this.printerPrinting ? `${state} · ${this.printProgress}%` : state
+  // App.vue's glassNavless: no printer and a page that needs none, so no
+  // sidebar and no page title; the page carries its own heading.
+  get navless (): boolean {
+    return this.glass && this.$route.meta?.printerIndependent === true &&
+      !(this.authenticated && this.socketConnected)
   }
 
   get currentFile () {
@@ -492,8 +475,39 @@ export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin
     }
   }
 
-  handleUploadAndPrint (file: File) {
-    this.uploadFile(file, '/', 'gcodes', true)
+  // Idle, the file prints as soon as it is up. Mid-print, it goes to the job
+  // queue, and with Klipper down it is only uploaded, so the button always
+  // does something.
+  get uploadPrintsNow (): boolean {
+    return this.klippyReady && !this.printerPrinting && !this.printerPaused
+  }
+
+  get uploadQueues (): boolean {
+    return !this.uploadPrintsNow && this.klippyReady &&
+      this.$store.getters['server/componentSupport']('job_queue')
+  }
+
+  get uploadTooltip (): string {
+    if (this.uploadPrintsNow) return this.$tc('app.general.label.upload_and_print')
+    if (this.uploadQueues) return this.$tc('app.general.label.upload_and_queue')
+    return this.$tc('app.general.btn.upload')
+  }
+
+  async handleUploadAndPrint (file: File) {
+    if (this.uploadPrintsNow) {
+      await this.uploadFile(file, '/', 'gcodes', true)
+      return
+    }
+
+    const queue = this.uploadQueues
+    await this.uploadFile(file, '/', 'gcodes', false)
+
+    if (queue) {
+      await SocketActions.serverJobQueuePostJob([file.name])
+      EventBus.$emit(this.$t('app.general.msg.upload_queued', { name: file.name }).toString(), { timeout: 4000 })
+    } else {
+      EventBus.$emit(this.$t('app.general.msg.upload_saved', { name: file.name }).toString(), { timeout: 4000 })
+    }
   }
 
   saveConfigAndRestart (force = false) {
@@ -547,6 +561,11 @@ export default class AppBar extends Mixins(StateMixin, ServicesMixin, FilesMixin
     align-items: center;
     gap: 8px;
     padding: 0 20px;
+  }
+
+  // Only the glass style draws the icon actions as one group.
+  .muon-toolbar-group {
+    display: contents;
   }
 
   .toolbar-supplemental {
