@@ -3,8 +3,10 @@
     :title="$t('app.general.title.wifi')"
     icon="$wifi"
   >
+    <protected-notice class="ma-4" />
+
     <!-- Table of available networks -->
-    <v-card>
+    <v-card v-if="!locked">
       <v-simple-table class="temperature-table">
         <thead>
           <tr>
@@ -271,6 +273,7 @@ import { useAuxApi } from '@/aux_api/useAuxApi'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import { EventBus } from '@/eventBus'
+import { moonrakerErrorMessage } from '@/store/protection/helpers'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -308,6 +311,13 @@ export default class WifiManagerCard extends Vue {
     return onHotspot.value
   }
 
+  // MuonOS network protection is on and this browser has no identity, so
+  // every Wi-Fi request would be refused. The notice says so instead, and
+  // polling waits until that changes.
+  get locked (): boolean {
+    return this.$store.getters['protection/isLocked']
+  }
+
   auxApi = useAuxApi()
 
   // Lifecycle
@@ -324,7 +334,7 @@ export default class WifiManagerCard extends Vue {
 
   // Fetch and mark known SSIDs
   async fetchDevices () {
-    if (this.fetching) return
+    if (this.fetching || this.locked) return
     this.fetching = true
     try {
       const res = await this.auxApi.wifi.wifiScanWifiScanGet(true)
@@ -356,8 +366,9 @@ export default class WifiManagerCard extends Vue {
       }
       this.wifiOrder = this.wifiOrder.filter(ssid => current.has(ssid))
       // ————————————————————————————————————————————————————————————————
-    } catch (e) {
+    } catch (e: any) {
       console.error('Wi-Fi scan failed', e)
+      if (e?.response?.status === 403) this.$store.dispatch('protection/onRefused')
     }
     this.fetching = false
   }
@@ -502,7 +513,7 @@ export default class WifiManagerCard extends Vue {
       EventBus.$emit(this.$t('app.wifi.msg.connect.success') + ' ' + this.selectedNetwork.ssid, { type: 'success', timeout: 2000 })
       await this.fetchDevices()
     } catch (err: any) {
-      EventBus.$emit(this.$t('app.wifi.msg.connect.error') + ' ' + err.response?.data?.detail || err.response?.statusText || err.message, { type: 'error', timeout: 5000 })
+      EventBus.$emit(`${this.$t('app.wifi.msg.connect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
     }
   }
 
@@ -514,7 +525,7 @@ export default class WifiManagerCard extends Vue {
         await this.fetchDevices()
       }
     } catch (err: any) {
-      EventBus.$emit(this.$t('app.wifi.msg.disconnect.error') + ' ' + err.response?.data?.detail || err.response?.statusText || err.message, { type: 'error', timeout: 5000 })
+      EventBus.$emit(`${this.$t('app.wifi.msg.disconnect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
     }
     this.disconnectConfirmDialog = false
   }

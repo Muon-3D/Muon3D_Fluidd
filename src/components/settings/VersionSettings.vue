@@ -9,7 +9,14 @@
       dense
       class="mb-4"
     >
-      <app-setting>
+      <div
+        v-if="locked"
+        class="pa-4"
+      >
+        <protected-notice />
+      </div>
+
+      <app-setting v-else>
         <app-btn
           outlined
           small
@@ -54,9 +61,9 @@
         />
       </app-setting>
 
-      <v-divider />
+      <v-divider v-if="!locked" />
 
-      <template v-for="(component, i) in components">
+      <template v-for="(component, i) in (locked ? [] : components)">
         <app-setting :key="`component-${component.key}-${component.name}`">
           <template #title>
             {{ packageTitle(component) }}
@@ -196,6 +203,15 @@ export default class VersionSettings extends Mixins(StateMixin) {
 
   get components () {
     return this.$store.getters['version/getVisibleComponents']
+  }
+
+  /**
+   * MuonOS network protection is on and this browser has no identity, so
+   * Moonraker refuses every update request from here. The list would only be
+   * stale, and the buttons would only be refused.
+   */
+  get locked (): boolean {
+    return this.$store.getters['protection/isLocked']
   }
 
   get isRefreshing () {

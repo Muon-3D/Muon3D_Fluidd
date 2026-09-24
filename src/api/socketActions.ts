@@ -63,6 +63,14 @@ export const SocketActions = {
     )
   },
 
+  async serverMuonGetProtection () {
+    baseEmit(
+      'server.muon.get_protection', {
+        dispatch: 'protection/onStatus'
+      }
+    )
+  },
+
   async machineUpdateStatus (refresh = false) {
     baseEmit(
       'machine.update.status', {
