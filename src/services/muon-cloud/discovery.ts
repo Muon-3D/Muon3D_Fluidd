@@ -18,11 +18,14 @@
  * Measured on 2026-09-23: 64 probes at a time with a 3 s timeout found the
  * printer every time. At 0.8 s or 1.5 s it was missed.
  *
- * A page served over HTTPS may fetch plain HTTP on the LAN only in Chromium,
- * only when a request declares `targetAddressSpace: 'local'`, and only after
- * the person allows "look for devices on your local network". So on HTTPS
- * every LAN request declares it, and Chrome asks once. Other browsers block
- * those requests as mixed content, and the sweep finds nothing there.
+ * A page served over HTTPS may use plain HTTP and WebSockets on the LAN only
+ * in Chromium, and only after the person allows "look for devices on your
+ * local network". Chrome asks once, at the first local request. Measured on
+ * 2026-09-24 in Chrome 153 from app.muon3d.com: fetch and ws:// to a private
+ * address both worked, with or without `targetAddressSpace: 'local'`, so
+ * Fluidd connects to a printer on the LAN from the HTTPS site as it does
+ * from the printer's own page. The sweep still declares it. Other browsers
+ * block those requests as mixed content, and the sweep finds nothing there.
  *
  * The Muon3D service fills that gap in any browser: it lists the printers
  * that connect to it from this browser's public address
@@ -78,7 +81,6 @@ const FRESH_FOR_MS = 60_000
 
 export const discoveryState = Vue.observable({
   scanning: false,
-  unavailable: false,
   /** The network being swept now, for the progress line. */
   network: '' as string,
   found: [] as LanPrinter[],
@@ -270,10 +272,6 @@ async function sweep () {
  */
 export function discoverPrinters (force = false): Promise<void> {
   refreshCloudNearby().catch(() => {})
-  // On HTTPS the LAN sweep still runs; Chromium asks the person first, and
-  // Fluidd cannot hold a live connection to a plain-HTTP printer from here, so
-  // what it finds is offered for linking rather than connecting.
-  discoveryState.unavailable = location.protocol === 'https:'
   if (running) return running
   if (!force && Date.now() - discoveryState.finishedAt < FRESH_FOR_MS) return Promise.resolve()
   running = sweep().finally(() => { running = null })
@@ -288,9 +286,8 @@ export async function refreshLinkStates () {
 }
 
 /**
- * The printer's own page on this network. Opening it connects to the printer
- * locally, as anyone on the network may: an open printer lets them straight
- * in, and one with a password asks for it.
+ * The printer's own page on this network. Fluidd connects from the page it
+ * is on where the browser allows it; this is the fallback where it does not.
  */
 export function localPageUrl (host: string) {
   return `http://${host}/`
@@ -315,12 +312,47 @@ export async function showLanCode (apiUrl: string): Promise<void> {
   }
 }
 
-/** A Fluidd instance for a printer found on the network. */
-export function instanceFor (printer: LanPrinter): InstanceConfig {
+/**
+ * A Fluidd instance for a printer on the network. Connecting to it is a local
+ * connection, open to anyone on the network: an open printer lets them
+ * straight in, and one with a password asks for it.
+ */
+export function instanceForHost (host: string, name: string): InstanceConfig {
   return {
-    name: printer.name,
-    apiUrl: printer.apiUrl,
-    socketUrl: `ws://${printer.host}/websocket`,
+    name,
+    apiUrl: apiUrlFor(host),
+    socketUrl: `ws://${host}/websocket`,
     active: true
+  }
+}
+
+/** A Fluidd instance for a printer the LAN search found. */
+export function instanceFor (printer: LanPrinter): InstanceConfig {
+  return instanceForHost(printer.host, printer.name)
+}
+
+/**
+ * Whether a printer found on the LAN can show a link code now, and what to
+ * tell the person when it cannot.
+ */
+export function lanLinkAvailability (link: LanLinkStatus): { canShow: boolean, note: string } {
+  switch (link.phase) {
+    case 'unlinked':
+      return { canShow: true, note: 'Not linked · show its code' }
+    case 'code':
+      return { canShow: true, note: 'Showing a code on its screen now' }
+    case 'failed':
+      return { canShow: true, note: link.message ? `Last try failed: ${link.message}` : 'Last try failed · try again' }
+    case 'connecting':
+      return { canShow: false, note: 'Getting a code from Muon3D…' }
+    case 'offer':
+      return { canShow: false, note: 'Waiting for confirmation on its screen' }
+    case 'linked':
+      return { canShow: false, note: 'Linked to an account · its owner must unlink it first' }
+    default:
+      return {
+        canShow: false,
+        note: 'Its software cannot link to an account yet. Update the printer, then try again.'
+      }
   }
 }
