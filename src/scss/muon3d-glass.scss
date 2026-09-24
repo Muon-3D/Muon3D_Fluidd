@@ -1873,6 +1873,11 @@ $glass: "html[data-m3d-style='glass']";
     &:hover:not(:disabled) {
       background: var(--m3d-accent-soft);
     }
+
+    // A row with its own Open and Link buttons is not itself a button.
+    &.is-row:hover {
+      background: var(--m3d-fill-2);
+    }
   }
 
   .muon-welcome__go {
