@@ -338,21 +338,18 @@ export function instanceFor (printer: LanPrinter): InstanceConfig {
 export function lanLinkAvailability (link: LanLinkStatus): { canShow: boolean, note: string } {
   switch (link.phase) {
     case 'unlinked':
-      return { canShow: true, note: 'Not linked · show its code' }
+      return { canShow: true, note: 'not linked · show its code' }
     case 'code':
-      return { canShow: true, note: 'Showing a code on its screen now' }
+      return { canShow: true, note: 'showing a code on its screen now' }
     case 'failed':
-      return { canShow: true, note: link.message ? `Last try failed: ${link.message}` : 'Last try failed · try again' }
+      return { canShow: true, note: link.message ? `last try failed: ${link.message}` : 'last try failed · try again' }
     case 'connecting':
-      return { canShow: false, note: 'Getting a code from Muon3D…' }
+      return { canShow: false, note: 'getting a code from Muon3D…' }
     case 'offer':
-      return { canShow: false, note: 'Waiting for confirmation on its screen' }
+      return { canShow: false, note: 'waiting for confirmation on its screen' }
     case 'linked':
-      return { canShow: false, note: 'Linked to an account · its owner must unlink it first' }
+      return { canShow: false, note: 'linked to an account · its owner must unlink it first' }
     default:
-      return {
-        canShow: false,
-        note: 'Its software cannot link to an account yet. Update the printer, then try again.'
-      }
+      return { canShow: false, note: 'needs a software update before it can link' }
   }
 }
