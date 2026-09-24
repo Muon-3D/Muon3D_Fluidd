@@ -129,7 +129,7 @@
       type="button"
       class="muon-switcher__item is-found"
       :disabled="!p.localAddrs.length"
-      @click="openLocal(p.localAddrs[0])"
+      @click="openNearby(p)"
     >
       <div class="muon-switcher__row">
         <span class="muon-switcher__dot is-idle" />
@@ -137,7 +137,7 @@
         <span class="muon-switcher__badge">{{ p.linked ? 'Linked' : 'Local' }}</span>
       </div>
       <div class="muon-switcher__meta">
-        {{ p.localAddrs[0] || 'address unknown' }} · {{ p.linked ? 'linked to another account · open it locally' : 'on your network · open it locally' }}
+        {{ p.localAddrs[0] || 'address unknown' }} · {{ p.linked ? 'linked to another account · connect locally' : 'on your network · connect' }}
       </div>
     </button>
     <div
@@ -238,7 +238,7 @@ import {
   discoverPrinters,
   discoveryState,
   instanceFor,
-  localPageUrl,
+  instanceForHost,
   sameNamedPrinter,
   type CloudNearbyPrinter,
   type LanPrinter
@@ -308,9 +308,12 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     if (this.linkPrinterId) this.linkDialog = true
   }
 
-  /** Opens a printer's own page on this network: a local connection, no account needed. */
-  openLocal (host: string) {
-    window.location.href = localPageUrl(host)
+  /** Connects to a printer on this network: a local connection, no account needed. */
+  async openNearby (p: CloudNearbyPrinter) {
+    const host = p.localAddrs[0]
+    if (!host) return
+    this.$emit('click')
+    await activateLocalPrinter(instanceForHost(host, p.name))
   }
 
   async pickFound (p: LanPrinter) {

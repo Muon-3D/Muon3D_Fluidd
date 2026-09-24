@@ -37,53 +37,50 @@
           </span>
         </div>
 
-        <button
-          v-for="p in lanPrinters"
-          :key="p.host"
-          type="button"
-          class="muon-welcome__printer"
-          :disabled="!!connecting"
-          @click="connect(p)"
-        >
-          <span class="muon-welcome__dot" />
-          <span class="muon-welcome__printer-text">
-            <span class="muon-welcome__printer-name">{{ p.name }}</span>
-            <span class="muon-welcome__printer-meta">{{ p.host }}{{ linkNote(p) }}</span>
-          </span>
-          <v-progress-circular
-            v-if="connecting === p.host"
-            indeterminate
-            size="18"
-            width="2"
-          />
-          <span
-            v-else
-            class="muon-welcome__go"
-          >{{ lanUnavailable ? 'Open' : 'Connect' }}</span>
-        </button>
-        <button
-          v-for="p in foundPrinters"
-          :key="p.printerId"
-          type="button"
-          class="muon-welcome__printer"
-          :disabled="!p.localAddrs.length"
-          @click="openLocal(p.localAddrs[0])"
+        <div
+          v-for="p in localRows"
+          :key="p.key"
+          class="muon-welcome__printer is-row"
         >
           <span
             class="muon-welcome__dot"
-            :class="{ 'is-offline': !p.localAddrs.length }"
+            :class="{ 'is-offline': !p.host }"
           />
           <span class="muon-welcome__printer-text">
             <span class="muon-welcome__printer-name">{{ p.name }}</span>
-            <span class="muon-welcome__printer-meta">{{ foundNote(p) }}</span>
+            <span class="muon-welcome__printer-meta">{{ p.meta }}</span>
           </span>
-          <span
-            v-if="p.localAddrs.length"
-            class="muon-welcome__go"
-          >Open</span>
-        </button>
+          <span class="muon-welcome__row-actions">
+            <v-progress-circular
+              v-if="connecting === p.key"
+              indeterminate
+              size="18"
+              width="2"
+            />
+            <template v-else>
+              <v-btn
+                v-if="!p.linked"
+                small
+                text
+                :disabled="!p.canLink"
+                :title="p.canLink ? 'Show a code on its screen, then enter it here' : p.status"
+                @click="linkRow(p)"
+              >
+                Link to account
+              </v-btn>
+              <app-btn
+                small
+                color="primary"
+                :disabled="!p.host || !!connecting"
+                @click="openRow(p)"
+              >
+                Open
+              </app-btn>
+            </template>
+          </span>
+        </div>
         <div
-          v-if="!lanPrinters.length && !foundPrinters.length"
+          v-if="!localRows.length"
           class="muon-welcome__empty"
         >
           <template v-if="searching">
@@ -103,6 +100,9 @@
           class="mt-3 mb-0"
         >
           {{ error }}
+          <template v-if="fallbackHost">
+            <a :href="localPage(fallbackHost)">Open the printer's own page</a> instead.
+          </template>
         </v-alert>
 
         <div class="muon-welcome__actions">
@@ -115,7 +115,6 @@
             Search again
           </v-btn>
           <v-btn
-            v-if="!lanUnavailable"
             small
             text
             @click="addressDialog = true"
@@ -200,7 +199,7 @@
           <div class="muon-welcome__actions">
             <app-btn
               color="primary"
-              @click="linkPrinterId = ''; linkDialog = true"
+              @click="openLink('', '')"
             >
               Link a printer
             </app-btn>
@@ -224,6 +223,7 @@
       v-if="linkDialog"
       v-model="linkDialog"
       :initial-printer-id="linkPrinterId"
+      :initial-host="linkHost"
     />
   </div>
 </template>
@@ -237,14 +237,30 @@ import { activateCloudPrinter, activateLocalPrinter } from '@/services/muon-clou
 import {
   discoverPrinters,
   discoveryState,
-  instanceFor,
+  instanceForHost,
+  lanLinkAvailability,
   localPageUrl,
   sameNamedPrinter,
-  type CloudNearbyPrinter,
   type LanPrinter
 } from '@/services/muon-cloud/discovery'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
 import LinkPrinterDialog from '@/components/muon-cloud/LinkPrinterDialog.vue'
+
+/** One printer on this network, from the LAN search, the service, or both. */
+interface LocalRow {
+  key: string;
+  name: string;
+  /** Its address on this network, when known. */
+  host: string | null;
+  meta: string;
+  /** Why it can or cannot be linked, in words. */
+  status: string;
+  linked: boolean;
+  canLink: boolean;
+  /** Set when the service sees it: the code is then asked for through the service. */
+  cloudId?: string;
+  lan?: LanPrinter;
+}
 
 @Component({ components: { CloudAccountDialog, LinkPrinterDialog } })
 export default class Welcome extends Vue {
@@ -252,10 +268,16 @@ export default class Welcome extends Vue {
   accountDialog = false
   accountMode: 'sign-in' | 'sign-up' = 'sign-up'
   linkDialog = false
-  /** A printer the service found, to claim once the link dialog opens. */
+  /** A printer the service found, to show a code as soon as the link dialog opens. */
   linkPrinterId = ''
+  /** A printer the LAN search found, to show a code as soon as the link dialog opens. */
+  linkHost = ''
+  /** A printer picked for linking before sign-in. */
+  pendingLink: LocalRow | null = null
   connecting: string | null = null
   error: string | null = null
+  /** A printer that would not connect from this page, to offer its own page instead. */
+  fallbackHost: string | null = null
   icons = { cloud: mdiCloudOutline, lan: mdiLan }
 
   get account () {
@@ -266,13 +288,54 @@ export default class Welcome extends Vue {
     return cloudState.printers
   }
 
-  get lanPrinters (): LanPrinter[] {
-    return discoveryState.found
+  /**
+   * Every printer on this network, linked or not. A printer both searches
+   * found appears once, with what the service knows about its link.
+   */
+  get localRows (): LocalRow[] {
+    const rows: LocalRow[] = []
+    for (const l of discoveryState.found) {
+      const c = discoveryState.cloud.find(x => sameNamedPrinter(x.name, l.name))
+      if (c) {
+        rows.push(this.row(c.printerId, l.name, l.host, c.linked, this.isMine(c.printerId), c.printerId, l))
+        continue
+      }
+      const linked = l.link.phase === 'linked'
+      const mine = linked && !!l.link.account && l.link.account === this.account?.email
+      const { canShow, note } = lanLinkAvailability(l.link)
+      rows.push({
+        key: l.host,
+        name: l.name,
+        host: l.host,
+        meta: `${l.host} · ${linked ? (mine ? 'in your account' : 'linked to an account') : note}`,
+        status: note,
+        linked,
+        canLink: canShow,
+        lan: l
+      })
+    }
+    for (const c of discoveryState.cloud) {
+      if (discoveryState.found.some(l => sameNamedPrinter(c.name, l.name))) continue
+      rows.push(this.row(c.printerId, c.name, c.localAddrs[0] ?? null, c.linked, this.isMine(c.printerId), c.printerId))
+    }
+    return rows
   }
 
-  /** What the service sees on this network, less anything the LAN search already shows. */
-  get foundPrinters (): CloudNearbyPrinter[] {
-    return discoveryState.cloud.filter(c => !discoveryState.found.some(l => sameNamedPrinter(c.name, l.name)))
+  row (key: string, name: string, host: string | null, linked: boolean, mine: boolean, cloudId: string, lan?: LanPrinter): LocalRow {
+    const status = !linked
+      ? 'not linked to an account'
+      : mine ? 'in your account' : 'linked to another account'
+    return {
+      key,
+      name,
+      host,
+      meta: `${host ?? 'address unknown'} · ${status}`,
+      status,
+      linked,
+      canLink: !linked,
+      cloudId,
+      lan
+    }
   }
 
   get scanning () {
@@ -285,10 +348,6 @@ export default class Welcome extends Vue {
 
   get scanNetwork () {
     return discoveryState.network
-  }
-
-  get lanUnavailable () {
-    return discoveryState.unavailable
   }
 
   created () {
@@ -304,27 +363,35 @@ export default class Welcome extends Vue {
     return cloudState.printers.some(p => p.id === printerId)
   }
 
-  foundNote (p: CloudNearbyPrinter) {
-    const where = p.localAddrs[0] ?? 'address unknown'
-    if (!p.linked) return `${where} · not linked to an account`
-    if (this.isMine(p.printerId)) return `${where} · in your account`
-    return `${where} · linked to another account`
+  localPage (host: string) {
+    return localPageUrl(host)
   }
 
   /**
-   * Opens a printer's own page on this network. That is a local connection,
-   * open to anyone on the network unless the printer has a password, and
-   * needs no account.
+   * Connects Fluidd, on this page, to a printer on this network. That is a
+   * local connection, open to anyone on the network unless the printer has a
+   * password, and it needs no account.
    */
-  openLocal (host: string) {
-    window.location.href = localPageUrl(host)
+  async openRow (p: LocalRow) {
+    if (!p.host) return
+    await this.connectInstance(instanceForHost(p.host, p.name), p.key, p.host)
   }
 
-  linkNote (p: LanPrinter) {
-    if (p.link.phase !== 'linked') return ''
-    return p.link.account && p.link.account === this.account?.email
-      ? ' · in your account'
-      : ' · linked to an account'
+  /** Makes the printer show a link code, and opens the dialog to type it into. */
+  linkRow (p: LocalRow) {
+    if (!this.account) {
+      this.pendingLink = p
+      this.openAccount('sign-in')
+      return
+    }
+    if (p.cloudId) this.openLink(p.cloudId, '')
+    else if (p.lan) this.openLink('', p.lan.host)
+  }
+
+  openLink (printerId: string, host: string) {
+    this.linkPrinterId = printerId
+    this.linkHost = host
+    this.linkDialog = true
   }
 
   openAccount (mode: 'sign-in' | 'sign-up') {
@@ -335,35 +402,35 @@ export default class Welcome extends Vue {
   onSignedIn () {
     // A printer picked before sign-in, or a new account with nothing to open
     // yet: go straight to linking.
-    if (!cloudState.printers.length) this.linkDialog = true
-  }
-
-  async connect (p: LanPrinter) {
-    // An HTTPS page cannot hold Fluidd's connection to a plain-HTTP printer,
-    // so from here the printer's own page is opened instead.
-    if (this.lanUnavailable) {
-      this.openLocal(p.host)
-      return
-    }
-    await this.connectInstance(instanceFor(p), p.host)
+    const pending = this.pendingLink
+    this.pendingLink = null
+    if (pending) this.linkRow(pending)
+    else if (!cloudState.printers.length) this.openLink('', '')
   }
 
   async connectAddress (instance: InstanceConfig) {
-    await this.connectInstance(instance, instance.apiUrl)
+    await this.connectInstance(instance, instance.apiUrl, null)
   }
 
-  async connectInstance (instance: InstanceConfig, key: string) {
+  async connectInstance (instance: InstanceConfig, key: string, host: string | null) {
     this.error = null
+    this.fallbackHost = null
     this.connecting = key
     try {
       await activateLocalPrinter(instance)
-      if (this.$store.state.config.apiUrl) this.$router.push('/')
-      else this.error = `Could not connect to ${instance.name || instance.apiUrl}.`
+      if (this.$store.state.config.apiUrl) {
+        this.$router.push('/')
+        return
+      }
+      this.error = `Could not connect to ${instance.name || instance.apiUrl} from this page.`
     } catch (error) {
       this.error = (error as Error).message
     } finally {
       this.connecting = null
     }
+    // Browsers other than Chromium block a secure page from reaching a
+    // plain-HTTP printer. The printer's own page still works there.
+    if (host && location.protocol === 'https:') this.fallbackHost = host
   }
 
   async openCloud (id: string) {
@@ -486,6 +553,23 @@ export default class Welcome extends Vue {
     &.is-offline {
       opacity: 0.6;
     }
+
+    &.is-row {
+      flex-wrap: wrap;
+      cursor: default;
+
+      &:hover {
+        border-color: var(--m3d-border);
+        background: var(--m3d-surface-2);
+      }
+    }
+  }
+
+  &__row-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
   }
 
   &__dot {
