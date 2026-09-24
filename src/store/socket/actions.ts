@@ -8,6 +8,7 @@ import { SocketActions } from '@/api/socketActions'
 import { EventBus } from '@/eventBus'
 import { upperFirst, camelCase } from 'lodash-es'
 import isKeyOf from '@/util/is-key-of'
+import { isProtectedSurface } from '@/store/protection/helpers'
 
 let retryTimeout: number
 
@@ -89,7 +90,25 @@ export const actions: ActionTree<SocketState, RootState> = {
    * for these cases.
    * Another case might be during a klippy shutdown.
    */
-  async onSocketError ({ commit }, payload) {
+  async onSocketError ({ commit, dispatch, rootState }, payload) {
+    // MuonOS SEC-8: a protected surface refused this browser. Let the
+    // protection store find out why, and do not toast the update panel's own
+    // background status request -- the panel says "protected" in place, and a
+    // toast on every poll would say it louder than anything the user did.
+    //
+    // Only where Moonraker has `muon_protection`: an older image floored
+    // `/machine/update` outright, and its refusal is still worth a toast.
+    const method: string | undefined = payload.__request__?.method
+    if (
+      payload.code === 403 &&
+      method &&
+      rootState.protection?.supported &&
+      isProtectedSurface(rootState.protection.status, method)
+    ) {
+      dispatch('protection/onRefused', undefined, { root: true })
+      if (method === 'machine.update.status') return
+    }
+
     if (payload.code >= 400 && payload.code < 500) {
       // If our message contains json, we should try to parse it.
       // This is pretty bad, should get moonraker to fix this response.
@@ -191,6 +210,14 @@ export const actions: ActionTree<SocketState, RootState> = {
 
   async notifyUpdateRefreshed ({ dispatch }, payload) {
     dispatch('version/onUpdateStatus', payload, { root: true })
+  },
+
+  /**
+   * The level was changed at the printer's panel. The notification carries the
+   * level but not whether *this* browser has an identity, so ask again.
+   */
+  async notifyMuonProtectionChanged ({ dispatch }) {
+    dispatch('protection/init', undefined, { root: true })
   },
 
   async notifyHistoryChanged ({ dispatch }, payload) {

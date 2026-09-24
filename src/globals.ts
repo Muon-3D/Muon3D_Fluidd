@@ -251,6 +251,10 @@ export const Globals = Object.freeze({
   MOONRAKER_COMPONENTS: {
     auth: { name: 'authorization', dispatch: 'auth/init' },
     power: { name: 'power', dispatch: 'power/init' },
+    // Before update_manager, so the level is asked for first. The answers can
+    // still arrive in either order, which is why socket/onSocketError does not
+    // toast a background update-status refusal.
+    protection: { name: 'muon_protection', dispatch: 'protection/init' },
     updateManager: { name: 'update_manager', dispatch: 'version/init' },
     history: { name: 'history', dispatch: 'history/init' },
     timelapse: { name: 'timelapse', dispatch: 'timelapse/init' },

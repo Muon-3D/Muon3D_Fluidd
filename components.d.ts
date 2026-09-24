@@ -58,6 +58,7 @@ declare module 'vue' {
     ManualProbeDialog: typeof import('./src/components/common/ManualProbeDialog.vue')['default']
     PeripheralsDialog: typeof import('./src/components/common/PeripheralsDialog.vue')['default']
     PromiseWrapper: typeof import('./src/components/common/PromiseWrapper.vue')['default']
+    ProtectedNotice: typeof import('./src/components/common/ProtectedNotice.vue')['default']
     RegisterServiceWorker: typeof import('./src/components/common/RegisterServiceWorker.vue')['default']
     RolloverLogsDialog: typeof import('./src/components/common/RolloverLogsDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

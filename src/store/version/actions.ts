@@ -16,7 +16,11 @@ export const actions: ActionTree<VersionState, RootState> = {
   /**
    * Make a socket request to init the version component.
    */
-  async init () {
+  async init ({ rootGetters }) {
+    // MuonOS SEC-8: updates are protected and this browser has no identity,
+    // so the request would only be refused. The panel says so instead.
+    // `protection/onStatus` calls this again if that changes.
+    if (rootGetters['protection/isLocked']) return
     SocketActions.machineUpdateStatus()
   },
 

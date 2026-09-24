@@ -1034,3 +1034,26 @@ app:
         error: 'Error when connecting:'
       disconnect:
         error: 'Error when disconnecting:'
+      hotspot:
+        load_error: 'Could not load the hotspot settings:'
+        apply_error: 'Could not change the hotspot:'
+        toggle_error: 'Could not switch the hotspot:'
+  protection:
+    title: Network protection
+    label:
+      open: Open
+      protected: Protected
+      covers: Wi-Fi, the hotspot and software updates
+    msg:
+      open: >-
+        Anyone on this printer's network or hotspot can change its Wi-Fi,
+        hotspot and updates from this page.
+      locked: >-
+        Network protection is on. Wi-Fi, the hotspot and software updates can
+        be changed at the printer's panel or from a paired device, not from
+        this browser.
+      paired: >-
+        Network protection is on. This browser reaches the printer through a
+        paired connection, so Wi-Fi, the hotspot and updates still work here.
+      panel_only: Only the printer's own panel can turn protection on or off.
+      unaffected: Printing, files and everything else here work as normal.
