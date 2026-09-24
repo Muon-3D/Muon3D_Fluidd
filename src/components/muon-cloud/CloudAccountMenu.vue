@@ -89,7 +89,6 @@
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
-import { mdiAccountCircleOutline, mdiLinkVariantPlus, mdiLogout, mdiViewGridOutline } from '@mdi/js'
 import { cloudState, signOut } from '@/services/muon-cloud/state'
 import { activationState } from '@/services/muon-cloud/activate'
 import CloudAccountDialog from './CloudAccountDialog.vue'
@@ -100,10 +99,10 @@ export default class CloudAccountMenu extends Vue {
   dialog = false
   linkDialog = false
   icons = {
-    account: mdiAccountCircleOutline,
-    fleet: mdiViewGridOutline,
-    link: mdiLinkVariantPlus,
-    signOut: mdiLogout
+    account: '$accountCircle',
+    fleet: '$fleet',
+    link: '$linkPrinter',
+    signOut: '$logout'
   }
 
   get account () {

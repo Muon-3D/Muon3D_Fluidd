@@ -176,7 +176,6 @@
 
 <script lang="ts">
 import { Component, Prop, VModel, Vue, Watch } from 'vue-property-decorator'
-import { mdiPrinter3d } from '@mdi/js'
 import { cloudApi } from '@/services/muon-cloud/api'
 import { cloudState, refreshPrinters } from '@/services/muon-cloud/state'
 import { activateCloudPrinter } from '@/services/muon-cloud/activate'
@@ -203,7 +202,7 @@ export default class LinkPrinterDialog extends Vue {
   claimed: { printer_id: string, name: string } | null = null
   linking: string | null = null
   timer: number | null = null
-  icons = { printer: mdiPrinter3d }
+  icons = { printer: '$printer3d' }
 
   get accountEmail () {
     return cloudState.account?.email ?? ''

@@ -143,6 +143,7 @@
         />
 
         <app-nav-item
+          v-if="!cloudSignedIn"
           icon="$printer3d"
           to="/fleet"
         >

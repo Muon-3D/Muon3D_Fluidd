@@ -205,7 +205,6 @@
 
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
-import { mdiCloudOutline, mdiLan, mdiLinkVariantPlus } from '@mdi/js'
 import type { InstanceConfig } from '@/store/config/types'
 import StateMixin from '@/mixins/state'
 import { cloudState, type PrinterStatus } from '@/services/muon-cloud/state'
@@ -224,7 +223,7 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
   instanceDialogOpen = false
   accountDialog = false
   linkDialog = false
-  icons = { cloud: mdiCloudOutline, lan: mdiLan, link: mdiLinkVariantPlus }
+  icons = { cloud: '$cloud', lan: '$lan', link: '$linkPrinter' }
 
   get account () {
     return cloudState.account

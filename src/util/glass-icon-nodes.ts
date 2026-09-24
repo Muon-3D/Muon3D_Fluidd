@@ -96,6 +96,11 @@ export const glassIconNodes: Record<string, GlassIconNode[]> = {
   'chevron-up': [
     ['path', { d: 'm18 15-6-6-6 6' }]
   ],
+  'circle-alert': [
+    ['circle', { cx: '12', cy: '12', r: '10' }],
+    ['line', { x1: '12', x2: '12', y1: '8', y2: '12' }],
+    ['line', { x1: '12', x2: '12.01', y1: '16', y2: '16' }]
+  ],
   'circle-help': [
     ['circle', { cx: '12', cy: '12', r: '10' }],
     ['path', { d: 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3' }],
@@ -111,6 +116,9 @@ export const glassIconNodes: Record<string, GlassIconNode[]> = {
     ['path', { d: 'M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z' }],
     ['path', { d: 'M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' }],
     ['path', { d: 'm6.18 5.276 3.1 3.899' }]
+  ],
+  cloud: [
+    ['path', { d: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z' }]
   ],
   cpu: [
     ['path', { d: 'M12 20v2' }],
@@ -170,6 +178,11 @@ export const glassIconNodes: Record<string, GlassIconNode[]> = {
   folder: [
     ['path', { d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z' }]
   ],
+  'folder-plus': [
+    ['path', { d: 'M12 10v6' }],
+    ['path', { d: 'M9 13h6' }],
+    ['path', { d: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z' }]
+  ],
   funnel: [
     ['path', { d: 'M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z' }]
   ],
@@ -188,6 +201,17 @@ export const glassIconNodes: Record<string, GlassIconNode[]> = {
     ['path', { d: 'M3 15h18' }],
     ['path', { d: 'M9 3v18' }],
     ['path', { d: 'M15 3v18' }]
+  ],
+  grip: [
+    ['circle', { cx: '12', cy: '5', r: '1' }],
+    ['circle', { cx: '19', cy: '5', r: '1' }],
+    ['circle', { cx: '5', cy: '5', r: '1' }],
+    ['circle', { cx: '12', cy: '12', r: '1' }],
+    ['circle', { cx: '19', cy: '12', r: '1' }],
+    ['circle', { cx: '5', cy: '12', r: '1' }],
+    ['circle', { cx: '12', cy: '19', r: '1' }],
+    ['circle', { cx: '19', cy: '19', r: '1' }],
+    ['circle', { cx: '5', cy: '19', r: '1' }]
   ],
   hand: [
     ['path', { d: 'M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2' }],
@@ -215,11 +239,19 @@ export const glassIconNodes: Record<string, GlassIconNode[]> = {
     ['path', { d: 'M12 16v-4' }],
     ['path', { d: 'M12 8h.01' }]
   ],
+  'key-round': [
+    ['path', { d: 'M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z' }],
+    ['circle', { cx: '16.5', cy: '7.5', r: '.5', fill: 'currentColor' }]
+  ],
   'layout-grid': [
     ['rect', { width: '7', height: '7', x: '3', y: '3', rx: '1' }],
     ['rect', { width: '7', height: '7', x: '14', y: '3', rx: '1' }],
     ['rect', { width: '7', height: '7', x: '14', y: '14', rx: '1' }],
     ['rect', { width: '7', height: '7', x: '3', y: '14', rx: '1' }]
+  ],
+  link: [
+    ['path', { d: 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71' }],
+    ['path', { d: 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71' }]
   ],
   'list-ordered': [
     ['path', { d: 'M11 5h10' }],
@@ -236,6 +268,11 @@ export const glassIconNodes: Record<string, GlassIconNode[]> = {
     ['path', { d: 'm15.5 9.5 5 5' }],
     ['path', { d: 'm20.5 9.5-5 5' }]
   ],
+  'log-out': [
+    ['path', { d: 'm16 17 5-5-5-5' }],
+    ['path', { d: 'M21 12H9' }],
+    ['path', { d: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4' }]
+  ],
   move: [
     ['path', { d: 'M12 2v20' }],
     ['path', { d: 'm15 19-3 3-3-3' }],
@@ -248,6 +285,13 @@ export const glassIconNodes: Record<string, GlassIconNode[]> = {
     ['path', { d: 'm18 8 4 4-4 4' }],
     ['path', { d: 'M2 12h20' }],
     ['path', { d: 'm6 8-4 4 4 4' }]
+  ],
+  network: [
+    ['rect', { x: '16', y: '16', width: '6', height: '6', rx: '1' }],
+    ['rect', { x: '2', y: '16', width: '6', height: '6', rx: '1' }],
+    ['rect', { x: '9', y: '2', width: '6', height: '6', rx: '1' }],
+    ['path', { d: 'M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3' }],
+    ['path', { d: 'M12 12V8' }]
   ],
   'octagon-alert': [
     ['path', { d: 'M12 16h.01' }],
@@ -376,6 +420,12 @@ export const glassIconNodes: Record<string, GlassIconNode[]> = {
     ['path', { d: 'M12 3v12' }],
     ['path', { d: 'm17 8-5-5-5 5' }],
     ['path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }]
+  ],
+  'user-round-plus': [
+    ['path', { d: 'M2 21a8 8 0 0 1 13.292-6' }],
+    ['circle', { cx: '10', cy: '8', r: '5' }],
+    ['path', { d: 'M19 16v6' }],
+    ['path', { d: 'M22 19h-6' }]
   ],
   wifi: [
     ['path', { d: 'M12 20h.01' }],
