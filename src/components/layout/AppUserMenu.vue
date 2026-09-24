@@ -1,95 +1,67 @@
 <template>
-  <v-menu
-    :nudge-width="260"
-    offset-y
-    :close-delay="300"
-  >
-    <template #activator="{ on: menu, attrs }">
-      <v-tooltip bottom>
-        <template #activator="{ on: tooltip }">
-          <v-btn
-            v-bind="attrs"
-            fab
-            text
-            small
-            v-on="{ ...tooltip, ...menu }"
-            @click="$emit('drawer')"
-          >
-            <v-icon>$account</v-icon>
-          </v-btn>
-        </template>
-        <span>{{ currentUser }}</span>
-      </v-tooltip>
-    </template>
+  <div v-if="user && !isTrustedOnly">
+    <v-divider />
 
-    <v-card>
-      <v-card-text class="text-center">
-        <div>
-          <v-icon large>
-            $account
-          </v-icon>
-        </div>
-        <span class="text-h5">{{ currentUser }}</span>
+    <v-list dense>
+      <v-subheader>{{ currentUser }}</v-subheader>
 
-        <div
-          v-if="user && !isTrustedOnly"
-          class="mt-3"
-        >
-          <app-btn
-            :disabled="user.source !== 'moonraker'"
-            small
-            @click="$emit('change-password')"
-          >
-            {{ $t('app.general.label.change_password') }}
-          </app-btn>
-          <div
-            v-if="user.source !== 'moonraker'"
-            class="mt-2"
-          >
-            <small>
-              {{ $t('app.general.label.user_managed_source', { source: $t(`app.general.label.${user.source}`) }) }}
-            </small>
-          </div>
-        </div>
-      </v-card-text>
-
-      <v-divider />
-
-      <v-list
-        dense
-        class="py-0"
+      <v-list-item
+        :disabled="user.source !== 'moonraker'"
+        @click="changePassword"
       >
-        <v-list-item @click="$filters.routeTo($router, '/settings#auth')">
-          <v-list-item-icon>
-            <v-icon>$addAccount</v-icon>
-          </v-list-item-icon>
-          <v-list-item-content>
-            <v-list-item-title>{{ $t('app.general.label.manage_accounts') }}</v-list-item-title>
-          </v-list-item-content>
-        </v-list-item>
+        <v-list-item-icon>
+          <v-icon>$lockReset</v-icon>
+        </v-list-item-icon>
+        <v-list-item-content>
+          <v-list-item-title>{{ $t('app.general.label.change_password') }}</v-list-item-title>
+          <v-list-item-subtitle v-if="user.source !== 'moonraker'">
+            {{ $t('app.general.label.user_managed_source', { source: $t(`app.general.label.${user.source}`) }) }}
+          </v-list-item-subtitle>
+        </v-list-item-content>
+      </v-list-item>
 
-        <template v-if="!isTrustedOnly">
-          <v-divider />
+      <v-list-item @click="manageAccounts">
+        <v-list-item-icon>
+          <v-icon>$addAccount</v-icon>
+        </v-list-item-icon>
+        <v-list-item-content>
+          <v-list-item-title>{{ $t('app.general.label.manage_accounts') }}</v-list-item-title>
+        </v-list-item-content>
+      </v-list-item>
 
-          <v-list-item>
-            <v-list-item-content class="justify-center">
-              <app-btn @click="handleLogout">
-                {{ $t('app.general.btn.logout') }}
-              </app-btn>
-            </v-list-item-content>
-          </v-list-item>
-        </template>
-      </v-list>
-    </v-card>
-  </v-menu>
+      <v-list-item @click="handleLogout">
+        <v-list-item-icon>
+          <v-icon>$logout</v-icon>
+        </v-list-item-icon>
+        <v-list-item-content>
+          <v-list-item-title>{{ $t('app.general.btn.logout') }}</v-list-item-title>
+        </v-list-item-content>
+      </v-list-item>
+    </v-list>
+
+    <user-password-dialog
+      v-if="passwordDialogOpen"
+      v-model="passwordDialogOpen"
+    />
+  </div>
 </template>
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
 import { startCase, capitalize } from 'lodash-es'
+import UserPasswordDialog from '@/components/settings/auth/UserPasswordDialog.vue'
 
-@Component({})
-export default class AppNotificationMenu extends Vue {
+// The signed-in Moonraker user, in the tools drawer. The toolbar's only
+// account control is the Muon3D account; this keeps the printer login's
+// password, accounts and log out one tap away.
+@Component({
+  components: {
+    UserPasswordDialog
+  }
+})
+export default class AppUserMenu extends Vue {
+  passwordDialogOpen = false
+
   get user () {
     return this.$store.getters['auth/getCurrentUser']
   }
@@ -114,7 +86,18 @@ export default class AppNotificationMenu extends Vue {
     )
   }
 
+  changePassword () {
+    this.passwordDialogOpen = true
+    this.$emit('click')
+  }
+
+  manageAccounts () {
+    this.$filters.routeTo(this.$router, '/settings#auth')
+    this.$emit('click')
+  }
+
   async handleLogout () {
+    this.$emit('click')
     await this.$store.dispatch('auth/checkTrust')
   }
 }
