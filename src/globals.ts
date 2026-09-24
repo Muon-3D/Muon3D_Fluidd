@@ -302,12 +302,14 @@ export const Globals = Object.freeze({
     system: 'q',
     settings: 's'
   },
-  DOCS_ROOT: 'https://docs.fluidd.xyz',
-  DOCS_REQUIRED_CONFIGURATION: 'https://docs.fluidd.xyz/configuration/initial_setup',
-  DOCS_MULTIPLE_INSTANCES: 'https://docs.fluidd.xyz/configuration/multiple_printers',
-  DOCS_MOONRAKER_COMPONENTS: 'https://docs.fluidd.xyz/configuration/moonraker',
-  DOCS_AUTH_LOST_PASSWORD: 'https://docs.fluidd.xyz/authorization#lost-password',
-  DOCS_AUTH: 'https://docs.fluidd.xyz/authorization',
+  // Muon3D's own documentation. It has no pages yet, so every link goes to
+  // its root until the pages exist.
+  DOCS_ROOT: 'https://muon3d.com/docs',
+  DOCS_REQUIRED_CONFIGURATION: 'https://muon3d.com/docs',
+  DOCS_MULTIPLE_INSTANCES: 'https://muon3d.com/docs',
+  DOCS_MOONRAKER_COMPONENTS: 'https://muon3d.com/docs',
+  DOCS_AUTH_LOST_PASSWORD: 'https://muon3d.com/docs',
+  DOCS_AUTH: 'https://muon3d.com/docs',
   GITHUB_REPO: 'https://github.com/fluidd-core/fluidd'
 })
 
