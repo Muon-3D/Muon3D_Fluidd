@@ -1887,6 +1887,33 @@ $glass: "html[data-m3d-style='glass']";
     background: var(--m3d-fill-2);
   }
 
+  /* ------------------------------------------------------- link dialog -- */
+
+  .muon-cloud-dialog__label {
+    color: var(--m3d-text);
+    font-size: 0.875rem;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .muon-cloud-dialog__scan {
+    color: var(--m3d-text-muted);
+    font-family: var(--m3d-font-sans);
+    font-size: 0.8125rem;
+    font-weight: 400;
+  }
+
+  .muon-cloud-dialog__list,
+  .muon-cloud-dialog__empty {
+    border: 0;
+    border-radius: 14px;
+    background: var(--m3d-fill-2);
+  }
+
+  .muon-cloud-dialog__list .v-list-item__icon .v-icon {
+    color: var(--m3d-accent) !important;
+  }
+
   /* -------------------------------------------------- printer switcher -- */
 
   .muon-switcher__heading {
