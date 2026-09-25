@@ -1,5 +1,5 @@
 // src/composables/useAuxApi.ts
-import { ref, watch } from 'vue'
+import Vue, { ref, watch } from 'vue'
 import axios from 'axios'
 import { ApApi, UpdateApi, WifiApi, DevModeApi, Configuration } from '@/aux_api'
 import consola from 'consola'
@@ -10,6 +10,23 @@ auxAxios.interceptors.response.use(resp => {
     return { ...resp, data: resp.data.result }
   }
   return resp
+})
+
+// Fluidd's own requests travel on Vue.$httpClient, and a cloud printer is
+// reached by swapping that client's adapter for the Iroh transport
+// (bindHttpClientToPrinterTransport). The Aux API follows whichever transport
+// that client uses now, and carries the same sign-in; on its own adapter it
+// dialled the placeholder host a cloud printer is given, and failed.
+auxAxios.interceptors.request.use(config => {
+  const httpClient = Vue.$httpClient
+  if (httpClient) {
+    config.adapter = httpClient.defaults.adapter
+    const authorization = httpClient.defaults.headers.common.Authorization
+    if (authorization && !config.headers.has('Authorization')) {
+      config.headers.set('Authorization', authorization)
+    }
+  }
+  return config
 })
 
 /** 1) the current basePath, and whether we can reach it */
@@ -85,7 +102,7 @@ export function setAuxApiBasePath (raw: string) {
 /** 6) helper that tests a small GET against the new host */
 async function checkReachable (path: string) {
   try {
-    await axios.get(`${path}/openapi.json`, { timeout: 2000 })
+    await auxAxios.get(`${path}/openapi.json`, { timeout: 2000 })
     isReachable.value = true
   } catch {
     isReachable.value = false
