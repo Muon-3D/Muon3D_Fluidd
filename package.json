@@ -29,6 +29,7 @@
     "test:unit": "vitest --environment jsdom",
     "type-check": "vue-tsc --noEmit -p tsconfig.vitest.json --composite false",
     "circular-check": "skott --displayMode=file-tree --showCircularDependencies --tsconfig=./tsconfig.app.json",
+    "check:setup-budget": "node tools/check-setup-budget.cjs",
     "theme:convert": "cd tools; node convertTheme.cjs",
     "generate:aux_api": "openapi-generator-cli generate -i http://muon-m1-serialnumberhere.local:6789/openapi.json -g typescript-axios -o src/aux_api --additional-properties=supportsES6=true,withSeparateModelsAndApi=true,apiPackage=apis,modelPackage=models"
   },

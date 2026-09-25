@@ -66,6 +66,16 @@ Vue.use(HttpClientPlugin, {
 // import { AuxClientPlugin } from '@/plugins/auxClient'
 // Vue.use(AuxClientPlugin, { store })
 
+// The panel's QR code and the captive portal use the short address /setup,
+// which nginx redirects to /#/setup. Should the page be served at /setup
+// itself, take the same route; the hash router would otherwise start on /.
+// The router is built on import and has already set the hash to #/, but it
+// reads the hash again when the app mounts, below.
+if (/\/setup$/.test(window.location.pathname) && ['', '#', '#/'].includes(window.location.hash)) {
+  const base = window.location.pathname.replace(/setup$/, '')
+  window.history.replaceState(null, '', `${base}#/setup${window.location.search}`)
+}
+
 // A cloud printer is selected through a placeholder API address that Fluidd
 // records as an instance. It must never be the instance Fluidd starts on.
 forgetManagedInstance()
@@ -103,14 +113,21 @@ appInit()
     // Restore the Muon3D account, and the cloud printer it was last showing.
     // With no printer to show at all, start on the welcome page, which finds
     // printers on this network and offers the account.
-    initCloud().then(() => {
+    //
+    // Wait for the first navigation: a lazy route such as /setup is not the
+    // current route until its chunk has loaded, and its meta decides here.
+    initCloud().then(() => router.onReady(() => {
+      // First-run setup keeps its place. Reopening a cloud printer runs
+      // appInit, which sends every route but the dashboard back to it.
+      if (router.currentRoute.name === 'setup') return
+
       const active = cloudState.activePrinterId
       if (active && cloudState.account && cloudState.printers.some(p => p.id === active)) {
         activateCloudPrinter(active).catch((e) => consola.debug('Could not reopen the cloud printer', e))
       } else if (!store.state.config.apiUrl && !router.currentRoute.meta?.printerIndependent) {
         router.replace('/welcome').catch(() => {})
       }
-    })
+    }))
   })
   .catch((e) => {
     consola.debug('Error attempting to init App:', e)

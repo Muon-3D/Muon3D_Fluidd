@@ -1057,3 +1057,16 @@ app:
         paired connection, so Wi-Fi, the hotspot and updates still work here.
       panel_only: Only the printer's own panel can turn protection on or off.
       unaffected: Printing, files and everything else here work as normal.
+  muon:
+    setup:
+      title: Set up {name}
+      progress: '{n} of {total}'
+      connecting:
+        title: Connecting to your printer…
+        stay_on_wifi: Make sure this phone is still on the Wi-Fi network {ssid}.
+      reconnecting:
+        title: Reconnecting to {name}…
+        check_screen: >-
+          Check the printer's screen. If this phone left {name}'s Wi-Fi, join
+          {ssid} again.
+      continue_on_printer: "Carry on at {name}'s screen: it shows the next step."
