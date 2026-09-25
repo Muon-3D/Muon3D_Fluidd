@@ -312,35 +312,42 @@ describe('HotspotManagerCard', () => {
       return wrapper
     }
 
-    it('offers none for a secured hotspot whose key the API redacts', async () => {
+    it('draws none for a secured hotspot whose key the API redacts, and says where it is', async () => {
       credentials({ password: null, security_enabled: true })
       const wrapper = await mounted()
 
       // Never T:nopass: that would send a phone to an open network that does not exist.
       expect((wrapper.vm as any).QrValue).toBe('')
       expect(wrapper.find('qrcode-vue-stub').exists()).toBe(false)
+      expect(wrapper.text()).toContain('app.wifi.hotspot_code_on_printer')
     })
 
-    it('offers none when the API says neither the key nor whether one is set', async () => {
+    it('draws none when the API says neither the key nor whether one is set', async () => {
       credentials({ password: null })
       const wrapper = await mounted()
 
       expect((wrapper.vm as any).QrValue).toBe('')
     })
 
-    it('writes an open-network code only for a hotspot the API says is open', async () => {
-      credentials({ password: null, security_enabled: false })
+    it('draws none, and never shows the key, when an older Aux returns it (07 S1)', async () => {
+      credentials({ password: 'secret-key' })
       const wrapper = await mounted()
 
-      expect((wrapper.vm as any).QrValue).toBe('WIFI:S:Muon-M1;T:nopass;H:false;;')
-      expect(wrapper.find('qrcode-vue-stub').exists()).toBe(true)
+      expect((wrapper.vm as any).QrValue).toBe('')
+      expect(wrapper.find('qrcode-vue-stub').exists()).toBe(false)
+      expect((wrapper.vm as any).form.password).toBe('')
+      expect(wrapper.html()).not.toContain('secret-key')
     })
 
-    it('writes a WPA code, escaped, when an older Aux returns the key', async () => {
-      credentials({ password: 'pass;word' })
+    it('draws an open-network code, escaped, only for a hotspot the API says is open', async () => {
+      apShowCredentials.mockResolvedValueOnce({
+        data: { ssid: 'Muon;M1', password: null, autoconnect: true, security_enabled: false }
+      })
       const wrapper = await mounted()
 
-      expect((wrapper.vm as any).QrValue).toBe('WIFI:S:Muon-M1;T:WPA;P:pass\\;word;H:false;;')
+      expect((wrapper.vm as any).QrValue).toBe('WIFI:S:Muon\\;M1;T:nopass;H:false;;')
+      expect(wrapper.find('qrcode-vue-stub').exists()).toBe(true)
+      expect(wrapper.text()).not.toContain('app.wifi.hotspot_code_on_printer')
     })
   })
 
