@@ -2,7 +2,8 @@
   "blacklist": [
     "fluidd.xyz",
     "fluidd.net",
-    "app.muon3d.com"
+    "app.muon3d.com",
+    "control.muon3d.com"
   ],
   "endpoints": [
   ],

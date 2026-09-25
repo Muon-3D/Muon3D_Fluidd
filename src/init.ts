@@ -64,8 +64,11 @@ export const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | 
         .filter((endpoint): endpoint is string => !!endpoint))
   }
 
-  // Add the browsers url to our endpoints list, unless black listed.
-  if (blacklist.findIndex(s => s.includes(document.location.hostname)) === -1) {
+  // Add the browsers url to our endpoints list, unless black listed. The
+  // match is on the whole host: a fragment such as "muon3d" or "app" is not a
+  // blacklisted host, and a printer so named must still probe itself.
+  const hostname = document.location.hostname.toLowerCase()
+  if (!blacklist.some(s => s.toLowerCase() === hostname)) {
     // Add the browser url.
     endpoints.push(`${document.location.protocol}//${document.location.host}`)
 
