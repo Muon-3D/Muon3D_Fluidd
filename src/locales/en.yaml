@@ -1008,6 +1008,7 @@ app:
       printing: Printing
       tool: Tool
   wifi:
+    hotspot_code_on_printer: Scan the code on {name}'s screen to join this hotspot.
     security: Security
     signal: Signal
     data rate: Data Rate
@@ -1028,6 +1029,10 @@ app:
         message: >-
           Modifying or changing the network connection may cause instability or
           inaccessibility to this web interface.
+        hotspot_message: >-
+          This device is on the printer's hotspot. Joining another network can
+          move the hotspot to that network's channel, so this page may drop off
+          for a few seconds. Rejoin the hotspot if it does.
     msg:
       connect:
         success: Sucessfully Connected to

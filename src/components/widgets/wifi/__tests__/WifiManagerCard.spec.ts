@@ -1,5 +1,4 @@
 import { enableAutoDestroy, shallowMount } from '@vue/test-utils'
-import { ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WifiManagerCard from '../WifiManagerCard.vue'
 import AppWifiButton from '@/components/ui/AppWifiButton.vue'
@@ -24,9 +23,13 @@ vi.mock('@/aux_api/useAuxApi', () => ({
   })
 }))
 
-vi.mock('@/aux_api/useHotspotCheck', () => ({
-  useHotspotCheck: () => ({ onHotspot: ref(false) })
-}))
+// A test sets `value` to put the page on the printer's hotspot. The card
+// reads it through a cached getter, so it is made reactive in place.
+const hotspot = vi.hoisted(() => ({ value: false }))
+vi.mock('@/aux_api/useHotspotCheck', async () => {
+  const Vue = (await vi.importActual<typeof import('vue')>('vue')).default
+  return { useHotspotCheck: () => ({ onHotspot: Vue.observable(hotspot) }) }
+})
 
 const emit = vi.fn()
 vi.mock('@/eventBus', () => ({
@@ -134,6 +137,43 @@ describe('AppWifiButton under network protection (SEC-8)', () => {
     for (const button of buttons.wrappers) {
       expect(button.attributes('loading')).toBeUndefined()
     }
+    wrapper.destroy()
+  })
+})
+
+describe('WifiManagerCard joining another network', () => {
+  const network = { ssid: 'HomeWiFi', security: 'WPA2', in_use: false }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    wifiScan.mockResolvedValue({ data: [] })
+    hotspot.value = false
+  })
+
+  it('asks first from the LAN, where the printer leaves the network this page is on', async () => {
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    const card = wrapper.vm as any
+
+    card.onNetworkClick(network)
+    await wrapper.vm.$nextTick()
+
+    expect(card.showWarningDialog).toBe(true)
+    expect(wifiConnect).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('app.wifi.modal.warning.message')
+    wrapper.destroy()
+  })
+
+  it('asks first on the hotspot too, where joining moves the hotspot and drops the phone', async () => {
+    hotspot.value = true
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    const card = wrapper.vm as any
+
+    card.onNetworkClick(network)
+    await wrapper.vm.$nextTick()
+
+    expect(card.showWarningDialog).toBe(true)
+    expect(wifiConnect).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('app.wifi.modal.warning.hotspot_message')
     wrapper.destroy()
   })
 })
