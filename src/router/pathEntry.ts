@@ -7,6 +7,11 @@
 // route of the same name, with the same query, before the router reads it.
 // The old {console}/#/link?code= address already carries its hash and is left
 // alone, as is any address whose hash names a route of its own.
+//
+// The hosted console redirects /link?code= to /#/link?code= itself; this is
+// the fallback for any server that answers /link with index.html instead.
+// Only the exact path: at /link/ the bundle cannot load at all, because the
+// build uses relative asset paths (base: './') and would fetch /link/assets/.
 const PATH_ENTRY_ROUTES = ['link']
 
 interface EntryLocation {
@@ -19,7 +24,7 @@ export function hashEntryFor (location: EntryLocation): string | null {
   if (!['', '#', '#/'].includes(location.hash)) return null
 
   for (const route of PATH_ENTRY_ROUTES) {
-    const match = location.pathname.match(new RegExp(`^(.*/)${route}/?$`))
+    const match = location.pathname.match(new RegExp(`^(.*/)${route}$`))
     if (match) return `${match[1]}#/${route}${location.search}`
   }
 

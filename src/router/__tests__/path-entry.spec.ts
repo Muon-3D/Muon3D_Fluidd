@@ -6,7 +6,6 @@ const at = (pathname: string, search = '', hash = '') => ({ pathname, search, ha
 describe('an address that arrives as a path', () => {
   it.each([
     [at('/link', '?code=482913'), '/#/link?code=482913'],
-    [at('/link/', '?code=482913'), '/#/link?code=482913'],
     [at('/link', '?code=482913', '#'), '/#/link?code=482913'],
     [at('/link', '?code=482913', '#/'), '/#/link?code=482913'],
     [at('/link'), '/#/link'],
@@ -23,6 +22,8 @@ describe('an address that arrives as a path', () => {
     at('/', '?code=482913'),
     at('/unlink', '?code=482913'),
     at('/link/printer', '?code=482913'),
+    // No script loads here (relative assets), so claim nothing.
+    at('/link/', '?code=482913'),
     at('/linked', '?code=482913'),
     at('/index.html')
   ])('%o is left alone', (location) => {
