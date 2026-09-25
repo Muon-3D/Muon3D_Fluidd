@@ -1,5 +1,5 @@
 <template>
-  <v-app v-if="loading && !managedConsoleRoute" />
+  <v-app v-if="!routerReady || (loading && !managedConsoleRoute)" />
   <v-app
     v-else
     class="fluidd muon-shell"
@@ -160,6 +160,17 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
     open: false,
     text: undefined,
     type: undefined
+  }
+
+  // Until the first navigation resolves, $route is still /. A lazy route such
+  // as /setup would otherwise mount the whole shell for a moment, and the
+  // printer switcher in it starts a network search the setup page must never
+  // make (it may reach only the printer).
+  routerReady = false
+
+  created () {
+    const ready = () => { this.routerReady = true }
+    this.$router.onReady(ready, ready)
   }
 
   get theme (): ThemeConfig {

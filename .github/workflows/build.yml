@@ -46,6 +46,10 @@ jobs:
         run: |
           npm run build
 
+      - name: Check the /setup page budget
+        run: |
+          npm run check:setup-budget
+
       - name: Upload fluidd.zip
         uses: actions/upload-artifact@v4
         with:

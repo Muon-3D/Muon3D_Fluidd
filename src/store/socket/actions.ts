@@ -9,6 +9,7 @@ import { EventBus } from '@/eventBus'
 import { upperFirst, camelCase } from 'lodash-es'
 import isKeyOf from '@/util/is-key-of'
 import { isProtectedSurface } from '@/store/protection/helpers'
+import { applyState as applySetupState } from '@/services/muon-setup/state'
 
 let retryTimeout: number
 
@@ -278,5 +279,14 @@ export const actions: ActionTree<SocketState, RootState> = {
 
   async notifySpoolmanStatusChanged ({ dispatch }, payload) {
     dispatch('spoolman/onStatusChanged', payload.spoolman_connected, { root: true })
+  },
+
+  /**
+   * First-run setup changed on the printer. The setup page has its own socket;
+   * this feeds the same state to the rest of Fluidd, such as the dashboard's
+   * "Finish setup" card.
+   */
+  async notifyMuonSetupChanged (_, payload) {
+    applySetupState(payload)
   }
 }
