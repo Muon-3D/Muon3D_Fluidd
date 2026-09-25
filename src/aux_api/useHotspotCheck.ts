@@ -1,26 +1,26 @@
-import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import { ref } from 'vue'
 
+/** The printer's own address on its hotspot, ap0. */
+export const HOTSPOT_ADDRESS = '10.42.0.1'
+
+/**
+ * Whether this page reaches the printer over the printer's own hotspot.
+ *
+ * Only the page's origin can say so. Fluidd sends every request to the origin
+ * that served it, so the hotspot carries them exactly when that origin is the
+ * hotspot address. Probing http://10.42.0.1 from a page served anywhere else
+ * answered a different question, and from https it could not answer at all.
+ */
+export function isHotspotOrigin (hostname: string = window.location.hostname): boolean {
+  return hostname === HOTSPOT_ADDRESS
+}
+
+/**
+ * The same answer as a ref. It registers no lifecycle hook, so it is correct
+ * wherever it is called, module scope included. The old version registered
+ * onMounted outside any component, which never ran, so the answer stayed null.
+ */
 export function useHotspotCheck () {
-  // `true` = on hotspot, `false` = not, `null` = still testing
-  const onHotspot = ref<boolean|null>(null)
-
-  async function check () {
-    try {
-      // HEAD is lighter than GET; timeout in 2s
-      await axios.head('http://10.42.0.1/', {
-        timeout: 2000,
-        // if your hotspot doesn’t serve CORS headers, you can still proceed:
-        validateStatus: () => true
-      })
-      // any response (2xx/3xx/4xx/5xx) means the host answered → hotspot up
-      onHotspot.value = true
-    } catch (err) {
-      // network error or timeout → hotspot unreachable
-      onHotspot.value = false
-    }
-  }
-
-  onMounted(check)
-  return { onHotspot, check }
+  const onHotspot = ref<boolean>(isHotspotOrigin())
+  return { onHotspot }
 }

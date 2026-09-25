@@ -155,7 +155,7 @@
                 </v-expand-x-transition>
                 <v-expand-x-transition>
                   <div
-                    v-if="(editing ? !editing : !delayedEditing) && apState"
+                    v-if="(editing ? !editing : !delayedEditing) && apState && QrValue"
                     key="qr"
                     class="d-flex"
                   >
@@ -195,7 +195,7 @@
         <v-card-title class="headline">
           {{ $t('app.wifi.modal.warning.title') }}
         </v-card-title>
-        <v-card-text v-if="!onHotspot">
+        <v-card-text>
           {{ $t('app.wifi.modal.warning.message') }}
         </v-card-text>
         <v-card-actions>
@@ -226,7 +226,7 @@
         <v-card-title class="headline">
           {{ $t('app.wifi.modal.warning.title') }}
         </v-card-title>
-        <v-card-text v-if="!onHotspot">
+        <v-card-text>
           {{ $t('app.wifi.modal.warning.message') }}
         </v-card-text>
         <v-card-actions>
@@ -619,10 +619,14 @@ export default class HotspotManagerCard extends Vue {
   }
   // ------------------------------------------------------
 
+  // A join code for the hotspot, or '' when this page cannot write a true one.
+  // A secured hotspot whose key the API redacts (KAN-376) has no code here:
+  // T:nopass would send a phone to an open network that does not exist. The
+  // key and its code are shown only on the printer's screen (setup spec S1).
   get QrValue (): string {
     if (!this.apCredentials) return ''
-    const ssid = this.apCredentials.ssid
-    const password = this.apCredentials.password
+    const { ssid, password, security_enabled: securityEnabled } = this.apCredentials
+    if (!password && securityEnabled !== false) return ''
     const S = ssid.replace(/\\/g, '\\\\').replace(/;/g, '\\;')
     const T = password ? 'WPA' : 'nopass'
     const P = password ? password.replace(/\\/g, '\\\\').replace(/;/g, '\\;') : ''

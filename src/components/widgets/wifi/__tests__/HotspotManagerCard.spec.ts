@@ -1,5 +1,5 @@
 import { enableAutoDestroy, shallowMount } from '@vue/test-utils'
-import Vue, { ref } from 'vue'
+import Vue from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HotspotManagerCard from '../HotspotManagerCard.vue'
 
@@ -21,8 +21,11 @@ vi.mock('@/aux_api/useAuxApi', () => ({
   })
 }))
 
+// The card reads this at import; a test sets `value` to put the page on the
+// printer's hotspot.
+const hotspot = vi.hoisted(() => ({ value: false }))
 vi.mock('@/aux_api/useHotspotCheck', () => ({
-  useHotspotCheck: () => ({ onHotspot: ref(false) })
+  useHotspotCheck: () => ({ onHotspot: hotspot })
 }))
 
 const emit = vi.fn()
@@ -54,6 +57,7 @@ describe('HotspotManagerCard', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    hotspot.value = false
     apModify.mockResolvedValue({ data: { status: 'modified', ssid: 'Muon-M1' } })
     apUp.mockResolvedValue({ data: { status: 'activation-requested' } })
     apDown.mockResolvedValue({ data: { status: 'deactivation-requested' } })
@@ -293,6 +297,77 @@ describe('HotspotManagerCard', () => {
       expect(dispatch).toHaveBeenCalledWith('protection/onRefused')
       expect((wrapper.vm as any).apState).toBe(true)
       wrapper.destroy()
+    })
+  })
+
+  describe('join code', () => {
+    const credentials = (data: Record<string, unknown>) => {
+      apShowCredentials.mockResolvedValueOnce({ data: { ssid: 'Muon-M1', autoconnect: true, ...data } })
+    }
+
+    const mounted = async () => {
+      const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await wrapper.vm.$nextTick()
+      return wrapper
+    }
+
+    it('offers none for a secured hotspot whose key the API redacts', async () => {
+      credentials({ password: null, security_enabled: true })
+      const wrapper = await mounted()
+
+      // Never T:nopass: that would send a phone to an open network that does not exist.
+      expect((wrapper.vm as any).QrValue).toBe('')
+      expect(wrapper.find('qrcode-vue-stub').exists()).toBe(false)
+    })
+
+    it('offers none when the API says neither the key nor whether one is set', async () => {
+      credentials({ password: null })
+      const wrapper = await mounted()
+
+      expect((wrapper.vm as any).QrValue).toBe('')
+    })
+
+    it('writes an open-network code only for a hotspot the API says is open', async () => {
+      credentials({ password: null, security_enabled: false })
+      const wrapper = await mounted()
+
+      expect((wrapper.vm as any).QrValue).toBe('WIFI:S:Muon-M1;T:nopass;H:false;;')
+      expect(wrapper.find('qrcode-vue-stub').exists()).toBe(true)
+    })
+
+    it('writes a WPA code, escaped, when an older Aux returns the key', async () => {
+      credentials({ password: 'pass;word' })
+      const wrapper = await mounted()
+
+      expect((wrapper.vm as any).QrValue).toBe('WIFI:S:Muon-M1;T:WPA;P:pass\\;word;H:false;;')
+    })
+  })
+
+  describe('on the printer\'s hotspot', () => {
+    it('asks before turning the hotspot off, and says why', async () => {
+      hotspot.value = true
+      const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      await (wrapper.vm as any).requestToggle()
+      await wrapper.vm.$nextTick()
+
+      expect(apDown).not.toHaveBeenCalled()
+      expect((wrapper.vm as any).showToggleWarningDialog).toBe(true)
+      // The dialog only opens on the hotspot, so its warning must not be
+      // hidden there (it was, behind v-if="!onHotspot").
+      expect(wrapper.text()).toContain('app.wifi.modal.warning.message')
+    })
+
+    it('turns the hotspot off at once from anywhere else', async () => {
+      const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+      await new Promise(resolve => setTimeout(resolve, 10))
+
+      await (wrapper.vm as any).requestToggle()
+
+      expect(apDown).toHaveBeenCalledTimes(1)
+      expect((wrapper.vm as any).showToggleWarningDialog).toBe(false)
     })
   })
 })
