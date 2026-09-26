@@ -1,3 +1,5 @@
+import Vue from 'vue'
+import { AxiosError } from 'axios'
 import type {
   AxiosAdapter,
   AxiosInstance,
@@ -7,8 +9,27 @@ import type {
 import type { PrinterTransport } from '@/services/managed-transport'
 
 /**
+ * Whether Fluidd's requests go through a printer transport now. Both callers
+ * bind only the managed Iroh transport, so this is "the printer is reached
+ * over Iroh", and views read it to hide what a remote caller may not do.
+ */
+export const printerTransportBinding = Vue.observable({ remote: false })
+
+const transportAdapters = new WeakSet<AxiosAdapter>()
+
+/** Whether `httpClient`'s requests travel over a printer transport right now. */
+export function isBoundToPrinterTransport (httpClient: AxiosInstance): boolean {
+  const adapter = httpClient.defaults.adapter
+  return typeof adapter === 'function' && transportAdapters.has(adapter)
+}
+
+/**
  * Temporarily route an existing Fluidd Axios instance through the selected
  * printer transport. Releasing restores the exact prior adapter.
+ *
+ * The built-in adapters settle a response against `validateStatus` and
+ * enforce `timeout`; axios leaves both to the adapter, so this one does the
+ * same. Without it every non-2xx answer over Iroh resolved as a success.
  */
 export function bindHttpClientToPrinterTransport (
   httpClient: AxiosInstance,
@@ -17,9 +38,9 @@ export function bindHttpClientToPrinterTransport (
   const previousAdapter = httpClient.defaults.adapter
   const transportAdapter: AxiosAdapter = async config => {
     const path = requestPath(httpClient, config)
-    const response = await transport.fetch(path, requestInit(config))
+    const response = await withTimeout(config, transport.fetch(path, requestInit(config)))
 
-    return {
+    const answer = {
       data: await responseData(response, config),
       status: response.status,
       statusText: response.statusText,
@@ -27,15 +48,50 @@ export function bindHttpClientToPrinterTransport (
       config,
       request: undefined
     } as AxiosResponse
+
+    return settle(answer)
   }
+  transportAdapters.add(transportAdapter)
 
   httpClient.defaults.adapter = transportAdapter
+  printerTransportBinding.remote = true
 
   return () => {
     if (httpClient.defaults.adapter === transportAdapter) {
       httpClient.defaults.adapter = previousAdapter
+      printerTransportBinding.remote = false
     }
   }
+}
+
+/** axios's own `settle()`: reject a status that `validateStatus` refuses. */
+function settle (response: AxiosResponse): AxiosResponse {
+  const validateStatus = response.config.validateStatus
+  if (!response.status || !validateStatus || validateStatus(response.status)) return response
+  throw new AxiosError(
+    `Request failed with status code ${response.status}`,
+    response.status < 500 ? AxiosError.ERR_BAD_REQUEST : AxiosError.ERR_BAD_RESPONSE,
+    response.config,
+    undefined,
+    response
+  )
+}
+
+/** axios's `timeout`, which the transport itself does not know about. */
+function withTimeout<T> (config: InternalAxiosRequestConfig, work: Promise<T>): Promise<T> {
+  const timeout = config.timeout ?? 0
+  if (!(timeout > 0)) return work
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new AxiosError(
+        config.timeoutErrorMessage || `timeout of ${timeout}ms exceeded`,
+        config.transitional?.clarifyTimeoutError ? AxiosError.ETIMEDOUT : AxiosError.ECONNABORTED,
+        config
+      ))
+    }, timeout)
+  })
+  return Promise.race([work, expired]).finally(() => clearTimeout(timer))
 }
 
 function requestPath (

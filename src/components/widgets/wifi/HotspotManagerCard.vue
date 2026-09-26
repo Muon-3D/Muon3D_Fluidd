@@ -5,6 +5,12 @@
     class="component"
   >
     <protected-notice class="ma-4" />
+    <p
+      v-if="remote && !locked"
+      class="mx-4 mt-4 mb-0 text-body-2"
+    >
+      {{ $t('app.wifi.remote_read_only') }}
+    </p>
 
     <template #menu>
       <!-- hotspot on/off switch -->
@@ -13,7 +19,7 @@
         :hide-details="true"
         color="primary"
         :input-value="apState"
-        :disabled="locked || !apCredentials || !deviceStatus || toggling"
+        :disabled="locked || remote || !apCredentials || !deviceStatus || toggling"
         :loading="toggling"
         class="mobile-only mt-0"
         readonly
@@ -74,11 +80,11 @@
             class="ap-card ma-4 d-flex flex-row"
             color="card-heading"
             :loading="applying ? 'primary' : false"
-            :link="!editing"
-            :ripple="!editing"
+            :link="!editing && !remote"
+            :ripple="!editing && !remote"
             :disabled="toggling || applying"
             :class="{ editing: editing }"
-            @click="!editing ? toggleEditing() : null"
+            @click="!editing && !remote ? toggleEditing() : null"
           >
             <div class="pa-4">
               <v-form
@@ -261,6 +267,7 @@ import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import type { VForm } from '@/types'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -309,6 +316,11 @@ export default class HotspotManagerCard extends Vue {
   get locked (): boolean {
     return this.$store.getters['protection/isLocked']
   }
+  // Reached over Iroh: the owner decided a remote caller may not change the
+  // printer's Wi-Fi (setup spec 07 §3), so this card only shows it.
+  get remote (): boolean {
+    return printerTransportBinding.remote
+  }
 
   // Protection came off while this card was open. The config it skipped
   // while locked is loaded now; the status poll only ever reads the state.
@@ -322,6 +334,7 @@ export default class HotspotManagerCard extends Vue {
 
   // “Request” methods show the warning dialog instead of immediately doing the thing
   requestToggle () {
+    if (this.remote) return
     if (onHotspot.value) {
       this.showToggleWarningDialog = true
     } else {
@@ -337,6 +350,7 @@ export default class HotspotManagerCard extends Vue {
   }
 
   async requestApplyChanges () {
+    if (this.remote) return
     // trigger Vuetify’s validation UI
     const form = this.$refs.apForm as VForm
     if (!form || !(form.validate() && this.isDirty)) return

@@ -4,6 +4,12 @@
     icon="$wifi"
   >
     <protected-notice class="ma-4" />
+    <p
+      v-if="remote && !locked"
+      class="mx-4 mt-4 mb-0 text-body-2"
+    >
+      {{ $t('app.wifi.remote_read_only') }}
+    </p>
 
     <!-- Table of available networks -->
     <v-card v-if="!locked">
@@ -97,7 +103,7 @@
               </td>
               <td class="pr-2">
                 <v-menu
-                  v-if="network.in_use || knownSsids.has(network.ssid)"
+                  v-if="!remote && (network.in_use || knownSsids.has(network.ssid))"
                   v-model="menuOpen[network.bssid]"
                   offset-y
                   open-on-click
@@ -274,6 +280,7 @@ import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -316,6 +323,11 @@ export default class WifiManagerCard extends Vue {
   // polling waits until that changes.
   get locked (): boolean {
     return this.$store.getters['protection/isLocked']
+  }
+  // Reached over Iroh: the owner decided a remote caller may not change the
+  // printer's Wi-Fi (setup spec 07 §3), so this card only shows it.
+  get remote (): boolean {
+    return printerTransportBinding.remote
   }
 
   auxApi = useAuxApi()
@@ -463,6 +475,7 @@ export default class WifiManagerCard extends Vue {
 
   // Unchanged signature *usage*, but pass SSID now
   onNetworkClick (network: DeviceWifi) {
+    if (this.remote) return
     if (network.in_use) {
       this.openMenu(network.ssid) // CHANGED (was network.bssid)
     } else {
