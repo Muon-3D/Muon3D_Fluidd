@@ -207,8 +207,8 @@
         <v-card-title class="headline">
           {{ $t('app.wifi.modal.warning.title') }}
         </v-card-title>
-        <v-card-text v-if="!onHotspot">
-          {{ $t('app.wifi.modal.warning.message') }}
+        <v-card-text>
+          {{ onHotspot ? $t('app.wifi.modal.warning.hotspot_message') : $t('app.wifi.modal.warning.message') }}
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -467,11 +467,10 @@ export default class WifiManagerCard extends Vue {
       this.openMenu(network.ssid) // CHANGED (was network.bssid)
     } else {
       this.selectedNetwork = network
-      if (!this.onHotspot) {
-        this.showWarningDialog = true
-      } else {
-        this.promptOrConnect()
-      }
+      // Always ask first. From the LAN, the printer leaves the network this
+      // page reaches it on. On the hotspot it shares one radio, so joining a
+      // network on another channel moves the hotspot and drops this phone.
+      this.showWarningDialog = true
     }
   }
 
