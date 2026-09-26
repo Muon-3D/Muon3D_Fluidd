@@ -33,7 +33,7 @@ const getHostConfig = async () => {
   }
 }
 
-const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | InstanceConfig> => {
+export const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | InstanceConfig> => {
   // Local storage load
   if (Globals.LOCAL_INSTANCES_STORAGE_KEY in localStorage) {
     const instances = JSON.parse(localStorage[Globals.LOCAL_INSTANCES_STORAGE_KEY]) as InstanceConfig[]
@@ -64,8 +64,11 @@ const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | Instanc
         .filter((endpoint): endpoint is string => !!endpoint))
   }
 
-  // Add the browsers url to our endpoints list, unless black listed.
-  if (blacklist.findIndex(s => s.includes(document.location.hostname)) === -1) {
+  // Add the browsers url to our endpoints list, unless black listed. The
+  // match is on the whole host: a fragment such as "muon3d" or "app" is not a
+  // blacklisted host, and a printer so named must still probe itself.
+  const hostname = document.location.hostname.toLowerCase()
+  if (!blacklist.some(s => s.toLowerCase() === hostname)) {
     // Add the browser url.
     endpoints.push(`${document.location.protocol}//${document.location.host}`)
 
@@ -73,6 +76,15 @@ const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | Instanc
     const port = document.location.protocol === 'https:' ? '7130' : '7125'
 
     endpoints.push(`${document.location.protocol}//${document.location.hostname}:${port}`)
+  }
+
+  // Nothing left to probe, as on a blacklisted host such as app.muon3d.com:
+  // no printer can answer, so don't hold the first paint for the timeout.
+  if (endpoints.length === 0) {
+    return {
+      apiUrl: '',
+      socketUrl: ''
+    } satisfies ApiConfig
   }
 
   const abortController = new AbortController()
