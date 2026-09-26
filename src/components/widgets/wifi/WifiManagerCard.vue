@@ -4,9 +4,15 @@
     icon="$wifi"
   >
     <protected-notice class="ma-4" />
+    <p
+      v-if="remote"
+      class="mx-4 mt-4 mb-4 text-body-2"
+    >
+      {{ $t('app.wifi.remote_read_only') }}
+    </p>
 
     <!-- Table of available networks -->
-    <v-card v-if="!locked">
+    <v-card v-if="!locked && !remote">
       <v-simple-table class="temperature-table">
         <thead>
           <tr>
@@ -268,12 +274,13 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -318,6 +325,18 @@ export default class WifiManagerCard extends Vue {
     return this.$store.getters['protection/isLocked']
   }
 
+  // Reached over Iroh: muon-link refuses every Aux request there, reads
+  // included, and the owner decided remote callers may not change Wi-Fi
+  // (setup spec 07 §3). The card makes no call and says so instead.
+  get remote (): boolean {
+    return printerTransportBinding.remote
+  }
+
+  @Watch('remote')
+  onRemoteChanged (remote: boolean) {
+    if (!remote) this.fetchDevices()
+  }
+
   auxApi = useAuxApi()
 
   // Lifecycle
@@ -334,7 +353,7 @@ export default class WifiManagerCard extends Vue {
 
   // Fetch and mark known SSIDs
   async fetchDevices () {
-    if (this.fetching || this.locked) return
+    if (this.fetching || this.locked || this.remote) return
     this.fetching = true
     try {
       const res = await this.auxApi.wifi.wifiScanWifiScanGet(true)

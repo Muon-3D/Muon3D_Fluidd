@@ -5,10 +5,17 @@
     class="component"
   >
     <protected-notice class="ma-4" />
+    <p
+      v-if="remote"
+      class="mx-4 mt-4 mb-4 text-body-2"
+    >
+      {{ $t('app.wifi.remote_read_only') }}
+    </p>
 
     <template #menu>
       <!-- hotspot on/off switch -->
       <v-switch
+        v-if="!remote"
         dense
         :hide-details="true"
         color="primary"
@@ -22,7 +29,7 @@
     </template>
 
     <div
-      v-if="!locked"
+      v-if="!locked && !remote"
       class="d-flex align-stretch"
     >
       <v-fade-transition mode="out-in">
@@ -276,6 +283,7 @@ import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import type { VForm } from '@/types'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -330,6 +338,18 @@ export default class HotspotManagerCard extends Vue {
   @Watch('locked')
   onLockedChanged (locked: boolean) {
     if (!locked) this.fetchConfig()
+  }
+
+  // Reached over Iroh: muon-link refuses every Aux request there, reads
+  // included, and the owner decided remote callers may not change Wi-Fi
+  // (setup spec 07 §3). The card makes no call and says so instead.
+  get remote (): boolean {
+    return printerTransportBinding.remote
+  }
+
+  @Watch('remote')
+  onRemoteChanged (remote: boolean) {
+    if (!remote) this.fetchConfig()
   }
 
   showToggleWarningDialog: boolean = false
@@ -418,7 +438,7 @@ export default class HotspotManagerCard extends Vue {
   }
 
   private async fetchConfig () {
-    if (this.locked) return
+    if (this.locked || this.remote) return
     try {
       const [statusResponse, credentialsResponse] = await Promise.all([
         this.auxApi.ap.wifiStatusWifiApDeviceStatusGet(),
@@ -440,7 +460,7 @@ export default class HotspotManagerCard extends Vue {
   }
 
   private async refreshStatus () {
-    if (this.locked) return
+    if (this.locked || this.remote) return
     try {
       const response = await this.auxApi.ap.wifiStatusWifiApDeviceStatusGet()
       this.applyDeviceStatus(response.data)

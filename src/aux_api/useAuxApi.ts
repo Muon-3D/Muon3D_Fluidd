@@ -1,8 +1,10 @@
 // src/composables/useAuxApi.ts
-import { ref, watch } from 'vue'
+import Vue, { ref, watch } from 'vue'
 import axios from 'axios'
 import { ApApi, UpdateApi, WifiApi, DevModeApi, Configuration } from '@/aux_api'
 import consola from 'consola'
+import store from '@/store'
+import { isBoundToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
 
 const auxAxios = axios.create()
 auxAxios.interceptors.response.use(resp => {
@@ -10,6 +12,46 @@ auxAxios.interceptors.response.use(resp => {
     return { ...resp, data: resp.data.result }
   }
   return resp
+})
+
+/**
+ * Refused before it leaves. Over Iroh, muon-link refuses every /server/aux/
+ * request for every role, reads included (nmcli's readback exposes stored
+ * keys), and the owner decided remote callers may not change Wi-Fi (07 §3).
+ */
+export class RemoteAuxRefused extends Error {
+  constructor () {
+    super("Wi-Fi can only be changed on the printer's own network.")
+    this.name = 'RemoteAuxRefused'
+  }
+}
+
+// Fluidd's own requests travel on Vue.$httpClient, and a cloud printer is
+// reached by swapping that client's adapter for the Iroh transport
+// (bindHttpClientToPrinterTransport). The Aux API follows whichever transport
+// that client uses now, and carries the same sign-in; on its own adapter it
+// dialled the placeholder host a cloud printer is given, and failed.
+auxAxios.interceptors.request.use(async config => {
+  const httpClient = Vue.$httpClient
+  if (!httpClient) return config
+
+  // Over Iroh the Aux API is closed to this page: the cards make no call
+  // there, and this keeps a stray one from being sent.
+  if (isBoundToPrinterTransport(httpClient)) throw new RemoteAuxRefused()
+
+  // Refresh a sign-in that is about to expire, as Vue.$httpClient's own
+  // interceptor does. Fluidd talks mostly over its websocket, so without this
+  // the copied header outlives Moonraker's one-hour token, and Moonraker then
+  // refuses the Wi-Fi and hotspot cards with 401 before it looks at the
+  // caller's address.
+  if (await store.dispatch('auth/checkToken')) await store.dispatch('auth/refreshTokens')
+
+  config.adapter = httpClient.defaults.adapter
+  const authorization = httpClient.defaults.headers.common.Authorization
+  if (authorization && !config.headers.has('Authorization')) {
+    config.headers.set('Authorization', authorization)
+  }
+  return config
 })
 
 /** 1) the current basePath, and whether we can reach it */
@@ -85,7 +127,7 @@ export function setAuxApiBasePath (raw: string) {
 /** 6) helper that tests a small GET against the new host */
 async function checkReachable (path: string) {
   try {
-    await axios.get(`${path}/openapi.json`, { timeout: 2000 })
+    await auxAxios.get(`${path}/openapi.json`, { timeout: 2000 })
     isReachable.value = true
   } catch {
     isReachable.value = false

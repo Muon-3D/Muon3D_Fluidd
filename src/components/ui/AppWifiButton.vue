@@ -17,7 +17,7 @@
           :elevation="0"
           class="mr-1 bg-transparent"
           color="transparent"
-          :loading="!locked && (!ap_device_status || ap_toggling)"
+          :loading="!locked && !remote && (!ap_device_status || ap_toggling)"
           v-bind="attrs"
           v-on="isWifiPage ? {} : on"
         >
@@ -58,7 +58,7 @@
           :elevation="0"
           class="mr-1 bg-transparent"
           color="transparent"
-          :loading="!locked && !wifi_current"
+          :loading="!locked && !remote && !wifi_current"
           v-bind="attrs"
           v-on="isWifiPage ? {} : on"
         >
@@ -81,6 +81,7 @@
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import type { Device } from '@/aux_api'
 import HotspotManagerCard from '@/components/widgets/wifi/HotspotManagerCard.vue'
@@ -118,8 +119,14 @@ export default class AppWifiButton extends Vue {
     return this.$store.getters['protection/isLocked']
   }
 
+  // Over Iroh muon-link refuses every Aux request, reads included (07 §3),
+  // so these buttons ask nothing and show no spinner there.
+  get remote (): boolean {
+    return printerTransportBinding.remote
+  }
+
   async fetchCurrent () {
-    if (this.locked) return
+    if (this.locked || this.remote) return
     try {
       const res = await useAuxApi().wifi.wifiCurrentWifiCurrentGet(true)
       this.wifi_current = res.data
