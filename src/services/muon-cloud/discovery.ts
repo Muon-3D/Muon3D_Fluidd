@@ -102,7 +102,7 @@ export function sameNamedPrinter (a: string, b: string) {
   return !!x && !!y && (x.includes(y) || y.includes(x))
 }
 
-/** Asks the Muon3D service which unlinked printers share this browser's network. */
+/** Asks the Muon3D service which printers, linked or not, share this browser's network. */
 export async function refreshCloudNearby () {
   try {
     const { printers } = await cloudApi.nearby()
@@ -113,11 +113,38 @@ export async function refreshCloudNearby () {
       linked: !!p.linked,
       localAddrs: p.local_addrs ?? []
     }))
+    for (const p of discoveryState.cloud) {
+      if (p.localAddrs.length > 1) reachableFirst(p).catch(() => {})
+    }
   } catch {
     discoveryState.cloud = []
   } finally {
     discoveryState.cloudChecked = true
   }
+}
+
+/**
+ * Puts the address this browser can reach first. A printer reports every
+ * address it holds, and that includes its own hotspot (10.42.0.1 on an M1),
+ * which only a device joined to that hotspot can use. Measured on boxwood,
+ * 2026-09-24: the hotspot address came first.
+ */
+async function reachableFirst (printer: CloudNearbyPrinter) {
+  const answers = await Promise.all(printer.localAddrs.map(async host => {
+    try {
+      await getJson(`${apiUrlFor(host)}/server/muon/identity`, {}, 2500)
+      return true
+    } catch {
+      return false
+    }
+  }))
+  const i = answers.indexOf(true)
+  if (i <= 0) return
+  const current = discoveryState.cloud.find(c => c.printerId === printer.printerId)
+  if (!current) return
+  const addrs = [...printer.localAddrs]
+  const [host] = addrs.splice(i, 1)
+  current.localAddrs = [host, ...addrs]
 }
 
 let running: Promise<void> | null = null
