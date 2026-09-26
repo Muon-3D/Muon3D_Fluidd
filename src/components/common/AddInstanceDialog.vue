@@ -73,7 +73,6 @@ import axios from 'axios'
 import StateMixin from '@/mixins/state'
 import { Debounce } from 'vue-debounce-decorator'
 import { consola } from 'consola'
-import { httpClientActions } from '@/api/httpClientActions'
 import webSocketWrapper from '@/util/web-socket-wrapper'
 
 @Component({})
@@ -135,8 +134,12 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
       const { signal } = this.abortController
 
       // Start by making a standard request. Maybe it's good?
-      const request = await httpClientActions.get(`${apiUrl}/server/info?t=${Date.now()}`, {
-        withAuth: false,
+      // A plain request on the network, never Vue.$httpClient: while a cloud
+      // printer is shown, that client travels over Iroh, so the cloud printer
+      // would answer for any address typed here. It also carries the current
+      // printer's sign-in, which is not this address's to see.
+      const request = await axios.get(`${apiUrl}/server/info?t=${Date.now()}`, {
+        timeout: Globals.NETWORK_REQUEST_TIMEOUT,
         signal
       })
         .then(() => {

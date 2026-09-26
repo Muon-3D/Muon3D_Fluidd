@@ -2,6 +2,7 @@ import { enableAutoDestroy, shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WifiManagerCard from '../WifiManagerCard.vue'
 import AppWifiButton from '@/components/ui/AppWifiButton.vue'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 
 const wifiScan = vi.fn()
 const wifiDetails = vi.fn()
@@ -108,6 +109,60 @@ describe('WifiManagerCard under network protection (SEC-8)', () => {
       `app.wifi.msg.connect.error ${reason}`,
       { type: 'error', timeout: 5000 }
     )
+    wrapper.destroy()
+  })
+})
+
+describe('WifiManagerCard and AppWifiButton over Iroh (07 §3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    wifiScan.mockResolvedValue({ data: [] })
+  })
+
+  afterEach(() => {
+    printerTransportBinding.remote = false
+    vi.useRealTimers()
+  })
+
+  it('shows one line in place of the card, and asks the printer nothing', async () => {
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    await vi.advanceTimersByTimeAsync(11000)
+
+    expect(wrapper.text()).toContain('app.wifi.remote_read_only')
+    expect(wrapper.find('v-simple-table-stub').exists()).toBe(false)
+    expect(wifiScan).not.toHaveBeenCalled()
+    expect(wifiDetails).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('scans once the printer is reached on its own network again', async () => {
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    await vi.advanceTimersByTimeAsync(0)
+
+    printerTransportBinding.remote = false
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(wifiScan).toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('app.wifi.remote_read_only')
+    wrapper.destroy()
+  })
+
+  it('leaves the app bar buttons asking nothing and not spinning', async () => {
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(AppWifiButton, {
+      mocks: mocks(false),
+      stubs: { VMenu: { template: '<div><slot name="activator" :on="{}" :attrs="{}" /></div>' } }
+    })
+    await vi.advanceTimersByTimeAsync(11000)
+
+    expect(wifiCurrent).not.toHaveBeenCalled()
+    expect(apDeviceStatus).not.toHaveBeenCalled()
+    for (const button of wrapper.findAll('appbtn-stub').wrappers) {
+      expect(button.attributes('loading')).toBeUndefined()
+    }
     wrapper.destroy()
   })
 })

@@ -2,6 +2,7 @@ import { enableAutoDestroy, shallowMount } from '@vue/test-utils'
 import Vue from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HotspotManagerCard from '../HotspotManagerCard.vue'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 
 const apShowCredentials = vi.fn()
 const apDeviceStatus = vi.fn()
@@ -376,5 +377,43 @@ describe('HotspotManagerCard', () => {
       expect(apDown).toHaveBeenCalledTimes(1)
       expect((wrapper.vm as any).showToggleWarningDialog).toBe(false)
     })
+  })
+})
+
+describe('HotspotManagerCard over Iroh (07 §3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    apDeviceStatus.mockResolvedValue({ data: { device: 'ap0', device_type: 'wifi', state: 'connected', connection: 'ap0-con' } })
+    apShowCredentials.mockResolvedValue({ data: { ssid: 'Muon-M1', password: null, autoconnect: true, security_enabled: true } })
+  })
+
+  afterEach(() => {
+    printerTransportBinding.remote = false
+    vi.useRealTimers()
+  })
+
+  it('shows one line in place of the card, and asks the printer nothing', async () => {
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(wrapper.text()).toContain('app.wifi.remote_read_only')
+    expect(apDeviceStatus).not.toHaveBeenCalled()
+    expect(apShowCredentials).not.toHaveBeenCalled()
+    expect(wrapper.findAll('v-text-field-stub').length).toBe(0)
+    wrapper.destroy()
+  })
+
+  it('loads once the printer is reached on its own network again', async () => {
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+    await vi.advanceTimersByTimeAsync(0)
+
+    printerTransportBinding.remote = false
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(apShowCredentials).toHaveBeenCalledTimes(1)
+    wrapper.destroy()
   })
 })
