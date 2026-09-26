@@ -1070,3 +1070,13 @@ app:
           Check the printer's screen. If this phone left {name}'s Wi-Fi, join
           {ssid} again.
       continue_on_printer: "Carry on at {name}'s screen: it shows the next step."
+      language: Language
+      open: Open {name}
+      open_printer: Open the printer's page
+      set_up:
+        title: '{name} is set up.'
+      unavailable:
+        title: This printer can't be set up from a phone yet.
+        body: >-
+          Its software is older than phone setup. Finish setting it up on its
+          screen, or open its page.

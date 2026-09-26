@@ -19,6 +19,8 @@ export const WRITE_TIMEOUT_MS = 10000
 export const DRIVER_RENEW_INTERVAL_MS = 10000
 /** Networks are scanned synchronously on the printer, capped at 15 s (02 §5.5). */
 export const SCAN_TIMEOUT_MS = 20000
+/** A hung token fetch would otherwise stretch the 1 s reconnect to the write timeout. */
+export const ONESHOT_TIMEOUT_MS = 2000
 
 /** Moonraker refused the request itself: 400, 403 or 415 (02 §5). */
 export class SetupHttpError extends Error {
@@ -44,7 +46,7 @@ export interface SetupClient {
   post (path: string, body?: Record<string, unknown>, opts?: { timeoutMs?: number, rev?: boolean }): Promise<SetupResult | null>;
   claimDriver (): Promise<SetupResult | null>;
   networks (rescan: boolean): Promise<NetworksResult>;
-  options (country?: string, language?: string): Promise<SetupOptions>;
+  options (country?: string): Promise<SetupOptions>;
   uploadCaCert (file: File): Promise<{ ok: boolean, ca_cert_id?: string, error?: SetupError }>;
 }
 
@@ -111,9 +113,13 @@ export const createSetupClient = (options: SetupClientOptions = {}): SetupClient
   const get = async (): Promise<SetupState | null> => {
     try {
       const state = unwrap<SetupState>(await request(SETUP_PATH))
-      applyState(state)
+      // A GET answer replaces the held state whatever its rev (02 §6).
+      applyState(state, { fromGet: true })
       return state
-    } catch {
+    } catch (error) {
+      // The printer answered but has no muon_setup: firmware from before the
+      // setup flow. Say so, rather than spinning on "Connecting".
+      if (error instanceof SetupHttpError && error.status === 404) setupState.unavailable = true
       return null
     }
   }
@@ -130,7 +136,7 @@ export const createSetupClient = (options: SetupClientOptions = {}): SetupClient
 
   const oneshotToken = async (): Promise<string | null> => {
     try {
-      const token = unwrap<unknown>(await request('/access/oneshot_token'))
+      const token = unwrap<unknown>(await request('/access/oneshot_token', {}, ONESHOT_TIMEOUT_MS))
       return typeof token === 'string' ? token : null
     } catch {
       return null
@@ -290,11 +296,8 @@ export const createSetupClient = (options: SetupClientOptions = {}): SetupClient
       return unwrap<NetworksResult>(await request(`${SETUP_PATH}/networks?rescan=${rescan}`, {}, SCAN_TIMEOUT_MS))
     },
 
-    async options (country?: string, language?: string) {
-      const query = new URLSearchParams()
-      if (country) query.set('country', country)
-      if (language) query.set('language', language)
-      const suffix = query.toString() ? `?${query}` : ''
+    async options (country?: string) {
+      const suffix = country ? `?country=${encodeURIComponent(country)}` : ''
       return unwrap<SetupOptions>(await request(`${SETUP_PATH}/options${suffix}`))
     },
 

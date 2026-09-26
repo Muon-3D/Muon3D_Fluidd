@@ -301,4 +301,49 @@ describe('setup client', () => {
     expect(url).toBe('http://10.42.0.1/server/muon/setup/driver')
     expect(bodyOf(init)).toMatchObject({ kind: 'phone', client_id: PHONE })
   })
+
+  it('says the printer cannot be set up from a phone when it has no muon_setup (404)', async () => {
+    routes['GET /server/muon/setup'] = () => json({ error: { code: 404, message: 'Not Found' } }, 404)
+    setupState.unavailable = false
+    make().start()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(setupState.unavailable).toBe(true)
+    expect(setupState.state).toBeNull()
+  })
+
+  it('takes a GET answer whatever its rev, as after a reset on the printer', async () => {
+    setupState.state = copy(linkCode)
+    make().start()
+    await vi.advanceTimersByTimeAsync(0)
+
+    // The printer answers with rev 4, older than the rev 12 held.
+    expect(setupState.state?.rev).toBe(4)
+  })
+
+  it('gives up on a hung one-shot token after 2 s, keeping the 1 s reconnect', async () => {
+    routes['GET /access/oneshot_token'] = (init) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    })
+    make().start()
+    await vi.advanceTimersByTimeAsync(0)
+    FakeSocket.last.drop()
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(FakeSocket.all).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(FakeSocket.all).toHaveLength(2)
+    expect(FakeSocket.last.url).toBe('ws://muon-walnut-8987.local/websocket')
+  })
+
+  it('asks for options with only a country', async () => {
+    routes['GET /server/muon/setup/options'] = () => json({ result: { languages: [], region: {} } })
+    make()
+    await client.options('GB')
+    await client.options()
+
+    const urls = fetchImpl.mock.calls.map(([url]) => String(url))
+    expect(urls).toContain(`${ORIGIN}/server/muon/setup/options?country=GB`)
+    expect(urls).toContain(`${ORIGIN}/server/muon/setup/options`)
+  })
 })

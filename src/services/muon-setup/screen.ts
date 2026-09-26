@@ -14,7 +14,7 @@ export type ScreenId =
   | 'S1' // Start
   | 'S3' // Wi-Fi
   | 'S4' // Joining
-  | 'S4r' // Join result
+  | 'S4r' // Join result, and the region line (§3.1)
   | 'S5' // Name, update and remote access
   | 'S5u' // Updating
   | 'S6' // Link code
@@ -23,21 +23,22 @@ export type ScreenId =
   | 'S9' // Following the panel
   | 'S10' // Set up already
 
-/** A finished join the owner has yet to see: success, or an error. */
-const networkResultWaiting = (state: SetupState, local: SetupLocal) => {
+/**
+ * A join has finished when the printer has an address or an error. Not
+ * `status == done`: in a picker market the step stays pending until the
+ * region is confirmed.
+ */
+export const joinFinished = (state: SetupState): boolean => {
   const network = state.steps.network
-  return local.awaitingNetworkResult && (network.status === 'done' || network.error !== null)
+  return network.addresses.length > 0 || network.error !== null
 }
+
+/** Rule 5: the result of a join this tab started, until the owner moves on. */
+const ownJoinResult = (state: SetupState, local: SetupLocal): boolean =>
+  local.joinRev !== null && state.rev > local.joinRev && !state.op && joinFinished(state)
 
 const joining = (state: SetupState) =>
   state.op?.kind === 'region_apply' || state.op?.kind === 'join'
-
-/** The Wi-Fi screens: the list, the join in flight, or its result. */
-const wifiScreen = (state: SetupState, local: SetupLocal): ScreenId => {
-  if (joining(state)) return 'S4'
-  if (networkResultWaiting(state, local)) return 'S4r'
-  return 'S3'
-}
 
 export const screenFor = (state: SetupState | null, local: SetupLocal): ScreenId => {
   // 1. Nothing heard from the printer yet.
@@ -45,8 +46,12 @@ export const screenFor = (state: SetupState | null, local: SetupLocal): ScreenId
 
   // 2. Setup is complete.
   if (state.state === 'complete') {
-    if (local.changingWifi) return wifiScreen(state, local)
-    return local.droveSetup ? 'S8' : 'S10'
+    if (local.droveSetup) return 'S8'
+    if (local.changingWifi) {
+      if (joining(state)) return 'S4'
+      return ownJoinResult(state, local) ? 'S4r' : 'S3'
+    }
+    return 'S10'
   }
 
   // 3. A long operation is running.
@@ -57,19 +62,24 @@ export const screenFor = (state: SetupState | null, local: SetupLocal): ScreenId
   const driver = state.driver
   if (driver?.kind === 'panel' && !driver.lapsed && driver.client_id !== local.clientId) return 'S9'
 
-  // 5. This page has not claimed the driver yet.
+  // 5. This tab's join result. In locked and none markets, or when the
+  // declared country already matches, the cursor moves on straight after
+  // the join, so the result would otherwise never show.
+  if (ownJoinResult(state, local)) return 'S4r'
+
+  // 6. This page has not claimed the driver yet.
   if (driver?.client_id !== local.clientId) return 'S1'
 
-  // A join this page started has finished: its result shows before anything
-  // else, because a successful join has already moved the cursor on.
-  if (networkResultWaiting(state, local)) return 'S4r'
-
-  // 6. By cursor.
+  // 7. By cursor.
   switch (state.cursor) {
     case 'language':
       return 'S1'
-    case 'network':
-      return 'S3'
+    case 'network': {
+      // Joined, and the region line still waits for Confirm or Change. Every
+      // phone tab shows it, not only the one that joined.
+      const network = state.steps.network
+      return network.addresses.length > 0 && !network.region_confirmed ? 'S4r' : 'S3'
+    }
     case 'name':
     case 'update':
     case 'remote': {

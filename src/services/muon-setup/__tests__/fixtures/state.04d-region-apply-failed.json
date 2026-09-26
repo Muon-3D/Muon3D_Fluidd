@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "rev": 5,
+  "rev": 11,
   "state": "in_progress",
   "cursor": "network",
   "driver": {
@@ -10,13 +10,7 @@
     "renewed": 1790251260.0,
     "lapsed": false
   },
-  "op": {
-    "kind": "region_apply",
-    "id": "op_5",
-    "started": 1790251290.0,
-    "phase": null,
-    "progress": null
-  },
+  "op": null,
   "printer": {
     "name": "Walnut",
     "display": "Walnut · 8987",
@@ -38,10 +32,35 @@
   },
   "region": {
     "market": "picker",
-    "country": "DE",
-    "declared": false,
-    "config": "de",
-    "source": "default"
+    "reason": "declared",
+    "explanation": "Free English text from the region agent, for logs. Never parse or show it.",
+    "declared_country": null,
+    "configuration": "de",
+    "domain": "DE",
+    "surroundings": "offer",
+    "detected_country": "GB",
+    "basis": "joined-network",
+    "enforcement": "unknown",
+    "locked": false,
+    "channels": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      36,
+      40,
+      44,
+      48
+    ]
   },
   "capabilities": {
     "ethernet": true,
@@ -59,12 +78,19 @@
     },
     "network": {
       "status": "pending",
-      "kind": null,
-      "ssid": null,
-      "addresses": [],
-      "hostname_local": null,
-      "internet": null,
-      "error": null
+      "kind": "wifi",
+      "ssid": "HomeWiFi",
+      "addresses": [
+        "192.168.1.37"
+      ],
+      "hostname_local": "Muon-walnut-8987.local",
+      "internet": true,
+      "error": null,
+      "region_confirmed": false,
+      "region_error": {
+        "code": "region_apply_failed",
+        "message": "region apply failed; nothing was declared"
+      }
     },
     "name": {
       "status": "pending",

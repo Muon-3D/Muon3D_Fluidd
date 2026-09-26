@@ -18,22 +18,28 @@ export interface SetupDraft {
   identity?: string;
 }
 
-/** What this tab alone knows. `screenFor` reads it next to the printer's state. */
+/**
+ * What this tab alone knows. `screenFor` reads it next to the printer's state,
+ * and all of it survives a captive-window reload (05 §4).
+ */
 export interface SetupLocal {
-  /** Random per tab, kept in sessionStorage; the driver claim carries it. */
+  /** Random per tab; the driver claim carries it. */
   clientId: string;
   /** This page drove setup at some point in this session (S8 versus S10). */
   droveSetup: boolean;
   /** "Change Wi-Fi" was chosen on a setup that is already complete. */
   changingWifi: boolean;
-  /** Connect was pressed here and its result has not been acknowledged. */
-  awaitingNetworkResult: boolean;
+  /**
+   * The `rev` of the state held when this tab posted Connect, until the owner
+   * acknowledges the result (05 §5 rule 5). Null when no join is this tab's.
+   */
+  joinRev: number | null;
 }
 
 /** A write that got no answer: a timeout or a network error (05 §4). */
 export interface LostWrite {
   step: StepId | null;
-  /** The state that arrived next still showed the step pending with no op. */
+  /** The state that arrived next still showed the step untouched. */
   failed: boolean;
 }
 
@@ -85,59 +91,69 @@ export const setupState = Vue.observable({
   connection: 'connecting' as ConnectionStatus,
   /** When the page last lost the printer, or null while it can hear it. */
   disconnectedSince: null as number | null,
+  /**
+   * The printer answered, but has no `muon_setup` (its setup GET said 404):
+   * firmware from before the setup flow. The page can't set it up.
+   */
+  unavailable: false,
   lostWrite: null as LostWrite | null,
   local: {
     clientId: typeof restoredLocal.clientId === 'string' ? restoredLocal.clientId : newClientId(),
     droveSetup: restoredLocal.droveSetup === true,
-    changingWifi: false,
-    awaitingNetworkResult: restoredLocal.awaitingNetworkResult === true
+    changingWifi: restoredLocal.changingWifi === true,
+    joinRev: typeof restoredLocal.joinRev === 'number' ? restoredLocal.joinRev : null
   } as SetupLocal
 })
 
-write(LOCAL_KEY, {
-  clientId: setupState.local.clientId,
-  droveSetup: setupState.local.droveSetup,
-  awaitingNetworkResult: setupState.local.awaitingNetworkResult
-})
+const saveLocal = () => write(LOCAL_KEY, { ...setupState.local })
+saveLocal()
 
-/** Updates this tab's flags and keeps the ones that must survive a reload. */
+/** Updates this tab's flags, and keeps them for a reload. */
 export const setLocal = (patch: Partial<Omit<SetupLocal, 'clientId'>>) => {
   Object.assign(setupState.local, patch)
-  write(LOCAL_KEY, {
-    clientId: setupState.local.clientId,
-    droveSetup: setupState.local.droveSetup,
-    awaitingNetworkResult: setupState.local.awaitingNetworkResult
-  })
+  saveLocal()
 }
 
-const stepHasMovedOn = (state: SetupState, step: StepId | null) => {
-  if (state.op) return true
-  if (!step) return true
+/** Whether a lost write evidently arrived: the step moved on, or an op started. */
+const writeArrived = (state: SetupState, step: StepId | null) => {
+  if (state.op || !step) return true
+  if (step === 'network') {
+    // A join that finished leaves the step pending in a picker market until
+    // the region is confirmed, so an address or an error is what shows it.
+    const network = state.steps.network
+    if (network.addresses.length > 0 || network.error || network.region_error) return true
+  }
   return state.steps[step].status !== 'pending'
 }
 
 /**
- * Takes a state from the printer if it is not older than the one held.
- * Returns whether it was taken. The printer is the only source of truth, so
- * nothing local is ever replayed over it (01 §5).
+ * Takes a state from the printer. A notification or a write result is taken
+ * only if its `rev` is not older than the one held; a `GET` result replaces
+ * the held state whatever its `rev` (02 §6), which is how a printer that was
+ * reset, or a different printer, gets through. Nothing local is ever replayed
+ * over it (01 §5). Returns whether it was taken.
  */
-export const applyState = (next: SetupState | null | undefined): boolean => {
+export const applyState = (next: SetupState | null | undefined, opts: { fromGet?: boolean } = {}): boolean => {
   if (!next || typeof next !== 'object' || typeof next.rev !== 'number') return false
   const current = setupState.state
-  if (current && next.rev < current.rev) return false
+  if (!opts.fromGet && current && next.rev < current.rev) return false
   setupState.state = next
+  setupState.unavailable = false
 
-  // A lost write is settled by the next state: the step moved on or an op
-  // started, so it arrived; or it did not, and the page says so.
+  // A lost write is settled by the next state: it arrived, or the page says
+  // "That didn't reach Walnut".
   const lost = setupState.lostWrite
   if (lost && !lost.failed) {
-    if (stepHasMovedOn(next, lost.step)) {
-      setupState.lostWrite = null
-    } else {
-      setupState.lostWrite = { ...lost, failed: true }
-    }
+    setupState.lostWrite = writeArrived(next, lost.step) ? null : { ...lost, failed: true }
   }
   return true
+}
+
+/** Forgets the held state, as when Fluidd switches to another printer. */
+export const resetSetupState = () => {
+  setupState.state = null
+  setupState.lostWrite = null
+  setupState.unavailable = false
 }
 
 export const setConnection = (status: ConnectionStatus, now = Date.now()) => {
