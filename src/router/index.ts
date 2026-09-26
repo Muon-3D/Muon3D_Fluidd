@@ -127,6 +127,17 @@ const routes: Array<RouteConfig> = [
     }
   },
   {
+    // First-run setup, served by the printer and opened by a phone's
+    // captive-portal window. Lazy, so it paints before the rest of Fluidd
+    // loads, and printer-independent, so it renders before any socket.
+    path: '/setup',
+    name: 'setup',
+    component: () => import('@/views/Setup.vue'),
+    meta: {
+      printerIndependent: true
+    }
+  },
+  {
     path: '/configure',
     name: 'Configuration',
     component: Configure,

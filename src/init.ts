@@ -11,6 +11,7 @@ import webSocketWrapper from './util/web-socket-wrapper'
 import promiseAny from './util/promise-any'
 import sleep from './util/sleep'
 import { setAuxApiBasePath } from './aux_api/useAuxApi'
+import { resetSetupState } from './services/muon-setup/state'
 
 // Load API configuration
 /**
@@ -158,6 +159,9 @@ const getMoorakerDatabase = async (apiConfig: ApiConfig, namespace: string) => {
 export const appInit = async (apiConfig?: ApiConfig, hostConfig?: HostConfig): Promise<InitConfig> => {
   // Reset the store to its default state.
   await store.dispatch('reset', undefined, { root: true })
+  // The setup state lives outside Vuex; drop the previous printer's too, or a
+  // higher rev from it would win over the new printer's notifications.
+  resetSetupState()
 
   // Load the Host Config
   if (!hostConfig) {
