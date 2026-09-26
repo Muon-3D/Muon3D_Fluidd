@@ -90,13 +90,13 @@ describe('useAuxApi', () => {
   it('refreshes a sign-in about to expire before copying it, as Fluidd\'s own client does', async () => {
     const adapter = networkAdapter()
     const httpClient = useHttpClient(adapter, 'Bearer an-hour-old')
-    vi.spyOn(store, 'dispatch').mockImplementation(async (type: string) => {
+    vi.spyOn(store, 'dispatch').mockImplementation((async (type: string) => {
       if (type === 'auth/checkToken') return true
       if (type === 'auth/refreshTokens') {
         httpClient.defaults.headers.common.Authorization = 'Bearer fresh'
         return 'fresh'
       }
-    })
+    }) as typeof store.dispatch)
     await pointAt('http://muon-walnut-8987.local')
 
     await useAuxApi().ap.apShowCredentialsWifiApShowGet()
