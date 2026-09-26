@@ -324,6 +324,7 @@ export default class WifiManagerCard extends Vue {
   get locked (): boolean {
     return this.$store.getters['protection/isLocked']
   }
+
   // Reached over Iroh: the owner decided a remote caller may not change the
   // printer's Wi-Fi (setup spec 07 §3), so this card only shows it.
   get remote (): boolean {
