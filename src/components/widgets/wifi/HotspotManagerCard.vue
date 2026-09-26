@@ -6,8 +6,8 @@
   >
     <protected-notice class="ma-4" />
     <p
-      v-if="remote && !locked"
-      class="mx-4 mt-4 mb-0 text-body-2"
+      v-if="remote"
+      class="mx-4 mt-4 mb-4 text-body-2"
     >
       {{ $t('app.wifi.remote_read_only') }}
     </p>
@@ -15,11 +15,12 @@
     <template #menu>
       <!-- hotspot on/off switch -->
       <v-switch
+        v-if="!remote"
         dense
         :hide-details="true"
         color="primary"
         :input-value="apState"
-        :disabled="locked || remote || !apCredentials || !deviceStatus || toggling"
+        :disabled="locked || !apCredentials || !deviceStatus || toggling"
         :loading="toggling"
         class="mobile-only mt-0"
         readonly
@@ -28,7 +29,7 @@
     </template>
 
     <div
-      v-if="!locked"
+      v-if="!locked && !remote"
       class="d-flex align-stretch"
     >
       <v-fade-transition mode="out-in">
@@ -80,11 +81,11 @@
             class="ap-card ma-4 d-flex flex-row"
             color="card-heading"
             :loading="applying ? 'primary' : false"
-            :link="!editing && !remote"
-            :ripple="!editing && !remote"
+            :link="!editing"
+            :ripple="!editing"
             :disabled="toggling || applying"
             :class="{ editing: editing }"
-            @click="!editing && !remote ? toggleEditing() : null"
+            @click="!editing ? toggleEditing() : null"
           >
             <div class="pa-4">
               <v-form
@@ -317,12 +318,6 @@ export default class HotspotManagerCard extends Vue {
     return this.$store.getters['protection/isLocked']
   }
 
-  // Reached over Iroh: the owner decided a remote caller may not change the
-  // printer's Wi-Fi (setup spec 07 §3), so this card only shows it.
-  get remote (): boolean {
-    return printerTransportBinding.remote
-  }
-
   // Protection came off while this card was open. The config it skipped
   // while locked is loaded now; the status poll only ever reads the state.
   @Watch('locked')
@@ -330,12 +325,23 @@ export default class HotspotManagerCard extends Vue {
     if (!locked) this.fetchConfig()
   }
 
+  // Reached over Iroh: muon-link refuses every Aux request there, reads
+  // included, and the owner decided remote callers may not change Wi-Fi
+  // (setup spec 07 §3). The card makes no call and says so instead.
+  get remote (): boolean {
+    return printerTransportBinding.remote
+  }
+
+  @Watch('remote')
+  onRemoteChanged (remote: boolean) {
+    if (!remote) this.fetchConfig()
+  }
+
   showToggleWarningDialog: boolean = false
   showChangeWarningDialog: boolean = false
 
   // “Request” methods show the warning dialog instead of immediately doing the thing
   requestToggle () {
-    if (this.remote) return
     if (onHotspot.value) {
       this.showToggleWarningDialog = true
     } else {
@@ -351,7 +357,6 @@ export default class HotspotManagerCard extends Vue {
   }
 
   async requestApplyChanges () {
-    if (this.remote) return
     // trigger Vuetify’s validation UI
     const form = this.$refs.apForm as VForm
     if (!form || !(form.validate() && this.isDirty)) return
@@ -418,7 +423,7 @@ export default class HotspotManagerCard extends Vue {
   }
 
   private async fetchConfig () {
-    if (this.locked) return
+    if (this.locked || this.remote) return
     try {
       const [statusResponse, credentialsResponse] = await Promise.all([
         this.auxApi.ap.wifiStatusWifiApDeviceStatusGet(),
@@ -440,7 +445,7 @@ export default class HotspotManagerCard extends Vue {
   }
 
   private async refreshStatus () {
-    if (this.locked) return
+    if (this.locked || this.remote) return
     try {
       const response = await this.auxApi.ap.wifiStatusWifiApDeviceStatusGet()
       this.applyDeviceStatus(response.data)

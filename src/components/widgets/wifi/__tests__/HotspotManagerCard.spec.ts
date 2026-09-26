@@ -301,31 +301,37 @@ describe('HotspotManagerCard', () => {
 describe('HotspotManagerCard over Iroh (07 §3)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers()
     apDeviceStatus.mockResolvedValue({ data: { device: 'ap0', device_type: 'wifi', state: 'connected', connection: 'ap0-con' } })
     apShowCredentials.mockResolvedValue({ data: { ssid: 'Muon-M1', password: null, autoconnect: true, security_enabled: true } })
   })
 
   afterEach(() => {
     printerTransportBinding.remote = false
+    vi.useRealTimers()
   })
 
-  it('shows the hotspot, says why it cannot be changed, and offers no toggle or edit', async () => {
+  it('shows one line in place of the card, and asks the printer nothing', async () => {
     printerTransportBinding.remote = true
     const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
-    await new Promise(resolve => setTimeout(resolve, 0))
-    await wrapper.vm.$nextTick()
-    const card = wrapper.vm as any
+    await vi.advanceTimersByTimeAsync(5000)
 
-    expect(apDeviceStatus).toHaveBeenCalled()
     expect(wrapper.text()).toContain('app.wifi.remote_read_only')
+    expect(apDeviceStatus).not.toHaveBeenCalled()
+    expect(apShowCredentials).not.toHaveBeenCalled()
+    expect(wrapper.findAll('v-text-field-stub').length).toBe(0)
+    wrapper.destroy()
+  })
 
-    // The on/off switch sits in the card's menu slot, which a shallow mount
-    // does not render; what it would call must do nothing.
-    card.requestToggle()
-    await card.requestApplyChanges()
-    expect(apDown).not.toHaveBeenCalled()
-    expect(apUp).not.toHaveBeenCalled()
-    expect(apModify).not.toHaveBeenCalled()
+  it('loads once the printer is reached on its own network again', async () => {
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+    await vi.advanceTimersByTimeAsync(0)
+
+    printerTransportBinding.remote = false
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(apShowCredentials).toHaveBeenCalledTimes(1)
     wrapper.destroy()
   })
 })

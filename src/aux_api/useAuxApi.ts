@@ -14,11 +14,15 @@ auxAxios.interceptors.response.use(resp => {
   return resp
 })
 
-/** Refused before it leaves: the owner decided remote callers may not change Wi-Fi (07 §3). */
-export class RemoteWriteRefused extends Error {
+/**
+ * Refused before it leaves. Over Iroh, muon-link refuses every /server/aux/
+ * request for every role, reads included (nmcli's readback exposes stored
+ * keys), and the owner decided remote callers may not change Wi-Fi (07 §3).
+ */
+export class RemoteAuxRefused extends Error {
   constructor () {
     super("Wi-Fi can only be changed on the printer's own network.")
-    this.name = 'RemoteWriteRefused'
+    this.name = 'RemoteAuxRefused'
   }
 }
 
@@ -31,12 +35,9 @@ auxAxios.interceptors.request.use(async config => {
   const httpClient = Vue.$httpClient
   if (!httpClient) return config
 
-  // Over Iroh the Aux API is read-only. The cards hide every write there, and
-  // muon-link refuses them too; this keeps a stray one from being sent.
-  const method = (config.method ?? 'get').toLowerCase()
-  if (isBoundToPrinterTransport(httpClient) && method !== 'get' && method !== 'head') {
-    throw new RemoteWriteRefused()
-  }
+  // Over Iroh the Aux API is closed to this page: the cards make no call
+  // there, and this keeps a stray one from being sent.
+  if (isBoundToPrinterTransport(httpClient)) throw new RemoteAuxRefused()
 
   // Refresh a sign-in that is about to expire, as Vue.$httpClient's own
   // interceptor does. Fluidd talks mostly over its websocket, so without this
