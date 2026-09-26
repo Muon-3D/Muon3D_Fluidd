@@ -1008,13 +1008,13 @@ app:
       printing: Printing
       tool: Tool
   wifi:
-    remote_read_only: Wi-Fi can only be changed on the printer's own network.
     security: Security
     signal: Signal
     data rate: Data Rate
     channel: Channel
     freqency: Freqency
     change: Change
+    remote_read_only: Wi-Fi can only be changed on the printer's own network.
     password:
       too-short: Too short
       too-long: Too long
