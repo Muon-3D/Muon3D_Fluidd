@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WifiManagerCard from '../WifiManagerCard.vue'
 import AppWifiButton from '@/components/ui/AppWifiButton.vue'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 
 const wifiScan = vi.fn()
 const wifiDetails = vi.fn()
@@ -134,6 +135,49 @@ describe('AppWifiButton under network protection (SEC-8)', () => {
     for (const button of buttons.wrappers) {
       expect(button.attributes('loading')).toBeUndefined()
     }
+    wrapper.destroy()
+  })
+})
+
+describe('WifiManagerCard over Iroh (07 §3)', () => {
+  const inUse = { ssid: 'Workshop', bssid: 'aa:bb', in_use: true, security: 'WPA2', signal: 80 }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    wifiScan.mockResolvedValue({ data: [inUse, { ...inUse, ssid: 'Office', bssid: 'cc:dd', in_use: false }] })
+  })
+
+  afterEach(() => {
+    printerTransportBinding.remote = false
+  })
+
+  it('shows the networks, says why they cannot be changed, and offers no change', async () => {
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await wrapper.vm.$nextTick()
+    const card = wrapper.vm as any
+
+    expect(wifiScan).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('app.wifi.remote_read_only')
+    // No disconnect or forget menu on the network in use.
+    expect(wrapper.findAll('v-menu-stub').length).toBe(0)
+
+    card.onNetworkClick({ ssid: 'Office', in_use: false, security: 'WPA2' })
+    await wrapper.vm.$nextTick()
+    expect(card.showWarningDialog).toBe(false)
+    expect(card.selectedNetwork).toBeFalsy()
+    expect(wifiConnect).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('offers the menu again on the printer\'s own network', async () => {
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.text()).not.toContain('app.wifi.remote_read_only')
+    expect(wrapper.findAll('v-menu-stub').length).toBeGreaterThan(0)
     wrapper.destroy()
   })
 })

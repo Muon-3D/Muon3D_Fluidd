@@ -1,7 +1,8 @@
 import Vue from 'vue'
 import axios, { type AxiosAdapter, type InternalAxiosRequestConfig } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { setAuxApiBasePath, useAuxApi } from '../useAuxApi'
+import { RemoteWriteRefused, setAuxApiBasePath, useAuxApi } from '../useAuxApi'
+import store from '@/store'
 import { bindHttpClientToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
 import type { PrinterTransport } from '@/services/managed-transport'
 
@@ -41,6 +42,7 @@ describe('useAuxApi', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
     delete (Vue as { $httpClient?: unknown }).$httpClient
   })
 
@@ -83,5 +85,43 @@ describe('useAuxApi', () => {
     await useAuxApi().ap.apShowCredentialsWifiApShowGet()
     expect(fetch).not.toHaveBeenCalled()
     expect(adapter).toHaveBeenCalled()
+  })
+
+  it('refreshes a sign-in about to expire before copying it, as Fluidd\'s own client does', async () => {
+    const adapter = networkAdapter()
+    const httpClient = useHttpClient(adapter, 'Bearer an-hour-old')
+    vi.spyOn(store, 'dispatch').mockImplementation(async (type: string) => {
+      if (type === 'auth/checkToken') return true
+      if (type === 'auth/refreshTokens') {
+        httpClient.defaults.headers.common.Authorization = 'Bearer fresh'
+        return 'fresh'
+      }
+    })
+    await pointAt('http://muon-walnut-8987.local')
+
+    await useAuxApi().ap.apShowCredentialsWifiApShowGet()
+
+    const call = adapter.mock.calls
+      .map(([config]) => config as InternalAxiosRequestConfig)
+      .find(config => config.url?.endsWith('/wifi/ap/show'))
+    expect(call?.headers.get('Authorization')).toBe('Bearer fresh')
+  })
+
+  it('refuses a Wi-Fi or hotspot write over Iroh, and sends nothing (07 §3)', async () => {
+    const httpClient = useHttpClient(networkAdapter())
+    const fetch = vi.fn<Parameters<PrinterTransport['fetch']>, ReturnType<PrinterTransport['fetch']>>(async () => new Response(
+      JSON.stringify({ result: {} }),
+      { status: 200, headers: { 'content-type': 'application/json' } }
+    ))
+    const release = bindHttpClientToPrinterTransport(httpClient, { fetch, openWebSocket: vi.fn(), close: vi.fn() })
+    await pointAt('https://muon-cloud.invalid')
+
+    await expect(useAuxApi().ap.apDownWifiApDownPost()).rejects.toBeInstanceOf(RemoteWriteRefused)
+    expect(fetch.mock.calls.map(([path]) => path).filter(path => path.includes('/wifi/ap/down'))).toEqual([])
+
+    // Reads still go.
+    await useAuxApi().ap.apShowCredentialsWifiApShowGet()
+    expect(fetch.mock.calls.map(([path]) => path)).toContain('/server/aux/wifi/ap/show')
+    release()
   })
 })
