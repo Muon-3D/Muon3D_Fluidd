@@ -1,7 +1,7 @@
 import Vue from 'vue'
 import axios, { type AxiosAdapter, type InternalAxiosRequestConfig } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { RemoteWriteRefused, setAuxApiBasePath, useAuxApi } from '../useAuxApi'
+import { RemoteAuxRefused, setAuxApiBasePath, useAuxApi } from '../useAuxApi'
 import store from '@/store'
 import { bindHttpClientToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
 import type { PrinterTransport } from '@/services/managed-transport'
@@ -61,29 +61,26 @@ describe('useAuxApi', () => {
     expect(call?.headers.get('Authorization')).toBe('Bearer local-token')
   })
 
-  it('reaches a cloud printer through the Iroh transport Fluidd is bound to', async () => {
+  it('sends nothing to a cloud printer over Iroh, reads included, and is back on the network once released', async () => {
     const adapter = networkAdapter()
     const httpClient = useHttpClient(adapter)
     const fetch = vi.fn<Parameters<PrinterTransport['fetch']>, ReturnType<PrinterTransport['fetch']>>(async () => new Response(
-      JSON.stringify({ result: { ssid: 'HomeWiFi', signal: 78 } }),
+      JSON.stringify({ result: {} }),
       { status: 200, headers: { 'content-type': 'application/json' } }
     ))
     const release = bindHttpClientToPrinterTransport(httpClient, { fetch, openWebSocket: vi.fn(), close: vi.fn() })
     // What appInit is given for a cloud printer: a placeholder, never dialled.
     await pointAt('https://muon-cloud.invalid')
 
-    const response = await useAuxApi().wifi.wifiCurrentWifiCurrentGet(true)
-
-    expect(response.data).toEqual({ ssid: 'HomeWiFi', signal: 78 })
-    expect(fetch.mock.calls.map(([path]) => path)).toContain('/server/aux/wifi/current?update=true')
+    // muon-link refuses every /server/aux/ request over Iroh (07 §3).
+    await expect(useAuxApi().wifi.wifiCurrentWifiCurrentGet(true)).rejects.toBeInstanceOf(RemoteAuxRefused)
+    await expect(useAuxApi().ap.apDownWifiApDownPost()).rejects.toBeInstanceOf(RemoteAuxRefused)
+    expect(fetch.mock.calls.map(([path]) => path).filter(path => path.startsWith('/server/aux'))).toEqual([])
     expect(adapter).not.toHaveBeenCalled()
 
-    // Back on a local printer, the network carries it again.
     release()
-    fetch.mockClear()
     await pointAt('http://muon-walnut-8987.local')
     await useAuxApi().ap.apShowCredentialsWifiApShowGet()
-    expect(fetch).not.toHaveBeenCalled()
     expect(adapter).toHaveBeenCalled()
   })
 
@@ -105,23 +102,5 @@ describe('useAuxApi', () => {
       .map(([config]) => config as InternalAxiosRequestConfig)
       .find(config => config.url?.endsWith('/wifi/ap/show'))
     expect(call?.headers.get('Authorization')).toBe('Bearer fresh')
-  })
-
-  it('refuses a Wi-Fi or hotspot write over Iroh, and sends nothing (07 §3)', async () => {
-    const httpClient = useHttpClient(networkAdapter())
-    const fetch = vi.fn<Parameters<PrinterTransport['fetch']>, ReturnType<PrinterTransport['fetch']>>(async () => new Response(
-      JSON.stringify({ result: {} }),
-      { status: 200, headers: { 'content-type': 'application/json' } }
-    ))
-    const release = bindHttpClientToPrinterTransport(httpClient, { fetch, openWebSocket: vi.fn(), close: vi.fn() })
-    await pointAt('https://muon-cloud.invalid')
-
-    await expect(useAuxApi().ap.apDownWifiApDownPost()).rejects.toBeInstanceOf(RemoteWriteRefused)
-    expect(fetch.mock.calls.map(([path]) => path).filter(path => path.includes('/wifi/ap/down'))).toEqual([])
-
-    // Reads still go.
-    await useAuxApi().ap.apShowCredentialsWifiApShowGet()
-    expect(fetch.mock.calls.map(([path]) => path)).toContain('/server/aux/wifi/ap/show')
-    release()
   })
 })

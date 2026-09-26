@@ -139,45 +139,56 @@ describe('AppWifiButton under network protection (SEC-8)', () => {
   })
 })
 
-describe('WifiManagerCard over Iroh (07 §3)', () => {
-  const inUse = { ssid: 'Workshop', bssid: 'aa:bb', in_use: true, security: 'WPA2', signal: 80 }
-
+describe('WifiManagerCard and AppWifiButton over Iroh (07 §3)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    wifiScan.mockResolvedValue({ data: [inUse, { ...inUse, ssid: 'Office', bssid: 'cc:dd', in_use: false }] })
+    vi.useFakeTimers()
+    wifiScan.mockResolvedValue({ data: [] })
   })
 
   afterEach(() => {
     printerTransportBinding.remote = false
+    vi.useRealTimers()
   })
 
-  it('shows the networks, says why they cannot be changed, and offers no change', async () => {
+  it('shows one line in place of the card, and asks the printer nothing', async () => {
     printerTransportBinding.remote = true
     const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
-    await new Promise(resolve => setTimeout(resolve, 0))
-    await wrapper.vm.$nextTick()
-    const card = wrapper.vm as any
+    await vi.advanceTimersByTimeAsync(11000)
 
-    expect(wifiScan).toHaveBeenCalled()
     expect(wrapper.text()).toContain('app.wifi.remote_read_only')
-    // No disconnect or forget menu on the network in use.
-    expect(wrapper.findAll('v-menu-stub').length).toBe(0)
-
-    card.onNetworkClick({ ssid: 'Office', in_use: false, security: 'WPA2' })
-    await wrapper.vm.$nextTick()
-    expect(card.showWarningDialog).toBe(false)
-    expect(card.selectedNetwork).toBeFalsy()
-    expect(wifiConnect).not.toHaveBeenCalled()
+    expect(wrapper.find('v-simple-table-stub').exists()).toBe(false)
+    expect(wifiScan).not.toHaveBeenCalled()
+    expect(wifiDetails).not.toHaveBeenCalled()
     wrapper.destroy()
   })
 
-  it('offers the menu again on the printer\'s own network', async () => {
+  it('scans once the printer is reached on its own network again', async () => {
+    printerTransportBinding.remote = true
     const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
-    await new Promise(resolve => setTimeout(resolve, 0))
-    await wrapper.vm.$nextTick()
+    await vi.advanceTimersByTimeAsync(0)
 
+    printerTransportBinding.remote = false
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(wifiScan).toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('app.wifi.remote_read_only')
-    expect(wrapper.findAll('v-menu-stub').length).toBeGreaterThan(0)
+    wrapper.destroy()
+  })
+
+  it('leaves the app bar buttons asking nothing and not spinning', async () => {
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(AppWifiButton, {
+      mocks: mocks(false),
+      stubs: { VMenu: { template: '<div><slot name="activator" :on="{}" :attrs="{}" /></div>' } }
+    })
+    await vi.advanceTimersByTimeAsync(11000)
+
+    expect(wifiCurrent).not.toHaveBeenCalled()
+    expect(apDeviceStatus).not.toHaveBeenCalled()
+    for (const button of wrapper.findAll('appbtn-stub').wrappers) {
+      expect(button.attributes('loading')).toBeUndefined()
+    }
     wrapper.destroy()
   })
 })
