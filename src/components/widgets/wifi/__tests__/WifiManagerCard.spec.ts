@@ -110,35 +110,6 @@ describe('WifiManagerCard under network protection (SEC-8)', () => {
   })
 })
 
-describe('AppWifiButton under network protection (SEC-8)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.useFakeTimers()
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('does not poll, and does not spin waiting for an answer that will not come', async () => {
-    const wrapper = shallowMount(AppWifiButton, {
-      mocks: mocks(true),
-      // The buttons live in each menu's activator slot.
-      stubs: { VMenu: { template: '<div><slot name="activator" :on="{}" :attrs="{}" /></div>' } }
-    })
-    await vi.advanceTimersByTimeAsync(11000)
-
-    expect(wifiCurrent).not.toHaveBeenCalled()
-    expect(apDeviceStatus).not.toHaveBeenCalled()
-    const buttons = wrapper.findAll('appbtn-stub')
-    expect(buttons.length).toBe(2)
-    for (const button of buttons.wrappers) {
-      expect(button.attributes('loading')).toBeUndefined()
-    }
-    wrapper.destroy()
-  })
-})
-
 describe('WifiManagerCard and AppWifiButton over Iroh (07 §3)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -187,6 +158,35 @@ describe('WifiManagerCard and AppWifiButton over Iroh (07 §3)', () => {
     expect(wifiCurrent).not.toHaveBeenCalled()
     expect(apDeviceStatus).not.toHaveBeenCalled()
     for (const button of wrapper.findAll('appbtn-stub').wrappers) {
+      expect(button.attributes('loading')).toBeUndefined()
+    }
+    wrapper.destroy()
+  })
+})
+
+describe('AppWifiButton under network protection (SEC-8)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('does not poll, and does not spin waiting for an answer that will not come', async () => {
+    const wrapper = shallowMount(AppWifiButton, {
+      mocks: mocks(true),
+      // The buttons live in each menu's activator slot.
+      stubs: { VMenu: { template: '<div><slot name="activator" :on="{}" :attrs="{}" /></div>' } }
+    })
+    await vi.advanceTimersByTimeAsync(11000)
+
+    expect(wifiCurrent).not.toHaveBeenCalled()
+    expect(apDeviceStatus).not.toHaveBeenCalled()
+    const buttons = wrapper.findAll('appbtn-stub')
+    expect(buttons.length).toBe(2)
+    for (const button of buttons.wrappers) {
       expect(button.attributes('loading')).toBeUndefined()
     }
     wrapper.destroy()
