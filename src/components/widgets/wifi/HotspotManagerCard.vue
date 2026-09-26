@@ -155,7 +155,7 @@
                 </v-expand-x-transition>
                 <v-expand-x-transition>
                   <div
-                    v-if="(editing ? !editing : !delayedEditing) && apState"
+                    v-if="(editing ? !editing : !delayedEditing) && apState && QrValue"
                     key="qr"
                     class="d-flex"
                   >
@@ -180,6 +180,21 @@
                     </div>
                   </div>
                 </v-expand-x-transition>
+                <v-expand-x-transition>
+                  <div
+                    v-if="(editing ? !editing : !delayedEditing) && apState && !QrValue"
+                    key="qr-hint"
+                    class="d-flex align-center"
+                  >
+                    <v-divider
+                      vertical
+                      class="mx-4"
+                    />
+                    <p class="mb-0 qr-hint">
+                      {{ $t('app.wifi.hotspot_code_on_printer', { name: printerName }) }}
+                    </p>
+                  </div>
+                </v-expand-x-transition>
               </v-form>
             </div>
           </v-card>
@@ -195,7 +210,7 @@
         <v-card-title class="headline">
           {{ $t('app.wifi.modal.warning.title') }}
         </v-card-title>
-        <v-card-text v-if="!onHotspot">
+        <v-card-text>
           {{ $t('app.wifi.modal.warning.message') }}
         </v-card-text>
         <v-card-actions>
@@ -226,7 +241,7 @@
         <v-card-title class="headline">
           {{ $t('app.wifi.modal.warning.title') }}
         </v-card-title>
-        <v-card-text v-if="!onHotspot">
+        <v-card-text>
           {{ $t('app.wifi.modal.warning.message') }}
         </v-card-text>
         <v-card-actions>
@@ -459,7 +474,9 @@ export default class HotspotManagerCard extends Vue {
   private resetForm () {
     if (!this.apCredentials) return
     this.form.ssid = this.apCredentials.ssid
-    this.form.password = this.apCredentials.password || ''
+    // Never show a key, even one an older Aux returns: 07 S1 keeps it on the
+    // printer's screen. A new key can still be typed here.
+    this.form.password = ''
     this.passwordVisible = false
     // Older Aux versions do not expose the safe boolean. Keep the secure
     // fallback until the matching OS update reaches the printer.
@@ -619,14 +636,18 @@ export default class HotspotManagerCard extends Vue {
   }
   // ------------------------------------------------------
 
+  // A join code only for an open hotspot. A secured hotspot's key, and any
+  // code carrying it, appear only on the printer's screen (setup spec 07 S1),
+  // so this page never draws one, even when an older Aux returns the key.
   get QrValue (): string {
-    if (!this.apCredentials) return ''
-    const ssid = this.apCredentials.ssid
-    const password = this.apCredentials.password
-    const S = ssid.replace(/\\/g, '\\\\').replace(/;/g, '\\;')
-    const T = password ? 'WPA' : 'nopass'
-    const P = password ? password.replace(/\\/g, '\\\\').replace(/;/g, '\\;') : ''
-    return `WIFI:S:${S};T:${T};${password ? `P:${P};` : ''}H:false;;`
+    if (!this.apCredentials || this.apCredentials.security_enabled !== false) return ''
+    const S = this.apCredentials.ssid.replace(/\\/g, '\\\\').replace(/;/g, '\\;')
+    return `WIFI:S:${S};T:nopass;H:false;;`
+  }
+
+  // Where to get the code instead, when this page draws none.
+  get printerName (): string {
+    return this.$store.getters['config/getDisplayName'] ?? ''
   }
 
   delayedEditing: boolean = this.editing
