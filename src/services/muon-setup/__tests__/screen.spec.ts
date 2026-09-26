@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { progressFor, screenFor } from '../screen'
+import { joinFinished, progressFor, screenFor } from '../screen'
 import type { SetupLocal } from '../state'
 import type { SetupResult, SetupState } from '../types'
 import newState from './fixtures/state.01-new.json'
 import networkPhone from './fixtures/state.02-network-phone-driver.json'
-import regionApply from './fixtures/state.03-region-apply.json'
 import joiningState from './fixtures/state.04-joining.json'
+import regionConfirm from './fixtures/state.04b-region-confirm.json'
+import regionApply from './fixtures/state.04c-region-apply.json'
+import regionApplyFailed from './fixtures/state.04d-region-apply-failed.json'
 import wrongPassword from './fixtures/state.05-network-wrong-password.json'
 import linkCode from './fixtures/state.06-remote-link-code.json'
 import readySelfTest from './fixtures/state.07-ready-self-test.json'
@@ -19,7 +21,7 @@ const local = (patch: Partial<SetupLocal> = {}): SetupLocal => ({
   clientId: PHONE,
   droveSetup: false,
   changingWifi: false,
-  awaitingNetworkResult: false,
+  joinRev: null,
   ...patch
 })
 
@@ -28,6 +30,9 @@ const state = (fixture: unknown, patch: (s: SetupState) => void = () => {}): Set
   patch(copy)
   return copy
 }
+
+/** The rev this tab held when it pressed Connect on 02. */
+const CONNECT_REV = (networkPhone as unknown as SetupState).rev
 
 describe('screenFor', () => {
   it('S0 until the printer has answered', () => {
@@ -47,25 +52,72 @@ describe('screenFor', () => {
   })
 
   it.each([
-    ['a region apply', regionApply],
-    ['a join', joiningState]
+    ['a join', joiningState],
+    ['a region apply (04c)', regionApply]
   ])('S4 during %s, whoever drives', (_name, fixture) => {
     expect(screenFor(state(fixture), local())).toBe('S4')
     expect(screenFor(state(fixture), local({ clientId: 'another-tab' }))).toBe('S4')
   })
 
-  it('S4r for a failed join this page started, S3 once it is acknowledged', () => {
-    expect(screenFor(state(wrongPassword), local({ awaitingNetworkResult: true }))).toBe('S4r')
-    expect(screenFor(state(wrongPassword), local())).toBe('S3')
+  describe('the region line (rule 7, 04b and 04d)', () => {
+    it('S4r once joined, while the region waits for Confirm or Change (04b)', () => {
+      expect(screenFor(state(regionConfirm), local())).toBe('S4r')
+    })
+
+    it('S4r on every phone tab, not only the one that joined', () => {
+      const other = state(regionConfirm, s => {
+        if (s.driver) s.driver.client_id = 'another-tab'
+      })
+      expect(screenFor(other, local({ clientId: 'another-tab' }))).toBe('S4r')
+    })
+
+    it('S4r again after a failed apply, which carries region_error (04d)', () => {
+      const failed = state(regionApplyFailed)
+      expect(failed.steps.network.region_error?.code).toBe('region_apply_failed')
+      expect(screenFor(failed, local())).toBe('S4r')
+    })
+
+    it('S3 once the region is confirmed, if the cursor is still on network', () => {
+      expect(screenFor(state(regionConfirm, s => { s.steps.network.region_confirmed = true }), local())).toBe('S3')
+    })
+
+    it('S9, not the line, while the panel drives (it shows P7a)', () => {
+      const panel = state(regionConfirm, s => {
+        s.driver = { kind: 'panel', client_id: 'panel', since: 1, renewed: 2, lapsed: false }
+      })
+      expect(screenFor(panel, local())).toBe('S9')
+    })
   })
 
-  it('S4r for a successful join, though the cursor has already moved on', () => {
-    const joined = state(linkCode, s => {
-      s.cursor = 'name'
-      s.steps.remote.mode = null
+  describe("this tab's join result (rule 5, joinRev)", () => {
+    it('S4r for a failed join started here, from a later state with no op', () => {
+      expect(screenFor(state(wrongPassword), local({ joinRev: CONNECT_REV }))).toBe('S4r')
     })
-    expect(screenFor(joined, local({ awaitingNetworkResult: true }))).toBe('S4r')
-    expect(screenFor(joined, local())).toBe('S5')
+
+    it('S3 for the same failure without a join of its own to report', () => {
+      expect(screenFor(state(wrongPassword), local())).toBe('S3')
+    })
+
+    it('not for a result no later than the Connect', () => {
+      const failure = state(wrongPassword)
+      expect(screenFor(failure, local({ joinRev: failure.rev }))).toBe('S3')
+    })
+
+    it('S4r for a success the cursor has already moved past, as in a locked market', () => {
+      const moved = state(linkCode, s => {
+        s.cursor = 'name'
+        s.steps.remote.mode = null
+      })
+      expect(screenFor(moved, local({ joinRev: CONNECT_REV }))).toBe('S4r')
+      expect(screenFor(moved, local())).toBe('S5')
+    })
+
+    it('treats an address or an error as finished, not status == done', () => {
+      expect(joinFinished(state(regionConfirm))).toBe(true)
+      expect(state(regionConfirm).steps.network.status).toBe('pending')
+      expect(joinFinished(state(wrongPassword))).toBe(true)
+      expect(joinFinished(state(networkPhone))).toBe(false)
+    })
   })
 
   it.each(['name', 'update', 'remote'] as const)('S5 with the cursor on %s', (cursor) => {
@@ -127,14 +179,18 @@ describe('screenFor', () => {
   })
 
   it('S3, S4 and S4r when changing Wi-Fi on a complete setup', () => {
+    const complete = state(completeWithSkips)
     const changing = local({ changingWifi: true })
-    expect(screenFor(state(completeWithSkips), changing)).toBe('S3')
+    expect(screenFor(complete, changing)).toBe('S3')
     expect(screenFor(state(completeWithSkips, s => {
       s.op = { kind: 'join', id: 'op_20', started: 1, phase: 'associating' }
     }), changing)).toBe('S4')
+    // The older network's success does not count: only a result after Connect.
+    expect(screenFor(complete, { ...changing, joinRev: complete.rev })).toBe('S3')
     expect(screenFor(state(completeWithSkips, s => {
+      s.rev += 2
       s.steps.network.error = { code: 'wrong_password', at_phase: 'authenticating' }
-    }), { ...changing, awaitingNetworkResult: true })).toBe('S4r')
+    }), { ...changing, joinRev: complete.rev })).toBe('S4r')
   })
 })
 

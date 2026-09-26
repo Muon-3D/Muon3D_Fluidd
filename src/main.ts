@@ -84,51 +84,68 @@ const restoredUiStyle = restoreUiStyle()
 store.commit('config/setRestoredUiStyle', restoredUiStyle)
 applyGlassIcons(vuetify.framework.icons.values as unknown as Record<string, unknown>, restoredUiStyle === 'glass')
 
-appInit()
-  .then((config: InitConfig) => {
-    consola.debug('Loaded App Configuration', config)
+const mountApp = () => {
+  Vue.config.productionTip = false
+  new Vue({
+    i18n,
+    router,
+    store,
+    vuetify,
+    render: (h) => h(App)
+  }).$mount('#app')
+}
 
-    // Init the socket plugin
-    Vue.use(SocketPlugin, {
-      url: config.apiConfig.socketUrl,
-      reconnectEnabled: true,
-      reconnectInterval: Globals.SOCKET_RETRY_DELAY,
-      store
-    })
+// First-run setup, and only it, mounts at once and never runs appInit or
+// initCloud (05 §2). appInit holds $mount for a probe of up to 5 s and loads
+// the Moonraker database, and a failure there left the page blank for good.
+// initCloud, with a Muon3D session stored for this origin, calls the console
+// and loads the Iroh client: requests to the internet from a page that may
+// reach only the printer, over mobile data on the hotspot (05 §7). The page
+// runs its own client instead. The socket plugin is installed, unconnected,
+// because the shell still refers to Vue.$socket.
+if (/^#\/setup(?:[/?]|$)/.test(window.location.hash)) {
+  Vue.use(SocketPlugin, { url: '', store })
+  mountApp()
+} else {
+  appInit()
+    .then((config: InitConfig) => {
+      consola.debug('Loaded App Configuration', config)
 
-    if (config.apiConfig.socketUrl && config.apiConnected && config.apiAuthenticated) {
-      Vue.$socket.connect(config.apiConfig.socketUrl)
-    }
+      // Init the socket plugin
+      Vue.use(SocketPlugin, {
+        url: config.apiConfig.socketUrl,
+        reconnectEnabled: true,
+        reconnectInterval: Globals.SOCKET_RETRY_DELAY,
+        store
+      })
 
-    // Init Vue
-    Vue.config.productionTip = false
-    new Vue({
-      i18n,
-      router,
-      store,
-      vuetify,
-      render: (h) => h(App)
-    }).$mount('#app')
-
-    // Restore the Muon3D account, and the cloud printer it was last showing.
-    // With no printer to show at all, start on the welcome page, which finds
-    // printers on this network and offers the account.
-    //
-    // Wait for the first navigation: a lazy route such as /setup is not the
-    // current route until its chunk has loaded, and its meta decides here.
-    initCloud().then(() => router.onReady(() => {
-      // First-run setup keeps its place. Reopening a cloud printer runs
-      // appInit, which sends every route but the dashboard back to it.
-      if (router.currentRoute.name === 'setup') return
-
-      const active = cloudState.activePrinterId
-      if (active && cloudState.account && cloudState.printers.some(p => p.id === active)) {
-        activateCloudPrinter(active).catch((e) => consola.debug('Could not reopen the cloud printer', e))
-      } else if (!store.state.config.apiUrl && !router.currentRoute.meta?.printerIndependent) {
-        router.replace('/welcome').catch(() => {})
+      if (config.apiConfig.socketUrl && config.apiConnected && config.apiAuthenticated) {
+        Vue.$socket.connect(config.apiConfig.socketUrl)
       }
-    }))
-  })
-  .catch((e) => {
-    consola.debug('Error attempting to init App:', e)
-  })
+
+      mountApp()
+
+      // Restore the Muon3D account, and the cloud printer it was last showing.
+      // With no printer to show at all, start on the welcome page, which finds
+      // printers on this network and offers the account.
+      //
+      // Wait for the first navigation: a lazy route is not the current route
+      // until its chunk has loaded, and its meta decides here.
+      initCloud().then(() => router.onReady(() => {
+        // Setup reached by navigating inside the app keeps its place too:
+        // reopening a cloud printer runs appInit, which sends every route but
+        // the dashboard back to it.
+        if (router.currentRoute.name === 'setup') return
+
+        const active = cloudState.activePrinterId
+        if (active && cloudState.account && cloudState.printers.some(p => p.id === active)) {
+          activateCloudPrinter(active).catch((e) => consola.debug('Could not reopen the cloud printer', e))
+        } else if (!store.state.config.apiUrl && !router.currentRoute.meta?.printerIndependent) {
+          router.replace('/welcome').catch(() => {})
+        }
+      }))
+    })
+    .catch((e) => {
+      consola.debug('Error attempting to init App:', e)
+    })
+}

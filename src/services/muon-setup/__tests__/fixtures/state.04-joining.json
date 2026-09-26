@@ -38,10 +38,35 @@
   },
   "region": {
     "market": "picker",
-    "country": "GB",
-    "declared": true,
-    "config": "gb",
-    "source": "ap"
+    "reason": "declared",
+    "explanation": "Free English text from the region agent, for logs. Never parse or show it.",
+    "declared_country": "GB",
+    "configuration": "gb",
+    "domain": "GB",
+    "surroundings": "settled",
+    "detected_country": "GB",
+    "basis": "joined-network",
+    "enforcement": "unknown",
+    "locked": false,
+    "channels": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      36,
+      40,
+      44,
+      48
+    ]
   },
   "capabilities": {
     "ethernet": true,
@@ -64,7 +89,9 @@
       "addresses": [],
       "hostname_local": null,
       "internet": null,
-      "error": null
+      "error": null,
+      "region_confirmed": false,
+      "region_error": null
     },
     "name": {
       "status": "pending",

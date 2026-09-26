@@ -10,6 +10,22 @@
         v-if="progress"
         class="muon-setup__progress"
       >{{ $t('app.muon.setup.progress', progress) }}</span>
+      <label
+        v-if="languages.length > 1"
+        class="muon-setup__language"
+      >
+        <span class="muon-setup__visually-hidden">{{ $t('app.muon.setup.language') }}</span>
+        <select
+          :value="pageLanguage"
+          @change="onLanguageChange"
+        >
+          <option
+            v-for="language in languages"
+            :key="language.code"
+            :value="language.code"
+          >{{ language.endonym }}</option>
+        </select>
+      </label>
     </header>
 
     <div
@@ -26,7 +42,19 @@
     </div>
 
     <main class="muon-setup__body">
-      <template v-if="screen === 'S0'">
+      <!-- The printer answered, but its software has no phone setup. -->
+      <template v-if="unavailable">
+        <p class="muon-setup__title">
+          {{ $t('app.muon.setup.unavailable.title') }}
+        </p>
+        <p>{{ $t('app.muon.setup.unavailable.body') }}</p>
+        <a
+          class="muon-setup__open"
+          :href="fluiddUrl"
+        >{{ $t('app.muon.setup.open_printer') }}</a>
+      </template>
+
+      <template v-else-if="screen === 'S0'">
         <v-progress-circular
           indeterminate
           color="primary"
@@ -38,21 +66,39 @@
         </p>
       </template>
 
-      <!-- The screens themselves arrive with FL-3. Until then the panel,
-           which can finish every step on its own, carries the owner on. -->
-      <p v-else>
-        {{ $t('app.muon.setup.continue_on_printer', { name: printerName }) }}
-      </p>
+      <template v-else-if="screen === 'S10'">
+        <p class="muon-setup__title">
+          {{ $t('app.muon.setup.set_up.title', { name: printerName }) }}
+        </p>
+        <a
+          class="muon-setup__open"
+          :href="fluiddUrl"
+        >{{ $t('app.muon.setup.open', { name: printerName }) }}</a>
+      </template>
+
+      <!-- The other screens arrive with FL-3. Until then the panel, which can
+           finish every step on its own, carries the owner on, and S1 offers
+           the printer's full page too. -->
+      <template v-else>
+        <p>{{ $t('app.muon.setup.continue_on_printer', { name: printerName }) }}</p>
+        <a
+          v-if="screen === 'S1'"
+          class="muon-setup__open"
+          :href="fluiddUrl"
+        >{{ $t('app.muon.setup.open', { name: printerName }) }}</a>
+      </template>
     </main>
   </div>
 </template>
 
 <script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+import { Component, Vue, Watch } from 'vue-property-decorator'
+import { loadLocaleMessagesAsync } from '@/plugins/i18n'
 import { setupClient } from '@/services/muon-setup/client'
+import { pageLanguageFor } from '@/services/muon-setup/language'
 import { progressFor, screenFor, type ScreenId } from '@/services/muon-setup/screen'
 import { setupState } from '@/services/muon-setup/state'
-import type { SetupState } from '@/services/muon-setup/types'
+import type { SetupOptions, SetupState } from '@/services/muon-setup/types'
 
 /** The reconnect banner shows after 2 s without the printer (05 §4)... */
 const BANNER_AFTER_MS = 2000
@@ -71,10 +117,17 @@ const S0_HINT_AFTER_MS = 10000
 export default class Setup extends Vue {
   now = Date.now()
   mountedAt = Date.now()
+  languages: SetupOptions['languages'] = []
+  /** The switcher's choice, before the language step is done. */
+  chosenLanguage: string | null = null
   private ticker: number | null = null
 
   get state (): SetupState | null {
     return setupState.state
+  }
+
+  get unavailable (): boolean {
+    return setupState.unavailable
   }
 
   get screen (): ScreenId {
@@ -91,6 +144,23 @@ export default class Setup extends Vue {
 
   get hotspotSsid (): string {
     return this.state?.hotspot.ssid ?? 'Muon-…'
+  }
+
+  /**
+   * The printer's full page. A plain link, which loads Fluidd fresh (05 §2);
+   * a captive-portal window ignores new windows, so no target.
+   */
+  get fluiddUrl (): string {
+    return new URL(import.meta.env.BASE_URL || '/', window.location.href).href
+  }
+
+  get pageLanguage (): string {
+    return pageLanguageFor(
+      this.state,
+      this.languages.map(l => l.code),
+      navigator.languages ?? [navigator.language],
+      this.chosenLanguage
+    )
   }
 
   get disconnectedFor (): number {
@@ -110,10 +180,35 @@ export default class Setup extends Vue {
     return this.now - this.mountedAt >= S0_HINT_AFTER_MS
   }
 
+  // Only the one locale file, and never config/onLocaleChange, which blanks
+  // App.vue while it loads (05 §9).
+  @Watch('pageLanguage', { immediate: true })
+  onPageLanguage (language: string) {
+    loadLocaleMessagesAsync(language)
+  }
+
+  onLanguageChange (event: Event) {
+    this.chooseLanguage((event.target as HTMLSelectElement).value)
+  }
+
+  async chooseLanguage (code: string) {
+    this.chosenLanguage = code
+    if (this.state?.steps.language.status === 'pending') {
+      await setupClient().post('language', { code }).catch(() => null)
+    }
+  }
+
+  async loadLanguages () {
+    try {
+      this.languages = (await setupClient().options()).languages ?? []
+    } catch { /* no muon_setup yet, or the printer is away: no switcher */ }
+  }
+
   created () {
     // The page's own client, not Fluidd's socket: it must never run appInit
     // or switch printers (05 §2).
     setupClient().start()
+    this.loadLanguages()
     this.ticker = window.setInterval(() => { this.now = Date.now() }, 1000)
   }
 
@@ -145,9 +240,34 @@ export default class Setup extends Vue {
   opacity: 0.7;
 }
 
+.muon-setup__language select {
+  min-height: 44px;
+  color: inherit;
+  background: transparent;
+}
+
+.muon-setup__visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
 .muon-setup__body {
   text-align: center;
   padding-top: 48px;
+}
+
+.muon-setup__title {
+  font-size: 1.25rem;
+}
+
+.muon-setup__open {
+  display: inline-block;
+  min-height: 44px;
+  line-height: 44px;
+  margin-top: 16px;
 }
 
 .muon-setup__spinner {

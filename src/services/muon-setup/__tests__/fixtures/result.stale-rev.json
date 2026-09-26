@@ -41,10 +41,35 @@
     },
     "region": {
       "market": "picker",
-      "country": "GB",
-      "declared": true,
-      "config": "gb",
-      "source": "ap"
+      "reason": "declared",
+      "explanation": "Free English text from the region agent, for logs. Never parse or show it.",
+      "declared_country": "GB",
+      "configuration": "gb",
+      "domain": "GB",
+      "surroundings": "settled",
+      "detected_country": "GB",
+      "basis": "joined-network",
+      "enforcement": "unknown",
+      "locked": false,
+      "channels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        36,
+        40,
+        44,
+        48
+      ]
     },
     "capabilities": {
       "ethernet": true,
@@ -69,7 +94,9 @@
         ],
         "hostname_local": "Muon-walnut-8987.local",
         "internet": true,
-        "error": null
+        "error": null,
+        "region_confirmed": true,
+        "region_error": null
       },
       "name": {
         "status": "done",
@@ -89,9 +116,8 @@
         "link": {
           "phase": "code",
           "code": "482913",
-          "expires_at": 1790251620.0,
-          "claim_url": "https://app.muon3d.com/link?code=482913",
-          "account": null
+          "expires_at": 1790251620,
+          "url": "https://control.muon3d.com/link?code=482913"
         }
       },
       "ready": {
