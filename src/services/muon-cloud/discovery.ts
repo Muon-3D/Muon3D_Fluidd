@@ -324,18 +324,51 @@ export function localPageUrl (host: string) {
  * Asks a printer, through its own Moonraker, to start linking, so that its
  * screen shows a code. It does not read the code: linking takes the code as
  * read off the screen, which is the proof that someone is at the printer.
+ *
+ * Moonraker refuses a write without a JSON body (415), so this always sends
+ * one. It answers with where the link stands: usually `connecting`, but
+ * `offer` or `linked` when someone got there first. More than five asks a
+ * minute from one address is a 429.
  */
-export async function showLanCode (apiUrl: string): Promise<void> {
+export async function showLanCode (apiUrl: string): Promise<LanLinkStatus> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), 5000)
   try {
-    const response = await lanFetch(`${apiUrl}/server/muon/link/start`, { method: 'POST', signal: controller.signal })
+    const response = await lanFetch(`${apiUrl}/server/muon/link/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+      signal: controller.signal
+    })
+    const body = await response.json().catch(() => null)
+    if (response.status === 429) {
+      throw new Error('The printer has been asked for a code too many times. Wait a minute, then try again.')
+    }
     if (!response.ok) {
-      const body = await response.json().catch(() => null)
       throw new Error(body?.error?.message ?? `The printer refused to start linking (HTTP ${response.status}).`)
     }
+    const status = body?.result ?? body
+    return status && typeof status.phase === 'string' ? status : { phase: 'connecting' }
   } finally {
     window.clearTimeout(timer)
+  }
+}
+
+/**
+ * What to tell the person after asking a printer for a code. `error` is set
+ * when there is nothing for them to type.
+ */
+export function lanCodeOutcome (name: string, status: LanLinkStatus): { note?: string, error?: string } {
+  switch (status.phase) {
+    case 'offer':
+      return {
+        note: `${name} is already asking on its screen whether to link to ${status.account || 'an account'}. ` +
+          'Accept or decline it there.'
+      }
+    case 'linked':
+      return { error: `${name} is already linked to an account. Its owner must unlink it first.` }
+    default:
+      return { note: `${name} is showing a code on its screen now. Type it below.` }
   }
 }
 
