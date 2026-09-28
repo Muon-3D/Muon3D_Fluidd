@@ -75,7 +75,7 @@
             v-if="shown"
             class="text-caption mb-3"
           >
-            {{ shown }} is showing a code on its screen now. Type it below.
+            {{ shown }}
           </div>
 
           <div class="muon-cloud-dialog__label">
@@ -186,6 +186,7 @@ import { activateCloudPrinter } from '@/services/muon-cloud/activate'
 import {
   discoverPrinters,
   discoveryState,
+  lanCodeOutcome,
   lanLinkAvailability,
   refreshCloudNearby,
   refreshLinkStates,
@@ -217,7 +218,7 @@ export default class LinkPrinterDialog extends Vue {
   error: string | null = null
   claimed: { printer_id: string, name: string } | null = null
   asking: string | null = null
-  /** The printer just asked to show its code. */
+  /** What the printer just asked for a code is doing, as a sentence. */
   shown = ''
   timer: number | null = null
   icons = { printer: '$printer3d' }
@@ -287,10 +288,16 @@ export default class LinkPrinterDialog extends Vue {
     if (p.cloud) return this.askForCode(p.cloud.printerId, p.key, p.name)
     if (!p.lan) return
     this.error = null
+    this.shown = ''
     this.asking = p.key
     try {
-      await showLanCode(p.lan.apiUrl)
-      this.shown = p.name
+      const status = await showLanCode(p.lan.apiUrl)
+      // Someone else may have started it, or linked it: say so, and let
+      // the list show it too.
+      p.lan.link = status
+      const { note, error } = lanCodeOutcome(p.name, status)
+      this.shown = note ?? ''
+      this.error = error ?? null
     } catch (error) {
       this.error = (error as Error).message
     } finally {
@@ -303,7 +310,8 @@ export default class LinkPrinterDialog extends Vue {
     this.asking = key
     try {
       await cloudApi.startLink(printerId)
-      this.shown = name ?? discoveryState.cloud.find(c => c.printerId === printerId)?.name ?? 'The printer'
+      const shown = name ?? discoveryState.cloud.find(c => c.printerId === printerId)?.name ?? 'The printer'
+      this.shown = `${shown} is showing a code on its screen now. Type it below.`
     } catch (error) {
       this.error = (error as Error).message
     } finally {
