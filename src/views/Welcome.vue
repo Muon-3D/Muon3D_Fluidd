@@ -121,7 +121,26 @@
           >
             Enter an address
           </v-btn>
+          <v-btn
+            v-if="bluetoothSupported"
+            small
+            text
+            :loading="bluetoothLooking"
+            @click="findOverBluetooth"
+          >
+            Find over Bluetooth
+          </v-btn>
         </div>
+
+        <v-alert
+          v-if="bluetoothResult"
+          type="info"
+          dense
+          text
+          class="mt-3 mb-0"
+        >
+          {{ bluetoothResult }}
+        </v-alert>
       </section>
 
       <section class="muon-welcome__panel">
@@ -242,6 +261,11 @@ import {
   sameNamedPrinter,
   type LanPrinter
 } from '@/services/muon-cloud/discovery'
+import {
+  bluetoothSupport,
+  chooserDismissed,
+  findPrinterOverBluetooth
+} from '@/services/muon-ble/webBluetooth'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
 import LinkPrinterDialog from '@/components/muon-cloud/LinkPrinterDialog.vue'
 
@@ -278,9 +302,44 @@ export default class Welcome extends Vue {
   /** A printer that would not connect from this page, to offer its own page instead. */
   fallbackHost: string | null = null
   icons = { cloud: '$cloud', lan: '$lan' }
+  /** Web Bluetooth (ADR 0032, KAN-434): Chromium, secure contexts only. */
+  bluetoothSupported = bluetoothSupport().supported
+  bluetoothLooking = false
+  bluetoothResult: string | null = null
 
   get account () {
     return cloudState.account
+  }
+
+  /**
+   * Opens the browser's Bluetooth chooser, reads the chosen printer's
+   * EndpointId, and says what this page knows about it. Identification only:
+   * opening a printer over Bluetooth is KAN-435.
+   */
+  async findOverBluetooth () {
+    this.bluetoothLooking = true
+    this.bluetoothResult = null
+    try {
+      const found = await findPrinterOverBluetooth()
+      const id = found.info.endpointId
+      const mine = cloudState.printers.find(p => p.id === id)
+      const nearby = discoveryState.cloud.find(p => p.printerId === id)
+      if (mine) {
+        this.bluetoothResult = `${found.name} is ${mine.name}, a printer on your account.`
+      } else if (nearby) {
+        this.bluetoothResult = `${found.name} is ${nearby.name}, which is also on this network: use Open above.`
+      } else {
+        this.bluetoothResult = `${found.name} is nearby, but not on this network or your account yet. ` +
+          'To set it up, scan the QR code on its screen with your phone. Opening a printer over Bluetooth ' +
+          'from this page is not available yet.'
+      }
+    } catch (error) {
+      if (!chooserDismissed(error)) {
+        this.bluetoothResult = `Could not read the printer over Bluetooth: ${(error as Error)?.message ?? error}`
+      }
+    } finally {
+      this.bluetoothLooking = false
+    }
   }
 
   get cloudPrinters () {
