@@ -51,6 +51,10 @@ app:
       cant_connect: >-
         Something went wrong, and the interface can't reach the destination. Are you
         sure this is the correct address?
+      blocked_by_page: >-
+        This browser does not let %{host} reach printers on your network, so it
+        cannot check this address. <a href="%{url}">Open the printer's own page</a>
+        instead.
       cors_error: blocked by CORS policy
       cors_note: >-
         The printer may need its Moonraker configuration changed to allow this
