@@ -1,60 +1,19 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
+  bluetoothAvailable,
   bluetoothSupport,
+  choosePrinter,
   chooserDismissed,
+  decodeAdvert,
   decodeInfo,
-  findPrinterOverBluetooth,
-  MUON_BLE_INFO,
-  MUON_BLE_SERVICE
+  displayName,
+  MUON_BLE_COMPANY_ID,
+  MUON_BLE_SERVICE,
+  rememberedDevices
 } from '../webBluetooth'
+import { advert, EID, fakeBluetooth, fakePrinter, info, removeBluetooth } from './fakes'
 
-const EID = '3fa9c0de'.repeat(8)
-
-/** An Iroh_BLE INFO value: version 1, caps, psm 0, max segment, EndpointId. */
-function info (caps = 0, maxSegment = 182, eid = EID): Uint8Array {
-  const bytes = new Uint8Array(38)
-  bytes[0] = 1
-  bytes[1] = caps
-  bytes[4] = maxSegment & 0xff
-  bytes[5] = maxSegment >> 8
-  for (let i = 0; i < 32; i++) bytes[6 + i] = parseInt(eid.slice(i * 2, i * 2 + 2), 16)
-  return bytes
-}
-
-function fakeBluetooth (value: Uint8Array, name: string | null = 'Muon3D-3fa9') {
-  const calls: string[] = []
-  const bt = {
-    requestDevice: vi.fn(async (options: unknown) => {
-      calls.push(`request ${JSON.stringify(options)}`)
-      return {
-        name,
-        gatt: {
-          connect: async () => {
-            calls.push('connect')
-            return {
-              getPrimaryService: async (uuid: string) => {
-                calls.push(`service ${uuid}`)
-                return {
-                  getCharacteristic: async (c: string) => {
-                    calls.push(`characteristic ${c}`)
-                    return { readValue: async () => new DataView(value.buffer) }
-                  }
-                }
-              }
-            }
-          },
-          disconnect: () => calls.push('disconnect')
-        }
-      }
-    })
-  }
-  Object.defineProperty(navigator, 'bluetooth', { value: bt, configurable: true })
-  return calls
-}
-
-afterEach(() => {
-  delete (navigator as unknown as { bluetooth?: unknown }).bluetooth
-})
+afterEach(removeBluetooth)
 
 describe('decodeInfo (Iroh_BLE INFO)', () => {
   it('reads the EndpointId, the segment size and the capability bits', () => {
@@ -78,36 +37,83 @@ describe('decodeInfo (Iroh_BLE INFO)', () => {
   })
 })
 
-describe('findPrinterOverBluetooth', () => {
-  it('asks the chooser for the Muon service, reads INFO once and hangs up', async () => {
-    const calls = fakeBluetooth(info())
-    const found = await findPrinterOverBluetooth()
-    expect(found).toEqual({ name: 'Muon3D-3fa9', info: expect.objectContaining({ endpointId: EID }) })
-    expect(calls).toEqual([
-      `request ${JSON.stringify({ filters: [{ services: [MUON_BLE_SERVICE] }] })}`,
-      'connect',
-      `service ${MUON_BLE_SERVICE}`,
-      `characteristic ${MUON_BLE_INFO}`,
-      'disconnect'
-    ])
+describe('decodeAdvert (manufacturer data after the company id)', () => {
+  it('reads the flags and the EndpointId prefix', () => {
+    expect(decodeAdvert(advert(0x01))).toEqual({ unclaimed: true, busy: false, endpointPrefix: EID.slice(0, 16) })
+    expect(decodeAdvert(advert(0x02))).toEqual({ unclaimed: false, busy: true, endpointPrefix: EID.slice(0, 16) })
+  })
+
+  it('refuses nothing, a short value and another version', () => {
+    expect(decodeAdvert(undefined)).toBeNull()
+    expect(decodeAdvert(new DataView(new Uint8Array([1, 1, 0]).buffer))).toBeNull()
+    const v2 = advert(0)
+    v2.setUint8(0, 2)
+    expect(decodeAdvert(v2)).toBeNull()
+  })
+})
+
+describe('displayName', () => {
+  it("shows an advertised name as the printer's screen does (ADR 0032 D6)", () => {
+    expect(displayName('walnut-8987')).toBe('Walnut · 8987')
+    expect(displayName('Muon-boxwood-367A')).toBe('Boxwood · 367a')
+  })
+
+  it("leaves a name that is not an M1's alone", () => {
+    expect(displayName('Muon3D-3fa9x')).toBeNull()
+    expect(displayName(null)).toBeNull()
+  })
+})
+
+describe('choosePrinter', () => {
+  it('asks the chooser for the Muon service and its manufacturer data, reads INFO once and hangs up', async () => {
+    const printer = fakePrinter()
+    const { requests } = fakeBluetooth({ chosen: printer.device })
+    const chosen = await choosePrinter()
+    expect(chosen.name).toBe('walnut-8987')
+    expect(chosen.info.endpointId).toBe(EID)
+    expect(requests).toEqual([{
+      filters: [{ services: [MUON_BLE_SERVICE] }],
+      optionalManufacturerData: [MUON_BLE_COMPANY_ID]
+    }])
+    expect(printer.calls).toEqual(['connect', `service ${MUON_BLE_SERVICE}`, 'read INFO', 'disconnect'])
   })
 
   it('hangs up even when INFO cannot be decoded', async () => {
-    const calls = fakeBluetooth(new Uint8Array([9, 9, 9]))
-    await expect(findPrinterOverBluetooth()).rejects.toThrow(/INFO/)
-    expect(calls[calls.length - 1]).toBe('disconnect')
+    const printer = fakePrinter({ infoValue: new Uint8Array([9, 9, 9]) })
+    fakeBluetooth({ chosen: printer.device })
+    await expect(choosePrinter()).rejects.toThrow(/INFO/)
+    expect(printer.calls[printer.calls.length - 1]).toBe('disconnect')
   })
 
-  it('tells a dismissed chooser apart from a failure', () => {
-    expect(chooserDismissed(Object.assign(new Error('x'), { name: 'NotFoundError' }))).toBe(true)
+  it('tells a dismissed chooser apart from a failure', async () => {
+    fakeBluetooth()
+    const error = await choosePrinter().catch(e => e)
+    expect(chooserDismissed(error)).toBe(true)
     expect(chooserDismissed(new Error('GATT failed'))).toBe(false)
   })
 })
 
-describe('bluetoothSupport', () => {
+describe('what the browser offers', () => {
   it('needs Web Bluetooth', () => {
     expect(bluetoothSupport()).toEqual({ supported: false, reason: 'unsupported' })
-    fakeBluetooth(info())
+    fakeBluetooth()
     expect(bluetoothSupport()).toEqual({ supported: true })
+  })
+
+  it("says the adapter's state only where the browser can tell", async () => {
+    fakeBluetooth()
+    expect(await bluetoothAvailable()).toBeNull()
+    fakeBluetooth({ available: false })
+    expect(await bluetoothAvailable()).toBe(false)
+    removeBluetooth()
+    expect(await bluetoothAvailable()).toBe(false)
+  })
+
+  it('lists remembered devices only where the browser keeps them', async () => {
+    fakeBluetooth()
+    expect(await rememberedDevices()).toEqual([])
+    const printer = fakePrinter()
+    fakeBluetooth({ remembered: [printer.device] })
+    expect(await rememberedDevices()).toEqual([printer.device])
   })
 })

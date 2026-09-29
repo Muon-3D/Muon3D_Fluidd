@@ -11,6 +11,7 @@ import type {
   ManagedIrohRelay,
   PrinterSocket
 } from '@/services/managed-transport'
+import { bluetoothRouteFor, type WasmBleLink } from '@/services/muon-ble/link'
 import { cloudBaseUrl } from './api'
 
 const KEY_STORAGE = 'muon.cloud.key'
@@ -26,6 +27,8 @@ interface WasmSocket {
 
 interface WasmPrinter {
   printerId (): string;
+  /** SEC-7's comparison value of this connection, "F6Q TDH" (muon-link#33 on). */
+  comparison? (): string;
   fetch (method: string, path: string, headers: string[], body: Uint8Array): Promise<{ status: number, headers: string[], body: Uint8Array }>;
   openWebSocket (path: string): Promise<WasmSocket>;
   close (): void;
@@ -35,6 +38,8 @@ interface WasmEndpoint {
   endpointId (): string;
   secretKey (): Uint8Array;
   connect (printerId: string): Promise<WasmPrinter>;
+  /** Takes a Web Bluetooth link to a printer (muon-link#31 on; ADR 0032 D3). */
+  addLink? (role: 'central', maxSegment?: number): WasmBleLink;
   close (): Promise<void>;
 }
 
@@ -219,12 +224,32 @@ export class IrohPrinter implements ManagedIrohRelay {
   }
 }
 
+/**
+ * Dials `printerId`. When the person asked to open it over Bluetooth
+ * (`useBluetoothFor`), the link comes up first, and Iroh then has the radio
+ * as a path as well as the relay: for a printer with no Wi-Fi, the only one.
+ */
+export async function dialPrinter (endpoint: WasmEndpoint, printerId: string): Promise<WasmPrinter> {
+  let bluetoothError: Error | null = null
+  try {
+    await bluetoothRouteFor(endpoint, printerId)
+  } catch (error) {
+    bluetoothError = error as Error
+  }
+  try {
+    return await endpoint.connect(printerId)
+  } catch (error) {
+    if (bluetoothError) throw new Error(`Couldn't reach the printer over Bluetooth: ${bluetoothError.message}`)
+    throw error
+  }
+}
+
 /** Fluidd's `ManagedIrohEndpoint`: dials the printer the handoff names. */
 export function managedEndpointFactory (): Promise<ManagedIrohEndpoint> {
   return Promise.resolve({
     async openRelay (session: AuthorizedManagedRelaySession) {
       const endpoint = await browserEndpoint(session.relayUrl)
-      return new IrohPrinter(await endpoint.connect(session.printerId))
+      return new IrohPrinter(await dialPrinter(endpoint, session.printerId))
     },
     close () {}
   })
