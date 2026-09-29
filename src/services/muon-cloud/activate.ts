@@ -131,8 +131,9 @@ export async function activateLocalPrinter (instance: InstanceConfig): Promise<b
   if (config.apiConfig.socketUrl && config.apiConnected && config.apiAuthenticated) {
     Vue.$socket.connect(config.apiConfig.socketUrl)
   }
-  if (!config.apiConnected) activationState.error = `Could not connect to ${name}.`
-  return config.apiConnected
+  const connected = config.apiConnected === true
+  if (!connected) activationState.error = `Could not connect to ${name}.`
+  return connected
 }
 
 /**

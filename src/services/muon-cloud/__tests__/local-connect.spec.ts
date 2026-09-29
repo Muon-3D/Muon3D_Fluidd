@@ -84,7 +84,7 @@ describe('pageCanReach', () => {
     expect(await pageCanReach(printer.apiUrl)).toBe(false)
   })
 
-  it("does not ask from a plain-HTTP page, where nothing is mixed content", async () => {
+  it('does not ask from a plain-HTTP page, where nothing is mixed content', async () => {
     servedOver('http:')
     const fetch = browserSays('blocks')
 
