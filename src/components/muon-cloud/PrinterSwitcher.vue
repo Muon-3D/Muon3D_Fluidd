@@ -137,7 +137,7 @@
         <span class="muon-switcher__badge">{{ p.linked ? 'Linked' : 'Local' }}</span>
       </div>
       <div class="muon-switcher__meta">
-        {{ p.localAddrs[0] || 'address unknown' }} · {{ p.linked ? 'linked to another account · connect locally' : 'on your network · connect' }}
+        {{ nearbyAddress(p) || 'address unknown' }} · {{ p.linked ? 'linked to another account · connect locally' : 'on your network · connect' }}
       </div>
     </button>
     <div
@@ -201,6 +201,9 @@
       class="ma-3"
     >
       {{ activationError }}
+      <template v-if="activationFallback">
+        <a :href="activationFallback">Open the printer's own page</a> instead.
+      </template>
     </v-alert>
 
     <add-instance-dialog
@@ -238,6 +241,7 @@ import {
   discoveryState,
   instanceFor,
   instanceForHost,
+  nearbyHost,
   sameNamedPrinter,
   type CloudNearbyPrinter,
   type LanPrinter
@@ -271,6 +275,14 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
 
   get activationError () {
     return activationState.error
+  }
+
+  get activationFallback () {
+    return activationState.fallbackUrl
+  }
+
+  nearbyAddress (p: CloudNearbyPrinter) {
+    return nearbyHost(p.localAddrs)
   }
 
   get localInstances (): InstanceConfig[] {
@@ -309,15 +321,21 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
 
   /** Connects to a printer on this network: a local connection, no account needed. */
   async openNearby (p: CloudNearbyPrinter) {
-    const host = p.localAddrs[0]
+    const host = nearbyHost(p.localAddrs)
     if (!host) return
-    this.$emit('click')
-    await activateLocalPrinter(instanceForHost(host, p.name))
+    await this.openLocal(instanceForHost(host, p.name))
   }
 
   async pickFound (p: LanPrinter) {
-    this.$emit('click')
-    await activateLocalPrinter(instanceFor(p))
+    await this.openLocal(instanceFor(p))
+  }
+
+  /**
+   * The menu closes once the printer answered. When it did not, it stays open
+   * with the reason, and the printer's own page where this page is blocked.
+   */
+  async openLocal (instance: InstanceConfig) {
+    if (await activateLocalPrinter(instance)) this.$emit('click')
   }
 
   status (id: string): PrinterStatus | undefined {
@@ -401,9 +419,11 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
   }
 
   async pickLocal (instance: InstanceConfig) {
-    this.$emit('click')
-    if (instance.active && !cloudState.activePrinterId) return
-    await activateLocalPrinter(instance)
+    if (instance.active && !cloudState.activePrinterId) {
+      this.$emit('click')
+      return
+    }
+    await this.openLocal(instance)
   }
 }
 </script>

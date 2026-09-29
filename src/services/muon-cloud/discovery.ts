@@ -37,7 +37,13 @@ import type { InstanceConfig } from '@/store/config/types'
 import { cloudApi } from './api'
 
 export interface LanLinkStatus {
-  phase: 'unavailable' | 'unlinked' | 'connecting' | 'code' | 'offer' | 'linked' | 'failed' | string;
+  /**
+   * muon-link's `LinkPhase`, plus two this browser adds: `unsupported` when
+   * the printer's Moonraker has no `/server/muon/link` (its MuonOS predates the
+   * account link), and `unreachable` when the status could not be read at all.
+   */
+  phase: 'unavailable' | 'unlinked' | 'connecting' | 'code' | 'offer' | 'linked' | 'failed' |
+    'unsupported' | 'unreachable' | string;
   account?: string;
   code?: string;
   message?: string;
@@ -188,13 +194,21 @@ function apiUrlFor (host: string) {
   return `http://${host}`
 }
 
-/** Reads a printer's link state through its own Moonraker. */
+/**
+ * Reads a printer's link state through its own Moonraker.
+ *
+ * A 404 means the printer's software has no account link (`unsupported`).
+ * Anything else that stops the read, such as a timeout, a refused connection
+ * or the browser blocking the request, says nothing about the printer's
+ * version (`unreachable`). Both used to read as `unavailable`, which told
+ * people to update a printer that was already on the newest build.
+ */
 export async function lanLinkStatus (apiUrl: string): Promise<LanLinkStatus> {
   try {
     const s = await getJson(`${apiUrl}/server/muon/link`, {}, 3000)
-    return s && typeof s.phase === 'string' ? s : { phase: 'unavailable' }
-  } catch {
-    return { phase: 'unavailable' }
+    return s && typeof s.phase === 'string' ? s : { phase: 'unsupported' }
+  } catch (error) {
+    return { phase: error instanceof Error && error.message === 'HTTP 404' ? 'unsupported' : 'unreachable' }
   }
 }
 
@@ -210,6 +224,46 @@ export async function probe (host: string, timeout = PROBE_TIMEOUT_MS): Promise<
   if (!identity || typeof identity !== 'object') return null
   const name = String(identity.display || identity.name || host)
   return { host, apiUrl, name, link: await lanLinkStatus(apiUrl) }
+}
+
+/**
+ * Whether this page may talk to the printer at `apiUrl` at all.
+ *
+ * A page served over HTTPS (app.muon3d.com) asking a plain-HTTP printer is
+ * mixed content. Chromium lets it through once the person allows local network
+ * access; other browsers, and a refused prompt, block it before it leaves the
+ * machine. Fluidd's own connect does not report that: it saves the address,
+ * points itself at it and shows a dashboard that never loads. Asking first lets
+ * a blocked printer leave Fluidd where it was, with nothing saved.
+ *
+ * Any HTTP answer, even an error status, means the page can reach it.
+ */
+export async function pageCanReach (apiUrl: string, timeout = PROBE_TIMEOUT_MS): Promise<boolean> {
+  if (location.protocol !== 'https:' || !apiUrl.startsWith('http:')) return true
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeout)
+  try {
+    await lanFetch(`${apiUrl.replace(/\/+$/, '')}/server/info`, { mode: 'no-cors', signal: controller.signal, cache: 'no-store' })
+    return true
+  } catch {
+    return false
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+/** The subnet an M1's own hotspot hands out (NetworkManager's shared mode). */
+const OWN_HOTSPOT = /^10\.42\.0\.\d+$/
+
+/**
+ * The address to open a printer the service found nearby at. The printer
+ * reports every private IPv4 address it holds, sorted, and while its hotspot
+ * is up that includes 10.42.0.1, which sorts first and which nobody on the
+ * owner's network can reach. That address is only the answer when it is the
+ * only one.
+ */
+export function nearbyHost (localAddrs: string[]): string | null {
+  return localAddrs.find(a => !OWN_HOTSPOT.test(a)) ?? localAddrs[0] ?? null
 }
 
 /** Whether something answered at `host` quickly. A refusal is an answer. */
@@ -313,14 +367,6 @@ export async function refreshLinkStates () {
 }
 
 /**
- * The printer's own page on this network. Fluidd connects from the page it
- * is on where the browser allows it; this is the fallback where it does not.
- */
-export function localPageUrl (host: string) {
-  return `http://${host}/`
-}
-
-/**
  * Asks a printer, through its own Moonraker, to start linking, so that its
  * screen shows a code. It does not read the code: linking takes the code as
  * read off the screen, which is the proof that someone is at the printer.
@@ -409,7 +455,13 @@ export function lanLinkAvailability (link: LanLinkStatus): { canShow: boolean, n
       return { canShow: false, note: 'waiting for confirmation on its screen' }
     case 'linked':
       return { canShow: false, note: 'linked to an account · its owner must unlink it first' }
+    case 'unsupported':
+      return { canShow: false, note: 'its MuonOS does not include account linking yet' }
+    case 'unavailable':
+      return { canShow: false, note: 'not set up to link to a Muon3D account' }
+    case 'unreachable':
+      return { canShow: false, note: 'could not read its link status from this browser' }
     default:
-      return { canShow: false, note: 'needs a software update before it can link' }
+      return { canShow: false, note: 'cannot link from here right now' }
   }
 }
