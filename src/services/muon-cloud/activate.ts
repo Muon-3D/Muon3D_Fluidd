@@ -20,14 +20,16 @@ import {
 } from '@/services/managed-transport'
 import { managedEndpointFactory } from './iroh'
 import { cloudState, printerName, requestAccess, setActiveCloudPrinter } from './state'
+import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
+import { pageCanReach } from './discovery'
 
-/** The API origin Fluidd is told about while a cloud printer is selected. Never dialled. */
-export const MANAGED_API_URL = 'https://muon-cloud.invalid'
-export const MANAGED_SOCKET_URL = 'wss://muon-cloud.invalid/websocket'
+export { MANAGED_API_URL, MANAGED_SOCKET_URL }
 
 export const activationState = Vue.observable({
   switching: null as string | null,
-  error: null as string | null
+  error: null as string | null,
+  /** The printer's own page, when this page may not reach the printer itself. */
+  fallbackUrl: null as string | null
 })
 
 let current: { transport: PrinterTransport, release: () => void } | null = null
@@ -58,6 +60,7 @@ export async function activateCloudPrinter (printerId: string) {
   const mine = ++generation
   activationState.switching = printerId
   activationState.error = null
+  activationState.fallbackUrl = null
   try {
     Vue.$socket?.releaseTransportSocket(true)
     releaseCurrent()
@@ -100,10 +103,26 @@ export async function activateCloudPrinter (printerId: string) {
   }
 }
 
-/** Points Fluidd back at a printer on the local network. */
-export async function activateLocalPrinter (instance: InstanceConfig) {
-  ++generation
+/**
+ * Points Fluidd back at a printer on the local network.
+ *
+ * Resolves true once Moonraker answered, including when it wants a password,
+ * so the caller can show the dashboard. False leaves the reason in
+ * `activationState.error`. Where this page may not reach the printer at all,
+ * Fluidd stays on the printer it had, nothing is saved, and
+ * `activationState.fallbackUrl` is the printer's own page, which works in any
+ * browser.
+ */
+export async function activateLocalPrinter (instance: InstanceConfig): Promise<boolean> {
   activationState.error = null
+  activationState.fallbackUrl = null
+  const name = instance.name || instance.apiUrl
+  if (!await pageCanReach(instance.apiUrl)) {
+    activationState.error = `This browser does not let ${location.host} reach ${name} on your network.`
+    activationState.fallbackUrl = `${instance.apiUrl.replace(/\/+$/, '')}/`
+    return false
+  }
+  ++generation
   releaseCurrent()
   setActiveCloudPrinter(null)
   forgetManagedInstance()
@@ -112,6 +131,9 @@ export async function activateLocalPrinter (instance: InstanceConfig) {
   if (config.apiConfig.socketUrl && config.apiConnected && config.apiAuthenticated) {
     Vue.$socket.connect(config.apiConfig.socketUrl)
   }
+  const connected = config.apiConnected === true
+  if (!connected) activationState.error = `Could not connect to ${name}.`
+  return connected
 }
 
 /**
