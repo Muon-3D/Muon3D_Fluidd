@@ -21,7 +21,7 @@
           >
             {{ icons.lan }}
           </v-icon>
-          On this network
+          {{ bluetoothSearch ? 'On this network and nearby' : 'On this network' }}
           <v-spacer />
           <span
             v-if="searching"
@@ -44,11 +44,19 @@
         >
           <span
             class="muon-welcome__dot"
-            :class="{ 'is-offline': !p.host }"
+            :class="{ 'is-offline': !p.host && !p.nearby }"
           />
           <span class="muon-welcome__printer-text">
             <span class="muon-welcome__printer-name">{{ p.name }}</span>
-            <span class="muon-welcome__printer-meta">{{ p.meta }}</span>
+            <span class="muon-welcome__printer-meta">
+              <v-icon
+                v-if="p.nearby"
+                x-small
+                class="muon-welcome__meta-icon"
+              >
+                {{ icons.bluetooth }}
+              </v-icon>{{ p.meta }}
+            </span>
           </span>
           <span class="muon-welcome__row-actions">
             <v-progress-circular
@@ -59,7 +67,7 @@
             />
             <template v-else>
               <v-btn
-                v-if="!p.linked"
+                v-if="!p.linked && p.action === 'open'"
                 small
                 text
                 :disabled="!p.canLink"
@@ -71,10 +79,10 @@
               <app-btn
                 small
                 color="primary"
-                :disabled="!p.host || !!connecting"
-                @click="openRow(p)"
+                :disabled="!canAct(p)"
+                @click="act(p)"
               >
-                Open
+                {{ actionLabel(p) }}
               </app-btn>
             </template>
           </span>
@@ -86,11 +94,81 @@
           <template v-if="searching">
             Looking for Muon3D printers…
           </template>
+          <template v-else-if="bluetoothSearch">
+            No Muon3D printers found on this network. A new printer isn't on Wi-Fi yet: use Look nearby
+            to find it over Bluetooth.
+          </template>
           <template v-else>
             No Muon3D printers found on your network yet. Check that the printer is on and connected
             to Wi-Fi. If your browser asks to look for devices on your local network, allow it.
           </template>
         </div>
+
+        <!-- The Bluetooth half of the search. A browser cannot scan by itself:
+             its chooser opens from a click. -->
+        <div
+          v-if="bluetoothOff"
+          class="muon-welcome__printer is-row"
+          data-tid="bluetooth-off"
+        >
+          <v-icon small>
+            {{ icons.bluetooth }}
+          </v-icon>
+          <span class="muon-welcome__printer-text">
+            <span class="muon-welcome__printer-name">Bluetooth is off</span>
+            <span class="muon-welcome__printer-meta">New printers won't show. Turn it on in this computer's settings.</span>
+          </span>
+        </div>
+        <div
+          v-else-if="bluetoothSearch"
+          class="muon-welcome__printer is-row"
+          data-tid="look-nearby"
+        >
+          <v-icon small>
+            {{ icons.bluetooth }}
+          </v-icon>
+          <span class="muon-welcome__printer-text">
+            <span class="muon-welcome__printer-name">A printer that isn't on Wi-Fi yet?</span>
+            <span class="muon-welcome__printer-meta">Your browser lists the printers it hears nearby.</span>
+          </span>
+          <span class="muon-welcome__row-actions">
+            <v-btn
+              small
+              text
+              :loading="nearby.choosing"
+              :disabled="!!connecting"
+              @click="onLookNearby"
+            >
+              Look nearby
+            </v-btn>
+          </span>
+        </div>
+        <p
+          v-else-if="bluetoothMissing"
+          class="muon-welcome__note"
+        >
+          To find a printer that isn't on Wi-Fi yet, open this page in Chrome or Edge, or use the Muon3D app.
+        </p>
+
+        <v-alert
+          v-if="nearby.error"
+          type="error"
+          dense
+          text
+          class="mt-3 mb-0"
+        >
+          {{ nearby.error }}
+        </v-alert>
+        <v-alert
+          v-if="notice"
+          type="info"
+          dense
+          text
+          class="mt-3 mb-0"
+          data-tid="nearby-notice"
+        >
+          {{ notice }}
+        </v-alert>
 
         <v-alert
           v-if="error"
@@ -121,26 +199,7 @@
           >
             Enter an address
           </v-btn>
-          <v-btn
-            v-if="bluetoothSupported"
-            small
-            text
-            :loading="bluetoothLooking"
-            @click="findOverBluetooth"
-          >
-            Find over Bluetooth
-          </v-btn>
         </div>
-
-        <v-alert
-          v-if="bluetoothResult"
-          type="info"
-          dense
-          text
-          class="mt-3 mb-0"
-        >
-          {{ bluetoothResult }}
-        </v-alert>
       </section>
 
       <section class="muon-welcome__panel">
@@ -252,38 +311,12 @@ import { Component, Vue } from 'vue-property-decorator'
 import type { InstanceConfig } from '@/store/config/types'
 import { cloudState } from '@/services/muon-cloud/state'
 import { activateCloudPrinter, activateLocalPrinter, activationState } from '@/services/muon-cloud/activate'
-import {
-  discoverPrinters,
-  discoveryState,
-  instanceForHost,
-  lanLinkAvailability,
-  nearbyHost,
-  sameNamedPrinter,
-  type LanPrinter
-} from '@/services/muon-cloud/discovery'
-import {
-  bluetoothSupport,
-  chooserDismissed,
-  findPrinterOverBluetooth
-} from '@/services/muon-ble/webBluetooth'
+import { discoverPrinters, discoveryState, instanceForHost } from '@/services/muon-cloud/discovery'
+import { searchRows, type SearchRow } from '@/services/muon-cloud/searchRows'
+import { lookNearby, nearbyState, startNearby, stopNearby } from '@/services/muon-ble/nearby'
+import { useBluetoothFor } from '@/services/muon-ble/link'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
 import LinkPrinterDialog from '@/components/muon-cloud/LinkPrinterDialog.vue'
-
-/** One printer on this network, from the LAN search, the service, or both. */
-interface LocalRow {
-  key: string;
-  name: string;
-  /** Its address on this network, when known. */
-  host: string | null;
-  meta: string;
-  /** Why it can or cannot be linked, in words. */
-  status: string;
-  linked: boolean;
-  canLink: boolean;
-  /** Set when the service sees it: the code is then asked for through the service. */
-  cloudId?: string;
-  lan?: LanPrinter;
-}
 
 @Component({ components: { CloudAccountDialog, LinkPrinterDialog } })
 export default class Welcome extends Vue {
@@ -296,50 +329,35 @@ export default class Welcome extends Vue {
   /** A printer the LAN search found, to show a code as soon as the link dialog opens. */
   linkHost = ''
   /** A printer picked for linking before sign-in. */
-  pendingLink: LocalRow | null = null
+  pendingLink: SearchRow | null = null
   connecting: string | null = null
   error: string | null = null
   /** A printer that would not connect from this page, to offer its own page instead. */
   fallbackUrl: string | null = null
-  icons = { cloud: '$cloud', lan: '$lan' }
-  /** Web Bluetooth (ADR 0032, KAN-434): Chromium, secure contexts only. */
-  bluetoothSupported = bluetoothSupport().supported
-  bluetoothLooking = false
-  bluetoothResult: string | null = null
+  icons = { cloud: '$cloud', lan: '$lan', bluetooth: '$bluetooth' }
+  /** What a nearby printer's button found out, in words. */
+  notice: string | null = null
 
   get account () {
     return cloudState.account
   }
 
-  /**
-   * Opens the browser's Bluetooth chooser, reads the chosen printer's
-   * EndpointId, and says what this page knows about it. Identification only:
-   * opening a printer over Bluetooth is KAN-435.
-   */
-  async findOverBluetooth () {
-    this.bluetoothLooking = true
-    this.bluetoothResult = null
-    try {
-      const found = await findPrinterOverBluetooth()
-      const id = found.info.endpointId
-      const mine = cloudState.printers.find(p => p.id === id)
-      const nearby = discoveryState.cloud.find(p => p.printerId === id)
-      if (mine) {
-        this.bluetoothResult = `${found.name} is ${mine.name}, a printer on your account.`
-      } else if (nearby) {
-        this.bluetoothResult = `${found.name} is ${nearby.name}, which is also on this network: use Open above.`
-      } else {
-        this.bluetoothResult = `${found.name} is nearby, but not on this network or your account yet. ` +
-          'To set it up, scan the QR code on its screen with your phone. Opening a printer over Bluetooth ' +
-          'from this page is not available yet.'
-      }
-    } catch (error) {
-      if (!chooserDismissed(error)) {
-        this.bluetoothResult = `Could not read the printer over Bluetooth: ${(error as Error)?.message ?? error}`
-      }
-    } finally {
-      this.bluetoothLooking = false
-    }
+  get nearby () {
+    return nearbyState
+  }
+
+  /** Web Bluetooth (ADR 0032, KAN-434): Chromium, secure contexts only. */
+  get bluetoothSearch () {
+    return nearbyState.support === 'supported'
+  }
+
+  get bluetoothOff () {
+    return this.bluetoothSearch && nearbyState.radio === 'off'
+  }
+
+  /** A secure page in a browser with no Web Bluetooth: Safari, Firefox, any iOS browser. */
+  get bluetoothMissing () {
+    return nearbyState.support === 'unsupported'
   }
 
   get cloudPrinters () {
@@ -347,53 +365,17 @@ export default class Welcome extends Vue {
   }
 
   /**
-   * Every printer on this network, linked or not. A printer both searches
-   * found appears once, with what the service knows about its link.
+   * Every printer on this network or heard nearby, linked or not. A printer
+   * found more than one way lists once (`searchRows`).
    */
-  get localRows (): LocalRow[] {
-    const rows: LocalRow[] = []
-    for (const l of discoveryState.found) {
-      const c = discoveryState.cloud.find(x => sameNamedPrinter(x.name, l.name))
-      if (c) {
-        rows.push(this.row(c.printerId, l.name, l.host, c.linked, this.isMine(c.printerId), c.printerId, l))
-        continue
-      }
-      const linked = l.link.phase === 'linked'
-      const mine = linked && !!l.link.account && l.link.account === this.account?.email
-      const { canShow, note } = lanLinkAvailability(l.link)
-      rows.push({
-        key: l.host,
-        name: l.name,
-        host: l.host,
-        meta: `${l.host} · ${linked ? (mine ? 'in your account' : 'linked to an account') : note}`,
-        status: note,
-        linked,
-        canLink: canShow,
-        lan: l
-      })
-    }
-    for (const c of discoveryState.cloud) {
-      if (discoveryState.found.some(l => sameNamedPrinter(c.name, l.name))) continue
-      rows.push(this.row(c.printerId, c.name, nearbyHost(c.localAddrs), c.linked, this.isMine(c.printerId), c.printerId))
-    }
-    return rows
-  }
-
-  row (key: string, name: string, host: string | null, linked: boolean, mine: boolean, cloudId: string, lan?: LanPrinter): LocalRow {
-    const status = !linked
-      ? 'not linked to an account'
-      : mine ? 'in your account' : 'linked to another account'
-    return {
-      key,
-      name,
-      host,
-      meta: `${host ?? 'address unknown'} · ${status}`,
-      status,
-      linked,
-      canLink: !linked,
-      cloudId,
-      lan
-    }
+  get localRows (): SearchRow[] {
+    return searchRows({
+      found: discoveryState.found,
+      cloud: discoveryState.cloud,
+      nearby: nearbyState.printers,
+      account: cloudState.printers,
+      email: this.account?.email ?? null
+    })
   }
 
   get scanning () {
@@ -410,6 +392,11 @@ export default class Welcome extends Vue {
 
   created () {
     discoverPrinters().catch(() => {})
+    startNearby().catch(() => {})
+  }
+
+  destroyed () {
+    stopNearby()
   }
 
   rescan () {
@@ -417,22 +404,63 @@ export default class Welcome extends Vue {
     discoverPrinters(true).catch(() => {})
   }
 
-  isMine (printerId: string) {
-    return cloudState.printers.some(p => p.id === printerId)
-  }
-
   /**
    * Connects Fluidd, on this page, to a printer on this network. That is a
    * local connection, open to anyone on the network unless the printer has a
    * password, and it needs no account.
    */
-  async openRow (p: LocalRow) {
+  async openRow (p: SearchRow) {
     if (!p.host) return
     await this.connectInstance(instanceForHost(p.host, p.name), p.key)
   }
 
+  actionLabel (p: SearchRow) {
+    if (p.action === 'set-up') return 'Set up'
+    if (p.action === 'nearby-info') return 'About'
+    return 'Open'
+  }
+
+  canAct (p: SearchRow) {
+    if (this.connecting) return false
+    return p.action !== 'open' || !!p.host
+  }
+
+  act (p: SearchRow) {
+    this.notice = null
+    switch (p.action) {
+      case 'open':
+        return this.openRow(p)
+      case 'open-cloud':
+        return p.cloudId ? this.openCloud(p.cloudId) : undefined
+      case 'open-bluetooth':
+        if (!p.cloudId || !p.nearby) return
+        // The link comes up when the printer is dialled (iroh.ts `dialPrinter`).
+        useBluetoothFor(p.cloudId, p.nearby.device)
+        return this.openCloud(p.cloudId)
+      case 'set-up':
+        this.notice = `${p.name} isn't on Wi-Fi yet. To set it up from this computer, join its Wi-Fi, ` +
+          `${this.hotspotName(p)}, and open http://10.42.0.1/setup. Or scan the QR code on its screen ` +
+          'with the Muon3D app.'
+        return
+      case 'nearby-info':
+        this.notice = `${p.name} is nearby. This browser hears it over Bluetooth, but it isn't on this ` +
+          "network or your account. Join the network it's on, or link it to your account at the printer."
+    }
+  }
+
+  /** The printer's hotspot is its hostname: `Muon-walnut-8987`. */
+  hotspotName (p: SearchRow) {
+    return p.nearby?.localName ? `Muon-${p.nearby.localName}` : 'Muon-…'
+  }
+
+  /** Opens the browser's chooser. Straight from the click: the browser insists. */
+  async onLookNearby () {
+    this.notice = null
+    await lookNearby()
+  }
+
   /** Makes the printer show a link code, and opens the dialog to type it into. */
-  linkRow (p: LocalRow) {
+  linkRow (p: SearchRow) {
     if (!this.account) {
       this.pendingLink = p
       this.openAccount('sign-in')
@@ -671,6 +699,18 @@ export default class Welcome extends Vue {
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--m3d-accent);
+  }
+
+  &__meta-icon {
+    margin-right: 4px;
+    vertical-align: -1px;
+    color: inherit !important;
+  }
+
+  &__note {
+    margin: 0 0 8px;
+    font-size: var(--m3d-text-xs);
+    color: var(--m3d-text-muted);
   }
 
   &__empty {
