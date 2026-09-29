@@ -226,6 +226,46 @@ export async function probe (host: string, timeout = PROBE_TIMEOUT_MS): Promise<
   return { host, apiUrl, name, link: await lanLinkStatus(apiUrl) }
 }
 
+/**
+ * Whether this page may talk to the printer at `apiUrl` at all.
+ *
+ * A page served over HTTPS (app.muon3d.com) asking a plain-HTTP printer is
+ * mixed content. Chromium lets it through once the person allows local network
+ * access; other browsers, and a refused prompt, block it before it leaves the
+ * machine. Fluidd's own connect does not report that: it saves the address,
+ * points itself at it and shows a dashboard that never loads. Asking first lets
+ * a blocked printer leave Fluidd where it was, with nothing saved.
+ *
+ * Any HTTP answer, even an error status, means the page can reach it.
+ */
+export async function pageCanReach (apiUrl: string, timeout = PROBE_TIMEOUT_MS): Promise<boolean> {
+  if (location.protocol !== 'https:' || !apiUrl.startsWith('http:')) return true
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeout)
+  try {
+    await lanFetch(`${apiUrl.replace(/\/+$/, '')}/server/info`, { mode: 'no-cors', signal: controller.signal, cache: 'no-store' })
+    return true
+  } catch {
+    return false
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+/** The subnet an M1's own hotspot hands out (NetworkManager's shared mode). */
+const OWN_HOTSPOT = /^10\.42\.0\.\d+$/
+
+/**
+ * The address to open a printer the service found nearby at. The printer
+ * reports every private IPv4 address it holds, sorted, and while its hotspot
+ * is up that includes 10.42.0.1, which sorts first and which nobody on the
+ * owner's network can reach. That address is only the answer when it is the
+ * only one.
+ */
+export function nearbyHost (localAddrs: string[]): string | null {
+  return localAddrs.find(a => !OWN_HOTSPOT.test(a)) ?? localAddrs[0] ?? null
+}
+
 /** Whether something answered at `host` quickly. A refusal is an answer. */
 async function answersQuickly (host: string): Promise<boolean> {
   const controller = new AbortController()
@@ -324,14 +364,6 @@ export async function refreshLinkStates () {
   await Promise.all(discoveryState.found.map(async p => {
     remember({ ...p, link: await lanLinkStatus(p.apiUrl) })
   }))
-}
-
-/**
- * The printer's own page on this network. Fluidd connects from the page it
- * is on where the browser allows it; this is the fallback where it does not.
- */
-export function localPageUrl (host: string) {
-  return `http://${host}/`
 }
 
 /**
