@@ -37,7 +37,13 @@ import type { InstanceConfig } from '@/store/config/types'
 import { cloudApi } from './api'
 
 export interface LanLinkStatus {
-  phase: 'unavailable' | 'unlinked' | 'connecting' | 'code' | 'offer' | 'linked' | 'failed' | string;
+  /**
+   * muon-link's `LinkPhase`, plus two this browser adds: `unsupported` when
+   * the printer's Moonraker has no `/server/muon/link` (its MuonOS predates the
+   * account link), and `unreachable` when the status could not be read at all.
+   */
+  phase: 'unavailable' | 'unlinked' | 'connecting' | 'code' | 'offer' | 'linked' | 'failed' |
+    'unsupported' | 'unreachable' | string;
   account?: string;
   code?: string;
   message?: string;
@@ -188,13 +194,21 @@ function apiUrlFor (host: string) {
   return `http://${host}`
 }
 
-/** Reads a printer's link state through its own Moonraker. */
+/**
+ * Reads a printer's link state through its own Moonraker.
+ *
+ * A 404 means the printer's software has no account link (`unsupported`).
+ * Anything else that stops the read, such as a timeout, a refused connection
+ * or the browser blocking the request, says nothing about the printer's
+ * version (`unreachable`). Both used to read as `unavailable`, which told
+ * people to update a printer that was already on the newest build.
+ */
 export async function lanLinkStatus (apiUrl: string): Promise<LanLinkStatus> {
   try {
     const s = await getJson(`${apiUrl}/server/muon/link`, {}, 3000)
-    return s && typeof s.phase === 'string' ? s : { phase: 'unavailable' }
-  } catch {
-    return { phase: 'unavailable' }
+    return s && typeof s.phase === 'string' ? s : { phase: 'unsupported' }
+  } catch (error) {
+    return { phase: error instanceof Error && error.message === 'HTTP 404' ? 'unsupported' : 'unreachable' }
   }
 }
 
@@ -409,7 +423,13 @@ export function lanLinkAvailability (link: LanLinkStatus): { canShow: boolean, n
       return { canShow: false, note: 'waiting for confirmation on its screen' }
     case 'linked':
       return { canShow: false, note: 'linked to an account · its owner must unlink it first' }
+    case 'unsupported':
+      return { canShow: false, note: 'its MuonOS does not include account linking yet' }
+    case 'unavailable':
+      return { canShow: false, note: 'not set up to link to a Muon3D account' }
+    case 'unreachable':
+      return { canShow: false, note: 'could not read its link status from this browser' }
     default:
-      return { canShow: false, note: 'needs a software update before it can link' }
+      return { canShow: false, note: 'cannot link from here right now' }
   }
 }
