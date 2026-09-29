@@ -5,6 +5,7 @@ import type { RootState } from '../types'
 import { httpClientActions } from '@/api/httpClientActions'
 import router from '@/router'
 import { consola } from 'consola'
+import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 
 export const actions: ActionTree<AuthState, RootState> = {
   /**
@@ -17,7 +18,13 @@ export const actions: ActionTree<AuthState, RootState> = {
   /**
    * Inits moonraker component
    */
-  async init ({ commit }) {
+  async init ({ commit, rootState }) {
+    // A cloud printer is reached through muon-link's gateway, which refuses
+    // Moonraker's user and credential endpoints to every remote role: a single
+    // remote call there can lock the printer's own panel out. Asking anyway
+    // only raised a "Server error" toast each time the printer was opened.
+    if (isManagedApiUrl(rootState.config.apiUrl)) return
+
     // Load current user.
     await httpClientActions.accessCurrentUserGet()
       .then(response => response.data.result)

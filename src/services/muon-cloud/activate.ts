@@ -20,10 +20,9 @@ import {
 } from '@/services/managed-transport'
 import { managedEndpointFactory } from './iroh'
 import { cloudState, printerName, requestAccess, setActiveCloudPrinter } from './state'
+import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
 
-/** The API origin Fluidd is told about while a cloud printer is selected. Never dialled. */
-export const MANAGED_API_URL = 'https://muon-cloud.invalid'
-export const MANAGED_SOCKET_URL = 'wss://muon-cloud.invalid/websocket'
+export { MANAGED_API_URL, MANAGED_SOCKET_URL }
 
 export const activationState = Vue.observable({
   switching: null as string | null,
