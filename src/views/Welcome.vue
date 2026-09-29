@@ -100,8 +100,8 @@
           class="mt-3 mb-0"
         >
           {{ error }}
-          <template v-if="fallbackHost">
-            <a :href="localPage(fallbackHost)">Open the printer's own page</a> instead.
+          <template v-if="fallbackUrl">
+            <a :href="fallbackUrl">Open the printer's own page</a> instead.
           </template>
         </v-alert>
 
@@ -232,13 +232,13 @@
 import { Component, Vue } from 'vue-property-decorator'
 import type { InstanceConfig } from '@/store/config/types'
 import { cloudState } from '@/services/muon-cloud/state'
-import { activateCloudPrinter, activateLocalPrinter } from '@/services/muon-cloud/activate'
+import { activateCloudPrinter, activateLocalPrinter, activationState } from '@/services/muon-cloud/activate'
 import {
   discoverPrinters,
   discoveryState,
   instanceForHost,
   lanLinkAvailability,
-  localPageUrl,
+  nearbyHost,
   sameNamedPrinter,
   type LanPrinter
 } from '@/services/muon-cloud/discovery'
@@ -276,7 +276,7 @@ export default class Welcome extends Vue {
   connecting: string | null = null
   error: string | null = null
   /** A printer that would not connect from this page, to offer its own page instead. */
-  fallbackHost: string | null = null
+  fallbackUrl: string | null = null
   icons = { cloud: '$cloud', lan: '$lan' }
 
   get account () {
@@ -315,7 +315,7 @@ export default class Welcome extends Vue {
     }
     for (const c of discoveryState.cloud) {
       if (discoveryState.found.some(l => sameNamedPrinter(c.name, l.name))) continue
-      rows.push(this.row(c.printerId, c.name, c.localAddrs[0] ?? null, c.linked, this.isMine(c.printerId), c.printerId))
+      rows.push(this.row(c.printerId, c.name, nearbyHost(c.localAddrs), c.linked, this.isMine(c.printerId), c.printerId))
     }
     return rows
   }
@@ -362,10 +362,6 @@ export default class Welcome extends Vue {
     return cloudState.printers.some(p => p.id === printerId)
   }
 
-  localPage (host: string) {
-    return localPageUrl(host)
-  }
-
   /**
    * Connects Fluidd, on this page, to a printer on this network. That is a
    * local connection, open to anyone on the network unless the printer has a
@@ -373,7 +369,7 @@ export default class Welcome extends Vue {
    */
   async openRow (p: LocalRow) {
     if (!p.host) return
-    await this.connectInstance(instanceForHost(p.host, p.name), p.key, p.host)
+    await this.connectInstance(instanceForHost(p.host, p.name), p.key)
   }
 
   /** Makes the printer show a link code, and opens the dialog to type it into. */
@@ -408,28 +404,33 @@ export default class Welcome extends Vue {
   }
 
   async connectAddress (instance: InstanceConfig) {
-    await this.connectInstance(instance, instance.apiUrl, null)
+    await this.connectInstance(instance, instance.apiUrl)
   }
 
-  async connectInstance (instance: InstanceConfig, key: string, host: string | null) {
+  /**
+   * Shows the dashboard only once the printer answered. Before, any attempt
+   * went to the dashboard, because Fluidd records the address whether or not
+   * the printer answers, and a blocked printer left a dashboard that never
+   * loaded. Where the browser blocks this page from the printer (every browser
+   * but Chromium, or a refused local-network prompt), the printer's own page
+   * is offered instead: it works everywhere.
+   */
+  async connectInstance (instance: InstanceConfig, key: string) {
     this.error = null
-    this.fallbackHost = null
+    this.fallbackUrl = null
     this.connecting = key
     try {
-      await activateLocalPrinter(instance)
-      if (this.$store.state.config.apiUrl) {
+      if (await activateLocalPrinter(instance)) {
         this.$router.push('/')
         return
       }
-      this.error = `Could not connect to ${instance.name || instance.apiUrl} from this page.`
+      this.error = activationState.error ?? `Could not connect to ${instance.name || instance.apiUrl} from this page.`
+      this.fallbackUrl = activationState.fallbackUrl
     } catch (error) {
       this.error = (error as Error).message
     } finally {
       this.connecting = null
     }
-    // Browsers other than Chromium block a secure page from reaching a
-    // plain-HTTP printer. The printer's own page still works there.
-    if (host && location.protocol === 'https:') this.fallbackHost = host
   }
 
   async openCloud (id: string) {
