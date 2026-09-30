@@ -74,6 +74,7 @@ import StateMixin from '@/mixins/state'
 import { Debounce } from 'vue-debounce-decorator'
 import { consola } from 'consola'
 import webSocketWrapper from '@/util/web-socket-wrapper'
+import { escapeHtml, pageBlocksPrinter, printerPageUrl } from '@/util/page-blocks-printer'
 
 @Component({})
 export default class AddInstanceDialog extends Mixins(StateMixin) {
@@ -179,8 +180,7 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
             .catch(e => {
               // external host not reachable (fetch returns 'failed to fetch')
               consola.debug('Network Error', e, request)
-              this.error = request
-              this.note = this.$t('app.endpoint.error.cant_connect')
+              this.onUnreachable(apiUrl, request)
             })
             .finally(() => { this.verifying = false })
         } else {
@@ -195,13 +195,31 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
             .catch(e => {
               // external host not reachable (fetch returns 'failed to fetch')
               consola.debug('Network Error', e, request)
-              this.error = request
-              this.note = this.$t('app.endpoint.error.cant_connect')
+              this.onUnreachable(apiUrl, request)
             })
             .finally(() => { this.verifying = false })
         }
       }
     }
+  }
+
+  /**
+   * An address this page could not reach at all. From app.muon3d.com (HTTPS)
+   * to a plain-HTTP printer that is usually the browser blocking mixed
+   * content, not a wrong address, so say so and link the printer's own page
+   * rather than asking whether the address is correct.
+   */
+  onUnreachable (apiUrl: string, request: string) {
+    if (pageBlocksPrinter(apiUrl)) {
+      this.error = null
+      this.note = this.$t('app.endpoint.error.blocked_by_page', {
+        host: escapeHtml(location.host),
+        url: escapeHtml(printerPageUrl(apiUrl))
+      })
+      return
+    }
+    this.error = request
+    this.note = this.$t('app.endpoint.error.cant_connect')
   }
 
   get helpTxt () {
