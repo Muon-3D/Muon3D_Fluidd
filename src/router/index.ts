@@ -1,5 +1,6 @@
 import Vue from 'vue'
 import VueRouter, { type RouteConfig } from 'vue-router'
+import { applyPathEntry } from './pathEntry'
 
 // Views
 import Dashboard from '@/views/Dashboard.vue'
@@ -207,6 +208,10 @@ const routes: Array<RouteConfig> = [
     component: NotFound
   }
 ]
+
+// Before the router reads the hash: an address served as a path, such as the
+// link QR code's /link?code=, becomes its hash route.
+applyPathEntry()
 
 const router = new VueRouter({
   base: import.meta.env.BASE_URL,
