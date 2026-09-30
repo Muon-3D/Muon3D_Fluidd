@@ -5,6 +5,12 @@
  * must paint and keep working inside a captive-portal window, across the
  * hotspot dropping while the printer sets its region and changes channel. It
  * talks only to the origin that served it.
+ *
+ * Or, from the hosted page, to a new printer over Bluetooth (ADR 0032 D7,
+ * KAN-436): then every request goes through the Iroh session (`transport`),
+ * and there is no websocket, because muon-link serves a setup session the
+ * setup routes only. The state is read every 2 s instead, which also keeps
+ * the Bluetooth code on the printer's screen.
  */
 import { applyState, setConnection, setupState } from './state'
 import type { NetworksResult, SetupError, SetupOptions, SetupResult, SetupState, StepId } from './types'
@@ -45,13 +51,27 @@ export interface SetupClient {
    */
   post (path: string, body?: Record<string, unknown>, opts?: { timeoutMs?: number, rev?: boolean }): Promise<SetupResult | null>;
   claimDriver (): Promise<SetupResult | null>;
+  /**
+   * The owner's clock and time zone (02 §5.4). Only the hotspot and Bluetooth
+   * callers may post it; a refusal is not an error here.
+   */
+  postClock (): Promise<SetupResult | null>;
   networks (rescan: boolean): Promise<NetworksResult>;
   options (country?: string): Promise<SetupOptions>;
   uploadCaCert (file: File): Promise<{ ok: boolean, ca_cert_id?: string, error?: SetupError }>;
 }
 
+/** A printer reached some other way than this page's origin: the Iroh session. */
+export interface SetupTransport {
+  fetch (path: string, init?: RequestInit): Promise<Response>;
+}
+
 export interface SetupClientOptions {
   origin?: string;
+  /** Send every request here instead of to `origin`. */
+  transport?: SetupTransport;
+  /** Over Bluetooth: no websocket, and the driver claims as `web` (stored as `bluetooth`). */
+  overBluetooth?: boolean;
   href?: string;
   WebSocketImpl?: typeof WebSocket;
   fetchImpl?: typeof fetch;
@@ -73,14 +93,39 @@ const unwrap = <T>(json: unknown): T => (
   json && typeof json === 'object' && 'result' in json ? (json as { result: T }).result : json as T
 )
 
+/**
+ * A transport's `fetch` as `window.fetch`, with the abort signal honoured:
+ * the Iroh session's requests cannot be cancelled, so a timed-out request is
+ * abandoned rather than awaited.
+ */
+const fetchThrough = (transport: SetupTransport, origin: string) =>
+  (input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> => {
+    const url = String(input)
+    const path = url.startsWith(origin) ? url.slice(origin.length) : url
+    const { signal, ...rest } = init
+    return new Promise<Response>((resolve, reject) => {
+      const abort = () => reject(new DOMException('The request timed out.', 'AbortError'))
+      if (signal?.aborted) return abort()
+      signal?.addEventListener('abort', abort)
+      transport.fetch(path, rest).then(resolve, reject).finally(() => signal?.removeEventListener('abort', abort))
+    })
+  }
+
+/** Where requests go over a transport: never fetched, only stripped again. */
+const TRANSPORT_ORIGIN = 'http://printer.invalid'
+
 export const createSetupClient = (options: SetupClientOptions = {}): SetupClient => {
-  const origin = options.origin ?? window.location.origin
+  const origin = options.origin ?? (options.transport ? TRANSPORT_ORIGIN : window.location.origin)
   const href = options.href ?? window.location.href
   const WebSocketImpl = options.WebSocketImpl ?? window.WebSocket
-  const doFetch = options.fetchImpl ?? ((input: RequestInfo | URL, init?: RequestInit) => window.fetch(input, init))
+  const doFetch = options.transport
+    ? fetchThrough(options.transport, origin)
+    : options.fetchImpl ?? ((input: RequestInfo | URL, init?: RequestInit) => window.fetch(input, init))
   const doc = options.doc ?? document
   const version = options.version ?? `${import.meta.env.VERSION || '0.0.0'}`
-  const driverKind = new URL(origin).hostname === HOTSPOT_ADDRESS ? 'phone' : 'web'
+  const overBluetooth = options.overBluetooth ?? false
+  // Over Bluetooth, Moonraker stores any claim as `bluetooth` (Moonraker#30).
+  const driverKind = !overBluetooth && new URL(origin).hostname === HOTSPOT_ADDRESS ? 'phone' : 'web'
 
   let running = false
   let socket: WebSocket | null = null
@@ -183,7 +228,7 @@ export const createSetupClient = (options: SetupClientOptions = {}): SetupClient
   }
 
   const openSocket = async () => {
-    if (!running || socket) return
+    if (!running || socket || overBluetooth) return
     // A socket that never opened may have been refused for want of a token.
     const token = failedBeforeOpen ? await oneshotToken() : null
     if (!running || socket) return
@@ -291,6 +336,14 @@ export const createSetupClient = (options: SetupClientOptions = {}): SetupClient
     get,
     post,
     claimDriver,
+
+    postClock () {
+      let tz: string | undefined
+      try {
+        tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      } catch { /* no Intl time zones */ }
+      return post('clock', { epoch_ms: Date.now(), ...(tz ? { tz } : {}) }, { rev: false }).catch(() => null)
+    },
 
     async networks (rescan: boolean) {
       return unwrap<NetworksResult>(await request(`${SETUP_PATH}/networks?rescan=${rescan}`, {}, SCAN_TIMEOUT_MS))
