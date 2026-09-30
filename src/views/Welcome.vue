@@ -303,6 +303,12 @@
       :initial-printer-id="linkPrinterId"
       :initial-host="linkHost"
     />
+    <bluetooth-setup-dialog
+      v-if="setupDialog && setupPrinter"
+      v-model="setupDialog"
+      :printer="setupPrinter"
+      @finished="rescan"
+    />
   </div>
 </template>
 
@@ -313,12 +319,13 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { activateCloudPrinter, activateLocalPrinter, activationState } from '@/services/muon-cloud/activate'
 import { discoverPrinters, discoveryState, instanceForHost } from '@/services/muon-cloud/discovery'
 import { searchRows, type SearchRow } from '@/services/muon-cloud/searchRows'
-import { lookNearby, nearbyState, startNearby, stopNearby } from '@/services/muon-ble/nearby'
+import { lookNearby, nearbyState, startNearby, stopNearby, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { useBluetoothFor } from '@/services/muon-ble/link'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
 import LinkPrinterDialog from '@/components/muon-cloud/LinkPrinterDialog.vue'
+import BluetoothSetupDialog from '@/components/muon-ble/BluetoothSetupDialog.vue'
 
-@Component({ components: { CloudAccountDialog, LinkPrinterDialog } })
+@Component({ components: { CloudAccountDialog, LinkPrinterDialog, BluetoothSetupDialog } })
 export default class Welcome extends Vue {
   addressDialog = false
   accountDialog = false
@@ -337,6 +344,9 @@ export default class Welcome extends Vue {
   icons = { cloud: '$cloud', lan: '$lan', bluetooth: '$bluetooth' }
   /** What a nearby printer's button found out, in words. */
   notice: string | null = null
+  /** A new printer being set up over Bluetooth (KAN-436). */
+  setupDialog = false
+  setupPrinter: NearbyPrinter | null = null
 
   get account () {
     return cloudState.account
@@ -438,19 +448,16 @@ export default class Welcome extends Vue {
         useBluetoothFor(p.cloudId, p.nearby.device)
         return this.openCloud(p.cloudId)
       case 'set-up':
-        this.notice = `${p.name} isn't on Wi-Fi yet. To set it up from this computer, join its Wi-Fi, ` +
-          `${this.hotspotName(p)}, and open http://10.42.0.1/setup. Or scan the QR code on its screen ` +
-          'with the Muon3D app.'
+        // Over Bluetooth, after a code check (ADR 0032 D7); the dialog offers
+        // the printer's own Wi-Fi when that fails.
+        if (!p.nearby) return
+        this.setupPrinter = p.nearby
+        this.setupDialog = true
         return
       case 'nearby-info':
         this.notice = `${p.name} is nearby. This browser hears it over Bluetooth, but it isn't on this ` +
           "network or your account. Join the network it's on, or link it to your account at the printer."
     }
-  }
-
-  /** The printer's hotspot is its hostname: `Muon-walnut-8987`. */
-  hotspotName (p: SearchRow) {
-    return p.nearby?.localName ? `Muon-${p.nearby.localName}` : 'Muon-…'
   }
 
   /** Opens the browser's chooser. Straight from the click: the browser insists. */

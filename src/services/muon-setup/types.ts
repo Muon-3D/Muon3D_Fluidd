@@ -121,6 +121,12 @@ export interface SetupState {
   capabilities: { ethernet: boolean, enterprise: boolean, cloud_link: boolean, self_hosted: boolean, bluetooth: boolean };
   card_dismissed: boolean;
   steps: SetupSteps;
+  /**
+   * A phone or page connecting over Bluetooth, with the code its latest
+   * request carried (ADR 0032 D7; Moonraker#30). Null 20 s after the last
+   * such request, and once setup is complete. Absent before Moonraker#30.
+   */
+  nearby?: { code: string } | null;
 }
 
 /** What every write answers with (02 §5), whatever the domain outcome. */
