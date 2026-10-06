@@ -20,8 +20,8 @@ function heard (fields: Partial<NearbyPrinter> = {}): NearbyPrinter {
   }
 }
 
-function lan (name: string, host = '192.168.1.37'): LanPrinter {
-  return { host, apiUrl: `http://${host}`, name, link: { phase: 'unlinked' } }
+function lan (name: string, host = '192.168.1.37', endpointId: string | null = null): LanPrinter {
+  return { host, apiUrl: `http://${host}`, name, endpointId, link: { phase: 'unlinked' } }
 }
 
 function owned (id: string, name: string, online: boolean): CloudPrinter {
@@ -127,5 +127,24 @@ describe('without Bluetooth', () => {
       [WALNUT, '192.168.1.37', '192.168.1.37 · in your account', 'open'],
       [BOXWOOD, '192.168.1.40', '192.168.1.40 · not linked to an account', 'open']
     ])
+  })
+})
+
+describe('joins by EndpointId (KAN-403)', () => {
+  it('joins a printer on this network to the one the service sees by its EndpointId, whatever the names say', () => {
+    const list = rows({
+      found: [lan('Muon-boxwood-367a', '192.168.137.88', BOXWOOD)],
+      cloud: [{ printerId: BOXWOOD, name: 'Workshop', model: 'M1', linked: true, localAddrs: [] }]
+    })
+    expect(list).toHaveLength(1)
+    expect(list[0]).toMatchObject({ cloudId: BOXWOOD, host: '192.168.137.88' })
+  })
+
+  it('keeps two printers apart when their EndpointIds differ, though one name contains the other', () => {
+    const list = rows({
+      found: [lan('Boxwood · 367A', '192.168.137.88', BOXWOOD)],
+      cloud: [{ printerId: WALNUT, name: 'Boxwood · 367A', model: 'M1', linked: true, localAddrs: [] }]
+    })
+    expect(list).toHaveLength(2)
   })
 })

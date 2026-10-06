@@ -38,6 +38,9 @@ describe('AddInstanceDialog', () => {
   })
 
   it('checks a typed address on the network, not over the cloud printer, and without its sign-in', async () => {
+    // Not a Muon3D printer: its identity is not found, so Moonraker is asked.
+    const network = vi.fn(async () => new Response('', { status: 404 }))
+    vi.stubGlobal('fetch', network)
     const get = vi.spyOn(axios, 'get').mockResolvedValue({ status: 200, data: {} })
     const wrapper = shallowMount(AddInstanceDialog, { mocks, propsData: { value: true } })
 
@@ -45,11 +48,59 @@ describe('AddInstanceDialog', () => {
     await vi.advanceTimersByTimeAsync(750)
 
     expect(fetch).not.toHaveBeenCalled()
+    expect((network.mock.calls[0] as unknown[])[0]).toBe('http://192.168.1.50/server/muon/identity')
     expect(get).toHaveBeenCalledTimes(1)
     const [url, config] = get.mock.calls[0]
     expect(url).toMatch(/^http:\/\/192\.168\.1\.50\/server\/info\?t=\d+$/)
     expect(JSON.stringify(config)).not.toContain('cloud-printer-token')
     expect((wrapper.vm as any).verified).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it('finds a Muon3D printer by its name, trying .local when the bare name does not answer', async () => {
+    const endpointId = 'f1f6920f'.repeat(8)
+    const network = vi.fn(async (url: string) => {
+      if (url.startsWith('http://muon-boxwood-367a/')) throw new TypeError('Failed to fetch')
+      if (url.endsWith('/server/muon/identity')) {
+        return new Response(JSON.stringify({ result: { display: 'Boxwood · 367A', endpoint_id: endpointId } }), { status: 200 })
+      }
+      return new Response('{"result":{}}', { status: 200 })
+    })
+    vi.stubGlobal('fetch', network)
+    const get = vi.spyOn(axios, 'get')
+    const wrapper = shallowMount(AddInstanceDialog, { mocks, propsData: { value: true } })
+
+    ;(wrapper.vm as any).url = 'muon-boxwood-367a'
+    await vi.advanceTimersByTimeAsync(750)
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(get).not.toHaveBeenCalled()
+    expect((wrapper.vm as any).verified).toBe(true)
+    expect((wrapper.vm as any).note).toBe('app.endpoint.msg.found_printer')
+    ;(wrapper.vm as any).addInstance()
+    expect(wrapper.emitted('resolve')?.[0][0]).toMatchObject({
+      name: 'Boxwood · 367A',
+      apiUrl: 'http://muon-boxwood-367a.local',
+      socketUrl: 'ws://muon-boxwood-367a.local/websocket',
+      endpointId
+    })
+    vi.unstubAllGlobals()
+  })
+
+  it('checks a pasted address, which reaches the watcher before the form revalidates', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })))
+    const get = vi.spyOn(axios, 'get').mockResolvedValue({ status: 200, data: {} })
+    const wrapper = shallowMount(AddInstanceDialog, { mocks, propsData: { value: true } })
+    ;(wrapper.vm as any).valid = false
+
+    ;(wrapper.vm as any).url = 'http://192.168.1.52'
+    // The watcher runs now, while the form still reads as invalid.
+    await wrapper.vm.$nextTick()
+    ;(wrapper.vm as any).valid = true
+    await vi.advanceTimersByTimeAsync(750)
+
+    expect(get).toHaveBeenCalledTimes(1)
+    vi.unstubAllGlobals()
   })
 
   it('does not verify an address that does not answer', async () => {

@@ -132,6 +132,36 @@ export const mutations: MutationTree<ConfigState> = {
     localStorage.setItem(Globals.LOCAL_INSTANCES_STORAGE_KEY, JSON.stringify(state.instances))
   },
 
+  /**
+   * A saved printer answered somewhere else, or said who it is: keep its new
+   * address and its EndpointId. `payload.apiUrl` is the address it was saved at.
+   */
+  setRelocateInstance (state, payload: { apiUrl: string, changes: Partial<InstanceConfig> }) {
+    const index = state.instances.findIndex(instance => instance.apiUrl === payload.apiUrl)
+    if (index < 0) return
+    const mover = state.instances[index]
+    const moved = payload.changes.apiUrl
+    const occupant = moved && moved !== payload.apiUrl
+      ? state.instances.find(i => i.apiUrl === moved)
+      : undefined
+    const endpointId = payload.changes.endpointId ?? mover.endpointId
+    if (!occupant) {
+      Vue.set(state.instances, index, { ...mover, ...payload.changes })
+    } else if (!occupant.endpointId || occupant.endpointId === endpointId) {
+      // The new address is saved already, for this same printer: drop the duplicate.
+      if (!mover.active) state.instances.splice(index, 1)
+    } else if (!occupant.active) {
+      // Another printer was saved there, and this one answers there now: that entry is stale.
+      state.instances.splice(state.instances.indexOf(occupant), 1)
+      const i = state.instances.indexOf(mover)
+      Vue.set(state.instances, i, { ...mover, ...payload.changes })
+    } else {
+      // Fluidd is connected through the other entry: leave both until it is not.
+      return
+    }
+    localStorage.setItem(Globals.LOCAL_INSTANCES_STORAGE_KEY, JSON.stringify(state.instances))
+  },
+
   setRemoveInstance (state, payload) {
     const instances = state.instances
     const i = instances.findIndex((instance: InstanceConfig) => instance.apiUrl === payload.apiUrl)

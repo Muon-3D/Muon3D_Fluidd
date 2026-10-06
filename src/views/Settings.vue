@@ -12,7 +12,8 @@
         <general-settings />
         <theme-settings />
         <auth-settings v-if="supportsAuth" />
-        <protection-settings v-if="supportsProtection" />
+        <access-settings v-if="supportsAccess" />
+        <protection-settings v-else-if="supportsProtection" />
         <console-settings />
         <file-browser-settings />
         <file-editor-settings />
@@ -48,10 +49,12 @@ import FileEditorSettings from '@/components/settings/FileEditorSettings.vue'
 import TimelapseSettings from '@/components/settings/timelapse/TimelapseSettings.vue'
 import SpoolmanSettings from '@/components/settings/SpoolmanSettings.vue'
 import ProtectionSettings from '@/components/settings/ProtectionSettings.vue'
+import AccessSettings from '@/components/settings/AccessSettings.vue'
 
 @Component({
   components: {
     ProtectionSettings,
+    AccessSettings,
     SpoolmanSettings,
     TimelapseSettings,
     MacroSettings,
@@ -83,6 +86,11 @@ export default class Settings extends Mixins(StateMixin) {
 
   get supportsSpoolman () {
     return this.$store.getters['server/componentSupport']('spoolman')
+  }
+
+  /** Moonraker's muon_access (ADR 0037): the access settings replace the protection level. */
+  get supportsAccess () {
+    return this.$store.getters['server/componentSupport']('muon_access')
   }
 
   get supportsProtection () {
