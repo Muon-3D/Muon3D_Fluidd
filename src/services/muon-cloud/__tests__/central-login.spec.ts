@@ -125,22 +125,28 @@ describe('the return from /authorize', () => {
 
   it('spends the verifier: the same return a second time is refused', async () => {
     const pending = await begin(false)
-    const search = `?code=c0de&state=${pending.state}`
+    const search = `?code=c0de&state=${pending.state}&iss=${encodeURIComponent(CONSOLE)}`
     expect(takeCallback({ search }, CONSOLE).outcome).toBe('code')
     expect(takeCallback({ search }, CONSOLE).outcome).toBe('error')
   })
 
   it('reads login_required after prompt=none as signed out, and as an error otherwise', async () => {
     let pending = await begin(true, '#/join?code=ABCDEFGHJK')
-    expect(takeCallback({ search: `?error=login_required&state=${pending.state}` }, CONSOLE))
+    expect(takeCallback({ search: `?error=login_required&state=${pending.state}&iss=${encodeURIComponent(CONSOLE)}` }, CONSOLE))
       .toEqual({ outcome: 'signed_out', returnTo: '#/join?code=ABCDEFGHJK' })
     pending = await begin(false)
-    expect(takeCallback({ search: `?error=login_required&state=${pending.state}&error_description=Sign+in` }, CONSOLE))
+    expect(takeCallback({ search: `?error=login_required&state=${pending.state}&iss=${encodeURIComponent(CONSOLE)}&error_description=Sign+in` }, CONSOLE))
       .toMatchObject({ outcome: 'error', message: 'Sign in' })
   })
 
   it('is nothing when the address carries no answer', () => {
     expect(takeCallback({ search: '' }, CONSOLE)).toEqual({ outcome: 'none' })
+  })
+
+  it('requires the issuer that the central login sends', async () => {
+    await startCentralSignIn({ silent: false }, vi.fn())
+    const pending = JSON.parse(sessionStorage.getItem('muon.cloud.authorize')!)
+    expect(takeCallback({ search: `?code=code&state=${pending.state}` }, CONSOLE).outcome).toBe('error')
   })
 
   it('only ever returns to a hash route of this page', () => {
@@ -241,5 +247,24 @@ describe('/token', () => {
     await expect(refreshSession()).resolves.toBe(false)
     expect(storedToken()).toBeNull()
     expect(storedRefreshToken()).toBeNull()
+  })
+
+  it('retries a late 401 with the pair already refreshed by another request', async () => {
+    storeToken('old')
+    storeRefreshToken('r1')
+    let answerLate!: (response: Response) => void
+    let oldRequests = 0
+    const fetch = vi.fn<[string, RequestInit], Promise<Response>>(async (url, init) => {
+      if (url.endsWith('/token')) return new Response(JSON.stringify({ access_token: 'new', refresh_token: 'r2', token_type: 'Bearer', expires_in: 900 }))
+      if ((init.headers as Record<string, string>).authorization === 'Bearer new') return new Response(JSON.stringify({ printers: [] }))
+      if (++oldRequests === 1) return new Promise(resolve => { answerLate = resolve })
+      return new Response(JSON.stringify({ error: 'expired' }), { status: 401 })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const late = cloudApi.printers()
+    await cloudApi.printers()
+    answerLate(new Response(JSON.stringify({ error: 'expired' }), { status: 401 }))
+    await expect(late).resolves.toEqual({ printers: [] })
+    expect(fetch.mock.calls.filter(([url]) => url.endsWith('/token'))).toHaveLength(1)
   })
 })

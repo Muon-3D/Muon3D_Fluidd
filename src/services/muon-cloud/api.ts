@@ -206,8 +206,14 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
   }
   // A central-login access token lasts 15 minutes. Refresh once and retry;
   // only for the stored session, never for a token passed in.
-  if (response.status === 401 && retry && token !== null && token === storedToken() && await refreshSession()) {
-    return request<T>(method, path, body, storedToken(), false)
+  if (response.status === 401 && retry && token !== null) {
+    // Another request may already have rotated the pair while this one's
+    // response was in flight. Reuse that pair rather than refusing the late
+    // response or spending the new refresh token again.
+    const currentToken = storedToken()
+    if (currentToken && (token !== currentToken || await refreshSession())) {
+      return request<T>(method, path, body, storedToken(), false)
+    }
   }
   const text = await response.text()
   let data: any = {}

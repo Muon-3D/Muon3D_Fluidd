@@ -38,15 +38,15 @@ const APPROVAL: Approval = {
   answered_at: null
 }
 
-function mount (code: string | undefined = '7kq2m-9xdpf', pollMs = 5) {
+function mount (code: string | undefined = '7kq2m-9xdpf') {
   return shallowMount(JoinLanding, {
-    propsData: { pollMs },
+    stubs: ['v-card', 'v-card-title', 'v-card-text', 'v-card-actions', 'v-spacer', 'v-alert', 'app-btn'],
     mocks: { $route: { query: { code } }, $router: { push: vi.fn() } }
   })
 }
 
 const flush = async (wrapper: { vm: { $nextTick: () => Promise<void> } }, ms = 0) => {
-  await new Promise(resolve => setTimeout(resolve, ms))
+  await vi.advanceTimersByTimeAsync(ms)
   await wrapper.vm.$nextTick()
 }
 
@@ -58,13 +58,14 @@ async function pressJoin (wrapper: ReturnType<typeof mount>) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers()
   cloud.state.account = { id: 'a1' }
   cloud.join.mockReset()
   cloud.approval.mockReset()
   cloud.refreshPrinters.mockClear()
 })
 
-afterEach(() => { vi.restoreAllMocks() })
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('the join page', () => {
   it('says a code that is not one is incomplete, and asks nothing', () => {
@@ -103,7 +104,7 @@ describe('the join page', () => {
     await pressJoin(wrapper)
     expect(tid(wrapper, 'join-pending').text()).toContain('Waiting for the owner of Walnut to approve')
 
-    await flush(wrapper, 30)
+    await flush(wrapper, 20_000)
     expect(cloud.approval).toHaveBeenCalledWith('ap1')
     expect(tid(wrapper, 'join-joined').exists()).toBe(true)
     wrapper.destroy()
@@ -117,10 +118,10 @@ describe('the join page', () => {
     cloud.approval.mockResolvedValue({ approval: { ...APPROVAL, state } })
     const wrapper = mount()
     await pressJoin(wrapper)
-    await flush(wrapper, 20)
+    await flush(wrapper, 10_000)
     expect(tid(wrapper, id).text()).toContain(text)
     const calls = cloud.approval.mock.calls.length
-    await flush(wrapper, 20)
+    await flush(wrapper, 10_000)
     expect(cloud.approval.mock.calls.length).toBe(calls)
   })
 
@@ -131,7 +132,7 @@ describe('the join page', () => {
       .mockResolvedValueOnce({ approval: { ...APPROVAL, state: 'allowed' } })
     const wrapper = mount()
     await pressJoin(wrapper)
-    await flush(wrapper, 40)
+    await flush(wrapper, 20_000)
     expect(tid(wrapper, 'join-joined').exists()).toBe(true)
   })
 
@@ -146,11 +147,23 @@ describe('the join page', () => {
   it('stops asking once the page is left', async () => {
     cloud.join.mockResolvedValue({ state: 'pending', printer_id: 'p1', approval: APPROVAL })
     cloud.approval.mockResolvedValue({ approval: APPROVAL })
-    // An interval the press cannot outrun, so only leaving can stop it.
-    const wrapper = mount('7kq2m-9xdpf', 200)
+    const wrapper = mount()
     await pressJoin(wrapper)
     wrapper.destroy()
-    await new Promise(resolve => setTimeout(resolve, 300))
+    await vi.advanceTimersByTimeAsync(30_000)
     expect(cloud.approval).not.toHaveBeenCalled()
+  })
+
+  it('does not restart polling when a response arrives after the page is left', async () => {
+    cloud.join.mockResolvedValue({ state: 'pending', printer_id: 'p1', approval: APPROVAL })
+    let answer!: (value: { approval: Approval }) => void
+    cloud.approval.mockImplementation(() => new Promise(resolve => { answer = resolve }))
+    const wrapper = mount()
+    await pressJoin(wrapper)
+    await vi.advanceTimersByTimeAsync(10_000)
+    wrapper.destroy()
+    answer({ approval: APPROVAL })
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(cloud.approval).toHaveBeenCalledOnce()
   })
 })

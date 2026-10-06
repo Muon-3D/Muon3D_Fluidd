@@ -151,7 +151,7 @@ export function takeCallback (location: Pick<Location, 'search'> = window.locati
     return { outcome: 'error', message: 'That sign-in did not start here. Sign in again.', returnTo }
   }
   const iss = query.get('iss')
-  if (iss !== null && iss.replace(/\/$/, '') !== consoleUrl.replace(/\/$/, '')) {
+  if (iss === null || iss.replace(/\/$/, '') !== consoleUrl.replace(/\/$/, '')) {
     return { outcome: 'error', message: 'That sign-in came from the wrong place. Sign in again.', returnTo }
   }
 
