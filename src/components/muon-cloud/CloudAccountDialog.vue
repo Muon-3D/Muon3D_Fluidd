@@ -11,7 +11,11 @@
         Reach your linked printers from anywhere. Printers on this network keep working without an account.
       </v-card-subtitle>
 
-      <v-card-text>
+      <v-card-text v-if="redirecting">
+        Taking you to the Muon3D sign-in…
+      </v-card-text>
+
+      <v-card-text v-else>
         <v-form
           ref="form"
           @submit.prevent="submit"
@@ -64,7 +68,10 @@
         </v-form>
       </v-card-text>
 
-      <v-card-actions class="justify-center pb-4">
+      <v-card-actions
+        v-if="!redirecting"
+        class="justify-center pb-4"
+      >
         <span class="text-body-2 text--secondary">
           {{ mode === 'sign-in' ? 'New to Muon3D?' : 'Already have an account?' }}
         </span>
@@ -84,6 +91,7 @@
 <script lang="ts">
 import { Component, Prop, VModel, Vue } from 'vue-property-decorator'
 import { signIn, signUp } from '@/services/muon-cloud/state'
+import { centralLoginEnabled, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
 
 @Component({})
 export default class CloudAccountDialog extends Vue {
@@ -102,8 +110,20 @@ export default class CloudAccountDialog extends Vue {
   error: string | null = null
   icons = { eye: '$eye', eyeOff: '$eyeOff' }
 
+  redirecting = false
+
   created () {
     this.mode = this.initialMode
+    // Served by the console, sign-in goes through its /authorize (WEB-12):
+    // one sign-in for every Muon3D page, kept by the console's browser
+    // session rather than by this page.
+    if (centralLoginEnabled()) {
+      this.redirecting = true
+      startCentralSignIn({ silent: false }).catch((error) => {
+        this.redirecting = false
+        this.error = (error as Error).message
+      })
+    }
   }
 
   async submit () {
