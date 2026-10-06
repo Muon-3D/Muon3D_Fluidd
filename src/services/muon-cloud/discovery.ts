@@ -229,7 +229,7 @@ export async function probe (host: string, timeout = PROBE_TIMEOUT_MS): Promise<
 /**
  * Whether this page may talk to the printer at `apiUrl` at all.
  *
- * A page served over HTTPS (app.muon3d.com) asking a plain-HTTP printer is
+ * A page served over HTTPS (control.muon3d.com) asking a plain-HTTP printer is
  * mixed content. Chromium lets it through once the person allows local network
  * access; other browsers, and a refused prompt, block it before it leaves the
  * machine. Fluidd's own connect does not report that: it saves the address,
