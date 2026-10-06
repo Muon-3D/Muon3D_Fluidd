@@ -221,7 +221,7 @@ function hostOf (url: string): string | null {
  * local, which Chromium's Local Network Access needs before it lets the
  * request through.
  */
-function lanFetch (url: string, init: RequestInit = {}): Promise<Response> {
+export function lanFetch (url: string, init: RequestInit = {}): Promise<Response> {
   const local = location.protocol === 'https:' ? { targetAddressSpace: 'local' } : {}
   return fetch(url, { ...init, ...local } as RequestInit)
 }

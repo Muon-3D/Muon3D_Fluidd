@@ -30,7 +30,8 @@ export default class AppSettingsNav extends Vue {
       { name: this.$t('app.setting.title.general'), hash: '#general', visible: true },
       { name: this.$t('app.setting.title.theme'), hash: '#theme', visible: true },
       { name: this.$t('app.setting.title.authentication'), hash: '#auth', visible: true },
-      { name: this.$t('app.protection.title'), hash: '#protection', visible: this.supportsProtection },
+      { name: 'Access', hash: '#access', visible: this.supportsAccess },
+      { name: this.$t('app.protection.title'), hash: '#protection', visible: this.supportsProtection && !this.supportsAccess },
       { name: this.$t('app.setting.title.console'), hash: '#console', visible: true },
       { name: this.$t('app.setting.title.file_browser'), hash: '#browser', visible: true },
       { name: this.$t('app.setting.title.file_editor'), hash: '#editor', visible: true },
@@ -55,6 +56,10 @@ export default class AppSettingsNav extends Vue {
 
   get supportsSpoolman () {
     return this.$store.getters['server/componentSupport']('spoolman')
+  }
+
+  get supportsAccess () {
+    return this.$store.getters['server/componentSupport']('muon_access')
   }
 
   get supportsProtection () {
