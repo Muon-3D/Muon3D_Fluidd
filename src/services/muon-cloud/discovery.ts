@@ -61,13 +61,40 @@ export interface CloudNearbyPrinter {
 }
 
 export interface LanPrinter {
-  /** The address the printer answered on. */
+  /** The address the printer answered on last. */
   host: string;
+  /**
+   * Every address it answered on in this search: an IP, its name, its name
+   * with `.local`. A saved printer matches on any of them.
+   */
+  aliases?: string[];
   /** What Fluidd connects to for this printer. */
   apiUrl: string;
   /** "Boxwood · 367A". */
   name: string;
+  /**
+   * The Iroh EndpointId it publishes (KAN-403), or null from older software.
+   * The service names a printer by the same id, so this is what joins a
+   * printer found here to the one in the account. It is a match key, not
+   * proof: the Iroh handshake proves the key when the printer is opened
+   * through the service.
+   */
+  endpointId: string | null;
   link: LanLinkStatus;
+  /** How it answered the last health check, when it was asked. */
+  health?: LanHealth;
+}
+
+/**
+ * A printer's state as read over the network:
+ * - `ready`, `printing`, `paused`: Klipper is running.
+ * - `error`: Klipper is shut down, in error or still starting.
+ * - `locked`: it answered, but wants a sign-in or refused this browser.
+ */
+export interface LanHealth {
+  state: 'ready' | 'printing' | 'paused' | 'error' | 'locked';
+  message?: string;
+  checkedAt: number;
 }
 
 /** Networks worth trying when nothing else says where the printers are. */
@@ -80,6 +107,7 @@ const COMMON_NETWORKS = [
 const WINDOWS_HOTSPOT_NETWORK = '192.168.137'
 
 const PROBE_TIMEOUT_MS = 3000
+const ADDRESS_TIMEOUT_MS = 8000
 const GATEWAY_TIMEOUT_MS = 1500
 const GATEWAY_ANSWERS_WITHIN_MS = 900
 const CONCURRENCY = 64
@@ -101,11 +129,32 @@ function nameKey (name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
+/**
+ * Whether two names are the same printer's display name, letter for letter
+ * ("Boxwood · 367A" and "boxwood-367a"). Stricter than `sameNamedPrinter`:
+ * the display name carries the serial suffix, so an exact match is safe
+ * enough to tie an old saved entry with no EndpointId to its printer.
+ */
+export function sameExactName (a: string, b: string) {
+  const x = nameKey(a)
+  return !!x && x === nameKey(b)
+}
+
 /** Whether a printer found on the LAN is the same one the service reported. */
 export function sameNamedPrinter (a: string, b: string) {
   const x = nameKey(a)
   const y = nameKey(b)
   return !!x && !!y && (x.includes(y) || y.includes(x))
+}
+
+/**
+ * Whether a printer found on the LAN is the one the service names `printerId`
+ * (also called `name`). The EndpointId decides when the printer published
+ * one; the name is the fallback for software that predates it.
+ */
+export function sameLanPrinter (lan: LanPrinter, printerId: string, name: string) {
+  if (lan.endpointId) return lan.endpointId === printerId
+  return sameNamedPrinter(lan.name, name)
 }
 
 /** Asks the Muon3D service which printers, linked or not, share this browser's network. */
@@ -223,7 +272,64 @@ export async function probe (host: string, timeout = PROBE_TIMEOUT_MS): Promise<
   }
   if (!identity || typeof identity !== 'object') return null
   const name = String(identity.display || identity.name || host)
-  return { host, apiUrl, name, link: await lanLinkStatus(apiUrl) }
+  const endpointId = typeof identity.endpoint_id === 'string' && identity.endpoint_id ? identity.endpoint_id : null
+  const [link, health] = await Promise.all([lanLinkStatus(apiUrl), printerHealth(apiUrl)])
+  return { host, apiUrl, name, endpointId, link, health: health ?? undefined }
+}
+
+/**
+ * Reads Klipper's state through the printer's Moonraker. Null means nothing
+ * answered. A printer that answers with 401 or 403 is there but `locked`:
+ * it wants a password, or its access rules refuse this browser.
+ */
+export async function printerHealth (apiUrl: string, timeout = PROBE_TIMEOUT_MS): Promise<LanHealth | null> {
+  const checkedAt = Date.now()
+  try {
+    const result = await getJson(`${apiUrl}/printer/objects/query?webhooks&print_stats`, {}, timeout)
+    const webhooks = result?.status?.webhooks ?? {}
+    const job = result?.status?.print_stats?.state
+    if (webhooks.state !== 'ready') {
+      return { state: 'error', message: webhooks.state_message || `Klipper ${webhooks.state ?? 'not running'}`, checkedAt }
+    }
+    if (job === 'printing') return { state: 'printing', checkedAt }
+    if (job === 'paused') return { state: 'paused', checkedAt }
+    if (job === 'error') return { state: 'error', message: 'The last print stopped with an error', checkedAt }
+    return { state: 'ready', checkedAt }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    if (message === 'HTTP 401' || message === 'HTTP 403') return { state: 'locked', checkedAt }
+    // Moonraker answers 503 while Klippy has not connected.
+    if (/^HTTP 5\d\d$/.test(message)) return { state: 'error', message: 'Klipper is not running', checkedAt }
+    return null
+  }
+}
+
+/**
+ * What a person types into the address box: an IP address, a name such as
+ * `muon-boxwood-367a`, the same with `.local`, or a full URL. A bare name is
+ * tried as typed, then with `.local`, because the printer always answers
+ * mDNS but only some routers know its name.
+ */
+export function addressCandidates (input: string): string[] {
+  const host = input.trim()
+    .replace(/^[a-z]+:\/\//i, '')
+    .replace(/\/.*$/, '')
+  if (!host) return []
+  const bare = !host.includes('.') && !host.includes(':') && host.toLowerCase() !== 'localhost'
+  return bare ? [host, `${host}.local`] : [host]
+}
+
+/**
+ * Finds the printer behind what someone typed: the first candidate that
+ * answers as a Muon3D printer. The wait is longer than the sweep's, because a
+ * sweep running at the same time holds Chromium's connections.
+ */
+export async function probeAddress (input: string): Promise<LanPrinter | null> {
+  for (const host of addressCandidates(input)) {
+    const printer = await probe(host, ADDRESS_TIMEOUT_MS)
+    if (printer) return printer
+  }
+  return null
 }
 
 /**
@@ -281,10 +387,32 @@ async function answersQuickly (host: string): Promise<boolean> {
   }
 }
 
+/** Every address a found printer answered on. */
+export function lanAddresses (printer: LanPrinter): string[] {
+  return printer.aliases?.length ? printer.aliases : [printer.host]
+}
+
 function remember (printer: LanPrinter) {
-  const i = discoveryState.found.findIndex(p => p.host === printer.host)
-  if (i >= 0) discoveryState.found.splice(i, 1, printer)
-  else discoveryState.found.push(printer)
+  // One row per printer: the same EndpointId at another address is the same
+  // printer, and keeps both addresses.
+  const i = discoveryState.found.findIndex(p =>
+    lanAddresses(p).includes(printer.host) || (!!printer.endpointId && p.endpointId === printer.endpointId))
+  if (i < 0) {
+    discoveryState.found.push({ ...printer, aliases: [printer.host] })
+    return
+  }
+  const aliases = [...new Set([...lanAddresses(discoveryState.found[i]), printer.host])]
+  discoveryState.found.splice(i, 1, { ...printer, aliases })
+}
+
+/** An address stopped answering. The printer leaves the list when none of its addresses answer. */
+function forget (host: string) {
+  const i = discoveryState.found.findIndex(p => lanAddresses(p).includes(host))
+  if (i < 0) return
+  const printer = discoveryState.found[i]
+  const aliases = lanAddresses(printer).filter(a => a !== host)
+  if (!aliases.length) discoveryState.found.splice(i, 1)
+  else discoveryState.found.splice(i, 1, { ...printer, aliases, host: printer.host === host ? aliases[0] : printer.host })
 }
 
 async function pool<T> (items: T[], work: (item: T) => Promise<void>) {
@@ -327,7 +455,7 @@ async function sweep () {
       ...COMMON_NETWORKS.filter(n => answering.has(n)),
       WINDOWS_HOTSPOT_NETWORK
     ])]
-    const seen = new Set(discoveryState.found.map(p => p.host))
+    const seen = new Set(discoveryState.found.flatMap(lanAddresses))
     const hosts: string[] = []
     for (const network of networks) {
       for (let i = 1; i < 255; i++) {
@@ -357,6 +485,25 @@ export function discoverPrinters (force = false): Promise<void> {
   if (!force && Date.now() - discoveryState.finishedAt < FRESH_FOR_MS) return Promise.resolve()
   running = sweep().finally(() => { running = null })
   return running
+}
+
+let refreshing: Promise<void> | null = null
+
+/**
+ * Asks again every printer already found, and every saved one, without the
+ * sweep. A printer that stops answering leaves the list: the list says what
+ * is on this network now, not what was once.
+ */
+export async function refreshKnownPrinters () {
+  if (refreshing) return refreshing
+  if (running) return
+  const hosts = [...new Set([...discoveryState.found.flatMap(lanAddresses), ...knownHosts()])]
+  refreshing = pool(hosts, async host => {
+    const printer = await probe(host)
+    if (printer) remember(printer)
+    else forget(host)
+  }).finally(() => { refreshing = null })
+  return refreshing
 }
 
 /** Refreshes the link state of the printers already found. */
@@ -423,18 +570,19 @@ export function lanCodeOutcome (name: string, status: LanLinkStatus): { note?: s
  * connection, open to anyone on the network: an open printer lets them
  * straight in, and one with a password asks for it.
  */
-export function instanceForHost (host: string, name: string): InstanceConfig {
+export function instanceForHost (host: string, name: string, endpointId?: string | null): InstanceConfig {
   return {
     name,
     apiUrl: apiUrlFor(host),
     socketUrl: `ws://${host}/websocket`,
-    active: true
+    active: true,
+    ...(endpointId ? { endpointId } : {})
   }
 }
 
 /** A Fluidd instance for a printer the LAN search found. */
 export function instanceFor (printer: LanPrinter): InstanceConfig {
-  return instanceForHost(printer.host, printer.name)
+  return instanceForHost(printer.host, printer.name, printer.endpointId)
 }
 
 /**

@@ -13,7 +13,7 @@
 
       <v-text-field
         v-model="url"
-        type="url"
+        type="text"
         spellcheck="false"
         autofocus
         :label="$t('app.general.label.api_url')"
@@ -75,6 +75,7 @@ import { Debounce } from 'vue-debounce-decorator'
 import { consola } from 'consola'
 import webSocketWrapper from '@/util/web-socket-wrapper'
 import { escapeHtml, pageBlocksPrinter, printerPageUrl } from '@/util/page-blocks-printer'
+import { instanceFor, probeAddress, type LanPrinter } from '@/services/muon-cloud/discovery'
 
 @Component({})
 export default class AddInstanceDialog extends Mixins(StateMixin) {
@@ -86,6 +87,8 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
   verified = false
   error: any = null
   note: any = null
+  /** The Muon3D printer that answered for what was typed, by IP address or by name. */
+  resolved: LanPrinter | null = null
 
   get customRules () {
     return {
@@ -110,11 +113,13 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
 
   abortController?: AbortController = undefined
 
-  // Watch for valid url changes.
+  // Watch for url changes. Validity is checked after the debounce: the form
+  // revalidates after this watcher runs, so a pasted address read as invalid
+  // here and was never checked.
   @Watch('url')
   onUrlChange (value: string, oldVal: string) {
     if (value === oldVal) return
-    if (this.valid) this.handleUrlChange(value)
+    this.handleUrlChange(value)
   }
 
   @Debounce(750)
@@ -124,6 +129,22 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
       this.error = null
       this.note = null
       this.verifying = true
+      this.resolved = null
+
+      // A Muon3D printer first: it answers by IP address, by its name
+      // (muon-boxwood-367a) and by its name with .local, and says who it is.
+      const printer = await probeAddress(value)
+      if (value !== this.url) return
+      if (printer) {
+        this.resolved = printer
+        this.verified = true
+        this.verifying = false
+        this.note = this.$t('app.endpoint.msg.found_printer', {
+          name: escapeHtml(printer.name),
+          host: escapeHtml(printer.host)
+        })
+        return
+      }
 
       const { apiUrl, socketUrl } = this.$filters.getApiUrls(value)
 
@@ -233,7 +254,7 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
   }
 
   addInstance () {
-    const apiConfig = this.$filters.getApiUrls(this.url)
+    const apiConfig = this.resolved ? instanceFor(this.resolved) : this.$filters.getApiUrls(this.url)
     this.open = false
     this.$emit('resolve', apiConfig)
   }

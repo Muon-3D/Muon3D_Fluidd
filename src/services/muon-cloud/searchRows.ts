@@ -9,12 +9,13 @@
  * network and nearby lists once.
  *
  * Joins: the service's printer id is the printer's EndpointId, which `INFO`
- * names and the advertisement starts; the LAN sweep has only a name, and the
+ * names, the advertisement starts and `/server/muon/identity` publishes
+ * (KAN-403). A printer whose software predates that has only a name, and the
  * printer advertises the same name its screen shows (`walnut-8987` is
  * "Walnut · 8987", ADR 0032 D6).
  */
 import type { CloudPrinter } from './api'
-import { lanLinkAvailability, nearbyHost, sameNamedPrinter, type CloudNearbyPrinter, type LanPrinter } from './discovery'
+import { lanLinkAvailability, nearbyHost, sameLanPrinter, sameNamedPrinter, type CloudNearbyPrinter, type LanPrinter } from './discovery'
 import { isPrinter, type NearbyPrinter } from '@/services/muon-ble/nearby'
 
 /**
@@ -88,7 +89,7 @@ export function searchRows (sources: SearchSources): SearchRow[] {
   const rows: SearchRow[] = []
 
   for (const l of found) {
-    const c = cloud.find(x => sameNamedPrinter(x.name, l.name))
+    const c = cloud.find(x => sameLanPrinter(l, x.printerId, x.name))
     if (c) {
       rows.push(cloudRow(c.printerId, l.name, l.host, c.linked, isMine(c.printerId), c.printerId, l))
       continue
@@ -109,7 +110,7 @@ export function searchRows (sources: SearchSources): SearchRow[] {
     })
   }
   for (const c of cloud) {
-    if (found.some(l => sameNamedPrinter(c.name, l.name))) continue
+    if (found.some(l => sameLanPrinter(l, c.printerId, c.name))) continue
     rows.push(cloudRow(c.printerId, c.name, nearbyHost(c.localAddrs), c.linked, isMine(c.printerId), c.printerId))
   }
 
@@ -117,7 +118,8 @@ export function searchRows (sources: SearchSources): SearchRow[] {
     // Already listed from this network: say it is nearby too.
     const same = rows.find(r =>
       (r.cloudId && isPrinter(p, r.cloudId)) ||
-      (!r.cloudId && !!r.lan && !!p.localName && sameNamedPrinter(p.localName, r.lan.name)))
+      (!!r.lan?.endpointId && isPrinter(p, r.lan.endpointId)) ||
+      (!r.cloudId && !!r.lan && !r.lan.endpointId && !!p.localName && sameNamedPrinter(p.localName, r.lan.name)))
     if (same) {
       if (!same.nearby) {
         same.nearby = p

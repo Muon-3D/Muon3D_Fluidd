@@ -196,6 +196,12 @@ export interface InstanceConfig extends ApiConfig {
   name: string;
   active: boolean;
   discovered?: boolean;
+  /**
+   * The printer's Iroh EndpointId, from `/server/muon/identity` (KAN-403).
+   * It names the printer, not the address, so a saved printer that moves to
+   * a new address, or is also in the account, still lists once.
+   */
+  endpointId?: string;
 }
 
 export interface TemperaturePreset {
