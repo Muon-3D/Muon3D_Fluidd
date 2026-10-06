@@ -9,11 +9,14 @@ import {
   cloudApi,
   CloudError,
   storedToken,
+  storeRefreshToken,
   storeToken,
+  TOKEN_KEY,
   type CloudAccount,
   type CloudConfig,
   type CloudPrinter
 } from './api'
+import { centralLoginEnabled, clearSilentAttempt, redirectUri, signOutCentral, takeCallback } from './centralLogin'
 import { browserEndpoint, forgetBrowserKey, IrohPrinter } from './iroh'
 
 const ACTIVE_KEY = 'muon.cloud.active'
@@ -215,6 +218,7 @@ function stopPolling () {
 async function dropSession () {
   stopPolling()
   storeToken(null)
+  storeRefreshToken(null)
   for (const c of statusConnections.values()) c.then(p => p.close()).catch(() => {})
   statusConnections.clear()
   cloudState.account = null
@@ -235,8 +239,50 @@ async function adoptSession (token: string, account: CloudAccount) {
   startPolling()
 }
 
-/** Restores a saved session at start-up. */
-export async function initCloud () {
+// Another tab signed out, or the console's front-channel logout page
+// (public/auth/logout.html) cleared the token: this tab is signed out too.
+try {
+  window.addEventListener('storage', (event) => {
+    if ((event.key === TOKEN_KEY || event.key === null) && !storedToken() && cloudState.account) dropSession()
+  })
+} catch { /* no window */ }
+
+/**
+ * Finishes a return from the console's `/authorize` (`WEB-12`): exchanges the
+ * code at `/token`, or notes that the console has no session. Answers the
+ * hash route the sign-in started from, for the caller to go back to.
+ */
+async function completeCentralSignIn (): Promise<string | null> {
+  if (!centralLoginEnabled()) return null
+  const result = takeCallback()
+  switch (result.outcome) {
+    case 'none':
+      return null
+    case 'code':
+      try {
+        const session = await cloudApi.exchangeCode(result.code, redirectUri(), result.verifier)
+        storeToken(session.access_token)
+        storeRefreshToken(session.refresh_token)
+        clearSilentAttempt()
+      } catch (error) {
+        cloudState.error = (error as Error).message
+      }
+      return result.returnTo
+    case 'signed_out':
+      return result.returnTo
+    case 'error':
+      cloudState.error = result.message
+      return result.returnTo
+  }
+}
+
+/**
+ * Restores a saved session at start-up, after completing a central sign-in
+ * if this load is the return from one. Answers the hash route to go back to,
+ * or null.
+ */
+export async function initCloud (): Promise<string | null> {
+  const returnTo = await completeCentralSignIn()
   const token = storedToken()
   if (token) {
     try {
@@ -247,6 +293,7 @@ export async function initCloud () {
     }
   }
   cloudState.ready = true
+  return returnTo
 }
 
 export async function signIn (email: string, password: string) {
@@ -260,6 +307,15 @@ export async function signUp (email: string, password: string, name: string) {
 }
 
 export async function signOut () {
+  if (centralLoginEnabled()) {
+    // The console ends the browser session and every session issued from
+    // it, this one included, and tells the other surfaces.
+    await dropSession()
+    forgetBrowserKey()
+    setActiveCloudPrinter(null)
+    signOutCentral()
+    return
+  }
   try {
     await cloudApi.signOut()
   } catch { /* the session ends here either way */ }
