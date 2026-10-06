@@ -202,6 +202,14 @@
       :initial-printer-id="linkPrinterId"
       :initial-host="linkHost"
     />
+    <access-request-dialog
+      v-if="accessAsk && accessClient"
+      v-model="accessDialog"
+      :client="accessClient"
+      :ask="accessAsk"
+      :printer-name="accessName"
+      @answered="onAccessAnswered"
+    />
     <bluetooth-setup-dialog
       v-if="setupDialog && setupPrinter"
       v-model="setupDialog"
@@ -246,6 +254,8 @@ import CloudAccountDialog from './CloudAccountDialog.vue'
 import LinkPrinterDialog from './LinkPrinterDialog.vue'
 import PrinterCard, { type CardAction } from './PrinterCard.vue'
 import BluetoothSetupDialog from '@/components/muon-ble/BluetoothSetupDialog.vue'
+import AccessRequestDialog from '@/components/muon-access/AccessRequestDialog.vue'
+import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
 
 /** How often the printers already known are asked again while the panel is open. */
 const HEALTH_EVERY_MS = 15_000
@@ -256,7 +266,7 @@ const HEALTH_EVERY_MS = 15_000
  * printer seen through the account, a saved address and this network lists
  * once.
  */
-@Component({ components: { CloudAccountDialog, LinkPrinterDialog, PrinterCard, BluetoothSetupDialog } })
+@Component({ components: { CloudAccountDialog, LinkPrinterDialog, PrinterCard, BluetoothSetupDialog, AccessRequestDialog } })
 export default class PrinterSwitcher extends Mixins(StateMixin) {
   /** Whether the panel is open. The health checks run only while it is. */
   @Prop({ type: Boolean, default: true })
@@ -275,6 +285,11 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
   setupPrinter: NearbyPrinter | null = null
   icons = { cloud: '$cloud', lan: '$lan' }
   timer: number | null = null
+  /** "Ask for access" to a printer on this network (ACC-17). */
+  accessDialog = false
+  accessClient: AccessClient | null = null
+  accessAsk: AccessAsk | null = null
+  accessName = ''
 
   get account () {
     return cloudState.account
@@ -429,10 +444,23 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     return actions
   }
 
+  /** Someone else's printer, or one that refused this browser: ask its panel to let this browser in. */
+  askAction (e: DirectoryEntry): CardAction | null {
+    if (e.linkedTo !== 'other' && e.health !== 'locked') return null
+    return {
+      id: 'ask',
+      label: 'Ask for access',
+      icon: '$printerAsk',
+      hint: e.linkedTo === 'other' ? 'Linked to another account' : 'It wants access',
+      disabled: !e.host
+    }
+  }
+
   localActions (e: DirectoryEntry): CardAction[] {
     const actions: CardAction[] = []
-    if (e.linkedTo === 'other') {
-      actions.push({ id: 'link', label: 'Linked to another account', icon: '$linkPrinter', disabled: true })
+    const ask = this.askAction(e)
+    if (ask) {
+      actions.push(ask)
     } else if (e.linkedTo !== 'mine') {
       actions.push({ id: 'link', label: 'Link to my account', icon: '$linkPrinter', disabled: !e.host, hint: e.host ? undefined : 'Not found on this network' })
     }
@@ -454,9 +482,8 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     const actions: CardAction[] = []
     if (e.row?.action === 'open') actions.push({ id: 'connect', label: 'Connect', icon: '$lan', disabled: !e.host })
     if (e.row?.canLink) actions.push({ id: 'link', label: 'Link to my account', icon: '$linkPrinter' })
-    if (e.linkedTo === 'other') {
-      actions.push({ id: 'link', label: 'Linked to another account', icon: '$linkPrinter', disabled: true })
-    }
+    const ask = this.askAction(e)
+    if (ask) actions.push(ask)
     return actions
   }
 
@@ -473,6 +500,7 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
       case 'link': return this.link(e)
       case 'remove': return this.remove(e)
       case 'access': return this.openAccess(e)
+      case 'ask': return this.askForAccess(e)
     }
   }
 
@@ -578,6 +606,18 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     for (const s of e.saved) this.$store.dispatch('config/removeInstance', s)
   }
 
+  askForAccess (e: DirectoryEntry) {
+    if (!e.host) return
+    this.accessClient = lanPrinterAccess(`http://${e.host}`)
+    this.accessAsk = { kind: 'join' }
+    this.accessName = e.name
+    this.accessDialog = true
+  }
+
+  onAccessAnswered () {
+    refreshKnownPrinters().catch(() => {})
+  }
+
   async openAccess (e: DirectoryEntry) {
     if (!e.active) {
       if (e.section === 'cloud') await this.connectCloud(e)
@@ -585,8 +625,9 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
       if (activationState.error) return
     }
     this.$emit('click')
-    if (this.$route.path !== '/settings' || this.$route.hash !== '#protection') {
-      this.$router.push({ path: '/settings', hash: '#protection' }).catch(() => {})
+    const hash = this.$store.getters['server/componentSupport']('muon_access') ? '#access' : '#protection'
+    if (this.$route.path !== '/settings' || this.$route.hash !== hash) {
+      this.$router.push({ path: '/settings', hash }).catch(() => {})
     }
   }
 }
