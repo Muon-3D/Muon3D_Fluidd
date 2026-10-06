@@ -287,7 +287,8 @@ export async function initCloud (): Promise<string | null> {
   if (token) {
     try {
       const me = await cloudApi.me()
-      await adoptSession(token, me.account)
+      const currentToken = storedToken()
+      if (currentToken) await adoptSession(currentToken, me.account)
     } catch (error) {
       if (error instanceof CloudError && error.status === 401) await dropSession()
     }
@@ -306,7 +307,8 @@ export async function signUp (email: string, password: string, name: string) {
   await adoptSession(token, account)
 }
 
-export async function signOut () {
+/** True when the console's logout form is navigating away. */
+export async function signOut (): Promise<boolean> {
   if (centralLoginEnabled()) {
     // The console ends the browser session and every session issued from
     // it, this one included, and tells the other surfaces.
@@ -314,7 +316,7 @@ export async function signOut () {
     forgetBrowserKey()
     setActiveCloudPrinter(null)
     signOutCentral()
-    return
+    return true
   }
   try {
     await cloudApi.signOut()
@@ -322,6 +324,7 @@ export async function signOut () {
   await dropSession()
   forgetBrowserKey()
   setActiveCloudPrinter(null)
+  return false
 }
 
 export async function saveLayout (layout: FleetLayout) {

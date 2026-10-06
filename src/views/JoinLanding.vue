@@ -115,7 +115,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+import { Component, Vue } from 'vue-property-decorator'
 import { cloudApi } from '@/services/muon-cloud/api'
 import { cloudState, printerName, refreshPrinters } from '@/services/muon-cloud/state'
 import { fromApproval, fromJoinAnswer, fromJoinError, normalizeJoinCode, type JoinState } from '@/services/muon-cloud/join'
@@ -126,14 +126,11 @@ export const APPROVAL_POLL_MS = 10_000
 
 @Component({ components: { CloudAccountDialog } })
 export default class JoinLanding extends Vue {
-  /** Overridable in tests. */
-  @Prop({ type: Number, default: APPROVAL_POLL_MS })
-  readonly pollMs!: number
-
   accountDialog = false
   busy = false
   state: JoinState | null = null
   timer: number | null = null
+  left = false
 
   get code (): string | null {
     return normalizeJoinCode(this.$route.query.code)
@@ -182,7 +179,7 @@ export default class JoinLanding extends Vue {
 
   schedule () {
     this.stop()
-    this.timer = window.setTimeout(() => { this.poll() }, this.pollMs)
+    if (!this.left) this.timer = window.setTimeout(() => { this.poll() }, APPROVAL_POLL_MS)
   }
 
   stop () {
@@ -191,6 +188,7 @@ export default class JoinLanding extends Vue {
   }
 
   beforeDestroy () {
+    this.left = true
     this.stop()
   }
 }
