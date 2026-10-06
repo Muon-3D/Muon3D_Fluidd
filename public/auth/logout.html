@@ -1,0 +1,21 @@
+<!doctype html>
+<!--
+  Fluidd's front-channel logout page (WEB-12). The console's sign-out page
+  (POST /logout) loads every surface's front-channel logout URI in a hidden
+  frame, with ?iss=<console URL>; this is the one for the Fluidd it serves.
+  Register it as the `fluidd` client's frontchannel_logout_uri:
+  https://control.muon3d.com/auth/logout.html
+
+  A page of its own, not a hash route: the URI may carry no fragment, and the
+  frame should forget the session without booting the whole app. logout.js
+  does the work, so no inline script is needed under a strict CSP.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex">
+    <title>Signed out</title>
+    <script src="logout.js"></script>
+  </head>
+  <body></body>
+</html>
