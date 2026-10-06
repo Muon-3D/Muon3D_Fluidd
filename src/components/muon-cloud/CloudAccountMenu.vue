@@ -116,8 +116,8 @@ export default class CloudAccountMenu extends Vue {
 
   async doSignOut () {
     const wasCloud = cloudState.activePrinterId !== null || activationState.switching !== null
-    await signOut()
-    if (wasCloud) window.location.reload()
+    const navigating = await signOut()
+    if (wasCloud && !navigating) window.location.reload()
   }
 }
 </script>

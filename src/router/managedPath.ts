@@ -2,7 +2,9 @@
 // linking is a dialog, and Fleet is an ordinary page. Only first-run setup
 // hides the chrome: it runs in a phone's captive-portal window, before the
 // printer is set up, and shows every error itself.
-const MANAGED_CONSOLE_PATHS = new Set<string>(['/setup'])
+// The console's sign-in page (WEB-12) is the identity provider's own page,
+// so it shows no printer chrome either.
+const MANAGED_CONSOLE_PATHS = new Set<string>(['/setup', '/sign-in'])
 
 export function isManagedConsolePath (path: string): boolean {
   return MANAGED_CONSOLE_PATHS.has(path)

@@ -23,6 +23,7 @@ import Icons from '@/views/Icons.vue'
 import Wifi from '@/views/Wifi.vue'
 import Fleet from '@/views/Fleet.vue'
 import LinkLanding from '@/views/LinkLanding.vue'
+import JoinLanding from '@/views/JoinLanding.vue'
 import Welcome from '@/views/Welcome.vue'
 
 Vue.use(VueRouter)
@@ -123,6 +124,25 @@ const routes: Array<RouteConfig> = [
     path: '/link',
     name: 'Link a printer',
     component: LinkLanding,
+    meta: {
+      printerIndependent: true
+    }
+  },
+  {
+    // An invite link (AB-CON-1): the console sends /j/<code> here.
+    path: '/join',
+    name: 'Join a printer',
+    component: JoinLanding,
+    meta: {
+      printerIndependent: true
+    }
+  },
+  {
+    // The console's sign-in page (WEB-12): /authorize sends a browser with no
+    // session here with `continue`. Lazy, and mounted without appInit.
+    path: '/sign-in',
+    name: 'Sign in',
+    component: () => import('@/views/SignIn.vue'),
     meta: {
       printerIndependent: true
     }

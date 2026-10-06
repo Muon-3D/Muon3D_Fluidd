@@ -6,8 +6,13 @@
  * when the console serves Fluidd, or the URL saved in `muon.cloud.url`.
  */
 
-const TOKEN_KEY = 'muon.cloud.token'
+export const TOKEN_KEY = 'muon.cloud.token'
+/** Only a central-login session (`WEB-12`) has one; it refreshes at `/token`. */
+export const REFRESH_KEY = 'muon.cloud.refresh'
 const URL_KEY = 'muon.cloud.url'
+
+/** This surface's id in the console's client registry (`clients.json`). */
+export const CLIENT_ID = 'fluidd'
 
 export interface CloudAccount {
   id: string;
@@ -43,8 +48,44 @@ export interface AccessHandoff {
 
 export type LinkState = 'waiting' | 'awaiting_confirmation' | 'linked' | 'declined' | 'expired'
 
+/** What `POST /token` answers: a rotating session issued to this client. */
+export interface TokenSession {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+  account?: CloudAccount;
+}
+
+export interface Approval {
+  id: string;
+  kind: 'link_join';
+  printer_id: string;
+  printer_name: string;
+  link_id: string;
+  role: string;
+  state: 'pending' | 'allowed' | 'refused' | 'expired';
+  created_at: number;
+  expires_at: number;
+  answered_at: number | null;
+}
+
+export interface Share {
+  id: string;
+  printer_id: string;
+  email: string;
+  role: string;
+  level: string;
+  ends_at: number | null;
+  created_at: number;
+}
+
+export type JoinAnswer =
+  | { state: 'joined', printer_id: string, share: Share }
+  | { state: 'pending', printer_id: string, approval: Approval }
+
 export class CloudError extends Error {
-  constructor (message: string, readonly status: number) {
+  constructor (message: string, readonly status: number, readonly code?: string) {
     super(message)
   }
 }
@@ -86,9 +127,71 @@ export function storeToken (token: string | null) {
   writeStorage(TOKEN_KEY, token)
 }
 
-async function request<T> (method: string, path: string, body?: unknown): Promise<T> {
+export function storedRefreshToken (): string | null {
+  return readStorage(REFRESH_KEY)
+}
+
+export function storeRefreshToken (token: string | null) {
+  writeStorage(REFRESH_KEY, token)
+}
+
+/**
+ * `POST /token` (RFC 6749, form-encoded). A failure is OAuth's
+ * `{error, error_description}`, not the API's sentence shape.
+ */
+async function tokenRequest (form: Record<string, string>): Promise<TokenSession> {
+  let response: Response
+  try {
+    response = await fetch(`${cloudBaseUrl()}/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(form).toString()
+    })
+  } catch {
+    throw new CloudError('The Muon3D service could not be reached.', 0)
+  }
+  let data: any = {}
+  try {
+    data = await response.json()
+  } catch {
+    throw new CloudError('The Muon3D service sent an unreadable answer.', response.status)
+  }
+  if (!response.ok || typeof data.access_token !== 'string') {
+    throw new CloudError(data.error_description ?? data.error ?? `The Muon3D service answered ${response.status}.`, response.status, data.error)
+  }
+  return data as TokenSession
+}
+
+let refreshing: Promise<boolean> | null = null
+
+/**
+ * Swaps the stored refresh token for a new pair, once at a time: a refresh
+ * token used twice ends its session, so two requests that both met a 401
+ * must share one refresh. False when there is nothing to refresh with, or
+ * the console refused, and then both tokens are dropped.
+ */
+export function refreshSession (): Promise<boolean> {
+  const refreshToken = storedRefreshToken()
+  if (!refreshToken) return Promise.resolve(false)
+  if (!refreshing) {
+    refreshing = tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: CLIENT_ID })
+      .then((session) => {
+        storeToken(session.access_token)
+        storeRefreshToken(session.refresh_token)
+        return true
+      })
+      .catch(() => {
+        storeToken(null)
+        storeRefreshToken(null)
+        return false
+      })
+      .finally(() => { refreshing = null })
+  }
+  return refreshing
+}
+
+async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true): Promise<T> {
   const headers: Record<string, string> = {}
-  const token = storedToken()
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
   let response: Response
@@ -100,6 +203,17 @@ async function request<T> (method: string, path: string, body?: unknown): Promis
     })
   } catch {
     throw new CloudError('The Muon3D service could not be reached.', 0)
+  }
+  // A central-login access token lasts 15 minutes. Refresh once and retry;
+  // only for the stored session, never for a token passed in.
+  if (response.status === 401 && retry && token !== null) {
+    // Another request may already have rotated the pair while this one's
+    // response was in flight. Reuse that pair rather than refusing the late
+    // response or spending the new refresh token again.
+    const currentToken = storedToken()
+    if (currentToken && (token !== currentToken || await refreshSession())) {
+      return request<T>(method, path, body, storedToken(), false)
+    }
   }
   const text = await response.text()
   let data: any = {}
@@ -139,5 +253,23 @@ export const cloudApi = {
     request<{ printers: Array<{ printer_id: string, name: string, model: string, linked: boolean, local_addrs?: string[] }> }>('GET', '/v1/links/nearby'),
   linkState: (id: string) => request<{ printer_id: string, state: LinkState }>('GET', `/v1/links/${id}`),
   getLayout: () => request<{ layout: any }>('GET', '/v1/fleet/layout'),
-  putLayout: (layout: unknown) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout })
+  putLayout: (layout: unknown) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout }),
+  /** The central login's code exchange (`WEB-12`). */
+  exchangeCode: (code: string, redirectUri: string, verifier: string) =>
+    tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: CLIENT_ID, code_verifier: verifier }),
+  /**
+   * A single-use code that opens the console's browser session at
+   * `/handoff`. Takes the token of a session that signed in here, which is
+   * never a `/token` session (those get `403`).
+   */
+  handoff: (token: string) =>
+    request<{ code: string, url: string, expires_at: number }>('POST', '/v1/handoff', undefined, token, false),
+  /** Signs in with a password for a session that is not kept: the sign-in page hands it off. */
+  signInFor: (email: string, password: string) =>
+    request<{ token: string, account: CloudAccount }>('POST', '/v1/auth/sign-in', { email, password, device: 'Muon3D sign-in' }, null, false),
+  signUpFor: (email: string, password: string, name: string) =>
+    request<{ token: string, account: CloudAccount }>('POST', '/v1/auth/sign-up', { email, password, name, device: 'Muon3D sign-in' }, null, false),
+  /** Joins with an invite link's code (AB-CON-1). */
+  join: (code: string) => request<JoinAnswer>('POST', `/v1/links/join/${encodeURIComponent(code)}`),
+  approval: (id: string) => request<{ approval: Approval }>('GET', `/v1/approvals/${encodeURIComponent(id)}`)
 }
