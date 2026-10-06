@@ -49,6 +49,20 @@ describe('AccessRequestDialog', () => {
     expect(client.cancelRequest).toHaveBeenCalledWith('r1-abcd')
   })
 
+  it('withdraws a request the printer accepts after the dialog was closed', async () => {
+    const client = fakeClient(['pending'])
+    let answer!: (value: unknown) => void
+    client.request.mockReturnValue(new Promise(resolve => { answer = resolve }))
+    const wrapper = mount(client)
+
+    wrapper.destroy()
+    answer({ requestId: 'r2-late', code: '0B1C', expiresAt: Date.now() + 120_000 })
+    await vi.advanceTimersByTimeAsync(6000)
+
+    expect(client.cancelRequest).toHaveBeenCalledWith('r2-late')
+    expect(client.requestStatus).not.toHaveBeenCalled()
+  })
+
   it('says the printer cannot take requests when its software predates them', async () => {
     const client = fakeClient()
     client.request.mockRejectedValue(new AccessUnavailable())

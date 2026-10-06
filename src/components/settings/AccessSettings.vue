@@ -196,8 +196,8 @@
     </v-card>
 
     <access-request-dialog
-      v-if="asking"
-      v-model="asking"
+      v-if="askingOpen && asking"
+      v-model="askingOpen"
       :client="client"
       :ask="asking"
       :printer-name="printerName"
@@ -239,6 +239,8 @@ export default class AccessSettings extends Mixins(StateMixin) {
   message = ''
   messageType: 'info' | 'error' | 'success' = 'info'
   asking: AccessAsk | null = null
+  /** The ask dialog is mounted only while open, so closing it withdraws the request. */
+  askingOpen = false
   /**
    * Bumped on every read. The toggle, selects and switch keep the value a
    * click gave them; re-rendering puts back what the printer holds, so a
@@ -351,6 +353,7 @@ export default class AccessSettings extends Mixins(StateMixin) {
     if (!this.state || this.state.entry === entry) return
     if (this.capabilities.protection === 'ask') {
       this.asking = { kind: 'entry', entry }
+      this.askingOpen = true
       return
     }
     return this.apply(() => this.client.setEntry(entry))
