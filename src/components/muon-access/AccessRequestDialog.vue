@@ -103,6 +103,8 @@ export default class AccessRequestDialog extends Vue {
   error = ''
   now = Date.now()
   timer: number | null = null
+  /** Closed or cancelled. A request that comes back after this is withdrawn. */
+  gone = false
 
   get title () {
     return this.ask.kind === 'join' ? 'Ask for access' : 'Confirm on the printer'
@@ -130,10 +132,17 @@ export default class AccessRequestDialog extends Vue {
 
   async mounted () {
     try {
-      this.request = await this.client.request(this.ask, 'Muon3D Fluidd')
+      const request = await this.client.request(this.ask, 'Muon3D Fluidd')
+      if (this.gone) {
+        // Closed while the printer was still being asked: take it off the screen.
+        this.client.cancelRequest(request.requestId).catch(() => {})
+        return
+      }
+      this.request = request
       this.phase = 'pending'
       this.timer = window.setInterval(() => this.poll(), POLL_MS)
     } catch (error) {
+      if (this.gone) return
       this.phase = 'failed'
       this.error = error instanceof AccessUnavailable
         ? `${this.printerName}'s software cannot take requests yet. Ask its owner to let you in.`
@@ -142,6 +151,7 @@ export default class AccessRequestDialog extends Vue {
   }
 
   beforeDestroy () {
+    this.gone = true
     this.stop()
     // Leaving while it is still asking takes the question off the printer's screen.
     if (this.phase === 'pending' && this.request) this.client.cancelRequest(this.request.requestId).catch(() => {})
@@ -165,6 +175,7 @@ export default class AccessRequestDialog extends Vue {
   }
 
   async cancel () {
+    this.gone = true
     this.stop()
     if (this.request && this.phase === 'pending') await this.client.cancelRequest(this.request.requestId).catch(() => {})
     this.phase = 'expired'

@@ -203,7 +203,7 @@
       :initial-host="linkHost"
     />
     <access-request-dialog
-      v-if="accessAsk && accessClient"
+      v-if="accessDialog && accessAsk && accessClient"
       v-model="accessDialog"
       :client="accessClient"
       :ask="accessAsk"

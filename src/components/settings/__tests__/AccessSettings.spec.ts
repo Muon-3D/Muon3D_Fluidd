@@ -72,6 +72,7 @@ describe('AccessSettings', () => {
 
     expect(client.setEntry).not.toHaveBeenCalled()
     expect((wrapper.vm as any).asking).toEqual({ kind: 'entry', entry: 'protected' })
+    expect((wrapper.vm as any).askingOpen).toBe(true)
     // The other settings cannot be asked for: they say only the owner can change them.
     expect((wrapper.vm as any).ownerOnly).toBe(true)
   })
