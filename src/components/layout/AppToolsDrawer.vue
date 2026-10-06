@@ -17,7 +17,10 @@
       <system-commands @click="open = false" />
     </v-list>
 
-    <printer-switcher @click="open = false" />
+    <printer-switcher
+      :visible="!!open"
+      @click="open = false"
+    />
 
     <system-layout
       v-if="socketConnected && authenticated"

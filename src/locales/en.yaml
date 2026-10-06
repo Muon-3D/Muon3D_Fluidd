@@ -60,8 +60,9 @@ app:
         The printer may need its Moonraker configuration changed to allow this
         page. See <a href="%{url}" target="_blank">the Muon3D documentation</a>.
     hint:
-      add_printer: E.g., http://192.168.1.150
+      add_printer: Its IP address or its name, e.g. 192.168.1.150 or muon-boxwood-367a
     msg:
+      found_printer: Found <strong>%{name}</strong> at %{host}.
       trouble: >-
         Having trouble? <a href="%{url}" target="_blank">See here</a> for more
         information.

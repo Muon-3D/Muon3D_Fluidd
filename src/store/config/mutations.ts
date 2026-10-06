@@ -132,6 +132,23 @@ export const mutations: MutationTree<ConfigState> = {
     localStorage.setItem(Globals.LOCAL_INSTANCES_STORAGE_KEY, JSON.stringify(state.instances))
   },
 
+  /**
+   * A saved printer answered somewhere else, or said who it is: keep its new
+   * address and its EndpointId. `payload.apiUrl` is the address it was saved at.
+   */
+  setRelocateInstance (state, payload: { apiUrl: string, changes: Partial<InstanceConfig> }) {
+    const index = state.instances.findIndex(instance => instance.apiUrl === payload.apiUrl)
+    if (index < 0) return
+    const moved = payload.changes.apiUrl
+    // Another saved entry already holds the new address: this one is the duplicate.
+    if (moved && moved !== payload.apiUrl && state.instances.some(i => i.apiUrl === moved)) {
+      if (!state.instances[index].active) state.instances.splice(index, 1)
+    } else {
+      Vue.set(state.instances, index, { ...state.instances[index], ...payload.changes })
+    }
+    localStorage.setItem(Globals.LOCAL_INSTANCES_STORAGE_KEY, JSON.stringify(state.instances))
+  },
+
   setRemoveInstance (state, payload) {
     const instances = state.instances
     const i = instances.findIndex((instance: InstanceConfig) => instance.apiUrl === payload.apiUrl)
