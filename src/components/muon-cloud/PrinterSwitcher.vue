@@ -1,57 +1,49 @@
 <template>
   <div class="muon-switcher">
-    <template v-if="account && cloudPrinters.length">
-      <div class="muon-switcher__heading">
-        <v-icon
-          x-small
-          class="mr-1"
-        >
-          {{ icons.cloud }}
-        </v-icon>
-        Cloud
-        <span class="muon-switcher__hint">{{ account.email }}</span>
-      </div>
-      <button
-        v-for="p in cloudPrinters"
-        :key="p.id"
-        type="button"
-        class="muon-switcher__item"
-        :class="{ 'is-active': activeCloudId === p.id, 'is-offline': !p.online }"
-        @click="pickCloud(p.id)"
+    <div class="muon-switcher__title">
+      My printers
+    </div>
+
+    <div class="muon-switcher__heading">
+      <v-icon
+        x-small
+        class="mr-1"
       >
-        <div class="muon-switcher__row">
-          <span
-            class="muon-switcher__dot"
-            :class="`is-${tone(status(p.id), p.online)}`"
-          />
-          <span class="muon-switcher__name">{{ p.name }}</span>
-          <span class="muon-switcher__badge is-cloud">Cloud</span>
-          <v-progress-circular
-            v-if="switching === p.id"
-            indeterminate
-            size="14"
-            width="2"
-            class="ml-2"
-          />
-        </div>
-        <div class="muon-switcher__meta">
-          {{ summary(status(p.id), p.online) }}
-        </div>
-        <div
-          v-if="temps(status(p.id))"
-          class="muon-switcher__meta muon-switcher__mono"
-        >
-          {{ temps(status(p.id)) }}
-        </div>
-        <v-progress-linear
-          v-if="isPrinting(status(p.id))"
-          :value="percent(status(p.id))"
-          height="3"
-          rounded
-          class="mt-2"
-        />
-      </button>
+        {{ icons.cloud }}
+      </v-icon>
+      Cloud
+      <span
+        v-if="account"
+        class="muon-switcher__hint"
+      >{{ account.email }}</span>
+    </div>
+    <template v-if="account">
+      <printer-card
+        v-for="e in directory.cloud"
+        :key="e.key"
+        :entry="e"
+        :actions="cloudActions(e)"
+        :busy="busyKey === e.key"
+        @open="openCloudEntry(e)"
+        @action="onAction(e, $event)"
+      />
+      <div
+        v-if="!directory.cloud.length"
+        class="muon-switcher__empty"
+      >
+        No printers are linked to this account yet. Link one from its card below.
+      </div>
     </template>
+    <div
+      v-else
+      class="muon-switcher__empty"
+    >
+      <a
+        href="#"
+        data-tid="sign-in"
+        @click.prevent="accountDialog = true"
+      >Sign in</a> to reach your linked printers from anywhere.
+    </div>
 
     <div class="muon-switcher__heading">
       <v-icon
@@ -61,126 +53,96 @@
         {{ icons.lan }}
       </v-icon>
       Local
-      <span class="muon-switcher__hint">this network</span>
+      <span class="muon-switcher__hint">saved in this browser</span>
     </div>
+    <printer-card
+      v-for="e in directory.local"
+      :key="e.key"
+      :entry="e"
+      :actions="localActions(e)"
+      :busy="busyKey === e.key"
+      @open="openLocalEntry(e)"
+      @action="onAction(e, $event)"
+    />
     <div
-      v-for="(instance, index) in localInstances"
-      :key="index"
-      class="muon-switcher__item"
-      :class="{ 'is-active': instance.active && !activeCloudId }"
-      role="button"
-      tabindex="0"
-      @click="pickLocal(instance)"
-      @keydown.enter="pickLocal(instance)"
-    >
-      <div class="muon-switcher__row">
-        <span
-          class="muon-switcher__dot"
-          :class="instance.active && !activeCloudId ? `is-${localTone}` : 'is-idle'"
-        />
-        <span class="muon-switcher__name">{{ instance.name }}</span>
-        <span class="muon-switcher__badge">Local</span>
-        <v-spacer />
-        <v-btn
-          v-if="!(instance.active && !activeCloudId) && !instance.discovered"
-          icon
-          x-small
-          @click.stop="removeInstance(instance)"
-        >
-          <v-icon x-small>
-            $delete
-          </v-icon>
-        </v-btn>
-      </div>
-      <div class="muon-switcher__meta">
-        <template v-if="instance.active && !activeCloudId && socketConnected">
-          {{ localSummary }}
-        </template>
-        <template v-else>
-          {{ hostOf(instance.apiUrl) }}
-        </template>
-      </div>
-      <div
-        v-if="instance.active && !activeCloudId && localTemps"
-        class="muon-switcher__meta muon-switcher__mono"
-      >
-        {{ localTemps }}
-      </div>
-    </div>
-    <button
-      v-for="p in foundPrinters"
-      :key="p.host"
-      type="button"
-      class="muon-switcher__item is-found"
-      @click="pickFound(p)"
-    >
-      <div class="muon-switcher__row">
-        <span class="muon-switcher__dot is-idle" />
-        <span class="muon-switcher__name">{{ p.name }}</span>
-        <span class="muon-switcher__badge">Found</span>
-      </div>
-      <div class="muon-switcher__meta">
-        {{ p.host }} · connect
-      </div>
-    </button>
-    <button
-      v-for="p in unlinkedNearby"
-      :key="p.printerId"
-      type="button"
-      class="muon-switcher__item is-found"
-      :disabled="!p.localAddrs.length"
-      @click="openNearby(p)"
-    >
-      <div class="muon-switcher__row">
-        <span class="muon-switcher__dot is-idle" />
-        <span class="muon-switcher__name">{{ p.name }}</span>
-        <span class="muon-switcher__badge">{{ p.linked ? 'Linked' : 'Local' }}</span>
-      </div>
-      <div class="muon-switcher__meta">
-        {{ nearbyAddress(p) || 'address unknown' }} · {{ p.linked ? 'linked to another account · connect locally' : 'on your network · connect' }}
-      </div>
-    </button>
-    <div
-      v-if="!localInstances.length && !foundPrinters.length && !unlinkedNearby.length"
+      v-if="!directory.local.length"
       class="muon-switcher__empty"
     >
-      {{ scanning ? 'Looking for printers on this network…' : 'No printers added on this network.' }}
+      A printer you connect to on this network is saved here.
+    </div>
+
+    <div class="muon-switcher__title muon-switcher__title--discovery">
+      Discovery
+      <v-spacer />
+      <span
+        v-if="searching"
+        class="muon-switcher__scan"
+      >
+        <v-progress-circular
+          indeterminate
+          size="11"
+          width="2"
+          class="mr-1"
+        />
+        {{ scanNetwork || 'searching' }}
+      </span>
+      <v-btn
+        v-else
+        icon
+        x-small
+        title="Search again"
+        data-tid="search-again"
+        @click="rescan"
+      >
+        <v-icon small>
+          $refresh
+        </v-icon>
+      </v-btn>
+    </div>
+    <printer-card
+      v-for="e in directory.found"
+      :key="e.key"
+      :entry="e"
+      :actions="foundActions(e)"
+      :busy="busyKey === e.key"
+      @open="openFoundEntry(e)"
+      @action="onAction(e, $event)"
+    />
+    <div
+      v-if="!directory.found.length"
+      class="muon-switcher__empty"
+    >
+      <template v-if="searching">
+        Looking for Muon3D printers on this network…
+      </template>
+      <template v-else>
+        No other printers found on this network.
+      </template>
+    </div>
+
+    <div
+      v-if="bluetoothSearch && !bluetoothOff"
+      class="muon-switcher__empty"
+      data-tid="look-nearby"
+    >
+      A printer that isn't on Wi-Fi yet?
+      <a
+        href="#"
+        @click.prevent="onLookNearby"
+      >Look nearby</a> over Bluetooth.
+    </div>
+    <div
+      v-else-if="bluetoothOff"
+      class="muon-switcher__empty"
+    >
+      Bluetooth is off, so new printers won't show.
     </div>
 
     <div class="muon-switcher__actions">
-      <app-btn
-        v-if="account"
-        small
-        text
-        color="primary"
-        @click="linkPrinterId = ''; linkDialog = true"
-      >
-        <v-icon
-          small
-          left
-        >
-          {{ icons.link }}
-        </v-icon>
-        Link a printer
-      </app-btn>
-      <app-btn
-        v-else
-        small
-        text
-        color="primary"
-        @click="accountDialog = true"
-      >
-        <v-icon
-          small
-          left
-        >
-          {{ icons.cloud }}
-        </v-icon>
-        Sign in to reach printers anywhere
-      </app-btn>
       <v-btn
         small
         text
+        data-tid="enter-address"
         @click="instanceDialogOpen = true"
       >
         <v-icon
@@ -189,10 +151,28 @@
         >
           $plus
         </v-icon>
-        Add a local printer
+        Enter an address
       </v-btn>
     </div>
 
+    <v-alert
+      v-if="notice"
+      type="info"
+      dense
+      text
+      class="ma-3"
+    >
+      {{ notice }}
+    </v-alert>
+    <v-alert
+      v-if="nearby.error"
+      type="error"
+      dense
+      text
+      class="ma-3"
+    >
+      {{ nearby.error }}
+    </v-alert>
     <v-alert
       v-if="activationError"
       type="error"
@@ -209,7 +189,7 @@
     <add-instance-dialog
       v-if="instanceDialogOpen"
       v-model="instanceDialogOpen"
-      @resolve="pickLocal"
+      @resolve="openInstance"
     />
     <cloud-account-dialog
       v-if="accountDialog"
@@ -220,16 +200,31 @@
       v-if="linkDialog"
       v-model="linkDialog"
       :initial-printer-id="linkPrinterId"
+      :initial-host="linkHost"
+    />
+    <access-request-dialog
+      v-if="accessDialog && accessAsk && accessClient"
+      v-model="accessDialog"
+      :client="accessClient"
+      :ask="accessAsk"
+      :printer-name="accessName"
+      @answered="onAccessAnswered"
+    />
+    <bluetooth-setup-dialog
+      v-if="setupDialog && setupPrinter"
+      v-model="setupDialog"
+      :printer="setupPrinter"
+      @finished="rescan"
     />
     <v-divider class="mt-2" />
   </div>
 </template>
 
 <script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import type { InstanceConfig } from '@/store/config/types'
 import StateMixin from '@/mixins/state'
-import { cloudState, type PrinterStatus } from '@/services/muon-cloud/state'
+import { cloudState } from '@/services/muon-cloud/state'
 import {
   activateCloudPrinter,
   activateLocalPrinter,
@@ -241,36 +236,75 @@ import {
   discoveryState,
   instanceFor,
   instanceForHost,
-  nearbyHost,
-  sameNamedPrinter,
-  type CloudNearbyPrinter,
-  type LanPrinter
+  lanAddresses,
+  refreshKnownPrinters
 } from '@/services/muon-cloud/discovery'
+import {
+  hostOf,
+  printerDirectory,
+  savedUpdates,
+  type Directory,
+  type DirectoryEntry,
+  type LocalLive,
+  type PrinterHealth
+} from '@/services/muon-cloud/directory'
+import { lookNearby, nearbyState, startNearby, stopNearby, type NearbyPrinter } from '@/services/muon-ble/nearby'
+import { useBluetoothFor } from '@/services/muon-ble/link'
 import CloudAccountDialog from './CloudAccountDialog.vue'
 import LinkPrinterDialog from './LinkPrinterDialog.vue'
+import PrinterCard, { type CardAction } from './PrinterCard.vue'
+import BluetoothSetupDialog from '@/components/muon-ble/BluetoothSetupDialog.vue'
+import AccessRequestDialog from '@/components/muon-access/AccessRequestDialog.vue'
+import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
 
-@Component({ components: { CloudAccountDialog, LinkPrinterDialog } })
+/** How often the printers already known are asked again while the panel is open. */
+const HEALTH_EVERY_MS = 15_000
+
+/**
+ * The printer list (right-hand panel): My printers, Cloud and Local, then
+ * Discovery. `printerDirectory` decides which group a printer is in, so a
+ * printer seen through the account, a saved address and this network lists
+ * once.
+ */
+@Component({ components: { CloudAccountDialog, LinkPrinterDialog, PrinterCard, BluetoothSetupDialog, AccessRequestDialog } })
 export default class PrinterSwitcher extends Mixins(StateMixin) {
+  /** Whether the panel is open. The health checks run only while it is. */
+  @Prop({ type: Boolean, default: true })
+  readonly visible!: boolean
+
   instanceDialogOpen = false
   accountDialog = false
   linkDialog = false
   linkPrinterId = ''
-  icons = { cloud: '$cloud', lan: '$lan', link: '$linkPrinter' }
+  linkHost = ''
+  /** A printer picked for linking before sign-in. */
+  pendingLink: DirectoryEntry | null = null
+  busyKey: string | null = null
+  notice: string | null = null
+  setupDialog = false
+  setupPrinter: NearbyPrinter | null = null
+  icons = { cloud: '$cloud', lan: '$lan' }
+  timer: number | null = null
+  /** "Ask for access" to a printer on this network (ACC-17). */
+  accessDialog = false
+  accessClient: AccessClient | null = null
+  accessAsk: AccessAsk | null = null
+  accessName = ''
 
   get account () {
     return cloudState.account
   }
 
-  get cloudPrinters () {
-    return cloudState.printers
+  get nearby () {
+    return nearbyState
   }
 
-  get activeCloudId () {
-    return cloudState.activePrinterId
+  get bluetoothSearch () {
+    return nearbyState.support === 'supported'
   }
 
-  get switching () {
-    return activationState.switching
+  get bluetoothOff () {
+    return this.bluetoothSearch && nearbyState.radio === 'off'
   }
 
   get activationError () {
@@ -281,149 +315,320 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     return activationState.fallbackUrl
   }
 
-  nearbyAddress (p: CloudNearbyPrinter) {
-    return nearbyHost(p.localAddrs)
+  get searching () {
+    return discoveryState.scanning
   }
 
-  get localInstances (): InstanceConfig[] {
+  get scanNetwork () {
+    return discoveryState.network
+  }
+
+  get savedInstances (): InstanceConfig[] {
     const all: InstanceConfig[] = this.$store.getters['config/getInstances'] ?? []
     return all.filter(i => i.apiUrl !== MANAGED_API_URL)
   }
 
-  get scanning () {
-    return discoveryState.scanning
+  /** The printer Fluidd is on locally, from its own socket. */
+  get localLive (): LocalLive | null {
+    if (cloudState.activePrinterId) return null
+    const apiUrl: string = this.$store.state.config.apiUrl
+    if (!apiUrl || apiUrl === MANAGED_API_URL) return null
+    let health: PrinterHealth
+    if (!this.socketConnected) health = 'connecting'
+    else if (!this.authenticated) health = 'locked'
+    else if (!this.klippyReady) health = 'error'
+    else if (this.printerPrinting) health = 'printing'
+    else if (this.printerPaused) health = 'paused'
+    else health = 'online'
+    return { apiUrl, health, detail: this.localDetail(health) }
   }
 
-  /** Printers the network search found that are not added yet. */
-  get foundPrinters (): LanPrinter[] {
-    const added = new Set(this.localInstances.map(i => this.hostOf(i.apiUrl)))
-    return discoveryState.found.filter(p => !added.has(p.host))
-  }
-
-  /**
-   * Printers the service sees on this network that are not in this account:
-   * unlinked ones to link, and other accounts' ones, shown for information.
-   */
-  get unlinkedNearby (): CloudNearbyPrinter[] {
-    return discoveryState.cloud.filter(c =>
-      !cloudState.printers.some(p => p.id === c.printerId) &&
-      !discoveryState.found.some(l => sameNamedPrinter(c.name, l.name))
-    )
-  }
-
-  mounted () {
-    discoverPrinters().catch(() => {})
-  }
-
-  onSignedIn () {
-    if (this.linkPrinterId) this.linkDialog = true
-  }
-
-  /** Connects to a printer on this network: a local connection, no account needed. */
-  async openNearby (p: CloudNearbyPrinter) {
-    const host = nearbyHost(p.localAddrs)
-    if (!host) return
-    await this.openLocal(instanceForHost(host, p.name))
-  }
-
-  async pickFound (p: LanPrinter) {
-    await this.openLocal(instanceFor(p))
-  }
-
-  /**
-   * The menu closes once the printer answered. When it did not, it stays open
-   * with the reason, and the printer's own page where this page is blocked.
-   */
-  async openLocal (instance: InstanceConfig) {
-    if (await activateLocalPrinter(instance)) this.$emit('click')
-  }
-
-  status (id: string): PrinterStatus | undefined {
-    return cloudState.status[id]
-  }
-
-  isPrinting (s?: PrinterStatus) {
-    return s?.reachable && (s.state === 'printing' || s.state === 'paused')
-  }
-
-  percent (s?: PrinterStatus) {
-    return Math.round((s?.progress ?? 0) * 100)
-  }
-
-  tone (s: PrinterStatus | undefined, online: boolean) {
-    if (!online || !s?.reachable) return 'offline'
-    if (s.state === 'printing') return 'printing'
-    if (s.state === 'paused') return 'paused'
-    if (s.state === 'error' || s.state?.startsWith('klipper')) return 'error'
-    return 'ready'
-  }
-
-  summary (s: PrinterStatus | undefined, online: boolean) {
-    if (!online) return 'Offline'
-    if (!s) return 'Connecting through Iroh…'
-    if (!s.reachable) return s.error === 'offline' ? 'Offline' : `Unreachable: ${s.error}`
-    const state = this.$filters.prettyCase(s.state ?? 'unknown')
-    if (this.isPrinting(s)) return `${state} · ${this.percent(s)}% · ${s.filename ?? ''}`
-    return state
-  }
-
-  temps (s?: PrinterStatus) {
-    if (!s?.reachable || !s.extruder) return ''
-    const e = s.extruder
-    const b = s.bed
-    const nozzle = `Nozzle ${e.temperature.toFixed(0)}/${e.target.toFixed(0)}°C`
-    return b ? `${nozzle} · Bed ${b.temperature.toFixed(0)}/${b.target.toFixed(0)}°C` : nozzle
-  }
-
-  get localTone () {
-    if (!this.socketConnected) return 'offline'
-    if (this.printerPrinting) return 'printing'
-    if (this.printerPaused) return 'paused'
-    return this.klippyReady ? 'ready' : 'error'
-  }
-
-  get localSummary () {
+  localDetail (health: PrinterHealth): string {
+    if (health === 'connecting') return 'Connecting…'
+    if (health === 'locked') return 'Waiting for sign-in'
     const state = this.$filters.prettyCase(this.printerState || 'unknown')
-    if (this.printerPrinting) {
+    if (this.printerPrinting || this.printerPaused) {
       const progress = Math.round((this.$store.getters['printer/getPrintProgress'] ?? 0) * 100)
       return `${state} · ${progress}%`
     }
     return state
   }
 
-  get localTemps () {
-    const printer = this.$store.state.printer.printer
-    const e = printer.extruder
-    const b = printer.heater_bed
-    if (!e) return ''
-    const nozzle = `Nozzle ${Number(e.temperature).toFixed(0)}/${Number(e.target).toFixed(0)}°C`
-    return b ? `${nozzle} · Bed ${Number(b.temperature).toFixed(0)}/${Number(b.target).toFixed(0)}°C` : nozzle
+  get directory (): Directory {
+    return printerDirectory({
+      account: this.account ? cloudState.printers : [],
+      status: cloudState.status,
+      email: this.account?.email ?? null,
+      saved: this.savedInstances,
+      found: discoveryState.found,
+      cloudNearby: discoveryState.cloud,
+      nearby: nearbyState.printers,
+      activeCloudId: cloudState.activePrinterId,
+      local: this.localLive,
+      searching: discoveryState.scanning || !discoveryState.finishedAt
+    })
   }
 
-  hostOf (url: string) {
-    try {
-      return new URL(url).host
-    } catch {
-      return url
+  mounted () {
+    discoverPrinters().catch(() => {})
+    startNearby().catch(() => {})
+    this.onVisible(this.visible)
+  }
+
+  beforeDestroy () {
+    this.stopTimer()
+    stopNearby()
+  }
+
+  @Watch('visible')
+  onVisible (visible: boolean) {
+    this.stopTimer()
+    if (!visible) return
+    if (discoveryState.finishedAt) refreshKnownPrinters().catch(() => {})
+    this.timer = window.setInterval(() => { refreshKnownPrinters().catch(() => {}) }, HEALTH_EVERY_MS)
+  }
+
+  stopTimer () {
+    if (this.timer !== null) window.clearInterval(this.timer)
+    this.timer = null
+  }
+
+  /** A saved printer said who it is, or moved: keep the saved entry up to date. */
+  @Watch('savedFound', { immediate: true })
+  onFound () {
+    for (const update of savedUpdates(this.savedInstances, discoveryState.found)) {
+      this.$store.dispatch('config/relocateInstance', update)
     }
   }
 
-  removeInstance (instance: InstanceConfig) {
-    this.$store.dispatch('config/removeInstance', instance)
+  get savedFound () {
+    return discoveryState.found.map(l => `${l.endpointId}@${lanAddresses(l).join(',')}`).join(';')
   }
 
-  async pickCloud (id: string) {
-    this.$emit('click')
-    if (cloudState.activePrinterId === id && !activationState.error) return
-    await activateCloudPrinter(id).catch(() => {})
+  rescan () {
+    this.notice = null
+    discoveryState.cloudChecked = false
+    discoverPrinters(true).catch(() => {})
   }
 
-  async pickLocal (instance: InstanceConfig) {
-    if (instance.active && !cloudState.activePrinterId) {
+  async onLookNearby () {
+    this.notice = null
+    await lookNearby()
+  }
+
+  // -- what each card offers ------------------------------------------------
+
+  cloudActions (e: DirectoryEntry): CardAction[] {
+    const actions: CardAction[] = []
+    if (e.active !== 'local') {
+      actions.push({
+        id: 'connect-local',
+        label: 'Connect locally',
+        icon: '$lan',
+        hint: e.host ? e.host : 'Not found on this network',
+        disabled: !e.host
+      })
+    }
+    if (e.active !== 'cloud') {
+      actions.push({ id: 'connect-cloud', label: 'Connect through Muon3D', icon: '$cloud', disabled: !e.cloud?.online })
+    }
+    if (e.nearby && !e.cloud?.online) {
+      actions.push({ id: 'connect-bluetooth', label: 'Connect over Bluetooth', icon: '$bluetooth' })
+    }
+    actions.push({
+      id: 'access',
+      label: 'Access and protection',
+      icon: '$printerAccess',
+      hint: e.active ? undefined : 'Opens the printer first'
+    })
+    return actions
+  }
+
+  /** Someone else's printer, or one that refused this browser: ask its panel to let this browser in. */
+  askAction (e: DirectoryEntry): CardAction | null {
+    if (e.linkedTo !== 'other' && e.health !== 'locked') return null
+    return {
+      id: 'ask',
+      label: 'Ask for access',
+      icon: '$printerAsk',
+      hint: e.linkedTo === 'other' ? 'Linked to another account' : 'It wants access',
+      disabled: !e.host
+    }
+  }
+
+  localActions (e: DirectoryEntry): CardAction[] {
+    const actions: CardAction[] = []
+    const ask = this.askAction(e)
+    if (ask) {
+      actions.push(ask)
+    } else if (e.linkedTo !== 'mine') {
+      actions.push({ id: 'link', label: 'Link to my account', icon: '$linkPrinter', disabled: !e.host, hint: e.host ? undefined : 'Not found on this network' })
+    }
+    if (e.active) {
+      actions.push({ id: 'access', label: 'Access and protection', icon: '$printerAccess' })
+    }
+    actions.push({
+      id: 'remove',
+      label: 'Remove',
+      icon: '$printerRemove',
+      danger: true,
+      disabled: !!e.active,
+      hint: e.active ? 'Connect to another printer first' : undefined
+    })
+    return actions
+  }
+
+  foundActions (e: DirectoryEntry): CardAction[] {
+    const actions: CardAction[] = []
+    if (e.row?.action === 'open') actions.push({ id: 'connect', label: 'Connect', icon: '$lan', disabled: !e.host })
+    if (e.row?.canLink) actions.push({ id: 'link', label: 'Link to my account', icon: '$linkPrinter' })
+    const ask = this.askAction(e)
+    if (ask) actions.push(ask)
+    return actions
+  }
+
+  onAction (e: DirectoryEntry, id: string) {
+    this.notice = null
+    switch (id) {
+      case 'connect-local': return this.connectLocal(e)
+      case 'connect-cloud': return this.connectCloud(e)
+      case 'connect-bluetooth':
+        if (!e.cloud || !e.nearby) return
+        useBluetoothFor(e.cloud.id, e.nearby.device)
+        return this.connectCloud(e)
+      case 'connect': return this.openFoundEntry(e)
+      case 'link': return this.link(e)
+      case 'remove': return this.remove(e)
+      case 'access': return this.openAccess(e)
+      case 'ask': return this.askForAccess(e)
+    }
+  }
+
+  // -- opening --------------------------------------------------------------
+
+  async run (key: string, work: () => Promise<boolean>) {
+    if (this.busyKey) return
+    this.busyKey = key
+    try {
+      if (await work()) this.$emit('click')
+    } catch { /* activationState holds the reason */ } finally {
+      this.busyKey = null
+    }
+  }
+
+  openCloudEntry (e: DirectoryEntry) {
+    if (e.active) {
       this.$emit('click')
       return
     }
-    await this.openLocal(instance)
+    // The service lost it, and it answers here: the local way in is the one that works.
+    if (!e.cloud?.online && e.host) return this.connectLocal(e)
+    return this.connectCloud(e)
+  }
+
+  connectCloud (e: DirectoryEntry) {
+    if (!e.cloud) return
+    const id = e.cloud.id
+    return this.run(e.key, async () => {
+      await activateCloudPrinter(id)
+      return true
+    })
+  }
+
+  /** The saved address it answers on, else its address on this network. */
+  localInstance (e: DirectoryEntry): InstanceConfig | null {
+    if (e.lan) {
+      const answering = lanAddresses(e.lan)
+      const saved = e.saved.find(s => answering.includes(hostOf(s.apiUrl)))
+      return saved ?? instanceFor(e.lan)
+    }
+    if (e.host) return instanceForHost(e.host, e.name, e.endpointId)
+    return e.saved[0] ?? null
+  }
+
+  connectLocal (e: DirectoryEntry) {
+    const instance = this.localInstance(e)
+    if (!instance) return
+    return this.run(e.key, () => activateLocalPrinter(instance))
+  }
+
+  openLocalEntry (e: DirectoryEntry) {
+    if (e.active) {
+      this.$emit('click')
+      return
+    }
+    return this.connectLocal(e)
+  }
+
+  openFoundEntry (e: DirectoryEntry) {
+    const row = e.row
+    if (!row) return
+    switch (row.action) {
+      case 'open':
+        return this.connectLocal(e)
+      case 'set-up':
+        if (!row.nearby) return
+        this.setupPrinter = row.nearby
+        this.setupDialog = true
+        return
+      case 'nearby-info':
+        this.notice = `${row.name} is nearby. This browser hears it over Bluetooth, but it isn't on this ` +
+          "network or your account. Join the network it's on, or link it to your account at the printer."
+    }
+  }
+
+  async openInstance (instance: InstanceConfig) {
+    await this.run(`address:${instance.apiUrl}`, () => activateLocalPrinter(instance))
+  }
+
+  // -- managing -------------------------------------------------------------
+
+  link (e: DirectoryEntry) {
+    if (!this.account) {
+      this.pendingLink = e
+      this.accountDialog = true
+      return
+    }
+    const nearbyId = e.row?.cloudId ??
+      discoveryState.cloud.find(c => c.printerId === e.endpointId)?.printerId ?? ''
+    this.linkPrinterId = nearbyId
+    this.linkHost = nearbyId ? '' : (e.host ?? '')
+    this.linkDialog = true
+  }
+
+  onSignedIn () {
+    const pending = this.pendingLink
+    this.pendingLink = null
+    if (pending) this.link(pending)
+  }
+
+  remove (e: DirectoryEntry) {
+    for (const s of e.saved) this.$store.dispatch('config/removeInstance', s)
+  }
+
+  askForAccess (e: DirectoryEntry) {
+    if (!e.host) return
+    this.accessClient = lanPrinterAccess(`http://${e.host}`)
+    this.accessAsk = { kind: 'join' }
+    this.accessName = e.name
+    this.accessDialog = true
+  }
+
+  onAccessAnswered () {
+    refreshKnownPrinters().catch(() => {})
+  }
+
+  async openAccess (e: DirectoryEntry) {
+    if (!e.active) {
+      if (e.section === 'cloud') await this.connectCloud(e)
+      else await this.connectLocal(e)
+      if (activationState.error) return
+    }
+    this.$emit('click')
+    const hash = this.$store.getters['server/componentSupport']('muon_access') ? '#access' : '#protection'
+    if (this.$route.path !== '/settings' || this.$route.hash !== hash) {
+      this.$router.push({ path: '/settings', hash }).catch(() => {})
+    }
   }
 }
 </script>
@@ -432,10 +637,24 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
 .muon-switcher {
   padding: 4px 0 0;
 
+  &__title {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px 2px;
+    font-size: 13px;
+    font-weight: 700;
+
+    &--discovery {
+      margin-top: 10px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(128, 128, 128, 0.18);
+    }
+  }
+
   &__heading {
     display: flex;
     align-items: center;
-    padding: 14px 16px 6px;
+    padding: 10px 16px 6px;
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -455,96 +674,21 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     white-space: nowrap;
   }
 
-  &__item {
-    display: block;
-    width: calc(100% - 16px);
-    margin: 0 8px 6px;
-    padding: 10px 12px;
-    border-radius: 10px;
-    border: 1px solid rgba(128, 128, 128, 0.18);
-    text-align: left;
-    cursor: pointer;
-    color: inherit;
-    background: transparent;
-    transition: background 120ms ease, border-color 120ms ease;
-
-    &:hover {
-      background: rgba(128, 128, 128, 0.08);
-    }
-
-    &.is-active {
-      border-color: var(--v-primary-base);
-      background: rgba(128, 128, 128, 0.06);
-    }
-
-    &.is-offline {
-      opacity: 0.6;
-    }
-  }
-
-  &__row {
-    display: flex;
+  &__scan {
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-  }
-
-  &__name {
-    font-weight: 600;
-    font-size: 14px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__badge {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: 1px 6px;
-    border-radius: 4px;
-    border: 1px solid rgba(128, 128, 128, 0.4);
-    opacity: 0.8;
-
-    &.is-cloud {
-      border-color: var(--v-primary-base);
-      color: var(--v-primary-base);
-      opacity: 1;
-    }
-  }
-
-  &__dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex: none;
-    background: #8a8a8a;
-
-    &.is-ready { background: #3fb950; }
-    &.is-printing { background: #2f81f7; box-shadow: 0 0 0 3px rgba(47, 129, 247, 0.25); }
-    &.is-paused { background: #d29922; }
-    &.is-error { background: #f85149; }
-    &.is-offline, &.is-idle { background: #6e7681; }
-  }
-
-  &__meta {
-    margin: 4px 0 0 16px;
-    font-size: 12px;
-    opacity: 0.75;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__mono {
-    font-family: 'Roboto Mono', ui-monospace, monospace;
     font-size: 11px;
+    font-weight: 500;
+    opacity: 0.75;
+    max-width: 150px;
+    overflow: hidden;
+    white-space: nowrap;
   }
 
   &__empty {
     padding: 4px 16px 8px;
     font-size: 12px;
-    opacity: 0.6;
+    opacity: 0.7;
   }
 
   &__actions {

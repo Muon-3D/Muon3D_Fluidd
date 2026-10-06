@@ -191,6 +191,11 @@ export const actions: ActionTree<ConfigState, RootState> = {
     commit('setRemoveInstance', payload)
   },
 
+  /** Records a saved printer's new address or its EndpointId. */
+  async relocateInstance ({ commit }, payload: { apiUrl: string, changes: Partial<InstanceConfig> }) {
+    commit('setRelocateInstance', payload)
+  },
+
   /**
    * Updates a known instance
    */
