@@ -61,7 +61,7 @@
         <app-btn
           color="primary"
           data-test="slicer-confirm-print"
-          :disabled="asksPlateClear && !plateClear"
+          :disabled="!armed || (asksPlateClear && !plateClear)"
           @click="answer({ choice: 'print', plateClear })"
         >
           {{ request.mode === 'queue' ? $t('app.slicer.confirm.queue') : $t('app.slicer.confirm.print') }}
@@ -75,6 +75,12 @@
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import type { ConfirmAnswer } from '@/services/slicer-bridge/vendor/printer-client/bridge/host'
 import type { PlateClearAsk, PrintMode } from '@/services/slicer-bridge/vendor/printer-client/bridge/protocol'
+
+/**
+ * How long Print (or Queue) stays off after the dialog shows, and after this
+ * window gets the focus back, as browsers do for their permission prompts.
+ */
+export const ARM_DELAY_MS = 500
 
 /** What the dialog asks: the files the slicer uploaded, for the printer Fluidd has selected. */
 export interface PrintConfirmRequest {
@@ -95,7 +101,11 @@ export interface PrintConfirmRequest {
  * the files stay on the printer and nothing starts.
  *
  * Focus starts on the title, never on Print, so a key held or pressed twice
- * where the slicer's button was cannot confirm the print.
+ * where the slicer's button was cannot confirm the print. Print also stays
+ * off for ARM_DELAY_MS after the dialog shows (each new request starts it
+ * again) and after the window regains the focus, so a click meant for the
+ * frame (the second of a double-click, a frame that asks at the moment of a
+ * click) cannot land on it.
  */
 @Component({})
 export default class PrintConfirmDialog extends Vue {
@@ -104,6 +114,8 @@ export default class PrintConfirmDialog extends Vue {
 
   plateClear = false
   answered = false
+  armed = false
+  armTimer: ReturnType<typeof setTimeout> | null = null
 
   get open (): boolean {
     return this.request !== null
@@ -136,12 +148,42 @@ export default class PrintConfirmDialog extends Vue {
     this.plateClear = false
     this.answered = false
     if (request) {
+      this.arm()
       this.$nextTick(() => (this.$refs.title as HTMLElement | undefined)?.focus())
+    } else {
+      this.disarm()
     }
   }
 
   mounted () {
+    window.addEventListener('blur', this.disarm)
+    window.addEventListener('focus', this.handleFocus)
     if (this.request) this.onRequest(this.request)
+  }
+
+  beforeDestroy () {
+    window.removeEventListener('blur', this.disarm)
+    window.removeEventListener('focus', this.handleFocus)
+    this.disarm()
+  }
+
+  /** Print turns on ARM_DELAY_MS from now (again, if it was on). */
+  arm () {
+    this.disarm()
+    this.armTimer = setTimeout(() => {
+      this.armTimer = null
+      this.armed = true
+    }, ARM_DELAY_MS)
+  }
+
+  disarm () {
+    if (this.armTimer) clearTimeout(this.armTimer)
+    this.armTimer = null
+    this.armed = false
+  }
+
+  handleFocus () {
+    if (this.request) this.arm()
   }
 
   /** The dialog closed itself (Esc, a click outside): Upload only. */
@@ -151,7 +193,7 @@ export default class PrintConfirmDialog extends Vue {
 
   answer (answer: ConfirmAnswer) {
     if (!this.request || this.answered) return
-    if (answer.choice === 'print' && this.asksPlateClear && !answer.plateClear) return
+    if (answer.choice === 'print' && (!this.armed || (this.asksPlateClear && !answer.plateClear))) return
     this.answered = true
     this.$emit('answer', answer)
   }

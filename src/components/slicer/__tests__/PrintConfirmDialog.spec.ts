@@ -1,9 +1,9 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import VueI18n from 'vue-i18n'
 import Vue from 'vue'
 import messages from '@/locales/en.yaml'
-import PrintConfirmDialog, { type PrintConfirmRequest } from '../PrintConfirmDialog.vue'
+import PrintConfirmDialog, { ARM_DELAY_MS, type PrintConfirmRequest } from '../PrintConfirmDialog.vue'
 
 Vue.use(VueI18n)
 
@@ -30,11 +30,22 @@ function open (request: PrintConfirmRequest | null) {
   return mount(PrintConfirmDialog, { propsData: { request }, stubs, i18n, attachTo: document.body })
 }
 
+/** The dialog as the person sees it once Print has turned on. */
+async function armed (request: PrintConfirmRequest | null) {
+  const wrapper = open(request)
+  vi.advanceTimersByTime(ARM_DELAY_MS)
+  await wrapper.vm.$nextTick()
+  return wrapper
+}
+
 const text = (wrapper: ReturnType<typeof open>, test: string) => wrapper.find(`[data-test="${test}"]`)
 
 describe('PrintConfirmDialog', () => {
+  beforeEach(() => { vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
   it('asks "Print ‹file› on ‹printer›?", with the plates queued after it', async () => {
-    const wrapper = open(start({ paths: ['a.gcode', 'b.gcode', 'c.gcode'] }))
+    const wrapper = await armed(start({ paths: ['a.gcode', 'b.gcode', 'c.gcode'] }))
     expect(wrapper.find('#slicer-confirm-title').text()).toBe('Print a.gcode on Walnut?')
     expect(text(wrapper, 'slicer-confirm-more').text()).toBe('and queue 2 more')
     expect(text(wrapper, 'slicer-confirm-print').text()).toBe('Print')
@@ -55,7 +66,7 @@ describe('PrintConfirmDialog', () => {
   })
 
   it('keeps Print off until Plate is clear is ticked, when the host asks it', async () => {
-    const wrapper = open(start({ plateClear: 'ask' }))
+    const wrapper = await armed(start({ plateClear: 'ask' }))
     const print = text(wrapper, 'slicer-confirm-print')
     expect(text(wrapper, 'slicer-confirm-plate').text()).toContain('Plate is clear')
     expect(print.attributes('disabled')).toBe('disabled')
@@ -73,7 +84,7 @@ describe('PrintConfirmDialog', () => {
     ['its ✕', (w: ReturnType<typeof open>) => text(w, 'slicer-confirm-close').trigger('click')],
     ['Esc or a click outside (the dialog closes itself)', (w: ReturnType<typeof open>) => (w.vm as any).handleInput(false)]
   ])('%s answers Upload only, once', async (_how, close) => {
-    const wrapper = open(start())
+    const wrapper = await armed(start())
     await close(wrapper)
     await text(wrapper, 'slicer-confirm-print').trigger('click')
     expect(wrapper.emitted('answer')).toEqual([[{ choice: 'upload-only' }]])
@@ -87,6 +98,43 @@ describe('PrintConfirmDialog', () => {
     await wrapper.find('input[type="checkbox"]').setChecked(true)
     await wrapper.setProps({ request: start({ plateClear: 'ask', paths: ['next.gcode'] }) })
     expect((wrapper.vm as any).plateClear).toBe(false)
+    wrapper.destroy()
+  })
+
+  it('keeps Print off for a moment after it shows, after each new request and after the window regains the focus', async () => {
+    const wrapper = open(start())
+    const print = text(wrapper, 'slicer-confirm-print')
+    await wrapper.vm.$nextTick()
+    expect(print.attributes('disabled')).toBe('disabled')
+    await print.trigger('click')
+    ;(wrapper.vm as any).answer({ choice: 'print', plateClear: false })
+    expect(wrapper.emitted('answer')).toBeUndefined()
+    vi.advanceTimersByTime(ARM_DELAY_MS - 1)
+    await wrapper.vm.$nextTick()
+    expect(print.attributes('disabled')).toBe('disabled')
+    vi.advanceTimersByTime(1)
+    await wrapper.vm.$nextTick()
+    expect(print.attributes('disabled')).toBeUndefined()
+
+    // A new request starts the wait again.
+    await wrapper.setProps({ request: start({ paths: ['next.gcode'] }) })
+    expect(print.attributes('disabled')).toBe('disabled')
+    vi.advanceTimersByTime(ARM_DELAY_MS)
+    await wrapper.vm.$nextTick()
+    expect(print.attributes('disabled')).toBeUndefined()
+
+    // The window lost the focus (to another window, or the frame) and got it back: the wait starts again.
+    window.dispatchEvent(new Event('blur'))
+    await wrapper.vm.$nextTick()
+    expect(print.attributes('disabled')).toBe('disabled')
+    window.dispatchEvent(new Event('focus'))
+    vi.advanceTimersByTime(ARM_DELAY_MS - 1)
+    await print.trigger('click')
+    expect(wrapper.emitted('answer')).toBeUndefined()
+    vi.advanceTimersByTime(1)
+    await wrapper.vm.$nextTick()
+    await print.trigger('click')
+    expect(wrapper.emitted('answer')).toEqual([[{ choice: 'print', plateClear: false }]])
     wrapper.destroy()
   })
 
