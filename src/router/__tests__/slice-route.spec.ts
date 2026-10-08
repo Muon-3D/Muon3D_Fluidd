@@ -41,11 +41,11 @@ describe('where appInit sends the page (a printer switch)', () => {
 })
 
 describe('the service worker\'s navigations', () => {
-  test.each(['/slicer', '/slicer/', '/slicer/embed.html', '/slicer/index.html?x=1'])('leaves %s to the network (the slicer the printer serves)', (path) => {
+  test.each(['/slicer', '/slicer/', '/slicer?x=1', '/slicer/embed.html', '/slicer/index.html?x=1'])('leaves %s to the network (the slicer the printer serves)', (path) => {
     expect(isDeniedNavigation(path)).toBe(true)
   })
 
-  test.each(['/', '/index.html', '/slice', '/slicers', '/slicer-notes'])('answers %s with Fluidd', (path) => {
+  test.each(['/', '/index.html', '/slice', '/slice?x=1', '/slicers', '/slicer-notes'])('answers %s with Fluidd', (path) => {
     expect(isDeniedNavigation(path)).toBe(false)
   })
 
