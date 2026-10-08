@@ -190,11 +190,13 @@ export class IrohPrinter implements ManagedIrohRelay {
     })
     let body = new Uint8Array()
     if (init?.body !== undefined && init.body !== null) {
-      const blob = await new Response(init.body as BodyInit).arrayBuffer()
-      body = new Uint8Array(blob)
+      // Encoded once: every encoding of a FormData picks a new boundary, so
+      // the bytes and the type must come from the same Response.
+      const encoded = new Response(init.body as BodyInit)
+      body = new Uint8Array(await encoded.arrayBuffer())
       if (init.body instanceof FormData) {
         // A multipart body's boundary lives in the type Response computed.
-        const type = new Response(init.body).headers.get('content-type')
+        const type = encoded.headers.get('content-type')
         if (type) {
           const i = headers.findIndex((h, n) => n % 2 === 0 && h.toLowerCase() === 'content-type')
           if (i >= 0) headers.splice(i, 2)
