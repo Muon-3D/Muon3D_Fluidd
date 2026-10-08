@@ -123,7 +123,7 @@ describe('vectors: the handshake, against Fluidd\'s host', () => {
         http: { get: async () => { throw new Error('no reads') }, post: async () => { throw new Error('no writes') } },
         selection: () => ({ switching: false, cloud: null, apiUrl: '', displayName: '', connected: false }),
         remote: () => false,
-        fetchJson: async () => ({}),
+        fetchIdentity: async () => ({}),
         confirm: async () => ({ choice: 'upload-only' }),
         theme: 'light',
         hostVersion: 'test',

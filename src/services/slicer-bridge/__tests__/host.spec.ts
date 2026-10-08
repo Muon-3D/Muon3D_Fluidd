@@ -72,7 +72,7 @@ async function setup (initial: FluiddSelection) {
     http: moonraker.http,
     selection: () => selection,
     remote: () => true,
-    fetchJson: async () => ({ name: 'walnut', endpoint_id: WALNUT_ID }),
+    fetchIdentity: async () => ({ name: 'walnut', endpoint_id: WALNUT_ID }),
     confirm: async (request): Promise<ConfirmAnswer> => {
       dialogs.push(request)
       return { choice: 'upload-only' }

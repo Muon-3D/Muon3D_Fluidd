@@ -4,15 +4,16 @@
     data-test="slice-view"
   >
     <iframe
-      v-if="url"
+      v-if="url && present === 'present'"
       ref="frame"
       class="slice-view__frame"
       title="Muon3D Slicer"
       allow="clipboard-write; fullscreen"
       referrerpolicy="no-referrer"
+      :sandbox="sandbox"
     />
     <v-alert
-      v-else
+      v-else-if="!url || present === 'absent'"
       type="warning"
       text
     >
@@ -36,7 +37,7 @@ import BrowserMixin from '@/mixins/browser'
 import PrintConfirmDialog, { type PrintConfirmRequest } from '@/components/slicer/PrintConfirmDialog.vue'
 import { startSlicerHost, type SlicerHost } from '@/services/slicer-bridge/host'
 import { readFluiddSelection } from '@/services/slicer-bridge/fluidd'
-import { slicerUrl } from '@/services/slicer-bridge/slicerUrl'
+import { configuredSlicerUrl, probeSlicer, slicerPresence, type SlicerPresence } from '@/services/slicer-bridge/slicerUrl'
 import { isBoundToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
 import type { ConfirmAnswer, ConfirmRequest } from '@/services/slicer-bridge/vendor/printer-client/bridge/host'
 import { printerError } from '@/services/slicer-bridge/vendor/printer-client/errors/kinds'
@@ -48,8 +49,17 @@ interface OpenDialog {
 }
 
 /**
+ * The frame's sandbox when the slicer is on another origin (a hosted Fluidd),
+ * which may be hostile: everything the slicer uses, but never a navigation of
+ * this page (no allow-top-navigation). On this page's own origin (a printer's
+ * copy) a sandbox would add nothing, so there is none.
+ */
+export const CROSS_ORIGIN_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox'
+
+/**
  * Fluidd › Slice: the Muon3D Slicer in a frame (its embed.html, from
- * VUE_MUON_SLICER_URL), hosted over printer-bridge/1
+ * VUE_MUON_SLICER_URL, framed only once probeSlicer found it there), hosted
+ * over printer-bridge/1
  * (services/slicer-bridge/host.ts). The slicer slices for the printer
  * Fluidd has selected and sends to it through Fluidd's own connection; a
  * print starts only from Fluidd's dialog (PrintConfirmDialog.vue).
@@ -67,10 +77,20 @@ export default class Slice extends Mixins(StateMixin, BrowserMixin) {
   host: SlicerHost | null = null
   dialog: OpenDialog | null = null
   dirty = false
+  closed = false
   stopWatching: (() => void) | null = null
 
   get url (): URL | null {
-    return slicerUrl(import.meta.env.VUE_MUON_SLICER_URL, window.location.href)
+    return configuredSlicerUrl()
+  }
+
+  get present (): SlicerPresence {
+    return slicerPresence.state
+  }
+
+  get sandbox (): string | undefined {
+    const url = this.url
+    return url && url.origin !== window.location.origin ? CROSS_ORIGIN_SANDBOX : undefined
   }
 
   get theme (): 'light' | 'dark' {
@@ -87,10 +107,17 @@ export default class Slice extends Mixins(StateMixin, BrowserMixin) {
     return { printer: request.printer.name, paths: request.paths, mode: request.mode, plateClear: request.plateClear }
   }
 
-  mounted () {
+  async mounted () {
+    window.addEventListener('beforeunload', this.handleBeforeUnload)
+    if (!await probeSlicer(this.url)) return
+    await this.$nextTick()
+    this.startHost()
+  }
+
+  startHost () {
     const url = this.url
     const frame = this.$refs.frame as HTMLIFrameElement | undefined
-    if (!url || !frame) return
+    if (!url || !frame || this.host || this.closed) return
     this.host = startSlicerHost({
       frame,
       slicerUrl: url,
@@ -98,7 +125,7 @@ export default class Slice extends Mixins(StateMixin, BrowserMixin) {
       http: this.$httpClient,
       selection: () => readFluiddSelection(this.$store),
       remote: () => isBoundToPrinterTransport(this.$httpClient),
-      fetchJson: (address) => fetch(address, { cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status)))),
+      fetchIdentity: this.identityFetcher(),
       confirm: (request) => this.confirm(request),
       theme: this.theme,
       density: this.density,
@@ -114,10 +141,10 @@ export default class Slice extends Mixins(StateMixin, BrowserMixin) {
     )
     this.$watch('theme', (theme: 'light' | 'dark') => this.host?.bridge.setTheme(theme))
     this.$watch('density', (density: 'compact' | 'touch') => this.host?.bridge.setDensity(density))
-    window.addEventListener('beforeunload', this.handleBeforeUnload)
   }
 
   beforeDestroy () {
+    this.closed = true
     window.removeEventListener('beforeunload', this.handleBeforeUnload)
     this.stopWatching?.()
     this.dialog?.reject(new Error('The slicer closed'))
@@ -140,6 +167,17 @@ export default class Slice extends Mixins(StateMixin, BrowserMixin) {
     if (!this.dirty) return
     event.preventDefault()
     event.returnValue = ''
+  }
+
+  /**
+   * Asks the network printer at an API address its identity through Fluidd's
+   * own client, so with its sign-in, and reads every status here: a refusal
+   * shows no toast and never signs Fluidd out.
+   */
+  identityFetcher () {
+    return (apiUrl: string): Promise<unknown> =>
+      this.$httpClient.get('/server/muon/identity', { baseURL: apiUrl, responseType: 'json', validateStatus: () => true })
+        .then(r => r.status === 200 ? r.data : Promise.reject(new Error(String(r.status))))
   }
 
   /** Fluidd's dialog for one print.request; one at a time. */

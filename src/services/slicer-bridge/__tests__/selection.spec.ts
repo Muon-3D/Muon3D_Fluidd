@@ -7,6 +7,7 @@ import {
   bridgePrinterFor,
   cloudRole,
   createIdentityCache,
+  IDENTITY_RETRY_MS,
   endpointKey,
   identityName,
   MUON_M1,
@@ -62,7 +63,11 @@ describe('the model and the role', () => {
     expect(cloudRole({ role: 'viewer', shared: true })).toBe('viewer')
     expect(cloudRole({ role: 'operator', shared: true })).toBe('operator')
     expect(cloudRole({ role: 'operator', shared: false })).toBe('owner')
-    expect(cloudRole({ role: undefined })).toBe('owner')
+    // An older console sends no role: none (the slicer refuses it on a host route), never an Owner.
+    expect(cloudRole({ role: undefined })).toBeNull()
+    expect(cloudRole({ role: undefined, shared: true })).toBeNull()
+    expect(cloudRole({ role: null, shared: false })).toBeNull()
+    expect(cloudRole({ role: 'admin' as any })).toBeNull()
   })
 })
 
@@ -120,20 +125,68 @@ describe('the selected printer', () => {
 
 describe('the identity cache', () => {
   it('asks each address once, and reads the answer wrapped in result or not', async () => {
-    const fetchJson = vi.fn(async (url: string) => url.includes('10') ? { result: { name: 'walnut', display: 'Walnut · 8987', endpoint_id: ID } } : { name: 'oak' })
+    const fetchJson = vi.fn(async (apiUrl: string) => apiUrl.includes('10') ? { result: { name: 'walnut', display: 'Walnut · 8987', endpoint_id: ID } } : { name: 'oak' })
     const cache = createIdentityCache(fetchJson)
     expect(cache.get('http://192.0.2.10')).toBeUndefined()
     const [a, b] = await Promise.all([cache.ask('http://192.0.2.10'), cache.ask('http://192.0.2.10')])
     expect(a).toEqual({ answered: true, endpointId: KEY, name: 'Walnut' })
     expect(b).toBe(a)
     expect(fetchJson).toHaveBeenCalledTimes(1)
-    expect(fetchJson).toHaveBeenCalledWith('http://192.0.2.10/server/muon/identity')
+    expect(fetchJson).toHaveBeenCalledWith('http://192.0.2.10')
     await expect(cache.ask('http://192.0.2.11/')).resolves.toEqual({ answered: true, endpointId: null, name: 'oak' })
   })
 
-  it('takes a printer that does not answer as one with no identity', async () => {
+  it('takes a printer that does not answer as one with no identity, for a while', async () => {
     const cache = createIdentityCache(async () => { throw new Error('503') })
     await expect(cache.ask('http://192.0.2.10')).resolves.toEqual({ answered: false, endpointId: null, name: null })
     expect(cache.get('http://192.0.2.10')).toEqual({ answered: false, endpointId: null, name: null })
+    expect(cache.due('http://192.0.2.10')).toBe(false)
+  })
+
+  it('keeps only an answer: a failure is asked again (doubling its wait, or at once after a reconnect), and then the key is the EndpointId', async () => {
+    let clock = 0
+    const answers: Array<() => unknown> = [
+      () => { throw new Error('timeout') },
+      () => { throw new Error('503') },
+      () => { throw new Error('401') },
+      () => ({ result: { name: 'walnut', display: 'Walnut · 8987', endpoint_id: ID } })
+    ]
+    const fetchIdentity = vi.fn(async () => answers.shift()!())
+    const cache = createIdentityCache(fetchIdentity, () => clock)
+    const at = 'http://192.0.2.10'
+    const lan = (answer: ReturnType<typeof cache.get>) => bridgePrinterFor(
+      { switching: false, cloud: null, apiUrl: at, displayName: 'walnut', connected: true }, answer)
+
+    expect(cache.due(at)).toBe(true)
+    await cache.ask(at)
+    expect(lan(cache.get(at))).toMatchObject({ key: 'origin:http://192.0.2.10', model: null })
+    expect(cache.retryIn(at)).toBe(IDENTITY_RETRY_MS.first)
+    clock += IDENTITY_RETRY_MS.first - 1
+    expect(cache.due(at)).toBe(false)
+    clock += 1
+    expect(cache.due(at)).toBe(true)
+    await cache.ask(at)
+    expect(cache.retryIn(at)).toBe(IDENTITY_RETRY_MS.first * 2)
+    // Fluidd's socket came back: asked again at once.
+    cache.forgetFailures()
+    expect(cache.due(at)).toBe(true)
+    await cache.ask(at)
+    expect(cache.retryIn(at)).toBe(IDENTITY_RETRY_MS.first * 4)
+    clock += IDENTITY_RETRY_MS.first * 4
+    await expect(cache.ask(at)).resolves.toEqual({ answered: true, endpointId: KEY, name: 'Walnut' })
+    expect(lan(cache.get(at))).toMatchObject({ key: KEY, model: MUON_M1 })
+    expect(cache.due(at)).toBe(false)
+    expect(fetchIdentity).toHaveBeenCalledTimes(4)
+  })
+
+  it('never waits longer than the longest retry', async () => {
+    let clock = 0
+    const cache = createIdentityCache(async () => { throw new Error('503') }, () => clock)
+    for (let i = 0; i < 10; i++) {
+      await cache.ask('http://192.0.2.10')
+      clock += cache.retryIn('http://192.0.2.10')
+    }
+    await cache.ask('http://192.0.2.10')
+    expect(cache.retryIn('http://192.0.2.10')).toBe(IDENTITY_RETRY_MS.max)
   })
 })
