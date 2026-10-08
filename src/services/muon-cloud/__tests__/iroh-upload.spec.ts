@@ -246,6 +246,23 @@ describe('IrohPrinter.fetch, uploading a FormData', () => {
     expect(sent[0].body).toEqual(body)
     expect(gatewayReads(sent[0].headers, sent[0].body).file.content).toBe('G28')
   })
+
+  it('rejects an aborted upload at once, and sends nothing when aborted before it left', async () => {
+    // The printer never answers: only the abort can end the request.
+    const fetch = vi.fn(() => new Promise<never>(() => {}))
+    const printer = new IrohPrinter({ printerId: () => 'printer', fetch, openWebSocket: vi.fn(), close: vi.fn() } as any)
+    const abort = new AbortController()
+    const upload = printer.fetch('/server/files/upload', { method: 'POST', body: new Uint8Array([1, 2, 3]), signal: abort.signal })
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+    abort.abort()
+    await expect(upload).rejects.toMatchObject({ name: 'AbortError' })
+
+    const before = new AbortController()
+    before.abort()
+    await expect(printer.fetch('/server/files/upload', { method: 'POST', body: new Uint8Array([1]), signal: before.signal }))
+      .rejects.toMatchObject({ name: 'AbortError' })
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('the gateway\'s parser in this spec', () => {

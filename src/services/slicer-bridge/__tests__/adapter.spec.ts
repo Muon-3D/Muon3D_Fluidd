@@ -138,6 +138,22 @@ describe('the upload', () => {
     const silent: HttpClient = { get: vi.fn(), post: vi.fn(async () => { throw Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }) }) }
     await expect(setup({ http: silent }).adapter.upload(WALNUT.key, body(), { signal: signal(), onStep: () => {} })).rejects.toMatchObject({ kind: 'offline' })
   })
+
+  it.each([
+    ['over Iroh, which reports no progress', false],
+    ['on the network, before the first progress event', true]
+  ])('takes a body that broke off once handed to the transport as lost, %s', async (_how, reportsProgress) => {
+    // As axios does: the request's transform runs as the request leaves for the transport, then the transport fails.
+    const handedOff: HttpClient = {
+      get: vi.fn(),
+      post: vi.fn(async (_url, data, config) => {
+        for (const transform of [config?.transformRequest ?? []].flat()) transform.call(config as any, data, {} as any)
+        throw Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' })
+      })
+    }
+    await expect(setup({ http: handedOff, reportsProgress }).adapter.upload(WALNUT.key, body(), { signal: signal(), onStep: () => {} }))
+      .rejects.toMatchObject({ kind: 'lost' })
+  })
 })
 
 describe('start, queue and cancel', () => {

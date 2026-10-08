@@ -187,6 +187,26 @@ const FRAMING_HEADERS = new Set([
 ])
 
 /** One printer's gateway connection, shaped as Fluidd's `ManagedIrohRelay`. */
+/** The error fetch rejects with when its signal aborts. */
+function abortError (signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException('The request was aborted', 'AbortError')
+}
+
+/**
+ * `sending`, or a rejection as soon as `signal` aborts. The binding has no
+ * way to stop one request on a connection, so an aborted request's answer is
+ * abandoned: the caller is free at once, and nothing reads what comes back.
+ */
+function untilAborted<T> (sending: Promise<T>, signal: AbortSignal | null | undefined): Promise<T> {
+  if (!signal) return sending
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError(signal))
+    if (signal.aborted) return onAbort()
+    signal.addEventListener('abort', onAbort, { once: true })
+    sending.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+  })
+}
+
 export class IrohPrinter implements ManagedIrohRelay {
   private readonly printer: WasmPrinter
 
@@ -195,6 +215,8 @@ export class IrohPrinter implements ManagedIrohRelay {
   }
 
   async fetch (path: string, init?: RequestInit): Promise<Response> {
+    const signal = init?.signal
+    if (signal?.aborted) throw abortError(signal)
     const method = (init?.method ?? 'GET').toUpperCase()
     const headers: string[] = []
     const source = new Headers(init?.headers ?? {})
@@ -224,7 +246,9 @@ export class IrohPrinter implements ManagedIrohRelay {
         headers.push('content-type', 'application/json')
       }
     }
-    const answer = await this.printer.fetch(method, path, headers, body)
+    // Aborted while the body was read: nothing is sent.
+    if (signal?.aborted) throw abortError(signal)
+    const answer = await untilAborted(this.printer.fetch(method, path, headers, body), signal)
     const responseHeaders = new Headers()
     for (let i = 0; i + 1 < answer.headers.length; i += 2) {
       try {
