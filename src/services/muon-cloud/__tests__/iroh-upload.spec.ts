@@ -223,6 +223,29 @@ describe('IrohPrinter.fetch, uploading a FormData', () => {
     expect(sent[0].headers).toEqual(['content-type', 'application/json'])
     expect(new TextDecoder().decode(sent[0].body)).toBe('{"script":"G28"}')
   })
+
+  it('drops a caller\'s own framing headers: the binding frames the body it sends', async () => {
+    // The slicer's host (services/slicer-bridge) sends a body it built itself;
+    // a Content-Length or Transfer-Encoding beside it would make the request
+    // ambiguous, which the gateway refuses with 400.
+    const { relay: printer, sent } = relay()
+    const body = new TextEncoder().encode('--b0\r\nContent-Disposition: form-data; name="file"; filename="a.gcode"\r\n\r\nG28\r\n--b0--\r\n')
+    await printer.fetch('/server/files/upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'multipart/form-data; boundary=b0',
+        'Content-Length': '999',
+        'Transfer-Encoding': 'chunked',
+        Connection: 'keep-alive',
+        Accept: 'application/json'
+      },
+      body
+    })
+
+    expect(sent[0].headers).toEqual(['accept', 'application/json', 'content-type', 'multipart/form-data; boundary=b0'])
+    expect(sent[0].body).toEqual(body)
+    expect(gatewayReads(sent[0].headers, sent[0].body).file.content).toBe('G28')
+  })
 })
 
 describe('the gateway\'s parser in this spec', () => {

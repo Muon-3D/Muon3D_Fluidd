@@ -45,6 +45,13 @@
         </app-nav-item>
 
         <app-nav-item
+          icon="$layersTripleOutline"
+          to="/slice"
+        >
+          {{ $t('app.general.title.slice') }}
+        </app-nav-item>
+
+        <app-nav-item
           icon="$files"
           to="/jobs"
         >

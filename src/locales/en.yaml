@@ -478,6 +478,7 @@ app:
       rollover_logs: Rollover logs
       runout_sensors: Runout Sensors
       settings: Settings
+      slice: Slice
       stats: Printer Stats
       system: System
       system_overview: System Information
@@ -1068,6 +1069,19 @@ app:
         paired connection, so Wi-Fi, the hotspot and updates still work here.
       panel_only: Only the printer's own panel can turn protection on or off.
       unaffected: Printing, files and everything else here work as normal.
+  slicer:
+    confirm:
+      print_title: Print {file} on {printer}?
+      queue_title: Queue {file} on {printer}?
+      and_queue_more: and queue {n} more
+      and_more: and {n} more
+      plate_clear: Plate is clear
+      upload_only: Upload only
+      print: Print
+      queue: Queue
+    msg:
+      leave: The slicer has changes you have not saved. Leave it?
+      no_slicer: The slicer's address is not set (VUE_MUON_SLICER_URL).
   muon:
     setup:
       title: Set up {name}

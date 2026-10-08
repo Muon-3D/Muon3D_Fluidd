@@ -5,6 +5,7 @@ import { Globals } from './globals'
 import type { ApiConfig, InitConfig, HostConfig, InstanceConfig } from './store/config/types'
 import axios from 'axios'
 import router from './router'
+import { routeAfterInit } from './router/afterInit'
 import { httpClientActions } from './api/httpClientActions'
 import sanitizeEndpoint from './util/sanitize-endpoint'
 import webSocketWrapper from './util/web-socket-wrapper'
@@ -241,8 +242,10 @@ export const appInit = async (apiConfig?: ApiConfig, hostConfig?: HostConfig): P
   // apiConfig could have empty strings, meaning we have no valid connection.
   await store.dispatch('init', { apiConfig, hostConfig, apiConnected })
 
-  // Ensure users start on the dash.
-  if (router.currentRoute.path !== '/' && store.state.auth.authenticated) router.push('/')
+  // Ensure users start on the dash, except on a route that stays across a
+  // printer switch (/slice).
+  const startRoute = routeAfterInit(router.currentRoute, store.state.auth.authenticated)
+  if (startRoute) router.push(startRoute)
 
   return { apiConfig, hostConfig, apiConnected, apiAuthenticated }
 }

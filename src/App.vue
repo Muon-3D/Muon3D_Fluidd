@@ -227,14 +227,19 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
       this.authenticated && this.socketConnected
   }
 
+  // Not on /slice: the slicer in its frame has its own bar at the bottom.
   get showTabBar (): boolean {
-    return this.glassPhone
+    return this.glassPhone && !this.sliceRoute
+  }
+
+  get sliceRoute (): boolean {
+    return this.$route.path === '/slice'
   }
 
   // On a phone the glass style names the page in a large title, as iOS does.
   // The console and G-code preview keep that height for the tool itself.
   get showLargeTitle (): boolean {
-    return this.glassPhone && !['/console', '/preview'].includes(this.$route.path)
+    return this.glassPhone && !['/console', '/preview', '/slice'].includes(this.$route.path)
   }
 
   get columnCount (): number {
