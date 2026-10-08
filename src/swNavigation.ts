@@ -15,8 +15,9 @@ export const NAVIGATION_DENYLIST: RegExp[] = [
   /^\/j\//,
   /^\/auth\//,
   // The Muon3D Slicer the printer serves beside Fluidd (/slicer/, and the
-  // /slicer redirect to it): its own pages, which /slice frames.
-  /^\/slicer(?:\/|$)/
+  // /slicer redirect to it): its own pages, which /slice frames. Workbox
+  // matches the path with its query, so /slicer?x is the slicer's too.
+  /^\/slicer(?:[/?]|$)/
 ]
 
 /** Whether the service worker leaves a navigation to `pathname` to the network. */
