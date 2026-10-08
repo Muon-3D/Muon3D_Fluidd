@@ -252,7 +252,7 @@ function readJobs(value: unknown): Job[] {
   });
 }
 
-/** A job that ended having put material on the plate (D-PB-9: then "Plate is clear" is asked). */
+/** A job that ended having put material on the plate: the next start then asks "Plate is clear". */
 const deposited = (job: Job | undefined) => job !== undefined && job.status !== 'in_progress' && job.filamentUsed > 0;
 
 /** What a print this frame started is: its printer's newest job before the start (null: none; undefined: unknown). */
@@ -555,7 +555,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
             return when === undefined || at - when > LIMITS.approvalMs;
           });
           if (stale !== undefined) refuse('not-allowed', `"${stale}" was not uploaded to this printer by this frame in the last 30 minutes`);
-          // SG-9 from the printer's own history: a frame's "not needed" never hides the tick (D-PB-9, H-DEC-3).
+          // The plate-clear rule from the printer's own history: a frame's "not needed" never hides the tick.
           const jobs = req.mode === 'start' ? await lastJobs(key, 1, signal) : null;
           const plateClear: PlateClearAsk = req.mode === 'queue' ? 'not-needed' : req.plateClear === 'ask' || jobs === null || deposited(jobs[0]) ? 'ask' : 'not-needed';
           const choice = await adapter.confirm({ printer: writable(), paths: [...req.paths], mode: req.mode, plateClear, signal });

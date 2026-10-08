@@ -218,7 +218,7 @@ export interface BridgeEvent {
 // ---- each operation's parameters and result, as validated --------------------------------------------------------
 
 export type PrintMode = 'start' | 'queue';
-/** Whether the host's dialog asks "Plate is clear" (SG-9): a client in a frame has no sheet to ask it in. */
+/** Whether the host's dialog asks "Plate is clear" before a start: a client in a frame has no sheet to ask it in. */
 export type PlateClearAsk = 'ask' | 'not-needed';
 
 export type ReadParams =
