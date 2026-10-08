@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Vendored from @muon3d/printer-client (src/bridge/host.ts at 45afe1b), Copyright 2026 Muon 3D
+// Vendored from @muon3d/printer-client 0.1.0 (src/bridge/host.ts), Copyright 2026 Muon 3D
 // Technologies Limited, under the Apache License 2.0 (vendor/printer-client/LICENSE and NOTICE). Changed for
 // Fluidd by tools/vendor-printer-client.cjs: relative imports without ".ts"; Object.hasOwn as hasOwnProperty.call.
 // The host's side of printer-bridge/1 (protocol.ts), without a framework: the page that frames a printer client (Fluidd's
