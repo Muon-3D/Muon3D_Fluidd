@@ -171,6 +171,21 @@ class IrohSocket implements PrinterSocket {
   }
 }
 
+/**
+ * Headers that frame a request on the wire, which only the binding sets:
+ * the length of the body it sends, and the hop-by-hop headers a client may
+ * not choose (Fetch's forbidden request headers).
+ */
+const FRAMING_HEADERS = new Set([
+  'content-length',
+  'transfer-encoding',
+  'connection',
+  'keep-alive',
+  'te',
+  'trailer',
+  'upgrade'
+])
+
 /** One printer's gateway connection, shaped as Fluidd's `ManagedIrohRelay`. */
 export class IrohPrinter implements ManagedIrohRelay {
   private readonly printer: WasmPrinter
@@ -184,8 +199,11 @@ export class IrohPrinter implements ManagedIrohRelay {
     const headers: string[] = []
     const source = new Headers(init?.headers ?? {})
     source.forEach((value, name) => {
-      // The gateway sets its own host and credentials.
-      if (name === 'host' || name === 'authorization') return
+      // The gateway sets its own host and credentials, and the binding
+      // frames the body it is given: a caller's own framing headers would
+      // describe another body, or make the request ambiguous, which the
+      // gateway refuses.
+      if (name === 'host' || name === 'authorization' || FRAMING_HEADERS.has(name)) return
       headers.push(name, value)
     })
     let body = new Uint8Array()
