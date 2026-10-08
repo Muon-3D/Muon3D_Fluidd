@@ -14,7 +14,7 @@ Slicer over `printer-bridge/1`:
 Copyright 2026 Muon 3D Technologies Limited. Licensed under the Apache License, Version 2.0 (`LICENSE`, `NOTICE`),
 which the GPL-3.0 of Fluidd allows it to be combined with.
 
-The files are copied by `tools/vendor-printer-client.cjs` (each `.ts` file names its source and commit) with two
+The files are copied by `tools/vendor-printer-client.cjs` (each `.ts` file names its source and the package's version) with two
 mechanical changes, which each changed file states: relative imports without the `.ts` suffix (Fluidd does not set
 `allowImportingTsExtensions`), and `Object.hasOwn(a, b)` as `Object.prototype.hasOwnProperty.call(a, b)` (ES2022,
 beyond Fluidd's ES2020 target). Change them in the package and copy them again; never edit them here.
