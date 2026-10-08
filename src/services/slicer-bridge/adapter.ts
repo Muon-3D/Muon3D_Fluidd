@@ -11,8 +11,9 @@
  * always talks to the printer selected now, so a request for another must
  * never be sent. Answers are read with the package's parsers (Moonraker's own
  * words reach the slicer as a PrinterError); a request that never got an
- * answer is `offline`, `lost` (an upload under way, or a start or queue entry
- * whose answer was lost) or `cancelled`.
+ * answer is `offline` (it never left), `lost` (an upload handed to the
+ * transport, with or without progress, or a start or queue entry whose answer
+ * was lost) or `cancelled`.
  *
  * The upload sends only the body and its one Content-Type: never a
  * Content-Length or Transfer-Encoding of its own (the browser and the
@@ -44,7 +45,7 @@ export interface AdapterOptions {
   confirm: (request: ConfirmRequest) => Promise<ConfirmAnswer>;
 }
 
-/** How long a start, a queue entry or a cancel may take to answer (PLAN §3.8: the start's answer ≤ 150 s). */
+/** How long a start, a queue entry or a cancel may take to answer: a printer may take up to 150 s to answer a start. */
 export const WRITE_ANSWER_MS = 150_000
 
 /** Every answer as text and every status as an answer: the adapter reads them itself (and Fluidd shows no toast). */
@@ -140,6 +141,9 @@ export function createFluiddAdapter (options: AdapterOptions): HostAdapter {
       const counted = options.reportsProgress()
       if (!counted) onStep({ step: 'sending', sent: null, total })
       let sent = 0
+      // Set as axios hands the request to its transport (after Fluidd's interceptors): from then on, a failure is
+      // a body broken off on its way (`lost`), with or without a progress event (none ever comes over Iroh).
+      let started = false
       let answer: AxiosResponse<unknown>
       try {
         // The exact bytes the helper built, as their own buffer; the type is the body's one Content-Type.
@@ -147,7 +151,10 @@ export function createFluiddAdapter (options: AdapterOptions): HostAdapter {
         answer = await http.post('/server/files/upload', bytes, {
           ...raw,
           headers: { 'Content-Type': body.contentType },
-          transformRequest: [(data: unknown) => data],
+          transformRequest: [(data: unknown) => {
+            started = true
+            return data
+          }],
           timeout: 0,
           signal,
           onUploadProgress: counted
@@ -159,7 +166,7 @@ export function createFluiddAdapter (options: AdapterOptions): HostAdapter {
             : undefined
         })
       } catch (err) {
-        throw failure(err, signal, { sent })
+        throw failure(err, signal, { sent, committed: started })
       }
       const stored = parseUploadAnswer({ status: answer.status, body: answer.data })
       if ('kind' in stored) throw stored
