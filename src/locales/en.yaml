@@ -1081,7 +1081,7 @@ app:
       queue: Queue
     msg:
       leave: The slicer has changes you have not saved. Leave it?
-      no_slicer: The slicer's address is not set (VUE_MUON_SLICER_URL).
+      no_slicer: The Muon3D Slicer is not available here yet.
   muon:
     setup:
       title: Set up {name}

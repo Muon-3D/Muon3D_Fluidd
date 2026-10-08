@@ -40,8 +40,8 @@ export interface SlicerHostOptions {
   selection: () => FluiddSelection;
   /** Whether Fluidd's requests travel over Iroh now (no upload progress there). */
   remote: () => boolean;
-  /** Asks a network printer's /server/muon/identity. */
-  fetchJson: (url: string) => Promise<unknown>;
+  /** Asks the network printer at an API address its /server/muon/identity, through Fluidd's own client. */
+  fetchIdentity: (apiUrl: string) => Promise<unknown>;
   confirm: (request: ConfirmRequest) => Promise<ConfirmAnswer>;
   theme: Theme;
   density?: Density;
@@ -62,15 +62,26 @@ export interface SlicerHost {
 }
 
 export function startSlicerHost (options: SlicerHostOptions): SlicerHost {
-  const identity = createIdentityCache(options.fetchJson)
+  const identity = createIdentityCache(options.fetchIdentity)
   let announced: BridgePrinter | null = null
   let bridge: BridgeHost | null = null
   let closed = false
+  let connected = false
+  let retry: ReturnType<typeof setTimeout> | null = null
 
   const now = (): BridgePrinter | null => {
     const selection = options.selection()
-    if (!selection.cloud && selection.apiUrl && identity.get(selection.apiUrl) === undefined && !selection.switching) {
-      identity.ask(selection.apiUrl).then(() => refresh(), () => {})
+    // Fluidd's socket came back (a restart, a switch): an identity that failed is asked again at once.
+    if (selection.connected && !connected) identity.forgetFailures()
+    connected = selection.connected
+    if (!selection.cloud && selection.apiUrl && !selection.switching && identity.due(selection.apiUrl)) {
+      identity.ask(selection.apiUrl).then((answer) => {
+        refresh()
+        if (answer.answered || closed) return
+        // Not answered: asked again once the failure has stood its time, even if nothing else changes.
+        if (retry) clearTimeout(retry)
+        retry = setTimeout(() => { retry = null; refresh() }, identity.retryIn(selection.apiUrl))
+      }, () => {})
     }
     return bridgePrinterFor(selection, selection.apiUrl ? identity.get(selection.apiUrl) : undefined)
   }
@@ -127,6 +138,7 @@ export function startSlicerHost (options: SlicerHostOptions): SlicerHost {
     close () {
       if (closed) return
       closed = true
+      if (retry) clearTimeout(retry)
       stopGcode()
       bridge?.close()
     }

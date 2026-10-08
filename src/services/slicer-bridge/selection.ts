@@ -62,10 +62,16 @@ export interface CloudEntry {
   shared?: boolean;
 }
 
-/** The account's role, as the bridge names it: Viewer, Operator (shared to operate) or Owner (linked). */
+/**
+ * The account's role, as the bridge names it: Viewer, Operator (shared to
+ * operate) or Owner (linked). Only `operator` grants a role that may print;
+ * a role the console did not send (an older console) is none (null), which
+ * the slicer refuses on a host route, never an Owner.
+ */
 export function cloudRole (entry: Pick<CloudEntry, 'role' | 'shared'>): BridgePrinter['role'] {
   if (entry.role === 'viewer') return 'viewer'
-  return entry.shared ? 'operator' : 'owner'
+  if (entry.role === 'operator') return entry.shared ? 'operator' : 'owner'
+  return null
 }
 
 /** What Fluidd shows now: read at once, never waited for. */
@@ -144,27 +150,50 @@ export function samePrinter (a: BridgePrinter | null, b: BridgePrinter | null): 
     a.role === b.role && a.online === b.online && !!a.shared === !!b.shared
 }
 
-/**
- * Asks a network printer who it is (GET /server/muon/identity), once per
- * address while the answer is kept. `fetchJson` resolves to the parsed body,
- * or rejects when the printer does not answer it (an older image, its Aux
- * service down).
- */
-export function createIdentityCache (fetchJson: (url: string) => Promise<unknown>) {
-  const answers = new Map<string, IdentityAnswer>()
-  const asking = new Map<string, Promise<IdentityAnswer>>()
+/** How long a failed identity stands before it is asked again: doubling from the first, up to the last. */
+export const IDENTITY_RETRY_MS = { first: 2_000, max: 60_000 }
 
-  const parse = (body: unknown): IdentityAnswer => {
+/**
+ * Asks a network printer who it is, once per address while the answer is
+ * kept. `fetchIdentity(apiUrl)` asks the printer at `apiUrl` its GET
+ * /server/muon/identity (through Fluidd's own client, so with its sign-in)
+ * and resolves to the parsed body, or rejects when the printer does not
+ * answer it (an older image, its Aux service still starting, a sign-in not
+ * done yet).
+ *
+ * Only an answer is kept. A failure stands for a while, so the printer is
+ * still selected (keyed by its address, with no model), and is asked again
+ * after IDENTITY_RETRY_MS (doubling) or at once after `forgetFailures()`
+ * (Fluidd's socket reconnected): once it answers, the key moves to its
+ * EndpointId.
+ */
+export function createIdentityCache (fetchIdentity: (apiUrl: string) => Promise<unknown>, now: () => number = Date.now) {
+  const answers = new Map<string, IdentityAnswer>()
+  const failures = new Map<string, { answer: IdentityAnswer, until: number, wait: number }>()
+  const asking = new Map<string, Promise<IdentityAnswer>>()
+  const notAnswered = (): IdentityAnswer => ({ answered: false, endpointId: null, name: null })
+
+  // An answer, or null for a body that is not an identity (kept as a failure, asked again).
+  const parse = (body: unknown): IdentityAnswer | null => {
     const outer = typeof body === 'object' && body !== null ? body as Record<string, unknown> : null
     const r = outer && typeof outer.result === 'object' && outer.result !== null ? outer.result as Record<string, unknown> : outer
-    if (!r || (typeof r.name !== 'string' && typeof r.display !== 'string')) return { answered: false, endpointId: null, name: null }
+    if (!r || (typeof r.name !== 'string' && typeof r.display !== 'string')) return null
     return { answered: true, endpointId: endpointKey(r.endpoint_id), name: identityName(r) }
   }
 
   return {
-    /** The answer for `apiUrl`, or undefined while it has not been asked or is being asked. */
+    /**
+     * The answer for `apiUrl`: kept, or a failure standing until it is asked
+     * again; undefined while it has never been asked or is first being asked.
+     */
     get (apiUrl: string): IdentityAnswer | undefined {
-      return answers.get(apiUrl)
+      return answers.get(apiUrl) ?? failures.get(apiUrl)?.answer
+    },
+    /** Whether `apiUrl` should be asked now: never asked, or its failure has stood long enough. */
+    due (apiUrl: string): boolean {
+      if (answers.has(apiUrl) || asking.has(apiUrl)) return false
+      const failed = failures.get(apiUrl)
+      return !failed || now() >= failed.until
     },
     /** Asks `apiUrl` unless its answer is kept or on its way; resolves to the answer. */
     ask (apiUrl: string): Promise<IdentityAnswer> {
@@ -172,19 +201,36 @@ export function createIdentityCache (fetchJson: (url: string) => Promise<unknown
       if (kept) return Promise.resolve(kept)
       let pending = asking.get(apiUrl)
       if (!pending) {
-        pending = fetchJson(`${apiUrl.replace(/\/+$/, '')}/server/muon/identity`)
-          .then(parse, () => ({ answered: false, endpointId: null, name: null }))
+        pending = fetchIdentity(apiUrl)
+          .then(parse, () => null)
           .then((answer) => {
-            answers.set(apiUrl, answer)
             asking.delete(apiUrl)
-            return answer
+            if (answer) {
+              answers.set(apiUrl, answer)
+              failures.delete(apiUrl)
+              return answer
+            }
+            const wait = Math.min((failures.get(apiUrl)?.wait ?? IDENTITY_RETRY_MS.first / 2) * 2, IDENTITY_RETRY_MS.max)
+            const failed = { answer: notAnswered(), until: now() + wait, wait }
+            failures.set(apiUrl, failed)
+            return failed.answer
           })
         asking.set(apiUrl, pending)
       }
       return pending
     },
+    /** How long until a failure for `apiUrl` may be asked again (ms; 0 when it may now). */
+    retryIn (apiUrl: string): number {
+      const failed = failures.get(apiUrl)
+      return failed ? Math.max(0, failed.until - now()) : 0
+    },
+    /** Lets every failure be asked again at once (Fluidd's socket came back). */
+    forgetFailures () {
+      for (const failed of failures.values()) failed.until = 0
+    },
     clear () {
       answers.clear()
+      failures.clear()
     }
   }
 }
