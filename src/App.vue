@@ -1,5 +1,5 @@
 <template>
-  <v-app v-if="!routerReady || (loading && !managedConsoleRoute)" />
+  <v-app v-if="!routerReady || blankedForLanguage" />
   <v-app
     v-else
     class="fluidd muon-shell"
@@ -252,6 +252,15 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
 
   get loading () {
     return this.hasWait(this.$waits.onLoadLanguage)
+  }
+
+  // While a language loads, the shell is blank. Not on /slice: Fluidd's
+  // settings are each printer's, so a switch of printer loads that printer's
+  // language again, and a blank shell would unmount the slicer's frame, which
+  // stays while Fluidd switches. The shell keeps the language it shows until
+  // the new one has loaded, so nothing reads untranslated meanwhile.
+  get blankedForLanguage (): boolean {
+    return this.loading && !this.managedConsoleRoute && !this.sliceRoute
   }
 
   get progress (): number {
