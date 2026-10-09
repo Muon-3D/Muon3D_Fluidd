@@ -54,7 +54,7 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import ControlMixin from '@/mixins/control'
-import type { Macro } from '@/store/macros/types'
+import { visibleMacros, type MacroGroup } from '@/util/visible-macros'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import ControlCard from './ControlCard.vue'
@@ -84,8 +84,7 @@ export default class ControlMacros extends Mixins(ControlMixin) {
   query = ''
 
   get macros (): MacroButton[] {
-    return ((this.$store.getters['macros/getVisibleMacros'] as Macro[]) ?? [])
-      .filter(m => typeof m.name === 'string' && m.name)
+    return visibleMacros(this.$store.getters['macros/getVisibleMacros'] as MacroGroup[])
       .map(m => {
         const description = m.config?.description && m.config.description !== 'G-Code macro' ? String(m.config.description) : ''
         return {
