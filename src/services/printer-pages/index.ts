@@ -116,6 +116,19 @@ export function isActiveSlug (slug: string): boolean {
   return slugSuffix(active) === slugSuffix(slug) && resolveSlug(slug)?.slug === active
 }
 
+/**
+ * The printer before or after `current`, for [ and ]: each printer once, in
+ * the switcher's order, round from the last to the first. Null with fewer
+ * than two.
+ */
+export function stepPrinter (current: string | null, direction: 1 | -1, printers: PrinterTarget[] = knownPrinters()): string | null {
+  const slugs = [...new Set(printers.map(p => p.slug))]
+  if (slugs.length < 2) return null
+  const at = current ? slugs.indexOf(current) : -1
+  if (at === -1) return slugs[direction === 1 ? 0 : slugs.length - 1]
+  return slugs[(at + direction + slugs.length) % slugs.length]
+}
+
 /** The printer's own page, or one of its pages (`jobs`, `settings`). */
 export function printerPath (slug: string, page = ''): string {
   return page ? `/${slug}/${page.replace(/^\/+/, '')}` : `/${slug}`
