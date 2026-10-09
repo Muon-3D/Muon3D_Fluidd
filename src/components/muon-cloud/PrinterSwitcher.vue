@@ -369,9 +369,11 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     })
   }
 
+  // The panel is rendered inside a closed drawer on every page, so searching
+  // from here on mount swept the network on every load: about 510 requests
+  // over 24 s, which also stalled a reload's own first request by 3-5 s
+  // (measured 2026-10-09). It searches when the panel is opened instead.
   mounted () {
-    discoverPrinters().catch(() => {})
-    startNearby().catch(() => {})
     this.onVisible(this.visible)
   }
 
@@ -384,6 +386,8 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
   onVisible (visible: boolean) {
     this.stopTimer()
     if (!visible) return
+    discoverPrinters().catch(() => {})
+    startNearby().catch(() => {})
     if (discoveryState.finishedAt) refreshKnownPrinters().catch(() => {})
     this.timer = window.setInterval(() => { refreshKnownPrinters().catch(() => {}) }, HEALTH_EVERY_MS)
   }
