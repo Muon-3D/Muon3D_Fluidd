@@ -45,6 +45,14 @@
         </app-nav-item>
 
         <app-nav-item
+          v-if="slicerPresent"
+          icon="$layersTripleOutline"
+          to="/slice"
+        >
+          {{ $t('app.general.title.slice') }}
+        </app-nav-item>
+
+        <app-nav-item
           icon="$files"
           to="/jobs"
         >
@@ -160,6 +168,7 @@ import { Component, Mixins, VModel } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import BrowserMixin from '@/mixins/browser'
 import { cloudState } from '@/services/muon-cloud/state'
+import { probeSlicer, slicerPresence } from '@/services/slicer-bridge/slicerUrl'
 
 @Component<AppNavDrawer>({
   provide () {
@@ -186,6 +195,17 @@ export default class AppNavDrawer extends Mixins(StateMixin, BrowserMixin) {
 
   get cloudSignedIn () {
     return cloudState.account !== null
+  }
+
+  // Slice only where the slicer answers (asked once when the app loads): a
+  // printer whose image does not serve it, or a hosted Fluidd that does not
+  // set VUE_MUON_SLICER_URL, has no Slice.
+  get slicerPresent () {
+    return slicerPresence.state === 'present'
+  }
+
+  created () {
+    probeSlicer()
   }
 
   get supportsHistory () {

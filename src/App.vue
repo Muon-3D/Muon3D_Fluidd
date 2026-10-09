@@ -1,5 +1,5 @@
 <template>
-  <v-app v-if="!routerReady || (loading && !managedConsoleRoute)" />
+  <v-app v-if="!routerReady || blankedForLanguage" />
   <v-app
     v-else
     class="fluidd muon-shell"
@@ -227,14 +227,19 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
       this.authenticated && this.socketConnected
   }
 
+  // Not on /slice: the slicer in its frame has its own bar at the bottom.
   get showTabBar (): boolean {
-    return this.glassPhone
+    return this.glassPhone && !this.sliceRoute
+  }
+
+  get sliceRoute (): boolean {
+    return this.$route.path === '/slice'
   }
 
   // On a phone the glass style names the page in a large title, as iOS does.
   // The console and G-code preview keep that height for the tool itself.
   get showLargeTitle (): boolean {
-    return this.glassPhone && !['/console', '/preview'].includes(this.$route.path)
+    return this.glassPhone && !['/console', '/preview', '/slice'].includes(this.$route.path)
   }
 
   get columnCount (): number {
@@ -247,6 +252,15 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
 
   get loading () {
     return this.hasWait(this.$waits.onLoadLanguage)
+  }
+
+  // While a language loads, the shell is blank. Not on /slice: Fluidd's
+  // settings are each printer's, so a switch of printer loads that printer's
+  // language again, and a blank shell would unmount the slicer's frame, which
+  // stays while Fluidd switches. The shell keeps the language it shows until
+  // the new one has loaded, so nothing reads untranslated meanwhile.
+  get blankedForLanguage (): boolean {
+    return this.loading && !this.managedConsoleRoute && !this.sliceRoute
   }
 
   get progress (): number {

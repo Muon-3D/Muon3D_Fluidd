@@ -30,6 +30,16 @@ export interface CloudPrinter {
   last_seen: number;
   online: boolean;
   online_since: number | null;
+  /**
+   * The account's role on this printer: `operator` for a printer the
+   * account linked (its owner) or a share to operate it, `viewer` for a
+   * share to watch it. Absent from an older console.
+   */
+  role?: 'operator' | 'viewer';
+  /** A live share to this account, not a printer it linked. */
+  shared?: boolean;
+  /** When a share ends (seconds), or null. */
+  ends_at?: number | null;
 }
 
 export interface CloudConfig {
