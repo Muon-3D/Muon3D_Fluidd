@@ -149,6 +149,7 @@ import KeyboardShortcutsDialog from './components/common/KeyboardShortcutsDialog
 import { eventTargetIsContentEditable, keyboardEventToKeyboardShortcut } from './util/event-helpers'
 import { isManagedConsolePath } from '@/router/managedPath'
 import { isActiveSlug } from '@/services/printer-pages'
+import { pageOfRoute } from '@/router/printerPagePaths'
 import PrinterOpening from './components/muon-cloud/PrinterOpening.vue'
 
 @Component<App>({
@@ -266,13 +267,13 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
   }
 
   get sliceRoute (): boolean {
-    return this.$route.path === '/slice'
+    return this.$route.name === 'Slice' || this.$route.name === 'Slice (no printer)'
   }
 
   // On a phone the glass style names the page in a large title, as iOS does.
   // The console and G-code preview keep that height for the tool itself.
   get showLargeTitle (): boolean {
-    return this.glassPhone && !['/console', '/preview', '/slice'].includes(this.$route.path)
+    return this.glassPhone && !['/console', '/preview', '/slice'].includes(pageOfRoute(this.$route))
   }
 
   get columnCount (): number {
