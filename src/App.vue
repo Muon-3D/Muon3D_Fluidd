@@ -86,8 +86,13 @@
           {{ $t('app.socket.msg.stalled') }}
         </v-alert>
 
+        <printer-opening
+          v-if="otherPrinterRoute"
+          :slug="$route.params.printer"
+        />
+
         <router-view
-          v-if="
+          v-else-if="
             managedConsoleRoute ||
               printerIndependentRoute ||
               (socketConnected && apiConnected) ||
@@ -100,7 +105,7 @@
 
       <socket-disconnected
         v-if="
-          !managedConsoleRoute && !printerIndependentRoute && (
+          !managedConsoleRoute && !printerIndependentRoute && !otherPrinterRoute && (
             (!socketConnected && !apiConnected) ||
             (!socketConnected && authenticated)
           )
@@ -143,6 +148,8 @@ import ActionCommandPromptDialog from './components/common/ActionCommandPromptDi
 import KeyboardShortcutsDialog from './components/common/KeyboardShortcutsDialog.vue'
 import { eventTargetIsContentEditable, keyboardEventToKeyboardShortcut } from './util/event-helpers'
 import { isManagedConsolePath } from '@/router/managedPath'
+import { isActiveSlug } from '@/services/printer-pages'
+import PrinterOpening from './components/muon-cloud/PrinterOpening.vue'
 
 @Component<App>({
   metaInfo () {
@@ -153,6 +160,7 @@ import { isManagedConsolePath } from '@/router/managedPath'
     }
   },
   components: {
+    PrinterOpening,
     SpoolSelectionDialog,
     FileSystemDownloadDialog,
     ActionCommandPromptDialog,
@@ -212,6 +220,15 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
 
   get inLayout (): boolean {
     return (this.$store.state.config.layoutMode)
+  }
+
+  /**
+   * A page for a printer Fluidd isn't on (yet): it shows that printer opening,
+   * never the last printer's page under this printer's address.
+   */
+  get otherPrinterRoute (): boolean {
+    const slug = this.$route.params.printer
+    return !!slug && !this.printerIndependentRoute && !isActiveSlug(slug)
   }
 
   get printerIndependentRoute (): boolean {
