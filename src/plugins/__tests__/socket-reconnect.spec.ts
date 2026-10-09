@@ -179,6 +179,23 @@ describe('WebSocketClient reconnecting', () => {
     expect(sockets).toHaveLength(2)
   })
 
+  it('keeps watching through a download, and replaces a socket that died during it', async () => {
+    const { client, store } = lanClient()
+    const socket = await opened(client)
+    socket.message()
+
+    // Quiet is expected while a file downloads: no replacement then...
+    store.state.files.download = true
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(socket.closedByClient).toBe(false)
+
+    // ...but once it is over, a socket that still says nothing is replaced.
+    store.state.files.download = false
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(socket.closedByClient).toBe(true)
+    expect(client.retryPending).toBe(true)
+  })
+
   it('re-opens an adopted transport socket after any close, through the transport', async () => {
     const store = fakeStore()
     const client = new WebSocketClient({ url: '', store } as never)
