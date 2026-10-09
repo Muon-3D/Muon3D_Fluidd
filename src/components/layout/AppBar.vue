@@ -25,6 +25,15 @@
       </router-link>
 
       <div class="app-header__actions">
+        <button
+          type="button"
+          class="app-header__icon"
+          aria-label="Search or run a command"
+          data-tid="command-bar-open"
+          @click="openCommands"
+        >
+          <frame-icon name="search" />
+        </button>
         <app-notification-menu v-if="authenticated && socketConnected" />
         <cloud-account-menu v-if="!printerFrame" />
       </div>
@@ -63,7 +72,20 @@
         class="app-header__place"
       >{{ placeName }}</span>
 
-      <v-spacer />
+      <button
+        type="button"
+        class="app-header__cmd"
+        aria-label="Search or run a command"
+        data-tid="command-bar-open"
+        @click="openCommands"
+      >
+        <frame-icon
+          name="search"
+          small
+        />
+        <span class="app-header__cmd-text">Search or run a command</span>
+        <kbd class="app-header__cmd-keys">{{ commandKeys }}</kbd>
+      </button>
 
       <div class="app-header__actions">
         <app-save-config-and-restart-btn
@@ -221,6 +243,16 @@
       </template>
     </template>
 
+    <input
+      ref="uploadInput"
+      type="file"
+      accept=".gcode,.g,.gco,.bgcode,.ufp"
+      class="app-header__upload"
+      tabindex="-1"
+      aria-hidden="true"
+      @change="onUploadPicked"
+    >
+
     <pending-changes-dialog
       v-if="pendingChangesDialogOpen"
       v-model="pendingChangesDialogOpen"
@@ -287,6 +319,35 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
 
   openKeys () {
     EventBus.bus.$emit('keyboard-shortcuts')
+  }
+
+  openCommands () {
+    EventBus.bus.$emit('command-bar')
+  }
+
+  /** ⌘ K on a Mac, Ctrl K elsewhere. */
+  get commandKeys (): string {
+    return /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘ K' : 'Ctrl K'
+  }
+
+  created () {
+    EventBus.bus.$on('upload-file', this.pickUpload)
+  }
+
+  beforeDestroy () {
+    EventBus.bus.$off('upload-file', this.pickUpload)
+  }
+
+  /** U: choose a file to print, as the upload button does. */
+  pickUpload () {
+    (this.$refs.uploadInput as HTMLInputElement | undefined)?.click()
+  }
+
+  async onUploadPicked (event: Event) {
+    const input = event.target as HTMLInputElement
+    const file = input.files?.[0]
+    input.value = ''
+    if (file) await this.handleUploadAndPrint(file)
   }
 
   get saveConfigPending (): boolean {
@@ -582,6 +643,59 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
 
     .muon-wordmark {
       font-size: 12px;
+    }
+  }
+
+  .app-header__upload {
+    display: none;
+  }
+
+  // Search or run a command: a box in the middle, a button when narrow.
+  .app-header__cmd {
+    display: flex;
+    flex: 0 1 380px;
+    align-items: center;
+    gap: 10px;
+    min-width: 40px;
+    height: 40px;
+    margin: 0 auto;
+    padding: 0 8px 0 14px;
+    border-radius: 12px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text-subtle);
+    font-size: 14px;
+    text-align: left;
+
+    &:hover {
+      color: var(--m3d-text-muted);
+      box-shadow: inset 0 0 0 1px var(--m3d-border-strong);
+    }
+  }
+
+  .app-header__cmd-text {
+    flex: 1 1 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-header__cmd-keys {
+    flex: none;
+  }
+
+  @media (max-width: 1199px) {
+    .app-header__cmd {
+      flex: none;
+      justify-content: center;
+      width: 40px;
+      padding: 0;
+      background: transparent;
+      color: var(--m3d-text-muted);
+    }
+
+    .app-header__cmd-text,
+    .app-header__cmd-keys {
+      display: none;
     }
   }
 
