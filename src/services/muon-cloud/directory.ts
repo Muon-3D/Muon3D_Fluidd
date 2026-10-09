@@ -325,7 +325,13 @@ export function cloudDetail (online: boolean, s: PrinterStatus | undefined): str
  * address to its new one. A printer saved by name keeps its name: mDNS follows
  * it already. The entry Fluidd is connected through is left alone.
  */
-export function savedUpdates (saved: InstanceConfig[], found: LanPrinter[]): Array<{ apiUrl: string, changes: Partial<InstanceConfig> }> {
+/**
+ * What to change about saved printers, given what the search found: the
+ * EndpointId they lacked, their `.local` name, and the address they answer at
+ * now. `blocked` says this page may not reach IPv4 addresses, so a printer
+ * saved by IP moves to the `.local` name it answered at.
+ */
+export function savedUpdates (saved: InstanceConfig[], found: LanPrinter[], blocked = false): Array<{ apiUrl: string, changes: Partial<InstanceConfig> }> {
   const updates: Array<{ apiUrl: string, changes: Partial<InstanceConfig> }> = []
   for (const s of saved) {
     if (s.active) continue
@@ -333,12 +339,17 @@ export function savedUpdates (saved: InstanceConfig[], found: LanPrinter[]): Arr
     if (!lan?.endpointId) continue
     const changes: Partial<InstanceConfig> = {}
     if (!s.endpointId) changes.endpointId = lan.endpointId
+    if (lan.mdnsHost && s.mdnsHost !== lan.mdnsHost) changes.mdnsHost = lan.mdnsHost
     const host = hostOf(s.apiUrl)
     const savedByIp = /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/.test(host)
     const ipNow = lanAddresses(lan).find(a => /^\d{1,3}(\.\d{1,3}){3}$/.test(a))
+    const nameNow = lanAddresses(lan).find(a => a.endsWith('.local'))
     if (savedByIp && ipNow && !lanAddresses(lan).includes(host)) {
       changes.apiUrl = `http://${ipNow}`
       changes.socketUrl = `ws://${ipNow}/websocket`
+    } else if (savedByIp && blocked && nameNow) {
+      changes.apiUrl = `http://${nameNow}`
+      changes.socketUrl = `ws://${nameNow}/websocket`
     }
     if (Object.keys(changes).length) updates.push({ apiUrl: s.apiUrl, changes })
   }

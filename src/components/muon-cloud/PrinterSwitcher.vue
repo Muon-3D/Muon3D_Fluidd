@@ -119,6 +119,20 @@
         No other printers found on this network.
       </template>
     </div>
+    <v-alert
+      v-if="blockedByPage"
+      type="info"
+      dense
+      text
+      class="ma-3"
+      data-tid="blocked-by-page"
+    >
+      This browser won't let this page reach printers by their IP address, because the page was opened by
+      name. Add another printer by its name instead, as shown on its screen, such as muon-walnut-8987.
+      <template v-if="blockedByPage.ownUrl">
+        Or <a :href="blockedByPage.ownUrl">open this printer by its IP address</a>, which can reach them all.
+      </template>
+    </v-alert>
 
     <div
       v-if="bluetoothSearch && !bluetoothOff"
@@ -319,6 +333,10 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
     return discoveryState.scanning
   }
 
+  get blockedByPage () {
+    return discoveryState.blockedByPage
+  }
+
   get scanNetwork () {
     return discoveryState.network
   }
@@ -396,7 +414,7 @@ export default class PrinterSwitcher extends Mixins(StateMixin) {
   /** A saved printer said who it is, or moved: keep the saved entry up to date. */
   @Watch('savedFound', { immediate: true })
   onFound () {
-    for (const update of savedUpdates(this.savedInstances, discoveryState.found)) {
+    for (const update of savedUpdates(this.savedInstances, discoveryState.found, !!discoveryState.blockedByPage)) {
       this.$store.dispatch('config/relocateInstance', update)
     }
   }
