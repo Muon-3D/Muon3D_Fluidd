@@ -231,7 +231,12 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
    * rather than asking whether the address is correct.
    */
   async onUnreachable (apiUrl: string, request: string) {
-    if (/^http:\/\/\d{1,3}(\.\d{1,3}){3}(:\d+)?\/?$/.test(apiUrl) && await pageBlocksLanIpv4()) {
+    const typed = this.url
+    const blocked = /^http:\/\/\d{1,3}(\.\d{1,3}){3}(:\d+)?\/?$/.test(apiUrl) && await pageBlocksLanIpv4()
+    // The first check can take seconds. If the address changed meanwhile,
+    // this answer is about one nobody is looking at any more.
+    if (this.url !== typed) return
+    if (blocked) {
       const ownUrl = discoveryState.blockedByPage?.ownUrl
       this.error = null
       this.note = this.$t('app.endpoint.error.blocked_ip_from_name', { host: escapeHtml(location.host) }) +
