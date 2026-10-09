@@ -72,7 +72,7 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
-import type { Macro } from '@/store/macros/types'
+import { visibleMacros, type MacroGroup } from '@/util/visible-macros'
 
 /** How many macros Overview shows; the rest are on Control. */
 const PINNED = 6
@@ -105,8 +105,7 @@ export default class OverviewPlate extends Mixins(OverviewMixin) {
   }
 
   get macros (): string[] {
-    return ((this.$store.getters['macros/getVisibleMacros'] as Macro[]) ?? [])
-      .filter(m => typeof m.name === 'string' && m.name)
+    return visibleMacros(this.$store.getters['macros/getVisibleMacros'] as MacroGroup[])
       .map(m => m.name.toUpperCase())
   }
 

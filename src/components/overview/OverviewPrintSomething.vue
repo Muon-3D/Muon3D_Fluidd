@@ -56,7 +56,10 @@
     >
       Nothing printed yet. Your jobs appear here to print again.
     </p>
-    <div class="ov-something__drop">
+    <div
+      v-if="!isMobileViewport"
+      class="ov-something__drop"
+    >
       <frame-icon
         name="upload"
         small
@@ -69,10 +72,11 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
+import BrowserMixin from '@/mixins/browser'
 
 /** Ready to print: the last few jobs, to print again in one press. */
 @Component({})
-export default class OverviewPrintSomething extends Mixins(OverviewMixin) {}
+export default class OverviewPrintSomething extends Mixins(OverviewMixin, BrowserMixin) {}
 </script>
 
 <style lang="scss" scoped>
