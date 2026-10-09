@@ -38,12 +38,18 @@ export async function createPrinterTransportForSelection (
     throw new Error('Managed Iroh endpoint integration is unavailable')
   }
 
-  const authorizedSession = await dependencies.handoffSelectedPrinter(selection.printerId)
-  assertAuthorizedSessionMatchesSelection(authorizedSession, selection.printerId)
+  const handoff = dependencies.handoffSelectedPrinter
+  const printerId = selection.printerId
+  const authorize = async () => {
+    const session = await handoff(printerId)
+    assertAuthorizedSessionMatchesSelection(session, printerId)
+    return session
+  }
 
   return new ManagedIrohPrinterTransport({
-    authorizedSession,
+    authorizedSession: await authorize(),
     createEndpoint: dependencies.createManagedEndpoint,
+    reauthorize: authorize,
     onStatusChange: dependencies.onManagedStatusChange
   })
 }

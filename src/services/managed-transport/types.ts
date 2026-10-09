@@ -74,6 +74,8 @@ export interface ManagedIrohEndpoint {
 export interface ManagedIrohTransportOptions {
   authorizedSession: AuthorizedManagedRelaySession;
   createEndpoint: () => Promise<ManagedIrohEndpoint>;
+  /** A fresh handoff, for when dials keep failing with the one it has. */
+  reauthorize?: () => Promise<AuthorizedManagedRelaySession>;
   onStatusChange?: (status: ManagedTransportStatus) => void;
 }
 
