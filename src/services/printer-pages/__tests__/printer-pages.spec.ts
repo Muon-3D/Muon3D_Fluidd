@@ -8,6 +8,7 @@ import {
   samePageFor,
   slugForInstance,
   slugInPath,
+  stepPrinter,
   type PrinterTarget
 } from '..'
 
@@ -115,5 +116,28 @@ describe("a printer's own page (U2)", () => {
     expect(isPrintersOwnPage('http://192.168.1.153', { origin: 'https://app.muon3d.com', hostname: 'app.muon3d.com' })).toBe(false)
     expect(isPrintersOwnPage('https://muon-cloud.invalid', { origin: 'https://muon-cloud.invalid', hostname: 'muon-cloud.invalid' })).toBe(false)
     expect(isPrintersOwnPage('', { origin: 'http://x', hostname: 'x' })).toBe(false)
+  })
+})
+
+describe('[ and ]', () => {
+  const printers = [
+    local('boxwood-367a', 'http://10.0.0.5'),
+    cloud('boxwood-367a', 'p1'),
+    cloud('walnut-8987', 'p2'),
+    local('maple-1c04', 'http://10.0.0.7')
+  ]
+
+  it('step to the next printer and the one before, each printer once', () => {
+    expect(stepPrinter('boxwood-367a', 1, printers)).toBe('walnut-8987')
+    expect(stepPrinter('walnut-8987', -1, printers)).toBe('boxwood-367a')
+  })
+
+  it('go round from the last to the first', () => {
+    expect(stepPrinter('maple-1c04', 1, printers)).toBe('boxwood-367a')
+    expect(stepPrinter('boxwood-367a', -1, printers)).toBe('maple-1c04')
+  })
+
+  it('do nothing with one printer', () => {
+    expect(stepPrinter('boxwood-367a', 1, [local('boxwood-367a', 'http://10.0.0.5')])).toBeNull()
   })
 })
