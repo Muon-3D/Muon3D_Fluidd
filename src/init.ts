@@ -57,13 +57,19 @@ export const answersWithin = async (apiUrl: string, timeout: number): Promise<bo
 
 /**
  * The page's own address as a printer, when the page may be one: not a
- * blacklisted host such as app.muon3d.com.
+ * hosted console, and not a blacklisted host such as app.muon3d.com. A
+ * console's own origin answers `/server/info` with something, and any answer
+ * counts in `answersWithin`, so a hosted page must never be offered.
  */
-const ownEndpoint = (hostConfig: HostConfig): string | null => {
-  const hostname = document.location.hostname.toLowerCase()
+export const ownEndpoint = (
+  hostConfig: HostConfig,
+  loc: { protocol: string, host: string, hostname: string } = document.location
+): string | null => {
+  if (hostConfig?.hosted) return null
+  const hostname = loc.hostname.toLowerCase()
   const blacklist = hostConfig && 'blacklist' in hostConfig ? hostConfig.blacklist : []
   if (blacklist.some(s => s.toLowerCase() === hostname)) return null
-  return `${document.location.protocol}//${document.location.host}`
+  return `${loc.protocol}//${loc.host}`
 }
 
 /**

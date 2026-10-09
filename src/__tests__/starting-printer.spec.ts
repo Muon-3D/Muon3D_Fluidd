@@ -8,7 +8,7 @@ import { Filters } from '@/plugins/filters'
 vi.mock('@/store', () => ({ default: { state: {}, dispatch: vi.fn() } }))
 vi.mock('@/router', () => ({ default: { currentRoute: { path: '/' }, push: vi.fn() } }))
 
-const { startingPrinter } = await import('@/init')
+const { ownEndpoint, startingPrinter } = await import('@/init')
 
 const boxwoodPage = 'http://muon-boxwood-367a.local'
 
@@ -61,5 +61,25 @@ describe('startingPrinter', () => {
     const answers = answering(boxwoodPage)
     await expect(startingPrinter(cloud, boxwoodPage, answers)).resolves.toBe(cloud)
     expect(answers).not.toHaveBeenCalled()
+  })
+})
+
+describe('ownEndpoint', () => {
+  const printerPage = { protocol: 'http:', host: 'muon-boxwood-367a.local', hostname: 'muon-boxwood-367a.local' }
+  const consolePage = { protocol: 'https:', host: 'staging-app.muon3d.com', hostname: 'staging-app.muon3d.com' }
+
+  it('offers the own page of a printer', () => {
+    expect(ownEndpoint({ hosted: false, blacklist: [], endpoints: [] } as never, printerPage)).toBe(boxwoodPage)
+  })
+
+  it('never offers a hosted console, listed or not', () => {
+    // Codex, on #34: a console's own origin answers /server/info with
+    // something, so a staging console not on the blacklist read as a printer.
+    expect(ownEndpoint({ hosted: true, blacklist: [], endpoints: [] } as never, consolePage)).toBeNull()
+  })
+
+  it('never offers a blacklisted host', () => {
+    const page = { protocol: 'https:', host: 'app.muon3d.com', hostname: 'app.muon3d.com' }
+    expect(ownEndpoint({ hosted: false, blacklist: ['app.muon3d.com'], endpoints: [] } as never, page)).toBeNull()
   })
 })
