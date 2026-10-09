@@ -4,6 +4,7 @@ import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from
 import { NavigationRoute, registerRoute } from 'workbox-routing'
 import { StaleWhileRevalidate } from 'workbox-strategies'
 import { warmStrategyCache } from 'workbox-recipes'
+import { NAVIGATION_DENYLIST } from './swNavigation'
 
 declare let self: ServiceWorkerGlobalScope
 
@@ -37,19 +38,7 @@ registerRoute(configPathname, configStrategy, 'GET')
 
 const denylist = import.meta.env.DEV
   ? undefined
-  : [
-      /\/websocket/,
-      /\/(printer|api|access|machine|server)\//,
-      /\/webcam[2-4]?\//,
-      // The console's own pages (WEB-12), which a browser must reach rather
-      // than be given index.html: the central login's /authorize, /handoff
-      // and /logout, an invite link's /j/<code>, and Fluidd's front-channel
-      // logout page, which the console frames with ?iss= (so it misses the
-      // precache).
-      /^\/(?:authorize|handoff|logout)(?:[/?]|$)/,
-      /^\/j\//,
-      /^\/auth\//
-    ]
+  : NAVIGATION_DENYLIST
 
 const allowlist = import.meta.env.DEV
   ? [/^\/$/]

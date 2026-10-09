@@ -1,0 +1,7 @@
+Muon3D Fluidd is licensed under the GNU General Public License v3.0 (LICENSE).
+
+It includes code from other projects, under their own licences:
+
+- @muon3d/printer-client (Copyright 2026 Muon 3D Technologies Limited), under the Apache License, Version 2.0: the
+  printer-bridge/1 host helper and protocol, the upload builder and checker, and the error parsers, in
+  src/services/slicer-bridge/vendor/printer-client/ with that licence (LICENSE) and that project's NOTICE beside them.

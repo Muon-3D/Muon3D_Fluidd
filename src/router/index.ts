@@ -105,6 +105,21 @@ const routes: Array<RouteConfig> = [
     ...defaultRouteConfig
   },
   {
+    // The Muon3D Slicer in a frame (views/Slice.vue). Lazy, so the slicer's
+    // host loads only here. Printer-independent: the slicer works with no
+    // printer (export only), and its frame, with the person's plates, stays
+    // while Fluidd switches printer (init.ts keeps this route then). No
+    // fileDropRoot: a model dropped here is the slicer's, not an upload.
+    path: '/slice',
+    name: 'Slice',
+    component: () => import('@/views/Slice.vue'),
+    beforeEnter: defaultRouteConfig.beforeEnter,
+    meta: {
+      printerIndependent: true,
+      keepOnPrinterSwitch: true
+    }
+  },
+  {
     path: '/fleet',
     name: 'Fleet',
     component: Fleet,
@@ -260,6 +275,8 @@ declare module 'vue-router' {
     hasSubNavigation?: boolean
     fileDropRoot?: string
     printerIndependent?: boolean
+    /** A printer switch (appInit) leaves this route where it is instead of going to the dashboard. */
+    keepOnPrinterSwitch?: boolean
   }
 }
 
