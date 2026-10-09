@@ -239,6 +239,7 @@ import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
 import AppWifiButton from '@/components/ui/AppWifiButton.vue'
 import { printerHomePath } from '@/services/printer-pages'
+import { pageOfRoute } from '@/router/printerPagePaths'
 
 @Component({
   components: {
@@ -408,7 +409,7 @@ export default class AppBar extends Mixins(PrinterStatusMixin, ServicesMixin, Fi
   }
 
   get isDashboard () {
-    return this.$route.path === '/'
+    return this.$route.name === 'Dashboard'
   }
 
   handleResetLayout () {
@@ -416,7 +417,7 @@ export default class AppBar extends Mixins(PrinterStatusMixin, ServicesMixin, Fi
       '/diagnostics': 'diagnostics'
     }
 
-    const pathLayout = pathLayouts[this.$route.path]
+    const pathLayout = pathLayouts[pageOfRoute(this.$route)]
     let layoutDefaultState
     if (pathLayout) {
       // reset to default init state

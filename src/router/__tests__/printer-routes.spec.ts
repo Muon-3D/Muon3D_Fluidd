@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, test } from 'vitest'
 import router from '@/router'
 import { setActiveSlugSource } from '../printerSlugSource'
-import { isPrinterPagePath, scopedPath } from '../printerPagePaths'
+import { isPrinterPagePath, pageOfRoute, scopedPath } from '../printerPagePaths'
 
 afterEach(() => setActiveSlugSource(() => null))
 
@@ -72,5 +72,18 @@ describe('links written without the printer', () => {
     expect(isPrinterPagePath('/jobs')).toBe(true)
     expect(isPrinterPagePath('/jobsite')).toBe(false)
     expect(isPrinterPagePath('/link')).toBe(false)
+  })
+})
+
+describe('the page a route is, without its printer', () => {
+  test.each([
+    ['/boxwood-367a', '/'],
+    ['/boxwood-367a/console', '/console'],
+    ['/boxwood-367a/settings/macros/abc', '/settings/macros/abc'],
+    ['/p-printer-a1b2/diagnostics', '/diagnostics'],
+    ['/fleet', '/fleet'],
+    ['/', '/']
+  ])('%s is %s', (path, page) => {
+    expect(pageOfRoute(router.resolve(path).route)).toBe(page)
   })
 })

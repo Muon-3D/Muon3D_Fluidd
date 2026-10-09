@@ -23,3 +23,13 @@ export function scopedPath (path: string, slug: string | null): string {
   if (path === '/') return `/${slug}`
   return isPrinterPagePath(path) ? `/${slug}${path}` : path
 }
+
+/**
+ * A printer page's path without its printer: /boxwood-367a/jobs is /jobs and
+ * /boxwood-367a is /. Any other page's path is its own (/fleet).
+ */
+export function pageOfRoute (route: { path: string, params?: Record<string, string> }): string {
+  const slug = route.params?.printer
+  if (!slug) return route.path
+  return route.path.slice(slug.length + 1) || '/'
+}
