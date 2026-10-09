@@ -260,4 +260,24 @@ describe('savedUpdates', () => {
     )
     expect(updates).toEqual([])
   })
+
+  it('remembers the .local name of a saved printer', () => {
+    const updates = savedUpdates(
+      [saved('http://192.168.137.32', { endpointId: WALNUT })],
+      [lan('Walnut', '192.168.137.32', WALNUT, { mdnsHost: 'muon-walnut-8987.local' })]
+    )
+    expect(updates).toEqual([{ apiUrl: 'http://192.168.137.32', changes: { mdnsHost: 'muon-walnut-8987.local' } }])
+  })
+
+  it('moves a printer saved by IP to its .local name when this page may not reach IPs', () => {
+    // A page opened by name over global IPv6: walnut answered only at its name.
+    const found = [lan('Walnut', 'muon-walnut-8987.local', WALNUT, { mdnsHost: 'muon-walnut-8987.local' })]
+    const before = [saved('http://192.168.137.32', { endpointId: WALNUT, mdnsHost: 'muon-walnut-8987.local' })]
+    expect(savedUpdates(before, found, true)).toEqual([{
+      apiUrl: 'http://192.168.137.32',
+      changes: { apiUrl: 'http://muon-walnut-8987.local', socketUrl: 'ws://muon-walnut-8987.local/websocket' }
+    }])
+    // A page that may reach IPs keeps the IP: it is only unreachable from that one page.
+    expect(savedUpdates(before, found, false)).toEqual([])
+  })
 })

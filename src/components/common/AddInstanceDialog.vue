@@ -75,7 +75,7 @@ import { Debounce } from 'vue-debounce-decorator'
 import { consola } from 'consola'
 import webSocketWrapper from '@/util/web-socket-wrapper'
 import { escapeHtml, pageBlocksPrinter, printerPageUrl } from '@/util/page-blocks-printer'
-import { instanceFor, probeAddress, type LanPrinter } from '@/services/muon-cloud/discovery'
+import { discoveryState, instanceFor, pageBlocksLanIpv4, probeAddress, type LanPrinter } from '@/services/muon-cloud/discovery'
 
 @Component({})
 export default class AddInstanceDialog extends Mixins(StateMixin) {
@@ -230,7 +230,14 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
    * content, not a wrong address, so say so and link the printer's own page
    * rather than asking whether the address is correct.
    */
-  onUnreachable (apiUrl: string, request: string) {
+  async onUnreachable (apiUrl: string, request: string) {
+    if (/^http:\/\/\d{1,3}(\.\d{1,3}){3}(:\d+)?\/?$/.test(apiUrl) && await pageBlocksLanIpv4()) {
+      const ownUrl = discoveryState.blockedByPage?.ownUrl
+      this.error = null
+      this.note = this.$t('app.endpoint.error.blocked_ip_from_name', { host: escapeHtml(location.host) }) +
+        (ownUrl ? ' ' + this.$t('app.endpoint.error.blocked_ip_from_name_way_round', { url: escapeHtml(ownUrl) }) : '')
+      return
+    }
     if (pageBlocksPrinter(apiUrl)) {
       this.error = null
       this.note = this.$t('app.endpoint.error.blocked_by_page', {
