@@ -55,6 +55,13 @@ app:
         This browser does not let %{host} reach printers on your network, so it
         cannot check this address. <a href="%{url}">Open the printer's own page</a>
         instead.
+      blocked_ip_from_name: >-
+        This browser won't let %{host} reach printers by their IP address, because
+        the page was opened by name. Enter the printer's name instead, as shown on
+        its screen, such as muon-walnut-8987.
+      blocked_ip_from_name_way_round: >-
+        Or <a href="%{url}">open this printer by its IP address</a>, which can
+        reach printers by IP.
       cors_error: blocked by CORS policy
       cors_note: >-
         The printer may need its Moonraker configuration changed to allow this

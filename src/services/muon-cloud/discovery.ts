@@ -80,6 +80,12 @@ export interface LanPrinter {
    * through the service.
    */
   endpointId: string | null;
+  /**
+   * Its own `.local` name, `muon-boxwood-367a.local`, worked out from what it
+   * reports about itself. A guess until it answers there: a printer that
+   * predates the naming rule (KAN-357) has another hostname.
+   */
+  mdnsHost?: string | null;
   link: LanLinkStatus;
   /** How it answered the last health check, when it was asked. */
   health?: LanHealth;
@@ -121,7 +127,13 @@ export const discoveryState = Vue.observable({
   /** From the service, which works on an HTTPS page too. */
   cloud: [] as CloudNearbyPrinter[],
   cloudChecked: false,
-  finishedAt: 0
+  finishedAt: 0,
+  /**
+   * Set when this browser will not let this page reach printers by IP
+   * address (`pageBlocksLanIpv4`), with the page's own printer by IP address
+   * as the way round it.
+   */
+  blockedByPage: null as { ownUrl: string | null } | null
 })
 
 /** Letters and digits only, lower case: "Boxwood · 367A" and "Muon-boxwood-367a" both contain "boxwood367a". */
@@ -202,6 +214,85 @@ async function reachableFirst (printer: CloudNearbyPrinter) {
   current.localAddrs = [host, ...addrs]
 }
 
+/**
+ * A printer's own `.local` name from the parts `/server/muon/identity`
+ * reports. The hostname is `Muon-<name>-<suffix>`, built from the serial by
+ * the same rule as the name (KAN-357), so it stays put when the owner renames
+ * the printer: `derived_name` is the serial's name, not the owner's.
+ */
+export function mdnsHostFor (identity: any): string | null {
+  const name = typeof identity?.derived_name === 'string' ? identity.derived_name.trim().toLowerCase() : ''
+  const suffix = typeof identity?.suffix === 'string' ? identity.suffix.trim().toLowerCase() : ''
+  if (!/^[a-z]+$/.test(name) || !/^[0-9a-z]+$/.test(suffix)) return null
+  return `muon-${name}-${suffix}.local`
+}
+
+/**
+ * Whether this page was opened by a name (`muon-boxwood-367a.local`) over
+ * plain HTTP. That name can resolve to the printer's global IPv6 address, and
+ * Chrome then treats the page as public and refuses, before anything is sent,
+ * every request it makes to a private IPv4 address, such as another printer's
+ * (`ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS`). Reaching the other printer
+ * by its own `.local` name still works: public to public.
+ */
+export function pageOpenedByName (loc: { protocol: string, hostname: string } = location): boolean {
+  if (loc.protocol !== 'http:') return false
+  const host = loc.hostname
+  return !isIpv4(host) && !host.includes(':') && !host.startsWith('[') && host !== 'localhost'
+}
+
+/** The page's own printer's private IPv4 address, from its Moonraker. */
+async function ownIpv4 (): Promise<string | null> {
+  try {
+    const info = await getJson(`${location.origin}/machine/system_info`, {}, 2500)
+    const network = info?.system_info?.network ?? {}
+    const addresses: string[] = []
+    for (const iface of Object.values<any>(network)) {
+      for (const a of iface?.ip_addresses ?? []) {
+        if (a?.family === 'ipv4' && !a.is_link_local && typeof a.address === 'string') addresses.push(a.address)
+      }
+    }
+    return addresses.find(a => !OWN_HOTSPOT.test(a)) ?? addresses[0] ?? null
+  } catch {
+    return null
+  }
+}
+
+/** A request the browser refused this fast was never sent. */
+const REFUSED_WITHIN_MS = 250
+
+let blockCheck: Promise<boolean> | null = null
+
+/**
+ * Whether this browser refuses this page every request to a private IPv4
+ * address. Asked once, of the one printer certain to be there: the one that
+ * served the page, at its own IPv4 address. Measured in Chrome 154 on
+ * 2026-10-09: refused in 3-4 ms, while the same printer answered by name.
+ */
+export function pageBlocksLanIpv4 (): Promise<boolean> {
+  if (!pageOpenedByName()) return Promise.resolve(false)
+  blockCheck ??= (async () => {
+    const ip = await ownIpv4()
+    if (!ip) return false
+    const started = performance.now()
+    try {
+      await getJson(`http://${ip}/server/muon/identity`, {}, 2500)
+      return false
+    } catch (error) {
+      const blocked = error instanceof TypeError && performance.now() - started < REFUSED_WITHIN_MS
+      if (blocked) discoveryState.blockedByPage = { ownUrl: `http://${ip}/` }
+      return blocked
+    }
+  })()
+  return blockCheck
+}
+
+/** Forgets the answer, for tests. */
+export function resetPageBlockCheck () {
+  blockCheck = null
+  discoveryState.blockedByPage = null
+}
+
 let running: Promise<void> | null = null
 
 function isIpv4 (host: string) {
@@ -273,8 +364,9 @@ export async function probe (host: string, timeout = PROBE_TIMEOUT_MS): Promise<
   if (!identity || typeof identity !== 'object') return null
   const name = String(identity.display || identity.name || host)
   const endpointId = typeof identity.endpoint_id === 'string' && identity.endpoint_id ? identity.endpoint_id : null
+  const mdnsHost = mdnsHostFor(identity)
   const [link, health] = await Promise.all([lanLinkStatus(apiUrl), printerHealth(apiUrl)])
-  return { host, apiUrl, name, endpointId, link, health: health ?? undefined }
+  return { host, apiUrl, name, endpointId, mdnsHost, link, health: health ?? undefined }
 }
 
 /**
@@ -426,9 +518,17 @@ async function pool<T> (items: T[], work: (item: T) => Promise<void>) {
   await Promise.all(runners)
 }
 
-function knownHosts (): string[] {
+/**
+ * The addresses of the printers already saved. On a page that may not reach
+ * IPv4 addresses, a printer saved by IP is asked at its `.local` name instead,
+ * so it can be found there, and moved there, by its EndpointId.
+ */
+export function knownHosts (blocked = !!discoveryState.blockedByPage): string[] {
   const instances: InstanceConfig[] = store.getters['config/getInstances'] ?? []
-  const hosts = instances.map(i => hostOf(i.apiUrl)).filter((h): h is string => !!h && !h.endsWith('.invalid'))
+  const hosts = instances.map(i => {
+    const host = hostOf(i.apiUrl)
+    return blocked && host && isIpv4(host) ? (i.mdnsHost ?? null) : host
+  }).filter((h): h is string => !!h && !h.endsWith('.invalid'))
   if (isIpv4(location.hostname) && location.hostname !== '127.0.0.1') hosts.push(location.hostname)
   return [...new Set(hosts)]
 }
@@ -436,12 +536,16 @@ function knownHosts (): string[] {
 async function sweep () {
   discoveryState.scanning = true
   try {
-    const known = knownHosts()
+    const blocked = await pageBlocksLanIpv4()
+    const known = knownHosts(blocked)
     discoveryState.network = 'printers you have added'
     await pool(known, async host => {
       const printer = await probe(host)
       if (printer) remember(printer)
     })
+    // Every probe of an IPv4 address would be refused before it was sent, and
+    // each refusal would read as a gateway answering.
+    if (blocked) return
 
     const own = [...new Set(known.filter(isIpv4).map(h => h.split('.').slice(0, 3).join('.')))]
     discoveryState.network = 'this network'
@@ -570,19 +674,20 @@ export function lanCodeOutcome (name: string, status: LanLinkStatus): { note?: s
  * connection, open to anyone on the network: an open printer lets them
  * straight in, and one with a password asks for it.
  */
-export function instanceForHost (host: string, name: string, endpointId?: string | null): InstanceConfig {
+export function instanceForHost (host: string, name: string, endpointId?: string | null, mdnsHost?: string | null): InstanceConfig {
   return {
     name,
     apiUrl: apiUrlFor(host),
     socketUrl: `ws://${host}/websocket`,
     active: true,
-    ...(endpointId ? { endpointId } : {})
+    ...(endpointId ? { endpointId } : {}),
+    ...(mdnsHost && mdnsHost !== host ? { mdnsHost } : {})
   }
 }
 
 /** A Fluidd instance for a printer the LAN search found. */
 export function instanceFor (printer: LanPrinter): InstanceConfig {
-  return instanceForHost(printer.host, printer.name, printer.endpointId)
+  return instanceForHost(printer.host, printer.name, printer.endpointId, printer.mdnsHost)
 }
 
 /**
