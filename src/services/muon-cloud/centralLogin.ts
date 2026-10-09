@@ -31,7 +31,7 @@ const SILENT_KEY = 'muon.cloud.silent'
 interface Pending {
   state: string;
   verifier: string;
-  /** The hash route to come back to, such as `#/join?code=...`. */
+  /** The address on this page to come back to, such as `/join?code=...`. */
   returnTo: string;
   silent: boolean;
 }
@@ -75,9 +75,20 @@ export function authorizeUrl (base: string, params: { redirectUri: string, chall
   return `${base}/authorize?${query.toString()}`
 }
 
-/** A hash route this page may return to after signing in. Anything else is the dashboard. */
-export function safeReturnTo (hash: string): string {
-  return /^#\/[^\s\\]*$/.test(hash) && !hash.startsWith('#//') ? hash : '#/'
+/**
+ * An address on this page to return to after signing in: a path such as
+ * `/join?code=X`, never another origin (`//host`, `/\host`), whitespace or a
+ * scheme. A hash route (`#/join?code=X`), which a tab that started signing in
+ * on an older Fluidd remembers, becomes its path. Anything else is `/`.
+ */
+export function safeReturnTo (value: string): string {
+  const path = value.startsWith('#/') ? value.slice(1) : value
+  return /^\/[^\s\\]*$/.test(path) && !path.startsWith('//') ? path : '/'
+}
+
+/** Where this page is now, to come back to: its path, query and fragment. */
+function currentAddress (): string {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`
 }
 
 /**
@@ -99,7 +110,7 @@ export async function prepareAuthorize (options: { silent: boolean, returnTo?: s
   const pending: Pending = {
     state,
     verifier,
-    returnTo: safeReturnTo(options.returnTo ?? window.location.hash),
+    returnTo: safeReturnTo(options.returnTo ?? currentAddress()),
     silent: options.silent
   }
   const store = session()
@@ -114,7 +125,7 @@ export async function prepareAuthorize (options: { silent: boolean, returnTo?: s
 }
 
 /** Whether to try `prompt=none` before anything else loads. */
-export function shouldTrySilentSignIn (location: Pick<Location, 'origin' | 'protocol' | 'hostname' | 'search' | 'hash'> = window.location): boolean {
+export function shouldTrySilentSignIn (location: Pick<Location, 'origin' | 'protocol' | 'hostname' | 'search' | 'pathname'> = window.location): boolean {
   if (!centralLoginEnabled(location)) return false
   if (storedToken()) return false
   if (session()?.getItem(SILENT_KEY)) return false
@@ -123,13 +134,13 @@ export function shouldTrySilentSignIn (location: Pick<Location, 'origin' | 'prot
   // The console's own sign-in page is where `/authorize` sends a browser
   // with no session; asking `/authorize` from there would only come back
   // signed out and lose `continue`. Setup never talks to the console.
-  return !/^#\/(sign-in|setup)(?:[/?]|$)/.test(location.hash)
+  return !/^\/(sign-in|setup)(?:\/|$)/.test(location.pathname)
 }
 
 /**
  * Reads a return from `/authorize` off the address, if this is one, and
- * puts the address back to the hash route the trip started from. Pure but
- * for the tab's own storage and the history entry it rewrites.
+ * puts the address back to where the trip started. Pure but for the tab's
+ * own storage and the history entry it rewrites.
  */
 export function takeCallback (location: Pick<Location, 'search'> = window.location, consoleUrl: string = cloudBaseUrl()): CallbackResult {
   const query = new URLSearchParams(location.search)
@@ -142,9 +153,9 @@ export function takeCallback (location: Pick<Location, 'search'> = window.locati
   } catch { /* unreadable: treated as none */ }
   store?.removeItem(PENDING_KEY)
 
-  const returnTo = safeReturnTo(pending?.returnTo ?? '#/')
+  const returnTo = safeReturnTo(pending?.returnTo ?? '/')
   try {
-    window.history.replaceState(window.history.state, '', `${redirectUri()}${returnTo}`)
+    window.history.replaceState(window.history.state, '', `${window.location.origin}${returnTo}`)
   } catch { /* tests */ }
 
   if (!pending || query.get('state') !== pending.state) {
