@@ -202,6 +202,11 @@ export interface InstanceConfig extends ApiConfig {
    * a new address, or is also in the account, still lists once.
    */
   endpointId?: string;
+  /**
+   * The printer's own `.local` name, kept so a page that may not reach IPv4
+   * addresses can still find a printer saved by IP (see `pageBlocksLanIpv4`).
+   */
+  mdnsHost?: string;
 }
 
 export interface TemperaturePreset {
