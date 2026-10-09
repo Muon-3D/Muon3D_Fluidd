@@ -2,6 +2,7 @@ export interface SocketState {
   apiConnected: boolean;
   open: boolean;
   connecting: boolean;
+  stalled: boolean;
   disconnecting: boolean;
   ready: boolean;
   acceptingNotifications: boolean;

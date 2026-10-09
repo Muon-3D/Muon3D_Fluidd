@@ -14,6 +14,12 @@
         </div>
         <span v-if="socketConnecting">{{ $t('app.socket.msg.connecting') }}</span>
         <span v-if="!socketConnecting">{{ $t('app.socket.msg.no_connection') }}</span>
+        <div
+          v-if="socketConnecting && retryPending"
+          class="body-2 mt-2"
+        >
+          {{ $t('app.socket.msg.retrying') }}
+        </div>
       </v-col>
       <v-col
         cols="6"
@@ -27,6 +33,15 @@
           rounded
           height="6"
         />
+        <app-btn
+          v-if="socketConnecting && retryPending"
+          block
+          color="info"
+          class="me-2 mb-2"
+          @click="tryNow()"
+        >
+          {{ $t('app.general.btn.socket_try_now') }}
+        </app-btn>
         <app-btn
           v-if="!socketConnecting"
           block
@@ -53,6 +68,9 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import { appInit } from '@/init'
 import StateMixin from '@/mixins/state'
+import { activateCloudPrinter } from '@/services/muon-cloud/activate'
+import { cloudState } from '@/services/muon-cloud/state'
+import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 
 @Component({
   components: {}
@@ -66,7 +84,25 @@ export default class SocketDisconnected extends Mixins(StateMixin) {
     return this.$store.getters['config/getCurrentInstance']
   }
 
+  /** Whether the socket client is waiting out its backoff before the next try. */
+  get retryPending (): boolean {
+    // Read the store so this recomputes as the connection state changes.
+    return this.$store.state.socket.connecting && !!this.$socket?.retryPending
+  }
+
+  tryNow () {
+    this.$socket.retryNow()
+  }
+
   async reconnect () {
+    // A cloud printer has no address to connect to: its socket comes over
+    // Iroh, so open it again through the account.
+    const printerId = cloudState.activePrinterId
+    if (printerId && isManagedApiUrl(this.activeInstance?.apiUrl ?? '')) {
+      await activateCloudPrinter(printerId).catch(() => {})
+      return
+    }
+
     // Re-init the app.
     const config = await appInit(this.activeInstance, this.$store.state.config.hostConfig)
 

@@ -228,6 +228,7 @@ app:
       shutdown: Shutdown
       snooze: Snooze
       socket_reconnect: Re-Connect
+      socket_try_now: Try now
       socket_refresh: Force refresh
       thumbnail_size: Thumbnail size
       upload: Upload
@@ -772,6 +773,8 @@ app:
     msg:
       connecting: Connecting to moonraker...
       no_connection: No moonraker connection. Please check moonraker status and / or refresh.
+      stalled: Waiting for the printer. It hasn't answered for a few seconds, so what you see may be out of date.
+      retrying: Trying again. Fluidd keeps trying until the printer answers.
   system_info:
     label:
       awake_time: awake time
