@@ -128,7 +128,10 @@ export default class AppWifiButton extends Vue {
   async fetchCurrent () {
     if (this.locked || this.remote) return
     try {
-      const res = await useAuxApi().wifi.wifiCurrentWifiCurrentGet(true)
+      // No rescan: every forced scan stalls the printer's Wi-Fi for a moment,
+      // and at one every 10 s an open tab made the printer's own connection
+      // jittery (p99 ping 12 -> 128 ms, measured on boxwood 2026-10-09).
+      const res = await useAuxApi().wifi.wifiCurrentWifiCurrentGet(false)
       this.wifi_current = res.data
       this.ap_device_status = (await useAuxApi().ap.wifiStatusWifiApDeviceStatusGet()).data
     } catch (e: any) {
