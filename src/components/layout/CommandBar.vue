@@ -128,7 +128,7 @@ import BrowserMixin from '@/mixins/browser'
 import { EventBus } from '@/eventBus'
 import { SocketActions } from '@/api/socketActions'
 import type { TemperaturePreset } from '@/store/config/types'
-import type { Macro } from '@/store/macros/types'
+import { visibleMacros, type MacroGroup } from '@/util/visible-macros'
 import type { MoonrakerRootFile } from '@/store/files/types'
 import { highlight, rankCommands, type Command, type Segment } from '@/services/command-bar/rank'
 import { ALL_PRINTERS_KEY, SECTIONS, visiblePages } from '@/router/printerSections'
@@ -370,9 +370,7 @@ export default class CommandBar extends Mixins(FrameMixin, BrowserMixin) {
 
   get macroCommands (): Command[] {
     if (!this.inPrinter || !this.klippyReady) return []
-    // A macro's stored settings can carry a null name over the real one.
-    const macros = ((this.$store.getters['macros/getVisibleMacros'] as Macro[]) ?? [])
-      .filter(m => typeof m.name === 'string' && m.name)
+    const macros = visibleMacros(this.$store.getters['macros/getVisibleMacros'] as MacroGroup[])
     return macros.map(m => ({
       id: `macro-${m.name}`,
       group: 'Macros' as const,
