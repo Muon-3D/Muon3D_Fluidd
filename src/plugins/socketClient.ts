@@ -91,7 +91,14 @@ export class WebSocketClient {
       if (this.store) this.store.commit('socket/setSocketStalled', true)
     }, Globals.SOCKET_PING_INTERVAL)
     this.deadTimeout = setTimeout(() => {
-      if (this.quietIsExpected() || !connection || this.connection !== connection) return
+      if (!connection || this.connection !== connection) return
+      // Quiet was expected (a download, a restart Fluidd asked for): look
+      // again later rather than stop looking, or a socket that dies in the
+      // meantime is never replaced.
+      if (this.quietIsExpected()) {
+        this.armSilenceTimers()
+        return
+      }
       consola.debug(`${this.logPrefix} No message for ${Globals.SOCKET_DEAD_AFTER} ms, replacing the connection`)
       this.giveUp(connection)
     }, Globals.SOCKET_DEAD_AFTER)
