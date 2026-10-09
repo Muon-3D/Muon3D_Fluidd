@@ -75,6 +75,17 @@
       >
         <app-page-title v-if="showLargeTitle" />
 
+        <v-alert
+          v-if="socketStalled"
+          dense
+          text
+          type="warning"
+          class="mb-2"
+          data-tid="socket-stalled"
+        >
+          {{ $t('app.socket.msg.stalled') }}
+        </v-alert>
+
         <router-view
           v-if="
             managedConsoleRoute ||
@@ -205,6 +216,11 @@ export default class App extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
 
   get printerIndependentRoute (): boolean {
     return this.$route.meta?.printerIndependent === true
+  }
+
+  /** The printer has said nothing for a few seconds; the page stays up while Fluidd waits. */
+  get socketStalled (): boolean {
+    return this.$store.state.socket.stalled && this.$store.state.socket.open
   }
 
   get managedConsoleRoute (): boolean {

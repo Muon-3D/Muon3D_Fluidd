@@ -1,4 +1,3 @@
-import Vue from 'vue'
 import type { ActionTree } from 'vuex'
 import { consola } from 'consola'
 import type { SocketState } from './types'
@@ -47,32 +46,22 @@ export const actions: ActionTree<SocketState, RootState> = {
   /**
    * Fired when the socket closes.
    */
-  async onSocketClose ({ dispatch, commit, state }, event: CloseEvent) {
-    const retry = state.disconnecting
+  async onSocketClose ({ dispatch, commit }, event: { code?: number, reason?: string, wasClean: boolean }) {
     const modules = ['server', 'power', 'webcams', 'jobQueue', 'charts', 'socket', 'wait', 'gcodePreview']
 
-    if (event.wasClean && retry) {
-      // This is most likely a moonraker restart, so only partially reset.
-      await dispatch('reset', modules, { root: true })
-      commit('setSocketConnecting', true)
-      Vue.$socket.connect()
-    }
-
-    if (event.wasClean && !retry) {
-      // Set the socket state to closed.
-      // If we swap printer endpoints, then the init will run
-      // which will reset the state if necessary.
+    if (event.wasClean) {
+      // Fluidd closed it, to switch printers or to stop. The next init resets
+      // whatever it needs to.
       commit('setSocketConnecting', false)
       commit('setSocketOpen', false)
+      return
     }
 
-    if (!event.wasClean) {
-      // Not a clean disconnect. Service went down?
-      // Socket should attempt to reconnect itself.
-      await dispatch('reset', modules, { root: true })
-      commit('setSocketConnecting', true)
-      commit('setSocketOpen', false)
-    }
+    // Anything else: a Moonraker restart, a network drop, the printer going
+    // away. The socket client is already trying again.
+    await dispatch('reset', modules, { root: true })
+    commit('setSocketConnecting', true)
+    commit('setSocketOpen', false)
   },
 
   /**

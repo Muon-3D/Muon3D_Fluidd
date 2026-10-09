@@ -227,6 +227,8 @@ export const Globals = Object.freeze({
   KLIPPY_RETRY_DELAY: 1500,
   SOCKET_RETRY_DELAY: 2000,
   SOCKET_PING_INTERVAL: 10000,
+  /** No message for this long and the socket is replaced: Moonraker sends one every second. */
+  SOCKET_DEAD_AFTER: 30000,
   CONSOLE_HISTORY_RETENTION: 1000, // total count
   CONSOLE_RECEIVE_PREFIX: '',
   CONSOLE_SEND_PREFIX: '$ ',
