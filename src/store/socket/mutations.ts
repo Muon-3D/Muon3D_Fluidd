@@ -19,6 +19,10 @@ export const mutations: MutationTree<SocketState> = {
     if (state.connecting !== payload) state.connecting = payload
   },
 
+  setSocketStalled (state, payload: boolean) {
+    if (state.stalled !== payload) state.stalled = payload
+  },
+
   setSocketReadyState (state, payload) {
     state.ready = payload
   },

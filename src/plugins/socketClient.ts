@@ -19,58 +19,111 @@ import {
 } from '@/services/managed-transport'
 import axios from 'axios'
 
+/** The longest wait between two tries to reconnect. */
+const MAX_RECONNECT_DELAY_MS = 30_000
+
+/** How long the one-shot token request may take before the try counts as failed. */
+const TOKEN_TIMEOUT_MS = 5_000
+
 export class WebSocketClient {
   url = ''
   connection: PrinterSocket | null = null
   reconnectEnabled = false
+  /** The first retry's wait. Each failed try doubles it, up to MAX_RECONNECT_DELAY_MS. */
   reconnectInterval = 1000
-  allowedReconnectAttempts = 3
+  /** Tries since the last connection opened. Fluidd never gives up on its own. */
   reconnectCount = 0
   logPrefix = '[WEBSOCKET]'
   requests: Array<Request> = []
   store: any | null = null
   pingTimeout: any
+  deadTimeout: any
   cache: CachedParams | null = null
   private readonly openedConnections = new WeakSet<object>()
   private transportReconnect: (() => Promise<PrinterSocket>) | null = null
+  /** Set while Fluidd closes the socket itself, so that close is not retried. */
+  private closing = false
+  private retryTimer: ReturnType<typeof setTimeout> | null = null
+  private retryAction: (() => void) | null = null
 
   constructor (options: SocketPluginOptions) {
     this.url = options.url
     this.reconnectEnabled = options.reconnectEnabled || false
     this.reconnectInterval = options.reconnectInterval || 1000
     this.store = options.store ? options.store : null
+    // A network or a tab coming back is the best moment to try again: don't
+    // wait out the backoff.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => this.retryNow())
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') this.retryNow()
+      })
+    }
   }
 
+  /**
+   * Called on every message. A quiet socket is not a closed one: after
+   * SOCKET_PING_INTERVAL with no message the page says it is waiting, and
+   * keeps the dashboard. Only after SOCKET_DEAD_AFTER is the connection given
+   * up and replaced. Moonraker sends something every second, so silence that
+   * long means the path is gone.
+   */
   pong () {
-    // Valid response from the socket.
-    clearTimeout(this.pingTimeout)
-
-    // We have a connection again, so set the socket properties
-    // appropriately.
     if (
       !this.store.state.socket.disconnecting && // We arent about to disonnect and..
       !this.store.state.files.download // We're not in the middle of a download.
     ) {
       this.store.commit('socket/setSocketOpen', true)
+      if (this.store.state.socket.stalled) this.store.commit('socket/setSocketStalled', false)
       this.store.dispatch('socket/onSocketConnecting', false)
     }
+    this.armSilenceTimers()
+  }
 
+  /** Starts the clocks that notice a connection has gone quiet, from now. */
+  private armSilenceTimers () {
+    clearTimeout(this.pingTimeout)
+    clearTimeout(this.deadTimeout)
+    const connection = this.connection
     this.pingTimeout = setTimeout(() => {
-      if (
-        !this.store.state.socket.disconnecting && // We arent about to disonnect and..
-        !this.store.state.files.download // We're not in the middle of a download.
-      ) {
-        // In the event our socket stops responding, set the socket properties
-        // appropriately.
-        consola.debug(`${this.logPrefix} Connection timeout, pong failed`)
-        if (this.store) this.store.commit('socket/setSocketOpen', false)
-        if (this.store) this.store.dispatch('socket/onSocketConnecting', true)
-      }
+      if (this.quietIsExpected()) return
+      consola.debug(`${this.logPrefix} No message for ${Globals.SOCKET_PING_INTERVAL} ms`)
+      if (this.store) this.store.commit('socket/setSocketStalled', true)
     }, Globals.SOCKET_PING_INTERVAL)
+    this.deadTimeout = setTimeout(() => {
+      if (!connection || this.connection !== connection) return
+      // Quiet was expected (a download, a restart Fluidd asked for): look
+      // again later rather than stop looking, or a socket that dies in the
+      // meantime is never replaced.
+      if (this.quietIsExpected()) {
+        this.armSilenceTimers()
+        return
+      }
+      consola.debug(`${this.logPrefix} No message for ${Globals.SOCKET_DEAD_AFTER} ms, replacing the connection`)
+      this.giveUp(connection)
+    }, Globals.SOCKET_DEAD_AFTER)
+  }
+
+  private quietIsExpected () {
+    return !this.store || this.store.state.socket.disconnecting || this.store.state.files.download
+  }
+
+  /**
+   * Treats a connection that stopped answering as closed now. A browser
+   * WebSocket on a dead path can take minutes to report its close, so the
+   * old one is closed in the background and its own close event ignored.
+   */
+  private giveUp (connection: PrinterSocket) {
+    this.onConnectionClose(connection, { code: 4000, reason: 'no messages', wasClean: false })
+    connection.close()
   }
 
   close () {
+    this.cancelRetry()
+    clearTimeout(this.pingTimeout)
+    clearTimeout(this.deadTimeout)
     if (this.connection) {
+      this.closing = true
       this.cache = null
       this.connection.close()
       this.reconnectCount = 0
@@ -80,9 +133,11 @@ export class WebSocketClient {
   async connect (url?: string) {
     if (url) this.url = url
     this.cache = null
+    this.closing = false
+    this.cancelRetry()
 
     try {
-      const response = await httpClientActions.accessOneshotTokenGet()
+      const response = await httpClientActions.accessOneshotTokenGet({ timeout: TOKEN_TIMEOUT_MS })
 
       const token = response.data.result
 
@@ -108,11 +163,14 @@ export class WebSocketClient {
     connection: PrinterSocket,
     reconnect?: () => Promise<PrinterSocket>
   ) {
+    this.closing = false
+    this.cancelRetry()
     this.bindConnection(connection, reconnect ?? null)
   }
 
   /** Ends an adopted session without allowing its close event to reconnect. */
   releaseTransportSocket (closeConnection = true) {
+    this.cancelRetry()
     const connection = this.connection
     this.connection = null
     this.transportReconnect = null
@@ -144,25 +202,37 @@ export class WebSocketClient {
     if (this.connection !== connection || this.openedConnections.has(connection as object)) return
 
     this.openedConnections.add(connection as object)
-    if (this.reconnectEnabled) this.reconnectCount = 1
+    this.reconnectCount = 0
+    this.armSilenceTimers()
     if (this.store) {
       this.store.dispatch('socket/onSocketConnecting', false)
       this.store.dispatch('socket/onSocketOpen', true)
     }
   }
 
+  /**
+   * Any close Fluidd did not ask for is retried, clean or not: Moonraker
+   * closes cleanly when it reaps a socket that stopped answering, and over
+   * Iroh every close from the printer arrives as clean. The store hears a
+   * close Fluidd asked for as clean and any other as not.
+   */
   private onConnectionClose (connection: PrinterSocket, event: SocketCloseEvent) {
     if (this.connection !== connection) return
 
     consola.debug(`${this.logPrefix} Connection closed:`, event)
     clearTimeout(this.pingTimeout)
-    if (this.store) this.store.dispatch('socket/onSocketClose', event)
-    if (!event.wasClean) {
-      if (this.transportReconnect) {
-        this.reconnectTransport(this.transportReconnect)
-      } else {
-        this.reconnect()
-      }
+    clearTimeout(this.deadTimeout)
+    const asked = this.closing
+    this.closing = false
+    if (this.store) {
+      if (this.store.state.socket.stalled) this.store.commit('socket/setSocketStalled', false)
+      this.store.dispatch('socket/onSocketClose', { code: event.code, reason: event.reason, wasClean: asked })
+    }
+    if (asked) return
+    if (this.transportReconnect) {
+      this.reconnectTransport(this.transportReconnect)
+    } else {
+      this.reconnect()
     }
   }
 
@@ -239,39 +309,69 @@ export class WebSocketClient {
     }
   }
 
+  /** The wait before the next try: doubling from reconnectInterval, capped, with jitter. */
+  nextDelay () {
+    const base = Math.min(MAX_RECONNECT_DELAY_MS, this.reconnectInterval * 2 ** Math.min(this.reconnectCount, 16))
+    return Math.round(base * (0.8 + Math.random() * 0.4))
+  }
+
+  private scheduleRetry (action: () => void) {
+    this.cancelRetry()
+    const delay = this.nextDelay()
+    this.reconnectCount += 1
+    consola.debug(`${this.logPrefix} Reconnecting in ${delay}`)
+    this.retryAction = action
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null
+      this.retryAction = null
+      action()
+    }, delay)
+  }
+
+  private cancelRetry () {
+    if (this.retryTimer !== null) clearTimeout(this.retryTimer)
+    this.retryTimer = null
+    this.retryAction = null
+  }
+
+  /** Runs a waiting retry now, from the first step of the backoff. */
+  retryNow () {
+    const action = this.retryAction
+    if (!action) return
+    this.cancelRetry()
+    this.reconnectCount = 0
+    action()
+  }
+
+  /** Whether a try to reconnect is waiting for its turn. */
+  get retryPending () {
+    return this.retryAction !== null
+  }
+
   private reconnectTransport (reconnect: () => Promise<PrinterSocket>) {
-    if (this.reconnectCount <= this.allowedReconnectAttempts) {
-      this.reconnectCount += 1
-      this.connection = null
-      setTimeout(async () => {
-        if (this.transportReconnect !== reconnect) return
-        try {
-          const connection = await reconnect()
-          if (this.transportReconnect === reconnect) {
-            this.bindConnection(connection, reconnect)
-          } else {
-            connection.close()
-          }
-        } catch (_error) {
-          if (this.transportReconnect === reconnect) this.reconnectTransport(reconnect)
+    this.connection = null
+    this.scheduleRetry(async () => {
+      if (this.transportReconnect !== reconnect) return
+      try {
+        const connection = await reconnect()
+        if (this.transportReconnect === reconnect) {
+          this.bindConnection(connection, reconnect)
+        } else {
+          connection.close()
         }
-      }, this.reconnectInterval)
-    } else if (this.store) {
-      this.store.dispatch('socket/onSocketConnecting', false)
-    }
+      } catch (_error) {
+        if (this.transportReconnect === reconnect) this.reconnectTransport(reconnect)
+      }
+    })
   }
 
   reconnect () {
-    if (this.reconnectCount <= this.allowedReconnectAttempts) {
-      this.reconnectCount += 1
-      this.connection = null
-      consola.debug(`${this.logPrefix} Reconnecting in ${this.reconnectInterval}`)
-      setTimeout(() => {
-        this.connect()
-      }, this.reconnectInterval)
-    } else {
+    this.connection = null
+    if (!this.reconnectEnabled) {
       if (this.store) this.store.dispatch('socket/onSocketConnecting', false)
+      return
     }
+    this.scheduleRetry(() => { this.connect() })
   }
 
   /**
@@ -392,6 +492,8 @@ interface CachedParams {
 }
 
 interface SocketCloseEvent {
+  code?: number;
+  reason?: string;
   wasClean: boolean;
 }
 
