@@ -3,9 +3,10 @@
     class="ov-stage"
     data-tid="overview-stage"
   >
-    <printer-stage
+    <m1-live
       class="ov-stage__m1"
       :state="busy ? 'printing' : 'idle'"
+      :shift="busy && jobThumbnail ? 0.12 : 0"
     />
     <span
       v-if="badge"
@@ -43,14 +44,14 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
-import PrinterStage from '@/components/printers/PrinterStage.vue'
+import M1Live from '@/components/m1/M1Live.vue'
 
 /**
- * The whole M1, on the light stage, with what can be seen at a glance:
+ * The whole M1, live on the light stage, with what can be seen at a glance:
  * printing, the layer and the part's picture; idle, the material and
  * whether it is homed.
  */
-@Component({ components: { PrinterStage } })
+@Component({ components: { M1Live } })
 export default class OverviewStage extends Mixins(OverviewMixin) {
   get badge (): string | null {
     if (this.busy) {
