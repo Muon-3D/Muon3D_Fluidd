@@ -16,6 +16,11 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    env:
+      VITEST_MAX_THREADS: '1'
+      VITEST_MIN_THREADS: '1'
+      VITEST_MAX_FORKS: '1'
+      VITEST_MIN_FORKS: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,11 +37,15 @@ jobs:
 
       - name: Run lint
         run: |
-          npm run lint -- --no-fix
+          npm run lint
+
+      - name: Run type check
+        run: |
+          npm run type-check
 
       - name: Run tests
         run: |
-          npm run test:unit
+          npx vitest run
 
       - name: Run circular references check
         run: |
@@ -49,6 +58,10 @@ jobs:
       - name: Check the /setup page budget
         run: |
           npm run check:setup-budget
+
+      - name: Restore generated component declarations
+        if: always()
+        run: git checkout -- components.d.ts
 
       - name: Upload fluidd.zip
         uses: actions/upload-artifact@v4
