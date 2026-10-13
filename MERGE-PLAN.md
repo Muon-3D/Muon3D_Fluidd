@@ -6,7 +6,7 @@
 
 The full PR map is [PR-MAP.md](PR-MAP.md), source/firmware/hosting risks are [MERGE-RISKS.md](MERGE-RISKS.md), and observed conflicts and decisions are [MERGE-CONFLICTS.md](MERGE-CONFLICTS.md). Future publication controls and a conflict replay recipe are in [RELEASE-GATE.md](RELEASE-GATE.md). [RELEASE-GATE.patch](RELEASE-GATE.patch) is text for a future separately reviewed workflow change, not an applied gate.
 
-**Safety gate:** original heads allow turning off sensors whose `insert_gcode` starts filament auto-load. Protect both ControlOutputs and the legacy RunoutSensorsCard, conservatively handle unknown config, and add regression checks before production merges reach this behaviour. Pro is display preference, not authorization. Review stale per-printer developer-mode state, foreign Moonraker partial-status loss and startup snapshots that survive sign-out. Passing CI does not waive these findings.
+**Safety gate:** original heads allow turning off sensors whose `insert_gcode` starts filament auto-load. Protect both ControlOutputs and the legacy RunoutSensorsCard, conservatively handle unknown config, and add regression checks before production merges reach this behaviour. **Fixed by #70** (`fix/filament-insert-stays-armed`, on #57's head `77566f17`, added 13 Oct by Claude Code): both panels refuse `ENABLE=0` for a sensor with a non-blank `insert_gcode`, or whose configfile has not arrived, even when the handler is called directly; `ENABLE=1` stays allowed; a confirmed runout-only sensor keeps its off. It is merged into this train as `0b867823` (stage 35 below). #70 must merge before production gets the train. Pro is display preference, not authorization. Review stale per-printer developer-mode state, foreign Moonraker partial-status loss and startup snapshots that survive sign-out. Passing CI does not waive these findings.
 
 **Mandatory publication gate before the first original merge:** production already runs #66 (`764b9c1`), while develop is only #35 (`f805ae1`). Each original develop merge automatically publishes an intermediate tree; early merges would remove already-live redesign, library and account features until their later PRs arrive. Hosted/Docker publication and mutable `development/fluidd.zip` must be held while Build CI continues. The hold must be separately authorized, installed and verified before this sequence starts; setting a pause variable alone has no effect on the current publisher conditions. RELEASE.yml tag publication is independent of the proposed pause: push no v* tags and rerun no tag releases during this window. Follow [RELEASE-GATE.md](RELEASE-GATE.md), coordinate MuonOS archive/checksum pins, and publish only the final approved commit. PR #67 itself does not deploy because its publisher jobs are skipped for pull requests.
 
@@ -79,7 +79,7 @@ Immediately before gh pr merge, check that both remote input SHAs still match th
 
 ## Exact original-PR order
 
-The initial 32-head snapshot/order is preserved. The completion refresh discovered additional source PRs: #68, #69; these extend the train to 34 source heads. Integration PR #67 is the plan artifact, not a source head to merge. Run from Muon-3D/Muon3D_Fluidd or append --repo Muon-3D/Muon3D_Fluidd. Every retarget below waits for its parent to merge. Before each merge compare the current head with the captured SHA (or the explicitly reviewed conflict-update SHA), inspect mergeability and await checks against the updated base. 12 source drafts need gh pr ready. No command below is authorized until publication and safety gates are resolved.
+The initial 32-head snapshot/order is preserved. The completion refresh discovered additional source PRs: #68, #69; these extend the train to 34 source heads. #70, the filament-sensor safety fix opened after the rehearsal, is stage 35: the train merged it last, and it may move up to directly after #57 (see its section). It is a draft too, so it also needs gh pr ready. Integration PR #67 is the plan artifact, not a source head to merge. Run from Muon-3D/Muon3D_Fluidd or append --repo Muon-3D/Muon3D_Fluidd. Every retarget below waits for its parent to merge. Before each merge compare the current head with the captured SHA (or the explicitly reviewed conflict-update SHA), inspect mergeability and await checks against the updated base. 12 source drafts need gh pr ready. No command below is authorized until publication and safety gates are resolved.
 
 ### 1. PR #36 — `feat/redesign-printer-pages`
 
@@ -952,7 +952,38 @@ if ($LASTEXITCODE) { throw "merge failed: stop before the next PR" }
 
 Verify the resulting develop tree, run all six future local checks and restore components.d.ts before continuing.
 
+### 35. PR #70 — `fix/filament-insert-stays-armed`
+
+Captured head: `3aa201a7154740deebc4fbca5829ff6470a2fe2e`.
+Retarget only after parent PR #57 is verified merged.
+
+**Position:** the train merged #70 last (after #69), as `0b867823`, with no conflict. No source PR after #57 changes any of its seven files (`src/services/control/model.ts` and its spec, `src/components/control/ControlOutputs.vue`, `src/components/widgets/runout-sensors/RunoutSensorsCard.vue`, the two new specs, `src/locales/en.yaml`), so it can merge at any point after #57. Directly after #57 is preferred: it shortens the time `develop` holds the unprotected Outputs panel. It must merge before the train reaches production.
+
+```powershell
+gh pr view 70 --json headRefOid,baseRefName,mergeable,statusCheckRollup
+if ($LASTEXITCODE) { throw "PR inspection failed" }
+# Compare head with the captured SHA or explicitly reviewed conflict-update SHA.
+$parentState = gh pr view 57 --json state | ConvertFrom-Json
+if ($LASTEXITCODE -or $parentState.state -ne "MERGED") { throw "parent PR is not verified merged" }
+gh pr edit 70 --base develop
+if ($LASTEXITCODE) { throw "retarget failed" }
+gh pr ready 70
+if ($LASTEXITCODE) { throw "ready-for-review failed" }
+gh pr checks 70 --watch
+if ($LASTEXITCODE) { throw "reported checks failed or remain pending" }
+# Watching existing checks is insufficient: pass the fresh Build OR prospective-tree gate above.
+$prState = gh pr view 70 --json headRefOid,baseRefName,mergeable,statusCheckRollup | ConvertFrom-Json
+if ($LASTEXITCODE -or $prState.baseRefName -ne "develop" -or $prState.mergeable -ne "MERGEABLE") { throw "original mergeability/base is unresolved" }
+# STOP unless head and develop still match the approved verified inputs, and publication is held.
+gh pr merge 70 --merge
+if ($LASTEXITCODE) { throw "merge failed: stop before the next PR" }
+```
+
+Verify the resulting develop tree, run all six future local checks and restore components.d.ts before continuing.
+
 ## Rehearsal evidence
+
+**Stage 35, #70 (added 13 Oct by Claude Code; not in MERGE-CHECKS.json or MERGE-TIMING.md):** merge commit `0b867823` of fix head `3aa201a7`, with no conflict. [Build 38454318882](https://github.com/Muon-3D/Muon3D_Fluidd/actions/runs/38454318882) passed lint, type-check, vitest, circular-check, build, setup budget and the component restore on that head: 1,610 tests in 163 files (stage #69: 1,590 in 161), no circular dependencies, /setup 505 KB of 900 KB. The same six checks also ran serially on the laptop on `0b867823` (Node 22, a fresh `npm ci` in a separate checkout, not the shared junction) with the same results, and on #70's own head (1,244 tests in 116 files, /setup 674 KB). Each of #70's 20 new tests fails with its production files reverted to `77566f17`.
 
 34 of 34 captured heads have recorded train merge commits; 34 stages have complete successful CI, hash and head/tree proofs. These are GitHub checks, not local full-suite claims. Pending rows make no end-state claim. [MERGE-CHECKS.json](MERGE-CHECKS.json) preserves all events and the derived per-stage ledger. Raw normalized inputs and individual check logs remain under `C:\Users\jack\fluidd-train-evidence` with SHA256 receipts.
 
