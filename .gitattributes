@@ -1,2 +1,6 @@
 # The lockfile hashes exact upstream bytes, including generated JS and notices.
 src/services/muon-cloud/vendor/muon-link-web/** -text -whitespace
+
+# Blank unified-diff context lines contain a required syntax space.
+PR64-FIXTURE.patch whitespace=-trailing-space
+RELEASE-GATE.patch whitespace=-trailing-space
