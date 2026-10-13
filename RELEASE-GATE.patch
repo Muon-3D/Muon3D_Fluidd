@@ -1,0 +1,62 @@
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -18,6 +18,8 @@ jobs:
+   build:
+     name: Build
+     runs-on: ubuntu-latest
++    env:
++      NODE_OPTIONS: --experimental-websocket
+     steps:
+       - name: Checkout
+         uses: actions/checkout@v4
+@@ -59,7 +59,7 @@ jobs:
+   publish-docker:
+     name: Publish Docker Image
+     needs: build
+-    if: ${{ github.event_name != 'pull_request' }}
++    if: ${{ github.event_name != 'pull_request' && vars.FLUIDD_PAUSE_PUBLISH != 'true' }}
+     runs-on: ubuntu-latest
+     steps:
+       - name: Checkout
+@@ -113,7 +113,7 @@ jobs:
+   publish-web:
+     name: Deploy to Host
+     needs: build
+-    if: ${{ github.ref == 'refs/heads/develop' }}
++    if: ${{ github.ref == 'refs/heads/develop' && vars.FLUIDD_PAUSE_PUBLISH != 'true' }}
+     runs-on: ubuntu-latest
+     permissions:
+       id-token: write
+diff --git a/.github/workflows/build-develop.yaml b/.github/workflows/build-develop.yaml
+--- a/.github/workflows/build-develop.yaml
++++ b/.github/workflows/build-develop.yaml
+@@ -14,6 +14,8 @@ jobs:
+   build:
+     name: Build
+     runs-on: ubuntu-latest
++    env:
++      NODE_OPTIONS: --experimental-websocket
+ 
+     steps:
+       - name: Checkout
+@@ -55,6 +55,7 @@ jobs:
+           zip -r ../fluidd.zip .
+ 
+       - name: Publish to “development” Release
++        if: ${{ vars.FLUIDD_PAUSE_PUBLISH != 'true' }}
+         uses: ncipollo/release-action@v1
+         with:
+           tag: development
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -10,6 +10,8 @@ jobs:
+   build:
+     name: Build
+     runs-on: ubuntu-latest
++    env:
++      NODE_OPTIONS: --experimental-websocket
+     steps:
+       - name: Checkout
+         uses: actions/checkout@v4
