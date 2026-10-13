@@ -4,6 +4,8 @@ Read-only source review on 2026-10-13 of the open redesign heads through #57 (`7
 
 ## Merge gate: filament insertion must stay armed
 
+**Status, 13 Oct:** fixed by #70 (`fix/filament-insert-stays-armed`), merged into this train as `0b867823`. Its 20 tests cover the cases listed below, and each fails with the fix reverted. The rest of this section records the defect as found.
+
 **The unmodified open heads do not enforce the requested invariant in the UI.** #49 adds the Pro Outputs and sensors panel. In #57, #59, and #61 it iterates every filament sensor and provides an on/off switch; its handler sends `sensorCommand(name, enabled)`. `sensorCommand` unconditionally emits `SET_FILAMENT_SENSOR SENSOR=<name> ENABLE=0` for false. The printer getter includes every `filament_switch_sensor` and `filament_motion_sensor`, with no examination of its `insert_gcode` configuration. Turning off a sensor whose insertion hook starts the load flow therefore disarms that flow unless firmware independently rejects the command. Later heads did not remove or protect this path.
 
 Evidence:
