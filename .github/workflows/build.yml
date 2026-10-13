@@ -17,6 +17,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     env:
+      NODE_OPTIONS: '--experimental-websocket'
       VITEST_MAX_THREADS: '1'
       VITEST_MIN_THREADS: '1'
       VITEST_MAX_FORKS: '1'
