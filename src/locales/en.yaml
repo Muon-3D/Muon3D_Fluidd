@@ -517,39 +517,41 @@ app:
     dev_mode:
       enable-developer-mode: Enable Developer Mode
       modal-1: >-
-        Developer Mode allows full access to all configuration settings,
-        including core system parameters normally protected by the OEM.
-      modal-2: >-
-        Changing these settings can affect safety, reliability, and print
-        quality. Incorrect configuration may cause hardware damage or unsafe
-        behaviour. Use only if you fully understand Klipper configuration and
-        machine operation.
-      modal-3: >-
-        Enabling Developer Mode may void warranty coverage for any damage or
-        malfunction caused by modified settings. The manufacturer accepts no
-        liability for damage to the printer, connected equipment, or property
-        resulting from custom configurations.
-      modal-warranty-liability: Warranty & Liability
-      modal-checkbox-message: >-
-        I understand the risks and accept full responsibility for any effects of
-        changing system configuration.
+        Developer Mode gives you your own copy of this printer's configuration
+        and macros to change, including the limits that normally keep it safe.
+      summary-safety: >-
+        You can change safety limits, such as heater and motion limits. You're
+        responsible for what your changes do, so stay with the printer while
+        you test them.
+      summary-warranty: >-
+        Faults caused by changes made in Developer Mode aren't covered by the
+        Muon3D warranty. Other faults still are, and your legal rights aren't
+        affected.
+      summary-record: >-
+        Turning it on is recorded on the printer and with Muon3D. The record
+        stays after you turn it off.
+      summary-off: >-
+        You can turn it off at any time to go back to the Muon3D configuration.
+      terms-title: Developer Mode terms
+      printer-notice-title: This printer's notice (version {version})
+      modal-checkbox-message: I've read and accept the Developer Mode terms ({version}).
+      modal-checkbox-message-with-notice: >-
+        I've read and accept the Developer Mode terms ({version}) and this
+        printer's notice.
       backup-config: Backup Config
       restore-defaults: Reset Macros to Defaults
       manage-at-printer: Can only be changed at the printer
       waiver-unavailable: >-
-        The printer's Developer Mode waiver could not be loaded, so it cannot be
-        accepted here. Developer Mode has not been changed.
+        The printer's Developer Mode terms couldn't be loaded, so they can't be
+        accepted here. Developer Mode hasn't changed.
       consent-expires: Waiting for confirmation at the printer. {seconds}s remaining.
       consent-expired: >-
         Nobody confirmed at the printer in time, so Developer Mode stays off. Try
         again when you are next to the machine.
       disable-developer-mode: Disable Devloper Mode
-      disable-modal-3: >-
-        Because Developer Mode was enabled, warranty may remain limited for
-        issues caused by custom configuration.
       disable-modal-2: >-
-        Your current custom configuration will be saved so you can switch back
-        later.
+        Your copy stays on the printer, and moves to the backups if you turn
+        Developer Mode on again. The record that it was turned on stays too.
       disable-modal-1: You’re returning to the default configuration.
   history:
     msg:
