@@ -189,7 +189,7 @@ import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
 import { Globals } from '@/globals'
 import type { ConsoleEntry, GcodeHelp } from '@/store/console/types'
-import { commandHelp, entryKind, explain, filterEntries, suggestions, type LogFilter, type Suggestion } from '@/services/console/model'
+import { commandHelp, entryKind, explain, explainError, filterEntries, suggestions, type LogFilter, type Suggestion } from '@/services/console/model'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
 import { knowDevMode, showsErrorDetail } from '@/services/dev-mode/state'
 
@@ -251,9 +251,20 @@ export default class Console extends Mixins(StateMixin, FilesMixin, BrowserMixin
         kind,
         time: e.time ? this.$filters.formatTimeWithSeconds(e.time * 1000) : '',
         html: this.linked(e, kind),
-        why: kind === 'error' || kind === 'warning' ? explain(e.message, showsErrorDetail()) : null
+        why: this.why(kind, e.message)
       }
     })
+  }
+
+  /**
+   * The sentence under a line. Every error gets one for customers, the
+   * generic one when the table doesn't know it; staff already read the raw
+   * line, so they get only a known error's full account.
+   */
+  why (kind: string, message: string): string | null {
+    const detail = showsErrorDetail()
+    if (kind === 'error' && !detail) return explainError(message)
+    return kind === 'error' || kind === 'warning' ? explain(message, detail) : null
   }
 
   /** Commands Klipper knows, in a reply, become links that put them in the line, as Fluidd's console does. */

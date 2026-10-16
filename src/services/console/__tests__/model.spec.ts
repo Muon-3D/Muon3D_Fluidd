@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandHelp, entryKind, entryText, explain, filterEntries, PRINTER_ERRORS, suggestions } from '../model'
+import { commandHelp, entryKind, entryText, explain, explainError, filterEntries, PRINTER_ERRORS, suggestions } from '../model'
 
 describe('a console line', () => {
   it('reads as text, from the store\'s sanitised HTML', () => {
@@ -59,6 +59,24 @@ describe('explaining errors', () => {
 
   it('leaves other lines alone', () => {
     expect(explain('// Klipper state: Ready')).toBeNull()
+  })
+})
+
+describe('an error not in the table', () => {
+  const raw = '!! Endstop x still triggered after retract'
+
+  it('gives customers the generic sentence and code, never the raw text', () => {
+    expect(explainError(raw)).toBe(
+      'The printer stopped because of an error. Restart the printer; if it happens again, contact support with code E-GEN-00.'
+    )
+  })
+
+  it('gives Muon staff the raw text in developer mode', () => {
+    expect(explainError(raw, true)).toBe('E-GEN-00: !! Endstop x still triggered after retract')
+  })
+
+  it('still names a known error by its own code', () => {
+    expect(explainError('!! ADC out of range')).toMatch(/code E-TEMP-01\.$/)
   })
 })
 
