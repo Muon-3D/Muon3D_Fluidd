@@ -39,13 +39,21 @@ describe('a check\'s status', () => {
 })
 
 describe('the bed mesh', () => {
+  // A plate dipping `d` mm in the middle: once levelled, `d` mm high to low.
+  const dip = (d: number) => [[0, 0, 0], [0, -d, 0], [0, 0, 0]]
+
   it('is flat enough within a quarter of a millimetre', () => {
-    expect(meshSummary([[0.01, 0.05], [-0.1, 0.11]])).toMatchObject({ range: 0.21, tone: 'ok' })
+    expect(meshSummary(dip(0.2))).toMatchObject({ range: 0.2, tone: 'ok' })
   })
 
   it('is uneven beyond it, and very uneven past 0.6 mm', () => {
-    expect(meshSummary([[0, 0.4]])?.tone).toBe('warn')
-    expect(meshSummary([[-0.4, 0.4]])?.tone).toBe('err')
+    expect(meshSummary(dip(0.45))).toMatchObject({ range: 0.45, tone: 'warn' })
+    expect(meshSummary(dip(0.8))).toMatchObject({ range: 0.8, tone: 'err' })
+  })
+
+  it('judges the curvature, not the tilt the printer follows', () => {
+    // 0.8 mm from one corner to the other, but flat.
+    expect(meshSummary([[0, 0.2, 0.4], [0.2, 0.4, 0.6], [0.4, 0.6, 0.8]])).toMatchObject({ range: 0, tone: 'ok' })
   })
 
   it('has no summary without a mesh', () => {

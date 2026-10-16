@@ -68,7 +68,7 @@
           <dd>{{ measuredText }}</dd>
         </template>
         <template v-if="range !== null">
-          <dt>{{ run ? 'Range so far' : 'Highest to lowest' }}</dt>
+          <dt>{{ run ? 'Range so far' : 'Flatness, tilt aside' }}</dt>
           <dd>{{ range.toFixed(2) }} mm</dd>
         </template>
         <p
@@ -198,8 +198,10 @@ export default class MaintenanceMesh extends Mixins(MaintenanceMixin) {
     return this.grid.flat().filter((v): v is number => v !== null)
   }
 
+  /** While measuring, the raw spread so far; after, the plate's curvature with its tilt taken out (the printer follows the tilt). */
   get range (): number | null {
     if (!this.values.length) return null
+    if (!this.run && this.summary) return this.summary.range
     return Math.max(...this.values) - Math.min(...this.values)
   }
 

@@ -1,3 +1,5 @@
+import { levelMesh } from './mesh-level'
+
 /** The checks that keep prints coming out right, in the order Maintenance lists them. */
 export type CheckId = 'bedMesh' | 'firstLayer' | 'shaper' | 'pid'
 
@@ -44,21 +46,24 @@ export function checkStatus (id: CheckId, lastRun: number | undefined, now: numb
 }
 
 export interface MeshSummary {
-  /** Highest point less lowest, in mm. */
+  /** The plate's curvature: highest point less lowest, in mm, once its tilt is taken out. */
   range: number;
+  /** Lowest and highest point off the levelled plate, in mm. */
   min: number;
   max: number;
   verdict: string;
   tone: CheckTone | 'err';
 }
 
-/** How flat the plate measured: the spread of the mesh, and what that means for printing. */
+/**
+ * How flat the plate measured, and what that means for printing. Judged on
+ * its curvature, not its tilt: the printer follows a tilt as it moves.
+ */
 export function meshSummary (matrix: number[][] | undefined): MeshSummary | null {
-  const values = (matrix ?? []).flat().filter(v => typeof v === 'number' && Number.isFinite(v))
-  if (!values.length) return null
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const range = Math.round((max - min) * 1000) / 1000
+  const level = levelMesh(matrix)
+  if (!level) return null
+  const { min, max } = level
+  const range = Math.round(level.range * 1000) / 1000
   if (range <= 0.25) return { range, min, max, verdict: 'Flat enough to print well', tone: 'ok' }
   if (range <= 0.6) return { range, min, max, verdict: 'A little uneven; the mesh evens out the first layer', tone: 'warn' }
   return { range, min, max, verdict: 'Very uneven: check the plate sits flat and clean', tone: 'err' }
