@@ -77,7 +77,7 @@ import { Component, Mixins, Watch } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import { Globals } from '@/globals'
 import linkExternalUrls from '@/util/link-external-urls'
-import { explain } from '@/services/console/model'
+import { explain, explainError } from '@/services/console/model'
 import { knowDevMode, showsErrorDetail } from '@/services/dev-mode/state'
 
 interface AlertGroup {
@@ -106,12 +106,15 @@ export default class AppStatusAlerts extends Mixins(StateMixin) {
   }
 
   /**
-   * A known error in a sentence with its support code; with the full account
-   * for staff. Null for the rest, which show as the printer sent them.
+   * Customers never see the printer's raw text: a known error's sentence, or
+   * the generic one, each with its support code; while it starts up, just
+   * that. Staff get a known error's full account, and the raw text below.
    */
   get stateExplained (): string | null {
     if (this.klippyReady || !this.klippyStateMessage) return null
-    return explain(this.klippyStateMessage, this.staffDetail)
+    if (this.staffDetail) return explain(this.klippyStateMessage, true)
+    if (this.klippyState.toLowerCase() === 'startup') return 'The printer is starting up.'
+    return explainError(this.klippyStateMessage)
   }
 
   @Watch('klippyReady', { immediate: true })

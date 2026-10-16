@@ -142,6 +142,22 @@ export function explain (message: string, detailed = false): string | null {
   return null
 }
 
+/** The code for a printer error the table doesn't know. */
+export const GENERIC_ERROR_CODE = 'E-GEN-00'
+
+/**
+ * An error, always in words a customer can read: the table's sentence, or
+ * the generic one, so the printer's raw text never reaches them. Developer
+ * mode gets the table's full account, or the raw text with the generic code.
+ */
+export function explainError (message: string, detailed = false): string {
+  const known = explain(message, detailed)
+  if (known) return known
+  return detailed
+    ? `${GENERIC_ERROR_CODE}: ${entryText(message).trim()}`
+    : `The printer stopped because of an error. Restart the printer; if it happens again, contact support with code ${GENERIC_ERROR_CODE}.`
+}
+
 export interface Suggestion {
   /** What Tab puts in the line. */
   text: string;
