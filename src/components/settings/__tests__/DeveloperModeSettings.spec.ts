@@ -45,11 +45,29 @@ describe('developer mode in Settings', () => {
   it('reads whether the printer would record it for good', async () => {
     await refreshDevMode()
     expect(devModeState).toMatchObject({ enabled: false, canManage: true, guardArmed: true, otpArmed: false })
-    expect(component().fuseText).toMatch(/fuse is disarmed, so you can turn developer mode on and off freely/)
+    expect(component().fuseText).toMatch(/leaves no mark in its hardware\. The printer and Muon3D still note that it was turned on/)
 
     api.getDevModeStatusDevModeGet.mockResolvedValue(status({ otp_record_armed: true }))
     await refreshDevMode()
     expect(component().fuseTone).toBe('warn')
+    // Jack, 16 Oct 2026: say what the warranty covers, never that it "can be affected" or "voided".
+    expect(component().fuseText).toMatch(/Faults caused by changes made in developer mode aren't covered by the warranty; other faults still are\./)
+    expect(component().fuseText).not.toMatch(/void|can affect the warranty/i)
+  })
+
+  it('shows the draft terms beside the printer\'s own notice until the printer serves them', async () => {
+    await refreshDevMode()
+    const vm = component()
+    await vm.toggle()
+    expect(vm.waiverVersion).toBe('w-1')
+    expect(vm.printerServesTerms).toBe(false)
+    expect(vm.termsHtml).toContain('<h2>3. Your warranty and your legal rights</h2>')
+    expect(vm.acceptLabel).toBe('app.general.dev_mode.modal-checkbox-message-with-notice')
+
+    api.getDevModeWaiverDevModeWaiverGet.mockResolvedValue({ data: { version: 'dev-mode-terms-v1-draft-norecord', text: 'The terms, served by the printer' } })
+    await vm.loadWaiver()
+    expect(vm.printerServesTerms).toBe(true)
+    expect(vm.acceptLabel).toBe('app.general.dev_mode.modal-checkbox-message')
   })
 
   it('does not take a page that answers with HTML for an answer', async () => {
