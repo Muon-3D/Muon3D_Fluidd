@@ -104,6 +104,16 @@ describe('WebSocketClient reconnecting', () => {
     expect(store.commit).toHaveBeenCalledWith('wait/setRemoveWait', 'history')
   })
 
+  it('answers a purged request with nothing, so its caller does not wait forever', async () => {
+    const { client } = lanClient()
+    const socket = await opened(client)
+    const answer = client.emit('printer.query_endstops.status', { dispatch: 'printer/onQueryEndstops' })
+
+    socket.emit('close', { code: 1006, reason: 'lost', wasClean: false })
+
+    await expect(answer).resolves.toBeUndefined()
+  })
+
   it('retries a clean close it did not ask for, and tells the store it was not clean', async () => {
     // Moonraker closes cleanly when it reaps a quiet socket, and over Iroh
     // every close from the printer arrives as clean. Both used to end on
