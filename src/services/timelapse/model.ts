@@ -52,6 +52,16 @@ export function frameFile (n: number, lastFile: string): string {
   return `frame${String(n).padStart(6, '0')}.${ext}`
 }
 
+/**
+ * Which print's frames a frame file is from, for a picture kept by version
+ * (mixins/files.ts pictureUrl). Every print numbers its frames from 1 again,
+ * so the name alone isn't enough: the print, when it started, and the frames
+ * taken so far tell them apart.
+ */
+export function frameVersion (job: string | undefined, started: number | null | undefined, count: number): string {
+  return `${job ?? ''}|${started ?? ''}|${count}`
+}
+
 /** What the renderer is doing, for people, or null when it's idle. */
 export function renderText (status: { status: string, progress?: number, count?: number } | undefined): string | null {
   if (!status) return null

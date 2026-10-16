@@ -80,6 +80,7 @@ import { SocketActions } from '@/api/socketActions'
 import CameraItem from '@/components/widgets/camera/CameraItem.vue'
 import FilesMixin from '@/mixins/files'
 import type { WebcamConfig } from '@/store/webcams/types'
+import { frameVersion } from '@/services/timelapse/model'
 
 @Component({
   components: {
@@ -114,7 +115,9 @@ export default class StatusCard extends Mixins(StateMixin, FilesMixin) {
         ? `frame${this.selectedFrame.toString().padStart(6, '0')}.${file.split('.').pop()}`
         : file
 
-      return this.createFileUrl(fullFile, 'timelapse_frames')
+      const printer = this.$store.state.printer.printer
+      const version = frameVersion(printer.print_stats?.filename, printer.current_file?.print_start_time, this.lastFrame?.count ?? 0)
+      return this.pictureUrl(fullFile, 'timelapse_frames', undefined, version)
     }
   }
 
