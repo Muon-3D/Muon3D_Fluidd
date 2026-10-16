@@ -4,6 +4,7 @@ import WifiManagerCard from '../WifiManagerCard.vue'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 
 const wifiScan = vi.fn()
+const wifiStatus = vi.fn(async () => ({ data: { device: 'wlan0', device_type: 'wifi', state: 'connected', connection: 'Studio', user_disconnected: false } }))
 const wifiDetails = vi.fn()
 const wifiConnect = vi.fn()
 const wifiCurrent = vi.fn()
@@ -12,6 +13,7 @@ const apDeviceStatus = vi.fn()
 vi.mock('@/aux_api/useAuxApi', () => ({
   useAuxApi: () => ({
     wifi: {
+      wifiStatusWifiDeviceStatusGet: wifiStatus,
       wifiScanWifiScanGet: wifiScan,
       getDetailsWifiShowGet: wifiDetails,
       wifiConnectWifiConnectPost: wifiConnect,
@@ -72,6 +74,7 @@ describe('WifiManagerCard under network protection (SEC-8)', () => {
     expect(wrapper.find('protectednotice-stub').exists()).toBe(true)
     expect(wrapper.find('[data-tid=wifi-networks]').exists()).toBe(false)
     expect(wifiScan).not.toHaveBeenCalled()
+    expect(wifiStatus).not.toHaveBeenCalled()
     wrapper.destroy()
   })
 
@@ -133,6 +136,7 @@ describe('WifiManagerCard over Iroh (07 §3)', () => {
     expect(wrapper.find('[data-tid=wifi-networks]').exists()).toBe(false)
     expect(wifiScan).not.toHaveBeenCalled()
     expect(wifiDetails).not.toHaveBeenCalled()
+    expect(wifiStatus).not.toHaveBeenCalled()
     wrapper.destroy()
   })
 
