@@ -191,6 +191,7 @@ import { Globals } from '@/globals'
 import type { ConsoleEntry, GcodeHelp } from '@/store/console/types'
 import { commandHelp, entryKind, explain, filterEntries, suggestions, type LogFilter, type Suggestion } from '@/services/console/model'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
+import { knowDevMode, showsErrorDetail } from '@/services/dev-mode/state'
 
 interface Line {
   key: string;
@@ -250,7 +251,7 @@ export default class Console extends Mixins(StateMixin, FilesMixin, BrowserMixin
         kind,
         time: e.time ? this.$filters.formatTimeWithSeconds(e.time * 1000) : '',
         html: this.linked(e, kind),
-        why: kind === 'error' || kind === 'warning' ? explain(e.message) : null
+        why: kind === 'error' || kind === 'warning' ? explain(e.message, showsErrorDetail()) : null
       }
     })
   }
@@ -272,6 +273,7 @@ export default class Console extends Mixins(StateMixin, FilesMixin, BrowserMixin
   // -- the log's scrolling ------------------------------------------------------
 
   mounted () {
+    knowDevMode()
     this.scroller.$el.addEventListener('scroll', this.onScroll)
     this.$nextTick(() => this.toLatest(true))
   }

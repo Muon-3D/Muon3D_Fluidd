@@ -38,24 +38,106 @@ export function filterEntries<T extends Pick<ConsoleEntry, 'message' | 'type'>> 
   })
 }
 
-const EXPLAINED: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
-  [/Must home axis first/i, () => 'Home the printer first: Home all on Control, or G28.'],
-  [/Move out of range/i, () => 'A move went past the printer\'s limits. Check the coordinates, or home again.'],
-  [/TMC '([^']+)' reports/i, m => `The ${m[1].replace(/^stepper_/, '').toUpperCase()} motor driver saw a fault. One that clears is harmless; if it keeps happening, check that motor's cable.`],
-  [/Heater (\S+) not heating at expected rate/i, m => `The ${m[1] === 'extruder' ? 'nozzle' : m[1].replace(/_/g, ' ')} heated slower than expected, so Klipper shut down to be safe. Check its heater and thermistor wiring, and that no fan blows on it.`],
-  [/Lost communication with MCU/i, () => 'Klipper lost touch with a control board. Check its cable and power, then Firmware restart.'],
-  [/Timer too close/i, () => 'The computer fell behind the control board, usually because it was busy. Firmware restart, and if it repeats, look at what else is running.'],
-  [/Extrude below minimum temp/i, () => 'The nozzle is too cold to push filament. Heat it first.'],
-  [/ADC out of range/i, () => 'A temperature reading went out of range: often a loose thermistor, or a heater running too hot. Check the wiring before heating again.'],
-  [/Unknown command:?\s*"?([A-Za-z0-9_]+)"?/, m => `Klipper doesn't know ${m[1].toUpperCase()}. Check the spelling, or whether a macro by that name is installed.`]
+/**
+ * A printer error a customer may meet, with a stable code support can look up.
+ *
+ * `say` is for customers: plain words, never advice to open the printer or
+ * change its software. A fault adds "restart, then contact support with the
+ * code"; a mistake in use adds only the code. `detail` is the fuller account
+ * for Muon staff, shown only in developer mode.
+ */
+export interface PrinterError {
+  code: string;
+  pattern: RegExp;
+  /** A fault ends with restart-then-support; a slip in use ends with just the code. */
+  kind: 'fault' | 'use';
+  say: (m: RegExpMatchArray) => string;
+  detail: (m: RegExpMatchArray) => string;
+}
+
+const part = (heater: string) => heater === 'extruder' ? 'nozzle' : heater.replace(/_/g, ' ')
+const motor = (stepper: string) => stepper.replace(/^stepper_/, '').toUpperCase()
+
+export const PRINTER_ERRORS: PrinterError[] = [
+  {
+    code: 'E-HOME-01',
+    pattern: /Must home axis first/i,
+    kind: 'use',
+    say: () => 'The printer needs to home before it can move. Press Home all on Control.',
+    detail: () => 'Home the printer first: Home all on Control, or G28.'
+  },
+  {
+    code: 'E-MOVE-01',
+    pattern: /Move out of range/i,
+    kind: 'use',
+    say: () => 'A move went past the edge of the print area. Home the printer and try again.',
+    detail: () => "A move went past the printer's limits. Check the coordinates, or home again."
+  },
+  {
+    code: 'E-MOTOR-01',
+    pattern: /TMC '([^']+)' reports/i,
+    kind: 'fault',
+    say: m => `The ${motor(m[1])} motor reported a problem.`,
+    detail: m => `The ${motor(m[1])} motor driver saw a fault. One that clears is harmless; if it keeps happening, check that motor's cable.`
+  },
+  {
+    code: 'E-HEAT-01',
+    pattern: /Heater (\S+) not heating at expected rate/i,
+    kind: 'fault',
+    say: m => `The ${part(m[1])} didn't heat as expected, so the printer stopped to be safe.`,
+    detail: m => `The ${part(m[1])} heated slower than expected, so Klipper shut down to be safe. Check its heater and thermistor wiring, and that no fan blows on it.`
+  },
+  {
+    code: 'E-LINK-01',
+    pattern: /Lost communication with MCU/i,
+    kind: 'fault',
+    say: () => "Part of the printer's electronics stopped answering, so it stopped to be safe.",
+    detail: () => 'Klipper lost touch with a control board. Check its cable and power, then Firmware restart.'
+  },
+  {
+    code: 'E-TIME-01',
+    pattern: /Timer too close/i,
+    kind: 'fault',
+    say: () => 'The printer fell behind and stopped to be safe.',
+    detail: () => 'The computer fell behind the control board, usually because it was busy. Firmware restart, and if it repeats, look at what else is running.'
+  },
+  {
+    code: 'E-COLD-01',
+    pattern: /Extrude below minimum temp/i,
+    kind: 'use',
+    say: () => 'The nozzle is too cold to push filament. Heat it first.',
+    detail: () => 'The nozzle is too cold to push filament. Heat it first.'
+  },
+  {
+    code: 'E-TEMP-01',
+    pattern: /ADC out of range/i,
+    kind: 'fault',
+    say: () => 'A temperature reading went out of range, so the printer stopped heating to be safe.',
+    detail: () => 'A temperature reading went out of range: often a loose thermistor, or a heater running too hot. Check the wiring before heating again.'
+  },
+  {
+    code: 'E-CMD-01',
+    pattern: /Unknown command:?\s*"?([A-Za-z0-9_]+)"?/,
+    kind: 'use',
+    say: m => `The printer doesn't know the command ${m[1].toUpperCase()}. Check the spelling.`,
+    detail: m => `Klipper doesn't know ${m[1].toUpperCase()}. Check the spelling, or whether a macro by that name is installed.`
+  }
 ]
 
-/** What a common Klipper error or warning means, in a sentence; null for the rest. */
-export function explain (message: string): string | null {
+/**
+ * What a common printer error means, in a sentence; null for the rest.
+ * Customers get the plain sentence and its code; `detailed` (developer mode)
+ * gets the code and the full account.
+ */
+export function explain (message: string, detailed = false): string | null {
   const text = entryText(message)
-  for (const [pattern, say] of EXPLAINED) {
-    const m = text.match(pattern)
-    if (m) return say(m)
+  for (const e of PRINTER_ERRORS) {
+    const m = text.match(e.pattern)
+    if (!m) continue
+    if (detailed) return `${e.code}: ${e.detail(m)}`
+    return e.kind === 'fault'
+      ? `${e.say(m)} Restart the printer; if it happens again, contact support with code ${e.code}.`
+      : `${e.say(m)} (${e.code})`
   }
   return null
 }
