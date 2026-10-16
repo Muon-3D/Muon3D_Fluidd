@@ -188,7 +188,7 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
   if ((state === 'printing' || state === 'paused') && job?.file) {
     detail = jobName(job.file) ?? e.detail
   } else if (state === 'ready') {
-    detail = remote ? 'Remote, through Muon3D' : 'On this network'
+    detail = remote ? 'Over the cloud' : 'On this network'
   } else if (state === 'unreachable') {
     detail = "Online, but this browser can't reach it"
   } else {

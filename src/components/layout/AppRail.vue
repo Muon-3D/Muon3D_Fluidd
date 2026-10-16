@@ -167,7 +167,7 @@ export default class AppRail extends Mixins(FrameMixin, BrowserMixin) {
   }
 
   get routeTitle (): string {
-    return this.remote ? 'Through Muon3D' : 'On this network'
+    return this.remote ? 'Over the cloud' : 'On this network'
   }
 
   get routeDetail (): string {

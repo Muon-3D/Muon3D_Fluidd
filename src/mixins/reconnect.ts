@@ -44,7 +44,7 @@ export default class ReconnectMixin extends Mixins(StateMixin) {
 
   /** Where it is being reached: its address on this network, or the account. */
   get address (): string {
-    if (this.viaCloud) return 'Through Muon3D'
+    if (this.viaCloud) return 'Over the cloud'
     try {
       return new URL(this.activeInstance?.apiUrl ?? '').host
     } catch {

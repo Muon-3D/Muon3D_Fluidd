@@ -364,7 +364,7 @@ export function printerDirectory (src: DirectorySources): Directory {
 export function cloudDetail (online: boolean, s: PrinterStatus | undefined, lastSeen = 0): string {
   const presence = consolePresence({ online, last_seen: lastSeen })
   if (presence !== 'online') return healthLabel(presence)
-  if (!s) return 'Connecting through Muon3D…'
+  if (!s) return 'Connecting over the cloud…'
   if (!s.reachable && s.error === 'reconnecting') return 'Reconnecting…'
   if (!s.reachable) return s.error === 'offline' ? 'Offline' : `Unreachable: ${s.error}`
   const state = (s.state ?? 'unknown').replace(/^\w/, c => c.toUpperCase())
