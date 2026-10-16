@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changedLines, opensInEditor, orderRoots, restartNote, rootGroup, validName } from '../model'
+import { changedLines, compareWithDefaults, opensInEditor, orderRoots, resetRestartNote, restartNote, rootGroup, rootSection, validName } from '../model'
 
 describe('Files\' folders', () => {
   it('names MuonOS\'s roots for people', () => {
@@ -42,5 +42,39 @@ describe('saving', () => {
     expect(validName('macros/x.cfg')).toBe(false)
     expect(validName('..')).toBe(false)
     expect(validName('  ')).toBe(false)
+  })
+})
+
+describe('your configuration and the defaults', () => {
+  it('heads the folders as Fluidd lists them, grouped: yours, the defaults, the rest', () => {
+    expect(['config', 'calibration', 'defaults', 'logs', 'docs', 'timelapse'].map(rootSection))
+      .toEqual(['yours', 'yours', 'defaults', 'other', 'other', 'other'])
+    expect(rootGroup('config').title).toBe('Your copy of the configuration')
+  })
+
+  it('tells a changed file from a copied one by the listings, and leaves the rest to the contents', () => {
+    const defaults = [
+      { path: 'core.cfg', size: 3000, modified: 1700000000 },
+      { path: 'macros/print.cfg', size: 800, modified: 1700000000 },
+      { path: 'macros/homing.cfg', size: 120, modified: 1700000000 }
+    ]
+    const mine = [
+      { path: 'core.cfg', size: 3000, modified: 1700000000 },
+      { path: 'macros/print.cfg', size: 812, modified: 1760000000 },
+      { path: 'macros/homing.cfg', size: 120, modified: 1760000000 },
+      { path: 'my_macros.cfg', size: 40, modified: 1760000000 },
+      { path: 'backups/20261016-1/core.cfg', size: 3000, modified: 1700000000 }
+    ]
+    expect(compareWithDefaults(mine, defaults)).toEqual({
+      'core.cfg': 'same',
+      'macros/print.cfg': 'changed',
+      'macros/homing.cfg': 'check',
+      'my_macros.cfg': 'yours'
+    })
+  })
+
+  it('asks for the restart after a reset only when it is safe', () => {
+    expect(resetRestartNote('Boxwood', false)).toBe("Boxwood uses it after Klipper restarts. It isn't printing, so it's safe now.")
+    expect(resetRestartNote('Boxwood', true)).toMatch(/stops the print\. Restart once it's done\.$/)
   })
 })
