@@ -5,6 +5,8 @@ import type { AxiosRequestConfig, AxiosProgressEvent } from 'axios'
 import { httpClientActions } from '@/api/httpClientActions'
 import type { FileWithPath } from '@/types'
 import consola from 'consola'
+import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { printerPicture } from '@/services/files/thumbnails'
 
 @Component
 export default class FilesMixin extends Vue {
@@ -28,6 +30,21 @@ export default class FilesMixin extends Vue {
 
       if (thumb.relative_path) {
         const filepath = path ? `${root}/${path}` : root
+
+        // Through Muon3D the API address is a placeholder no <img> can load:
+        // the picture is read through the HTTP client, which reaches the
+        // printer. Keyed by the file's date, never the clock, so a getter
+        // that asks again finds the same picture.
+        if (isManagedApiUrl(this.apiUrl)) {
+          const version = date ?? (meta as { modified?: number }).modified ?? 0
+          const picture = `/server/files/${encodeURI(`${filepath}/${thumb.relative_path}`)}?date=${version}`
+          const printer = this.$store.getters['config/getCurrentInstance']?.name ?? ''
+          const url = printerPicture(printer, picture, async p =>
+            (await httpClientActions.get<Blob>(p, { responseType: 'blob' })).data
+          )
+
+          return { ...thumb, url: url ?? '' }
+        }
 
         return {
           ...thumb,
