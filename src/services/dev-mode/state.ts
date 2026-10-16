@@ -44,6 +44,20 @@ export const devModeState: DevModeState = Vue.observable({
 
 type Status = DevModeStatus & { otp_record_armed?: boolean }
 
+/**
+ * Whether to show Muon staff the full account of a printer error rather
+ * than the customer's sentence. Developer mode is the switch: no admin-build
+ * signal reaches this page yet.
+ */
+export function showsErrorDetail (): boolean {
+  return devModeState.enabled === true
+}
+
+/** Asks once, for a page that needs the answer but isn't Settings. */
+export function knowDevMode (): void {
+  if (devModeState.enabled === null && !devModeState.checking) refreshDevMode()
+}
+
 /** Asks the printer again. Keeps the last known state when it can't be reached. */
 export async function refreshDevMode (): Promise<void> {
   devModeState.checking = true

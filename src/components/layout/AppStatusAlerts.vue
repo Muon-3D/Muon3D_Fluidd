@@ -32,9 +32,16 @@
         class="app-status-alerts__section"
       >
         <div class="app-status-alerts__title error--text">
-          Klipper: {{ klippyState }}
+          {{ stateTitle }}
         </div>
         <div
+          v-if="stateExplained"
+          class="app-status-alerts__text"
+        >
+          {{ stateExplained }}
+        </div>
+        <div
+          v-if="!stateExplained || staffDetail"
           class="app-status-alerts__text"
           v-html="klippyStateMessage"
         />
@@ -66,10 +73,12 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import { Globals } from '@/globals'
 import linkExternalUrls from '@/util/link-external-urls'
+import { explain } from '@/services/console/model'
+import { knowDevMode, showsErrorDetail } from '@/services/dev-mode/state'
 
 interface AlertGroup {
   title: string;
@@ -86,12 +95,36 @@ export default class AppStatusAlerts extends Mixins(StateMixin) {
     return this.socketConnected && (!this.klippyReady || this.groups.length > 0)
   }
 
+  /** Developer mode: Muon staff, who get Klipper's own words as well. */
+  get staffDetail (): boolean {
+    return showsErrorDetail()
+  }
+
+  /** Staff see Klipper's word for it; customers see the printer's. */
+  get stateTitle (): string {
+    return `${this.staffDetail ? 'Klipper' : 'Printer'}: ${this.klippyState}`
+  }
+
+  /**
+   * A known error in a sentence with its support code; with the full account
+   * for staff. Null for the rest, which show as the printer sent them.
+   */
+  get stateExplained (): string | null {
+    if (this.klippyReady || !this.klippyStateMessage) return null
+    return explain(this.klippyStateMessage, this.staffDetail)
+  }
+
+  @Watch('klippyReady', { immediate: true })
+  onKlippyReady (ready: boolean) {
+    if (!ready) knowDevMode()
+  }
+
   get tone (): 'error' | 'warning' {
     return this.klippyReady ? 'warning' : 'error'
   }
 
   get summary (): string {
-    if (!this.klippyReady) return `Klipper: ${this.klippyState}`
+    if (!this.klippyReady) return this.stateTitle
     return this.groups.map(group => group.title).join(' ')
   }
 
