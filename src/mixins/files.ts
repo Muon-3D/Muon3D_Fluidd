@@ -5,6 +5,8 @@ import type { AxiosRequestConfig, AxiosProgressEvent } from 'axios'
 import { httpClientActions } from '@/api/httpClientActions'
 import type { FileWithPath } from '@/types'
 import consola from 'consola'
+import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { printerPicture } from '@/services/files/thumbnails'
 
 @Component
 export default class FilesMixin extends Vue {
@@ -28,13 +30,31 @@ export default class FilesMixin extends Vue {
 
       if (thumb.relative_path) {
         const filepath = path ? `${root}/${path}` : root
+        const version = date ?? (meta as { modified?: number }).modified ?? 0
 
         return {
           ...thumb,
-          url: this.createFileUrl(thumb.relative_path, filepath, date)
+          url: this.pictureUrl(thumb.relative_path, filepath, date, String(version))
         }
       }
     }
+  }
+
+  /**
+   * A picture on the printer, for an <img>: linked on this network (`date`
+   * as createFileUrl takes it), and read through the HTTP client through
+   * Muon3D, where the API address is a placeholder no <img> can load. That
+   * read is kept by `version`, never the clock, so a getter that asks again
+   * finds the same picture; it's '' until it has been read.
+   */
+  pictureUrl (filename: string, path: string, date: number | undefined, version: string): string {
+    if (!isManagedApiUrl(this.apiUrl)) return this.createFileUrl(filename, path, date)
+
+    const picture = `/server/files/${encodeURI(path ? `${path}/${filename}` : filename)}?date=${encodeURIComponent(version)}`
+    const printer = this.$store.getters['config/getCurrentInstance']?.name ?? ''
+    return printerPicture(printer, picture, async p =>
+      (await httpClientActions.get<Blob>(p, { responseType: 'blob' })).data
+    ) ?? ''
   }
 
   /**

@@ -39,7 +39,7 @@
           >
             <img
               v-if="item.thumbnail"
-              :src="url(item.thumbnail)"
+              :src="url(item.thumbnail, item.modified)"
               alt=""
               loading="lazy"
             >
@@ -233,7 +233,7 @@ import type { AppFile, FileBrowserEntry } from '@/store/files/types'
 import type { RenderStatus, TimelapseLastFrame, TimelapseSettings, TimelapseWritableSettings } from '@/store/timelapse/types'
 import type { WebcamConfig } from '@/store/webcams/types'
 import { fileSize, shortDate } from '@/services/jobs/model'
-import { frameFile, renderText, timelapseItems, type TimelapseItem } from '@/services/timelapse/model'
+import { frameFile, frameVersion, renderText, timelapseItems, type TimelapseItem } from '@/services/timelapse/model'
 import ControlCard from '@/components/control/ControlCard.vue'
 import RangeSlider from '@/components/control/RangeSlider.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
@@ -268,8 +268,9 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
     return timelapseItems(entries.filter((e): e is AppFile => e.type === 'file'))
   }
 
-  url (name: string): string {
-    return this.createFileUrl(name, 'timelapse')
+  /** A video's picture, saved beside it when the video was made (`modified`). */
+  url (name: string, modified: number): string {
+    return this.pictureUrl(name, 'timelapse', undefined, String(modified))
   }
 
   size (bytes: number): string {
@@ -320,7 +321,9 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
 
   get frameUrl (): string {
     const last = this.lastFrame?.file ?? ''
-    return this.createFileUrl(this.picked ? frameFile(this.picked, last) : last, 'timelapse_frames')
+    const printer = this.$store.state.printer.printer
+    const version = frameVersion(printer.print_stats?.filename, printer.current_file?.print_start_time, this.lastFrame?.count ?? 0)
+    return this.pictureUrl(this.picked ? frameFile(this.picked, last) : last, 'timelapse_frames', undefined, version)
   }
 
   get camera (): WebcamConfig | undefined {
