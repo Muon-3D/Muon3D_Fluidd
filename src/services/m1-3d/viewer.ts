@@ -6,6 +6,7 @@ import { middleHeight, stripsLit, tapColour, tapKey, type LedStrip, type PlateTa
 import { Y_TOWARD_FRONT } from '@/services/machine/orientation'
 import { buildAccessories } from './accessory-parts'
 import { CROSSFADE_MS } from './accessory-motion'
+import { cargoMaterials, fadeCargoMaterials } from './cargo-fade'
 
 /**
  * The live M1 on a stage: the photoreal model, lit as its product shots
@@ -309,13 +310,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   model.userData.apply()
 
   // The part, the lines no file drew, and the line being laid now, all in the filament's colour.
-  const partMaterial = new THREE.LineBasicMaterial({ color: 0xc00a66, transparent: true })
-  const tapMaterial = new THREE.MeshBasicMaterial({ toneMapped: false, transparent: true })
+  // Opaque unless fading, so the glass plate shows the print through it (cargo-fade.ts).
+  const { part: partMaterial, taps: tapMaterial } = cargoMaterials()
   // The plate coming off and going back, the hose's end, the spool and the filament (accessory-parts.ts).
-  const parts = buildAccessories(model, mats, opacity => {
-    partMaterial.opacity = opacity
-    tapMaterial.opacity = opacity
-  })
+  const parts = buildAccessories(model, mats, opacity => fadeCargoMaterials([partMaterial, tapMaterial], opacity))
   performance.mark('m1:built')
 
   /** Hangs `object` from the plate, in the printer's millimetres: it goes where the plate goes. */
