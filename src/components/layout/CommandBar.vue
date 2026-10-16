@@ -488,7 +488,7 @@ export default class CommandBar extends Mixins(FrameMixin, BrowserMixin, Service
         id: `printer-${target.slug}`,
         group: 'Printers',
         label: parts.name,
-        hint: [parts.suffix, here ? 'open now' : target.kind === 'cloud' ? 'through Muon3D' : null].filter(Boolean).join(' · ') || undefined,
+        hint: [parts.suffix, here ? 'open now' : target.kind === 'cloud' ? 'over the cloud' : null].filter(Boolean).join(' · ') || undefined,
         words: `${target.slug} printer switch`,
         verb: 'Open',
         icon: 'printers',
