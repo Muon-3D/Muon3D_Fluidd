@@ -169,7 +169,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       })
     }
     if (e.active !== 'cloud') {
-      actions.push({ id: 'connect-cloud', label: 'Connect through Muon3D', icon: '$cloud', disabled: !e.cloud?.online })
+      actions.push({ id: 'connect-cloud', label: 'Connect over the cloud', icon: '$cloud', disabled: !e.cloud?.online })
     }
     if (e.nearby && !e.cloud?.online) {
       actions.push({ id: 'connect-bluetooth', label: 'Connect over Bluetooth', icon: '$bluetooth' })

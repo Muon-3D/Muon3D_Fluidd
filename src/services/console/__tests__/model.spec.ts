@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandHelp, entryKind, entryText, explain, filterEntries, suggestions } from '../model'
+import { commandHelp, entryKind, entryText, explain, explainError, filterEntries, PRINTER_ERRORS, suggestions } from '../model'
 
 describe('a console line', () => {
   it('reads as text, from the store\'s sanitised HTML', () => {
@@ -36,21 +36,79 @@ describe('filtering the log', () => {
 })
 
 describe('explaining errors', () => {
-  it('says which motor driver faulted', () => {
-    expect(explain('!! TMC \'stepper_x\' reports error: GSTAT: 00000001 reset=1(Reset)')).toMatch(/^The X motor driver saw a fault/)
+  it('says which motor faulted', () => {
+    expect(explain("!! TMC 'stepper_x' reports error: GSTAT: 00000001 reset=1(Reset)")).toMatch(/^The X motor reported a problem/)
   })
 
   it('calls the extruder heater the nozzle', () => {
-    expect(explain('!! Heater extruder not heating at expected rate')).toMatch(/^The nozzle heated slower/)
-    expect(explain('!! Heater heater_bed not heating at expected rate')).toMatch(/^The heater bed heated slower/)
+    expect(explain('!! Heater extruder not heating at expected rate')).toBe(
+      "The nozzle didn't heat as expected, so the printer stopped to be safe. Restart the printer; if it happens again, contact support with code E-HEAT-01."
+    )
+    expect(explain('!! Heater heater_bed not heating at expected rate')).toMatch(/^The heater bed didn't heat/)
   })
 
-  it('names an unknown command', () => {
-    expect(explain('!! Unknown command:"PRINT_STRAT"')).toBe('Klipper doesn\'t know PRINT_STRAT. Check the spelling, or whether a macro by that name is installed.')
+  it('names an unknown command, with its code', () => {
+    expect(explain('!! Unknown command:"PRINT_STRAT"')).toBe("The printer doesn't know the command PRINT_STRAT. Check the spelling. (E-CMD-01)")
+  })
+
+  it('gives Muon staff the code and the full account in developer mode', () => {
+    expect(explain('!! Heater extruder not heating at expected rate', true)).toBe(
+      'E-HEAT-01: The nozzle heated slower than expected, so Klipper shut down to be safe. Check its heater and thermistor wiring, and that no fan blows on it.'
+    )
   })
 
   it('leaves other lines alone', () => {
     expect(explain('// Klipper state: Ready')).toBeNull()
+  })
+})
+
+describe('an error not in the table', () => {
+  const raw = '!! Endstop x still triggered after retract'
+
+  it('gives customers the generic sentence and code, never the raw text', () => {
+    expect(explainError(raw)).toBe(
+      'The printer stopped because of an error. Restart the printer; if it happens again, contact support with code E-GEN-00.'
+    )
+  })
+
+  it('gives Muon staff the raw text in developer mode', () => {
+    expect(explainError(raw, true)).toBe('E-GEN-00: !! Endstop x still triggered after retract')
+  })
+
+  it('still names a known error by its own code', () => {
+    expect(explainError('!! ADC out of range')).toMatch(/code E-TEMP-01\.$/)
+  })
+})
+
+// 16 Oct (Jack): customers are never told to check wiring or touch the
+// printer's insides or software. Each code is written out here, so renaming
+// one in the table fails this test rather than passing with it.
+const SAMPLES: Record<string, string> = {
+  'E-HOME-01': '!! Must home axis first: 10.000 10.000 0.000',
+  'E-MOVE-01': '!! Move out of range: 300.000 0.000 0.000 [0.000]',
+  'E-MOTOR-01': "!! TMC 'stepper_y' reports error: GSTAT: 00000001",
+  'E-HEAT-01': '!! Heater extruder not heating at expected rate',
+  'E-LINK-01': "!! Lost communication with MCU 'toolhead'",
+  'E-TIME-01': '!! Timer too close',
+  'E-COLD-01': '!! Extrude below minimum temp',
+  'E-TEMP-01': '!! ADC out of range',
+  'E-CMD-01': '!! Unknown command:"FOO"'
+}
+const JARGON = /wir(e|ing)|cable|thermistor|\bmcu\b|klipper|moonraker|firmware|driver|config|macro|board/i
+
+describe('the printer error table', () => {
+  it('has one sample here for each code, and no code twice', () => {
+    const codes = PRINTER_ERRORS.map(e => e.code)
+    expect(new Set(codes).size).toBe(codes.length)
+    expect([...codes].sort()).toEqual(Object.keys(SAMPLES).sort())
+  })
+
+  it.each(Object.entries(SAMPLES))('%s: a plain sentence for customers, ending in its code', (code, line) => {
+    const said = explain(line)
+    expect(said).not.toBeNull()
+    expect(said).not.toMatch(JARGON)
+    expect(said!.endsWith(`code ${code}.`) || said!.endsWith(`(${code})`)).toBe(true)
+    expect(explain(line, true)!.startsWith(`${code}: `)).toBe(true)
   })
 })
 

@@ -54,6 +54,11 @@ function directory (sources: Partial<DirectorySources>) {
   })
 }
 
+// 16 Oct: "through Muon3D" meant nothing to Jack's customers; the cloud route says so plainly.
+it('names the cloud route in plain words while it connects', () => {
+  expect(directory({ account: [owned(BOXWOOD, 'Boxwood')] }).cloud[0].detail).toBe('Connecting over the cloud…')
+})
+
 it('shows Reconnecting for a recently seen console-offline printer, then Offline after two minutes', () => {
   const printer = { ...owned(BOXWOOD, 'Boxwood', false), last_seen: Date.now() / 1000 - 60 }
   expect(directory({ account: [printer] }).cloud[0]).toMatchObject({ health: 'reconnecting', detail: 'Reconnecting…' })
