@@ -30,28 +30,31 @@ export default class FilesMixin extends Vue {
 
       if (thumb.relative_path) {
         const filepath = path ? `${root}/${path}` : root
-
-        // Through Muon3D the API address is a placeholder no <img> can load:
-        // the picture is read through the HTTP client, which reaches the
-        // printer. Keyed by the file's date, never the clock, so a getter
-        // that asks again finds the same picture.
-        if (isManagedApiUrl(this.apiUrl)) {
-          const version = date ?? (meta as { modified?: number }).modified ?? 0
-          const picture = `/server/files/${encodeURI(`${filepath}/${thumb.relative_path}`)}?date=${version}`
-          const printer = this.$store.getters['config/getCurrentInstance']?.name ?? ''
-          const url = printerPicture(printer, picture, async p =>
-            (await httpClientActions.get<Blob>(p, { responseType: 'blob' })).data
-          )
-
-          return { ...thumb, url: url ?? '' }
-        }
+        const version = date ?? (meta as { modified?: number }).modified ?? 0
 
         return {
           ...thumb,
-          url: this.createFileUrl(thumb.relative_path, filepath, date)
+          url: this.pictureUrl(thumb.relative_path, filepath, date, String(version))
         }
       }
     }
+  }
+
+  /**
+   * A picture on the printer, for an <img>: linked on this network (`date`
+   * as createFileUrl takes it), and read through the HTTP client through
+   * Muon3D, where the API address is a placeholder no <img> can load. That
+   * read is kept by `version`, never the clock, so a getter that asks again
+   * finds the same picture; it's '' until it has been read.
+   */
+  pictureUrl (filename: string, path: string, date: number | undefined, version: string): string {
+    if (!isManagedApiUrl(this.apiUrl)) return this.createFileUrl(filename, path, date)
+
+    const picture = `/server/files/${encodeURI(path ? `${path}/${filename}` : filename)}?date=${encodeURIComponent(version)}`
+    const printer = this.$store.getters['config/getCurrentInstance']?.name ?? ''
+    return printerPicture(printer, picture, async p =>
+      (await httpClientActions.get<Blob>(p, { responseType: 'blob' })).data
+    ) ?? ''
   }
 
   /**
