@@ -20,7 +20,7 @@
 <script lang='ts'>
 import { Component, Prop, Watch, Ref, Mixins } from 'vue-property-decorator'
 import type { ECharts, EChartsOption, GraphicComponentOption } from 'echarts'
-import { merge, cloneDeepWith } from 'lodash-es'
+import { merge, cloneDeep, cloneDeepWith } from 'lodash-es'
 import BrowserMixin from '@/mixins/browser'
 import type { BedSize } from '@/store/printer/types'
 
@@ -82,6 +82,7 @@ export default class BedMeshChart extends Mixins(BrowserMixin) {
       itemHeight: (this.isMobileViewport) ? 140 : 280
     }
 
+    // Copied into each axis, so options merged into one axis (a label format, say) stay on that axis.
     const axisCommon = {
       nameTextStyle: {
         color: fontColor
@@ -207,19 +208,19 @@ export default class BedMeshChart extends Mixins(BrowserMixin) {
         type: 'value',
         min: this.bedSize?.minX,
         max: this.bedSize?.maxX,
-        ...axisCommon
+        ...cloneDeep(axisCommon)
       },
       yAxis3D: {
         type: 'value',
         min: this.bedSize?.minY,
         max: this.bedSize?.maxY,
-        ...axisCommon
+        ...cloneDeep(axisCommon)
       },
       zAxis3D: {
         type: 'value',
         min: -0.5,
         max: 0.5,
-        ...axisCommon
+        ...cloneDeep(axisCommon)
       },
       grid3D: {
         viewControl: {
