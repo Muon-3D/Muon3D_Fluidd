@@ -41,13 +41,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      # (optional) keep the original artifact
-      - name: Upload interim dist artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: fluidd-${{ github.sha }}.zip
-          path: ./dist
-
       - name: Zip build output
         run: |
           cd dist
