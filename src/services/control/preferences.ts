@@ -14,6 +14,7 @@ export class ControlPreferenceStore {
   state = Vue.observable({ folds: {} as Record<string, boolean>, layout: null as string[] | null, layoutError: '', error: '', ready: false })
   private context: PreferenceContext | null = null
   private generation = 0
+  private readGeneration = 0
   private edited: Record<string, boolean> = {}
   private revisions: Record<string, number> = {}
   private revision = 0
@@ -37,6 +38,7 @@ export class ControlPreferenceStore {
     if (!this.isSelected(context)) {
       const pendingLayout = context.accountId && context.accountId === this.context?.accountId && context.printerId === this.context?.printerId ? this.layoutEdit : null
       this.generation++
+      this.readGeneration++
       this.context = { ...context }
       this.edited = {}
       this.revisions = {}
@@ -52,6 +54,11 @@ export class ControlPreferenceStore {
     } else {
       // A refreshed token is new authority for future requests, not a new person's
       // preferences. Keep pending edits while rotating the captured credentials.
+      if (context.token !== this.context?.token) {
+        this.readGeneration++
+        this.loading = null
+        if (this.layoutEdit) this.state.layoutError = 'Your Overview is not saved. Try again with the refreshed session.'
+      }
       this.context = { ...context }
     }
     return this.refresh()
@@ -61,6 +68,7 @@ export class ControlPreferenceStore {
     if (this.loading) return this.loading
     const context = this.context
     const generation = this.generation
+    const readGeneration = this.readGeneration
     const revision = this.revision
     if (!context?.printerId || !validKey(context.printerId, 128)) return Promise.resolve()
     const pending = (async () => {
@@ -76,7 +84,7 @@ export class ControlPreferenceStore {
           }
         }
         validatePreferences(answer)
-        if (generation !== this.generation || revision !== this.revision) return
+        if (generation !== this.generation || readGeneration !== this.readGeneration || revision !== this.revision) return
         if (REMEMBER_CONTROL_FOLDS && context.accountId && answer.version !== 2) this.state.layoutError = 'Overview sync needs the updated service. These layout choices are not saved.'
         else if (!this.layoutEdit) this.state.layoutError = ''
         this.state.folds = { ...answer.folds, ...this.edited }
@@ -88,7 +96,7 @@ export class ControlPreferenceStore {
         if (Object.keys(this.edited).length === 0) this.state.error = ''
         this.state.ready = true
       } catch {
-        if (generation === this.generation && revision === this.revision) this.state.error = 'Your choices are not saved. Try again when the service or browser storage is available.'
+        if (generation === this.generation && readGeneration === this.readGeneration && revision === this.revision) this.state.error = 'Your choices are not saved. Try again when the service or browser storage is available.'
       }
     })()
     this.loading = pending
@@ -100,6 +108,7 @@ export class ControlPreferenceStore {
     if (!validKey(key, 64)) return Promise.resolve()
     const context = this.context
     const generation = this.generation
+    const readGeneration = this.readGeneration
     if (!context?.printerId || !validKey(context.printerId, 128)) {
       Vue.set(this.state.folds, key, open)
       this.state.error = 'Your choices are not saved until this printer is identified.'
@@ -110,13 +119,13 @@ export class ControlPreferenceStore {
     this.revisions[key] = revision
     Vue.set(this.state.folds, key, open)
     const save = async () => {
-      if (generation !== this.generation || !REMEMBER_CONTROL_FOLDS) return
+      if (generation !== this.generation || readGeneration !== this.readGeneration || !REMEMBER_CONTROL_FOLDS) return
       try {
         if (context.accountId) {
           if (!context.token) throw new Error('Sign in again to sync your choices.')
           const answer = await this.remote.patch(context, { [key]: open })
           validatePreferences(answer)
-          if (generation !== this.generation) return
+          if (generation !== this.generation || readGeneration !== this.readGeneration) return
           if (this.revisions[key] === revision) delete this.edited[key]
           this.state.folds = { ...answer.folds, ...this.edited }
         } else {
@@ -153,6 +162,7 @@ export class ControlPreferenceStore {
     this.state.layout = cards
     const context = this.context
     const generation = this.generation
+    const readGeneration = this.readGeneration
     if (!context?.printerId || !validKey(context.printerId, 128)) {
       this.state.layoutError = 'These choices last for this visit until this printer is identified.'
       return Promise.resolve()
@@ -160,14 +170,14 @@ export class ControlPreferenceStore {
     const edit = { cards, revision: ++this.revision }
     this.layoutEdit = edit
     this.queue = this.queue.then(async () => {
-      if (generation !== this.generation || !REMEMBER_CONTROL_FOLDS) return
+      if (generation !== this.generation || readGeneration !== this.readGeneration || !REMEMBER_CONTROL_FOLDS) return
       try {
         if (context.accountId) {
           if (!context.token || !this.remote.patchLayout) throw new Error('Layout sync is unavailable.')
           const answer = await this.remote.patchLayout(context, edit.cards)
           validatePreferences(answer)
           if (answer.version !== 2) throw new Error('Layout sync is unavailable.')
-          if (generation !== this.generation) return
+          if (generation !== this.generation || readGeneration !== this.readGeneration) return
           this.state.folds = { ...answer.folds, ...this.edited }
           if (this.layoutEdit === edit) this.state.layout = answer.overview?.cards ?? null
         } else {
