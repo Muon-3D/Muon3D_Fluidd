@@ -9,6 +9,9 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
     env:
       NODE_OPTIONS: --experimental-websocket
     steps:
@@ -83,35 +86,12 @@ jobs:
           asset_name: fluidd.zip
           asset_content_type: application/zip
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: fluidd-${{ github.sha }}.zip
-          path: ./dist
-
       - name: Publish Release
         uses: eregon/publish-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           release_id: ${{ steps.create_release.outputs.id }}
-
-  publish-web:
-    name: Deploy to Host
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download fluidd.zip
-        uses: actions/download-artifact@v4
-        with:
-          name: fluidd-${{ github.sha }}.zip
-          path: ./dist
 
       - name: Prepare Deploy
         run: |
