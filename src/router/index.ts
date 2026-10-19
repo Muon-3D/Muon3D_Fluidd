@@ -169,7 +169,9 @@ const printerRoutes: Array<RouteConfig> = [
       printerIndependent: true,
       keepOnPrinterSwitch: true,
       // The printer's page all the same: the rail and the E-STOP stay (KAN-511).
-      frame: 'printer'
+      frame: 'printer',
+      // The slicer is framed with no Control layout mode (KAN-550).
+      noMode: true
     }
   },
   {
@@ -268,6 +270,12 @@ const LEGACY_PRINTER_PAGES = [
 ]
 
 const routes: Array<RouteConfig> = [
+  {
+    path: '/admin',
+    name: 'Admin',
+    component: () => import('@/views/Admin.vue'),
+    meta: { printerIndependent: true }
+  },
   {
     // Every printer: printing now, your groups, those found on this network
     // and those offline, and a welcome with none. A printer's own address
@@ -409,7 +417,8 @@ const routes: Array<RouteConfig> = [
     },
     meta: {
       printerIndependent: true,
-      keepOnPrinterSwitch: true
+      keepOnPrinterSwitch: true,
+      noMode: true
     }
   },
   {
@@ -498,6 +507,11 @@ declare module 'vue-router' {
     keepOnPrinterSwitch?: boolean
     /** 'printer': drawn as the printer's page (the rail, the E-STOP) though it works without one. */
     frame?: 'printer'
+    /**
+     * Another app framed here (Slice, later Design), which receives no Control layout mode.
+     * Embedded Slice deliberately has no Control layout mode (KAN-550).
+     */
+    noMode?: boolean
   }
 }
 
