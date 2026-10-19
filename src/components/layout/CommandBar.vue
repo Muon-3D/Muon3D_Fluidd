@@ -302,15 +302,14 @@ export default class CommandBar extends Mixins(FrameMixin, BrowserMixin, Service
         }
       })
       if (this.pro) {
-        list.push({ id: 'restart-klipper', group: 'Do', label: 'Restart Klipper', words: 'restart reload config', icon: 'refresh', run: () => this.restartKlippy() })
-        list.push({ id: 'firmware-restart', group: 'Do', label: 'Firmware restart', words: 'firmware_restart mcu', icon: 'refresh', run: () => this.firmwareRestartKlippy() })
+        list.push({ id: 'firmware-restart', group: 'Do', label: 'Restart firmware', words: 'firmware_restart mcu restart klipper reload config', icon: 'refresh', run: () => this.firmwareRestartKlippy() })
       }
     }
     if (this.inPrinter) {
       list.push({ id: 'estop', group: 'Do', label: 'Emergency stop', words: 'estop e-stop halt', keys: ['Ctrl', 'Shift', 'E'], icon: 'estop', run: () => this.emergencyStop() })
       if (!this.printerPrinting && !this.printerPaused) {
-        list.push({ id: 'reboot', group: 'Do', label: "Restart the printer's computer", words: 'reboot host power', icon: 'power', run: () => this.hostCommand('reboot') })
-        list.push({ id: 'shutdown', group: 'Do', label: "Shut down the printer's computer", words: 'shutdown host power off', icon: 'power', run: () => this.hostCommand('shutdown') })
+        list.push({ id: 'reboot', group: 'Do', label: 'Restart hardware', words: 'reboot host computer power', icon: 'power', run: () => this.hostCommand('reboot') })
+        list.push({ id: 'shutdown', group: 'Do', label: 'Shut down', words: 'shutdown host computer power off', icon: 'power', run: () => this.hostCommand('shutdown') })
       }
     }
     list.push({
@@ -331,8 +330,8 @@ export default class CommandBar extends Mixins(FrameMixin, BrowserMixin, Service
     const ok = await this.$confirm(
       reboot ? 'The printer is out of reach for a minute or two while it restarts.' : 'It stays off until it is switched off and on again at the printer.',
       {
-        title: reboot ? "Restart the printer's computer?" : "Shut down the printer's computer?",
-        buttonTrueText: reboot ? 'Restart' : 'Shut down',
+        title: reboot ? "Restart the printer's hardware?" : 'Shut down the printer?',
+        buttonTrueText: reboot ? 'Restart hardware' : 'Shut down',
         danger: true
       }
     )
@@ -488,7 +487,7 @@ export default class CommandBar extends Mixins(FrameMixin, BrowserMixin, Service
         id: `printer-${target.slug}`,
         group: 'Printers',
         label: parts.name,
-        hint: [parts.suffix, here ? 'open now' : target.kind === 'cloud' ? 'through Muon3D' : null].filter(Boolean).join(' · ') || undefined,
+        hint: [parts.suffix, here ? 'open now' : target.kind === 'cloud' ? 'over the cloud' : null].filter(Boolean).join(' · ') || undefined,
         words: `${target.slug} printer switch`,
         verb: 'Open',
         icon: 'printers',

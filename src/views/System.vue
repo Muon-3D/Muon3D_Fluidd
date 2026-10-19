@@ -9,66 +9,45 @@
         title="Power and services"
         data-tid="system-power"
       >
-        <div
-          v-if="canControlHost"
-          class="sys__group"
-        >
-          <h3 class="sys__label">
-            {{ printerName }}'s computer
-          </h3>
+        <div class="sys__group">
           <div class="sys__buttons">
             <button
+              v-if="canControlHost"
               type="button"
               class="cbtn"
               :disabled="printerPrinting"
               data-tid="system-reboot"
               @click="reboot"
             >
-              Restart it
+              Restart hardware
             </button>
             <button
+              type="button"
+              class="cbtn"
+              data-tid="system-firmware-restart"
+              @click="restartFirmware"
+            >
+              Restart firmware
+            </button>
+            <button
+              v-if="canControlHost"
               type="button"
               class="cbtn cbtn--ghost"
               :disabled="printerPrinting"
               data-tid="system-shutdown"
               @click="shutDown"
             >
-              Shut it down
-            </button>
-          </div>
-          <p
-            v-if="printerPrinting"
-            class="sys__note"
-          >
-            Not while printing.
-          </p>
-        </div>
-
-        <div class="sys__group">
-          <h3 class="sys__label">
-            Klipper
-          </h3>
-          <div class="sys__buttons">
-            <button
-              type="button"
-              class="cbtn"
-              data-tid="system-restart-klipper"
-              @click="klippyConnected ? restartKlippy() : serviceRestartKlipper()"
-            >
-              Restart Klipper
-            </button>
-            <button
-              v-if="klippyConnected"
-              type="button"
-              class="cbtn"
-              data-tid="system-firmware-restart"
-              @click="firmwareRestartKlippy"
-            >
-              Restart the firmware too
+              Shut down
             </button>
           </div>
           <p class="sys__note">
-            A restart reads printer.cfg again. Restarting the firmware also resets the control boards, after an error that needs it.
+            After an error, restart the firmware first. Restart the hardware if that doesn't help.
+          </p>
+          <p
+            v-if="printerPrinting && canControlHost"
+            class="sys__note"
+          >
+            Restart hardware and Shut down are off while it prints.
           </p>
         </div>
 
@@ -324,8 +303,8 @@ import McuInformationDialog from '@/components/widgets/system/McuInformationDial
 type Points = Array<Record<string, unknown> & { date: Date }>
 
 /**
- * System (Settings): restarting and shutting down the printer's computer,
- * restarting Klipper and its firmware, power devices and services; what
+ * System (Settings): the three power actions (restart hardware, restart
+ * firmware, shut down), power devices and services; what
  * the computer is; how full its storage is; how busy it and Klipper,
  * Moonraker and each control board have been; and each board's details.
  */
@@ -372,11 +351,19 @@ export default class System extends Mixins(OverviewMixin, ServicesMixin, Browser
   }
 
   async reboot () {
-    if (await this.ask('This page loses touch with it for a minute or two.', `Restart ${this.printerName}'s computer?`, 'Restart')) this.hostReboot()
+    if (await this.ask('This page loses touch with it for a minute or two.', `Restart ${this.printerName}'s hardware?`, 'Restart hardware')) this.hostReboot()
+  }
+
+  /** FIRMWARE_RESTART; with Klippy not connected there is nothing to send it to, so the service restarts instead. */
+  async restartFirmware () {
+    const text = this.printerPrinting ? 'It is printing: restarting the firmware stops the print.' : 'It is back in a few seconds.'
+    if (!(await this.ask(text, `Restart ${this.printerName}'s firmware?`, 'Restart firmware', this.printerPrinting))) return
+    if (this.klippyConnected) await this.firmwareRestartKlippy()
+    else await this.serviceRestartKlipper()
   }
 
   async shutDown () {
-    if (await this.ask("It stays off until it's switched off and on at the printer.", `Shut down ${this.printerName}'s computer?`, 'Shut down')) this.hostShutdown()
+    if (await this.ask("It stays off until it's switched off and on at the printer.", `Shut down ${this.printerName}?`, 'Shut down')) this.hostShutdown()
   }
 
   async restart (name: string) {

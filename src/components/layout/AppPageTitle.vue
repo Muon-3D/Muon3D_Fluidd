@@ -126,7 +126,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     if (this.overviewHome) {
       if (this.foreignRecord) return ''
       const file = this.$store.state.printer.printer.print_stats?.filename as string | undefined
-      const route = cloudState.activePrinterId ? 'Through Muon3D' : 'On this network'
+      const route = cloudState.activePrinterId ? 'Over the cloud' : 'On this network'
       if ((this.printerPrinting || this.printerPaused) && file) {
         const duration = this.$store.state.printer.printer.print_stats?.total_duration as number | undefined
         const started = duration ? new Date(Date.now() - duration * 1000) : null
