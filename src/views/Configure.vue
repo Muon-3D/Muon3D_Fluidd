@@ -23,7 +23,10 @@
         :roots="roots"
         :selected="current ? current.key : null"
         :dirty="dirty && current ? [current.key] : []"
+        :tags="tags"
+        :can-reset-all="canResetAll"
         @open="open"
+        @reset-all="resetAll"
         @created="open({ ...$event, key: `${$event.root}/${$event.name}`, folder: false, depth: 0, size: 0, readonly: false })"
       />
     </aside>
@@ -55,6 +58,9 @@
               <template v-if="readonly">
                 · read only
               </template>
+              <template v-else-if="currentTag === 'changed'">
+                · changed from the default
+              </template>
               <template v-if="dirty">
                 · <b class="fp__unsaved">{{ changed }} {{ changed === 1 ? 'line' : 'lines' }} unsaved</b>
               </template>
@@ -80,6 +86,16 @@
               name="download"
               small
             />
+          </button>
+          <button
+            v-if="canResetFile"
+            type="button"
+            class="cbtn cbtn--ghost"
+            :disabled="saving"
+            data-tid="files-reset-file"
+            @click="resetFile"
+          >
+            Reset to default
           </button>
           <template v-if="!readonly">
             <button
@@ -202,7 +218,9 @@ import OverviewMixin from '@/mixins/overview'
 import ServicesMixin from '@/mixins/services'
 import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
-import { changedLines, opensInEditor, orderRoots, restartNote, rootGroup, validName } from '@/services/files/model'
+import { RESETTABLE_ROOT, changedLines, compareWithDefaults, opensInEditor, orderRoots, resetRestartNote, restartNote, rootGroup, validName, type DefaultState } from '@/services/files/model'
+import type { MoonrakerRootFile } from '@/store/files/types'
+import { useAuxApi } from '@/aux_api/useAuxApi'
 import isWebAssemblySupported from '@/util/is-web-assembly-supported'
 import FilesTree, { type FileRow } from '@/components/files/FilesTree.vue'
 import FileEditor from '@/components/widgets/filesystem/FileEditor.vue'
@@ -230,6 +248,13 @@ export default class Configure extends Mixins(OverviewMixin, ServicesMixin, Brow
   saving = false
   error = ''
   renaming = false
+  resettingAll = false
+  /**
+   * Files in your copy whose listing can't say whether they match their
+   * default, settled by reading both: by `path@modified`, so a later save
+   * asks again.
+   */
+  contentChecks: Record<string, 'same' | 'changed'> = {}
 
   get roots (): string[] {
     const registered = (this.$store.state.server.info.registered_directories as string[] | undefined) ?? []
@@ -251,6 +276,85 @@ export default class Configure extends Mixins(OverviewMixin, ServicesMixin, Brow
   @Watch('devMode')
   onDevMode () {
     this.refresh()
+  }
+
+  /** Your copy is there to compare, and to reset, only in developer mode. */
+  get comparing (): boolean {
+    return this.devMode === true && this.roots.includes(RESETTABLE_ROOT)
+  }
+
+  listing (root: string): MoonrakerRootFile[] | undefined {
+    return this.$store.getters['files/getRootFiles'](root) as MoonrakerRootFile[] | undefined
+  }
+
+  /** Your copy against the defaults, by path inside the root. */
+  get compared (): Record<string, DefaultState> {
+    const mine = this.listing(RESETTABLE_ROOT)
+    const defaults = this.listing('defaults')
+    if (!this.comparing || !mine || !defaults) return {}
+    return compareWithDefaults(mine, defaults)
+  }
+
+  checkKey (path: string): string {
+    const mine = this.listing(RESETTABLE_ROOT)?.find(f => f.path === path)
+    return `${path}@${mine?.modified ?? 0}`
+  }
+
+  /** What the list says beside a file in your copy, and beside the folders that hold a changed one. */
+  get tags (): Record<string, 'changed' | 'yours'> {
+    const tags: Record<string, 'changed' | 'yours'> = {}
+    for (const [path, state] of Object.entries(this.compared)) {
+      const settled = state === 'check' ? this.contentChecks[this.checkKey(path)] : state
+      if (settled !== 'changed' && settled !== 'yours') continue
+      tags[`${RESETTABLE_ROOT}/${path}`] = settled
+      if (settled !== 'changed') continue
+      const parts = path.split('/')
+      for (let i = 1; i < parts.length; i++) tags[`${RESETTABLE_ROOT}/${parts.slice(0, i).join('/')}`] = 'changed'
+    }
+    return tags
+  }
+
+  /** Reads both copies of a file whose size matches its default but whose time doesn't. */
+  @Watch('compared')
+  async settleChecks () {
+    for (const [path, state] of Object.entries(this.compared)) {
+      if (state !== 'check') continue
+      const key = this.checkKey(path)
+      if (key in this.contentChecks) continue
+      this.$set(this.contentChecks, key, 'same')
+      try {
+        const [mine, theirs] = await Promise.all([RESETTABLE_ROOT, 'defaults'].map(root =>
+          this.getFile<string>(path, root, 0, { responseType: 'text', transformResponse: [v => v] })))
+        this.$set(this.contentChecks, key, mine.data === theirs.data ? 'same' : 'changed')
+      } catch {
+        this.$delete(this.contentChecks, key)
+      }
+    }
+  }
+
+  /** Lists your copy and the defaults whole, to compare them. */
+  listForCompare () {
+    if (!this.comparing) return
+    SocketActions.serverFilesListRoot(RESETTABLE_ROOT)
+    SocketActions.serverFilesListRoot('defaults')
+  }
+
+  @Watch('comparing', { immediate: true })
+  onComparing () {
+    this.listForCompare()
+  }
+
+  get currentTag (): 'changed' | 'yours' | undefined {
+    return this.current ? this.tags[this.current.key] : undefined
+  }
+
+  get canResetFile (): boolean {
+    return !!this.current && this.current.root === RESETTABLE_ROOT && !this.readonly && this.currentTag === 'changed'
+  }
+
+  /** Reset all asks the printer, so it needs a client the printer lets manage developer mode. */
+  get canResetAll (): boolean {
+    return this.comparing && devModeState.canManage && !this.resettingAll
   }
 
   /** `?open=root/dir/name.cfg&line=N`: opens that file, at that line. */
@@ -369,6 +473,7 @@ export default class Configure extends Mixins(OverviewMixin, ServicesMixin, Brow
       this.saved = text
     } finally {
       this.saving = false
+      if (row.root === RESETTABLE_ROOT) this.listForCompare()
     }
     if (!restart || !this.service) return
     if (this.service === 'moonraker') this.serviceRestartMoonraker()
@@ -392,6 +497,80 @@ export default class Configure extends Mixins(OverviewMixin, ServicesMixin, Brow
     SocketActions.serverFilesDeleteFile(`${this.dirOf(row)}/${row.name}`)
     this.current = null
     this.content = null
+  }
+
+  /**
+   * One file in your copy back to its default: the default's text is read
+   * and saved over yours, as a Save would, so nothing else in your copy
+   * moves. Not by deleting yours: your copy is a whole configuration, not
+   * a layer over the defaults, so a missing file is a missing include.
+   * Then the restart that makes the printer use it.
+   */
+  async resetFile () {
+    const row = this.current
+    if (!row || !this.canResetFile) return
+    const ok = await this.$confirm(`${row.name} goes back to the Muon3D default. Your changes to it are lost.`, {
+      title: `Reset ${row.name} to its default?`,
+      buttonTrueText: 'Reset to default',
+      danger: true
+    })
+    if (!ok) return
+    this.saving = true
+    try {
+      const response = await this.getFile<string>(row.name, row.dir ? `defaults/${row.dir}` : 'defaults', 0, { responseType: 'text', transformResponse: [v => v] })
+      const text = response.data ?? ''
+      await this.uploadFile(new File([text], row.name), row.dir, row.root, false)
+      if (this.current?.key === row.key) {
+        this.saved = text
+        this.content = text
+      }
+    } catch {
+      this.$store.dispatch('notifications/pushNotification', { title: `${row.name} wasn't reset`, description: `${this.printerName} didn't take it. Try again in a moment.`, type: 'error' })
+      return
+    } finally {
+      this.saving = false
+      this.listForCompare()
+    }
+    const printing = this.printerPrinting || this.printerPaused
+    const note = resetRestartNote(this.printerName, printing)
+    if (printing) {
+      this.$store.dispatch('notifications/pushNotification', { title: `${row.name} is back to its default`, description: note, type: 'success' })
+      return
+    }
+    const restart = await this.$confirm(note, { title: 'Restart Klipper now?', buttonTrueText: 'Restart Klipper', buttonFalseText: 'Later' })
+    if (restart) this.firmwareRestartKlippy()
+  }
+
+  /**
+   * Your whole copy back to the defaults, by the printer's own refresh:
+   * it backs your copy up under backups first, then restarts Klipper
+   * itself, so there's no restart to ask for afterwards.
+   */
+  async resetAll () {
+    if (!this.canResetAll) return
+    const ok = await this.$confirm(`Every file in your copy goes back to the Muon3D default, and files you added are removed. Your copy is backed up first, under backups, and Klipper restarts${this.printerPrinting || this.printerPaused ? ', which stops the print' : ''}.`, {
+      title: 'Reset all to defaults?',
+      buttonTrueText: 'Back up and reset',
+      danger: true
+    })
+    if (!ok) return
+    this.resettingAll = true
+    try {
+      await useAuxApi().devMode.refreshDevModeConfigDevModeRefreshPost()
+      this.$store.dispatch('notifications/pushNotification', { title: 'Back to the defaults', description: 'Your old copy is under backups, and Klipper is restarting.', type: 'success' })
+      // A file open from your copy may have changed or gone: close it, unless it has unsaved changes.
+      if (this.current?.root === RESETTABLE_ROOT && !this.dirty) {
+        this.current = null
+        this.content = null
+      }
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+      this.$store.dispatch('notifications/pushNotification', { title: 'Reset all to defaults', description: typeof detail === 'string' ? detail : `${this.printerName} didn't reset. Try again in a moment.`, type: 'error' })
+    } finally {
+      this.resettingAll = false
+      this.refresh()
+      this.listForCompare()
+    }
   }
 
   // Leaving the page or the site with unsaved changes asks first.
