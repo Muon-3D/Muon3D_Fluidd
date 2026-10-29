@@ -7,23 +7,32 @@
     <header class="wf__head">
       <div class="wf__titles">
         <h2>Wi-Fi</h2>
-        <p v-if="!locked && !remote">
+        <p v-if="!locked && !remote && deviceState !== false">
           {{ connectedNetwork ? `On ${connectedNetwork.ssid} · signal ${connectedNetwork.signal}%` : 'Not on a Wi-Fi network' }}
         </p>
       </div>
-      <button
+      <toggle-switch
         v-if="!locked && !remote"
+        :value="deviceState === true"
+        label="Wi-Fi on"
+        :aria-busy="deviceToggling"
+        :disabled="deviceState === null || deviceToggling"
+        data-tid="wifi-toggle"
+        @input="toggleWifiDevice"
+      />
+      <button
+        v-if="!locked && !remote && deviceState === true"
         type="button"
         class="wf__refresh"
-        :disabled="fetching"
-        aria-label="Look for networks again"
+        :disabled="fetching || deviceToggling"
         data-tid="wifi-refresh"
-        @click="fetchDevices"
+        @click="searchAgain"
       >
         <frame-icon
           name="refresh"
           small
         />
+        {{ fetching ? 'Scanning…' : 'Search again' }}
       </button>
     </header>
 
@@ -35,8 +44,22 @@
       {{ $t('app.wifi.remote_read_only') }}
     </p>
 
+    <p
+      v-if="!locked && !remote && deviceState === false"
+      role="status"
+      class="wf__note"
+    >
+      Wi-Fi is off
+    </p>
+    <p
+      v-if="wifiError"
+      role="alert"
+      class="wf__note"
+    >
+      {{ wifiError }}
+    </p>
     <div
-      v-if="!locked && !remote"
+      v-if="!locked && !remote && deviceState === true"
       class="wf__list"
       data-tid="wifi-networks"
     >
@@ -211,12 +234,13 @@ import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 
 const { onHotspot } = useHotspotCheck()
 
 type AggWifi = DeviceWifi & { chanList?: string; freqList?: string }
 
-@Component
+@Component({ components: { ToggleSwitch } })
 export default class WifiManagerCard extends Vue {
   @Prop({ type: Boolean }) readonly menuCollapsed?: boolean
 
@@ -283,14 +307,58 @@ export default class WifiManagerCard extends Vue {
   }
 
   fetching: boolean = false
+  deviceState: boolean | null = null
+  deviceToggling = false
+  wifiError = ''
+  private deviceRevision = 0
+
+  async updateDeviceState () {
+    const revision = this.deviceRevision
+    const { data } = await this.auxApi.wifi.wifiStatusWifiDeviceStatusGet({ timeout: 15000 })
+    const on = !(data.state !== 'connected' && data.user_disconnected === true)
+    if (revision === this.deviceRevision && !this.deviceToggling) this.deviceState = on
+    return on
+  }
+
+  async toggleWifiDevice () {
+    if (this.deviceState === null || this.deviceToggling || this.locked || this.remote) return
+    const previous = this.deviceState
+    const next = !previous
+    this.deviceRevision++
+    this.deviceState = next
+    this.deviceToggling = true
+    this.wifiError = ''
+    try {
+      const options = { timeout: 75000 }
+      if (next) await this.auxApi.wifi.wifiDeviceUpWifiDeviceUpPost(options)
+      else await this.auxApi.wifi.wifiDeviceDownWifiDeviceDownPost(options)
+      if (await this.updateDeviceState() !== next) throw new Error('State not confirmed')
+    } catch (e: any) {
+      this.deviceState = previous
+      this.wifiError = `Could not turn Wi-Fi ${next ? 'on' : 'off'}. Check the printer connection and try again.`
+      EventBus.$emit(this.wifiError, { type: 'error', timeout: 5000 })
+      if (e?.response?.status === 403) this.$store.dispatch('protection/onRefused')
+    } finally {
+      this.deviceToggling = false
+    }
+    // Association and scanning never delay the visible switch or its confirmation.
+    if (this.deviceState) this.fetchDevices(true)
+  }
+
+  searchAgain () {
+    return this.fetchDevices(true)
+  }
 
   // Fetch and mark known SSIDs
-  async fetchDevices () {
-    if (this.fetching || this.locked || this.remote) return
+  async fetchDevices (force = false) {
+    if (this.fetching || this.deviceToggling || this.locked || this.remote) return
     this.fetching = true
     try {
-      const res = await this.auxApi.wifi.wifiScanWifiScanGet(true)
+      await this.updateDeviceState()
+      if (this.deviceState !== true || this.deviceToggling) return
+      const res = await this.auxApi.wifi.wifiScanWifiScanGet(true, { params: { force } })
       this.wifi_available_networks = res.data
+      this.wifiError = ''
 
       // Skip hidden SSIDs when probing for "known" status
       for (const net of this.wifi_available_networks) {
@@ -319,10 +387,11 @@ export default class WifiManagerCard extends Vue {
       this.wifiOrder = this.wifiOrder.filter(ssid => current.has(ssid))
       // ————————————————————————————————————————————————————————————————
     } catch (e: any) {
-      console.error('Wi-Fi scan failed', e)
+      this.wifiError = 'Could not search for networks. Try Search again.'
       if (e?.response?.status === 403) this.$store.dispatch('protection/onRefused')
+    } finally {
+      this.fetching = false
     }
-    this.fetching = false
   }
 
   // NEW: one row per SSID with merged details
