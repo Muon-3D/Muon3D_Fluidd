@@ -7,26 +7,87 @@ export interface RootGroup {
 }
 
 /**
- * MuonOS keeps each printer's own calibration and settings in
- * `calibration` (writable) and the shipped M1 config in `defaults` (read
- * only); `config` shows only in dev mode.
+ * MuonOS's roots: `defaults` is the shipped M1 config (read only, replaced
+ * by updates); `config` is developer mode's own copy of it, which the
+ * printer runs instead while developer mode is on; `calibration` is this
+ * printer's own calibration and settings, kept through updates.
  */
 export function rootGroup (root: string): RootGroup {
   switch (root) {
+    case 'config': return { title: 'Your copy of the configuration', note: 'developer mode', download: false }
     case 'calibration': return { title: 'This printer\'s settings', note: 'editable', download: false }
     case 'defaults': return { title: 'Muon3D defaults', note: 'read only · they come with updates', download: false }
-    case 'config': return { title: 'The whole config', note: 'dev mode', download: false }
     case 'logs': return { title: 'Logs', note: 'download to read', download: true }
     case 'docs': return { title: 'Docs', note: 'read only', download: false }
     default: return { title: root.charAt(0).toUpperCase() + root.slice(1).replace(/_/g, ' '), note: '', download: false }
   }
 }
 
-/** The order Files lists its folders in: the printer's own first. */
+/** The order Files lists its folders in: yours, then the defaults, then the rest. */
 export function orderRoots (roots: string[]): string[] {
   const first = ['config', 'calibration', 'defaults', 'logs', 'docs']
   const rank = (r: string) => (first.includes(r) ? first.indexOf(r) : first.length)
   return [...roots].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+}
+
+/** Files' headings: Fluidd's list of folders, grouped. */
+export type SectionId = 'yours' | 'defaults' | 'other'
+
+export const SECTIONS: { id: SectionId, title: string }[] = [
+  { id: 'yours', title: 'Your configuration' },
+  { id: 'defaults', title: 'Defaults' },
+  { id: 'other', title: 'Other files' }
+]
+
+export function rootSection (root: string): SectionId {
+  if (root === 'config' || root === 'calibration') return 'yours'
+  if (root === 'defaults') return 'defaults'
+  return 'other'
+}
+
+/**
+ * The one root whose files can go back to a default. Developer mode copies
+ * `defaults` into it whole, so a file there has its default at the same
+ * path. `calibration` has no reset: it holds what this printer measured.
+ */
+export const RESETTABLE_ROOT = 'config'
+
+/** The printer keeps its backups of your copy in it; they aren't compared. */
+const NOT_COMPARED = /^backups\//
+
+export interface ListedFile {
+  path: string;
+  size: number;
+  modified: number;
+}
+
+/**
+ * How a file in your copy stands against the defaults, from the two
+ * listings alone: `changed` when the sizes differ; `same` when size and
+ * time both match (the printer's copy keeps the defaults' times); `check`
+ * when only the time differs, so the contents decide; `yours` when there's
+ * no default at that path.
+ */
+export type DefaultState = 'same' | 'changed' | 'check' | 'yours'
+
+export function compareWithDefaults (mine: ListedFile[], defaults: ListedFile[]): Record<string, DefaultState> {
+  const byPath = new Map(defaults.map(f => [f.path, f]))
+  const out: Record<string, DefaultState> = {}
+  for (const f of mine) {
+    if (NOT_COMPARED.test(f.path)) continue
+    const d = byPath.get(f.path)
+    if (!d) out[f.path] = 'yours'
+    else if (d.size !== f.size) out[f.path] = 'changed'
+    else out[f.path] = d.modified === f.modified ? 'same' : 'check'
+  }
+  return out
+}
+
+/** Asked after a file goes back to its default: the restart that makes the printer use it. */
+export function resetRestartNote (printerName: string, printing: boolean): string {
+  return printing
+    ? `${printerName} uses it after Klipper restarts, and restarting stops the print. Restart once it's done.`
+    : `${printerName} uses it after Klipper restarts. It isn't printing, so it's safe now.`
 }
 
 const TEXT = /\.(cfg|conf|txt|md|json|ya?ml|ini|py|sh|log|csv|toml)$/i
