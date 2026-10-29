@@ -20,7 +20,7 @@
     </header>
 
     <p class="devm__text">
-      Lets you change this printer's own configuration and macros. The Muon3D defaults stay as they are beside your copy, and turning it off goes back to them (your copy is kept for next time).
+      Lets you change this printer's own configuration and macros. The Muon3D defaults stay as they are beside your copy, and turning it off goes back to them. Your copy stays on the printer, and moves to the backups when you next turn developer mode on.
     </p>
 
     <p
@@ -88,9 +88,31 @@
       >
         <h3>Turn on developer mode</h3>
         <p>{{ $t('app.general.dev_mode.modal-1') }}</p>
+        <ul
+          class="devm__summary"
+          data-tid="developer-terms-summary"
+        >
+          <li>{{ $t('app.general.dev_mode.summary-safety') }}</li>
+          <li>{{ $t('app.general.dev_mode.summary-warranty') }}</li>
+          <li>{{ $t('app.general.dev_mode.summary-record') }}</li>
+          <li>{{ $t('app.general.dev_mode.summary-off') }}</li>
+        </ul>
         <template v-if="waiverText">
-          <b>{{ $t('app.general.dev_mode.modal-warranty-liability') }}</b>
-          <p class="devm__waiver">
+          <template v-if="!printerServesTerms">
+            <b>{{ $t('app.general.dev_mode.terms-title') }}</b>
+            <!-- Our own document (docs/legal), rendered by marked and sanitised. -->
+            <div
+              class="devm__waiver devm__terms"
+              data-tid="developer-terms"
+              v-html="termsHtml"
+            />
+            <b>{{ $t('app.general.dev_mode.printer-notice-title', { version: waiverVersion }) }}</b>
+          </template>
+          <b v-else>{{ $t('app.general.dev_mode.terms-title') }}</b>
+          <p
+            class="devm__waiver"
+            data-tid="developer-printer-waiver"
+          >
             {{ waiverText }}
           </p>
           <label class="devm__accept">
@@ -99,7 +121,7 @@
               type="checkbox"
               :disabled="awaiting"
             >
-            {{ $t('app.general.dev_mode.modal-checkbox-message') }}
+            {{ acceptLabel }}
           </label>
         </template>
         <p
@@ -225,6 +247,7 @@ import {
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
+import { TERMS_LABEL, termsHtml, printerServesTerms } from '@/services/dev-mode/terms'
 
 /** How often the browser asks whether the printer's screen has been answered. */
 const CONSENT_POLL_MS = 1500
@@ -305,12 +328,29 @@ export default class DeveloperModeSettings extends Vue {
 
   get fuseText (): string {
     if (this.state.otpArmed === false) {
-      return 'Not recorded on this printer: its fuse is disarmed, so you can turn developer mode on and off freely to try it.'
+      return 'This printer\'s hardware fuse is switched off, so turning developer mode on leaves no mark in its hardware. The printer and Muon3D still note that it was turned on.'
     }
     if (this.state.otpArmed === true) {
-      return 'Turning it on is recorded on this printer for good, in a fuse that no update or reset clears. It can affect the warranty.'
+      return 'Turning it on is recorded for good, in a fuse in this printer\'s hardware that no update or reset clears. Faults caused by changes made in developer mode aren\'t covered by the warranty; other faults still are.'
     }
-    return 'This printer doesn\'t say whether turning it on is recorded for good.'
+    return 'This printer doesn\'t say whether turning it on is recorded in its hardware.'
+  }
+
+  /** The terms as HTML, from docs/legal/developer-mode-terms.md. */
+  get termsHtml (): string {
+    return termsHtml()
+  }
+
+  /** The printer already serves these terms, so they're shown once, in its words. */
+  get printerServesTerms (): boolean {
+    return printerServesTerms(this.waiverVersion)
+  }
+
+  get acceptLabel (): string {
+    const key = this.printerServesTerms
+      ? 'app.general.dev_mode.modal-checkbox-message'
+      : 'app.general.dev_mode.modal-checkbox-message-with-notice'
+    return this.$t(key, { version: TERMS_LABEL }) as string
   }
 
   get macrosTo (): string {
@@ -623,6 +663,40 @@ export default class DeveloperModeSettings extends Vue {
     border-radius: 12px;
     background: var(--m3d-surface-2);
     white-space: pre-wrap;
+  }
+
+  .devm__summary {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--m3d-text-muted);
+    font-size: 14px;
+
+    li + li {
+      margin-top: 4px;
+    }
+  }
+
+  .devm__terms {
+    white-space: normal;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+
+    :deep(h1),
+    :deep(h2) {
+      margin: 12px 0 4px;
+      color: var(--m3d-text);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    :deep(p),
+    :deep(ul) {
+      margin: 0 0 8px;
+    }
+
+    :deep(ul) {
+      padding-left: 18px;
+    }
   }
 
   .devm__accept {
