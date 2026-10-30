@@ -174,7 +174,10 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     if (e.active !== 'cloud') {
       actions.push({ id: 'connect-cloud', label: 'Connect through Muon3D', icon: '$cloud', disabled: !e.cloud?.online })
     }
-    if (e.nearby && !e.cloud?.online) {
+    // Whenever it was heard nearby, whatever the service says (KAN-1175, ADR
+    // 0052): the service can call a printer online that this browser cannot
+    // reach through the relay, and Bluetooth is the way in then.
+    if (e.nearby && e.cloud) {
       actions.push({ id: 'connect-bluetooth', label: 'Connect over Bluetooth', icon: '$bluetooth' })
     }
     actions.push({
