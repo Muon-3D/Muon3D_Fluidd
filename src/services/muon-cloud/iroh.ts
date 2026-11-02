@@ -214,6 +214,22 @@ function untilAborted<T> (sending: Promise<T>, signal: AbortSignal | null | unde
   })
 }
 
+// Browsers end a multipart body with "--boundary--\r\n"; some runtimes
+// (Node 20.19's undici) stop at "--boundary--". Moonraker's parser reads
+// both, but the bytes sent should be the same wherever the page runs.
+function closeMultipart (body: Uint8Array, type: string): Uint8Array {
+  const boundary = /boundary=("?)([^";]+)\1/i.exec(type)?.[2]
+  if (!boundary) return body
+  const close = new TextEncoder().encode(`--${boundary}--`)
+  if (body.length < close.length) return body
+  const tail = body.subarray(body.length - close.length)
+  if (!tail.every((b, n) => b === close[n])) return body
+  const closed = new Uint8Array(body.length + 2)
+  closed.set(body)
+  closed.set([13, 10], body.length)
+  return closed
+}
+
 export class IrohPrinter implements ManagedIrohRelay {
   private readonly printer: WasmPrinter
 
@@ -248,6 +264,7 @@ export class IrohPrinter implements ManagedIrohRelay {
           const i = headers.findIndex((h, n) => n % 2 === 0 && h.toLowerCase() === 'content-type')
           if (i >= 0) headers.splice(i, 2)
           headers.push('content-type', type)
+          body = closeMultipart(body, type)
         }
       } else if (typeof init.body === 'string' && !source.has('content-type')) {
         headers.push('content-type', 'application/json')
