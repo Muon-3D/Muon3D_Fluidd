@@ -130,35 +130,41 @@ function waitForRetry (ms: number, signal: AbortSignal): Promise<void> {
   })
 }
 
+function deletionRefusal (): CloudError | null {
+  if (deletionState.deleteAfter === null) return null
+  return new CloudError('Your account is waiting to be deleted.', 403, undefined, {
+    deletion_pending: true, delete_after: deletionState.deleteAfter
+  })
+}
+
+/** Asks the console for a grant, retrying only temporary (503) failures until `signal` aborts. */
+async function askConsole (printerId: string, signal: AbortSignal): Promise<AccessHandoff> {
+  await ensureEndpoint()
+  let delay = 1000
+  for (;;) {
+    signal.throwIfAborted()
+    const printer = cloudState.printers.find(p => p.id === printerId)
+    if (printer && consolePresence(printer) === 'offline') throw new CloudError('Printer is offline', 503)
+    try {
+      const grant = await cloudApi.access(printerId)
+      signal.throwIfAborted()
+      return grant
+    } catch (error) {
+      signal.throwIfAborted()
+      if (!(error instanceof CloudError) || error.status !== 503) throw error
+      await waitForRetry(delay, signal)
+      delay = Math.min(15_000, delay * 2)
+    }
+  }
+}
+
 /** One pending grant per printer, retrying only temporary console failures. */
 export function requestAccess (printerId: string): Promise<AccessHandoff> {
-  if (deletionState.deleteAfter !== null) {
-    return Promise.reject(new CloudError('Your account is waiting to be deleted.', 403, undefined, {
-      deletion_pending: true, delete_after: deletionState.deleteAfter
-    }))
-  }
+  const refused = deletionRefusal()
+  if (refused) return Promise.reject(refused)
   const existing = grants.get(printerId)
   if (existing) return existing
-  const signal = sessionAbort.signal
-  const pending = (async () => {
-    await ensureEndpoint()
-    let delay = 1000
-    for (;;) {
-      signal.throwIfAborted()
-      const printer = cloudState.printers.find(p => p.id === printerId)
-      if (printer && consolePresence(printer) === 'offline') throw new CloudError('Printer is offline', 503)
-      try {
-        const grant = await cloudApi.access(printerId)
-        signal.throwIfAborted()
-        return grant
-      } catch (error) {
-        signal.throwIfAborted()
-        if (!(error instanceof CloudError) || error.status !== 503) throw error
-        await waitForRetry(delay, signal)
-        delay = Math.min(15_000, delay * 2)
-      }
-    }
-  })()
+  const pending = askConsole(printerId, sessionAbort.signal)
   grants.set(printerId, pending)
   pending.finally(() => { if (grants.get(printerId) === pending) grants.delete(printerId) }).catch(() => {})
   return pending
@@ -166,9 +172,16 @@ export function requestAccess (printerId: string): Promise<AccessHandoff> {
 
 /**
  * How long a Bluetooth open waits for the console's grant before going on
- * without it (KAN-1253). An online printer answers in well under this.
+ * without it (KAN-1253), when the console does not call the printer online.
  */
 export const BLUETOOTH_GRANT_GRACE_MS = 4_000
+
+/**
+ * The same wait for a printer the console calls online. Its key may rely on
+ * a grant the console pushes, so the grant is worth waiting for. Bounded below
+ * `REMOTE_OPEN_TIMEOUT_MS` (activate.ts), so the radio still has time.
+ */
+export const BLUETOOTH_ONLINE_GRANT_WAIT_MS = 20_000
 
 /**
  * The handoff for a printer the person chose to open over Bluetooth. The
@@ -177,19 +190,39 @@ export const BLUETOOTH_GRANT_GRACE_MS = 4_000
  * it. But the radio must not wait on the console: a printer the console
  * calls offline (503 `device_unreachable`) may be sitting beside the laptop,
  * and a key it already holds (paired, or enrolled at setup) needs no grant.
- * So a refusal, a timeout or no network ends the wait, and the session is
- * local: the relay address from the console's config, no grant.
+ * So a 503, a timeout or no network ends the wait, and the session is
+ * local and grantless (`grantless: true`). Any other refusal (401, 403, 404,
+ * deletion pending) is the console's answer about this account and is raised.
+ *
+ * The ask has its own abort, fired whenever the wait ends, so a 503 retry
+ * loop never outlives the handoff and no entry is left in `grants`.
  */
 async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promise<AuthorizedManagedRelaySession> {
+  const refused = deletionRefusal()
+  if (refused) throw refused
+  // Aborted by the session ending or by this wait ending (no AbortSignal.any: older browsers).
+  const own = new AbortController()
+  const session = sessionAbort.signal
+  const endWithSession = () => own.abort()
+  session.addEventListener('abort', endWithSession, { once: true })
   let timer: ReturnType<typeof setTimeout> | undefined
-  const asked = requestAccess(printerId).catch(error => {
-    if (error instanceof CloudError && error.deletionPending) throw error
-    return null
-  })
-  const grant = await Promise.race([
-    asked,
-    new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), BLUETOOTH_GRANT_GRACE_MS) })
-  ]).finally(() => clearTimeout(timer))
+  let grant: AccessHandoff | null
+  try {
+    const printer = cloudState.printers.find(p => p.id === printerId)
+    const wait = printer && consolePresence(printer) === 'online' ? BLUETOOTH_ONLINE_GRANT_WAIT_MS : BLUETOOTH_GRANT_GRACE_MS
+    const asked = askConsole(printerId, own.signal).catch((error): null => {
+      if (error instanceof CloudError && error.status !== 503) throw error
+      return null // 503 (including offline presence), or the network
+    })
+    grant = await Promise.race([
+      asked,
+      new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), wait) })
+    ])
+  } finally {
+    clearTimeout(timer)
+    session.removeEventListener('abort', endWithSession)
+    own.abort()
+  }
   signal.throwIfAborted()
   if (grant) return sessionFrom(grant)
   let relayUrl = cloudState.config?.relay_url
@@ -206,7 +239,8 @@ async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promis
     tenantId: cloudState.account?.id ?? 'local',
     printerId,
     relayUrl,
-    expiresAt: new Date(Date.now() + 3600_000).toISOString()
+    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+    grantless: true
   }
 }
 
