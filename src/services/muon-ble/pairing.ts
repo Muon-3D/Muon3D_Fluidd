@@ -55,6 +55,15 @@ interface PairingEndpoint {
 
 let generation = 0
 let session: PairingSession | null = null
+/** True while a `submitCode` is in flight: the object must not be freed under it. */
+let submitting = false
+const freed = new WeakSet<object>()
+
+function freeOnce (pairing: PairingSession | null) {
+  if (!pairing || freed.has(pairing)) return
+  freed.add(pairing)
+  try { pairing.free?.() } catch { /* already gone */ }
+}
 let expiry: ReturnType<typeof setTimeout> | undefined
 /** The last hang-up, so a retry never meets a link that is still closing. */
 let hangingUp: Promise<void> = Promise.resolve()
@@ -74,7 +83,7 @@ function within<T> (promise: Promise<T>, ms: number, onTimeout: () => Error): Pr
 
 const NO_WINDOW = 'No pairing window is open on the printer. On its screen, open Settings > Add a device, then try again.'
 const BUSY = 'The printer is busy with another pairing. Wait for it to finish, or cancel it on the printer, then try again.'
-const DID_NOT_COMPLETE = 'The pairing did not complete. The code may have been wrong, or it took longer than about a minute and a half. On the printer, open Add a device for a new code and try again.'
+const DID_NOT_COMPLETE = 'The pairing did not complete. The code may have been wrong, or it took longer than about a minute and a half. After three wrong codes the printer pauses pairing for 15 minutes. Otherwise, on the printer, open Add a device for a new code and try again.'
 const ANOTHER_DEVICE = 'Another device is already pairing with this printer. Wait for it to finish, then try again.'
 const ENDED = 'The printer ended the pairing, so nothing was added. On its screen, open Add a device and try again.'
 const WINDOW_CLOSED = 'The pairing window closed after 2 minutes, so nothing was added. On the printer, open Settings > Add a device and try again.'
@@ -123,6 +132,7 @@ function clearTimer () {
 /** Lets the radio go, so nothing half-paired stays open. The person's Bluetooth choice stays, for a retry. */
 function release () {
   clearTimer()
+  if (!submitting) freeOnce(session)
   session = null
   const id = pairingState.printerId
   if (id) hangingUp = releaseBluetoothLink(id)
@@ -178,7 +188,7 @@ export async function startPairing (printerId: string): Promise<void> {
     pairingState.phase = 'code'
     pairingState.message = null
     // The printer's window began about now; past it, nothing can finish.
-    expiry = setTimeout(() => { if (mine === generation) fail(new Closed(false)) }, PAIRING_WINDOW_MS + SLACK_MS)
+    expiry = setTimeout(() => { if (mine === generation) fail(new Closed(pairingState.phase === 'waiting')) }, PAIRING_WINDOW_MS + SLACK_MS)
   } catch (error) {
     if (mine === generation) fail(error)
   }
@@ -197,9 +207,17 @@ export async function submitPairingCode (text: string): Promise<void> {
   const asked = session
   pairingState.phase = 'waiting'
   pairingState.message = null
+  // Settled, the object is no longer in use: free it unless the code step still needs it.
+  const sent = asked.submitCode(Number(digits))
+  submitting = true
+  const settled = () => {
+    submitting = false
+    if (asked !== session) freeOnce(asked)
+  }
+  sent.then(settled, settled)
   try {
     await within(
-      asked.submitCode(Number(digits)),
+      sent,
       PAIRING_WINDOW_MS + SLACK_MS,
       () => new Closed(true)
     )
@@ -218,7 +236,7 @@ export async function submitPairingCode (text: string): Promise<void> {
   // Paired: the panel confirmed, and the printer holds this key. Go in.
   clearTimer()
   session = null
-  try { asked.free?.() } catch { /* already gone */ }
+  freeOnce(asked)
   pairingState.phase = 'idle'
   pairingState.message = null
   pairingState.printerId = null
