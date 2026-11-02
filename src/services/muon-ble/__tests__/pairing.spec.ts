@@ -123,6 +123,7 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
 
       expect(pairingState.message).toMatch(/did not complete/)
       expect(pairingState.message).toMatch(/new code/)
+      expect(pairingState.message).toMatch(/three wrong codes.*15 minutes/i)
       expect(pairingState.message).not.toMatch(/No pairing window is open/)
     })
 
@@ -228,6 +229,54 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
     expect(pairingState.message).toMatch(/may have been added/)
     expect(linksOpen()).toBe(0)
     expect(activate.activateCloudPrinter).not.toHaveBeenCalled()
+  })
+
+  it('a code typed late whose Confirm never answers still says Control may have been added when the start timer runs out', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    session.submitCode.mockReturnValue(new Promise(() => {}))
+    await startPairing(EID)
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    const waiting = submitPairingCode('12345678')
+    await vi.advanceTimersByTimeAsync(75_000)
+
+    expect(pairingState.phase).toBe('error')
+    expect(pairingState.message).toMatch(/may have been added/)
+    expect(pairingState.message).not.toMatch(/nothing was added/i)
+    void waiting
+  })
+
+  it('frees the pairing object after a failure', async () => {
+    session.submitCode.mockRejectedValue(wasmError('pairing', 'the printer ended the pairing: the pairing window is now Closed'))
+    await startPairing(EID)
+
+    await submitPairingCode('12345678')
+
+    expect(session.free).toHaveBeenCalledTimes(1)
+  })
+
+  it('frees the pairing object when the window runs out before a code is typed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    await startPairing(EID)
+
+    await vi.advanceTimersByTimeAsync(PAIRING_WINDOW_MS + 15_000)
+
+    expect(session.free).toHaveBeenCalledTimes(1)
+  })
+
+  it('frees the pairing object when the answer comes after a cancel while waiting, and not before', async () => {
+    let confirm!: (value: unknown) => void
+    session.submitCode.mockReturnValue(new Promise(resolve => { confirm = resolve }))
+    await startPairing(EID)
+    const waiting = submitPairingCode('12345678')
+
+    cancelPairing()
+    // The call is still in flight: freeing now would pull the object out from under it.
+    expect(session.free).not.toHaveBeenCalled()
+    confirm({ role: 'owner' })
+    await waiting
+
+    await vi.waitFor(() => expect(session.free).toHaveBeenCalledTimes(1))
   })
 
   it('cancelling at the code step simply closes', async () => {
