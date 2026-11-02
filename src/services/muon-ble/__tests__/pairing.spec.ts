@@ -19,8 +19,8 @@ const {
 /** The wasm Error shape: a message and a `kind`. */
 const wasmError = (kind: string, message: string, extra: Record<string, unknown> = {}) => Object.assign(new Error(message), { kind, ...extra })
 
-let session: { comparison: ReturnType<typeof vi.fn>, submitCode: ReturnType<typeof vi.fn> }
-let beginPairing: ReturnType<typeof vi.fn>
+let session: { comparison: any, submitCode: any }
+let beginPairing: any
 let ble: ReturnType<typeof fakeEndpoint>
 
 beforeEach(() => {
@@ -84,7 +84,7 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
     expect(pairingState.phase).toBe('error')
     expect(pairingState.message).toMatch(/15 minutes/)
     expect(activate.activateCloudPrinter).not.toHaveBeenCalled()
-    expect(wantsBluetoothFor(EID)).toBe(false)
+    expect(ble.links[0].isClosed()).toBe(true)
   })
 
   it('shows the printer\'s remaining pause in minutes when it is still cooling down', async () => {
@@ -116,7 +116,7 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
     expect(pairingState.phase).toBe('error')
     expect(pairingState.message).toMatch(/printer/i)
     expect(activate.activateCloudPrinter).not.toHaveBeenCalled()
-    expect(wantsBluetoothFor(EID)).toBe(false)
+    expect(ble.links[0].isClosed()).toBe(true)
   })
 
   it('says the window closed when the printer reports it expired', async () => {
@@ -129,7 +129,7 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
   })
 
   it('gives up when the panel never confirms, and stores nothing', async () => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     session.submitCode.mockReturnValue(new Promise(() => {}))
     await startPairing(EID)
 
@@ -140,11 +140,11 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
     expect(pairingState.phase).toBe('error')
     expect(pairingState.message).toMatch(/2 minutes/)
     expect(activate.activateCloudPrinter).not.toHaveBeenCalled()
-    expect(wantsBluetoothFor(EID)).toBe(false)
+    expect(ble.links[0].isClosed()).toBe(true)
   })
 
   it('gives up on a code nobody typed once the window must have closed', async () => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
     await startPairing(EID)
 
     await vi.advanceTimersByTimeAsync(PAIRING_WINDOW_MS + 15_000)
@@ -164,8 +164,19 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
     await waiting
 
     expect(pairingState.phase).toBe('idle')
-    expect(wantsBluetoothFor(EID)).toBe(false)
+    expect(ble.links[0].isClosed()).toBe(true)
     expect(activate.activateCloudPrinter).not.toHaveBeenCalled()
+  })
+
+  it('can be tried again after a failure, without choosing Bluetooth again', async () => {
+    beginPairing.mockRejectedValueOnce(wasmError('refused', 'no pairing window is open', { code: 0x040a }))
+    await startPairing(EID)
+    expect(pairingState.phase).toBe('error')
+
+    await startPairing(EID)
+
+    expect(pairingState.phase).toBe('code')
+    expect(ble.endpoint.addLink).toHaveBeenCalledTimes(2)
   })
 
   it('refuses something that is not eight digits without asking the printer', async () => {

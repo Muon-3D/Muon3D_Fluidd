@@ -93,6 +93,8 @@
         <spool-selection-dialog />
         <action-command-prompt-dialog />
         <job-ready-dialog />
+
+        <bluetooth-pair-dialog />
       </template>
     </v-main>
 
@@ -172,6 +174,7 @@ import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletio
     UpdatingScreen,
     UpdateBanner,
     PrinterOpening,
+    BluetoothPairDialog: () => import('@/components/muon-ble/BluetoothPairDialog.vue'),
     JobReadyDialog,
     SpoolSelectionDialog,
     FileSystemDownloadDialog,

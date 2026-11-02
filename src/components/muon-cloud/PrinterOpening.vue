@@ -48,6 +48,14 @@
           Open its own page
         </v-btn>
         <v-btn
+          v-if="pairingOffer"
+          color="primary"
+          data-tid="pair-offer"
+          @click="pair"
+        >
+          Pair this browser
+        </v-btn>
+        <v-btn
           text
           @click="retry"
         >
@@ -82,6 +90,7 @@ import { Component, Prop, Vue } from 'vue-property-decorator'
 import { activationState } from '@/services/muon-cloud/activate'
 import { cloudState } from '@/services/muon-cloud/state'
 import { consolePresence, type CloudPresence } from '@/services/muon-cloud/presence'
+import { startPairing } from '@/services/muon-ble/pairing'
 import { openPrinterAt, printerPagesState, resolveSlug } from '@/services/printer-pages'
 
 /**
@@ -119,6 +128,17 @@ export default class PrinterOpening extends Vue {
 
   get fallbackUrl (): string | null {
     return activationState.fallbackUrl
+  }
+
+  /** The printer that refused this browser over Bluetooth, when it is the one this page opens. */
+  get pairingOffer (): string | null {
+    const target = resolveSlug(this.slug)
+    const id = activationState.pairing
+    return id && target?.kind === 'cloud' && target.printerId === id ? id : null
+  }
+
+  pair () {
+    if (this.pairingOffer) startPairing(this.pairingOffer).catch(() => {})
   }
 
   retry () {
