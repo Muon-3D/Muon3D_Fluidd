@@ -87,9 +87,9 @@ describe('Plan', () => {
     const w = await open(plus)
     const rows = (id: string) => w.findAll(`[data-tid="plan-option-${id}"] [data-tid="plan-row"]`).wrappers
       .map(r => `${r.find('dt').text()}: ${r.find('dd').text().replace(/\s+/g, ' ').trim()}`)
-    expect(rows('free')).toEqual(['Each week: 1 shape or 5 parts', 'Jobs at once: 1', 'Priority queue: —Not included', 'High detail shapes: —Not included'])
-    expect(rows('plus')).toEqual(['Each week: 5 shapes or 25 parts', 'Jobs at once: 2', 'Priority queue: Included', 'High detail shapes: —Not included'])
-    expect(rows('pro')).toEqual(['Each week: 15 shapes or 75 parts', 'Jobs at once: 4', 'Priority queue: Included', 'High detail shapes: Included'])
+    expect(rows('free')).toEqual(['CAD in your browser: Unlimited', 'AI made, each week: 1 AI shape or 5 AI parts', 'Jobs at once: 1', 'Priority queue: —Not included', 'High detail shapes: —Not included'])
+    expect(rows('plus')).toEqual(['CAD in your browser: Unlimited', 'AI made, each week: 5 AI shapes or 25 AI parts', 'Jobs at once: 2', 'Priority queue: Included', 'High detail shapes: —Not included'])
+    expect(rows('pro')).toEqual(['CAD in your browser: Unlimited', 'AI made, each week: 15 AI shapes or 75 AI parts', 'Jobs at once: 4', 'Priority queue: Included', 'High detail shapes: Included'])
     for (const plan of catalogue.plans) {
       const card = text(w.find(`[data-tid="plan-option-${plan.id}"]`))
       if (plan.price) expect(card).toContain(`£${plan.price.monthly.toFixed(2)}`)
@@ -141,7 +141,7 @@ describe('Plan', () => {
   it('keeps credits as a top-up: never expiring, priced per credit, with job prices behind (i)', async () => {
     const w = await open(plus)
     for (const pack of catalogue.packs) expect(text(w.find(`[data-tid="plan-pack-${pack.credits}"]`))).toContain(`£${pack.price.toFixed(2)}`)
-    expect(text(w.find('[data-tid="plan-pack-100"]'))).toContain('About 5 shapes or 25 parts')
+    expect(text(w.find('[data-tid="plan-pack-100"]'))).toContain('About 5 AI shapes or 25 AI parts')
     await w.find('[data-tid="plan-credits"] [data-tid="acct-more"]').trigger('click')
     const more = text(w.find('[data-tid="plan-credits"] [role="note"]'))
     expect(more).toContain('only used once you reach your plan\'s limit')
@@ -154,7 +154,7 @@ describe('Plan', () => {
     const w = await open(plus)
     const card = text(w.find('[data-tid="plan-option-plus"]'))
     expect(card).toContain('£8.99')
-    expect(card).toContain('10 shapes or 50 parts')
+    expect(card).toContain('10 AI shapes or 50 AI parts')
     w.destroy()
   })
 

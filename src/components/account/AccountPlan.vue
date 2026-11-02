@@ -7,7 +7,7 @@
       <div class="acct-head__title">
         <h1>Plan</h1>
         <acct-more label="How plans work">
-          We only charge for what costs us to run: making shapes, parts and scans on our servers. Everything else is free on every plan.
+          We only charge for what costs us to run: AI making shapes and parts, and scans, on our servers. CAD runs in your browser, so it is unlimited on every plan, and so is everything else.
           Your plan's usage resets each {{ windowName }}. Credits are a top-up, used only once you reach the limit.
         </acct-more>
       </div>

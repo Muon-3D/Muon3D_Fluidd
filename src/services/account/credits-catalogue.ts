@@ -57,7 +57,7 @@ export const CREDITS_CATALOGUE = {
   /** The plan the page marks as the one most people want. */
   recommended: 'plus' as PlanId,
   /** Free on every plan: nothing here costs us to run. */
-  free: ['Every printer feature', 'Part sliders', 'Editing a part\'s code', 'Make printable', 'Import', 'STEP export', 'Create API and MCP'],
+  free: ['Every printer feature', 'CAD in Design, with no limit on shapes or parts', 'Part sliders', 'Editing a part\'s code', 'Make printable', 'Import', 'STEP export', 'Create API and MCP'],
   /** Share of the weekly limit at which the page says it's nearly used. */
   warnAt: 0.8
 }
