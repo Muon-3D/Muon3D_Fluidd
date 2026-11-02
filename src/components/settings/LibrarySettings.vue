@@ -6,7 +6,7 @@
   >
     <div class="lib-set__titles">
       <h2>Library</h2>
-      <p>These follow your account, so they're the same in Fluidd, Slice and the app on every device.</p>
+      <p>These follow your account, so they're the same in Control, Slice and the app on every device.</p>
     </div>
 
     <!-- Signed out: the Library is the account's. -->
