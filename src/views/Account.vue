@@ -74,6 +74,7 @@
     <div
       v-if="showPane"
       class="acct-pane"
+      :class="{ 'acct-pane--wide': current.id === 'overview' }"
       data-tid="account-pane"
     >
       <router-link
