@@ -237,13 +237,12 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
     await startPairing(EID)
     await vi.advanceTimersByTimeAsync(60_000)
 
-    const waiting = submitPairingCode('12345678')
+    submitPairingCode('12345678').catch(() => {})
     await vi.advanceTimersByTimeAsync(75_000)
 
     expect(pairingState.phase).toBe('error')
     expect(pairingState.message).toMatch(/may have been added/)
     expect(pairingState.message).not.toMatch(/nothing was added/i)
-    void waiting
   })
 
   it('frees the pairing object after a failure', async () => {
