@@ -214,12 +214,11 @@ function untilAborted<T> (sending: Promise<T>, signal: AbortSignal | null | unde
   })
 }
 
-// Browsers end a multipart body with "--boundary--
-"; some runtimes
+// Browsers end a multipart body with "--boundary--\r\n"; some runtimes
 // (Node 20.19's undici) stop at "--boundary--". Moonraker's parser reads
 // both, but the bytes sent should be the same wherever the page runs.
 function closeMultipart (body: Uint8Array, type: string): Uint8Array {
-  const boundary = /boundary=("?)([^";]+)/i.exec(type)?.[2]
+  const boundary = /boundary=("?)([^";]+)\1/i.exec(type)?.[2]
   if (!boundary) return body
   const close = new TextEncoder().encode(`--${boundary}--`)
   if (body.length < close.length) return body
