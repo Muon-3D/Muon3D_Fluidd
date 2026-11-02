@@ -161,14 +161,14 @@ const cost = (id: CostId) => catalogue.costs.find(c => c.id === id)?.credits ?? 
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
-/** "About 5 shapes or 25 parts", "Enough for 3 parts", or "". */
+/** "About 5 AI shapes or 25 AI parts", "Enough for 3 AI parts", or "". Only AI jobs use credits (KAN-1197). */
 export function outcomesText (credits: number): string {
   // Before the catalogue is read, there is nothing to divide by.
   if (!cost('shape') || !cost('part')) return ''
   const shapes = Math.floor(credits / cost('shape'))
   const parts = Math.floor(credits / cost('part'))
-  if (shapes >= 1) return `About ${plural(shapes, 'shape')} or ${plural(parts, 'part')}`
-  if (parts >= 1) return `Enough for ${plural(parts, 'part')}`
+  if (shapes >= 1) return `About ${plural(shapes, 'AI shape')} or ${plural(parts, 'AI part')}`
+  if (parts >= 1) return `Enough for ${plural(parts, 'AI part')}`
   return ''
 }
 
@@ -186,11 +186,14 @@ export interface PlanRow {
 
 /**
  * What a plan gets, in the same rows for every plan so they line up side by
- * side. Only things that cost us to run.
+ * side. CAD comes first and is the same on every plan: it runs in the
+ * browser and costs us nothing, so no plan limits it (KAN-1197). The rest
+ * are the AI jobs and the queue, which cost us to run.
  */
 export function planRows (plan: CataloguePlan): PlanRow[] {
   return [
-    { label: 'Each week', value: outcomesText(plan.weeklyLimit).replace(/^About /, '') || 'No usage' },
+    { label: 'CAD in your browser', value: 'Unlimited' },
+    { label: 'AI made, each week', value: outcomesText(plan.weeklyLimit).replace(/^About /, '') || 'No usage' },
     { label: 'Jobs at once', value: String(plan.jobsAtOnce) },
     { label: 'Priority queue', value: plan.priority },
     { label: 'High detail shapes', value: plan.highDetail }
