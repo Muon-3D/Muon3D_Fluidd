@@ -80,7 +80,7 @@ describe('Access tokens', () => {
     expect(text).toContain('Laptop scripts')
     expect(text).toContain('mpat_Ab3')
     expect(text).toContain('Boxwood')
-    expect(text).toContain('Ask mode')
+    expect(text).toContain('Asks first')
     expect(text).toContain('Used 10 minutes ago')
     await w.find('[data-tid="tokens-revoke"]').trigger('click')
     await settle()

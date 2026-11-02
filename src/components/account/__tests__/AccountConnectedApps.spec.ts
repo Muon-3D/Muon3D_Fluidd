@@ -100,14 +100,15 @@ describe('Connected apps', () => {
     expect(w.find('img').exists()).toBe(false)
   })
 
-  it('shows Ask mode on a switch that cannot be changed yet', async () => {
+  it('says in plain words what an app asks about, and that nothing asks yet', async () => {
     connectedApps.mockResolvedValue({ apps: [app()] })
     const { w } = open()
     await settle()
-    const ask = w.find('[data-tid="apps-ask"]')
-    expect(ask.attributes('aria-checked')).toBe('true')
-    expect(ask.attributes('disabled')).toBeDefined()
-    expect(w.find('[data-tid="apps-row"]').text()).toContain('Ask mode')
+    expect(w.find('[data-tid="apps-ask"]').text()).toBe('Asks you before it publishes, prints, heats or moves')
+    const explain = w.find('[data-tid="apps-ask-explain"]').text()
+    expect(explain).toContain('publishing to your Library, starting a print, heating and moving a printer')
+    expect(explain).toContain('nothing will ask you yet')
+    expect(w.text()).not.toContain('Ask mode')
   })
 
   it('renders what the app says about itself as text, not HTML', async () => {

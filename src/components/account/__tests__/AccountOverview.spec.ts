@@ -2,6 +2,8 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AccountOverview from '../AccountOverview.vue'
 import type { CreditAccount } from '@/services/account/credits'
+import { cloudState } from '@/services/muon-cloud/state'
+import { accountState } from '@/services/account/state'
 
 const loadCredits = vi.hoisted(() => vi.fn((): Promise<unknown> => new Promise(() => {})))
 vi.mock('@/services/account/credits', async (actual) => ({ ...(await actual<object>()), loadCredits }))
@@ -57,6 +59,32 @@ describe('the Overview plan tile', () => {
     expect(tile(w)).toContain('Plus plan')
     expect(tile(w)).toContain('100% of this week\'s limit used · Resets Mon 2 Nov')
     expect(tile(w)).toContain('Limit reached')
+    w.destroy()
+  })
+})
+
+describe('the Overview cards', () => {
+  afterEach(() => {
+    cloudState.printers = []
+    accountState.me = null
+    accountState.sessions = null
+    accountState.approvals = null
+  })
+
+  it('give one value each, not sentences', async () => {
+    cloudState.printers = [
+      { id: 'p1', name: 'Boxwood', online: true, shared: false },
+      { id: 'p2', name: 'Gimlet', online: false, shared: true }
+    ] as never
+    accountState.me = { account: { id: 'a', email: 'a@b.c', name: 'A', created_at: 0, has_password: true, two_step: false }, sign_in: { password: true, passkeys: 0, identities: [], two_step: false } } as never
+    const w = overview()
+    await settle()
+    const card = (id: string) => w.findAll(`[data-tid="account-tile-${id}"] span`).wrappers
+      .filter(s => s.classes().some(c => /^ov-stat__(label|value|sub)$/.test(c)))
+      .map(s => s.text().replace(/\s+/g, ' '))
+    expect(card('security')).toEqual(['Security', 'Password only', 'Add a passkey or two-step'])
+    expect(card('printers')).toEqual(['Printers', '2', '1 shared with you'])
+    expect(card('sessions')).toEqual(['Devices', 'Reading…'])
     w.destroy()
   })
 })

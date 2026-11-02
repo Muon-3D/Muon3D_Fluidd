@@ -1,6 +1,6 @@
 <template>
   <div
-    class="acct-section"
+    class="acct-section ov"
     data-tid="account-overview"
   >
     <div
@@ -23,13 +23,13 @@
     </div>
 
     <section
-      class="lib-surface acct-you"
+      class="lib-surface ov-you"
       aria-label="You"
     >
       <span class="acct-avatar acct-avatar--xl">{{ initials }}</span>
-      <div class="acct-you__who">
+      <div class="ov-you__who">
         <h1>{{ account ? account.name : '' }}</h1>
-        <span class="acct-you__line">
+        <span class="ov-you__line">
           <span data-tid="account-email">{{ account ? account.email : '' }}</span>
           <span
             v-if="details && details.email_verified === true"
@@ -43,10 +43,6 @@
             class="lib-pill lib-pill--warn"
           >Not confirmed</span>
         </span>
-        <span
-          v-if="account"
-          class="acct-you__since"
-        >Member since {{ since }}</span>
       </div>
       <router-link
         :to="linkTo('profile')"
@@ -57,151 +53,90 @@
       </router-link>
     </section>
 
-    <div class="acct-grid3">
-      <component
-        :is="tileTag('security')"
-        :to="tileTo('security')"
-        class="lib-surface acct-tile"
+    <div class="ov-stats">
+      <router-link
+        :to="linkTo('security')"
+        class="lib-surface ov-stat"
         data-tid="account-tile-security"
       >
-        <span class="acct-tile__top"><frame-icon
+        <span class="ov-stat__label"><frame-icon
           name="shield"
           small
-        />Sign-in and security<frame-icon
-          v-if="built('security')"
-          name="chevronRight"
-          small
-          class="acct-tile__go"
-        /></span>
+        />Security</span>
         <template v-if="me">
-          <span class="acct-tile__status"><span
+          <span class="ov-stat__value"><span
             class="acct-dot"
             :class="`acct-dot--${health.level}`"
-          />{{ health.title }}</span>
-          <span class="acct-muted">{{ methods }}</span>
+          />{{ securityValue }}</span>
+          <span class="ov-stat__sub">{{ securitySub }}</span>
         </template>
         <span
           v-else
-          class="acct-muted"
+          class="ov-stat__sub"
         >Reading…</span>
-      </component>
+      </router-link>
 
-      <component
-        :is="tileTag('sessions')"
-        :to="tileTo('sessions')"
-        class="lib-surface acct-tile"
-        data-tid="account-tile-sessions"
-      >
-        <span class="acct-tile__top"><frame-icon
-          name="devices"
-          small
-        />Devices and sessions<frame-icon
-          v-if="built('sessions')"
-          name="chevronRight"
-          small
-          class="acct-tile__go"
-        /></span>
-        <template v-if="devices">
-          <span class="acct-tile__status"><span class="acct-dot" />Signed in on {{ deviceCount }}</span>
-          <span class="acct-muted">{{ devicesText }}</span>
-        </template>
-        <span
-          v-else
-          class="acct-muted"
-        >Reading…</span>
-      </component>
-
-      <component
-        :is="tileTag('printers')"
-        :to="tileTo('printers')"
-        class="lib-surface acct-tile"
+      <router-link
+        :to="linkTo('printers')"
+        class="lib-surface ov-stat"
         data-tid="account-tile-printers"
       >
-        <span class="acct-tile__top"><frame-icon
+        <span class="ov-stat__label"><frame-icon
           name="printer"
           small
-        />Printers and access<frame-icon
-          v-if="built('printers')"
-          name="chevronRight"
-          small
-          class="acct-tile__go"
-        /></span>
-        <span
-          v-if="printers.length"
-          class="acct-tile__status"
-        >
-          <printer-thumb
+        />Printers</span>
+        <span class="ov-stat__value">{{ printers.length }}
+          <span
+            v-if="printers.length"
+            class="ov-stat__thumbs"
+            aria-hidden="true"
+          ><printer-thumb
             v-for="p in printers.slice(0, 3)"
             :key="p.id"
-            :size="32"
+            :size="28"
             :state="thumbOf(p)"
-          />
-          <span>{{ printerNames }}</span>
+          /></span>
         </span>
-        <span class="acct-muted">{{ printersText }}</span>
-      </component>
+        <span class="ov-stat__sub">{{ printersSub }}</span>
+      </router-link>
 
-      <component
-        :is="tileTag('notifications')"
-        :to="tileTo('notifications')"
-        class="lib-surface acct-tile"
-        data-tid="account-tile-notifications"
+      <router-link
+        :to="linkTo('sessions')"
+        class="lib-surface ov-stat"
+        data-tid="account-tile-sessions"
       >
-        <span class="acct-tile__top"><frame-icon
-          name="bell"
+        <span class="ov-stat__label"><frame-icon
+          name="devices"
           small
-        />Notifications<frame-icon
-          v-if="built('notifications')"
-          name="chevronRight"
-          small
-          class="acct-tile__go"
-        /></span>
-        <span>Print alerts on your phone</span>
-        <span class="acct-muted">Security emails always on</span>
-      </component>
+        />Devices</span>
+        <template v-if="devices">
+          <span class="ov-stat__value">{{ deviceCount }}</span>
+          <span class="ov-stat__sub">signed in</span>
+        </template>
+        <span
+          v-else
+          class="ov-stat__sub"
+        >Reading…</span>
+      </router-link>
 
       <router-link
         :to="linkTo('library')"
-        class="lib-surface acct-tile"
+        class="lib-surface ov-stat"
         data-tid="account-tile-library"
       >
-        <span class="acct-tile__top"><frame-icon
+        <span class="ov-stat__label"><frame-icon
           name="library"
           small
-        />Library and storage<frame-icon
-          name="chevronRight"
-          small
-          class="acct-tile__go"
-        /></span>
+        />Library</span>
         <template v-if="libraryOn">
-          <span class="acct-tile__status"><span class="grow">{{ usedText }} used</span><span class="acct-muted">{{ quotaText }}</span></span>
+          <span class="ov-stat__value">{{ usedText }}</span>
           <span class="lib-bar"><i :style="{ width: `${usedPercent}%` }" /></span>
-          <span class="acct-muted">{{ libraryCounts }}</span>
+          <span class="ov-stat__sub">{{ quotaText || 'used' }}</span>
         </template>
-        <span
-          v-else
-          class="acct-muted"
-        >{{ libraryOffText }}</span>
+        <template v-else>
+          <span class="ov-stat__value">{{ libraryOffText }}</span>
+        </template>
       </router-link>
-
-      <component
-        :is="tileTag('privacy')"
-        :to="tileTo('privacy')"
-        class="lib-surface acct-tile"
-        data-tid="account-tile-privacy"
-      >
-        <span class="acct-tile__top"><frame-icon
-          name="eye"
-          small
-        />Privacy and data<frame-icon
-          v-if="built('privacy')"
-          name="chevronRight"
-          small
-          class="acct-tile__go"
-        /></span>
-        <span>Nothing of yours is public</span>
-        <span class="acct-muted">Download your data</span>
-      </component>
     </div>
 
     <router-link
@@ -221,6 +156,11 @@
         v-if="limitReached"
         class="lib-pill lib-pill--warn"
       >Limit reached</span>
+      <frame-icon
+        name="chevronRight"
+        small
+        class="acct-muted"
+      />
     </router-link>
 
     <section
@@ -232,7 +172,6 @@
       <div class="acct-card__title">
         <h2>Recent activity</h2>
         <router-link
-          v-if="built('sessions')"
           :to="linkTo('sessions')"
           class="acct-link"
         >
@@ -273,23 +212,18 @@ import { deletionState } from '@/services/muon-cloud/deletion'
 import type { CloudPrinter } from '@/services/muon-cloud/api'
 import { accountState, loadOverview } from '@/services/account/state'
 import {
-  ACCOUNT_SECTIONS,
   dayText,
   deviceCount,
   devicesFrom,
-  devicesLine,
   eventLine,
   initialsOf,
-  listText,
-  methodsLine,
-  monthText,
   securityHealth,
   whenText,
   type AccountSectionId,
   type Device,
   type SecurityHealth
 } from '@/services/account/model'
-import { libraryItems, libraryPrints, libraryState, refreshLibrary, watchLibraryAccount } from '@/services/library/store'
+import { libraryState, refreshLibrary, watchLibraryAccount } from '@/services/library/store'
 import { bytesText } from '@/services/library/format'
 import { limitState, loadCredits, planName, usageTileText, usageWindow, type CreditAccount } from '@/services/account/credits'
 import type { AccountDetails, Me } from '@/services/account/api'
@@ -308,10 +242,10 @@ const EVENT_ICONS: Record<string, string> = {
 }
 
 /**
- * The Account overview (the canvas's "Account · Overview"): who you are, a
- * tile for each part of the account with what matters in it, the plan, and
- * the last few things that happened. A tile opens its section once that
- * section's page exists.
+ * The Account overview: who you are, four numbers to glance at (security,
+ * printers, devices, Library), the plan, and the last few things that
+ * happened. Every other section is one click away in the list beside it, so
+ * the overview repeats none of their words (Jack, 2 Nov: "too much text").
  */
 @Component({ components: { PrinterThumb } })
 export default class AccountOverview extends Vue {
@@ -368,28 +302,17 @@ export default class AccountOverview extends Vue {
     return initialsOf(this.account?.name, this.account?.email)
   }
 
-  get since (): string {
-    return monthText(this.details?.created_at ?? this.account?.created_at ?? 0)
-  }
-
-  built (id: AccountSectionId): boolean {
-    return ACCOUNT_SECTIONS.some(s => s.id === id && s.built)
-  }
-
-  tileTag (id: AccountSectionId): string {
-    return this.built(id) ? 'router-link' : 'div'
-  }
-
-  tileTo (id: AccountSectionId): string | undefined {
-    return this.built(id) ? this.linkTo(id) : undefined
-  }
-
   get health (): SecurityHealth {
     return securityHealth(this.me as Me)
   }
 
-  get methods (): string {
-    return this.me ? methodsLine(this.me) : ''
+  /** Two words for the card; the Security page says the rest. */
+  get securityValue (): string {
+    return { good: 'Protected', fair: 'One way in', weak: 'Password only' }[this.health.level]
+  }
+
+  get securitySub (): string {
+    return { good: 'Nothing to do', fair: 'Add a second way in', weak: 'Add a passkey or two-step' }[this.health.level]
   }
 
   get devices (): Device[] | null {
@@ -398,10 +321,6 @@ export default class AccountOverview extends Vue {
 
   get deviceCount (): number {
     return this.devices ? deviceCount(this.devices) : 0
-  }
-
-  get devicesText (): string {
-    return this.devices ? devicesLine(this.devices) : ''
   }
 
   get printers (): CloudPrinter[] {
@@ -414,20 +333,13 @@ export default class AccountOverview extends Vue {
     return state === 'printing' || state === 'paused' ? 'printing' : 'idle'
   }
 
-  get printerNames (): string {
-    return listText(this.printers.slice(0, 3).map(p => p.name)) + (this.printers.length > 3 ? ` and ${this.printers.length - 3} more` : '')
-  }
-
-  get printersText (): string {
-    if (!this.printers.length) return 'No printers in your account yet.'
-    const yours = this.printers.filter(p => !p.shared).length
-    const shared = this.printers.length - yours
-    const parts: string[] = []
-    if (yours && !shared) parts.push(yours === 1 ? 'Yours.' : yours === 2 ? 'Both yours.' : 'All yours.')
-    else parts.push(`${yours} yours, ${shared} shared with you.`)
+  /** "2 shared with you", "1 request waiting", or who they belong to. */
+  get printersSub (): string {
     const waiting = accountState.approvals?.length ?? 0
-    if (waiting) parts.push(waiting === 1 ? 'One request waiting.' : `${waiting} requests waiting.`)
-    return parts.join(' ')
+    if (waiting) return waiting === 1 ? '1 request waiting' : `${waiting} requests waiting`
+    if (!this.printers.length) return 'None yet'
+    const shared = this.printers.filter(p => p.shared).length
+    return shared ? `${shared} shared with you` : 'All yours'
   }
 
   get libraryOn (): boolean {
@@ -453,14 +365,6 @@ export default class AccountOverview extends Vue {
     return quota > 0 ? Math.min(100, Math.round((used / quota) * 100)) : 0
   }
 
-  get libraryCounts (): string {
-    const prints = libraryPrints().length
-    const models = libraryItems().length - prints
-    const parts = [prints === 1 ? '1 print' : `${prints} prints`]
-    if (models) parts.push(models === 1 ? '1 model' : `${models} models`)
-    return parts.join(', ')
-  }
-
   get recent (): Array<{ id: string, icon: string, text: string, when: string }> {
     const name = (id: string) => cloudState.printers.find(p => p.id === id)?.name ?? 'a printer'
     return (accountState.events ?? []).slice(0, 3).map(e => {
@@ -480,6 +384,102 @@ export default class AccountOverview extends Vue {
     }
   }
 
+  .ov {
+    gap: 20px;
+  }
+
+  .ov-you {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 18px;
+    padding: 22px 24px;
+  }
+
+  .ov-you__who {
+    display: flex;
+    flex: 1 1 160px;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 600;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .ov-you__line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    color: var(--m3d-text-muted);
+    font-size: 14px;
+  }
+
+  // Four numbers: one row when there's room, else two by two (never 3 + 1).
+  .ov-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  @media (min-width: 1280px) {
+    .ov-stats {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .ov-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px 20px;
+    color: var(--m3d-text) !important;
+    text-decoration: none;
+
+    &:hover {
+      border-color: var(--m3d-border-strong);
+    }
+  }
+
+  .ov-stat__label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+    font-weight: 600;
+
+    .frame-icon {
+      color: var(--m3d-accent);
+    }
+  }
+
+  .ov-stat__value {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1.15;
+  }
+
+  .ov-stat__thumbs {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: auto;
+  }
+
+  .ov-stat__sub {
+    color: var(--m3d-text-subtle);
+    font-size: 13px;
+  }
+
   .acct-plan {
     display: flex;
     flex-direction: row;
@@ -487,9 +487,5 @@ export default class AccountOverview extends Vue {
     gap: 16px;
     color: var(--m3d-text) !important;
     text-decoration: none;
-  }
-
-  .grow {
-    flex: 1 1 auto;
   }
 </style>
