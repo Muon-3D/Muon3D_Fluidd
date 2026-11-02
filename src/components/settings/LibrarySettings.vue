@@ -197,26 +197,6 @@
         </router-link>
       </section>
 
-      <section
-        class="lib-surface lib-set__card lib-set__list"
-        aria-label="Your data"
-      >
-        <div class="lib-set__row">
-          <div class="lib-set__label">
-            <b>Turn the Library off</b>
-            <span>Saving stops at once. Everything is deleted after 30 days unless you turn it back on.</span>
-          </div>
-          <button
-            type="button"
-            class="lib-btn lib-btn--sm lib-btn--dng"
-            :disabled="busy"
-            data-tid="library-turn-off"
-            @click="turnOff"
-          >
-            Turn off
-          </button>
-        </div>
-      </section>
       <p
         v-if="error"
         class="lib-set__error"
@@ -243,7 +223,6 @@ import {
   libraryState,
   refreshLibrary,
   setLibraryPreferences,
-  turnLibraryOff,
   turnLibraryOn,
   watchLibraryAccount
 } from '@/services/library/store'
@@ -254,8 +233,10 @@ type Switch = 'autosave' | 'ask' | 'save_from_print_check'
  * Settings › Library: the account's Library, the same on every printer.
  * Signed out, it says why it needs the account; off, it shows the promise
  * and turns it on (the consent names that promise's version); on, the
- * three switches, the storage used, and turning it off, which deletes
- * everything after 30 days unless it is turned on again.
+ * three switches and the storage used. There is no off switch (Jack,
+ * 2 Nov, KAN-1198): saving is a prompt unless Save every slice is on, and
+ * "off" is only shown for an account an older turn-off left with a deletion
+ * pending. Erasing it is in library.muon3d.com's settings.
  */
 @Component({ components: { ToggleSwitch, CloudAccountDialog } })
 export default class LibrarySettings extends Vue {
@@ -331,15 +312,6 @@ export default class LibrarySettings extends Vue {
     if (version) return this.run(() => turnLibraryOn(version))
   }
 
-  async turnOff () {
-    const ok = await this.$confirm('Saving stops at once, and everything in your Library is deleted after 30 days unless you turn it back on. Each printer keeps the files it already has.', {
-      title: 'Turn the Library off?',
-      buttonTrueText: 'Turn off',
-      danger: true
-    })
-    if (!ok) return
-    await this.run(turnLibraryOff)
-  }
 }
 </script>
 
