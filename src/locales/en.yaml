@@ -386,9 +386,9 @@ app:
       needs_refresh: A new version of this page is ready. Reload to use it.
       pending_configuration_sections_deleted: The following sections are marked for deletion
       rolledover_logs: 'The following application logs have been rolled over: %{applications}'
-      not_valid_fluidd_backup_file: That isn't a Fluidd backup file.
-      fluidd_settings_backup_failed: Fluidd's settings couldn't be backed up.
-      fluidd_settings_restore_failed: Fluidd's settings couldn't be restored.
+      not_valid_fluidd_backup_file: That isn't a Control backup file.
+      fluidd_settings_backup_failed: Control's settings couldn't be backed up.
+      fluidd_settings_restore_failed: Control's settings couldn't be restored.
     simple_form:
       error:
         arrayofnums: Only numbers
@@ -660,7 +660,7 @@ app:
       fill_color: Fill color
       fill_opacity: Fill opacity
       filter: Filter | Filters
-      fluidd_settings_in_moonraker_db: Fluidd settings in Moonraker database
+      fluidd_settings_in_moonraker_db: Control settings in Moonraker database
       fps_target: FPS Target
       fps_idle_target: FPS Target when not in focus
       height: Height
@@ -775,7 +775,7 @@ app:
       connecting: Connecting to moonraker...
       no_connection: No moonraker connection. Please check moonraker status and / or refresh.
       stalled: Waiting for the printer. It hasn't answered for a few seconds, so what you see may be out of date.
-      retrying: Trying again. Fluidd keeps trying until the printer answers.
+      retrying: Trying again. Control keeps trying until the printer answers.
   system_info:
     label:
       awake_time: awake time
@@ -877,7 +877,7 @@ app:
       updates_available: Updates are available
       old_component_version: >-
         You are using an old version of %{name} that does not support all
-        features of Fluidd.<br>Update %{name} to at least %{version}.
+        features of Control.<br>Update %{name} to at least %{version}.
     status:
       finished: Updates finished
       updating: Updating...
