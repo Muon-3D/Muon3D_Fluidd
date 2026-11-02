@@ -27,7 +27,7 @@ export const PAIRING_WINDOW_MS = 120_000
 /** A little over the window, so the printer's own "expired" answer arrives first. */
 const SLACK_MS = 10_000
 /** Bringing the link up and starting the ceremony. */
-const START_TIMEOUT_MS = 30_000
+export const START_TIMEOUT_MS = 30_000
 /** What the panel lists beside the six symbols. */
 const LABEL = 'Control in a browser'
 
@@ -45,6 +45,8 @@ export const pairingState = Vue.observable({
 interface PairingSession {
   comparison (): string;
   submitCode (code: number): Promise<unknown>;
+  /** Frees the wasm object. Never while a `submitCode` is in flight. */
+  free? (): void;
 }
 
 interface PairingEndpoint {
@@ -70,37 +72,45 @@ function within<T> (promise: Promise<T>, ms: number, onTimeout: () => Error): Pr
   })
 }
 
+const NO_WINDOW = 'No pairing window is open on the printer. On its screen, open Settings > Add a device, then try again.'
+const BUSY = 'The printer is busy with another pairing. Wait for it to finish, or cancel it on the printer, then try again.'
+const DID_NOT_COMPLETE = 'The pairing did not complete. The code may have been wrong, or it took longer than about a minute and a half. On the printer, open Add a device for a new code and try again.'
+const ANOTHER_DEVICE = 'Another device is already pairing with this printer. Wait for it to finish, then try again.'
+const ENDED = 'The printer ended the pairing, so nothing was added. On its screen, open Add a device and try again.'
 const WINDOW_CLOSED = 'The pairing window closed after 2 minutes, so nothing was added. On the printer, open Settings > Add a device and try again.'
+/** Said whenever Control stops waiting for Confirm: the panel may still be about to write the record. */
+const MAY_HAVE_BEEN_ADDED = 'Control stopped waiting. If you pressed Confirm on the printer, Control may have been added. You can remove it under Add a device.'
 
+/** Control's own time limit ran out; `waiting` is true once the code was sent. */
 class Closed extends Error {
-  constructor () { super(WINDOW_CLOSED) }
+  constructor (readonly waiting: boolean) { super(waiting ? MAY_HAVE_BEEN_ADDED : WINDOW_CLOSED) }
 }
 
-/** Plain words for what the wasm client or the printer said. */
+/** The attempt was cancelled or timed out; whatever it opened is let go. */
+class Stale extends Error {}
+
+/**
+ * Plain words for what the wasm client or the printer said. The printer
+ * closes with 0x040a and a reason for every refusal, so the reason decides.
+ */
 export function pairingMessage (error: unknown): string {
   const kind = kindOf(error)
   const text = textOf(error)
-  if (error instanceof Closed) return WINDOW_CLOSED
+  if (error instanceof Closed) return error.message
   if (kind === 'code-burned') {
     return 'Three wrong codes. The printer has paused adding devices for 15 minutes, and nothing was added.'
   }
   if (kind === 'comparison-mismatch') {
     return "The six symbols didn't match, so Control stopped. Something may be between this computer and the printer. Nothing was added."
   }
-  if (kind === 'refused' || /no pairing window is open/i.test(text)) {
-    return 'No pairing window is open on the printer. On its screen, open Settings > Add a device, then try again.'
-  }
-  const pause = /refused for another (\d+)s after three/i.exec(text)
-  if (pause) {
-    const minutes = Math.max(1, Math.ceil(Number(pause[1]) / 60))
-    return `The printer has paused adding devices after three wrong codes. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`
-  }
+  if (/no pairing window is open/i.test(text)) return NO_WINDOW
+  if (/pairing is busy/i.test(text)) return BUSY
+  if (/pairing did not complete/i.test(text)) return DID_NOT_COMPLETE
+  if (/another client is already using/i.test(text)) return ANOTHER_DEVICE
   if (/expired/i.test(text)) return WINDOW_CLOSED
-  if (/too recently|opened \d+ pairing windows/i.test(text)) {
-    return 'The printer opened too many pairing windows just now. Wait a little, then open Add a device again.'
-  }
-  if (/window is now|ended the pairing/i.test(text)) {
-    return 'The printer ended the pairing, so nothing was added. On its screen, open Add a device and try again.'
+  if (/window is now|ended the pairing/i.test(text)) return ENDED
+  if (kind === 'refused') {
+    return `The printer refused the pairing: ${text.replace(/^.*refused the pairing:\s*/i, '')}`
   }
   return `Control couldn't pair with the printer: ${text}`
 }
@@ -139,14 +149,28 @@ export async function startPairing (printerId: string): Promise<void> {
     const relay = cloudState.config?.relay_url
     if (!relay) throw new Error('Control has not reached Muon3D yet, so it has no address to start from.')
     const endpoint = await browserEndpoint(relay) as unknown as PairingEndpoint
+    let abandoned = false
     const opened = await within(
       (async () => {
+        // A late answer from a cancelled or timed-out start must not leave
+        // the radio up or this browser as the window's candidate.
+        const stale = () => abandoned || mine !== generation
+        const letGo = () => {
+          if (mine === generation || pairingState.printerId === null) hangingUp = releaseBluetoothLink(printerId)
+        }
         await bluetoothRouteFor(endpoint, printerId)
+        if (stale()) { letGo(); throw new Stale() }
         if (typeof endpoint.beginPairing !== 'function') throw new Error("this version of Control can't pair over Bluetooth")
-        return endpoint.beginPairing(printerId, LABEL)
+        const begun = await endpoint.beginPairing(printerId, LABEL)
+        if (stale()) {
+          try { begun.free?.() } catch { /* already gone */ }
+          letGo()
+          throw new Stale()
+        }
+        return begun
       })(),
       START_TIMEOUT_MS,
-      () => new Error('The printer did not answer over Bluetooth in time.')
+      () => { abandoned = true; return new Error('The printer did not answer over Bluetooth in time.') }
     )
     if (mine !== generation) return
     session = opened
@@ -154,7 +178,7 @@ export async function startPairing (printerId: string): Promise<void> {
     pairingState.phase = 'code'
     pairingState.message = null
     // The printer's window began about now; past it, nothing can finish.
-    expiry = setTimeout(() => { if (mine === generation) fail(new Closed()) }, PAIRING_WINDOW_MS + SLACK_MS)
+    expiry = setTimeout(() => { if (mine === generation) fail(new Closed(false)) }, PAIRING_WINDOW_MS + SLACK_MS)
   } catch (error) {
     if (mine === generation) fail(error)
   }
@@ -177,7 +201,7 @@ export async function submitPairingCode (text: string): Promise<void> {
     await within(
       asked.submitCode(Number(digits)),
       PAIRING_WINDOW_MS + SLACK_MS,
-      () => new Closed()
+      () => new Closed(true)
     )
   } catch (error) {
     if (mine !== generation) return
@@ -194,6 +218,7 @@ export async function submitPairingCode (text: string): Promise<void> {
   // Paired: the panel confirmed, and the printer holds this key. Go in.
   clearTimer()
   session = null
+  try { asked.free?.() } catch { /* already gone */ }
   pairingState.phase = 'idle'
   pairingState.message = null
   pairingState.printerId = null
@@ -203,12 +228,22 @@ export async function submitPairingCode (text: string): Promise<void> {
   } catch { /* activationState holds the reason */ }
 }
 
-/** Closes the dialog, whatever step it is on. Nothing is stored, and the radio is let go. */
+/**
+ * Stops, whatever step it is on, and lets the radio go. Cancelling while the
+ * panel may still be asked to Confirm is not "nothing was added": the dialog
+ * then says Control may have been added.
+ */
 export function cancelPairing (): void {
+  const waiting = pairingState.phase === 'waiting'
   generation += 1
   release()
+  pairingState.comparison = ''
+  if (waiting) {
+    pairingState.phase = 'error'
+    pairingState.message = MAY_HAVE_BEEN_ADDED
+    return
+  }
   pairingState.phase = 'idle'
   pairingState.message = null
-  pairingState.comparison = ''
   pairingState.printerId = null
 }

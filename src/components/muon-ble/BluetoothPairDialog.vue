@@ -28,7 +28,8 @@
             Connecting over Bluetooth…
           </p>
           <p class="muon-ble-pair__body">
-            Keep this computer near the printer.
+            Keep this computer near the printer. It needs a pairing window open first: on its screen,
+            open <strong>Settings &gt; Add a device</strong>.
           </p>
           <div class="muon-ble-pair__actions">
             <v-btn
@@ -109,7 +110,7 @@
           </p>
           <p class="muon-ble-pair__body">
             On the printer, check the six characters are
-            <strong>{{ state.comparison }}</strong>, choose what Control may do, and press Confirm.
+            <strong data-tid="pair-waiting-sas">{{ state.comparison }}</strong>, choose what Control may do, and press Confirm.
             This ends by itself after 2 minutes.
           </p>
           <div class="muon-ble-pair__actions">
@@ -128,7 +129,7 @@
           data-tid="pair-failed"
         >
           <p class="muon-ble-pair__title">
-            Nothing was added
+            Pairing didn't finish
           </p>
           <p
             class="muon-ble-pair__body"
