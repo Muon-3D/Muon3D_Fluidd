@@ -6,6 +6,7 @@ import type { ForeignPrinterRecord } from '@/services/foreign-printers/types'
 import { foreignRegistry, foreignSlug } from '@/services/foreign-printers/registry'
 import { httpClientActions } from '@/api/httpClientActions'
 import { cloudState } from '@/services/muon-cloud/state'
+import { discoveryState } from '@/services/muon-cloud/discovery'
 import { MANAGED_API_URL } from '@/services/muon-cloud/origin'
 import { slugForCloudPrinter } from '../slug'
 import {
@@ -194,6 +195,65 @@ describe("another account printer's address", () => {
     expect(printerPagesState.aliases).toEqual({})
     store.state.config.apiUrl = ''
     cloudState.printers = []
+  })
+})
+
+describe('a printer the network search found', () => {
+  const BOXWOOD_ID = 'f1f6920f757634a16b969df342a052e2fac8af51567754717d86bf0905f1ad65'
+  const found = (endpointId: string | null) => ({
+    host: '192.168.1.153',
+    apiUrl: 'http://192.168.1.153',
+    name: 'Boxwood · 367A',
+    endpointId,
+    mdnsHost: 'muon-boxwood-367a.local',
+    link: { phase: 'linked' } as never
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    discoveryState.found = []
+    cloudState.printers = []
+    cloudState.activePrinterId = null
+    store.state.config.apiUrl = ''
+  })
+
+  it('opens at its own address, through the account when it is in it', () => {
+    // 2 Nov: Boxwood showed on control.muon3d.com when it was on, and
+    // /boxwood-367a said "No printer called boxwood-367a here".
+    cloudState.printers = [{ id: BOXWOOD_ID, name: 'Boxwood · 367A' } as never]
+    discoveryState.found = [found(BOXWOOD_ID)]
+    expect(resolveSlug('boxwood-367a')).toMatchObject({ kind: 'cloud', printerId: BOXWOOD_ID })
+  })
+
+  it('opens at its own address on this network when it is in no account', () => {
+    discoveryState.found = [found(null)]
+    expect(resolveSlug('boxwood-367a')).toMatchObject({
+      kind: 'local',
+      instance: { apiUrl: 'http://192.168.1.153', mdnsHost: 'muon-boxwood-367a.local' }
+    })
+  })
+
+  it('does not take the address of a printer saved here', () => {
+    const saved = store.state.config.instances
+    store.state.config.instances = [instance('http://10.0.0.9', { mdnsHost: 'muon-boxwood-367a.local' })]
+    discoveryState.found = [found(null)]
+    expect(resolveSlug('boxwood-367a')).toMatchObject({ kind: 'local', instance: { apiUrl: 'http://10.0.0.9' } })
+    store.state.config.instances = saved
+  })
+
+  it('is the open printer under its own address once it has said who it is through Muon3D', async () => {
+    cloudState.printers = [{ id: BOXWOOD_ID, name: 'Boxwood · 367A' } as never]
+    store.state.config.apiUrl = MANAGED_API_URL
+    cloudState.activePrinterId = BOXWOOD_ID
+    vi.spyOn(httpClientActions, 'get').mockResolvedValue({
+      data: { result: { name: 'Boxwood', suffix: '367a', endpoint_id: BOXWOOD_ID } }
+    } as never)
+
+    const cloudSlug = slugForCloudPrinter({ id: BOXWOOD_ID, name: 'Boxwood · 367A' })
+    await expect(learnActiveIdentity()).resolves.toBe(cloudSlug)
+    expect(activeSlug()).toBe(cloudSlug)
+    expect(isActiveSlug('boxwood-367a')).toBe(true)
+    expect(isActiveSlug('walnut-8987')).toBe(false)
   })
 })
 
