@@ -182,7 +182,7 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
     await startPairing(EID)
 
     expect(pairingState.message).not.toMatch(/14 minutes/)
-    expect(pairingState.message).toMatch(/pairing is refused for another 840s/)
+    expect(pairingState.message).toMatch(/printer ended the pairing/)
   })
 
   it('when the panel never confirms, stops waiting and says Control may have been added', async () => {
