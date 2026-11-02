@@ -293,6 +293,11 @@ export function useBluetoothFor (printerId: string, device: BleDevice) {
   routes.set(id, { device, link: null })
 }
 
+/** True once the person asked to open `printerId` over Bluetooth and has not stopped. */
+export function wantsBluetoothFor (printerId: string): boolean {
+  return routes.has(printerId.toLowerCase())
+}
+
 export function stopUsingBluetoothFor (printerId: string) {
   const id = printerId.toLowerCase()
   routes.get(id)?.link?.disconnect()
