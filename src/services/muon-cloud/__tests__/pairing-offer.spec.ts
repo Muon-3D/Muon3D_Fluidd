@@ -45,16 +45,51 @@ describe('offering to pair this browser (KAN-1253)', () => {
 
     expect(activationState.pairing).toBe(EID)
     expect(activationState.error).toMatch(/Control/)
-    expect(activationState.error).toMatch(/pair/i)
+    expect(activationState.error).toMatch(/doesn't know this browser/)
+    // The window must be open before pairing can start.
+    expect(activationState.error).toMatch(/first open Settings > Add a device/)
   })
 
-  it('does not offer it for a refusal that is not "unauthorised"', async () => {
+  it.each([
+    [0x040b, /access expired/],
+    [0x0403, /was removed from the printer/]
+  ])('also offers it for the refusal %i, with its own sentence', async (code, copy) => {
     useBluetoothFor(EID, fakePrinter().device)
-    cloud.borrowCloudPrinter.mockResolvedValue(transport(async () => { throw refusal(0x0403) }))
+    cloud.borrowCloudPrinter.mockResolvedValue(transport(async () => { throw refusal(code) }))
+
+    await expect(activateCloudPrinter(EID)).rejects.toThrow()
+
+    expect(activationState.pairing).toBe(EID)
+    expect(activationState.error).toMatch(copy)
+    expect(activationState.error).toMatch(/first open Settings > Add a device/)
+  })
+
+  it('does not offer it for a refusal by policy (0x0402)', async () => {
+    useBluetoothFor(EID, fakePrinter().device)
+    cloud.borrowCloudPrinter.mockResolvedValue(transport(async () => { throw refusal(0x0402) }))
 
     await expect(activateCloudPrinter(EID)).rejects.toThrow()
 
     expect(activationState.pairing).toBeNull()
+  })
+
+  it('asks the printer nothing ahead of the page load on a relay open', async () => {
+    const relay = transport(async () => new Response('{}'))
+    cloud.borrowCloudPrinter.mockResolvedValue(relay)
+
+    await activateCloudPrinter(EID)
+
+    expect(relay.fetch).not.toHaveBeenCalled()
+  })
+
+  it('asks the printer once, ahead of the page load, on a Bluetooth open', async () => {
+    useBluetoothFor(EID, fakePrinter().device)
+    const radio = transport(async () => new Response('{}'))
+    cloud.borrowCloudPrinter.mockResolvedValue(radio)
+
+    await activateCloudPrinter(EID)
+
+    expect(radio.fetch).toHaveBeenCalledTimes(1)
   })
 
   it.each([401, 403])('never offers it for the console saying %i', async status => {
