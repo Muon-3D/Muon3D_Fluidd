@@ -17,6 +17,8 @@ import { type PrinterTransport } from '@/services/managed-transport'
 import { borrowCloudPrinter, cloudState, dropCloudConnection, printerName, setActiveCloudPrinter } from './state'
 import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
 import { isOwnHotspot, pageReach } from './discovery'
+import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { isUnauthorisedRefusal } from '@/services/muon-ble/refusal'
 
 export { MANAGED_API_URL, MANAGED_SOCKET_URL }
 
@@ -24,8 +26,18 @@ export const activationState = Vue.observable({
   switching: null as string | null,
   error: null as string | null,
   /** The printer's own page, when this page may not reach the printer itself. */
-  fallbackUrl: null as string | null
+  fallbackUrl: null as string | null,
+  /**
+   * The printer that refused this browser's key over Bluetooth as a stranger
+   * (KAN-1253). Set only by that refusal, never by the console, so the offer
+   * to pair this browser appears for nothing else.
+   */
+  pairing: null as string | null
 })
+
+/** What Control says when the printer does not know this browser's key. */
+export const NOT_PAIRED_MESSAGE = "This printer doesn't know this browser yet, so it won't let Control in over Bluetooth. " +
+  "Pair this browser with it, using the printer's screen."
 
 let current: { transport: PrinterTransport, release: () => void } | null = null
 let generation = 0
@@ -109,12 +121,18 @@ export async function activateCloudPrinter (printerId: string) {
   activationState.switching = printerId
   activationState.error = null
   activationState.fallbackUrl = null
+  activationState.pairing = null
   // Set inside `open`, so typed here rather than narrowed to null.
   let transport = null as PrinterTransport | null
   const open = async () => {
     try {
       // The printer Fluidd is on stays usable while the grant comes.
       const borrowed = transport = await borrowCloudPrinter(printerId)
+      if (superseded()) throw new SwitchSuperseded()
+      // Over Bluetooth, the printer decides on the first request whether it
+      // knows this key. Asking here, ahead of the page's own load, lets that
+      // refusal arrive as itself.
+      if (wantsBluetoothFor(printerId)) await borrowed.fetch('/server/info')
       if (superseded()) throw new SwitchSuperseded()
       await oneAtATime(mine, async () => {
         Vue.$socket?.releaseTransportSocket(true)
@@ -158,7 +176,9 @@ export async function activateCloudPrinter (printerId: string) {
     ])
   } catch (error) {
     if (!superseded() && !(error instanceof SwitchSuperseded)) {
-      activationState.error = (error as Error).message
+      const strangerOverBluetooth = wantsBluetoothFor(printerId) && isUnauthorisedRefusal(error)
+      activationState.error = strangerOverBluetooth ? NOT_PAIRED_MESSAGE : (error as Error).message
+      activationState.pairing = strangerOverBluetooth ? printerId : null
       // Timed out before this printer was bound: the one Fluidd is on stays.
       const bound = !(error instanceof RemoteOpenTimeout) || (!!transport && current?.transport === transport)
       if (bound) {

@@ -175,6 +175,12 @@
       class="muon-switcher__note muon-switcher__note--error"
     >
       {{ activationError }}
+      <a
+        v-if="pairingOffer"
+        href="#"
+        data-tid="pair-offer"
+        @click.prevent="pairThisBrowser"
+      >Pair this browser</a>
       <template v-if="activationFallback">
         <a :href="activationFallback">Open the printer's own page</a> instead.
       </template>
