@@ -524,7 +524,7 @@
           v-if="mixedContentBlocked"
           class="foreign-warning"
         >
-          Firefox and Safari block this page (https) from talking to a printer on plain http — that's mixed content. Chrome can reach printers on your network: open Fluidd in Chrome.
+          Firefox and Safari block this page (https) from talking to a printer on plain http — that's mixed content. Chrome can reach printers on your network: open Control in Chrome.
         </p>
         <div class="foreign-grid">
           <article
@@ -931,7 +931,7 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
 
   async forgetForeignPrinter (tile: PrinterTile) {
     const name = tile.entry.foreign!.record.name
-    if (await this.$confirm(`Fluidd forgets ${name} in this browser.`, { title: `Forget ${name}?`, buttonTrueText: 'Forget', danger: true })) {
+    if (await this.$confirm(`Control forgets ${name} in this browser.`, { title: `Forget ${name}?`, buttonTrueText: 'Forget', danger: true })) {
       await forgetForeign(tile.entry.foreign!.record.id)
     }
   }
