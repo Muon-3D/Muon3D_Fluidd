@@ -1,7 +1,7 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import type { InstanceConfig } from '@/store/config/types'
 import StateMixin from './state'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import { foundOpenFor } from '@/services/muon-cloud/found-open'
 import {
@@ -245,7 +245,11 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       case 'connect-cloud': return this.connectCloud(e)
       case 'connect-bluetooth':
         if (!e.cloud || !e.nearby) return
+        // Straight to the radio (KAN-1253): the handoff behind connectCloud no
+        // longer waits on the service for this printer, and a connection
+        // already open through the relay is dropped so this dial uses the link.
         useBluetoothFor(e.cloud.id, e.nearby.device)
+        dropCloudConnection(e.cloud.id)
         return this.connectCloud(e)
       case 'connect': return this.openFoundEntry(e)
       case 'link': return this.link(e)

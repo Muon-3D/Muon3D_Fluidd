@@ -23,6 +23,7 @@ import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession,
 import { consolePresence } from './presence'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
+import { wantsBluetoothFor } from '@/services/muon-ble/link'
 
 const ACTIVE_KEY = 'muon.cloud.active'
 
@@ -163,10 +164,53 @@ export function requestAccess (printerId: string): Promise<AccessHandoff> {
   return pending
 }
 
-async function handoff (printerId: string, signal: AbortSignal): Promise<AuthorizedManagedRelaySession> {
+/**
+ * How long a Bluetooth open waits for the console's grant before going on
+ * without it (KAN-1253). An online printer answers in well under this.
+ */
+export const BLUETOOTH_GRANT_GRACE_MS = 4_000
+
+/**
+ * The handoff for a printer the person chose to open over Bluetooth. The
+ * console's grant is asked for as ever and used if it comes, because an
+ * online printer only admits this key once the console has pushed a grant to
+ * it. But the radio must not wait on the console: a printer the console
+ * calls offline (503 `device_unreachable`) may be sitting beside the laptop,
+ * and a key it already holds (paired, or enrolled at setup) needs no grant.
+ * So a refusal, a timeout or no network ends the wait, and the session is
+ * local: the relay address from the console's config, no grant.
+ */
+async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promise<AuthorizedManagedRelaySession> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const asked = requestAccess(printerId).catch(error => {
+    if (error instanceof CloudError && error.deletionPending) throw error
+    return null
+  })
+  const grant = await Promise.race([
+    asked,
+    new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), BLUETOOTH_GRANT_GRACE_MS) })
+  ]).finally(() => clearTimeout(timer))
   signal.throwIfAborted()
-  const grant = await requestAccess(printerId)
+  if (grant) return sessionFrom(grant)
+  let relayUrl = cloudState.config?.relay_url
+  if (!relayUrl) {
+    try {
+      relayUrl = (cloudState.config = await cloudApi.config()).relay_url
+    } catch { /* no console either: the error below says so */ }
+  }
   signal.throwIfAborted()
+  if (!relayUrl) throw new Error('Muon3D could not be reached, and this page does not know its relay yet. Open Control once with a connection, then try Bluetooth again.')
+  return {
+    contractVersion: 'managed-iroh/v1',
+    sessionId: `bluetooth-${printerId}`,
+    tenantId: cloudState.account?.id ?? 'local',
+    printerId,
+    relayUrl,
+    expiresAt: new Date(Date.now() + 3600_000).toISOString()
+  }
+}
+
+function sessionFrom (grant: AccessHandoff): AuthorizedManagedRelaySession {
   return {
     contractVersion: 'managed-iroh/v1',
     sessionId: grant.grant_id,
@@ -175,6 +219,14 @@ async function handoff (printerId: string, signal: AbortSignal): Promise<Authori
     relayUrl: grant.relay_url,
     expiresAt: new Date(grant.expires_at * 1000).toISOString()
   }
+}
+
+async function handoff (printerId: string, signal: AbortSignal): Promise<AuthorizedManagedRelaySession> {
+  signal.throwIfAborted()
+  if (wantsBluetoothFor(printerId)) return bluetoothHandoff(printerId, signal)
+  const grant = await requestAccess(printerId)
+  signal.throwIfAborted()
+  return sessionFrom(grant)
 }
 
 async function statusConnection (printerId: string): Promise<PrinterTransport> {
