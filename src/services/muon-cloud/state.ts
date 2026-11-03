@@ -24,6 +24,7 @@ import { consolePresence } from './presence'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
 
 const ACTIVE_KEY = 'muon.cloud.active'
 
@@ -300,6 +301,10 @@ async function pollOne (printer: CloudPrinter) {
   const presence = consolePresence(printer)
   if (presence !== 'online') unavailable(presence)
   if (presence === 'offline' || polling.has(printer.id)) return
+  // I-129: a Bluetooth route that keeps failing backs off, then stops.
+  const overBluetooth = wantsBluetoothFor(printer.id)
+  if (!overBluetooth) noteBluetoothSuccess(printer.id)
+  else if (!mayDialBluetooth(printer.id)) return
   polling.add(printer.id)
   try {
     const connection = await statusConnection(printer.id)
@@ -307,6 +312,7 @@ async function pollOne (printer: CloudPrinter) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const s = (await response.json()).result.status
     if (signal.aborted) return
+    if (overBluetooth) noteBluetoothSuccess(printer.id)
     const latest = cloudState.printers.find(p => p.id === printer.id)
     if (!latest) return
     const presence = consolePresence(latest)
@@ -317,6 +323,7 @@ async function pollOne (printer: CloudPrinter) {
       updatedAt: Date.now()
     } as PrinterStatus)
   } catch (error) {
+    if (overBluetooth && !signal.aborted) noteBluetoothFailure(printer.id, error)
     const latest = cloudState.printers.find(p => p.id === printer.id)
     if (latest) unavailable(consolePresence(latest) === 'offline' ? 'offline' : 'reconnecting')
   } finally {
