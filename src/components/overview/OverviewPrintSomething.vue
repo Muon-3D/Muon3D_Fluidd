@@ -160,7 +160,7 @@ export default class OverviewPrintSomething extends Mixins(OverviewMixin, Browse
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-top: auto;
+    margin-top: 4px;
     padding: 14px 16px;
     border: 1.5px dashed var(--m3d-border-strong);
     border-radius: 14px;
