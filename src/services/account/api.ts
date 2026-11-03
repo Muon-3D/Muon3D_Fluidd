@@ -177,6 +177,15 @@ export interface SignInAnswer {
   account: AccountDetails;
 }
 
+/**
+ * New (muon-link-cloud KAN-1389): a credential change answers `session`, the
+ * caller's new access and refresh token, and `null` when there is nothing to
+ * re-key. `accountRequest` stores it.
+ */
+export interface Rekeyed {
+  session?: { access_token: string, refresh_token?: string, session_id?: string } | null;
+}
+
 const json = <T>(method: string, path: string, body?: unknown) => accountRequest<T>(method, path, body)
 
 export const accountApi = {
@@ -195,21 +204,21 @@ export const accountApi = {
   passkeys: () => json<{ passkeys: Passkey[] }>('GET', '/v1/me/passkeys'),
   passkeyCreateOptions: () => json<{ ceremony_id: string, options: { publicKey: Record<string, unknown> } }>('POST', '/v1/me/passkeys/options'),
   passkeyCreate: (ceremonyId: string, credential: unknown, name: string, reauth: Reauth = {}) =>
-    json<{ id: string, name: string }>('POST', '/v1/me/passkeys', { ceremony_id: ceremonyId, credential, name, ...reauth }),
+    json<{ id: string, name: string } & Rekeyed>('POST', '/v1/me/passkeys', { ceremony_id: ceremonyId, credential, name, ...reauth }),
   /** New. */
   renamePasskey: (id: string, name: string, reauth: Reauth = {}) => json<{ id: string, name: string }>('PATCH', `/v1/me/passkeys/${encodeURIComponent(id)}`, { name, ...reauth }),
-  removePasskey: (id: string, reauth: Reauth = {}) => json<{ ok: boolean }>('DELETE', `/v1/me/passkeys/${encodeURIComponent(id)}`, reauth),
+  removePasskey: (id: string, reauth: Reauth = {}) => json<{ ok: boolean } & Rekeyed>('DELETE', `/v1/me/passkeys/${encodeURIComponent(id)}`, reauth),
 
   identities: () => json<{ identities: Identity[] }>('GET', '/v1/me/identities'),
-  unlinkIdentity: (provider: string, reauth: Reauth = {}) => json<{ ok: boolean }>('DELETE', `/v1/me/identities/${encodeURIComponent(provider)}`, reauth),
+  unlinkIdentity: (provider: string, reauth: Reauth = {}) => json<{ ok: boolean } & Rekeyed>('DELETE', `/v1/me/identities/${encodeURIComponent(provider)}`, reauth),
 
-  totpBegin: (reauth: Reauth = {}) => json<{ secret: string, otpauth_url: string }>('POST', '/v1/me/totp', reauth),
-  totpConfirm: (code: string) => json<{ ok: boolean, recovery_codes: string[] }>('POST', '/v1/me/totp/confirm', { code }),
-  totpOff: (code: string) => json<{ ok: boolean }>('DELETE', '/v1/me/totp', { code }),
+  totpBegin: (reauth: Reauth = {}) => json<{ secret: string, otpauth_url: string } & Rekeyed>('POST', '/v1/me/totp', reauth),
+  totpConfirm: (code: string) => json<{ ok: boolean, recovery_codes: string[] } & Rekeyed>('POST', '/v1/me/totp/confirm', { code }),
+  totpOff: (code: string) => json<{ ok: boolean } & Rekeyed>('DELETE', '/v1/me/totp', { code }),
   /** New. */
-  newRecoveryCodes: (reauth: Reauth = {}) => json<{ ok: boolean, recovery_codes: string[], recovery_generated_at?: number }>('POST', '/v1/me/totp/recovery-codes', reauth),
+  newRecoveryCodes: (reauth: Reauth = {}) => json<{ ok: boolean, recovery_codes: string[], recovery_generated_at?: number } & Rekeyed>('POST', '/v1/me/totp/recovery-codes', reauth),
 
-  changePassword: (newPassword: string, reauth: Reauth = {}) => json<{ ok: boolean }>('PUT', '/v1/me/password', { new_password: newPassword, ...reauth }),
+  changePassword: (newPassword: string, reauth: Reauth = {}) => json<{ ok: boolean } & Rekeyed>('PUT', '/v1/me/password', { new_password: newPassword, ...reauth }),
   changeEmail: (email: string, reauth: Reauth = {}) => json<{ ok: boolean }>('PUT', '/v1/me/email', { email, ...reauth }),
   /** New. */
   cancelEmailChange: () => json<{ ok: boolean }>('DELETE', '/v1/me/email/pending'),
