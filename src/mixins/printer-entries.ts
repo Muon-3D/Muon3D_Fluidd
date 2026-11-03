@@ -1,7 +1,7 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import type { InstanceConfig } from '@/store/config/types'
 import StateMixin from './state'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import { foundOpenFor } from '@/services/muon-cloud/found-open'
 import {
@@ -30,7 +30,8 @@ import {
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import { lookNearby, nearbyState, type NearbyPrinter } from '@/services/muon-ble/nearby'
-import { useBluetoothFor } from '@/services/muon-ble/link'
+import { stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
+import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
 
 /**
@@ -242,11 +243,10 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     this.notice = null
     switch (id) {
       case 'connect-local': return this.connectLocal(e)
-      case 'connect-cloud': return this.connectCloud(e)
+      case 'connect-cloud': return this.connectCloud(e, 'relay')
       case 'connect-bluetooth':
         if (!e.cloud || !e.nearby) return
-        useBluetoothFor(e.cloud.id, e.nearby.device)
-        return this.connectCloud(e)
+        return this.connectCloud(e, e.nearby.device)
       case 'connect': return this.openFoundEntry(e)
       case 'link': return this.link(e)
       case 'remove': return this.remove(e)
@@ -289,10 +289,25 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return this.connectCloud(e)
   }
 
-  connectCloud (e: DirectoryEntry) {
+  /**
+   * `route` is the person's choice of way in (KAN-1253): the device to open it
+   * over Bluetooth, or `'relay'` to undo an earlier Bluetooth choice. The
+   * choice and the drop of any open connection happen inside `run`, so a click
+   * ignored while another open is busy changes nothing. The handoff behind a
+   * Bluetooth choice no longer waits on the service for this printer, and a
+   * connection already open is dropped so this dial uses the chosen route.
+   */
+  connectCloud (e: DirectoryEntry, route?: 'relay' | BleDevice) {
     if (!e.cloud) return
     const id = e.cloud.id
     return this.run(e.key, async () => {
+      if (route === 'relay') {
+        stopUsingBluetoothFor(id)
+        dropCloudConnection(id)
+      } else if (route) {
+        useBluetoothFor(id, route)
+        dropCloudConnection(id)
+      }
       await activateCloudPrinter(id)
       return true
     })
