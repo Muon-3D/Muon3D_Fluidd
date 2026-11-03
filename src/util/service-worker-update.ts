@@ -37,3 +37,26 @@ export function refreshServiceWorker (
     })().catch(finish)
   })
 }
+
+/**
+ * Applies a waiting service worker without waiting for a click on the toast
+ * (KAN-1279: a tab kept the old bundle for a week because nobody pressed
+ * Reload). It runs `apply` now when nothing is in flight, else as soon as
+ * `busy` turns false. Returns whether it ran at once; `cancel` stops a wait.
+ */
+export function applyUpdateWhenIdle (
+  busy: () => boolean,
+  apply: () => void,
+  pollMs = 500
+): { immediate: boolean, cancel: () => void } {
+  if (!busy()) {
+    apply()
+    return { immediate: true, cancel: () => {} }
+  }
+  const timer = setInterval(() => {
+    if (busy()) return
+    clearInterval(timer)
+    apply()
+  }, pollMs)
+  return { immediate: false, cancel: () => clearInterval(timer) }
+}
