@@ -30,8 +30,9 @@ import {
 } from '@/services/muon-cloud/directory'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
-import { lookNearby, nearbyState, type NearbyPrinter } from '@/services/muon-ble/nearby'
+import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { startPairing } from '@/services/muon-ble/pairing'
+import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
 import { stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
@@ -198,8 +199,13 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     // Whenever it was heard nearby, whatever the service says (KAN-1175, ADR
     // 0052): the service can call a printer online that this browser cannot
     // reach through the relay, and Bluetooth is the way in then.
-    if (e.nearby && e.cloud) {
+    // I-129: and wherever this browser has Bluetooth at all, heard or not: the
+    // action runs the device picker itself, so "Look nearby" is not a first step.
+    if (e.cloud && (e.nearby || nearbyState.support === 'supported')) {
       actions.push({ id: 'connect-bluetooth', label: 'Connect over Bluetooth', icon: '$bluetooth' })
+    }
+    if (e.cloud && bleRetryState.stopped[e.cloud.id]) {
+      actions.push({ id: 'retry-bluetooth', label: 'Retry Bluetooth', icon: '$bluetooth', hint: bleRetryState.stopped[e.cloud.id] })
     }
     actions.push({
       id: 'access',
@@ -259,14 +265,15 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return this.foundActions(e)
   }
 
-  onAction (e: DirectoryEntry, id: string) {
+  async onAction (e: DirectoryEntry, id: string) {
     this.notice = null
     switch (id) {
       case 'connect-local': return this.connectLocal(e)
       case 'connect-cloud': return this.connectCloud(e, 'relay')
+      case 'retry-bluetooth':
       case 'connect-bluetooth':
-        if (!e.cloud || !e.nearby) return
-        return this.connectCloud(e, e.nearby.device)
+        if (!e.cloud) return
+        return this.connectOverBluetooth(e)
       case 'connect': return this.openFoundEntry(e)
       case 'link': return this.link(e)
       case 'remove': return this.remove(e)
@@ -318,6 +325,29 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     if (e.section === 'cloud') return this.openCloudEntry(e)
     if (e.section === 'local') return this.openLocalEntry(e)
     return this.openFoundEntry(e)
+  }
+
+  /**
+   * The whole Bluetooth way in from one menu item (I-131): the device already
+   * heard, else one this browser may already use, else the chooser; then the
+   * link and the connect. A printer that refuses this browser as a stranger
+   * goes straight into pairing, and the connect continues once paired.
+   */
+  async connectOverBluetooth (e: DirectoryEntry) {
+    if (!e.cloud) return
+    const id = e.cloud.id
+    let heard = e.nearby ?? await permittedPrinterFor(id).catch(() => null)
+    if (!heard) {
+      heard = await lookNearby()
+      if (!heard) return
+      if (heard.endpointId && !isPrinter(heard, id)) {
+        this.notice = `That device isn't ${e.name}. Choose ${e.name} in the Bluetooth list.`
+        return
+      }
+    }
+    retryBluetooth(id)
+    await this.connectCloud(e, heard.device)
+    if (activationState.pairing === id) await startPairing(id)
   }
 
   openCloudEntry (e: DirectoryEntry) {
