@@ -30,6 +30,7 @@ import {
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import { lookNearby, nearbyState, type NearbyPrinter } from '@/services/muon-ble/nearby'
+import { startPairing } from '@/services/muon-ble/pairing'
 import { stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
@@ -84,6 +85,15 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
 
   get activationError () {
     return activationState.error
+  }
+
+  /** The printer that refused this browser over Bluetooth: Control can pair with it (KAN-1253). */
+  get pairingOffer () {
+    return activationState.pairing
+  }
+
+  pairThisBrowser () {
+    if (activationState.pairing) startPairing(activationState.pairing).catch(() => {})
   }
 
   get activationFallback () {

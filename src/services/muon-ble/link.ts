@@ -298,6 +298,18 @@ export function wantsBluetoothFor (printerId: string): boolean {
   return routes.has(printerId.toLowerCase())
 }
 
+/**
+ * Hangs up the live link to `printerId` and keeps the person's Bluetooth
+ * choice, so the next open or a retry brings the link up again.
+ */
+export function releaseBluetoothLink (printerId: string): Promise<void> {
+  const route = routes.get(printerId.toLowerCase())
+  if (!route?.link) return Promise.resolve()
+  const hangingUp = route.link.disconnect().catch(() => {})
+  route.link = null
+  return hangingUp
+}
+
 export function stopUsingBluetoothFor (printerId: string) {
   const id = printerId.toLowerCase()
   routes.get(id)?.link?.disconnect()
