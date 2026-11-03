@@ -25,6 +25,8 @@ interface ImportMetaEnv {
   readonly VITE_MODELS_URL?: string
   readonly VERSION: string
   readonly HASH: string
+  /** The full commit this build was made from (vite.config.inject-version.ts). */
+  readonly BUILD_COMMIT?: string
 }
 
 interface ImportMeta {
