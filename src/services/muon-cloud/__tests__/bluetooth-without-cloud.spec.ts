@@ -115,7 +115,7 @@ describe('Connect over Bluetooth with the cloud saying the printer is offline (K
     expect(ble.endpoint.addLink).toHaveBeenCalledTimes(1)
   })
 
-  it('waits longer than 4 s for the grant of a printer the service calls online', async () => {
+  it('does not wait past the 4 s grace for the grant, even for a printer the service calls online (I-133)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     cloudState.printers = [printer(true)]
     cloud(() => new Promise(resolve => setTimeout(() => resolve(granted()), 6_000)))
@@ -126,7 +126,8 @@ describe('Connect over Bluetooth with the cloud saying the printer is offline (K
     const transport = await opening
     expect((await transport.fetch('/printer/info')).status).toBe(200)
 
-    expect(sessions[0].sessionId).toBe('g1')
+    // The person chose Bluetooth: the radio does not wait on the relay's grant.
+    expect(sessions[0].grantless).toBe(true)
   }, 15_000)
 
   it('gives up on a printer the service calls online but keeps refusing, and stops asking', async () => {
