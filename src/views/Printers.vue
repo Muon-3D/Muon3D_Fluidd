@@ -435,6 +435,26 @@
             Search again
           </button>
         </div>
+        <p
+          v-if="secureSite"
+          class="printers__secure"
+          data-tid="found-secure"
+        >
+          <template v-if="openLinks.length">
+            Control doesn't scan your network from this secure page. Open a printer on your network in a new tab:
+            <a
+              v-for="link in openLinks"
+              :key="link.url"
+              :href="link.url"
+              target="_blank"
+              rel="noopener"
+              data-tid="open-on-network"
+            >{{ link.name }}: Open on this network</a>
+          </template>
+          <template v-else>
+            Control doesn't scan your network from this secure page. A printer on your network can be opened by its address, or over Bluetooth.
+          </template>
+        </p>
         <div class="printers__found">
           <found-printer-card
             v-for="tile in page.found"
@@ -730,7 +750,7 @@ import PrinterEntriesMixin from '@/mixins/printer-entries'
 import BrowserMixin from '@/mixins/browser'
 import FilesMixin from '@/mixins/files'
 import { cloudPrinterConnection, cloudState, saveLayout } from '@/services/muon-cloud/state'
-import { discoverPrinters, discoveryState, lanAddresses, lanFetch, refreshCloudNearby, refreshKnownPrinters, refreshLanStatus } from '@/services/muon-cloud/discovery'
+import { discoverPrinters, discoveryState, lanAddresses, lanFetch, lanOpenLinks, pageIsSecure, refreshCloudNearby, refreshKnownPrinters, refreshLanStatus } from '@/services/muon-cloud/discovery'
 import { afterFirstPaint } from '@/services/startup/idle'
 import { loadedRecord } from '@/services/muon-cloud/status'
 import { jobPicture } from '@/services/printers-page/pictures'
@@ -910,6 +930,14 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
       activeJob: this.activeJob,
       signedIn: !!this.account
     })
+  }
+
+  get secureSite (): boolean {
+    return pageIsSecure()
+  }
+
+  get openLinks () {
+    return lanOpenLinks()
   }
 
   get mixedContentBlocked (): boolean {
@@ -1595,6 +1623,16 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
   .printers__none {
     margin: 0;
     color: var(--m3d-text-muted);
+  }
+
+  .printers__secure {
+    margin: 0 0 12px;
+    color: var(--m3d-text-muted);
+
+    a {
+      display: block;
+      margin-top: 4px;
+    }
   }
 
   // -- offline ----------------------------------------------------------------
