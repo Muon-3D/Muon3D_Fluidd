@@ -23,6 +23,8 @@ import { Component, Vue } from 'vue-property-decorator'
 import { consola } from 'consola'
 import { EventBus } from '@/eventBus'
 import M3Toast from '@/components/ui/M3Toast.vue'
+import { activationState } from '@/services/muon-cloud/activate'
+import { applyUpdateWhenIdle } from '@/util/service-worker-update'
 
 @Component({ components: { M3Toast } })
 export default class RegisterServiceWorker extends Vue {
@@ -36,7 +38,13 @@ export default class RegisterServiceWorker extends Vue {
 
   onNeedRefresh () {
     consola.debug('[PWA] needs refresh')
-    this.needRefresh = true
+    // KAN-1279: apply the new worker unasked, unless a printer is mid-switch;
+    // then the toast stays up and the update lands when the switch is done.
+    const { immediate } = applyUpdateWhenIdle(
+      () => activationState.switching !== null,
+      () => this.updateServiceWorker()
+    )
+    this.needRefresh = !immediate
   }
 
   onRegistered (registration?: ServiceWorkerRegistration) {

@@ -321,7 +321,10 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
   }
 
   openCloudEntry (e: DirectoryEntry) {
-    if (e.active) {
+    // KAN-1279: `active` only says this printer was chosen. With its socket not
+    // open and ready the page is empty, and going to it again did nothing.
+    const socket = this.$store.state.socket
+    if (e.active && socket.open && socket.ready) {
       this.afterOpen()
       return
     }
