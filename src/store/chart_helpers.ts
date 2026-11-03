@@ -2,6 +2,9 @@ import type { Commit } from 'vuex'
 import type { RootState } from './types'
 import type { ChartData } from './charts/types'
 
+/** Minimum spacing of temperature history samples. */
+export const CHART_SAMPLE_INTERVAL_MS = 1000
+
 export const handleMcuStatsChange = (payload: any, state: RootState, commit: Commit) => {
   const keys = Object.keys(payload).filter(key => key.startsWith('mcu'))
   if (keys.length > 0) {
@@ -144,6 +147,11 @@ export const handleAddChartEntry = (retention: number, state: RootState, commit:
 
     return r
   }
+
+  // Klipper reports every 250 ms or faster, once per subscribed object. History is one
+  // sample per second, so a burst of status updates adds at most one entry per second.
+  const last = state.charts.chart[state.charts.chart.length - 1]
+  if (last && Date.now() - last.date.valueOf() < CHART_SAMPLE_INTERVAL_MS) return
 
   if (state.charts.ready) {
     const data = configureChartEntry()
