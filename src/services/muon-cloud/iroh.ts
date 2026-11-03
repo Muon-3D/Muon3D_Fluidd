@@ -13,7 +13,7 @@ import type {
 } from '@/services/managed-transport'
 import { bluetoothRouteFor, type WasmBleLink } from '@/services/muon-ble/link'
 import { cloudBaseUrl } from './api'
-import bundledWasmUrl from './vendor/muon-link-web/d71dbe1/muon_link_web_bg.wasm?url'
+import bundledWasmUrl from './vendor/muon-link-web/4b2e45a/muon_link_web_bg.wasm?url'
 
 const KEY_STORAGE = 'muon.cloud.key'
 // Remove after one release. Normal loads never depend on the console's files.
@@ -56,7 +56,7 @@ function loadWasm (): Promise<WasmModule> {
   if (!modulePromise) {
     modulePromise = (async () => {
       try {
-        const mod = await import('./vendor/muon-link-web/d71dbe1/muon_link_web.js') as WasmModule
+        const mod = await import('./vendor/muon-link-web/4b2e45a/muon_link_web.js') as WasmModule
         await mod.default({ module_or_path: bundledWasmUrl })
         return mod
       } catch (error) {
