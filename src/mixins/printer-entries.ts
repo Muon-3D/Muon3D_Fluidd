@@ -33,7 +33,7 @@ import { scopedPath } from '@/router/printerPagePaths'
 import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
-import { stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
+import { stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
 
@@ -45,6 +45,9 @@ import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/
 export const RUN_TIMEOUT_MS = 60_000
 
 class RunTimeout extends Error {}
+
+/** Counts runs, so one taken over by a chosen route does not clear the row of the one that took over. */
+let runCounter = 0
 
 /**
  * Every printer this browser knows of, and what can be done with each:
@@ -164,6 +167,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       cloudNearby: discoveryState.cloud,
       nearby: nearbyState.printers,
       activeCloudId: cloudState.activePrinterId,
+      viaBluetooth: wantsBluetoothFor,
       local: this.localLive,
       searching: discoveryState.scanning || !discoveryState.finishedAt
     })
@@ -289,14 +293,20 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     this.$emit('click')
   }
 
-  async run (key: string, work: () => Promise<boolean>) {
-    if (this.busyKey) {
+  /**
+   * `supersede` is a chosen way in (I-133): Connect over Bluetooth, or back to
+   * Muon3D. It takes over from an open already in flight (activateCloudPrinter
+   * supersedes the earlier dial) instead of hitting the busy guard.
+   */
+  async run (key: string, work: () => Promise<boolean>, supersede = false) {
+    if (this.busyKey && !supersede) {
       // KAN-1279: this used to return without a word, so a row whose earlier
       // open never settled looked dead: no spinner change, nothing logged.
       consola.warn(`Ignored a click on ${key}: still opening ${this.busyKey}`)
       this.notice = 'Still opening a printer. Give it a moment, or reload the page if it stays stuck.'
       return
     }
+    const mine = ++runCounter
     this.busyKey = key
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
@@ -316,7 +326,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       // Otherwise activationState holds the reason.
     } finally {
       clearTimeout(timer)
-      this.busyKey = null
+      // A run that was taken over leaves the row to the run that took over.
+      if (mine === runCounter) this.busyKey = null
     }
   }
 
@@ -384,7 +395,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       }
       await activateCloudPrinter(id)
       return true
-    })
+    }, !!route)
   }
 
   /** The saved address it answers on, else its address on this network. */

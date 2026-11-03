@@ -1,7 +1,7 @@
 <template>
   <div
     class="tile"
-    :class="[`tile--${variant}`, { 'tile--needs': needs, 'tile--printing': tile.state === 'printing', 'tile--busy': busy }]"
+    :class="[`tile--${variant}`, { 'tile--needs': needs, 'tile--printing': tile.state === 'printing', 'tile--busy': busy, 'tile--offline': tile.state === 'offline' }]"
     role="button"
     tabindex="0"
     :draggable="draggable ? 'true' : 'false'"
@@ -195,6 +195,11 @@ export default class PrinterTileCard extends Vue {
 
   .tile--busy {
     opacity: 0.8;
+  }
+
+  .tile--offline {
+    opacity: 0.6;
+    filter: grayscale(0.6);
   }
 
   .tile--card {

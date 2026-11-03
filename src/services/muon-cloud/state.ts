@@ -209,8 +209,9 @@ async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promis
   let timer: ReturnType<typeof setTimeout> | undefined
   let grant: AccessHandoff | null
   try {
-    const printer = cloudState.printers.find(p => p.id === printerId)
-    const wait = printer && consolePresence(printer) === 'online' ? BLUETOOTH_ONLINE_GRANT_WAIT_MS : BLUETOOTH_GRANT_GRACE_MS
+    // I-133: the person chose Bluetooth, so the radio is the route. The console
+    // is asked, but never waited on for more than the short grace.
+    const wait = BLUETOOTH_GRANT_GRACE_MS
     const asked = askConsole(printerId, own.signal).catch((error): null => {
       if (error instanceof CloudError && error.status !== 503) throw error
       return null // 503 (including offline presence), or the network
@@ -292,6 +293,21 @@ export function dropCloudConnection (printerId: string) {
   existing.then(c => c.close()).catch(() => {})
 }
 
+/**
+ * How long a status read may stay silent before it counts as failed (I-133).
+ * A blocked relay never answers, so without this the card kept its last
+ * "Ready" for minutes. A silent read marks the printer Offline (at most about
+ * 9 s after the relay goes quiet), and so do two failed reads in a row; the
+ * next answer flips it back.
+ */
+export const STATUS_TIMEOUT_MS = 6000
+export const OFFLINE_AFTER_FAILURES = 2
+const pollFailures = new Map<string, number>()
+
+class StatusSilence extends Error {
+  constructor () { super('No answer from the printer') }
+}
+
 async function pollOne (printer: CloudPrinter) {
   const signal = sessionAbort.signal
   const unavailable = (error: string) => {
@@ -308,10 +324,15 @@ async function pollOne (printer: CloudPrinter) {
   polling.add(printer.id)
   try {
     const connection = await statusConnection(printer.id)
-    const response = await connection.fetch(STATUS_QUERY)
+    let silence: ReturnType<typeof setTimeout> | undefined
+    const response = await Promise.race([
+      connection.fetch(STATUS_QUERY),
+      new Promise<never>((_resolve, reject) => { silence = setTimeout(() => reject(new StatusSilence()), STATUS_TIMEOUT_MS) })
+    ]).finally(() => clearTimeout(silence))
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const s = (await response.json()).result.status
     if (signal.aborted) return
+    pollFailures.delete(printer.id)
     if (overBluetooth) noteBluetoothSuccess(printer.id)
     const latest = cloudState.printers.find(p => p.id === printer.id)
     if (!latest) return
@@ -324,8 +345,11 @@ async function pollOne (printer: CloudPrinter) {
     } as PrinterStatus)
   } catch (error) {
     if (overBluetooth && !signal.aborted) noteBluetoothFailure(printer.id, error)
+    const failed = (pollFailures.get(printer.id) ?? 0) + 1
+    pollFailures.set(printer.id, failed)
     const latest = cloudState.printers.find(p => p.id === printer.id)
-    if (latest) unavailable(consolePresence(latest) === 'offline' ? 'offline' : 'reconnecting')
+    const offline = failed >= OFFLINE_AFTER_FAILURES || error instanceof StatusSilence
+    if (latest) unavailable(consolePresence(latest) === 'offline' || offline ? 'offline' : 'reconnecting')
   } finally {
     if (!signal.aborted) polling.delete(printer.id)
   }
