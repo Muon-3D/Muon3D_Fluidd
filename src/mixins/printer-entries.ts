@@ -1,4 +1,5 @@
 import { Component, Mixins } from 'vue-property-decorator'
+import consola from 'consola'
 import type { InstanceConfig } from '@/store/config/types'
 import StateMixin from './state'
 import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
@@ -34,6 +35,15 @@ import { startPairing } from '@/services/muon-ble/pairing'
 import { stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
+
+/**
+ * The longest a row stays busy with one open. The slowest open is bounded
+ * below this (`REMOTE_OPEN_TIMEOUT_MS`, `LOCAL_OPEN_TIMEOUT_MS`); this is the
+ * backstop for a step that has no bound of its own.
+ */
+export const RUN_TIMEOUT_MS = 60_000
+
+class RunTimeout extends Error {}
 
 /**
  * Every printer this browser knows of, and what can be done with each:
@@ -273,11 +283,32 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
   }
 
   async run (key: string, work: () => Promise<boolean>) {
-    if (this.busyKey) return
+    if (this.busyKey) {
+      // KAN-1279: this used to return without a word, so a row whose earlier
+      // open never settled looked dead: no spinner change, nothing logged.
+      consola.warn(`Ignored a click on ${key}: still opening ${this.busyKey}`)
+      this.notice = 'Still opening a printer. Give it a moment, or reload the page if it stays stuck.'
+      return
+    }
     this.busyKey = key
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      if (await work()) this.afterOpen()
-    } catch { /* activationState holds the reason */ } finally {
+      const outcome = await Promise.race([
+        work(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new RunTimeout()), RUN_TIMEOUT_MS)
+        })
+      ])
+      if (outcome) this.afterOpen()
+    } catch (error) {
+      if (error instanceof RunTimeout) {
+        // Whatever the open was waiting on never answered: free the row.
+        consola.warn(`Opening ${key} took longer than ${RUN_TIMEOUT_MS / 1000} seconds; gave up`)
+        activationState.error = "The printer didn't open in time. Check that it's on and online, then try again."
+      }
+      // Otherwise activationState holds the reason.
+    } finally {
+      clearTimeout(timer)
       this.busyKey = null
     }
   }

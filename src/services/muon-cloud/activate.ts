@@ -215,6 +215,14 @@ function hostOf (apiUrl: string): string {
 }
 
 /**
+ * How long opening a printer on the local network may take. Moonraker's
+ * startup requests have their own limit, but loading the printer after them
+ * does not, and a printer whose Klipper had just restarted left the row on
+ * "Opening" with every later click ignored (KAN-1279).
+ */
+export const LOCAL_OPEN_TIMEOUT_MS = 45_000
+
+/**
  * Points Fluidd back at a printer on the local network.
  *
  * Resolves true once Moonraker answered, including when it wants a password,
@@ -226,6 +234,26 @@ function hostOf (apiUrl: string): string {
  */
 export async function activateLocalPrinter (instance: InstanceConfig): Promise<boolean> {
   const mine = ++generation
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<false>(resolve => {
+    timer = setTimeout(() => {
+      if (mine === generation) {
+        activationState.error = `${instance.name || instance.apiUrl} didn't open within ${LOCAL_OPEN_TIMEOUT_MS / 1000} seconds. ` +
+          'The printer may be restarting: wait a moment, then try again.'
+        // The open still waits on the printer: at its next step it finds it was replaced.
+        ++generation
+      }
+      resolve(false)
+    }, LOCAL_OPEN_TIMEOUT_MS)
+  })
+  try {
+    return await Promise.race([openLocalPrinter(instance, mine), timedOut])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function openLocalPrinter (instance: InstanceConfig, mine: number): Promise<boolean> {
   const superseded = () => mine !== generation
   // A cloud switch this one replaces no longer says it is opening.
   activationState.switching = null
