@@ -152,6 +152,7 @@ export default class PrinterTileCard extends Vue {
   }
 
   get detailText (): string {
+    if (this.busy) return 'Connecting…'
     if (this.variant !== 'card') {
       if (this.tile.state === 'printing') return this.tile.label === 'Printing' ? 'Printing' : `Printing · ${this.tile.label}`
       return this.tile.state === 'ready' ? `Ready · ${this.tile.detail}` : this.tile.detail
