@@ -11,7 +11,7 @@
  * 404 or 405 and no JSON error. `AccountError.missing` says so, and the
  * pages show "Coming soon" there instead of an error.
  */
-import { CloudError, cloudBaseUrl, refreshSession, storedToken } from '@/services/muon-cloud/api'
+import { CloudError, cloudBaseUrl, refreshSession, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
 import { deletionRevision, observeDeletion } from '@/services/muon-cloud/deletion'
 
 export class AccountError extends CloudError {
@@ -47,6 +47,27 @@ export interface RequestOptions {
   token?: string | null;
   /** Answer the raw response (a download), not its JSON. */
   raw?: boolean;
+  /**
+   * `token` is the stored session's, sent on purpose (a mailed link opened in
+   * a signed-in browser): adopt the re-keyed `session` the answer may carry.
+   */
+  adopt?: boolean;
+}
+
+/**
+ * A credential change (password, email, two-step, recovery codes, a passkey,
+ * a linked sign-in; muon-link-cloud KAN-1389) ends the account's other
+ * sessions and gives this one new credentials: `session` in the answer holds
+ * the new access and refresh token. The old pair no longer works, and using
+ * the old refresh token would sign this device out, so the new pair replaces
+ * it at once. The browser session's cookie comes back as `Set-Cookie`, which
+ * a page the console serves takes without any option (same origin).
+ */
+export function adoptRekeyedSession (data: unknown) {
+  const session = (data as { session?: { access_token?: unknown, refresh_token?: unknown } | null } | null)?.session
+  if (!session || typeof session.access_token !== 'string' || !session.access_token) return
+  storeToken(session.access_token)
+  if (typeof session.refresh_token === 'string' && session.refresh_token) storeRefreshToken(session.refresh_token)
 }
 
 async function send (method: string, path: string, body: unknown, token: string | null): Promise<Response> {
@@ -107,7 +128,10 @@ export async function accountRequest<T> (method: string, path: string, body?: un
   const text = await response.text()
   try {
     const data = text ? JSON.parse(text) : {}
-    if (!ownToken && token !== null && token === storedToken()) observeDeletion(method, path, response.status, data, startedAt)
+    if ((!ownToken || options.adopt) && token !== null && token === storedToken()) {
+      if (!ownToken) observeDeletion(method, path, response.status, data, startedAt)
+      adoptRekeyedSession(data)
+    }
     return data as T
   } catch {
     throw new AccountError('The Muon3D service sent an unreadable answer.', response.status)
