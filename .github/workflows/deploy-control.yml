@@ -1,0 +1,89 @@
+# Deploys control.muon3d.com and app.muon3d.com (one console folder) on every push to develop.
+# Plan: CD-PLAN.md sections 1 and 2. The VPS side is /usr/local/bin/muon-web-deploy, run through a
+# restricted SSH key: it checks the tarball, builds a release, flips `current`, health-checks it and
+# rolls back by itself on failure. Manual undo: ssh deploy@187.6.167.136 "rollback control".
+#
+# Inert until the repository variable WEB_CD_ENABLED is 'true' (set after the one-time VPS and secrets
+# setup). Triggers are push and manual dispatch only, never pull_request_target, so forks never see
+# the secrets. Secrets DEPLOY_SSH_KEY and DEPLOY_KNOWN_HOSTS are only written to mode-600 files.
+name: Deploy control
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-control
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Check, build, deploy control
+    if: vars.WEB_CD_ENABLED == 'true'
+    runs-on: ${{ fromJSON(vars.LINUX_RUNS_ON || '"ubicloud-standard-2"') }}
+    timeout-minutes: 20
+    env:
+      NODE_OPTIONS: --experimental-websocket
+      SITE: control
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The same checks as BUILD (build.yml).
+      - run: npm run lint -- --no-fix
+      - run: npm run type-check
+      - run: npm run test:unit -- --run
+      - run: npm run circular-check
+
+      - run: npm run build
+      - run: npm run check:setup-budget
+
+      - name: Mark the release and pack it
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          printf '%s' "${GITHUB_SHA}" > dist/muon-release.txt
+          if [ -n "$(find dist -type l)" ]; then echo "::error::the build contains symlinks"; exit 1; fi
+          tar -czf "${RUNNER_TEMP}/site.tgz" -C dist .
+          ls -l "${RUNNER_TEMP}/site.tgz"
+
+      - name: Deploy over SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="${RUNNER_TEMP}/deploy_key"; kh="${RUNNER_TEMP}/known_hosts"
+          trap 'rm -f "$key" "$kh"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$kh"
+          chmod 600 "$key" "$kh"
+          ssh -T -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$kh" \
+              deploy@187.6.167.136 "deploy ${SITE} ${GITHUB_SHA}" < "${RUNNER_TEMP}/site.tgz"
+
+      - name: Summary
+        if: always()
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          {
+            echo "### Deploy ${SITE}: ${RESULT}"
+            echo
+            echo "- Site: ${SITE} (control.muon3d.com, app.muon3d.com)"
+            echo "- Commit: ${GITHUB_SHA}"
+            echo "- Undo: \`ssh deploy@187.6.167.136 \"rollback ${SITE}\"\`"
+          } >> "$GITHUB_STEP_SUMMARY"
