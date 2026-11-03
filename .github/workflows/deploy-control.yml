@@ -24,7 +24,7 @@ jobs:
   deploy:
     name: Check, build, deploy control
     if: vars.WEB_CD_ENABLED == 'true'
-    runs-on: ${{ fromJSON(vars.LINUX_RUNS_ON || '"ubuntu-latest"') }}
+    runs-on: ${{ vars.LINUX_RUNS_ON || 'ubuntu-latest' }}
     timeout-minutes: 20
     env:
       NODE_OPTIONS: --experimental-websocket
@@ -74,6 +74,16 @@ jobs:
           ssh -T -i "$key" -o IdentitiesOnly=yes -o BatchMode=yes \
               -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$kh" \
               deploy@187.6.167.136 "deploy ${SITE} ${GITHUB_SHA}" < "${RUNNER_TEMP}/site.tgz"
+
+      - name: Verify the live release
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6; do
+            live="$(curl -fsS https://control.muon3d.com/muon-release.txt || true)"
+            if [ "$live" = "${GITHUB_SHA}" ]; then echo "live release is ${GITHUB_SHA}"; exit 0; fi
+            echo "attempt ${i}: live release is '${live}', want ${GITHUB_SHA}"; sleep 5
+          done
+          echo "::error::control.muon3d.com/muon-release.txt does not match ${GITHUB_SHA}"; exit 1
 
       - name: Summary
         if: always()
