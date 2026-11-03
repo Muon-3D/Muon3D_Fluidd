@@ -109,9 +109,12 @@ export const REMOTE_OPEN_TIMEOUT_MS = 30_000
 
 /** Opening a printer through Muon3D took longer than `REMOTE_OPEN_TIMEOUT_MS`. */
 export class RemoteOpenTimeout extends Error {
-  constructor (name: string) {
-    super(`${name} didn't open through Muon3D within ${REMOTE_OPEN_TIMEOUT_MS / 1000} seconds. ` +
-      'The printer or its connection may be slow or offline: check that it\'s on and online, then try again.')
+  constructor (name: string, viaBluetooth = false) {
+    super(viaBluetooth
+      ? `${name} didn't open over Bluetooth within ${REMOTE_OPEN_TIMEOUT_MS / 1000} seconds. ` +
+        'Keep this computer near the printer and check that it\'s on, then try again.'
+      : `${name} didn't open through Muon3D within ${REMOTE_OPEN_TIMEOUT_MS / 1000} seconds. ` +
+        'The printer or its connection may be slow or offline: check that it\'s on and online, then try again.')
     this.name = 'RemoteOpenTimeout'
   }
 }
@@ -176,7 +179,7 @@ export async function activateCloudPrinter (printerId: string) {
     await Promise.race([
       opening,
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new RemoteOpenTimeout(printerName(printerId))), REMOTE_OPEN_TIMEOUT_MS)
+        timer = setTimeout(() => reject(new RemoteOpenTimeout(printerName(printerId), wantsBluetoothFor(printerId))), REMOTE_OPEN_TIMEOUT_MS)
       })
     ])
   } catch (error) {

@@ -24,7 +24,7 @@ vi.mock('@/services/muon-ble/nearby', () => ({
   startNearby: vi.fn(async () => {}),
   stopNearby: vi.fn()
 }))
-vi.mock('@/services/muon-ble/link', () => ({ useBluetoothFor: vi.fn() }))
+vi.mock('@/services/muon-ble/link', () => ({ useBluetoothFor: vi.fn(), wantsBluetoothFor: vi.fn(() => false) }))
 vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { account: null, printers: [], status: {}, activePrinterId: null } }))
 vi.mock('@/services/muon-cloud/activate', () => activation)
 vi.mock('@/services/muon-access/api', () => ({ lanPrinterAccess: vi.fn() }))
