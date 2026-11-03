@@ -60,7 +60,7 @@
       </button>
     </div>
     <p class="ov-quick__note">
-      Everything else is in Control. Add Macros with Customise Overview.
+      Everything else is in Control. Add Macros with Customise (the sliders icon at the top).
     </p>
   </section>
 </template>
