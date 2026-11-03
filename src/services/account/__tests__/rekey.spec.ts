@@ -83,6 +83,22 @@ describe('a re-keyed session', () => {
     expect(localStorage.getItem('muon.cloud.token')).toBe('signed-in-again')
   })
 
+  it('adopts the pair when storage was cleared while the request was in flight', async () => {
+    fetchMock.mockImplementationOnce(async () => {
+      localStorage.removeItem('muon.cloud.token')
+      localStorage.removeItem('muon.cloud.refresh')
+      return answer(200, { ok: true, session: SESSION })
+    })
+    await accountApi.changePassword('new pw', { password: 'old' })
+    expect(stored()).toEqual(['access-2', 'refresh-2'])
+  })
+
+  it('adopts the pair when the stored token is unchanged', async () => {
+    fetchMock.mockResolvedValueOnce(answer(200, { ok: true, session: SESSION }))
+    await accountApi.changePassword('new pw', { password: 'old' })
+    expect(stored()).toEqual(['access-2', 'refresh-2'])
+  })
+
   it('stays signed in on this device when a signed-in browser confirms a new address', async () => {
     fetchMock.mockResolvedValueOnce(answer(200, { ok: true, email: 'new@example.test', session: SESSION }))
     await expect(verifyEmail('link-token')).resolves.toBe('new@example.test')

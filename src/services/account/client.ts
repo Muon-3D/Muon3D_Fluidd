@@ -128,8 +128,14 @@ export async function accountRequest<T> (method: string, path: string, body?: un
   const text = await response.text()
   try {
     const data = text ? JSON.parse(text) : {}
-    if ((!ownToken || options.adopt) && token !== null && token === storedToken()) {
+    const now = storedToken()
+    if ((!ownToken || options.adopt) && token !== null && token === now) {
       if (!ownToken) observeDeletion(method, path, response.status, data, startedAt)
+      adoptRekeyedSession(data)
+    } else if (!ownToken && token !== null && !now) {
+      // A concurrent 401 refresh cleared storage while this change was in
+      // flight: the rotated session is still this person's. A different,
+      // non-empty token belongs to another sign-in and is left alone.
       adoptRekeyedSession(data)
     }
     return data as T
