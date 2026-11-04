@@ -21,9 +21,9 @@ it('reports every missing interval across displayed series', () => {
   ])
 })
 
-it('breaks drawn history at missing values and reconnect gaps rather than interpolating', () => {
+it('connects drawn history across missing values and reconnect gaps', () => {
   const points: ChartPoint[] = [{ date: new Date(1000), extruder: 200 }, { date: new Date(2000) }, { date: new Date(3000), extruder: 202 }, { date: new Date(9000), extruder: 203 }]
-  expect(historyPath(points, 'extruder', 0, 10000, 100, v => v)).toBe('M10.0 200.0 M30.0 202.0 M90.0 203.0')
+  expect(historyPath(points, 'extruder', 0, 10000, 100, v => v)).toBe('M10.0 200.0 L30.0 202.0 L90.0 203.0')
   expect(sampleAt(points, 6000)).toBe(null)
   expect(sampleAt(points, 2000)).toBe(null)
 })

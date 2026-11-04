@@ -57,6 +57,13 @@ export interface AuthorizedManagedRelaySession {
   printerId: string;
   relayUrl: string;
   expiresAt: string;
+  /**
+   * True for a session this page made itself because the console gave no
+   * grant (KAN-1253: opening over Bluetooth). Nothing authorised it: it only
+   * names the relay and printer to dial, and the printer decides admission.
+   * No code may treat such a session as proof of access.
+   */
+  grantless?: boolean;
 }
 
 export interface ManagedIrohRelay {

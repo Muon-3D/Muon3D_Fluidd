@@ -163,7 +163,7 @@
         v-if="mixedContentWarning"
         class="aid__warning"
       >
-        Firefox and Safari block this page (https) from talking to a printer on plain http — that's mixed content. Chrome can reach printers on your network: open Fluidd in Chrome.
+        Firefox and Safari block this page (https) from talking to a printer on plain http — that's mixed content. Chrome can reach printers on your network: open Control in Chrome.
       </p>
       <p class="m3-dlg__text">
         {{ selectedBrand.label }} stays on this network and in this browser.
@@ -247,7 +247,7 @@
         v-if="!canRememberCredentials && (selectedKind === 'moonraker' || selectedKind === 'octoprint')"
         class="m3-dlg__note"
       >
-        To remember this key, open Fluidd over HTTPS in Chrome. Here, it lasts for this session.
+        To remember this key, open Control over HTTPS in Chrome. Here, it lasts for this session.
       </p>
       <p
         v-if="probeMessage"

@@ -106,7 +106,9 @@ export const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | 
     const instances = JSON.parse(localStorage[Globals.LOCAL_INSTANCES_STORAGE_KEY]) as InstanceConfig[]
     if (instances && instances.length) {
       for (const config of instances) {
-        if (config.active) {
+        // I-133: a saved plain-http printer is never connected by itself from the
+        // https site (mixed content drops the lock). It opens on a click.
+        if (config.active && !(document.location.protocol === 'https:' && /^http:/i.test(config.apiUrl))) {
           consola.debug('API Config from Local Storage', config)
           return startingPrinter(config, ownEndpoint(hostConfig))
         }

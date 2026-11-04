@@ -3,9 +3,53 @@
     class="overview"
     data-tid="overview-page"
   >
+    <div class="overview__head">
+      <h1 class="overview__title">
+        Overview
+      </h1>
+      <button
+        type="button"
+        class="overview__customise"
+        data-tid="overview-customise"
+        title="Customise"
+        aria-label="Customise Overview"
+        :aria-expanded="editing ? 'true' : 'false'"
+        :aria-pressed="editing ? 'true' : 'false'"
+        aria-controls="overview-layout-editor"
+        @click="toggleEditing"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="18"
+          height="18"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+        ><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle
+          cx="16"
+          cy="7"
+          r="2"
+        /><circle
+          cx="8"
+          cy="17"
+          r="2"
+        /></svg>
+      </button>
+    </div>
+    <overview-cards
+      v-if="editing"
+      id="overview-layout-editor"
+      :value="layout"
+      :unavailable="unavailable"
+      :note="layoutNote"
+      @input="chooseLayout"
+      @close="toggleEditing"
+    />
     <div class="overview__top">
       <overview-stage class="overview__stage" />
-      <div>
+      <div class="overview__side">
         <overview-this-print v-if="busy" />
         <overview-print-something v-else />
         <div
@@ -42,25 +86,6 @@
       </div>
     </div>
     <overview-tiles :phone="isMobileViewport" />
-    <div class="overview__customise">
-      <button
-        type="button"
-        class="cbtn"
-        :aria-expanded="editing ? 'true' : 'false'"
-        aria-controls="overview-layout-editor"
-        @click="toggleEditing"
-      >
-        {{ editing ? 'Done' : 'Customise Overview' }}
-      </button>
-      <span>{{ rememberingLayout ? (accountId ? 'Your arrangement follows your account.' : 'Your arrangement stays in this browser.') : 'These choices last for this visit.' }}</span>
-    </div>
-    <overview-cards
-      v-if="editing"
-      id="overview-layout-editor"
-      :value="layout"
-      :unavailable="unavailable"
-      @input="chooseLayout"
-    />
     <p
       v-if="preferences.state.layoutError || preferences.state.error"
       role="alert"
@@ -215,6 +240,7 @@ export default class Overview extends Mixins(OverviewMixin, BrowserMixin) {
   get printerId (): string { return isManagedApiUrl(this.$store.state.config.apiUrl) && printerTransportBinding.remote ? cloudState.activePrinterId ?? '' : '' }
   get layoutContext (): string { return `${this.panelTarget}|${this.printerId}` }
   get rememberingLayout (): boolean { return !!this.printerId && REMEMBER_CONTROL_FOLDS }
+  get layoutNote (): string { return this.rememberingLayout ? (this.accountId ? 'Your arrangement follows your account.' : 'Your arrangement stays in this browser.') : 'These choices last for this visit.' }
   get layout (): string[] { return cardLayout(this.rememberingLayout ? this.preferences.state.layout : this.visitCards) }
   get hasObjects (): boolean { return !!this.$store.state.printer.printer.exclude_object?.objects?.length }
   get meshRecorded (): boolean { return !!this.$store.state.printer.printer.bed_mesh?.mesh_matrix?.length }
@@ -285,9 +311,13 @@ export default class Overview extends Mixins(OverviewMixin, BrowserMixin) {
 .overview__top, .overview__cards { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 16px; }
 .overview__stage { min-height: 350px; }
 .overview__wide { grid-column: 1 / -1; }
-.overview__actions, .overview__customise { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.overview__side { align-self: start; min-width: 0; }
+.overview__head { display: flex; align-items: center; gap: 8px; }
+.overview__title { margin: 0; font-size: 20px; font-weight: 600; }
+.overview__customise { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; background: transparent; color: var(--m3d-text-subtle); cursor: pointer; }
+.overview__customise:hover, .overview__customise[aria-expanded='true'] { background: var(--m3d-surface-2); color: var(--m3d-text); }
+.overview__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .overview__actions .cbtn { min-height: 44px; }
-.overview__customise { align-items: center; color: var(--m3d-text-subtle); font-size: 12px; }
 @media (max-width: 899px) { .overview__top, .overview__cards { grid-template-columns: minmax(0, 1fr); } .overview__stage { min-height: 280px; } }
 </style>
 <style lang="scss">
