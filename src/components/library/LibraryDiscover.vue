@@ -58,6 +58,13 @@
     </section>
 
     <template v-else>
+      <p
+        v-if="examples"
+        class="ldisc__note"
+        data-tid="library-discover-examples-note"
+      >
+        Nothing is published yet, so these are Muon3D's example prints. Prints people share, and the ones we test on the M1, take their place.
+      </p>
       <section
         v-for="shelf in shelves"
         :key="shelf.id"
@@ -96,6 +103,10 @@
                 v-if="card.tested"
                 class="lib-ov lib-ov--tl"
               ><span class="lib-pill lib-pill--glass">Tested on M1</span></span>
+              <span
+                v-else-if="examples"
+                class="lib-ov lib-ov--tl"
+              ><span class="lib-pill lib-pill--glass">Example</span></span>
             </span>
             <span class="lcard__body">
               <span class="lcard__title">{{ card.title }}</span>
@@ -115,6 +126,7 @@
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
 import { LIBRARY_URL, discoverShelves, loadDiscover, type DiscoverShelf } from '@/services/library/discover'
+import { exampleShelves } from '@/services/library/examples'
 
 /**
  * Discover (KAN-735): the public shelves library.muon3d.com opens on, in
@@ -123,6 +135,8 @@ import { LIBRARY_URL, discoverShelves, loadDiscover, type DiscoverShelf } from '
 @Component({})
 export default class LibraryDiscover extends Vue {
   shelves: DiscoverShelf[] = []
+  /** Nothing is published, so the shelves are the bundled examples (KAN-1199). */
+  examples = false
   busy = true
   error = ''
   readonly libraryUrl = `${LIBRARY_URL}/`
@@ -145,7 +159,9 @@ export default class LibraryDiscover extends Vue {
     try {
       const feed = await loadDiscover(fetch, controller.signal)
       if (controller.signal.aborted) return
-      this.shelves = discoverShelves(feed)
+      const shelves = discoverShelves(feed)
+      this.examples = shelves.length === 0
+      this.shelves = this.examples ? exampleShelves() : shelves
     } catch (error) {
       if (controller.signal.aborted) return
       this.error = error instanceof Error && error.name !== 'TypeError' ? error.message : 'Check your connection, then try again.'
@@ -163,6 +179,10 @@ export default class LibraryDiscover extends Vue {
     gap: 28px;
   }
 
+  .ldisc__note {
+    margin: 0;
+    opacity: 0.8;
+  }
   .ldisc__head h2 {
     margin: 0 0 12px;
     font-size: 18px;

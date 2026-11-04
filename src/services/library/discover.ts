@@ -108,7 +108,7 @@ export function publicationCard (item: DiscoverPublication): DiscoverCard {
 }
 
 export interface DiscoverShelf {
-  id: 'm1' | 'trending' | 'new';
+  id: 'm1' | 'trending' | 'new' | 'examples-start' | 'examples';
   title: string;
   cards: DiscoverCard[];
 }
