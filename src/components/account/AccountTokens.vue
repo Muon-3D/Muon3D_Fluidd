@@ -266,7 +266,7 @@
           >
           <span>
             <b>Ask me first</b>
-            <span class="acct-field__note tok__block">Saved on the token. Ask and Bypass aren't enforced yet, and no token can start or move a printer today.</span>
+            <span class="acct-field__note tok__block">You OK each publish, print, heat or move this token tries.</span>
           </span>
         </label>
         <label
@@ -288,7 +288,7 @@
               class="lib-pill"
               data-tid="tokens-soon-bypass"
             >Coming soon</span></b>
-            <span class="acct-field__note tok__block">Off unless you choose it.</span>
+            <span class="acct-field__note tok__block">The token does those without asking. Off unless you choose it.</span>
           </span>
         </label>
         <div
@@ -328,7 +328,7 @@
             >{{ choice.label }}
           </label>
         </div>
-        <span class="acct-field__note">Ask and Bypass are saved but not enforced yet. Nothing starts prints from a token today.</span>
+        <span class="acct-field__note">Saved on the token, but not enforced yet: today no token can publish, start a print, heat or move, so nothing asks.</span>
       </fieldset>
 
       <div
@@ -411,7 +411,7 @@
               <span
                 v-else
                 class="lib-pill lib-pill--ok"
-              >Ask mode</span>
+              >Asks first</span>
             </span>
             <span class="tok__chips">
               <span
