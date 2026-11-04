@@ -72,7 +72,32 @@ describe('a refresh the console rate-limits or fails (KAN-1472)', () => {
     expect(storedRefreshToken()).toBe('refresh-1')
   })
 
-  it('reads an HTTP-date Retry-After and caps an absurd one', async () => {
+  it('waits at least the base step on Retry-After: 0', async () => {
+    const fetch = vi.fn(async () => answer(429, {}, { 'retry-after': '0' }))
+    vi.stubGlobal('fetch', fetch)
+    await refreshSession()
+    await refreshSession()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(REFRESH_BACKOFF_BASE_MS + 100)
+    await refreshSession()
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('a new session does not inherit the old one\'s wait', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(answer(429, {}, { 'retry-after': '600' }))
+      .mockResolvedValueOnce(answer(200, NEW_PAIR))
+    vi.stubGlobal('fetch', fetch)
+    expect(await refreshSession()).toBe(false)
+    // Sign out and in again: a different refresh token.
+    storeRefreshToken(null)
+    storeToken('access-9')
+    storeRefreshToken('refresh-9')
+    expect(await refreshSession()).toBe(true)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('caps an absurd Retry-After', async () => {
     const fetch = vi.fn(async () => answer(429, {}, { 'retry-after': '86400' }))
     vi.stubGlobal('fetch', fetch)
     await refreshSession()
