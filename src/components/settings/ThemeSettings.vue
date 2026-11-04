@@ -69,7 +69,7 @@
     <div class="m3-set__row">
       <div class="m3-set__label">
         <b>A community theme</b>
-        <span>Another maker's colours and logo. Their names and logos are theirs; Fluidd's makers include them with permission.</span>
+        <span>Another maker's colours and logo. Their names and logos are theirs; Fluidd, which Control is based on, includes them with permission.</span>
       </div>
       <div class="m3-set__control m3-set__control--wide">
         <v-select

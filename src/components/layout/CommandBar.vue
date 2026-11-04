@@ -143,6 +143,7 @@ import { ACCOUNT_KEY, ALL_PRINTERS_KEY, LIBRARY_KEY, visiblePages, visibleSectio
 import { accountSections } from '@/services/account/model'
 import { activeSlug, foreignRecordForSlug, knownPrinters, printerHomePath, printerPath, samePageFor } from '@/services/printer-pages'
 import { cloudState } from '@/services/muon-cloud/state'
+import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { savedName } from '@/services/muon-cloud/directory'
 import { jobName } from '@/services/printers-page/model'
 import { plateCheckNeeded } from '@/services/jobs/plate'
@@ -549,7 +550,7 @@ export default class CommandBar extends Mixins(FrameMixin, BrowserMixin, TypedCo
         id: `printer-${target.slug}`,
         group: 'Printers',
         label: parts.name,
-        hint: [parts.suffix, here ? 'open now' : target.kind === 'cloud' ? 'through Muon3D' : null].filter(Boolean).join(' · ') || undefined,
+        hint: [parts.suffix, here ? 'open now' : target.kind === 'cloud' ? (wantsBluetoothFor(target.printerId) ? 'via Bluetooth' : 'through Muon3D') : null].filter(Boolean).join(' · ') || undefined,
         words: `${target.slug} printer switch`,
         verb: 'Open',
         icon: 'printers',

@@ -44,6 +44,31 @@ export interface CloudPrinter {
   shared?: boolean;
   /** When a share ends (seconds), or null. */
   ends_at?: number | null;
+  /** The sharer's display name (never an address), on a shared printer. */
+  shared_by?: string | null;
+  /** The same sharer, structured (muon-link-cloud #115). */
+  sharer?: Sharer | null;
+  /** Who finds the printer in the nearby list. Only on a printer this account linked (#114). */
+  discovery?: DiscoveryLevel | null;
+}
+
+export interface Sharer {
+  account_id: string;
+  display_name: string;
+}
+
+/** `open` everyone; `signed_in` anyone signed in; `chosen` you and people you share with; `link` you and anyone with an invite link. */
+export type DiscoveryLevel = 'open' | 'signed_in' | 'chosen' | 'link'
+
+/** A note for the signed-in account (muon-link-cloud #116). Newest first. */
+export interface Notice {
+  id: string;
+  kind: string;
+  printer_id: string | null;
+  shared_by: string | null;
+  sharer: Sharer | null;
+  created_at: number;
+  read_at: number | null;
 }
 
 export interface CloudConfig {
@@ -421,6 +446,13 @@ export const cloudApi = {
   printers: () => request<{ printers: CloudPrinter[] }>('GET', '/v1/printers'),
   renamePrinter: (id: string, name: string) =>
     request<{ ok: boolean, name: string }>('PATCH', `/v1/printers/${id}`, { name }),
+  /** The owner sets who finds the printer. `404` for anyone else, `400` for an unknown level. */
+  setDiscovery: (id: string, level: DiscoveryLevel) =>
+    request<{ ok: boolean, level: DiscoveryLevel }>('PUT', `/v1/printers/${id}/discovery`, { level }),
+  notices: (limit = 50) =>
+    request<{ notices: Notice[], unread: number, next: string | null }>('GET', `/v1/me/notices?limit=${limit}`),
+  readNotice: (id: string) =>
+    request<{ notice: Notice }>('POST', `/v1/me/notices/${encodeURIComponent(id)}/read`),
   unlinkPrinter: (id: string) => request<{ ok: boolean }>('DELETE', `/v1/printers/${id}`),
   access: (id: string) => request<AccessHandoff>('POST', `/v1/printers/${id}/access`),
   /** Claims the printer showing `code` on its screen. The code is the only way to link. */

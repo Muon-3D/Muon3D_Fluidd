@@ -8,13 +8,6 @@
         {{ table ? 'Temperatures and sensors' : 'Temperatures' }}
       </h2>
       <div class="ov-temps__tools">
-        <span
-          v-for="s in (table ? [] : legend)"
-          :key="s.key"
-          class="ov-temps__legend"
-        >
-          <i :style="{ background: s.color }" />{{ s.label }}
-        </span>
         <seg-picker
           v-if="!phone"
           :options="windows"
@@ -26,14 +19,82 @@
           v-else
           class="ov-temps__window"
         >{{ windowLabel }}</span>
+        <div
+          v-if="!table"
+          class="ov-temps__pick"
+        >
+          <button
+            type="button"
+            class="ov-temps__pick-btn"
+            data-tid="series-picker"
+            aria-haspopup="true"
+            :aria-expanded="pickerOpen ? 'true' : 'false'"
+            aria-label="Choose tracked series"
+            title="Choose tracked series"
+            @click="pickerOpen = !pickerOpen"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              aria-hidden="true"
+            >
+              <path
+                d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+              <circle
+                cx="16"
+                cy="6"
+                r="2"
+                fill="currentColor"
+              />
+              <circle
+                cx="10"
+                cy="12"
+                r="2"
+                fill="currentColor"
+              />
+              <circle
+                cx="18"
+                cy="18"
+                r="2"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+          <div
+            v-if="pickerOpen"
+            class="ov-temps__menu"
+            role="group"
+            aria-label="Tracked series"
+          >
+            <label
+              v-for="s in allSeries"
+              :key="s.key"
+              class="ov-temps__menu-row"
+            >
+              <input
+                type="checkbox"
+                :data-series="s.key"
+                :checked="isTracked(s.key)"
+                @change="setTracked(s.key, isChecked($event))"
+              >
+              <i :style="{ background: colorOf(s.key) }" />{{ s.label }}
+            </label>
+          </div>
+        </div>
+        <seg-picker
+          :options="[{ value: 'graph', label: 'Graph' }, { value: 'table', label: 'Table' }]"
+          :value="table ? 'table' : 'graph'"
+          label="Temperature view"
+          @input="table = $event === 'table'"
+        />
       </div>
     </div>
-    <seg-picker
-      :options="[{ value: 'graph', label: 'Graph' }, { value: 'table', label: 'Table' }]"
-      :value="table ? 'table' : 'graph'"
-      label="Temperature view"
-      @input="table = $event === 'table'"
-    />
     <div :class="{ 'ov-temps__body': table }">
       <table
         v-if="table"
@@ -96,6 +157,25 @@
         :event-start="observedSince"
         :window-seconds="windowSeconds"
       />
+      <div
+        v-if="!table"
+        class="ov-temps__legends"
+        role="group"
+        aria-label="Temperature series"
+      >
+        <button
+          v-for="s in legend"
+          :key="s.key"
+          type="button"
+          class="ov-temps__legend"
+          :class="{ off: !s.on }"
+          :data-legend="s.key"
+          :aria-pressed="s.on ? 'true' : 'false'"
+          @click="toggleLegend(s.key)"
+        >
+          <i :style="{ background: s.color }" />{{ s.label }}
+        </button>
+      </div>
     </div>
   </section>
 </template>
@@ -164,6 +244,51 @@ export default class OverviewTemps extends Mixins(OverviewMixin) {
     return (this.$store.getters['printer/getSensors'] as Sensor[] | undefined) ?? []
   }
 
+  pickerOpen = false
+
+  isChecked (event: Event): boolean { return (event.target as HTMLInputElement | null)?.checked === true }
+
+  get selectedLegends (): Record<string, boolean> {
+    return (this.$store.getters['charts/getSelectedLegends'] ?? {}) as Record<string, boolean>
+  }
+
+  /** Every heater and sensor the printer reports. */
+  get allKeys (): string[] {
+    const main = ['extruder', 'heater_bed'].filter(k => this.heaters.some(h => h.name === k))
+    const others = this.heaters.map(h => h.name).filter(k => !main.includes(k))
+    return [...main, ...others, ...this.sensors.map(s => s.key)]
+  }
+
+  get allSeries (): Array<{ key: string, label: string }> {
+    return this.allKeys.map(key => ({ key, label: this.labelOf(key) }))
+  }
+
+  labelOf (key: string): string {
+    if (key === 'extruder') return 'Nozzle'
+    if (key === 'heater_bed') return 'Bed'
+    return this.rows.find(r => r.key === key)?.label ?? key
+  }
+
+  /** Tracked series: the user's choice, else nozzle and bed. */
+  isTracked (key: string): boolean {
+    const saved = this.selectedLegends[`tracked:${key}`]
+    if (saved !== undefined) return saved
+    return key === 'extruder' || key === 'heater_bed'
+  }
+
+  /** The series on the graph and in the legend. */
+  get graphKeys (): string[] {
+    return this.allKeys.filter(k => this.isTracked(k))
+  }
+
+  setTracked (key: string, on: boolean) {
+    this.$store.dispatch('charts/saveSelectedLegends', { ...this.selectedLegends, [`tracked:${key}`]: on })
+  }
+
+  toggleLegend (key: string) {
+    this.$store.dispatch('charts/saveSelectedLegends', { ...this.selectedLegends, [key]: this.selectedLegends[key] === false })
+  }
+
   get keys (): string[] {
     const main = ['extruder', 'heater_bed'].filter(k => this.heaters.some(h => h.name === k))
     if (!this.table) return main
@@ -179,7 +304,7 @@ export default class OverviewTemps extends Mixins(OverviewMixin) {
   markers: Array<{ at: number; label: string }> = []
   observedSince = 0
   get chartData (): ChartPoint[] { return this.$store.getters['charts/getChartData'] ?? [] }
-  get timelineSensors () { return this.keys.map(key => ({ key, label: this.rows.find(r => r.key === key)?.label ?? key, color: this.colorOf(key) })) }
+  get timelineSensors () { return (this.table ? this.keys : this.graphKeys.filter(k => this.selectedLegends[k] !== false)).map(key => ({ key, label: this.rows.find(r => r.key === key)?.label ?? key, color: this.colorOf(key) })) }
   get currentHistory (): HistoryItem | undefined { return this.$store.state.history?.jobs?.find((j: HistoryItem) => j.status === 'in_progress' && j.filename === this.jobFile) }
   get printStart (): number | undefined { const start = this.currentHistory?.start_time; return typeof start === 'number' && Number.isFinite(start) ? start * 1000 : undefined }
   get historyContext (): string { return `${this.panelTarget}|${this.currentHistory?.job_id ?? this.jobFile}|${this.socketConnected && this.klippyConnected}` }
@@ -205,17 +330,16 @@ export default class OverviewTemps extends Mixins(OverviewMixin) {
 
   colorOf (key: string): string {
     if (COLORS[key]) return COLORS[key]
-    const others = this.keys.filter(k => !COLORS[k])
+    const others = this.allKeys.filter(k => !COLORS[k])
     const i = others.indexOf(key)
     return i >= 0 ? MORE_COLORS[i % MORE_COLORS.length] : 'var(--m3d-text-muted)'
   }
 
   get legend () {
-    return this.keys.map(key => {
+    return this.graphKeys.map(key => {
       const h = this.heaters.find(x => x.name === key)
-      const label = key === 'extruder' ? 'Nozzle' : 'Bed'
-      const reading = h ? `${Math.round(h.temperature)}°${h.target ? ` / ${Math.round(h.target)}` : ''}` : ''
-      return { key, label: `${label} ${reading}`, color: this.colorOf(key) }
+      const reading = h ? ` ${Math.round(h.temperature)}°${h.target ? ` / ${Math.round(h.target)}` : ''}` : ''
+      return { key, label: `${this.labelOf(key)}${reading}`, color: this.colorOf(key), on: this.selectedLegends[key] !== false }
     })
   }
 
@@ -234,13 +358,75 @@ export default class OverviewTemps extends Mixins(OverviewMixin) {
     gap: 8px 16px;
   }
 
+  .ov-temps__legends {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin-top: 8px;
+  }
+
   .ov-temps__legend {
     display: inline-flex;
+    padding: 4px 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
     align-items: center;
     gap: 6px;
     color: var(--m3d-text-muted);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+
+    i {
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+    }
+  }
+
+  .ov-temps__legend.off {
+    opacity: 0.45;
+    text-decoration: line-through;
+  }
+
+  .ov-temps__pick {
+    position: relative;
+  }
+
+  .ov-temps__pick-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--m3d-border);
+    border-radius: 8px;
+    background: none;
+    color: var(--m3d-text-muted);
+    cursor: pointer;
+  }
+
+  .ov-temps__menu {
+    position: absolute;
+    right: 0;
+    z-index: 5;
+    min-width: 200px;
+    max-height: 280px;
+    margin-top: 4px;
+    padding: 8px;
+    overflow: auto;
+    border: 1px solid var(--m3d-border);
+    border-radius: 8px;
+    background: var(--m3d-surface-2);
+  }
+
+  .ov-temps__menu-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    font-size: 13px;
     white-space: nowrap;
 
     i {

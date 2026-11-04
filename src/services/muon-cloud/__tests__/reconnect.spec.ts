@@ -213,7 +213,8 @@ it('restores the dashboard socket and cached status after a simulated 60 second 
     fake.sockets[0].emit('close', { code: 1006, reason: 'network lost', wasClean: false })
     await vi.advanceTimersByTimeAsync(59999)
     expect(socketState.open).toBe(false)
-    expect(state.cloudState.status.boxwood).toMatchObject({ error: 'reconnecting', progress: 0.42, filename: 'part.gcode' })
+    // I-133: two failed reads in a row show Offline within seconds; the cached view stays.
+    expect(state.cloudState.status.boxwood).toMatchObject({ error: 'offline', progress: 0.42, filename: 'part.gcode' })
     fake.down = false
     state.cloudState.printers[0].online = true
     await vi.advanceTimersByTimeAsync(1)
