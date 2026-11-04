@@ -124,7 +124,7 @@ export type JoinAnswer =
   | { state: 'pending', printer_id: string, approval: Approval }
 
 export class CloudError extends Error {
-  constructor (message: string, readonly status: number, readonly code?: string, readonly body: Record<string, unknown> = {}) {
+  constructor (message: string, readonly status: number, readonly code?: string, readonly body: Record<string, unknown> = {}, readonly retryAfterMs?: number) {
     super(message)
   }
 
@@ -195,6 +195,9 @@ export function storedRefreshToken (): string | null {
 }
 
 export function storeRefreshToken (token: string | null) {
+  // A new session (or none) starts with no refresh backoff: a sign-out and
+  // sign-in must not inherit the old session's wait.
+  if (token !== readStorage(REFRESH_KEY)) resetRefreshBackoff()
   writeStorage(REFRESH_KEY, token)
 }
 
@@ -221,9 +224,53 @@ async function tokenRequest (form: Record<string, string>, signal?: AbortSignal)
     throw new CloudError('The Muon3D service sent an unreadable answer.', response.status)
   }
   if (!response.ok || typeof data.access_token !== 'string') {
-    throw new CloudError(data.error_description ?? data.error ?? `The Muon3D service answered ${response.status}.`, response.status, data.error)
+    throw new CloudError(data.error_description ?? data.error ?? `The Muon3D service answered ${response.status}.`, response.status, data.error, {}, retryAfterOf(response))
   }
   return data as TokenSession
+}
+
+/** A `Retry-After` header (seconds, or an HTTP date) in milliseconds; undefined when absent or unreadable. */
+export function retryAfterOf (response: Response, now = Date.now()): number | undefined {
+  const raw = response.headers?.get?.('retry-after')
+  if (!raw) return undefined
+  const text = raw.trim()
+  if (/^\d+$/.test(text)) return Number(text) * 1000
+  const at = Date.parse(text)
+  return Number.isNaN(at) ? undefined : Math.max(0, at - now)
+}
+
+/** The first wait after a refresh the console could not take now, doubling per failure to the cap. */
+export const REFRESH_BACKOFF_BASE_MS = 2000
+export const REFRESH_BACKOFF_CAP_MS = 5 * 60 * 1000
+/** The longest `Retry-After` believed. */
+export const REFRESH_RETRY_AFTER_CAP_MS = 15 * 60 * 1000
+
+let refreshNotBefore = 0
+let refreshBackoffs = 0
+
+/** For tests: forget any refresh backoff. */
+export function resetRefreshBackoff () {
+  refreshNotBefore = 0
+  refreshBackoffs = 0
+}
+
+/**
+ * A refresh answer that says nothing about the session: the rate limit (429)
+ * or the console failing (5xx). The session is kept and the next refresh
+ * waits: the console's `Retry-After` if it sent one, else 2 s doubling to 5 min.
+ */
+function isTransientRefusal (error: unknown): error is CloudError {
+  return error instanceof CloudError && (error.status === 429 || error.status >= 500)
+}
+
+function backOffRefresh (error: CloudError) {
+  // A Retry-After of 0 or a date in the past still waits the base step, so a
+  // console that keeps answering 429 is not asked again on every call.
+  const wait = error.retryAfterMs !== undefined
+    ? Math.max(REFRESH_BACKOFF_BASE_MS, Math.min(error.retryAfterMs, REFRESH_RETRY_AFTER_CAP_MS))
+    : Math.min(REFRESH_BACKOFF_CAP_MS, REFRESH_BACKOFF_BASE_MS * 2 ** refreshBackoffs)
+  refreshBackoffs += 1
+  refreshNotBefore = Date.now() + wait
 }
 
 /** What a refresh came to: a new pair, a refusal (the session is over), or no answer (it is not). */
@@ -336,6 +383,8 @@ async function channelLock<T> (work: () => Promise<T>): Promise<T> {
 export function refreshOutcome (): Promise<RefreshOutcome> {
   const refreshToken = storedRefreshToken()
   if (!refreshToken) return Promise.resolve('refused')
+  // Backing off after a 429 or a 5xx: the session stands, ask again later.
+  if (!refreshing && Date.now() < refreshNotBefore) return Promise.resolve('unreachable')
   if (!refreshing) {
     refreshing = withRefreshLock(async (): Promise<RefreshOutcome> => {
       const current = storedRefreshToken()
@@ -349,10 +398,16 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
         const session = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: CLIENT_ID }, controller.signal)
         storeToken(session.access_token)
         storeRefreshToken(session.refresh_token)
+        resetRefreshBackoff()
         return 'ok'
       } catch (error) {
-        // Not reaching the console says nothing about the session.
+        // Not reaching the console says nothing about the session. Nor does
+        // a rate limit or a console error: only a refusal ends it (KAN-1472).
         if (error instanceof CloudError && error.status === 0) return 'unreachable'
+        if (isTransientRefusal(error)) {
+          backOffRefresh(error)
+          return 'unreachable'
+        }
         try {
           if (recoverSession && storedRefreshToken() === refreshToken && await recoverSession(refreshToken)) return 'ok'
         } catch { /* fall through to dropping */ }
@@ -430,6 +485,9 @@ export const cloudApi = {
   config: () => request<CloudConfig>('GET', '/v1/config'),
   signIn: (email: string, password: string) =>
     request<{ token: string, account: CloudAccount }>('POST', '/v1/auth/sign-in', { email, password }),
+  /** The code that finishes a two-step sign-in: an authenticator code or a recovery code, with the `mfa_token` the password step answered. */
+  signInCode: (mfaToken: string, code: string) =>
+    request<{ token: string, account: CloudAccount }>('POST', '/v1/auth/mfa', { mfa_token: mfaToken, code }, null, false),
   signUp: (email: string, password: string, name: string, declaredAge?: number) =>
     request<{ token: string, account: CloudAccount }>('POST', '/v1/auth/sign-up', { email, password, name, declared_age: declaredAge }),
   signOut: () => request<{ ok: boolean }>('POST', '/v1/auth/sign-out'),

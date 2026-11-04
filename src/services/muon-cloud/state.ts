@@ -508,8 +508,28 @@ export async function initCloud (sessionCheck?: Promise<void>): Promise<string |
   return returnTo
 }
 
-export async function signIn (email: string, password: string) {
-  const { token, account } = await cloudApi.signIn(email, password)
+/**
+ * Signs in with a password. An account with an authenticator app is not
+ * signed in yet: the console answers `403` with an `mfa_token`, returned here
+ * so the dialog can ask for the code (`signInWithCode`). Null: signed in.
+ */
+export async function signIn (email: string, password: string): Promise<string | null> {
+  try {
+    const { token, account } = await cloudApi.signIn(email, password)
+    await adoptSession(token, account)
+    return null
+  } catch (error) {
+    const mfa = error instanceof CloudError && error.status === 403 && error.body.mfa_required === true && typeof error.body.mfa_token === 'string'
+      ? error.body.mfa_token
+      : null
+    if (mfa) return mfa
+    throw error
+  }
+}
+
+/** The second step of `signIn`: the six-digit code (or a recovery code). */
+export async function signInWithCode (mfaToken: string, code: string) {
+  const { token, account } = await cloudApi.signInCode(mfaToken, code.replace(/\s+/g, ''))
   await adoptSession(token, account)
 }
 
