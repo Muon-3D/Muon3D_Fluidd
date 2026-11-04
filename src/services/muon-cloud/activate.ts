@@ -19,7 +19,7 @@ import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
 import { isOwnHotspot, pageReach } from './discovery'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
-import { watchForApproval, type ApprovalWatch } from './approval'
+import { onApprovalWatch, type ApprovalWatch } from './approval'
 
 export { MANAGED_API_URL, MANAGED_SOCKET_URL }
 
@@ -149,7 +149,8 @@ export async function activateCloudPrinter (printerId: string) {
   activationState.fallbackUrl = null
   activationState.pairing = null
   activationState.approval?.cancel()
-  activationState.approval = watchForApproval(printerId)
+  activationState.approval = null
+  onApprovalWatch(watch => { if (!superseded()) activationState.approval = watch })
   // Set inside `open`, so typed here rather than narrowed to null.
   let transport = null as PrinterTransport | null
   const open = async () => {

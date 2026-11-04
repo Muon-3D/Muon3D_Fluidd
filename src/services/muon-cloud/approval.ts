@@ -28,29 +28,87 @@ export interface ApprovalWatch {
   cancel (): void;
 }
 
-/**
- * TODO(I-170 wire): the only place that reads `pending` and the close reason
- * from muon-link-web. Returns null while muon-link-web (pinned 4b2e45a)
- * exposes neither, so "waiting for approval" is not offered and today's
- * behaviour (the "coming soon" line) stays.
- *
- * Assumptions to confirm against the released muon-link-web:
- *  - the printer sends one `pending` notice, `{ code: <symbols> }`, on the
- *    connection that dialled `muon/gateway/1`; the symbols are 6 (I-172) or
- *    4 (first plan) and are shown as given;
- *  - an admitted device sees no further frame: the connection proceeds;
- *  - otherwise the connection closes with a reason that is one of
- *    `refused | timed_out | disabled | busy | cooldown`; any other reason is
- *    not an approval outcome and the normal connection error applies;
- *  - the hello carries this browser's device name (set when dialling).
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function watchForApproval (printerId: string): ApprovalWatch | null {
-  return null
+const FAILURES: readonly string[] = ['refused', 'timed_out', 'disabled', 'busy', 'cooldown']
+const failureOf = (reason: unknown): ApprovalFailure | null =>
+  typeof reason === 'string' && FAILURES.includes(reason) ? reason as ApprovalFailure : null
+
+/** Told of each wait that starts, so the page can show the dialog for it. */
+let listener: ((watch: ApprovalWatch) => void) | null = null
+export function onApprovalWatch (next: ((watch: ApprovalWatch) => void) | null): void {
+  listener = next
 }
 
-/** Whether this build can wait for approval at all. */
-export const approvalSupported = (): boolean => watchForApproval('') !== null
+/** The part of muon-link-web's endpoint this file uses (muon-link#126; not released yet). */
+export interface ApprovingEndpoint<Session> {
+  connectAs?: (
+    printerId: string,
+    name: string,
+    requestedRole: 'operator' | 'viewer',
+    onPending: (notice: { code: string, expiresIn?: number }) => void,
+    onClosed: (reason?: string) => void
+  ) => Promise<Session>;
+}
+
+/**
+ * TODO(I-170 wire): the ONE place that reads `pending` and the close reason
+ * from muon-link-web. Dials with `endpoint.connectAs` when the endpoint has
+ * it, and resolves null when it does not (an older package), so the caller
+ * dials as today and "waiting for approval" is not offered.
+ *
+ * Assumptions, from muon-link#126 (draft, unreleased) and to confirm on release:
+ *  - `connectAs(printerId, name, requestedRole, onPending, onClosed)`; the
+ *    role asked for is 'operator', never owner;
+ *  - `onPending({ code, expiresIn })` carries the FULL 6 symbols and is
+ *    re-sent about every 2 s while held, so only the first call is acted on;
+ *  - admission is the returned session: it just proceeds;
+ *  - `onClosed(reason)` gets one of refused | timed_out | disabled | busy |
+ *    cooldown, or undefined; a rejection carries `kind: 'refused'` and `reason`;
+ *  - over Bluetooth the caller has called `addLink` first.
+ */
+export async function connectWithApproval<Session> (
+  endpoint: ApprovingEndpoint<Session>,
+  printerId: string,
+  name: string
+): Promise<Session | null> {
+  if (typeof endpoint.connectAs !== 'function') return null
+  let sawPending!: (symbols: string) => void
+  let ended!: (outcome: ApprovalOutcome) => void
+  let abandon!: (error: Error) => void
+  let cancelled = false
+  const watch: ApprovalWatch = {
+    pending: new Promise<string>(resolve => { sawPending = resolve }),
+    outcome: new Promise<ApprovalOutcome>(resolve => { ended = resolve }),
+    cancel: () => {
+      cancelled = true
+      abandon(new Error('Cancelled'))
+    }
+  }
+  const abandoned = new Promise<never>((_resolve, reject) => { abandon = reject })
+  abandoned.catch(() => {})
+  listener?.(watch)
+  try {
+    const session = await Promise.race([
+      endpoint.connectAs(
+        printerId,
+        name,
+        'operator',
+        notice => { if (!cancelled) sawPending(notice.code) },
+        reason => {
+          const failure = failureOf(reason)
+          if (failure && !cancelled) ended(failure)
+        }
+      ),
+      abandoned
+    ])
+    ended('admitted')
+    return session
+  } catch (error) {
+    const failure = failureOf((error as { reason?: unknown }).reason) ??
+      ((error as { kind?: unknown }).kind === 'refused' ? 'refused' : null)
+    if (failure && !cancelled) ended(failure)
+    throw error
+  }
+}
 
 export const APPROVAL_WORDS: Record<ApprovalFailure, string> = {
   refused: 'The printer refused this device.',
