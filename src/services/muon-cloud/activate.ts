@@ -35,13 +35,28 @@ export const activationState = Vue.observable({
   pairing: null as string | null
 })
 
+/**
+ * Pairing this browser by the printer's panel code needs printer-side approval that
+ * has not shipped (I-170). Until it does, only development builds, and builds made
+ * with VUE_MUON_PANEL_CODE_PAIRING=1, offer it. Read at call time so a test can set it.
+ */
+export function panelCodePairing (): boolean {
+  return import.meta.env.DEV === true || import.meta.env.VUE_MUON_PANEL_CODE_PAIRING === '1'
+}
+
+export const PAIRING_COMING_SOON = "Pairing from the printer is coming soon. For now, this printer can't be added from here."
+
 const OPEN_ADD_A_DEVICE = "To pair this browser, first open Settings > Add a device on the printer's screen, then choose Pair this browser."
 
+const NOT_PAIRED_REASONS: Record<PairableRefusal, string> = {
+  unknown: "This printer doesn't know this browser yet, so it won't let Control in over Bluetooth.",
+  expired: "This browser's access expired, so the printer won't let Control in over Bluetooth.",
+  revoked: "This browser was removed from the printer, so it won't let Control in over Bluetooth."
+}
+
 /** What Control says when the printer will not let this browser in over Bluetooth, by reason. */
-export const NOT_PAIRED_MESSAGES: Record<PairableRefusal, string> = {
-  unknown: `This printer doesn't know this browser yet, so it won't let Control in over Bluetooth. ${OPEN_ADD_A_DEVICE}`,
-  expired: `This browser's access expired, so the printer won't let Control in over Bluetooth. ${OPEN_ADD_A_DEVICE}`,
-  revoked: `This browser was removed from the printer, so it won't let Control in over Bluetooth. ${OPEN_ADD_A_DEVICE}`
+export function notPairedMessage (refusal: PairableRefusal): string {
+  return `${NOT_PAIRED_REASONS[refusal]} ${panelCodePairing() ? OPEN_ADD_A_DEVICE : PAIRING_COMING_SOON}`
 }
 
 let current: { transport: PrinterTransport, release: () => void } | null = null
@@ -185,8 +200,8 @@ export async function activateCloudPrinter (printerId: string) {
   } catch (error) {
     if (!superseded() && !(error instanceof SwitchSuperseded)) {
       const refusal = wantsBluetoothFor(printerId) ? pairableRefusal(error) : null
-      activationState.error = refusal ? NOT_PAIRED_MESSAGES[refusal] : (error as Error).message
-      activationState.pairing = refusal ? printerId : null
+      activationState.error = refusal ? notPairedMessage(refusal) : (error as Error).message
+      activationState.pairing = refusal && panelCodePairing() ? printerId : null
       // Timed out before this printer was bound: the one Fluidd is on stays.
       const bound = !(error instanceof RemoteOpenTimeout) || (!!transport && current?.transport === transport)
       if (bound) {

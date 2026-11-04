@@ -64,6 +64,22 @@ describe('offering to pair this browser (KAN-1253)', () => {
     expect(activationState.error).toMatch(/first open Settings > Add a device/)
   })
 
+  it.each([0x040a, 0x040b, 0x0403])('in a release build (refusal %i) says pairing is coming soon, with no Add a device step and no offer (I-170)', async (code) => {
+    vi.stubEnv('DEV', false)
+    try {
+      useBluetoothFor(EID, fakePrinter().device)
+      cloud.borrowCloudPrinter.mockResolvedValue(transport(async () => { throw refusal(code) }))
+
+      await expect(activateCloudPrinter(EID)).rejects.toThrow()
+
+      expect(activationState.pairing).toBeNull()
+      expect(activationState.error).toContain("Pairing from the printer is coming soon. For now, this printer can't be added from here.")
+      expect(activationState.error).not.toMatch(/Add a device/)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('does not offer it for a refusal by policy (0x0402)', async () => {
     useBluetoothFor(EID, fakePrinter().device)
     cloud.borrowCloudPrinter.mockResolvedValue(transport(async () => { throw refusal(0x0402) }))
