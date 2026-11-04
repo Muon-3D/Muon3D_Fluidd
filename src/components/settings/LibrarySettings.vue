@@ -311,7 +311,6 @@ export default class LibrarySettings extends Vue {
     const version = this.promise?.version
     if (version) return this.run(() => turnLibraryOn(version))
   }
-
 }
 </script>
 
