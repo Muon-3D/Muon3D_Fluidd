@@ -22,7 +22,7 @@ it.each([false, true])('renders each printer action once across the Control page
       tabs: () => [],
       subtitle: () => ''
     },
-    stubs: { ...panelStubs, CameraTabs: true, OverviewActions: true, MaintenanceDue: true, CameraActions: true, TonePill: true }
+    stubs: { ...panelStubs, CameraTabs: true, OverviewActions: true, PrinterPageMenu: true, MaintenanceDue: true, CameraActions: true, TonePill: true }
   })
 
   for (const action of printerActions) {
