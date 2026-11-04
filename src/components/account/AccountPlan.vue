@@ -18,6 +18,8 @@
       >{{ planLabel }}<template v-if="account.period"> · {{ account.period }}</template></span>
     </div>
 
+    <account-plan-summary />
+
     <p
       v-if="reading"
       class="acct-muted plan-reading"
@@ -337,6 +339,7 @@ import {
 } from '@/services/account/credits'
 import { whenText } from '@/services/account/model'
 import AcctMore from './AcctMore.vue'
+import AccountPlanSummary from './AccountPlanSummary.vue'
 
 type Period = 'monthly' | 'yearly'
 
@@ -350,7 +353,7 @@ type Period = 'monthly' | 'yearly'
  * KAN-1155), the usage from the account. No button takes money until
  * `paymentsOpen`.
  */
-@Component({ components: { AcctMore } })
+@Component({ components: { AcctMore, AccountPlanSummary } })
 export default class AccountPlan extends Vue {
   account: CreditAccount | null = null
   /** Until the service answers, so nothing about the account shows and then changes. */

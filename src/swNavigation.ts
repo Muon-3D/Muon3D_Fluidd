@@ -29,6 +29,22 @@ export const NAVIGATION_DENYLIST: RegExp[] = [
 export const isDeniedNavigation = (pathname: string): boolean =>
   NAVIGATION_DENYLIST.some(pattern => pattern.test(pathname))
 
+/** How long a navigation waits for the network before the cached page answers. */
+export const NETWORK_TIMEOUT_MS = 3500
+
+/**
+ * The same navigation, told to revalidate rather than take a fresh-looking
+ * copy from the browser's HTTP cache (the I-159 stale index.html). Redirect
+ * handling stays as the browser set it, so a server 303 still reaches the page.
+ */
+export function revalidated (request: Request): Request {
+  try {
+    return new Request(request, { cache: 'no-cache' })
+  } catch {
+    return request
+  }
+}
+
 /** What a navigation handler is given: the request (Workbox passes more). */
 export interface NavigationOptions {
   request: Request
@@ -50,13 +66,20 @@ export interface NavigationOptions {
  */
 export function networkFirstNavigation<O extends NavigationOptions> (
   network: (request: Request) => Promise<Response>,
-  cachedShell: (options: O) => Promise<Response>
+  cachedShell: (options: O) => Promise<Response>,
+  { timeoutMs = NETWORK_TIMEOUT_MS }: { timeoutMs?: number } = {}
 ): (options: O) => Promise<Response> {
   return async (options: O): Promise<Response> => {
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      return await network(options.request)
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('navigation timed out')), timeoutMs)
+      })
+      return await Promise.race([network(revalidated(options.request)), timeout])
     } catch {
       return cachedShell(options)
+    } finally {
+      clearTimeout(timer)
     }
   }
 }

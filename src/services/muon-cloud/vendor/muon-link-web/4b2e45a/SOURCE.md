@@ -3,7 +3,7 @@
 Fluidd bundles this browser client into hashed `/assets/` files. It loads the JavaScript on demand and gives
 the initializer the hashed WASM URL. The one-release console fallback is `ALLOW_CONSOLE_CLIENT_FALLBACK` in `iroh.ts`.
 
-Source: https://github.com/Muon-3D/muon-link, crate `crates/muon-link-web`, commit `d71dbe195e2174307cc25751dd1c300bd32e67b6`.
+Source: https://github.com/Muon-3D/muon-link, crate `crates/muon-link-web`, commit `4b2e45af918324e726bbbe8ac7387a72c3b658d6`.
 Built from that clean checkout with the Muon3D Slicer's `scripts/build-muon-link-web.mjs`, which supplies the
 Zig C compiler wrapper, remaps build paths, checks the output for local paths, and generates third-party notices.
 This pin includes browser Bluetooth (`MuonEndpoint.addLink`) as well as relay access.
@@ -22,4 +22,4 @@ wasm-bindgen --target web --out-dir pkg --out-name muon_link_web target/wasm32-u
 The build and Vitest verify every file against `muon-link-web.lock.json`. To update the pin, build a clean
 source commit with the matching toolchain, copy the glue, WASM and licence notices, record their SHA-256 hashes,
 and update the two imports in `iroh.ts` and the module path in `bundled-client.spec.ts`.
-Vite emits the licence notices under `/licenses/muon-link-web/d71dbe1/`.
+Vite emits the licence notices under `/licenses/muon-link-web/4b2e45a/`.

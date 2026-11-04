@@ -17,6 +17,8 @@ import { type PrinterTransport } from '@/services/managed-transport'
 import { borrowCloudPrinter, cloudState, dropCloudConnection, printerName, setActiveCloudPrinter } from './state'
 import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
 import { isOwnHotspot, pageReach } from './discovery'
+import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
 
 export { MANAGED_API_URL, MANAGED_SOCKET_URL }
 
@@ -24,8 +26,38 @@ export const activationState = Vue.observable({
   switching: null as string | null,
   error: null as string | null,
   /** The printer's own page, when this page may not reach the printer itself. */
-  fallbackUrl: null as string | null
+  fallbackUrl: null as string | null,
+  /**
+   * The printer that refused this browser's key over Bluetooth as a stranger
+   * (KAN-1253). Set only by that refusal, never by the console, so the offer
+   * to pair this browser appears for nothing else.
+   */
+  pairing: null as string | null
 })
+
+/**
+ * Pairing this browser by the printer's panel code needs printer-side approval that
+ * has not shipped (I-170). Until it does, only development builds, and builds made
+ * with VUE_MUON_PANEL_CODE_PAIRING=1, offer it. Read at call time so a test can set it.
+ */
+export function panelCodePairing (): boolean {
+  return import.meta.env.DEV === true || import.meta.env.VUE_MUON_PANEL_CODE_PAIRING === '1'
+}
+
+export const PAIRING_COMING_SOON = "Pairing from the printer is coming soon. For now, this printer can't be added from here."
+
+const OPEN_ADD_A_DEVICE = "To pair this browser, first open Settings > Add a device on the printer's screen, then choose Pair this browser."
+
+const NOT_PAIRED_REASONS: Record<PairableRefusal, string> = {
+  unknown: "This printer doesn't know this browser yet, so it won't let Control in over Bluetooth.",
+  expired: "This browser's access expired, so the printer won't let Control in over Bluetooth.",
+  revoked: "This browser was removed from the printer, so it won't let Control in over Bluetooth."
+}
+
+/** What Control says when the printer will not let this browser in over Bluetooth, by reason. */
+export function notPairedMessage (refusal: PairableRefusal): string {
+  return `${NOT_PAIRED_REASONS[refusal]} ${panelCodePairing() ? OPEN_ADD_A_DEVICE : PAIRING_COMING_SOON}`
+}
 
 let current: { transport: PrinterTransport, release: () => void } | null = null
 let generation = 0
@@ -92,9 +124,12 @@ export const REMOTE_OPEN_TIMEOUT_MS = 30_000
 
 /** Opening a printer through Muon3D took longer than `REMOTE_OPEN_TIMEOUT_MS`. */
 export class RemoteOpenTimeout extends Error {
-  constructor (name: string) {
-    super(`${name} didn't open through Muon3D within ${REMOTE_OPEN_TIMEOUT_MS / 1000} seconds. ` +
-      'The printer or its connection may be slow or offline: check that it\'s on and online, then try again.')
+  constructor (name: string, viaBluetooth = false) {
+    super(viaBluetooth
+      ? `${name} didn't open over Bluetooth within ${REMOTE_OPEN_TIMEOUT_MS / 1000} seconds. ` +
+        'Keep this computer near the printer and check that it\'s on, then try again.'
+      : `${name} didn't open through Muon3D within ${REMOTE_OPEN_TIMEOUT_MS / 1000} seconds. ` +
+        'The printer or its connection may be slow or offline: check that it\'s on and online, then try again.')
     this.name = 'RemoteOpenTimeout'
   }
 }
@@ -109,12 +144,18 @@ export async function activateCloudPrinter (printerId: string) {
   activationState.switching = printerId
   activationState.error = null
   activationState.fallbackUrl = null
+  activationState.pairing = null
   // Set inside `open`, so typed here rather than narrowed to null.
   let transport = null as PrinterTransport | null
   const open = async () => {
     try {
       // The printer Fluidd is on stays usable while the grant comes.
       const borrowed = transport = await borrowCloudPrinter(printerId)
+      if (superseded()) throw new SwitchSuperseded()
+      // Over Bluetooth, the printer decides on the first request whether it
+      // knows this key. Asking here, ahead of the page's own load, lets that
+      // refusal arrive as itself.
+      if (wantsBluetoothFor(printerId)) await borrowed.fetch('/server/info')
       if (superseded()) throw new SwitchSuperseded()
       await oneAtATime(mine, async () => {
         Vue.$socket?.releaseTransportSocket(true)
@@ -153,12 +194,14 @@ export async function activateCloudPrinter (printerId: string) {
     await Promise.race([
       opening,
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new RemoteOpenTimeout(printerName(printerId))), REMOTE_OPEN_TIMEOUT_MS)
+        timer = setTimeout(() => reject(new RemoteOpenTimeout(printerName(printerId), wantsBluetoothFor(printerId))), REMOTE_OPEN_TIMEOUT_MS)
       })
     ])
   } catch (error) {
     if (!superseded() && !(error instanceof SwitchSuperseded)) {
-      activationState.error = (error as Error).message
+      const refusal = wantsBluetoothFor(printerId) ? pairableRefusal(error) : null
+      activationState.error = refusal ? notPairedMessage(refusal) : (error as Error).message
+      activationState.pairing = refusal && panelCodePairing() ? printerId : null
       // Timed out before this printer was bound: the one Fluidd is on stays.
       const bound = !(error instanceof RemoteOpenTimeout) || (!!transport && current?.transport === transport)
       if (bound) {
@@ -190,6 +233,14 @@ function hostOf (apiUrl: string): string {
 }
 
 /**
+ * How long opening a printer on the local network may take. Moonraker's
+ * startup requests have their own limit, but loading the printer after them
+ * does not, and a printer whose Klipper had just restarted left the row on
+ * "Opening" with every later click ignored (KAN-1279).
+ */
+export const LOCAL_OPEN_TIMEOUT_MS = 45_000
+
+/**
  * Points Fluidd back at a printer on the local network.
  *
  * Resolves true once Moonraker answered, including when it wants a password,
@@ -201,6 +252,26 @@ function hostOf (apiUrl: string): string {
  */
 export async function activateLocalPrinter (instance: InstanceConfig): Promise<boolean> {
   const mine = ++generation
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<false>(resolve => {
+    timer = setTimeout(() => {
+      if (mine === generation) {
+        activationState.error = `${instance.name || instance.apiUrl} didn't open within ${LOCAL_OPEN_TIMEOUT_MS / 1000} seconds. ` +
+          'The printer may be restarting: wait a moment, then try again.'
+        // The open still waits on the printer: at its next step it finds it was replaced.
+        ++generation
+      }
+      resolve(false)
+    }, LOCAL_OPEN_TIMEOUT_MS)
+  })
+  try {
+    return await Promise.race([openLocalPrinter(instance, mine), timedOut])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function openLocalPrinter (instance: InstanceConfig, mine: number): Promise<boolean> {
   const superseded = () => mine !== generation
   // A cloud switch this one replaces no longer says it is opening.
   activationState.switching = null
