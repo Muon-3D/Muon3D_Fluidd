@@ -10,6 +10,7 @@
  * signed in, not the session. A console with muon-link-cloud #26 also ends
  * it when the code is spent; ending it here works on one without.
  */
+import { storedToken } from '@/services/muon-cloud/api'
 import { handoffUrl, prepareAuthorize } from '@/services/muon-cloud/centralLogin'
 import { accountRequest } from './client'
 import { usePasskey } from './webauthn'
@@ -60,7 +61,10 @@ export async function resetPassword (token: string, password: string): Promise<v
 
 /** From the emailed link: confirms the address, or finishes changing it. */
 export async function verifyEmail (token: string): Promise<string> {
-  const answer = await accountRequest<{ ok: boolean, email?: string }>('POST', '/v1/auth/email/verify', { token }, { token: null })
+  // A signed-in browser sends its session: a confirmed new address ends the
+  // account's other sessions, and this device keeps its own, re-keyed.
+  const own = storedToken()
+  const answer = await accountRequest<{ ok: boolean, email?: string }>('POST', '/v1/auth/email/verify', { token }, { token: own, adopt: true })
   return answer.email ?? ''
 }
 
