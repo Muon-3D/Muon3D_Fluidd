@@ -95,7 +95,7 @@ describe('plans side by side', () => {
   it('gives every plan the same rows in the same order, so they line up', () => {
     const labels = catalogue.plans.map(p => planRows(p).map(r => r.label))
     for (const l of labels) expect(l).toEqual(labels[0])
-    expect(labels[0]).toEqual(['Each week', 'Jobs at once', 'Priority queue', 'High detail shapes'])
+    expect(labels[0]).toEqual(['CAD in your browser', 'AI made, each week', 'Jobs at once', 'Priority queue', 'High detail shapes'])
   })
 
   it('differs only in what costs us to run, and gives more for more', () => {
@@ -104,7 +104,8 @@ describe('plans side by side', () => {
     expect(plus.weeklyLimit).toBeLessThan(pro.weeklyLimit)
     expect(planRows(pro).find(r => r.label === 'High detail shapes')?.value).toBe(true)
     expect(planRows(free).find(r => r.label === 'Priority queue')?.value).toBe(false)
-    expect(planRows(plus)[0].value).toBe('5 shapes or 25 parts')
+    expect(planRows(plus)[0].value).toBe('Unlimited')
+    expect(planRows(plus)[1].value).toBe('5 AI shapes or 25 AI parts')
   })
 
   it('keeps things that cost us nothing free on every plan', () => {
@@ -114,8 +115,8 @@ describe('plans side by side', () => {
 
 describe('prices', () => {
   it('turns credits into what they make', () => {
-    expect(outcomesText(286)).toBe('About 14 shapes or 71 parts')
-    expect(outcomesText(12)).toBe('Enough for 3 parts')
+    expect(outcomesText(286)).toBe('About 14 AI shapes or 71 AI parts')
+    expect(outcomesText(12)).toBe('Enough for 3 AI parts')
     expect(outcomesText(3)).toBe('')
   })
 
