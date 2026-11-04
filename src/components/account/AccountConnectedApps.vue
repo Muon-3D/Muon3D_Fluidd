@@ -10,8 +10,24 @@
       >
         Connected apps
       </h1>
-      <p>AI tools and other programs you let into your account from the Muon3D sign-in page. Each one can do only what you approved, and you can cut it off any time.</p>
+      <p>AI tools and other programs you signed in to with your Muon3D account. Each can do only what you approved. Disconnect one any time.</p>
     </div>
+
+    <section
+      class="lib-surface acct-card acct-card--pad app__explain"
+      aria-labelledby="apps-ask-title"
+      data-tid="apps-ask-explain"
+    >
+      <span class="acct-icon-box"><frame-icon
+        name="shield"
+        small
+      /></span>
+      <div class="acct-row__label">
+        <b id="apps-ask-title">Apps ask you first</b>
+        <span>Four things always need your OK, every time: publishing to your Library, starting a print, heating and moving a printer. Looking at your printers, Library and files never does.</span>
+        <span class="acct-muted">Today no app can do any of those four, so nothing will ask you yet.</span>
+      </div>
+    </section>
 
     <section
       v-if="!missing && apps && apps.length"
@@ -69,15 +85,13 @@
               data-tid="apps-no-scopes"
             >Can see who you are, nothing else</span>
             <span data-tid="apps-used">{{ approvedLine(app) }} · {{ usedLine(app) }}</span>
-            <span class="app__ask">
-              <toggle-switch
-                :value="true"
-                :label="`${nameOf(app)} asks you before it acts`"
-                disabled
-                data-tid="apps-ask"
-              />
-              <span><span class="lib-pill lib-pill--ok">Ask mode</span> Asks you first. Letting an app act without asking (Bypass) comes later.</span>
-            </span>
+            <span
+              class="app__ask"
+              data-tid="apps-ask"
+            ><frame-icon
+              name="shield"
+              small
+            />Asks you before it publishes, prints, heats or moves</span>
           </div>
           <button
             v-if="!app.current"
@@ -168,7 +182,7 @@
         name="info"
         small
       />
-      <span>An app that registered itself can only look: see your printers, your Library, your Design files and your name. Its name and site are what it said about itself. Disconnect one you don't know: its sign-ins end at once, and it has to ask you again to come back.</span>
+      <span>An app that signed itself up can only look, and its name is what it told us. Don't recognise one? Disconnect it: it's signed out at once.</span>
     </div>
 
     <p
@@ -204,7 +218,6 @@
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
-import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import { accountApi } from '@/services/account/api'
 import { AccountError, isMissing } from '@/services/account/client'
 import type { AccountSectionId } from '@/services/account/model'
@@ -228,7 +241,7 @@ import {
  * shows that and changes nothing until the console has Bypass for apps
  * (KAN-961). Control's own entry has no Disconnect: that is signing out.
  */
-@Component({ components: { ToggleSwitch } })
+@Component
 export default class AccountConnectedApps extends Vue {
   @Prop({ type: Function, default: (id: AccountSectionId) => `/account/${id}` })
   readonly linkTo!: (id: AccountSectionId) => string
@@ -407,8 +420,19 @@ export default class AccountConnectedApps extends Vue {
   .app__ask {
     display: flex !important;
     align-items: center;
-    gap: 10px;
-    margin-top: 4px;
+    gap: 6px;
+    margin-top: 2px;
+    color: var(--m3d-text-muted);
+
+    .frame-icon {
+      color: var(--m3d-success);
+    }
+  }
+
+  .app__explain {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
   }
 
   .app__reading {
