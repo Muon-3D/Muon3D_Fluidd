@@ -61,3 +61,38 @@ it('drops table target drafts on a context switch and refuses a detached old fie
   expect((wrapper.find('input[aria-label="Nozzle target"]').element as HTMLInputElement).value).toBe('215')
   wrapper.destroy(); socket.printerGcodeScript.mockClear()
 })
+
+it('has a Fluidd legend line whose entries toggle a series, and no blue slider or gap bar', async () => {
+  const store = panelStore()
+  store.getters['charts/getChartRetention'] = 1200
+  store.getters['charts/getChartData'] = []
+  store.getters['charts/getSelectedLegends'] = { extruder: false }
+  const wrapper = mount(OverviewTemps, { mocks: { $store: store }, stubs: { 'frame-icon': true } })
+  const nozzle = wrapper.find('[data-legend="extruder"]')
+  const bed = wrapper.find('[data-legend="heater_bed"]')
+  expect(nozzle.attributes('aria-pressed')).toBe('false')
+  expect(bed.attributes('aria-pressed')).toBe('true')
+  await bed.trigger('click')
+  expect(store.dispatch).toHaveBeenCalledWith('charts/saveSelectedLegends', { extruder: false, heater_bed: false })
+  await nozzle.trigger('click')
+  expect(store.dispatch).toHaveBeenCalledWith('charts/saveSelectedLegends', { extruder: true })
+  expect(wrapper.find('input[type="range"]').exists()).toBe(false)
+  expect(wrapper.find('[data-gap]').exists()).toBe(false)
+  wrapper.destroy()
+})
+
+it('picks the tracked series from a header menu and saves the choice', async () => {
+  const store = panelStore()
+  store.getters['charts/getChartRetention'] = 1200
+  store.getters['charts/getChartData'] = []
+  store.getters['charts/getSelectedLegends'] = { 'tracked:heater_bed': false }
+  const wrapper = mount(OverviewTemps, { mocks: { $store: store }, stubs: { 'frame-icon': true } })
+  expect(wrapper.find('[data-legend="heater_bed"]').exists()).toBe(false)
+  expect(wrapper.find('[data-legend="extruder"]').exists()).toBe(true)
+  await wrapper.find('[data-tid="series-picker"]').trigger('click')
+  const box = wrapper.find('input[data-series="heater_bed"]')
+  expect((box.element as HTMLInputElement).checked).toBe(false)
+  await box.setChecked(true)
+  expect(store.dispatch).toHaveBeenCalledWith('charts/saveSelectedLegends', { 'tracked:heater_bed': true })
+  wrapper.destroy()
+})

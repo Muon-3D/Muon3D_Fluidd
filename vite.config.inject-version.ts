@@ -44,7 +44,8 @@ const vitePluginInjectVersion = (): Plugin => {
       return {
         define: {
           'import.meta.env.VERSION': JSON.stringify(version),
-          'import.meta.env.HASH': JSON.stringify(`${commit.slice(0, 7)}\n`)
+          'import.meta.env.HASH': JSON.stringify(`${commit.slice(0, 7)}\n`),
+          'import.meta.env.BUILD_COMMIT': JSON.stringify(commit)
         }
       }
     },

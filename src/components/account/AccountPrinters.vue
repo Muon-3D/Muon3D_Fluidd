@@ -100,6 +100,32 @@
               :class="stateOf(p).pill"
             ><span class="lib-dot" />{{ stateOf(p).text }}</span></span>
             <span>{{ p.model || 'M1' }} · linked {{ day(p.linked_at) }} · {{ peopleLine(p.id) }}</span>
+            <span
+              v-if="p.discovery"
+              class="prn__discovery"
+            >
+              <label :for="`discovery-${p.id}`">Who can find it</label>
+              <span class="prn__select-wrap">
+                <select
+                  :id="`discovery-${p.id}`"
+                  class="prn__select"
+                  data-tid="discovery-select"
+                  :value="p.discovery"
+                  :disabled="busy"
+                  @change="changeDiscovery(p, $event)"
+                >
+                  <option
+                    v-for="level in discoveryLevels"
+                    :key="level.value"
+                    :value="level.value"
+                  >{{ level.label }}</option>
+                </select>
+              </span>
+              <span
+                class="acct-subtle"
+                data-tid="discovery-help"
+              >{{ discoveryHelp(p.discovery) }}</span>
+            </span>
           </div>
           <div class="acct-row__control">
             <button
@@ -268,7 +294,17 @@
             <span class="prn__name"><b>{{ p.name }}</b><span
               class="lib-pill"
               :class="stateOf(p).pill"
-            >{{ stateOf(p).text }}</span></span>
+            >{{ stateOf(p).text }}</span><span
+              v-if="sharerName(p)"
+              class="prn__shared"
+              role="img"
+              data-tid="shared-by-icon"
+              :aria-label="`Shared by ${sharerName(p)}`"
+              :title="`Shared by ${sharerName(p)}`"
+            ><frame-icon
+              name="user"
+              small
+            /></span></span>
             <span>{{ sharedLine(p) }}</span>
           </div>
           <button
@@ -504,7 +540,7 @@ import M3Dialog from '@/components/ui/M3Dialog.vue'
 import PrinterThumb, { type ThumbState } from '@/components/ui/PrinterThumb.vue'
 import LinkPrinterDialog from '@/components/muon-cloud/LinkPrinterDialog.vue'
 import AcctMore from './AcctMore.vue'
-import { cloudApi, type CloudPrinter } from '@/services/muon-cloud/api'
+import { cloudApi, type CloudPrinter, type DiscoveryLevel } from '@/services/muon-cloud/api'
 import { cloudState, refreshPrinters } from '@/services/muon-cloud/state'
 import { knownPrinters, printerPath } from '@/services/printer-pages'
 import { accountApi, type InviteLink, type JoinApproval, type PrinterInvite, type PrinterShare } from '@/services/account/api'
@@ -649,8 +685,41 @@ export default class AccountPrinters extends Vue {
     return n === 0 ? 'only you' : n === 1 ? '1 other person' : `${n} other people`
   }
 
-  sharedLine (p: CloudPrinter & { shared_by?: string }): string {
-    const by = p.shared_by ? `Shared by ${p.shared_by}` : 'Shared with you'
+  /** The sharer's display name (never an address), or null. */
+  sharerName (p: CloudPrinter): string | null {
+    return p.sharer?.display_name || p.shared_by || null
+  }
+
+  readonly discoveryLevels: Array<{ value: DiscoveryLevel, label: string, help: string }> = [
+    { value: 'open', label: 'Anyone on my network', help: 'Anyone on the same network can see this printer when they look for printers, signed in or not.' },
+    { value: 'signed_in', label: 'Anyone signed in', help: 'Only people who are signed in to Muon3D can see this printer when they look for printers.' },
+    { value: 'chosen', label: 'Just the people I share with', help: 'Only you and the people you have shared this printer with can see it.' },
+    { value: 'link', label: 'Only with my invite link', help: 'Hidden from everyone except you, unless they open one of your invite links.' }
+  ]
+
+  discoveryHelp (level: DiscoveryLevel): string {
+    return this.discoveryLevels.find(l => l.value === level)?.help ?? ''
+  }
+
+  /**
+   * Saves through the console and shows what the console confirms. Nothing
+   * changes on screen until it answers; a refusal puts the old level back and
+   * shows the server's own words.
+   */
+  async changeDiscovery (p: CloudPrinter, event: Event) {
+    const select = event.target as HTMLSelectElement
+    const level = select.value as DiscoveryLevel
+    const before = p.discovery
+    const saved = await this.run(async () => {
+      const answer = await cloudApi.setDiscovery(p.id, level)
+      p.discovery = answer.level
+    }, 'Saved. Who can find this printer has changed.')
+    if (!saved) select.value = before ?? 'open'
+  }
+
+  sharedLine (p: CloudPrinter): string {
+    const name = this.sharerName(p)
+    const by = name ? `Shared by ${name}` : 'Shared with you'
     const role = p.role === 'viewer' ? "you're a Viewer" : "you're an Operator"
     return `${by} · ${role} · ${p.ends_at ? `until ${dayText(p.ends_at)}` : 'no end date'}`
   }
@@ -839,6 +908,81 @@ export default class AccountPrinters extends Vue {
     gap: 8px;
     color: var(--m3d-text) !important;
     font-size: 14px !important;
+  }
+
+  .prn__shared {
+    display: inline-flex;
+    align-items: center;
+    color: var(--m3d-text-muted);
+  }
+
+  .prn__discovery {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    margin-top: 6px;
+
+    label {
+      flex: none;
+      color: var(--m3d-text-muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .acct-subtle {
+      flex-basis: 100%;
+    }
+  }
+
+  // A native select with the browser chrome removed reads as plain text, so
+  // it gets a border, a chevron and a hover state to show it can be opened.
+  .prn__select-wrap {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      right: 12px;
+      width: 7px;
+      height: 7px;
+      border-right: 1.5px solid var(--m3d-text-muted);
+      border-bottom: 1.5px solid var(--m3d-text-muted);
+      transform: translateY(-70%) rotate(45deg);
+      pointer-events: none;
+    }
+  }
+
+  .prn__select {
+    min-width: 0;
+    min-height: 32px;
+    padding: 4px 34px 4px 10px;
+    border: 1px solid var(--m3d-border-strong);
+    border-radius: 8px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text);
+    font: inherit;
+    font-size: 13.5px;
+    cursor: pointer;
+    appearance: none;
+    transition: border-color 0.15s, background-color 0.15s;
+
+    &:hover:not(:disabled) {
+      border-color: var(--m3d-accent-border, var(--m3d-accent));
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent));
+      outline-offset: 2px;
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
   }
 
   .prn__table {

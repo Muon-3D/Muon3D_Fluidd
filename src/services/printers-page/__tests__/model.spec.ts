@@ -170,15 +170,33 @@ describe('the Printers page', () => {
     expect(page.groups.map(g => g.name)).toEqual(['Saved in this browser'])
   })
 
-  it('moves an offline printer out of its group into Offline', () => {
+  it('keeps an offline printer in its group, in order, marked Offline (I-133)', () => {
     const page = printersPage(sources({
       signedIn: true,
-      directory: { cloud: [cloudEntry('e', 'muon-elm-7a20', { health: 'offline', detail: 'Last seen 2 days ago' })], local: [], found: [] },
-      groups: [{ id: 'g1', name: 'Office', printers: ['e'] }]
+      directory: {
+        cloud: [
+          cloudEntry('a', 'muon-ash-1111'),
+          cloudEntry('e', 'muon-elm-7a20', { health: 'offline', detail: 'Last seen 2 days ago' }),
+          cloudEntry('o', 'muon-oak-2222')
+        ],
+        local: [],
+        found: []
+      },
+      groups: [{ id: 'g1', name: 'Office', printers: ['a', 'e', 'o'] }]
     }))
-    expect(page.groups[0].tiles).toHaveLength(0)
-    expect(names(page.offline)).toEqual(['Elm'])
+    expect(names(page.groups[0].tiles)).toEqual(['Ash', 'Elm', 'Oak'])
+    expect(page.groups[0].tiles[1].state).toBe('offline')
+    expect(page.groups[0].tiles[1].label).toBe('Offline')
+    expect(page.offline).toHaveLength(0)
     expect(page.counts.offline).toBe(1)
+  })
+
+  it('still lists an offline printer that is in no group under Offline', () => {
+    const page = printersPage(sources({
+      signedIn: true,
+      directory: { cloud: [cloudEntry('e', 'muon-elm-7a20', { health: 'offline' })], local: [], found: [] }
+    }))
+    expect(names(page.offline)).toEqual(['Elm'])
   })
 
   it('shows a printing printer in Printing now and keeps it in its group', () => {

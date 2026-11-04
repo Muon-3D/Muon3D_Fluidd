@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { bluetoothRouteFor, cappedSegment, MAX_WRITE_SEGMENT, openBleLink, stopUsingBluetoothFor, takesBleLinks, useBluetoothFor } from '../link'
+import { bluetoothRouteFor, cappedSegment, MAX_WRITE_SEGMENT, openBleLink, releaseBluetoothLink, stopUsingBluetoothFor, takesBleLinks, useBluetoothFor, wantsBluetoothFor } from '../link'
 import { EID, fakeEndpoint, fakePrinter, info, OTHER_EID } from './fakes'
 
 afterEach(() => {
@@ -92,6 +92,27 @@ describe('the Bluetooth route', () => {
     // Reused while it is up.
     expect(await bluetoothRouteFor(endpoint, EID)).toBe(link)
     expect(endpoint.addLink).toHaveBeenCalledTimes(1)
+  })
+
+  it('releasing the link forgets it at once and hangs it up, and keeps the choice', async () => {
+    const printer = fakePrinter()
+    const { endpoint, links } = fakeEndpoint()
+    useBluetoothFor(EID, printer.device)
+    const first = await bluetoothRouteFor(endpoint, EID)
+
+    const hangingUp = releaseBluetoothLink(EID)
+    // The route no longer holds the closing link: the radio is still going down
+    // here, so a route that kept it would hand it back as if it were up.
+    await expect(bluetoothRouteFor(endpoint, EID)).rejects.toThrow(/already connected/)
+    expect(links[0].isClosed()).toBe(true)
+    expect(wantsBluetoothFor(EID)).toBe(true)
+
+    await hangingUp
+    expect(first?.isOpen()).toBe(false)
+    const second = await bluetoothRouteFor(endpoint, EID)
+    expect(second).not.toBe(first)
+    expect(second?.isOpen()).toBe(true)
+    expect(endpoint.addLink).toHaveBeenCalledTimes(2)
   })
 
   it('does nothing with an endpoint that takes no Bluetooth links (the console before muon-link#31)', async () => {

@@ -79,6 +79,8 @@ export interface DirectoryEntry {
   lan?: LanPrinter;
   /** Heard over Bluetooth. */
   nearby?: NearbyPrinter;
+  /** The transport Fluidd is really using for it, when that is Bluetooth (I-133). */
+  route?: 'bluetooth';
   /** Discovery only: the row the welcome page would show, with its action. */
   row?: SearchRow;
   foreign?: { record: ForeignPrinterRecord, status: ForeignStatus | null };
@@ -101,6 +103,8 @@ export interface DirectorySources {
   cloudNearby: CloudNearbyPrinter[];
   nearby: NearbyPrinter[];
   activeCloudId: string | null;
+  /** Whether this printer is reached over Bluetooth now: its bound transport, not the console's word. */
+  viaBluetooth?: (printerId: string) => boolean;
   /** Null while a cloud printer is shown. */
   local: LocalLive | null;
   /** The search is still running, so a printer with no answer may yet answer. */
@@ -245,8 +249,11 @@ export function printerDirectory (src: DirectorySources): Directory {
     const localActive = !!activeLocal && saved.some(s => s.apiUrl === activeLocal)
     const active = src.activeCloudId === c.id ? 'cloud' : localActive ? 'local' : null
     const status = src.status[c.id]
-    let health = cloudHealth(c.online, status, c.last_seen)
-    let detail = cloudDetail(c.online, status, c.last_seen)
+    // I-133: a printer answering over Bluetooth is not offline because the
+    // console cannot see it (its Wi-Fi may be off): the route is what is true.
+    const route = status?.reachable && src.viaBluetooth?.(c.id) ? 'bluetooth' as const : undefined
+    let health = cloudHealth(c.online || !!route, status, c.last_seen)
+    let detail = route ? `${cloudDetail(true, status, c.last_seen)} · via Bluetooth` : cloudDetail(c.online, status, c.last_seen)
     if (active === 'local' && src.local) {
       health = src.local.health
       detail = `${src.local.detail} · connected locally`
@@ -270,6 +277,7 @@ export function printerDirectory (src: DirectorySources): Directory {
       cloud: c,
       saved,
       lan,
+      route,
       nearby: nearbyFor(c.id)
     }
   })

@@ -227,6 +227,7 @@ async function reachableFirst (printer: CloudNearbyPrinter): Promise<string | nu
  * showed only its name until it was opened).
  */
 async function foundThroughService (printer: CloudNearbyPrinter) {
+  if (pageIsSecure()) return
   if (discoveryState.found.some(l => l.endpointId === printer.printerId)) return
   const host = printer.localAddrs.length > 1 ? await reachableFirst(printer) : printer.localAddrs[0]
   if (!host || discoveryState.found.some(l => l.endpointId === printer.printerId)) return
@@ -314,6 +315,31 @@ export function resetPageBlockCheck () {
 }
 
 let running: Promise<void> | null = null
+
+/**
+ * Whether this page was served over https (the hosted site). Such a page must
+ * never fetch `http://` by itself: every request to a private address is mixed
+ * content, and Chrome drops the lock ("Not secure", I-134: ~129 requests per
+ * load from control.muon3d.com). Discovery by http runs only from a page the
+ * printer served over http.
+ */
+export function pageIsSecure (): boolean {
+  return location.protocol === 'https:'
+}
+
+/**
+ * On the https site, the printers the service says share this network, as
+ * links for a new tab. Opening `http://<ip>/` as a top-level page is not mixed
+ * content, so it keeps the lock on this page.
+ */
+export function lanOpenLinks (): Array<{ name: string, url: string }> {
+  const links: Array<{ name: string, url: string }> = []
+  for (const p of discoveryState.cloud) {
+    const host = nearbyHost(p.localAddrs)
+    if (host) links.push({ name: p.name, url: `http://${host}/` })
+  }
+  return links
+}
 
 function isIpv4 (host: string) {
   return /^\d{1,3}(\.\d{1,3}){3}$/.test(host)
@@ -663,6 +689,13 @@ async function sweep () {
  * false` leaves out the console's list, for a caller that asked it already.
  */
 export function discoverPrinters (force = false, { nearby = true }: { nearby?: boolean } = {}): Promise<void> {
+  if (pageIsSecure()) {
+    // No http from an https page. The service's list is all there is to ask;
+    // an explicit search asks it again.
+    discoveryState.finishedAt = Date.now()
+    if (nearby || force) return refreshCloudNearby().catch(() => {})
+    return Promise.resolve()
+  }
   if (nearby) refreshCloudNearby().catch(() => {})
   if (running) return running
   if (!force && Date.now() - discoveryState.finishedAt < FRESH_FOR_MS) return Promise.resolve()
@@ -678,6 +711,7 @@ let refreshing: Promise<void> | null = null
  * is on this network now, not what was once.
  */
 export async function refreshKnownPrinters () {
+  if (pageIsSecure()) return
   if (refreshing) return refreshing
   if (running) return
   const hosts = [...new Set([...discoveryState.found.flatMap(lanAddresses), ...knownHosts()])]
@@ -697,6 +731,7 @@ let readingStatus: Promise<void> | null = null
  * (`refreshKnownPrinters`) runs only every 15.
  */
 export function refreshLanStatus (): Promise<void> {
+  if (pageIsSecure()) return Promise.resolve()
   if (readingStatus) return readingStatus
   readingStatus = Promise.all(discoveryState.found.map(async p => {
     const health = await printerHealth(p.apiUrl)
@@ -709,6 +744,7 @@ export function refreshLanStatus (): Promise<void> {
 
 /** Refreshes the link state of the printers already found. */
 export async function refreshLinkStates () {
+  if (pageIsSecure()) return
   await Promise.all(discoveryState.found.map(async p => {
     remember({ ...p, link: await lanLinkStatus(p.apiUrl) })
   }))
