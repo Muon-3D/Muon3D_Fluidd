@@ -2,15 +2,26 @@
   <section
     class="ov-card overview-editor"
     aria-label="Customise Overview"
+    data-tid="overview-panel"
   >
-    <h2 class="ov-card__title">
-      Customise Overview
-    </h2>
-    <p>M1 and this print, with Pause and Stop, are always here.</p>
-    <p>Choose your cards. Drag selected rows or use Move up and Move down.</p>
+    <div class="ov-card__head">
+      <h2 class="ov-card__title">
+        Customise
+      </h2>
+      <button
+        type="button"
+        class="cbtn"
+        data-tid="overview-done"
+        @click="$emit('close')"
+      >
+        Done
+      </button>
+    </div>
+    <p>M1 and this print, with Pause and Stop, are always here. Changes apply straight away. Drag a card or use the arrows to reorder.</p>
     <div
       v-for="card in rows"
       :key="card.id"
+      class="overview-editor__row"
       :data-card="card.id"
       :draggable="selected.includes(card.id)"
       @dragstart="dragged = card.id"
@@ -20,12 +31,15 @@
       <label>
         <input
           type="checkbox"
+          role="switch"
           :checked="selected.includes(card.id)"
           :disabled="!!unavailable[card.id] && !selected.includes(card.id)"
           @change="toggleEvent(card.id, $event)"
         >
-        {{ card.title }}
-        <small>{{ unavailable[card.id] || card.needs }}</small>
+        <span>
+          {{ card.title }}
+          <small>{{ unavailable[card.id] || card.needs }}</small>
+        </span>
       </label>
       <template v-if="selected.includes(card.id)">
         <button
@@ -48,14 +62,17 @@
         </button>
       </template>
     </div>
-    <button
-      type="button"
-      class="cbtn"
-      data-tid="overview-reset"
-      @click="$emit('input', null)"
-    >
-      Put back Muon3D's default
-    </button>
+    <div class="overview-editor__foot">
+      <button
+        type="button"
+        class="cbtn"
+        data-tid="overview-reset"
+        @click="$emit('input', null)"
+      >
+        Reset to default
+      </button>
+      <small v-if="note">{{ note }}</small>
+    </div>
   </section>
 </template>
 <script lang="ts">
@@ -64,6 +81,7 @@ import { cardLayout, moveCard, overviewCards } from '@/services/overview/cards'
 @Component
 export default class OverviewCards extends Vue {
   @Prop({ type: Array, required: true }) readonly value!: string[]
+  @Prop({ type: String, default: '' }) readonly note!: string
   @Prop({ type: Object, default: () => ({}) }) readonly unavailable!: Record<string, string>
   dragged = ''
   get selected (): string[] { return cardLayout(this.value) }
@@ -86,9 +104,11 @@ export default class OverviewCards extends Vue {
 }
 </script>
 <style scoped>
-.overview-editor > div { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid var(--m3d-border); }
-.overview-editor label { flex: 1; }
-.overview-editor input { margin-right: 8px; }
+.overview-editor__row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--m3d-border); }
+.overview-editor__row .cbtn { min-width: 44px; min-height: 44px; }
+.overview-editor label { display: flex; flex: 1; align-items: center; gap: 12px; min-height: 44px; min-width: 0; }
+.overview-editor input { flex: none; width: 20px; height: 20px; margin: 0; }
 .overview-editor small { display: block; color: var(--m3d-text-subtle); }
 .overview-editor p { margin: 0; color: var(--m3d-text-muted); }
+.overview-editor__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding-top: 6px; border-top: 1px solid var(--m3d-border); }
 </style>

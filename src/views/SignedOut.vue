@@ -167,7 +167,7 @@ import PrinterThumb from '@/components/ui/PrinterThumb.vue'
 import { cloudApi } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
 import { centralLoginEnabled, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
-import { nearbyHost, printerHealth } from '@/services/muon-cloud/discovery'
+import { nearbyHost, pageIsSecure, printerHealth } from '@/services/muon-cloud/discovery'
 import { printerStatusWord } from '@/util/printer-status-word'
 import { describe } from '@/services/account/state'
 import { finishSignIn, forgotPassword, passkeySignIn } from '@/services/account/sign-in'
@@ -235,6 +235,11 @@ export default class SignedOut extends Vue {
       this.nearby = printers
         .map(p => ({ id: p.printer_id, name: p.name, host: nearbyHost(p.local_addrs ?? []) ?? '', status: 'Checking…' }))
         .filter(p => p.host)
+      // No http from the https site (I-134): the name stands without a status.
+      if (pageIsSecure()) {
+        for (const printer of this.nearby) printer.status = ''
+        return
+      }
       await Promise.all(this.nearby.map(async printer => {
         const health = await printerHealth(`http://${printer.host}`)
         printer.status = printerStatusWord(health?.state ?? null)

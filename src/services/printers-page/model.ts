@@ -170,7 +170,8 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
       }
     : e.active ? src.activeJob : statusJob(statusFor(e, src.status))
   const parts = printerNameParts(e.name)
-  const remote = e.active === 'cloud' || (!e.host && !!e.cloud)
+  const viaBluetooth = e.route === 'bluetooth'
+  const remote = !viaBluetooth && (e.active === 'cloud' || (!e.host && !!e.cloud))
   let label: string
   switch (state) {
     case 'printing': label = job?.progress != null ? `${job.progress}%` : 'Printing'; break
@@ -188,7 +189,7 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
   if ((state === 'printing' || state === 'paused') && job?.file) {
     detail = jobName(job.file) ?? e.detail
   } else if (state === 'ready') {
-    detail = remote ? 'Remote, through Muon3D' : 'On this network'
+    detail = viaBluetooth ? 'Via Bluetooth' : remote ? 'Remote, through Muon3D' : 'On this network'
   } else if (state === 'unreachable') {
     detail = "Online, but this browser can't reach it"
   } else {
@@ -236,21 +237,24 @@ function group (id: string, name: string, tiles: PrinterTile[], editable: boolea
  * your groups, what was found on this network and is not yours yet, and
  * what is offline (U6: Found and Offline fill themselves). A printer that
  * is printing shows in Printing now and stays in its group; an offline one
- * leaves its group for Offline.
+ * stays in its group too, marked Offline (I-133), and one in no group is
+ * listed under Offline.
  */
 export function printersPage (src: PageSources): PrintersPage {
   const groups: TileGroup[] = []
   const offline: PrinterTile[] = []
   const all: PrinterTile[] = []
 
-  const place = (tiles: PrinterTile[]) => {
-    const online: PrinterTile[] = []
+  // I-133: a printer in one of your groups keeps its place there when it goes
+  // offline (greyed, "Offline"); only printers in no group fill Offline.
+  const place = (tiles: PrinterTile[], keepOffline = false) => {
+    const shown: PrinterTile[] = []
     for (const t of tiles) {
       all.push(t)
-      if (t.state === 'offline') offline.push(t)
-      else online.push(t)
+      if (t.state === 'offline' && !keepOffline) offline.push(t)
+      else shown.push(t)
     }
-    return online
+    return shown
   }
 
   const cloud = src.directory.cloud
@@ -260,7 +264,7 @@ export function printersPage (src: PageSources): PrintersPage {
       .map(id => cloud.find(e => e.cloud?.id === id))
       .filter((e): e is DirectoryEntry => !!e && !grouped.has(e.key))
     members.forEach(e => grouped.add(e.key))
-    groups.push(group(g.id, g.name, place(members.map(e => tileFor(e, src, g.name))), true))
+    groups.push(group(g.id, g.name, place(members.map(e => tileFor(e, src, g.name)), true), true))
   }
   const ungrouped = cloud.filter(e => !grouped.has(e.key))
   // Kept, even empty, while groups hold printers: it is where a printer is

@@ -45,6 +45,7 @@
         >
           <frame-icon name="library" />
         </router-link>
+        <notices-bell v-if="!printerFrame" />
         <cloud-account-menu v-if="!printerFrame" />
       </div>
 
@@ -177,6 +178,7 @@
           <span>Keyboard shortcuts <kbd>?</kbd></span>
         </v-tooltip>
 
+        <notices-bell />
         <cloud-account-menu />
       </div>
 
@@ -276,6 +278,7 @@
 
 <script lang="ts">
 import CloudAccountMenu from '@/components/muon-cloud/CloudAccountMenu.vue'
+import NoticesBell from '@/components/muon-cloud/NoticesBell.vue'
 import { Component, Mixins } from 'vue-property-decorator'
 import PendingChangesDialog from '@/components/settings/PendingChangesDialog.vue'
 import AppSaveConfigAndRestartBtn from './AppSaveConfigAndRestartBtn.vue'
@@ -301,6 +304,7 @@ import { pageOfRoute } from '@/router/printerPagePaths'
 @Component({
   components: {
     CloudAccountMenu,
+    NoticesBell,
     PendingChangesDialog,
     AppSaveConfigAndRestartBtn,
     AppUploadAndPrintBtn,
