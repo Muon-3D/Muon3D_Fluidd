@@ -5,8 +5,10 @@
       preserveAspectRatio="none"
       role="img"
       aria-label="Recorded temperatures. Drag or use the time control to inspect."
+      tabindex="0"
       @pointerdown="point"
       @pointermove="point"
+      @keydown="key"
     >
       <template v-for="sensor in sensors">
         <path
@@ -50,33 +52,6 @@
     <div class="temperature-timeline__axis">
       <span>{{ time(plotFrom) }}</span><span>{{ time(plotTo) }}</span>
     </div>
-    <label>
-      Inspect recorded time
-      <input
-        type="range"
-        :min="from"
-        :max="now"
-        step="1000"
-        :value="at"
-        :aria-valuetext="time(at)"
-        @input="pickInput"
-        @keydown="key"
-      >
-    </label>
-    <div
-      class="temperature-timeline__track"
-      role="list"
-      aria-label="Recorded temperature availability"
-    >
-      <i
-        v-for="(gap, index) in gaps"
-        :key="index"
-        data-gap
-        role="listitem"
-        :aria-label="`Temperature samples missing from ${time(gap.from)} to ${time(gap.to)}`"
-        :style="gapStyle(gap)"
-      />
-    </div>
     <div
       class="temperature-timeline__readout"
       aria-live="polite"
@@ -97,16 +72,6 @@
     >
       Live
     </button>
-    <p v-if="oldest !== null">
-      Recorded history starts about {{ time(oldest) }}. Earlier time is a gap.
-    </p>
-    <p v-else>
-      No temperature history is retained.
-    </p>
-    <p>Times are approximate: stored samples are aligned to receipt time. Scrubbing only inspects readings.</p>
-    <p v-if="eventStart">
-      Event markers observed since {{ time(eventStart) }}; earlier events are not recorded here.
-    </p>
     <details v-if="events.length">
       <summary>Observed markers ({{ events.length }})</summary>
       <div class="temperature-timeline__events">
@@ -127,7 +92,7 @@
 <script lang="ts">
 import { Component, Vue, Prop } from 'vue-property-decorator'
 import type { ChartPoint } from '@/services/overview/model'
-import { historyPath, missingIntervals, sampleAt, type MissingInterval } from '@/services/overview/timeline'
+import { historyPath, sampleAt } from '@/services/overview/timeline'
 @Component
 export default class TemperatureTimeline extends Vue {
   @Prop({ type: Array, required: true }) readonly points!: ChartPoint[]
@@ -147,7 +112,6 @@ export default class TemperatureTimeline extends Vue {
   get at (): number { return Math.max(this.from, Math.min(this.now, this.cursor ?? this.points.at(-1)?.date.getTime() ?? this.now)) }
   get sample (): ChartPoint | null { return sampleAt(this.points, this.at) }
   get visibleMarkers () { return this.events.filter(event => event.at >= this.plotFrom && event.at <= this.plotTo) }
-  get gaps (): MissingInterval[] { return missingIntervals(this.points, this.sensors.map(sensor => sensor.key), this.from, this.now) }
   get maximum (): number {
     let max = 100
     for (const p of this.points) {
@@ -168,7 +132,6 @@ export default class TemperatureTimeline extends Vue {
   isReading (value: number | Date): value is number { return typeof value === 'number' && Number.isFinite(value) }
   degrees (value: number | Date): string { return typeof value === 'number' && Number.isFinite(value) ? `${value.toFixed(2).replace(/0$/, '')}°` : 'unrecorded' }
   xAt (at: number): number { return Math.max(0, Math.min(600, (at - this.plotFrom) / Math.max(1, this.plotTo - this.plotFrom) * 600)) }
-  gapStyle (gap: MissingInterval) { const duration = Math.max(1, this.now - this.from); return { left: `${(gap.from - this.from) / duration * 100}%`, width: `${(gap.to - gap.from) / duration * 100}%` } }
   time (at: number): string { return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }
   pick (at: number) { this.cursor = Math.max(this.from, Math.min(this.now, at)) }
   pickInput (event: Event) { if (event.target instanceof HTMLInputElement) this.selectTime(Number(event.target.value)) }
@@ -187,12 +150,7 @@ export default class TemperatureTimeline extends Vue {
 </script>
 <style scoped>
 .temperature-timeline svg { width: 100%; height: 160px; touch-action: none; background: repeating-linear-gradient(to top, transparent 0 39px, var(--m3d-border) 39px 40px); }
-.temperature-timeline label, .temperature-timeline input { display: block; width: 100%; }
-.temperature-timeline input { min-height: 44px; accent-color: var(--m3d-accent); }
 .temperature-timeline__axis { display: flex; justify-content: space-between; font-size: 12px; }
 .temperature-timeline__readout, .temperature-timeline__events { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 8px 0; }
 .temperature-timeline__readout { font-variant-numeric: tabular-nums; }
-.temperature-timeline__track { height: 8px; position: relative; background: var(--m3d-success); border-radius: 4px; overflow: hidden; }
-.temperature-timeline__track i { display: block; position: absolute; height: 100%; background: repeating-linear-gradient(45deg, var(--m3d-surface-2) 0 4px, var(--m3d-border) 4px 8px); }
-.temperature-timeline p { margin: 8px 0; color: var(--m3d-text-subtle); font-size: 12px; }
 </style>

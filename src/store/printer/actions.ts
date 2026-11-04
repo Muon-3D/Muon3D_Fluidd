@@ -11,6 +11,8 @@ import sandboxedEval from '@/plugins/sandboxedEval'
 
 // let retryTimeout: number
 
+let lastDiagnosticsAt = 0
+
 export const actions: ActionTree<PrinterState, RootState> = {
   /**
    * Reset our store
@@ -181,6 +183,10 @@ export const actions: ActionTree<PrinterState, RootState> = {
 
   async onDiagnosticsMetricsUpdate ({ rootState, commit, rootGetters }) {
     if (!rootState.config.uiSettings.general.enableDiagnostics) return
+    // The collectors stringify the whole printer object: at most once a second.
+    const now = Date.now()
+    if (now - lastDiagnosticsAt < 1000) return
+    lastDiagnosticsAt = now
     const layout = rootState.layout.layouts.diagnostics as DiagnosticsCardContainer
     const metrics = Object.values(layout)
       .flat()

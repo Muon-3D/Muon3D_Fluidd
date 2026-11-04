@@ -1,7 +1,8 @@
 import { Component, Mixins } from 'vue-property-decorator'
+import consola from 'consola'
 import type { InstanceConfig } from '@/store/config/types'
 import StateMixin from './state'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import { foundOpenFor } from '@/services/muon-cloud/found-open'
 import {
@@ -29,9 +30,24 @@ import {
 } from '@/services/muon-cloud/directory'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
-import { lookNearby, nearbyState, type NearbyPrinter } from '@/services/muon-ble/nearby'
-import { useBluetoothFor } from '@/services/muon-ble/link'
+import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
+import { startPairing } from '@/services/muon-ble/pairing'
+import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
+import { stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
+import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
+
+/**
+ * The longest a row stays busy with one open. The slowest open is bounded
+ * below this (`REMOTE_OPEN_TIMEOUT_MS`, `LOCAL_OPEN_TIMEOUT_MS`); this is the
+ * backstop for a step that has no bound of its own.
+ */
+export const RUN_TIMEOUT_MS = 60_000
+
+class RunTimeout extends Error {}
+
+/** Counts runs, so one taken over by a chosen route does not clear the row of the one that took over. */
+let runCounter = 0
 
 /**
  * Every printer this browser knows of, and what can be done with each:
@@ -83,6 +99,15 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
 
   get activationError () {
     return activationState.error
+  }
+
+  /** The printer that refused this browser over Bluetooth: Control can pair with it (KAN-1253). */
+  get pairingOffer () {
+    return activationState.pairing
+  }
+
+  pairThisBrowser () {
+    if (activationState.pairing) startPairing(activationState.pairing).catch(() => {})
   }
 
   get activationFallback () {
@@ -142,6 +167,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       cloudNearby: discoveryState.cloud,
       nearby: nearbyState.printers,
       activeCloudId: cloudState.activePrinterId,
+      viaBluetooth: wantsBluetoothFor,
       local: this.localLive,
       searching: discoveryState.scanning || !discoveryState.finishedAt
     })
@@ -174,8 +200,16 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     if (e.active !== 'cloud') {
       actions.push({ id: 'connect-cloud', label: 'Connect through Muon3D', icon: '$cloud', disabled: !e.cloud?.online })
     }
-    if (e.nearby && !e.cloud?.online) {
+    // Whenever it was heard nearby, whatever the service says (KAN-1175, ADR
+    // 0052): the service can call a printer online that this browser cannot
+    // reach through the relay, and Bluetooth is the way in then.
+    // I-129: and wherever this browser has Bluetooth at all, heard or not: the
+    // action runs the device picker itself, so "Look nearby" is not a first step.
+    if (e.cloud && (e.nearby || nearbyState.support === 'supported')) {
       actions.push({ id: 'connect-bluetooth', label: 'Connect over Bluetooth', icon: '$bluetooth' })
+    }
+    if (e.cloud && bleRetryState.stopped[e.cloud.id]) {
+      actions.push({ id: 'retry-bluetooth', label: 'Retry Bluetooth', icon: '$bluetooth', hint: bleRetryState.stopped[e.cloud.id] })
     }
     actions.push({
       id: 'access',
@@ -235,15 +269,15 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return this.foundActions(e)
   }
 
-  onAction (e: DirectoryEntry, id: string) {
+  async onAction (e: DirectoryEntry, id: string) {
     this.notice = null
     switch (id) {
       case 'connect-local': return this.connectLocal(e)
-      case 'connect-cloud': return this.connectCloud(e)
+      case 'connect-cloud': return this.connectCloud(e, 'relay')
+      case 'retry-bluetooth':
       case 'connect-bluetooth':
-        if (!e.cloud || !e.nearby) return
-        useBluetoothFor(e.cloud.id, e.nearby.device)
-        return this.connectCloud(e)
+        if (!e.cloud) return
+        return this.connectOverBluetooth(e)
       case 'connect': return this.openFoundEntry(e)
       case 'link': return this.link(e)
       case 'remove': return this.remove(e)
@@ -259,13 +293,41 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     this.$emit('click')
   }
 
-  async run (key: string, work: () => Promise<boolean>) {
-    if (this.busyKey) return
+  /**
+   * `supersede` is a chosen way in (I-133): Connect over Bluetooth, or back to
+   * Muon3D. It takes over from an open already in flight (activateCloudPrinter
+   * supersedes the earlier dial) instead of hitting the busy guard.
+   */
+  async run (key: string, work: () => Promise<boolean>, supersede = false) {
+    if (this.busyKey && !supersede) {
+      // KAN-1279: this used to return without a word, so a row whose earlier
+      // open never settled looked dead: no spinner change, nothing logged.
+      consola.warn(`Ignored a click on ${key}: still opening ${this.busyKey}`)
+      this.notice = 'Still opening a printer. Give it a moment, or reload the page if it stays stuck.'
+      return
+    }
+    const mine = ++runCounter
     this.busyKey = key
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      if (await work()) this.afterOpen()
-    } catch { /* activationState holds the reason */ } finally {
-      this.busyKey = null
+      const outcome = await Promise.race([
+        work(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new RunTimeout()), RUN_TIMEOUT_MS)
+        })
+      ])
+      if (outcome) this.afterOpen()
+    } catch (error) {
+      if (error instanceof RunTimeout) {
+        // Whatever the open was waiting on never answered: free the row.
+        consola.warn(`Opening ${key} took longer than ${RUN_TIMEOUT_MS / 1000} seconds; gave up`)
+        activationState.error = "The printer didn't open in time. Check that it's on and online, then try again."
+      }
+      // Otherwise activationState holds the reason.
+    } finally {
+      clearTimeout(timer)
+      // A run that was taken over leaves the row to the run that took over.
+      if (mine === runCounter) this.busyKey = null
     }
   }
 
@@ -276,8 +338,34 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return this.openFoundEntry(e)
   }
 
+  /**
+   * The whole Bluetooth way in from one menu item (I-131): the device already
+   * heard, else one this browser may already use, else the chooser; then the
+   * link and the connect. A printer that refuses this browser as a stranger
+   * goes straight into pairing, and the connect continues once paired.
+   */
+  async connectOverBluetooth (e: DirectoryEntry) {
+    if (!e.cloud) return
+    const id = e.cloud.id
+    let heard = e.nearby ?? await permittedPrinterFor(id).catch(() => null)
+    if (!heard) {
+      heard = await lookNearby()
+      if (!heard) return
+      if (heard.endpointId && !isPrinter(heard, id)) {
+        this.notice = `That device isn't ${e.name}. Choose ${e.name} in the Bluetooth list.`
+        return
+      }
+    }
+    retryBluetooth(id)
+    await this.connectCloud(e, heard.device)
+    if (activationState.pairing === id) await startPairing(id)
+  }
+
   openCloudEntry (e: DirectoryEntry) {
-    if (e.active) {
+    // KAN-1279: `active` only says this printer was chosen. With its socket not
+    // open and ready the page is empty, and going to it again did nothing.
+    const socket = this.$store.state.socket
+    if (e.active && socket.open && socket.ready) {
       this.afterOpen()
       return
     }
@@ -286,13 +374,28 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return this.connectCloud(e)
   }
 
-  connectCloud (e: DirectoryEntry) {
+  /**
+   * `route` is the person's choice of way in (KAN-1253): the device to open it
+   * over Bluetooth, or `'relay'` to undo an earlier Bluetooth choice. The
+   * choice and the drop of any open connection happen inside `run`, so a click
+   * ignored while another open is busy changes nothing. The handoff behind a
+   * Bluetooth choice no longer waits on the service for this printer, and a
+   * connection already open is dropped so this dial uses the chosen route.
+   */
+  connectCloud (e: DirectoryEntry, route?: 'relay' | BleDevice) {
     if (!e.cloud) return
     const id = e.cloud.id
     return this.run(e.key, async () => {
+      if (route === 'relay') {
+        stopUsingBluetoothFor(id)
+        dropCloudConnection(id)
+      } else if (route) {
+        useBluetoothFor(id, route)
+        dropCloudConnection(id)
+      }
       await activateCloudPrinter(id)
       return true
-    })
+    }, !!route)
   }
 
   /** The saved address it answers on, else its address on this network. */

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { refreshServiceWorker } from '../service-worker-update'
+import { applyUpdateWhenIdle, refreshServiceWorker } from '../service-worker-update'
 
 function worker (initial: ServiceWorkerState) {
   const events = new EventTarget()
@@ -54,5 +54,39 @@ describe('refreshServiceWorker', () => {
   it('supports browsers without a registered worker', async () => {
     await expect(refreshServiceWorker({ getRegistration: async () => undefined } as any)).resolves.toBeUndefined()
     await expect(refreshServiceWorker(null)).resolves.toBeUndefined()
+  })
+})
+
+describe('applyUpdateWhenIdle (KAN-1279)', () => {
+  it('applies at once when no printer action is in flight', () => {
+    const apply = vi.fn()
+    const r = applyUpdateWhenIdle(() => false, apply)
+    expect(r.immediate).toBe(true)
+    expect(apply).toHaveBeenCalledOnce()
+  })
+
+  it('waits for a running action, then applies once', () => {
+    vi.useFakeTimers()
+    try {
+      let busy = true
+      const apply = vi.fn()
+      const r = applyUpdateWhenIdle(() => busy, apply, 100)
+      expect(r.immediate).toBe(false)
+      vi.advanceTimersByTime(500)
+      expect(apply).not.toHaveBeenCalled()
+      busy = false
+      vi.advanceTimersByTime(500)
+      expect(apply).toHaveBeenCalledOnce()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('does not apply after being cancelled', () => {
+    vi.useFakeTimers()
+    try {
+      const apply = vi.fn()
+      applyUpdateWhenIdle(() => true, apply, 100).cancel()
+      vi.advanceTimersByTime(1000)
+      expect(apply).not.toHaveBeenCalled()
+    } finally { vi.useRealTimers() }
   })
 })

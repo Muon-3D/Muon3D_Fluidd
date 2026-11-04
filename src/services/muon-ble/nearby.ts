@@ -201,3 +201,21 @@ export function isPrinter (p: NearbyPrinter, endpointId: string): boolean {
   if (p.endpointId) return p.endpointId === id
   return !!p.advert && id.startsWith(p.advert.endpointPrefix)
 }
+
+/**
+ * A device this browser already holds permission for that is this printer's
+ * (`getDevices`, matched by the EndpointId remembered when it was chosen), so
+ * Connect over Bluetooth can skip the chooser (I-129). Null when none matches.
+ */
+export async function permittedPrinterFor (endpointId: string): Promise<NearbyPrinter | null> {
+  if (bluetoothSupport().supported === false) return null
+  const known = loadRemembered()
+  for (const device of await rememberedDevices()) {
+    const r = known[device.id]
+    if (!r) continue
+    const printer = nearbyState.printers.find(x => x.deviceId === device.id) ??
+      upsert(device, { localName: r.localName, endpointId: r.endpointId })
+    if (isPrinter(printer, endpointId)) return printer
+  }
+  return null
+}

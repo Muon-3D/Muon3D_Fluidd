@@ -95,7 +95,7 @@ describe('ForeignPrinterOverview', () => {
     await wrapper.find('.cbtn--ghost').trigger('click')
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(confirm).toHaveBeenCalledWith('Fluidd forgets this printer in this browser.', expect.objectContaining({
+    expect(confirm).toHaveBeenCalledWith('Control forgets this printer in this browser.', expect.objectContaining({
       title: 'Forget Garden Printer?',
       buttonTrueText: 'Forget'
     }))
