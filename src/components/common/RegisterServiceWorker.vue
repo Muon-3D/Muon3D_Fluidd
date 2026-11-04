@@ -23,11 +23,15 @@ import { Component, Vue } from 'vue-property-decorator'
 import { consola } from 'consola'
 import { EventBus } from '@/eventBus'
 import M3Toast from '@/components/ui/M3Toast.vue'
+import { activationState } from '@/services/muon-cloud/activate'
+import { applyUpdateWhenIdle } from '@/util/service-worker-update'
+import { watchForNewBuild } from '@/util/build-update'
 
 @Component({ components: { M3Toast } })
 export default class RegisterServiceWorker extends Vue {
   updateSW: ((reloadPage?: boolean) => Promise<void>) | null = null
   needRefresh = false
+  stopWatching: () => void = () => {}
 
   onOfflineReady () {
     consola.debug('[PWA] ready for offline work')
@@ -36,11 +40,38 @@ export default class RegisterServiceWorker extends Vue {
 
   onNeedRefresh () {
     consola.debug('[PWA] needs refresh')
-    this.needRefresh = true
+    // KAN-1279: apply the new worker unasked, unless a printer is mid-switch;
+    // then the toast stays up and the update lands when the switch is done.
+    const { immediate } = applyUpdateWhenIdle(
+      () => activationState.switching !== null,
+      () => this.updateServiceWorker()
+    )
+    this.needRefresh = !immediate
   }
 
   onRegistered (registration?: ServiceWorkerRegistration) {
     consola.debug('[PWA] registered', registration)
+    // I-159: look for a newer worker and a newer build on focus, when the tab
+    // is shown and every few minutes; a stale tab no longer waits for a click.
+    this.stopWatching()
+    this.stopWatching = watchForNewBuild({
+      running: import.meta.env.BUILD_COMMIT ?? '',
+      update: () => registration ? registration.update() : Promise.resolve(),
+      onNewer: () => this.onNewer()
+    })
+  }
+
+  onNewer () {
+    consola.debug('[PWA] a newer build is being served')
+    const { immediate } = applyUpdateWhenIdle(
+      () => activationState.switching !== null,
+      () => this.updateServiceWorker()
+    )
+    this.needRefresh = !immediate
+  }
+
+  beforeDestroy () {
+    this.stopWatching()
   }
 
   onRegisterError (e: unknown) {
@@ -48,7 +79,10 @@ export default class RegisterServiceWorker extends Vue {
   }
 
   updateServiceWorker () {
-    this.updateSW && this.updateSW(true)
+    // The new worker skips waiting by itself (sw.ts), so there may be none to
+    // activate: the reload is what loads the new build.
+    const activated = this.updateSW ? this.updateSW(true) : Promise.resolve()
+    Promise.resolve(activated).catch(() => {}).then(() => window.location.reload())
   }
 
   async mounted () {

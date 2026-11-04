@@ -6,6 +6,8 @@ import { middleHeight, stripsLit, tapColour, tapKey, type LedStrip, type PlateTa
 import { Y_TOWARD_FRONT } from '@/services/machine/orientation'
 import { buildAccessories } from './accessory-parts'
 import { CROSSFADE_MS } from './accessory-motion'
+import { CONTENTS_ORDER, flattenGlass } from './glass-material'
+import { createRenderGate } from './render-gate'
 
 /**
  * The live M1 on a stage: the photoreal model, lit as its product shots
@@ -288,6 +290,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   scene.add(ground)
 
   const mats = m1().buildMaterials()
+  flattenGlass(mats)
   const model: M1Root = m1().build(mats)
   scene.add(model)
   // Materials that lean on scene.environment lose their own envMapIntensity; giving each the map keeps it.
@@ -323,6 +326,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     object.matrixAutoUpdate = false
     object.matrix.copy(printFrame)
     object.frustumCulled = false
+    object.renderOrder = CONTENTS_ORDER
     parts.cargo.add(object)
     return object
   }
@@ -411,7 +415,6 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   let raf = 0
   let lastDraw = 0
   let dragging = false
-  let active = true
   let ready = false
   let disposed = false
 
@@ -505,7 +508,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   function draw () {
     raf = 0
-    if (disposed || !active || !ready || !width || !height) return
+    if (disposed || !gate.open || !ready || !width || !height) return
     const now = performance.now()
     if (!dragging && now - lastDraw < FRAME_MS - 4) {
       raf = requestAnimationFrame(draw)
@@ -533,6 +536,16 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     if (raf || disposed) return
     raf = requestAnimationFrame(draw)
   }
+
+  // Draws only while switched on, the tab is visible and the canvas is on screen.
+  const gate = createRenderGate(canvas, open => {
+    if (open) {
+      invalidate()
+    } else {
+      cancelAnimationFrame(raf)
+      raf = 0
+    }
+  })
 
   const viewer: M1Viewer = {
     onFrame: null,
@@ -593,8 +606,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       invalidate()
     },
     setActive (on) {
-      active = on
-      if (on) invalidate()
+      gate.setActive(on)
     },
     restyle () {
       restyle()
@@ -607,6 +619,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     dispose () {
       disposed = true
       cancelAnimationFrame(raf)
+      gate.dispose()
       resize.disconnect()
       canvas.removeEventListener('pointerdown', onDown)
       canvas.removeEventListener('dblclick', onReset)
@@ -640,22 +653,15 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   resize.observe(canvas)
 
   // Every shader is built before the first frame, off the main thread where
-  // the browser can, so the page doesn't freeze while they compile: each
-  // material twice, as the screen draws it and as the glass's transmission
-  // pass does (into a target, so without tone mapping, in linear colour),
-  // and the backdrop's. Only the shadow pass's few are left to the first frame.
+  // the browser can, so the page doesn't freeze while they compile. The glass
+  // has no transmission pass (glass-material.ts), so each is built once.
+  // Only the shadow pass's few are left to the first frame.
   scene.background = stageBackdrop(64, 64, stageColours(canvas))
   refit()
   frame()
-  const compiling = [renderer.compileAsync(scene, camera)]
-  const offscreen = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType })
-  renderer.setRenderTarget(offscreen)
-  compiling.push(renderer.compileAsync(scene, camera))
-  renderer.setRenderTarget(null)
-  Promise.all(compiling)
+  renderer.compileAsync(scene, camera)
     .catch(() => undefined)
     .then(() => {
-      offscreen.dispose()
       performance.mark('m1:compiled')
       ready = true
       invalidate()

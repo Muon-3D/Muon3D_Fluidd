@@ -61,6 +61,26 @@
         </div>
         <div class="acct-row">
           <div class="acct-row__label">
+            <b>Email me a copy</b>
+            <span>We build it and email you a link. You can ask once a day.</span>
+            <span
+              v-if="exportNote"
+              class="acct-muted"
+              data-tid="privacy-export-note"
+            >{{ exportNote }}</span>
+          </div>
+          <button
+            type="button"
+            class="lib-btn lib-btn--sm"
+            :disabled="busy || exportState !== 'idle'"
+            data-tid="privacy-email-export"
+            @click="requestExport"
+          >
+            Email me a copy
+          </button>
+        </div>
+        <div class="acct-row">
+          <div class="acct-row__label">
             <b>Library</b>
             <span>Prints, models and files, as one .tar</span>
           </div>
@@ -150,7 +170,8 @@ import AccountReauthMixin from '@/mixins/account-reauth'
 import ReauthDialog from './ReauthDialog.vue'
 import { accountApi } from '@/services/account/api'
 import { describe, loadMe } from '@/services/account/state'
-import type { AccountSectionId } from '@/services/account/model'
+import { dayText, type AccountSectionId } from '@/services/account/model'
+import { exportIsOpen, exportTime, exportsFrom, type ExportRequest } from '@/services/account/plan-export'
 import { LIBRARY_RETENTION, retentionRows, type RetentionRow } from '@/services/account/retention'
 
 /**
@@ -175,10 +196,19 @@ export default class AccountPrivacy extends Mixins(AccountReauthMixin) {
   lastAnnouncedPercent = -10
   lastAnnouncedAt = 0
   libraryDownload: AbortController | null = null
+  exportState: 'idle' | 'requested' | 'already' | 'limit' | 'soon' = 'idle'
+  openExport: ExportRequest | null = null
   beforeDestroy () { this.libraryDownload?.abort() }
 
   created () {
     loadMe().catch(() => {})
+    // The list is a convenience: a console without it, or one that fails, leaves a fresh request.
+    accountApi.exports()
+      .then((answer) => {
+        this.openExport = exportsFrom(answer).find(exportIsOpen) ?? null
+        if (this.openExport && this.exportState === 'idle') this.exportState = 'already'
+      })
+      .catch(() => {})
     accountApi.retention()
       .then((statement) => { this.rows = retentionRows(statement) })
       .catch((error) => { this.retentionError = describe(error) })
@@ -186,6 +216,38 @@ export default class AccountPrivacy extends Mixins(AccountReauthMixin) {
 
   get retention (): RetentionRow[] {
     return this.rows.length ? [...this.rows, ...LIBRARY_RETENTION] : []
+  }
+
+  get exportNote (): string {
+    const asked = this.openExport ? exportTime(this.openExport.requested_at) : null
+    switch (this.exportState) {
+      case 'requested': return "We'll email you when your copy is ready. It usually takes a few minutes."
+      case 'already': return `You already asked for your data${asked ? ` on ${dayText(asked)}` : ''}. We'll email you when it's ready.`
+      case 'limit': return 'You can ask for your data once a day. Try again tomorrow.'
+      case 'soon': return 'Emailing your data is coming soon. Use Download for now.'
+      default: return ''
+    }
+  }
+
+  async requestExport () {
+    if (this.busy || this.exportState !== 'idle') return
+    this.busy = true
+    this.error = ''
+    try {
+      const answer = await this.withReauth(r => accountApi.requestExport(r), {
+        why: 'Your data holds everything about your account, so it needs a fresh sign-in.',
+        action: 'Email me a copy'
+      })
+      if (answer) this.exportState = 'requested'
+    } catch (error) {
+      const status = (error as { status?: number })?.status
+      if (status === 404 || status === 405 || status === 501) this.exportState = 'soon'
+      else if (status === 409) this.exportState = 'already'
+      else if (status === 429) this.exportState = 'limit'
+      else this.error = describe(error)
+    } finally {
+      this.busy = false
+    }
   }
 
   get announcement () { return this.message || this.announcedProgress }

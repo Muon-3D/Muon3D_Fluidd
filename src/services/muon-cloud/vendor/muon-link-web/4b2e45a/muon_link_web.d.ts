@@ -169,7 +169,8 @@ export class Pairing {
     /**
      * Sends the eight digits from the panel, then waits for the owner.
      *
-     * Resolves to `{ fingerprint, role }`. A wrong code rejects with kind
+     * Resolves to `{ version, fingerprint, role, ticket }`. `ticket` is null
+     * when a new printer stops emitting the retired rendezvous ticket.
      * `"code-rejected"` and `attemptsRemaining`, and this object stays usable.
      */
     submitCode(code: number): Promise<any>;
@@ -305,15 +306,15 @@ export interface InitOutput {
     readonly intounderlyingsource_cancel: (a: number) => void;
     readonly intounderlyingsource_pull: (a: number, b: number) => number;
     readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly __wasm_bindgen_func_elem_9543: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_9545: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_3901: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2162: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4681: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_3767: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4099: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4136: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_9441: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9615: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_9617: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_3956: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_2218: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4755: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_3822: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4169: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4200: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9513: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;
