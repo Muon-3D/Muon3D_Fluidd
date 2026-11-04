@@ -1,18 +1,40 @@
 /// <reference lib="WebWorker" />
 
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
+import { clientsClaim, setCacheNameDetails } from 'workbox-core'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
 import { StaleWhileRevalidate } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
 import { warmStrategyCache } from 'workbox-recipes'
 import { NAVIGATION_DENYLIST, networkFirstNavigation } from './swNavigation'
+import { buildCacheNames, buildSuffix, deleteStaleCaches } from './swCaches'
 
 declare let self: ServiceWorkerGlobalScope
+
+// I-159: every cache is named by the build that wrote it (swCaches.ts), so a
+// deploy never reads the previous build's entries.
+const BUILD_COMMIT: string = import.meta.env.BUILD_COMMIT ?? ''
+const cacheNames = buildCacheNames(BUILD_COMMIT)
+setCacheNameDetails({
+  prefix: 'muon',
+  suffix: buildSuffix(BUILD_COMMIT),
+  precache: 'precache',
+  runtime: 'runtime'
+})
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting()
   }
+})
+
+// A new build's worker takes over at once instead of waiting for every tab to
+// close, which is how a stuck worker kept serving an old bundle.
+self.skipWaiting()
+clientsClaim()
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(deleteStaleCaches(self.caches, BUILD_COMMIT))
 })
 
 precacheAndRoute(self.__WB_MANIFEST)
@@ -22,7 +44,7 @@ cleanupOutdatedCaches()
 const configPathname = new URL('config.json', self.location.href).pathname
 
 const configStrategy = new StaleWhileRevalidate({
-  cacheName: 'config',
+  cacheName: cacheNames.config,
   fetchOptions: {
     cache: 'no-cache'
   }
@@ -54,7 +76,7 @@ registerRoute(
       url.pathname.startsWith('/monacoeditorwork/'))
   ),
   new StaleWhileRevalidate({
-    cacheName: 'muon-assets',
+    cacheName: cacheNames.assets,
     plugins: [
       new ExpirationPlugin({ maxEntries: 300, purgeOnQuotaError: true })
     ]

@@ -8,9 +8,9 @@
  *
  * - A Muon3D printer: its name and serial suffix, from `/server/muon/identity`
  *   or the `.local` name built from them (`muon-boxwood-367a.local`).
- * - An account printer: `printer-` and its complete stable EndpointId. The
- *   display name is deliberately absent, so rename/reorder refreshes cannot
- *   make a route identify a different printer.
+ * - An account printer: its name when that has a slug's shape, else its name
+ *   and four characters of a hash of its stable EndpointId (KAN-1279: the
+ *   complete id is not a valid route).
  * - Any other Klipper printer: its name and four characters of a hash of its
  *   address.
  */
@@ -95,9 +95,18 @@ export function slugForMdnsHost (host: string | null | undefined): string | null
   return match ? finish(match[1], match[2].toLowerCase()) : null
 }
 
-/** An account printer's route key, from its complete stable EndpointId only. */
+/**
+ * An account printer's route key. It is the printer's name when that already
+ * has a slug's shape ("Boxwood · 367A" is `boxwood-367a`); else its words and
+ * four characters of its stable EndpointId, so two printers called "Walnut"
+ * stay apart. The complete id never goes in a route: the router takes a
+ * hyphen and exactly four characters at the end, and a 64-hex id 404s (KAN-1279).
+ */
 export function slugForCloudPrinter (printer: { id: string, name: string }): string {
-  return `printer-${slugify(printer.id).padEnd(4, '0')}`
+  const words = slugify(printer.name).slice(0, MAX_WORDS_LENGTH).replace(/-+$/, '')
+  if (isPrinterSlug(words)) return RESERVED_PREFIX.test(words) ? `p-${words}` : words
+  const id4 = slugify(printer.id).replace(/-/g, '').slice(0, 4).padEnd(4, '0')
+  return finish(words || 'printer', words ? hash4(printer.id) : id4)
 }
 
 /** A slug for any other printer: its name and a hash of its address. */
