@@ -1,3 +1,4 @@
+import VueRouter from 'vue-router'
 import { mount } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import AppPageTitle from '@/components/layout/AppPageTitle.vue'
@@ -11,8 +12,13 @@ vi.mock('@/services/printer-pages', async importOriginal => ({
 }))
 
 const header = (home: boolean) => mount(AppPageTitle, {
-  mocks: { $store: panelStore(), $waits: waits, $route: { name: 'Dashboard', path: '/mock', params: { printer: 'mock' }, meta: { frame: 'printer' } } },
+  router: new VueRouter({ mode: 'abstract' }),
+  mocks: { $store: panelStore(), $waits: waits },
   computed: {
+    foreignRecord: () => undefined,
+    displayName: () => 'Mock',
+    pillText: () => 'Ready',
+    pillTone: () => 'ok',
     currentSection: () => ({ id: home ? 'overview' : 'control', label: 'X', pages: [] }),
     currentPage: () => (home ? '/' : '/control'),
     isMobileViewport: () => false,
