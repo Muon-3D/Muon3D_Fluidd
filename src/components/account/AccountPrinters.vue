@@ -105,20 +105,22 @@
               class="prn__discovery"
             >
               <label :for="`discovery-${p.id}`">Who can find it</label>
-              <select
-                :id="`discovery-${p.id}`"
-                class="prn__select"
-                data-tid="discovery-select"
-                :value="p.discovery"
-                :disabled="busy"
-                @change="changeDiscovery(p, $event)"
-              >
-                <option
-                  v-for="level in discoveryLevels"
-                  :key="level.value"
-                  :value="level.value"
-                >{{ level.label }}</option>
-              </select>
+              <span class="prn__select-wrap">
+                <select
+                  :id="`discovery-${p.id}`"
+                  class="prn__select"
+                  data-tid="discovery-select"
+                  :value="p.discovery"
+                  :disabled="busy"
+                  @change="changeDiscovery(p, $event)"
+                >
+                  <option
+                    v-for="level in discoveryLevels"
+                    :key="level.value"
+                    :value="level.value"
+                  >{{ level.label }}</option>
+                </select>
+              </span>
               <span
                 class="acct-subtle"
                 data-tid="discovery-help"
@@ -922,8 +924,10 @@ export default class AccountPrinters extends Vue {
     margin-top: 6px;
 
     label {
+      flex: none;
       color: var(--m3d-text-muted);
       font-size: 13px;
+      white-space: nowrap;
     }
 
     .acct-subtle {
@@ -931,17 +935,53 @@ export default class AccountPrinters extends Vue {
     }
   }
 
+  // A native select with the browser chrome removed reads as plain text, so
+  // it gets a border, a chevron and a hover state to show it can be opened.
+  .prn__select-wrap {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      right: 12px;
+      width: 7px;
+      height: 7px;
+      border-right: 1.5px solid var(--m3d-text-muted);
+      border-bottom: 1.5px solid var(--m3d-text-muted);
+      transform: translateY(-70%) rotate(45deg);
+      pointer-events: none;
+    }
+  }
+
   .prn__select {
+    min-width: 0;
     min-height: 32px;
-    padding: 4px 28px 4px 10px;
+    padding: 4px 34px 4px 10px;
     border: 1px solid var(--m3d-border-strong);
     border-radius: 8px;
     background: var(--m3d-surface-2);
     color: var(--m3d-text);
+    font: inherit;
     font-size: 13.5px;
+    cursor: pointer;
+    appearance: none;
+    transition: border-color 0.15s, background-color 0.15s;
+
+    &:hover:not(:disabled) {
+      border-color: var(--m3d-accent-border, var(--m3d-accent));
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent));
+      outline-offset: 2px;
+    }
 
     &:disabled {
       opacity: 0.6;
+      cursor: default;
     }
   }
 
