@@ -7,7 +7,6 @@
 import { accountRequest } from './client'
 import type { CreatedToken, CreateTokenBody, PersonalToken } from './tokenTypes'
 import type { ConnectedApp } from './connectedAppTypes'
-import type { ExportRequest, PlanSummary } from './plan-export'
 
 /** `GET /v1/me`'s account. */
 export interface AccountDetails {
@@ -284,4 +283,29 @@ export const accountApi = {
   approvals: () => json<{ approvals: JoinApproval[] }>('GET', '/v1/approvals'),
   answerApproval: (id: string, allow: boolean) =>
     json<{ approval: JoinApproval }>('POST', `/v1/approvals/${encodeURIComponent(id)}`, { allow })
+}
+
+/** One emailed data export (`GET /v1/me/exports`). Helpers are in plan-export.ts. */
+export interface ExportRequest {
+  id: string;
+  status: 'queued' | 'building' | 'ready' | 'failed' | 'expired';
+  requested_at?: number | string | null;
+  ready_at?: number | string | null;
+  expires_at?: number | string | null;
+  size_bytes?: number | null;
+}
+
+/** `GET /v1/me/plan`. Helpers are in plan-export.ts. */
+export interface PlanSummary {
+  plan: { id?: string, name: string, renews_at?: string | number | null, will_renew?: boolean };
+  credits?: {
+    balance: number | null;
+    unit?: string;
+    weekly?: { used: number, limit: number, resets_at?: string | number | null };
+    monthly?: { left: number, allowance: number };
+  };
+  /** Where the full credit history can be read. */
+  ledger_url?: string | null;
+  limits?: { jobs_at_once?: number };
+  source?: 'model-service' | 'unavailable';
 }

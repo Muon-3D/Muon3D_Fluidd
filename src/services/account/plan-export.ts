@@ -5,16 +5,10 @@
  * arrive as seconds since 1970 or as ISO 8601 text, and the export list as an
  * array or as `{exports: []}`.
  */
+import type { ExportRequest, PlanSummary } from './api'
 import { dayText } from './model'
 
-export interface ExportRequest {
-  id: string;
-  status: 'queued' | 'building' | 'ready' | 'failed' | 'expired';
-  requested_at?: number | string | null;
-  ready_at?: number | string | null;
-  expires_at?: number | string | null;
-  size_bytes?: number | null;
-}
+export type { ExportRequest, PlanSummary }
 
 /** An export that has been asked for and not yet delivered. */
 export function exportIsOpen (e: Pick<ExportRequest, 'status'>): boolean {
@@ -35,20 +29,6 @@ export function exportTime (t: number | string | null | undefined): number | nul
 export function exportsFrom (answer: ExportRequest[] | { exports?: ExportRequest[] } | null | undefined): ExportRequest[] {
   if (Array.isArray(answer)) return answer
   return Array.isArray(answer?.exports) ? answer!.exports! : []
-}
-
-export interface PlanSummary {
-  plan: { id?: string, name: string, renews_at?: string | number | null, will_renew?: boolean };
-  credits?: {
-    balance: number | null;
-    unit?: string;
-    weekly?: { used: number, limit: number, resets_at?: string | number | null };
-    monthly?: { left: number, allowance: number };
-  };
-  /** Where the full credit history can be read. */
-  ledger_url?: string | null;
-  limits?: { jobs_at_once?: number };
-  source?: 'model-service' | 'unavailable';
 }
 
 export interface PlanView {
