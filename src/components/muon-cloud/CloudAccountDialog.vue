@@ -5,7 +5,7 @@
   >
     <v-card class="muon-cloud-dialog">
       <v-card-title class="pb-1">
-        {{ mode === 'sign-in' ? 'Sign in to Muon3D' : 'Create your Muon3D account' }}
+        {{ mfaToken ? 'Enter your code' : mode === 'sign-in' ? 'Sign in to Muon3D' : 'Create your Muon3D account' }}
       </v-card-title>
       <v-card-subtitle class="pt-1">
         Reach your linked printers from anywhere. Printers on this network keep working without an account.
@@ -21,7 +21,21 @@
           @submit.prevent="submit"
         >
           <v-text-field
-            v-if="mode === 'sign-up'"
+            v-if="mfaToken"
+            v-model="code"
+            label="Code"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            hint="Six digits from your authenticator app, or a recovery code."
+            persistent-hint
+            outlined
+            dense
+            autofocus
+            data-tid="sign-in-code"
+            class="mb-3"
+          />
+          <v-text-field
+            v-if="!mfaToken && mode === 'sign-up'"
             v-model="name"
             label="Name"
             autocomplete="name"
@@ -30,7 +44,7 @@
             dense
           />
           <v-text-field
-            v-if="mode === 'sign-up'"
+            v-if="!mfaToken && mode === 'sign-up'"
             v-model="age"
             label="Your age"
             type="text"
@@ -53,6 +67,7 @@
             {{ ageError }}
           </p>
           <v-text-field
+            v-if="!mfaToken"
             v-model="email"
             label="Email"
             type="email"
@@ -62,6 +77,7 @@
             :autofocus="mode === 'sign-in'"
           />
           <v-text-field
+            v-if="!mfaToken"
             v-model="password"
             label="Password"
             :type="showPassword ? 'text' : 'password'"
@@ -89,13 +105,28 @@
             block
             :loading="busy"
           >
-            {{ mode === 'sign-in' ? 'Sign in' : 'Create account' }}
+            {{ mfaToken ? 'Continue' : mode === 'sign-in' ? 'Sign in' : 'Create account' }}
           </app-btn>
         </v-form>
       </v-card-text>
 
       <v-card-actions
-        v-if="!redirecting"
+        v-if="mfaToken"
+        class="justify-center pb-4"
+      >
+        <v-btn
+          text
+          small
+          color="primary"
+          data-tid="sign-in-code-back"
+          @click="mfaToken = ''; code = ''; error = null"
+        >
+          Start again
+        </v-btn>
+      </v-card-actions>
+
+      <v-card-actions
+        v-else-if="!redirecting"
         class="justify-center pb-4"
       >
         <span class="text-body-2 text--secondary">
@@ -116,7 +147,7 @@
 
 <script lang="ts">
 import { Component, Prop, VModel, Vue } from 'vue-property-decorator'
-import { signIn, signUp } from '@/services/muon-cloud/state'
+import { signIn, signInWithCode, signUp } from '@/services/muon-cloud/state'
 import { centralLoginEnabled, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
 
 @Component({})
@@ -132,6 +163,9 @@ export default class CloudAccountDialog extends Vue {
   name = ''
   email = ''
   password = ''
+  /** Set once the password was right and the account wants its authenticator code. */
+  mfaToken = ''
+  code = ''
   showPassword = false
   busy = false
   error: string | null = null
@@ -163,13 +197,30 @@ export default class CloudAccountDialog extends Vue {
     }
     this.busy = true
     try {
-      if (this.mode === 'sign-in') await signIn(this.email, this.password)
-      else await signUp(this.email, this.password, this.name, Number(this.age))
+      if (this.mfaToken) {
+        await signInWithCode(this.mfaToken, this.code)
+      } else if (this.mode === 'sign-in') {
+        const mfa = await signIn(this.email, this.password)
+        if (mfa) {
+          // The password was right; the code finishes it.
+          this.password = ''
+          this.mfaToken = mfa
+          this.code = ''
+          return
+        }
+      } else {
+        await signUp(this.email, this.password, this.name, Number(this.age))
+      }
       this.password = ''
+      this.code = ''
+      this.mfaToken = ''
       this.$emit('signed-in')
       this.open = false
     } catch (error) {
       this.error = (error as Error).message
+      // A wrong code is the console's 401 as is an expired sign-in: the box
+      // stays either way, and "Start again" is there for the expired one.
+      if (this.mfaToken) this.code = ''
     } finally {
       this.busy = false
     }
