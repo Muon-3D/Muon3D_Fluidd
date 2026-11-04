@@ -9,6 +9,8 @@ import type { CreditAccount } from '@/services/account/credits'
 const loadCredits = vi.hoisted(() => vi.fn())
 vi.mock('@/services/account/credits', async (actual) => ({ ...(await actual<object>()), loadCredits }))
 
+vi.mock('@/services/account/api', () => ({ accountApi: { plan: async () => ({ plan: { name: 'Plus' } }) } }))
+
 const settle = () => new Promise(resolve => setTimeout(resolve))
 const monday = new Date(2026, 10, 2, 9).getTime()
 

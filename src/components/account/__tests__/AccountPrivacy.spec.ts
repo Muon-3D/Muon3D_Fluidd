@@ -2,14 +2,16 @@ import { shallowMount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import AccountPrivacy from '../AccountPrivacy.vue'
+import { AccountError } from '@/services/account/client'
 
-const { exportLibrary } = vi.hoisted(() => ({ exportLibrary: vi.fn() }))
+const { exportLibrary, requestExport, exportsList } = vi.hoisted(() => ({ exportLibrary: vi.fn(), requestExport: vi.fn(), exportsList: vi.fn() }))
 vi.mock('@/services/library/export', () => ({ exportLibrary }))
 vi.mock('@/services/account/state', () => ({ accountState: { me: null }, loadMe: async () => {}, describe: (e: Error) => e.message }))
-vi.mock('@/services/account/api', () => ({ accountApi: { retention: async () => ({}) } }))
+vi.mock('@/services/account/api', () => ({ accountApi: { retention: async () => ({}), requestExport, exports: exportsList } }))
+exportsList.mockResolvedValue([])
 const mount = () => shallowMount(AccountPrivacy, { propsData: { linkTo: (id: string) => '/account/' + id }, stubs: { RouterLink: true } })
 const tick = () => new Promise(resolve => setTimeout(resolve))
-afterEach(() => { vi.clearAllMocks() })
+afterEach(() => { vi.clearAllMocks(); exportsList.mockReset(); exportsList.mockResolvedValue([]) })
 
 describe('Library data export', () => {
   it('uses a native keyboard-operable button beside account data', () => {
@@ -57,5 +59,52 @@ describe('Library data export', () => {
   it('explains picker cancellation and never announces success', async () => {
     exportLibrary.mockRejectedValue(new DOMException('Cancelled', 'AbortError')); const w = mount(); await w.find('[data-tid="privacy-library-download"]').trigger('click'); await tick()
     expect(w.find('[role="alert"]').text()).toContain('cancelled'); expect(w.text()).not.toContain('archive is ready'); w.destroy()
+  })
+})
+
+describe('Emailed data export', () => {
+  const ask = async (w: ReturnType<typeof mount>) => { await w.find('[data-tid="privacy-email-export"]').trigger('click'); await tick(); await tick() }
+  const note = (w: ReturnType<typeof mount>) => w.find('[data-tid="privacy-export-note"]')
+
+  it('requests the export and says we will email', async () => {
+    exportsList.mockResolvedValue([]); requestExport.mockResolvedValue({ id: 'e1', status: 'queued' })
+    const w = mount(); await tick(); await ask(w)
+    expect(requestExport).toHaveBeenCalledWith({})
+    expect(note(w).text()).toContain("We'll email you")
+    expect(w.find('[data-tid="privacy-email-export"]').attributes('disabled')).toBe('disabled'); w.destroy()
+  })
+  it.each([404, 405, 501])('says coming soon on %i', async (status) => {
+    exportsList.mockResolvedValue([]); requestExport.mockRejectedValue(new AccountError('x', status))
+    const w = mount(); await tick(); await ask(w)
+    expect(note(w).text()).toContain('coming soon'); expect(w.find('[role="alert"]').exists()).toBe(false); w.destroy()
+  })
+  it('says it is already requested on 409', async () => {
+    exportsList.mockResolvedValue([]); requestExport.mockRejectedValue(new AccountError('one is open', 409))
+    const w = mount(); await tick(); await ask(w)
+    expect(note(w).text()).toContain('already asked'); w.destroy()
+  })
+  it('shows an open request from the list, in either list shape and time format', async () => {
+    exportsList.mockResolvedValue({ exports: [{ id: 'e1', status: 'building', requested_at: new Date(2026, 10, 3, 12).toISOString() }, { id: 'e0', status: 'ready' }] })
+    const w = mount(); await tick()
+    expect(note(w).text()).toContain('already asked'); expect(note(w).text()).toContain('3 Nov')
+    expect(w.find('[data-tid="privacy-email-export"]').attributes('disabled')).toBe('disabled'); w.destroy()
+  })
+  it('lets a finished request be followed by a new one', async () => {
+    exportsList.mockResolvedValue([{ id: 'e0', status: 'ready', requested_at: 1 }])
+    const w = mount(); await tick()
+    expect(note(w).exists()).toBe(false); expect(w.find('[data-tid="privacy-email-export"]').attributes('disabled')).toBeUndefined(); w.destroy()
+  })
+  it('says once a day on 429, and a real error otherwise', async () => {
+    exportsList.mockResolvedValue([]); requestExport.mockRejectedValue(new AccountError('slow down', 429))
+    let w = mount(); await tick(); await ask(w)
+    expect(note(w).text()).toContain('once a day'); w.destroy()
+    requestExport.mockRejectedValue(new AccountError('The Muon3D service answered 500.', 500))
+    w = mount(); await tick(); await ask(w)
+    expect(w.find('[role="alert"]').text()).toContain('answered 500'); expect(note(w).exists()).toBe(false); w.destroy()
+  })
+  it('still works when the list cannot be read', async () => {
+    exportsList.mockRejectedValue(new AccountError('x', 500)); requestExport.mockResolvedValue({ id: 'e1', status: 'queued' })
+    const w = mount(); await tick(); await ask(w)
+    expect(note(w).text()).toContain("We'll email you"); w.destroy()
   })
 })
