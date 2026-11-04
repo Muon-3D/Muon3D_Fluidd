@@ -53,4 +53,12 @@ describe('Library consent surfaces', () => {
     expect(confirm).not.toHaveBeenCalled()
     expect(turnLibraryOn).not.toHaveBeenCalled()
   })
+
+  it('offers no Turn off once the Library is on', () => {
+    Object.assign(libraryState, { enabled: true, preferences: { autosave: false, ask: true, save_from_print_check: false, updated_at: null } })
+    const wrapper = mount(LibrarySettings, { stubs: { 'frame-icon': true, 'cloud-account-dialog': true, 'router-link': true } })
+    expect(wrapper.find('[data-tid="library-turn-on"]').exists()).toBe(false)
+    expect(wrapper.text().toLowerCase()).not.toContain('turn off')
+    wrapper.destroy()
+  })
 })
