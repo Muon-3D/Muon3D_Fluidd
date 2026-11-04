@@ -120,6 +120,25 @@
 
         <v-divider />
 
+        <template v-if="acceptRequests !== null">
+          <app-setting
+            title="Allow new devices to ask"
+            sub-title="When on, a new phone or browser can ask to connect, and you accept or reject it at the printer."
+          >
+            <v-switch
+              :key="`accept-${renderKey}`"
+              :input-value="acceptRequests"
+              :disabled="busy"
+              hide-details
+              class="mt-0"
+              data-test="access-accept-requests"
+              @change="saveAcceptRequests(!!$event)"
+            />
+          </app-setting>
+
+          <v-divider />
+        </template>
+
         <app-setting
           title="Where prints go"
           :sub-title="ownerOnly ? 'Only the owner can change this.' : 'One shared drive, a drive for each account, or both.'"
@@ -218,6 +237,7 @@ import {
   type AccessState,
   type Capability
 } from '@/services/muon-access/api'
+import { currentPrinterNewDevices } from '@/services/muon-access/newDevices'
 import AccessRequestDialog from '@/components/muon-access/AccessRequestDialog.vue'
 
 /**
@@ -238,6 +258,9 @@ export default class AccessSettings extends Mixins(StateMixin) {
   busy = false
   message = ''
   messageType: 'info' | 'error' | 'success' = 'info'
+  newDevices = currentPrinterNewDevices()
+  /** What the printer holds for "Allow new devices to ask"; null hides the switch. */
+  acceptRequests: boolean | null = null
   asking: AccessAsk | null = null
   /** The ask dialog is mounted only while open, so closing it withdraws the request. */
   askingOpen = false
@@ -262,11 +285,41 @@ export default class AccessSettings extends Mixins(StateMixin) {
       const [state, capabilities] = await Promise.all([this.client.get(), this.client.capabilities()])
       this.state = state
       this.capabilities = capabilities
+      await this.loadAcceptRequests()
     } catch (error) {
       this.messageType = 'error'
       this.message = (error as Error).message
     } finally {
       this.loading = false
+      this.renderKey++
+    }
+  }
+
+  /**
+   * Only the owner is offered the switch, and only when the printer answers
+   * for it: an older printer (404) or a refusal hides it.
+   */
+  async loadAcceptRequests () {
+    this.acceptRequests = null
+    if (this.ownerOnly) return
+    try {
+      this.acceptRequests = await this.newDevices.get()
+    } catch {
+      this.acceptRequests = null
+    }
+  }
+
+  /** Nothing changes on screen until the printer says so; a refusal shows its words. */
+  async saveAcceptRequests (value: boolean) {
+    this.busy = true
+    this.message = ''
+    try {
+      this.acceptRequests = await this.newDevices.set(value)
+    } catch (error) {
+      this.messageType = 'error'
+      this.message = (error as Error).message
+    } finally {
+      this.busy = false
       this.renderKey++
     }
   }
