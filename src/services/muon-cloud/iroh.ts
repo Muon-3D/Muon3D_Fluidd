@@ -5,6 +5,7 @@
  * so the grants the console issues for it survive a reload. Every printer is
  * reached through the relay the console names; a browser has no other path.
  */
+import { connectWithApproval, type ApprovingEndpoint } from './approval'
 import type {
   AuthorizedManagedRelaySession,
   ManagedIrohEndpoint,
@@ -38,6 +39,8 @@ interface WasmEndpoint {
   endpointId (): string;
   secretKey (): Uint8Array;
   connect (printerId: string): Promise<WasmPrinter>;
+  /** muon-link#126: waits for approval at the printer. Absent in older packages. */
+  connectAs?: ApprovingEndpoint<WasmPrinter>['connectAs'];
   /** Takes a Web Bluetooth link to a printer (muon-link#31 on; ADR 0032 D3). */
   addLink? (role: 'central', maxSegment?: number): WasmBleLink;
   close (): Promise<void>;
@@ -305,7 +308,7 @@ export async function dialPrinter (endpoint: WasmEndpoint, printerId: string): P
     bluetoothError = error as Error
   }
   try {
-    return await endpoint.connect(printerId)
+    return await connectWithApproval(endpoint, printerId, 'Muon3D Control') ?? await endpoint.connect(printerId)
   } catch (error) {
     if (bluetoothError) throw new Error(`Couldn't reach the printer over Bluetooth: ${bluetoothError.message}`)
     throw error
