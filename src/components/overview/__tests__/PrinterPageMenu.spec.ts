@@ -29,13 +29,13 @@ const mountMenu = (e: DirectoryEntry | null, methods: Record<string, unknown> = 
     getters: { 'server/componentSupport': () => false },
     dispatch: vi.fn()
   }
-  return mount(PrinterPageMenu, {
+  return mount(PrinterPageMenu as any, {
     vuetify: new Vuetify(),
     attachTo: document.body,
     mocks: { $store: store, $route: { path: '/walnut', params: {} } },
     computed: { directory: () => ({ cloud: e ? [e] : [], local: [], found: [] }) },
     methods
-  })
+  } as any)
 }
 
 const open = async (w: ReturnType<typeof mountMenu>) => {
