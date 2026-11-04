@@ -34,10 +34,19 @@ describe('LibraryDiscover (KAN-735)', () => {
     }
   })
 
-  it('says so when nothing is published yet', async () => {
+  it('shows the example prints, marked as examples, when nothing is published yet (KAN-1199)', async () => {
     const wrapper = await render(answer({ featured: [], m1_ready: [], trending: [], new: [], news: [] }))
     try {
-      expect(wrapper.find('[data-tid="library-discover-empty"]').text()).toContain('Nothing to discover yet')
+      expect(wrapper.find('[data-tid="library-discover-empty"]').exists()).toBe(false)
+      expect(wrapper.find('[data-tid="library-discover-examples-note"]').text()).toContain('example prints')
+      expect(wrapper.find('[data-tid="library-discover-examples-start"] h2').text()).toBe('Start here: calibration prints')
+      expect(wrapper.findAll('[data-tid="library-discover-examples-start"] .lcard').length).toBe(3)
+      expect(wrapper.findAll('[data-tid="library-discover-examples"] .lcard').length).toBe(9)
+      const cube = wrapper.find('[data-tid="library-discover-card-example:xyz-calibration-cube"]')
+      expect(cube.text()).toContain('XYZ calibration cube, 20 mm')
+      expect(cube.text()).toContain('Example')
+      expect(cube.text()).toContain('19 min · 4 g · PLA')
+      expect(cube.find('img').exists()).toBe(true)
     } finally {
       wrapper.destroy()
     }
