@@ -195,6 +195,9 @@ export function storedRefreshToken (): string | null {
 }
 
 export function storeRefreshToken (token: string | null) {
+  // A new session (or none) starts with no refresh backoff: a sign-out and
+  // sign-in must not inherit the old session's wait.
+  if (token !== readStorage(REFRESH_KEY)) resetRefreshBackoff()
   writeStorage(REFRESH_KEY, token)
 }
 
@@ -261,8 +264,10 @@ function isTransientRefusal (error: unknown): error is CloudError {
 }
 
 function backOffRefresh (error: CloudError) {
+  // A Retry-After of 0 or a date in the past still waits the base step, so a
+  // console that keeps answering 429 is not asked again on every call.
   const wait = error.retryAfterMs !== undefined
-    ? Math.min(error.retryAfterMs, REFRESH_RETRY_AFTER_CAP_MS)
+    ? Math.max(REFRESH_BACKOFF_BASE_MS, Math.min(error.retryAfterMs, REFRESH_RETRY_AFTER_CAP_MS))
     : Math.min(REFRESH_BACKOFF_CAP_MS, REFRESH_BACKOFF_BASE_MS * 2 ** refreshBackoffs)
   refreshBackoffs += 1
   refreshNotBefore = Date.now() + wait
