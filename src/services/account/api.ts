@@ -238,6 +238,12 @@ export const accountApi = {
     ? accountRequest<Response>('POST', '/v1/me/export', reauth, { raw: true })
     : accountRequest<Response>('GET', '/v1/me/export', undefined, { raw: true }),
   retention: () => json<Record<string, unknown>>('GET', '/v1/retention'),
+  /** The plan, credits left and when they renew (the console's proxy of the model service). */
+  plan: () => json<PlanSummary>('GET', '/v1/me/plan'),
+  /** Asks for the data export to be built and emailed. Takes the same confirmation as deleting the account. 202; 409 one is open; 429 once a day. */
+  requestExport: (reauth: Reauth = {}) => json<ExportRequest>('POST', '/v1/me/exports', { ...reauth }),
+  /** The last few export requests: a list, or `{exports: []}`. */
+  exports: () => json<ExportRequest[] | { exports: ExportRequest[] }>('GET', '/v1/me/exports'),
 
   /**
    * Schedules deletion with a 14-day grace period. The page requires the
@@ -277,4 +283,29 @@ export const accountApi = {
   approvals: () => json<{ approvals: JoinApproval[] }>('GET', '/v1/approvals'),
   answerApproval: (id: string, allow: boolean) =>
     json<{ approval: JoinApproval }>('POST', `/v1/approvals/${encodeURIComponent(id)}`, { allow })
+}
+
+/** One emailed data export (`GET /v1/me/exports`). Helpers are in plan-export.ts. */
+export interface ExportRequest {
+  id: string;
+  status: 'queued' | 'building' | 'ready' | 'failed' | 'expired';
+  requested_at?: number | string | null;
+  ready_at?: number | string | null;
+  expires_at?: number | string | null;
+  size_bytes?: number | null;
+}
+
+/** `GET /v1/me/plan`. Helpers are in plan-export.ts. */
+export interface PlanSummary {
+  plan: { id?: string, name: string, renews_at?: string | number | null, will_renew?: boolean };
+  credits?: {
+    balance: number | null;
+    unit?: string;
+    weekly?: { used: number, limit: number, resets_at?: string | number | null };
+    monthly?: { left: number, allowance: number };
+  };
+  /** Where the full credit history can be read. */
+  ledger_url?: string | null;
+  limits?: { jobs_at_once?: number };
+  source?: 'model-service' | 'unavailable';
 }
