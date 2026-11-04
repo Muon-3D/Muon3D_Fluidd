@@ -7,6 +7,7 @@
 import { accountRequest } from './client'
 import type { CreatedToken, CreateTokenBody, PersonalToken } from './tokenTypes'
 import type { ConnectedApp } from './connectedAppTypes'
+import type { ExportRequest, PlanSummary } from './plan-export'
 
 /** `GET /v1/me`'s account. */
 export interface AccountDetails {
@@ -238,6 +239,12 @@ export const accountApi = {
     ? accountRequest<Response>('POST', '/v1/me/export', reauth, { raw: true })
     : accountRequest<Response>('GET', '/v1/me/export', undefined, { raw: true }),
   retention: () => json<Record<string, unknown>>('GET', '/v1/retention'),
+  /** The plan, credits left and when they renew (the console's proxy of the model service). */
+  plan: () => json<PlanSummary>('GET', '/v1/me/plan'),
+  /** Asks for the data export to be built and emailed. Takes the same confirmation as deleting the account. 202; 409 one is open; 429 once a day. */
+  requestExport: (reauth: Reauth = {}) => json<ExportRequest>('POST', '/v1/me/exports', { ...reauth }),
+  /** The last few export requests: a list, or `{exports: []}`. */
+  exports: () => json<ExportRequest[] | { exports: ExportRequest[] }>('GET', '/v1/me/exports'),
 
   /**
    * Schedules deletion with a 14-day grace period. The page requires the
