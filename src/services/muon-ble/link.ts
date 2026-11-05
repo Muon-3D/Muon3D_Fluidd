@@ -70,6 +70,8 @@ export interface BleLinkHandle {
   closed: Promise<void>;
   /** True until `closed` resolves. */
   isOpen (): boolean;
+  /** When a segment last crossed the radio, either way (ms since the epoch; 0 for never). */
+  lastTrafficAt (): number;
 }
 
 export interface OpenLinkOptions {
@@ -166,10 +168,12 @@ export async function openBleLink (
   let resolveDrained: () => void = () => {}
   const drained = new Promise<void>(resolve => { resolveDrained = resolve })
 
+  let lastTraffic = 0
   const onNotification = (event: Event) => {
     if (!radioUp) return
     const value = (event.target as GattCharacteristic).value
     if (!value) return
+    lastTraffic = Date.now()
     const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
     if (link) link.onSegment(bytes)
     else early.push(bytes.slice())
@@ -209,7 +213,8 @@ export async function openBleLink (
       return disconnecting
     },
     closed,
-    isOpen: () => radioUp
+    isOpen: () => radioUp,
+    lastTrafficAt: () => lastTraffic
   }
 
   // One GATT setup. A drop during it fails only this attempt (onGone is not
@@ -289,6 +294,7 @@ export async function openBleLink (
         if (!radioUp) continue
         try {
           await write(rx, segment, withResponse)
+          lastTraffic = Date.now()
           failures = 0
         } catch (error) {
           // Never re-send: a failed write may still have arrived. QUIC recovers.
@@ -352,17 +358,45 @@ const routes = new Map<string, { device: BleDevice, link: BleLinkHandle | null }
  */
 const routeState = Vue.observable({
   up: {} as Record<string, boolean>,
+  carrying: {} as Record<string, boolean>,
   fellBack: {} as Record<string, string>
 })
 
 function forgetRouteState (id: string) {
   Vue.delete(routeState.up, id)
+  Vue.delete(routeState.carrying, id)
   Vue.delete(routeState.fellBack, id)
 }
 
-/** True while the Bluetooth link to `printerId` is up: the route that really carries it. */
+/**
+ * How recently bytes must have crossed the radio for Bluetooth to count as
+ * carrying the session. A link that is up is not enough: muon-link's
+ * BlePathSelector (ADR 0032 D3) moves the connection onto the relay as soon as
+ * iroh finds it, and the radio then sits idle (btmon on Boxwood, 5 Nov 2026:
+ * an LE link up, 0 ACL packets in 20 s, while the label said Bluetooth).
+ * Over Bluetooth a page sees status at least every few seconds and QUIC's
+ * keep-alive every 5 s.
+ */
+export const CARRYING_WINDOW_MS = 8_000
+const CARRYING_TICK_MS = 1_000
+
+/** True while the session to `printerId` really travels over Bluetooth: the one truth for every label. */
 export function bluetoothCarrying (printerId: string): boolean {
+  return routeState.carrying[printerId.toLowerCase()] === true
+}
+
+/** True while a Bluetooth link to `printerId` is up, carrying or on standby behind the relay. */
+export function bluetoothLinkUp (printerId: string): boolean {
   return routeState.up[printerId.toLowerCase()] === true
+}
+
+/**
+ * How the open printer is reached when it came through Muon3D's session: the
+ * one label for every place that names the route (title, rail, reconnect
+ * screen, menus), from the same truth as the Bluetooth badge (KAN-1566).
+ */
+export function remoteRouteLabel (printerId: string | null | undefined): 'Via Bluetooth' | 'Through Muon3D' {
+  return printerId && bluetoothCarrying(printerId) ? 'Via Bluetooth' : 'Through Muon3D'
 }
 
 /** Why the open went on through Muon3D though Bluetooth was chosen, or null. */
@@ -402,6 +436,7 @@ export function releaseBluetoothLink (printerId: string): Promise<void> {
   const hangingUp = route.link.disconnect().catch(() => {})
   route.link = null
   Vue.set(routeState.up, printerId.toLowerCase(), false)
+  Vue.set(routeState.carrying, printerId.toLowerCase(), false)
   return hangingUp
 }
 
@@ -430,9 +465,20 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
   }
   Vue.set(routeState.up, id, true)
   Vue.delete(routeState.fellBack, id)
+  // The handshake just crossed the radio; from here on, carrying is whatever the bytes say.
+  Vue.set(routeState.carrying, id, true)
+  const tick = setInterval(() => {
+    if (routes.get(id)?.link !== link) return
+    const carrying = link.isOpen() && Date.now() - link.lastTrafficAt() < CARRYING_WINDOW_MS
+    if (routeState.carrying[id] !== carrying) Vue.set(routeState.carrying, id, carrying)
+  }, CARRYING_TICK_MS)
   // The printer or the radio ending the link ends the claim, whoever hung up.
   link.closed.then(() => {
-    if (routes.get(id)?.link === link) Vue.set(routeState.up, id, false)
+    clearInterval(tick)
+    if (routes.get(id)?.link === link) {
+      Vue.set(routeState.up, id, false)
+      Vue.set(routeState.carrying, id, false)
+    }
   })
   return link
 }

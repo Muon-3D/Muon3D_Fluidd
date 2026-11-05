@@ -17,10 +17,12 @@
       :name="name"
       :search.sync="search"
       :path="visiblePath"
+      :crumbs="crumbs"
       :disabled="disabled"
       :loading="filesLoading"
       :headers="headers"
       @root-change="handleRootChange"
+      @crumb="handleCrumb"
       @refresh="refreshPath(currentPath)"
       @add-file="handleAddFileDialog"
       @add-dir="handleAddDirDialog"
@@ -37,6 +39,8 @@
       v-if="selected.length > 0"
       :root="currentRoot"
       :path="visiblePath"
+      :count="selected.length"
+      @clear="selected = []"
       @remove="handleRemove(selected)"
       @create-zip="handleCreateZip(selected)"
       @enqueue="handleEnqueue(selected)"
@@ -150,6 +154,7 @@ import type { AppDirectory, AppFile, AppFileWithMeta, FilesUpload, FileFilterTyp
 import StateMixin from '@/mixins/state'
 import FilesMixin from '@/mixins/files'
 import ServicesMixin from '@/mixins/services'
+import OverviewMixin from '@/mixins/overview'
 import FileSystemToolbar from './FileSystemToolbar.vue'
 import FileSystemBulkActions from './FileSystemBulkActions.vue'
 import FileSystemBrowser from './FileSystemBrowser.vue'
@@ -163,7 +168,9 @@ import type { AppTableHeader, FileWithPath } from '@/types'
 import { getFilesFromDataTransfer, hasFilesInDataTransfer } from '@/util/file-system-entry'
 import { getFileDataTransferDataFromDataTransfer, hasFileDataTransferTypeInDataTransfer, setFileDataTransferDataInDataTransfer } from '@/util/file-data-transfer'
 import consola from 'consola'
-import { activeSlug, printerHomePath } from '@/services/printer-pages'
+import { EventBus } from '@/eventBus'
+import { activeSlug } from '@/services/printer-pages'
+import { pathCrumbs, type Crumb } from '@/services/files/manager'
 import { scopedPath } from '@/router/printerPagePaths'
 
 /**
@@ -185,7 +192,7 @@ import { scopedPath } from '@/router/printerPagePaths'
     FilePreviewDialog
   }
 })
-export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesMixin) {
+export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesMixin, OverviewMixin) {
   // Can be a list of roots, or a single root.
   @Prop({ type: [String, Array], required: true })
   readonly roots!: string | string[]
@@ -322,30 +329,33 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
     ]
 
     // If this is a gcode root, then metadata is available, including potentially history data.
+    // Print time, filament and layer height lead; the rest are a click away in the column picker.
     if (this.currentRoot === 'gcodes') {
+      const more = false
       headers = [
         ...headers,
-        { text: this.$t('app.general.table.header.height'), value: 'object_height', configurable: true },
-        { text: this.$t('app.general.table.header.first_layer_height'), value: 'first_layer_height', configurable: true },
-        { text: this.$t('app.general.table.header.layer_height'), value: 'layer_height', configurable: true },
-        { text: this.$t('app.general.table.header.filament_name'), value: 'filament_name', configurable: true },
-        { text: this.$t('app.general.table.header.filament_type'), value: 'filament_type', configurable: true },
+        { text: this.$t('app.general.table.header.estimated_time'), value: 'estimated_time', configurable: true },
         { text: this.$t('app.general.table.header.filament'), value: 'filament_total', configurable: true },
         { text: this.$t('app.general.table.header.filament_weight_total'), value: 'filament_weight_total', configurable: true },
-        { text: this.$t('app.general.table.header.filament_used'), value: 'history.filament_used', configurable: true },
-        { text: this.$t('app.general.table.header.nozzle_diameter'), value: 'nozzle_diameter', configurable: true },
-        { text: this.$t('app.general.table.header.slicer'), value: 'slicer', configurable: true },
-        { text: this.$t('app.general.table.header.slicer_version'), value: 'slicer_version', configurable: true },
-        { text: this.$t('app.general.table.header.estimated_time'), value: 'estimated_time', configurable: true },
-        { text: this.$t('app.general.table.header.print_duration'), value: 'history.print_duration', configurable: true },
-        { text: this.$t('app.general.table.header.total_duration'), value: 'history.total_duration', configurable: true },
-        { text: this.$t('app.general.table.header.first_layer_bed_temp'), value: 'first_layer_bed_temp', configurable: true },
-        { text: this.$t('app.general.table.header.first_layer_extr_temp'), value: 'first_layer_extr_temp', configurable: true },
-        { text: this.$t('app.general.table.header.chamber_temp'), value: 'chamber_temp', configurable: true },
+        { text: this.$t('app.general.table.header.layer_height'), value: 'layer_height', configurable: true },
+        { text: this.$t('app.general.table.header.height'), value: 'object_height', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.first_layer_height'), value: 'first_layer_height', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.filament_name'), value: 'filament_name', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.filament_type'), value: 'filament_type', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.filament_used'), value: 'history.filament_used', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.nozzle_diameter'), value: 'nozzle_diameter', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.slicer'), value: 'slicer', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.slicer_version'), value: 'slicer_version', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.print_duration'), value: 'history.print_duration', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.total_duration'), value: 'history.total_duration', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.first_layer_bed_temp'), value: 'first_layer_bed_temp', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.first_layer_extr_temp'), value: 'first_layer_extr_temp', configurable: true, visible: more },
+        { text: this.$t('app.general.table.header.chamber_temp'), value: 'chamber_temp', configurable: true, visible: more },
         {
           text: this.$t('app.general.table.header.last_printed'),
           value: 'print_start_time',
-          configurable: true
+          configurable: true,
+          visible: more
         }
       ]
     }
@@ -354,7 +364,9 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
     headers = [
       ...headers,
       { text: this.$t('app.general.table.header.modified'), value: 'modified', width: '1%', configurable: true },
-      { text: this.$t('app.general.table.header.size'), value: 'size', width: '1%', configurable: true }
+      { text: this.$t('app.general.table.header.size'), value: 'size', width: '1%', configurable: true },
+      // Each row's own menu (the same one a right-click opens).
+      { text: '', value: 'data-table-actions', sortable: false, width: '40px' }
     ]
 
     // Return headers
@@ -388,6 +400,16 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
         : ''
     }
     return this.currentPath
+  }
+
+  // The folders from the root down to here, each one a way back up.
+  get crumbs (): Crumb[] {
+    return pathCrumbs(this.currentRoot, this.visiblePath)
+  }
+
+  handleCrumb (crumb: Crumb) {
+    this.selected = []
+    this.loadFiles(crumb.path ? `${this.currentRoot}/${crumb.path}` : this.currentRoot)
   }
 
   // Get the available files given the current root and path.
@@ -456,8 +478,11 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
 
   @Watch('files')
   onFilesChange () {
-    // If our file list changes, reset selected files.
-    this.selected = []
+    // Metadata and thumbnails refresh the list often; only drop what is gone.
+    if (!this.selected.length) return
+    const names = new Set(this.files.map(f => f.name))
+    const kept = this.selected.filter(item => names.has(item.name))
+    if (kept.length !== this.selected.length) this.selected = kept
   }
 
   // Determine if we're waiting for a directory load on our current path.
@@ -741,29 +766,24 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
    * Core file handling.
    * ===========================================================================
   */
-  handlePrint (file: AppFile) {
+  /**
+   * Print goes the way Jobs and Overview print: asked first, with the plate
+   * check, Control's readiness, and Spoolman's dialog before it starts.
+   */
+  async handlePrint (file: AppFile) {
     if (this.disabled) return
 
     const filename = file.path ? `${file.path}/${file.filename}` : file.filename
 
-    const spoolmanSupported = this.$store.getters['spoolman/getAvailable']
-    const autoSpoolSelectionDialog = this.$store.state.config.uiSettings.spoolman.autoSpoolSelectionDialog
-    if (spoolmanSupported && autoSpoolSelectionDialog) {
-      this.$store.commit('spoolman/setDialogState', {
-        show: true,
-        filename
-      })
-
+    if (!this.controlReady || this.busy) {
+      EventBus.$emit(
+        this.busy && this.controlReady ? 'The printer is busy. Wait for it to finish first.' : `Can't print yet: ${this.notReadyReason}.`,
+        { type: 'warning', timeout: 5000 }
+      )
       return
     }
 
-    SocketActions.printerPrintStart(filename)
-
-    // If we aren't on the printer's own page, take the user there.
-    const home = printerHomePath()
-    if (this.$router.currentRoute.path !== home) {
-      this.$router.push({ path: home })
-    }
+    await this.printAgain(filename)
   }
 
   async handleSaveFileChanges (contents: string, restart: string) {
@@ -858,6 +878,13 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
       ? file.filter(item => item.name !== '..')
       : [file]
 
+    // Work out what to delete now: the folder can change while the dialog is open.
+    const base = this.currentPath
+    const targets = items.map(item => ({
+      type: item.type,
+      path: item.type === 'directory' ? `${base}/${item.dirname}` : `${base}/${(item as AppFile).filename}`
+    }))
+
     const result = await this.$confirm(
       this.$tc('app.general.simple_form.msg.confirm_delete', items.length),
       { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
@@ -870,9 +897,9 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
         this.includeTimelapseThumbnailFiles(items)
       }
 
-      items.forEach((item) => {
-        if (item.type === 'directory') SocketActions.serverFilesDeleteDirectory(`${this.currentPath}/${item.dirname}`, true)
-        if (item.type === 'file') SocketActions.serverFilesDeleteFile(`${this.currentPath}/${item.filename}`)
+      targets.forEach((target) => {
+        if (target.type === 'directory') SocketActions.serverFilesDeleteDirectory(target.path, true)
+        if (target.type === 'file') SocketActions.serverFilesDeleteFile(target.path)
       })
     }
   }
@@ -882,9 +909,31 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
 
     this.$store.dispatch('wait/addWait', wait)
 
-    await this.uploadFiles(files, this.visiblePath, this.currentRoot, print)
+    const target = this.panelTarget
+    const stillCurrent = () => target === this.panelTarget
+    const path = this.visiblePath
+    const root = this.currentRoot
+    const list = Array.from(files as ArrayLike<File | FileWithPath>)
 
-    this.$store.dispatch('wait/removeWait', wait)
+    // Printing starts after the upload, through the same asked-first path as every other print.
+    let uploaded: string[] | false = false
+    try {
+      uploaded = await this.uploadFiles(files, path, root, false, stillCurrent)
+    } finally {
+      this.$store.dispatch('wait/removeWait', wait)
+    }
+
+    if (uploaded === false || !stillCurrent()) {
+      EventBus.$emit('Stopped: the printer changed', { type: 'warning', timeout: 5000 })
+      return
+    }
+
+    if (print && root === 'gcodes' && list.length === 1) {
+      const [fullPath, fileObject] = this.getFullPathAndFile(path, list[0])
+      const filepath = fullPath ? `${fullPath}/${fileObject.name}` : fileObject.name
+      // Only a file that really uploaded: never an older copy left on the printer.
+      if (uploaded.includes(filepath)) await this.printAgain(filepath)
+    }
   }
 
   handleCancelUpload (file: FilesUpload) {
