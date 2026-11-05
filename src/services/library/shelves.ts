@@ -12,7 +12,7 @@
  * A publication is printed from its card through its G-code, if it has one
  * (publicationPrint), with the size and SHA-256 its publication lists.
  */
-import { MODELS_URL, type CommunitySave, type PublicPublication, type ItemSetup } from './api'
+import { MODELS_URL, isAvailable, type CommunitySave, type PublicPublication, type ItemSetup } from './api'
 import { LIBRARY_URL, loadDiscover, safePicture, type DiscoverCatalogue } from './discover'
 import type { StoredFileFacts } from './print-on'
 
@@ -288,17 +288,19 @@ function safeLink (value: string | null | undefined): string | null {
  * print opens where it lives. One no longer available is left out.
  */
 export function saveCard (save: CommunitySave): ShelfCard | null {
-  if (!save?.card || !text(save.card.title) || !save.card.available) return null
+  if (!save?.card || !text(save.card.title) || !isAvailable(save.card)) return null
   const target = save.target ?? { kind: '' }
-  const id = text(target.id) ? target.id : null
+  const id = text(target.id) ? target.id : text(target.external_id) ? target.external_id : null
   const publication = target.kind === 'publication' && !!id
-  const href = publication ? `${LIBRARY_URL}/p/${encodeURIComponent(id as string)}` : safeLink(save.card.url)
+  // A publication's page is the service's `/p/<slug>` on the Library site.
+  const page = text(save.card.url) && /^\/p\/[^/?#]+$/.test(save.card.url) ? `${LIBRARY_URL}${save.card.url}` : null
+  const href = publication ? page : safeLink(save.card.url)
   if (!href) return null
   return {
     key: `save:${save.id}`,
     kind: publication ? 'publication' : 'catalogue',
     id: id ?? save.id,
-    slug: id ?? save.id,
+    slug: publication && page ? decodeURIComponent(page.split('/p/')[1]) : id ?? save.id,
     title: save.card.title,
     picture: safePicture(save.card.thumbnail_url),
     creator: save.card.creator ?? '',
@@ -314,4 +316,14 @@ export function saveCard (save: CommunitySave): ShelfCard | null {
     createdAt: save.created_at || null,
     href
   }
+}
+
+/** A public print's first picture, from its page (a saved one's card has none). */
+export async function publicationPicture (id: string, fetcher: typeof fetch = fetch): Promise<string | null> {
+  const publication = await loadPublication(id, fetcher)
+  for (const image of publication.images ?? []) {
+    const url = safePicture(image.url)
+    if (url) return url
+  }
+  return null
 }

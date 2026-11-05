@@ -67,7 +67,7 @@
               :class="{ 'mlook__heart--on': saveId }"
               :aria-pressed="saveId ? 'true' : 'false'"
               :aria-label="saveId ? `Unsave ${card.title}` : `Save ${card.title}`"
-              :disabled="saving"
+              :aria-busy="saving ? 'true' : 'false'"
               data-tid="library-quick-look-save"
               @click="toggleSave"
             >
@@ -78,7 +78,7 @@
               class="mlook__collect"
               aria-label="Add to a collection"
               data-tid="library-quick-look-collect"
-              :disabled="saving"
+              :aria-busy="saving ? 'true' : 'false'"
               @change="collect($event)"
             >
               <option value="">
@@ -95,9 +95,9 @@
           </template>
         </header>
         <p
-          v-if="note"
           class="mlib-muted mlook__note"
           role="status"
+          aria-live="polite"
         >
           {{ note }}
         </p>
@@ -240,6 +240,8 @@ export default class LibraryQuickLook extends Vue {
   /** This print's save (the heart), when you saved it. */
   saveId = ''
   saving = false
+  /** The heart or Add to… was used: the first lookup no longer applies. */
+  touched = false
   note = ''
 
   created () {
@@ -252,6 +254,8 @@ export default class LibraryQuickLook extends Vue {
   async readSave () {
     try {
       const { saves } = await libraryClient().savesOf([this.card.id])
+      // A tap on the heart while this was read decides.
+      if (this.touched) return
       this.saveId = saves.find(s => s.target.id === this.card.id)?.save_id ?? ''
     } catch {
       // No heart state: it still works, starting unsaved.
@@ -261,6 +265,7 @@ export default class LibraryQuickLook extends Vue {
   /** The heart: likes are saves (Jack, 5 Nov). */
   async toggleSave () {
     if (this.saving) return
+    this.touched = true
     this.saving = true
     this.note = ''
     try {
@@ -284,6 +289,7 @@ export default class LibraryQuickLook extends Vue {
     select.value = ''
     const collection = this.collections.find(c => c.id === id)
     if (!collection || this.saving) return
+    this.touched = true
     this.saving = true
     this.note = ''
     try {
