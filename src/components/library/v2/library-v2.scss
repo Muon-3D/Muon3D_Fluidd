@@ -591,6 +591,7 @@
   &__acts { display: flex; gap: 8px; }
   &__go { flex: 1; height: 46px; font-size: var(--m3d-text-md); }
   &__note { margin: -6px 0 0; font-size: var(--m3d-text-xs); }
+  &__note:empty { margin: -16px 0 0; }
   &__tags { margin-top: auto; }
 
   @media (max-width: 599px) {
@@ -601,6 +602,27 @@
     .mlook__close { display: grid; }
     .mlook__side { overflow: visible; }
   }
+}
+
+/* ---------------------------------------------------------- heart, add -- */
+
+.mlook__heart {
+  font-size: 18px;
+  line-height: 1;
+
+  &--on { color: var(--m3d-danger); }
+}
+
+.mlook__collect {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--m3d-radius-pill);
+  background: var(--m3d-fill, var(--m3d-surface-2));
+  color: var(--m3d-text);
+  font: inherit;
+  font-size: var(--m3d-text-xs);
+  font-weight: 600;
 }
 
 /* ------------------------------------------------------------ states -- */

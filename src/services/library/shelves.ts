@@ -12,7 +12,7 @@
  * A publication is printed from its card through its G-code, if it has one
  * (publicationPrint), with the size and SHA-256 its publication lists.
  */
-import { MODELS_URL, type PublicPublication, type ItemSetup } from './api'
+import { MODELS_URL, isAvailable, type CommunitySave, type PublicPublication, type ItemSetup } from './api'
 import { LIBRARY_URL, loadDiscover, safePicture, type DiscoverCatalogue } from './discover'
 import type { StoredFileFacts } from './print-on'
 
@@ -269,4 +269,71 @@ export async function loadPublication (id: string, fetcher: typeof fetch = fetch
     throw new Error('The Library sent an answer this version of Control can\'t read.')
   }
   return body
+}
+
+/** The slug in a Library page's address, as written there when it can't be decoded. */
+function slugOf (page: string): string {
+  const raw = page.split('/p/')[1] ?? ''
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
+
+/** Only an https link: a save's own link comes from the service. */
+function safeLink (value: string | null | undefined): string | null {
+  if (!value) return null
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' ? url.href : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A save as a card (Yours: Saved, a collection). A saved public print is a
+ * publication card that prints like any other; a saved catalogue or source
+ * print opens where it lives. One no longer available is left out.
+ */
+export function saveCard (save: CommunitySave): ShelfCard | null {
+  if (!save?.card || !text(save.card.title) || !isAvailable(save.card)) return null
+  const target = save.target ?? { kind: '' }
+  const id = text(target.id) ? target.id : text(target.external_id) ? target.external_id : null
+  const publication = target.kind === 'publication' && !!id
+  // A publication's page is the service's `/p/<slug>` on the Library site.
+  const page = text(save.card.url) && /^\/p\/[^/?#]+$/.test(save.card.url) ? `${LIBRARY_URL}${save.card.url}` : null
+  const href = publication ? page : safeLink(save.card.url)
+  if (!href) return null
+  return {
+    key: `save:${save.id}`,
+    kind: publication ? 'publication' : 'catalogue',
+    id: id ?? save.id,
+    slug: publication && page ? slugOf(page) : id ?? save.id,
+    title: save.card.title,
+    picture: safePicture(save.card.thumbnail_url),
+    creator: save.card.creator ?? '',
+    handle: null,
+    makes: 0,
+    remixes: 0,
+    saves: 0,
+    facts: '',
+    m1: false,
+    tags: [],
+    remixOf: null,
+    makeOf: null,
+    createdAt: save.created_at || null,
+    href
+  }
+}
+
+/** A public print's first picture, from its page (a saved one's card has none). */
+export async function publicationPicture (id: string, fetcher: typeof fetch = fetch): Promise<string | null> {
+  const publication = await loadPublication(id, fetcher)
+  for (const image of publication.images ?? []) {
+    const url = safePicture(image.url)
+    if (url) return url
+  }
+  return null
 }
