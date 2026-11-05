@@ -27,6 +27,7 @@
       <div class="app-header__actions">
         <app-status-alerts v-if="!sectionContext.foreign && authenticated" />
         <button
+          v-if="!mockup"
           type="button"
           class="app-header__icon"
           aria-label="Search or run a command"
@@ -46,6 +47,7 @@
           <frame-icon name="library" />
         </router-link>
         <notices-bell v-if="!printerFrame" />
+        <mockup-quick-actions v-if="mockup" />
         <cloud-account-menu v-if="!printerFrame" />
       </div>
 
@@ -133,6 +135,8 @@
           @upload="handleUploadAndPrint"
         />
 
+        <mockup-quick-actions v-if="mockup" />
+
         <v-tooltip
           v-if="!sectionContext.foreign && printerFrame && authenticated && socketConnected && topNavPowerToggle"
           bottom
@@ -159,7 +163,7 @@
         <app-notification-menu v-if="!sectionContext.foreign && authenticated && socketConnected" />
 
         <v-tooltip
-          v-if="enableKeyboardShortcuts && $vuetify.breakpoint.mdAndUp"
+          v-if="!mockup && enableKeyboardShortcuts && $vuetify.breakpoint.mdAndUp"
           bottom
         >
           <template #activator="{ on, attrs }">
@@ -179,7 +183,8 @@
         </v-tooltip>
 
         <notices-bell />
-        <cloud-account-menu />
+        <mockup-account-menu v-if="mockup" />
+        <cloud-account-menu v-else />
       </div>
 
       <template v-if="showEstop">
@@ -294,6 +299,8 @@ import { EventBus } from '@/eventBus'
 import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
 import { pageOfRoute } from '@/router/printerPagePaths'
+import MockupAccountMenu from '@/mockup/MockupAccountMenu.vue'
+import MockupQuickActions from '@/mockup/MockupQuickActions.vue'
 
 /**
  * The header answers three questions in order: where am I (Muon3D, the
@@ -304,6 +311,8 @@ import { pageOfRoute } from '@/router/printerPagePaths'
 @Component({
   components: {
     CloudAccountMenu,
+    MockupAccountMenu,
+    MockupQuickActions,
     NoticesBell,
     PendingChangesDialog,
     AppSaveConfigAndRestartBtn,
@@ -313,6 +322,11 @@ import { pageOfRoute } from '@/router/printerPagePaths'
 })
 export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin, BrowserMixin) {
   pendingChangesDialogOpen = false
+
+  /** Harness only: the top bar as proposed in the mockups. Never merged. */
+  get mockup (): boolean {
+    return this.$route.path.includes('__mockup')
+  }
 
   get phone (): boolean {
     return this.isMobileViewport

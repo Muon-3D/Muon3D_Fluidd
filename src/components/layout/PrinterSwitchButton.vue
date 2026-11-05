@@ -51,7 +51,9 @@
           />
         </button>
       </template>
+      <mockup-switcher v-if="mockup" />
       <printer-switcher
+        v-else
         :visible="open"
         @click="open = false"
       />
@@ -99,7 +101,9 @@
         content-class="printer-switch__sheet"
       >
         <div class="printer-switch__sheet-body">
+          <mockup-switcher v-if="mockup" />
           <printer-switcher
+            v-else
             :visible="open"
             @click="open = false"
           />
@@ -123,18 +127,24 @@ import { emptyStatus } from '@/services/foreign-printers/adapters/base'
 import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@/services/foreign-printers/types'
 import type { PrinterStatusTone } from '@/mixins/printer-status'
 import ForeignSilhouette from '@/components/foreign/ForeignSilhouette.vue'
+import MockupSwitcher from '@/mockup/MockupSwitcher.vue'
 
 /**
  * The printer you're on, top left: its picture, name and what it's doing,
  * on one line. It opens every printer: a menu on a computer, a sheet on a
  * phone. It is never hidden behind three dots, and never near the E-STOP.
  */
-@Component({ components: { ForeignSilhouette, PrinterSwitcher } })
+@Component({ components: { ForeignSilhouette, PrinterSwitcher, MockupSwitcher } })
 export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
   @Prop({ type: Boolean })
   readonly phone?: boolean
 
   open = false
+
+  /** Harness only. */
+  get mockup (): boolean {
+    return this.$route.path.includes('__mockup')
+  }
 
   get foreignRecord () {
     const slug = this.$route.params.printer

@@ -79,6 +79,13 @@ const P = `/:printer(${ROUTE_SLUG_PATTERN})`
 
 const printerRoutes: Array<RouteConfig> = [
   {
+    // Harness only (never merged): the proposed Overview and top bar.
+    path: `${P}/__mockup/overview`,
+    name: 'Dashboard',
+    component: () => import('@/mockup/MockupOverview.vue'),
+    ...defaultRouteConfig
+  },
+  {
     path: `${P}/print`,
     name: 'Print hand-off',
     component: PrintHandoff,
