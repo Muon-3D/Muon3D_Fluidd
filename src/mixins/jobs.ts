@@ -2,6 +2,9 @@ import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from './overview'
 import { SocketActions } from '@/api/socketActions'
 import type { AppFileWithMeta, FileBrowserEntry } from '@/store/files/types'
+import { cloudState } from '@/services/muon-cloud/state'
+import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { jobThumbnailPath, remoteJobThumbnail } from '@/services/jobs/thumbnail'
 import { jobFacts, jobTitle, isGcodeFile, printedBefore } from '@/services/jobs/model'
 
 /** A G-code file on the printer, as Jobs shows it. */
@@ -64,7 +67,7 @@ export default class JobsMixin extends Mixins(OverviewMixin) {
       filename: f.filename,
       title: jobTitle(f.filename),
       facts: jobFacts(f),
-      thumbnail: this.getThumbUrl(f, this.root, f.path, true, f.modified) || '',
+      thumbnail: this.jobPictureUrl(f),
       printed: printedBefore(f as never),
       printing: !!printing && printing === path,
       modified: f.modified,
@@ -74,6 +77,24 @@ export default class JobsMixin extends Mixins(OverviewMixin) {
       print_start_time: (f as { print_start_time?: number | null }).print_start_time,
       file: f
     }
+  }
+
+  /**
+   * The picture of a job: an address on this network, or, over the remote
+   * route (where there is no address to link), the bytes read through the
+   * transport and shown from an object URL.
+   */
+  jobPictureUrl (f: AppFileWithMeta): string {
+    const path = jobThumbnailPath(f, f.path)
+    if (!path) return ''
+    const apiUrl = this.$store.state.config.apiUrl as string
+    if (!isManagedApiUrl(apiUrl)) return `${apiUrl}${path}?date=${f.modified || Date.now()}`
+    return remoteJobThumbnail(
+      `${cloudState.account?.id ?? ''}|${cloudState.activePrinterId ?? ''}`,
+      path,
+      f.modified,
+      async p => (await this.$httpClient.get(p, { responseType: 'blob' })).data as Blob
+    )
   }
 
   get folders (): number {
