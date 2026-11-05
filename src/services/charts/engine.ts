@@ -9,7 +9,13 @@ export interface GraphHandle {
   dispose (): void
 }
 
+/** Whether this browser can give a 2D canvas context (jsdom and some locked-down browsers cannot). */
+export function canvasAvailable (): boolean {
+  try { return !!document.createElement('canvas').getContext?.('2d') } catch { return false }
+}
+
 export async function createGraph (el: HTMLElement): Promise<GraphHandle> {
+  if (!canvasAvailable()) throw new Error('No 2D canvas available')
   const [core, charts, components, renderers] = await Promise.all([
     import('echarts/core'),
     import('echarts/charts'),
@@ -17,6 +23,7 @@ export async function createGraph (el: HTMLElement): Promise<GraphHandle> {
     import('echarts/renderers')
   ])
   core.use([charts.LineChart, components.GridComponent, components.TooltipComponent, components.MarkLineComponent, renderers.CanvasRenderer])
+  if (!el.isConnected) throw new Error('Graph element is gone')
   const chart = core.init(el, undefined, { renderer: 'canvas' })
   return {
     // Everything is redrawn from scratch each second from the decimated buffer, so nothing needs merging.
