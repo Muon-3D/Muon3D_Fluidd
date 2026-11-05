@@ -123,30 +123,88 @@
     <control-task-fold
       fold-key="jobs.view.list"
       title="Jobs view"
-      summary="Pictures, list or table"
+      summary="Files, pictures, list or table"
       choice
     >
       <template #default="listChoice">
         <control-task-fold
           fold-key="jobs.view.table"
           title="Jobs view"
-          summary="Pictures, list or table"
+          summary="Files, pictures, list or table"
           choice
           :show-unsaved-note="false"
         >
           <template #default="tableChoice">
-            <seg-picker
-              :options="viewOptions"
-              :value="selectedView(listChoice.value, tableChoice.value)"
-              label="View"
-              @input="setView($event, listChoice.choose, tableChoice.choose)"
-            />
+            <control-task-fold
+              fold-key="jobs.view.pictures"
+              title="Jobs view"
+              summary="Files, pictures, list or table"
+              choice
+              :show-unsaved-note="false"
+            >
+              <template #default="picturesChoice">
+                <seg-picker
+                  :options="viewOptions"
+                  :value="selectedView(listChoice.value, tableChoice.value, picturesChoice.value)"
+                  label="View"
+                  @input="setView($event, listChoice.choose, tableChoice.choose, picturesChoice.choose)"
+                />
+              </template>
+            </control-task-fold>
           </template>
         </control-task-fold>
       </template>
     </control-task-fold>
 
-    <div class="jobs__browser">
+    <div
+      v-if="effectiveView === 'files'"
+      class="jobs__files"
+    >
+      <div class="jobs__manager-more">
+        <v-menu
+          offset-y
+          left
+        >
+          <template #activator="{ on, attrs }">
+            <v-btn
+              icon
+              small
+              aria-label="More file options"
+              data-tid="jobs-files-more"
+              v-bind="attrs"
+              v-on="on"
+            >
+              <v-icon>$dots</v-icon>
+            </v-btn>
+          </template>
+          <v-list dense>
+            <v-list-item
+              data-tid="jobs-files-config"
+              @click="showConfig = !showConfig"
+            >
+              <v-list-item-title>{{ showConfig ? 'Hide configuration files' : 'Configuration files' }}</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+      </div>
+      <div
+        class="jobs__manager"
+        data-tid="jobs-file-manager"
+      >
+        <file-system
+          :key="fileRoots.join()"
+          :roots="fileRoots"
+          name="jobs"
+          bulk-actions
+          height="100%"
+        />
+      </div>
+    </div>
+
+    <div
+      v-else
+      class="jobs__browser"
+    >
       <jobs-table
         :view="effectiveView"
         :current="viewing ? viewing.key : null"
@@ -251,29 +309,35 @@ import type { TileTone } from '@/services/printers-page/model'
 import getFilePaths from '@/util/get-file-paths'
 import JobDetail from '@/components/jobs/JobDetail.vue'
 import JobsTable from '@/components/jobs/JobsTable.vue'
+import FileSystem from '@/components/widgets/filesystem/FileSystem.vue'
 import JobViewer from '@/components/jobs/JobViewer.vue'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
 import TonePill from '@/components/printers/TonePill.vue'
 import ControlTaskFold from '@/components/control/ControlTaskFold.vue'
 import { controlPreferenceStore } from '@/services/account/control-preferences'
 
-type JobsView = 'pictures' | 'list' | 'table'
+type JobsView = 'files' | 'pictures' | 'list' | 'table'
 
 /**
  * Jobs: what is printing and up next, the files on the printer, and what
  * printed lately. Files can be shown as pictures, a list, or a table with
  * folders beside a G-code viewer.
  */
-@Component({ components: { ControlTaskFold, JobDetail, JobsTable, JobViewer, SegPicker, TonePill } })
+@Component({ components: { ControlTaskFold, FileSystem, JobDetail, JobsTable, JobViewer, SegPicker, TonePill } })
 export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
-  view: JobsView = 'pictures'
+  view: JobsView = 'files'
   detail: JobFile | null = null
   detailTarget: string | null = null
   /** The file the viewer shows, and the currently listed files in order. */
   viewing: JobFile | null = null
   tableFiles: JobFile[] = []
 
-  get effectiveView (): JobsView { return this.isMobileViewport && this.view === 'table' ? 'list' : this.view }
+  get effectiveView (): JobsView { return this.isMobileViewport && (this.view === 'table' || this.view === 'files') ? 'list' : this.view }
+
+  /** The file manager opens on G-code. The printer's config is one tap away in the ... menu. */
+  showConfig = false
+
+  get fileRoots (): string[] { return this.showConfig ? ['gcodes', 'config'] : ['gcodes'] }
 
   mounted () {
     this.loadFiles()
@@ -284,27 +348,38 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   }
 
   get viewOptions (): SegOption[] {
-    return [{ value: 'pictures', label: 'Pictures' }, { value: 'list', label: 'List' }, { value: 'table', label: 'Table' }]
+    return [{ value: 'files', label: 'Files' }, { value: 'pictures', label: 'Pictures' }, { value: 'list', label: 'List' }, { value: 'table', label: 'Table' }]
   }
 
   get rememberedList (): boolean { return controlPreferenceStore.state.folds['jobs.view.list'] === true }
   get rememberedTable (): boolean { return controlPreferenceStore.state.folds['jobs.view.table'] === true }
+  get rememberedPictures (): boolean { return controlPreferenceStore.state.folds['jobs.view.pictures'] === true }
 
-  @Watch('rememberedList', { immediate: true })
-  @Watch('rememberedTable', { immediate: true })
+  /** A remembered choice wins. Before Files existed, Pictures was list and table both off. */
+  get legacyPictures (): boolean {
+    const folds = controlPreferenceStore.state.folds
+    return folds['jobs.view.pictures'] === undefined && (folds['jobs.view.list'] === false || folds['jobs.view.table'] === false)
+  }
+
+  get rememberedView (): JobsView {
+    return this.rememberedTable ? 'table' : this.rememberedList ? 'list' : (this.rememberedPictures || this.legacyPictures) ? 'pictures' : 'files'
+  }
+
+  @Watch('rememberedView', { immediate: true })
   restoreView () {
-    this.view = this.rememberedTable ? 'table' : this.rememberedList ? 'list' : 'pictures'
+    this.view = this.rememberedView
   }
 
-  selectedView (list: boolean, table: boolean): JobsView {
-    const selected = table ? 'table' : list ? 'list' : 'pictures'
-    return this.isMobileViewport && selected === 'table' ? 'list' : selected
+  selectedView (list: boolean, table: boolean, pictures = false): JobsView {
+    const selected = table ? 'table' : list ? 'list' : (pictures || this.legacyPictures) ? 'pictures' : 'files'
+    return this.isMobileViewport && (selected === 'table' || selected === 'files') ? 'list' : selected
   }
 
-  setView (view: JobsView, chooseList?: (value: boolean) => void, chooseTable?: (value: boolean) => void) {
+  setView (view: JobsView, chooseList?: (value: boolean) => void, chooseTable?: (value: boolean) => void, choosePictures?: (value: boolean) => void) {
     this.view = view
     chooseList?.(view === 'list')
     chooseTable?.(view === 'table')
+    choosePictures?.(view === 'pictures')
   }
 
   fileFor (filename: string): JobFile | undefined {
@@ -779,6 +854,16 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
 
   .jobs__browser {
     min-width: 0;
+  }
+
+  .jobs__manager-more {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .jobs__manager {
+    min-width: 0;
+    height: max(480px, calc(100vh - 280px));
   }
 
   .jobs--table .jobs__browser {

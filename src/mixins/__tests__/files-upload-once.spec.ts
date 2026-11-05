@@ -69,3 +69,46 @@ describe('FilesMixin upload request ownership', () => {
     expect(httpClientActions.serverFilesUploadPost).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('FilesMixin uploadFiles result', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  function batchOwner () {
+    const owner: any = {
+      ...uploader(),
+      getFullPathAndFile: (FilesMixin as any).options.methods.getFullPathAndFile
+    }
+    owner.$store.state.files.uploads = [
+      { filepath: 'a.gcode', cancelled: false },
+      { filepath: 'b.gcode', cancelled: false }
+    ]
+    owner.uploadFile = (FilesMixin as any).options.methods.uploadFile
+    return owner
+  }
+
+  const run = (owner: any, files: File[], canContinue?: () => boolean) =>
+    (FilesMixin as any).options.methods.uploadFiles.call(owner, files, '', 'gcodes', false, canContinue)
+
+  it('lists only the files that actually uploaded', async () => {
+    vi.mocked(httpClientActions.serverFilesUploadPost)
+      .mockResolvedValueOnce({ data: {} } as any)
+      .mockRejectedValueOnce(new Error('aborted'))
+    const result = await run(batchOwner(), [new File(['x'], 'a.gcode'), new File(['y'], 'b.gcode')])
+    expect(result).toEqual(['a.gcode'])
+  })
+
+  it('lists nothing for a cancelled file', async () => {
+    const owner = batchOwner()
+    owner.$store.state.files.uploads = [{ filepath: 'a.gcode', cancelled: true }]
+    const result = await run(owner, [new File(['x'], 'a.gcode')])
+    expect(result).toEqual([])
+    expect(httpClientActions.serverFilesUploadPost).not.toHaveBeenCalled()
+  })
+
+  it('returns false when the batch was stopped', async () => {
+    const result = await run(batchOwner(), [new File(['x'], 'a.gcode')], () => false)
+    expect(result).toBe(false)
+  })
+})

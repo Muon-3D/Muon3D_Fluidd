@@ -6,6 +6,7 @@
     </div> -->
 
     <v-data-table
+      ref="table"
       :value="selected"
       :headers="headers"
       :items="files"
@@ -28,256 +29,277 @@
       fixed-header
       @input="handleSelected"
     >
-      <template #item="{ item, isSelected, select }">
-        <tr
-          :class="{
-            'is-disabled': disabled,
-            'v-data-table__selected': (isSelected && item.name !== '..')
-          }"
-          class="row-select px-1"
-          :draggable="isItemDraggable(item)"
-          @click.prevent="$emit('row-click', item, $event)"
-          @contextmenu.prevent="$emit('row-click', item, $event)"
-          @dragstart="handleDragStart(item, $event)"
-          @dragend="handleDragEnd"
-          @dragover="handleDragOver(item, $event)"
-          @dragenter.prevent
-          @dragleave.prevent="handleDragLeave"
-          @drop.prevent="handleDrop(item, $event)"
-        >
-          <td v-if="bulkActions">
-            <v-simple-checkbox
-              v-if="item.name !== '..'"
-              v-ripple
-              :value="isSelected"
-              color=""
-              class="mt-1"
-              @click.stop="select(!isSelected)"
-            />
-          </td>
-          <td>
-            <!-- icons are 16px small, or 24px for standard size. -->
-            <v-layout
-              justify-center
-              class="no-pointer-events"
+      <template #body="{ items, isSelected, select }">
+        <tbody>
+          <tr
+            v-if="windowFor(items.length).padTop"
+            class="fs-pad"
+            aria-hidden="true"
+            :style="{ height: `${windowFor(items.length).padTop}px` }"
+          >
+            <td :colspan="headers.length + 1" />
+          </tr>
+          <tr
+            v-for="item in rows(items)"
+            :key="item.name"
+            :class="{
+              'is-disabled': disabled,
+              'v-data-table__selected': (isSelected(item) && item.name !== '..')
+            }"
+            :style="{ height: `${rowHeight}px` }"
+            class="row-select px-1"
+            :draggable="isItemDraggable(item)"
+            @click.prevent="$emit('row-click', item, $event)"
+            @contextmenu.prevent="$emit('row-click', item, $event)"
+            @dragstart="handleDragStart(item, $event)"
+            @dragend="handleDragEnd"
+            @dragover="handleDragOver(item, $event)"
+            @dragenter.prevent
+            @dragleave.prevent="handleDragLeave"
+            @drop.prevent="handleDrop(item, $event)"
+          >
+            <td v-if="bulkActions">
+              <v-simple-checkbox
+                v-if="item.name !== '..'"
+                v-ripple
+                :value="isSelected(item)"
+                color=""
+                class="mt-1"
+                @click.stop="select(item, !isSelected(item))"
+              />
+            </td>
+            <td>
+              <!-- icons are 16px small, or 24px for standard size. -->
+              <v-layout
+                justify-center
+                class="no-pointer-events"
+              >
+                <v-icon
+                  v-if="!item.thumbnails || !item.thumbnails.length"
+                  :small="dense"
+                  :color="(item.type === 'file') ? 'grey' : 'primary'"
+                >
+                  {{ getItemIcon(item) }}
+                </v-icon>
+                <img
+                  v-else
+                  :style="{'max-width': `${thumbnailSize}px`, 'max-height': `${thumbnailSize}px`}"
+                  :src="getThumbUrl(item, root, item.path, thumbnailSize > 16, item.modified)"
+                >
+              </v-layout>
+            </td>
+
+            <td class="fs-name">
+              {{ item.name }}
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('estimated_time')"
+              class="fs-cell"
             >
-              <v-icon
-                v-if="!item.thumbnails || !item.thumbnails.length"
-                :small="dense"
-                :color="(item.type === 'file') ? 'grey' : 'primary'"
+              <span v-if="item.estimated_time !== undefined">
+                {{ $filters.formatCounterSeconds(item.estimated_time) }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('filament_total')"
+              class="fs-cell"
+            >
+              <span v-if="item.filament_total !== undefined">
+                {{ $filters.getReadableLengthString(item.filament_total) }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('filament_weight_total')"
+              class="fs-cell"
+            >
+              <span v-if="item.filament_weight_total !== undefined">
+                {{ $filters.getReadableWeightString(item.filament_weight_total) }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('layer_height')"
+              class="fs-cell"
+            >
+              <span v-if="item.layer_height !== undefined">
+                {{ item.layer_height }} mm
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('object_height')"
+              class="fs-cell"
+            >
+              <span v-if="item.object_height !== undefined">
+                {{ $filters.getReadableLengthString(item.object_height) }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('first_layer_height')"
+              class="fs-cell"
+            >
+              <span v-if="item.first_layer_height !== undefined">
+                {{ item.first_layer_height }} mm
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('filament_name')"
+              class="fs-cell"
+            >
+              <span v-if="item.filament_name !== undefined">
+                {{ item.filament_name }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('filament_type')"
+              class="fs-cell"
+            >
+              <span v-if="item.filament_type !== undefined">
+                {{ item.filament_type }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('history.filament_used')"
+              class="fs-cell"
+            >
+              <span v-if="item.history && item.history.filament_used !== undefined">
+                {{ $filters.getReadableLengthString(item.history.filament_used) }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('nozzle_diameter')"
+              class="fs-cell"
+            >
+              <span v-if="item.nozzle_diameter !== undefined">
+                {{ item.nozzle_diameter }} mm
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('slicer')"
+              class="fs-cell"
+            >
+              <span v-if="item.slicer !== undefined">
+                {{ item.slicer }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('slicer_version')"
+              class="fs-cell"
+            >
+              <span v-if="item.slicer_version !== undefined">
+                {{ item.slicer_version }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('history.print_duration')"
+              class="fs-cell"
+            >
+              <span v-if="item.history && item.history.print_duration !== undefined">
+                {{ $filters.formatCounterSeconds(item.history.print_duration) }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('history.total_duration')"
+              class="fs-cell"
+            >
+              <span v-if="item.history && item.history.total_duration !== undefined">
+                {{ $filters.formatCounterSeconds(item.history.total_duration) }}
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('first_layer_bed_temp')"
+              class="fs-cell"
+            >
+              <span v-if="item.first_layer_bed_temp !== undefined">
+                {{ item.first_layer_bed_temp }}<small>°C</small>
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('first_layer_extr_temp')"
+              class="fs-cell"
+            >
+              <span v-if="item.first_layer_extr_temp !== undefined">
+                {{ item.first_layer_extr_temp }}<small>°C</small>
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('chamber_temp')"
+              class="fs-cell"
+            >
+              <span v-if="item.chamber_temp !== undefined">
+                {{ item.chamber_temp }}<small>°C</small>
+              </span>
+            </td>
+
+            <td
+              v-if="root === 'gcodes' && shows('print_start_time')"
+              class="fs-cell"
+            >
+              <span v-if="item.print_start_time !== undefined && item.print_start_time !== null">
+                {{ $filters.formatDateTime(item.print_start_time * 1000) }}
+              </span>
+            </td>
+
+            <td
+              v-if="shows('modified')"
+              class="fs-cell"
+            >
+              <span v-if="item.modified !== undefined && item.name !== '..'">
+                {{ $filters.formatDateTime(item.modified * 1000) }}
+              </span>
+            </td>
+
+            <td
+              v-if="shows('size')"
+              class="fs-cell"
+            >
+              <span v-if="item.size !== undefined && item.name !== '..'">
+                {{ $filters.getReadableFileSizeString(item.size) }}
+              </span>
+            </td>
+
+            <td
+              v-if="shows('data-table-actions')"
+              class="fs-more"
+            >
+              <button
+                v-if="item.name !== '..'"
+                type="button"
+                class="fs-more__btn"
+                :aria-label="`Actions for ${item.name}`"
+                :disabled="disabled"
+                data-tid="files-row-menu"
+                @click.stop="openMenu(item, $event)"
               >
-                {{ getItemIcon(item) }}
-              </v-icon>
-              <img
-                v-else
-                :style="{'max-width': `${thumbnailSize}px`, 'max-height': `${thumbnailSize}px`}"
-                :src="getThumbUrl(item, root, item.path, thumbnailSize > 16, item.modified)"
-              >
-            </v-layout>
-          </td>
-
-          <file-row-item :nowrap="false">
-            {{ item.name }}
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="object_height"
+                <v-icon small>
+                  $dots
+                </v-icon>
+              </button>
+            </td>
+          </tr><tr
+            v-if="windowFor(items.length).padBottom"
+            class="fs-pad"
+            aria-hidden="true"
+            :style="{ height: `${windowFor(items.length).padBottom}px` }"
           >
-            <span v-if="item.object_height !== undefined">
-              {{ $filters.getReadableLengthString(item.object_height) }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="first_layer_height"
-          >
-            <span v-if="item.first_layer_height !== undefined">
-              {{ item.first_layer_height }} mm
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="layer_height"
-          >
-            <span v-if="item.layer_height !== undefined">
-              {{ item.layer_height }} mm
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="filament_name"
-          >
-            <span v-if="item.filament_name !== undefined">
-              {{ item.filament_name }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="filament_type"
-          >
-            <span v-if="item.filament_type !== undefined">
-              {{ item.filament_type }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="filament_total"
-          >
-            <span v-if="item.filament_total !== undefined">
-              {{ $filters.getReadableLengthString(item.filament_total) }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="filament_weight_total"
-          >
-            <span v-if="item.filament_weight_total !== undefined">
-              {{ $filters.getReadableWeightString(item.filament_weight_total) }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="history.filament_used"
-          >
-            <span v-if="item.history && item.history.filament_used !== undefined">
-              {{ $filters.getReadableLengthString(item.history.filament_used) }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="nozzle_diameter"
-          >
-            <span v-if="item.nozzle_diameter !== undefined">
-              {{ item.nozzle_diameter }} mm
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="slicer"
-          >
-            <span v-if="item.slicer !== undefined">
-              {{ item.slicer }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="slicer_version"
-          >
-            <span v-if="item.slicer_version !== undefined">
-              {{ item.slicer_version }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="estimated_time"
-          >
-            <span v-if="item.estimated_time !== undefined">
-              {{ $filters.formatCounterSeconds(item.estimated_time) }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="history.print_duration"
-          >
-            <span v-if="item.history && item.history.print_duration !== undefined">
-              {{ $filters.formatCounterSeconds(item.history.print_duration) }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="history.total_duration"
-          >
-            <span v-if="item.history && item.history.total_duration !== undefined">
-              {{ $filters.formatCounterSeconds(item.history.total_duration) }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="first_layer_bed_temp"
-          >
-            <span v-if="item.first_layer_bed_temp !== undefined">
-              {{ item.first_layer_bed_temp }}<small>°C</small>
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="first_layer_extr_temp"
-          >
-            <span v-if="item.first_layer_extr_temp !== undefined">
-              {{ item.first_layer_extr_temp }}<small>°C</small>
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="chamber_temp"
-          >
-            <span v-if="item.chamber_temp !== undefined">
-              {{ item.chamber_temp }}<small>°C</small>
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            v-if="root === 'gcodes'"
-            :headers="headers"
-            item-value="print_start_time"
-          >
-            <span v-if="item.print_start_time !== undefined && item.print_start_time !== null">
-              {{ $filters.formatDateTime(item.print_start_time * 1000) }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            :headers="headers"
-            item-value="modified"
-          >
-            <span v-if="item.modified !== undefined && item.name !== '..'">
-              {{ $filters.formatDateTime(item.modified * 1000) }}
-            </span>
-          </file-row-item>
-
-          <file-row-item
-            :headers="headers"
-            item-value="size"
-          >
-            <span v-if="item.size !== undefined && item.name !== '..'">
-              {{ $filters.getReadableFileSizeString(item.size) }}
-            </span>
-          </file-row-item>
-        </tr>
+            <td :colspan="headers.length + 1" />
+          </tr>
+        </tbody>
       </template>
     </v-data-table>
   </div>
@@ -285,18 +307,15 @@
 
 <script lang="ts">
 import { Component, Prop, Mixins, VModel, PropSync } from 'vue-property-decorator'
+import type Vue from 'vue'
 import type { FileBrowserEntry, RootProperties } from '@/store/files/types'
 import type { AppTableHeader } from '@/types'
 import FilesMixin from '@/mixins/files'
 
-import FileRowItem from './FileRowItem.vue'
 import { SupportedImageFormats, SupportedVideoFormats } from '@/globals'
+import { windowRows } from '@/services/files/manager'
 
-@Component({
-  components: {
-    FileRowItem
-  }
-})
+@Component({})
 export default class FileSystemBrowser extends Mixins(FilesMixin) {
   @VModel({ type: Array<FileBrowserEntry>, required: true })
     selected!: FileBrowserEntry[]
@@ -331,6 +350,77 @@ export default class FileSystemBrowser extends Mixins(FilesMixin) {
 
   dragItem: FileBrowserEntry | null = null
   ghost?: HTMLDivElement = undefined
+
+  // Where the list is scrolled to, so a long folder only draws the rows in view.
+  scrollTop = 0
+  viewport = 600
+  scroller: HTMLElement | null = null
+  frame = 0
+  resizeObserver: ResizeObserver | null = null
+
+  mounted () {
+    this.scroller = (this.$refs.table as Vue | undefined)?.$el.querySelector('.v-data-table__wrapper') ?? null
+    this.scroller?.addEventListener('scroll', this.onScroll, { passive: true })
+    window.addEventListener('resize', this.measure)
+    // The pane can change size without the window changing (menus, panels, folds).
+    if (this.scroller && typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => this.measure())
+      this.resizeObserver.observe(this.scroller)
+    }
+    this.measure()
+  }
+
+  beforeDestroy () {
+    this.scroller?.removeEventListener('scroll', this.onScroll)
+    window.removeEventListener('resize', this.measure)
+    this.resizeObserver?.disconnect()
+    this.resizeObserver = null
+    cancelAnimationFrame(this.frame)
+  }
+
+  onScroll () {
+    if (this.frame) return
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0
+      this.measure()
+    })
+  }
+
+  measure () {
+    if (!this.scroller) return
+    this.scrollTop = this.scroller.scrollTop
+    this.viewport = this.scroller.clientHeight || this.viewport
+  }
+
+  /** Every row is this tall, so the scrollbar can be worked out without drawing them. */
+  get rowHeight (): number {
+    return Math.max(this.dense ? 32 : 48, this.thumbnailSize + 12)
+  }
+
+  windowFor (total: number) {
+    return windowRows({ total, scrollTop: this.scrollTop, viewport: this.viewport, rowHeight: this.rowHeight })
+  }
+
+  // Untyped like the table's own slot items: rows read metadata the entry types don't list.
+  rows (items: any[]): any[] {
+    const w = this.windowFor(items.length)
+    return w.windowed ? items.slice(w.start, w.end) : items
+  }
+
+  /** One lookup per column, not one per cell. */
+  get shownColumns (): Set<string> {
+    return new Set(this.headers.map(header => (header.key ? header.key : header.value) as string))
+  }
+
+  shows (column: string): boolean {
+    return this.shownColumns.has(column)
+  }
+
+  // The row's own menu, opened where its button is.
+  openMenu (item: FileBrowserEntry, event: MouseEvent) {
+    const box = (event.currentTarget as HTMLElement).getBoundingClientRect()
+    this.$emit('row-click', item, new MouseEvent('contextmenu', { clientX: box.right, clientY: box.bottom }))
+  }
 
   // Is the history component enabled
   get showHistory () {
