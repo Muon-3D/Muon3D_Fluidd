@@ -111,6 +111,7 @@
 
 <script lang="ts">
 import { Component, Mixins, Watch } from 'vue-property-decorator'
+import { progressFavicon } from '@/util/progress-favicon'
 import { EventBus } from '@/eventBus'
 import StateMixin from '@/mixins/state'
 import FilesMixin from '@/mixins/files'
@@ -508,41 +509,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   }
 
   get printInProgressIconDataUrl () {
-    if (this.printerPrinting) {
-      const favIconSize = 64
-      const primaryColor = this.primaryColor
-      const secondaryColor = 'rgba(255, 255, 255, 0.10)'
-      const canvas = document.createElement('canvas')
-      const context = canvas.getContext('2d') as CanvasRenderingContext2D
-      canvas.width = favIconSize
-      canvas.height = favIconSize
-      const percent = this.progress
-      const centerX = canvas.width / 2
-      const centerY = canvas.height / 2
-      const lineWidth = 8
-      const radius = favIconSize / 2 - lineWidth / 2
-      const startAngle = 1.5 * Math.PI
-      const endAngle = startAngle + (percent * 2 * Math.PI / 100)
-
-      /* Draw the initial gray circle */
-      context.moveTo(centerX, centerY)
-      context.beginPath()
-      context.arc(centerX, centerY, radius, 0, 2 * Math.PI, false)
-      context.strokeStyle = secondaryColor
-      context.lineWidth = lineWidth
-      context.stroke()
-      context.closePath()
-
-      /* Now draw the progress circle */
-      context.moveTo(centerX, centerY)
-      context.beginPath()
-      context.arc(centerX, centerY, radius, startAngle, endAngle, false)
-      context.strokeStyle = primaryColor
-      context.lineWidth = lineWidth
-      context.stroke()
-
-      return canvas.toDataURL('image/png')
-    }
+    if (this.printerPrinting) return progressFavicon(this.progress, this.primaryColor)
   }
 
   get defaultIconDataUrl () {
