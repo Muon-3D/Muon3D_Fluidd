@@ -3,8 +3,16 @@ import { switcherGroups, switcherSectionShown } from '../switcher-groups'
 import type { DirectoryEntry } from '../directory'
 
 const entry = (id: string, name = id): DirectoryEntry => ({
-  key: `cloud:${id}`, section: 'cloud', name, endpointId: id, health: 'online', detail: 'Ready',
-  host: null, active: null, linkedTo: 'mine', saved: [],
+  key: `cloud:${id}`,
+  section: 'cloud',
+  name,
+  endpointId: id,
+  health: 'online',
+  detail: 'Ready',
+  host: null,
+  active: null,
+  linkedTo: 'mine',
+  saved: [],
   cloud: { id, name, model: 'M1', version: '1', linked_at: 1, last_seen: 1, online: true, online_since: 1 }
 })
 

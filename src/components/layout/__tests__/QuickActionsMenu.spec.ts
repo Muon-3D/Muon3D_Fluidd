@@ -43,7 +43,7 @@ function show (computed: Record<string, unknown> = {}) {
 
 const item = (w: ReturnType<typeof show>, id: string) => w.find(`[data-tid="quick-${id}"]`)
 
-afterEach(() => vi.clearAllMocks())
+afterEach(() => { vi.clearAllMocks() })
 
 describe('QuickActionsMenu', () => {
   it('draws the lightning bolt from the frame icon set', () => {
