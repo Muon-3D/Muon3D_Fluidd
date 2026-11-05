@@ -5,7 +5,6 @@ import { GLASS_ORDER } from '../glass-material'
 import { bindNodes } from './node-binding'
 import { ACCURATE_M1 } from './node-config'
 import { ACCURATE_RIG } from './klipper-map'
-import { createPoser } from './tube'
 
 /**
  * The loaded accurate M1 as the viewer drives it: the head and the bed
@@ -14,8 +13,8 @@ import { createPoser } from './tube'
  * on a phone, as a plain transparent one.
  *
  * Not driven, for want of a data source: the arm's fold (`M1_Arm`) and the
- * knob's spin (`M1_Knob`) stay at rest, and the hoses and belts are frozen
- * at the rest pose in the asset itself. The plate coming off, the hose's end,
+ * knob's spin (`M1_Knob`) stay at rest, and the belts are frozen at the rest
+ * pose in the asset itself. The hose is skinned and follows the head on its own. The plate coming off, the hose's end,
  * the spool and the filament (accessory-parts.ts) are the simple model's.
  */
 export interface AccurateRig {
@@ -26,7 +25,7 @@ export interface AccurateRig {
   printFrame: THREE.Matrix4;
   /** Config names the GLB lacks; the model is wrong until this is empty. */
   missing: string[];
-  /** Poses the nodes, then the tube (tube.ts), when the placement changed. */
+  /** Poses the head, the gantry and the bed; the hose follows by skinning. */
   place: (placement: ModelPlacement) => void;
   /** Swaps the transmissive glass for a plain transparent one. Returns whether anything changed. */
   useCheapGlass: () => boolean;
@@ -62,11 +61,9 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
     0, 0, 0, 1
   )
 
-  const pose = createPoser(p => {
-    bindings.apply({ headX: p.headX, headZ: p.headZ, z: p.z })
-    // The plate's top, where the bed node puts it: the cargo is the plate's.
-    cargo.position.y = (p.z + (bed.zero ?? 0)) * bed.travel * ACCURATE_M1.scale
-  })
+  // The hose is skinned to hose_base (fixed) and hose_head (a child of the carriage), so posing the
+  // carriage and gantry moves it; three works out a skinned mesh's bounds once, at rest, so it must not be culled.
+  scene.getObjectByName('M1_Hose')?.traverse(o => { o.frustumCulled = false })
 
   let cheap = false
   return {
@@ -74,7 +71,11 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
     cargo,
     printFrame,
     missing: bindings.missing,
-    place: pose,
+    place (p) {
+      bindings.apply({ headX: p.headX, headZ: p.headZ, z: p.z })
+      // The plate's top, where the bed node puts it: the cargo is the plate's.
+      cargo.position.y = (p.z + (bed.zero ?? 0)) * bed.travel * ACCURATE_M1.scale
+    },
     useCheapGlass () {
       if (cheap) return false
       cheap = true

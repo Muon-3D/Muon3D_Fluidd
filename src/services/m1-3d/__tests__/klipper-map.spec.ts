@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import * as THREE from 'three'
 import { bindNodes } from '../accurate/node-binding'
 import { ACCURATE_M1 } from '../accurate/node-config'
 import { ACCURATE_RIG, placeAccurate, plateTopAt } from '../accurate/klipper-map'
 import { RESTING } from '../pose'
+import { glbScene } from './glb-nodes'
 
 const pose = (x: number | null, y: number | null, z: number | null) => ({ x, y, z, led: false, progress: 0 })
 
@@ -50,24 +49,7 @@ describe('Klipper position to the accurate M1 state', () => {
   })
 })
 
-/** The GLB's node tree (no meshes), read from the shipped asset. */
-function glbNodes () {
-  const b = readFileSync(resolve(__dirname, '../../../assets/m1/m1-accurate.glb'))
-  const json = JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString('utf8'))
-  const objs: THREE.Object3D[] = json.nodes.map((n: any) => {
-    const o = new THREE.Object3D()
-    o.name = n.name ?? ''
-    if (n.translation) o.position.fromArray(n.translation)
-    if (n.rotation) o.quaternion.fromArray(n.rotation)
-    return o
-  })
-  json.nodes.forEach((n: any, i: number) => (n.children ?? []).forEach((c: number) => objs[i].add(objs[c])))
-  const root = json.scenes[0].nodes.map((i: number) => objs[i])[0] as THREE.Object3D
-  const scene = new THREE.Group()
-  scene.add(root)
-  scene.updateMatrixWorld(true)
-  return scene
-}
+const glbNodes = glbScene
 
 /** The world position of a point fixed to `node`, wherever the bindings have put it. */
 function follower (scene: THREE.Object3D, node: string, world: THREE.Vector3) {
