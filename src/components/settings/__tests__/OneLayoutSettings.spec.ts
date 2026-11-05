@@ -50,6 +50,7 @@ function general (pro: boolean) {
       availablePrintEtaCalculation: () => [],
       sectionsToIgnorePendingConfigurationChanges: () => [],
       enableDiagnostics: () => false,
+      overviewCameraToggle: () => true,
       confirmOnSaveConfigAndRestart: () => true
     }
   })

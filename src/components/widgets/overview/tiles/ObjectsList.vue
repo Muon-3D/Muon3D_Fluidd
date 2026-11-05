@@ -1,35 +1,51 @@
 <template>
-  <section class="ov-card">
-    <h2 class="ov-card__title">
-      Objects on the plate
-    </h2>
-    <p>Skip one if it fails. The rest of the plate carries on.</p>
+  <div
+    class="ol"
+    data-tid="objects-list"
+  >
+    <p class="ot__note">
+      Skip one if it fails. The rest of the plate carries on.
+    </p>
     <div
       v-for="object in objects"
       :key="object.name"
-      class="overview-object"
+      class="ol__row"
     >
-      <span>{{ object.name }}</span>
-      <span v-if="excluded.includes(object.name)">Skipped</span>
+      <span class="ol__name">{{ object.name }}</span>
+      <span
+        v-if="excluded.includes(object.name)"
+        class="ol__skipped"
+      >Skipped</span>
       <button
         v-else
         type="button"
         class="cbtn"
         :disabled="!controlReady || !busy"
+        :data-skip="object.name"
         @click="skip(object.name)"
       >
         Skip
       </button>
     </div>
-  </section>
+    <p
+      v-if="!objects.length"
+      class="ot__note"
+    >
+      This print has no separate objects.
+    </p>
+  </div>
 </template>
+
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
-@Component
-export default class OverviewObjects extends Mixins(OverviewMixin) {
+
+/** The objects on the plate, each with a Skip. A skipped object cannot be added back. */
+@Component({})
+export default class ObjectsList extends Mixins(OverviewMixin) {
   get objects (): Array<{ name: string }> { return this.$store.state.printer.printer.exclude_object?.objects ?? [] }
   get excluded (): string[] { return this.$store.state.printer.printer.exclude_object?.excluded_objects ?? [] }
+
   async skip (name: string) {
     if (!this.controlReady || !(this.printerPrinting || this.printerPaused) || !this.objects.some(o => o.name === name) || this.excluded.includes(name) || !/^[a-z0-9_.-]+$/i.test(name)) return
     const target = this.panelTarget
@@ -41,7 +57,10 @@ export default class OverviewObjects extends Mixins(OverviewMixin) {
   }
 }
 </script>
-<style scoped>
-.overview-object { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 44px; }
-.overview-object > span:first-child { overflow-wrap: anywhere; }
+
+<style lang="scss" scoped>
+.ol { display: flex; flex-direction: column; gap: 8px; }
+.ol__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; }
+.ol__name { overflow-wrap: anywhere; }
+.ol__skipped { color: var(--m3d-text-subtle); font-size: 13px; }
 </style>

@@ -1,362 +1,71 @@
 <template>
   <div
+    :key="contextKey"
     class="overview"
     data-tid="overview-page"
   >
-    <div class="overview__head">
-      <h1 class="overview__title">
-        Overview
-      </h1>
-      <button
-        type="button"
-        class="overview__customise"
-        data-tid="overview-customise"
-        title="Customise"
-        aria-label="Customise Overview"
-        :aria-expanded="editing ? 'true' : 'false'"
-        :aria-pressed="editing ? 'true' : 'false'"
-        aria-controls="overview-layout-editor"
-        @click="toggleEditing"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="18"
-          height="18"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          aria-hidden="true"
-        ><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle
-          cx="16"
-          cy="7"
-          r="2"
-        /><circle
-          cx="8"
-          cy="17"
-          r="2"
-        /></svg>
-      </button>
-    </div>
-    <overview-cards
-      v-if="editing"
-      id="overview-layout-editor"
-      :value="layout"
-      :unavailable="unavailable"
-      :note="layoutNote"
-      @input="chooseLayout"
-      @close="toggleEditing"
-    />
-    <div class="overview__top">
-      <overview-stage class="overview__stage" />
-      <div class="overview__side">
-        <overview-this-print v-if="busy" />
-        <overview-print-something v-else />
-        <div
-          v-if="busy"
-          class="overview__actions"
-        >
-          <button
-            type="button"
-            class="cbtn cbtn--grow"
-            data-tid="overview-pause"
-            :disabled="!controlReady"
-            @click="pauseCurrent"
-          >
-            {{ printerPaused ? 'Resume' : 'Pause' }}
-          </button>
-          <button
-            type="button"
-            class="cbtn cbtn--grow cbtn--danger"
-            data-tid="overview-stop"
-            :disabled="!controlReady"
-            @click="stopCurrent"
-          >
-            Stop print
-          </button>
-          <button
-            v-if="hasObjects"
-            type="button"
-            class="cbtn"
-            @click="objectsOpen = !objectsOpen"
-          >
-            Objects
-          </button>
-        </div>
-      </div>
-    </div>
-    <overview-tiles :phone="isMobileViewport" />
-    <p
-      v-if="preferences.state.layoutError || preferences.state.error"
-      role="alert"
+    <h1 class="overview__title">
+      Overview
+    </h1>
+    <div
+      class="overview__grid"
+      data-tid="overview-grid"
     >
-      {{ preferences.state.layoutError || preferences.state.error }}
-      <button
-        type="button"
-        class="ov-card__link"
-        @click="retryLayout"
+      <div
+        v-for="tile in tiles"
+        :key="tile.id"
+        class="overview__cell"
+        :class="`overview__cell--${tile.id}`"
+        :style="cellStyle(tile)"
+        :data-cell="tile.id"
       >
-        Try again
-      </button>
-    </p>
-    <div class="overview__cards">
-      <template v-for="card in shownCards">
-        <section
-          v-if="unavailable[card.id]"
-          :key="card.id"
-          class="ov-card"
-          :data-card="card.id"
-        >
-          <h2 class="ov-card__title">
-            {{ card.title }}
-          </h2><p>{{ unavailable[card.id] }}</p>
-        </section>
-        <div
-          v-else
-          :key="card.id"
-          :class="{ 'overview__wide': card.size === 'wide' }"
-          :data-card="card.id"
-        >
-          <overview-temps
-            v-if="card.id === 'temperatures'"
-            :phone="isMobileViewport"
-          />
-          <overview-quick-actions v-else-if="card.id === 'quick-actions'" />
-          <overview-live-tune v-else-if="card.id === 'live-tune'" />
-          <overview-console v-else-if="card.id === 'console'" />
-          <control-macros v-else-if="card.id === 'macros'" />
-          <overview-objects v-else-if="card.id === 'objects'" />
-          <maintenance-checks v-else-if="card.id === 'checks'" />
-          <section
-            v-else-if="card.id === 'chart'"
-            class="ov-card"
-          >
-            <h2 class="ov-card__title">
-              Chart
-            </h2>
-            <diagnostics-card
-              v-for="config in diagnosticCharts"
-              :key="config.id"
-              :config="config"
-              bare
-            />
-          </section>
-          <section
-            v-else
-            class="ov-card"
-          >
-            <h2 class="ov-card__title">
-              {{ card.title }}
-            </h2>
-            <template v-if="card.id === 'queue'">
-              <b>{{ queue[0] ? queue[0].filename : 'Nothing queued' }}</b>
-              <span v-if="queue.length">{{ queue.length }} queued. Starting follows the printer's queue settings.</span>
-              <router-link
-                class="ov-card__link"
-                :to="pagePath('/jobs')"
-              >
-                Open queue
-              </router-link>
-            </template>
-            <template v-if="card.id === 'camera'">
-              <camera-item :camera="cameras[0]" /><router-link
-                class="ov-card__link"
-                :to="pagePath('/camera')"
-              >
-                Open camera
-              </router-link>
-            </template>
-            <template v-if="card.id === 'bed'">
-              <span>{{ meshRecorded ? 'A bed measurement is recorded.' : 'No bed measurement is recorded.' }}</span><router-link
-                class="ov-card__link"
-                :to="pagePath('/tune')"
-              >
-                Open Bed
-              </router-link>
-            </template>
-            <template v-if="card.id === 'spool'">
-              <span>{{ spoolFact }}</span><material-picker />
-            </template>
-          </section>
-        </div>
-      </template>
+        <component
+          :is="tile.component"
+          v-bind="tile.props"
+        />
+      </div>
     </div>
   </div>
 </template>
+
 <script lang="ts">
-import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
-import OverviewMixin from '@/mixins/overview'
-import BrowserMixin from '@/mixins/browser'
-import { SocketActions } from '@/api/socketActions'
+import { Component, Vue } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
-import { storedToken } from '@/services/muon-cloud/api'
-import { isManagedApiUrl } from '@/services/muon-cloud/origin'
-import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
-import { controlPreferenceStore } from '@/services/account/control-preferences'
-import { REMEMBER_CONTROL_FOLDS, type ControlPreferenceStore } from '@/services/control/preferences'
-import { cardLayout, cardUnavailable, overviewCards, type OverviewCapabilities } from '@/services/overview/cards'
-import type { WebcamConfig } from '@/store/webcams/types'
-import type { HistoryItem } from '@/store/history/types'
-import type { DiagnosticsCardConfig } from '@/store/diagnostics/types'
-import OverviewStage from '@/components/overview/OverviewStage.vue'
-import OverviewThisPrint from '@/components/overview/OverviewThisPrint.vue'
-import OverviewPrintSomething from '@/components/overview/OverviewPrintSomething.vue'
-import OverviewTiles from '@/components/overview/OverviewTiles.vue'
-import OverviewTemps from '@/components/overview/OverviewTemps.vue'
-import OverviewQuickActions from '@/components/overview/OverviewQuickActions.vue'
-import OverviewLiveTune from '@/components/overview/OverviewLiveTune.vue'
-import OverviewConsole from '@/components/overview/OverviewConsole.vue'
-import OverviewCards from '@/components/overview/OverviewCards.vue'
-import OverviewObjects from '@/components/overview/OverviewObjects.vue'
-import MaterialPicker from '@/components/overview/MaterialPicker.vue'
+import { overviewTiles, type OverviewTileDef } from '@/components/widgets/overview/registry'
 
-@Component({
-  components: {
-    OverviewStage,
-    OverviewThisPrint,
-    OverviewPrintSomething,
-    OverviewTiles,
-    OverviewTemps,
-    OverviewQuickActions,
-    OverviewLiveTune,
-    OverviewConsole,
-    OverviewCards,
-    OverviewObjects,
-    MaterialPicker,
-    ControlMacros: () => import('@/components/control/ControlMacros.vue'),
-    DiagnosticsCard: () => import('@/components/widgets/diagnostics/DiagnosticsCard.vue'),
-    MaintenanceChecks: () => import('@/components/maintenance/MaintenanceChecks.vue'),
-    CameraItem: () => import('@/components/widgets/camera/CameraItem.vue')
-  }
-})
-export default class Overview extends Mixins(OverviewMixin, BrowserMixin) {
-  @Prop({ type: Object }) readonly preferenceStore?: ControlPreferenceStore
-  editing = false
-  editorContext = ''
-  objectsOpen = false
-  visitCards: string[] | null = null
-  get preferences () { return this.preferenceStore ?? controlPreferenceStore }
-  get accountId (): string { return cloudState.account?.id ?? '' }
-  get printerId (): string { return isManagedApiUrl(this.$store.state.config.apiUrl) && printerTransportBinding.remote ? cloudState.activePrinterId ?? '' : '' }
-  get layoutContext (): string { return `${this.panelTarget}|${this.printerId}` }
-  get rememberingLayout (): boolean { return !!this.printerId && REMEMBER_CONTROL_FOLDS }
-  get layoutNote (): string { return this.rememberingLayout ? (this.accountId ? 'Your arrangement follows your account.' : 'Your arrangement stays in this browser.') : 'These choices last for this visit.' }
-  get layout (): string[] { return cardLayout(this.rememberingLayout ? this.preferences.state.layout : this.visitCards) }
-  get hasObjects (): boolean { return !!this.$store.state.printer.printer.exclude_object?.objects?.length }
-  get meshRecorded (): boolean { return !!this.$store.state.printer.printer.bed_mesh?.mesh_matrix?.length }
-  get cameras (): WebcamConfig[] { return this.$store.getters['webcams/getEnabledWebcams'] ?? [] }
-  get diagnosticCharts (): DiagnosticsCardConfig[] { return Object.values(this.$store.state.layout?.layouts?.diagnostics ?? {}).flat().filter((c: any) => c.enabled) as DiagnosticsCardConfig[] }
-  get unavailable (): Record<string, string> {
-    const printer = this.$store.state.printer.printer
-    const components: string[] = this.$store.state.server?.info?.components ?? []
-    const commands = Object.keys(this.$store.getters['printer/getAvailableCommands'] ?? {})
-    const capabilities: OverviewCapabilities = {
-      temperatures: !!(this.heaters.length || (this.$store.getters['printer/getSensors'] ?? []).length),
-      // Availability follows authority, not a transient Klipper state. The
-      // controls themselves keep enforcing readiness when a command is sent.
-      control: this.commandControlAvailable,
-      queue: components.includes('job_queue'),
-      camera: !!this.cameras.length,
-      macros: Object.keys(printer).some(key => key.startsWith('gcode_macro ')),
-      // The lazy Console route and Tools navigation support managed printers;
-      // typed commands inside it independently enforce role and connection.
-      console: true,
-      bedMesh: !!printer.bed_mesh,
-      calibration: commands.some(command => /CALIBRATE|TUNE/.test(command)),
-      diagnostics: !!this.$store.state.config.uiSettings.general.enableDiagnostics && !!this.diagnosticCharts.length,
-      objects: !!printer.exclude_object,
-      filament: this.savesMaterial || this.materialChoices.length > 0 || !!this.loadedMaterial || !!this.printingWith || components.includes('spoolman')
-    }
-    const result: Record<string, string> = {}
-    for (const card of overviewCards) {
-      const explanation = cardUnavailable(card.id, capabilities)
-      if (explanation) result[card.id] = explanation
-    }
-    return result
+/**
+ * The printer's own page: the live 3D view, the print job, the filament,
+ * then instrument tiles for the heaters, fans, speed, position and Z offset,
+ * a jog pad, macros and the temperature graph. Each tile opens its full
+ * controls in a popover, and keeps the Pro-level depth behind its three dots.
+ * Which tiles there are, and where, is the list in widgets/overview/registry.
+ */
+@Component({})
+export default class Overview extends Vue {
+  readonly tiles = overviewTiles
+
+  /** A different printer or account starts every tile afresh, so nothing half-typed crosses over. */
+  get contextKey (): string {
+    return `${this.$store.state.config.apiUrl}|${cloudState.activePrinterId ?? ''}|${cloudState.account?.id ?? ''}|${this.$route?.params?.printer ?? ''}`
   }
 
-  get shownCards () {
-    const selected = this.objectsOpen && this.hasObjects && !this.layout.includes('objects') ? [...this.layout, 'objects'] : this.layout
-    return selected.map(id => overviewCards.find(c => c.id === id)!).filter(c => c.when === 'always' || (c.when === 'idle' ? !this.busy : this.busy))
-  }
-
-  @Watch('layoutContext', { immediate: true })
-  refreshLayout () {
-    this.visitCards = null; this.objectsOpen = false; this.editing = false; this.editorContext = ''
-    return this.preferences.select({ accountId: this.accountId || null, printerId: this.printerId || null, token: this.accountId ? storedToken() : null })
-  }
-
-  mounted () { window.addEventListener('focus', this.refreshSavedLayout); document.addEventListener('visibilitychange', this.onVisible) }
-  beforeDestroy () { window.removeEventListener('focus', this.refreshSavedLayout); document.removeEventListener('visibilitychange', this.onVisible) }
-  refreshSavedLayout () { if (this.printerId) return this.preferences.select({ accountId: this.accountId || null, printerId: this.printerId, token: this.accountId ? storedToken() : null }) }
-  onVisible () { if (!document.hidden) this.refreshSavedLayout() }
-  toggleEditing () { this.editing = !this.editing; this.editorContext = this.editing ? this.layoutContext : '' }
-  chooseLayout (cards: string[] | null) { if (!this.editing || this.editorContext !== this.layoutContext) return; this.visitCards = cards; if (this.rememberingLayout) { this.refreshSavedLayout(); return this.preferences.setLayout(cards) } }
-  retryLayout () { this.refreshSavedLayout(); return this.preferences.retry() }
-  pauseCurrent () { if (this.controlReady && (this.printerPrinting || this.printerPaused)) this.printerPaused ? this.resumePrint() : this.pausePrint() }
-  async stopCurrent () {
-    if (!this.controlReady || !(this.printerPrinting || this.printerPaused)) return
-    const target = this.panelTarget
-    const file = this.jobFile
-    const duration = this.printStats.total_duration ?? 0
-    const job = this.$store.state.history?.jobs?.find((j: HistoryItem) => j.status === 'in_progress' && j.filename === file)?.job_id
-    const ok = await this.$confirm('The print stops and cannot be picked up again. Remove it from the plate before the next print.', { title: 'Stop this print?', buttonTrueText: 'Stop print', danger: true })
-    const sameJob = job === this.$store.state.history?.jobs?.find((j: HistoryItem) => j.status === 'in_progress' && j.filename === this.jobFile)?.job_id
-    if (ok && sameJob && target === this.panelTarget && file === this.jobFile && (this.printStats.total_duration ?? 0) >= duration && this.controlReady && (this.printerPrinting || this.printerPaused)) SocketActions.printerPrintCancel()
+  cellStyle (tile: OverviewTileDef): Record<string, string> {
+    return { '--span': String(tile.span), '--rows': String(tile.rows ?? 1), '--tablet': String(tile.tablet), '--phone': String(tile.phone) }
   }
 }
 </script>
+
 <style lang="scss" scoped>
-.overview { display: flex; flex-direction: column; gap: 16px; }
-.overview__top, .overview__cards { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 16px; }
-.overview__stage { min-height: 350px; }
-.overview__wide { grid-column: 1 / -1; }
-.overview__side { align-self: start; min-width: 0; }
-.overview__head { display: flex; align-items: center; gap: 8px; }
+.overview { display: flex; flex-direction: column; gap: 16px; color: var(--m3d-text); }
 .overview__title { margin: 0; font-size: 20px; font-weight: 600; }
-.overview__customise { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; background: transparent; color: var(--m3d-text-subtle); cursor: pointer; }
-.overview__customise:hover, .overview__customise[aria-expanded='true'] { background: var(--m3d-surface-2); color: var(--m3d-text); }
-.overview__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.overview__actions .cbtn { min-height: 44px; }
-@media (max-width: 899px) { .overview__top, .overview__cards { grid-template-columns: minmax(0, 1fr); } .overview__stage { min-height: 280px; } }
-</style>
-<style lang="scss">
-  // The card every Overview panel is.
-  .overview {
-    .ov-card {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      min-width: 0;
-      padding: 20px;
-      border-radius: 22px;
-      background: var(--m3d-surface);
-      color: var(--m3d-text);
-    }
-
-    .ov-card__head {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px 12px;
-    }
-
-    .ov-card__title {
-      margin: 0;
-      font-size: 17px;
-      font-weight: 600;
-    }
-
-    .ov-card__aside {
-      color: var(--m3d-text-subtle);
-      font-size: 12px;
-    }
-
-    .ov-card__link {
-      color: var(--m3d-accent) !important;
-      font-size: 13px;
-      text-decoration: none;
-    }
-  }
+.overview__grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 16px; align-items: stretch; }
+.overview__cell { display: flex; grid-column: span var(--span); grid-row: span var(--rows); min-width: 0; }
+.overview__cell > * { flex: 1 1 auto; }
+@media (max-width: 1099px) {
+  .overview__cell { grid-column: span var(--tablet); grid-row: auto; }
+}
+@media (max-width: 599px) {
+  .overview__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .overview__cell { grid-column: span var(--phone); }
+}
 </style>
