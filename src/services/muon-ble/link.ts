@@ -54,6 +54,19 @@ export interface WasmBleLink {
 /** An endpoint that takes Bluetooth links: muon-link-web from muon-link#31 on. */
 export interface BleCapableEndpoint {
   addLink (role: 'central', maxSegment?: number): WasmBleLink;
+  /**
+   * Keeps the connection to `printerId` on Bluetooth while a link is up,
+   * instead of moving it to the relay (D-080; muon-link-web from muon-link#128
+   * on). Absent on an older muon-link-web, where the radio stays a standby.
+   */
+  pinBluetooth? (printerId: string, pinned: boolean): void;
+}
+
+/** Pins or unpins `id` on `endpoint`, where its muon-link-web can. Never throws. */
+function pinOn (endpoint: BleCapableEndpoint | undefined, id: string, pinned: boolean) {
+  try {
+    endpoint?.pinBluetooth?.(id, pinned)
+  } catch { /* an older or closed endpoint: the default path ranking stays */ }
 }
 
 export function takesBleLinks (endpoint: unknown): endpoint is BleCapableEndpoint {
@@ -348,7 +361,7 @@ export async function openBleLink (
  * dials a printer, so a printer with no Wi-Fi opens over the radio and one
  * that is online keeps its one Bluetooth slot free.
  */
-const routes = new Map<string, { device: BleDevice, link: BleLinkHandle | null }>()
+const routes = new Map<string, { device: BleDevice, link: BleLinkHandle | null, pinnedOn?: BleCapableEndpoint }>()
 
 /**
  * What is true of each printer's Bluetooth route, reactive so a badge can
@@ -424,7 +437,8 @@ export function useBluetoothFor (printerId: string, device: BleDevice) {
   const existing = routes.get(id)
   if (existing?.device === device) return
   existing?.link?.disconnect()
-  routes.set(id, { device, link: null })
+  // A new device for the same printer keeps the person's choice, and its pin.
+  routes.set(id, { device, link: null, pinnedOn: existing?.pinnedOn })
   forgetRouteState(id)
 }
 
@@ -449,7 +463,9 @@ export function releaseBluetoothLink (printerId: string): Promise<void> {
 
 export function stopUsingBluetoothFor (printerId: string) {
   const id = printerId.toLowerCase()
-  routes.get(id)?.link?.disconnect()
+  const route = routes.get(id)
+  pinOn(route?.pinnedOn, id, false)
+  route?.link?.disconnect()
   routes.delete(id)
   forgetRouteState(id)
 }
@@ -463,6 +479,13 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
   const route = routes.get(printerId.toLowerCase())
   if (!route || !takesBleLinks(endpoint)) return null
   const id = printerId.toLowerCase()
+  // The person chose Bluetooth: keep the session on the radio while it is up,
+  // not only as a fallback behind the relay (D-080, Jack 5 Nov 2026).
+  if (route.pinnedOn !== endpoint) {
+    pinOn(route.pinnedOn, id, false)
+    pinOn(endpoint, id, true)
+    route.pinnedOn = endpoint
+  }
   if (route.link?.isOpen()) return route.link
   Vue.set(routeState.opening, id, true)
   let link: BleLinkHandle
