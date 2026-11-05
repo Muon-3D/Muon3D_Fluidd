@@ -19,6 +19,10 @@ vi.mock('@/services/slicer-bridge/slicerUrl', () => ({
   slicerPresence: { state: 'absent' },
   probeSlicer: vi.fn().mockResolvedValue(false)
 }))
+vi.mock('@/services/design-bridge/designUrl', () => ({
+  designPresence: { state: 'absent' },
+  probeDesign: vi.fn().mockResolvedValue(false)
+}))
 vi.mock('@/services/muon-cloud/state', () => ({
   cloudState: { account: null, activePrinterId: null, printers: [] },
   initCloud: vi.fn()

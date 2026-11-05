@@ -134,6 +134,7 @@ import { Component, Mixins } from 'vue-property-decorator'
 import FrameMixin from '@/mixins/frame'
 import type { Section, SectionId } from '@/router/printerSections'
 import { probeSlicer } from '@/services/slicer-bridge/slicerUrl'
+import { probeDesign } from '@/services/design-bridge/designUrl'
 import CloudAccountMenu from '@/components/muon-cloud/CloudAccountMenu.vue'
 
 /** The pages used while printing get a tab each; the rest are in More. */
@@ -149,6 +150,7 @@ export default class AppTabBar extends Mixins(FrameMixin) {
 
   created () {
     probeSlicer()
+    probeDesign()
   }
 
   get tabs (): Section[] {

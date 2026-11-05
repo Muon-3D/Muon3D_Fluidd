@@ -421,8 +421,9 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
       this.authenticated && this.socketConnected && !this.sliceRoute
   }
 
+  // Slice or Design: another app framed here, with its own bars.
   get sliceRoute (): boolean {
-    return this.$route.name === 'Slice' || this.$route.name === 'Slice (no printer)'
+    return ['Slice', 'Slice (no printer)', 'Design', 'Design (no printer)'].includes(String(this.$route.name))
   }
 
   // Each printer page is named above its content, with its section's pages

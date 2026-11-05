@@ -18,6 +18,9 @@ export const NAVIGATION_DENYLIST: RegExp[] = [
   // /slicer redirect to it): its own pages, which /slice frames. Workbox
   // matches the path with its query, so /slicer?x is the slicer's too.
   /^\/slicer(?:[/?]|$)/,
+  // Muon3D Design served beside Fluidd (/design/embed.html), which /design
+  // frames. /design itself is Fluidd's page, so only what is under it.
+  /^\/design\//,
   // Files the printer or the console serve beside Fluidd, which a browser can
   // open directly: the licence texts, the M1 model and three.js, the Iroh
   // client, and the app association files.
