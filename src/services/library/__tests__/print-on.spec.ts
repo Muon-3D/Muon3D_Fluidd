@@ -283,3 +283,39 @@ describe('downloadSharedGcode', () => {
     await expect(downloadSharedGcode('share', 'file', { sha256: 'a'.repeat(64), size_bytes: 1, encoding: 'gzip' })).rejects.toMatchObject({ code: 'not_found' })
   })
 })
+
+describe('Print on…, a public print (Library v2 Discover)', () => {
+  async function shared () {
+    const stored = await gzip(new TextEncoder().encode(GCODE))
+    const sha256 = await sha256Hex(stored)
+    const shareFile = vi.fn(async () => stored)
+    setLibraryClient({ shareFile } as never)
+    const setup = { printer_model: 'Muon3D M1', nozzle_mm: 0.4, material: 'PLA', file_id: 'f1', print_seconds: 600, filament_g: 3 }
+    const item = { id: 'pub-1', name: 'Spiral vase', version: 3 }
+    const router = { push: vi.fn(async () => { mocks.active.slug = 'hazel-52be' }) }
+    return { stored, sha256, shareFile, setup, item, router }
+  }
+
+  it('downloads over the share route, checks the listed hash, prints, and records nothing in the Library', async () => {
+    const { sha256, shareFile, setup, item, router } = await shared()
+    const expected = { f1: { sha256, size_bytes: (await gzip(new TextEncoder().encode(GCODE))).byteLength, encoding: 'gzip' as const } }
+    await sendToPrinter({ router: router as never, store: fakeStore() as never, item, setup, target: HAZEL, mode: 'print', shared: { expected } })
+    expect(shareFile).toHaveBeenCalledWith('pub-1', 'f1')
+    expect(mocks.start).toHaveBeenCalledWith('Spiral vase.gcode')
+    // A public print is not the person's own: no item or version is remembered with the file.
+    expect(mocks.remember).toHaveBeenCalledWith('Spiral vase.gcode', { gcode_sha256: sha256 })
+  })
+
+  it('refuses a public G-code whose bytes do not match its listing, before anything is uploaded', async () => {
+    const { setup, item, router } = await shared()
+    const expected = { f1: { sha256: '0'.repeat(64), size_bytes: 10, encoding: 'gzip' as const } }
+    await expect(sendToPrinter({ router: router as never, store: fakeStore() as never, item, setup, target: HAZEL, mode: 'print', shared: { expected } })).rejects.toThrow()
+    expect(mocks.upload).not.toHaveBeenCalled()
+  })
+
+  it('refuses a public G-code that its publication lists no checksum for', async () => {
+    const { setup, item, router } = await shared()
+    await expect(sendToPrinter({ router: router as never, store: fakeStore() as never, item, setup, target: HAZEL, mode: 'print', shared: { expected: {} } })).rejects.toThrow(/checksum/)
+    expect(mocks.upload).not.toHaveBeenCalled()
+  })
+})

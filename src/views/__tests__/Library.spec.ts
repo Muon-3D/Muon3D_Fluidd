@@ -42,6 +42,7 @@ function renderLibrary (query: Record<string, string> = {}) {
   return shallowMount(Library, {
     mocks: {
       $route: { query },
+      $router: { replace: vi.fn(() => Promise.resolve()) },
       $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} },
       $vuetify: { breakpoint: { mobile: false } }
     },
@@ -148,34 +149,36 @@ describe('Library feed states', () => {
   })
 })
 
-describe('Library: Discover and Your Library (KAN-735)', () => {
-  it('opens on Your Library once signed in, and on Discover signed out', () => {
+// Library v2 (5 Nov 2026): the switch is MuonLibrary's, always shown; the
+// page tells it which place is open (`tab`) and keeps that in the address.
+const tabOf = (wrapper: ReturnType<typeof renderLibrary>) => wrapper.findComponent({ name: 'MuonLibrary' }).props('tab')
+
+describe('Library: Discover and Yours (KAN-735, Library v2)', () => {
+  it('opens on Yours once signed in, and on Discover signed out', () => {
     const mine = renderLibrary()
     try {
-      expect(mine.find('[data-tid="library-view-mine"]').attributes('aria-current')).toBe('page')
-      expect(mine.find('[data-tid="library-view-discover"]').attributes('aria-current')).toBeUndefined()
-      expect(mine.findComponent({ name: 'LibraryDiscover' }).exists()).toBe(false)
+      expect(tabOf(mine)).toBe('yours')
+      expect(mine.find('[data-tid="library-signed-out"]').exists()).toBe(false)
     } finally {
       mine.destroy()
     }
     Object.assign(libraryState, { account: null })
     const signedOut = renderLibrary()
     try {
-      expect(signedOut.findComponent({ name: 'LibraryDiscover' }).exists()).toBe(true)
-      expect(signedOut.find('[data-tid="library-signed-out"]').exists()).toBe(false)
-      expect(signedOut.find('[data-tid="library-views"]').exists()).toBe(false)
+      expect(tabOf(signedOut)).toBe('discover')
     } finally {
       signedOut.destroy()
     }
   })
 
-  it('stays on Your Library while a saved session is still being restored', () => {
+  it('stays on Yours while a saved session is still being restored', () => {
     Object.assign(libraryState, { account: null })
     cloudState.ready = false
     vi.mocked(storedToken).mockReturnValue('saved')
     const restoring = renderLibrary()
     try {
-      expect(restoring.findComponent({ name: 'LibraryDiscover' }).exists()).toBe(false)
+      expect(tabOf(restoring)).toBe('yours')
+      expect(restoring.find('[data-tid="library-signed-out"]').exists()).toBe(false)
     } finally {
       restoring.destroy()
       cloudState.ready = true
@@ -186,27 +189,50 @@ describe('Library: Discover and Your Library (KAN-735)', () => {
   it('follows the address: ?view=discover or ?view=mine', () => {
     const discover = renderLibrary({ view: 'discover' })
     try {
-      expect(discover.findComponent({ name: 'LibraryDiscover' }).exists()).toBe(true)
-      expect(discover.find('[data-tid="library-grid"]').exists()).toBe(false)
+      expect(tabOf(discover)).toBe('discover')
     } finally {
       discover.destroy()
     }
     const mine = renderLibrary({ view: 'mine' })
     try {
-      expect(mine.findComponent({ name: 'LibraryDiscover' }).exists()).toBe(false)
+      expect(tabOf(mine)).toBe('yours')
     } finally {
       mine.destroy()
     }
   })
 
-  it('signed out, ?view=mine still shows Discover only, with no sign-in panel', () => {
+  it('signed out, ?view=mine shows Yours with Sign in, and no prints', () => {
     Object.assign(libraryState, { account: null })
     const wrapper = renderLibrary({ view: 'mine' })
     try {
-      expect(wrapper.findComponent({ name: 'LibraryDiscover' }).exists()).toBe(true)
-      expect(wrapper.find('[data-tid="library-views"]').exists()).toBe(false)
-      expect(wrapper.find('[data-tid="library-signed-out"]').exists()).toBe(false)
+      expect(tabOf(wrapper)).toBe('yours')
+      expect(wrapper.find('[data-tid="library-signed-out"]').exists()).toBe(true)
       expect(wrapper.find('[data-tid="library-grid"]').exists()).toBe(false)
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('keeps the place in the address when the switch changes it', async () => {
+    const wrapper = renderLibrary({ view: 'mine' })
+    try {
+      const replace = wrapper.vm.$router.replace
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('update:tab', 'discover')
+      expect(replace).toHaveBeenCalledWith({ query: { view: 'discover' } })
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('sends a Discover print with a G-code to Print on…, and nothing without one', () => {
+    const wrapper = renderLibrary({ view: 'discover' })
+    try {
+      const library = wrapper.findComponent({ name: 'MuonLibrary' })
+      library.vm.$emit('print', { modelId: 'p1', printerId: null, card: {}, print: null })
+      expect((wrapper.vm as unknown as { printing: unknown }).printing).toBeNull()
+      const item = { id: 'p1', name: 'Vase', version: 2, setups: [], shared: { expected: {} } }
+      library.vm.$emit('print', { modelId: 'p1', printerId: 'boxwood', card: {}, print: { item } })
+      expect((wrapper.vm as unknown as { printing: unknown }).printing).toEqual(item)
     } finally {
       wrapper.destroy()
     }
@@ -219,20 +245,6 @@ function offFor (account: string, extra: Partial<typeof libraryState> = {}) {
   resetLibrary(account)
   Object.assign(libraryState, { checked: true, enabled: false, promiseVersion: PROMISE_VERSION, ...extra })
 }
-
-describe('Library: both views signed in (KAN-735)', () => {
-  it('shows the switch, and ?view=mine shows Your Library', () => {
-    const wrapper = renderLibrary({ view: 'mine' })
-    try {
-      expect(wrapper.find('[data-tid="library-views"]').exists()).toBe(true)
-      expect(wrapper.find('[data-tid="library-view-discover"]').exists()).toBe(true)
-      expect(wrapper.find('[data-tid="library-view-mine"]').attributes('aria-current')).toBe('page')
-      expect(wrapper.findComponent({ name: 'LibraryDiscover' }).exists()).toBe(false)
-    } finally {
-      wrapper.destroy()
-    }
-  })
-})
 
 describe('Library: always on (KAN-735)', () => {
   it('asks nothing signed out', async () => {
