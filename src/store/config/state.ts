@@ -176,6 +176,9 @@ export const defaultState = (): ConfigState => {
       },
       maintenance: {
         lastRun: {}
+      },
+      overview: {
+        layouts: {}
       }
     }
   }

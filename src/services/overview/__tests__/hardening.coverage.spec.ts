@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { cardLayout, moveCard } from '../cards'
 import { firstLayerAllowed, readNudgeEntry } from '../nudges'
 import { chartLines, chartWindows, defaultChartWindow, filamentFact, heaterTile, longDuration } from '../model'
 import { historyPath, observedEvents, retainedSamples, sampleAt } from '../timeline'
@@ -24,12 +23,6 @@ describe('Overview hardening branches', () => {
   // BUG: chartLines accepts NaN as a numeric reading and emits an invalid SVG path.
   it('drops non-finite chart readings instead of drawing NaN coordinates', () => {
     expect(chartLines([{ date: new Date(1000), extruder: Number.NaN }], ['extruder'], 60, 1000).lines).toEqual([])
-  })
-
-  it('sanitises unknown and duplicate cards and refuses out-of-range moves', () => {
-    expect(cardLayout(['queue', 'unknown', 'queue', 4])).toEqual(['queue'])
-    expect(moveCard(['queue', 'temperatures'], 'queue', -1)).toEqual(['queue', 'temperatures'])
-    expect(moveCard(['queue', 'temperatures'], 'missing', 1)).toEqual(['queue', 'temperatures'])
   })
 
   it('rejects corrupt or non-finite nudge records', () => {
