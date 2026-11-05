@@ -69,6 +69,7 @@ export const defaultState = (): ConfigState => {
         printProgressCalculation: ['file'],
         printEtaCalculation: ['file'],
         enableDiagnostics: false,
+        overviewCameraToggle: true,
         thumbnailSize: 32,
         colorPickerValueRange: 'absolute',
         loadedMaterial: null,
