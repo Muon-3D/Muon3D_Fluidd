@@ -168,6 +168,7 @@ import type { AppTableHeader, FileWithPath } from '@/types'
 import { getFilesFromDataTransfer, hasFilesInDataTransfer } from '@/util/file-system-entry'
 import { getFileDataTransferDataFromDataTransfer, hasFileDataTransferTypeInDataTransfer, setFileDataTransferDataInDataTransfer } from '@/util/file-data-transfer'
 import consola from 'consola'
+import { EventBus } from '@/eventBus'
 import { activeSlug } from '@/services/printer-pages'
 import { pathCrumbs, type Crumb } from '@/services/files/manager'
 import { scopedPath } from '@/router/printerPagePaths'
@@ -477,8 +478,11 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
 
   @Watch('files')
   onFilesChange () {
-    // If our file list changes, reset selected files.
-    this.selected = []
+    // Metadata and thumbnails refresh the list often; only drop what is gone.
+    if (!this.selected.length) return
+    const names = new Set(this.files.map(f => f.name))
+    const kept = this.selected.filter(item => names.has(item.name))
+    if (kept.length !== this.selected.length) this.selected = kept
   }
 
   // Determine if we're waiting for a directory load on our current path.
@@ -771,6 +775,14 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
 
     const filename = file.path ? `${file.path}/${file.filename}` : file.filename
 
+    if (!this.controlReady || this.busy) {
+      EventBus.$emit(
+        this.busy && this.controlReady ? 'The printer is busy. Wait for it to finish first.' : `Can't print yet: ${this.notReadyReason}.`,
+        { type: 'warning', timeout: 5000 }
+      )
+      return
+    }
+
     await this.printAgain(filename)
   }
 
@@ -866,6 +878,13 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
       ? file.filter(item => item.name !== '..')
       : [file]
 
+    // Work out what to delete now: the folder can change while the dialog is open.
+    const base = this.currentPath
+    const targets = items.map(item => ({
+      type: item.type,
+      path: item.type === 'directory' ? `${base}/${item.dirname}` : `${base}/${(item as AppFile).filename}`
+    }))
+
     const result = await this.$confirm(
       this.$tc('app.general.simple_form.msg.confirm_delete', items.length),
       { title: this.$tc('app.general.label.confirm'), color: 'card-heading', icon: '$error' }
@@ -878,9 +897,9 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
         this.includeTimelapseThumbnailFiles(items)
       }
 
-      items.forEach((item) => {
-        if (item.type === 'directory') SocketActions.serverFilesDeleteDirectory(`${this.currentPath}/${item.dirname}`, true)
-        if (item.type === 'file') SocketActions.serverFilesDeleteFile(`${this.currentPath}/${item.filename}`)
+      targets.forEach((target) => {
+        if (target.type === 'directory') SocketActions.serverFilesDeleteDirectory(target.path, true)
+        if (target.type === 'file') SocketActions.serverFilesDeleteFile(target.path)
       })
     }
   }
@@ -890,9 +909,29 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
 
     this.$store.dispatch('wait/addWait', wait)
 
-    await this.uploadFiles(files, this.visiblePath, this.currentRoot, print)
+    const target = this.panelTarget
+    const stillCurrent = () => target === this.panelTarget
+    const path = this.visiblePath
+    const root = this.currentRoot
+    const list = Array.from(files as ArrayLike<File | FileWithPath>)
 
-    this.$store.dispatch('wait/removeWait', wait)
+    // Printing starts after the upload, through the same asked-first path as every other print.
+    let completed = false
+    try {
+      completed = await this.uploadFiles(files, path, root, false, stillCurrent)
+    } finally {
+      this.$store.dispatch('wait/removeWait', wait)
+    }
+
+    if (!completed || !stillCurrent()) {
+      EventBus.$emit('Stopped: the printer changed', { type: 'warning', timeout: 5000 })
+      return
+    }
+
+    if (print && root === 'gcodes' && list.length === 1) {
+      const [fullPath, fileObject] = this.getFullPathAndFile(path, list[0])
+      await this.printAgain(fullPath ? `${fullPath}/${fileObject.name}` : fileObject.name)
+    }
   }
 
   handleCancelUpload (file: FilesUpload) {

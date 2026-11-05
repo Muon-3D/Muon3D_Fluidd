@@ -58,6 +58,19 @@ describe('Jobs one layout', () => {
     expect((wrapper.vm as any).selectedView(false, false, false)).toBe('files')
   })
 
+  it('keeps the config files behind the menu, and brings them back to Pictures users', async () => {
+    const wrapper = mountJobs()
+    expect((wrapper.vm as any).fileRoots).toEqual(['gcodes'])
+    ;(wrapper.vm as any).showConfig = true
+    expect((wrapper.vm as any).fileRoots).toEqual(['gcodes', 'config'])
+    controlPreferenceStore.state.folds = { 'jobs.view.list': false, 'jobs.view.table': false }
+    await wrapper.vm.$nextTick()
+    expect((wrapper.vm as any).view).toBe('pictures')
+    controlPreferenceStore.state.folds = { 'jobs.view.list': false, 'jobs.view.table': false, 'jobs.view.pictures': false }
+    await wrapper.vm.$nextTick()
+    expect((wrapper.vm as any).view).toBe('files')
+  })
+
   it('shows a phone the list, not the file manager table', () => {
     const wrapper = mountJobs(true)
     expect((wrapper.vm as any).effectiveView).toBe('list')
