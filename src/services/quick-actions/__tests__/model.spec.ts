@@ -67,6 +67,13 @@ describe('quickActions', () => {
     expect(a.level.reason).toBe("This printer can't measure the bed.")
   })
 
+  it('asks first before heating or changing filament on a busy printer, not on an idle one', () => {
+    expect(by(ready).preheat.confirms).toBe(false)
+    expect(by(ready).filament.confirms).toBe(false)
+    expect(by(printing).preheat.confirms).toBe(true)
+    expect(by(printing).filament.confirms).toBe(true)
+  })
+
   it('marks levelling and restart as the ones that ask first', () => {
     expect(by(ready).restart.confirms).toBe(true)
     expect(by(ready).level.confirms).toBe(true)

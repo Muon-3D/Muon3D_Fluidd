@@ -5,6 +5,9 @@ import QuickActionsMenu from '../QuickActionsMenu.vue'
 vi.mock('@/api/socketActions', () => ({ SocketActions: {} }))
 vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { account: null, activePrinterId: null, printers: [] } }))
 
+const flash = vi.hoisted(() => vi.fn())
+vi.mock('@/eventBus', () => ({ EventBus: { $emit: flash, bus: { $on: vi.fn(), $off: vi.fn(), $emit: vi.fn() } } }))
+
 const calls = vi.hoisted(() => ({
   home: vi.fn(),
   motorsOff: vi.fn(),
@@ -17,11 +20,12 @@ const calls = vi.hoisted(() => ({
 
 const bedMesh = { id: 'bedMesh', gcode: 'BED_MESH_CALIBRATE', wait: 'w', confirm: '', title: 'Level the bed' }
 
-function show (computed: Record<string, unknown> = {}) {
+function show (computed: Record<string, unknown> = {}, confirm = vi.fn(async (): Promise<boolean> => true)) {
   return shallowMount(QuickActionsMenu, {
     computed: {
       controlLock: () => '',
       controlReady: () => true,
+      panelTarget: () => 'printer-a',
       busy: () => false,
       restartRefusal: () => '',
       checksBlocked: () => '',
@@ -33,7 +37,7 @@ function show (computed: Record<string, unknown> = {}) {
       ...computed
     },
     methods: { ...calls },
-    mocks: { $store: { getters: {}, state: {} } },
+    mocks: { $store: { getters: {}, state: {} }, $confirm: confirm },
     stubs: {
       'v-menu': { template: '<div><slot name="activator" :on="{}" :attrs="{}" /><slot /></div>' },
       'frame-icon': true
@@ -93,5 +97,76 @@ describe('QuickActionsMenu', () => {
     await item(w, 'cool').trigger('click')
     expect(calls.home).not.toHaveBeenCalled()
     expect(calls.coolDown).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('on a printer that is printing', () => {
+  const busy = { busy: () => true }
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  it('asks before preheat changes the running print temperatures, and does nothing if declined', async () => {
+    const confirm = vi.fn(async (): Promise<boolean> => false)
+    const w = show(busy, confirm)
+    await item(w, 'preheat').trigger('click')
+    await flush()
+    expect(confirm).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ title: 'Change the temperatures of the running print?' }))
+    expect(calls.heatFor).not.toHaveBeenCalled()
+  })
+
+  it('preheats once the question is answered yes', async () => {
+    const confirm = vi.fn(async (): Promise<boolean> => true)
+    const w = show(busy, confirm)
+    await item(w, 'preheat').trigger('click')
+    await flush()
+    expect(calls.heatFor).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks before change filament pauses the print, and does nothing if declined', async () => {
+    const confirm = vi.fn(async (): Promise<boolean> => false)
+    const w = show(busy, confirm)
+    await item(w, 'filament').trigger('click')
+    await flush()
+    expect(confirm).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ title: 'Pause the print to change filament?' }))
+    expect(calls.sendGcode).not.toHaveBeenCalled()
+  })
+
+  it('changes filament once the question is answered yes', async () => {
+    const w = show(busy, vi.fn(async (): Promise<boolean> => true))
+    await item(w, 'filament').trigger('click')
+    await flush()
+    expect(calls.sendGcode).toHaveBeenCalledWith('M600')
+  })
+})
+
+describe('when the printer is idle', () => {
+  it('preheats and changes filament without asking', async () => {
+    const confirm = vi.fn(async (): Promise<boolean> => true)
+    const w = show({}, confirm)
+    await item(w, 'preheat').trigger('click')
+    await item(w, 'filament').trigger('click')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(calls.heatFor).toHaveBeenCalledTimes(1)
+    expect(calls.sendGcode).toHaveBeenCalledWith('M600')
+  })
+})
+
+describe('restart', () => {
+  const flush = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  it('says why when the command is refused', async () => {
+    calls.sendTypedGcode.mockResolvedValueOnce(false)
+    const w = show({}, vi.fn(async (): Promise<boolean> => true))
+    ;(w.vm as unknown as { commandRefusal: string }).commandRefusal = 'Not sent. Klipper is not connected.'
+    await item(w, 'restart').trigger('click')
+    await flush()
+    expect(flash).toHaveBeenCalledWith('Not sent. Klipper is not connected.', expect.objectContaining({ type: 'error' }))
+  })
+
+  it('says nothing when it was sent', async () => {
+    calls.sendTypedGcode.mockResolvedValueOnce(true)
+    const w = show()
+    await item(w, 'restart').trigger('click')
+    await flush()
+    expect(flash).not.toHaveBeenCalled()
   })
 })
