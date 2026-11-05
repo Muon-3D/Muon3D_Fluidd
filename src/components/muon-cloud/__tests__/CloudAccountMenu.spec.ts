@@ -50,3 +50,19 @@ describe('ownership on a printer own page', () => {
     w.destroy()
   })
 })
+
+describe('keyboard shortcuts live in the account menu', () => {
+  it('offers them on a printer own page and opens the shortcuts when pressed', async () => {
+    const { EventBus } = await import('@/eventBus')
+    const seen = vi.fn()
+    EventBus.bus.$on('keyboard-shortcuts', seen)
+    const w = open('p1')
+    const item = w.find('[data-tid="account-keys"]')
+    expect(item.exists()).toBe(true)
+    expect(item.text()).toContain('Keyboard shortcuts')
+    await item.trigger('click')
+    expect(seen).toHaveBeenCalledTimes(1)
+    EventBus.bus.$off('keyboard-shortcuts', seen)
+    w.destroy()
+  })
+})
