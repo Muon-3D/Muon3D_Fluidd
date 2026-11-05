@@ -209,8 +209,9 @@ describe('Overview, edit mode', () => {
     expect(local.hidden).toEqual(['macros'])
     expect(local.tiles.map((t: { id: string }) => t.id).slice(-2)).toEqual(['zoffset', 'graph'])
     expect(store.dispatch).toHaveBeenCalledWith('config/saveByPath', {
-      path: 'uiSettings.overview.layouts',
-      value: { [serverLayoutKey(null, 'http://mock.local')]: local },
+      // Only this person's own key: never the whole map, which could wipe another person's layout.
+      path: `uiSettings.overview.layouts.${serverLayoutKey(null, 'http://mock.local')}`,
+      value: local,
       server: true
     })
     expect(w.find('[data-tid="edit-open"]').exists()).toBe(true)

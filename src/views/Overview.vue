@@ -286,8 +286,10 @@ export default class Overview extends Vue {
     if (JSON.stringify(draft) !== JSON.stringify(this.layout)) {
       const record = saveLayout(this.context, draft, localStorage)
       this.$store.dispatch('config/saveByPath', {
-        path: 'uiSettings.overview.layouts',
-        value: { ...(this.savedLayouts ?? {}), [serverLayoutKey(this.context.accountId, this.context.printerId)]: record },
+        // Only this person's key on this printer, never the whole map: another
+        // person's tab saving from an older copy must not wipe this layout.
+        path: `uiSettings.overview.layouts.${serverLayoutKey(this.context.accountId, this.context.printerId)}`,
+        value: record,
         server: true
       })
       this.layout = { tiles: record.tiles, hidden: record.hidden }
