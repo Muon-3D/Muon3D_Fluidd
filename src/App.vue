@@ -54,6 +54,8 @@
           :kind="connection.banner"
         />
 
+        <bluetooth-fallback-banner />
+
         <update-banner v-if="showUpdateBanner" />
 
         <deletion-notice v-if="deletionCloudView" />
@@ -146,7 +148,7 @@ import { ACTIVE_PHASES, offlineScreen } from '@/services/updates/model'
 import { printerNameParts } from '@/util/printer-name'
 import { connectionView, type ConnectionView } from '@/services/connection/view'
 import { cloudState } from '@/services/muon-cloud/state'
-import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { bluetoothCarrying } from '@/services/muon-ble/link'
 import { activationState } from '@/services/muon-cloud/activate'
 import { consolePresence } from '@/services/muon-cloud/presence'
 import FrameMixin from '@/mixins/frame'
@@ -169,6 +171,7 @@ import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletio
   },
   components: {
     DeletionBanner: () => import('@/components/account/DeletionBanner.vue'),
+    BluetoothFallbackBanner: () => import('@/components/layout/BluetoothFallbackBanner.vue'),
     DeletionNotice: () => import('@/components/account/DeletionNotice.vue'),
     ConnectionBanner,
     ConnectingScreen,
@@ -370,7 +373,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     const printer = cloudState.printers.find(p => p.id === cloudState.activePrinterId)
     // Status polling ticks this reactive clock even for offline printers.
     const status = printer ? cloudState.status[printer.id] : undefined
-    const overBluetooth = !!printer && wantsBluetoothFor(printer.id) && this.socketConnected && this.apiConnected
+    const overBluetooth = !!printer && bluetoothCarrying(printer.id) && this.socketConnected && this.apiConnected
     // I-133: the status read going silent or failing twice is Offline too, within
     // seconds; and a printer answering over Bluetooth is not offline because the
     // console cannot see it.
