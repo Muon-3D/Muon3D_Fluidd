@@ -5,6 +5,7 @@ import OverviewTemps from '../OverviewTemps.vue'
 import { panelStore } from '@/components/control/__tests__/panel-fixture'
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn() }))
 vi.mock('@/api/socketActions', () => ({ SocketActions: socket }))
+vi.mock('@/services/charts/engine', () => ({ createGraph: vi.fn(async () => ({ setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn() })) }))
 it('records only observed real status transitions and clears markers on context, disconnect and print restart', async () => {
   const store = panelStore()
   store.getters['charts/getChartRetention'] = 1200
@@ -50,7 +51,7 @@ it('drops table target drafts on a context switch and refuses a detached old fie
   store.getters['charts/getChartData'] = []
   const wrapper = mount(OverviewTemps, { mocks: { $store: store }, stubs: { 'frame-icon': true } })
   await wrapper.findAll('button').wrappers.find(w => w.text() === 'Table')!.trigger('click')
-  expect(wrapper.findComponent({ name: 'TemperatureTimeline' }).exists()).toBe(false)
+  expect(wrapper.findComponent({ name: 'ThermalGraph' }).exists()).toBe(false)
   const oldField = wrapper.findComponent({ name: 'NumberField' })
   const input = wrapper.find('input[aria-label="Nozzle target"]')
   await input.setValue('220')
@@ -62,37 +63,26 @@ it('drops table target drafts on a context switch and refuses a detached old fie
   wrapper.destroy(); socket.printerGcodeScript.mockClear()
 })
 
-it('has a Fluidd legend line whose entries toggle a series, and no blue slider or gap bar', async () => {
+it('shows the Fluidd-style graph with a labelled, toggleable legend for every tracked series', async () => {
   const store = panelStore()
   store.getters['charts/getChartRetention'] = 1200
   store.getters['charts/getChartData'] = []
   store.getters['charts/getSelectedLegends'] = { extruder: false }
+  Vue.set(store.state.printer.printer, 'extruder', { temperature: 214.6, target: 215, power: 0.41 })
+  Vue.set(store.state.printer.printer, 'heater_bed', { temperature: 59.8, target: 60, power: 0.18 })
+  Vue.set(store.state.printer.printer, 'temperature_sensor mcu_temp', { temperature: 44 })
   const wrapper = mount(OverviewTemps, { mocks: { $store: store }, stubs: { 'frame-icon': true } })
   const nozzle = wrapper.find('[data-legend="extruder"]')
   const bed = wrapper.find('[data-legend="heater_bed"]')
   expect(nozzle.attributes('aria-pressed')).toBe('false')
   expect(bed.attributes('aria-pressed')).toBe('true')
+  expect(bed.text()).toContain('59.8')
+  expect(wrapper.find('[data-legend="temperature_sensor mcu_temp"]').exists()).toBe(true)
   await bed.trigger('click')
   expect(store.dispatch).toHaveBeenCalledWith('charts/saveSelectedLegends', { extruder: false, heater_bed: false })
   await nozzle.trigger('click')
   expect(store.dispatch).toHaveBeenCalledWith('charts/saveSelectedLegends', { extruder: true })
   expect(wrapper.find('input[type="range"]').exists()).toBe(false)
   expect(wrapper.find('[data-gap]').exists()).toBe(false)
-  wrapper.destroy()
-})
-
-it('picks the tracked series from a header menu and saves the choice', async () => {
-  const store = panelStore()
-  store.getters['charts/getChartRetention'] = 1200
-  store.getters['charts/getChartData'] = []
-  store.getters['charts/getSelectedLegends'] = { 'tracked:heater_bed': false }
-  const wrapper = mount(OverviewTemps, { mocks: { $store: store }, stubs: { 'frame-icon': true } })
-  expect(wrapper.find('[data-legend="heater_bed"]').exists()).toBe(false)
-  expect(wrapper.find('[data-legend="extruder"]').exists()).toBe(true)
-  await wrapper.find('[data-tid="series-picker"]').trigger('click')
-  const box = wrapper.find('input[data-series="heater_bed"]')
-  expect((box.element as HTMLInputElement).checked).toBe(false)
-  await box.setChecked(true)
-  expect(store.dispatch).toHaveBeenCalledWith('charts/saveSelectedLegends', { 'tracked:heater_bed': true })
   wrapper.destroy()
 })
