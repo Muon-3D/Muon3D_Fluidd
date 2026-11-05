@@ -295,18 +295,44 @@
       </template>
     </template>
 
-    <!-- YOURS: the host's own Library (sign in, sections, your prints). -->
-    <slot
-      v-else
-      name="yours"
-    />
+    <!-- YOURS: collections and saves, then the host's own Library (sign in, sections, your prints). -->
+    <template v-else>
+      <library-yours-shelves
+        v-if="signedIn"
+        ref="yours"
+        :printer-name="printerName"
+        :printing="printing"
+        :collections="collections"
+        :collections-error="collectionsError"
+        @print="print"
+        @open="open"
+        @changed="readCollections"
+      />
+      <section
+        v-if="signedIn"
+        class="mlib-shelf mlib-shelf--own"
+      >
+        <header class="mlib-shelf__head">
+          <h2>Your prints</h2>
+          <span class="mlib-muted">Sliced and saved from Slice, on every printer</span>
+        </header>
+        <slot name="yours" />
+      </section>
+      <slot
+        v-else
+        name="yours"
+      />
+    </template>
 
     <library-quick-look
       v-if="looking"
       :key="looking.key"
       :card="looking"
       :printer-name="printerName"
+      :signed-in="signedIn"
+      :collections="collections"
       @close="looking = null"
+      @saved="onSaved"
       @print="printFromLook"
     />
   </div>
@@ -316,8 +342,10 @@
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryModelCard from './LibraryModelCard.vue'
 import LibraryQuickLook from './LibraryQuickLook.vue'
-import type { LibraryItem } from '@/services/library/api'
+import LibraryYoursShelves from './LibraryYoursShelves.vue'
+import { describeLibraryError, type CommunityCollection, type LibraryItem } from '@/services/library/api'
 import { LIBRARY_URL } from '@/services/library/discover'
+import { libraryClient } from '@/services/library/store'
 import { lastEvent, nozzleText, printFacts } from '@/services/library/format'
 import { thumbnailFor } from '@/services/library/thumbnails'
 import { ago, loadFeedPage, loadPublication, loadShelves, publicationPrint, type FeedPost, type PublicationPrint, type ShelfCard } from '@/services/library/shelves'
@@ -343,7 +371,7 @@ const PALETTE = ['#ff9f0a', '#ff453a', '#64d2ff', '#30d158', '#bf5af2', '#80d6d1
  * prints from where it is, through the host: `print` and `print-item`.
  * No router in here; it sizes to its container.
  */
-@Component({ components: { LibraryModelCard, LibraryQuickLook } })
+@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves } })
 export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: 'page' }) readonly context!: 'page' | 'control'
   @Prop({ type: String, default: null }) readonly printerId!: string | null
@@ -352,6 +380,8 @@ export default class MuonLibrary extends Vue {
   @Prop({ type: Object, default: null }) readonly buildVolume!: { x: number, y: number, z: number } | null
   /** Which place is shown: the host owns it (Control keeps it in the address). */
   @Prop({ type: String, default: 'discover' }) readonly tab!: LibraryTab
+  /** Signed in: Yours shows collections and saves, the quick look a heart. */
+  @Prop({ type: Boolean, default: false }) readonly signedIn!: boolean
   /** The print to continue with (the last one saved), or none. */
   @Prop({ type: Object, default: null }) readonly continueItem!: LibraryItem | null
 
@@ -365,6 +395,9 @@ export default class MuonLibrary extends Vue {
   feedCursor: string | null = null
   feedBusy = false
   looking: ShelfCard | null = null
+  collections: CommunityCollection[] = []
+  private collectionReads = 0
+  collectionsError = ''
   /** The card whose print is being read, for Print. */
   printing = ''
   libraryUrl = LIBRARY_URL
@@ -509,6 +542,31 @@ export default class MuonLibrary extends Vue {
     let hash = 0
     for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
     return PALETTE[hash % PALETTE.length]
+  }
+
+  /** Your collections, for Yours and for the quick look's Add to… (Discover too). */
+  @Watch('signedIn', { immediate: true })
+  async readCollections () {
+    if (!this.signedIn) {
+      this.collections = []
+      return
+    }
+    const read = ++this.collectionReads
+    try {
+      const answer = await libraryClient().collections()
+      if (read !== this.collectionReads || !this.signedIn) return
+      this.collections = Array.isArray(answer.collections) ? answer.collections : []
+      this.collectionsError = ''
+    } catch (error) {
+      // Yours says so; Add to… stays hidden.
+      if (read === this.collectionReads) this.collectionsError = describeLibraryError(error)
+    }
+  }
+
+  /** A heart or Add to… in the quick look: the counts and Yours' shelves read again. */
+  onSaved () {
+    this.readCollections()
+    ;(this.$refs.yours as { refresh?: () => void } | undefined)?.refresh?.()
   }
 
   publicationHref (slug: string): string {

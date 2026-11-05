@@ -201,8 +201,13 @@ export interface CommunitySave {
     title: string;
     thumbnail_url?: string | null;
     creator?: string | null;
+    /** A publication's is relative (`/p/<slug>`); a catalogue or source print's is its own page. */
     url?: string | null;
-    available: boolean;
+    source?: string;
+    /** What the service sends (src/saves.rs `Card`). */
+    availability?: 'available' | 'unavailable';
+    /** Older answers' name for it. */
+    available?: boolean;
   };
   created_at: string;
 }
@@ -222,6 +227,21 @@ export interface SavedRow {
   available: boolean;
 }
 
+/** A collection of saves, as `/v1/community/collections` answers it (src/saves.rs). */
+export interface CommunityCollection {
+  id: string;
+  name: string;
+  description: string;
+  visibility: 'private' | 'public';
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+}
+
+export interface CommunityCollectionDetail extends CommunityCollection {
+  items: Array<{ save_id: string, target: CommunitySave['target'], card: CommunitySave['card'] }>;
+}
+
 export function savedRows (page: CommunitySavesPage): SavedRow[] {
   if (!Array.isArray(page.saves)) return []
   return page.saves.map(({ id, card }) => ({
@@ -230,8 +250,13 @@ export function savedRows (page: CommunitySavesPage): SavedRow[] {
     thumbnailUrl: card.thumbnail_url ?? null,
     creator: card.creator ?? null,
     url: card.url ?? null,
-    available: card.available
+    available: isAvailable(card)
   }))
+}
+
+/** Whether a save's print can still be seen: `availability`, or an older answer's `available`. */
+export function isAvailable (card: CommunitySave['card']): boolean {
+  return card.availability ? card.availability === 'available' : card.available === true
 }
 
 /**
@@ -364,6 +389,17 @@ export function createLibraryClient (options: LibraryClientOptions) {
     runs: (cursor = '', limit = 50) => request<LibraryRunsPage>('GET', `/v1/library/runs?${cursor ? `cursor=${encodeURIComponent(cursor)}&` : ''}limit=${limit}`),
     sliced: () => request<FeedPage>('GET', '/v1/items?origin=slice'),
     saved: () => request<CommunitySavesPage>('GET', '/v1/community/saves'),
+    /** Save a public print (the Library's heart): the save, new or the one already there. */
+    save: (publicationId: string) => request<CommunitySave>('PUT', '/v1/community/saves', { kind: 'publication', id: publicationId }),
+    unsave: (saveId: string) => request<null>('DELETE', `/v1/community/saves/${encodeURIComponent(saveId)}`),
+    /** Which of these public prints are saved, and as which save. */
+    savesOf: (publicationIds: string[]) => request<{ saves: Array<{ target: { kind: string, id: string }, save_id: string }> }>(
+      'GET', `/v1/community/saves/lookup?targets=${encodeURIComponent(JSON.stringify(publicationIds.map(id => ({ kind: 'publication', id }))))}`),
+    collections: () => request<{ collections: CommunityCollection[] }>('GET', '/v1/community/collections'),
+    collection: (id: string) => request<CommunityCollectionDetail>('GET', `/v1/community/collections/${encodeURIComponent(id)}`),
+    createCollection: (name: string) => request<CommunityCollection>('POST', '/v1/community/collections', { name, visibility: 'private' }),
+    addToCollection: (collectionId: string, saveId: string) =>
+      request<null>('PUT', `/v1/community/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(saveId)}`),
     createPrint: (body: VersionBody & { name: string }) => request<Created>('POST', '/v1/prints', body),
     createVersion: (id: string, body: VersionBody) => request<Created>('POST', `${item(id)}/versions`, body),
     complete: (id: string, version: number) =>
