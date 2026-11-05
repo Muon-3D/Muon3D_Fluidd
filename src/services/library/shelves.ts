@@ -222,7 +222,7 @@ export function ago (iso: string | null, now = Date.now()): string {
 
 /** What Print on… needs for a public print: an item, its G-codes as setups, and the facts to check them against. */
 export interface PublicationPrint {
-  item: { id: string, name: string, version: number, setups: ItemSetup[], shared: { expected: Record<string, StoredFileFacts> } };
+  item: { id: string, name: string, version: number, setups: ItemSetup[], shared: { expected: Record<string, StoredFileFacts>, slug: string | null } };
 }
 
 /**
@@ -241,7 +241,10 @@ export function publicationPrint (publication: PublicPublication, id: string): P
       name: publication.title,
       version: publication.version,
       setups: files.map(file => ({ ...(file.setup as NonNullable<typeof file.setup>), file_id: file.id, print_seconds: file.print_seconds ?? null, filament_g: file.filament_g ?? null })),
-      shared: { expected: Object.fromEntries(files.map(file => [file.id, { sha256: file.sha256, size_bytes: file.size_bytes, encoding: file.encoding }])) }
+      shared: {
+        expected: Object.fromEntries(files.map(file => [file.id, { sha256: file.sha256, size_bytes: file.size_bytes, encoding: file.encoding }])),
+        slug: publication.slug ?? null
+      }
     }
   }
 }

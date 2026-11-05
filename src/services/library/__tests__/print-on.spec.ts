@@ -289,28 +289,43 @@ describe('Print on…, a public print (Library v2 Discover)', () => {
     const stored = await gzip(new TextEncoder().encode(GCODE))
     const sha256 = await sha256Hex(stored)
     const shareFile = vi.fn(async () => stored)
-    setLibraryClient({ shareFile } as never)
+    // recordPrinted would call printed(): a public print must never reach it.
+    const printed = vi.fn(async () => ({ item: {} }))
+    setLibraryClient({ shareFile, printed } as never)
     const setup = { printer_model: 'Muon3D M1', nozzle_mm: 0.4, material: 'PLA', file_id: 'f1', print_seconds: 600, filament_g: 3 }
     const item = { id: 'pub-1', name: 'Spiral vase', version: 3 }
     const router = { push: vi.fn(async () => { mocks.active.slug = 'hazel-52be' }) }
-    return { stored, sha256, shareFile, setup, item, router }
+    return { stored, sha256, shareFile, printed, setup, item, router }
   }
 
   it('downloads over the share route, checks the listed hash, prints, and records nothing in the Library', async () => {
-    const { sha256, shareFile, setup, item, router } = await shared()
+    const { sha256, shareFile, printed, setup, item, router } = await shared()
     const expected = { f1: { sha256, size_bytes: (await gzip(new TextEncoder().encode(GCODE))).byteLength, encoding: 'gzip' as const } }
     await sendToPrinter({ router: router as never, store: fakeStore() as never, item, setup, target: HAZEL, mode: 'print', shared: { expected } })
     expect(shareFile).toHaveBeenCalledWith('pub-1', 'f1')
     expect(mocks.start).toHaveBeenCalledWith('Spiral vase.gcode')
-    // A public print is not the person's own: no item or version is remembered with the file.
-    expect(mocks.remember).toHaveBeenCalledWith('Spiral vase.gcode', { gcode_sha256: sha256 })
+    // A public print is not the person's own: remembered by its publication, never as an item or version.
+    expect(mocks.remember).toHaveBeenCalledWith('Spiral vase.gcode', { gcode_sha256: sha256, publication_id: 'pub-1' })
+    for (const [, start] of mocks.remember.mock.calls) expect(start).not.toHaveProperty('item_id')
+    await settle()
+    expect(printed).not.toHaveBeenCalled()
   })
 
   it('refuses a public G-code whose bytes do not match its listing, before anything is uploaded', async () => {
     const { setup, item, router } = await shared()
     const expected = { f1: { sha256: '0'.repeat(64), size_bytes: 10, encoding: 'gzip' as const } }
-    await expect(sendToPrinter({ router: router as never, store: fakeStore() as never, item, setup, target: HAZEL, mode: 'print', shared: { expected } })).rejects.toThrow()
+    await expect(sendToPrinter({ router: router as never, store: fakeStore() as never, item, setup, target: HAZEL, mode: 'print', shared: { expected } })).rejects.toThrow(/did not match/)
     expect(mocks.upload).not.toHaveBeenCalled()
+  })
+
+  it('queues a public print without counting it as one of yours', async () => {
+    const { sha256, setup, item, router, printed } = await shared()
+    const size = (await gzip(new TextEncoder().encode(GCODE))).byteLength
+    await sendToPrinter({ router: router as never, store: fakeStore() as never, item, setup, target: HAZEL, mode: 'queue', shared: { expected: { f1: { sha256, size_bytes: size, encoding: 'gzip' } } } })
+    expect(mocks.queue).toHaveBeenCalledWith(['Spiral vase.gcode'])
+    mocks.active.slug = 'hazel-52be'
+    await settle()
+    expect(printed).not.toHaveBeenCalled()
   })
 
   it('refuses a public G-code that its publication lists no checksum for', async () => {

@@ -241,7 +241,7 @@ export async function sendToPrinter (options: {
    * route, checked against the size and SHA-256 its publication lists, and
    * nothing is recorded in the person's own Library.
    */
-  shared?: { expected: Record<string, StoredFileFacts> };
+  shared?: { expected: Record<string, StoredFileFacts>, slug?: string | null };
   setup: ItemSetup;
   target: PrintTarget;
   mode: SendMode;
@@ -281,7 +281,7 @@ export async function sendToPrinter (options: {
 
   const printed = () => {
     if (options.shared) {
-      rememberLibraryFile(path, { gcode_sha256: stored_sha256 })
+      rememberLibraryFile(path, { gcode_sha256: stored_sha256, publication_id: item.id })
       return
     }
     recordPrinted(item.id, {
@@ -308,7 +308,10 @@ export async function sendToPrinter (options: {
     return
   }
   try {
-    rememberLibraryFile(path, { gcode_sha256: stored_sha256, ...(!options.shared && typeof item.version === 'number' ? { item_id: item.id, version: item.version } : {}) })
+    rememberLibraryFile(path, {
+      gcode_sha256: stored_sha256,
+      ...(options.shared ? { publication_id: item.id } : typeof item.version === 'number' ? { item_id: item.id, version: item.version } : {})
+    })
     await httpClientActions.post('/printer/print/start', { filename: path }, { timeout: START_ANSWER_MS })
   } catch (error) {
     EventBus.$emit(`${target.name} didn't start ${item.name}. It's in its Jobs.`, { type: 'error', timeout: 0 })
