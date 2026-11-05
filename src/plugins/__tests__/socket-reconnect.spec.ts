@@ -345,3 +345,30 @@ describe('WebSocketClient without a one-shot token', () => {
     expect(client.retryPending).toBe(true)
   })
 })
+
+describe('WebSocketClient status traffic', () => {
+  it('does not tell the store the socket is open and connected on every message', async () => {
+    const { client, store } = lanClient()
+    const socket = await opened(client)
+    socket.message()
+    store.commit.mockClear()
+    store.dispatch.mockClear()
+
+    for (let i = 0; i < 20; i++) socket.message()
+
+    const open = store.commit.mock.calls.filter(([name]) => name === 'socket/setSocketOpen')
+    const connecting = store.dispatch.mock.calls.filter(([name]) => name === 'socket/onSocketConnecting')
+    expect(open).toHaveLength(0)
+    expect(connecting).toHaveLength(0)
+  })
+
+  it('still marks the socket open when the first message arrives', async () => {
+    const { client, store } = lanClient()
+    const socket = await opened(client)
+    store.state.socket.open = false
+    store.state.socket.connecting = true
+    socket.message()
+    expect(store.commit).toHaveBeenCalledWith('socket/setSocketOpen', true)
+    expect(store.dispatch).toHaveBeenCalledWith('socket/onSocketConnecting', false)
+  })
+})
