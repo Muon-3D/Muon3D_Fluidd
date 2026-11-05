@@ -28,7 +28,8 @@ export const mutations: MutationTree<ChartState> = {
    * Inits the chart store from moonraker.
    */
   setChartStore (state, payload: ChartData[]) {
-    state.chart = payload
+    // Samples are never edited once recorded; freezing keeps Vue from walking (and tracking) each one.
+    state.chart = payload.map(sample => Object.freeze(sample))
     state.ready = true
   },
 
