@@ -591,6 +591,7 @@
   &__acts { display: flex; gap: 8px; }
   &__go { flex: 1; height: 46px; font-size: var(--m3d-text-md); }
   &__note { margin: -6px 0 0; font-size: var(--m3d-text-xs); }
+  &__note:empty { margin: -16px 0 0; }
   &__tags { margin-top: auto; }
 
   @media (max-width: 599px) {

@@ -45,11 +45,12 @@
         </button>
       </header>
       <p
-        v-if="error"
+        v-if="error || collectionsError"
         class="mlib-muted"
         role="alert"
+        data-tid="library-yours-error"
       >
-        {{ error }}
+        {{ error || collectionsError }}
       </p>
       <div
         v-if="collections.length"
@@ -78,7 +79,7 @@
         </button>
       </div>
       <p
-        v-else-if="loaded"
+        v-else-if="loaded && !collectionsError"
         class="mlib-muted"
       >
         Make a collection, then add prints to it from their quick look.
@@ -132,6 +133,8 @@ export default class LibraryYoursShelves extends Vue {
   /** The card whose print is being read (MuonLibrary's), for its Print button. */
   @Prop({ type: String, default: '' }) readonly printing!: string
   @Prop({ type: Array, default: () => [] }) readonly collections!: CommunityCollection[]
+  /** Why MuonLibrary couldn't read them, if it couldn't. */
+  @Prop({ type: String, default: '' }) readonly collectionsError!: string
 
   /** Each collection's cards, read for its mosaic and when opened. */
   members: Record<string, ShelfCard[]> = {}
