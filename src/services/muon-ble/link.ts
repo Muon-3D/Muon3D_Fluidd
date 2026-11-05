@@ -15,6 +15,7 @@
  * port of the parts of Iroh_BLE's `blelink-web.js` that muon-link-web's link
  * object supports.
  */
+import Vue from 'vue'
 import {
   decodeInfo,
   MUON_BLE_INFO,
@@ -285,12 +286,47 @@ export async function openBleLink (
  */
 const routes = new Map<string, { device: BleDevice, link: BleLinkHandle | null }>()
 
+/**
+ * What is true of each printer's Bluetooth route, reactive so a badge can
+ * follow it (KAN-1396). `wantsBluetoothFor` is only the person's choice; this
+ * is what happened: whether the radio link is up, and why not if the open
+ * went on through Muon3D without it.
+ */
+const routeState = Vue.observable({
+  up: {} as Record<string, boolean>,
+  fellBack: {} as Record<string, string>
+})
+
+function forgetRouteState (id: string) {
+  Vue.delete(routeState.up, id)
+  Vue.delete(routeState.fellBack, id)
+}
+
+/** True while the Bluetooth link to `printerId` is up: the route that really carries it. */
+export function bluetoothCarrying (printerId: string): boolean {
+  return routeState.up[printerId.toLowerCase()] === true
+}
+
+/** Why the open went on through Muon3D though Bluetooth was chosen, or null. */
+export function bluetoothFellBack (printerId: string): string | null {
+  return routeState.fellBack[printerId.toLowerCase()] ?? null
+}
+
+/** The Bluetooth link failed, and the open goes on through Muon3D: say so (KAN-1396). */
+export function noteBluetoothFellBack (printerId: string, reason: string) {
+  const id = printerId.toLowerCase()
+  if (!routes.has(id)) return
+  Vue.set(routeState.fellBack, id, reason)
+  Vue.set(routeState.up, id, false)
+}
+
 export function useBluetoothFor (printerId: string, device: BleDevice) {
   const id = printerId.toLowerCase()
   const existing = routes.get(id)
   if (existing?.device === device) return
   existing?.link?.disconnect()
   routes.set(id, { device, link: null })
+  forgetRouteState(id)
 }
 
 /** True once the person asked to open `printerId` over Bluetooth and has not stopped. */
@@ -307,6 +343,7 @@ export function releaseBluetoothLink (printerId: string): Promise<void> {
   if (!route?.link) return Promise.resolve()
   const hangingUp = route.link.disconnect().catch(() => {})
   route.link = null
+  Vue.set(routeState.up, printerId.toLowerCase(), false)
   return hangingUp
 }
 
@@ -314,6 +351,7 @@ export function stopUsingBluetoothFor (printerId: string) {
   const id = printerId.toLowerCase()
   routes.get(id)?.link?.disconnect()
   routes.delete(id)
+  forgetRouteState(id)
 }
 
 /**
@@ -324,12 +362,19 @@ export function stopUsingBluetoothFor (printerId: string) {
 export async function bluetoothRouteFor (endpoint: unknown, printerId: string, options?: OpenLinkOptions): Promise<BleLinkHandle | null> {
   const route = routes.get(printerId.toLowerCase())
   if (!route || !takesBleLinks(endpoint)) return null
+  const id = printerId.toLowerCase()
   if (route.link?.isOpen()) return route.link
-  route.link = await openBleLink(endpoint, route.device, options)
-  if (route.link.printerId !== printerId.toLowerCase()) {
-    await route.link.disconnect()
+  const link = route.link = await openBleLink(endpoint, route.device, options)
+  if (link.printerId !== id) {
+    await link.disconnect()
     route.link = null
     throw new Error('The printer nearby is not the one asked for.')
   }
-  return route.link
+  Vue.set(routeState.up, id, true)
+  Vue.delete(routeState.fellBack, id)
+  // The printer or the radio ending the link ends the claim, whoever hung up.
+  link.closed.then(() => {
+    if (routes.get(id)?.link === link) Vue.set(routeState.up, id, false)
+  })
+  return link
 }

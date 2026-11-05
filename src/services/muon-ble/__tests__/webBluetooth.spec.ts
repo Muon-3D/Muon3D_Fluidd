@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   bluetoothAvailable,
   bluetoothSupport,
@@ -115,5 +115,26 @@ describe('what the browser offers', () => {
     const printer = fakePrinter()
     fakeBluetooth({ remembered: [printer.device] })
     expect(await rememberedDevices()).toEqual([printer.device])
+  })
+})
+
+describe('choosePrinter after the pairing prompt (KAN-1396)', () => {
+  it('reads INFO again once when the first read fails while the browser finishes pairing', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      let first = true
+      const connect = printer.device.gatt.connect
+      printer.device.gatt.connect = async () => {
+        if (first) { first = false; throw Object.assign(new Error('GATT Error: pairing in progress'), { name: 'NetworkError' }) }
+        return connect()
+      }
+      fakeBluetooth({ chosen: printer.device })
+      const chosen = choosePrinter()
+      await vi.advanceTimersByTimeAsync(2000)
+      expect((await chosen).info.endpointId).toBe(EID)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

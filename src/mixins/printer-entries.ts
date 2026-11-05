@@ -33,7 +33,7 @@ import { scopedPath } from '@/router/printerPagePaths'
 import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
-import { stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
+import { bluetoothCarrying, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
 
@@ -167,7 +167,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       cloudNearby: discoveryState.cloud,
       nearby: nearbyState.printers,
       activeCloudId: cloudState.activePrinterId,
-      viaBluetooth: wantsBluetoothFor,
+      viaBluetooth: bluetoothCarrying,
       local: this.localLive,
       searching: discoveryState.scanning || !discoveryState.finishedAt
     })
