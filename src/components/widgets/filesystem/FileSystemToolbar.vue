@@ -3,9 +3,29 @@
     dense
   >
     <v-toolbar-title class="d-none d-sm-block">
-      <div class="file-path">
-        &lrm;/{{ path }}
-      </div>
+      <nav
+        class="file-path file-crumbs"
+        aria-label="Folder"
+        data-tid="files-crumbs"
+      >
+        <template v-for="(crumb, index) in crumbs || []">
+          <span
+            v-if="index > 0"
+            :key="`${crumb.path}-sep`"
+            class="file-crumbs__sep"
+            aria-hidden="true"
+          >/</span>
+          <button
+            :key="crumb.path"
+            type="button"
+            class="file-crumbs__crumb"
+            :disabled="disabled || index === (crumbs || []).length - 1"
+            @click="$emit('crumb', crumb)"
+          >
+            {{ crumb.label }}
+          </button>
+        </template>
+      </nav>
     </v-toolbar-title>
 
     <v-spacer />
@@ -135,6 +155,8 @@
         single-line
         hide-details
         append-icon="$magnify"
+        placeholder="Filter files"
+        aria-label="Filter files"
       />
     </div>
 
@@ -162,6 +184,7 @@ import FileSystemAddMenu from './FileSystemAddMenu.vue'
 import FileSystemFilterMenu from './FileSystemFilterMenu.vue'
 import type { AppTableHeader } from '@/types'
 import type { RootProperties } from '@/store/files/types'
+import type { Crumb } from '@/services/files/manager'
 
 @Component({
   components: {
@@ -188,6 +211,10 @@ export default class FileSystemToolbar extends Mixins(StatesMixin) {
   // The current path
   @Prop({ type: String })
   readonly path!: string
+
+  // The folders from the root down to the current path.
+  @Prop({ type: Array<Crumb> })
+  readonly crumbs?: Crumb[]
 
   // If the controls are disabled or not.
   @Prop({ type: Boolean })
