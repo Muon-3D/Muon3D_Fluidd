@@ -114,7 +114,7 @@ button.ot__door:focus-visible { outline: 2px solid var(--m3d-focus-ring, var(--m
 .ot__head .frame-icon { color: var(--m3d-text-muted); }
 .ot__title { color: var(--m3d-text); font-size: 15px; font-weight: 600; }
 .ot__grow { flex: 1 1 auto; }
-.ot__more { position: absolute; top: 14px; right: 14px; }
+.ot > .tm.ot__more { position: absolute; top: 14px; right: 14px; }
 .ot__state { padding: 2px 9px; border-radius: 999px; background: var(--m3d-fill-2, var(--m3d-surface-2)); color: var(--m3d-text-muted); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .ot__state--ok { background: color-mix(in srgb, var(--m3d-success) 16%, transparent); color: var(--m3d-success); }
 .ot__state--warm { background: color-mix(in srgb, var(--m3d-warning) 16%, transparent); color: var(--m3d-warning); }

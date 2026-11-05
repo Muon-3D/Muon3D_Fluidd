@@ -1,7 +1,7 @@
 import { mount, shallowMount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import JobDetail from '@/components/jobs/JobDetail.vue'
-import OverviewLiveTune from '@/components/overview/OverviewLiveTune.vue'
+import FansTile from '@/components/widgets/overview/tiles/FansTile.vue'
 import RangeSlider from '../RangeSlider.vue'
 import rangeSliderSource from '../RangeSlider.vue?raw'
 import ControlFans from '../ControlFans.vue'
@@ -31,7 +31,7 @@ describe('RangeSlider accessibility', () => {
 describe('RangeSlider callers', () => {
   it('announces fan and light values as percentages', async () => {
     const store = panelStore()
-    store.getters['printer/getAllFans'] = [{ key: 'fan', name: 'fan', prettyName: 'Part fan', type: 'fan', speed: 0.5 }]
+    store.getters['printer/getAllFans'] = [{ key: 'fan', name: 'fan', prettyName: 'Part fan', type: 'fan', speed: 0.5, controllable: true }]
     store.getters['printer/getPins'] = [{ key: 'output_pin caselight', name: 'caselight', prettyName: 'Lights', controllable: true, pwm: true, value: 0.25 }]
     const wrapper = mount(ControlFans, { mocks: { $store: store, $waits: waits }, stubs: panelStubs })
     await wrapper.find('#fans\\.all-trigger').trigger('click')
@@ -40,13 +40,14 @@ describe('RangeSlider callers', () => {
     wrapper.destroy()
   })
 
-  it('announces the live-tune fan as a percentage', () => {
+  it('announces the live-tune fan as a percentage', async () => {
     const store = panelStore()
-    store.getters['printer/getAllFans'] = [{ key: 'fan', name: 'fan', prettyName: 'Part fan', type: 'fan', speed: 0.5 }]
-    const wrapper = shallowMount(OverviewLiveTune, {
+    store.getters['printer/getAllFans'] = [{ key: 'fan', name: 'fan', prettyName: 'Part fan', type: 'fan', speed: 0.5, controllable: true }]
+    const wrapper = mount(FansTile, {
       mocks: { $store: store, $waits: waits },
-      stubs: { RangeSlider }
+      stubs: { 'frame-icon': true }
     })
+    await wrapper.find('[data-tid="tile-door"]').trigger('click')
     expect(wrapper.find('input[type="range"]').attributes('aria-valuetext')).toBe('50 percent')
     wrapper.destroy()
   })

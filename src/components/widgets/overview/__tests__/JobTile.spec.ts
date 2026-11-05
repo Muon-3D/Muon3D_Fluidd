@@ -48,7 +48,7 @@ describe('JobTile', () => {
     expect(socket.printerPrintResume).toHaveBeenCalledTimes(1)
     const confirm = (w.vm as any).$confirm as ReturnType<typeof vi.fn>
     await w.find('[data-tid="job-stop"]').trigger('click')
-    await new Promise(r => setTimeout(r, 0))
+    await new Promise(resolve => setTimeout(resolve, 0))
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(confirm.mock.calls[0][1]).toMatchObject({ title: 'Stop this print?', danger: true })
     expect(socket.printerPrintCancel).toHaveBeenCalledTimes(1)
@@ -60,7 +60,7 @@ describe('JobTile', () => {
     const w = mountJob(store)
     ;((w.vm as any).$confirm as ReturnType<typeof vi.fn>).mockResolvedValue(false)
     await w.find('[data-tid="job-stop"]').trigger('click')
-    await new Promise(r => setTimeout(r, 0))
+    await new Promise(resolve => setTimeout(resolve, 0))
     expect(socket.printerPrintCancel).not.toHaveBeenCalled()
     w.destroy()
   })

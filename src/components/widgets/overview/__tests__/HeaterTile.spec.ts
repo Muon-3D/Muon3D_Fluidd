@@ -83,7 +83,7 @@ describe('HeaterTile', () => {
     await w.find('[data-tid="tile-door"]').trigger('click')
     ;((w.vm as any).$confirm as ReturnType<typeof vi.fn>).mockResolvedValue(false)
     await w.find('[data-tid="cool-down"]').trigger('click')
-    await new Promise(r => setTimeout(r, 0))
+    await new Promise(resolve => setTimeout(resolve, 0))
     expect(sent()).toEqual([])
     w.destroy()
   })
