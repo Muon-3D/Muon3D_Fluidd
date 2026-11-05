@@ -321,11 +321,15 @@ describe('Print on…, a public print (Library v2 Discover)', () => {
   it('queues a public print without counting it as one of yours', async () => {
     const { sha256, setup, item, router, printed } = await shared()
     const size = (await gzip(new TextEncoder().encode(GCODE))).byteLength
-    await sendToPrinter({ router: router as never, store: fakeStore() as never, item, setup, target: HAZEL, mode: 'queue', shared: { expected: { f1: { sha256, size_bytes: size, encoding: 'gzip' } } } })
+    const store = fakeStore()
+    await sendToPrinter({ router: router as never, store: store as never, item, setup, target: HAZEL, mode: 'queue', shared: { expected: { f1: { sha256, size_bytes: size, encoding: 'gzip' } } } })
     expect(mocks.queue).toHaveBeenCalledWith(['Spiral vase.gcode'])
-    mocks.active.slug = 'hazel-52be'
+    // The printer reaches it in its queue: what a print of yours would count.
+    store.printing('Spiral vase.gcode')
     await settle()
     expect(printed).not.toHaveBeenCalled()
+    expect(mocks.remember).toHaveBeenCalledWith('Spiral vase.gcode', { gcode_sha256: sha256, publication_id: 'pub-1' })
+    for (const [, start] of mocks.remember.mock.calls) expect(start).not.toHaveProperty('item_id')
   })
 
   it('refuses a public G-code that its publication lists no checksum for', async () => {
