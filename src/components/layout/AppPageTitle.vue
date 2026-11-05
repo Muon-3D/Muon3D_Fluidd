@@ -29,7 +29,7 @@
       </div>
       <div class="app-page-header__actions">
         <control-actions v-if="currentSection && currentSection.id === 'control' && !isMobileViewport" />
-        <overview-actions v-if="overviewHome && !foreignRecord && !isMobileViewport" />
+        <overview-actions v-if="overviewHome && !mockup && !foreignRecord && !isMobileViewport" />
         <printer-page-menu v-if="overviewHome && !foreignRecord" />
         <maintenance-due v-if="currentPage === '/maintenance'" />
         <camera-actions v-if="currentSection && currentSection.id === 'camera' && !isMobileViewport" />
@@ -96,7 +96,12 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
 
   /** Overview is the printer's own page: it is named by the printer, with its state beside it. */
   get overviewHome (): boolean {
-    return this.currentSection?.id === 'overview' && this.currentPage === '/'
+    return (this.currentSection?.id === 'overview' && this.currentPage === '/') || this.mockup
+  }
+
+  /** Harness only. */
+  get mockup (): boolean {
+    return this.$route.path.includes('__mockup')
   }
 
   get title (): string {
