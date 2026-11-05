@@ -221,12 +221,16 @@ export default class LibraryQuickLook extends Vue {
       this.$emit('close')
       return
     }
-    if (event.key !== 'Tab' || !inside) return
+    if (event.key !== 'Tab' || (!inside && document.activeElement !== document.body)) return
     const focusable = Array.from(this.$el.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]'))
     if (!focusable.length) return
     const first = focusable[0]
     const last = focusable[focusable.length - 1]
-    if (event.shiftKey && document.activeElement === first) {
+    // Focus fell to the page (a control went disabled): back into the quick look.
+    if (!inside) {
+      event.preventDefault()
+      first.focus()
+    } else if (event.shiftKey && document.activeElement === first) {
       event.preventDefault()
       last.focus()
     } else if (!event.shiftKey && document.activeElement === last) {

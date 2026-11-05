@@ -393,6 +393,7 @@ export default class MuonLibrary extends Vue {
   /** Show more is drawn only with a cursor, once loading ends: watch it then ($refs aren't reactive). */
   @Watch('feedCursor')
   @Watch('busy')
+  @Watch('tab')
   async observeMore () {
     await this.$nextTick()
     this.observer?.disconnect()
