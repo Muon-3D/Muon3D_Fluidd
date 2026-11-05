@@ -98,8 +98,8 @@ export default class PrintOnMixin extends Mixins(PrinterRowsMixin) {
   }
 
   /** A public print's G-code facts, when `item` is one (Discover): see sendToPrinter. */
-  get shared (): { expected: Record<string, StoredFileFacts> } | null {
-    return (this.item as { shared?: { expected: Record<string, StoredFileFacts> } } | null)?.shared ?? null
+  get shared (): { expected: Record<string, StoredFileFacts>, slug?: string | null } | null {
+    return (this.item as { shared?: { expected: Record<string, StoredFileFacts>, slug?: string | null } } | null)?.shared ?? null
   }
 
   reslice (row: TargetRow) {
@@ -108,7 +108,7 @@ export default class PrintOnMixin extends Mixins(PrinterRowsMixin) {
     this.$emit('close')
     // Slice opens your own prints; a public one is re-sliced from its page.
     if (this.shared) {
-      window.open(`${LIBRARY_URL}/p/${encodeURIComponent(item.id)}`, '_blank', 'noopener')
+      window.open(`${LIBRARY_URL}/p/${encodeURIComponent(this.shared.slug || item.id)}`, '_blank', 'noopener')
       return
     }
     this.$router.push({ path: printerPath(row.slug, 'slice'), query: { library: item.id } }).catch(() => {})

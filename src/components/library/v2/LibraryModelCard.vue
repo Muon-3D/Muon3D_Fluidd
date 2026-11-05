@@ -32,6 +32,7 @@
         type="button"
         class="mlib-btn mlib-btn--primary mlib-btn--sm mcard__print"
         :disabled="busy"
+        :aria-label="printerName ? `Print ${card.title} on ${printerName}` : `Print ${card.title}`"
         data-tid="library-card-print"
         @click="$emit('print', card)"
       >
@@ -44,7 +45,7 @@
       <button
         type="button"
         class="mlib-btn mlib-btn--sm mlib-btn--icon"
-        aria-label="Quick look"
+        :aria-label="`Quick look at ${card.title}`"
         @click="$emit('open', card)"
       >
         <frame-icon

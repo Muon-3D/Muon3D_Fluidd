@@ -224,6 +224,20 @@ describe('Library: Discover and Yours (KAN-735, Library v2)', () => {
     }
   })
 
+  it('asks a signed-out person to sign in before printing from Discover', () => {
+    Object.assign(libraryState, { account: null })
+    const wrapper = renderLibrary({ view: 'discover' })
+    try {
+      const item = { id: 'p1', name: 'Vase', version: 2, setups: [], shared: { expected: {}, slug: 'vase' } }
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('print', { modelId: 'p1', printerId: null, card: {}, print: { item } })
+      const vm = wrapper.vm as unknown as { printing: unknown, accountDialog: boolean }
+      expect(vm.printing).toBeNull()
+      expect(vm.accountDialog).toBe(true)
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
   it('sends a Discover print with a G-code to Print on…, and nothing without one', () => {
     const wrapper = renderLibrary({ view: 'discover' })
     try {

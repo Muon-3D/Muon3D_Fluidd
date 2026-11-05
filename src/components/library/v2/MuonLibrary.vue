@@ -186,7 +186,7 @@
         </section>
 
         <section
-          v-if="!visibleShelves.length && !posts.length"
+          v-if="!visibleShelves.length && !visiblePosts.length"
           class="mlib-empty"
           data-tid="library-discover-empty"
         >
@@ -268,6 +268,7 @@
                 <button
                   type="button"
                   class="mlib-btn mlib-btn--sm mlib-btn--tint"
+                  :aria-label="`Print ${p.card.title}`"
                   @click="print(p.card)"
                 >
                   <frame-icon
@@ -302,6 +303,7 @@
 
     <library-quick-look
       v-if="looking"
+      :key="looking.key"
       :card="looking"
       :printer-name="printerName"
       @close="looking = null"
@@ -311,7 +313,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryModelCard from './LibraryModelCard.vue'
 import LibraryQuickLook from './LibraryQuickLook.vue'
 import type { LibraryItem } from '@/services/library/api'
@@ -372,9 +374,13 @@ export default class MuonLibrary extends Vue {
   observer: IntersectionObserver | null = null
 
   created () {
-    // In Control, open on what this printer can print.
-    if (this.printerName && this.isM1) this.chip = 'fits'
     this.load()
+  }
+
+  /** In Control, open on what this printer can print, even when it is known only later. */
+  @Watch('printerName', { immediate: true })
+  onPrinter (name: string | null, before?: string | null) {
+    if (name && !before && this.isM1 && this.chip === 'all') this.chip = 'fits'
   }
 
   mounted () {
@@ -382,10 +388,16 @@ export default class MuonLibrary extends Vue {
     this.observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) this.loadMore()
     }, { rootMargin: '600px' })
-    this.$watch(() => this.$refs.more, (el) => {
-      this.observer?.disconnect()
-      if (el) this.observer?.observe(el as Element)
-    }, { immediate: true })
+  }
+
+  /** Show more is drawn only with a cursor, once loading ends: watch it then ($refs aren't reactive). */
+  @Watch('feedCursor')
+  @Watch('busy')
+  async observeMore () {
+    await this.$nextTick()
+    this.observer?.disconnect()
+    const more = this.$refs.more as Element | undefined
+    if (more) this.observer?.observe(more)
   }
 
   beforeDestroy () {
@@ -413,6 +425,7 @@ export default class MuonLibrary extends Vue {
   async load () {
     this.controller?.abort()
     const controller = this.controller = new AbortController()
+    this.feedBusy = false
     this.busy = true
     this.error = ''
     try {
@@ -434,17 +447,20 @@ export default class MuonLibrary extends Vue {
   }
 
   async loadMore () {
-    if (!this.feedCursor || this.feedBusy) return
+    if (!this.feedCursor || this.feedBusy || this.busy) return
+    // A reload (Try again) while this page is read makes it stale: dropped.
+    const controller = this.controller
     this.feedBusy = true
     try {
-      const page = await loadFeedPage(this.feedCursor)
+      const page = await loadFeedPage(this.feedCursor, fetch, controller?.signal)
+      if (controller !== this.controller || controller?.signal.aborted) return
       const seen = new Set(this.posts.map(post => post.key))
       this.posts = [...this.posts, ...page.posts.filter(post => !seen.has(post.key))]
       this.feedCursor = page.cursor
     } catch {
       // Show more stays; the next tap tries again.
     } finally {
-      this.feedBusy = false
+      if (controller === this.controller) this.feedBusy = false
     }
   }
 

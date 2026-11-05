@@ -110,6 +110,7 @@ describe('Library v2: printing a public print from its card', () => {
     expect(print?.item.setups.map(setup => [setup.file_id, setup.material])).toEqual([['f1', 'PLA'], ['f2', 'PETG']])
     expect(print?.item.shared.expected.f2.sha256).toBe('b'.repeat(64))
     expect(print?.item).toMatchObject({ id: 'p1', name: 'Spiral vase', version: 3 })
+    expect(publicationPrint({ ...publication([gcode('f1', 'PLA')]), slug: 'spiral-vase' }, 'p1')?.item.shared.slug).toBe('spiral-vase')
   })
 
   it('offers nothing for a print with no G-code, or none it can check', () => {

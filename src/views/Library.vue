@@ -490,7 +490,6 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   sectionBusy = false
   sectionError = ''
   savedAvailable = true
-  accountDialog = false
 
   /**
    * Discover or your own Library: as the address says, else yours once you're
@@ -516,6 +515,11 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
    */
   onLibraryPrint (request: LibraryPrintRequest) {
     if (!request.print) return
+    // The G-code comes over the share route, which reads as an account.
+    if (!this.signedIn) {
+      this.accountDialog = true
+      return
+    }
     this.printOn(request.print.item as unknown as LibraryItem, request.printerId)
   }
 

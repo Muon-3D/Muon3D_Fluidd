@@ -215,7 +215,24 @@ export default class LibraryQuickLook extends Vue {
   }
 
   onKey (event: KeyboardEvent) {
-    if (event.key === 'Escape') this.$emit('close')
+    // A dialog opened over the quick look (Print on…) takes its own Escape.
+    const inside = this.$el.contains(document.activeElement)
+    if (event.key === 'Escape' && (inside || document.activeElement === document.body)) {
+      this.$emit('close')
+      return
+    }
+    if (event.key !== 'Tab' || !inside) return
+    const focusable = Array.from(this.$el.querySelectorAll<HTMLElement>('button:not([disabled]), a[href]'))
+    if (!focusable.length) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
   }
 
   async read () {
