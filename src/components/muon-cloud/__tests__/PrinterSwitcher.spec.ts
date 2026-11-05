@@ -72,4 +72,65 @@ describe('PrinterSwitcher', () => {
     expect(nearby.startNearby).toHaveBeenCalledTimes(1)
     wrapper.destroy()
   })
+
+  describe('sections', () => {
+    const e = (id: string, name: string, section = 'cloud') => ({
+      key: `${section}:${id}`,
+      section,
+      name,
+      endpointId: id,
+      health: 'online',
+      detail: 'Ready',
+      host: null,
+      active: null,
+      linkedTo: 'mine',
+      saved: [],
+      cloud: section === 'cloud' ? { id, name } : undefined
+    })
+
+    async function open (directory: { cloud: unknown[], local: unknown[], found: unknown[] }, groups: unknown[] = []) {
+      const { cloudState } = await import('@/services/muon-cloud/state') as unknown as { cloudState: Record<string, unknown> }
+      cloudState.layout = { groups }
+      return shallowMount(PrinterSwitcher, {
+        mocks,
+        propsData: { visible: false },
+        computed: { directory: () => directory, account: () => ({ email: 'sample@example.test' }) }
+      })
+    }
+
+    it('hides Saved in this browser and Found on this network when they are empty', async () => {
+      const w = await open({ cloud: [e('a', 'Alpha')], local: [], found: [] })
+      expect(w.text()).not.toContain('Saved in this browser')
+      expect(w.text()).not.toContain('Found on this network')
+      expect(w.text()).not.toContain('No other printers found')
+      w.destroy()
+    })
+
+    it('shows them when they hold a printer', async () => {
+      const w = await open({ cloud: [], local: [e('l', 'Saved one', 'local')], found: [e('f', 'Found one', 'found')] })
+      expect(w.find('[data-tid="switcher-saved"]').exists()).toBe(true)
+      expect(w.find('[data-tid="switcher-found"]').exists()).toBe(true)
+      w.destroy()
+    })
+
+    it('groups the account printers by their group, with the rest under Other printers', async () => {
+      const w = await open(
+        { cloud: [e('a', 'Alpha'), e('b', 'Beta'), e('c', 'Gamma')], local: [], found: [] },
+        [{ id: 'g1', name: 'Workshop', printers: ['a', 'b'] }]
+      )
+      expect(w.find('[data-tid="switcher-group-g1"]').text()).toContain('Workshop')
+      expect(w.find('[data-tid="switcher-group-g1"]').findAll('printer-card-stub')).toHaveLength(2)
+      expect(w.find('[data-tid="switcher-group-other"]').text()).toContain('Other printers')
+      expect(w.find('[data-tid="switcher-group-other"]').findAll('printer-card-stub')).toHaveLength(1)
+      w.destroy()
+    })
+
+    it('keeps the search, All printers and Add a printer', async () => {
+      const w = await open({ cloud: [], local: [], found: [] })
+      expect(w.find('[data-tid="find-printer"]').exists()).toBe(true)
+      expect(w.find('[data-tid="all-printers"]').exists()).toBe(true)
+      expect(w.find('[data-tid="enter-address"]').text()).toContain('Add a printer')
+      w.destroy()
+    })
+  })
 })

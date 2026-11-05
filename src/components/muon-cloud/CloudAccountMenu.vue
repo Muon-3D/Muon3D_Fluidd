@@ -117,6 +117,19 @@
               small
             />Sign in to Muon3D
           </button>
+          <div class="acct-menu__rule" />
+          <button
+            type="button"
+            class="acct-menu__item"
+            role="menuitem"
+            data-tid="account-keys"
+            @click="openKeys"
+          >
+            <frame-icon
+              name="keyboard"
+              small
+            />Keyboard shortcuts<span class="acct-menu__key">?</span>
+          </button>
           <template v-if="printerConnected">
             <div class="acct-menu__rule" />
             <span class="acct-menu__caps">This printer</span>
@@ -263,6 +276,7 @@
             type="button"
             class="acct-menu__item"
             role="menuitem"
+            data-tid="account-keys"
             @click="openKeys"
           >
             <frame-icon

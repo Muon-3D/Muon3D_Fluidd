@@ -26,7 +26,10 @@
 
       <div class="app-header__actions">
         <app-status-alerts v-if="!sectionContext.foreign && authenticated" />
+        <!-- On a printer, Quick actions take the search icon's place; with none chosen, search stays. -->
+        <quick-actions-menu v-if="showQuickActions" />
         <button
+          v-else
           type="button"
           class="app-header__icon"
           aria-label="Search or run a command"
@@ -53,7 +56,7 @@
         v-if="showEstop"
         type="button"
         class="app-header__estop app-header__estop--small"
-        :disabled="!klippyReady"
+        :disabled="!estopReady"
         :aria-label="$tc('app.general.tooltip.estop')"
         data-tid="estop"
         @click="emergencyStop()"
@@ -133,6 +136,8 @@
           @upload="handleUploadAndPrint"
         />
 
+        <quick-actions-menu v-if="showQuickActions" />
+
         <v-tooltip
           v-if="!sectionContext.foreign && printerFrame && authenticated && socketConnected && topNavPowerToggle"
           bottom
@@ -158,26 +163,6 @@
 
         <app-notification-menu v-if="!sectionContext.foreign && authenticated && socketConnected" />
 
-        <v-tooltip
-          v-if="enableKeyboardShortcuts && $vuetify.breakpoint.mdAndUp"
-          bottom
-        >
-          <template #activator="{ on, attrs }">
-            <button
-              type="button"
-              class="app-header__icon"
-              aria-label="Keyboard shortcuts"
-              data-tid="keys"
-              v-bind="attrs"
-              v-on="on"
-              @click="openKeys"
-            >
-              <frame-icon name="keyboard" />
-            </button>
-          </template>
-          <span>Keyboard shortcuts <kbd>?</kbd></span>
-        </v-tooltip>
-
         <notices-bell />
         <cloud-account-menu />
       </div>
@@ -189,7 +174,7 @@
             <button
               type="button"
               class="app-header__estop"
-              :disabled="!klippyReady"
+              :disabled="!estopReady"
               :aria-label="$tc('app.general.tooltip.estop')"
               data-tid="estop"
               v-bind="attrs"
@@ -284,6 +269,7 @@ import PendingChangesDialog from '@/components/settings/PendingChangesDialog.vue
 import AppSaveConfigAndRestartBtn from './AppSaveConfigAndRestartBtn.vue'
 import AppUploadAndPrintBtn from './AppUploadAndPrintBtn.vue'
 import PrinterSwitchButton from './PrinterSwitchButton.vue'
+import QuickActionsMenu from './QuickActionsMenu.vue'
 import { defaultState } from '@/store/layout/state'
 import FrameMixin from '@/mixins/frame'
 import ServicesMixin from '@/mixins/services'
@@ -308,7 +294,8 @@ import { pageOfRoute } from '@/router/printerPagePaths'
     PendingChangesDialog,
     AppSaveConfigAndRestartBtn,
     AppUploadAndPrintBtn,
-    PrinterSwitchButton
+    PrinterSwitchButton,
+    QuickActionsMenu
   }
 })
 export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin, BrowserMixin) {
@@ -318,8 +305,18 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     return this.isMobileViewport
   }
 
+  /** Always in the bar on a printer: it is greyed, never gone, while the printer cannot be reached. */
   get showEstop (): boolean {
-    return !this.sectionContext.foreign && this.printerFrame && this.authenticated && this.socketConnected
+    return !this.sectionContext.foreign && this.printerFrame
+  }
+
+  get estopReady (): boolean {
+    return this.authenticated && this.socketConnected && this.klippyReady
+  }
+
+  /** Quick actions are on every printer's bar; each says why it cannot run when it cannot. */
+  get showQuickActions (): boolean {
+    return !this.sectionContext.foreign && this.printerFrame
   }
 
   /** A page with no printer names itself: Printers, Fleet, Slice. */
@@ -341,10 +338,6 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
       { id: 'printers', name: 'Printers', to: '/', on: this.$route.path === '/' },
       { id: 'library', name: 'Library', to: '/library', on: this.onLibrary }
     ]
-  }
-
-  openKeys () {
-    EventBus.bus.$emit('keyboard-shortcuts')
   }
 
   openCommands () {
