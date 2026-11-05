@@ -62,6 +62,11 @@
         {{ card.creator }}
         <span class="mlib-grow" />
         <span
+          v-if="card.saves"
+          class="mlib-stat"
+          :aria-label="`${card.saves} saves`"
+        >♡ {{ count(card.saves) }}</span>
+        <span
           v-if="card.makes"
           class="mlib-stat"
         ><frame-icon

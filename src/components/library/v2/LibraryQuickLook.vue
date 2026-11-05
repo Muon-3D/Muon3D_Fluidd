@@ -242,7 +242,7 @@ export default class LibraryQuickLook extends Vue {
   get shown (): string | null { return this.pictures[this.pic] ?? null }
   get makes (): number { return this.publication?.counts?.makes ?? this.card.makes }
   get remixes (): number { return this.publication?.counts?.remixes ?? this.card.remixes }
-  get saves (): number { return this.publication?.counts?.saves ?? 0 }
+  get saves (): number { return this.publication?.counts?.saves ?? this.card.saves }
   get tags (): string[] { return (this.publication?.tags ?? this.card.tags).slice(0, 6) }
   get description (): string { return (this.publication?.description ?? '').trim().slice(0, 400) }
 

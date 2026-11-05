@@ -220,7 +220,11 @@
                 <span><strong>{{ p.card.creator }}</strong> {{ p.verb }} <a
                   href="#"
                   @click.prevent="open(p.card)"
-                >{{ p.card.title }}</a><template v-if="p.card.remixOf"> from {{ p.card.remixOf.title }}</template></span>
+                >{{ p.card.title }}</a><template v-if="p.card.makeOf">, from <a
+                  :href="publicationHref(p.card.makeOf.slug)"
+                  target="_blank"
+                  rel="noopener"
+                >{{ p.card.makeOf.title }}</a></template><template v-else-if="p.card.remixOf"> from {{ p.card.remixOf.title }}</template></span>
                 <span class="mlib-muted mlib-post__when">{{ ago(p.card.createdAt) }}</span>
               </header>
               <button
@@ -241,6 +245,11 @@
                 >Made for M1</span>
               </button>
               <footer class="mlib-post__foot">
+                <span
+                  v-if="p.card.saves"
+                  class="mlib-stat"
+                  :aria-label="`${p.card.saves} saves`"
+                >♡ {{ p.card.saves }}</span>
                 <span
                   v-if="p.card.makes"
                   class="mlib-stat"
@@ -483,6 +492,10 @@ export default class MuonLibrary extends Vue {
     let hash = 0
     for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
     return PALETTE[hash % PALETTE.length]
+  }
+
+  publicationHref (slug: string): string {
+    return `${LIBRARY_URL}/p/${encodeURIComponent(slug)}`
   }
 
   open (card: ShelfCard) {

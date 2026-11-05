@@ -68,6 +68,20 @@ describe('Library v2 shelves', () => {
     expect(page.cursor).toBe('p2')
   })
 
+  it('says a make as one, naming the print it was made from, with its saves', async () => {
+    const fetcher = answer({
+      '/v1/public/publications?sort=new': { items: [summary({ save_count: 7, make_of: { id: 'x', slug: 'robot', title: 'Pocket robot' } })], next_cursor: null }
+    })
+    const [post] = (await loadFeedPage(null, fetcher)).posts
+    expect(post.verb).toBe('made')
+    expect(post.card.makeOf?.title).toBe('Pocket robot')
+    expect(post.card.saves).toBe(7)
+  })
+
+  it('reads a service without save counts or makes as none', () => {
+    expect(summaryCard(summary())).toMatchObject({ saves: 0, makeOf: null })
+  })
+
   it('says how long ago', () => {
     const now = Date.parse('2026-11-05T12:00:00Z')
     expect(ago('2026-11-05T11:48:00Z', now)).toBe('12 min')

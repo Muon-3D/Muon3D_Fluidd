@@ -29,12 +29,16 @@ export interface ShelfCard {
   handle: string | null;
   makes: number;
   remixes: number;
+  /** How many people saved it (the heart); 0 from a service that doesn't say. */
+  saves: number;
   /** "2 h 5 min · 98 g · PLA", when known. */
   facts: string;
   /** Made for M1: tagged m1-ready, or a catalogue print Muon3D tested on one. */
   m1: boolean;
   tags: string[];
   remixOf: { id: string, slug: string, title: string } | null;
+  /** A make: the public print it was made from (model service KAN-1594). */
+  makeOf: { id: string, slug: string, title: string } | null;
   createdAt: string | null;
   /** Its page on library.muon3d.com. */
   href: string;
@@ -51,7 +55,9 @@ export interface PublicationSummary {
   created_at: string;
   make_count?: number;
   remix_count?: number;
+  save_count?: number;
   remix_of?: { id: string, slug: string, title: string } | null;
+  make_of?: { id: string, slug: string, title: string } | null;
   thumbnail_url?: string | null;
 }
 
@@ -91,10 +97,12 @@ export function summaryCard (item: PublicationSummary): ShelfCard {
     handle: item.creator.handle,
     makes: item.make_count ?? 0,
     remixes: item.remix_count ?? 0,
+    saves: item.save_count ?? 0,
     facts: '',
     m1: tags.includes('m1-ready'),
     tags,
     remixOf: item.remix_of ?? null,
+    makeOf: item.make_of ?? null,
     createdAt: item.created_at ?? null,
     href: `${LIBRARY_URL}/p/${encodeURIComponent(item.slug)}`
   }
@@ -117,10 +125,12 @@ export function catalogueShelfCard (item: DiscoverCatalogue): ShelfCard {
     handle: null,
     makes: 0,
     remixes: 0,
+    saves: 0,
     facts,
     m1: true,
     tags: [],
     remixOf: null,
+    makeOf: null,
     createdAt: null,
     // A catalogue entry is not a publication: `/p/` would not find it.
     href: `${LIBRARY_URL}/search?q=${encodeURIComponent(item.title)}&sources=muon3d`
@@ -179,7 +189,7 @@ export async function loadShelves (fetcher: typeof fetch = fetch, signal?: Abort
 export interface FeedPost {
   key: string;
   card: ShelfCard;
-  verb: 'shared' | 'remixed';
+  verb: 'made' | 'shared' | 'remixed';
 }
 
 export interface FeedPageOut {
@@ -187,11 +197,11 @@ export interface FeedPageOut {
   cursor: string | null;
 }
 
-/** The newest publications as posts: "Okoro shared Spiral vase". */
+/** The newest publications as posts: "Okoro shared Spiral vase", "Ines made Pocket robot". */
 export async function loadFeedPage (cursor: string | null, fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<FeedPageOut> {
   const page = await loadPublications({ sort: 'new', cursor, limit: 12 }, fetcher, signal)
   return {
-    posts: page.items.map(summaryCard).map(card => ({ key: card.key, card, verb: card.remixOf ? 'remixed' : 'shared' })),
+    posts: page.items.map(summaryCard).map(card => ({ key: card.key, card, verb: card.makeOf ? 'made' : card.remixOf ? 'remixed' : 'shared' })),
     cursor: page.next_cursor
   }
 }
