@@ -87,14 +87,16 @@ const DRAIN_MS = 2_000
 /** Failed writes in a row after which the link is given up. */
 const MAX_WRITE_FAILURES = 16
 /**
- * Pauses before the second and third GATT setup. Chrome can resolve
+ * Pauses before each further GATT setup. Chrome can resolve
  * `gatt.connect()` on a connection that is still going down: `readInfo` has
  * just hung up, or the browser is finishing its Pair step. The old connection
  * then ends, and `getPrimaryService` fails with "GATT Server is disconnected.
  * Cannot retrieve services." (Boxwood, 5 Nov 2026). A fresh connect after a
- * pause works.
+ * pause works. Windows holds the radio link about 3.3 s after the page lets
+ * go (btmon on Boxwood: last ATT 17:39:13.87, laptop's 0x13 at 17:39:17.22),
+ * so the last pause lands after that; all three fit in CONNECT_TIMEOUT_MS.
  */
-export const GATT_RETRY_MS = [750, 1500]
+export const GATT_RETRY_MS = [750, 1500, 3000]
 
 /** True when a GATT step failed because the connection went down under it. */
 export function gattWentDown (error: unknown, gatt: { connected?: boolean }): boolean {
