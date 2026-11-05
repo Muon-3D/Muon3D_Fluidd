@@ -22,6 +22,14 @@ describe('designUrl', () => {
     expect(designUrl('  ', `${PAGE}/boxwood-367a/design`)?.href).toBe(EMBED.href)
   })
 
+  it('takes the hosted console\'s Design (VUE_MUON_DESIGN_URL in deploy-control.yml)', async () => {
+    const url = designUrl('https://design.muon3d.com/embed.html', 'https://app.muon3d.com/boxwood-367a/design')
+    expect(url?.href).toBe('https://design.muon3d.com/embed.html')
+    const fetch = answer(404, '')
+    await expect(checkDesign(url, 'https://app.muon3d.com', fetch)).resolves.toBe(true)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it('takes VUE_MUON_DESIGN_URL, http(s) only, with no credentials or hash', () => {
     expect(designUrl('https://design.example/embed.html#x', PAGE)?.href).toBe('https://design.example/embed.html')
     expect(designUrl('javascript:alert(1)', PAGE)).toBeNull()
