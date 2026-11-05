@@ -40,6 +40,8 @@ interface WasmEndpoint {
   connect (printerId: string): Promise<WasmPrinter>;
   /** Takes a Web Bluetooth link to a printer (muon-link#31 on; ADR 0032 D3). */
   addLink? (role: 'central', maxSegment?: number): WasmBleLink;
+  /** Keeps a printer's connection on Bluetooth while a link is up (D-080, muon-link#128 on). */
+  pinBluetooth? (printerId: string, pinned: boolean): void;
   close (): Promise<void>;
 }
 
