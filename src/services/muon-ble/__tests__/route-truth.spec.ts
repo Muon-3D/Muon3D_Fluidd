@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   bluetoothCarrying,
   bluetoothFellBack,
+  bluetoothLinkUp,
+  CARRYING_WINDOW_MS,
   bluetoothRouteFor,
   releaseBluetoothLink,
+  remoteRouteLabel,
   stopUsingBluetoothFor,
   useBluetoothFor,
   wantsBluetoothFor
@@ -38,6 +41,45 @@ describe('the real route is the link that is up, not the click (KAN-1396)', () =
     await link!.closed
     await Promise.resolve()
     expect(bluetoothCarrying(EID)).toBe(false)
+  })
+})
+
+describe('one label for the route, from the link that is up (KAN-1566)', () => {
+  it('says Through Muon3D until the Bluetooth link is up, then Via Bluetooth, then Through Muon3D once it is gone', async () => {
+    const { endpoint } = fakeEndpoint()
+    useBluetoothFor(EID, fakePrinter().device)
+    expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+    await bluetoothRouteFor(endpoint, EID)
+    expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+    expect(remoteRouteLabel(EID.toUpperCase())).toBe('Via Bluetooth')
+    await releaseBluetoothLink(EID)
+    expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+  })
+
+  it('a link that is up but idle is standby, not the route: the relay carries it (btmon, 5 Nov)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const { endpoint } = fakeEndpoint()
+      useBluetoothFor(EID, printer.device)
+      await bluetoothRouteFor(endpoint, EID)
+      expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+      // iroh moved the connection onto the relay: no segments cross the radio.
+      await vi.advanceTimersByTimeAsync(CARRYING_WINDOW_MS + 2000)
+      expect(bluetoothLinkUp(EID)).toBe(true)
+      expect(bluetoothCarrying(EID)).toBe(false)
+      expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+      // The relay went; iroh moved back, and bytes cross the radio again.
+      printer.notify(new Uint8Array([7]))
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('says Through Muon3D with no printer', () => {
+    expect(remoteRouteLabel(null)).toBe('Through Muon3D')
   })
 })
 
