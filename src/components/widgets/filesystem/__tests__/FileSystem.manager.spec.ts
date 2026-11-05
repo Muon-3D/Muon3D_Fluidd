@@ -64,7 +64,7 @@ function mountFiles ({ path = 'gcodes', ready = true, confirm = true, folder = [
 
 describe('file manager: folders', () => {
   beforeEach(() => { vi.spyOn(SocketActions, 'serverFilesGetDirectory').mockImplementation(vi.fn() as any) })
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { vi.restoreAllMocks() })
 
   it('opens a folder when its row is clicked, and forgets the selection', () => {
     const { vm, dispatch } = mountFiles({ folder: [dir('parts')] })
@@ -98,14 +98,14 @@ describe('file manager: folders', () => {
 })
 
 describe('file manager: bulk delete', () => {
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { vi.restoreAllMocks() })
 
   it('asks once for the whole selection, counting the files and not the .. row', async () => {
     const { vm, $confirm } = mountFiles()
     vi.spyOn(SocketActions, 'serverFilesDeleteFile').mockImplementation(vi.fn() as any)
     await vm.handleRemove([up, file('a.gcode'), file('b.gcode')])
     expect($confirm).toHaveBeenCalledTimes(1)
-    expect($confirm.mock.calls[0][0]).toBe('app.general.simple_form.msg.confirm_delete:2')
+    expect(($confirm.mock.calls[0] as unknown[])[0]).toBe('app.general.simple_form.msg.confirm_delete:2')
   })
 
   it('deletes nothing when the answer is no', async () => {
@@ -129,7 +129,7 @@ describe('file manager: bulk delete', () => {
 })
 
 describe('file manager: upload', () => {
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { vi.restoreAllMocks() })
 
   it('uploads into the folder it is in and shows it is busy meanwhile', async () => {
     const { vm, dispatch } = mountFiles({ path: 'gcodes/parts' })
@@ -152,7 +152,7 @@ describe('file manager: upload', () => {
 })
 
 describe('file manager: context menu actions', () => {
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { vi.restoreAllMocks() })
 
   it('opens the menu for the row that was right-clicked, or for the whole selection', async () => {
     const { vm } = mountFiles()
