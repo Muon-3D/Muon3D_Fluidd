@@ -58,10 +58,12 @@
           data-tid="job-pause"
           @click="pauseCurrent"
         >
-          <frame-icon
-            :name="printerPaused ? 'refresh' : 'minus'"
+          <v-icon
             small
-          />{{ printerPaused ? 'Resume' : 'Pause' }}
+            class="jt__btn-icon"
+          >
+            {{ printerPaused ? '$resume' : '$pause' }}
+          </v-icon>{{ printerPaused ? 'Resume' : 'Pause' }}
         </button>
         <button
           type="button"
@@ -234,7 +236,10 @@ export default class JobTile extends Mixins(OverviewMixin) {
     const job = this.$store.state.history?.jobs?.find((j: HistoryItem) => j.status === 'in_progress' && j.filename === file)?.job_id
     const ok = await this.$confirm('The print stops and cannot be picked up again. Remove it from the plate before the next print.', { title: 'Stop this print?', buttonTrueText: 'Stop print', danger: true })
     const sameJob = job === this.$store.state.history?.jobs?.find((j: HistoryItem) => j.status === 'in_progress' && j.filename === this.jobFile)?.job_id
-    if (ok && sameJob && target === this.panelTarget && file === this.jobFile && (this.printStats.total_duration ?? 0) >= duration && this.controlReady && (this.printerPrinting || this.printerPaused)) SocketActions.printerPrintCancel()
+    if (ok && sameJob && target === this.panelTarget && file === this.jobFile && (this.printStats.total_duration ?? 0) >= duration && this.controlReady && (this.printerPrinting || this.printerPaused)) {
+      SocketActions.printerPrintCancel()
+      this.addConsoleEntry('CANCEL_PRINT')
+    }
   }
 }
 </script>
@@ -252,6 +257,7 @@ export default class JobTile extends Mixins(OverviewMixin) {
 .jt__pct { color: var(--m3d-accent); font-family: var(--m3d-font-rounded); font-size: 40px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .jt__pct small { font-size: 20px; }
 .jt__pct--paused { color: var(--m3d-warning); }
+.jt__btn-icon { color: inherit !important; margin-right: 6px; }
 .jt__layer { color: var(--m3d-text-muted); font-size: 13px; }
 .jt__bar { height: 6px; }
 .jt__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }

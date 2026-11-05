@@ -86,6 +86,7 @@ export function tileMount (store: ReturnType<typeof tileStore>, extra: Record<st
     },
     stubs: {
       'frame-icon': true,
+      'v-icon': { template: '<i class="v-icon"><slot /></i>' },
       'router-link': { props: ['to'], template: '<a :href="to"><slot /></a>' }
     },
     ...extra
