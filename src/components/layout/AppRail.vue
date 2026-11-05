@@ -121,6 +121,7 @@ import FrameMixin from '@/mixins/frame'
 import BrowserMixin from '@/mixins/browser'
 import { ALL_PRINTERS_KEY, LIBRARY_KEY, type Section } from '@/router/printerSections'
 import { cloudState } from '@/services/muon-cloud/state'
+import { remoteRouteLabel } from '@/services/muon-ble/link'
 import { hostOf } from '@/services/muon-cloud/directory'
 import { probeSlicer } from '@/services/slicer-bridge/slicerUrl'
 import AppRailLink from './AppRailLink.vue'
@@ -172,7 +173,7 @@ export default class AppRail extends Mixins(FrameMixin, BrowserMixin) {
   }
 
   get routeTitle (): string {
-    return this.remote ? 'Through Muon3D' : 'On this network'
+    return this.remote ? remoteRouteLabel(cloudState.activePrinterId) : 'On this network'
   }
 
   get routeDetail (): string {

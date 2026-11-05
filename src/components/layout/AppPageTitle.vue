@@ -57,6 +57,7 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import FrameMixin from '@/mixins/frame'
+import { remoteRouteLabel } from '@/services/muon-ble/link'
 import BrowserMixin from '@/mixins/browser'
 import { pageMatches, type SectionPage } from '@/router/printerSections'
 import ControlActions from '@/components/control/ControlActions.vue'
@@ -128,7 +129,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     if (this.overviewHome) {
       if (this.foreignRecord) return ''
       const file = this.$store.state.printer.printer.print_stats?.filename as string | undefined
-      const route = cloudState.activePrinterId ? 'Through Muon3D' : 'On this network'
+      const route = cloudState.activePrinterId ? remoteRouteLabel(cloudState.activePrinterId) : 'On this network'
       if ((this.printerPrinting || this.printerPaused) && file) {
         const duration = this.$store.state.printer.printer.print_stats?.total_duration as number | undefined
         const started = duration ? new Date(Date.now() - duration * 1000) : null
