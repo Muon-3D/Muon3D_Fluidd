@@ -71,6 +71,7 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import MaintenanceMixin from '@/mixins/maintenance'
 import { materialChoices, type MaterialChoice } from '@/services/control/model'
+import { EventBus } from '@/eventBus'
 import { findFilamentMacro, quickActions, type QuickAction } from '@/services/quick-actions/model'
 
 interface MacroLike {
@@ -127,19 +128,51 @@ export default class QuickActionsMenu extends Mixins(MaintenanceMixin) {
     this.open = false
     switch (action.id) {
       case 'home': return this.home()
-      case 'preheat': return this.preheatChoice && this.heatFor(this.preheatChoice)
+      case 'preheat': return this.preheat()
       case 'cool': return this.coolDown()
       case 'filament': return this.changeFilament()
       case 'level': return this.levelRow && this.runCheck(this.levelRow)
       case 'motors': return this.motorsOff()
-      case 'restart': return this.sendTypedGcode('RESTART')
+      case 'restart': return this.restart()
     }
   }
 
-  /** As Control's Filament card runs it: a macro that takes a TEMP is told the material's nozzle heat. */
-  changeFilament () {
+  /** Mid-print this overwrites the running print's temperatures, so it asks first, as cool down does. */
+  async preheat () {
+    const choice = this.preheatChoice
+    if (!choice || !this.controlReady) return
+    const target = this.panelTarget
+    if (this.busy) {
+      const ok = await this.$confirm('The printer is busy. The nozzle and bed go to the new temperatures, which can spoil the print.', {
+        title: 'Change the temperatures of the running print?',
+        buttonTrueText: 'Change them',
+        buttonFalseText: 'Leave them',
+        danger: true
+      })
+      if (!ok || target !== this.panelTarget) return
+    }
+    this.heatFor(choice)
+  }
+
+  /** Restart asks first (in sendTypedGcode); when it is refused, say why. */
+  async restart () {
+    if (await this.sendTypedGcode('RESTART')) return
+    if (this.commandRefusal) EventBus.$emit(this.commandRefusal, { type: 'error', timeout: 6000 })
+  }
+
+  /** As Control's Filament card runs it: a macro that takes a TEMP is told the material's nozzle heat. Mid-print it pauses the print, so it asks first. */
+  async changeFilament () {
     const macro = this.changeMacro
     if (!macro || !this.controlReady) return
+    const target = this.panelTarget
+    if (this.busy) {
+      const ok = await this.$confirm('The print pauses so the filament can be changed. Follow the steps on the printer, then resume.', {
+        title: 'Pause the print to change filament?',
+        buttonTrueText: 'Pause and change',
+        buttonFalseText: 'Keep printing'
+      })
+      if (!ok || target !== this.panelTarget || !this.controlReady) return
+    }
     const temp = this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
     this.sendGcode(macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name)
   }

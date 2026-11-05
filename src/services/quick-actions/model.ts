@@ -52,7 +52,8 @@ export function quickActions (c: QuickActionContext): QuickAction[] {
       label: c.preheatName ? `Preheat ${c.preheatName}` : 'Preheat',
       icon: 'flame',
       reason: locked || (c.preheatName ? '' : 'No material is set up to preheat for.'),
-      confirms: false
+      // Mid-print it overwrites the running print's temperatures.
+      confirms: c.busy
     },
     { id: 'cool', label: 'Cool down', icon: 'snow', reason: locked, confirms: false },
     {
@@ -60,7 +61,8 @@ export function quickActions (c: QuickActionContext): QuickAction[] {
       label: 'Change filament',
       icon: 'spool',
       reason: locked || (c.changeFilament ? '' : 'This printer has no filament change macro (M600).'),
-      confirms: false
+      // Mid-print M600 pauses the print.
+      confirms: c.busy
     },
     {
       id: 'level',
