@@ -295,18 +295,39 @@
       </template>
     </template>
 
-    <!-- YOURS: the host's own Library (sign in, sections, your prints). -->
-    <slot
-      v-else
-      name="yours"
-    />
+    <!-- YOURS: collections and saves, then the host's own Library (sign in, sections, your prints). -->
+    <template v-else>
+      <library-yours-shelves
+        v-if="signedIn"
+        ref="yours"
+        :printer-name="printerName"
+        :printing="printing"
+        @print="print"
+        @open="open"
+        @collections="collections = $event"
+      />
+      <section class="mlib-shelf mlib-shelf--own">
+        <header
+          v-if="signedIn"
+          class="mlib-shelf__head"
+        >
+          <h2>Your prints</h2>
+          <span class="mlib-muted">Sliced and saved from Slice, on every printer</span>
+        </header>
+        <slot name="yours" />
+      </section>
+    </template>
 
     <library-quick-look
       v-if="looking"
       :key="looking.key"
       :card="looking"
       :printer-name="printerName"
+      :signed-in="signedIn"
+      :collections="collections"
       @close="looking = null"
+      @saved="onSaved"
+      @collections="collections = $event"
       @print="printFromLook"
     />
   </div>
@@ -316,7 +337,8 @@
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryModelCard from './LibraryModelCard.vue'
 import LibraryQuickLook from './LibraryQuickLook.vue'
-import type { LibraryItem } from '@/services/library/api'
+import LibraryYoursShelves from './LibraryYoursShelves.vue'
+import type { CommunityCollection, LibraryItem } from '@/services/library/api'
 import { LIBRARY_URL } from '@/services/library/discover'
 import { lastEvent, nozzleText, printFacts } from '@/services/library/format'
 import { thumbnailFor } from '@/services/library/thumbnails'
@@ -343,7 +365,7 @@ const PALETTE = ['#ff9f0a', '#ff453a', '#64d2ff', '#30d158', '#bf5af2', '#80d6d1
  * prints from where it is, through the host: `print` and `print-item`.
  * No router in here; it sizes to its container.
  */
-@Component({ components: { LibraryModelCard, LibraryQuickLook } })
+@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves } })
 export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: 'page' }) readonly context!: 'page' | 'control'
   @Prop({ type: String, default: null }) readonly printerId!: string | null
@@ -352,6 +374,8 @@ export default class MuonLibrary extends Vue {
   @Prop({ type: Object, default: null }) readonly buildVolume!: { x: number, y: number, z: number } | null
   /** Which place is shown: the host owns it (Control keeps it in the address). */
   @Prop({ type: String, default: 'discover' }) readonly tab!: LibraryTab
+  /** Signed in: Yours shows collections and saves, the quick look a heart. */
+  @Prop({ type: Boolean, default: false }) readonly signedIn!: boolean
   /** The print to continue with (the last one saved), or none. */
   @Prop({ type: Object, default: null }) readonly continueItem!: LibraryItem | null
 
@@ -365,6 +389,7 @@ export default class MuonLibrary extends Vue {
   feedCursor: string | null = null
   feedBusy = false
   looking: ShelfCard | null = null
+  collections: CommunityCollection[] = []
   /** The card whose print is being read, for Print. */
   printing = ''
   libraryUrl = LIBRARY_URL
@@ -509,6 +534,11 @@ export default class MuonLibrary extends Vue {
     let hash = 0
     for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
     return PALETTE[hash % PALETTE.length]
+  }
+
+  /** A heart or a collection changed in the quick look: Yours reads its shelves again. */
+  onSaved () {
+    (this.$refs.yours as { load?: () => void } | undefined)?.load?.()
   }
 
   publicationHref (slug: string): string {
