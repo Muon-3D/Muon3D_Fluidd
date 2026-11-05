@@ -216,11 +216,13 @@ export async function openBleLink (
   const setUpGatt = async () => {
     let dropped = false
     const onDrop = () => { dropped = true }
+    // A call, not an inline test: the connection can end at any await.
+    const wentDown = () => dropped || gatt.connected === false
     device.addEventListener('gattserverdisconnected', onDrop)
     let txChar: GattCharacteristic | null = null
     try {
       const server = await gatt.connect()
-      if (dropped || gatt.connected === false) throw new GattDropped()
+      if (wentDown()) throw new GattDropped()
       const service = await server.getPrimaryService(MUON_BLE_SERVICE)
       // One at a time: some platforms refuse concurrent GATT operations.
       const infoChar = await service.getCharacteristic(MUON_BLE_INFO)
@@ -232,7 +234,7 @@ export async function openBleLink (
       // Listen before subscribing, so no notification is missed.
       txChar.addEventListener('characteristicvaluechanged', onNotification)
       if (typeof txChar.startNotifications === 'function') await txChar.startNotifications()
-      if (dropped || gatt.connected === false) throw new GattDropped()
+      if (wentDown()) throw new GattDropped()
       return { info: decoded, rx: rxChar, tx: txChar }
     } catch (error) {
       txChar?.removeEventListener('characteristicvaluechanged', onNotification)
