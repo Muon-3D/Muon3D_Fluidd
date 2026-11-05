@@ -28,7 +28,7 @@ function mountJobs (mobile = false, access: { control: boolean, target: string, 
       apiConnected: ready,
       authenticated: ready
     },
-    stubs: ['router-link', 'frame-icon', 'jobs-table', 'job-viewer', 'job-detail', 'seg-picker', 'tone-pill', 'job-card']
+    stubs: ['router-link', 'frame-icon', 'jobs-table', 'file-system', 'job-viewer', 'job-detail', 'seg-picker', 'tone-pill', 'job-card']
   })
 }
 
@@ -36,12 +36,32 @@ describe('Jobs one layout', () => {
   beforeEach(() => { vi.spyOn(SocketActions, 'serverFilesGetDirectory').mockImplementation(vi.fn() as any) })
   afterEach(() => { controlPreferenceStore.state.folds = {}; vi.restoreAllMocks() })
 
-  it.each([false, true])('offers Pictures, List and Table with legacy Pro=%s', pro => {
+  it.each([false, true])('offers Files, Pictures, List and Table with legacy Pro=%s', pro => {
     localStorage.setItem('muon3d.pro', pro ? '1' : '0')
     const wrapper = mountJobs()
-    expect((wrapper.vm as any).viewOptions.map((v: any) => v.label)).toEqual(['Pictures', 'List', 'Table'])
+    expect((wrapper.vm as any).viewOptions.map((v: any) => v.label)).toEqual(['Files', 'Pictures', 'List', 'Table'])
     expect(wrapper.find('[data-tid="jobs-up-next"]').exists()).toBe(true)
     wrapper.destroy()
+  })
+
+  it('opens on the file manager, and Pictures stays a choice that is remembered', async () => {
+    const wrapper = mountJobs()
+    expect((wrapper.vm as any).view).toBe('files')
+    expect(wrapper.find('[data-tid="jobs-file-manager"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tid="jobs-table"]').exists()).toBe(false)
+    controlPreferenceStore.state.folds = { 'jobs.view.pictures': true }
+    await wrapper.vm.$nextTick()
+    expect((wrapper.vm as any).view).toBe('pictures')
+    const choose = { list: vi.fn(), table: vi.fn(), pictures: vi.fn() }
+    ;(wrapper.vm as any).setView('files', choose.list, choose.table, choose.pictures)
+    expect(choose.pictures).toHaveBeenCalledWith(false)
+    expect((wrapper.vm as any).selectedView(false, false, false)).toBe('files')
+  })
+
+  it('shows a phone the list, not the file manager table', () => {
+    const wrapper = mountJobs(true)
+    expect((wrapper.vm as any).effectiveView).toBe('list')
+    expect(wrapper.find('[data-tid="jobs-file-manager"]').exists()).toBe(false)
   })
 
   it('keeps the selected desktop table view while showing list on a phone', async () => {
