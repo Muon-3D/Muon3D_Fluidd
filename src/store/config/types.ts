@@ -111,6 +111,8 @@ export interface GeneralConfig {
   printProgressCalculation: PrintProgressCalculation[];
   printEtaCalculation: PrintEtaCalculation[];
   enableDiagnostics: boolean;
+  /** Overview shows a 3D view / Camera switch when a camera is configured. */
+  overviewCameraToggle: boolean;
   thumbnailSize: number;
   colorPickerValueRange: ColorPickerValueRange;
   /** The material loaded, for a printer without [save_variables] (the M1 keeps it there as muon_material). */
