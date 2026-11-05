@@ -1,6 +1,6 @@
 import type { Commit } from 'vuex'
 import type { RootState } from './types'
-import type { ChartData } from './charts/types'
+import { discoverSeries, recordSample } from '@/services/charts/series'
 
 /** Minimum spacing of temperature history samples. */
 export const CHART_SAMPLE_INTERVAL_MS = 1000
@@ -125,36 +125,15 @@ export const handleSystemStatsChange = (payload: any, state: RootState, commit: 
  * Prepare packet data for a chart entry.
  * Every packet should contain an entry for all known sensors we want to track.
  */
-export const handleAddChartEntry = (retention: number, state: RootState, commit: Commit, getters: any) => {
-  const configureChartEntry = () => {
-    const date = new Date()
-    const r: ChartData = {
-      date
-    }
-
-    const keys: string[] = getters.getChartableSensors
-
-    keys.forEach((key) => {
-      const temp = state.printer.printer[key].temperature
-      const target = state.printer.printer[key].target
-      const power = state.printer.printer[key].power
-      const speed = state.printer.printer[key].speed
-      r[key] = temp
-      if (target != null) r[`${key}Target`] = target
-      if (power != null) r[`${key}Power`] = power
-      if (speed != null) r[`${key}Speed`] = speed
-    })
-
-    return r
-  }
-
+export const handleAddChartEntry = (retention: number, state: RootState, commit: Commit) => {
   // Klipper reports every 250 ms or faster, once per subscribed object. History is one
   // sample per second, so a burst of status updates adds at most one entry per second.
   const last = state.charts.chart[state.charts.chart.length - 1]
   if (last && Date.now() - last.date.valueOf() < CHART_SAMPLE_INTERVAL_MS) return
 
   if (state.charts.ready) {
-    const data = configureChartEntry()
+    // Every heater, sensor and fan Klipper reports, found afresh so a hot-plugged one is recorded too.
+    const data = recordSample(state.printer.printer, discoverSeries(state.printer.printer))
     commit('charts/setChartEntry', {
       type: 'chart',
       data,

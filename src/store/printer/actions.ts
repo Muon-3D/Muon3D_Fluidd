@@ -166,7 +166,7 @@ export const actions: ActionTree<PrinterState, RootState> = {
         rootStateServerConfig?.data_store?.temperature_store_size ??
         rootStateServerConfig?.server?.temperature_store_size ??
         Globals.CHART_HISTORY_RETENTION
-      handleAddChartEntry(retention, rootState, commit, getters)
+      handleAddChartEntry(retention, rootState, commit)
       dispatch('onDiagnosticsMetricsUpdate')
     }
   },
