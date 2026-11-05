@@ -20,7 +20,7 @@ const nearby = vi.hoisted(() => ({
 // Only when it starts searching is under test.
 vi.mock('@/services/muon-cloud/discovery', () => discovery)
 vi.mock('@/services/muon-ble/nearby', () => nearby)
-vi.mock('@/services/muon-ble/link', () => ({ useBluetoothFor: vi.fn(), wantsBluetoothFor: vi.fn(() => false) }))
+vi.mock('@/services/muon-ble/link', () => ({ useBluetoothFor: vi.fn(), wantsBluetoothFor: vi.fn(() => false), bluetoothCarrying: vi.fn(() => false) }))
 vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { account: null, printers: [], status: {}, activePrinterId: null } }))
 vi.mock('@/services/muon-cloud/activate', () => ({
   activateCloudPrinter: vi.fn(),
