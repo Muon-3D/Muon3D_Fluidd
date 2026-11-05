@@ -67,8 +67,8 @@
         >
           <span class="mlib-col__mosaic">
             <img
-              v-for="src in mosaic(c.id)"
-              :key="src"
+              v-for="(src, i) in mosaic(c.id)"
+              :key="i"
               :src="src"
               alt=""
             >
@@ -98,11 +98,11 @@
         <library-model-card
           v-for="card in shelf.cards"
           :key="card.key"
-          :card="card"
+          :card="withPicture(card)"
           :printer-name="printerName"
           :busy="printing === card.key"
-          @print="$emit('print', $event)"
-          @open="$emit('open', $event)"
+          @print="$emit('print', withPicture($event))"
+          @open="$emit('open', withPicture($event))"
         />
       </div>
     </section>
@@ -110,84 +110,105 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryModelCard from './LibraryModelCard.vue'
 import { describeLibraryError, type CommunityCollection, type CommunitySave } from '@/services/library/api'
-import { safePicture } from '@/services/library/discover'
 import { libraryClient } from '@/services/library/store'
-import { saveCard, type ShelfCard } from '@/services/library/shelves'
+import { publicationPicture, saveCard, type ShelfCard } from '@/services/library/shelves'
+
+/** How many saved public prints have their picture read (the service sends none for them). */
+const PICTURES = 24
 
 /**
  * Yours, above your own prints: your collections (mosaic tiles; one opened
  * shows its prints) and what you saved from Discover, as cards that print
- * from where they are. Signed in only; the host shows it then.
+ * from where they are. Signed in only; MuonLibrary owns the collection list
+ * (the quick look's Add to… needs it on Discover too) and reads it again on
+ * `changed`.
  */
 @Component({ components: { LibraryModelCard } })
 export default class LibraryYoursShelves extends Vue {
   @Prop({ type: String, default: null }) readonly printerName!: string | null
   /** The card whose print is being read (MuonLibrary's), for its Print button. */
   @Prop({ type: String, default: '' }) readonly printing!: string
+  @Prop({ type: Array, default: () => [] }) readonly collections!: CommunityCollection[]
 
-  collections: CommunityCollection[] = []
-  pictures: Record<string, string[]> = {}
+  /** Each collection's cards, read for its mosaic and when opened. */
+  members: Record<string, ShelfCard[]> = {}
+  /** Pictures of saved public prints, by publication id. */
+  pictures: Record<string, string | null> = {}
   saved: ShelfCard[] = []
-  opened: ShelfCard[] = []
   openId = ''
   loaded = false
   naming = false
   name = ''
   busy = false
   error = ''
+  /** The newest read: an older, slower answer must not overwrite it. */
+  private reads = 0
 
   created () {
-    this.load()
+    this.refresh()
   }
 
-  async load () {
+  /** Saved, and every collection's prints. After a heart or Add to… too. */
+  async refresh () {
+    const read = ++this.reads
     this.error = ''
     try {
-      const client = libraryClient()
-      const [collections, saved] = await Promise.all([client.collections(), client.saved()])
-      this.collections = Array.isArray(collections.collections) ? collections.collections : []
-      this.saved = (Array.isArray(saved.saves) ? saved.saves : []).map(saveCard).filter((card): card is ShelfCard => !!card)
-      this.loaded = true
-      // Each tile's mosaic: its first four pictures.
-      await Promise.all(this.collections.slice(0, 12).map(async c => {
-        const detail = await client.collection(c.id).catch(() => null)
-        const pics = (detail?.items ?? []).map(item => safePicture(item.card.thumbnail_url)).filter((url): url is string => !!url)
-        this.$set(this.pictures, c.id, pics.slice(0, 4))
-      }))
+      const page = await libraryClient().saved()
+      if (read !== this.reads) return
+      this.saved = cards(page.saves)
     } catch (error) {
-      this.error = describeLibraryError(error)
-      this.loaded = true
+      if (read === this.reads) this.error = describeLibraryError(error)
     }
+    await this.readMembers(read)
+    if (read === this.reads) this.loaded = true
+  }
+
+  @Watch('collections')
+  onCollections () {
+    this.readMembers(this.reads)
+  }
+
+  async readMembers (read: number) {
+    await Promise.all(this.collections.slice(0, 12).map(async c => {
+      const detail = await libraryClient().collection(c.id).catch(() => null)
+      if (read !== this.reads || !detail) return
+      this.$set(this.members, c.id, cards(detail.items.map(item => ({ id: item.save_id, target: item.target, card: item.card, created_at: '' }))))
+    }))
+    this.readPictures()
+  }
+
+  /** The service sends no picture for a saved public print: its own page has them. */
+  async readPictures () {
+    const all = [...this.saved, ...Object.values(this.members).flat()]
+    const wanted = all.filter(card => card.kind === 'publication' && !card.picture && !(card.id in this.pictures))
+      .map(card => card.id)
+      .filter((id, i, ids) => ids.indexOf(id) === i)
+      .slice(0, PICTURES)
+    for (const id of wanted) this.$set(this.pictures, id, null)
+    await Promise.all(wanted.map(async id => {
+      this.$set(this.pictures, id, await publicationPicture(id).catch(() => null))
+    }))
+  }
+
+  withPicture (card: ShelfCard): ShelfCard {
+    return card.picture || !this.pictures[card.id] ? card : { ...card, picture: this.pictures[card.id] }
   }
 
   mosaic (id: string): string[] {
-    return this.pictures[id] ?? []
+    return (this.members[id] ?? []).map(card => this.withPicture(card).picture).filter((url): url is string => !!url).slice(0, 4)
   }
 
   get shelf (): { title: string, sub: string, cards: ShelfCard[] } {
     const open = this.collections.find(c => c.id === this.openId)
-    if (open) return { title: open.name, sub: `${open.item_count} ${open.item_count === 1 ? 'print' : 'prints'}`, cards: this.opened }
+    if (open) return { title: open.name, sub: `${open.item_count} ${open.item_count === 1 ? 'print' : 'prints'}`, cards: this.members[open.id] ?? [] }
     return { title: 'Saved', sub: 'From Discover', cards: this.saved }
   }
 
-  async toggle (id: string) {
-    if (this.openId === id) {
-      this.openId = ''
-      return
-    }
-    this.openId = id
-    this.opened = []
-    try {
-      const detail = await libraryClient().collection(id)
-      if (this.openId !== id) return
-      this.opened = detail.items.map(item => saveCard({ id: item.save_id, target: item.target, card: item.card, created_at: '' } as CommunitySave))
-        .filter((card): card is ShelfCard => !!card)
-    } catch (error) {
-      if (this.openId === id) this.error = describeLibraryError(error)
-    }
+  toggle (id: string) {
+    this.openId = this.openId === id ? '' : id
   }
 
   async startNaming () {
@@ -203,16 +224,19 @@ export default class LibraryYoursShelves extends Vue {
     this.busy = true
     this.error = ''
     try {
-      const made = await libraryClient().createCollection(name)
-      this.collections = [made, ...this.collections]
+      await libraryClient().createCollection(name)
       this.naming = false
-      this.$emit('collections', this.collections)
+      this.$emit('changed')
     } catch (error) {
       this.error = describeLibraryError(error)
     } finally {
       this.busy = false
     }
   }
+}
+
+function cards (saves: CommunitySave[] | undefined): ShelfCard[] {
+  return (Array.isArray(saves) ? saves : []).map(saveCard).filter((card): card is ShelfCard => !!card)
 }
 </script>
 

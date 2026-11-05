@@ -201,8 +201,13 @@ export interface CommunitySave {
     title: string;
     thumbnail_url?: string | null;
     creator?: string | null;
+    /** A publication's is relative (`/p/<slug>`); a catalogue or source print's is its own page. */
     url?: string | null;
-    available: boolean;
+    source?: string;
+    /** What the service sends (src/saves.rs `Card`). */
+    availability?: 'available' | 'unavailable';
+    /** Older answers' name for it. */
+    available?: boolean;
   };
   created_at: string;
 }
@@ -245,8 +250,13 @@ export function savedRows (page: CommunitySavesPage): SavedRow[] {
     thumbnailUrl: card.thumbnail_url ?? null,
     creator: card.creator ?? null,
     url: card.url ?? null,
-    available: card.available
+    available: isAvailable(card)
   }))
+}
+
+/** Whether a save's print can still be seen: `availability`, or an older answer's `available`. */
+export function isAvailable (card: CommunitySave['card']): boolean {
+  return card.availability ? card.availability === 'available' : card.available === true
 }
 
 /**
