@@ -262,7 +262,7 @@ export default class FilesMixin extends Vue {
   }
 
   // Upload some files.
-  async uploadFiles (files: FileList | File[] | FileWithPath[], path: string, root: string, andPrint: boolean, canContinue: () => boolean = () => true): Promise<boolean> {
+  async uploadFiles (files: FileList | File[] | FileWithPath[], path: string, root: string, andPrint: boolean, canContinue: () => boolean = () => true): Promise<string[] | false> {
     const pendingFiles = Array.from(files as ArrayLike<File | FileWithPath>)
     // For each file, adds the associated state.
     for (const file of pendingFiles) {
@@ -287,6 +287,8 @@ export default class FilesMixin extends Vue {
     // So instead, upload sequentially waiting for moonraker to finish
     // processing of each file.
     if (files.length > 1) andPrint = false
+    // The files that really reached the printer: a cancelled or failed one is left out.
+    const uploaded: string[] = []
     for (const [index, file] of pendingFiles.entries()) {
       const [fullPath, fileObject] = this.getFullPathAndFile(path, file)
 
@@ -309,6 +311,7 @@ export default class FilesMixin extends Vue {
       if (fileState && !fileState?.cancelled) {
         try {
           await this.uploadFile(fileObject, fullPath, root, andPrint)
+          uploaded.push(filepath)
         } catch (error: unknown) {
           consola.error('[FileUpload] file', error)
         }
@@ -316,6 +319,6 @@ export default class FilesMixin extends Vue {
         this.$store.dispatch('files/removeFileUpload', filepath)
       }
     }
-    return true
+    return uploaded
   }
 }
