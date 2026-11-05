@@ -13,7 +13,9 @@ it('mounts and unmounts in a browser with no 2D canvas, without an error or a st
   const store: any = {
     state: Vue.observable({ printer: { printer }, config: { uiSettings: { theme: { isDark: false } } } }),
     getters: Vue.observable({ 'charts/getChartData': [], 'charts/getChartRetention': 1200, 'charts/getSelectedLegends': {} }),
-    dispatch: vi.fn(), commit: vi.fn(), subscribe: vi.fn(() => vi.fn())
+    dispatch: vi.fn(),
+    commit: vi.fn(),
+    subscribe: vi.fn(() => vi.fn())
   }
   const host = document.createElement('div')
   document.body.appendChild(host)
