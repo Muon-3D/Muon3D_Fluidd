@@ -1,13 +1,30 @@
 import { THREE, m1, type M1Root } from './load'
-import { placeModel, type Calibration } from './pose'
+import { placeModel, type Calibration, type ModelPlacement, type ModelPose } from './pose'
 import type { Toolpath } from './toolpath'
 import type { LiveSync } from './live-sync'
 import { middleHeight, stripsLit, tapColour, tapKey, type LedStrip, type PlateTap, type ScreenState } from './live-state'
 import { Y_TOWARD_FRONT } from '@/services/machine/orientation'
 import { buildAccessories } from './accessory-parts'
-import { CROSSFADE_MS } from './accessory-motion'
+import { CROSSFADE_MS, type AccessoryFrame } from './accessory-motion'
 import { CONTENTS_ORDER, flattenGlass } from './glass-material'
 import { createRenderGate } from './render-gate'
+import { createFrameLoop } from './frame-loop'
+import { FrameWatch, wantsCheapGlass } from './glass-cost'
+import { placeAccurate } from './accurate/klipper-map'
+import type { AccurateRig } from './accurate/rig'
+
+/** Frees a model's GPU resources: geometries, materials, their textures, and a rigged mesh's bone texture. */
+function disposeTree (root: THREE.Object3D) {
+  root.traverse(o => {
+    const mesh = o as THREE.SkinnedMesh
+    mesh.geometry?.dispose()
+    if (mesh.isSkinnedMesh) mesh.skeleton?.dispose()
+    for (const m of ([] as THREE.Material[]).concat(mesh.material ?? [])) {
+      for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose()
+      m.dispose()
+    }
+  })
+}
 
 /**
  * The live M1 on a stage: the photoreal model, lit as its product shots
@@ -57,6 +74,54 @@ const MAX_TAPS = 256
 
 /** The share of the stage the machine fills, edge to edge. */
 const FILL = 0.86
+
+/** The accurate model gets this long to load before the simple one is shown instead. */
+const ACCURATE_TIMEOUT_MS = 20000
+
+/**
+ * The model on the stage, whichever it is: the accurate M1 (a GLB, loaded
+ * when the view first opens) or the simple one built in code, which is also
+ * what shows if the GLB can't load.
+ */
+interface Rig {
+  kind: 'pending' | 'accurate' | 'simple';
+  root: THREE.Object3D;
+  /** The plate and what hangs from it: the print, the loose lines, the touches. */
+  cargo: THREE.Object3D;
+  /** Print coordinates to the cargo's space. */
+  printFrame: THREE.Matrix4;
+  place: (pose: ModelPose) => ModelPlacement;
+  /** Poses the model and lights its strips. */
+  show: (placement: ModelPlacement, led: boolean) => void;
+  setSpool: (shown: boolean) => void;
+  setScreen: (screen: ScreenState) => void;
+  setLeds: (left: LedStrip, right: LedStrip) => void;
+  apply: (accessories: AccessoryFrame, partGone: boolean) => void;
+  plateOff: () => number;
+  plateOffBox: THREE.Box3;
+  setColour: (colour: number) => void;
+  /** Swaps the transmissive glass for a plain one, if this model has any. */
+  useCheapGlass: () => void;
+}
+
+/** ?m1glass=cheap or real forces the glass plate's kind, for measuring; otherwise the device decides. */
+function glassOverride (): 'cheap' | 'real' | null {
+  try {
+    const v = new URLSearchParams(location.search).get('m1glass')
+    return v === 'cheap' || v === 'real' ? v : null
+  } catch {
+    return null
+  }
+}
+
+/** Whether the page asked for the simple model: ?m1model=simple, or localStorage m1model=simple. */
+function wantsSimpleModel (): boolean {
+  try {
+    return new URLSearchParams(location.search).get('m1model') === 'simple' || localStorage.getItem('m1model') === 'simple'
+  } catch {
+    return false
+  }
+}
 
 /** The studio the model is lit by: a soft sky, a grey horizon and a darker floor, with softboxes. */
 function studioEnv (renderer: THREE.WebGLRenderer): THREE.Texture {
@@ -289,47 +354,119 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   ground.receiveShadow = true
   scene.add(ground)
 
-  const mats = m1().buildMaterials()
-  flattenGlass(mats)
-  const model: M1Root = m1().build(mats)
-  scene.add(model)
-  // Materials that lean on scene.environment lose their own envMapIntensity; giving each the map keeps it.
-  model.traverse(o => {
-    const mesh = o as THREE.Mesh
-    if (!mesh.isMesh) return
-    for (const m of ([] as THREE.Material[]).concat(mesh.material)) {
-      const std = m as THREE.MeshStandardMaterial
-      if (std && std.envMapIntensity !== undefined && !std.envMap) {
-        std.envMap = env
-        std.needsUpdate = true
-      }
-    }
-  })
-  const state = model.userData.state
-  state.showPrint = false
-  state.showSpool = true
-  const { cal, printFrame } = calibrate(model, mats)
-  model.userData.apply()
-
   // The part, the lines no file drew, and the line being laid now, all in the filament's colour.
   const partMaterial = new THREE.LineBasicMaterial({ color: 0xc00a66, transparent: true })
   const tapMaterial = new THREE.MeshBasicMaterial({ toneMapped: false, transparent: true })
-  // The plate coming off and going back, the hose's end, the spool and the filament (accessory-parts.ts).
-  const parts = buildAccessories(model, mats, opacity => {
-    partMaterial.opacity = opacity
-    tapMaterial.opacity = opacity
-  })
-  performance.mark('m1:built')
+
+  /** The simple model, built in code (vendor/03-model.js), with its accessories. */
+  function buildSimpleRig (): Rig {
+    const mats = m1().buildMaterials()
+    flattenGlass(mats)
+    const model: M1Root = m1().build(mats)
+    scene.add(model)
+    // Materials that lean on scene.environment lose their own envMapIntensity; giving each the map keeps it.
+    model.traverse(o => {
+      const mesh = o as THREE.Mesh
+      if (!mesh.isMesh) return
+      for (const m of ([] as THREE.Material[]).concat(mesh.material)) {
+        const std = m as THREE.MeshStandardMaterial
+        if (std && std.envMapIntensity !== undefined && !std.envMap) {
+          std.envMap = env
+          std.needsUpdate = true
+        }
+      }
+    })
+    const state = model.userData.state
+    state.showPrint = false
+    state.showSpool = true
+    const { cal, printFrame } = calibrate(model, mats)
+    model.userData.apply()
+    // The plate coming off and going back, the hose's end, the spool and the filament (accessory-parts.ts).
+    const parts = buildAccessories(model, mats, opacity => {
+      partMaterial.opacity = opacity
+      tapMaterial.opacity = opacity
+    })
+    return {
+      kind: 'simple',
+      root: model,
+      cargo: parts.cargo,
+      printFrame,
+      place: pose => placeModel(pose, cal),
+      show (placement, led) {
+        Object.assign(state, placement, { led })
+        model.userData.apply()
+      },
+      setSpool (shown) { state.showSpool = shown },
+      setScreen (screen) {
+        Object.assign(state, screen)
+        model.userData.apply()
+      },
+      setLeds (left, right) { Object.assign(state, { ledLeft: left, ledRight: right }) },
+      apply: parts.apply,
+      plateOff: parts.plateOff,
+      plateOffBox: parts.plateOffBox,
+      setColour: parts.setColour,
+      useCheapGlass () { /* the simple model's glass is already flat */ }
+    }
+  }
+
+  /** The accurate model: nodes driven by name from Klipper's position, no accessories. */
+  function accurateRig (a: AccurateRig): Rig {
+    // The print rides in the opaque pass, so it is in the glass's transmission pass and seen through the plate.
+    partMaterial.transparent = false
+    tapMaterial.transparent = false
+    partMaterial.opacity = 1
+    tapMaterial.opacity = 1
+    partMaterial.needsUpdate = true
+    tapMaterial.needsUpdate = true
+    return {
+      kind: 'accurate',
+      root: a.root,
+      cargo: a.cargo,
+      printFrame: a.printFrame,
+      place: placeAccurate,
+      show: placement => a.place(placement),
+      setSpool () { /* no spool in the exterior model */ },
+      setScreen () { /* the screen is its static logo */ },
+      setLeds () { /* the strips are static */ },
+      apply () { /* no plate, hose or filament motion in the accurate model */ },
+      plateOff: () => 0,
+      plateOffBox: new THREE.Box3(),
+      setColour () { /* the print's own material carries it */ },
+      useCheapGlass () { a.useCheapGlass() }
+    }
+  }
+
+  // Until a model is adopted there is only a place to hang the print.
+  let rig: Rig = {
+    kind: 'pending',
+    root: new THREE.Group(),
+    cargo: new THREE.Group(),
+    printFrame: new THREE.Matrix4(),
+    place: pose => placeModel(pose, { plateLeft: 0, plateFront: 0, plateBack: 0, plateUnderside: 0, nozzleX: 0, nozzleZ: 0, tipTop: 0, travelX: 1, travelZ: 1, bedTravel: 1 }),
+    show () { /* nothing yet */ },
+    setSpool () { /* nothing yet */ },
+    setScreen () { /* nothing yet */ },
+    setLeds () { /* nothing yet */ },
+    apply () { /* nothing yet */ },
+    plateOff: () => 0,
+    plateOffBox: new THREE.Box3(),
+    setColour () { /* nothing yet */ },
+    useCheapGlass () { /* nothing yet */ }
+  }
+  scene.add(rig.root)
 
   /** Hangs `object` from the plate, in the printer's millimetres: it goes where the plate goes. */
   const onPlate = <T extends THREE.Object3D>(object: T): T => {
     object.matrixAutoUpdate = false
-    object.matrix.copy(printFrame)
+    object.matrix.copy(rig.printFrame)
     object.frustumCulled = false
     object.renderOrder = CONTENTS_ORDER
-    parts.cargo.add(object)
+    rig.cargo.add(object)
+    plated.push(object)
     return object
   }
+  const plated: THREE.Object3D[] = []
   let print: THREE.LineSegments | null = null
   let toolpath: Toolpath | null = null
 
@@ -355,9 +492,9 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   const camera = new THREE.PerspectiveCamera(22.4, 1, 2, 8000)
   // The stage makes room for the plate while it is off, beside the printer.
-  const onBox = shownBox(model)
-  const offBox = onBox.clone().union(parts.plateOffBox)
-  const box = onBox.clone()
+  const onBox = new THREE.Box3()
+  const offBox = new THREE.Box3()
+  const box = new THREE.Box3()
   const target = box.getCenter(new THREE.Vector3())
   const view = { theta: VIEW.theta, phi: VIEW.phi, goalTheta: VIEW.theta, goalPhi: VIEW.phi }
   let distance = 1300
@@ -382,7 +519,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     if (!width || !height) return
     camera.aspect = width / height
     camera.clearViewOffset()
-    const off = parts.plateOff()
+    const off = rig.plateOff()
     box.min.lerpVectors(onBox.min, offBox.min, off)
     box.max.lerpVectors(onBox.max, offBox.max, off)
     box.getCenter(target)
@@ -412,7 +549,6 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   let lastLeds = ''
   /** The strips' own pixels, when the printer reports them; else the light's switch alone. */
   let strips: { lit: boolean } | null = null
-  let raf = 0
   let lastDraw = 0
   let dragging = false
   let ready = false
@@ -445,14 +581,13 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       if (lastCrossfade !== -1 && lastDraw) crossfade()
       lastCrossfade = accessories.crossfade
     }
-    state.showSpool = accessories.spool
-    const placement = placeModel(f.pose, cal)
+    rig.setSpool(accessories.spool)
+    const placement = rig.place(f.pose)
     const led = strips ? strips.lit : f.pose.led
     const placed = `${placement.headX.toFixed(5)},${placement.headZ.toFixed(5)},${placement.z.toFixed(5)},${led}`
     if (placed !== lastPlacement) {
       lastPlacement = placed
-      Object.assign(state, placement, { led })
-      model.userData.apply()
+      rig.show(placement, led)
     }
     if (print && toolpath) print.geometry.setDrawRange(0, Math.min(f.printDone, toolpath.count) * 2)
     nib.visible = !!f.nib
@@ -461,7 +596,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       nibGeometry.attributes.position.needsUpdate = true
     }
     showTrace()
-    parts.apply(accessories, f.partGone)
+    rig.apply(accessories, f.partGone)
     return f.moving || accessories.animating
   }
 
@@ -506,12 +641,23 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     return pulsing
   }
 
+  const watch = new FrameWatch()
+  let cheapGlass = false
+  /** Off when the page pins the real glass (?m1glass=real), so a measurement isn't changed under it. */
+  let autoCheap = true
+  /** The glass plate goes plain on a small or weak screen, or once the frames come slowly. */
+  function cheapenGlass (why: string) {
+    if (cheapGlass) return
+    cheapGlass = true
+    rig.useCheapGlass()
+    performance.mark(`m1:cheap-glass:${why}`)
+  }
+
   function draw () {
-    raf = 0
     if (disposed || !gate.open || !ready || !width || !height) return
     const now = performance.now()
     if (!dragging && now - lastDraw < FRAME_MS - 4) {
-      raf = requestAnimationFrame(draw)
+      loop.invalidate()
       return
     }
     const d = 0.25
@@ -526,6 +672,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     renderer.render(scene, camera)
     if (first) performance.mark('m1:first-frame')
     lastDraw = now
+    if (autoCheap && rig.kind === 'accurate' && !cheapGlass) {
+      watch.push(now)
+      if (watch.slow) cheapenGlass('slow')
+    }
     viewer.onFrame?.()
     const turning = Math.abs(view.goalTheta - view.theta) > 1e-3 || Math.abs(view.goalPhi - view.phi) > 1e-3
     if (moving || pulsing || turning) invalidate()
@@ -533,19 +683,13 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   /** Asks for a frame. */
   function invalidate () {
-    if (raf || disposed) return
-    raf = requestAnimationFrame(draw)
+    loop.invalidate()
   }
 
+  // Frames are asked for only while the gate is open, and the one in flight is cancelled when it shuts.
+  const loop = createFrameLoop(draw)
   // Draws only while switched on, the tab is visible and the canvas is on screen.
-  const gate = createRenderGate(canvas, open => {
-    if (open) {
-      invalidate()
-    } else {
-      cancelAnimationFrame(raf)
-      raf = 0
-    }
-  })
+  const gate = createRenderGate(canvas, open => loop.setOpen(open))
 
   const viewer: M1Viewer = {
     onFrame: null,
@@ -559,9 +703,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     wake: invalidate,
     setPrint (path, colour) {
       partMaterial.color.setHex(colour)
-      parts.setColour(colour)
+      rig.setColour(colour)
       if (print) {
-        parts.cargo.remove(print)
+        print.removeFromParent()
+        plated.splice(plated.indexOf(print), 1)
         print.geometry.dispose()
         print = null
       }
@@ -580,8 +725,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         Math.round(screen.bedTemp), Math.round(screen.bedTarget), screen.jobName, screen.connected].join('|')
       if (shown === lastScreen) return
       lastScreen = shown
-      Object.assign(state, screen)
-      model.userData.apply()
+      rig.setScreen(screen)
       invalidate()
     },
     setLeds (left, right) {
@@ -589,7 +733,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       if (shown === lastLeds) return
       lastLeds = shown
       strips = left || right ? { lit: stripsLit(left, right) } : null
-      Object.assign(state, { ledLeft: left, ledRight: right })
+      rig.setLeds(left, right)
       lastPlacement = ''
       invalidate()
     },
@@ -618,20 +762,15 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     },
     dispose () {
       disposed = true
-      cancelAnimationFrame(raf)
+      loop.stop()
       gate.dispose()
       resize.disconnect()
       canvas.removeEventListener('pointerdown', onDown)
       canvas.removeEventListener('dblclick', onReset)
+      canvas.removeEventListener('webglcontextlost', onContextLost)
+      canvas.removeEventListener('webglcontextrestored', onContextRestored)
       // The trace's array is the printer's sync's, kept for the next view; only its GPU copy goes.
-      scene.traverse(o => {
-        const mesh = o as THREE.Mesh
-        mesh.geometry?.dispose()
-        for (const m of ([] as THREE.Material[]).concat(mesh.material ?? [])) {
-          for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose()
-          m.dispose()
-        }
-      })
+      disposeTree(scene)
       env.dispose()
       ;(scene.background as THREE.Texture | null)?.dispose()
       renderer.dispose()
@@ -657,15 +796,90 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   // has no transmission pass (glass-material.ts), so each is built once.
   // Only the shadow pass's few are left to the first frame.
   scene.background = stageBackdrop(64, 64, stageColours(canvas))
-  refit()
-  frame()
-  renderer.compileAsync(scene, camera)
-    .catch(() => undefined)
-    .then(() => {
-      performance.mark('m1:compiled')
-      ready = true
-      invalidate()
-    })
+
+  /** Puts a model on the stage: the print moves onto its plate, the stage is fitted to it, its shaders are built; then it can be drawn. */
+  function adopt (next: Rig) {
+    if (disposed) return
+    const old = rig
+    rig = next
+    if (next.root.parent !== scene) scene.add(next.root)
+    for (const o of plated) {
+      o.matrix.copy(next.printFrame)
+      next.cargo.add(o)
+    }
+    if (old !== next) {
+      scene.remove(old.root)
+      disposeTree(old.root)
+    }
+    if (next.kind === 'accurate') {
+      const forced = glassOverride()
+      if (forced) autoCheap = false
+      if (forced === 'cheap') cheapenGlass('forced')
+      else if (forced !== 'real' && wantsCheapGlass({
+        width: canvas.clientWidth || window.innerWidth,
+        cores: navigator.hardwareConcurrency,
+        memory: (navigator as unknown as { deviceMemory?: number }).deviceMemory,
+        saveData: (navigator as unknown as { connection?: { saveData?: boolean } }).connection?.saveData
+      })) cheapenGlass('device')
+    }
+    lastPlacement = ''
+    lastScreen = ''
+    lastLeds = ''
+    // Posed once so the box is the machine's; the follower puts it where the printer is on the first frame.
+    next.show(next.place({ x: null, y: null, z: null, led: false, progress: 0 }), false)
+    onBox.copy(shownBox(next.root))
+    offBox.copy(onBox).union(next.plateOffBox.isEmpty() ? onBox : next.plateOffBox)
+    box.copy(onBox)
+    performance.mark('m1:built')
+    refit()
+    frame()
+    ready = false
+    renderer.compileAsync(scene, camera)
+      .catch(() => undefined)
+      .then(() => {
+        performance.mark('m1:compiled')
+        ready = true
+        invalidate()
+      })
+  }
+
+  /** The accurate model if the GLB loads, the simple one if it can't (or if the page asks for it). */
+  async function chooseModel () {
+    if (!wantsSimpleModel()) {
+      try {
+        // Behind dynamic imports, so neither the loader nor the 3 MB asset is in the first-load bundle.
+        const [{ loadAccurateModel }, { buildAccurateRig }, { default: url }] = await Promise.all([
+          import('./accurate/gltf-load'),
+          import('./accurate/rig'),
+          import('@/assets/m1/m1-accurate.glb?url')
+        ])
+        let timer = 0
+        const timeout = new Promise<never>((_resolve, reject) => {
+          timer = window.setTimeout(() => reject(new Error('the accurate M1 took too long to load')), ACCURATE_TIMEOUT_MS)
+        })
+        const loading = loadAccurateModel(url)
+        let timedOut = false
+        // A load that loses the race is never used; whatever it later yields is freed.
+        loading.then(late => { if (timedOut) disposeTree(late.scene) }, () => {})
+        const loaded = await Promise.race([loading, timeout])
+          .catch(e => { timedOut = true; throw e })
+          .finally(() => clearTimeout(timer))
+        if (disposed) {
+          disposeTree(loaded.scene)
+          return
+        }
+        const built = buildAccurateRig(loaded.scene as unknown as THREE.Group)
+        if (built.missing.length) throw new Error(`the accurate M1 lacks nodes: ${built.missing.join(', ')}`)
+        performance.mark('m1:glb-loaded')
+        adopt(accurateRig(built))
+        return
+      } catch (e) {
+        console.warn('[m1] the accurate model could not be shown; using the simple one', e)
+      }
+    }
+    if (!disposed) adopt(buildSimpleRig())
+  }
+  chooseModel().catch(e => console.warn('[m1] no model could be shown', e))
 
   // A mouse drag turns the machine; a double click puts it back.
   let drag: { x: number, y: number } | null = null
@@ -697,6 +911,21 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   }
   canvas.addEventListener('pointerdown', onDown)
   canvas.addEventListener('dblclick', onReset)
+
+  // A lost GL context (GPU reset, too many contexts) must not leave a frozen canvas:
+  // stop drawing (the loop's draw() sees ready=false) while it is gone; on restore, the simple model (cheap, no GPU state to rebuild) takes over.
+  function onContextLost (e: Event) {
+    e.preventDefault()
+    ready = false
+  }
+  function onContextRestored () {
+    if (disposed) return
+    renderer.resetState()
+    ready = false
+    adopt(buildSimpleRig())
+  }
+  canvas.addEventListener('webglcontextlost', onContextLost)
+  canvas.addEventListener('webglcontextrestored', onContextRestored)
 
   return viewer
 }
