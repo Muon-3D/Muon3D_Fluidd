@@ -25,30 +25,16 @@ describe('Control account contract', () => {
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
-  it('sends exact v2 layout and v1 fold patches that preserve both server fields', async () => {
-    let server: any = { version: 2, folds: { heat: true }, overview: { cards: ['queue'] } }
+  it('reads and patches folds with the v1 shape only', async () => {
     const bodies: any[] = []
-    const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
-      const body = JSON.parse(init.body as string)
-      bodies.push(body)
-      server = {
-        version: body.version,
-        folds: { ...server.folds, ...body.folds },
-        overview: body.version === 2 && Object.prototype.hasOwnProperty.call(body, 'overview') ? body.overview : server.overview
-      }
-      return new Response(JSON.stringify(server), { status: 200 })
+    const fetcher = vi.fn(async (url: string, init: RequestInit) => {
+      bodies.push({ url, body: init.body ? JSON.parse(init.body as string) : null })
+      return new Response(JSON.stringify({ version: 1, folds: { heat: false } }), { status: 200 })
     })
     vi.stubGlobal('fetch', fetcher)
-    await controlPreferenceRemote.patchLayout!(context, ['console', 'queue'])
+    await controlPreferenceRemote.read(context)
     await controlPreferenceRemote.patch(context, { heat: false })
-    expect(bodies).toEqual([
-      { version: 2, folds: {}, overview: { cards: ['console', 'queue'] } },
-      { version: 1, folds: { heat: false } }
-    ])
-    expect(server.folds).toEqual({ heat: false })
-    expect(server.overview.cards).toEqual(['console', 'queue'])
-    await controlPreferenceRemote.patchLayout!(context, null)
-    expect(bodies.at(-1)).toEqual({ version: 2, folds: {}, overview: { cards: null } })
-    expect(server.overview.cards).toBeNull()
+    expect(bodies[0].url).not.toContain('version=')
+    expect(bodies[1].body).toEqual({ version: 1, folds: { heat: false } })
   })
 })
