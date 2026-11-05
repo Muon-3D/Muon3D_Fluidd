@@ -13,6 +13,19 @@ import { FrameWatch, wantsCheapGlass } from './glass-cost'
 import { placeAccurate } from './accurate/klipper-map'
 import type { AccurateRig } from './accurate/rig'
 
+/** Frees a model's GPU resources: geometries, materials, their textures, and a rigged mesh's bone texture. */
+function disposeTree (root: THREE.Object3D) {
+  root.traverse(o => {
+    const mesh = o as THREE.SkinnedMesh
+    mesh.geometry?.dispose()
+    if (mesh.isSkinnedMesh) mesh.skeleton?.dispose()
+    for (const m of ([] as THREE.Material[]).concat(mesh.material ?? [])) {
+      for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose()
+      m.dispose()
+    }
+  })
+}
+
 /**
  * The live M1 on a stage: the photoreal model, lit as its product shots
  * are, in front of the stage's own backdrop. It follows its printer through
@@ -754,15 +767,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       resize.disconnect()
       canvas.removeEventListener('pointerdown', onDown)
       canvas.removeEventListener('dblclick', onReset)
+      canvas.removeEventListener('webglcontextlost', onContextLost)
+      canvas.removeEventListener('webglcontextrestored', onContextRestored)
       // The trace's array is the printer's sync's, kept for the next view; only its GPU copy goes.
-      scene.traverse(o => {
-        const mesh = o as THREE.Mesh
-        mesh.geometry?.dispose()
-        for (const m of ([] as THREE.Material[]).concat(mesh.material ?? [])) {
-          for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose()
-          m.dispose()
-        }
-      })
+      disposeTree(scene)
       env.dispose()
       ;(scene.background as THREE.Texture | null)?.dispose()
       renderer.dispose()
@@ -801,14 +809,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     }
     if (old !== next) {
       scene.remove(old.root)
-      old.root.traverse(o => {
-        const mesh = o as THREE.Mesh
-        mesh.geometry?.dispose()
-        for (const m of ([] as THREE.Material[]).concat(mesh.material ?? [])) {
-          for (const value of Object.values(m)) if (value instanceof THREE.Texture) value.dispose()
-          m.dispose()
-        }
-      })
+      disposeTree(old.root)
     }
     if (next.kind === 'accurate') {
       const forced = glassOverride()
@@ -856,9 +857,15 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         const timeout = new Promise<never>((_resolve, reject) => {
           timer = window.setTimeout(() => reject(new Error('the accurate M1 took too long to load')), ACCURATE_TIMEOUT_MS)
         })
-        const loaded = await Promise.race([loadAccurateModel(url), timeout]).finally(() => clearTimeout(timer))
+        const loading = loadAccurateModel(url)
+        let timedOut = false
+        // A load that loses the race is never used; whatever it later yields is freed.
+        loading.then(late => { if (timedOut) disposeTree(late.scene) }, () => {})
+        const loaded = await Promise.race([loading, timeout])
+          .catch(e => { timedOut = true; throw e })
+          .finally(() => clearTimeout(timer))
         if (disposed) {
-          loaded.scene.traverse(o => (o as THREE.Mesh).geometry?.dispose())
+          disposeTree(loaded.scene)
           return
         }
         const built = buildAccurateRig(loaded.scene as unknown as THREE.Group)
@@ -904,6 +911,21 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   }
   canvas.addEventListener('pointerdown', onDown)
   canvas.addEventListener('dblclick', onReset)
+
+  // A lost GL context (GPU reset, too many contexts) must not leave a frozen canvas:
+  // stop drawing (the loop's draw() sees ready=false) while it is gone; on restore, the simple model (cheap, no GPU state to rebuild) takes over.
+  function onContextLost (e: Event) {
+    e.preventDefault()
+    ready = false
+  }
+  function onContextRestored () {
+    if (disposed) return
+    renderer.resetState()
+    ready = false
+    adopt(buildSimpleRig())
+  }
+  canvas.addEventListener('webglcontextlost', onContextLost)
+  canvas.addEventListener('webglcontextrestored', onContextRestored)
 
   return viewer
 }

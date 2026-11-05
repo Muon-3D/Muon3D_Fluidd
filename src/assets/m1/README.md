@@ -10,6 +10,8 @@ This is the accurate M1 printer for Control's 3D view (I-163 / KAN-1412), **exte
 | Triangles | 841,337: Base 304,325, Arm 224,358, X_Carriage 110,384, Hose 98,661, Z_Stage 48,769, Y_Gantry 41,276, Knob 8,190, BuildPlate_Glass 4,640, Panel_Screen 732, Base_Decals 2. The glass is transmissive, so three draws the opaque scene twice. |
 | Load | Fetch and decode took 0.29 s from localhost with three 0.185.1 and the loader setup in `gltf-load.ts` |
 
+**What follows the printer live:** only the toolhead (`M1_X_Carriage` and `M1_Y_Gantry`), the build plate (`M1_Z_Stage`) and the hose, which moves with the head. The arm, the knob and the belts do **not** move live: they stay at their rest pose. The node list below names their joints for the rig, not for Control.
+
 ## Frame, units, origin
 
 The frame is the same as `03-model.js`'s print frame:
