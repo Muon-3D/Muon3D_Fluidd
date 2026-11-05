@@ -104,6 +104,33 @@ describe('openBleLink', () => {
     }
   })
 
+  it('outlasts a Windows teardown: three lost setups, then the fourth connects (btmon, 5 Nov)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const server = printer.device.gatt
+      const getPrimaryService = server.getPrimaryService
+      let lost = 3
+      server.getPrimaryService = async (uuid: string) => {
+        if (lost > 0) {
+          lost--
+          server.disconnect()
+          throw Object.assign(new Error('GATT Server is disconnected. Cannot retrieve services.'), { name: 'NetworkError' })
+        }
+        return getPrimaryService(uuid)
+      }
+      const { endpoint } = fakeEndpoint()
+      const opening = openBleLink(endpoint, printer.device)
+      await vi.advanceTimersByTimeAsync(6000)
+      const link = await opening
+      expect(link.isOpen()).toBe(true)
+      expect(printer.calls.filter(c => c === 'connect')).toHaveLength(4)
+      await link.disconnect()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('does not retry a GATT failure that is not a lost connection', async () => {
     const printer = fakePrinter()
     printer.device.gatt.getPrimaryService = async () => { throw new Error('no such service') }
