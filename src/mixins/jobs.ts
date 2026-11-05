@@ -67,7 +67,7 @@ export default class JobsMixin extends Mixins(OverviewMixin) {
       filename: f.filename,
       title: jobTitle(f.filename),
       facts: jobFacts(f),
-      thumbnail: this.jobThumbnail(f),
+      thumbnail: this.jobPictureUrl(f),
       printed: printedBefore(f as never),
       printing: !!printing && printing === path,
       modified: f.modified,
@@ -84,7 +84,7 @@ export default class JobsMixin extends Mixins(OverviewMixin) {
    * route (where there is no address to link), the bytes read through the
    * transport and shown from an object URL.
    */
-  jobThumbnail (f: AppFileWithMeta): string {
+  jobPictureUrl (f: AppFileWithMeta): string {
     const path = jobThumbnailPath(f, f.path)
     if (!path) return ''
     const apiUrl = this.$store.state.config.apiUrl as string
