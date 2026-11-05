@@ -55,6 +55,29 @@ describe('JobTile', () => {
     w.destroy()
   })
 
+  it('shows a pause icon on Pause and a play icon on Resume, never a dash', async () => {
+    const store = tileStore({ printing: true })
+    const w = mountJob(store)
+    const html = () => w.find('[data-tid="job-pause"]').html()
+    expect(html()).toContain('$pause')
+    expect(html()).not.toContain('minus')
+    Vue.set(store.getters, 'printer/getPrinterState', 'paused')
+    await w.vm.$nextTick()
+    expect(html()).toContain('$resume')
+    w.destroy()
+  })
+
+  it('logs CANCEL_PRINT in the console when it stops, as every other stop does', async () => {
+    const store = tileStore({ printing: true })
+    const w = mountJob(store)
+    const log = vi.spyOn(w.vm as any, 'addConsoleEntry').mockImplementation(() => {})
+    await w.find('[data-tid="job-stop"]').trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(socket.printerPrintCancel).toHaveBeenCalledTimes(1)
+    expect(log).toHaveBeenCalledWith('CANCEL_PRINT')
+    w.destroy()
+  })
+
   it('does not stop when the confirm is refused', async () => {
     const store = tileStore({ printing: true })
     const w = mountJob(store)
