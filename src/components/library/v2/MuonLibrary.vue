@@ -303,6 +303,7 @@
         :printer-name="printerName"
         :printing="printing"
         :collections="collections"
+        :collections-error="collectionsError"
         @print="print"
         @open="open"
         @changed="readCollections"
@@ -342,7 +343,7 @@ import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryModelCard from './LibraryModelCard.vue'
 import LibraryQuickLook from './LibraryQuickLook.vue'
 import LibraryYoursShelves from './LibraryYoursShelves.vue'
-import type { CommunityCollection, LibraryItem } from '@/services/library/api'
+import { describeLibraryError, type CommunityCollection, type LibraryItem } from '@/services/library/api'
 import { LIBRARY_URL } from '@/services/library/discover'
 import { libraryClient } from '@/services/library/store'
 import { lastEvent, nozzleText, printFacts } from '@/services/library/format'
@@ -396,6 +397,7 @@ export default class MuonLibrary extends Vue {
   looking: ShelfCard | null = null
   collections: CommunityCollection[] = []
   private collectionReads = 0
+  collectionsError = ''
   /** The card whose print is being read, for Print. */
   printing = ''
   libraryUrl = LIBRARY_URL
@@ -552,9 +554,12 @@ export default class MuonLibrary extends Vue {
     const read = ++this.collectionReads
     try {
       const answer = await libraryClient().collections()
-      if (read === this.collectionReads && this.signedIn) this.collections = Array.isArray(answer.collections) ? answer.collections : []
-    } catch {
-      // Yours says what went wrong when it reads them; Add to… just stays hidden.
+      if (read !== this.collectionReads || !this.signedIn) return
+      this.collections = Array.isArray(answer.collections) ? answer.collections : []
+      this.collectionsError = ''
+    } catch (error) {
+      // Yours says so; Add to… stays hidden.
+      if (read === this.collectionReads) this.collectionsError = describeLibraryError(error)
     }
   }
 

@@ -271,6 +271,16 @@ export async function loadPublication (id: string, fetcher: typeof fetch = fetch
   return body
 }
 
+/** The slug in a Library page's address, as written there when it can't be decoded. */
+function slugOf (page: string): string {
+  const raw = page.split('/p/')[1] ?? ''
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
+
 /** Only an https link: a save's own link comes from the service. */
 function safeLink (value: string | null | undefined): string | null {
   if (!value) return null
@@ -300,7 +310,7 @@ export function saveCard (save: CommunitySave): ShelfCard | null {
     key: `save:${save.id}`,
     kind: publication ? 'publication' : 'catalogue',
     id: id ?? save.id,
-    slug: publication && page ? decodeURIComponent(page.split('/p/')[1]) : id ?? save.id,
+    slug: publication && page ? slugOf(page) : id ?? save.id,
     title: save.card.title,
     picture: safePicture(save.card.thumbnail_url),
     creator: save.card.creator ?? '',
