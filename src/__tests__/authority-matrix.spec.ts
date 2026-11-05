@@ -2,7 +2,7 @@ import Vue from 'vue'
 import { mount, shallowMount, type Wrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ControlMixin from '@/mixins/control'
-import Overview from '@/views/Overview.vue'
+import JobTile from '@/components/widgets/overview/tiles/JobTile.vue'
 import Jobs from '@/views/Jobs.vue'
 import Camera from '@/views/Camera.vue'
 import MaintenanceChecks from '@/components/maintenance/MaintenanceChecks.vue'
@@ -58,6 +58,7 @@ function base (component: any, options: Record<string, any> = {}): Fixture {
   const { computed = {}, stubs = {}, ...rest } = options
   const store = panelStore()
   store.getters['server/componentSupport'] = () => true
+  store.getters['history/getUniqueHistory'] = () => []
   store.getters['config/getDisplayName'] = 'Hazel'
   store.getters['files/getRootFiles'] = () => []
   store.getters['macros/getVisibleMacros'] = []
@@ -91,7 +92,7 @@ function controlHarness (): Fixture {
 }
 
 function overview (): Fixture {
-  const fixture = base(Overview, { stubs: { 'overview-stage': true, 'overview-this-print': true, 'overview-tiles': true, 'overview-temps': true, 'overview-live-tune': true, 'overview-console': true, 'overview-quick-actions': true, 'control-macros': true, 'router-link': true } })
+  const fixture = base(JobTile, { stubs: { 'first-layer-nudges': true, 'router-link': true } })
   fixture.store.getters['printer/getPrinterState'] = 'printing'
   fixture.store.state.printer.printer.print_stats = { filename: 'part.gcode', total_duration: 10 }
   return fixture
@@ -140,8 +141,8 @@ function palette (): Fixture {
 }
 
 const rows: MatrixRow[] = [
-  { name: 'Overview / pause print', command: 'printerPrintPause', mount: overview, control: '[data-tid="overview-pause"]', invoke: f => (f.wrapper.vm as any).pauseCurrent() },
-  { name: 'Overview / stop print', command: 'printerPrintCancel', mount: overview, control: '[data-tid="overview-stop"]', confirm: true, invoke: f => (f.wrapper.vm as any).stopCurrent() },
+  { name: 'Overview / pause print', command: 'printerPrintPause', mount: overview, control: '[data-tid="job-pause"]', invoke: f => (f.wrapper.vm as any).pauseCurrent() },
+  { name: 'Overview / stop print', command: 'printerPrintCancel', mount: overview, control: '[data-tid="job-stop"]', confirm: true, invoke: f => (f.wrapper.vm as any).stopCurrent() },
   { name: 'Control Move / home', command: 'printerGcodeScript', mount: controlHarness, control: 'button', invoke: f => (f.wrapper.vm as any).home() },
   { name: 'Control Heat / set nozzle', command: 'printerGcodeScript', mount: controlHarness, control: 'button', invoke: f => (f.wrapper.vm as any).setHeater((f.wrapper.vm as any).nozzle, 220) },
   { name: 'Control Speed / speed factor', command: 'printerGcodeScript', mount: controlHarness, control: 'button', invoke: f => (f.wrapper.vm as any).setSpeed(90) },

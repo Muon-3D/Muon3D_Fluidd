@@ -7,7 +7,7 @@ import { tileMount, tileStore } from './fixture'
 const cam = { uid: 'c1', name: 'Boxwood camera', enabled: true, service: 'mjpegstreamer' }
 const extra = { 'overview-stage': { template: '<div data-stub="stage" />' }, 'camera-item': { props: ['camera'], template: '<div data-stub="camera">{{ camera.name }}</div>' } }
 
-afterEach(() => vi.clearAllMocks())
+afterEach(() => { vi.clearAllMocks() })
 
 describe('StageTile', () => {
   it('shows the live 3D view with no camera toggle when no camera is configured', () => {

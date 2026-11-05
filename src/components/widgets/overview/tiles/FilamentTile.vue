@@ -12,7 +12,7 @@
       <span
         class="ft__spool"
         :class="{ 'ft__spool--none': !view.colour }"
-        :style="view.colour ? { background: view.colour, color: ink } : null"
+        :style="view.colour ? { background: view.colour, color: ink } : undefined"
         data-tid="filament-swatch"
       >
         <frame-icon

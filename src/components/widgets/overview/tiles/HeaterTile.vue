@@ -236,6 +236,8 @@ export default class HeaterTile extends Mixins(OverviewMixin) {
 </script>
 
 <style lang="scss">
+.ht .ot__state { margin-right: 0; }
+@media (max-width: 599px) { .ht .ot__state { display: none; } }
 .ht--disconnected { outline: 1px solid var(--m3d-danger); outline-offset: -1px; }
 .hp__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .hp__now { font-family: var(--m3d-font-rounded); font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }
