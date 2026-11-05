@@ -26,6 +26,12 @@ export interface UiSettings {
   toolhead: ToolheadConfig;
   spoolman: SpoolmanConfig;
   maintenance: MaintenanceConfig;
+  overview: OverviewConfig;
+}
+
+/** Each person's Overview layout on this printer, by key (see services/overview/layout), as saved by Edit mode. */
+export interface OverviewConfig {
+  layouts: Record<string, unknown>;
 }
 
 /** When each of Maintenance's checks last ran from Fluidd, in ms, by check (bedMesh, shaper, ...). */
