@@ -86,6 +86,27 @@ const HELLO_RETRY_MS = 1_000
 const DRAIN_MS = 2_000
 /** Failed writes in a row after which the link is given up. */
 const MAX_WRITE_FAILURES = 16
+/**
+ * Pauses before the second and third GATT setup. Chrome can resolve
+ * `gatt.connect()` on a connection that is still going down: `readInfo` has
+ * just hung up, or the browser is finishing its Pair step. The old connection
+ * then ends, and `getPrimaryService` fails with "GATT Server is disconnected.
+ * Cannot retrieve services." (Boxwood, 5 Nov 2026). A fresh connect after a
+ * pause works.
+ */
+export const GATT_RETRY_MS = [750, 1500]
+
+/** True when a GATT step failed because the connection went down under it. */
+export function gattWentDown (error: unknown, gatt: { connected?: boolean }): boolean {
+  if (error instanceof GattDropped) return true
+  if (gatt.connected === false) return true
+  const e = error as { name?: string, message?: string } | null
+  return e?.name === 'NetworkError' || /disconnected|\(re\)connect/i.test(e?.message ?? '')
+}
+
+class GattDropped extends Error {
+  constructor () { super('The printer went away while connecting.') }
+}
 
 /** One link per device: two would share its GATT connection and every TX notification. */
 const owners = new WeakMap<BleDevice, BleLinkHandle | 'opening'>()
@@ -189,25 +210,60 @@ export async function openBleLink (
     isOpen: () => radioUp
   }
 
-  device.addEventListener('gattserverdisconnected', onGone)
-  try {
-    const { info, rx } = await withTimeout((async () => {
+  // One GATT setup. A drop during it fails only this attempt (onGone is not
+  // armed yet), so the next attempt starts clean.
+  let abandoned = false
+  const setUpGatt = async () => {
+    let dropped = false
+    const onDrop = () => { dropped = true }
+    // A call, not an inline test: the connection can end at any await.
+    const wentDown = () => dropped || gatt.connected === false
+    device.addEventListener('gattserverdisconnected', onDrop)
+    let txChar: GattCharacteristic | null = null
+    try {
       const server = await gatt.connect()
+      if (wentDown()) throw new GattDropped()
       const service = await server.getPrimaryService(MUON_BLE_SERVICE)
       // One at a time: some platforms refuse concurrent GATT operations.
       const infoChar = await service.getCharacteristic(MUON_BLE_INFO)
       const rxChar = await service.getCharacteristic(MUON_BLE_RX)
-      const txChar = await service.getCharacteristic(MUON_BLE_TX)
+      txChar = await service.getCharacteristic(MUON_BLE_TX)
       const value = await infoChar.readValue()
       const decoded = decodeInfo(new Uint8Array(value.buffer, value.byteOffset, value.byteLength))
       if (!decoded) throw new Error('The printer answered with an INFO value this page does not understand.')
-      if (!radioUp) throw new Error('The printer went away while connecting.')
-      tx = txChar
       // Listen before subscribing, so no notification is missed.
-      tx.addEventListener('characteristicvaluechanged', onNotification)
-      if (typeof tx.startNotifications === 'function') await tx.startNotifications()
-      return { info: decoded, rx: rxChar }
-    })(), options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS, 'Connecting over Bluetooth')
+      txChar.addEventListener('characteristicvaluechanged', onNotification)
+      if (typeof txChar.startNotifications === 'function') await txChar.startNotifications()
+      if (wentDown()) throw new GattDropped()
+      return { info: decoded, rx: rxChar, tx: txChar }
+    } catch (error) {
+      txChar?.removeEventListener('characteristicvaluechanged', onNotification)
+      early.splice(0)
+      throw error
+    } finally {
+      device.removeEventListener('gattserverdisconnected', onDrop)
+    }
+  }
+  const setUpWithRetries = async () => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await setUpGatt()
+      } catch (error) {
+        if (abandoned || attempt >= GATT_RETRY_MS.length || !gattWentDown(error, gatt)) throw error
+        log(`bluetooth: GATT setup ${attempt + 1} lost the connection (${(error as Error)?.message ?? error}); trying again`)
+        try { gatt.disconnect() } catch { /* already gone */ }
+        await sleep(GATT_RETRY_MS[attempt])
+        if (abandoned) throw error
+      }
+    }
+  }
+
+  try {
+    const { info, rx, tx: txChar } = await withTimeout(setUpWithRetries(), options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS, 'Connecting over Bluetooth')
+      .catch(error => { abandoned = true; throw error })
+    tx = txChar
+    device.addEventListener('gattserverdisconnected', onGone)
+    if (gatt.connected === false) onGone()
     if (!radioUp) throw new Error('The printer went away while connecting.')
 
     // Web Bluetooth cannot read the MTU: the printer's INFO value is what counts,
