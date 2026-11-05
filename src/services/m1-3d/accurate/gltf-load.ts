@@ -1,4 +1,5 @@
 import type * as THREE from 'three'
+import type { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 /**
  * Loads the accurate M1 GLB (meshopt or draco compressed). Everything here is
@@ -15,14 +16,20 @@ export interface LoadedModel {
   bytes: number;
 }
 
-export async function loadAccurateModel (url: string, onProgress?: (loaded: number, total: number) => void): Promise<LoadedModel> {
-  const [{ GLTFLoader }, { DRACOLoader }, { default: MeshoptDecoder }] = await Promise.all([
+/** The loader with Draco (from this site) and meshopt set; `dispose` frees the Draco workers. */
+export async function createGltfLoader (): Promise<{ loader: GLTFLoader, dispose: () => void }> {
+  const [{ GLTFLoader }, { DRACOLoader }, { MeshoptDecoder }] = await Promise.all([
     import('three/examples/jsm/loaders/GLTFLoader.js'),
     import('three/examples/jsm/loaders/DRACOLoader.js'),
     import('three/examples/jsm/libs/meshopt_decoder.module.js')
   ])
   const draco = new DRACOLoader().setDecoderPath(DRACO_PATH)
   const loader = new GLTFLoader().setDRACOLoader(draco).setMeshoptDecoder(MeshoptDecoder)
+  return { loader, dispose: () => draco.dispose() }
+}
+
+export async function loadAccurateModel (url: string, onProgress?: (loaded: number, total: number) => void): Promise<LoadedModel> {
+  const { loader, dispose } = await createGltfLoader()
   let bytes = 0
   try {
     const gltf = await loader.loadAsync(url, e => {
@@ -31,6 +38,6 @@ export async function loadAccurateModel (url: string, onProgress?: (loaded: numb
     })
     return { scene: gltf.scene, bytes }
   } finally {
-    draco.dispose()
+    dispose()
   }
 }
