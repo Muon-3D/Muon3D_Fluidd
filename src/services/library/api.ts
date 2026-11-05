@@ -93,6 +93,16 @@ export interface PublicPublication {
   title: string;
   version: number;
   files: VersionFile[];
+  // The rest of `detail` (public_v2.rs), read by the Library's quick look.
+  id?: string;
+  slug?: string;
+  description?: string | null;
+  category?: string;
+  tags?: string[];
+  creator?: { handle: string | null, display_name: string | null, avatar_url?: string | null };
+  images?: Array<{ id: string, name: string, format: string, size_bytes: number, url: string }>;
+  counts?: { makes?: number, remixes?: number, saves?: number };
+  created_at?: string;
 }
 
 export type SaveOrigin = 'save' | 'autosave' | 'card' | 'print-check'

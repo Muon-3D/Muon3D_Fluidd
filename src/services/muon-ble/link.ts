@@ -359,12 +359,14 @@ const routes = new Map<string, { device: BleDevice, link: BleLinkHandle | null }
 const routeState = Vue.observable({
   up: {} as Record<string, boolean>,
   carrying: {} as Record<string, boolean>,
+  opening: {} as Record<string, boolean>,
   fellBack: {} as Record<string, string>
 })
 
 function forgetRouteState (id: string) {
   Vue.delete(routeState.up, id)
   Vue.delete(routeState.carrying, id)
+  Vue.delete(routeState.opening, id)
   Vue.delete(routeState.fellBack, id)
 }
 
@@ -383,6 +385,11 @@ const CARRYING_TICK_MS = 1_000
 /** True while the session to `printerId` really travels over Bluetooth: the one truth for every label. */
 export function bluetoothCarrying (printerId: string): boolean {
   return routeState.carrying[printerId.toLowerCase()] === true
+}
+
+/** True while this page is bringing a Bluetooth link to `printerId` up: the wait after Connect over Bluetooth. */
+export function bluetoothOpening (printerId: string): boolean {
+  return routeState.opening[printerId.toLowerCase()] === true
 }
 
 /** True while a Bluetooth link to `printerId` is up, carrying or on standby behind the relay. */
@@ -457,7 +464,13 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
   if (!route || !takesBleLinks(endpoint)) return null
   const id = printerId.toLowerCase()
   if (route.link?.isOpen()) return route.link
-  const link = route.link = await openBleLink(endpoint, route.device, options)
+  Vue.set(routeState.opening, id, true)
+  let link: BleLinkHandle
+  try {
+    link = route.link = await openBleLink(endpoint, route.device, options)
+  } finally {
+    Vue.set(routeState.opening, id, false)
+  }
   if (link.printerId !== id) {
     await link.disconnect()
     route.link = null

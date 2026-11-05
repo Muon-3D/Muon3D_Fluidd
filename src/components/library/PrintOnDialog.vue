@@ -1,7 +1,7 @@
 <template>
   <m3-dialog
     :value="!!item"
-    eyebrow="Print from your Library"
+    :eyebrow="shared ? 'Print from Discover' : 'Print from your Library'"
     :title="item ? `${item.name} on…` : ''"
     :persistent="sending"
     :close-disabled="sending"
@@ -113,7 +113,7 @@
 
     <template #actions>
       <span class="print-on__fine">
-        This page fetches the file from your Library and sends it to {{ chosenRow ? chosenRow.name : 'the printer' }} itself. The Library never contacts a printer.
+        This page fetches the file from {{ shared ? 'the Library, checks it against what its maker published,' : 'your Library' }} and sends it to {{ chosenRow ? chosenRow.name : 'the printer' }} itself. The Library never contacts a printer.
       </span>
       <button
         type="button"
