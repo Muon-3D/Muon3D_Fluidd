@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import FileSystem from '../FileSystem.vue'
 import FileSystemBrowser from '../FileSystemBrowser.vue'
 import { SocketActions } from '@/api/socketActions'
+import { EventBus } from '@/eventBus'
 import { Filters as filters } from '@/plugins/filters'
 
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'm1', printerHomePath: () => '/m1', printerPath: (s: string) => `/${s}` }))
@@ -136,9 +137,44 @@ describe('file manager: upload', () => {
     const upload = vi.spyOn(vm, 'uploadFiles').mockResolvedValue(true)
     const files = [new File(['x'], 'a.gcode')]
     await vm.handleUpload(files, false)
-    expect(upload).toHaveBeenCalledWith(files, 'parts', 'gcodes', false)
+    expect(upload).toHaveBeenCalledWith(files, 'parts', 'gcodes', false, expect.any(Function))
     expect(dispatch).toHaveBeenCalledWith('wait/addWait', 'onFileSystem/gcodes/parts/')
     expect(dispatch).toHaveBeenLastCalledWith('wait/removeWait', 'onFileSystem/gcodes/parts/')
+  })
+
+  it('upload and print uploads first, then prints through the asked-first path', async () => {
+    const { vm, $confirm } = mountFiles({ path: 'gcodes/parts' })
+    const upload = vi.spyOn(vm, 'uploadFiles').mockResolvedValue(true)
+    const again = vi.spyOn(vm, 'printAgain').mockResolvedValue(undefined)
+    const start = vi.spyOn(SocketActions, 'printerPrintStart').mockImplementation(vi.fn() as any)
+    await vm.handleUpload([new File(['x'], 'a.gcode')], true)
+    expect(upload.mock.calls[0][3]).toBe(false)
+    expect(again).toHaveBeenCalledWith('parts/a.gcode')
+    expect(start).not.toHaveBeenCalled()
+    expect($confirm).not.toHaveBeenCalled()
+  })
+
+  it('does not print after a batch of files, or when the printer changed mid-upload', async () => {
+    const { vm } = mountFiles()
+    const again = vi.spyOn(vm, 'printAgain').mockResolvedValue(undefined)
+    vi.spyOn(vm, 'uploadFiles').mockResolvedValue(true)
+    await vm.handleUpload([new File(['x'], 'a.gcode'), new File(['y'], 'b.gcode')], true)
+    expect(again).not.toHaveBeenCalled()
+    vi.spyOn(vm, 'uploadFiles').mockResolvedValue(false)
+    await vm.handleUpload([new File(['x'], 'a.gcode')], true)
+    expect(again).not.toHaveBeenCalled()
+  })
+
+  it('stops the rest of a batch when the printer or account changes', async () => {
+    const { vm } = mountFiles()
+    let target = 'a|p'
+    Object.defineProperty(vm, 'panelTarget', { get: () => target, configurable: true })
+    let guard: () => boolean = () => true
+    vi.spyOn(vm, 'uploadFiles').mockImplementation(async (_f: any, _p: any, _r: any, _a: any, can: any) => { guard = can; return true })
+    await vm.handleUpload([new File(['x'], 'a.gcode')], false)
+    expect(guard()).toBe(true)
+    target = 'b|p'
+    expect(guard()).toBe(false)
   })
 
   it('cancels an upload that has not started by marking it, and one that has by aborting it', () => {
@@ -207,12 +243,40 @@ describe('file manager: context menu actions', () => {
     expect(start).not.toHaveBeenCalled()
   })
 
-  it('does not print when Control is not ready', async () => {
+  it('says why when Control is not ready, and does not print', async () => {
     const { vm, $confirm } = mountFiles({ ready: false })
     const start = vi.spyOn(SocketActions, 'printerPrintStart').mockImplementation(vi.fn() as any)
+    const emit = vi.spyOn(EventBus, '$emit').mockImplementation(vi.fn() as any)
     await vm.handlePrint(file('a.gcode'))
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining("Can't print yet"), expect.objectContaining({ type: 'warning' }))
     expect($confirm).not.toHaveBeenCalled()
     expect(start).not.toHaveBeenCalled()
+  })
+})
+
+describe('file manager: selection and delete paths', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('deletes from the folder that was open when the dialog was asked', async () => {
+    const { vm } = mountFiles({ path: 'gcodes/parts' })
+    const del = vi.spyOn(SocketActions, 'serverFilesDeleteFile').mockImplementation(vi.fn() as any)
+    let folder = 'gcodes/parts'
+    Object.defineProperty(vm, 'currentPath', { get: () => folder, configurable: true })
+    vm.$confirm = vi.fn(async () => { folder = 'gcodes/other'; return true })
+    await vm.handleRemove([file('a.gcode')])
+    expect(del).toHaveBeenCalledWith('gcodes/parts/a.gcode')
+  })
+
+  it('keeps the selection when the list refreshes, and drops only what is gone', async () => {
+    const a = file('a.gcode')
+    const b = file('b.gcode')
+    const { vm } = mountFiles({ folder: [a, b] })
+    vm.selected = [a, b]
+    vm.onFilesChange()
+    expect(vm.selected).toEqual([a, b])
+    Object.defineProperty(vm, 'files', { get: () => [b], configurable: true })
+    vm.onFilesChange()
+    expect(vm.selected).toEqual([b])
   })
 })
 

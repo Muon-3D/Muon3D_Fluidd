@@ -158,15 +158,47 @@
 
     <div
       v-if="effectiveView === 'files'"
-      class="jobs__manager"
-      data-tid="jobs-file-manager"
+      class="jobs__files"
     >
-      <file-system
-        :roots="fileRoots"
-        name="jobs"
-        bulk-actions
-        height="100%"
-      />
+      <div class="jobs__manager-more">
+        <v-menu
+          offset-y
+          left
+        >
+          <template #activator="{ on, attrs }">
+            <v-btn
+              icon
+              small
+              aria-label="More file options"
+              data-tid="jobs-files-more"
+              v-bind="attrs"
+              v-on="on"
+            >
+              <v-icon>$dots</v-icon>
+            </v-btn>
+          </template>
+          <v-list dense>
+            <v-list-item
+              data-tid="jobs-files-config"
+              @click="showConfig = !showConfig"
+            >
+              <v-list-item-title>{{ showConfig ? 'Hide configuration files' : 'Configuration files' }}</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+      </div>
+      <div
+        class="jobs__manager"
+        data-tid="jobs-file-manager"
+      >
+        <file-system
+          :key="fileRoots.join()"
+          :roots="fileRoots"
+          name="jobs"
+          bulk-actions
+          height="100%"
+        />
+      </div>
     </div>
 
     <div
@@ -302,8 +334,10 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
 
   get effectiveView (): JobsView { return this.isMobileViewport && (this.view === 'table' || this.view === 'files') ? 'list' : this.view }
 
-  /** Where the file manager looks: the G-code, and the printer's config. */
-  readonly fileRoots = ['gcodes', 'config']
+  /** The file manager opens on G-code. The printer's config is one tap away in the ... menu. */
+  showConfig = false
+
+  get fileRoots (): string[] { return this.showConfig ? ['gcodes', 'config'] : ['gcodes'] }
 
   mounted () {
     this.loadFiles()
@@ -321,15 +355,23 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   get rememberedTable (): boolean { return controlPreferenceStore.state.folds['jobs.view.table'] === true }
   get rememberedPictures (): boolean { return controlPreferenceStore.state.folds['jobs.view.pictures'] === true }
 
-  @Watch('rememberedList', { immediate: true })
-  @Watch('rememberedTable', { immediate: true })
-  @Watch('rememberedPictures', { immediate: true })
+  /** A remembered choice wins. Before Files existed, Pictures was list and table both off. */
+  get legacyPictures (): boolean {
+    const folds = controlPreferenceStore.state.folds
+    return folds['jobs.view.pictures'] === undefined && (folds['jobs.view.list'] === false || folds['jobs.view.table'] === false)
+  }
+
+  get rememberedView (): JobsView {
+    return this.rememberedTable ? 'table' : this.rememberedList ? 'list' : (this.rememberedPictures || this.legacyPictures) ? 'pictures' : 'files'
+  }
+
+  @Watch('rememberedView', { immediate: true })
   restoreView () {
-    this.view = this.rememberedTable ? 'table' : this.rememberedList ? 'list' : this.rememberedPictures ? 'pictures' : 'files'
+    this.view = this.rememberedView
   }
 
   selectedView (list: boolean, table: boolean, pictures = false): JobsView {
-    const selected = table ? 'table' : list ? 'list' : pictures ? 'pictures' : 'files'
+    const selected = table ? 'table' : list ? 'list' : (pictures || this.legacyPictures) ? 'pictures' : 'files'
     return this.isMobileViewport && (selected === 'table' || selected === 'files') ? 'list' : selected
   }
 
@@ -812,6 +854,11 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
 
   .jobs__browser {
     min-width: 0;
+  }
+
+  .jobs__manager-more {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .jobs__manager {

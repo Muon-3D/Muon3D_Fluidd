@@ -99,3 +99,20 @@ describe('FileSystemBulkActions', () => {
     wrapper.destroy()
   })
 })
+
+describe('FileSystemBrowser viewport', () => {
+  it('measures again when the pane resizes, and stops watching when it goes', () => {
+    const observed: any[] = []
+    const disconnect = vi.fn()
+    const original = (globalThis as any).ResizeObserver
+    ;(globalThis as any).ResizeObserver = class { cb: () => void; constructor (cb: () => void) { this.cb = cb; observed.push(this) } observe = vi.fn(); disconnect = disconnect }
+    const wrapper = mountBrowser(12)
+    expect(observed).toHaveLength(1)
+    const measure = vi.spyOn(wrapper.vm as any, 'measure')
+    observed[0].cb()
+    expect(measure).toHaveBeenCalled()
+    wrapper.destroy()
+    expect(disconnect).toHaveBeenCalled()
+    ;(globalThis as any).ResizeObserver = original
+  })
+})

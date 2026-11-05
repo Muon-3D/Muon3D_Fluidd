@@ -356,17 +356,25 @@ export default class FileSystemBrowser extends Mixins(FilesMixin) {
   viewport = 600
   scroller: HTMLElement | null = null
   frame = 0
+  resizeObserver: ResizeObserver | null = null
 
   mounted () {
     this.scroller = (this.$refs.table as Vue | undefined)?.$el.querySelector('.v-data-table__wrapper') ?? null
     this.scroller?.addEventListener('scroll', this.onScroll, { passive: true })
     window.addEventListener('resize', this.measure)
+    // The pane can change size without the window changing (menus, panels, folds).
+    if (this.scroller && typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => this.measure())
+      this.resizeObserver.observe(this.scroller)
+    }
     this.measure()
   }
 
   beforeDestroy () {
     this.scroller?.removeEventListener('scroll', this.onScroll)
     window.removeEventListener('resize', this.measure)
+    this.resizeObserver?.disconnect()
+    this.resizeObserver = null
     cancelAnimationFrame(this.frame)
   }
 
