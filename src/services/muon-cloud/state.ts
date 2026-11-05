@@ -4,6 +4,7 @@
  * Kept outside Vuex on purpose: Fluidd resets its whole store every time it
  * switches printer, and the account must survive the switch.
  */
+import { visibleInterval } from '@/util/visible-interval'
 import Vue from 'vue'
 import {
   cloudApi,
@@ -98,8 +99,8 @@ const grants = new Map<string, Promise<AccessHandoff>>()
 const polling = new Set<string>()
 let sessionAbort = new AbortController()
 let endpointRegistration: Promise<void> | null = null
-let pollTimer: number | null = null
-let printersTimer: number | null = null
+let stopPollTimer: (() => void) | null = null
+let stopPrintersTimer: (() => void) | null = null
 
 async function ensureEndpoint (): Promise<void> {
   if (!endpointRegistration) {
@@ -409,15 +410,16 @@ export async function refreshPrinters () {
 
 function startPolling () {
   stopPolling()
-  pollTimer = window.setInterval(() => { pollAll() }, 3000)
-  printersTimer = window.setInterval(() => { refreshPrinters() }, 10000)
+  // A tab nobody is looking at does not poll (visibleInterval catches up on return).
+  stopPollTimer = visibleInterval(() => { pollAll() }, 3000)
+  stopPrintersTimer = visibleInterval(() => { refreshPrinters() }, 10000)
   pollAll()
 }
 
 function stopPolling () {
-  if (pollTimer !== null) window.clearInterval(pollTimer)
-  if (printersTimer !== null) window.clearInterval(printersTimer)
-  pollTimer = printersTimer = null
+  stopPollTimer?.()
+  stopPrintersTimer?.()
+  stopPollTimer = stopPrintersTimer = null
 }
 
 async function dropSession () {

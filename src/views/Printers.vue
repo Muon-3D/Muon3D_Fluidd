@@ -745,6 +745,7 @@
 </template>
 
 <script lang="ts">
+import { visibleInterval } from '@/util/visible-interval'
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import PrinterEntriesMixin from '@/mixins/printer-entries'
 import BrowserMixin from '@/mixins/browser'
@@ -833,10 +834,10 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
   dragging: string | null = null
   dropTarget: string | null = null
   renaming: string | null = null
-  timer: number | null = null
+  timer: (() => void) | null = null
   /** Set on destroy, so a sweep still waiting for the first paint doesn't start. */
   gone = false
-  statusTimer: number | null = null
+  statusTimer: (() => void) | null = null
 
   filters: Array<{ id: Filter, label: string }> = [
     { id: 'all', label: 'All' },
@@ -857,15 +858,15 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
       if (!this.gone) discoverPrinters(false, { nearby: false }).catch(() => {})
     })
     startNearby().catch(() => {})
-    this.timer = window.setInterval(() => { refreshKnownPrinters().catch(() => {}) }, HEALTH_EVERY_MS)
-    this.statusTimer = window.setInterval(() => { refreshLanStatus().catch(() => {}) }, STATUS_EVERY_MS)
+    this.timer = visibleInterval(() => { refreshKnownPrinters().catch(() => {}) }, HEALTH_EVERY_MS)
+    this.statusTimer = visibleInterval(() => { refreshLanStatus().catch(() => {}) }, STATUS_EVERY_MS)
     window.addEventListener('keydown', this.onDigit)
   }
 
   beforeDestroy () {
     this.gone = true
-    if (this.timer !== null) window.clearInterval(this.timer)
-    if (this.statusTimer !== null) window.clearInterval(this.statusTimer)
+    this.timer?.()
+    this.statusTimer?.()
     window.removeEventListener('keydown', this.onDigit)
     stopNearby()
   }
