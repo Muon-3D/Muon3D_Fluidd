@@ -916,21 +916,23 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
     const list = Array.from(files as ArrayLike<File | FileWithPath>)
 
     // Printing starts after the upload, through the same asked-first path as every other print.
-    let completed = false
+    let uploaded: string[] | false = false
     try {
-      completed = await this.uploadFiles(files, path, root, false, stillCurrent)
+      uploaded = await this.uploadFiles(files, path, root, false, stillCurrent)
     } finally {
       this.$store.dispatch('wait/removeWait', wait)
     }
 
-    if (!completed || !stillCurrent()) {
+    if (uploaded === false || !stillCurrent()) {
       EventBus.$emit('Stopped: the printer changed', { type: 'warning', timeout: 5000 })
       return
     }
 
     if (print && root === 'gcodes' && list.length === 1) {
       const [fullPath, fileObject] = this.getFullPathAndFile(path, list[0])
-      await this.printAgain(fullPath ? `${fullPath}/${fileObject.name}` : fileObject.name)
+      const filepath = fullPath ? `${fullPath}/${fileObject.name}` : fileObject.name
+      // Only a file that really uploaded: never an older copy left on the printer.
+      if (uploaded.includes(filepath)) await this.printAgain(filepath)
     }
   }
 

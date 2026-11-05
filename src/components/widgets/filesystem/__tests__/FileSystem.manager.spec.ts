@@ -134,7 +134,7 @@ describe('file manager: upload', () => {
 
   it('uploads into the folder it is in and shows it is busy meanwhile', async () => {
     const { vm, dispatch } = mountFiles({ path: 'gcodes/parts' })
-    const upload = vi.spyOn(vm, 'uploadFiles').mockResolvedValue(true)
+    const upload = vi.spyOn(vm, 'uploadFiles').mockResolvedValue(['parts/a.gcode'])
     const files = [new File(['x'], 'a.gcode')]
     await vm.handleUpload(files, false)
     expect(upload).toHaveBeenCalledWith(files, 'parts', 'gcodes', false, expect.any(Function))
@@ -144,7 +144,7 @@ describe('file manager: upload', () => {
 
   it('upload and print uploads first, then prints through the asked-first path', async () => {
     const { vm, $confirm } = mountFiles({ path: 'gcodes/parts' })
-    const upload = vi.spyOn(vm, 'uploadFiles').mockResolvedValue(true)
+    const upload = vi.spyOn(vm, 'uploadFiles').mockResolvedValue(['parts/a.gcode'])
     const again = vi.spyOn(vm, 'printAgain').mockResolvedValue(undefined)
     const start = vi.spyOn(SocketActions, 'printerPrintStart').mockImplementation(vi.fn() as any)
     await vm.handleUpload([new File(['x'], 'a.gcode')], true)
@@ -157,7 +157,7 @@ describe('file manager: upload', () => {
   it('does not print after a batch of files, or when the printer changed mid-upload', async () => {
     const { vm } = mountFiles()
     const again = vi.spyOn(vm, 'printAgain').mockResolvedValue(undefined)
-    vi.spyOn(vm, 'uploadFiles').mockResolvedValue(true)
+    vi.spyOn(vm, 'uploadFiles').mockResolvedValue(['a.gcode', 'b.gcode'])
     await vm.handleUpload([new File(['x'], 'a.gcode'), new File(['y'], 'b.gcode')], true)
     expect(again).not.toHaveBeenCalled()
     vi.spyOn(vm, 'uploadFiles').mockResolvedValue(false)
@@ -165,12 +165,22 @@ describe('file manager: upload', () => {
     expect(again).not.toHaveBeenCalled()
   })
 
+  it('does not print a file whose upload was cancelled or failed', async () => {
+    const { vm } = mountFiles()
+    const again = vi.spyOn(vm, 'printAgain').mockResolvedValue(undefined)
+    const emit = vi.spyOn(EventBus, '$emit')
+    vi.spyOn(vm, 'uploadFiles').mockResolvedValue([])
+    await vm.handleUpload([new File(['x'], 'a.gcode')], true)
+    expect(again).not.toHaveBeenCalled()
+    expect(emit).not.toHaveBeenCalledWith('Stopped: the printer changed', expect.anything())
+  })
+
   it('stops the rest of a batch when the printer or account changes', async () => {
     const { vm } = mountFiles()
     let target = 'a|p'
     Object.defineProperty(vm, 'panelTarget', { get: () => target, configurable: true })
     let guard: () => boolean = () => true
-    vi.spyOn(vm, 'uploadFiles').mockImplementation(async (_f: any, _p: any, _r: any, _a: any, can: any) => { guard = can; return true })
+    vi.spyOn(vm, 'uploadFiles').mockImplementation(async (_f: any, _p: any, _r: any, _a: any, can: any) => { guard = can; return [] })
     await vm.handleUpload([new File(['x'], 'a.gcode')], false)
     expect(guard()).toBe(true)
     target = 'b|p'
