@@ -50,7 +50,7 @@
             small
           />
           <span class="quick-actions__text">
-            {{ a.label }}
+            <span class="quick-actions__label">{{ a.label }}</span>
             <span
               v-if="a.reason"
               class="quick-actions__reason"
@@ -161,7 +161,7 @@ export default class QuickActionsMenu extends Mixins(MaintenanceMixin) {
   .quick-actions__item--off {
     cursor: default;
 
-    .quick-actions__text,
+    .quick-actions__label,
     .frame-icon {
       opacity: 0.55;
     }

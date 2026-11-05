@@ -75,8 +75,17 @@ describe('PrinterSwitcher', () => {
 
   describe('sections', () => {
     const e = (id: string, name: string, section = 'cloud') => ({
-      key: `${section}:${id}`, section, name, endpointId: id, health: 'online', detail: 'Ready', host: null, active: null,
-      linkedTo: 'mine', saved: [], cloud: section === 'cloud' ? { id, name } : undefined
+      key: `${section}:${id}`,
+      section,
+      name,
+      endpointId: id,
+      health: 'online',
+      detail: 'Ready',
+      host: null,
+      active: null,
+      linkedTo: 'mine',
+      saved: [],
+      cloud: section === 'cloud' ? { id, name } : undefined
     })
 
     async function open (directory: { cloud: unknown[], local: unknown[], found: unknown[] }, groups: unknown[] = []) {
@@ -125,4 +134,3 @@ describe('PrinterSwitcher', () => {
     })
   })
 })
-
