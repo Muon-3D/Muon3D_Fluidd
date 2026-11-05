@@ -60,7 +60,47 @@
       <div class="mlook__side">
         <header class="mlook__head">
           <h2>{{ card.title }}</h2>
+          <template v-if="signedIn && card.kind === 'publication'">
+            <button
+              type="button"
+              class="mlib-btn mlib-btn--icon mlib-btn--sm mlook__heart"
+              :class="{ 'mlook__heart--on': saveId }"
+              :aria-pressed="saveId ? 'true' : 'false'"
+              :aria-label="saveId ? `Unsave ${card.title}` : `Save ${card.title}`"
+              :disabled="saving"
+              data-tid="library-quick-look-save"
+              @click="toggleSave"
+            >
+              {{ saveId ? '♥' : '♡' }}
+            </button>
+            <select
+              v-if="collections.length"
+              class="mlook__collect"
+              aria-label="Add to a collection"
+              data-tid="library-quick-look-collect"
+              :disabled="saving"
+              @change="collect($event)"
+            >
+              <option value="">
+                Add to…
+              </option>
+              <option
+                v-for="c in collections"
+                :key="c.id"
+                :value="c.id"
+              >
+                {{ c.name }}
+              </option>
+            </select>
+          </template>
         </header>
+        <p
+          v-if="note"
+          class="mlib-muted mlook__note"
+          role="status"
+        >
+          {{ note }}
+        </p>
         <div class="mcard__by">
           {{ card.creator }}
           <span
@@ -178,7 +218,8 @@
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
-import type { PublicPublication } from '@/services/library/api'
+import { describeLibraryError, type CommunityCollection, type PublicPublication } from '@/services/library/api'
+import { libraryClient } from '@/services/library/store'
 import { safePicture } from '@/services/library/discover'
 import { loadPublication, minutesText, publicationPrint, type PublicationPrint, type ShelfCard } from '@/services/library/shelves'
 
@@ -187,6 +228,8 @@ import { loadPublication, minutesText, publicationPrint, type PublicationPrint, 
 export default class LibraryQuickLook extends Vue {
   @Prop({ type: Object, required: true }) readonly card!: ShelfCard
   @Prop({ type: String, default: null }) readonly printerName!: string | null
+  @Prop({ type: Boolean, default: false }) readonly signedIn!: boolean
+  @Prop({ type: Array, default: () => [] }) readonly collections!: CommunityCollection[]
 
   pic = 0
   busy = false
@@ -194,9 +237,66 @@ export default class LibraryQuickLook extends Vue {
   publication: PublicPublication | null = null
   print: PublicationPrint | null = null
   before: Element | null = null
+  /** This print's save (the heart), when you saved it. */
+  saveId = ''
+  saving = false
+  note = ''
 
   created () {
-    if (this.card.kind === 'publication') this.read()
+    if (this.card.kind === 'publication') {
+      this.read()
+      if (this.signedIn) this.readSave()
+    }
+  }
+
+  async readSave () {
+    try {
+      const { saves } = await libraryClient().savesOf([this.card.id])
+      this.saveId = saves.find(s => s.target.id === this.card.id)?.save_id ?? ''
+    } catch {
+      // No heart state: it still works, starting unsaved.
+    }
+  }
+
+  /** The heart: likes are saves (Jack, 5 Nov). */
+  async toggleSave () {
+    if (this.saving) return
+    this.saving = true
+    this.note = ''
+    try {
+      if (this.saveId) {
+        await libraryClient().unsave(this.saveId)
+        this.saveId = ''
+      } else {
+        this.saveId = (await libraryClient().save(this.card.id)).id
+      }
+      this.$emit('saved')
+    } catch (error) {
+      this.note = describeLibraryError(error)
+    } finally {
+      this.saving = false
+    }
+  }
+
+  async collect (event: Event) {
+    const select = event.target as HTMLSelectElement
+    const id = select.value
+    select.value = ''
+    const collection = this.collections.find(c => c.id === id)
+    if (!collection || this.saving) return
+    this.saving = true
+    this.note = ''
+    try {
+      // A collection holds saves: saved first, if it wasn't.
+      if (!this.saveId) this.saveId = (await libraryClient().save(this.card.id)).id
+      await libraryClient().addToCollection(collection.id, this.saveId)
+      this.note = `Added to ${collection.name}.`
+      this.$emit('saved')
+    } catch (error) {
+      this.note = describeLibraryError(error)
+    } finally {
+      this.saving = false
+    }
   }
 
   // Above the rail and the app bar: out of the page's stacking context,
