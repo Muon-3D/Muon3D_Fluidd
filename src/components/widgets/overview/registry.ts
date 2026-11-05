@@ -12,13 +12,14 @@ import MacrosTile from './tiles/MacrosTile.vue'
 import GraphTile from './tiles/GraphTile.vue'
 
 /**
- * One tile on the Overview, and where it sits by default. This list is the
- * whole layout: the page only draws it. A later Edit mode can keep a saved
- * copy of `span`, `rows` and the order per person and printer and read it
- * here instead, without touching a tile.
+ * One tile on the Overview, and where it sits by default. This list is every
+ * tile there is and its starting layout. Edit mode keeps each person's own
+ * order, sizes and hidden tiles per printer (services/overview/layout) and
+ * checks them against this list: a tile named there that is not here is
+ * dropped, and a tile here that it never heard of comes back hidden.
  */
 export interface OverviewTileDef {
-  /** Stable name; what a saved layout would call it. */
+  /** Stable name; what a saved layout calls it. Never reuse or rename one. */
   id: string;
   title: string;
   component: Component;
