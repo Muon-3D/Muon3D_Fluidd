@@ -207,6 +207,25 @@ export async function readInfo (device: BleDevice): Promise<BleInfo> {
   }
 }
 
+/** How long the browser gets to finish pairing before INFO is read a second time. */
+const INFO_RETRY_MS = 1000
+
+/**
+ * `readInfo`, once more after a pause when the first read fails at the GATT
+ * connection. Right after the browser's Pair step the device can refuse its
+ * first connection; the person then had to click Connect over Bluetooth a
+ * second time (KAN-1396). An INFO value this page cannot read is not retried.
+ */
+async function readInfoAfterPairing (device: BleDevice): Promise<BleInfo> {
+  try {
+    return await readInfo(device)
+  } catch (error) {
+    if (/INFO value/.test((error as Error)?.message ?? '')) throw error
+    await new Promise(resolve => setTimeout(resolve, INFO_RETRY_MS))
+    return readInfo(device)
+  }
+}
+
 /**
  * Opens the browser's chooser for Muon3D printers and reads the chosen one's
  * `INFO`. Must run from a click, with nothing awaited before it.
@@ -221,8 +240,7 @@ export async function choosePrinter (): Promise<ChosenPrinter> {
     filters: [{ services: [MUON_BLE_SERVICE] }],
     optionalManufacturerData: [MUON_BLE_COMPANY_ID]
   })
-  const info = await readInfo(device)
-  return { device, name: device.name ?? '', info }
+  return { device, name: device.name ?? '', info: await readInfoAfterPairing(device) }
 }
 
 /** True when the person dismissed the chooser. */
