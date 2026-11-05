@@ -11,7 +11,7 @@ import type {
   ManagedIrohRelay,
   PrinterSocket
 } from '@/services/managed-transport'
-import { bluetoothRouteFor, type WasmBleLink } from '@/services/muon-ble/link'
+import { bluetoothRouteFor, noteBluetoothFellBack, type WasmBleLink } from '@/services/muon-ble/link'
 import { cloudBaseUrl } from './api'
 import bundledWasmUrl from './vendor/muon-link-web/4b2e45a/muon_link_web_bg.wasm?url'
 
@@ -303,6 +303,8 @@ export async function dialPrinter (endpoint: WasmEndpoint, printerId: string): P
     await bluetoothRouteFor(endpoint, printerId)
   } catch (error) {
     bluetoothError = error as Error
+    // The relay may still carry the open, but never quietly (KAN-1396).
+    noteBluetoothFellBack(printerId, bluetoothError.message)
   }
   try {
     return await endpoint.connect(printerId)
