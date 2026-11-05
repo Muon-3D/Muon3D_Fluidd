@@ -1,8 +1,9 @@
 /**
  * Which node of the accurate M1 GLB moves, along which axis, how far. This is
  * the one place that changes when the model is re-fitted: the animation code
- * (node-binding.ts) only knows roles. Names, axes and travels are filled in
- * from the asset's README (src/assets/m1/README.md).
+ * (node-binding.ts) only knows roles. The numbers are from the asset's README
+ * (src/assets/m1/README.md), checked against the GLB's own node transforms in
+ * __tests__/klipper-map.spec.ts.
  */
 export type Axis = 'x' | 'y' | 'z'
 
@@ -28,10 +29,12 @@ export interface AccurateModelConfig {
   bedHeight: NodeBinding;
 }
 
-/** Placeholder names until the asset's README is merged; see the PR for the real ones. */
 export const ACCURATE_M1: AccurateModelConfig = {
   scale: 1,
-  headX: { node: 'head_x', axis: 'x', travel: 100 },
-  headZ: { node: 'head_z', axis: 'z', travel: 92 },
-  bedHeight: { node: 'bed_lift', axis: 'y', travel: 164 }
+  // Local z runs to world -X, so a negative travel makes state +1 go to world +X (nozzle X -101.6 ... +102.8).
+  headX: { node: 'M1_X_Carriage', axis: 'z', travel: -102.2 },
+  // Local x runs to world +Z, toward the front (nozzle Z -92.0 ... +87.9).
+  headZ: { node: 'M1_Y_Gantry', axis: 'x', travel: 89.95 },
+  // State 0 is the lowest the bed goes (plate top -76.8); the GLB sits at 0.5103 (plate top 0).
+  bedHeight: { node: 'M1_Z_Stage', axis: 'y', travel: 150.5, zero: -0.5103 }
 }
