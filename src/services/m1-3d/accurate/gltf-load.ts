@@ -18,11 +18,13 @@ export interface LoadedModel {
 
 /** The loader with Draco (from this site) and meshopt set; `dispose` frees the Draco workers. */
 export async function createGltfLoader (): Promise<{ loader: GLTFLoader, dispose: () => void }> {
-  const [{ GLTFLoader }, { DRACOLoader }, { MeshoptDecoder }] = await Promise.all([
+  const [{ GLTFLoader }, { DRACOLoader }, meshopt] = await Promise.all([
     import('three/examples/jsm/loaders/GLTFLoader.js'),
     import('three/examples/jsm/loaders/DRACOLoader.js'),
     import('three/examples/jsm/libs/meshopt_decoder.module.js')
   ])
+  // three r185's module exports it by name only; @types/three still declares a default.
+  const { MeshoptDecoder } = meshopt as unknown as { MeshoptDecoder: typeof meshopt.default }
   const draco = new DRACOLoader().setDecoderPath(DRACO_PATH)
   const loader = new GLTFLoader().setDRACOLoader(draco).setMeshoptDecoder(MeshoptDecoder)
   return { loader, dispose: () => draco.dispose() }
