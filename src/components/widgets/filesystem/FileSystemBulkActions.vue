@@ -3,12 +3,34 @@
     dense
   >
     <v-toolbar-title class="d-none d-sm-block">
-      <div class="file-path">
-        &lrm;/{{ path }}
+      <div
+        class="file-path"
+        data-tid="files-selected"
+      >
+        {{ count }} selected
       </div>
     </v-toolbar-title>
 
     <v-spacer />
+
+    <v-tooltip bottom>
+      <template #activator="{ on, attrs }">
+        <v-btn
+          v-bind="attrs"
+          fab
+          small
+          text
+          data-tid="files-clear-selection"
+          v-on="on"
+          @click="$emit('clear')"
+        >
+          <v-icon>
+            $close
+          </v-icon>
+        </v-btn>
+      </template>
+      <span>Clear the selection</span>
+    </v-tooltip>
 
     <v-tooltip
       v-if="root === 'gcodes'"
@@ -81,5 +103,9 @@ export default class FileSystemBulkActions extends Mixins(StatesMixin) {
   // The current path
   @Prop({ type: String })
   readonly path!: string
+
+  // How many rows are selected.
+  @Prop({ type: Number, default: 0 })
+  readonly count!: number
 }
 </script>
