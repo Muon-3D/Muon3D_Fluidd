@@ -123,6 +123,7 @@ import { ALL_PRINTERS_KEY, LIBRARY_KEY, type Section } from '@/router/printerSec
 import { cloudState } from '@/services/muon-cloud/state'
 import { hostOf } from '@/services/muon-cloud/directory'
 import { probeSlicer } from '@/services/slicer-bridge/slicerUrl'
+import { probeDesign } from '@/services/design-bridge/designUrl'
 import AppRailLink from './AppRailLink.vue'
 import NetworkQuickMenu from './NetworkQuickMenu.vue'
 
@@ -144,6 +145,7 @@ export default class AppRail extends Mixins(FrameMixin, BrowserMixin) {
 
   created () {
     probeSlicer()
+    probeDesign()
   }
 
   get compact (): boolean {

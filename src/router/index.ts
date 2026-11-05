@@ -182,6 +182,22 @@ const printerRoutes: Array<RouteConfig> = [
     }
   },
   {
+    // Muon3D Design in a frame (views/Design.vue), hosted like Slice with the
+    // account's Library, so a design reaches the Library and an M1. Lazy, and
+    // kept while Fluidd switches printer: Design has no printer of its own.
+    path: `${P}/design`,
+    name: 'Design',
+    component: () => import('@/views/Design.vue'),
+    beforeEnter: defaultRouteConfig.beforeEnter,
+    meta: {
+      printerIndependent: true,
+      keepOnPrinterSwitch: true,
+      frame: 'printer',
+      // Design is framed with no Control layout mode (KAN-550), like Slice.
+      noMode: true
+    }
+  },
+  {
     // Your Library (KAN-521): the prints saved from Slice, the account's, so
     // the same whichever printer is open, drawn beside its rail. Lazy, as
     // Printers is: Print on… opens printers, and the services that do import
@@ -267,10 +283,11 @@ const toLibraryOfActivePrinter: NavigationGuard = (to, from, next) => {
   else next()
 }
 
-// /slice and the Library have pages of their own with no printer (the slicer
-// exports without one; the Library is the account's).
+// /slice, /design and the Library have pages of their own with no printer
+// (the slicer exports without one, Design needs none; the Library is the
+// account's).
 const LEGACY_PRINTER_PAGES = [
-  ...PRINTER_PAGE_PATHS.filter(path => !['/slice', '/camera', '/library', '/account'].includes(path)),
+  ...PRINTER_PAGE_PATHS.filter(path => !['/slice', '/design', '/camera', '/library', '/account'].includes(path)),
   '/settings/macros/:categoryId',
   '/camera',
   '/camera/:cameraId'
@@ -426,6 +443,22 @@ const routes: Array<RouteConfig> = [
     beforeEnter: (to, from, next) => {
       const slug = activeSlugNow()
       if (slug) next({ path: `/${slug}/slice`, query: to.query, hash: to.hash })
+      else next()
+    },
+    meta: {
+      printerIndependent: true,
+      keepOnPrinterSwitch: true,
+      noMode: true
+    }
+  },
+  {
+    // Design works with no printer too: it saves to the account's Library.
+    path: '/design',
+    name: 'Design (no printer)',
+    component: () => import('@/views/Design.vue'),
+    beforeEnter: (to, from, next) => {
+      const slug = activeSlugNow()
+      if (slug) next({ path: `/${slug}/design`, query: to.query, hash: to.hash })
       else next()
     },
     meta: {

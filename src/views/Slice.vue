@@ -58,7 +58,7 @@ import type { HostSetup, PrinterMaterial } from '@/services/slicer-bridge/vendor
 import PrintConfirmDialog, { type LoadedMaterial, type PrintConfirmRequest } from '@/components/slicer/PrintConfirmDialog.vue'
 import { startSlicerHost, type SlicerHost } from '@/services/slicer-bridge/host'
 import { readFluiddSelection } from '@/services/slicer-bridge/fluidd'
-import { configuredSlicerUrl, probeSlicer, slicerPresence, type SlicerPresence } from '@/services/slicer-bridge/slicerUrl'
+import { CROSS_ORIGIN_SANDBOX, configuredSlicerUrl, probeSlicer, slicerPresence, type SlicerPresence } from '@/services/slicer-bridge/slicerUrl'
 import { isBoundToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
 import type { ConfirmAnswer, ConfirmRequest } from '@/services/slicer-bridge/vendor/printer-client/bridge/host'
 import { printerError } from '@/services/slicer-bridge/vendor/printer-client/errors/kinds'
@@ -74,13 +74,7 @@ interface OpenDialog {
   reject: (error: unknown) => void;
 }
 
-/**
- * The frame's sandbox when the slicer is on another origin (a hosted Fluidd),
- * which may be hostile: everything the slicer uses, but never a navigation of
- * this page (no allow-top-navigation). On this page's own origin (a printer's
- * copy) a sandbox would add nothing, so there is none.
- */
-export const CROSS_ORIGIN_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox'
+export { CROSS_ORIGIN_SANDBOX }
 
 /**
  * Fluidd › Slice: the Muon3D Slicer in a frame (its embed.html, from
