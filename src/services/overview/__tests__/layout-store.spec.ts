@@ -37,13 +37,14 @@ describe('saving and loading the Overview layout', () => {
     expect(loadLayout({ accountId: 'acc-2', printerId: 'boxwood' }, { [serverLayoutKey('acc-1', 'boxwood')]: saved }, fresh, defs)).toEqual(defaultLayout(defs))
   })
 
-  it('uses whichever copy was saved last', () => {
-    const older = saveLayout(ctx, defaultLayout(defs), memory(), 1)
+  it("uses the printer's copy over this browser's, whatever the clocks say", () => {
+    // A device with a fast clock must not pin its layout over a later save elsewhere.
     const storage = memory()
-    saveLayout(ctx, mine, storage, 9)
-    expect(loadLayout(ctx, { [serverLayoutKey('acc-1', 'boxwood')]: older }, storage, defs)).toEqual(mine)
-    const newer = saveLayout(ctx, defaultLayout(defs), memory(), 20)
-    expect(loadLayout(ctx, { [serverLayoutKey('acc-1', 'boxwood')]: newer }, storage, defs)).toEqual(defaultLayout(defs))
+    saveLayout(ctx, mine, storage, 9_999_999_999_999)
+    const server = saveLayout(ctx, defaultLayout(defs), memory(), 1)
+    expect(loadLayout(ctx, { [serverLayoutKey('acc-1', 'boxwood')]: server }, storage, defs)).toEqual(defaultLayout(defs))
+    // With no copy on the printer, this browser's copy is used.
+    expect(loadLayout(ctx, {}, storage, defs)).toEqual(mine)
   })
 
   it('ignores a bad copy and uses the other one, or the default', () => {

@@ -21,7 +21,9 @@ function fromBrowser (key: string, storage: Storage_, defs: TileDefault[]) {
 
 /**
  * The layout to show: this person's copy on this printer from the printer's
- * settings or from this browser, whichever was saved last. A copy that fails
+ * settings, or, when the printer has none, this browser's. The printer's copy
+ * wins rather than the newer `savedAt`, because the clocks of two devices can
+ * disagree and a fast one would otherwise pin its layout. A copy that fails
  * the check is ignored, and with none left the default is used, so a bad save
  * can never blank the page.
  */
@@ -30,8 +32,7 @@ export function loadLayout (context: LayoutContext, serverLayouts: unknown, stor
     ? checked((serverLayouts as Record<string, unknown>)[serverLayoutKey(context.accountId, context.printerId)], defs)
     : null
   const local = fromBrowser(layoutKey(context.accountId, context.printerId), storage, defs)
-  const best = server && local ? (server.savedAt > local.savedAt ? server : local) : server ?? local
-  return best?.layout ?? defaultLayout(defs)
+  return (server ?? local)?.layout ?? defaultLayout(defs)
 }
 
 /** Keeps the layout in this browser and returns the copy to send to the printer's settings. */
