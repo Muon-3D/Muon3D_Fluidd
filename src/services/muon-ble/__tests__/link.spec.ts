@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bluetoothRouteFor, cappedSegment, MAX_WRITE_SEGMENT, openBleLink, releaseBluetoothLink, stopUsingBluetoothFor, takesBleLinks, useBluetoothFor, wantsBluetoothFor } from '../link'
 import { EID, fakeEndpoint, fakePrinter, info, OTHER_EID } from './fakes'
 
@@ -70,6 +70,46 @@ describe('openBleLink', () => {
     expect(printer.calls[printer.calls.length - 1]).toBe('disconnect')
     // The failed attempt does not hold the device: a second one gets as far as HELLO again.
     await expect(openBleLink(endpoint, printer.device, { helloTimeoutMs: 50 })).rejects.toThrow(/handshake timed out/)
+  })
+
+  it('connects again when the first connection goes down before its services are read (Boxwood, 5 Nov)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const server = printer.device.gatt
+      const connect = server.connect
+      const getPrimaryService = server.getPrimaryService
+      let stale = true
+      // Chrome resolves connect() on the connection readInfo just hung up;
+      // that connection then ends, and service discovery fails.
+      server.getPrimaryService = async (uuid: string) => {
+        if (stale) {
+          stale = false
+          server.disconnect()
+          throw Object.assign(new Error('GATT Server is disconnected. Cannot retrieve services. (Re)connect first with `device.gatt.connect`.'), { name: 'NetworkError' })
+        }
+        return getPrimaryService(uuid)
+      }
+      server.connect = connect
+      const { endpoint } = fakeEndpoint()
+      const opening = openBleLink(endpoint, printer.device)
+      await vi.advanceTimersByTimeAsync(1000)
+      const link = await opening
+      expect(link.printerId).toBe(EID)
+      expect(link.isOpen()).toBe(true)
+      expect(printer.calls.filter(c => c === 'connect')).toHaveLength(2)
+      await link.disconnect()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not retry a GATT failure that is not a lost connection', async () => {
+    const printer = fakePrinter()
+    printer.device.gatt.getPrimaryService = async () => { throw new Error('no such service') }
+    const { endpoint } = fakeEndpoint()
+    await expect(openBleLink(endpoint, printer.device)).rejects.toThrow('no such service')
+    expect(printer.calls.filter(c => c === 'connect')).toHaveLength(1)
   })
 
   it('refuses a second link to a device that has one', async () => {
