@@ -45,6 +45,43 @@ describe('the real route is the link that is up, not the click (KAN-1396)', () =
   })
 })
 
+describe('Bluetooth, when chosen, is pinned (D-080)', () => {
+  it('pins the printer on the endpoint when the route opens, and unpins when the person stops', async () => {
+    const { endpoint } = fakeEndpoint()
+    const pinBluetooth = vi.fn()
+    const pinnable = Object.assign(endpoint, { pinBluetooth })
+    useBluetoothFor(EID, fakePrinter().device)
+    expect(pinBluetooth).not.toHaveBeenCalled()
+    await bluetoothRouteFor(pinnable, EID)
+    expect(pinBluetooth).toHaveBeenCalledWith(EID, true)
+    await bluetoothRouteFor(pinnable, EID)
+    expect(pinBluetooth).toHaveBeenCalledTimes(1)
+    stopUsingBluetoothFor(EID)
+    expect(pinBluetooth).toHaveBeenLastCalledWith(EID, false)
+  })
+
+  it('works with an older muon-link-web that cannot pin, and survives one that throws', async () => {
+    const { endpoint } = fakeEndpoint()
+    useBluetoothFor(EID, fakePrinter().device)
+    expect(await bluetoothRouteFor(endpoint, EID)).not.toBeNull()
+    stopUsingBluetoothFor(EID)
+    const throwing = Object.assign(fakeEndpoint().endpoint, { pinBluetooth: vi.fn(() => { throw new Error('closed') }) })
+    useBluetoothFor(EID, fakePrinter().device)
+    expect(await bluetoothRouteFor(throwing, EID)).not.toBeNull()
+  })
+
+  it('keeps the pin when the person picks the printer again on a new device', async () => {
+    const { endpoint } = fakeEndpoint()
+    const pinBluetooth = vi.fn()
+    const pinnable = Object.assign(endpoint, { pinBluetooth })
+    useBluetoothFor(EID, fakePrinter().device)
+    await bluetoothRouteFor(pinnable, EID)
+    useBluetoothFor(EID, fakePrinter({ id: 'dev-walnut-2' }).device)
+    stopUsingBluetoothFor(EID)
+    expect(pinBluetooth).toHaveBeenLastCalledWith(EID, false)
+  })
+})
+
 describe('one label for the route, from the link that is up (KAN-1566)', () => {
   it('says Through Muon3D until the Bluetooth link is up, then Via Bluetooth, then Through Muon3D once it is gone', async () => {
     const { endpoint } = fakeEndpoint()
