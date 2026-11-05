@@ -3,6 +3,7 @@ import {
   bluetoothCarrying,
   bluetoothFellBack,
   bluetoothLinkUp,
+  bluetoothOpening,
   CARRYING_WINDOW_MS,
   bluetoothRouteFor,
   releaseBluetoothLink,
@@ -76,6 +77,28 @@ describe('one label for the route, from the link that is up (KAN-1566)', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('is opening while the link comes up, and not once it is up or has failed', async () => {
+    const { endpoint } = fakeEndpoint()
+    useBluetoothFor(EID, fakePrinter().device)
+    expect(bluetoothOpening(EID)).toBe(false)
+    const opening = bluetoothRouteFor(endpoint, EID)
+    expect(bluetoothOpening(EID)).toBe(true)
+    await opening
+    expect(bluetoothOpening(EID)).toBe(false)
+    stopUsingBluetoothFor(EID)
+    useBluetoothFor(EID, fakePrinter({ answers: false }).device)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const failing = bluetoothRouteFor(endpoint, EID).catch(() => null)
+      expect(bluetoothOpening(EID)).toBe(true)
+      await vi.advanceTimersByTimeAsync(11_000)
+      await failing
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(bluetoothOpening(EID)).toBe(false)
   })
 
   it('says Through Muon3D with no printer', () => {
