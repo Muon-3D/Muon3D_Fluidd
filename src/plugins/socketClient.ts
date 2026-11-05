@@ -94,9 +94,10 @@ export class WebSocketClient {
       !this.store.state.socket.disconnecting && // We arent about to disonnect and..
       !this.store.state.files.download // We're not in the middle of a download.
     ) {
-      this.store.commit('socket/setSocketOpen', true)
+      // Moonraker talks several times a second: only a change goes to the store.
+      if (!this.store.state.socket.open) this.store.commit('socket/setSocketOpen', true)
       if (this.store.state.socket.stalled) this.store.commit('socket/setSocketStalled', false)
-      this.store.dispatch('socket/onSocketConnecting', false)
+      if (this.store.state.socket.connecting) this.store.dispatch('socket/onSocketConnecting', false)
     }
     this.armSilenceTimers()
   }
