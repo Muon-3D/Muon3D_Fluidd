@@ -254,6 +254,7 @@
 </template>
 
 <script lang="ts">
+import { visibleInterval } from '@/util/visible-interval'
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import PrinterEntriesMixin from '@/mixins/printer-entries'
 import { discoverPrinters, discoveryState, lanAddresses, refreshKnownPrinters } from '@/services/muon-cloud/discovery'
@@ -282,7 +283,7 @@ export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
 
   /** "Find a printer": by name or address. */
   query = ''
-  timer: number | null = null
+  timer: (() => void) | null = null
 
   get enableKeyboardShortcuts (): boolean {
     return this.$store.state.config.uiSettings.general.enableKeyboardShortcuts
@@ -327,11 +328,11 @@ export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
     discoverPrinters().catch(() => {})
     startNearby().catch(() => {})
     if (discoveryState.finishedAt) refreshKnownPrinters().catch(() => {})
-    this.timer = window.setInterval(() => { refreshKnownPrinters().catch(() => {}) }, HEALTH_EVERY_MS)
+    this.timer = visibleInterval(() => { refreshKnownPrinters().catch(() => {}) }, HEALTH_EVERY_MS)
   }
 
   stopTimer () {
-    if (this.timer !== null) window.clearInterval(this.timer)
+    this.timer?.()
     this.timer = null
   }
 
