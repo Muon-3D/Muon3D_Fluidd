@@ -14,9 +14,37 @@
           data-tid="find-printer"
         >
       </label>
+      <span
+        v-if="searching"
+        class="muon-switcher__again"
+        :title="scanNetwork || 'Searching this network'"
+      >
+        <v-progress-circular
+          indeterminate
+          size="14"
+          width="2"
+        />
+      </span>
+      <button
+        v-else
+        type="button"
+        class="muon-switcher__again"
+        title="Search this network again"
+        aria-label="Search this network again"
+        data-tid="search-again"
+        @click="rescan"
+      >
+        <frame-icon
+          name="refresh"
+          small
+        />
+      </button>
     </div>
 
-    <section class="muon-switcher__group">
+    <section
+      v-if="deletionPending || !account || !directory.cloud.length"
+      class="muon-switcher__group"
+    >
       <div class="muon-switcher__heading">
         <span class="muon-switcher__caps">Your printers</span>
         <span
@@ -28,23 +56,12 @@
         v-if="deletionPending"
         tid="switcher-deletion"
       />
-      <template v-else-if="account">
-        <printer-card
-          v-for="e in cloudEntries"
-          :key="e.key"
-          :entry="e"
-          :actions="cloudActions(e)"
-          :busy="busyKey === e.key"
-          @open="openCloudEntry(e)"
-          @action="onAction(e, $event)"
-        />
-        <div
-          v-if="!directory.cloud.length"
-          class="muon-switcher__empty"
-        >
-          No printers are linked to this account yet. Link one from its menu below.
-        </div>
-      </template>
+      <div
+        v-else-if="account"
+        class="muon-switcher__empty"
+      >
+        No printers are linked to this account yet. Link one from its menu below.
+      </div>
       <div
         v-else
         class="muon-switcher__empty"
@@ -57,7 +74,42 @@
       </div>
     </section>
 
-    <section class="muon-switcher__group">
+    <!-- Your account's printers, under the groups the account keeps. -->
+    <template v-else>
+      <section
+        v-for="g in cloudGroups"
+        :key="g.id"
+        class="muon-switcher__group"
+        :data-tid="`switcher-group-${g.id}`"
+      >
+        <div class="muon-switcher__heading">
+          <span class="muon-switcher__caps">{{ g.name }}</span>
+          <span
+            v-if="g.hint"
+            class="muon-switcher__hint"
+          >{{ g.hint }}</span>
+          <span
+            v-else-if="account"
+            class="muon-switcher__hint"
+          >{{ account.email }}</span>
+        </div>
+        <printer-card
+          v-for="e in g.entries"
+          :key="e.key"
+          :entry="e"
+          :actions="cloudActions(e)"
+          :busy="busyKey === e.key"
+          @open="openCloudEntry(e)"
+          @action="onAction(e, $event)"
+        />
+      </section>
+    </template>
+
+    <section
+      v-if="showSection(localEntries.length)"
+      class="muon-switcher__group"
+      data-tid="switcher-saved"
+    >
       <div class="muon-switcher__heading">
         <span class="muon-switcher__caps">Saved in this browser</span>
       </div>
@@ -70,15 +122,13 @@
         @open="openLocalEntry(e)"
         @action="onAction(e, $event)"
       />
-      <div
-        v-if="!directory.local.length"
-        class="muon-switcher__empty"
-      >
-        A printer you connect to on this network is saved here.
-      </div>
     </section>
 
-    <section class="muon-switcher__group">
+    <section
+      v-if="showSection(foundEntries.length)"
+      class="muon-switcher__group"
+      data-tid="switcher-found"
+    >
       <div class="muon-switcher__heading">
         <span class="muon-switcher__caps">Found on this network</span>
         <span
@@ -92,20 +142,6 @@
           />
           {{ scanNetwork || 'searching' }}
         </span>
-        <button
-          v-else
-          type="button"
-          class="muon-switcher__again"
-          title="Search again"
-          aria-label="Search again"
-          data-tid="search-again"
-          @click="rescan"
-        >
-          <frame-icon
-            name="refresh"
-            small
-          />
-        </button>
       </div>
       <printer-card
         v-for="e in foundEntries"
@@ -116,47 +152,37 @@
         @open="openFoundEntry(e)"
         @action="onAction(e, $event)"
       />
-      <div
-        v-if="!directory.found.length"
-        class="muon-switcher__empty"
-      >
-        <template v-if="searching">
-          Looking for Muon3D printers on this network…
-        </template>
-        <template v-else>
-          No other printers found on this network.
-        </template>
-      </div>
-      <div
-        v-if="blockedByPage"
-        class="muon-switcher__note"
-        data-tid="blocked-by-page"
-      >
-        This browser won't let this page reach printers by their IP address, because the page was opened by
-        name. Add another printer by its name instead, as shown on its screen, such as muon-walnut-8987.
-        <template v-if="blockedByPage.ownUrl">
-          Or <a :href="blockedByPage.ownUrl">open this printer by its IP address</a>, which can reach them all.
-        </template>
-      </div>
-
-      <div
-        v-if="bluetoothSearch && !bluetoothOff"
-        class="muon-switcher__empty"
-        data-tid="look-nearby"
-      >
-        A printer that isn't on Wi-Fi yet?
-        <a
-          href="#"
-          @click.prevent="onLookNearby"
-        >Look nearby</a> over Bluetooth.
-      </div>
-      <div
-        v-else-if="bluetoothOff"
-        class="muon-switcher__empty"
-      >
-        Bluetooth is off, so new printers won't show.
-      </div>
     </section>
+
+    <div
+      v-if="blockedByPage"
+      class="muon-switcher__note"
+      data-tid="blocked-by-page"
+    >
+      This browser won't let this page reach printers by their IP address, because the page was opened by
+      name. Add another printer by its name instead, as shown on its screen, such as muon-walnut-8987.
+      <template v-if="blockedByPage.ownUrl">
+        Or <a :href="blockedByPage.ownUrl">open this printer by its IP address</a>, which can reach them all.
+      </template>
+    </div>
+
+    <div
+      v-if="bluetoothSearch && !bluetoothOff"
+      class="muon-switcher__empty"
+      data-tid="look-nearby"
+    >
+      A printer that isn't on Wi-Fi yet?
+      <a
+        href="#"
+        @click.prevent="onLookNearby"
+      >Look nearby</a> over Bluetooth.
+    </div>
+    <div
+      v-else-if="bluetoothOff"
+      class="muon-switcher__empty"
+    >
+      Bluetooth is off, so new printers won't show.
+    </div>
 
     <div
       v-if="notice"
@@ -263,6 +289,8 @@ import { startNearby, stopNearby } from '@/services/muon-ble/nearby'
 import CloudAccountDialog from './CloudAccountDialog.vue'
 import LinkPrinterDialog from './LinkPrinterDialog.vue'
 import PrinterCard from './PrinterCard.vue'
+import { cloudState } from '@/services/muon-cloud/state'
+import { switcherGroups, switcherSectionShown, type SwitcherGroup } from '@/services/muon-cloud/switcher-groups'
 import BluetoothSetupDialog from '@/components/muon-ble/BluetoothSetupDialog.vue'
 import AccessRequestDialog from '@/components/muon-access/AccessRequestDialog.vue'
 
@@ -299,6 +327,15 @@ export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
 
   get cloudEntries (): DirectoryEntry[] {
     return this.directory.cloud.filter(this.matches)
+  }
+
+  /** The account's printers under its groups; the rest under Other printers. */
+  get cloudGroups (): SwitcherGroup[] {
+    return switcherGroups(this.cloudEntries, cloudState.layout?.groups ?? [])
+  }
+
+  showSection (count: number): boolean {
+    return switcherSectionShown(count)
   }
 
   get localEntries (): DirectoryEntry[] {
@@ -357,11 +394,16 @@ export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
   color: var(--m3d-text);
 
   &__find {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 14px 14px 6px;
   }
 
   &__field {
     display: flex;
+    flex: 1 1 0;
+    min-width: 0;
     align-items: center;
     gap: 8px;
     height: 40px;
