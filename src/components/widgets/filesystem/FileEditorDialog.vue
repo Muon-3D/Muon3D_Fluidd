@@ -93,6 +93,7 @@
           <app-btn
             v-if="!readonly && !printerPrinting && configMap.serviceSupported"
             :disabled="!ready"
+            :aria-label="$t('app.general.btn.save_restart')"
             @click="emitSave(true)"
           >
             <v-icon
@@ -106,6 +107,7 @@
           <app-btn
             v-if="!readonly"
             :disabled="!ready"
+            :aria-label="$t('app.general.btn.save')"
             @click="emitSave(false)"
           >
             <v-icon

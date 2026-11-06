@@ -43,6 +43,16 @@ async function files (page: Page, options: { devMode?: boolean } = {}): Promise<
   return printer
 }
 
+/** A phone shows one tile at a time: the header segment picks the other one. */
+async function showOther (page: Page, isMobile: boolean) {
+  if (isMobile) await page.getByTestId('files-actions').getByRole('radio', { name: 'Other files' }).click()
+}
+
+/** The editor holds the file: Monaco on a desktop, a plain text box on a phone. */
+async function editorOpen (page: Page) {
+  await expect(page.locator('.monaco-editor, textarea').first()).toBeVisible({ timeout: 30_000 })
+}
+
 const config = (page: Page) => page.getByTestId('files-config')
 const other = (page: Page) => page.getByTestId('files-other')
 
@@ -89,9 +99,10 @@ test('Developer mode adds the config folder, first', async ({ page, open }) => {
   await expect(config(page).getByTestId('files-dev-mode')).toContainText('Developer mode is on')
 })
 
-test('other files lists logs, docs and every other registered folder', async ({ page, open }) => {
+test('other files lists logs, docs and every other registered folder', async ({ page, open, isMobile }) => {
   const printer = await files(page)
   await open('/configure')
+  await showOther(page, isMobile)
   const roots = other(page).getByRole('radiogroup', { name: 'Other folder' })
   await expect(roots.getByRole('radio')).toHaveText(['logs', 'docs', 'config_examples'])
   await expect(other(page).getByText('klippy.log')).toBeVisible()
@@ -122,10 +133,11 @@ test('the filter narrows the list; Refresh asks the printer again', async ({ pag
   await expect.poll(() => printer.called('server.files.get_directory').length).toBeGreaterThan(before)
 })
 
-test('a read-only folder has no New or Upload', async ({ page, open }) => {
+test('a read-only folder has no New or Upload', async ({ page, open, isMobile }) => {
   await files(page)
   await open('/configure')
   await expect(config(page).getByRole('button', { name: 'Add' })).toBeVisible()
+  await showOther(page, isMobile)
   await expect(other(page).getByTestId('files-refresh')).toBeVisible()
   await expect(other(page).getByRole('button', { name: 'Add' })).toHaveCount(0)
 })
@@ -146,7 +158,7 @@ test('a file opens in the editor sheet with its contents, and closes', async ({ 
   await config(page).getByText('printer.cfg').click()
   const title = page.getByTestId('files-editor-title')
   await expect(title).toContainText('printer.cfg')
-  await expect(page.getByText('mesh_min').first()).toBeVisible({ timeout: 30_000 })
+  await editorOpen(page)
   await page.getByTestId('files-close').click()
   await expect(title).toHaveCount(0)
   await expect(config(page)).toBeVisible()
@@ -161,7 +173,7 @@ test('Save sends the file back to the printer', async ({ page, open }) => {
   })
   await open('/configure')
   await config(page).getByText('printer.cfg').click()
-  await expect(page.getByText('mesh_min').first()).toBeVisible({ timeout: 30_000 })
+  await editorOpen(page)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect.poll(() => upload).toContain('printer.cfg')
   expect(upload).toContain('mesh_min')
@@ -181,7 +193,7 @@ test('?open= opens that file in the editor (a macro Edit)', async ({ page, open 
   await files(page)
   await open('/configure?open=calibration/macros.cfg&line=2')
   await expect(page.getByTestId('files-editor-title')).toContainText('macros.cfg')
-  await expect(page.getByText('mesh_min').first()).toBeVisible({ timeout: 30_000 })
+  await editorOpen(page)
 })
 
 test('ticking files shows the bulk bar; Delete asks, then deletes each', async ({ page, open }) => {
@@ -193,10 +205,10 @@ test('ticking files shows the bulk bar; Delete asks, then deletes each', async (
   await expect(tile.getByTestId('files-selected')).toHaveText('2 selected')
   await expect(tile.getByTestId('files-bulk-download')).toBeVisible()
   await tile.getByTestId('files-bulk-delete').click()
-  await page.getByTestId('confirm-cancel').click()
+  await page.getByTestId('confirm-cancel').last().click()
   expect(printer.called('server.files.delete_file')).toEqual([])
   await tile.getByTestId('files-bulk-delete').click()
-  await page.getByTestId('confirm-ok').click()
+  await page.getByTestId('confirm-ok').last().click()
   await expect.poll(() => printer.called('server.files.delete_file').map(p => p.path).sort())
     .toEqual(['calibration/macros.cfg', 'calibration/probe.cfg'])
 })
