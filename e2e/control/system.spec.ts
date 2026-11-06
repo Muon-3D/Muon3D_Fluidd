@@ -497,7 +497,8 @@ test.describe('An update staged on the spare slot (real Boxwood status)', () => 
     await usePrinter(page, {}, { components: ['update_manager', 'authorization'] })
     await page.route('**/server/aux/update/status', route => route.fulfill({ json: BOXWOOD_STAGED }))
     await open('/')
-    await expect(page.getByTestId('page-title')).toBeVisible()
+    // The page's own content, which is there at both sizes (the phone header has no page-title).
+    await expect(page.getByTestId('overview-page')).toBeVisible()
     await expect(page.getByTestId('update-banner')).toHaveCount(0)
     await expect(page.getByText('Verifying update')).toHaveCount(0)
     await expect(page.getByRole('status').filter({ hasText: /Restarting|Restart delayed|Verifying/ })).toHaveCount(0)
@@ -521,7 +522,8 @@ test.describe('An update staged on the spare slot (real Boxwood status)', () => 
     }, ['muon3d.update.boxwood-367a', Date.now() - 3 * 3_600_000] as const)
     await open('/updating')
     await page.getByTestId('updating-leave').click()
-    await expect(page.getByTestId('page-title')).toBeVisible()
+    // The page's own content, which is there at both sizes (the phone header has no page-title).
+    await expect(page.getByTestId('overview-page')).toBeVisible()
     await expect(page.getByTestId('update-banner')).toHaveCount(0)
     await expect(page.getByRole('status').filter({ hasText: /Restart delayed|Restarting/ })).toHaveCount(0)
   })
