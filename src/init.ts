@@ -13,6 +13,7 @@ import promiseAny from './util/promise-any'
 import sleep from './util/sleep'
 import { setAuxApiBasePath } from './aux_api/useAuxApi'
 import { resetSetupState } from './services/muon-setup/state'
+import { resetGates } from './services/gates/state'
 import { isManagedApiUrl } from './services/muon-cloud/origin'
 import { activeSlug, correctAddress, isActiveSlug, learnActiveIdentity } from './services/printer-pages'
 
@@ -255,6 +256,8 @@ export const appInit = async (apiConfig?: ApiConfig, hostConfig?: HostConfig, op
   // The setup state lives outside Vuex; drop the previous printer's too, or a
   // higher rev from it would win over the new printer's notifications.
   resetSetupState()
+  // And the gates', so one printer's answer never reads as the next one's.
+  resetGates()
 
   // Load the Host Config
   if (!hostConfig) {
