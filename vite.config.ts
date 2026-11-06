@@ -1,6 +1,6 @@
 /// <reference types="vitest" />
 
-import { defineConfig } from 'vite'
+import { defineConfig, searchForWorkspaceRoot } from 'vite'
 import vue from '@vitejs/plugin-vue2'
 import { VitePWA } from 'vite-plugin-pwa'
 import Components from 'unplugin-vue-components/vite'
@@ -12,6 +12,7 @@ import checker from 'vite-plugin-checker'
 import version from './vite.config.inject-version'
 import startup, { shellOnly } from './vite.config.startup'
 import dns from 'dns/promises'
+import { realpathSync } from 'fs'
 import { muonLinkWeb } from './tools/muon-link-web'
 
 // Fix for incorrect typings on vite-plugin-monaco-editor
@@ -219,6 +220,10 @@ export default defineConfig(async ({ command, mode }) => {
 
   server: {
     hmr: !testing && !e2e,
+    // A worktree's node_modules can be a junction to another checkout's; vite
+    // serves only from the workspace, so under e2e it must also allow where
+    // node_modules really is (fonts and the like load from there).
+    ...(e2e ? { fs: { allow: [searchForWorkspaceRoot(process.cwd()), realpathSync('node_modules')] } } : {}),
     host: '0.0.0.0',
     port: 8080,
     // proxy: {
