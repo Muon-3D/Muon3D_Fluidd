@@ -209,7 +209,7 @@ describe('devModeEnabled on the mixin', () => {
   }
 
   it('is on only once this printer said so', async () => {
-    dev.refresh.mockImplementation(async () => { dev.state.enabled = true })
+    dev.refresh.mockImplementation(async () => true)
     const vm = probe(makeStore(['muon_access']))
     expect(vm.devModeEnabled).toBe(false)
     await settle()
@@ -217,12 +217,12 @@ describe('devModeEnabled on the mixin', () => {
   })
 
   it('a printer switch turns it back to locked until the new printer answers', async () => {
-    dev.refresh.mockImplementation(async () => { dev.state.enabled = true })
+    dev.refresh.mockImplementation(async () => true)
     const vm = probe(makeStore(['muon_access']))
     await settle()
     expect(vm.devModeEnabled).toBe(true)
 
-    dev.refresh.mockImplementation(async () => {}) // B cannot be reached; the global keeps A's true
+    dev.refresh.mockImplementation(async () => null) // B cannot be reached; the global keeps A's true
     slug.v = 'B'
     resetGates()
     await settle()
@@ -230,10 +230,10 @@ describe('devModeEnabled on the mixin', () => {
   })
 
   it('a reconnect clears it and asks again', async () => {
-    dev.refresh.mockImplementation(async () => { dev.state.enabled = true })
+    dev.refresh.mockImplementation(async () => true)
     const vm = probe(makeStore(['muon_access']))
     await settle()
-    dev.refresh.mockImplementation(async () => { dev.state.enabled = false })
+    dev.refresh.mockImplementation(async () => false)
     resetGates()
     await settle()
     expect(dev.refresh).toHaveBeenCalledTimes(2)

@@ -1,6 +1,6 @@
 import consola from 'consola'
 import { currentPrinterAccess } from '@/services/muon-access/api'
-import { refreshDevMode, devModeState } from '@/services/dev-mode/state'
+import { refreshDevMode } from '@/services/dev-mode/state'
 import { activeSlug } from '@/services/printer-pages'
 import { gateState, keep } from './state'
 
@@ -41,27 +41,35 @@ export async function refreshCanManageAccess (): Promise<void> {
     consola.debug('Access management is not known on this printer:', err)
     if (!stale(epoch, key)) keep('manage', key, null)
   } finally {
-    if (gateState.epoch === epoch) gateState.checking.manage = false
+    if (gateState.epoch === epoch) {
+      gateState.checking.manage = false
+      // The printer changed while asking (a learned identity, a late cloud
+      // slug): the reply was dropped, so ask the new one.
+      if (activeSlug() !== key) refreshCanManageAccess()
+    }
   }
 }
 
 /**
- * Developer mode on the active printer. The shared devModeState is one
- * global, kept whatever printer it came from, and it keeps its last value
- * when the printer cannot be reached, so it is cleared first and read only
- * once this printer has answered.
+ * Developer mode on the active printer, from this request's own answer. The
+ * shared devModeState is one global that keeps another printer's value, so
+ * it is neither read nor cleared here.
  */
 export async function refreshGateDevMode (): Promise<void> {
   const key = activeSlug()
   if (key === null || gateState.checking.dev) return
   const epoch = gateState.epoch
   gateState.checking.dev = true
-  devModeState.enabled = null
   try {
-    await refreshDevMode()
+    // This request's own answer, never the shared devModeState, which keeps
+    // another printer's value and a late reply from it.
+    const enabled = await refreshDevMode()
     if (stale(epoch, key)) return
-    keep('dev', key, devModeState.enabled)
+    keep('dev', key, enabled)
   } finally {
-    if (gateState.epoch === epoch) gateState.checking.dev = false
+    if (gateState.epoch === epoch) {
+      gateState.checking.dev = false
+      if (activeSlug() !== key) refreshGateDevMode()
+    }
   }
 }
