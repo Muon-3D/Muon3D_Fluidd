@@ -16,17 +16,18 @@ test.beforeEach(async ({ page }) => {
   if (!GPU) await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
 })
 
+// Sandboxed (allow-scripts only), so its own origin is opaque: it trusts the port by its source, the parent.
 const STUB = `<!doctype html><html><body><script>
   window.results = []
   window.addEventListener('message', e => {
-    if (e.origin !== location.origin || e.source !== window.parent || !e.data || e.data.type !== 'muon-panel-port') return
+    if (e.source !== window.parent || !e.data || e.data.type !== 'muon-panel-port') return
     const port = e.ports[0]
     port.onmessage = m => { window.results.push(m.data) }
     port.postMessage({ id: 1, kind: 'rpc', method: 'printer.info' })
-    port.postMessage({ id: 2, kind: 'rpc', method: 'machine.reboot' })
+    port.postMessage({ id: 2, kind: 'rpc', method: 'printer.gcode.script', params: { script: 'G1 X100 Y10 Z0' } })
     port.postMessage({ id: 3, kind: 'aux', method: 'POST', path: '/wifi/ap/down', body: {} })
   })
-  window.parent.postMessage({ type: 'muon-panel-hello', version: 1 }, location.origin)
+  window.parent.postMessage({ type: 'muon-panel-hello', version: 1 }, '*')
 </script></body></html>`
 
 async function servePanel (page: Page) {
@@ -57,8 +58,10 @@ test('the screen opens the printer\'s own screen; only allowed calls reach the p
 
   // Only printer.info went out; the reboot never did, and no G-code was sent.
   expect(printer.calls.map(c => c.method)).toContain('printer.info')
-  expect(printer.calls.map(c => c.method)).not.toContain('machine.reboot')
+  expect(printer.calls.map(c => c.method)).not.toContain('printer.gcode.script')
   expect(printer.gcode).toEqual([])
+  // Sandboxed: the frame has no way to Control's storage or window.
+  await expect(page.getByTestId('m1-screen-frame')).toHaveAttribute('sandbox', 'allow-scripts')
   await expect(page.getByTestId('m1-screen-refused')).toBeVisible()
 
   await page.keyboard.press('Escape')
