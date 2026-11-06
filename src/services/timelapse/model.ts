@@ -59,3 +59,21 @@ export function renderText (status: { status: string, progress?: number, count?:
   if (status.status === 'running') return `Rendering… ${Math.round(status.progress ?? 0)}%`
   return null
 }
+
+/** For the Timelapse header: how many videos the printer keeps, and the space the folder takes. */
+export function timelapseSummary (files: Array<{ filename: string, size: number }>): { videos: number, bytes: number } {
+  return {
+    videos: files.filter(f => VIDEO.test(f.filename)).length,
+    bytes: files.reduce((sum, f) => sum + (f.size || 0), 0)
+  }
+}
+
+/** A video's new file name, its extension kept, and the picture saved beside it renamed to match. */
+export function renamedTimelapse (item: { name: string, thumbnail: string | null }, title: string): { name: string, thumbnail: string | null } | null {
+  const base = title.trim().replace(/\.[^.]+$/, '').replace(/[/\\]/g, '_')
+  if (!base) return null
+  const ext = item.name.match(/\.[^.]+$/)?.[0] ?? ''
+  const name = `${base}${ext}`
+  if (name === item.name) return null
+  return { name, thumbnail: item.thumbnail ? `${base}.jpg` : null }
+}

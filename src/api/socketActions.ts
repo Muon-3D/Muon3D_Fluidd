@@ -608,7 +608,7 @@ export const SocketActions = {
    */
   async serverFilesGetDirectory (root: string, path: string) {
     const wait = `${Waits.onFileSystem}/${root}/${path}/`
-    baseEmit(
+    return baseEmit(
       'server.files.get_directory',
       {
         dispatch: 'files/onServerFilesGetDirectory',

@@ -49,6 +49,12 @@ export interface PrinterHandle {
   report: (status: Json) => void
   /** The printer prints these lines to the console now (a notify_gcode_response each). */
   say: (...lines: string[]) => void
+  /** The printer sends this notification now (notify_timelapse_event...). */
+  notify: (method: string, ...params: unknown[]) => void
+  /** The printer drops off the network: its socket closes, and stays closed until `online()`. */
+  offline: () => Promise<void>
+  /** The printer is back: the page's next reconnect goes through. */
+  online: () => void
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -84,13 +90,28 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     },
     say: (...lines: string[]) => {
       for (const line of lines) pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_gcode_response', params: [line] }))
-    }
+    },
+    notify: (method: string, ...params: unknown[]) => {
+      pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method, params }))
+    },
+    offline: async () => {
+      down = true
+      await pageRoute?.close({ code: 4000, reason: 'printer offline' })
+    },
+    online: () => { down = false }
   }
+  let down = false
+  let pageRoute: { close: (options?: { code?: number, reason?: string }) => Promise<void> } | null = null
   const asked = new Map<unknown, string>()
   const infoRequests = new Set<unknown>()
   let pageSocket: { send: (message: string) => void } | null = null
 
   await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
+    if (down) {
+      ws.close({ code: 4000, reason: 'printer offline' }).catch(() => {})
+      return
+    }
+    pageRoute = ws
     pageSocket = ws
     const server = ws.connectToServer()
 
