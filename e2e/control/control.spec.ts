@@ -24,6 +24,7 @@ function idle (position: [number, number, number], homed = 'xyz', extra: Json = 
 const BED = 200
 const tenth = (v: number) => Math.round(v * 10) / 10
 const START = 'SAVE_GCODE_STATE NAME=_ui_movement\nG90\n'
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\n/g, '\\n')
 const END = '\nRESTORE_GCODE_STATE NAME=_ui_movement'
 
 async function padBox (page: Page) {
@@ -142,7 +143,8 @@ test.describe('Movement', () => {
     await expect(page.getByTestId('trackpad-note')).toHaveText(/Lifts to Z 6/)
     await page.getByTestId('trackpad-move').click()
     await expect.poll(() => printer.gcode.length).toBe(1)
-    expect(printer.gcode[0]).toBe(`${START}G1 Z6 F600\nG1 X${spot.x} Y${spot.y} F7800\nG1 Z1 F600${END}`)
+    // The crossing height is the traverse Z plus the active mesh's spread: 6 and a bit.
+    expect(printer.gcode[0]).toMatch(new RegExp(`^${esc(START)}G1 Z6(\\.\\d+)? F600\\nG1 X${spot.x} Y${spot.y} F7800\\nG1 Z1 F600${esc(END)}$`))
   })
 
   test('a target inside the notch at low Z is refused, says why, and sends nothing', async ({ page, open }) => {
@@ -190,7 +192,10 @@ test.describe('Movement', () => {
     try {
       await dragThrough(page, [40, 100], line([40, 100], [180, 100], 40))
       await page.mouse.up()
-      await page.waitForTimeout(800)
+      // The final point goes once the move before it lands.
+      const lastX = () => { const m = printer.moves(); return m.length ? xyOf(m[m.length - 1]).x : 0 }
+      await expect.poll(lastX, { timeout: 30_000 }).toBeGreaterThan(179)
+      await page.waitForTimeout(500)
     } finally { clearInterval(timer) }
     const n = printer.moves().length
     expect(n).toBeGreaterThan(1)
@@ -204,24 +209,24 @@ test.describe('Movement', () => {
   test('a drag across the notch low down lifts, crosses and lowers', async ({ page, open }) => {
     const printer = await usePrinter(page, idle([50, 20, 1]))
     await open('/control')
-    await dragThrough(page, [50, 20], line([50, 20], [52, 20], 2))
+    await dragThrough(page, [50, 20], line([50, 20], [58, 20], 2))
     await expect.poll(() => printer.gcode.length).toBe(1)
     // Across the notch while the first move is in flight, then it lands.
     const box = await padBox(page)
-    for (const p of line([52, 20], [150, 20], 6)) await page.mouse.move(box.x + box.width * p[0] / BED, box.y + box.height * p[1] / BED)
+    for (const p of line([58, 20], [150, 20], 6)) await page.mouse.move(box.x + box.width * p[0] / BED, box.y + box.height * p[1] / BED)
     arrive(printer, 1)
     await expect.poll(() => printer.gcode.length).toBe(2)
-    expect(printer.gcode[1]).toMatch(/^SAVE_GCODE_STATE NAME=_ui_movement\nG90\nG1 Z6 F600\nG1 X1[45]\d(\.\d)? Y20 F7800\nG1 Z1 F600\nRESTORE_GCODE_STATE NAME=_ui_movement$/)
+    expect(printer.gcode[1]).toMatch(/^SAVE_GCODE_STATE NAME=_ui_movement\nG90\nG1 Z6(\.\d+)? F600\nG1 X1[45]\d(\.\d)? Y20 F7800\nG1 Z1 F600\nRESTORE_GCODE_STATE NAME=_ui_movement$/)
     await page.mouse.up()
   })
 
   test('a drag that ends in the notch low down stops following, says why, and sends nothing more', async ({ page, open }) => {
     const printer = await usePrinter(page, idle([60, 100, 1]))
     await open('/control')
-    await dragThrough(page, [60, 100], line([60, 100], [62, 100], 2))
+    await dragThrough(page, [60, 100], line([60, 100], [68, 100], 2))
     await expect.poll(() => printer.gcode.length).toBe(1)
     const box = await padBox(page)
-    for (const p of line([62, 100], [100, 15], 8)) await page.mouse.move(box.x + box.width * p[0] / BED, box.y + box.height * p[1] / BED)
+    for (const p of line([68, 100], [100, 15], 8)) await page.mouse.move(box.x + box.width * p[0] / BED, box.y + box.height * p[1] / BED)
     arrive(printer, 1)
     await expect(page.getByTestId('trackpad-note')).toHaveText(/Stopped following\. That spot is over the bed notch/)
     // Out again, and let go: nothing more.
@@ -323,7 +328,8 @@ test.describe('Movement', () => {
     await form.getByLabel('X to go to').press('Tab')
     await expect(page.getByTestId('move-go-note')).toHaveText(/Lifts to Z 6/)
     await page.getByTestId('move-go').click()
-    await expect.poll(() => printer.gcode).toEqual([`${START}G1 Z6 F600\nG1 X140 Y20 F7800\nG1 Z1 F600${END}`])
+    await expect.poll(() => printer.gcode.length).toBe(1)
+    expect(printer.gcode[0]).toMatch(new RegExp(`^${esc(START)}G1 Z6(\\.\\d+)? F600\\nG1 X140 Y20 F7800\\nG1 Z1 F600${esc(END)}$`))
     await expect(form).toHaveCount(0)
   })
 
