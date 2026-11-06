@@ -690,7 +690,7 @@
 .v-application.theme--light a.mlib-btn.mlib-btn--primary,
 .theme--light .v-application a.mlib-btn.mlib-btn--primary { color: #fff; }
 .v-application a.mlib-btn.mlib-btn--tint { color: var(--m3d-accent); }
-.v-application a.mlib-link { text-decoration: none; }
+.v-application a.mlib-link { color: var(--m3d-accent); text-decoration: none; }
 
 .mlib--phone {
   .mlib__titles { flex-wrap: wrap; gap: 12px; }

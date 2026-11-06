@@ -64,6 +64,8 @@ test('a link drawn as a button reads as one: its text on its own colour, not und
   await expect(slice).toBeVisible()
   const [colour, background] = [await css(slice, 'color'), await css(slice, 'background-color')]
   expect(colour).not.toBe(background)
+  // The primary's own dark text (library-v2.scss .mlib-btn--primary), not the theme's link colour.
+  expect(colour).toBe('rgb(4, 33, 31)')
   expect(await css(slice, 'text-decoration-line')).toBe('none')
   expect(await css(page.getByTestId('library-quick-look-remix'), 'text-decoration-line')).toBe('none')
 })
