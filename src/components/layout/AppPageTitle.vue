@@ -32,6 +32,7 @@
         <overview-actions v-if="overviewHome && !foreignRecord && !isMobileViewport" />
         <printer-page-menu v-if="overviewHome && !foreignRecord" />
         <maintenance-due v-if="currentPage === '/maintenance'" />
+        <console-actions v-if="currentSection && currentSection.id === 'console'" />
         <camera-actions v-if="currentSection && currentSection.id === 'camera' && !isMobileViewport" />
       </div>
     </div>
@@ -65,6 +66,7 @@ import OverviewActions from '@/components/overview/OverviewActions.vue'
 import PrinterPageMenu from '@/components/overview/PrinterPageMenu.vue'
 import MaintenanceDue from '@/components/maintenance/MaintenanceDue.vue'
 import CameraTabs from '@/components/camera/CameraTabs.vue'
+import ConsoleActions from '@/components/console/ConsoleActions.vue'
 import CameraActions from '@/components/camera/CameraActions.vue'
 import TonePill from '@/components/printers/TonePill.vue'
 import PrinterStatusMixin from '@/mixins/printer-status'
@@ -82,7 +84,7 @@ import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@
  * with the section's pages as tabs under it (Jobs: Jobs, Preview, History,
  * Timelapse).
  */
-@Component({ components: { CameraActions, CameraTabs, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
+@Component({ components: { ConsoleActions, CameraActions, CameraTabs, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
 export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, PrinterStatusMixin) {
   get foreignRecord () {
     const slug = this.$route.params.printer
@@ -125,6 +127,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
 
   /** A line under the title, for a page that says what it holds. */
   get subtitle (): string {
+    if (this.currentSection?.id === 'console') return 'Send G-code and read what Klipper says back'
     if (this.isMobileViewport) return ''
     if (this.overviewHome) {
       if (this.foreignRecord) return ''
@@ -254,6 +257,12 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
 
   .app-page-header--phone {
     gap: 12px;
+
+    .app-page-header__row {
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
     padding: 4px 4px 14px;
 
     .app-page-header__title {

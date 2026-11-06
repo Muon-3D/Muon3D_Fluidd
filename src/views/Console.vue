@@ -4,186 +4,235 @@
     :class="{ 'cons--phone': isMobileViewport }"
     data-tid="console-page"
   >
-    <div class="cons__bar">
-      <seg-picker
-        :options="filterOptions"
-        :value="filter"
-        label="Show"
-        @input="filter = $event"
-      />
-      <span class="cons__grow" />
-      <label class="cons__find">
-        <frame-icon
-          name="search"
-          small
-        />
-        <input
-          v-model="find"
-          type="search"
-          placeholder="Find in log"
-          aria-label="Find in log"
-          data-tid="console-find"
-        >
-      </label>
-      <button
-        v-if="!isMobileViewport"
-        type="button"
-        class="cons__chip"
-        :class="{ 'cons__chip--on': hideTempWaits }"
-        :aria-pressed="hideTempWaits ? 'true' : 'false'"
-        title="Hide the temperature lines Klipper prints while it waits to heat"
-        @click="hideTempWaits = !hideTempWaits"
-      >
-        Hide heating lines
-      </button>
-      <button
-        type="button"
-        class="cbtn"
-        data-tid="console-clear"
-        @click="clear"
-      >
-        Clear
-      </button>
-      <button
-        v-if="!isMobileViewport"
-        type="button"
-        class="cbtn"
-        title="Download Klipper's full log from the printer"
-        @click="downloadLog"
-      >
-        <frame-icon
-          name="download"
-          small
-        />
-        klippy.log
-      </button>
-    </div>
-
     <section
-      class="cons__log"
-      data-tid="console-log"
-      aria-live="polite"
+      class="cons__output"
+      data-tid="console-output"
     >
-      <dynamic-scroller
-        ref="scroller"
-        :items="shown"
-        :min-item-size="22"
-        key-field="key"
-        class="cons__scroller"
-        :buffer="600"
-        @resize="toLatest()"
-      >
-        <template #default="{ item, index, active }">
-          <dynamic-scroller-item
-            :item="item"
-            :active="active"
-            :size-dependencies="[item.html, item.why]"
-            :data-index="index"
+      <header class="cons__head">
+        <h2><frame-icon name="console" /> Output</h2>
+        <span class="cons__head-r">
+          <tone-pill :tone="klippyTone">{{ klippyLabel }}</tone-pill>
+        </span>
+      </header>
+      <div class="cons__bar">
+        <label class="cons__find">
+          <frame-icon
+            name="search"
+            small
+          />
+          <input
+            v-model="find"
+            type="search"
+            placeholder="Find in log"
+            aria-label="Find in log"
+            data-tid="console-find"
           >
-            <div
-              class="cons__line"
-              :class="`cons__line--${item.kind}`"
+        </label>
+        <button
+          type="button"
+          class="cons__chip"
+          :class="{ 'cons__chip--on': hideTempWaits }"
+          :aria-pressed="hideTempWaits ? 'true' : 'false'"
+          title="Hide the temperature lines Klipper prints while it waits to heat"
+          @click="hideTempWaits = !hideTempWaits"
+        >
+          Hide heating lines
+        </button>
+        <button
+          v-if="!isMobileViewport"
+          type="button"
+          class="cbtn"
+          title="Download Klipper's full log from the printer"
+          @click="downloadLog"
+        >
+          <frame-icon
+            name="download"
+            small
+          />
+          klippy.log
+        </button>
+      </div>
+
+      <div
+        class="cons__log"
+        data-tid="console-log"
+        aria-live="polite"
+      >
+        <dynamic-scroller
+          ref="scroller"
+          :items="shown"
+          :min-item-size="22"
+          key-field="key"
+          class="cons__scroller"
+          :buffer="600"
+          @resize="toLatest()"
+        >
+          <template #default="{ item, index, active }">
+            <dynamic-scroller-item
+              :item="item"
+              :active="active"
+              :size-dependencies="[item.html, item.why]"
+              :data-index="index"
             >
-              <time>{{ item.time }}</time>
-              <span
-                class="cons__msg"
-                @click="onLineClick"
-                v-html="item.html"
-              />
-              <span
-                v-if="item.why"
-                class="cons__why"
-              >What this means: {{ item.why }}</span>
-            </div>
-          </dynamic-scroller-item>
-        </template>
-      </dynamic-scroller>
-      <p
-        v-if="!shown.length"
-        class="cons__empty"
-      >
-        {{ find ? `Nothing in the log matches "${find}".` : filter === 'all' ? 'Nothing yet.' : `No ${filter} in the log.` }}
-      </p>
-      <button
-        v-if="paused"
-        type="button"
-        class="cons__latest"
-        @click="toLatest(true)"
-      >
-        Latest
-        <frame-icon
-          name="chevronDown"
-          small
-        />
-      </button>
+              <div
+                class="cons__line"
+                :class="`cons__line--${item.kind}`"
+              >
+                <time>{{ item.time }}</time>
+                <span
+                  class="cons__msg"
+                  @click="onLineClick"
+                  v-html="item.html"
+                />
+                <span
+                  v-if="item.why"
+                  class="cons__why"
+                >What this means: {{ item.why }}</span>
+              </div>
+            </dynamic-scroller-item>
+          </template>
+        </dynamic-scroller>
+        <p
+          v-if="!shown.length"
+          class="cons__empty"
+        >
+          {{ find ? `Nothing in the log matches "${find}".` : filter === 'all' ? 'Nothing yet.' : `No ${filter} in the log.` }}
+        </p>
+        <button
+          v-if="paused"
+          type="button"
+          class="cons__latest"
+          @click="toLatest(true)"
+        >
+          Latest
+          <frame-icon
+            name="chevronDown"
+            small
+          />
+        </button>
+      </div>
+
+      <div class="cons__input">
+        <p
+          v-if="commandRefusal"
+          role="alert"
+          class="cons__help"
+        >
+          {{ commandRefusal }}
+        </p>
+        <p
+          v-if="help && !(open && list.length)"
+          class="cons__help"
+        >
+          <code>{{ typedCommand }}</code> {{ help }}
+        </p>
+        <div class="cons__field">
+          <ul
+            v-if="open && list.length"
+            class="cons__suggest"
+            role="listbox"
+            aria-label="Suggestions"
+            data-tid="console-suggestions"
+          >
+            <li
+              v-for="(s, i) in list"
+              :key="`${s.from}-${s.text}`"
+              role="option"
+              :aria-selected="i === picked ? 'true' : 'false'"
+              class="cons__option"
+              :class="{ 'cons__option--on': i === picked }"
+              @mousedown.prevent="take(s)"
+            >
+              <code>{{ s.text }}</code>
+              <span>{{ s.hint }}</span>
+            </li>
+          </ul>
+          <form
+            class="cons__send"
+            @submit.prevent="send"
+          >
+            <span aria-hidden="true">›</span>
+            <input
+              ref="input"
+              v-model="command"
+              type="text"
+              spellcheck="false"
+              autocomplete="off"
+              :disabled="!klippyConnected"
+              placeholder="G-code, or a macro name…"
+              aria-label="Send G-code"
+              data-tid="console-input"
+              @input="open = true; picked = -1"
+              @keydown="onKey"
+              @blur="open = false"
+            >
+            <span
+              v-if="!isMobileViewport"
+              class="cons__hint"
+              aria-hidden="true"
+            >↑ history</span>
+            <button
+              type="submit"
+              class="cbtn cbtn--primary"
+              :disabled="!klippyConnected || !command.trim()"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+        <p class="cons__keys">
+          Tab completes · ↑ history · Enter sends
+        </p>
+      </div>
     </section>
 
-    <div class="cons__input">
-      <p
-        v-if="commandRefusal"
-        role="alert"
-        class="cons__help"
+    <div class="cons__side">
+      <section
+        class="cons__tile"
+        data-tid="console-quick"
       >
-        {{ commandRefusal }}
-      </p>
-      <p
-        v-if="help && !(open && list.length)"
-        class="cons__help"
-      >
-        <code>{{ typedCommand }}</code> {{ help }}
-      </p>
-      <div class="cons__field">
-        <ul
-          v-if="open && list.length"
-          class="cons__suggest"
-          role="listbox"
-          aria-label="Suggestions"
-          data-tid="console-suggestions"
-        >
-          <li
-            v-for="(s, i) in list"
-            :key="`${s.from}-${s.text}`"
-            role="option"
-            :aria-selected="i === picked ? 'true' : 'false'"
-            class="cons__option"
-            :class="{ 'cons__option--on': i === picked }"
-            @mousedown.prevent="take(s)"
-          >
-            <code>{{ s.text }}</code>
-            <span>{{ s.hint }}</span>
-          </li>
-        </ul>
-        <form
-          class="cons__send"
-          @submit.prevent="send"
-        >
-          <span aria-hidden="true">›</span>
-          <input
-            ref="input"
-            v-model="command"
-            type="text"
-            spellcheck="false"
-            autocomplete="off"
-            :disabled="!klippyConnected"
-            placeholder="Send G-code"
-            aria-label="Send G-code"
-            data-tid="console-input"
-            @input="open = true; picked = -1"
-            @keydown="onKey"
-            @blur="open = false"
-          >
+        <header class="cons__head">
+          <h2><frame-icon name="bolt" /> Quick commands</h2>
+        </header>
+        <div class="cons__chips">
           <button
-            type="submit"
-            class="cbtn cbtn--primary"
-            :disabled="!klippyConnected || !command.trim()"
+            v-for="q in quickCommands"
+            :key="q.command"
+            type="button"
+            class="cons__quick"
+            :disabled="!klippyConnected || (q.moves && printerBusy)"
+            :title="q.moves && printerBusy ? 'Not while the printer is busy' : q.command"
+            :data-tid="`console-quick-${q.command}`"
+            @click="sendNow(q.command)"
           >
-            Send
+            {{ q.command }}
           </button>
-        </form>
-      </div>
-      <p class="cons__keys">
-        Tab completes · ↑ history · Enter sends
-      </p>
+        </div>
+        <p class="cons__note">
+          Tap to send.
+        </p>
+      </section>
+      <console-macros
+        v-if="!isMobileViewport"
+        :locked="!klippyConnected"
+        :busy="printerBusy"
+        @run="onMacro"
+      />
+      <section
+        v-if="!isMobileViewport"
+        class="cons__tile"
+        data-tid="console-now"
+      >
+        <header class="cons__head">
+          <h2><frame-icon name="thermometer" /> Now</h2>
+        </header>
+        <dl class="cons__now">
+          <dt>Hotend</dt>
+          <dd>{{ reading(extruder) }}</dd>
+          <dt>Bed</dt>
+          <dd>{{ reading(bed) }}</dd>
+        </dl>
+      </section>
     </div>
   </div>
 </template>
@@ -196,7 +245,20 @@ import BrowserMixin from '@/mixins/browser'
 import { Globals } from '@/globals'
 import type { ConsoleEntry, GcodeHelp } from '@/store/console/types'
 import { commandHelp, entryKind, explain, filterEntries, suggestions, type LogFilter, type Suggestion } from '@/services/console/model'
-import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
+import TonePill from '@/components/printers/TonePill.vue'
+import ConsoleMacros from '@/components/console/ConsoleMacros.vue'
+import { consoleView } from '@/services/console/view'
+import type { ShownMacro } from '@/mixins/macros'
+
+/** One tap sends these. `moves` ones need an idle printer. */
+const QUICK_COMMANDS = [
+  { command: 'G28', moves: true },
+  { command: 'M105', moves: false },
+  { command: 'BED_MESH_CALIBRATE', moves: true },
+  { command: 'QUERY_PROBE', moves: false },
+  { command: 'FIRMWARE_RESTART', moves: false },
+  { command: 'STATUS', moves: false }
+]
 
 interface Line {
   key: string;
@@ -213,12 +275,14 @@ interface Line {
  * and Klipper's commands with their help. A command in the log, clicked,
  * goes into the line.
  */
-@Component({ components: { SegPicker } })
+@Component({ components: { TonePill, ConsoleMacros } })
 export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, BrowserMixin) {
   @Ref('scroller')
   readonly scroller!: { $el: HTMLElement, scrollToBottom: () => void }
 
-  filter: LogFilter = 'all'
+  get filter (): LogFilter { return consoleView.filter }
+  set filter (value: LogFilter) { consoleView.filter = value }
+
   find = ''
   command = ''
   open = false
@@ -229,19 +293,6 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
 
   get entries (): ConsoleEntry[] {
     return (this.$store.getters['console/getConsoleEntries'] as ConsoleEntry[]) ?? []
-  }
-
-  get errorCount (): number {
-    return this.entries.filter(e => entryKind(e) === 'error').length
-  }
-
-  get filterOptions (): SegOption[] {
-    return [
-      { value: 'all', label: 'All' },
-      { value: 'commands', label: 'Commands' },
-      { value: 'warnings', label: 'Warnings' },
-      { value: 'errors', label: this.errorCount ? `Errors · ${this.errorCount}` : 'Errors' }
-    ]
   }
 
   get knownCommands (): GcodeHelp {
@@ -311,10 +362,6 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
 
   set hideTempWaits (value: boolean) {
     this.$store.dispatch('config/saveByPath', { path: 'uiSettings.general.hideTempWaits', value, server: true })
-  }
-
-  clear () {
-    this.$store.dispatch('console/onClear')
   }
 
   downloadLog () {
@@ -388,6 +435,44 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
     this.open = false
   }
 
+  // -- the side tiles -----------------------------------------------------------
+
+  readonly quickCommands = QUICK_COMMANDS
+
+  get klippyTone (): 'ok' | 'warn' | 'err' | 'off' {
+    if (!this.socketConnected || !this.klippyConnected) return 'off'
+    return this.klippyReady ? 'ok' : 'warn'
+  }
+
+  get klippyLabel (): string {
+    if (!this.socketConnected) return 'Offline'
+    if (!this.klippyConnected) return 'Klipper not connected'
+    return this.klippyReady ? 'Klipper ready' : 'Klipper not ready'
+  }
+
+  get extruder (): { temperature?: number, target?: number } { return this.$store.state.printer.printer.extruder ?? {} }
+  get bed (): { temperature?: number, target?: number } { return this.$store.state.printer.printer.heater_bed ?? {} }
+
+  reading (h: { temperature?: number, target?: number }): string {
+    if (typeof h.temperature !== 'number') return '–'
+    return `${h.temperature.toFixed(1)}° / ${Math.round(h.target ?? 0)}`
+  }
+
+  /** A tap on a chip goes the way a typed line does: same checks, same restart confirm. */
+  async sendNow (gcode: string) {
+    if (!await this.sendTypedGcode(gcode)) return
+    this.$store.dispatch('console/onUpdateCommandHistory', [gcode, ...this.history].slice(0, Globals.CONSOLE_COMMAND_HISTORY))
+    this.toLatest(true)
+  }
+
+  /** A macro with no values runs; one that needs values goes in the line to be filled in. */
+  onMacro (macro: ShownMacro) {
+    if (!macro.params.length) { this.sendNow(macro.name); return }
+    this.command = `${macro.name} `
+    this.open = false
+    this.$nextTick(() => (this.$refs.input as HTMLInputElement | undefined)?.focus())
+  }
+
   async send () {
     const gcode = this.command.trim()
     if (!await this.sendTypedGcode(gcode)) return
@@ -401,15 +486,60 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
 </script>
 
 <style lang="scss" scoped>
-  // The page fills the window below the header, so the line to send from is always in view and the log takes the rest.
+  // Output and its line to send from are one tile; quick commands, macros and the readings sit beside it.
   .cons {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+    min-width: 0;
+  }
+
+  .cons__output,
+  .cons__tile {
     display: flex;
     flex-direction: column;
-    gap: 12px;
     min-width: 0;
-    height: calc(100vh - 250px);
-    height: calc(100svh - 250px);
+    border-radius: 22px;
+    background: var(--m3d-surface);
+  }
+
+  .cons__output {
+    height: calc(100vh - 260px);
+    height: calc(100svh - 260px);
     min-height: 460px;
+  }
+
+  .cons__tile {
+    padding: 18px;
+    gap: 12px;
+  }
+
+  .cons__side {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  .cons__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+
+    h2 {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+    }
+  }
+
+  .cons__output > .cons__head {
+    padding: 16px 18px 0;
   }
 
   .cons__bar {
@@ -417,21 +547,19 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
-  }
-
-  .cons__grow {
-    flex: 1 1 auto;
+    padding: 10px 18px 0;
   }
 
   .cons__find {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    width: 220px;
-    height: 40px;
+    flex: 1 1 180px;
+    max-width: 260px;
+    height: 36px;
     padding: 0 12px;
     border-radius: 12px;
-    background: var(--m3d-surface);
+    background: var(--m3d-surface-2);
     color: var(--m3d-text-muted);
 
     input {
@@ -466,13 +594,11 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
     flex: 1 1 0;
     min-height: 160px;
     overflow: hidden;
-    border-radius: 22px;
-    background: var(--m3d-surface);
   }
 
   .cons__scroller {
     height: 100%;
-    padding: 12px 18px;
+    padding: 8px 18px 12px;
   }
 
   .cons__line {
@@ -553,11 +679,14 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
     font-weight: 600;
   }
 
+  // The line to send from stays at the foot of the tile.
   .cons__input {
     position: relative;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    padding: 12px;
+    border-top: 1px solid var(--m3d-border);
   }
 
   .cons__field {
@@ -622,9 +751,9 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 6px 6px 16px;
-    border-radius: 16px;
-    background: var(--m3d-surface);
+    padding: 4px 4px 4px 14px;
+    border-radius: 14px;
+    background: var(--m3d-surface-2);
     color: var(--m3d-text-subtle);
     font-family: var(--m3d-font-mono, monospace);
 
@@ -639,6 +768,11 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
       font: inherit;
       font-size: 14px;
     }
+  }
+
+  .cons__hint {
+    flex: none;
+    font-size: 12px;
   }
 
   // The ring goes round the well, not the text box in it.
@@ -658,18 +792,63 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
     font-size: 12px;
   }
 
-  // A phone has no page title here, and a tab bar under the page.
-  .cons--phone {
-    height: calc(100svh - 190px);
-    min-height: 380px;
+  .cons__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 
-    .cons__find {
-      flex: 1 1 auto;
-      width: auto;
+  .cons__quick {
+    padding: 7px 12px;
+    border-radius: 10px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text);
+    font-family: var(--m3d-font-mono, monospace);
+    font-size: 12px;
+
+    &:disabled { opacity: 0.45; }
+  }
+
+  .cons__note {
+    margin: 0;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+  }
+
+  .cons__now {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 0;
+    color: var(--m3d-text-muted);
+
+    dd {
+      margin: 0;
+      color: var(--m3d-text);
+      font-weight: 700;
+      text-align: right;
+    }
+  }
+
+  @media (max-width: 1023px) {
+    .cons {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  // A phone: the output first, the quick commands under it, the line to send always in view.
+  .cons--phone {
+    .cons__output {
+      height: calc(100svh - 330px);
+      min-height: 380px;
     }
 
     .cons__scroller {
-      padding: 10px 12px;
+      padding: 8px 12px;
+    }
+
+    .cons__line {
+      font-size: 11.5px;
     }
 
     .cons__keys {
