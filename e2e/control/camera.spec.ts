@@ -59,6 +59,7 @@ test('no camera: the page says so and offers to add one, with nothing to snapsho
   await open('/camera')
   const empty = page.getByTestId('camera-empty')
   await expect(empty).toContainText('This printer has no camera set up')
+  await expect(page.getByText('Live view of')).toHaveCount(0)
   await expect(page.getByTestId('camera-tile')).toHaveCount(0)
   await expect(page.getByTestId('camera-snapshot')).toHaveCount(0)
   await empty.getByRole('link', { name: 'Add a camera' }).click()
@@ -85,7 +86,9 @@ test('one camera: its picture fills a wide tile, with no chips, the header line 
   await expect(page.getByTestId('camera-chips')).toHaveCount(0)
   await expect(page.getByTestId('camera-stage-snapshot')).toBeVisible()
   await expect(page.getByTestId('camera-stage-fullscreen')).toBeVisible()
-  await expect(page.getByTestId('camera-snapshot')).toBeVisible()
+  // Snapshot and Full screen are in one place: the header on a desktop, the picture on a phone.
+  if (isMobile) await expect(page.getByTestId('camera-snapshot')).toHaveCount(0)
+  else await expect(page.getByTestId('camera-snapshot')).toBeVisible()
   expect(printer.called('server.webcams.list').length).toBeGreaterThan(0)
 
   const box = await tile.boundingBox()
@@ -175,13 +178,15 @@ test('Snapshot on the picture saves the camera\'s snapshot', async ({ page, open
   expect((await opened).url()).toBe('http://camera.e2e/chamber/snapshot')
 })
 
-test('the header\'s ··· menu: Full screen, the camera settings and adding a camera', async ({ page, open }) => {
+test('menu in the header: Full screen (desktop) and the camera settings, as one link', async ({ page, open, isMobile }) => {
   await withCameras(page, [CHAMBER])
   await open('/camera')
   await page.getByTestId('camera-more').click()
-  await expect(page.getByTestId('camera-fullscreen')).toBeVisible()
+  if (isMobile) await expect(page.getByTestId('camera-fullscreen')).toHaveCount(0)
+  else await expect(page.getByTestId('camera-fullscreen')).toBeVisible()
   await expect(page.getByTestId('camera-more-settings')).toBeVisible()
-  await page.getByTestId('camera-more-add').click()
+  await expect(page.getByText('Add a camera')).toHaveCount(0)
+  await page.getByTestId('camera-more-settings').click()
   await expect(page).toHaveURL(/\/boxwood-367a\/settings#camera$/)
 })
 

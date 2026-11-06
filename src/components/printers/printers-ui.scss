@@ -1,0 +1,145 @@
+// Shared by the All printers page and its parts. Namespaced under .printers so
+// nothing leaks; the glass tokens are the theme's own.
+.printers {
+  .caps {
+    color: var(--m3d-text-muted);
+    font-family: var(--m3d-font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .caps--accent { color: var(--m3d-accent); }
+  .mono { font-family: var(--m3d-font-mono); }
+  .dim { color: var(--m3d-text-subtle); }
+  .tone--run { color: var(--m3d-accent); }
+  .tone--ok { color: var(--m3d-success); }
+  .tone--warn { color: var(--m3d-warning); }
+  .tone--err { color: var(--m3d-danger); }
+  .tone--off { color: var(--m3d-text-muted); }
+
+  .btn {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 999px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+
+    &:disabled { opacity: 0.5; cursor: default; }
+    &:hover:not(:disabled) { filter: brightness(1.12); }
+  }
+
+  .btn--sm { height: 32px; padding: 0 12px; font-size: 13px; }
+  .btn--primary { background: var(--m3d-accent); color: var(--m3d-on-accent, #00201e); }
+  .btn--ghost { background: transparent; color: var(--m3d-text-muted); }
+
+  .icon-btn {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    color: var(--m3d-text-muted);
+
+    &:hover { background: var(--m3d-hover); color: var(--m3d-text); }
+  }
+
+  .seg {
+    display: inline-flex;
+    flex: none;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 12px;
+    background: var(--m3d-surface-2);
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 9px;
+      color: var(--m3d-text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    button.on {
+      background: var(--m3d-fill-strong, var(--m3d-border-strong));
+      color: var(--m3d-text);
+    }
+  }
+
+  // A list of rows in one tile: at least 52 px each, hairlines between (v3 section 4).
+  .rows {
+    overflow: hidden;
+    border-radius: 22px;
+    background: var(--m3d-surface);
+
+    > * + * { border-top: 1px solid var(--m3d-border); }
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 52px;
+    padding: 10px 16px;
+    min-width: 0;
+  }
+
+  .row__icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text-muted);
+  }
+
+  .row__icon--accent { background: var(--m3d-accent-soft); color: var(--m3d-accent); }
+
+  .row__text {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .row__title { overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+
+  .row__sub {
+    overflow: hidden;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+    text-overflow: ellipsis;
+  }
+
+  .note {
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--m3d-accent-soft);
+    color: var(--m3d-text);
+    font-size: 14px;
+  }
+
+  .note--error { background: color-mix(in srgb, var(--m3d-danger) 14%, transparent); }
+}

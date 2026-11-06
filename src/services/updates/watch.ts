@@ -45,11 +45,24 @@ function load (printer: string): Remembered | null {
 let timer: ReturnType<typeof setTimeout> | null = null
 let ticker: ReturnType<typeof setInterval> | null = null
 let get: Get | null = null
+/**
+ * The session was refused the route (401/403: over a cloud session, policy
+ * doesn't let every role read it). Asking again changes nothing, so the
+ * watch stays quiet until it is started afresh: a reconnect, another
+ * printer, or an install the user just asked for.
+ */
+let refused = false
 
 const active = () => !!updateWatch.remembered && ACTIVE_PHASES.includes(updateWatch.remembered.phase)
 
 function schedule () {
   if (timer) clearTimeout(timer)
+  timer = null
+  if (refused) {
+    if (ticker) clearInterval(ticker)
+    ticker = null
+    return
+  }
   timer = setTimeout(() => { poll() }, active() ? 5000 : 60000)
   if (active() && !ticker) ticker = setInterval(() => { updateWatch.now = Date.now() }, 5000)
   if (!active() && ticker) {
@@ -58,11 +71,12 @@ function schedule () {
   }
 }
 
-/** Reads the printer's update status now. A refusal (network protection, over Iroh) shows nothing. */
+/** Reads the printer's update status now. A refusal (network protection, over Iroh) shows nothing and stops the polling. */
 export async function poll (): Promise<void> {
   if (!get) return
   try {
     const answer = await get('/server/aux/update/status')
+    refused = answer.status === 401 || answer.status === 403
     const data = answer.data as Record<string, unknown> | undefined
     const status = (data && typeof data === 'object' && 'result' in data ? data.result : data) as AuxUpdateStatus | undefined
     if (answer.status === 200 && status && typeof status === 'object') {
@@ -78,6 +92,7 @@ export async function poll (): Promise<void> {
 /** Starts watching `printer`, with Fluidd's own HTTP client. */
 export function watchUpdates (printer: string, http: Get) {
   get = http
+  refused = false
   if (printer !== updateWatch.printer) {
     updateWatch.printer = printer
     updateWatch.status = null
@@ -107,6 +122,7 @@ export function installStarted (from: string | null, to: string | null) {
     budgetMs: updateWatch.remembered?.budgetMs ?? DEFAULT_BUDGET_MS
   }
   save()
+  refused = false
   poll()
 }
 

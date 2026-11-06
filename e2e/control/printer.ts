@@ -33,6 +33,8 @@ export interface PrinterState {
   answer: Record<string, unknown>
   /** When set, server.info reports exactly these Moonraker components (what a page gates on). */
   components?: string[]
+  /** While set, the printer can't be reached: every websocket the page opens is closed at once. */
+  offline?: boolean
 }
 
 export interface PrinterHandle {
@@ -49,10 +51,10 @@ export interface PrinterHandle {
   report: (status: Json) => void
   /** The printer prints these lines to the console now (a notify_gcode_response each). */
   say: (...lines: string[]) => void
-  /** The printer drops off the network: its socket closes and the page can't reconnect until `reconnect()`. */
-  unplug: () => void
-  /** The printer is back: the page's next reconnect gets through. */
-  reconnect: () => void
+  /** The printer drops off the network now: the page's websocket closes, and every new one is refused. */
+  offline: () => Promise<void>
+  /** The printer is reachable again: the page's next websocket connects. */
+  online: () => void
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -89,21 +91,22 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     say: (...lines: string[]) => {
       for (const line of lines) pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_gcode_response', params: [line] }))
     },
-    unplug: () => {
-      unplugged = true
-      pageSocket?.close()
+    offline: async () => {
+      handle.state.offline = true
+      await pageSocket?.close()
       pageSocket = null
     },
-    reconnect: () => { unplugged = false }
+    online: () => {
+      handle.state.offline = false
+    }
   }
-  let unplugged = false
   const asked = new Map<unknown, string>()
   const infoRequests = new Set<unknown>()
   let pageSocket: { send: (message: string) => void, close: () => Promise<void> } | null = null
 
   await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
-    if (unplugged) {
-      ws.close()
+    if (handle.state.offline) {
+      ws.close().catch(() => {})
       return
     }
     pageSocket = ws
