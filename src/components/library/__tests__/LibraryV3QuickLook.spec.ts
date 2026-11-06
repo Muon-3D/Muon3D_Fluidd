@@ -94,6 +94,13 @@ describe('Library v3 quick look: colours and what is loaded', () => {
     expect(document.querySelector('.mlook__dot--on')).not.toBeNull()
     expect(document.querySelector('[data-tid="library-quick-look-loaded"]')?.textContent).toBe('Boxwood has PETG loaded')
   })
+
+  it('says a custom colour is loaded when the material is not known, even when the print is not in it', async () => {
+    look({ printerName: 'Boxwood' }, { muon_material_colour: '123456' })
+    await flush()
+    expect(document.querySelector('.mlook__dot--on')).toBeNull()
+    expect(document.querySelector('[data-tid="library-quick-look-loaded"]')?.textContent).toBe('Boxwood has a custom colour loaded')
+  })
 })
 
 describe('Library v3: colour lists from the service', () => {

@@ -469,10 +469,14 @@ export default class LibraryQuickLook extends Vue {
       const made = this.made
       if (!this.saveId) this.saveId = (await libraryClient().save(this.card.id)).id
       await libraryClient().addToCollection(made.id, this.saveId)
+      // Added: a later New collection… with the same name makes another.
+      this.made = null
       this.naming = false
       this.note = `Added to ${made.name}.`
       this.$emit('saved')
     } catch (error) {
+      // Gone since (deleted elsewhere): the retry makes it again.
+      if ((error as { status?: number }).status === 404) this.made = null
       this.note = describeLibraryError(error)
     } finally {
       this.saving = false
@@ -523,10 +527,11 @@ export default class LibraryQuickLook extends Vue {
   get loadedLine (): string {
     const { material, colour } = this.loaded
     if (!this.printerName || (!material && !colour)) return ''
-    // A custom colour alone says nothing a ring does not.
-    if (!material && colour && colourName(colour) === 'Custom colour') return ''
     const name = colour ? colourName(colour) : ''
-    const what = [name === 'Custom colour' ? '' : name, material ?? ''].filter(Boolean).join(' ')
+    // A colour that is not a preset has no name: say the material, or that it is a custom colour.
+    const what = name === 'Custom colour'
+      ? (material ?? 'a custom colour')
+      : [name, material ?? ''].filter(Boolean).join(' ')
     return `${this.printerName} has ${what} loaded`
   }
 
