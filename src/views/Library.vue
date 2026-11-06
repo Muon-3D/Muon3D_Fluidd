@@ -44,106 +44,98 @@
       @go-slice="goSlice"
     >
       <template #yours>
-        <section
-          v-if="signedIn && state.error"
-          class="lib-empty lib-surface library__state"
-          role="alert"
-        >
-          <h2>Your Library didn't answer</h2>
-          <p>{{ state.error }}</p>
-          <div class="lib-empty__actions">
-            <button
-              type="button"
-              class="lib-btn"
-              @click="refresh"
-            >
-              Try again
-            </button>
-          </div>
-        </section>
-
-        <!-- Signed out: Yours is the account's (a saved session still being restored reads as signed in). -->
-        <section
+        <!-- Every state is one tile in the same place (Library v3, page 12): an icon, one line, one more, at most one button. -->
+        <library-state
           v-if="!mineShown"
-          class="lib-empty lib-surface library__state"
-          data-tid="library-signed-out"
-        >
-          <span class="lib-empty__icon lib-empty__icon--accent"><frame-icon
-            name="library"
-            large
-          /></span>
-          <h2>Sign in to see yours</h2>
-          <p>What you slice, save and print is kept in your Muon3D account, on every printer you use.</p>
-          <div class="lib-empty__actions">
-            <button
-              type="button"
-              class="lib-btn lib-btn--pri"
-              data-tid="library-sign-in"
-              @click="accountDialog = true"
-            >
-              Sign in
-            </button>
-          </div>
-        </section>
+          icon="library"
+          title="Sign in to see yours"
+          text="What you slice, save and print stays in your Muon3D account, on every printer."
+          action="Sign in"
+          primary
+          tid="library-signed-out"
+          @action="accountDialog = true"
+        />
 
-        <!-- Reading it, or turning it on for you (KAN-735: no turn-on step). -->
-        <section
-          v-else-if="!state.error && (!signedIn || !state.checked || consentDue || (state.enabled && !state.synced))"
-          class="lib-empty lib-surface library__state"
-          data-tid="library-reading"
-        >
-          <p>
-            Reading your Library…
-          </p>
-        </section>
+        <template v-else>
+          <!-- Something you did didn't work (a delete, turning it on): said here, not at the foot of the page. -->
+          <library-state
+            v-if="error"
+            kind="callout"
+            :title="error"
+            tid="library-action-error"
+          />
 
-        <!-- Off and not turned on for you: a deletion is pending, the promise is unknown, or consent failed. -->
-        <section
-          v-else-if="state.checked && !state.enabled && !state.error"
-          class="lib-empty lib-surface library__state"
-          data-tid="library-off"
-        >
-          <span class="lib-empty__icon lib-empty__icon--accent"><frame-icon
-            name="library"
-            large
-          /></span>
-          <h2>Your Library is off</h2>
-          <p>
-            Turn it on and we keep what you save: the project, the sliced file and a picture, in your account and nowhere
-            else. You can download or delete all of it whenever you like.
-          </p>
-          <p
-            v-if="purgeDay"
-            class="library__warn"
+          <!-- It didn't answer before anything was read: the whole of Yours says so, with Try again. -->
+          <library-state
+            v-if="signedIn && state.error && !state.synced"
+            kind="error"
+            icon="alert"
+            title="Your Library didn't answer"
+            :text="state.error"
+            action="Try again"
+            primary
+            tid="library-error"
+            @action="refresh"
+          />
+          <!-- It stopped answering later: what is shown stays, with Retry above it. -->
+          <library-state
+            v-else-if="signedIn && state.error"
+            kind="callout"
+            :title="`Your Library didn't answer: ${state.error}`"
+            action="Retry"
+            tid="library-error"
+            @action="refresh"
+          />
+
+          <!-- The one real "off": a deletion is pending. -->
+          <library-state
+            v-else-if="state.checked && !state.enabled && purgeDay"
+            icon="lock"
+            title="Your Library is being deleted"
+            :text="`Everything in it goes on ${purgeDay}. Turn it back on before then to keep it.`"
+            :action="promise ? 'Keep my Library' : ''"
+            primary
+            tid="library-off"
+            @action="turnOn"
+          />
+          <!-- Off for another reason (turning it on for you failed, or this Control can't show the promise). -->
+          <library-state
+            v-else-if="state.checked && !state.enabled && !consentDue"
+            icon="library"
+            :title="promise ? 'Your Library isn\'t on yet' : 'Update Control to use your Library'"
+            :text="promise ? 'It turns on for you when you sign in, and this time it didn\'t. Turn it on to keep what you slice and print.' : 'Your Library has a promise this version of Control cannot show.'"
+            :action="promise ? 'Turn it on' : ''"
+            primary
+            tid="library-off"
+            @action="turnOn"
+          />
+
+          <!-- Being read, or being turned on for you (KAN-735): skeletons in the final layout, not a line of text. -->
+          <div
+            v-else-if="!state.checked || consentDue"
+            class="mlib-shelf"
+            role="status"
+            data-tid="library-reading"
           >
-            What was in it is deleted on {{ purgeDay }} unless you turn it back on.
-          </p>
-          <div class="lib-empty__actions">
-            <button
-              type="button"
-              class="lib-btn lib-btn--pri"
-              :disabled="busy || !promise"
-              data-tid="library-turn-on"
-              @click="turnOn"
-            >
-              Turn it on
-            </button>
-            <a
-              class="lib-btn lib-btn--ghost"
-              :href="promiseUrl"
-              target="_blank"
-              rel="noopener"
-            >What we keep</a>
+            <span class="mlib-hidden">Reading your Library</span>
+            <div class="mlib-shelf__row">
+              <span
+                v-for="n in 5"
+                :key="n"
+                class="mlib-skeleton-card"
+              >
+                <span class="mlib-skeleton" />
+                <span class="mlib-skeleton mlib-skeleton--line" />
+              </span>
+            </div>
           </div>
-          <p v-if="!promise">
-            The Library has a promise this version of Control cannot show. Update Control before turning it on.
-          </p>
-        </section>
+        </template>
       </template>
     </muon-library>
 
+    <!-- On Yours an action's error is a callout in the page (above); elsewhere it shows here. -->
     <p
-      v-if="error"
+      v-if="error && view !== 'mine'"
       class="library__note library__note--error"
       role="alert"
     >
@@ -182,6 +174,7 @@ import { storedToken } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
 import MuonLibrary, { type LibraryPrintRequest, type LibraryTab } from '@/components/library/v2/MuonLibrary.vue'
 import LibrarySharePage from '@/components/library/v2/LibrarySharePage.vue'
+import LibraryState from '@/components/library/v2/LibraryState.vue'
 import type { GridSource } from '@/services/library/shelves'
 import type { Dictionary } from 'vue-router/types/router'
 import PrintOnDialog from '@/components/library/PrintOnDialog.vue'
@@ -202,7 +195,7 @@ export const autoConsent = Vue.observable({ asked: {} as Record<string, 'pending
  * off, reading, an error), and does what a card asks: Print on…, Print again,
  * Slice, or the print's own page.
  */
-@Component({ components: { MuonLibrary, LibrarySharePage, PrintOnDialog, FileNameDialog, CloudAccountDialog } })
+@Component({ components: { MuonLibrary, LibrarySharePage, LibraryState, PrintOnDialog, FileNameDialog, CloudAccountDialog } })
 export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   /**
    * Discover or your own Library: as the address says, else yours once you're
@@ -468,16 +461,6 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   .library--phone {
     gap: 16px;
     padding: 4px 0 24px;
-  }
-
-  .library__state {
-    max-width: 560px;
-    width: 100%;
-    margin: 24px auto 0;
-  }
-
-  .library__warn {
-    color: var(--m3d-warning) !important;
   }
 
   .library__note {
