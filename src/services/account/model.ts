@@ -9,11 +9,19 @@ import type { AccountEvent, Me, Session } from './api'
 export const LIBRARY_RETURN_HOSTS = ['library.muon3d.com', 'staging.library.muon3d.com'] as const
 
 /**
- * Accept an absolute, encrypted Library return address only. Parsing the URL
- * (rather than comparing strings) rejects userinfo and protocol-relative URL tricks.
+ * Accept a Library return address: an absolute, encrypted URL on a Library
+ * host, or a path on this site starting with exactly one "/" (the Library
+ * inside Control, `/library?view=discover`). Parsing the URL (rather than
+ * comparing strings) rejects userinfo and protocol-relative URL tricks. A
+ * path with "//", a backslash, whitespace or a control character is refused:
+ * browsers read "/\evil.com", or a tab after the first slash, as another host.
  */
 export function libraryReturnUrl (value: unknown): string | null {
   if (typeof value !== 'string' || !value) return null
+  if (value.startsWith('/')) {
+    // eslint-disable-next-line no-control-regex
+    return /^\/(?![/\\])[^\\\s\x00-\x1f\x7f]*$/.test(value) ? value : null
+  }
   try {
     const url = new URL(value)
     return url.protocol === 'https:' && !url.username && !url.password &&
