@@ -78,8 +78,12 @@ test('Show more reads the next page of the feed, once each', async ({ page, mode
   await page.getByTestId('library-discover-chip-fits').click()
   const posts = page.getByTestId('library-feed').locator('.mlib-post')
   await expect(posts).toHaveCount(12)
-  await page.getByTestId('library-feed-more').click()
-  await expect(posts).toHaveCount(24)
+  // Reaching Show more reads the next page by itself (the feed reads on as you scroll), so the
+  // button may move before a click lands: click it only if it is still there, then expect more.
+  const more = page.getByTestId('library-feed-more')
+  await more.scrollIntoViewIfNeeded()
+  await more.click({ timeout: 5_000 }).catch(() => {})
+  await expect.poll(() => posts.count()).toBeGreaterThanOrEqual(24)
   const texts = await posts.locator('.mlib-post__by').allTextContents()
   expect(new Set(texts).size).toBe(texts.length)
 })

@@ -42,6 +42,7 @@ function open (rows: TargetRow[]) {
     stubs: {
       'v-dialog': { props: ['value'], template: '<div v-if="value" class="dialog"><slot /></div>' },
       'printer-thumb': true,
+      'router-link': { template: '<a><slot /></a>' },
       'v-progress-circular': true
     },
     i18n,
@@ -95,6 +96,38 @@ describe('Print on…', () => {
     const wrapper = open([row({})])
     await tid(wrapper, 'print-on-save').trigger('click')
     expect(sendToPrinter).toHaveBeenCalledWith(expect.objectContaining({ mode: 'save' }))
+    wrapper.destroy()
+  })
+})
+
+describe('Print on… (Library v3, page 10): how it reads', () => {
+  it('is titled with the print, names the printer you are on as here, and says on one line what each has and does', () => {
+    const wrapper = open([row({}), row({ id: 'w', name: 'Walnut', slug: 'walnut', active: false, status: 'Queue', tone: 'run', action: 'queue', detail: 'Printing Cube now', note: 'Queued prints start once the plate has been cleared.' })])
+    expect(wrapper.find('.m3-dlg__title, h2').text()).toBe('Hinge bracket')
+    const rows = wrapper.findAll('.print-on__row')
+    expect(rows.at(0).text()).toContain('Hazel · here')
+    expect(rows.at(0).find('[data-tid="print-on-fit"]').text()).toBe('PLA loaded · 0.4 mm nozzle. Sliced for exactly this. · 10m · 3 g')
+    expect(rows.at(0).text()).toContain('Ready')
+    expect(rows.at(1).text()).not.toContain('· here')
+    expect(rows.at(1).text()).toContain('Queue')
+    // Both can be chosen: one row, one radio each.
+    expect(wrapper.findAll('[role="radio"]')).toHaveLength(2)
+    wrapper.destroy()
+  })
+
+  it('names the printer in the plate switch, and Cancel closes', async () => {
+    const wrapper = open([row({})])
+    expect(tid(wrapper, 'print-on-plate').text()).toBe('The plate on Hazel is clear')
+    expect(tid(wrapper, 'print-on-plate').find('input').attributes('role')).toBe('switch')
+    await tid(wrapper, 'print-on-cancel').trigger('click')
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.destroy()
+  })
+
+  it('a print that needs re-slicing there says what is loaded, not how long it would take', () => {
+    const wrapper = open([row({ fit: { kind: 'material', setup, loaded: 'PETG' }, action: 'reslice', reslice: 'Re-slice for PETG', tone: 'warn', status: '', detail: 'PETG loaded · this was sliced for PLA', note: 'Re-slicing opens it in Slice for Hazel and saves a version.' })])
+    expect(tid(wrapper, 'print-on-fit').text()).toBe('PETG loaded · this was sliced for PLA')
+    expect(wrapper.findAll('[role="radio"]')).toHaveLength(0)
     wrapper.destroy()
   })
 })
