@@ -247,8 +247,13 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
 
   /** ‹ Yours on Share a print: back where it was opened, else Yours. */
   shareBack () {
-    // Opened here, or from one of your prints (its Share…): back to it, when there is a page to go back to.
-    if ((this.shareOpenedHere || this.$route.query.from === 'print') && window.history.length > 1) {
+    // From one of your prints (its Share…): to that print's page, whatever history holds.
+    if (this.$route.query.from === 'print' && this.shareId && this.shareId !== 'new') {
+      this.$router.replace(this.printTo({ id: this.shareId } as LibraryItem)).catch(() => {})
+      return
+    }
+    // Opened here: back where it was.
+    if (this.shareOpenedHere) {
       this.shareOpenedHere = false
       this.$router.back()
       return

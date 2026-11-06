@@ -108,7 +108,7 @@
           <h2>Files</h2>
         </header>
         <p
-          v-if="itemId && !item && !chosen"
+          v-if="itemId && !item && chosen === itemId"
           class="mshare__warn"
           data-tid="library-share-unknown"
         >
@@ -502,6 +502,7 @@ export default class LibrarySharePage extends Vue {
     if (!this.item || !this.shareable(this.item)) return 'Choose one of your prints.'
     if (!this.gcode) return 'It needs a G-code: slice it first.'
     if (!this.title.trim()) return 'Give it a title.'
+    if (this.item.version == null) return 'It needs a saved version: save it from Slice.'
     if (!this.rights) return 'Confirm you made it, or may share it.'
     return ''
   }
@@ -582,6 +583,7 @@ export default class LibrarySharePage extends Vue {
     try {
       // The version as the Library has it now (another device may have saved a newer one since).
       const now = await libraryClient().item(item.id)
+      if (!this.shareable(now)) throw new Error('This print cannot be shared now: it is no longer one of your own prints.')
       if (now.version == null || !(now.setups?.length)) throw new Error('This print has no G-code now. Slice it, save it, then share it.')
       const share = await libraryClient().publish(item.id, {
         version: now.version,

@@ -179,4 +179,19 @@ describe('Library v3 Share a print', () => {
     await tid(w, 'library-share-audience').find('[role="radiogroup"]').trigger('keydown', { key: 'ArrowLeft' })
     expect(tid(w, 'library-share-audience-private').attributes('aria-checked')).toBe('true')
   })
+
+  it('a print named in the address that is not in Yours says so, and offers a choice', async () => {
+    profile.mockResolvedValue(ready)
+    const { w } = await page({ itemId: 'zzz' })
+    expect(tid(w, 'library-share-unknown').exists()).toBe(true)
+    expect(tid(w, 'library-share-choose').exists()).toBe(true)
+  })
+
+  it('a print with no saved version says so beside Publish', async () => {
+    profile.mockResolvedValue(ready)
+    const { w } = await page({ itemId: 'v', items: [item('v', { version: null })] })
+    await tid(w, 'library-share-rights').find('input').setChecked(true)
+    expect(tid(w, 'library-share-publish').attributes('disabled')).toBe('disabled')
+    expect(tid(w, 'library-share-needs').text()).toBe('It needs a saved version: save it from Slice.')
+  })
 })
