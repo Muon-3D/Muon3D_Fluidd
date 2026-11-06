@@ -24,7 +24,7 @@ export interface Usage {
 export function usageOf (used: number | null, limit: number): Usage | null {
   if (used === null || !Number.isFinite(used) || used < 0 || !(limit > 0)) return null
   const percent = Math.min(100, Math.round(100 * used / limit))
-  return { percent, tone: percent >= 80 ? 'warn' : 'ok' }
+  return { percent, tone: used / limit >= 0.8 ? 'warn' : 'ok' }
 }
 
 /** The share of a spool left, 0 to 100, or null when Spoolman did not say both weights. */
