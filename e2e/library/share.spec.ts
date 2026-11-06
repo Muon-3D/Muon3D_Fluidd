@@ -45,7 +45,7 @@ test('from one of your prints: Share… fills in the print; Publish sends it for
       publication: { licence: 'CC-BY-SA-4.0', rights_confirmed: true, category: 'workshop', tags: ['desk-clamp'], description: 'Clamps to a 25 mm desk.', ai_generated: 'no' }
     }
   }])
-  await page.getByRole('button', { name: 'Back to Yours' }).click()
+  await page.getByTestId('library-share-done-back').click()
   await expect(page.getByTestId('library-print-name')).toHaveText('Desk bracket')
 })
 
@@ -84,7 +84,11 @@ test('without a public profile it says so, and where to set one up', async ({ pa
   await open('/library?view=mine&share=a')
   await expect(page.getByTestId('library-share-setup')).toContainText('Set up your public profile first')
   await expect(page.getByTestId('library-share-setup').getByRole('link', { name: 'Set up your profile' })).toBeVisible()
-  await expect(page.getByTestId('library-share-publish')).toBeDisabled()
+  // No Publish until it is set up; Check again looks again once it is.
+  await expect(page.getByTestId('library-share-publish')).toHaveCount(0)
+  models.profile = 'ready'
+  await page.getByTestId('library-share-check-again').click()
+  await expect(page.getByTestId('library-share-publish')).toBeVisible()
 })
 
 test('a publish that fails says why, and nothing is shown as sent', async ({ page, models, open }) => {

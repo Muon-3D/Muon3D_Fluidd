@@ -6,7 +6,7 @@
   >
     <!-- Share a print (v3 page 11), in place of the Library while it is open. -->
     <library-share-page
-      v-if="shareId !== null && signedIn"
+      v-if="shareId !== null && signedIn && state.enabled"
       :items="everything"
       :item-id="shareId === 'new' ? '' : shareId"
       @back="shareBack"
@@ -247,8 +247,8 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
 
   /** ‹ Yours on Share a print: back where it was opened, else Yours. */
   shareBack () {
-    // Opened here, or from one of your prints (its Share…): back to it.
-    if (this.shareOpenedHere || this.$route.query.from === 'print') {
+    // Opened here, or from one of your prints (its Share…): back to it, when there is a page to go back to.
+    if ((this.shareOpenedHere || this.$route.query.from === 'print') && window.history.length > 1) {
       this.shareOpenedHere = false
       this.$router.back()
       return

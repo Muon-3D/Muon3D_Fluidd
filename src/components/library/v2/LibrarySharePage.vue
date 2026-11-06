@@ -19,16 +19,27 @@
           Put one of your prints in Discover for other people to print
         </p>
       </div>
-      <button
-        v-if="!done"
-        type="button"
-        class="lib-btn lib-btn--pri"
-        :disabled="!canPublish"
-        data-tid="library-share-publish"
-        @click="publish"
+      <div
+        v-if="!done && !setup"
+        class="mshare__go"
       >
-        {{ busy ? 'Publishing…' : audience === 'public' ? 'Publish' : 'Keep it in Yours' }}
-      </button>
+        <button
+          type="button"
+          class="lib-btn lib-btn--pri"
+          :disabled="!canPublish"
+          aria-describedby="library-share-needs"
+          data-tid="library-share-publish"
+          @click="publish"
+        >
+          {{ busy ? 'Publishing…' : audience === 'public' ? 'Publish' : 'Keep it in Yours' }}
+        </button>
+        <span
+          v-if="needs"
+          id="library-share-needs"
+          class="mshare__muted"
+          data-tid="library-share-needs"
+        >{{ needs }}</span>
+      </div>
     </header>
 
     <!-- Sent: what happens next. -->
@@ -44,9 +55,10 @@
         <button
           type="button"
           class="lib-btn lib-btn--pri"
+          data-tid="library-share-done-back"
           @click="$emit('back')"
         >
-          Back to Yours
+          Done
         </button>
       </div>
     </section>
@@ -67,6 +79,14 @@
         >
           {{ setup.action }}
         </router-link>
+        <button
+          type="button"
+          class="lib-btn"
+          data-tid="library-share-check-again"
+          @click="checkAgain"
+        >
+          Check again
+        </button>
       </div>
     </section>
 
@@ -87,8 +107,23 @@
           />
           <h2>Files</h2>
         </header>
+        <p
+          v-if="itemId && !item && !chosen"
+          class="mshare__warn"
+          data-tid="library-share-unknown"
+        >
+          {{ itemsReady ? 'That print isn\'t in Yours any more. Choose another one.' : 'Reading your prints…' }}
+        </p>
+        <p
+          v-if="item && !shareable(item)"
+          class="mshare__warn"
+          role="alert"
+          data-tid="library-share-not-yours"
+        >
+          {{ notShareableWhy(item) }}
+        </p>
         <label
-          v-if="!item"
+          v-if="!item || !shareable(item)"
           class="mshare__field"
         >
           <span>Which print</span>
@@ -105,7 +140,7 @@
           </select>
         </label>
         <div
-          v-else
+          v-if="item && shareable(item)"
           class="mshare__file"
           data-tid="library-share-file"
         >
@@ -138,7 +173,7 @@
           </button>
         </div>
         <p
-          v-if="item && !gcode"
+          v-if="item && shareable(item) && !gcode"
           class="mshare__warn"
           role="alert"
         >
@@ -182,6 +217,8 @@
           class="mlib-chips"
           role="radiogroup"
           aria-label="Category"
+          @keydown.left.prevent="step('category', -1, $event)"
+          @keydown.right.prevent="step('category', 1, $event)"
         >
           <button
             v-for="c in categories"
@@ -191,6 +228,7 @@
             class="mlib-chip"
             :class="{ 'mlib-chip--on': category === c.id }"
             :aria-checked="category === c.id ? 'true' : 'false'"
+            :tabindex="category === c.id ? 0 : -1"
             :data-tid="`library-share-category-${c.id}`"
             @click="category = c.id"
           >
@@ -199,6 +237,7 @@
         </div>
         <div
           class="mlib-chips"
+          role="group"
           aria-label="Tags"
         >
           <span
@@ -253,6 +292,18 @@
           </select>
           <span class="mshare__muted">{{ licenceLine }}</span>
         </label>
+        <label class="mshare__field">
+          <span>Made with AI</span>
+          <select
+            v-model="ai"
+            aria-label="Made with AI"
+            data-tid="library-share-ai"
+          >
+            <option value="no">No</option>
+            <option value="partly">Partly</option>
+            <option value="yes">Yes</option>
+          </select>
+        </label>
         <label
           class="mshare__switch-row"
           data-tid="library-share-rights"
@@ -288,6 +339,8 @@
           class="mlib-seg"
           role="radiogroup"
           aria-label="Who can see it"
+          @keydown.left.prevent="step('audience', -1, $event)"
+          @keydown.right.prevent="step('audience', 1, $event)"
         >
           <button
             v-for="a in audiences"
@@ -297,6 +350,7 @@
             class="mlib-seg__btn"
             :class="{ 'mlib-seg__btn--on': audience === a.id }"
             :aria-checked="audience === a.id ? 'true' : 'false'"
+            :tabindex="audience === a.id ? 0 : -1"
             :data-tid="`library-share-audience-${a.id}`"
             @click="audience = a.id"
           >
@@ -323,7 +377,7 @@
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import { describeLibraryError, LibraryError, type LibraryItem } from '@/services/library/api'
-import { libraryClient } from '@/services/library/store'
+import { libraryClient, libraryState } from '@/services/library/store'
 import { loadThumbnail, thumbnailFor } from '@/services/library/thumbnails'
 import { printFacts, setupLine } from '@/services/library/format'
 import { communityApi } from '@/services/account/community'
@@ -378,6 +432,7 @@ export default class LibrarySharePage extends Vue {
   licence = 'CC-BY-4.0'
   rights = false
   audience: 'public' | 'private' = 'public'
+  ai: 'no' | 'partly' | 'yes' = 'no'
   busy = false
   error = ''
   done: { title: string } | null = null
@@ -387,27 +442,81 @@ export default class LibrarySharePage extends Vue {
   audiences: Array<{ id: 'public' | 'private', label: string }> = [{ id: 'private', label: 'Only me' }, { id: 'public', label: 'Everyone' }]
 
   created () {
-    this.chosen = this.itemId
     this.checkProfile()
   }
 
-  /** Publishing needs a public profile: asked once, so the page says so before anything is filled in. */
+  /** The print the address names (its page's Share…), followed if it changes. */
+  @Watch('itemId', { immediate: true })
+  onItemId (id: string) {
+    this.chosen = id
+  }
+
+  /**
+   * Publishing needs a public profile the server will show (community/guard.rs:
+   * a handle, can_community, can_public, a public identity and the page on):
+   * asked first, so the page says so before anything is filled in.
+   */
   async checkProfile () {
     try {
-      const profile = await communityApi.profile()
-      if (!profile.handle || !profile.can_public || !profile.identity_public) this.setup = SETUP
+      const p = await communityApi.profile()
+      if (!p.handle || !p.can_community || !p.can_public || !p.identity_public || !p.page_on) this.setup = SETUP
     } catch (error) {
       if (error instanceof LibraryError && error.code === 'community_setup_required') this.setup = SETUP
       // Anything else: Publish says what went wrong, if it does.
     }
   }
 
+  /** Set up elsewhere, then back: look again. */
+  checkAgain () {
+    this.setup = null
+    this.error = ''
+    this.checkProfile()
+  }
+
+  /** Your own work only: a print imported or remixed from someone else's is theirs to share. */
+  shareable (item: LibraryItem): boolean {
+    return !!item.versioned && item.state !== 'deleted' && !item.deleted_at && item.origin !== 'import' && item.origin !== 'remix'
+  }
+
+  notShareableWhy (item: LibraryItem): string {
+    if (item.origin === 'import' || item.origin === 'remix') return 'This print came from someone else\'s. Share your own prints here; a remix is shared from its page on library.muon3d.com, crediting the original.'
+    return 'This one can\'t be shared: it isn\'t a print saved from Slice. Choose another one.'
+  }
+
   get printable (): LibraryItem[] {
-    return this.items.filter(i => i.versioned && i.state !== 'deleted' && !i.deleted_at)
+    return this.items.filter(i => this.shareable(i))
+  }
+
+  /** Your prints have been read (the synced Library), so a missing one is really missing. */
+  get itemsReady (): boolean {
+    return libraryState.synced
   }
 
   get item (): LibraryItem | null {
     return this.items.find(i => i.id === this.chosen) ?? null
+  }
+
+  /** What Publish still needs, said beside it. */
+  get needs (): string {
+    if (this.busy || this.audience === 'private') return ''
+    if (!this.item || !this.shareable(this.item)) return 'Choose one of your prints.'
+    if (!this.gcode) return 'It needs a G-code: slice it first.'
+    if (!this.title.trim()) return 'Give it a title.'
+    if (!this.rights) return 'Confirm you made it, or may share it.'
+    return ''
+  }
+
+  /** Arrow keys in a radio group: the next choice, and focus with it. */
+  step (group: 'category' | 'audience', by: number, event: KeyboardEvent) {
+    const ids = group === 'category' ? this.categories.map(c => c.id) : this.audiences.map(a => a.id)
+    const now = ids.indexOf(group === 'category' ? this.category : this.audience)
+    const next = ids[(now + by + ids.length) % ids.length]
+    if (group === 'category') this.category = next
+    else this.audience = next as 'public' | 'private'
+    this.$nextTick(() => {
+      const box = (event.currentTarget as HTMLElement | null)
+      ;(box?.querySelector('[aria-checked="true"]') as HTMLElement | null)?.focus()
+    })
   }
 
   /** The print's name the title was filled in from (a title typed since is kept). */
@@ -454,7 +563,7 @@ export default class LibrarySharePage extends Vue {
   }
 
   get canPublish (): boolean {
-    if (this.busy || !this.item || this.setup) return false
+    if (this.busy || !this.item || this.setup || !this.shareable(this.item)) return false
     if (this.audience === 'private') return true
     return this.gcode && !!this.title.trim() && this.rights && this.item.version != null
   }
@@ -471,8 +580,11 @@ export default class LibrarySharePage extends Vue {
     this.busy = true
     this.error = ''
     try {
+      // The version as the Library has it now (another device may have saved a newer one since).
+      const now = await libraryClient().item(item.id)
+      if (now.version == null || !(now.setups?.length)) throw new Error('This print has no G-code now. Slice it, save it, then share it.')
       const share = await libraryClient().publish(item.id, {
-        version: item.version as number,
+        version: now.version,
         title: this.title.trim(),
         publication: {
           licence: this.licence,
@@ -480,7 +592,7 @@ export default class LibrarySharePage extends Vue {
           category: this.category,
           tags: this.tags,
           ...(this.description.trim() ? { description: this.description.trim() } : {}),
-          ai_generated: 'no'
+          ai_generated: this.ai
         }
       })
       this.done = { title: share.title || this.title.trim() }

@@ -119,7 +119,7 @@ export interface ModelServiceState {
   /** Your Library turned off (consented before, withdrawn), so Control does not turn it on for you. */
   libraryOff: boolean;
   /** Your public profile (Share a print needs one): set up, or not yet (403 community_setup_required). */
-  profile: 'ready' | 'none';
+  profile: 'ready' | 'none' | 'page-off';
   /** What Publish sent, in order (`POST /v1/items/:id/publish` bodies). */
   published: Array<{ item: string, body: Record<string, unknown> }>;
   /** Answer every request with this status (outage tests), or null. */
@@ -323,8 +323,9 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       return json(route, { runs, cursor: null })
     }
     if (path === '/v1/community/profile' && method === 'GET') {
-      if (state.profile === 'none') return json(route, { error: { code: 'community_setup_required', message: 'Set up your public profile first.' } }, 403)
-      return json(route, { handle: 'jack', public_name: 'Jack', identity_public: true, can_community: true, can_public: true, page_on: true, bio: null })
+      // As the service answers: 200, with no handle yet, or the page off.
+      if (state.profile === 'none') return json(route, { handle: null, public_name: null, identity_public: false, can_community: true, can_public: true, page_on: false, bio: null })
+      return json(route, { handle: 'jack', public_name: 'Jack', identity_public: true, can_community: true, can_public: true, page_on: state.profile !== 'page-off', bio: null })
     }
     const publish = path.match(/^\/v1\/items\/([^/]+)\/publish$/)
     if (publish && method === 'POST') {
