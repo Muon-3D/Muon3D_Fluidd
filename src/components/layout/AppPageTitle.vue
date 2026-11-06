@@ -152,6 +152,14 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       }
       return parts.join(' · ')
     }
+    if (this.currentSection?.id === 'control' && this.currentPage === '/control') {
+      const name = printerNameParts(this.displayName).name
+      const file = this.$store.state.printer.printer.print_stats?.filename as string | undefined
+      const head = `Move, heat and feed ${name} by hand`
+      if (this.printerPrinting && file) return `${head} · printing ${jobName(file)}, so axes are locked while it runs`
+      if (this.printerPaused && file) return `${head} · ${jobName(file)} is paused, so axes are locked`
+      return head
+    }
     if (this.isMobileViewport) return ''
     if (this.overviewHome) {
       if (this.foreignRecord) return ''
@@ -164,9 +172,6 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
         return `${jobName(file)}${at}`
       }
       return route
-    }
-    if (this.currentSection?.id === 'control') {
-      return 'Heat, move, filament, speed, fans and lights. Click any value to type it.'
     }
     if (this.currentPage === '/settings') {
       const section = this.settingsSection
