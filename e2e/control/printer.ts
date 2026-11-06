@@ -49,6 +49,8 @@ export interface PrinterHandle {
   report: (status: Json) => void
   /** The printer prints these lines to the console now (a notify_gcode_response each). */
   say: (...lines: string[]) => void
+  /** The printer goes off the network now: its socket closes, and the page's reconnects are refused. */
+  goOffline: () => void
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -84,13 +86,22 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     },
     say: (...lines: string[]) => {
       for (const line of lines) pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_gcode_response', params: [line] }))
+    },
+    goOffline: () => {
+      offline = true
+      pageSocket?.close()
     }
   }
+  let offline = false
   const asked = new Map<unknown, string>()
   const infoRequests = new Set<unknown>()
-  let pageSocket: { send: (message: string) => void } | null = null
+  let pageSocket: { send: (message: string) => void, close: () => Promise<void> } | null = null
 
   await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
+    if (offline) {
+      ws.close()
+      return
+    }
     pageSocket = ws
     const server = ws.connectToServer()
 
