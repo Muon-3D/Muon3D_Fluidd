@@ -48,7 +48,7 @@ describe('Library v3 Discover: filters', () => {
     await settle()
     expect(vm.fits).toBe(true)
     vm.fits = false
-    await wrapper!.setProps({ printerName: 'Boxwood' })
+    await wrapper!.setProps({ printerName: 'Walnut' })
     expect(vm.fits).toBe(false)
   })
 
