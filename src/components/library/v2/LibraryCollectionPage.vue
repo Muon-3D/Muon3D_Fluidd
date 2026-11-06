@@ -327,12 +327,21 @@ export default class LibraryCollectionPage extends Vue {
   private reads = 0
   /** Reorders go one at a time, in the order they were made. */
   private sending: Promise<void> = Promise.resolve()
-  /** How many reorders are still to answer: a reload must not put back an order you just changed. */
+  /** How many of this collection's reorders are still to answer: a reload must not put back an order you just changed. */
   private unsent = 0
+  /** Counts every reorder made: a read that began before the latest one did not see it. */
+  private reorders = 0
+  /** Which collection the reorder bookkeeping is for; another one starts it afresh. */
+  private shownId = ''
 
   @Watch('collectionId', { immediate: true })
   onCollection () {
     this.collection = null
+    // Reorders still being sent are the last collection's: this one starts with none.
+    this.shownId = this.collectionId
+    this.order = []
+    this.unsent = 0
+    this.sending = Promise.resolve()
     // Another collection: nothing open from the last one (a Delete check, Rename, the menu, a note).
     this.confirming = false
     this.renaming = false
@@ -345,6 +354,7 @@ export default class LibraryCollectionPage extends Vue {
   /** Read it again: after a Remove from its quick look, or Try again. */
   async load () {
     const read = ++this.reads
+    const reordersBefore = this.reorders
     this.busy = true
     this.error = ''
     try {
@@ -354,8 +364,8 @@ export default class LibraryCollectionPage extends Vue {
       ])
       if (read !== this.reads) return
       this.collection = detail
-      // While a reorder is still being sent, the order you made stands; the last one reads again.
-      if (!this.unsent) this.order = this.all.map(card => card.key)
+      // The order you made stands while it is being sent, and when this read began before it.
+      if (!this.unsent && reordersBefore === this.reorders) this.order = this.all.map(card => card.key)
       if (saved) this.savedAt = Object.fromEntries((saved.saves ?? []).map((s: CommunitySave) => [s.id, s.created_at]))
       this.readPictures()
     } catch (error) {
@@ -481,10 +491,18 @@ export default class LibraryCollectionPage extends Vue {
 
   async move (key: string, step: number) {
     if (this.sort !== 'order') return
-    await this.reorder(moved(this.order, key, step))
-    // Keep the moved print focused where it now is (after a refusal, where the service put it).
+    const sent = this.reorder(moved(this.order, key, step))
+    // Keep the moved print focused where it now is, at once (the arrows can move it again)…
+    await this.focusOn(key)
+    // …and again once the service has answered (after a refusal, where the service put it).
+    await sent
+    await this.focusOn(key)
+  }
+
+  private async focusOn (key: string) {
     await this.$nextTick()
     const index = this.shown.findIndex(card => card.key === key)
+    if (index < 0) return
     ;(this.$el.querySelector(`[data-tid="library-collection-cell-${index}"]`) as HTMLElement | null)?.focus()
   }
 
@@ -499,16 +517,20 @@ export default class LibraryCollectionPage extends Vue {
     this.order = next
     this.note = ''
     this.unsent++
+    this.reorders++
+    // Only while the same collection is shown does the bookkeeping, a note or a reload apply.
+    const here = () => this.shownId === id
     const send = async () => {
       try {
         await libraryClient().reorderCollection(id, next.map(key => saveIdOf({ key })))
       } catch (error) {
-        if (this.collection?.id === id) this.note = describeLibraryError(error)
+        if (!here()) return
+        this.note = describeLibraryError(error)
         this.unsent--
         await this.load()
         return
       }
-      this.unsent--
+      if (here()) this.unsent--
     }
     this.sending = this.sending.then(send)
     return this.sending
