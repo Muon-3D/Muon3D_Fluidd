@@ -123,7 +123,7 @@
 
     <!-- A save from the editor sheet is its own progress: this dialog would sit over the sheet and its X. -->
     <file-system-upload-dialog
-      v-if="currentUploads.length > 0 && !(tile && fileEditorDialogState.open)"
+      v-if="currentUploads.length > 0 && !(tile && view.sheetOpen)"
       :value="currentUploads.length > 0"
       :files="currentUploads"
       @cancel="handleCancelUpload"
@@ -178,6 +178,7 @@ import { EventBus } from '@/eventBus'
 import { activeSlug } from '@/services/printer-pages'
 import { pathCrumbs, type Crumb } from '@/services/files/manager'
 import { downloadsOnly, opensInEditor, tapDownloads } from '@/services/files/model'
+import { filesView } from '@/services/files/view'
 import { scopedPath } from '@/router/printerPagePaths'
 
 /**
@@ -529,6 +530,18 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
       .filter(file => file.type === 'file' && thumbnailFilenames.has(file.filename))
 
     items.push(...thumbnails)
+  }
+
+  // Files' editor sheet is open in this tile or the other: no upload dialog over it.
+  view = filesView
+
+  @Watch('fileEditorDialogState.open')
+  onSheet (open: boolean) {
+    if (this.tile) this.view.sheetOpen = open
+  }
+
+  beforeDestroy () {
+    if (this.tile && this.fileEditorDialogState.open) this.view.sheetOpen = false
   }
 
   @Watch('activeRoot')

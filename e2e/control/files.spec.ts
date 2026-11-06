@@ -6,7 +6,7 @@
  * shared mock is untouched; every RPC the page sends is asserted.
  */
 import type { Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
+import { test, expect, PRINTER } from '../fixtures'
 import { usePrinter, PRESETS, type PrinterHandle } from './printer'
 
 const NOW = Date.now() / 1000
@@ -51,6 +51,19 @@ async function showOther (page: Page, isMobile: boolean) {
 /** The editor holds the file: Monaco on a desktop, a plain text box on a phone. */
 async function editorOpen (page: Page) {
   await expect(page.locator('.monaco-editor, textarea').first()).toBeVisible({ timeout: 30_000 })
+}
+
+/** In-app navigation to Files (a phone has no sidebar): a history entry the router follows, so Back is the router's. */
+async function toFiles (page: Page) {
+  await expect(async () => {
+    await page.evaluate((to) => {
+      if (!window.location.pathname.endsWith('/configure')) {
+        window.history.pushState({}, '', to)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+      }
+    }, `${PRINTER}/configure`)
+    await expect(page.getByTestId('files-page')).toBeVisible({ timeout: 4000 })
+  }).toPass({ timeout: 30_000 })
 }
 
 const config = (page: Page) => page.getByTestId('files-config')
@@ -214,9 +227,9 @@ async function typeAtEnd (page: Page, text: string) {
 }
 
 /** Catches uploads: the page's POST goes here, and the body is kept. */
-function uploads (page: Page, answer = true) {
+async function uploads (page: Page, answer = true) {
   const seen: string[] = []
-  void page.route('**/server/files/upload', route => {
+  await page.route('**/server/files/upload', route => {
     seen.push(route.request().postData() ?? '')
     if (!answer) return
     return route.fulfill({ json: { item: { path: 'printer.cfg', root: 'calibration' }, action: 'create_file' } })
@@ -226,7 +239,7 @@ function uploads (page: Page, answer = true) {
 
 test('Save sends what was typed, and the editor says how many lines are unsaved', async ({ page, open }) => {
   await files(page)
-  const seen = uploads(page)
+  const seen = await uploads(page)
   await open('/configure')
   await config(page).getByText('printer.cfg').click()
   await editorOpen(page)
@@ -241,7 +254,7 @@ test('Save sends what was typed, and the editor says how many lines are unsaved'
 
 test('Undo changes puts the saved text back', async ({ page, open }) => {
   await files(page)
-  uploads(page)
+  await uploads(page)
   await open('/configure')
   await config(page).getByText('printer.cfg').click()
   await editorOpen(page)
@@ -254,7 +267,7 @@ test('Undo changes puts the saved text back', async ({ page, open }) => {
 
 test('an emptied file is saved empty', async ({ page, open }) => {
   await files(page)
-  const seen = uploads(page)
+  const seen = await uploads(page)
   await open('/configure')
   await config(page).getByText('printer.cfg').click()
   await editorOpen(page)
@@ -269,7 +282,7 @@ test('an emptied file is saved empty', async ({ page, open }) => {
 
 test('Save and restart saves, then restarts Klipper', async ({ page, open }) => {
   const printer = await files(page)
-  const seen = uploads(page)
+  const seen = await uploads(page)
   await open('/configure')
   await config(page).getByText('printer.cfg').click()
   await editorOpen(page)
@@ -293,7 +306,7 @@ test('while printing there is no restart, and the editor says why', async ({ pag
 
 test('the X closes the sheet while a save is still in flight', async ({ page, open }) => {
   await files(page)
-  const seen = uploads(page, false)
+  const seen = await uploads(page, false)
   await open('/configure')
   await config(page).getByText('printer.cfg').click()
   await editorOpen(page)
@@ -320,7 +333,7 @@ test('the X asks before dropping unsaved edits; keeping them stays, dropping clo
 test('browser Back with unsaved edits asks first; keep editing stays, dropping leaves', async ({ page, open }) => {
   await files(page)
   await open('/')
-  await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Files/ }).click()
+  await toFiles(page)
   await expect(page.getByTestId('files-page')).toBeVisible()
   await config(page).getByText('printer.cfg').click()
   await editorOpen(page)
@@ -338,7 +351,7 @@ test('browser Back with unsaved edits asks first; keep editing stays, dropping l
 test('the page-leave guard stays out of the way when nothing is unsaved', async ({ page, open }) => {
   await files(page)
   await open('/')
-  await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Files/ }).click()
+  await toFiles(page)
   await config(page).getByText('printer.cfg').click()
   await editorOpen(page)
   await page.getByTestId('files-close').click()
@@ -383,7 +396,7 @@ test('?open= with a line puts the cursor on that line', async ({ page, open }) =
 
 test('a new file is made and opened to write in', async ({ page, open }) => {
   await files(page)
-  const seen = uploads(page)
+  const seen = await uploads(page)
   await open('/configure')
   await config(page).getByRole('button', { name: 'Add' }).click()
   await page.getByRole('menuitem', { name: /Add File/i }).click()
@@ -415,7 +428,7 @@ test('a row menu renames a file, and deletes it after asking', async ({ page, op
 
 test('Upload sends the chosen file into the folder shown', async ({ page, open }) => {
   await files(page)
-  const seen = uploads(page)
+  const seen = await uploads(page)
   await open('/configure')
   await config(page).getByRole('button', { name: 'Add' }).click()
   const chooser = page.waitForEvent('filechooser')
