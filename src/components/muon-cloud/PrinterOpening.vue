@@ -87,23 +87,37 @@
         {{ presence === 'reconnecting' ? 'Reconnecting…' : `Opening ${name}…` }}
       </h2>
     </template>
+
+    <approval-wait-dialog
+      v-if="approval"
+      :key="approvalKey"
+      :watch="approval"
+      :printer-name="name"
+      @close="approval = null"
+      @retry="retry"
+    />
   </div>
 </template>
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import { activationState } from '@/services/muon-cloud/activate'
+import type { ApprovalWatch } from '@/services/muon-cloud/approval'
 import { cloudState } from '@/services/muon-cloud/state'
 import { consolePresence, type CloudPresence } from '@/services/muon-cloud/presence'
 import { startPairing } from '@/services/muon-ble/pairing'
+import ApprovalWaitDialog from '@/components/muon-cloud/ApprovalWaitDialog.vue'
 import { openPrinterAt, printerPagesState, resolveSlug } from '@/services/printer-pages'
+
+const approvalIds = new WeakMap<ApprovalWatch, number>()
+let approvalCount = 0
 
 /**
  * Shown on a printer's page while Fluidd is on another printer: opening the
  * one the address names, or why it can't. Never the last printer's page under
  * this printer's address.
  */
-@Component({})
+@Component({ components: { ApprovalWaitDialog } })
 export default class PrinterOpening extends Vue {
   @Prop({ type: String, required: true })
   readonly slug!: string
@@ -127,6 +141,22 @@ export default class PrinterOpening extends Vue {
     return printerPagesState.missing === this.slug && (cloudState.ready || !cloudState.account)
   }
 
+  /** The printer is holding this browser until its owner answers (I-170). */
+  get approval (): ApprovalWatch | null {
+    return activationState.approval
+  }
+
+  set approval (watch: ApprovalWatch | null) {
+    activationState.approval = watch
+  }
+
+  /** A new wait is a new dialog, not the last one with new props. */
+  get approvalKey (): number {
+    if (!this.approval) return 0
+    if (!approvalIds.has(this.approval)) approvalIds.set(this.approval, ++approvalCount)
+    return approvalIds.get(this.approval) as number
+  }
+
   get error (): string | null {
     return activationState.switching ? null : activationState.error
   }
@@ -147,6 +177,7 @@ export default class PrinterOpening extends Vue {
   }
 
   retry () {
+    activationState.approval = null
     activationState.error = null
     openPrinterAt(this.slug).catch(() => {})
   }

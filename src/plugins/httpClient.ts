@@ -44,7 +44,8 @@ const createHttpClient = (store: Store<RootState>) => {
   // For these paths, no status is toasted: the page that asked shows the
   // printer's answer itself (a developer-mode refusal names who may ask).
   const quietErrorRequests = [
-    '/server/muon/dev_mode/request'
+    '/server/muon/dev_mode/request',
+    '/access/settings'
   ]
 
   const requestInterceptor = async (config: InternalAxiosRequestConfig) => {
