@@ -183,25 +183,43 @@
               <button
                 v-if="service.inactive"
                 type="button"
-                class="cbtn cbtn--sm"
+                class="cbtn cbtn--sm sys__svc-btn"
+                :aria-label="`Start ${service.name}`"
+                :data-tid="`system-svc-start-${service.name}`"
                 @click="start(service.name)"
               >
+                <frame-icon
+                  name="power"
+                  small
+                />
                 Start
               </button>
               <button
                 v-else
                 type="button"
-                class="cbtn cbtn--sm"
+                class="cbtn cbtn--sm sys__svc-btn"
+                :aria-label="`Restart ${service.name}`"
+                :data-tid="`system-svc-restart-${service.name}`"
                 @click="restart(service.name)"
               >
+                <frame-icon
+                  name="refresh"
+                  small
+                />
                 Restart
               </button>
               <button
                 v-if="!service.inactive && service.name !== moonrakerServiceName"
                 type="button"
-                class="cbtn cbtn--sm cbtn--danger"
+                class="cbtn cbtn--sm cbtn--danger sys__svc-btn"
+                :aria-label="`Stop ${service.name}`"
+                :data-tid="`system-svc-stop-${service.name}`"
                 @click="stop(service.name)"
               >
+                <frame-icon
+                  name="x"
+                  small
+                />
                 Stop
               </button>
             </span>
@@ -641,6 +659,11 @@ export default class System extends Mixins(OverviewMixin, ServicesMixin, Browser
     .srow__v {
       white-space: pre-line;
     }
+  }
+
+  .sys__svc-btn {
+    min-width: 92px;
+    gap: 6px;
   }
 
   .sys__bars {

@@ -76,4 +76,27 @@ describe('updateWatch polling', () => {
     await vi.advanceTimersByTimeAsync(60_000)
     expect(get).toHaveBeenCalledTimes(2)
   })
+
+  it('does not bring back an install that never ended, on a reload', async () => {
+    const key = 'muon3d.update.boxwood'
+    const longAgo = Date.now() - 3 * 3_600_000
+    localStorage.setItem(key, JSON.stringify({ jobId: null, phase: 'verifying', from: null, to: '1.1', progress: null, seenAt: longAgo, lostAt: null, budgetMs: 1_200_000 }))
+    watchUpdates('boxwood', vi.fn(idle))
+    expect(updateWatch.remembered).toBeNull()
+    expect(localStorage.getItem(key)).toBeNull()
+    await settle()
+  })
+
+  it('clears a remembered install when the printer says none is under way, and a reload does not restore it', async () => {
+    const key = 'muon3d.update.boxwood'
+    localStorage.setItem(key, JSON.stringify({ jobId: null, phase: 'verifying', from: null, to: '1.1', progress: null, seenAt: Date.now() - 60_000, lostAt: null, budgetMs: 1_200_000 }))
+    watchUpdates('boxwood', vi.fn(idle))
+    expect(updateWatch.remembered?.phase).toBe('verifying')
+    await settle()
+    expect(updateWatch.remembered).toBeNull()
+    expect(localStorage.getItem(key)).toBeNull()
+    updateWatch.printer = ''
+    watchUpdates('boxwood', vi.fn(idle))
+    expect(updateWatch.remembered).toBeNull()
+  })
 })

@@ -1,5 +1,5 @@
 import Vue from 'vue'
-import { ACTIVE_PHASES, DEFAULT_BUDGET_MS, lost, outcome, remember, type AuxUpdateStatus, type Remembered } from './model'
+import { ACTIVE_PHASES, DEFAULT_BUDGET_MS, expired, lost, outcome, remember, type AuxUpdateStatus, type Remembered } from './model'
 
 /**
  * Fluidd's eye on the printer's own update: its Aux /update/status, read
@@ -33,10 +33,16 @@ function save () {
   } catch { /* private window: it lasts until the tab closes */ }
 }
 
+/** What this browser remembered of the printer's install, unless it is long past (an install that never ended must not greet every load). */
 function load (printer: string): Remembered | null {
   try {
     const raw = localStorage.getItem(storageKey(printer))
-    return raw ? JSON.parse(raw) as Remembered : null
+    const r = raw ? JSON.parse(raw) as Remembered : null
+    if (!r || expired(r, Date.now())) {
+      if (raw) localStorage.removeItem(storageKey(printer))
+      return null
+    }
+    return r
   } catch {
     return null
   }

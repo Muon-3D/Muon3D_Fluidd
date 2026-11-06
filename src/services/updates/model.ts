@@ -85,13 +85,43 @@ export function sessionOf (status: AuxUpdateStatus | null): UpdateSession | null
   return null
 }
 
-/** What to keep after hearing the printer: the active session (with progress), or nothing once it has ended. */
+/**
+ * How long an install the printer has stopped mentioning is kept before it
+ * is dropped: the first answer after Install may still be "idle" for a
+ * moment, so a remembered install is not cleared the instant it is missing.
+ */
+export const UNSEEN_GRACE_MS = 30 * 1000
+
+/** Active, and past the time it was allowed (counted from when the printer went quiet, else last heard). */
+export function expired (r: Remembered | null, now: number): boolean {
+  if (!r || !ACTIVE_PHASES.includes(r.phase)) return false
+  return now - (r.lostAt ?? r.seenAt) > r.budgetMs
+}
+
+/**
+ * What to keep after hearing the printer: the active session (with progress);
+ * how it ended, until it has been shown (see outcome()); and nothing once
+ * the printer says there is no install under way. A remembered install
+ * that the printer no longer reports (no session, or another job's) never
+ * stays "under way": it ends with its outcome if the versions tell one, or
+ * is dropped. Otherwise a "Verifying an update" bar outlived its install and
+ * came back on every load.
+ */
 export function remember (prev: Remembered | null, status: AuxUpdateStatus | null, now: number): Remembered | null {
   const s = sessionOf(status)
-  if (!s || !s.phase) return prev
+  const prevActive = !!prev && ACTIVE_PHASES.includes(prev.phase)
+  if (!s || !s.phase) {
+    if (!prev || !prevActive || !status) return prev
+    if (now - prev.seenAt <= UNSEEN_GRACE_MS) return prev
+    // A bare commit-pending (no version it came from) was never an install anyone started: nothing to show.
+    const ended = prev.from ? outcome(prev, status) : null
+    return ended ? { ...prev, phase: ended, seenAt: now, lostAt: null } : null
+  }
   if (!ACTIVE_PHASES.includes(s.phase)) {
+    if (s.phase === 'idle') return prevActive && now - (prev?.seenAt ?? 0) <= UNSEEN_GRACE_MS ? prev : null
     // The outcome of what we remembered: keep it until it has been shown (see outcome()).
-    return prev && prev.jobId && s.job_id && prev.jobId !== s.job_id ? prev : prev ? { ...prev, phase: s.phase, seenAt: now, lostAt: null } : null
+    if (prev && prev.jobId && s.job_id && prev.jobId !== s.job_id) return prevActive ? null : prev
+    return prev ? { ...prev, phase: s.phase, seenAt: now, lostAt: null } : null
   }
   return {
     jobId: s.job_id ?? prev?.jobId ?? null,
