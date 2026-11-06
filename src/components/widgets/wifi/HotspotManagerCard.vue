@@ -23,11 +23,16 @@
 
     <protected-notice />
     <p
-      v-if="remote"
+      v-if="remote && !ownerCanChange"
       class="hs__note"
     >
       {{ $t('app.wifi.remote_read_only') }}
     </p>
+
+    <!-- KAN-1565: the owner changes the hotspot through muon-link when the Aux API is closed to this page. -->
+    <owner-hotspot-remote
+      v-if="remote && ownerCanChange"
+    />
 
     <div
       v-if="!locked && !remote && !compact"
@@ -200,6 +205,8 @@ import type { VForm } from '@/types'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import { useOwnerNetwork } from '@/services/muon-cloud/useOwnerNetwork'
+import OwnerHotspotRemote from './OwnerHotspotRemote.vue'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -233,7 +240,8 @@ const { onHotspot } = useHotspotCheck()
   },
   components: {
     QrcodeVue,
-    ToggleSwitch
+    ToggleSwitch,
+    OwnerHotspotRemote
   }
 })
 export default class HotspotManagerCard extends Vue {
@@ -267,9 +275,17 @@ export default class HotspotManagerCard extends Vue {
     return printerTransportBinding.remote
   }
 
+  // KAN-1565: asked once for the page; the Wi-Fi card asks too and they share the answer.
+  owner = useOwnerNetwork()
+
+  get ownerCanChange (): boolean {
+    return !this.locked && !this.compact && this.owner.network.available
+  }
+
   @Watch('remote')
   onRemoteChanged (remote: boolean) {
     if (!remote) this.fetchConfig()
+    else this.owner.detect()
   }
 
   showToggleWarningDialog: boolean = false
@@ -341,6 +357,7 @@ export default class HotspotManagerCard extends Vue {
   private requestedApStateUntil = 0
 
   async mounted () {
+    if (this.remote) this.owner.detect()
     await this.fetchConfig()
     if (!this.destroyed) {
       this.statusPollId = window.setInterval(() => {

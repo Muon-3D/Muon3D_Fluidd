@@ -29,11 +29,19 @@
 
     <protected-notice />
     <p
-      v-if="remote"
+      v-if="remote && !ownerCanChange"
       class="wf__note"
     >
       {{ $t('app.wifi.remote_read_only') }}
     </p>
+
+    <!-- KAN-1565: the owner changes Wi-Fi through muon-link when the Aux API is closed to this page. -->
+    <owner-wifi-remote
+      v-if="remote && ownerCanChange"
+    />
+    <owner-network-settings
+      v-if="ownerCanChange"
+    />
 
     <div
       v-if="!locked && !remote"
@@ -211,12 +219,15 @@ import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import { useOwnerNetwork } from '@/services/muon-cloud/useOwnerNetwork'
+import OwnerWifiRemote from './OwnerWifiRemote.vue'
+import OwnerNetworkSettings from './OwnerNetworkSettings.vue'
 
 const { onHotspot } = useHotspotCheck()
 
 type AggWifi = DeviceWifi & { chanList?: string; freqList?: string }
 
-@Component
+@Component({ components: { OwnerWifiRemote, OwnerNetworkSettings } })
 export default class WifiManagerCard extends Vue {
   @Prop({ type: Boolean }) readonly menuCollapsed?: boolean
 
@@ -265,15 +276,30 @@ export default class WifiManagerCard extends Vue {
     return printerTransportBinding.remote
   }
 
+  // KAN-1565: asked once, only when the printer is reached through muon-link.
+  // An older muon-link (404) or a session that is not the owner (403) shows
+  // nothing new.
+  owner = useOwnerNetwork()
+
+  get ownerCanChange (): boolean {
+    return !this.locked && !this.compact && this.owner.network.available
+  }
+
   @Watch('remote')
   onRemoteChanged (remote: boolean) {
-    if (!remote) this.fetchDevices()
+    if (!remote) {
+      this.owner.reset()
+      this.fetchDevices()
+    } else {
+      this.owner.detect()
+    }
   }
 
   auxApi = useAuxApi()
 
   // Lifecycle
   mounted () {
+    if (this.remote) this.owner.detect()
     this.fetchDevices()
     this.intervalId = setInterval(() => this.fetchDevices(), 5000)
   }
