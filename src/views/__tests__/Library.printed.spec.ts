@@ -17,7 +17,7 @@ vi.mock('@/services/library/store', async (original) => ({
 }))
 
 // eslint-disable-next-line import/first
-import { libraryState, resetLibrary, setLibraryClient } from '@/services/library/store'
+import { libraryState, resetLibrary } from '@/services/library/store'
 // eslint-disable-next-line import/first
 import type { LibraryRun } from '@/services/library/api'
 // eslint-disable-next-line import/first
@@ -44,7 +44,7 @@ const run = (over: Partial<LibraryRun>): LibraryRun => ({
 function render () {
   return shallowMount(Library, {
     mocks: { $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
-    stubs: ['router-link', 'frame-icon', 'library-card', 'library-recent-card', 'print-on-dialog', 'file-name-dialog', 'cloud-account-dialog']
+    stubs: ['router-link', 'frame-icon', 'print-on-dialog', 'file-name-dialog', 'cloud-account-dialog']
   })
 }
 
@@ -53,7 +53,7 @@ beforeEach(() => {
   Object.assign(libraryState, { checked: true, enabled: true })
 })
 
-describe('Library Printed tab', () => {
+describe('Library Printed (Yours shelf)', () => {
   it('offers Print again only for a run whose print is still in the Library and whose version is known', () => {
     const vm = render().vm as any
     expect(vm.canPrintAgain(run({}))).toBe(true)
@@ -63,20 +63,39 @@ describe('Library Printed tab', () => {
     expect(vm.printAgain(run({}))).toEqual({ path: '/print', query: { library: 'item', version: '2' } })
   })
 
-  it('keeps the newest section: a slow answer for a tab already left is dropped', async () => {
-    let finishRuns: (value: unknown) => void = () => {}
-    const client = {
-      runs: () => new Promise(resolve => { finishRuns = resolve }),
-      sliced: async () => ({ items: [{ id: 'live', state: 'ready', deleted_at: null }, { id: 'gone', state: 'deleted', deleted_at: '2026-10-20T00:00:00Z' }], rev: 1, reset: false, more: false })
-    }
-    setLibraryClient(client as never)
-    const vm = render().vm as any
-    vm.section = 'printed'; const slow = vm.loadSection()
-    vm.section = 'sliced'; await vm.loadSection()
-    finishRuns({ runs: [run({ id: 'late' })], cursor: null })
-    await slow
-    expect(vm.runs).toEqual([])
-    expect(vm.sectionItems.map((item: { id: string }) => item.id)).toEqual(['live'])
-    expect(vm.sectionBusy).toBe(false)
+  it('Print again on a Printed card goes to the hand-off, and nowhere for a run it cannot print', () => {
+    const push = vi.fn(() => Promise.resolve())
+    const vm = shallowMount(Library, {
+      mocks: { $route: { query: {} }, $router: { push, replace: vi.fn(() => Promise.resolve()) }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
+      stubs: ['router-link', 'frame-icon', 'print-on-dialog', 'file-name-dialog', 'cloud-account-dialog']
+    }).vm as any
+    vm.onPrintRun(run({}))
+    vm.onPrintRun(run({ in_library: false }))
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(push).toHaveBeenCalledWith({ path: '/print', query: { library: 'item', version: '2' } })
+  })
+})
+
+describe('Library v3: Yours See all in the address', () => {
+  function at (query: Record<string, string>) {
+    const push = vi.fn(() => Promise.resolve())
+    const wrapper = shallowMount(Library, {
+      mocks: { $route: { query }, $router: { push, replace: vi.fn(() => Promise.resolve()) }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
+      stubs: ['router-link', 'frame-icon', 'print-on-dialog', 'file-name-dialog', 'cloud-account-dialog']
+    })
+    return { vm: wrapper.vm as any, push }
+  }
+
+  it('reads a Yours shelf only on Yours, and a Discover shelf only on Discover', () => {
+    expect(at({ view: 'mine', shelf: 'sliced' }).vm.grid).toBe('sliced')
+    expect(at({ view: 'mine', shelf: 'popular' }).vm.grid).toBe(null)
+    expect(at({ view: 'discover', shelf: 'sliced' }).vm.grid).toBe(null)
+    expect(at({ view: 'discover', shelf: 'popular' }).vm.grid).toBe('popular')
+  })
+
+  it('opens a Yours See all on Yours, pushed so Back returns to the shelves', () => {
+    const { vm, push } = at({ view: 'mine' })
+    vm.setGrid('printed')
+    expect(push).toHaveBeenCalledWith({ query: { view: 'mine', shelf: 'printed' } })
   })
 })

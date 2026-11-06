@@ -6,8 +6,8 @@
   >
     <!-- See all and search results (v3 pages 3 and 4): one grid page. -->
     <library-grid-page
-      v-if="tab === 'discover' && grid"
-      :source="grid"
+      v-if="tab === 'discover' && discoverGrid"
+      :source="discoverGrid"
       :query="search"
       :printer-name="printerName"
       :fits-first="fits"
@@ -20,6 +20,19 @@
       @update:query="openSearch"
       @print="print"
       @open="open"
+    />
+
+    <!-- See all for a Yours shelf: one grid with search and sort. -->
+    <library-yours-grid
+      v-else-if="tab === 'yours' && yoursGrid && signedIn && (ownReady || yoursGrid === 'saved')"
+      :source="yoursGrid"
+      :printer-name="printerName"
+      :printing="printing"
+      @back="$emit('grid-back')"
+      @print="print"
+      @open="open"
+      @own-act="ownAct"
+      @own-open="ownOpen"
     />
 
     <template v-else>
@@ -148,6 +161,14 @@
               small
             />
             {{ printerName ? `Print again on ${printerName}` : 'Print again' }}
+          </button>
+          <button
+            type="button"
+            class="mlib-btn"
+            data-tid="library-continue-open"
+            @click="$emit('open-item', continueItem)"
+          >
+            Open
           </button>
         </div>
       </section>
@@ -296,11 +317,13 @@
         </template>
       </template>
 
-      <!-- YOURS: collections and saves, then the host's own Library (sign in, sections, your prints). -->
+      <!-- YOURS (v3 page 2): what the host has to say first (sign in, off, reading, error), then the shelves. -->
       <template v-else>
+        <slot name="yours" />
         <library-yours-shelves
           v-if="signedIn"
           ref="yours"
+          :own="ownReady"
           :printer-name="printerName"
           :printing="printing"
           :collections="collections"
@@ -308,20 +331,10 @@
           @print="print"
           @open="open"
           @changed="readCollections"
-        />
-        <section
-          v-if="signedIn"
-          class="mlib-shelf mlib-shelf--own"
-        >
-          <header class="mlib-shelf__head">
-            <h2>Your prints</h2>
-            <span class="mlib-muted">Sliced and saved from Slice, on every printer</span>
-          </header>
-          <slot name="yours" />
-        </section>
-        <slot
-          v-else
-          name="yours"
+          @see-all="seeAll"
+          @own-act="ownAct"
+          @own-open="ownOpen"
+          @go-slice="$emit('go-slice')"
         />
       </template>
     </template>
@@ -349,6 +362,8 @@ import LibraryYoursShelves from './LibraryYoursShelves.vue'
 import LibraryShelf from './LibraryShelf.vue'
 import LibraryState from './LibraryState.vue'
 import LibraryGridPage from './LibraryGridPage.vue'
+import LibraryYoursGrid, { YOURS_GRIDS, type YoursGridSource } from './LibraryYoursGrid.vue'
+import type { OwnCard } from '@/services/library/yours'
 import { describeLibraryError, type CommunityCollection, type LibraryItem } from '@/services/library/api'
 import { LIBRARY_URL } from '@/services/library/discover'
 import { libraryClient } from '@/services/library/store'
@@ -377,7 +392,7 @@ const PALETTE = ['#ff9f0a', '#ff453a', '#64d2ff', '#30d158', '#bf5af2', '#80d6d1
  * prints from where it is, through the host: `print` and `print-item`.
  * No router in here; it sizes to its container.
  */
-@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState, LibraryGridPage } })
+@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState, LibraryGridPage, LibraryYoursGrid } })
 export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: 'page' }) readonly context!: 'page' | 'control'
   @Prop({ type: String, default: null }) readonly printerId!: string | null
@@ -389,10 +404,12 @@ export default class MuonLibrary extends Vue {
   /** Signed in: Yours shows collections and saves, the quick look a heart. */
   @Prop({ type: Boolean, default: false }) readonly signedIn!: boolean
   /** A See all page or search results instead of Discover's shelves; the host keeps it in the address. */
-  @Prop({ type: String, default: null }) readonly grid!: GridSource | null
+  @Prop({ type: String, default: null }) readonly grid!: GridSource | YoursGridSource | null
   @Prop({ type: String, default: '' }) readonly search!: string
   /** The print to continue with (the last one saved), or none. */
   @Prop({ type: Object, default: null }) readonly continueItem!: LibraryItem | null
+  /** Your Library is on and read: Yours' shelves can show (the host says what to do otherwise). */
+  @Prop({ type: Boolean, default: true }) readonly ownReady!: boolean
 
   query = ''
   /** The category shown: 'all' or one of the model service's categories. */
@@ -628,6 +645,26 @@ export default class MuonLibrary extends Vue {
   /** See all: the shelf as a grid page (v3 page 3). */
   seeAll (id: string) {
     this.$emit('update:grid', id)
+  }
+
+  get discoverGrid (): GridSource | null {
+    return this.grid === 'popular' || this.grid === 'm1' || this.grid === 'new' || this.grid === 'search' ? this.grid : null
+  }
+
+  get yoursGrid (): YoursGridSource | null {
+    return YOURS_GRIDS.includes(this.grid as YoursGridSource) ? this.grid as YoursGridSource : null
+  }
+
+  /** A Yours card's button: print it, print that run again, or open it in Slice. The host does each. */
+  ownAct (card: OwnCard) {
+    if (card.action === 'again' && card.run) this.$emit('print-run', card.run)
+    else if (card.action === 'slice' && card.item) this.$emit('slice-item', card.item)
+    else if (card.action === 'print' && card.item) this.$emit('print-item', card.item)
+  }
+
+  /** A Yours card's picture: its own page (v3 page 9). */
+  ownOpen (card: OwnCard) {
+    if (card.item) this.$emit('open-item', card.item)
   }
 
   /** Enter in a search box: the results page (v3 page 4), for two letters or more. */

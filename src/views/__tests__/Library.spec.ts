@@ -46,7 +46,7 @@ function renderLibrary (query: Record<string, string> = {}) {
       $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} },
       $vuetify: { breakpoint: { mobile: false } }
     },
-    stubs: ['router-link', 'frame-icon', 'library-card', 'library-recent-card', 'print-on-dialog', 'file-name-dialog']
+    stubs: ['router-link', 'frame-icon', 'print-on-dialog', 'file-name-dialog']
   })
 }
 
@@ -128,20 +128,20 @@ describe('Library feed states', () => {
     try {
       expect(wrapper.text()).toContain('Offline')
       expect(wrapper.text()).toContain('Try again')
-      expect(wrapper.find('[data-tid="library-grid"]').exists()).toBe(true)
-      expect(wrapper.find('library-card-stub').props('item').id).toBe('existing')
+      // Yours' shelves stay (each reads on its own); the error sits above them.
+      expect(wrapper.findComponent({ name: 'MuonLibrary' }).props('ownReady')).toBe(true)
       expect(wrapper.text()).not.toContain('Nothing here yet')
     } finally {
       wrapper.destroy()
     }
   })
 
-  it('shows the existing empty state after a genuinely empty successful feed', () => {
+  it('after a genuinely empty feed shows the shelves (Sliced says what to do), not a page-wide panel', () => {
     libraryState.synced = true
     const wrapper = renderLibrary()
     try {
-      expect(wrapper.text()).toContain('Nothing here yet')
-      expect(wrapper.text()).toContain('Open Slice')
+      expect(wrapper.findComponent({ name: 'MuonLibrary' }).props('ownReady')).toBe(true)
+      expect(wrapper.text()).not.toContain('Nothing here yet')
       expect(wrapper.text()).not.toContain('Reading your Library…')
     } finally {
       wrapper.destroy()
