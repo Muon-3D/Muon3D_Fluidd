@@ -54,7 +54,12 @@
             v-if="shown && shown.colour"
             class="matp__swatch"
             :style="{ background: shown.colour }"
-          />{{ shown ? shown.name : 'Not set' }}
+          /><v-icon
+            v-if="!shown"
+            x-small
+            class="matp__warn"
+            data-tid="material-warning"
+          >$warning</v-icon>{{ shown ? shown.name : 'No material loaded' }}
         </span>
         <span class="ov-tile__sub">{{ subtitle }}</span>
       </button>
@@ -438,6 +443,11 @@ export default class MaterialPicker extends Mixins(ControlMixin) {
 
   .matp__tile--phone {
     grid-column: 1 / -1;
+  }
+
+  .matp__warn {
+    margin-right: 6px;
+    color: var(--m3d-warning) !important;
   }
 
   .matp__swatch {

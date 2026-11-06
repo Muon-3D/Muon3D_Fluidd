@@ -355,7 +355,7 @@ export default class JobDetail extends Mixins(BrowserMixin, FilesMixin) {
 
   get checks (): ReadyCheck[] {
     if (!this.job) return []
-    return readyChecks(this.job.file, this.job.filename, this.material, this.printerName, !!this.busy)
+    return readyChecks(this.job.file, this.job.filename, { loaded: !!this.material, name: this.material }, this.printerName, !!this.busy)
   }
 
   get facts (): Array<{ label: string, value: string }> {
