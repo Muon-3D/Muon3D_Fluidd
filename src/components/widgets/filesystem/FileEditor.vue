@@ -16,7 +16,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Ref, Mixins } from 'vue-property-decorator'
+import { Component, Prop, Ref, Mixins, Watch } from 'vue-property-decorator'
 import BrowserMixin from '@/mixins/browser'
 import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api'
 import md5AsBase64 from '@/util/md5-as-base64'
@@ -165,6 +165,12 @@ export default class FileEditor extends Mixins(BrowserMixin) {
 
       this.$emit('input', value)
     })
+  }
+
+  // The text set from outside (Undo changes): the editor takes it.
+  @Watch('value')
+  onValue (value: string) {
+    if (this.editor && value !== this.editor.getValue()) this.editor.setValue(value)
   }
 
   focus () {

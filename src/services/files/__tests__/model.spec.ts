@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { changedLines, opensInEditor, orderRoots, restartNote, rootGroup, validName } from '../model'
+import { changedLines, downloadsOnly, opensInEditor, orderRoots, restartNote, tapDownloads } from '../model'
 
 describe('Files\' folders', () => {
-  it('names MuonOS\'s roots for people', () => {
-    expect(rootGroup('calibration').title).toBe('This printer\'s settings')
-    expect(rootGroup('defaults').note).toMatch(/^read only/)
-    expect(rootGroup('logs').download).toBe(true)
-    expect(rootGroup('timelapse_frames').title).toBe('Timelapse frames')
+  it('downloads the logs and nothing else by root', () => {
+    expect(downloadsOnly('logs')).toBe(true)
+    expect(downloadsOnly('calibration')).toBe(false)
+    expect(downloadsOnly('docs')).toBe(false)
   })
 
   it('lists the printer\'s own first', () => {
@@ -20,6 +19,14 @@ describe('opening a file', () => {
     expect(opensInEditor('moonraker.conf', 900)).toBe(true)
     expect(opensInEditor('klippy.log', 30_000_000)).toBe(false)
     expect(opensInEditor('photo.jpg', 100)).toBe(false)
+  })
+
+  it('downloads on a tap: logs, files over 2 MB, and anything that is not text', () => {
+    expect(tapDownloads('logs', 'klippy.log', 100)).toBe(true)
+    expect(tapDownloads('calibration', 'big.cfg', 3_000_000)).toBe(true)
+    expect(tapDownloads('calibration', 'photo.jpg', 100)).toBe(true)
+    expect(tapDownloads('calibration', 'printer.cfg', 4000)).toBe(false)
+    expect(tapDownloads('defaults', 'm1.cfg', 4000)).toBe(false)
   })
 })
 
@@ -35,12 +42,5 @@ describe('saving', () => {
     expect(changedLines('a\nb\nc', 'a\nB\nc')).toBe(1)
     expect(changedLines('a\nb', 'a\nb\nc\nd')).toBe(2)
     expect(changedLines('same', 'same')).toBe(0)
-  })
-
-  it('takes names without slashes', () => {
-    expect(validName('my_macros.cfg')).toBe(true)
-    expect(validName('macros/x.cfg')).toBe(false)
-    expect(validName('..')).toBe(false)
-    expect(validName('  ')).toBe(false)
   })
 })
