@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { jobThumbnailPath, remoteJobThumbnail, remoteThumbnails } from '../thumbnail'
+import { jobThumbnailPath, MAX_READING, MAX_TRIES, remoteJobThumbnail, remoteThumbnails, RETRY_AFTER_MS } from '../thumbnail'
 
 const meta = {
   thumbnails: [
@@ -11,7 +11,9 @@ const meta = {
 const createObjectURL = URL.createObjectURL
 
 afterEach(() => {
+  vi.useRealTimers()
   remoteThumbnails.urls = {}
+  remoteThumbnails.failures = {}
   URL.createObjectURL = createObjectURL
 })
 
@@ -44,13 +46,56 @@ describe('a job thumbnail over the remote route', () => {
     expect(read).toHaveBeenCalledWith('/server/files/gcodes/Harry/.thumbs/a.png')
   })
 
-  it('stays empty, and does not retry in a loop, when the read fails', async () => {
-    const read = vi.fn(async () => { throw new Error('HTTP 404') })
+  it('does not ask again when the printer says the picture is not there', async () => {
+    const read = vi.fn(async () => { throw Object.assign(new Error('HTTP 404'), { response: { status: 404 } }) })
     remoteJobThumbnail('p1', '/x.png', 1, read)
-    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(1))
-    await Promise.resolve()
+    await vi.waitFor(() => expect(remoteThumbnails.urls['p1|/x.png|1']).toBeNull())
     expect(remoteJobThumbnail('p1', '/x.png', 1, read)).toBe('')
     expect(read).toHaveBeenCalledTimes(1)
+  })
+
+  it('asks again after a dropped read, and shows the picture once one succeeds', async () => {
+    vi.useFakeTimers()
+    URL.createObjectURL = vi.fn(() => 'blob:second-try')
+    const read = vi.fn()
+      .mockRejectedValueOnce(new Error('stream closed'))
+      .mockResolvedValue(new Blob(['png']))
+    remoteJobThumbnail('p1', '/y.png', 1, read)
+    await vi.advanceTimersByTimeAsync(RETRY_AFTER_MS + 10)
+    expect(remoteJobThumbnail('p1', '/y.png', 1, read)).toBe('')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(remoteJobThumbnail('p1', '/y.png', 1, read)).toBe('blob:second-try')
+    expect(read).toHaveBeenCalledTimes(2)
+  })
+
+  it('gives up after a few tries, and stays empty', async () => {
+    vi.useFakeTimers()
+    const read = vi.fn(async () => { throw new Error('stream closed') })
+    for (let i = 0; i < MAX_TRIES; i++) {
+      remoteJobThumbnail('p1', '/z.png', 1, read)
+      await vi.advanceTimersByTimeAsync(RETRY_AFTER_MS + 10)
+    }
+    expect(remoteJobThumbnail('p1', '/z.png', 1, read)).toBe('')
+    await vi.advanceTimersByTimeAsync(RETRY_AFTER_MS * 3)
+    expect(read).toHaveBeenCalledTimes(MAX_TRIES)
+  })
+
+  it('reads only a few pictures at once', async () => {
+    let open = 0
+    let peak = 0
+    const release: Array<() => void> = []
+    const read = vi.fn(() => new Promise<Blob>((resolve) => {
+      open++
+      peak = Math.max(peak, open)
+      release.push(() => { open--; resolve(new Blob(['png'])) })
+    }))
+    URL.createObjectURL = vi.fn(() => 'blob:x')
+    for (let i = 0; i < MAX_READING + 3; i++) remoteJobThumbnail('p1', `/q${i}.png`, 1, read)
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(MAX_READING))
+    release.splice(0).forEach(r => r())
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(MAX_READING + 3))
+    release.splice(0).forEach(r => r())
+    expect(peak).toBe(MAX_READING)
   })
 
   it('reads again when the file changed', async () => {

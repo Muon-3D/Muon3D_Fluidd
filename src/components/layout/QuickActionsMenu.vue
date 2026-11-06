@@ -180,6 +180,26 @@ export default class QuickActionsMenu extends Mixins(MaintenanceMixin) {
 </script>
 
 <style lang="scss" scoped>
+  // The same box as the other top-bar icons. AppBar's .app-header__icon rule
+  // is scoped to AppBar's own markup, so it never reached this button (which
+  // is rendered by this component): it was an inline 20 x 26 box, not a 40 x 40
+  // one with the bolt centred in it.
+  .quick-actions__btn {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    color: var(--m3d-text-muted);
+
+    &:hover {
+      background: var(--m3d-hover);
+      color: var(--m3d-text);
+    }
+  }
+
   .quick-actions__btn--open {
     background: var(--m3d-surface-2);
     color: var(--m3d-text);

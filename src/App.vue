@@ -12,12 +12,6 @@
   >
     <app-rail v-if="showRail" />
 
-    <inline-svg
-      v-if="!managedConsoleRoute && showBackgroundLogo && !isMobileViewport"
-      :src="logoSrc"
-      class="muon-background-logo"
-    />
-
     <app-bar v-if="!managedConsoleRoute" />
 
     <flash-message
@@ -250,14 +244,6 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
 
   get theme (): ThemeConfig {
     return this.$store.state.config.uiSettings.theme as ThemeConfig
-  }
-
-  get showBackgroundLogo () {
-    return this.theme.backgroundLogo
-  }
-
-  get logoSrc () {
-    return `${import.meta.env.BASE_URL}${this.theme.logo.src}`
   }
 
   get primaryColor (): string {
@@ -897,15 +883,5 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   // Room for the tab bar, so the last card can scroll clear of it.
   .muon-shell--tabbed .muon-content {
     padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important;
-  }
-
-  .muon-background-logo {
-    pointer-events: none;
-    position: fixed;
-    width: 40%;
-    height: auto;
-    right: -8%;
-    bottom: -16%;
-    opacity: 0.04;
   }
 </style>

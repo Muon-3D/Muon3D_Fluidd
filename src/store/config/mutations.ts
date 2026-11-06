@@ -47,11 +47,9 @@ export const mutations: MutationTree<ConfigState> = {
           payload.theme.logo.src = logoSrc.substring(1)
         }
 
-        // A theme saved before styles existed has none, and is the default
-        // style; the style this browser restored for sign-in must not stick.
-        if (payload.theme.style == null) {
-          payload.theme.style = DEFAULT_UI_STYLE
-        }
+        // Glass is the only style. A theme saved before styles existed has
+        // none, and one saved as 'flat' (retired) reads as glass too.
+        payload.theme.style = DEFAULT_UI_STYLE
       }
 
       const mergedSettings = mergeWith(

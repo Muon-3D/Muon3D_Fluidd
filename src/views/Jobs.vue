@@ -41,11 +41,7 @@
           class="jobs__queued"
         >
           <span class="jobs__thumb jobs__thumb--small">
-            <img
-              v-if="thumbnailOf(queued.filename)"
-              :src="thumbnailOf(queued.filename)"
-              alt=""
-            >
+            <job-picture :src="thumbnailOf(queued.filename)" />
           </span>
           <span class="jobs__queued-text">
             <b>{{ titleOf(queued.filename) }}</b>
@@ -293,12 +289,10 @@
                     v-if="row.kind === 'folder'"
                     name="files"
                   />
-                  <img
-                    v-else-if="row.job && row.job.thumbnail"
-                    :src="row.job.thumbnail"
-                    alt=""
-                    loading="lazy"
-                  >
+                  <job-picture
+                    v-else
+                    :src="row.job ? row.job.thumbnail : ''"
+                  />
                 </span>
                 <span class="jobs__name-text">
                   <b :title="row.name">{{ row.title }}</b>
@@ -399,14 +393,8 @@
           />
         </div>
         <div class="jobs__picture">
-          <img
-            v-if="selectedRow.job.thumbnail"
+          <job-picture
             :src="selectedRow.job.thumbnail"
-            alt=""
-          >
-          <frame-icon
-            v-else
-            name="jobs"
             large
           />
         </div>
@@ -436,6 +424,12 @@
             v-for="warning in warnings"
             :key="warning"
           >
+            <v-icon
+              x-small
+              class="jobs__warning-icon"
+            >
+              $warning
+            </v-icon>
             {{ warning }}
           </li>
         </ul>
@@ -579,6 +573,7 @@ import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
 import JobMenu, { type JobMenuAction } from '@/components/jobs/JobMenu.vue'
+import JobPicture from '@/components/jobs/JobPicture.vue'
 import TonePill from '@/components/printers/TonePill.vue'
 
 /** A row of the list: a folder, or a G-code file in the folder that's open. */
@@ -612,7 +607,7 @@ interface ListRow {
  * a file is in its ··· menu. The search, the order, Upload and the
  * pages that used to be tabs are in the header (JobsActions).
  */
-@Component({ components: { FileNameDialog, JobMenu, TonePill } })
+@Component({ components: { FileNameDialog, JobMenu, JobPicture, TonePill } })
 export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   path = ''
   selectedKey: string | null = null
@@ -994,7 +989,7 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   get warnings (): string[] {
     const job = this.selectedRow?.job
     if (!job) return []
-    return readyChecks(job.file, job.filename, this.material ? this.material.name : null, this.printerName, this.busy)
+    return readyChecks(job.file, job.filename, this.loadedFilament, this.printerName, this.busy)
       .filter(c => !c.ok && !c.text.endsWith('it can go next in the queue'))
       .map(c => c.text)
   }
@@ -1626,6 +1621,11 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
       display: flex;
       flex-direction: column;
     }
+  }
+
+  .jobs__warning-icon {
+    margin-right: 6px;
+    color: var(--m3d-warning) !important;
   }
 
   .jobs__warnings {

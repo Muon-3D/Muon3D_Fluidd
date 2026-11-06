@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from 'vitest'
-import { fileSize, filterJobs, filterRows, isGcodeFile, isModelFile, jobFacts, jobTitle, nextSort, parentFolder, queueLabel, rangeSelect, readyChecks, shortDate, sortJobs, sortRows, tableTime, toggleKey, type TableRow } from '../model'
+import { fileSize, filterJobs, filterRows, isGcodeFile, isModelFile, jobFacts, jobTitle, nextSort, NO_MATERIAL_LOADED, parentFolder, queueLabel, rangeSelect, readyChecks, shortDate, sortJobs, sortRows, tableTime, toggleKey, type TableRow } from '../model'
 
 describe('a job\'s title', () => {
   test.each([
@@ -49,21 +49,40 @@ describe('the files on the printer', () => {
 })
 
 describe('before a dropped file prints', () => {
+  const pla = { loaded: true, name: 'PLA' }
+
   it('says it was sliced for the M1, and the material matches', () => {
-    expect(readyChecks({ filament_type: 'PLA', slicer: 'OrcaSlicer' }, 'minisaur_0.2mm_PLA_Muon3D M1_22m.gcode', 'PLA', 'Boxwood', false)).toEqual([
+    expect(readyChecks({ filament_type: 'PLA', slicer: 'OrcaSlicer' }, 'minisaur_0.2mm_PLA_Muon3D M1_22m.gcode', pla, 'Boxwood', false)).toEqual([
       { ok: true, text: 'Sliced for the Muon3D M1' },
-      { ok: true, text: 'Needs PLA · PLA is set' }
+      { ok: true, text: 'Needs PLA · PLA is loaded' }
     ])
   })
 
   it('warns of another material, another printer, and a busy printer', () => {
-    const checks = readyChecks({ filament_type: 'PETG', slicer: 'PrusaSlicer' }, 'part.gcode', 'PLA', 'Boxwood', true)
+    const checks = readyChecks({ filament_type: 'PETG', slicer: 'PrusaSlicer' }, 'part.gcode', pla, 'Boxwood', true)
     expect(checks.map(c => c.text)).toEqual([
       'Sliced with PrusaSlicer; not marked for the M1',
-      'Needs PETG · PLA is set',
+      'Needs PETG · PLA is loaded',
       'Boxwood is busy · it can go next in the queue'
     ])
     expect(checks.every(c => c.warn)).toBe(true)
+  })
+
+  it('says "No material loaded", in that phrase, when nothing is in the printer', () => {
+    const checks = readyChecks({ filament_type: 'PLA' }, 'part.gcode', { loaded: false, name: null }, 'Boxwood', false)
+    expect(checks).toEqual([{ ok: false, warn: true, text: 'No material loaded · needs PLA' }])
+    expect(NO_MATERIAL_LOADED).toBe('No material loaded')
+  })
+
+  it('never says "no material is set": a recorded name with no filament in is still "No material loaded"', () => {
+    const checks = readyChecks({ filament_type: 'PLA' }, 'part.gcode', { loaded: false, name: 'PLA' }, 'Boxwood', false)
+    expect(checks.map(c => c.text).join()).not.toMatch(/is set/i)
+    expect(checks[0].text).toContain('No material loaded')
+  })
+
+  it('does not warn when filament is in but nobody has named it', () => {
+    expect(readyChecks({ filament_type: 'PLA' }, 'part.gcode', { loaded: true, name: null }, 'Boxwood', false))
+      .toEqual([{ ok: true, text: 'Needs PLA · filament is loaded' }])
   })
 })
 
