@@ -267,7 +267,7 @@ export default class ControlFilament extends Mixins(FilamentActionsMixin) {
   /**
    * Mid-print: M600, which pauses the print, after its confirm. Idle: open
    * the material panel and send nothing (KAN-1700); Load and Unload are there
-   * and here, each behind its own confirm.
+   * and here, and send at once.
    */
   async changeFilament () {
     if (this.changePlan.kind === 'panel') {
@@ -282,9 +282,20 @@ export default class ControlFilament extends Mixins(FilamentActionsMixin) {
     if (picker) picker.open = true
   }
 
-  /** Quick actions' Change filament, idle, comes here with ?filament=open. */
-  mounted () {
-    if (this.$route?.query?.filament === 'open') this.$nextTick(() => this.openPanel())
+  /**
+   * Quick actions' Change filament, idle, comes here with ?filament=open:
+   * on arrival, or while already here. The query is then dropped, so the
+   * next press changes the route again.
+   */
+  @Watch('$route.query.filament', { immediate: true })
+  onFilamentQuery (value: unknown) {
+    if (value !== 'open') return
+    this.$nextTick(() => {
+      this.openPanel()
+      const query = { ...this.$route.query }
+      delete query.filament
+      this.$router.replace({ path: this.$route.path, query }).catch(() => {})
+    })
   }
 }
 </script>

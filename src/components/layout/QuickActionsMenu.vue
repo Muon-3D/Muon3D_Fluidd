@@ -161,8 +161,8 @@ export default class QuickActionsMenu extends Mixins(MaintenanceMixin, FilamentA
   /**
    * As Control's Filament card does it (FilamentActionsMixin, KAN-1700).
    * Mid-print: M600, which pauses the print, after its confirm. Idle: it
-   * sends nothing and opens the material panel on Control, where Load and
-   * Unload each ask first.
+   * sends nothing and opens the material panel on Control, with Load and
+   * Unload.
    */
   /** The material panel lives on Control's Filament card: open it there. */
   openFilamentPanel () {

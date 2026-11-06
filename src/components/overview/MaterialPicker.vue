@@ -437,7 +437,7 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
     this.open = false
   }
 
-  /** Load or Unload, behind its confirm (FilamentActionsMixin); the panel closes once it's sent. */
+  /** Load or Unload (FilamentActionsMixin), once however often it's pressed; the panel closes once it's sent. */
   async runOnce (which: 'load' | 'unload') {
     if (await this.runFilamentPlan(which)) this.open = false
   }

@@ -10,26 +10,26 @@
  * The rules now:
  * - Idle, "Change filament" sends nothing: it opens the material panel
  *   (material and colour, plus Load and Unload).
- * - Load and Unload heat the nozzle and run the extruder (UNLOAD_FILAMENT
- *   heats to 250 °C on the M1), so each asks first and names the heat.
+ * - Load and Unload send their macro at once, as they always did.
  * - Mid-print, "Change filament" is M600, which pauses the print, after its
  *   own confirm.
  * - Nothing is sent while the printer is paused, busy with another script,
- *   or showing its own prompt; the caller also refuses a second send until
- *   the first one has landed.
+ *   or showing its own prompt, or while this page's last filament send is
+ *   still landing (the page-wide send window), so a double click sends once.
  */
 export interface FilamentMacro {
   name: string
   /** It reads params.TEMP, so it is told the material's nozzle heat. */
   takesTemp: boolean
-  /** The nozzle heat it sets itself (M104/M109 S…, or TEMP's default), when the macro says. */
-  heatsTo?: number | null
 }
 
 export interface Confirm { title: string, text: string, yes: string, no: string }
 
 export type FilamentPlan =
-  | { kind: 'pause' | 'load' | 'unload', command: string, confirm: Confirm }
+  /** Mid-print M600: sent after its confirm. */
+  | { kind: 'pause', command: string, confirm: Confirm }
+  /** Load and Unload: sent at once. */
+  | { kind: 'load' | 'unload', command: string }
   /** Idle Change filament: open the material panel, send nothing. */
   | { kind: 'panel' }
   | { kind: 'none', reason: string }
@@ -37,30 +37,27 @@ export type FilamentPlan =
 export interface FilamentState {
   printing: boolean
   paused: boolean
-  /** Klipper is running another script (idle_timeout "Printing" with no print), or this page just sent one. */
+  /** Klipper is running another script: idle_timeout says Printing with no print. */
   running: boolean
   /** The printer is showing its own prompt (action:prompt_begin). */
   promptOpen: boolean
+  /** This page sent a filament command a moment ago (the page-wide send window). */
+  sending?: boolean
 }
+
+export const SENDING = 'Sent. Wait a moment for the printer to start.'
 
 const withTemp = (macro: FilamentMacro, temp: number | null) =>
   macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name
 
-/** The nozzle heat a macro sets itself, read from its G-code, else null. */
-export function macroHeat (gcode: string): number | null {
-  const m = /params\.temp\s*\|\s*default\(\s*(\d{2,3})/i.exec(gcode) ??
-    /\bM10[49]\b[^\n]*\bS(\d{2,3})\b/i.exec(gcode) ??
-    /SET_HEATER_TEMPERATURE\b[^\n]*\bTARGET=(\d{2,3})\b/i.exec(gcode)
-  return m ? Number(m[1]) : null
-}
-
 function blocked (state: FilamentState): string | null {
   if (state.promptOpen) return 'Answer the printer\'s prompt first.'
   if (state.paused) return 'The print is paused. Change the filament with the printer\'s prompt, then resume.'
+  if (state.sending) return SENDING
   return null
 }
 
-/** "Change filament": mid-print M600 (pauses the print); idle, the material panel. */
+/** "Change filament": mid-print M600 (pauses the print) after a confirm; idle, the material panel. */
 export function changeFilamentPlan (state: FilamentState, change: FilamentMacro | null, temp: number | null): FilamentPlan {
   const why = blocked(state)
   if (why) return { kind: 'none', reason: why }
@@ -78,36 +75,14 @@ export function changeFilamentPlan (state: FilamentState, change: FilamentMacro 
   }
 }
 
-/** Load or Unload: never mid-print, and always after a confirm that names the heat. */
+/** Load or Unload: never mid-print, paused, prompting or busy; otherwise sent at once. */
 export function loadUnloadPlan (state: FilamentState, kind: 'load' | 'unload', macro: FilamentMacro | null, temp: number | null): FilamentPlan {
   const why = blocked(state)
   if (why) return { kind: 'none', reason: why }
   if (state.printing) return { kind: 'none', reason: 'Not while printing.' }
   if (state.running) return { kind: 'none', reason: 'Wait until the printer finishes what it\'s doing.' }
   if (!macro) return { kind: 'none', reason: `This printer has no ${kind === 'load' ? 'LOAD_FILAMENT' : 'UNLOAD_FILAMENT'} macro.` }
-  const heat = macro.takesTemp && temp ? temp : (macro.heatsTo ?? null)
-  const hot = heat ? `Heats the nozzle to ${heat} °C` : 'Heats the nozzle'
-  return kind === 'unload'
-    ? {
-        kind,
-        command: withTemp(macro, temp),
-        confirm: {
-          title: 'Unload the filament?',
-          text: `${hot}, then runs the extruder to pull the filament out. The head doesn't move. Keep clear of the nozzle; it gets hot.`,
-          yes: 'Heat and unload',
-          no: 'Cancel'
-        }
-      }
-    : {
-        kind,
-        command: withTemp(macro, temp),
-        confirm: {
-          title: 'Load the filament?',
-          text: `${hot}, then runs the extruder to pull the new filament in and purge. Put the filament in the entry first. The printer may home and move to purge. Keep clear of the nozzle; it gets hot.`,
-          yes: 'Heat and load',
-          no: 'Cancel'
-        }
-      }
+  return { kind, command: withTemp(macro, temp) }
 }
 
 export const UNLOADING_NOTE = 'Unloading. When the filament is out, put the new one in and press Load.'
