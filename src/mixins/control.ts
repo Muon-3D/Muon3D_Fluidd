@@ -26,6 +26,8 @@ import {
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
+import { planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
+import { EventBus } from '@/eventBus'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
 
@@ -254,7 +256,51 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     return !!this.$store.state.config.uiSettings.general.axis?.[axis.toLowerCase()]?.inverted
   }
 
-  /** A step along one axis, cut short at the machine's limits. */
+  /** The no-go regions this printer declares in [bed_mesh], read live. */
+  get noGo (): NoGoConfig | null | 'invalid' {
+    return readNoGo(this.$store.state.printer.printer.configfile?.settings?.bed_mesh)
+  }
+
+  /**
+   * Where the head is, for the no-go check: XY from the toolhead, and the
+   * LOWER of the toolhead and G-code heights (they differ while a mesh is
+   * active, and the lower one is the safe reading). `z` is the G-code height
+   * a move returns to.
+   */
+  get headForPlan (): { x: number, y: number, low: number, z: number } {
+    const gcodeZ = Number(this.$store.state.printer.printer.gcode_move?.gcode_position?.[2])
+    const toolZ = Number(this.position[2])
+    const z = Number.isFinite(gcodeZ) ? gcodeZ : toolZ
+    const low = Number.isFinite(gcodeZ) && Number.isFinite(toolZ) ? Math.min(gcodeZ, toolZ) : NaN
+    return { x: Number(this.position[0]), y: Number(this.position[1]), low, z }
+  }
+
+  /** Plan a move to an absolute place against the bed's no-go regions. */
+  planMoveTo (place: Place): MovePlan {
+    const head = this.headForPlan
+    return planMove(
+      { x: head.x, y: head.y, z: head.low },
+      { x: place.X ?? head.x, y: place.Y ?? head.y, z: place.Z ?? head.z },
+      this.noGo,
+      { min: this.axisMin.slice(0, 3) as [number, number, number], max: this.axisMax.slice(0, 3) as [number, number, number] }
+    )
+  }
+
+  refuseMove (reason: string) {
+    EventBus.$emit(reason, { type: 'warning' })
+  }
+
+  /** Send a planned move: lift, across, down, as one script. */
+  sendPlannedMoves (steps: Place[]) {
+    const line = (p: Place) => {
+      const words = (['X', 'Y', 'Z'] as Axis[]).filter(a => p[a] !== undefined).map(a => `${a}${p[a]}`)
+      const rate = p.Z !== undefined ? this.zSpeed : this.xySpeed
+      return `G1 ${words.join(' ')} F${rate * 60}`
+    }
+    this.sendGcode(['SAVE_GCODE_STATE NAME=_ui_movement', 'G90', ...steps.map(line), 'RESTORE_GCODE_STATE NAME=_ui_movement'].join('\n'))
+  }
+
+  /** A step along one axis, cut short at the machine's limits, kept out of the bed's no-go regions. */
   moveBy (axis: Axis, distance: number) {
     if (!this.controlReady || this.busy || !this.isHomed(axis) || !Number.isFinite(distance)) return
     if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
@@ -263,10 +309,15 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     const target = clampTo(this.position[i] + signed, this.axisMin[i], this.axisMax[i])
     const by = Math.round((target - this.position[i]) * 1000) / 1000
     if (!by) return
+    // Z is judged in G-code coordinates, the frame the move is sent in.
+    const place: Place = axis === 'Z' ? { Z: this.headForPlan.z + by } : { [axis]: target }
+    const plan = this.planMoveTo(place)
+    if (!plan.ok) { this.refuseMove(plan.reason); return }
+    if (plan.lifted) { this.sendPlannedMoves(plan.steps); return }
     this.sendMoveGcode(`${axis}${by}`, axis === 'Z' ? this.zSpeed : this.xySpeed)
   }
 
-  /** To a place, inside the machine. */
+  /** To a place, inside the machine and out of the bed's no-go regions. */
   moveTo (place: { X?: number, Y?: number, Z?: number }) {
     if (!this.controlReady || this.busy || ![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
     const parts: string[] = []
@@ -279,7 +330,11 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
       parts.push(`${axis}${value}`)
       if (axis === 'Z') rate = Math.min(rate, this.zSpeed)
     }
-    if (parts.length) this.sendMoveGcode(parts.join(' '), rate, true)
+    if (!parts.length) return
+    const plan = this.planMoveTo(place)
+    if (!plan.ok) { this.refuseMove(plan.reason); return }
+    if (plan.lifted) { this.sendPlannedMoves(plan.steps); return }
+    this.sendMoveGcode(parts.join(' '), rate, true)
   }
 
   homeWait (axes = ''): string {
