@@ -119,7 +119,11 @@ const ICONS: Record<string, Shape[]> = {
   userPlus: [{ c: [9, 8, 3.5] }, { d: 'M2.5 20a6.5 6.5 0 0 1 13 0' }, { d: 'M19 8v6M16 11h6' }],
   userMinus: [{ c: [9, 8, 3.5] }, { d: 'M2.5 20a6.5 6.5 0 0 1 13 0' }, { d: 'M16 11h6' }],
   clock: [{ c: [12, 12, 9] }, { d: 'M12 7v5l3 2' }],
-  info: [{ c: [12, 12, 9] }, { d: 'M12 8h.01M11 12h1v4h1' }]
+  info: [{ c: [12, 12, 9] }, { d: 'M12 8h.01M11 12h1v4h1' }],
+  // Settings' sections (v3): a macro, the system's chip, developer mode's code brackets.
+  macro: [{ r: [3, 3, 18, 18, 3] }, { d: 'm10 9-3 3 3 3M14 9l3 3-3 3' }],
+  chip: [{ r: [6, 6, 12, 12, 2] }, { r: [9.5, 9.5, 5, 5, 0.8] }, { d: 'M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4' }],
+  code: [{ d: 'm16 18 6-6-6-6M8 6l-6 6 6 6' }]
 }
 
 @Component({})
