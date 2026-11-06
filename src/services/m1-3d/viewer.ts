@@ -66,6 +66,22 @@ export interface M1Viewer {
   setFocus: (part: PartId | null, mode: LightMode, lean: boolean) => void;
   /** Where a part's middle is drawn, in CSS pixels from the canvas's top left, or null if this model hasn't it. */
   anchor: (part: PartId) => { x: number, y: number } | null;
+  /**
+   * 'top' looks straight down, the front of the printer at the bottom and X
+   * to the right (as the jog buttons are seen from above), with the plate
+   * hidden so the head shows; 'free' goes back to where the person had it.
+   */
+  setView: (mode: 'free' | 'top') => void;
+  /** Whether a mouse drag turns the model (off while a drag moves a part instead). */
+  setOrbit: (on: boolean) => void;
+  /** Whether this is the accurate model, the one whose millimetres a drag can be read in. */
+  readonly accurate: boolean;
+  /** A world point, in CSS pixels from the canvas's top left. */
+  project: (p: { x: number, y: number, z: number }) => { x: number, y: number } | null;
+  /** Where the ray under this page point (clientX, clientY) meets the level plane at world height `y`, or null. */
+  onLevel: (x: number, y: number, planeY: number) => { x: number, y: number, z: number } | null;
+  /** Where that ray meets the upright plane through `through`, turned to face the camera, or null. */
+  onUpright: (x: number, y: number, through: { x: number, y: number, z: number }) => { x: number, y: number, z: number } | null;
   dispose: () => void;
 }
 
@@ -82,6 +98,8 @@ const MAX_TAPS = 256
 
 /** The share of the stage the machine fills, edge to edge. */
 const FILL = 0.86
+/** Straight down, nearly: exactly 0 has no "up" to look along. */
+const TOP_PHI = 0.0015
 /** Each frame the lean closes this share of the gap: about 450 ms to settle at 30 frames a second, easing out. */
 const LEAN_EASE = 0.16
 
@@ -514,6 +532,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** The part pointed at; its middle is measured once, when it is pointed at (the hose's bounds cost too much to measure each frame). */
   let focus: { part: PartId, mode: LightMode, lean: boolean, centred: boolean } | null = null
   const light = new PartLight()
+  let viewMode: 'free' | 'top' = 'free'
+  /** The person's own view, kept while the camera looks straight down. */
+  let freeView = { theta: VIEW.theta, phi: VIEW.phi }
+  let orbit = true
   const raycaster = new THREE.Raycaster()
   const focusPoint = new THREE.Vector3()
   let centre = [0, 0]
@@ -523,7 +545,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   const direction = () => {
     const theta = view.theta + lean.theta
-    const phi = Math.min(PHI_RANGE[1], Math.max(PHI_RANGE[0], view.phi + lean.phi))
+    const phi = viewMode === 'top' ? view.phi : Math.min(PHI_RANGE[1], Math.max(PHI_RANGE[0], view.phi + lean.phi))
     return new THREE.Vector3(Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta))
   }
 
@@ -560,9 +582,26 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     return b.getCenter(into)
   }
 
+  /** Hides or shows the plate and what it carries (the bed stage on the accurate model, the bed lift on the simple one). */
+  function showPlate (shown: boolean) {
+    for (const name of ['M1_Z_Stage', 'bedLift']) {
+      const node = rig.root.getObjectByName(name)
+      if (node) node.visible = shown
+    }
+    for (const o of plated) o.visible = shown
+  }
+
+  /** The ray under a page point, or null before the first frame. */
+  function rayAt (x: number, y: number): THREE.Ray | null {
+    if (!ready || !width || !height) return null
+    const r = canvas.getBoundingClientRect()
+    raycaster.setFromCamera(new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera)
+    return raycaster.ray
+  }
+
   /** The lean the focus asks for now, from where the person has the camera. */
   function aimLean () {
-    if (!focus?.lean) {
+    if (!focus?.lean || viewMode === 'top') {
       leanGoal = { ...NO_LEAN }
       return
     }
@@ -812,7 +851,9 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       const ndc = new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1)
       // The view offset (the machine centred, then shifted) is part of the camera's projection, so the ray follows it.
       raycaster.setFromCamera(ndc, camera)
-      const targets = PART_IDS.flatMap(id => partMeshes(rig.root, id)).filter(m => m.visible)
+      // Only what is drawn: the plate hidden for the top-down view must not catch the ray.
+      const shown = (o: THREE.Object3D | null): boolean => !o || (o.visible && shown(o.parent))
+      const targets = PART_IDS.flatMap(id => partMeshes(rig.root, id)).filter(m => shown(m))
       const hit = raycaster.intersectObjects(targets, false)[0]
       return hit ? partOf(hit.object) : null
     },
@@ -826,9 +867,51 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       aimLean()
       invalidate()
     },
+    get accurate () {
+      return rig.kind === 'accurate'
+    },
+    setView (mode) {
+      if (mode === viewMode) return
+      if (mode === 'top') {
+        freeView = { theta: view.goalTheta, phi: view.goalPhi }
+        view.goalTheta = 0
+        view.goalPhi = TOP_PHI
+      } else {
+        view.goalTheta = freeView.theta
+        view.goalPhi = freeView.phi
+      }
+      viewMode = mode
+      showPlate(mode !== 'top')
+      aimLean()
+      invalidate()
+    },
+    setOrbit (on) {
+      orbit = on
+    },
+    project (p) {
+      if (!width || !height) return null
+      const v = new THREE.Vector3(p.x, p.y, p.z).project(camera)
+      return { x: (v.x + 1) / 2 * width, y: (1 - v.y) / 2 * height }
+    },
+    onLevel (x, y, planeY) {
+      const ray = rayAt(x, y)
+      const hit = ray?.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY), new THREE.Vector3())
+      return hit ? { x: hit.x, y: hit.y, z: hit.z } : null
+    },
+    onUpright (x, y, through) {
+      const ray = rayAt(x, y)
+      if (!ray) return null
+      const facing = camera.getWorldDirection(new THREE.Vector3()).setY(0)
+      if (facing.lengthSq() < 1e-6) return null
+      facing.normalize()
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(facing, new THREE.Vector3(through.x, through.y, through.z))
+      const hit = ray.intersectPlane(plane, new THREE.Vector3())
+      return hit ? { x: hit.x, y: hit.y, z: hit.z } : null
+    },
     anchor (part) {
       if (!width || !height) return null
-      const p = focus?.part === part && focus.centred ? focusPoint.clone() : partCentre(part, new THREE.Vector3())
+      // Measured as drawn now, so a line to a moving head follows it; only the hose (skinned, costly to measure) uses its measure from when it was pointed at.
+      const p = part === 'filament' && focus?.part === part && focus.centred ? focusPoint.clone() : partCentre(part, new THREE.Vector3())
       if (!p) return null
       p.project(camera)
       return { x: (p.x + 1) / 2 * width, y: (1 - p.y) / 2 * height }
@@ -878,6 +961,11 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     light.clear()
     focus = null
     leanGoal = { ...NO_LEAN }
+    if (viewMode === 'top') {
+      viewMode = 'free'
+      view.goalTheta = freeView.theta
+      view.goalPhi = freeView.phi
+    }
     rig = next
     if (next.root.parent !== scene) scene.add(next.root)
     for (const o of plated) {
@@ -961,7 +1049,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   // A mouse drag turns the machine; a double click puts it back.
   let drag: { x: number, y: number } | null = null
   function onDown (e: PointerEvent) {
-    if (e.pointerType === 'touch' || e.button !== 0) return
+    if (!orbit || e.pointerType === 'touch' || e.button !== 0) return
     drag = { x: e.clientX, y: e.clientY }
     dragging = true
     canvas.setPointerCapture(e.pointerId)
@@ -982,6 +1070,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     canvas.removeEventListener('pointermove', onMove)
   }
   function onReset () {
+    if (viewMode === 'top') return
     view.goalTheta = VIEW.theta
     view.goalPhi = VIEW.phi
     invalidate()
