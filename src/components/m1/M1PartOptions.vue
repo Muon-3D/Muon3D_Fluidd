@@ -151,6 +151,23 @@
       </div>
     </template>
 
+    <!-- Screen: use the printer's own screen from here, when Control serves it (/panel/). -->
+    <template v-else-if="part === 'screen'">
+      <div
+        v-if="panelServed"
+        class="m1-opts__row"
+      >
+        <button
+          type="button"
+          class="m1-opts__btn"
+          data-tid="m1-use-screen"
+          @click="$emit('use-screen')"
+        >
+          Use the printer's screen
+        </button>
+      </div>
+    </template>
+
     <!-- Filament: load, unload and what is loaded, as the filament panel does it. -->
     <template v-else-if="part === 'filament'">
       <div class="m1-opts__row">
@@ -225,6 +242,9 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin, FilamentActi
   @Prop({ type: String, required: true })
   readonly part!: PartId
 
+  /** Whether this Control serves the printer screen's embed build. */
+  panelServed = false
+
   readonly xySteps = [1, 10, 50]
   readonly zSteps = [1, 10]
   step = 10
@@ -265,6 +285,47 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin, FilamentActi
     return this.checks.find(c => c.id === 'bedMesh')
   }
 
+<<<<<<< HEAD
+=======
+  get macroList (): Macro[] {
+    return ((this.$store.getters['macros/getMacros'] as Macro[]) ?? []).filter(m => typeof m.name === 'string')
+  }
+
+  /** Load and unload by any of their usual names, as Control's Filament card finds them. */
+  get loadMacro (): FilamentMacro | null {
+    return findFilamentMacro(this.macroList, 'load_filament', 'filament_load')
+  }
+
+  get unloadMacro (): FilamentMacro | null {
+    return findFilamentMacro(this.macroList, 'unload_filament', 'filament_unload')
+  }
+
+  async mounted () {
+    if (this.part !== 'screen') return
+    try {
+      const r = await fetch('/panel/index.html', { method: 'HEAD', cache: 'no-store' })
+      this.panelServed = r.ok && (r.headers.get('content-type') ?? '').includes('text/html')
+    } catch {
+      this.panelServed = false
+    }
+  }
+
+  hasMacro (name: string): boolean {
+    return name === 'LOAD_FILAMENT' ? !!this.loadMacro : !!this.unloadMacro
+  }
+
+  /**
+   * As Control's Filament card runs them (ControlFilament.run): idle only,
+   * and a macro that takes a TEMP is told the material's nozzle temperature.
+   */
+  runFilament (name: 'LOAD_FILAMENT' | 'UNLOAD_FILAMENT') {
+    const macro = name === 'LOAD_FILAMENT' ? this.loadMacro : this.unloadMacro
+    if (!macro || !this.controlReady || this.busy) return
+    const temp = this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
+    this.sendGcode(macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name)
+  }
+
+>>>>>>> 3ce7feb7 (feat(overview): use the printer's own screen from the 3D view (bridge; dark until /panel/ is served))
   /** On the toolhead a chip heats the nozzle only, to the material's temperature; the bed is the plate's. */
   heatNozzle (m: MaterialChoice) {
     if (this.busy || m.nozzle === null) return

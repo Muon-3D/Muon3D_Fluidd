@@ -118,10 +118,16 @@
         class="m1-parts__hint"
       >{{ dragHint }}</span>
       <m1-part-options
-        v-if="interactive && selected !== 'screen'"
+        v-if="interactive"
+        :key="selected"
         :part="selected"
+        @use-screen="screenOpen = true"
       />
     </div>
+    <m1-screen
+      v-if="screenOpen && interactive"
+      @close="screenOpen = false"
+    />
   </div>
 </template>
 
@@ -129,6 +135,7 @@
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import ControlMixin from '@/mixins/control'
 import M1PartOptions from './M1PartOptions.vue'
+import M1Screen from './M1Screen.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
 import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
@@ -180,7 +187,7 @@ const LABEL_INSET = 16
  * touch screen, and for the keyboard and screen readers everywhere (hidden
  * on a desktop until focused).
  */
-@Component({ components: { M1PartOptions } })
+@Component({ components: { M1PartOptions, M1Screen } })
 export default class M1Parts extends Mixins(ControlMixin) {
   /** The live viewer, once it draws. */
   @Prop({ type: Object, default: null })
@@ -224,6 +231,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
   axisMarks: { x: Array<{ v: number, px: number }>, y: Array<{ v: number, px: number }> } | null = null
   /** Why the last drag's move was refused, said in the label until the next drag. */
   refused = ''
+  /** The printer's own screen, open over the stage. */
+  screenOpen = false
 
   /** Parts offer their options only on an idle printer this person can control. */
   get interactive (): boolean {
@@ -565,6 +574,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   onEscape (e: KeyboardEvent) {
     if (e.key !== 'Escape') return
+    // With the printer's screen open, Esc closes it (M1Screen), and nothing else.
+    if (this.screenOpen) return
     // Not while typing somewhere or inside a dialog: that Esc is theirs.
     const t = e.target as HTMLElement | null
     if (t && t !== document.body && !this.$el.contains(t) && (t.closest('input, textarea, select, [contenteditable], .v-dialog, [role="dialog"]'))) return
