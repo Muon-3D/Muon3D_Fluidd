@@ -123,6 +123,20 @@
           v-else
           name="yours-search"
         />
+        <!-- Share a print (v3 page 11): one of yours into Discover. -->
+        <button
+          v-if="signedIn && context === 'page'"
+          type="button"
+          class="mlib-btn mlib__share"
+          data-tid="library-share-open"
+          @click="$emit('share')"
+        >
+          <frame-icon
+            name="upload"
+            small
+          />
+          Share a print
+        </button>
         <div
           v-if="tab === 'discover'"
           class="mlib-chips"
