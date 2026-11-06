@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from 'vitest'
-import { dayLabel, filterHistory, finishedAt, finishedShare, grams, groupByDay, historyResult, historyRollup, historyStatus, inRange, metres, rangeLabel, slicerFacts, tileDuration, tileWeight } from '../model'
+import { dayLabel, filterHistory, finishedAt, emptyState, filamentGrams, finishedShare, grams, groupByDay, historyResult, historyRollup, historyStatus, inRange, metres, rangeLabel, slicerFacts, tileDuration, tileWeight } from '../model'
 
 describe('how a print ended', () => {
   test.each([
@@ -154,5 +154,78 @@ describe('when it finished', () => {
     expect(finishedAt({ start_time: at(2026, 10, 6, 8, 0), end_time: null, total_duration: 600 }, now)).toBe('Today 08:10')
     expect(finishedAt({ start_time: at(2026, 10, 2, 15, 0), end_time: String(at(2026, 10, 2, 16, 20)) }, now)).toBe('2 Nov 16:20')
     expect(finishedAt({ start_time: at(2025, 11, 31, 9, 0), end_time: String(at(2025, 11, 31, 9, 30)) }, now)).toBe('31 Dec 2025 09:30')
+  })
+})
+
+describe('filament weight', () => {
+  it('prefers the slicer figure, scaled by how much of the planned filament was used', () => {
+    expect(filamentGrams(6900, { filament_weight_total: 40, filament_total: 13800 })).toEqual({ grams: 20, estimated: false })
+    expect(filamentGrams(13800, { filament_weight_total: 40, filament_total: 13800 })).toEqual({ grams: 40, estimated: false })
+  })
+
+  it('falls back to the length estimate, marked estimated, when the slicer gave no figure', () => {
+    const out = filamentGrams(1000, undefined)
+    expect(out.estimated).toBe(true)
+    expect(out.grams).toBeCloseTo(grams(1000), 5)
+    expect(filamentGrams(1000, { filament_weight_total: 40 }).estimated).toBe(true)
+    expect(filamentGrams(1000, { filament_weight_total: 40, filament_total: 0 }).estimated).toBe(true)
+    expect(filamentGrams(1000, { filament_total: 5000 }).estimated).toBe(true)
+  })
+
+  it('says the rollup is estimated unless every print had the slicer figure', () => {
+    const exact = { status: 'completed', filament_used: 1000, print_duration: 60, metadata: { filament_weight_total: 3, filament_total: 1000 } }
+    const guess = { status: 'completed', filament_used: 1000, print_duration: 60, metadata: {} }
+    expect(historyRollup([exact, exact])).toMatchObject({ grams: 6, estimated: false })
+    expect(historyRollup([exact, guess]).estimated).toBe(true)
+  })
+})
+
+describe('a print still in progress', () => {
+  it('counts as a print, with its time, but not toward the success rate', () => {
+    const r = historyRollup([
+      { status: 'completed', filament_used: 1000, print_duration: 3600 },
+      { status: 'in_progress', filament_used: 500, print_duration: 600 }
+    ])
+    expect(r).toMatchObject({ prints: 2, done: 1, notDone: 0, successPercent: 100, printSeconds: 4200 })
+  })
+})
+
+describe('why the list is empty', () => {
+  const now = new Date(2026, 10, 6, 12, 0)
+  const ago = (days: number) => now.getTime() / 1000 - days * 86400
+  const job = (status: string, days: number, filename = 'a.gcode') => ({ status, start_time: ago(days), filename })
+  const state = (items: ReturnType<typeof job>[], filter: 'all' | 'finished' | 'stopped' | 'failed', query: string, range: number) =>
+    emptyState(items, filter, query, range, now)
+
+  it('has nothing to say while there are rows', () => {
+    expect(state([job('completed', 1)], 'all', '', 30)).toBeNull()
+  })
+
+  it('says no prints yet when the printer has none', () => {
+    expect(state([], 'all', '', 30)).toMatchObject({ kind: 'none', title: 'No prints yet', widen: false })
+  })
+
+  it('says only older prints exist, and offers the wider range', () => {
+    expect(state([job('completed', 60), job('error', 90)], 'all', '', 30))
+      .toMatchObject({ kind: 'older', title: 'No prints in the last 30 days', hint: '2 older prints are in the history.', widen: true })
+  })
+
+  it('says a search found nothing in the range but older matches exist, and offers the wider range', () => {
+    expect(state([job('completed', 1, 'cube.gcode'), job('completed', 60, 'gear.gcode')], 'all', 'gear', 30))
+      .toMatchObject({ kind: 'search-range', title: 'No print matches "gear" in the last 30 days', hint: '1 older print matches.', widen: true })
+  })
+
+  it('keeps the spelling hint when nothing matches in any range', () => {
+    expect(state([job('completed', 1, 'cube.gcode')], 'all', 'zzz', 30))
+      .toMatchObject({ kind: 'search', title: 'No print matches "zzz"', widen: false })
+    expect(state([job('completed', 1, 'cube.gcode')], 'all', 'zzz', 0).kind).toBe('search')
+  })
+
+  it('names a result filter, and offers the wider range only when it would help', () => {
+    expect(state([job('completed', 1), job('error', 60)], 'failed', '', 30))
+      .toMatchObject({ kind: 'filter-range', title: 'No failed prints in the last 30 days', widen: true })
+    expect(state([job('completed', 1)], 'failed', '', 30))
+      .toMatchObject({ kind: 'filter', title: 'No failed prints in the last 30 days', hint: 'Try a wider date range.', widen: false })
+    expect(state([job('completed', 1)], 'stopped', '', 0)).toMatchObject({ title: 'No cancelled prints yet' })
   })
 })

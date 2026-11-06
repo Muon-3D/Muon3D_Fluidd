@@ -133,6 +133,18 @@ export function grams (mm: number, meta?: { filament_diameter?: number, filament
   return mm * Math.PI * (d / 2) ** 2 * rho / 1000
 }
 
+/**
+ * Grams of filament a print used: the slicer's own figure for the whole
+ * print, scaled by how much of the planned length was used; else the length
+ * estimate above, which is flagged `estimated`.
+ */
+export function filamentGrams (mm: number, meta?: { filament_weight_total?: number, filament_total?: number, filament_diameter?: number, filament_density?: number }): { grams: number, estimated: boolean } {
+  const weight = Number(meta?.filament_weight_total)
+  const total = Number(meta?.filament_total)
+  if (weight > 0 && total > 0) return { grams: weight * (mm || 0) / total, estimated: false }
+  return { grams: grams(mm || 0, meta), estimated: (mm || 0) > 0 }
+}
+
 export interface HistoryRollup {
   prints: number;
   done: number;
@@ -141,6 +153,8 @@ export interface HistoryRollup {
   printSeconds: number;
   averageSeconds: number;
   grams: number;
+  /** Some of the grams are worked out from length, not the slicer's weight. */
+  estimated: boolean;
   material: { name: string, colour: string | null } | null;
 }
 
@@ -152,6 +166,7 @@ export function historyRollup (items: RollupItem[]): HistoryRollup {
   let notDone = 0
   let seconds = 0
   let weight = 0
+  let estimated = false
   const materials = new Map<string, { n: number, colour: string | null }>()
   for (const i of items) {
     const kind = historyStatus(i.status).kind
@@ -159,7 +174,9 @@ export function historyRollup (items: RollupItem[]): HistoryRollup {
     else if (kind === 'stopped' || kind === 'failed') notDone++
     seconds += i.print_duration || 0
     const meta = i.metadata as Record<string, unknown> | undefined
-    weight += grams(i.filament_used || 0, meta as never)
+    const w = filamentGrams(i.filament_used || 0, meta as never)
+    weight += w.grams
+    estimated = estimated || w.estimated
     const fil = fileFilament(meta)
     if (fil) {
       const seen = materials.get(fil.name)
@@ -175,6 +192,7 @@ export function historyRollup (items: RollupItem[]): HistoryRollup {
     printSeconds: seconds,
     averageSeconds: items.length ? Math.round(seconds / items.length) : 0,
     grams: weight,
+    estimated,
     material: top ? { name: top[0], colour: top[1].colour } : null
   }
 }
@@ -202,4 +220,38 @@ export function finishedAt (item: { start_time: number, end_time?: string | null
   if (label === 'Today' || label === 'Yesterday') return `${label} ${clock}`
   const year = d.getFullYear() === now.getFullYear() ? '' : ` ${d.getFullYear()}`
   return `${d.getDate()} ${MONTHS[d.getMonth()]}${year} ${clock}`
+}
+
+export interface EmptyState {
+  kind: 'none' | 'older' | 'search' | 'search-range' | 'filter' | 'filter-range';
+  title: string;
+  hint: string;
+  /** A wider date range would show prints that this one hides. */
+  widen: boolean;
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+/** Why the table is empty, in plain words, and whether a wider range would help. Null while there are rows. */
+export function emptyState (items: Array<{ filename: string, status: string, start_time: number }>, filter: HistoryFilter, query: string, range: number, now: Date = new Date()): EmptyState | null {
+  if (!items.length) return { kind: 'none', title: 'No prints yet', hint: 'Finished, failed and cancelled prints land here.', widen: false }
+  const shown = filterHistory(inRange(items, range, now), filter, query)
+  if (shown.length) return null
+  const everywhere = filterHistory(items, filter, query).length
+  const when = range ? `in the last ${range} days` : 'yet'
+  const q = query.trim()
+  if (q) {
+    if (range && everywhere) {
+      return { kind: 'search-range', title: `No print matches "${q}" ${when}`, hint: `${plural(everywhere, 'older print')} ${everywhere === 1 ? 'matches' : 'match'}.`, widen: true }
+    }
+    return { kind: 'search', title: `No print matches "${q}"`, hint: 'Check the spelling, or try another name.', widen: false }
+  }
+  const kind = ({ finished: 'done', failed: 'failed', stopped: 'cancelled', all: '' } as const)[filter]
+  if (!kind) {
+    return { kind: 'older', title: `No prints ${when}`, hint: `${plural(everywhere, 'older print')} ${everywhere === 1 ? 'is' : 'are'} in the history.`, widen: true }
+  }
+  if (range && everywhere) {
+    return { kind: 'filter-range', title: `No ${kind} prints ${when}`, hint: `${plural(everywhere, `older ${kind} print`)} in the history.`, widen: true }
+  }
+  return { kind: 'filter', title: `No ${kind} prints ${when}`, hint: range ? 'Try a wider date range.' : '', widen: false }
 }
