@@ -12,10 +12,18 @@ import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
 import { usePrinter, PRESETS } from './printer'
 
-const GPU = process.platform === 'win32'
+/**
+ * On Windows the browser draws on the real GPU. E2E_NO_GPU=1 tries the
+ * software path (as CI draws), which is too slow for these tests.
+ */
+const GPU = process.platform === 'win32' && !process.env.E2E_NO_GPU
 test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
 test.skip(({ isMobile }) => isMobile, 'pointer drags are the desktop path; the phone has the buttons')
-test.skip(!GPU, 'drags read millimetres off the accurate model, which needs the GPU here')
+// Tried 6 Nov: even with the plain glass, software WebGL stalls the page once a drag redraws every
+// frame, so the drag tests run only where the GPU draws. CI covers the release maths in drag-map.spec.ts
+// (unit) and the planner in control-no-go.spec.ts.
+test.skip(!GPU, 'drags need the GPU; software WebGL stalls on the accurate model')
+const HOME = '/'
 
 async function ready (page: Page) {
   await expect(page.getByTestId('m1-live')).toHaveAttribute('data-live', 'on', { timeout: 60_000 })
@@ -37,7 +45,7 @@ const moveLines = (gcode: string[]) => gcode.flatMap(s => s.split('\n')).filter(
 
 test('the toolhead looks straight down, with X and Y marked and its options', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
-  await open('/')
+  await open(HOME)
   await ready(page)
   await page.getByTestId('m1-part-toolhead').focus()
   await expect(page.getByTestId('m1-parts')).toHaveAttribute('data-view', 'top')
@@ -50,7 +58,7 @@ test('the toolhead looks straight down, with X and Y marked and its options', as
 
 test('the pad moves the head as Control does: right is X+', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
-  await open('/')
+  await open(HOME)
   await ready(page)
   await page.getByTestId('m1-part-toolhead').focus()
   await page.getByTestId('m1-pad-e').click()
@@ -59,7 +67,7 @@ test('the pad moves the head as Control does: right is X+', async ({ page, open 
 
 test('dragging the head shows a target and sends one planned move on release', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed({ position: [100, 100, 10] }))
-  await open('/')
+  await open(HOME)
   await ready(page)
   await page.getByTestId('m1-part-toolhead').focus()
   const at = await partPoint(page)
@@ -84,7 +92,7 @@ test('dragging the head shows a target and sends one planned move on release', a
 
 test('a drag that starts off the head, or with the right button, sends nothing', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
-  await open('/')
+  await open(HOME)
   await ready(page)
   await page.getByTestId('m1-part-toolhead').focus()
   const at = await partPoint(page)
@@ -108,7 +116,7 @@ test('a drag that starts off the head, or with the right button, sends nothing',
 
 test('a heat chip on the toolhead heats the nozzle only', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
-  await open('/')
+  await open(HOME)
   await ready(page)
   await page.getByTestId('m1-part-toolhead').focus()
   const chip = page.getByTestId('m1-options-toolhead').locator('[data-tid^="m1-heat-"]').first()
@@ -119,7 +127,7 @@ test('a heat chip on the toolhead heats the nozzle only', async ({ page, open })
 
 test('Esc in the middle of a drag drops it and sends nothing', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
-  await open('/')
+  await open(HOME)
   await ready(page)
   await page.getByTestId('m1-part-toolhead').focus()
   const at = await partPoint(page)
@@ -135,7 +143,7 @@ test('Esc in the middle of a drag drops it and sends nothing', async ({ page, op
 
 test('the plate goes up by its button and by a drag', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed({ position: [100, 100, 10] }))
-  await open('/')
+  await open(HOME)
   await ready(page)
   await page.getByTestId('m1-part-plate').focus()
   await page.getByTestId('m1-plate-up').click()
@@ -161,7 +169,7 @@ test('the plate goes up by its button and by a drag', async ({ page, open }) => 
 
 test('not homed: the head says to home it, and neither the pad nor a drag sends a move', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed({ homed: '' }))
-  await open('/')
+  await open(HOME)
   await ready(page)
   await page.getByTestId('m1-part-toolhead').focus()
   await expect(page.getByTestId('m1-parts-label')).toContainText('Home it to move it by hand')
@@ -177,7 +185,7 @@ test('not homed: the head says to home it, and neither the pad nor a drag sends 
 
 test('while it prints, a selected part has no options and no drag', async ({ page, open }) => {
   const printer = await usePrinter(page) // the shared mock as it is: mid-print
-  await open('/')
+  await open(HOME)
   await ready(page)
   await page.getByTestId('m1-part-toolhead').focus()
   await expect(page.getByTestId('m1-parts-label')).toBeVisible()
