@@ -359,7 +359,28 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   markHandMove (realTo: number[]) {
     const offset = this.gcodeOffset
     if (!offset) return
-    lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000), this.panelTarget)
+    lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000), this.panelTarget, Date.now(), this.travelMs(realTo))
+  }
+
+  /**
+   * About how long a hand move to `realTo` takes, ms: across at the head's
+   * speed, up and down at the plate's, counting a lift to the notch's
+   * traverse height and back when the plan lifts.
+   */
+  travelMs (realTo: number[]): number {
+    const p = [0, 1, 2].map(i => Number(this.position[i]))
+    const xy = Math.hypot(realTo[0] - p[0], realTo[1] - p[1])
+    let z = Math.abs(realTo[2] - p[2])
+    const noGo = this.noGo
+    if (noGo && noGo !== 'invalid') {
+      const plan = this.planHandMove([realTo[0], realTo[1], realTo[2]])
+      if (plan.ok && plan.lifted) {
+        const over = Number(plan.steps[0].Z) + (this.gcodeOffset ?? [0, 0, 0])[2]
+        z = Math.abs(over - p[2]) + Math.abs(over - realTo[2])
+      }
+    }
+    const ms = (xy / this.xySpeed + z / this.zSpeed) * 1000
+    return Number.isFinite(ms) ? ms : 0
   }
 
   /** Send a planned move: lift, across, down, as one absolute script. */

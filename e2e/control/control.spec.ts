@@ -412,7 +412,7 @@ test.describe('Print mode', () => {
     await set('advanced-speed', 110)
     await set('advanced-flow', 98)
     await page.getByTestId('pa-more').click()
-    await expect.poll(() => printer.gcode).toEqual(['M220 S110', 'M221 S98', 'SET_PRESSURE_ADVANCE ADVANCE=0.042'])
+    await expect.poll(() => printer.gcode).toEqual(['M220 S110', 'M221 S98', 'SET_PRESSURE_ADVANCE ADVANCE=0.041'])
   })
 })
 

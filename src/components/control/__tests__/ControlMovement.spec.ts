@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ControlMove, { jogLayout, zKeyWords } from '../ControlMove.vue'
 import ControlTrackpad from '../ControlTrackpad.vue'
 import { panelStore, panelStubs, waits } from './panel-fixture'
-import { handMoveLock, headStatus, lockHandMove, scriptsInFlight } from '@/services/control/safe-move'
+import { SETTLE_MARGIN_MS, SETTLE_MS, handMoveLock, handMoveSettling, headStatus, lockHandMove, scriptsInFlight } from '@/services/control/safe-move'
 import { bedToPixel, regionRect } from '@/services/control/trackpad'
 import { X_RIGHT, Y_BACK } from '@/services/machine/orientation'
 
@@ -106,6 +106,29 @@ describe('the Z keys and Z offset follow the Muon gate', () => {
     const off = s.wrapper.findAll('[data-tid="motors-off"]')
     expect(off).toHaveLength(1)
     expect(off.at(0).attributes('role')).toBe('menuitem')
+    s.wrapper.destroy()
+  })
+})
+
+describe('the lock lasts as long as the move', () => {
+  it('a slow plate jog locks for its travel time plus a margin, and frees itself if arrival never comes', () => {
+    const s = show({ head: [150, 100, 10], bedMesh: null })
+    s.vm.step = 50
+    // 50 mm at the plate's 10 mm/s is 5 s; at 2 mm/s it is 25 s, past SETTLE_MS.
+    s.store.state.config.uiSettings.general.defaultToolheadZSpeed = 2
+    const t0 = Date.now()
+    s.vm.moveBy('Z', 50)
+    expect(sent()).toHaveLength(1)
+    expect(handMoveLock.until - t0).toBeGreaterThanOrEqual(25_000 + SETTLE_MARGIN_MS - 50)
+    expect(handMoveSettling([150, 100, 10], s.vm.panelTarget, t0 + SETTLE_MS + 1)).toBe(true)
+    expect(handMoveSettling([150, 100, 10], s.vm.panelTarget, t0 + 25_000 + SETTLE_MARGIN_MS + 100)).toBe(false)
+    s.wrapper.destroy()
+  })
+
+  it('a lift across the notch counts the climb and the drop', () => {
+    const s = show({ head: [60, 20, 1] })
+    expect(s.vm.travelMs([140, 20, 1])).toBeGreaterThan((80 / 130 + 10 / 10) * 1000 - 1)
+    expect(s.vm.travelMs([60, 30, 1])).toBeCloseTo(10 / 130 * 1000, 0)
     s.wrapper.destroy()
   })
 })
