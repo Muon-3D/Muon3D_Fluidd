@@ -464,10 +464,12 @@ export default class LibraryQuickLook extends Vue {
     this.touched = true
     this.saving = true
     this.note = ''
+    let adding = false
     try {
       if (!this.made || this.made.name !== name) this.made = await libraryClient().createCollection(name)
       const made = this.made
       if (!this.saveId) this.saveId = (await libraryClient().save(this.card.id)).id
+      adding = true
       await libraryClient().addToCollection(made.id, this.saveId)
       // Added: a later New collection… with the same name makes another.
       this.made = null
@@ -475,8 +477,8 @@ export default class LibraryQuickLook extends Vue {
       this.note = `Added to ${made.name}.`
       this.$emit('saved')
     } catch (error) {
-      // Gone since (deleted elsewhere): the retry makes it again.
-      if ((error as { status?: number }).status === 404) this.made = null
+      // The collection is gone (deleted elsewhere): the retry makes it again.
+      if (adding && (error as { status?: number }).status === 404) this.made = null
       this.note = describeLibraryError(error)
     } finally {
       this.saving = false
