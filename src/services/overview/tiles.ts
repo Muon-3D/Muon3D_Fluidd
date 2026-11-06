@@ -54,7 +54,7 @@ export function filamentView (
     const colour = normaliseColour(fromFile.colour)
     return { type: fromFile.name, detail: [colourName(colour), 'from the print file'].filter(Boolean).join(' · '), colour, source: 'file' }
   }
-  return { type: 'Unknown', detail: 'Set it from the ⋯ menu', colour: null, source: 'none' }
+  return { type: 'No material loaded', detail: 'Set it from the ⋯ menu', colour: null, source: 'none' }
 }
 
 /** Black or white writing for a spool of this colour, whichever reads. */

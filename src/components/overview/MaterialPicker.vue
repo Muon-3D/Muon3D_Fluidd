@@ -54,7 +54,12 @@
             v-if="shown && shown.colour"
             class="matp__swatch"
             :style="{ background: shown.colour }"
-          />{{ shown ? shown.name : 'Not set' }}
+          /><v-icon
+            v-if="!shown && !filamentSensed"
+            x-small
+            class="matp__warn"
+            data-tid="material-warning"
+          >$warning</v-icon><span data-tid="material-name">{{ shown ? shown.name : filamentSensed ? 'Filament loaded' : 'No material loaded' }}</span>
         </span>
         <span class="ov-tile__sub">{{ subtitle }}</span>
       </button>
@@ -385,7 +390,7 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
       const colour = this.printingWith.colour ? colourName(this.printingWith.colour) : ''
       return [colour, 'From the file printing. Tap to say what\'s loaded'].filter(Boolean).join(' · ')
     }
-    if (!m) return 'Tap to say what\'s loaded'
+    if (!m) return this.filamentSensed ? 'Tap to say which material' : 'Tap to say what\'s loaded'
     return [this.loadedColour ? this.loadedColourName : '', this.temps(m)].filter(Boolean).join(' · ')
   }
 
@@ -458,6 +463,11 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
 
   .matp__tile--phone {
     grid-column: 1 / -1;
+  }
+
+  .matp__warn {
+    margin-right: 6px;
+    color: var(--m3d-warning) !important;
   }
 
   .matp__swatch {
