@@ -4,6 +4,8 @@
  * filament macros, Level the bed, Restart Klipper); this only decides which
  * are available, with the same plain-words reasons the controls give.
  */
+import type { FilamentMacro } from '@/services/control/filament-change'
+
 export type QuickActionId = 'home' | 'preheat' | 'cool' | 'filament' | 'level' | 'motors' | 'restart'
 
 export interface QuickActionContext {
@@ -17,6 +19,8 @@ export interface QuickActionContext {
   preheatName: string | null;
   /** The printer has a filament change macro. */
   changeFilament: boolean;
+  /** Why Change filament can't run now (changeFilamentPlan's reason). */
+  changeFilamentReason?: string;
   /** The G-code Level the bed runs, or null when the printer has none. */
   levelGcode: string | null;
   /** Why no check can start now (Maintenance's reason), or ''. */
@@ -60,8 +64,8 @@ export function quickActions (c: QuickActionContext): QuickAction[] {
       id: 'filament',
       label: 'Change filament',
       icon: 'spool',
-      reason: locked || (c.changeFilament ? '' : 'This printer has no filament change macro (M600).'),
-      // Mid-print M600 pauses the print.
+      reason: locked || (c.changeFilament ? '' : (c.changeFilamentReason ?? 'This printer has no filament change macro (M600).')),
+      // Mid-print M600 pauses the print, after its confirm; idle it sends nothing and opens the material panel (changeFilamentPlan).
       confirms: c.busy
     },
     {
@@ -75,11 +79,7 @@ export function quickActions (c: QuickActionContext): QuickAction[] {
     { id: 'restart', label: 'Restart Klipper', icon: 'refresh', reason: restartReason(c.restartRefusal), confirms: true, danger: true }
   ]
 }
-
-export interface FilamentMacro {
-  name: string;
-  takesTemp: boolean;
-}
+export type { FilamentMacro }
 
 /** A filament macro by any of its usual names, as Control's Filament card finds it. */
 export function findFilamentMacro (
