@@ -68,7 +68,7 @@
           >
             Turn motors off<span class="acct-menu__key">M84</span>
           </button>
-          <template v-if="!isMuonPrinter">
+          <template v-if="muonPrinter === false">
             <div class="acct-menu__rule" />
             <button
               type="button"
@@ -380,7 +380,7 @@
     </template>
 
     <control-z-offset
-      v-if="!isMuonPrinter && showZOffset"
+      v-if="muonPrinter === false && showZOffset"
       class="move__zoffset"
     />
   </control-card>
@@ -464,6 +464,8 @@ const followers = new WeakMap<object, DragFollow>()
  * The trackpad picks a spot (Move here sends it) or, dragged, has the head
  * follow; the fine jog nudges; the position readout doubles as Go to; and
  * homing sits in a bar under a rule. Motors off is only in the ··· menu.
+ * Z offset is not on a Muon printer at all; on any other printer it is in
+ * the ··· menu (hidden too while it isn't known yet which it is).
  *
  * Every move goes through ControlMixin's moveBy / moveByXY / moveTo, which
  * gate on homed and printing, plan against the printer's no-go regions, and
@@ -596,7 +598,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
   }
 
   get zKeys () {
-    return zKeyWords(this.isMuonPrinter)
+    return zKeyWords(this.muonPrinter === true)
   }
 
   fmt (n: number): string {
