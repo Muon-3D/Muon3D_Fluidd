@@ -63,7 +63,7 @@ test('off: the page says Charts are off and how to turn them on; turning them on
   await expect(tiles(page).first()).toBeVisible()
 })
 
-test('on: the default charts as tiles, the temperatures wide first, each with a live value and a legend', async ({ page, open, isMobile }) => {
+test('on: the default charts as tiles, the first wide, each with a live value and a legend', async ({ page, open, isMobile }) => {
   await printerFor(page)
   await withCharts(page, true)
   await open('/diagnostics')
@@ -71,20 +71,12 @@ test('on: the default charts as tiles, the temperatures wide first, each with a 
   await expect(page.locator('.app-page-header__subtitle')).toHaveText('Live diagnostics for Boxwood · last 10 minutes')
   await expect(page.getByRole('radio', { name: '10 min' })).toHaveAttribute('aria-checked', 'true')
   await expect(page.getByTestId('charts-add')).toBeVisible()
-  await expect(tiles(page)).toHaveCount(5)
-  expect(await tiles(page).evaluateAll(els => els.map(e => e.getAttribute('data-chart')))).toEqual(['Temperatures', 'MCU load', 'Fans', 'Speed and flow', 'Pressure and load cell'])
-  await expect(tile(page, 'Pressure and load cell').getByTestId('chart-legend')).toContainText('Probe force')
-  await expect(tile(page, 'Temperatures').getByTestId('chart-legend')).toContainText('Nozzle')
-  await expect(tile(page, 'Temperatures').getByTestId('tile-state')).toHaveText(/°C/)
-  await expect(tile(page, 'Fans').locator('[data-metric="Part fan"]')).toContainText('%')
-  const widths = await tiles(page).evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().width)))
-  if (isMobile) {
-    expect(new Set(widths).size).toBe(1)
-    await expect(page.getByTestId('charts-add-tile')).toHaveCount(0)
-  } else {
-    expect(widths[0]).toBeGreaterThan(widths[1] * 1.8)
-    await expect(page.getByTestId('charts-add-tile')).toBeVisible()
-  }
+  // The default is Fluidd's own: the one Speeds chart. The other charts come from Add chart.
+  await expect(tiles(page)).toHaveCount(1)
+  expect(await tiles(page).evaluateAll(els => els.map(e => e.getAttribute('data-chart')))).toEqual(['Speeds'])
+  await expect(tile(page, 'Speeds').getByTestId('chart-legend')).toContainText('Velocity')
+  await expect(tile(page, 'Speeds').getByTestId('chart-legend')).toContainText('Flow')
+  await expect(page.getByTestId('charts-add-tile')).toHaveCount(isMobile ? 0 : 1)
   // Charts are an Overview page: the sidebar (or tab bar) stays on Overview.
   await expect(page.locator('.app-page-header__tab--on')).toHaveText('Charts')
 })
@@ -140,12 +132,60 @@ test('a tile\'s menu moves, sizes, hides and removes it, and each change is save
   await expect.poll(() => saved().at(-1)?.map(s => s.replace(/@\d+/, ''))).toEqual(['speed'])
 })
 
-test('Add chart opens the chart editor', async ({ page, open }) => {
+test('Add chart offers the other charts and a custom one, and opens the chart editor', async ({ page, open }) => {
   await printerFor(page)
   await withCharts(page, true, [SPEED])
   await open('/diagnostics')
   await page.getByTestId('charts-add').click()
+  for (const title of ['Temperatures', 'MCU load', 'Fans', 'Speed and flow', 'Pressure and load cell']) {
+    await expect(page.getByTestId(`charts-add-${title}`)).toBeVisible()
+  }
+  await page.getByTestId('charts-add-custom').click()
   await expect(page.getByRole('dialog')).toBeVisible()
+})
+
+test('Add chart > Temperatures starts the editor from that chart', async ({ page, open }) => {
+  await printerFor(page)
+  await withCharts(page, true, [SPEED])
+  await open('/diagnostics')
+  await page.getByTestId('charts-add').click()
+  await page.getByTestId('charts-add-Temperatures').click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('input').first()).toHaveValue('Temperatures')
+})
+
+test('the plotted range follows the range picker', async ({ page, open }) => {
+  const printer = await printerFor(page)
+  await withCharts(page, true, [SPEED])
+  await open('/diagnostics')
+  await expect(tile(page, 'Speed')).toBeVisible()
+  printer.report({ ...PRESETS.idleHomed(), motion_report: { live_velocity: 50, live_position: [0, 0, 0, 0] } })
+  await expect(tile(page, 'Speed').getByTestId('tile-state')).toHaveText('50 mm/s')
+  // Where the chart's time axis starts, for a latest reading at 1 000 000 ms: its x-axis `min`.
+  const axisStart = () => tile(page, 'Speed').evaluate(el => {
+    const find = (vm: any): any => {
+      if (typeof vm.getOption === 'function') return vm
+      for (const child of vm.$children ?? []) {
+        const found = find(child)
+        if (found) return found
+      }
+      return null
+    }
+    for (const node of Array.from(el.querySelectorAll('*')) as any[]) {
+      const chart = node.__vue__ && find(node.__vue__)
+      if (chart) {
+        const x = chart.getOption().xAxis[0]
+        return typeof x.min === 'function' ? x.min({ max: 1_000_000 }) : x.min
+      }
+    }
+    throw new Error('no chart in the tile')
+  })
+  const seconds = async () => Math.round((1_000_000 - await axisStart()) / 1000)
+  await page.getByRole('radio', { name: '1 min' }).click()
+  await expect.poll(seconds).toBe(60)
+  await page.getByRole('radio', { name: '10 min' }).click()
+  await expect.poll(seconds).toBe(600)
 })
 
 test('no charts: the page says so, with Add chart', async ({ page, open }) => {
@@ -181,6 +221,6 @@ test('offline: the charts stop at the last reading and say so', async ({ page, o
   await withCharts(page, true, [SPEED])
   await open('/diagnostics')
   await expect(page.getByTestId('charts-offline')).toHaveCount(0)
-  printer.goOffline()
+  await printer.offline()
   await expect(page.getByTestId('charts-offline')).toContainText('Boxwood is offline')
 })

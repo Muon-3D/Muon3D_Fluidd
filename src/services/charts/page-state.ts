@@ -20,7 +20,9 @@ function readRange (): number {
 export const chartsPage = Vue.observable({
   range: readRange(),
   /** Bumped by the header's Add chart; the page opens the chart editor. */
-  addTick: 0
+  addTick: 0,
+  /** The chart to start from (a preset's title); empty, a custom chart. */
+  addPreset: ''
 })
 
 export function setChartsRange (seconds: number) {

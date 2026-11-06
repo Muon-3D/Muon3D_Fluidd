@@ -81,6 +81,20 @@ describe('Charts, on', () => {
     expect((dialog.props('config') as DiagnosticsCardConfig).id).toBe('')
   })
 
+  it('Add chart on a chart from the menu starts the editor from that chart, and a custom one from the default', async () => {
+    const { wrapper } = mountCharts()
+    chartsPage.addPreset = 'Fans'
+    chartsPage.addTick++
+    await wrapper.vm.$nextTick()
+    const dialog = wrapper.findComponent({ name: 'DiagnosticsCardConfigDialog' })
+    expect((dialog.props('config') as DiagnosticsCardConfig).title).toBe('Fans')
+    expect((dialog.props('config') as DiagnosticsCardConfig).id).toBe('')
+    chartsPage.addPreset = ''
+    chartsPage.addTick++
+    await wrapper.vm.$nextTick()
+    expect((wrapper.findComponent({ name: 'DiagnosticsCardConfigDialog' }).props('config') as DiagnosticsCardConfig).title).toBe('Speeds')
+  })
+
   it('each tile\'s menu moves, sizes, hides and removes it', async () => {
     const { wrapper, written, confirm } = mountCharts()
     const menu = (i: number) => tiles(wrapper)[i].props('menu') as Array<{ id: string, action: () => void, disabled?: boolean }>
