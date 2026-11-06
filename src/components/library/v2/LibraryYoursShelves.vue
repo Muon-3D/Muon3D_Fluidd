@@ -284,7 +284,8 @@ export default class LibraryYoursShelves extends Vue {
       shelf.cards = cards
       shelf.loaded = true
     } catch (error) {
-      if (read === this.ownReads[id]) shelf.error = describeLibraryError(error)
+      // A re-read that failed keeps what the shelf shows; the next sync tries again.
+      if (read === this.ownReads[id] && !shelf.cards.length) shelf.error = describeLibraryError(error)
     } finally {
       if (read === this.ownReads[id]) shelf.loading = false
     }
@@ -320,7 +321,8 @@ export default class LibraryYoursShelves extends Vue {
   /** In the mockup's order; Shared by you and Designs only once there is one. */
   get shelves () {
     // Before the first sync: reading, or why it could not (with Retry), not "nothing yet".
-    const failed = !libraryState.synced && !!libraryState.error
+    // While Retry reads it again (busy), it is loading, not still failed.
+    const failed = !libraryState.synced && !!libraryState.error && !libraryState.busy
     const synced = { loading: !libraryState.synced && !failed, error: failed ? libraryState.error ?? '' : '' }
     const sliced = { ...synced, cards: itemShelf('sliced', this.items) }
     const designs = { ...synced, cards: itemShelf('designs', this.items) }
