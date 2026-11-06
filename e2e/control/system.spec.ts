@@ -81,19 +81,19 @@ test.describe('System', () => {
     const dialog = page.getByRole('dialog', { name: /Restart .* computer\?/ })
     await expect(dialog).toBeVisible()
     expect(sent(printer)).toEqual([])
-    await page.getByRole('dialog').getByTestId('confirm-cancel').click()
+    await page.getByRole('dialog').getByTestId('confirm-cancel').last().click()
     await expect(dialog).toHaveCount(0)
     expect(sent(printer)).toEqual([])
 
     await shutdown.click()
     await expect(page.getByRole('dialog', { name: /Shut down .* computer\?/ })).toBeVisible()
     expect(sent(printer)).toEqual([])
-    await page.getByRole('dialog').getByTestId('confirm-cancel').click()
+    await page.getByRole('dialog').getByTestId('confirm-cancel').last().click()
     expect(sent(printer)).toEqual([])
 
     // Confirmed: sent once.
     await reboot.click()
-    await page.getByRole('dialog').getByTestId('confirm-ok').click()
+    await page.getByRole('dialog').getByTestId('confirm-ok').last().click()
     await expect.poll(() => sent(printer)).toEqual(['machine.reboot'])
   })
 
@@ -102,7 +102,7 @@ test.describe('System', () => {
     await open('/system')
     await page.getByTestId('system-shutdown').click()
     expect(sent(printer)).toEqual([])
-    await page.getByRole('dialog').getByTestId('confirm-ok').click()
+    await page.getByRole('dialog').getByTestId('confirm-ok').last().click()
     await expect.poll(() => sent(printer)).toEqual(['machine.shutdown'])
   })
 
@@ -113,16 +113,16 @@ test.describe('System', () => {
 
     await row.getByRole('button', { name: 'Restart' }).click()
     await expect(page.getByRole('dialog', { name: 'Restart klipper?' })).toBeVisible()
-    await page.getByRole('dialog').getByTestId('confirm-cancel').click()
+    await page.getByRole('dialog').getByTestId('confirm-cancel').last().click()
     expect(sent(printer)).toEqual([])
 
     await row.getByRole('button', { name: 'Stop' }).click()
     await expect(page.getByRole('dialog', { name: 'Stop klipper?' })).toBeVisible()
-    await page.getByRole('dialog').getByTestId('confirm-cancel').click()
+    await page.getByRole('dialog').getByTestId('confirm-cancel').last().click()
     expect(sent(printer)).toEqual([])
 
     await row.getByRole('button', { name: 'Restart' }).click()
-    await page.getByRole('dialog').getByTestId('confirm-ok').click()
+    await page.getByRole('dialog').getByTestId('confirm-ok').last().click()
     await expect.poll(() => printer.called('machine.services.restart')).toEqual([{ service: 'klipper' }])
     expect(printer.called('machine.services.stop')).toEqual([])
   })
@@ -300,5 +300,19 @@ test.describe('Updating', () => {
     await expect(page.getByTestId('updating-warning')).toHaveCount(0)
     await expect(page.getByRole('button', { name: /install|activate/i })).toHaveCount(0)
     expect(installs).toEqual([])
+  })
+
+  test('an install that never ended does not show a banner or the Updating screen on a load', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/update/status', route => route.fulfill({ json: { state: 'idle', current_version: '0.9.3', session: null } }))
+    // Verifying, last heard of three hours ago: past any restart budget (the unit tests cover clearing it and a reload).
+    await page.addInitScript(([k, seen]) => {
+      localStorage.setItem(k, JSON.stringify({ jobId: null, phase: 'verifying', from: null, to: '0.9.4', progress: null, seenAt: seen, lostAt: null, budgetMs: 1_200_000 }))
+    }, ['muon3d.update.boxwood-367a', Date.now() - 3 * 3_600_000] as const)
+    await open('/')
+    await expect(page.getByTestId('overview-page').or(page.getByTestId('page-title')).first()).toBeVisible()
+    await expect(page.getByTestId('update-banner')).toHaveCount(0)
+    await expect(page.getByText('Verifying update')).toHaveCount(0)
+    await expect(page.getByRole('status').filter({ hasText: /Restarting|Restart delayed/ })).toHaveCount(0)
   })
 })
