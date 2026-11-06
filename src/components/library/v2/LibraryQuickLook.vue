@@ -77,25 +77,6 @@
             >
               {{ saveId ? '♥' : '♡' }}
             </button>
-            <select
-              v-if="collections.length"
-              class="mlook__collect"
-              aria-label="Add to a collection"
-              data-tid="library-quick-look-collect"
-              :aria-busy="saving ? 'true' : 'false'"
-              @change="collect($event)"
-            >
-              <option value="">
-                Add to…
-              </option>
-              <option
-                v-for="c in collections"
-                :key="c.id"
-                :value="c.id"
-              >
-                {{ c.name }}
-              </option>
-            </select>
           </template>
         </header>
         <p
@@ -111,6 +92,11 @@
             v-if="card.m1"
             class="mlib-badge mlib-badge--ok"
           >Made for M1</span>
+          <span
+            v-if="card.m1 && printerFits && printerName"
+            class="mlib-badge mlib-badge--ok"
+            data-tid="library-quick-look-fits"
+          >Fits {{ printerName }}</span>
         </div>
         <div class="mlook__stats">
           <span class="mlib-stat"><frame-icon
@@ -164,6 +150,30 @@
           </p>
         </template>
 
+        <div
+          v-if="colours.length || loadedLine"
+          class="mlook__colours"
+          data-tid="library-quick-look-colours"
+        >
+          <template v-if="colours.length">
+            <span class="mlib-muted">Shown in</span>
+            <span
+              v-for="c in colours"
+              :key="c"
+              class="mlook__dot"
+              :class="{ 'mlook__dot--on': c === loadedColour }"
+              :style="{ background: c }"
+              role="img"
+              :aria-label="c === loadedColour ? `${colourLabel(c)}, loaded` : colourLabel(c)"
+            />
+          </template>
+          <span
+            v-if="loadedLine"
+            class="mlib-muted mlook__loaded"
+            data-tid="library-quick-look-loaded"
+          >{{ loadedLine }}</span>
+        </div>
+
         <div class="mlook__acts">
           <button
             v-if="print || card.kind === 'catalogue'"
@@ -187,17 +197,83 @@
             class="mlib-btn mlib-btn--primary mlook__go"
             data-tid="library-quick-look-slice"
           >Slice it on library.muon3d.com ↗</a>
+        </div>
+        <div
+          class="mlook__secondary"
+          data-tid="library-quick-look-more"
+        >
+          <select
+            v-if="signedIn && card.kind === 'publication'"
+            class="mlook__collect"
+            aria-label="Add to collection"
+            data-tid="library-quick-look-collect"
+            :aria-busy="saving ? 'true' : 'false'"
+            @change="collect($event)"
+          >
+            <option value="">
+              Add to collection
+            </option>
+            <option value="__new">
+              New collection…
+            </option>
+            <option
+              v-for="c in collections"
+              :key="c.id"
+              :value="c.id"
+            >
+              {{ c.name }}
+            </option>
+          </select>
           <a
             :href="card.href"
             target="_blank"
             rel="noopener"
-            class="mlib-btn mlib-btn--icon"
-            aria-label="Open its page"
-          ><frame-icon
-            name="external"
-            small
-          /></a>
+            class="mlib-btn mlib-btn--sm"
+            data-tid="library-quick-look-page"
+          >Open page ↗</a>
+          <a
+            v-if="card.kind === 'publication'"
+            :href="remixHref"
+            target="_blank"
+            rel="noopener"
+            class="mlib-btn mlib-btn--sm"
+            data-tid="library-quick-look-remix"
+          >Remix ↗</a>
+          <button
+            v-if="signedIn && print"
+            type="button"
+            class="mlib-btn mlib-btn--sm"
+            :aria-busy="downloading ? 'true' : 'false'"
+            data-tid="library-quick-look-download"
+            @click="download"
+          >
+            {{ downloading ? 'Downloading…' : 'Download' }}
+          </button>
         </div>
+        <form
+          v-if="naming"
+          class="mlook__new"
+          data-tid="library-quick-look-new"
+          @submit.prevent="createAndAdd"
+        >
+          <input
+            ref="newName"
+            v-model="newName"
+            type="text"
+            maxlength="80"
+            placeholder="Name"
+            aria-label="New collection name"
+            data-tid="library-quick-look-new-name"
+            @keydown.esc.stop="naming = false"
+          >
+          <button
+            type="submit"
+            class="mlib-btn mlib-btn--sm mlib-btn--primary"
+            :disabled="!newName.trim() || saving"
+          >
+            Create and add
+          </button>
+        </form>
         <p
           v-if="!busy && !print && card.kind === 'publication' && !error"
           class="mlib-muted mlook__note"
@@ -224,14 +300,17 @@
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import { describeLibraryError, type CommunityCollection, type PublicPublication } from '@/services/library/api'
 import { libraryClient } from '@/services/library/store'
-import { safePicture } from '@/services/library/discover'
-import { loadPublication, minutesText, publicationPrint, type PublicationPrint, type ShelfCard } from '@/services/library/shelves'
+import { LIBRARY_URL, safePicture } from '@/services/library/discover'
+import { colourList, loadPublication, minutesText, publicationPrint, type PublicationPrint, type ShelfCard } from '@/services/library/shelves'
+import { colourName, savedMaterialColour, savedMaterialName } from '@/services/control/model'
 
 /** The big quick look: its pictures, the facts that matter, and Print. */
 @Component({})
 export default class LibraryQuickLook extends Vue {
   @Prop({ type: Object, required: true }) readonly card!: ShelfCard
   @Prop({ type: String, default: null }) readonly printerName!: string | null
+  /** The open printer is an M1, so an M1 print fits it. */
+  @Prop({ type: Boolean, default: false }) readonly printerFits!: boolean
   @Prop({ type: Boolean, default: false }) readonly signedIn!: boolean
   @Prop({ type: Array, default: () => [] }) readonly collections!: CommunityCollection[]
 
@@ -243,9 +322,14 @@ export default class LibraryQuickLook extends Vue {
   before: Element | null = null
   /** This print's save (the heart), when you saved it. */
   saveId = ''
+  /** The collection New collection… made, kept so a retry after a failed add reuses it. */
+  made: { id: string, name: string } | null = null
   saving = false
   /** The heart or Add to… was used: the first lookup no longer applies. */
   touched = false
+  naming = false
+  newName = ''
+  downloading = false
   note = ''
 
   created () {
@@ -291,6 +375,13 @@ export default class LibraryQuickLook extends Vue {
     const select = event.target as HTMLSelectElement
     const id = select.value
     select.value = ''
+    if (id === '__new') {
+      this.naming = true
+      this.newName = ''
+      await this.$nextTick()
+      ;(this.$refs.newName as HTMLInputElement | undefined)?.focus()
+      return
+    }
     const collection = this.collections.find(c => c.id === id)
     if (!collection || this.saving) return
     this.touched = true
@@ -364,6 +455,91 @@ export default class LibraryQuickLook extends Vue {
     } finally {
       this.busy = false
     }
+  }
+
+  /** New collection… in Add to collection: make it, then add this print (saved first). */
+  async createAndAdd () {
+    const name = this.newName.trim()
+    if (!name || this.saving) return
+    this.touched = true
+    this.saving = true
+    this.note = ''
+    let adding = false
+    try {
+      if (!this.made || this.made.name !== name) this.made = await libraryClient().createCollection(name)
+      const made = this.made
+      if (!this.saveId) this.saveId = (await libraryClient().save(this.card.id)).id
+      adding = true
+      await libraryClient().addToCollection(made.id, this.saveId)
+      // Added: a later New collection… with the same name makes another.
+      this.made = null
+      this.naming = false
+      this.note = `Added to ${made.name}.`
+      this.$emit('saved')
+    } catch (error) {
+      // The collection is gone (deleted elsewhere): the retry makes it again.
+      if (adding && (error as { status?: number }).status === 404) this.made = null
+      this.note = describeLibraryError(error)
+    } finally {
+      this.saving = false
+    }
+  }
+
+  /** Download its G-code to this computer, checked against what its maker published. */
+  async download () {
+    const item = this.print?.item
+    const setup = item?.setups[0]
+    if (!item || !setup || this.downloading) return
+    this.downloading = true
+    this.note = ''
+    try {
+      // Lazy: print-on reaches the store and the socket, which the quick look needs only to download.
+      const { downloadSharedGcode, gcodeFileName, saveToComputer } = await import('@/services/library/print-on')
+      const { bytes } = await downloadSharedGcode(item.id, setup.file_id, item.shared.expected[setup.file_id])
+      saveToComputer(bytes, gcodeFileName(item), 'text/x-gcode')
+    } catch (error) {
+      this.note = describeLibraryError(error)
+    } finally {
+      this.downloading = false
+    }
+  }
+
+  get remixHref (): string {
+    return `${LIBRARY_URL}/p/${encodeURIComponent(this.card.slug)}/remix`
+  }
+
+  /** Every colour its pictures show it in (#rrggbb). */
+  get colours (): string[] {
+    const fromPage = colourList(this.publication?.colours)
+    return fromPage.length ? fromPage : (this.card.colours ?? [])
+  }
+
+  /** What the open printer has loaded, from its save_variables (the panel, Overview and Control set them). */
+  get loaded (): { material: string | null, colour: string | null } {
+    if (!this.printerName) return { material: null, colour: null }
+    const variables = this.$store?.state?.printer?.printer?.save_variables?.variables
+    return { material: savedMaterialName(variables), colour: savedMaterialColour(variables)?.toLowerCase() ?? null }
+  }
+
+  get loadedColour (): string | null {
+    return this.loaded.colour
+  }
+
+  /** "Boxwood has Teal PLA loaded". */
+  get loadedLine (): string {
+    const { material, colour } = this.loaded
+    if (!this.printerName || (!material && !colour)) return ''
+    const name = colour ? colourName(colour) : ''
+    // A colour that is not a preset has no name: say the material, or that it is a custom colour.
+    const what = name === 'Custom colour'
+      ? (material ?? 'a custom colour')
+      : [name, material ?? ''].filter(Boolean).join(' ')
+    return `${this.printerName} has ${what} loaded`
+  }
+
+  colourLabel (colour: string): string {
+    const name = colourName(colour)
+    return name === 'Custom colour' ? colour : name
   }
 
   get pictures (): string[] {
