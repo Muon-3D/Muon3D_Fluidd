@@ -34,16 +34,25 @@ it('offers Bed only on a capable printer', () => {
   expect(visiblePages(section, { ...context, bedMesh: false }).map(p => p.label)).toEqual(['Health'])
 })
 
-it('switches Colours/Numbers with pressed states and keeps measured values accessible', async () => {
+it('always writes the heights on the 2D map, with a scale, and offers no Colours/Numbers choice', () => {
   const { wrapper } = show()
-  const radio = (label: string) => wrapper.findAll('[role="radio"]').wrappers.find(w => w.text() === label)!
-  expect(radio('Colours').attributes('aria-checked')).toBe('true')
-  expect(wrapper.findAll('.mmap__cell').at(0).text()).toBe('')
-  await radio('Numbers').trigger('click'); await settle()
-  expect(radio('Numbers').attributes('aria-checked')).toBe('true')
+  const labels = wrapper.findAll('[role="radio"]').wrappers.map(w => w.text())
+  expect(labels).toEqual(['2D', '3D'])
   expect(wrapper.findAll('.mmap__cell').at(0).text()).toBe('-0.12')
   expect(wrapper.find('[role="table"]').attributes('aria-label')).toContain('Bed mesh')
   expect(wrapper.find('[data-tid="mesh-scale"]').text()).toContain('−0.12')
+  wrapper.destroy()
+})
+
+it('says the bed is not levelled, with grey question marks, when there is no mesh', async () => {
+  const { wrapper, store } = show()
+  store.state.printer.printer.bed_mesh.probed_matrix = []
+  await Vue.nextTick()
+  expect(wrapper.find('[data-tid="mesh-heat"]').exists()).toBe(false)
+  expect(wrapper.find('[data-tid="mesh-unlevelled"]').text()).toContain('Bed not levelled')
+  expect(wrapper.findAll('.mmap__cell--empty').length).toBe(25)
+  expect(wrapper.find('.mmap__cell--empty').text()).toBe('?')
+  expect(wrapper.text()).toContain('Not levelled')
   wrapper.destroy()
 })
 
@@ -57,8 +66,6 @@ it('is a 2D heat map first, and the 3D toggle swaps it for the 3D surface', asyn
   expect(radio('3D').attributes('aria-checked')).toBe('true')
   expect(wrapper.find('[data-tid="bed-3d"]').exists()).toBe(true)
   expect(wrapper.find('[data-tid="mesh-heat"]').exists()).toBe(false)
-  // Colours/Numbers belongs to the 2D map.
-  expect(wrapper.findAll('[role="radio"]').wrappers.some(w => w.text() === 'Numbers')).toBe(false)
   wrapper.destroy()
 })
 
@@ -89,7 +96,7 @@ it('shows incomplete or invalid measurement cells as unmeasured without NaN colo
   wrapper.destroy()
 })
 
-it('shows Health a small map of the bed once, with the way into scoped Bed and no 3D or Numbers choice', () => {
+it('shows Health a small map of the bed once, with the way into scoped Bed and no 3D choice, and no numbers on its small cells', () => {
   const { wrapper } = show(false, MaintenanceMesh)
   expect(wrapper.find('[data-tid="mesh-heat"]').exists()).toBe(true)
   expect(wrapper.find('[data-tid="mesh-scale"]').exists()).toBe(false)
@@ -98,5 +105,6 @@ it('shows Health a small map of the bed once, with the way into scoped Bed and n
   expect(wrapper.text()).toContain('0.27 mm')
   expect(wrapper.text()).toContain('default')
   expect(wrapper.findAll('[role="radio"]').length).toBe(0)
+  expect(wrapper.findAll('.mmap__cell').at(0).text()).toBe('')
   wrapper.destroy()
 })

@@ -62,17 +62,36 @@ test('the mesh is a 2D heat map with a scale, and 3D swaps it for the surface an
   await expect(tile.getByRole('radio', { name: '2D' })).toBeChecked()
   await expect(tile.getByTestId('mesh-heat')).toBeVisible()
   await expect(tile.getByTestId('mesh-scale')).toContainText('mm')
-  await tile.getByRole('radio', { name: 'Numbers' }).click()
-  await expect(tile.locator('[role="cell"]').first()).not.toHaveText('')
+  // The heights are always written on the cells: no Colours/Numbers choice.
+  await expect(tile.locator('[role="cell"]').first()).toHaveText(/^-?d+.dd$/)
+  await expect(tile.getByRole('radio', { name: 'Numbers' })).toHaveCount(0)
+  await expect(tile.getByRole('radio', { name: 'Colours' })).toHaveCount(0)
 
   await tile.getByRole('radio', { name: '3D' }).click()
   await expect(tile.getByRole('radio', { name: '3D' })).toBeChecked()
   await expect(tile.getByTestId('bed-surface')).toBeVisible()
   await expect(tile.getByTestId('mesh-heat')).toHaveCount(0)
-  await expect(tile.getByRole('radio', { name: 'Numbers' })).toHaveCount(0)
 
   await tile.getByRole('radio', { name: '2D' }).click()
   await expect(tile.getByTestId('mesh-heat')).toBeVisible()
+})
+
+test('with no mesh the bed says it is not levelled, in grey question marks instead of heights', async ({ page, open }) => {
+  await usePrinter(page, { ...idle(), bed_mesh: { profile_name: '', probed_matrix: [], mesh_matrix: [] } })
+  await open('/tune')
+  const tile = page.getByTestId('bed-mesh-tile')
+  await expect(tile.getByTestId('mesh-unlevelled').getByText('Bed not levelled')).toBeVisible()
+  await expect(tile.getByText('Not levelled', { exact: true })).toBeVisible()
+  await expect(tile.getByTestId('mesh-heat')).toHaveCount(0)
+  await expect(tile.getByText('?', { exact: true }).first()).toBeVisible()
+  await expect(page.getByTestId('mesh-calibrate')).toBeEnabled()
+})
+
+test('nothing on Bed says the mesh levels out the first layer', async ({ page, open }) => {
+  await usePrinter(page, idle())
+  await open('/tune')
+  await expect(page.getByTestId('bedmesh-page')).toBeVisible()
+  await expect(page.getByText(/levels? out|evens? out/i)).toHaveCount(0)
 })
 
 test('Calibrate mesh asks first: keeping things as they are sends nothing', async ({ page, open }) => {

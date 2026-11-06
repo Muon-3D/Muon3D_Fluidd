@@ -82,14 +82,27 @@
     <div
       v-else
       class="mmap__none"
+      :data-tid="run ? 'mesh-waiting' : 'mesh-unlevelled'"
     >
-      <frame-icon name="mesh" />
+      <div
+        class="mmap__grid mmap__grid--ghost"
+        :class="{ 'mmap__grid--large': large }"
+        :style="{ gridTemplateColumns: `repeat(${ghost[0]}, minmax(0, 1fr))` }"
+        aria-hidden="true"
+      >
+        <i
+          v-for="n in ghost[0] * ghost[1]"
+          :key="n"
+          class="mmap__cell mmap__cell--empty"
+        >{{ large ? '?' : '' }}</i>
+      </div>
       <p v-if="run">
         {{ run.progress.text }}…
       </p>
-      <p v-else>
-        No measurement yet. Level the bed to measure the plate.
-      </p>
+      <template v-else>
+        <b>Bed not levelled</b>
+        <p>No mesh yet, so no heights to show. Calibrate the mesh to measure the plate.</p>
+      </template>
     </div>
   </div>
 </template>
@@ -150,6 +163,12 @@ export default class MeshMap extends Mixins(MaintenanceMixin) {
 
   get scale (): HeatScale | null {
     return heatScale(this.grid)
+  }
+
+  /** The grey grid drawn before there is a mesh: the printer's own mesh size, else 5 × 5. */
+  get ghost (): [number, number] {
+    const [x, y] = this.meshSize ?? [5, 5]
+    return [Math.min(15, Math.max(2, x)), Math.min(15, Math.max(2, y))]
   }
 
   get gradient (): string {
@@ -331,6 +350,15 @@ export default class MeshMap extends Mixins(MaintenanceMixin) {
     p {
       margin: 0;
       font-size: 14px;
+    }
+  }
+
+  .mmap__grid--ghost {
+    opacity: 0.7;
+    margin-bottom: 4px;
+
+    .mmap__cell {
+      color: var(--m3d-text-subtle);
     }
   }
 </style>

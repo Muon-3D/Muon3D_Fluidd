@@ -75,7 +75,7 @@ const CHECKS: CheckInfo[] = [
   {
     id: 'bedMesh',
     title: 'Level the bed',
-    description: 'Measures the plate so the first layer is even.',
+    description: 'Measures the plate at a grid of points.',
     icon: 'mesh',
     action: 'Run',
     wait: Waits.onMeshCalibrate,
