@@ -37,6 +37,8 @@ import { storedToken } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
 // eslint-disable-next-line import/first
 import Library, { autoConsent } from '../Library.vue'
+// eslint-disable-next-line import/first
+import LibraryState from '@/components/library/v2/LibraryState.vue'
 
 function renderLibrary (query: Record<string, string> = {}) {
   return shallowMount(Library, {
@@ -46,7 +48,8 @@ function renderLibrary (query: Record<string, string> = {}) {
       $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} },
       $vuetify: { breakpoint: { mobile: false } }
     },
-    stubs: ['router-link', 'frame-icon', 'print-on-dialog', 'file-name-dialog']
+    // The state tiles render for real: what they say is what these tests read.
+    stubs: { 'router-link': true, 'frame-icon': true, 'print-on-dialog': true, 'file-name-dialog': true, 'library-state': LibraryState }
   })
 }
 
@@ -85,7 +88,8 @@ describe('Library feed states', () => {
     try {
       expect(wrapper.text()).toContain(error)
       expect(wrapper.text()).not.toContain('Nothing here yet')
-      const retry = wrapper.findAll('button').wrappers.find(button => button.text() === 'Try again')
+      // Before anything was read the tile says Try again; over shelves already shown, the callout says Retry.
+      const retry = wrapper.findAll('button').wrappers.find(button => button.text() === (libraryState.synced ? 'Retry' : 'Try again'))
       expect(retry).toBeDefined()
       vi.mocked(refreshLibrary).mockClear()
       await retry!.trigger('click')
@@ -95,11 +99,16 @@ describe('Library feed states', () => {
     }
   })
 
-  it('shows loading while the first feed is pending', () => {
+  it('shows skeletons until the Library answers; once it is on, the shelves show their own', async () => {
+    Object.assign(libraryState, { checked: false })
     const wrapper = renderLibrary()
     try {
-      expect(wrapper.text()).toContain('Reading your Library…')
+      expect(wrapper.find('[data-tid="library-reading"]').exists()).toBe(true)
       expect(wrapper.text()).not.toContain('Nothing here yet')
+      Object.assign(libraryState, { checked: true, enabled: true, synced: false })
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('[data-tid="library-reading"]').exists()).toBe(false)
+      expect(wrapper.findComponent({ name: 'MuonLibrary' }).props('ownReady')).toBe(true)
     } finally {
       wrapper.destroy()
     }
@@ -127,7 +136,7 @@ describe('Library feed states', () => {
     const wrapper = renderLibrary()
     try {
       expect(wrapper.text()).toContain('Offline')
-      expect(wrapper.text()).toContain('Try again')
+      expect(wrapper.text()).toContain('Retry')
       // Yours' shelves stay (each reads on its own); the error sits above them.
       expect(wrapper.findComponent({ name: 'MuonLibrary' }).props('ownReady')).toBe(true)
       expect(wrapper.text()).not.toContain('Nothing here yet')
@@ -142,7 +151,7 @@ describe('Library feed states', () => {
     try {
       expect(wrapper.findComponent({ name: 'MuonLibrary' }).props('ownReady')).toBe(true)
       expect(wrapper.text()).not.toContain('Nothing here yet')
-      expect(wrapper.text()).not.toContain('Reading your Library…')
+      expect(wrapper.find('[data-tid="library-reading"]').exists()).toBe(false)
     } finally {
       wrapper.destroy()
     }
@@ -306,7 +315,7 @@ describe('Library: always on (KAN-735)', () => {
     try {
       await flush()
       expect(first.find('[data-tid="library-off"]').exists()).toBe(true)
-      expect(first.text()).not.toContain('Reading your Library…')
+      expect(first.find('[data-tid="library-reading"]').exists()).toBe(false)
     } finally {
       first.destroy()
     }
@@ -345,7 +354,7 @@ describe('Library: always on (KAN-735)', () => {
       expect(turnLibraryOn).toHaveBeenCalledWith(PROMISE_VERSION)
       expect(wrapper.find('[data-tid="library-off"]').exists()).toBe(false)
       expect(wrapper.find('[data-tid="library-turn-on"]').exists()).toBe(false)
-      expect(wrapper.text()).toContain('Reading your Library…')
+      expect(wrapper.find('[data-tid="library-reading"]').exists()).toBe(true)
     } finally {
       wrapper.destroy()
     }
@@ -357,7 +366,16 @@ describe('Library: always on (KAN-735)', () => {
     try {
       await wrapper.vm.$nextTick()
       expect(turnLibraryOn).not.toHaveBeenCalled()
-      expect(wrapper.find('[data-tid="library-off"]').exists()).toBe(true)
+      const off = wrapper.find('[data-tid="library-off"]')
+      expect(off.exists()).toBe(true)
+      // The one real "off" (v3 page 12): it says when, and Keep my Library turns it back on.
+      expect(off.text()).toContain('Your Library is being deleted')
+      expect(off.text()).toMatch(/Everything in it goes on .+\. Turn it back on before then to keep it\./)
+      // It asks first (turnOn's confirm); yes here.
+      ;(wrapper.vm as unknown as { $confirm: () => Promise<boolean> }).$confirm = vi.fn(async () => true)
+      await off.find('button').trigger('click')
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(turnLibraryOn).toHaveBeenCalledWith(PROMISE_VERSION)
     } finally {
       wrapper.destroy()
     }
@@ -369,7 +387,11 @@ describe('Library: always on (KAN-735)', () => {
     try {
       await wrapper.vm.$nextTick()
       expect(turnLibraryOn).not.toHaveBeenCalled()
-      expect(wrapper.find('[data-tid="library-off"]').exists()).toBe(true)
+      const off = wrapper.find('[data-tid="library-off"]')
+      expect(off.exists()).toBe(true)
+      // Nothing it could do: it says to update, with no button.
+      expect(off.text()).toContain('Update Control to use your Library')
+      expect(off.find('button').exists()).toBe(false)
     } finally {
       wrapper.destroy()
     }
