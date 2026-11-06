@@ -19,6 +19,7 @@ export interface FakePublication {
   remix_count: number;
   save_count: number;
   created_at: string;
+  category: string;
   colour: string;
   /** A G-code sliced for the M1 that Print on… can send. */
   gcode: boolean;
@@ -44,6 +45,7 @@ export function publication (n: number, over: Partial<FakePublication> = {}): Fa
     remix_count: n % 3,
     save_count: 5 * n,
     created_at: new Date(Date.UTC(2026, 10, 5, 12) - n * 3_600_000).toISOString(),
+    category: ['home', 'workshop', 'tools', 'art'][n % 4],
     colour: COLOURS[n % COLOURS.length],
     gcode: true,
     ...over
@@ -89,7 +91,7 @@ function summary (p: FakePublication, all: FakePublication[]) {
     id: p.id,
     slug: p.slug,
     title: p.title,
-    category: 'home',
+    category: p.category,
     tags: p.tags,
     ai_generated: 'no',
     creator: p.creator,

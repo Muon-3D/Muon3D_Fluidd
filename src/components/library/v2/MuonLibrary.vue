@@ -7,9 +7,15 @@
     <!-- The two places, search and filters. No creator row, no page tabs. -->
     <header class="mlib__head">
       <div class="mlib__titles">
-        <h1 v-if="context === 'page'">
-          Library
-        </h1>
+        <div
+          v-if="context === 'page'"
+          class="mlib__title"
+        >
+          <h1>Library</h1>
+          <p data-tid="library-purpose">
+            {{ tab === 'discover' ? 'Prints people share, and ones tested on the M1' : 'What you sliced, printed, saved and shared' }}
+          </p>
+        </div>
         <div
           class="mlib-seg"
           role="tablist"
@@ -58,6 +64,21 @@
         aria-label="Filter"
       >
         <button
+          type="button"
+          class="mlib-chip"
+          :class="{ 'mlib-chip--on': fits }"
+          :aria-pressed="fits ? 'true' : 'false'"
+          data-tid="library-discover-chip-fits"
+          @click="fits = !fits"
+        >
+          <frame-icon
+            v-if="fits"
+            name="check"
+            small
+          />
+          {{ fitsLabel }}
+        </button>
+        <button
           v-for="c in chips"
           :key="c.id"
           type="button"
@@ -67,11 +88,6 @@
           :data-tid="`library-discover-chip-${c.id}`"
           @click="chip = c.id"
         >
-          <frame-icon
-            v-if="c.id === 'fits'"
-            name="check"
-            small
-          />
           {{ c.label }}
         </button>
       </div>
@@ -352,7 +368,10 @@ export default class MuonLibrary extends Vue {
   @Prop({ type: Object, default: null }) readonly continueItem!: LibraryItem | null
 
   query = ''
+  /** The category shown: 'all' or one of the model service's categories. */
   chip = 'all'
+  /** Only what this printer can print (Made for M1, for an M1); on from the start in Control. */
+  fits = false
   busy = true
   /** Why each part of Discover couldn't be read; '' when it was. */
   popularError = ''
@@ -384,7 +403,7 @@ export default class MuonLibrary extends Vue {
   /** In Control, open on what this printer can print, even when it is known only later. */
   @Watch('printerName', { immediate: true })
   onPrinter (name: string | null, before?: string | null) {
-    if (name && !before && this.isM1 && this.chip === 'all') this.chip = 'fits'
+    if (name && !before && this.isM1) this.fits = true
   }
 
   /** Back online after Discover couldn't be read: read it again, nobody needs to tap. */
@@ -425,9 +444,24 @@ export default class MuonLibrary extends Vue {
     return /\bM1\b/i.test(this.printerModel || '')
   }
 
+  get fitsLabel (): string {
+    return this.printerName && this.isM1 ? `Fits ${this.printerName}` : 'Made for M1'
+  }
+
+  /** All, then the model service's categories (public_v2.rs): the ones people print most first. */
   get chips () {
-    const fits = this.printerName && this.isM1 ? [{ id: 'fits', label: `Fits ${this.printerName}` }] : [{ id: 'fits', label: 'Made for M1' }]
-    return [{ id: 'all', label: 'All' }, ...fits, { id: 'remixes', label: 'Remixes' }]
+    return [
+      { id: 'all', label: 'All' },
+      { id: 'home', label: 'Home' },
+      { id: 'workshop', label: 'Workshop' },
+      { id: 'tools', label: 'Tools' },
+      { id: 'toys-games', label: 'Toys & games' },
+      { id: 'spare-parts', label: 'Spare parts' },
+      { id: 'art', label: 'Art' },
+      { id: 'education', label: 'Education' },
+      { id: 'cosplay', label: 'Cosplay' },
+      { id: 'other', label: 'Other' }
+    ]
   }
 
   setTab (tab: LibraryTab) {
@@ -494,8 +528,9 @@ export default class MuonLibrary extends Vue {
   }
 
   matches (card: ShelfCard): boolean {
-    if (this.chip === 'fits' && !card.m1) return false
-    if (this.chip === 'remixes' && !card.remixOf) return false
+    if (this.fits && !card.m1) return false
+    // A print with no category (Muon3D's tested catalogue) is Other, never lost from every chip but All.
+    if (this.chip !== 'all' && (card.category || 'other') !== this.chip) return false
     const words = this.query.trim().toLowerCase().split(/\s+/).filter(Boolean)
     const haystack = [card.title, card.creator, card.handle ?? '', ...card.tags].join(' ').toLowerCase()
     return words.every(word => haystack.includes(word))
@@ -520,7 +555,7 @@ export default class MuonLibrary extends Vue {
       { id: 'new', title: 'New', sub: 'Shared in the last few days', cards: this.newest.filter(this.matches), error: this.feedError }
     ]
     if (this.busy) return shelves
-    return shelves.filter(shelf => (shelf.error || shelf.cards.length > 0) && !(this.chip === 'fits' && shelf.id === 'm1' && popular.length > 0 && !shelf.error))
+    return shelves.filter(shelf => (shelf.error || shelf.cards.length > 0) && !(this.fits && shelf.id === 'm1' && popular.length > 0 && !shelf.error))
   }
 
   get allFailed (): boolean {
@@ -528,7 +563,7 @@ export default class MuonLibrary extends Vue {
   }
 
   get filtered (): boolean {
-    return !!this.query.trim() || this.chip !== 'all'
+    return !!this.query.trim() || this.fits || this.chip !== 'all'
   }
 
   /** Discover as a whole can't be shown: offline, nothing answered, or nothing yet. */
@@ -551,14 +586,16 @@ export default class MuonLibrary extends Vue {
 
   get noMatchTitle (): string {
     const query = this.query.trim()
-    const chip = this.chips.find(c => c.id === this.chip)
-    const filter = this.chip !== 'all' && chip ? ` with ${chip.label}` : ''
+    const category = this.chips.find(c => c.id === this.chip && c.id !== 'all')
+    const parts = [this.fits ? this.fitsLabel : '', category ? category.label : ''].filter(Boolean)
+    const filter = parts.length ? ` with ${parts.join(' and ')}` : ''
     return query ? `Nothing matches "${query}"${filter}` : `Nothing here${filter}`
   }
 
   clearFilter () {
     this.query = ''
     this.chip = 'all'
+    this.fits = false
   }
 
   /** See all: the shelf's own page arrives with v3 page 3; until then, the Library site's list. */
