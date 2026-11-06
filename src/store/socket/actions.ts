@@ -9,6 +9,7 @@ import { upperFirst, camelCase } from 'lodash-es'
 import isKeyOf from '@/util/is-key-of'
 import { isProtectedSurface } from '@/store/protection/helpers'
 import { applyState as applySetupState } from '@/services/muon-setup/state'
+import { headStatus } from '@/services/control/safe-move'
 
 let retryTimeout: number
 
@@ -48,6 +49,8 @@ export const actions: ActionTree<SocketState, RootState> = {
    * Fired when the socket closes.
    */
   async onSocketClose ({ dispatch, commit }, event: { code?: number, reason?: string, wasClean: boolean }) {
+    // Whatever the reason, the head position held now is from the old connection.
+    headStatus.fresh = false
     const modules = ['server', 'power', 'webcams', 'jobQueue', 'charts', 'socket', 'wait', 'gcodePreview']
 
     if (event.wasClean) {
@@ -168,6 +171,8 @@ export const actions: ActionTree<SocketState, RootState> = {
    * This is fired when, for example - the service is stopped.
    */
   async notifyKlippyDisconnected () {
+    // Klipper restarts unhomed; until it's subscribed again the position held is stale.
+    headStatus.fresh = false
     SocketActions.serverInfo()
   },
 
@@ -175,6 +180,7 @@ export const actions: ActionTree<SocketState, RootState> = {
    * This is fired when, for example - an estop is emitted.
    */
   async notifyKlippyShutdown () {
+    headStatus.fresh = false
     SocketActions.serverInfo()
   },
 

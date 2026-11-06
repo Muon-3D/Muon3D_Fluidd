@@ -224,6 +224,9 @@ export function bedMiddle (meshMin: number[] | undefined, meshMax: number[] | un
  * PROBE_ACCURACY probes wherever the head is, so it goes to the middle of
  * the bed first, homing if it hasn't.
  */
-export function probeAccuracyScript (homed: boolean, middle: [number, number]): string {
-  return [...(homed ? [] : ['G28']), 'G90', `G1 X${middle[0]} Y${middle[1]} F6000`, 'PROBE_ACCURACY'].join('\n')
+export function probeAccuracyScript (homed: boolean, middle: [number, number], traverseZ?: number): string {
+  // On a bed with no-go regions (the M1's notch) the way to the middle may
+  // cross one: go there at the traverse height, as bed_mesh itself does.
+  const lift = traverseZ !== undefined && Number.isFinite(traverseZ) ? [`G1 Z${traverseZ} F600`] : []
+  return [...(homed ? [] : ['G28']), 'G90', ...lift, `G1 X${middle[0]} Y${middle[1]} F6000`, 'PROBE_ACCURACY'].join('\n')
 }

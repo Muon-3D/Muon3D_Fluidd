@@ -1,15 +1,16 @@
 import { defineConfig, devices } from '@playwright/test'
+import { MOCK_PORT, VITE_PORT } from './ports'
 
 /**
  * End-to-end tests for Control and the Library (Jack, 5 Nov 2026: what the
  * user sees and does matters most; no page is done until its e2e tests pass).
  *
  * Control runs from vite against a mock Moonraker (e2e/mock/moonraker.py, a
- * mid-print M1 on :7125, where Control looks by default). The model service
+ * mid-print M1 on E2E_MOCK_PORT, default :7125; see ports.ts). The model service
  * and the console are faked per test with page.route (e2e/fakes), so every
  * test owns its data. Two sizes: desktop and phone.
  */
-const PORT = Number(process.env.E2E_PORT || 8090)
+const PORT = VITE_PORT
 
 export default defineConfig({
   testDir: '.',
@@ -37,8 +38,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `${process.env.PYTHON || 'python'} e2e/mock/moonraker.py 7125`,
-      port: 7125,
+      command: `${process.env.PYTHON || 'python'} e2e/mock/moonraker.py ${MOCK_PORT}`,
+      port: MOCK_PORT,
       cwd: '..',
       reuseExistingServer: !process.env.CI,
       timeout: 60_000
