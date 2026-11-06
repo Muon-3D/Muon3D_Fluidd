@@ -24,7 +24,7 @@
           aria-label="Head left"
           data-jog="x-"
           :disabled="!canMoveXY"
-          @click="moveBy('X', -step)"
+          @click="moveBy('X', -X_RIGHT * step)"
         >
           <frame-icon name="chevronLeft" />
         </button>
@@ -44,7 +44,7 @@
           aria-label="Head right"
           data-jog="x+"
           :disabled="!canMoveXY"
-          @click="moveBy('X', step)"
+          @click="moveBy('X', X_RIGHT * step)"
         >
           <frame-icon name="chevronRight" />
         </button>
@@ -105,7 +105,7 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
-import { Y_BACK } from '@/services/machine/orientation'
+import { X_RIGHT, Y_BACK } from '@/services/machine/orientation'
 import type { TileMenuItem } from '@/services/overview/tiles'
 import TileShell from './TileShell.vue'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
@@ -118,6 +118,8 @@ import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
 @Component({ components: { TileShell, SegPicker } })
 export default class JogTile extends Mixins(OverviewMixin) {
   readonly Y_BACK = Y_BACK
+  /** Right on the pad is the right of the machine, as the trackpad draws it (M1_VIEW). */
+  readonly X_RIGHT = X_RIGHT
   step = 1
   readonly steps: SegOption[] = [0.1, 1, 10, 100].map(v => ({ value: v, label: String(v) }))
 

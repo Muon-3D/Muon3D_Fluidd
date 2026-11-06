@@ -11,7 +11,7 @@
  * sends a picked target through ControlMixin.moveTo, which runs the no-go
  * planner, only when "Move here" is pressed.
  */
-import { rowFraction, yAtRow } from '@/services/machine/orientation'
+import { colFraction, rowFraction, xAtCol, yAtRow } from '@/services/machine/orientation'
 import type { NoGoConfig, NoGoRegion } from './safe-move'
 
 export interface Bed {
@@ -45,7 +45,7 @@ export function aspectOf (bed: Bed): number {
 
 /** Where a bed point sits on the trackpad, in pixels from its top-left corner. */
 export function bedToPixel (p: Point, bed: Bed, box: Box): Point {
-  const fx = (p.x - bed.min[0]) / (bed.max[0] - bed.min[0])
+  const fx = colFraction(p.x, bed.min[0], bed.max[0])
   const fy = rowFraction(p.y, bed.min[1], bed.max[1])
   return { x: fx * box.width, y: fy * box.height }
 }
@@ -58,7 +58,7 @@ export function pixelToBed (px: Point, bed: Bed, box: Box): Point | null {
   if (!(box.width > 0) || !(box.height > 0) || !Number.isFinite(px.x) || !Number.isFinite(px.y)) return null
   const fx = clamp(px.x / box.width, 0, 1)
   const fy = clamp(px.y / box.height, 0, 1)
-  const x = bed.min[0] + fx * (bed.max[0] - bed.min[0])
+  const x = xAtCol(fx, bed.min[0], bed.max[0])
   const y = yAtRow(fy, bed.min[1], bed.max[1])
   return { x: clamp(tenth(x), bed.min[0], bed.max[0]), y: clamp(tenth(y), bed.min[1], bed.max[1]) }
 }
@@ -85,10 +85,14 @@ export function inNoGo (p: Point, noGo: NoGoConfig | null | 'invalid'): boolean 
   return noGo.regions.some(r => p.x >= r.min[0] && p.x <= r.max[0] && p.y >= r.min[1] && p.y <= r.max[1])
 }
 
-/** A target nudged by a step with the arrow keys, kept on the bed. Up is the back of the machine. */
-export function nudgeTarget (p: Point, dx: number, dyBack: number, bed: Bed, yBack: number): Point {
+/**
+ * A target nudged by a step with the arrow keys, kept on the bed. Up is the
+ * back of the machine, right is the right: `dxRight` and `dyBack` are steps
+ * on screen, `yBack` and `xRight` the signs that turn them into axis steps.
+ */
+export function nudgeTarget (p: Point, dxRight: number, dyBack: number, bed: Bed, yBack: number, xRight = 1): Point {
   return {
-    x: clamp(tenth(p.x + dx), bed.min[0], bed.max[0]),
+    x: clamp(tenth(p.x + dxRight * xRight), bed.min[0], bed.max[0]),
     y: clamp(tenth(p.y + dyBack * yBack), bed.min[1], bed.max[1])
   }
 }

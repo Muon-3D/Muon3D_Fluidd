@@ -5,12 +5,14 @@ import PositionTile from '../tiles/PositionTile.vue'
 import ZOffsetTile from '../tiles/ZOffsetTile.vue'
 import JogTile from '../tiles/JogTile.vue'
 import { resetSocket, sent, tileMount, tileStore } from './fixture'
+import { handMoveLock, headStatus, releaseHandMove } from '@/services/control/safe-move'
+import { X_RIGHT } from '@/services/machine/orientation'
 
 vi.mock('@/api/socketActions', async () => ({ SocketActions: (await import('./fixture')).socket }))
 
 const m = (C: any, store: ReturnType<typeof tileStore>) => mount(C, tileMount(store))
 const seg = (w: any, group: string, label: string) => w.findAll(`[aria-label="${group}"] button`).wrappers.find((b: any) => b.text() === label)
-afterEach(() => resetSocket())
+afterEach(() => { resetSocket(); handMoveLock.target = null })
 
 describe('PositionTile', () => {
   it('renders with no data as dashes and not homed', () => {
@@ -65,6 +67,7 @@ describe('ZOffsetTile', () => {
   })
 
   it('babysteps the nozzle in steps of 0.005 by default, closer and further', async () => {
+    headStatus.fresh = true // a nudge closer waits for the head position (KAN-1745)
     const w = m(ZOffsetTile, tileStore())
     await w.find('[data-tid="zoffset-down"]').trigger('click')
     await w.find('[data-tid="zoffset-up"]').trigger('click')
@@ -116,16 +119,21 @@ describe('JogTile', () => {
     w.destroy()
   })
 
-  it('moves by the chosen step, along the plate directions', async () => {
+  it('moves by the chosen step, along the plate directions, right as M1_VIEW draws it', async () => {
+    headStatus.fresh = true
     const w = m(JogTile, tileStore())
+    // Each hand move waits for the last to land (KAN-1745); the test lands it.
     await w.find('[data-jog="x+"]').trigger('click')
+    releaseHandMove()
     await seg(w, 'Step', '10').trigger('click')
     await w.find('[data-jog="x-"]').trigger('click')
+    releaseHandMove()
     await w.find('[data-jog="z+"]').trigger('click')
     const lines = sent()
     expect(lines).toHaveLength(3)
-    expect(lines[0]).toContain('G1 X1 F7800')
-    expect(lines[1]).toContain('G1 X-10 F7800')
+    // Right on the pad is X_RIGHT: the same way the Control trackpad and jog keys go.
+    expect(lines[0]).toContain(`G1 X${X_RIGHT} F7800`)
+    expect(lines[1]).toContain(`G1 X${-10 * X_RIGHT} F7800`)
     expect(lines[2]).toContain('G1 Z10 F600')
     w.destroy()
   })
