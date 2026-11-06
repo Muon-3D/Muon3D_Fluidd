@@ -118,6 +118,8 @@ export interface ModelServiceState {
   shares: FakeShare[];
   /** Your Library turned off (consented before, withdrawn), so Control does not turn it on for you. */
   libraryOff: boolean;
+  /** The Library's storage, as the service sends it on `GET /v1/library`; none by default. */
+  storage: { used_bytes: number, quota_bytes: number, used_by_kind?: Record<string, number> } | null;
   /** Answer every request with this status (outage tests), or null. */
   failWith: number | null;
   /** Answer matching requests with a status instead ("GET /v1/public/discover"): one shelf down. */
@@ -139,6 +141,7 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     runs: [],
     shares: [],
     libraryOff: false,
+    storage: null,
     failWith: null,
     failOn: () => null,
     delayMs: 0,
@@ -264,7 +267,7 @@ export async function serveModels (page: Page, state: ModelServiceState) {
     }
     if (path === '/v1/library') {
       if (state.libraryOff) return json(route, { enabled: false, account: { promise_version: '2026-10-01', consented_at: '2026-10-02T00:00:00Z' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
-      return json(route, { enabled: true, account: { promise_version: '2026-10-01' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
+      return json(route, { enabled: true, account: { promise_version: '2026-10-01' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 }, ...(state.storage ?? {}) })
     }
     const own = path.match(/^\/v1\/items\/([^/]+)(\/versions)?$/)
     if (own && !own[2] && method === 'DELETE') {

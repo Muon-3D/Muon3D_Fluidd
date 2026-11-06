@@ -11,6 +11,10 @@ export const CONSOLE = 'https://console.e2e.test'
 export interface ConsoleState {
   account: { id: string, email: string, name: string };
   printers: Array<{ id: string, name: string, model: string, state: string }>;
+  /** `/v1/me/preferences`, kept across reloads; null answers 404, as a console from before it. */
+  preferences: Record<string, boolean> | null;
+  /** Bodies PUT to `/v1/me/preferences`, in order. */
+  preferencePatches: Array<Record<string, boolean>>;
   seen: string[];
 }
 
@@ -18,6 +22,8 @@ export function consoleState (over: Partial<ConsoleState> = {}): ConsoleState {
   return {
     account: { id: 'acct-e2e', email: 'jack@example.test', name: 'Jack' },
     printers: [],
+    preferences: { email_access_requests: true, email_shared_with_you: true, email_community: false, email_news: false },
+    preferencePatches: [],
     seen: [],
     ...over
   }
@@ -26,8 +32,8 @@ export function consoleState (over: Partial<ConsoleState> = {}): ConsoleState {
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key' }, body: JSON.stringify(body) })
 
-export async function serveConsole (page: Page, state: ConsoleState) {
-  await page.route(`${CONSOLE}/**`, async route => {
+export async function serveConsole (page: Page, state: ConsoleState, base: string = CONSOLE) {
+  await page.route(base === CONSOLE ? `${CONSOLE}/**` : `${base}/v1/**`, async route => {
     const request = route.request()
     const url = new URL(request.url())
     state.seen.push(`${request.method()} ${url.pathname}`)
@@ -37,6 +43,15 @@ export async function serveConsole (page: Page, state: ConsoleState) {
       case '/v1/me/assertion': return json(route, { assertion: 'e2e-assertion', expires_at: Math.floor(Date.now() / 1000) + 3600 })
       case '/v1/printers': return json(route, { printers: state.printers })
       case '/v1/me/notices': return json(route, { notices: [], unread: 0, next: null })
+      case '/v1/me/preferences': {
+        if (!state.preferences) return route.fulfill({ status: 404, contentType: 'text/html', headers: { 'access-control-allow-origin': '*' }, body: 'Not Found' })
+        if (request.method() === 'PUT') {
+          const patch = request.postDataJSON() as Record<string, boolean>
+          state.preferencePatches.push(patch)
+          for (const [key, value] of Object.entries(patch)) if (key in state.preferences) state.preferences[key] = value
+        }
+        return json(route, { preferences: state.preferences })
+      }
       default: return json(route, {})
     }
   })
@@ -58,4 +73,17 @@ export async function signIn (page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('muon.cloud.token', 'e2e-session')
   })
+}
+
+/**
+ * The console serving this page itself, as on control.muon3d.com: Account's
+ * settings only draw where the console serves Control (KAN-532 §2.1). Its API
+ * is answered on the page's origin, and its silent `/authorize` says no.
+ */
+export async function serveConsoleHere (page: Page, state: ConsoleState, origin: string) {
+  await serveConsole(page, state, origin)
+  await page.route(`${origin}/authorize**`, route => route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"login_required"}' }))
+  await page.addInitScript(([url]) => {
+    localStorage.setItem('muon.cloud.url', url)
+  }, [origin])
 }
