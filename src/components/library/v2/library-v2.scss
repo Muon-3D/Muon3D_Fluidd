@@ -678,6 +678,20 @@
 
 .mlib-btn:disabled { opacity: 0.6; cursor: default; }
 
+// A link drawn as a button (Slice it ↗, Remix ↗, Open page, Share…): Vuetify's theme
+// colours every .v-application a, which outranks .mlib-btn--primary, so the text
+// came out accent on accent (invisible) and underlined. Its own colours win here.
+.v-application a.mlib-btn {
+  color: var(--m3d-text);
+  text-decoration: none;
+}
+
+.v-application a.mlib-btn.mlib-btn--primary { color: #04211f; }
+.v-application.theme--light a.mlib-btn.mlib-btn--primary,
+.theme--light .v-application a.mlib-btn.mlib-btn--primary { color: #fff; }
+.v-application a.mlib-btn.mlib-btn--tint { color: var(--m3d-accent); }
+.v-application a.mlib-link { text-decoration: none; }
+
 .mlib--phone {
   .mlib__titles { flex-wrap: wrap; gap: 12px; }
   .mlib-seg { width: 100%; }
