@@ -16,7 +16,20 @@ async function confirmPrint (page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: 'Print now' }).click()
 }
 
+/**
+ * History, drawn and settled. Vite's dependency optimiser (or the app's
+ * one-per-tab stale-chunk recovery) can reload the page once while a cold
+ * server warms up, which drops anything typed into it: so wait for the
+ * network to go quiet and the page to be there before acting.
+ */
+async function openHistory (page: import('@playwright/test').Page, open: (path: string) => Promise<void>, drawn = 'history-page') {
+  await open('/history')
+  await page.waitForLoadState('networkidle')
+  await expect(page.getByTestId(drawn)).toBeVisible()
+}
+
 // The table and the row menus are the desktop layout; the phone has its own test below.
+// eslint-disable-next-line no-empty-pattern
 test.beforeEach(async ({}, testInfo) => {
   test.skip(testInfo.project.name === 'phone' && !testInfo.title.includes('phone') && !/empty state|no match|a name finds/.test(testInfo.title), 'desktop layout')
 })
@@ -57,7 +70,7 @@ async function withHistory (page: import('@playwright/test').Page, jobs = JOBS, 
 
 test('the tiles say how the last 30 days went, and the table lists those prints, newest first', async ({ page, open }) => {
   await withHistory(page)
-  await open('/history')
+  await openHistory(page, open)
 
   const tiles = page.getByTestId('history-totals')
   await expect(tiles).toContainText('Prints')
@@ -87,7 +100,7 @@ test('the tiles say how the last 30 days went, and the table lists those prints,
 
 test('the result segment and the date range narrow the table; the tiles follow the range only', async ({ page, open }) => {
   await withHistory(page)
-  await open('/history')
+  await openHistory(page, open)
   const rows = page.getByTestId('history-row')
 
   await page.getByRole('radiogroup', { name: 'Show' }).getByRole('radio', { name: 'Failed' }).click()
@@ -109,16 +122,21 @@ test('the result segment and the date range narrow the table; the tiles follow t
 
 test('a name finds a print', async ({ page, open }) => {
   await withHistory(page)
-  await open('/history')
-  await page.getByTestId('history-find').fill('gear')
-  await expect(page.getByTestId('history-row')).toHaveCount(1)
-  await page.getByTestId('history-find').fill('zzz')
-  await expect(page.getByTestId('history-no-match')).toContainText('No print matches "zzz"')
+  await openHistory(page, open)
+  // If the page reloads under the typing, type it again rather than race.
+  await expect(async () => {
+    await page.getByTestId('history-find').fill('gear')
+    await expect(page.getByTestId('history-row')).toHaveCount(1, { timeout: 3000 })
+  }).toPass()
+  await expect(async () => {
+    await page.getByTestId('history-find').fill('zzz')
+    await expect(page.getByTestId('history-no-match')).toContainText('No print matches "zzz"', { timeout: 3000 })
+  }).toPass()
 })
 
 test('a filter with no match says so instead of an empty table, and Clear filters brings everything back', async ({ page, open }) => {
   await withHistory(page, [JOBS[0], JOBS[1], JOBS[4]])
-  await open('/history')
+  await openHistory(page, open)
 
   await page.getByRole('radiogroup', { name: 'Show' }).getByRole('radio', { name: 'Failed' }).click()
   const empty = page.getByTestId('history-no-match')
@@ -132,7 +150,7 @@ test('a filter with no match says so instead of an empty table, and Clear filter
 
 test('a printer with no prints shows the empty state and a way to Jobs, never a table of headers', async ({ page, open }) => {
   await withHistory(page, [])
-  await open('/history')
+  await openHistory(page, open)
 
   const empty = page.getByTestId('history-empty')
   await expect(empty).toContainText('No prints yet')
@@ -146,7 +164,7 @@ test('a printer with no prints shows the empty state and a way to Jobs, never a 
 
 test('Print again, from the row menu, asks first and then starts that file', async ({ page, open }) => {
   const printer = await withHistory(page)
-  await open('/history')
+  await openHistory(page, open)
 
   await page.getByRole('button', { name: /More for Cable clip/ }).click()
   await page.getByRole('menuitem', { name: 'Print again' }).click()
@@ -159,7 +177,7 @@ test('Print again, from the row menu, asks first and then starts that file', asy
 
 test('Remove from history asks first, then deletes only that print', async ({ page, open }) => {
   const printer = await withHistory(page)
-  await open('/history')
+  await openHistory(page, open)
 
   await page.getByRole('button', { name: /More for Gear housing/ }).click()
   await page.getByRole('menuitem', { name: 'Remove from history' }).click()
@@ -172,7 +190,7 @@ test('Remove from history asks first, then deletes only that print', async ({ pa
 
 test('Details opens a print\'s times, filament and slicer settings; a cancelled one says how far it got', async ({ page, open }) => {
   await withHistory(page)
-  await open('/history')
+  await openHistory(page, open)
 
   await page.getByRole('button', { name: /More for Fan duct/ }).click()
   await page.getByRole('menuitem', { name: 'Details' }).click()
@@ -187,7 +205,7 @@ test('Details opens a print\'s times, filament and slicer settings; a cancelled 
 
 test('Clear history and Reset the totals both ask first', async ({ page, open }) => {
   const printer = await withHistory(page)
-  await open('/history')
+  await openHistory(page, open)
   await expect(page.locator('.hist__foot')).toContainText('All time on')
 
   await page.getByTestId('history-reset-totals').click()
@@ -206,7 +224,7 @@ test.describe('on a phone', () => {
 
   test('the prints are rows with the result as a pill, and a tap opens the print\'s details and actions', async ({ page, open }) => {
     const printer = await withHistory(page)
-    await open('/history')
+    await openHistory(page, open)
 
     await expect(page.getByTestId('history-table')).toHaveCount(0)
     await expect(page.getByTestId('history-totals')).toContainText('Success rate')
