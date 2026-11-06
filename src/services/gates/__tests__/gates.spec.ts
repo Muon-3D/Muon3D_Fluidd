@@ -121,30 +121,85 @@ describe('refreshCanManageAccess', () => {
 
 describe('refreshGateDevMode', () => {
   it('reads developer mode for this printer', async () => {
-    dev.refresh.mockImplementation(async () => { dev.state.enabled = true })
+    dev.refresh.mockResolvedValue(true)
     await refreshGateDevMode()
     expect(valueFor('dev', 'A')).toBe(true)
     expect(valueFor('dev', 'B')).toBeNull()
   })
 
-  it('does not read another printer\'s state when this one cannot be reached', async () => {
+  it("does not read another printer's state when this one cannot be reached", async () => {
     dev.state.enabled = true // left over from printer A
     slug.v = 'B'
-    dev.refresh.mockResolvedValue(undefined) // B did not answer: the global keeps its old value
+    dev.refresh.mockResolvedValue(null) // B did not answer: the global keeps its old value
     await refreshGateDevMode()
     expect(valueFor('dev', 'B')).toBeNull()
   })
 
+  it('an in-flight reply from A, then a switch to B whose requests fail, leaves B unknown', async () => {
+    const lateA = deferred<boolean | null>()
+    dev.refresh.mockReturnValueOnce(lateA.promise)
+    const askingA = refreshGateDevMode()
+    slug.v = 'B'
+    resetGates()
+    dev.refresh.mockResolvedValueOnce(null) // B fails
+    await refreshGateDevMode()
+    dev.state.enabled = true // A's late reply lands in the shared state
+    lateA.resolve(true)
+    await askingA
+    expect(valueFor('dev', 'A')).toBeNull()
+    expect(valueFor('dev', 'B')).toBeNull()
+  })
+
+  it('leaves the shared devModeState alone while the gate refreshes', async () => {
+    dev.state.enabled = true
+    const pending = deferred<boolean | null>()
+    dev.refresh.mockReturnValueOnce(pending.promise)
+    const asking = refreshGateDevMode()
+    expect(dev.state.enabled).toBe(true)
+    pending.resolve(false)
+    await asking
+    expect(dev.state.enabled).toBe(true)
+    expect(valueFor('dev', 'A')).toBe(false)
+  })
+
   it('ignores a late answer after a switch', async () => {
-    const late = deferred<void>()
-    dev.refresh.mockImplementation(async () => { await late.promise; dev.state.enabled = true })
+    const late = deferred<boolean | null>()
+    dev.refresh.mockReturnValueOnce(late.promise)
     const asking = refreshGateDevMode()
     slug.v = 'B'
     resetGates()
-    late.resolve()
+    late.resolve(true)
     await asking
     expect(valueFor('dev', 'A')).toBeNull()
     expect(valueFor('dev', 'B')).toBeNull()
+  })
+
+  it('asks the new printer when the slug changes mid-request without a reset', async () => {
+    const lateA = deferred<boolean | null>()
+    dev.refresh.mockReturnValueOnce(lateA.promise)
+    dev.refresh.mockResolvedValue(true)
+    const asking = refreshGateDevMode()
+    slug.v = 'B'
+    lateA.resolve(false)
+    await asking
+    await new Promise(resolve => setTimeout(resolve))
+    expect(valueFor('dev', 'A')).toBeNull()
+    expect(valueFor('dev', 'B')).toBe(true)
+  })
+})
+
+describe('a slug change mid-request', () => {
+  it('re-asks access for the new printer instead of staying unknown', async () => {
+    const lateA = deferred<Record<string, string>>()
+    caps.mockReturnValueOnce(lateA.promise)
+    caps.mockResolvedValue({ protection: 'allowed' })
+    const asking = refreshCanManageAccess()
+    slug.v = 'B'
+    lateA.resolve({ protection: 'ask' })
+    await asking
+    await new Promise(resolve => setTimeout(resolve))
+    expect(valueFor('manage', 'A')).toBeNull()
+    expect(valueFor('manage', 'B')).toBe(true)
   })
 })
 
