@@ -147,8 +147,8 @@ describe.sequential('Muon3D M1 journeys through the application router', () => {
     expect(wrapper.text()).toContain('Upload')
 
     await go(`/${slug}/camera/toolhead`, '[data-tid="camera-page"]', wrapper)
-    await wrapper.find('[data-tid="camera-details-trigger"]').trigger('click')
-    expect(wrapper.text()).toContain('Stream')
+    // On a desktop the stream's details are the side tile beside the picture.
+    expect(wrapper.find('[data-tid="camera-info"]').text()).toContain('Stream')
 
     await go(`/${slug}/settings`, '[data-tid="settings-page"]', wrapper)
     expect(wrapper.text()).toContain('Charts')

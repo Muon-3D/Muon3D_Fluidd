@@ -12,7 +12,6 @@
           >
             {{ title }}
           </h1>
-          <camera-tabs v-if="currentSection && currentSection.id === 'camera'" />
           <tone-pill
             v-if="overviewHome"
             :tone="pillTone"
@@ -34,7 +33,7 @@
         <jobs-actions v-if="jobsHome" />
         <maintenance-due v-if="currentPage === '/maintenance'" />
         <console-actions v-if="currentSection && currentSection.id === 'console'" />
-        <camera-actions v-if="currentSection && currentSection.id === 'camera' && !isMobileViewport" />
+        <camera-actions v-if="currentSection && currentSection.id === 'camera'" />
       </div>
     </div>
     <nav
@@ -67,9 +66,9 @@ import ControlActions from '@/components/control/ControlActions.vue'
 import OverviewActions from '@/components/overview/OverviewActions.vue'
 import PrinterPageMenu from '@/components/overview/PrinterPageMenu.vue'
 import MaintenanceDue from '@/components/maintenance/MaintenanceDue.vue'
-import CameraTabs from '@/components/camera/CameraTabs.vue'
 import ConsoleActions from '@/components/console/ConsoleActions.vue'
 import CameraActions from '@/components/camera/CameraActions.vue'
+import { cameraPage } from '@/services/camera/page-state'
 import JobsActions from '@/components/jobs/JobsActions.vue'
 import { jobsPage } from '@/services/jobs/page-state'
 import TonePill from '@/components/printers/TonePill.vue'
@@ -88,7 +87,7 @@ import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@
  * with the section's pages as tabs under it (Jobs: Jobs, Preview, History,
  * Timelapse).
  */
-@Component({ components: { ConsoleActions, CameraActions, CameraTabs, JobsActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
+@Component({ components: { ConsoleActions, CameraActions, JobsActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
 export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, PrinterStatusMixin) {
   get foreignRecord () {
     const slug = this.$route.params.printer
@@ -155,6 +154,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       return parts.join(' · ')
     }
     if (this.currentSection?.id === 'console') return 'Send G-code and read what Klipper says back'
+    if (this.currentSection?.id === 'camera') return cameraPage.subtitle
     if (this.isMobileViewport) return ''
     if (this.overviewHome) {
       if (this.foreignRecord) return ''
