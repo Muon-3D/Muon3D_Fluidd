@@ -151,3 +151,31 @@ test('Wi-Fi and System keep their own addresses and open with the list beside th
   await expect(page.getByTestId('settings-pane')).toBeVisible()
   if (!isMobile) await expect(page.getByTestId('settings-network')).toHaveAttribute('aria-current', 'page')
 })
+
+/** The Developer mode page, from the link below the section list. */
+async function openDeveloperMode (page: import('@playwright/test').Page, open: (path: string) => Promise<unknown>) {
+  await open('/settings')
+  await page.getByRole('navigation', { name: 'Developer mode' }).getByRole('link', { name: /Developer mode/ }).click()
+  await expect(page.getByTestId('page-title')).toHaveText('Developer mode')
+}
+
+test('developer mode off: the page says to go to the printer\'s screen and offers no way to turn it on here', async ({ page, open }) => {
+  await page.route('**/server/aux/dev_mode*', route => route.fulfill({ json: { enabled: false, guard_armed: true } }))
+  await openDeveloperMode(page, open)
+  const pane = page.getByTestId('settings-pane')
+  const goto = pane.getByTestId('developer-mode-go-to-printer')
+  await expect(goto).toBeVisible()
+  await expect(goto).toContainText("Go to the printer's screen to turn on developer mode")
+  await expect(goto).toContainText('System, then Protection, then Developer mode')
+  await expect(pane.getByTestId('developer-mode-switch')).toHaveCount(0)
+  await expect(pane.getByRole('button', { name: 'Turn on' })).toHaveCount(0)
+})
+
+test('developer mode on: the message goes and the way out stays', async ({ page, open }) => {
+  await page.route('**/server/aux/dev_mode*', route => route.fulfill({ json: { enabled: true, guard_armed: true } }))
+  await openDeveloperMode(page, open)
+  const pane = page.getByTestId('settings-pane')
+  await expect(pane.getByText('On: the printer runs your copy of its configuration')).toBeVisible()
+  await expect(pane.getByTestId('developer-mode-go-to-printer')).toHaveCount(0)
+  await expect(pane.getByRole('link', { name: 'Edit macros' })).toBeVisible()
+})
