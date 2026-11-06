@@ -3,7 +3,7 @@
     class="myours"
     data-tid="library-yours-shelves"
   >
-    <!-- Collections: mosaic tiles, then New collection. One open shows its prints as a shelf. -->
+    <!-- Collections: mosaic tiles, then New collection. A tile opens the collection's own page. -->
     <section
       class="mlib-shelf"
       data-tid="library-collections"
@@ -61,10 +61,9 @@
           :key="c.id"
           type="button"
           class="mlib-col"
-          :class="{ 'mlib-col--on': openId === c.id }"
-          :aria-pressed="openId === c.id ? 'true' : 'false'"
+          :aria-label="`${c.name}, ${c.item_count} ${c.item_count === 1 ? 'print' : 'prints'}`"
           :data-tid="`library-collection-${c.id}`"
-          @click="toggle(c.id)"
+          @click="$emit('open-collection', c.id)"
         >
           <span class="mlib-col__mosaic">
             <img
@@ -91,20 +90,6 @@
         </button>
       </div>
     </section>
-
-    <library-shelf
-      v-if="open"
-      id="collection"
-      :title="open.name"
-      :sub="`${open.item_count} ${open.item_count === 1 ? 'print' : 'prints'}`"
-      :cards="(members[open.id] || []).map(withPicture)"
-      :printer-name="printerName"
-      :printing="printing"
-      :see-all="false"
-      data-tid="library-collection-open"
-      @print="$emit('print', $event)"
-      @open="$emit('open', $event)"
-    />
 
     <template v-for="s in shelves">
       <library-shelf
@@ -238,7 +223,6 @@ export default class LibraryYoursShelves extends Vue {
     shared: blank()
   }
 
-  openId = ''
   naming = false
   name = ''
   busy = false
@@ -371,14 +355,6 @@ export default class LibraryYoursShelves extends Vue {
     return (this.members[id] ?? []).map(card => this.withPicture(card).picture).filter((url): url is string => !!url).slice(0, 4)
   }
 
-  get open (): CommunityCollection | null {
-    return this.collections.find(c => c.id === this.openId) ?? null
-  }
-
-  toggle (id: string) {
-    this.openId = this.openId === id ? '' : id
-  }
-
   async startNaming () {
     this.naming = true
     this.name = ''
@@ -445,8 +421,6 @@ function cards (saves: CommunitySave[] | undefined): ShelfCard[] {
     margin: 0;
   }
 }
-
-.mlib-col--on { box-shadow: inset 0 0 0 2px var(--m3d-accent); }
 
 .mlib-col--new {
   flex-direction: row;

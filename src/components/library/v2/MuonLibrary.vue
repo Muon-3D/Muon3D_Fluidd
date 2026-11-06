@@ -22,6 +22,20 @@
       @open="open"
     />
 
+    <!-- A collection's own page (v3 page 8). -->
+    <library-collection-page
+      v-else-if="tab === 'yours' && collection && signedIn"
+      ref="collectionPage"
+      :collection-id="collection"
+      :printer-name="printerName"
+      :printing="printing"
+      @back="$emit('collection-back')"
+      @deleted="$emit('collection-deleted')"
+      @changed="readCollections"
+      @print="print"
+      @open="openInCollection"
+    />
+
     <!-- See all for a Yours shelf: one grid with search and sort. -->
     <library-yours-grid
       v-else-if="tab === 'yours' && yoursGrid && signedIn && (ownReady || yoursGrid === 'saved')"
@@ -332,6 +346,7 @@
           @open="open"
           @changed="readCollections"
           @see-all="seeAll"
+          @open-collection="$emit('update:collection', $event)"
           @own-act="ownAct"
           @own-open="ownOpen"
           @go-slice="$emit('go-slice')"
@@ -347,8 +362,10 @@
       :printer-fits="isM1"
       :signed-in="signedIn"
       :collections="collections"
-      @close="looking = null"
+      :in-collection="lookingIn"
+      @close="looking = null; lookingIn = null"
       @saved="onSaved"
+      @removed="onRemoved"
       @print="printFromLook"
     />
   </div>
@@ -363,6 +380,7 @@ import LibraryShelf from './LibraryShelf.vue'
 import LibraryState from './LibraryState.vue'
 import LibraryGridPage from './LibraryGridPage.vue'
 import LibraryYoursGrid, { YOURS_GRIDS, type YoursGridSource } from './LibraryYoursGrid.vue'
+import LibraryCollectionPage, { saveIdOf } from './LibraryCollectionPage.vue'
 import type { OwnCard } from '@/services/library/yours'
 import { describeLibraryError, type CommunityCollection, type LibraryItem } from '@/services/library/api'
 import { LIBRARY_URL } from '@/services/library/discover'
@@ -392,7 +410,7 @@ const PALETTE = ['#ff9f0a', '#ff453a', '#64d2ff', '#30d158', '#bf5af2', '#80d6d1
  * prints from where it is, through the host: `print` and `print-item`.
  * No router in here; it sizes to its container.
  */
-@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState, LibraryGridPage, LibraryYoursGrid } })
+@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState, LibraryGridPage, LibraryYoursGrid, LibraryCollectionPage } })
 export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: 'page' }) readonly context!: 'page' | 'control'
   @Prop({ type: String, default: null }) readonly printerId!: string | null
@@ -408,6 +426,8 @@ export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: '' }) readonly search!: string
   /** The print to continue with (the last one saved), or none. */
   @Prop({ type: Object, default: null }) readonly continueItem!: LibraryItem | null
+  /** A collection's page instead of Yours' shelves (its id); the host keeps it in the address. */
+  @Prop({ type: String, default: null }) readonly collection!: string | null
   /** Your Library is on and read: Yours' shelves can show (the host says what to do otherwise). */
   @Prop({ type: Boolean, default: true }) readonly ownReady!: boolean
 
@@ -429,6 +449,8 @@ export default class MuonLibrary extends Vue {
   feedCursor: string | null = null
   feedBusy = false
   looking: ShelfCard | null = null
+  /** The collection the quick look was opened from (its page), for Remove from <it>. */
+  lookingIn: { id: string, name: string, saveId: string } | null = null
   collections: CommunityCollection[] = []
   private collectionReads = 0
   collectionsError = ''
@@ -731,8 +753,24 @@ export default class MuonLibrary extends Vue {
   }
 
   open (card: ShelfCard) {
+    this.lookingIn = null
     this.looking = card
     this.$emit('open-model', card.id)
+  }
+
+  /** A card on a collection's page: its quick look can take it out of that collection. */
+  openInCollection (card: ShelfCard, from: { id: string, name: string } | null) {
+    const saveId = saveIdOf(card)
+    this.open(card)
+    this.lookingIn = from && saveId ? { id: from.id, name: from.name, saveId } : null
+  }
+
+  /** Taken out of a collection from its quick look: the page and the tiles read again. */
+  onRemoved () {
+    this.looking = null
+    this.lookingIn = null
+    this.readCollections()
+    ;(this.$refs.collectionPage as { load?: () => void } | undefined)?.load?.()
   }
 
   /**

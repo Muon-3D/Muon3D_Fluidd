@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { MOVED_TO_ACCOUNT, SETTINGS_SECTIONS, settingsSectionFor, visibleSettingsSections } from '../sections'
+import { MOVED_TO_ACCOUNT, SETTINGS_SECTIONS, openSettingsSection, searchSettingsSections, settingsSectionFor, visibleSettingsSections } from '../sections'
+import { readFileSync } from 'node:fs'
 import { PAGE_KEYS } from '@/router/printerSections'
 
 const simple = { components: ['update_manager', 'muon_access'] }
@@ -54,5 +55,33 @@ describe("Settings' sections", () => {
   it('give every card one home', () => {
     const anchors = SETTINGS_SECTIONS.flatMap(s => s.anchors)
     expect(new Set(anchors).size).toBe(anchors.length)
+  })
+})
+
+describe('the section an address opens', () => {
+  it('is only one the printer shows', () => {
+    expect(openSettingsSection('#versions', { components: ['update_manager'] })?.label).toBe('Updates')
+    expect(openSettingsSection('#versions', { components: [] })).toBeNull()
+    expect(openSettingsSection('#timelapse', simple)).toBeNull()
+    expect(openSettingsSection('#camera', { components: [] })?.id).toBe('cameras')
+  })
+})
+
+describe("Settings' list lines and search", () => {
+  it('give every section an icon the frame draws and a line saying what it is for', () => {
+    const icons = readFileSync('src/components/ui/FrameIcon.vue', 'utf8')
+    for (const s of SETTINGS_SECTIONS) {
+      expect(s.blurb.length, s.id).toBeGreaterThan(5)
+      expect(icons, `${s.id} icon ${s.icon}`).toMatch(new RegExp(`\\s${s.icon}: \\[`))
+    }
+  })
+
+  it('search by name, by what it is for, or by another word for it', () => {
+    const all = visibleSettingsSections(withTimelapse)
+    expect(searchSettingsSections(all, '').length).toBe(all.length)
+    expect(searchSettingsSections(all, 'wi-fi').map(s => s.id)).toEqual(['network'])
+    expect(searchSettingsSections(all, 'password').map(s => s.id)).toEqual(['access'])
+    expect(searchSettingsSections(all, 'restart').map(s => s.id)).toEqual(['system'])
+    expect(searchSettingsSections(all, 'zzzz')).toEqual([])
   })
 })

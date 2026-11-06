@@ -95,7 +95,7 @@ describe('Library v2: a save as a card, as the service sends it', () => {
 })
 
 describe('Library v2: Yours shelves', () => {
-  it('shows Saved with each public print\'s picture from its page; opening a collection shows its prints', async () => {
+  it('shows Saved with each public print\'s picture from its page; a collection tile opens its page', async () => {
     const client = fakeClient()
     setLibraryClient(client as never)
     vi.stubGlobal('fetch', publicFetch())
@@ -110,14 +110,12 @@ describe('Library v2: Yours shelves', () => {
     expect(saved.find('img').attributes('src')).toBe('https://models.muon3d.com/v1/public/publications/p1/images/i')
     expect(wrapper.findAll('[data-tid="library-collection-c1"] img').length).toBe(1)
 
+    // v3: a tile opens the collection's own page (the host keeps it in the address).
     await wrapper.find('[data-tid="library-collection-c1"]').trigger('click')
-    await flush()
-    expect(wrapper.find('[data-tid="library-collection-open"]').text()).toContain('Print p3')
-    // v3: Saved is a shelf of its own and stays.
-    expect(wrapper.find('[data-tid="library-saved"]').exists()).toBe(true)
+    expect(wrapper.emitted('open-collection')).toEqual([['c1']])
   })
 
-  it('reads an open collection again after a change, and says when collections couldn\'t be read', async () => {
+  it('reads each collection again after a change (its mosaic follows), and says when collections couldn\'t be read', async () => {
     const client = fakeClient()
     setLibraryClient(client as never)
     vi.stubGlobal('fetch', publicFetch())
@@ -125,16 +123,13 @@ describe('Library v2: Yours shelves', () => {
     const wrapper = mount(LibraryYoursShelves, { stubs, propsData: { collections } })
     wrappers.push(wrapper)
     await flush()
-    await wrapper.find('[data-tid="library-collection-c1"]').trigger('click')
-    await flush()
-    expect(wrapper.find('[data-tid="library-collection-open"]').text()).toContain('Print p3')
-    // p3 was unsaved elsewhere and p4 added: the open shelf follows after refresh().
+    const members = () => (wrapper.vm as unknown as { members: Record<string, Array<{ title: string }>> }).members.c1.map(c => c.title)
+    expect(members()).toEqual(['Print p3'])
+    // p3 was unsaved elsewhere and p4 added: the tile follows after refresh().
     client.collection.mockImplementation(async (id: string) => ({ ...collections[0], id, items: [{ save_id: 's-p4', target: { kind: 'publication', id: 'p4' }, card: publicationSave('p4').card }] }))
     await (wrapper.vm as unknown as { refresh: () => Promise<void> }).refresh()
     await flush()
-    const open = wrapper.find('[data-tid="library-collection-open"]').text()
-    expect(open).toContain('Print p4')
-    expect(open).not.toContain('Print p3')
+    expect(members()).toEqual(['Print p4'])
 
     await wrapper.setProps({ collections: [], collectionsError: 'The Library didn\'t answer.' })
     expect(wrapper.find('[data-tid="library-yours-error"]').text()).toContain('didn\'t answer')

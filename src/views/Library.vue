@@ -15,9 +15,13 @@
       :grid="grid"
       :search="searchQuery"
       :own-ready="state.checked && state.enabled"
+      :collection="collection"
       @update:tab="setView"
       @update:grid="setGrid"
       @grid-back="gridBack"
+      @update:collection="openCollection"
+      @collection-back="gridBack"
+      @collection-deleted="collectionDeleted"
       @open-search="openSearch"
       @print="onLibraryPrint"
       @print-item="printOn($event, activePrinter ? activePrinter.id : null)"
@@ -208,6 +212,33 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     return shelf === 'popular' || shelf === 'm1' || shelf === 'new' || shelf === 'search' ? shelf : null
   }
 
+  /** A collection's page on Yours (`?view=mine&collection=<id>`). */
+  get collection (): string | null {
+    const id = this.$route?.query.collection
+    return this.view === 'mine' && typeof id === 'string' && id ? id : null
+  }
+
+  /** Deleted on its page: Yours replaces it in history, so Back cannot return to it. */
+  collectionDeleted () {
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view: 'mine' }
+    delete query.collection
+    if (this.gridOpenedHere) {
+      this.gridOpenedHere = false
+      this.$router.back()
+      return
+    }
+    this.$router.replace({ query }).catch(() => {})
+  }
+
+  /** A collection tile: its page, pushed so Back returns to Yours. */
+  openCollection (id: string) {
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view: 'mine', collection: id }
+    delete query.shelf
+    delete query.q
+    this.gridOpenedHere = true
+    this.$router.push({ query }).catch(() => {})
+  }
+
   get searchQuery (): string {
     const q = this.$route?.query.q
     return typeof q === 'string' ? q : ''
@@ -225,6 +256,7 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     const rest = { ...this.$route.query }
     delete rest.shelf
     delete rest.q
+    delete rest.collection
     const view = YOURS_GRIDS.includes(grid as YoursGridSource) ? 'mine' : 'discover'
     const query = grid ? { ...rest, view, shelf: grid, ...(grid === 'search' ? { q: q ?? this.searchQuery } : {}) } : rest
     if (this.grid && grid) {
@@ -253,11 +285,12 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   /** Discover or Yours, kept in the address so Back and a shared link land on it. */
   setView (tab: LibraryTab) {
     const view = tab === 'yours' ? 'mine' : 'discover'
-    if (view === this.view && !this.grid) return
+    if (view === this.view && !this.grid && !this.collection) return
     // A place starts at its top: no See all or search left in the address.
     const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view }
     delete query.shelf
     delete query.q
+    delete query.collection
     this.$router.replace({ query }).catch(() => {})
   }
 
