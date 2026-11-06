@@ -141,9 +141,9 @@ describe.sequential('Muon3D M1 journeys through the application router', () => {
     await go(`/${slug}/tune`, '[data-tid="bedmesh-page"]', wrapper)
 
     await go(`/${slug}/jobs`, '.jobs', wrapper)
-    // One list, with its order and Upload in the header.
+    // One list, with its toolbar and Upload in the header.
     expect(wrapper.find('[data-tid="jobs-list"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Newest')
+    expect(wrapper.text()).toContain('New folder')
     expect(wrapper.text()).toContain('Upload')
 
     await go(`/${slug}/camera/toolhead`, '[data-tid="camera-page"]', wrapper)
