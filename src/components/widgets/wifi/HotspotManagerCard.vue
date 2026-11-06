@@ -512,7 +512,7 @@ export default class HotspotManagerCard extends Vue {
     }
     try {
       await this.auxApi.apChange(body)
-      EventBus.$emit("Press the knob on the printer to confirm. The hotspot changes when you do.", { type: 'primary', timeout: 10000 })
+      EventBus.$emit('Press the knob on the printer to confirm. The hotspot changes when you do.', { type: 'primary', timeout: 10000 })
     } catch (e) {
       if (isPanelOnlyRefusal(e)) {
         EventBus.$emit(panelOnlyMessage('change the hotspot'), { type: 'error', timeout: 8000 })
