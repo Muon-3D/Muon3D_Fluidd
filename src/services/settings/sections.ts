@@ -97,3 +97,23 @@ export function searchSettingsSections (sections: SettingsSection[], query: stri
     return words.every(w => hay.includes(w))
   })
 }
+
+/** Which access card People and access shows. */
+export interface AccessCards {
+  /** The new People and access page (a Muon printer with `muon_access`). */
+  peopleAccess: boolean;
+  /** Moonraker's API key and users card: a non-Muon printer, or a Muon one whose MuonOS predates `muon_access`. */
+  auth: boolean;
+  /** Muon or not isn't known yet (server.info hasn't loaded): a muted loading line, never the wrong card. */
+  loading: boolean;
+}
+
+export function accessCards (isMuonPrinter: boolean | null, components: string[]): AccessCards {
+  if (isMuonPrinter === null) return { peopleAccess: false, auth: false, loading: true }
+  const access = components.includes('muon_access')
+  return {
+    peopleAccess: isMuonPrinter && access,
+    auth: components.includes('authorization') && (!isMuonPrinter || !access),
+    loading: false
+  }
+}
