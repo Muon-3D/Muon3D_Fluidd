@@ -369,29 +369,60 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     this.markHandMove(realTo)
   }
 
-  /** To a place given in G-code coordinates, inside the machine and out of the bed's no-go regions. */
-  moveTo (place: { X?: number, Y?: number, Z?: number }) {
-    if (!this.controlReady || this.busy || ![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
+  /**
+   * A diagonal step: X and Y at once, cut short at the machine's limits.
+   * Sent through moveTo, so it gets the same checks as every hand move
+   * (homed, not printing, the hand-move wait and the no-go planner).
+   */
+  moveByXY (dx: number, dy: number): boolean {
+    if (!this.controlReady || this.busy || !this.isHomed('XY') || !Number.isFinite(dx) || !Number.isFinite(dy)) return false
+    if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return false
+    const wait = this.handMoveWait()
+    if (wait) { this.refuseMove(wait); return false }
+    // Planned from the toolhead (commanded) position and sent as a relative
+    // step, as moveBy does, so a position that lags can't swallow a step.
+    const realTo = [0, 1, 2].map(j => Number(this.position[j])) as [number, number, number]
+    const by: number[] = [0, 0]
+    ;(['X', 'Y'] as Axis[]).forEach((axis, i) => {
+      const d = axis === 'X' ? dx : dy
+      const signed = this.inverted(axis) ? -d : d
+      const target = clampTo(this.position[i] + signed, this.axisMin[i], this.axisMax[i])
+      by[i] = Math.round((target - this.position[i]) * 1000) / 1000
+      realTo[i] = target
+    })
+    if (!by[0] && !by[1]) return false
+    const plan = this.planHandMove(realTo)
+    if (!plan.ok) { this.refuseMove(plan.reason); return false }
+    if (plan.lifted) this.sendPlannedMoves(plan.steps)
+    else this.sendMoveGcode(['X', 'Y'].filter((_, i) => by[i]).map(a => `${a}${by['XY'.indexOf(a)]}`).join(' '), this.xySpeed)
+    this.markHandMove(realTo)
+    return true
+  }
+
+  /** To a place given in G-code coordinates, inside the machine and out of the bed's no-go regions. True when it was sent. */
+  moveTo (place: { X?: number, Y?: number, Z?: number }): boolean {
+    if (!this.controlReady || this.busy || ![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return false
     const parts: string[] = []
     let rate = this.xySpeed
     for (const axis of ['X', 'Y', 'Z'] as Axis[]) {
       const value = place[axis]
       if (value === undefined) continue
       const i = 'XYZ'.indexOf(axis)
-      if (!this.isHomed(axis) || !Number.isFinite(value) || value < this.axisMin[i] || value > this.axisMax[i]) return
+      if (!this.isHomed(axis) || !Number.isFinite(value) || value < this.axisMin[i] || value > this.axisMax[i]) return false
       parts.push(`${axis}${value}`)
       if (axis === 'Z') rate = Math.min(rate, this.zSpeed)
     }
-    if (!parts.length) return
+    if (!parts.length) return false
     const wait = this.handMoveWait()
-    if (wait) { this.refuseMove(wait); return }
+    if (wait) { this.refuseMove(wait); return false }
     const offset = this.gcodeOffset ?? [0, 0, 0]
     const realTo = (['X', 'Y', 'Z'] as Axis[]).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
     const plan = this.planHandMove(realTo)
-    if (!plan.ok) { this.refuseMove(plan.reason); return }
+    if (!plan.ok) { this.refuseMove(plan.reason); return false }
     if (plan.lifted) this.sendPlannedMoves(plan.steps)
     else this.sendMoveGcode(parts.join(' '), rate, true)
     this.markHandMove(realTo)
+    return true
   }
 
   homeWait (axes = ''): string {
