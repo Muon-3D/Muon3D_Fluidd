@@ -14,7 +14,7 @@ describe('allowlist', () => {
   })
 
   it('refuses setup, access, power and anything unknown', () => {
-    for (const m of ['server.muon.setup.network', 'server.muon.access.answer', 'server.muon.protection', 'machine.reboot', 'machine.services.restart', 'machine.update.full', 'server.aux.proxy', 'printer.restart', '', 42, undefined]) {
+    for (const m of ['printer.gcode.script', 'server.muon.setup.network', 'server.muon.access.answer', 'server.muon.protection', 'machine.reboot', 'machine.services.restart', 'machine.update.full', 'server.aux.proxy', 'printer.restart', '', 42, undefined]) {
       expect(rpcVerdict(m)).toBe('refuse')
     }
   })
@@ -24,7 +24,7 @@ describe('allowlist', () => {
     expect(auxVerdict('GET', '/update/status?x=1')).toBe('forward')
     const refused: Array<[string, string]> = [
       ['POST', '/wifi/ap/down'], ['POST', '/wifi/ap/up'], ['POST', '/wifi/connect'], ['POST', '/update/install'],
-      ['GET', '/wifi/ap/show'], ['GET', '/consent/pending'], ['GET', '/dev_mode'], ['POST', '/display/brightness'],
+      ['GET', '/wifi/ap/show'], ['GET', '/wifi/show'], ['GET', '/consent/pending'], ['GET', '/wifi/current#x'], ['GET', '/dev_mode'], ['POST', '/display/brightness'],
       ['GET', '/wifi/current/../../dev_mode'], ['GET', '/wifi%2Fcurrent'], ['GET', '//wifi/current'], ['GET', 'wifi/current']
     ]
     for (const [m, p] of refused) expect(auxVerdict(m, p)).toBe('refuse')
@@ -50,11 +50,12 @@ describe('PanelBridge', () => {
       ...overrides
     }
     const onRefused = vi.fn()
-    bridge = new PanelBridge(frame, host, { onRefused }, 'http://localhost')
+    bridge = new PanelBridge(frame, host, { onRefused })
     return { frame, host, onRefused }
   }
 
-  function hello (frame: HTMLIFrameElement, origin = 'http://localhost', source: unknown = frame.contentWindow) {
+  /** The sandboxed frame's hello: its origin is opaque, "null". */
+  function hello (frame: HTMLIFrameElement, origin = 'null', source: unknown = frame.contentWindow) {
     window.dispatchEvent(new MessageEvent('message', { data: { type: HELLO_TYPE, version: PROTOCOL_VERSION }, origin, source: source as Window }))
   }
 
@@ -65,17 +66,22 @@ describe('PanelBridge', () => {
     return out
   }
 
-  it('hands the port only to its own frame, from its own origin, once, to that origin', () => {
+  it('hands a port only to its own sandboxed frame, and a new one when that frame reloads', () => {
     const { frame } = setup()
     const post = vi.spyOn(frame.contentWindow as Window, 'postMessage')
     hello(frame, 'https://evil.example')
-    hello(frame, 'http://localhost', window)
+    hello(frame, 'http://localhost')
+    hello(frame, 'null', window)
     expect(post).not.toHaveBeenCalled()
-    hello(frame)
     hello(frame)
     expect(post).toHaveBeenCalledTimes(1)
     expect(post.mock.calls[0][0]).toEqual({ type: PORT_TYPE })
-    expect(post.mock.calls[0][1]).toBe('http://localhost')
+    const first = (bridge as unknown as { port: MessagePort }).port
+    const closed = vi.spyOn(first, 'close')
+    hello(frame)
+    expect(post).toHaveBeenCalledTimes(2)
+    expect(closed).toHaveBeenCalled()
+    expect((bridge as unknown as { port: MessagePort }).port).not.toBe(first)
   })
 
   it("forwards an allowed call on Control's connection and refuses the rest without sending", async () => {
@@ -107,7 +113,19 @@ describe('PanelBridge', () => {
     expect(out[0].result?.status).toEqual({ extruder: { temperature: 210 } })
     bridge!.notify('notify_status_update', [{ extruder: { temperature: 211 }, heater_bed: { temperature: 61 } }, 12])
     bridge!.notify('notify_status_update', [{ heater_bed: { temperature: 62 } }, 13])
+    bridge!.notify('notify_gcode_response', ['M117 secret'])
+    bridge!.notify('notify_history_changed', [{}])
     expect(out.slice(1)).toEqual([{ kind: 'notify', method: 'notify_status_update', params: [{ extruder: { temperature: 211 } }, 12] }])
+  })
+
+  it('passes nothing on for a subscribe that names no objects, or names a prototype key', async () => {
+    const { frame } = setup()
+    hello(frame)
+    const out = replies() as Array<{ result?: { status: unknown } }>
+    await bridge!.handle({ id: 8, kind: 'rpc', method: 'printer.objects.subscribe', params: {} })
+    await bridge!.handle({ id: 9, kind: 'rpc', method: 'printer.objects.subscribe', params: { objects: { constructor: null, toString: null } } })
+    expect(out[0].result?.status).toEqual({})
+    expect(out[1].result?.status).toEqual({})
   })
 
   it("identify gets Control's own connection id and is never sent", async () => {
