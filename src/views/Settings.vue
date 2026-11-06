@@ -117,9 +117,9 @@
         <template v-if="!inChild && !ownPage && current">
           <general-settings v-if="shows('general')" />
           <theme-settings v-if="shows('theme')" />
-          <people-access-settings v-if="shows('access') && supports('muon_access')" />
+          <people-access-settings v-if="shows('access') && isMuonPrinter === true && supports('muon_access')" />
           <protection-settings v-else-if="shows('protection') && supports('muon_protection')" />
-          <auth-settings v-if="shows('auth') && supports('authorization') && !supports('muon_access')" />
+          <auth-settings v-if="shows('auth') && supports('authorization') && isMuonPrinter === false" />
           <software-settings v-if="shows('versions')" />
           <camera-settings v-if="shows('camera')" />
           <preset-settings v-if="shows('presets')" />
@@ -213,6 +213,11 @@ export default class Settings extends Mixins(StateMixin, BrowserMixin) {
 
   mounted () {
     refreshDevMode()
+  }
+
+  /** Three-state (#296): null until server.info has loaded for this printer, so neither access card shows. */
+  get isMuonPrinter (): boolean | null {
+    return this.$store.getters['server/isMuonPrinter'] as boolean | null
   }
 
   supports (component: string): boolean {

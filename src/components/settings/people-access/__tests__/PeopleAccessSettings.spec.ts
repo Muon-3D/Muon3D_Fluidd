@@ -29,6 +29,8 @@ const api = vi.hoisted(() => ({
 const unlinkPrinter = vi.hoisted(() => vi.fn(async () => ({})))
 /** The EndpointId the connected printer reports about itself. */
 const ident = vi.hoisted(() => ({ id: 'prn-1' as string | null }))
+/** The shared gate answers (#296) for this printer. */
+const gates = vi.hoisted(() => ({ manage: true as boolean | null, dev: false as boolean | null }))
 
 vi.mock('@/services/muon-access/api', () => ({
   currentPrinterAccess: () => ({
@@ -53,7 +55,12 @@ vi.mock('@/services/muon-ble/link', () => ({ remoteRouteLabel: () => 'Through Mu
 vi.mock('@/services/account/api', () => ({ accountApi: api }))
 vi.mock('@/services/account/client', () => ({ isMissing: () => false }))
 vi.mock('@/services/account/state', () => ({ accountState: account, loadApprovals: async () => {}, describe: (e: Error) => e.message }))
-vi.mock('@/services/dev-mode/state', () => ({ devModeState: { enabled: false } }))
+vi.mock('@/services/gates', () => ({
+  gateState: { epoch: 0 },
+  refreshCanManageAccess: vi.fn(),
+  refreshGateDevMode: vi.fn(),
+  valueFor: (kind: string) => kind === 'manage' ? gates.manage : gates.dev
+}))
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'boxwood-367a' }))
 vi.mock('@/services/people-access/identity', () => ({
   connectedEndpointId: async () => ident.id,
@@ -87,6 +94,7 @@ function open (components: string[] = ['authorization', 'muon_access']) {
       'config/getDisplayName': 'Boxwood',
       'server/componentSupport': (name: string) => components.includes(name),
       'socket/getConnectionState': true,
+      'server/isMuonPrinter': true,
       'auth/getUsers': [{ username: 'octo', source: 'moonraker' }],
       'auth/getCurrentUser': null
     }) as Record<string, unknown>,
@@ -127,6 +135,7 @@ describe('People and access on the printer', () => {
     access.fail = null
     access.gate = null
     ident.id = 'prn-1'
+    gates.manage = true
     account.approvals = []
     cloud.activePrinterId = null
     Object.values(api).forEach(fn => fn.mockClear())
@@ -493,6 +502,15 @@ describe('People and access on the printer', () => {
     expect(w.find('[data-tid="pa-older-tools"]').exists()).toBe(true)
     expect(w.find('[data-tid="pa-moonraker-user"]').exists()).toBe(false)
     expect(w.text()).not.toContain('octo')
+    w.destroy()
+  })
+
+  it("hides the printer's rules when the shared gate (#296) doesn't say yes, even if this page's read did", async () => {
+    asOwner()
+    gates.manage = null
+    const w = open()
+    await settle(); await settle()
+    for (const tid of ['pa-entry', 'pa-roles', 'pa-older-tools', 'pa-developer']) expect(w.find(`[data-tid="${tid}"]`).exists()).toBe(false)
     w.destroy()
   })
 
