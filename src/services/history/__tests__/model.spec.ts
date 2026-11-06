@@ -218,7 +218,7 @@ describe('why the list is empty', () => {
   it('keeps the spelling hint when nothing matches in any range', () => {
     expect(state([job('completed', 1, 'cube.gcode')], 'all', 'zzz', 30))
       .toMatchObject({ kind: 'search', title: 'No print matches "zzz"', widen: false })
-    expect(state([job('completed', 1, 'cube.gcode')], 'all', 'zzz', 0).kind).toBe('search')
+    expect(state([job('completed', 1, 'cube.gcode')], 'all', 'zzz', 0)?.kind).toBe('search')
   })
 
   it('names a result filter, and offers the wider range only when it would help', () => {
