@@ -1,5 +1,6 @@
 import Vue from 'vue'
 import Vuex from 'vuex'
+import type { Store } from 'vuex'
 import { createLocalVue, mount } from '@vue/test-utils'
 import VueRouter from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -48,8 +49,10 @@ beforeEach(() => {
 })
 
 /** The real server getters over a real store; `info.components` is the only thing faked. */
-function makeStore (components: string[]) {
-  return new Vuex.Store({
+interface GateTestState { server: { info: { components: string[] } } }
+
+function makeStore (components: string[]): Store<GateTestState> {
+  return new Vuex.Store<GateTestState>({
     modules: {
       server: {
         namespaced: true,
@@ -96,7 +99,7 @@ describe('LockedRow', () => {
 })
 
 describe('CanManageAccess', () => {
-  function gate (store: Vuex.Store<any>, props: Record<string, unknown> = {}) {
+  function gate (store: Store<GateTestState>, props: Record<string, unknown> = {}) {
     return track(mount(CanManageAccess as any, {
       localVue,
       store,
@@ -203,7 +206,7 @@ describe('CanManageAccess', () => {
 })
 
 describe('devModeEnabled on the mixin', () => {
-  function probe (store: Vuex.Store<any>) {
+  function probe (store: Store<GateTestState>) {
     const Probe = Vue.extend({ mixins: [MuonGatesMixin as any], render: h => h('i') })
     return track(mount(Probe, { localVue, store })).vm as any
   }
