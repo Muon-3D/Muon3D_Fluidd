@@ -27,6 +27,8 @@ export interface PrinterState {
   failOn: Record<string, string>
   /** Methods this page's printer answers itself, with a result (or a function of the params), instead of the shared mock. */
   answers: Record<string, unknown>
+  /** When set, server.info reports exactly these Moonraker components (what a page gates on). */
+  components?: string[]
 }
 
 export interface PrinterHandle {
@@ -63,9 +65,9 @@ function overlayUpdate (update: Json, over: Json): Json {
   return out
 }
 
-export async function usePrinter (page: Page, status: Json = {}): Promise<PrinterHandle> {
+export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[] } = {}): Promise<PrinterHandle> {
   const handle: PrinterHandle = {
-    state: { status, failOn: {}, answers: {} },
+    state: { status, failOn: {}, answers: {}, components: options.components },
     gcode: [],
     calls: [],
     called: (method: string) => handle.calls.filter(c => c.method === method).map(c => c.params),
@@ -75,6 +77,7 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
       pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_status_update', params: [next, Date.now() / 1000] }))
     }
   }
+  const infoRequests = new Set<unknown>()
   let pageSocket: { send: (message: string) => void } | null = null
 
   await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
@@ -91,6 +94,7 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
         ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }))
         return
       }
+      if (msg.method === 'server.info') infoRequests.add(msg.id)
       const failure = handle.state.failOn[msg.method]
       if (failure !== undefined) {
         ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: 400, message: failure } }))
@@ -108,6 +112,9 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { ws.send(raw); return }
       const over = handle.state.status
+      if (infoRequests.has(msg.id) && handle.state.components && isObject(msg.result)) {
+        msg.result.components = handle.state.components
+      }
       if (isObject(msg.result) && isObject(msg.result.status)) {
         msg.result.status = overlay(msg.result.status, over)
       } else if (msg.method === 'notify_status_update' && Array.isArray(msg.params) && isObject(msg.params[0])) {
