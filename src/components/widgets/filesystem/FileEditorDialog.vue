@@ -19,15 +19,16 @@
         style="z-index: 1"
       >
         <app-btn
-          v-if="!$vuetify.breakpoint.smAndDown"
           icon
           :disabled="!ready"
           color=""
+          aria-label="Close the file"
+          data-tid="files-close"
           @click="emitClose()"
         >
           <v-icon>$close</v-icon>
         </app-btn>
-        <v-toolbar-title>
+        <v-toolbar-title data-tid="files-editor-title">
           {{ filename }}
           <v-icon
             v-if="readonly"
@@ -43,6 +44,10 @@
           >
             $circle
           </v-icon>
+          <span
+            v-if="!$vuetify.breakpoint.smAndDown"
+            class="text--secondary ml-3 text-body-2"
+          >{{ path.split('/').join(' / ') }}</span>
         </v-toolbar-title>
 
         <v-spacer />
@@ -111,17 +116,6 @@
             </v-icon>
             <span v-if="!$vuetify.breakpoint.smAndDown">{{ $t('app.general.btn.save') }}</span>
           </app-btn>
-          <app-btn
-            @click="emitClose()"
-          >
-            <v-icon
-              small
-              :left="!$vuetify.breakpoint.smAndDown"
-            >
-              $close
-            </v-icon>
-            <span v-if="!$vuetify.breakpoint.smAndDown">{{ $t('app.general.btn.close') }}</span>
-          </app-btn>
         </v-toolbar-items>
       </v-toolbar>
 
@@ -133,6 +127,7 @@
         :filename="filename"
         :readonly="readonly"
         :code-lens="codeLens"
+        :line="line"
         @ready="editorReady = true"
         @save="emitSave(false)"
         @emergency-stop="emergencyStop"
@@ -189,6 +184,10 @@ export default class FileEditorDialog extends Mixins(StateMixin, BrowserMixin) {
 
   @Prop({ type: Boolean })
   readonly readonly?: boolean
+
+  /** A line to open at, 1-based. */
+  @Prop({ type: Number, default: 0 })
+  readonly line!: number
 
   @Ref('editor')
   readonly editor?: FileEditor
