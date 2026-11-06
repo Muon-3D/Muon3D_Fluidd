@@ -777,7 +777,7 @@
 
 <script lang="ts">
 import { Component, Mixins, Watch } from 'vue-property-decorator'
-import StateMixin from '@/mixins/state'
+import MuonGatesMixin from '@/mixins/muon-gates'
 import M3Dialog from '@/components/ui/M3Dialog.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import ApiKeyDialog from '@/components/settings/auth/ApiKeyDialog.vue'
@@ -799,7 +799,6 @@ import { accountApi, type InviteLink, type JoinApproval, type PrinterInvite, typ
 import { accountState, describe, loadApprovals } from '@/services/account/state'
 import { isMissing } from '@/services/account/client'
 import { dayText } from '@/services/account/model'
-import { devModeState } from '@/services/dev-mode/state'
 import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
 import type { InstanceConfig } from '@/store/config/types'
@@ -841,7 +840,7 @@ const PRESET_WORDS: Record<string, string> = { relaxed: 'Relaxed', standard: 'St
  * the printer's or the console's own call, which refuses what it must.
  */
 @Component({ components: { M3Dialog, ToggleSwitch, ApiKeyDialog, AccessRequestDialog } })
-export default class PeopleAccessSettings extends Mixins(StateMixin) {
+export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
   client = currentPrinterAccess()
   state: AccessState | null = null
   capabilities: Record<string, Capability> = {}
@@ -946,9 +945,13 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
     return accessViewer(printer, cloud, cloudState.account?.email ?? null)
   }
 
-  /** The printer lets this browser change its rules now. Refused, failed or not yet asked is no. */
+  /**
+   * The printer lets this browser change its rules now: the shared gate
+   * (`canManageAccess`, #296) and this page's own read for this printer must
+   * both say yes. Refused, failed, unknown or not yet asked is no.
+   */
   get canManage (): boolean {
-    return this.capabilities.protection === 'allowed'
+    return this.canManageAccess === true && this.capabilities.protection === 'allowed'
   }
 
   /** The console's owner calls apply: a printer this account linked. */
@@ -1067,7 +1070,8 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
   }
 
   get developerLine (): string {
-    const state = devModeState.enabled === null ? '' : devModeState.enabled ? 'On. ' : 'Off. '
+    // The gate's answer for this printer (devModeState is one global that can hold another printer's).
+    const state = this.devModeEnabled ? 'On. ' : ''
     return `${state}The first time it's turned on, the printer's screen confirms it.`
   }
 
