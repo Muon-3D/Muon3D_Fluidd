@@ -97,7 +97,7 @@ describe('PositionPredictor', () => {
 
 describe('PredictionLoop', () => {
   function fakeFrames () {
-    const queue = new Map<number, (t: number) => void>()
+    const queue: Map<number, (t: number) => void> = new Map()
     let next = 1
     return {
       raf: (cb: (t: number) => void) => { const h = next++; queue.set(h, cb); return h },
