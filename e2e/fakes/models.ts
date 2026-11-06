@@ -118,6 +118,10 @@ export interface ModelServiceState {
   shares: FakeShare[];
   /** Your Library turned off (consented before, withdrawn), so Control does not turn it on for you. */
   libraryOff: boolean;
+  /** Your public profile (Share a print needs one): set up, or not yet (403 community_setup_required). */
+  profile: 'ready' | 'none';
+  /** What Publish sent, in order (`POST /v1/items/:id/publish` bodies). */
+  published: Array<{ item: string, body: Record<string, unknown> }>;
   /** Answer every request with this status (outage tests), or null. */
   failWith: number | null;
   /** Answer matching requests with a status instead ("GET /v1/public/discover"): one shelf down. */
@@ -139,6 +143,8 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     runs: [],
     shares: [],
     libraryOff: false,
+    profile: 'ready',
+    published: [],
     failWith: null,
     failOn: () => null,
     delayMs: 0,
@@ -315,6 +321,21 @@ export async function serveModels (page: Page, state: ModelServiceState) {
         }
       })
       return json(route, { runs, cursor: null })
+    }
+    if (path === '/v1/community/profile' && method === 'GET') {
+      if (state.profile === 'none') return json(route, { error: { code: 'community_setup_required', message: 'Set up your public profile first.' } }, 403)
+      return json(route, { handle: 'jack', public_name: 'Jack', identity_public: true, can_community: true, can_public: true, page_on: true, bio: null })
+    }
+    const publish = path.match(/^\/v1\/items\/([^/]+)\/publish$/)
+    if (publish && method === 'POST') {
+      if (state.profile === 'none') return json(route, { error: { code: 'community_setup_required', message: 'Set up your public profile first.' } }, 403)
+      const it = state.items.find(i => i.id === publish[1])
+      if (!it) return json(route, { error: { code: 'not_found' } }, 404)
+      const body = request.postDataJSON() as Record<string, unknown>
+      state.published.push({ item: it.id, body })
+      const id = `share-${state.shares.length + 1}`
+      state.shares.push({ id, item: it.id, title: String(body.title), audience: 'public' })
+      return json(route, { id, key: 'k', state: 'pending', audience: 'public', title: body.title, version: body.version }, 201)
     }
     if (path === '/v1/community/shares' && method === 'GET') {
       return json(route, { shares: state.shares.map(sh => ({ id: sh.id, item: sh.item, title: sh.title, version: 1, audience: sh.audience, state: 'approved', expires_at: '2099-01-01T00:00:00Z' })) })
