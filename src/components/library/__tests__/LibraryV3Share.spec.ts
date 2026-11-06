@@ -46,8 +46,13 @@ afterEach(() => {
   profile.mockReset()
 })
 
-async function page (props: Record<string, unknown>, publish = vi.fn(async () => ({ id: 's1', state: 'pending', audience: 'public', title: 'Print a', version: 3 }))) {
-  setLibraryClient({ publish } as never)
+// Any mock: each test gives Publish its own answer (or refusal).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Publish = any
+
+async function page (props: Record<string, unknown>, publish: Publish = vi.fn(async () => ({ id: 's1', state: 'pending', audience: 'public', title: 'Print a', version: 3 })), now: Partial<LibraryItem> = {}) {
+  // The Library's answer for the print at Publish (its version now).
+  setLibraryClient({ publish, item: vi.fn(async (id: string) => item(id, now)) } as never)
   const w = mount(LibrarySharePage, { propsData: { items: [item('a'), item('b', { setups: [] })], ...props }, stubs: { 'frame-icon': true, 'router-link': { template: '<a><slot /></a>' } } })
   wrappers.push(w)
   await flush()
@@ -97,7 +102,7 @@ describe('Library v3 Share a print', () => {
     profile.mockRejectedValue(new LibraryError('community_setup_required', 'Set up your public profile first.', 403))
     const none = await page({ itemId: 'a' })
     expect(tid(none.w, 'library-share-setup').text()).toContain('Set up your public profile first')
-    expect(tid(none.w, 'library-share-publish').attributes('disabled')).toBe('disabled')
+    expect(tid(none.w, 'library-share-publish').exists()).toBe(false)
     profile.mockResolvedValue({ ...ready, can_public: false })
     const notPublic = await page({ itemId: 'a' })
     expect(tid(notPublic.w, 'library-share-setup').exists()).toBe(true)
@@ -125,5 +130,53 @@ describe('Library v3 Share a print', () => {
     await tid(w, 'library-share-publish').trigger('click')
     expect(publish).not.toHaveBeenCalled()
     expect(w.emitted('back')).toHaveLength(1)
+  })
+
+  it('sends the version the Library has now, not the one this page read', async () => {
+    profile.mockResolvedValue(ready)
+    const { w, publish } = await page({ itemId: 'a' }, undefined, { version: 4 })
+    await tid(w, 'library-share-rights').find('input').setChecked(true)
+    await tid(w, 'library-share-publish').trigger('click')
+    await flush()
+    expect(publish.mock.calls[0][1].version).toBe(4)
+  })
+
+  it('a profile whose page is off is not enough, and Check again looks again', async () => {
+    profile.mockResolvedValue({ ...ready, page_on: false })
+    const { w } = await page({ itemId: 'a' })
+    expect(tid(w, 'library-share-setup').exists()).toBe(true)
+    expect(tid(w, 'library-share-publish').exists()).toBe(false)
+    profile.mockResolvedValue(ready)
+    await tid(w, 'library-share-check-again').trigger('click')
+    await flush()
+    expect(tid(w, 'library-share-setup').exists()).toBe(false)
+  })
+
+  it('a print imported from someone else is not yours to share; Publish says what it still needs', async () => {
+    profile.mockResolvedValue(ready)
+    const { w } = await page({ itemId: 'i', items: [item('i', { origin: 'import' }), item('a')] })
+    expect(tid(w, 'library-share-not-yours').text()).toContain('came from someone else')
+    expect(tid(w, 'library-share-publish').attributes('disabled')).toBe('disabled')
+    await tid(w, 'library-share-choose').setValue('a')
+    expect(tid(w, 'library-share-needs').text()).toBe('Confirm you made it, or may share it.')
+    await tid(w, 'library-share-title').setValue('   ')
+    expect(tid(w, 'library-share-needs').text()).toBe('Give it a title.')
+  })
+
+  it('says Made with AI as chosen', async () => {
+    profile.mockResolvedValue(ready)
+    const { w, publish } = await page({ itemId: 'a' })
+    await tid(w, 'library-share-ai').setValue('partly')
+    await tid(w, 'library-share-rights').find('input').setChecked(true)
+    await tid(w, 'library-share-publish').trigger('click')
+    await flush()
+    expect(publish.mock.calls[0][1].publication.ai_generated).toBe('partly')
+  })
+
+  it('the arrow keys move through Who can see it', async () => {
+    profile.mockResolvedValue(ready)
+    const { w } = await page({ itemId: 'a' })
+    await tid(w, 'library-share-audience').find('[role="radiogroup"]').trigger('keydown', { key: 'ArrowLeft' })
+    expect(tid(w, 'library-share-audience-private').attributes('aria-checked')).toBe('true')
   })
 })
