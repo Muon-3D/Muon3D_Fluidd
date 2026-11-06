@@ -180,6 +180,9 @@ export const defaultState = (): ConfigState => {
       },
       overview: {
         layouts: {}
+      },
+      control: {
+        layouts: {}
       }
     }
   }
