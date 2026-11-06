@@ -454,6 +454,42 @@ describe('Library v3 states (page 12)', () => {
     }
   })
 
+  it('the error is never shown twice or lost: Share ignored while the Library is off, signed out, and sign-out clears it', async () => {
+    type Page = { error: string, errorOnYours: boolean }
+    // ?share= with the Library off: Share is not shown, Yours is, so the callout carries it.
+    Object.assign(libraryState, { enabled: false })
+    const ignored = renderLibrary({ view: 'mine', share: 'a' })
+    try {
+      (ignored.vm as unknown as Page).error = 'Nope.'
+      await ignored.vm.$nextTick()
+      expect((ignored.vm as unknown as Page).errorOnYours).toBe(true)
+    } finally {
+      ignored.destroy()
+    }
+    // Signed out: the sign-in tile has no callout, so the foot carries any error.
+    resetLibrary(null)
+    const out = renderLibrary({ view: 'mine' })
+    try {
+      (out.vm as unknown as Page).error = 'Nope.'
+      await out.vm.$nextTick()
+      expect((out.vm as unknown as Page).errorOnYours).toBe(false)
+    } finally {
+      out.destroy()
+    }
+    // Sign out with an old error: it goes.
+    resetLibrary('fixture')
+    Object.assign(libraryState, { checked: true, enabled: true })
+    const was = renderLibrary({ view: 'mine' })
+    try {
+      (was.vm as unknown as Page).error = 'Old.'
+      resetLibrary(null)
+      await was.vm.$nextTick()
+      expect((was.vm as unknown as Page).error).toBe('')
+    } finally {
+      was.destroy()
+    }
+  })
+
   it('an action that failed is a callout on Yours, and at the foot of any other page', async () => {
     const yours = renderLibrary({ view: 'mine' })
     const pages = [['print', 'p1'], ['shelf', 'sliced'], ['collection', 'c1'], ['share', 'a']].map(([k, v]) => renderLibrary({ view: 'mine', [k]: v }))
