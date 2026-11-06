@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { lastPrinted, layerCountOf, listDuration, materialOf, sortListRows } from '../list'
 
-const file = (name: string, modified: number, time?: number, printing = false) => ({ kind: 'file' as const, name, modified, time, printing })
+const file = (name: string, modified: number, time?: number, printing = false, extra: Record<string, number> = {}) => ({ kind: 'file' as const, name, modified, time, printing, ...extra })
 const folder = (name: string) => ({ kind: 'folder' as const, name, modified: 0 })
 
 describe('sortListRows', () => {
@@ -17,15 +17,30 @@ describe('sortListRows', () => {
   })
 })
 
+describe('sortListRows by a fact', () => {
+  const rows = [file('a.gcode', 1, 1, false, { size: 10, filament: 5, layer: 0.2 }), file('b.gcode', 2, 1, false, { size: 30, filament: 1, layer: 0.1 }), file('c.gcode', 3, 1, false, { size: 20 })]
+  it('puts the biggest first, the finest layer first, and turns round', () => {
+    expect(sortListRows(rows, 'size').map(r => r.name)).toEqual(['b.gcode', 'c.gcode', 'a.gcode'])
+    expect(sortListRows(rows, 'size', true).map(r => r.name)).toEqual(['a.gcode', 'c.gcode', 'b.gcode'])
+    expect(sortListRows(rows, 'layer').map(r => r.name)).toEqual(['b.gcode', 'a.gcode', 'c.gcode'])
+    expect(sortListRows(rows, 'filament').map(r => r.name)).toEqual(['a.gcode', 'b.gcode', 'c.gcode'])
+  })
+  it('keeps files with no value last, even turned round', () => {
+    expect(sortListRows(rows, 'layer', true).map(r => r.name)).toEqual(['a.gcode', 'b.gcode', 'c.gcode'])
+    expect(sortListRows(rows, 'name', true).map(r => r.name)).toEqual(['c.gcode', 'b.gcode', 'a.gcode'])
+  })
+})
+
 describe('lastPrinted', () => {
   const now = new Date(2026, 10, 6, 12, 0)
   const at = (y: number, m: number, d: number) => new Date(y, m, d, 9).getTime() / 1000
   it('says Never, Today, Yesterday, a day and month, and the year when it is another', () => {
-    expect(lastPrinted(undefined, now)).toBe('Never')
-    expect(lastPrinted(at(2026, 10, 6), now)).toBe('Today')
-    expect(lastPrinted(at(2026, 10, 5), now)).toBe('Yesterday')
-    expect(lastPrinted(at(2026, 10, 2), now)).toBe('2 Nov')
-    expect(lastPrinted(at(2025, 9, 18), now)).toBe('18 Oct 2025')
+    expect(lastPrinted(undefined, false, now)).toBe('Never')
+    expect(lastPrinted(null, true, now)).toBe('Printed before')
+    expect(lastPrinted(at(2026, 10, 6), true, now)).toBe('Today')
+    expect(lastPrinted(at(2026, 10, 5), true, now)).toBe('Yesterday')
+    expect(lastPrinted(at(2026, 10, 2), true, now)).toBe('2 Nov')
+    expect(lastPrinted(at(2025, 9, 18), true, now)).toBe('18 Oct 2025')
   })
 })
 

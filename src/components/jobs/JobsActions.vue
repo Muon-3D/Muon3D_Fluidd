@@ -96,11 +96,46 @@
           <v-list-item-title>{{ item.label }}</v-list-item-title>
         </v-list-item>
         <v-list-item
+          data-tid="jobs-select"
+          @click="page.selectTick++"
+        >
+          <v-list-item-title>Select</v-list-item-title>
+        </v-list-item>
+        <v-list-item
           :disabled="!controlReady"
           data-tid="jobs-new-folder"
           @click="page.folderTick++"
         >
           <v-list-item-title>New folder</v-list-item-title>
+        </v-list-item>
+        <v-divider />
+        <v-subheader>Order by</v-subheader>
+        <v-list-item
+          v-for="item in moreSorts"
+          :key="item.value"
+          :input-value="page.sort === item.value"
+          :data-tid="`jobs-sort-${item.value}`"
+          @click="setSort(item.value)"
+        >
+          <v-list-item-title>{{ item.label }}</v-list-item-title>
+        </v-list-item>
+        <v-list-item
+          :input-value="page.reverse"
+          data-tid="jobs-reverse"
+          @click="page.reverse = !page.reverse"
+        >
+          <v-list-item-title>{{ page.reverse ? 'Reversed' : 'Reverse order' }}</v-list-item-title>
+        </v-list-item>
+        <v-divider />
+        <v-subheader>Show</v-subheader>
+        <v-list-item
+          v-for="item in filters"
+          :key="item.value"
+          :input-value="page.filter === item.value"
+          :data-tid="`jobs-filter-${item.value}`"
+          @click="page.filter = item.value"
+        >
+          <v-list-item-title>{{ item.label }}</v-list-item-title>
         </v-list-item>
       </v-list>
     </v-menu>
@@ -113,7 +148,7 @@ import FrameMixin from '@/mixins/frame'
 import BrowserMixin from '@/mixins/browser'
 import ControlMixin from '@/mixins/control'
 import SegPicker from '@/components/control/SegPicker.vue'
-import { JOBS_SORTS, type JobsSort } from '@/services/jobs/list'
+import { JOBS_FILTERS, JOBS_SORTS, MORE_SORTS, type JobsSort } from '@/services/jobs/list'
 import { jobsPage, setJobsSort } from '@/services/jobs/page-state'
 import type { SectionPage } from '@/router/printerSections'
 
@@ -127,6 +162,14 @@ export default class JobsActions extends Mixins(FrameMixin, BrowserMixin, Contro
 
   get sorts () {
     return JOBS_SORTS
+  }
+
+  get moreSorts () {
+    return MORE_SORTS
+  }
+
+  get filters () {
+    return JOBS_FILTERS
   }
 
   setSort (sort: JobsSort) {

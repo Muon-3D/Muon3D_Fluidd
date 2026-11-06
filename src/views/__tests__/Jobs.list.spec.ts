@@ -60,6 +60,8 @@ describe('Jobs, one list', () => {
     vi.spyOn(SocketActions, 'serverFilesGetDirectory').mockImplementation(vi.fn() as any)
     jobsPage.query = ''
     jobsPage.sort = 'newest'
+    jobsPage.filter = 'all'
+    jobsPage.reverse = false
   })
   afterEach(() => { vi.restoreAllMocks() })
 
@@ -171,5 +173,135 @@ describe('Jobs, one list', () => {
     await (w.vm as any).removeRow(rows[2])
     expect((w.vm as any).$confirm).toHaveBeenCalled()
     expect(del).toHaveBeenCalledWith('gcodes/M1_bracket_PLA_0.2mm.gcode')
+  })
+
+  it('takes keys only when the list itself has them, not a row menu button', async () => {
+    const del = vi.spyOn(SocketActions, 'serverFilesDeleteFile').mockImplementation(vi.fn() as any)
+    const w = mountJobs()
+    ;(w.vm as any).selectedKey = 'cable_clip_x6_PLA_0.2mm.gcode'
+    const button = document.createElement('button')
+    const key = (k: string, target: any) => ({ key: k, target, preventDefault: vi.fn() })
+    ;(w.vm as any).onKey(key('Delete', button))
+    ;(w.vm as any).onKey(key('ArrowDown', button))
+    await w.vm.$nextTick()
+    expect((w.vm as any).$confirm).not.toHaveBeenCalled()
+    expect((w.vm as any).selectedKey).toBe('cable_clip_x6_PLA_0.2mm.gcode')
+    ;(w.vm as any).onKey(key('Delete', (w.vm as any).$refs.rows))
+    await new Promise(resolve => setTimeout(resolve))
+    expect((w.vm as any).$confirm).toHaveBeenCalled()
+    expect(del).toHaveBeenCalled()
+  })
+
+  it('Delete on the printing file does nothing', async () => {
+    const del = vi.spyOn(SocketActions, 'serverFilesDeleteFile').mockImplementation(vi.fn() as any)
+    const w = mountJobs({ busy: true, printing: 'benchy_PLA_0.2mm.gcode' })
+    ;(w.vm as any).selectedKey = 'benchy_PLA_0.2mm.gcode'
+    ;(w.vm as any).onKey({ key: 'Delete', target: (w.vm as any).$refs.rows, preventDefault: vi.fn() })
+    await new Promise(resolve => setTimeout(resolve))
+    expect((w.vm as any).$confirm).not.toHaveBeenCalled()
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  it('checks again at submit: a rename or move of the file that started printing is refused', () => {
+    const move = vi.spyOn(SocketActions, 'serverFilesMove').mockImplementation(vi.fn() as any)
+    const w = mountJobs({ busy: true, printing: 'benchy_PLA_0.2mm.gcode' })
+    const benchy = (w.vm as any).rows.find((r: any) => r.name === 'benchy_PLA_0.2mm.gcode')
+    // The dialogs were opened from a snapshot that did not know it was printing.
+    ;(w.vm as any).renameRow = { ...benchy, held: false, printing: false }
+    ;(w.vm as any).rename('x.gcode')
+    ;(w.vm as any).moveRows = [{ ...benchy, held: false, printing: false }]
+    ;(w.vm as any).moveInto('parts')
+    expect(move).not.toHaveBeenCalled()
+  })
+
+  it('holds a folder that has the printing file in it', async () => {
+    const del = vi.spyOn(SocketActions, 'serverFilesDeleteDirectory').mockImplementation(vi.fn() as any)
+    const w = mountJobs({ busy: true, printing: 'parts/a.gcode' })
+    const parts = (w.vm as any).rows.find((r: any) => r.name === 'parts')
+    expect(parts.held).toBe(true)
+    await (w.vm as any).removeRow(parts)
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  it('says Printed before when a print is on record without a time, and Never when there is none', () => {
+    const w = mountJobs({ entries: [file('a.gcode', { history: { job_id: 'x' } }), file('b.gcode')] })
+    const rows = (w.vm as any).rows
+    expect(rows.find((r: any) => r.name === 'a.gcode').printed).toBe(true)
+    expect(w.text()).toContain('Printed before')
+    expect(w.text()).toContain('Never')
+  })
+
+  it('filters to Never printed or Printed before, keeping folders', async () => {
+    const w = mountJobs()
+    jobsPage.filter = 'never'
+    await w.vm.$nextTick()
+    expect((w.vm as any).rows.map((r: any) => r.name)).toEqual(['parts', 'M1_bracket_PLA_0.2mm.gcode', 'benchy_PLA_0.2mm.gcode'])
+    jobsPage.filter = 'before'
+    await w.vm.$nextTick()
+    expect((w.vm as any).rows.map((r: any) => r.name)).toEqual(['parts', 'cable_clip_x6_PLA_0.2mm.gcode'])
+  })
+
+  it('selects many: checkboxes, select all, a range, and Escape lets go', async () => {
+    const w = mountJobs()
+    jobsPage.selectTick++
+    await w.vm.$nextTick()
+    expect(w.find('[data-tid="jobs-selection"]').exists()).toBe(true)
+    const rows = (w.vm as any).rows
+    ;(w.vm as any).onCheck(rows[1], { shiftKey: false })
+    ;(w.vm as any).onCheck(rows[3], { shiftKey: true })
+    expect((w.vm as any).selection).toEqual([rows[1].key, rows[2].key, rows[3].key])
+    ;(w.vm as any).toggleAll()
+    expect((w.vm as any).selection).toHaveLength(rows.length)
+    ;(w.vm as any).onKey({ key: 'Escape', target: (w.vm as any).$refs.rows, preventDefault: vi.fn() })
+    expect((w.vm as any).selection).toEqual([])
+    expect((w.vm as any).selecting).toBe(true)
+  })
+
+  it('bulk Delete asks once, and leaves the printing file out', async () => {
+    const deleteFile = vi.spyOn(SocketActions, 'serverFilesDeleteFile').mockImplementation(vi.fn() as any)
+    const deleteDirectory = vi.spyOn(SocketActions, 'serverFilesDeleteDirectory').mockImplementation(vi.fn() as any)
+    const w = mountJobs({ busy: true, printing: 'benchy_PLA_0.2mm.gcode' })
+    jobsPage.selectTick++
+    ;(w.vm as any).selection = (w.vm as any).rows.map((r: any) => r.key)
+    await (w.vm as any).deleteSelected()
+    expect((w.vm as any).$confirm).toHaveBeenCalledTimes(1)
+    expect(deleteFile.mock.calls.map(c => c[0]).sort()).toEqual(['gcodes/M1_bracket_PLA_0.2mm.gcode', 'gcodes/cable_clip_x6_PLA_0.2mm.gcode'])
+    expect(deleteDirectory).toHaveBeenCalledWith('gcodes/parts', true)
+    expect((w.vm as any).selecting).toBe(false)
+  })
+
+  it('bulk Queue sends the files that are not printing', async () => {
+    const post = vi.spyOn(SocketActions, 'serverJobQueuePostJob').mockImplementation(vi.fn() as any)
+    const w = mountJobs({ busy: true, printing: 'benchy_PLA_0.2mm.gcode' })
+    jobsPage.selectTick++
+    ;(w.vm as any).selection = ['benchy_PLA_0.2mm.gcode', 'cable_clip_x6_PLA_0.2mm.gcode']
+    await (w.vm as any).queueSelected()
+    expect(post).toHaveBeenCalledWith(['cable_clip_x6_PLA_0.2mm.gcode'])
+  })
+
+  it('a long press on a phone starts selecting, and the click that follows does not undo it', () => {
+    vi.useFakeTimers()
+    const w = mountJobs({ mobile: true })
+    const row = (w.vm as any).rows[1]
+    ;(w.vm as any).pressStart(row)
+    vi.advanceTimersByTime(600)
+    ;(w.vm as any).onRowClick(row, {})
+    expect((w.vm as any).selecting).toBe(true)
+    expect((w.vm as any).selection).toEqual([row.key])
+    vi.useRealTimers()
+  })
+
+  it('shows folders as breadcrumbs that jump to any ancestor', () => {
+    const w = mountJobs()
+    ;(w.vm as any).path = 'a/b'
+    expect((w.vm as any).crumbs).toEqual([{ name: 'a', path: 'a' }, { name: 'b', path: 'a/b' }])
+    ;(w.vm as any).openFolder('a')
+    expect((w.vm as any).path).toBe('a')
+  })
+
+  it('opens a folder on Enter or a double-click', () => {
+    const w = mountJobs()
+    ;(w.vm as any).openRow((w.vm as any).rows[0])
+    expect((w.vm as any).path).toBe('parts')
   })
 })

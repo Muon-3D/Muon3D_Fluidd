@@ -107,16 +107,26 @@
         >
           <button
             type="button"
-            data-tid="jobs-up"
-            @click="openFolder(parent)"
+            data-tid="jobs-crumb"
+            @click="openFolder('')"
           >
-            <frame-icon
-              name="folderUp"
-              small
-            />
-            Up to {{ parent ? `${parent}/` : 'gcodes/' }}
+            gcodes
           </button>
-          <span>{{ path }}/</span>
+          <template v-for="crumb in crumbs">
+            <span
+              :key="`slash-${crumb.path}`"
+              aria-hidden="true"
+            >/</span>
+            <button
+              :key="crumb.path"
+              type="button"
+              data-tid="jobs-crumb"
+              :disabled="crumb.path === path"
+              @click="openFolder(crumb.path)"
+            >
+              {{ crumb.name }}
+            </button>
+          </template>
         </nav>
 
         <div
@@ -166,6 +176,69 @@
 
         <template v-else>
           <div
+            v-if="selecting"
+            class="jobs__selection"
+            data-tid="jobs-selection"
+          >
+            <input
+              type="checkbox"
+              class="jobs__box"
+              :checked="allSelected"
+              aria-label="Select every row"
+              data-tid="jobs-select-all"
+              @change="toggleAll"
+            >
+            <b>{{ selection.length }} selected</b>
+            <button
+              v-if="canQueue && queueable.length"
+              type="button"
+              :disabled="!controlReady"
+              data-tid="jobs-sel-queue"
+              @click="queueSelected"
+            >
+              {{ queueLabel(queueable.length) }}
+            </button>
+            <button
+              v-if="changeable.length"
+              type="button"
+              :disabled="!controlReady"
+              data-tid="jobs-sel-move"
+              @click="moveSelected"
+            >
+              Move to…
+            </button>
+            <button
+              v-if="selectedFiles.length"
+              type="button"
+              data-tid="jobs-sel-download"
+              @click="downloadSelected"
+            >
+              Download
+            </button>
+            <button
+              v-if="changeable.length"
+              type="button"
+              class="jobs__danger"
+              :disabled="!controlReady"
+              data-tid="jobs-sel-delete"
+              @click="deleteSelected"
+            >
+              Delete
+            </button>
+            <span
+              v-if="heldCount"
+              class="jobs__note"
+            >{{ printingTitle }} is printing, so it stays where it is</span>
+            <span class="jobs__grow" />
+            <button
+              type="button"
+              data-tid="jobs-sel-done"
+              @click="stopSelecting"
+            >
+              Done
+            </button>
+          </div>
+          <div
             v-if="!isMobileViewport"
             class="jobs__row jobs__row--head"
             aria-hidden="true"
@@ -190,14 +263,28 @@
               v-for="row in rows"
               :key="row.key"
               class="jobs__row"
-              :class="{ 'jobs__row--sel': selectedKey === row.key, 'jobs__row--now': row.printing }"
+              :class="{ 'jobs__row--sel': (selectedKey === row.key && !selecting) || selection.includes(row.key), 'jobs__row--now': row.printing }"
               role="option"
               :aria-selected="selectedKey === row.key ? 'true' : 'false'"
               :data-key="row.key"
               data-tid="jobs-row"
-              @click="pick(row)"
+              @click="onRowClick(row, $event)"
+              @dblclick="openRow(row)"
+              @touchstart.passive="pressStart(row)"
+              @touchend="pressEnd"
+              @touchmove.passive="pressEnd"
+              @touchcancel="pressEnd"
             >
               <span class="jobs__name">
+                <input
+                  v-if="selecting"
+                  type="checkbox"
+                  class="jobs__box"
+                  :checked="selection.includes(row.key)"
+                  :aria-label="`Select ${row.title}`"
+                  data-tid="jobs-row-check"
+                  @click.stop="onCheck(row, $event)"
+                >
                 <span
                   class="jobs__thumb"
                   :class="{ 'jobs__thumb--folder': row.kind === 'folder' }"
@@ -238,7 +325,14 @@
                     v-else-if="row.printing"
                     class="jobs__sub"
                   >
-                    <tone-pill tone="run">{{ printerPaused ? 'Paused' : 'Printing now' }} · {{ Math.floor(progress) }}%</tone-pill>
+                    <router-link
+                      :to="pagePath('/')"
+                      class="jobs__printing-link"
+                      data-tid="jobs-printing-link"
+                      @click.native.stop
+                    >
+                      <tone-pill tone="run">{{ printerPaused ? 'Paused' : 'Printing now' }} · {{ Math.floor(progress) }}%</tone-pill>
+                    </router-link>
                   </span>
                   <span
                     v-else-if="row.sub"
@@ -252,27 +346,34 @@
                 </span>
                 <span class="jobs__cell">{{ row.kind === 'folder' ? '' : row.printing ? (leftText || 'Printing') : listDuration(row.time) }}</span>
                 <span class="jobs__cell">{{ row.kind === 'folder' ? folderCount(row.key) : fileSize(row.size) }}</span>
-                <span class="jobs__cell">{{ row.kind === 'folder' ? '' : row.printing ? (startedAt ? `Started ${startedAt}` : 'Now') : lastPrinted(row.lastPrinted) }}</span>
+                <span class="jobs__cell">{{ row.kind === 'folder' ? '' : row.printing ? (startedAt ? `Started ${startedAt}` : 'Now') : lastPrinted(row.lastPrinted, row.printed) }}</span>
               </template>
               <span class="jobs__end">
-                <span
-                  v-if="row.printing && isMobileViewport"
-                  class="jobs__pct"
-                >{{ Math.floor(progress) }}%</span>
-                <frame-icon
-                  v-if="isMobileViewport && selectedKey === row.key && row.kind === 'file'"
-                  name="check"
-                  class="jobs__check"
-                />
-                <job-menu
-                  v-else
-                  :kind="row.kind"
-                  :label="row.title"
-                  :printing="row.printing"
-                  :queueing="busy && canQueue"
-                  :locked="!controlReady"
-                  @action="act($event, row)"
-                />
+                <template v-if="!selecting">
+                  <router-link
+                    v-if="row.printing && isMobileViewport"
+                    :to="pagePath('/')"
+                    class="jobs__pct"
+                    data-tid="jobs-printing-link"
+                    @click.native.stop
+                  >
+                    {{ Math.floor(progress) }}%
+                  </router-link>
+                  <frame-icon
+                    v-if="isMobileViewport && selectedKey === row.key && row.kind === 'file'"
+                    name="check"
+                    class="jobs__check"
+                  />
+                  <job-menu
+                    v-else
+                    :kind="row.kind"
+                    :label="row.title"
+                    :printing="row.held"
+                    :queueing="busy && canQueue"
+                    :locked="!controlReady"
+                    @action="act($event, row)"
+                  />
+                </template>
               </span>
             </div>
           </div>
@@ -419,16 +520,16 @@
     />
 
     <v-dialog
-      :value="!!moveRow"
+      :value="!!moveRows"
       max-width="420"
-      @input="moveRow = null"
+      @input="moveRows = null"
     >
       <div
-        v-if="moveRow"
+        v-if="moveRows"
         class="jobs__move"
         data-tid="jobs-move-dialog"
       >
-        <h3>Move {{ moveRow.title }} to</h3>
+        <h3>Move {{ moveRows.length === 1 ? moveRows[0].title : `${moveRows.length} items` }} to</h3>
         <button
           v-for="folder in moveTargets"
           :key="folder"
@@ -452,7 +553,7 @@
           <button
             type="button"
             class="cbtn"
-            @click="moveRow = null"
+            @click="moveRows = null"
           >
             Cancel
           </button>
@@ -471,7 +572,7 @@ import { SocketActions } from '@/api/socketActions'
 import { EventBus } from '@/eventBus'
 import type { QueuedJob } from '@/store/jobQueue/types'
 import type { AppDirectory, AppFileWithMeta, FileBrowserEntry } from '@/store/files/types'
-import { fileSize, isGcodeFile, jobTitle, parentFolder, readyChecks } from '@/services/jobs/model'
+import { fileSize, isGcodeFile, jobTitle, parentFolder, queueLabel, rangeSelect, readyChecks, toggleKey } from '@/services/jobs/model'
 import { lastPrinted, layerCountOf, listDuration, materialOf, sortListRows } from '@/services/jobs/list'
 import { jobsPage, resetJobsPage } from '@/services/jobs/page-state'
 import { activeSlug } from '@/services/printer-pages'
@@ -492,9 +593,15 @@ interface ListRow {
   modified: number;
   time?: number;
   size: number;
+  filament?: number;
+  layer?: number;
   material: string;
   lastPrinted: number | null;
+  /** It has a print on record, with or without a time. */
+  printed: boolean;
   printing: boolean;
+  /** It is the file printing, or a folder with that file in it: it stays where it is. */
+  held: boolean;
   job?: JobFile;
 }
 
@@ -511,12 +618,19 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   selectedKey: string | null = null
   folderDialog = false
   renameRow: ListRow | null = null
-  moveRow: ListRow | null = null
+  moveRows: ListRow[] | null = null
   dialogTarget: string | null = null
+  /** Selecting many: rows have checkboxes and a bar offers what can be done to them. */
+  selecting = false
+  selection: string[] = []
+  anchor: string | null = null
+  pressTimer: number | null = null
+  longPressed = false
 
   readonly listDuration = listDuration
   readonly fileSize = fileSize
   readonly lastPrinted = lastPrinted
+  readonly queueLabel = queueLabel
 
   get query (): string { return jobsPage.query }
 
@@ -528,6 +642,7 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   }
 
   beforeDestroy () {
+    this.pressEnd()
     resetJobsPage()
     jobsPage.files = 0
     jobsPage.free = ''
@@ -549,6 +664,21 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
 
   get parent (): string {
     return parentFolder(this.path)
+  }
+
+  get crumbs (): Array<{ name: string, path: string }> {
+    const parts = this.path ? this.path.split('/') : []
+    return parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join('/') }))
+  }
+
+  /** The file printing, or a folder with it inside, stays where it is. */
+  holds (key: string): boolean {
+    const printing = this.busy ? this.jobFile : ''
+    return !!printing && (printing === key || printing.startsWith(`${key}/`))
+  }
+
+  get printingTitle (): string {
+    return jobTitle(this.jobFile)
   }
 
   openFolder (path: string) {
@@ -584,9 +714,13 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
           modified: f.modified,
           time: f.estimated_time,
           size: f.size,
+          filament: f.filament_weight_total || undefined,
+          layer: f.layer_height || undefined,
           material: materialOf(f.filament_type),
           lastPrinted: history?.start_time ?? job.print_start_time ?? null,
+          printed: job.printed,
           printing: job.printing,
+          held: job.printing,
           job
         }
       })
@@ -605,7 +739,9 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
         size: d.size,
         material: '',
         lastPrinted: null,
-        printing: false
+        printed: false,
+        printing: false,
+        held: this.holds(this.path ? `${this.path}/${d.dirname}` : d.dirname)
       }))
   }
 
@@ -613,7 +749,8 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     const q = this.query.trim().toLowerCase()
     const all = [...this.folderRows, ...this.fileRows]
       .filter(r => !q || r.name.toLowerCase().includes(q) || r.title.toLowerCase().includes(q))
-    return sortListRows(all, jobsPage.sort)
+      .filter(r => r.kind === 'folder' || jobsPage.filter === 'all' || (jobsPage.filter === 'before') === r.printed)
+    return sortListRows(all, jobsPage.sort, jobsPage.reverse)
   }
 
   get selectedRow (): ListRow | undefined {
@@ -623,6 +760,8 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   /** A desktop always has a file picked, so the tile is never empty; a phone waits for a tap. */
   @Watch('rows')
   keepSelection (rows: ListRow[]) {
+    const keys = new Set(rows.map(r => r.key))
+    if (this.selection.some(k => !keys.has(k))) this.selection = this.selection.filter(k => keys.has(k))
     if (this.selectedKey && rows.some(r => r.key === this.selectedKey)) return
     if (this.isMobileViewport) {
       this.selectedKey = null
@@ -656,11 +795,147 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     this.selectedKey = this.isMobileViewport && this.selectedKey === row.key ? null : row.key
   }
 
+  /** A click picks the file for the tile; with Ctrl, Shift or while selecting, it selects. */
+  onRowClick (row: ListRow, event: MouseEvent) {
+    if (this.longPressed) {
+      this.longPressed = false
+      return
+    }
+    if (this.selecting || event.ctrlKey || event.metaKey || event.shiftKey) {
+      this.selecting = true
+      this.onCheck(row, event)
+      return
+    }
+    this.pick(row)
+  }
+
+  onCheck (row: ListRow, event: MouseEvent) {
+    const order = this.rows.map(r => r.key)
+    this.selection = event.shiftKey
+      ? rangeSelect(order, this.selection, this.anchor, row.key)
+      : toggleKey(this.selection, row.key)
+    this.anchor = row.key
+  }
+
+  /** Enter or a double-click: a folder opens, a file opens its preview. */
+  openRow (row: ListRow | undefined) {
+    if (!row) return
+    if (row.kind === 'folder') {
+      this.openFolder(row.key)
+      return
+    }
+    this.selectedKey = row.key
+    this.preview(row)
+  }
+
+  /** A long press on a phone starts selecting. */
+  pressStart (row: ListRow) {
+    if (!this.isMobileViewport || this.selecting) return
+    this.pressEnd()
+    this.pressTimer = window.setTimeout(() => {
+      this.pressTimer = null
+      this.longPressed = true
+      this.selecting = true
+      this.selection = [row.key]
+      this.anchor = row.key
+    }, 500)
+  }
+
+  pressEnd () {
+    if (this.pressTimer !== null) window.clearTimeout(this.pressTimer)
+    this.pressTimer = null
+  }
+
+  @Watch('selectTick')
+  onSelectTick () {
+    this.selecting = true
+  }
+
+  get selectTick (): number { return jobsPage.selectTick }
+
+  stopSelecting () {
+    this.selecting = false
+    this.selection = []
+    this.anchor = null
+  }
+
+  get selectedRows (): ListRow[] {
+    return this.rows.filter(r => this.selection.includes(r.key))
+  }
+
+  get selectedFiles (): ListRow[] {
+    return this.selectedRows.filter(r => r.job)
+  }
+
+  /** What can be moved or deleted: not the file printing, nor a folder holding it. */
+  get changeable (): ListRow[] {
+    return this.selectedRows.filter(r => !this.holds(r.key))
+  }
+
+  get queueable (): ListRow[] {
+    return this.selectedFiles.filter(r => !this.holds(r.key))
+  }
+
+  get heldCount (): number {
+    return this.selectedRows.length - this.changeable.length
+  }
+
+  get allSelected (): boolean {
+    return this.rows.length > 0 && this.rows.every(r => this.selection.includes(r.key))
+  }
+
+  toggleAll () {
+    this.selection = this.allSelected ? [] : this.rows.map(r => r.key)
+  }
+
+  async queueSelected () {
+    if (!this.controlReady || !this.canQueue) return
+    const paths = this.queueable.map(r => r.key)
+    if (!paths.length) return
+    await SocketActions.serverJobQueuePostJob(paths)
+    this.stopSelecting()
+  }
+
+  downloadSelected () {
+    for (const row of this.selectedFiles) if (row.job) this.downloadJob(row.job)
+  }
+
+  moveSelected () {
+    this.dialogTarget = this.commandTarget
+    this.moveRows = this.changeable
+  }
+
+  async deleteSelected () {
+    if (!this.controlReady) return
+    const rows = this.changeable.filter(r => !this.holds(r.key))
+    if (!rows.length) return
+    const files = rows.filter(r => r.kind === 'file').length
+    const folders = rows.length - files
+    const what = [
+      files ? `${files} ${files === 1 ? 'file' : 'files'}` : '',
+      folders ? `${folders} ${folders === 1 ? 'folder' : 'folders'}` : ''
+    ].filter(Boolean).join(' and ')
+    const name = rows.length === 1 ? rows[0].name : what
+    const note = folders ? ' A folder goes with everything in it.' : ''
+    const target = this.commandTarget
+    const ok = await this.$confirm(`It's removed from ${this.printerName}.${note} This can't be undone.`, { title: `Delete ${name}?`, buttonTrueText: 'Delete', danger: true })
+    if (!ok || target !== this.commandTarget || !this.controlReady) return
+    for (const row of rows) {
+      // The print may have started while the question was open.
+      if (this.holds(row.key)) continue
+      if (row.kind === 'folder') SocketActions.serverFilesDeleteDirectory(`${this.root}/${row.key}`, true)
+      else SocketActions.serverFilesDeleteFile(`${this.root}/${row.key}`)
+    }
+    this.stopSelecting()
+  }
+
   clearSearch () {
     jobsPage.query = ''
   }
 
   onKey (event: KeyboardEvent) {
+    // Keys on a row's ... button or a menu belong to them: only the list itself takes these.
+    if (event.target !== this.$refs.rows) return
     const keys = this.rows.map(r => r.key)
     const at = this.selectedKey ? keys.indexOf(this.selectedKey) : -1
     const go = (to: number) => {
@@ -674,11 +949,22 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
       case 'ArrowUp': go(at - 1); break
       case 'Home': go(0); break
       case 'End': go(keys.length); break
-      case 'Delete': {
-        const row = this.selectedRow
-        if (row) this.removeRow(row)
+      case 'Delete':
+        if (this.selecting && this.selection.length) this.deleteSelected()
+        else if (this.selectedRow) this.removeRow(this.selectedRow)
         break
-      }
+      case 'Enter':
+        this.openRow(this.selectedRow)
+        break
+      case ' ':
+        if (!this.selecting || !this.selectedRow) return
+        this.selection = toggleKey(this.selection, this.selectedRow.key)
+        break
+      case 'Escape':
+        if (this.selection.length) this.selection = []
+        else if (this.selecting) this.stopSelecting()
+        else return
+        break
       case 'Backspace':
         if (this.path) this.openFolder(this.parent)
         break
@@ -751,7 +1037,7 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
       case 'preview': this.preview(row); break
       case 'download': if (row.job) this.downloadJob(row.job); break
       case 'rename': this.renameRow = row; break
-      case 'move': this.moveRow = row; break
+      case 'move': this.moveRows = [row]; break
       case 'delete': this.removeRow(row); break
     }
   }
@@ -759,44 +1045,52 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   // -- changing files ----------------------------------------------------------
 
   async removeRow (row: ListRow) {
-    if (!this.controlReady || row.printing) return
+    if (!this.controlReady || this.holds(row.key)) return
     if (row.kind === 'file' && row.job) {
       await this.removeJob(row.job)
       return
     }
     const target = this.commandTarget
     const ok = await this.$confirm(`It's removed from ${this.printerName}. A folder goes with everything in it. This can't be undone.`, { title: `Delete ${row.name}?`, buttonTrueText: 'Delete', danger: true })
-    if (!ok || target !== this.commandTarget || !this.controlReady) return
+    if (!ok || target !== this.commandTarget || !this.controlReady || this.holds(row.key)) return
     SocketActions.serverFilesDeleteDirectory(`${this.root}/${row.key}`, true)
   }
 
   rename (name: string) {
     const row = this.renameRow
     this.renameRow = null
-    if (!row || !this.controlReady || this.dialogTarget !== this.commandTarget) return
+    // Checked again now: the print may have started while the dialog was open.
+    if (!row || !this.controlReady || this.dialogTarget !== this.commandTarget || this.holds(row.key)) return
     const clean = name.trim()
     if (!clean || clean === row.name) return
     SocketActions.serverFilesMove(`${this.root}/${row.key}`, `${this.dir}/${clean}`)
   }
 
-  /** Where a row can go: every folder Fluidd has listed, less where it is and itself. */
+  /** Where the rows can go: every folder Fluidd has listed, less where they are and the folders being moved. */
   get moveTargets (): string[] {
-    const row = this.moveRow
-    if (!row) return []
+    const rows = this.moveRows
+    if (!rows) return []
     const known = Object.keys(this.$store.state.files.pathFiles as Record<string, unknown>)
       .filter(p => p === this.root || p.startsWith(`${this.root}/`))
       .map(p => p === this.root ? '' : p.slice(this.root.length + 1))
     const here = this.folderRows.map(r => r.key)
+    const moving = rows.filter(r => r.kind === 'folder').map(r => r.key)
     return [...new Set([...known, ...here, this.parent])]
-      .filter(f => f !== this.path && !(row.kind === 'folder' && (f === row.key || f.startsWith(`${row.key}/`))))
+      .filter(f => f !== this.path && !moving.some(m => f === m || f.startsWith(`${m}/`)))
       .sort((a, b) => a.localeCompare(b))
   }
 
   moveInto (folder: string) {
-    const row = this.moveRow
-    this.moveRow = null
-    if (!row || !this.controlReady || this.dialogTarget !== this.commandTarget) return
-    SocketActions.serverFilesMove(`${this.root}/${row.key}`, `${this.root}/${folder ? `${folder}/` : ''}${row.name}`)
+    const rows = this.moveRows
+    this.moveRows = null
+    if (!rows || !this.controlReady || this.dialogTarget !== this.commandTarget) return
+    for (const row of rows) {
+      // Checked again now: the print may have started while the dialog was open.
+      if (!this.controlReady || this.dialogTarget !== this.commandTarget) return
+      if (this.holds(row.key)) continue
+      SocketActions.serverFilesMove(`${this.root}/${row.key}`, `${this.root}/${folder ? `${folder}/` : ''}${row.name}`)
+    }
+    if (this.selecting) this.stopSelecting()
   }
 
   makeFolder (name: string) {
@@ -809,9 +1103,10 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   onCommandTarget () {
     this.selectedKey = null
     this.renameRow = null
-    this.moveRow = null
+    this.moveRows = null
     this.folderDialog = false
     this.dialogTarget = null
+    this.stopSelecting()
     this.openFolder('')
   }
 
@@ -1055,8 +1350,9 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
 
   .jobs__crumbs {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 6px;
     padding: 10px 18px;
     border-bottom: 1px solid var(--m3d-border);
     color: var(--m3d-text-muted);
@@ -1067,7 +1363,50 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
       align-items: center;
       gap: 6px;
       color: var(--m3d-accent);
+
+      &:disabled {
+        color: var(--m3d-text);
+      }
     }
+  }
+
+  .jobs__selection {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--m3d-border);
+    background: var(--m3d-accent-soft);
+    font-size: 14px;
+
+    button {
+      color: var(--m3d-accent);
+      font-weight: 600;
+
+      &:disabled {
+        opacity: 0.45;
+      }
+    }
+  }
+
+  .jobs__grow {
+    flex: 1 1 auto;
+  }
+
+  .jobs__danger {
+    color: var(--m3d-danger) !important;
+  }
+
+  .jobs__box {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--m3d-accent);
+  }
+
+  .jobs__printing-link {
+    text-decoration: none;
   }
 
   .jobs__row {
