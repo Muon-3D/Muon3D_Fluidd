@@ -95,6 +95,8 @@ import MaintenanceMixin from '@/mixins/maintenance'
 import type { ConsoleEntry } from '@/store/console/types'
 import type { Probe } from '@/store/printer/types'
 import { bedMiddle, parseProbeAccuracy, probeAccuracyScript, probeVerdict, type ProbeAccuracy } from '@/services/maintenance/model'
+import { readNoGo } from '@/services/control/safe-move'
+import { EventBus } from '@/eventBus'
 import ControlCard from '@/components/control/ControlCard.vue'
 import { plateCheckNeeded } from '@/services/jobs/plate'
 
@@ -201,7 +203,12 @@ export default class ProbeCard extends Mixins(MaintenanceMixin) {
       { title: 'Check how steady the probe is?', buttonTrueText: 'Start', plateCheck: plateCheckNeeded(this.$store.state.history?.jobs) }
     )
     if (!ok || target !== this.maintenanceTarget || !this.canCheck) return
-    this.sendGcode(probeAccuracyScript(this.allHomed, this.middle), this.$waits.onProbeAccuracy)
+    const noGo = readNoGo(this.$store.state.printer.printer.configfile?.settings?.bed_mesh)
+    if (noGo === 'invalid') {
+      EventBus.$emit('The printer’s no-go regions could not be read, so the probe check will not move the head. Check [bed_mesh] in printer.cfg.', { type: 'warning' })
+      return
+    }
+    this.sendGcode(probeAccuracyScript(this.allHomed, this.middle, noGo?.traverseZ), this.$waits.onProbeAccuracy)
   }
 }
 </script>

@@ -171,5 +171,7 @@ describe('probe accuracy', () => {
   it('homes first when it hasn\'t, then goes there and probes', () => {
     expect(probeAccuracyScript(false, [100, 90])).toBe('G28\nG90\nG1 X100 Y90 F6000\nPROBE_ACCURACY')
     expect(probeAccuracyScript(true, [100, 90])).toBe('G90\nG1 X100 Y90 F6000\nPROBE_ACCURACY')
+    // The M1: cross to the middle at the notch's traverse height.
+    expect(probeAccuracyScript(true, [100, 90], 6)).toBe('G90\nG1 Z6 F600\nG1 X100 Y90 F6000\nPROBE_ACCURACY')
   })
 })
