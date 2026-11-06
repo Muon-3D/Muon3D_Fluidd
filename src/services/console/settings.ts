@@ -61,6 +61,16 @@ export function quickCommandsKey (accountId: string | null | undefined): string 
   return (accountId || 'anonymous').replace(/[^a-z0-9_-]/gi, '_')
 }
 
+/**
+ * The key to read or write this person's chips under, or null while the
+ * Muon3D account is still being restored. Nothing is read or written under
+ * "anonymous" before that: a signed-in person's chips would be taken for
+ * the signed-out ones (and their edits saved under the wrong key).
+ */
+export function accountQuickKey (cloud: { ready: boolean, account: { id: string } | null }): string | null {
+  return cloud.ready ? quickCommandsKey(cloud.account?.id) : null
+}
+
 const isQuickCommand = (q: unknown): q is QuickCommand =>
   !!q && typeof q === 'object' && typeof (q as QuickCommand).command === 'string' && !!(q as QuickCommand).command.trim()
 

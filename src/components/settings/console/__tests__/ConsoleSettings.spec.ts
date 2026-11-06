@@ -10,7 +10,7 @@ vi.mock('@/api/socketActions', () => ({ SocketActions: { serverWrite: vi.fn() } 
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'boxwood-367a' }))
 vi.mock('@/services/muon-cloud/state', async () => {
   const Vue = (await import('vue')).default
-  return { cloudState: Vue.observable({ account: null as null | { id: string } }) }
+  return { cloudState: Vue.observable({ ready: true, account: null as null | { id: string } }) }
 })
 
 const stubs = {
@@ -42,6 +42,7 @@ function show (o: { console?: Record<string, unknown>, components?: string[], en
 afterEach(() => {
   vi.clearAllMocks()
   cloudState.account = null
+  cloudState.ready = true
 })
 
 describe('Settings › Console', () => {
@@ -60,6 +61,25 @@ describe('Settings › Console', () => {
     const list = (SocketActions.serverWrite as any).mock.calls[0][1].map((q: { command: string }) => q.command)
     expect(list.slice(-2)).toEqual(['STATUS', 'FIRMWARE_RESTART'])
     expect(dispatch).toHaveBeenCalledWith('config/saveByPath', expect.objectContaining({ path: 'uiSettings.console.quickCommands' }))
+  })
+
+  it('saves nothing, and offers no chips, until the account is known', async () => {
+    cloudState.ready = false
+    const { wrapper, dispatch } = show()
+    expect(wrapper.text()).toContain('Quick commands · 0')
+    expect(wrapper.find('[data-tid="console-settings-chip-STATUS"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid="console-settings-quick-loading"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tid="console-settings-add-quick"]').attributes('disabled')).toBe('disabled')
+    ;(wrapper.vm as unknown as { saveQuickList: (list: unknown[]) => void }).saveQuickList([])
+    expect(SocketActions.serverWrite).not.toHaveBeenCalled()
+    expect(dispatch).not.toHaveBeenCalled()
+    // Once it is known, the chips are that person's, and writing works.
+    cloudState.account = { id: 'acc.7' } as typeof cloudState.account
+    cloudState.ready = true
+    await wrapper.vm.$nextTick()
+    expect(wrapper.text()).toContain('Quick commands · 6')
+    ;(wrapper.vm as unknown as { saveQuickList: (list: unknown[]) => void }).saveQuickList([])
+    expect(SocketActions.serverWrite).toHaveBeenCalledWith('uiSettings.console.quickCommands.acc_7', [])
   })
 
   it('turns temperature reports on by clearing hideTempWaits', async () => {

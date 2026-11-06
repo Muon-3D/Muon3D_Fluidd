@@ -248,3 +248,25 @@ export function planXYMove (
   if (plan.ok && !plan.lifted) return { ok: true, steps: [{ X: plan.steps[0].X, Y: plan.steps[0].Y }], lifted: false }
   return plan
 }
+
+/**
+ * Why a Z-offset nudge of `by` mm (SET_GCODE_OFFSET … MOVE=1, which moves
+ * the head) must not be sent with the head idle at `head`, or ''. Raising is
+ * always allowed. Lowering is refused when the regions can't be read, and
+ * when the head is over a region (or its tolerance band) and would end below
+ * the crossing height. `margin` is the active mesh's spread, as in planMove.
+ */
+export function zNudgeRefusal (
+  head: { x: number, y: number, z: number },
+  by: number,
+  noGo: NoGoConfig | null | 'invalid',
+  margin = 0
+): string {
+  if (!(by < 0) || noGo === null) return ''
+  if (noGo === 'invalid') return 'The printer’s no-go regions could not be read, so the nozzle will only be raised. Check [bed_mesh] in printer.cfg.'
+  if (![head.x, head.y, head.z, margin].every(Number.isFinite)) return 'The head position is not known.'
+  const clear = noGo.traverseZ + margin
+  const over = noGo.regions.some(r => inside(head.x, head.y, r, noGo.tolerance))
+  if (over && head.z + by < clear) return `The head is over the bed notch. Move it away, or raise Z to ${round(clear)} mm, before lowering the nozzle.`
+  return ''
+}

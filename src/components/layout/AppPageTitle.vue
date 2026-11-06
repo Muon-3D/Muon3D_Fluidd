@@ -34,6 +34,7 @@
         <jobs-actions v-if="jobsHome" />
         <maintenance-due v-if="currentPage === '/maintenance'" />
         <console-actions v-if="currentSection && currentSection.id === 'console'" />
+        <files-actions v-if="currentSection && currentSection.id === 'files' && isMobileViewport" />
         <camera-actions v-if="currentSection && currentSection.id === 'camera' && !isMobileViewport" />
         <router-link
           v-if="settingsSection && settingsSection.id === 'console' && !isMobileViewport"
@@ -81,6 +82,7 @@ import PrinterPageMenu from '@/components/overview/PrinterPageMenu.vue'
 import MaintenanceDue from '@/components/maintenance/MaintenanceDue.vue'
 import CameraTabs from '@/components/camera/CameraTabs.vue'
 import ConsoleActions from '@/components/console/ConsoleActions.vue'
+import FilesActions from '@/components/files/FilesActions.vue'
 import CameraActions from '@/components/camera/CameraActions.vue'
 import JobsActions from '@/components/jobs/JobsActions.vue'
 import { jobsPage } from '@/services/jobs/page-state'
@@ -101,7 +103,7 @@ import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@
  * with the section's pages as tabs under it (Jobs: Jobs, Preview, History,
  * Timelapse).
  */
-@Component({ components: { ConsoleActions, CameraActions, CameraTabs, JobsActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
+@Component({ components: { FilesActions, ConsoleActions, CameraActions, CameraTabs, JobsActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
 export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, PrinterStatusMixin) {
   get foreignRecord () {
     const slug = this.$route.params.printer
@@ -171,7 +173,16 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       }
       return parts.join(' · ')
     }
+    if (this.currentSection?.id === 'control' && this.currentPage === '/control') {
+      const name = printerNameParts(this.displayName).name
+      const file = this.$store.state.printer.printer.print_stats?.filename as string | undefined
+      const head = `Move, heat and feed ${name} by hand`
+      if (this.printerPrinting && file) return `${head} · printing ${jobName(file)}, so axes are locked while it runs`
+      if (this.printerPaused && file) return `${head} · ${jobName(file)} is paused, so axes are locked`
+      return head
+    }
     if (this.currentSection?.id === 'console') return 'Send G-code and read what Klipper says back'
+    if (this.currentSection?.id === 'files') return `${printerNameParts(this.displayName).name}'s config and other files · tap a file to edit it`
     if (this.isMobileViewport) return ''
     if (this.overviewHome) {
       if (this.foreignRecord) return ''
@@ -184,9 +195,6 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
         return `${jobName(file)}${at}`
       }
       return route
-    }
-    if (this.currentSection?.id === 'control') {
-      return 'Heat, move, filament, speed, fans and lights. Click any value to type it.'
     }
     if (this.currentPage === '/settings') {
       const section = this.settingsSection
@@ -303,19 +311,28 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     color: var(--m3d-text) !important;
   }
 
-  // Jobs: the header holds a toolbar, so on a phone it goes under the title.
-  .app-page-header--jobs .app-page-header__row {
-    flex-wrap: wrap;
+  // Jobs: the header holds a toolbar. On a desktop it stays beside the title,
+  // so picking a file never moves the list; on a phone it goes under the title.
+  .app-page-header--jobs .app-page-header__actions {
+    flex: 1 1 0;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    min-width: 0;
   }
 
-  .app-page-header--jobs .app-page-header__actions {
-    flex: 1 1 auto;
+  .app-page-header--jobs:not(.app-page-header--phone) .app-page-header__subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-page-header--jobs.app-page-header--phone .app-page-header__row {
     flex-wrap: wrap;
-    justify-content: flex-end;
   }
 
   .app-page-header--jobs.app-page-header--phone .app-page-header__actions {
     flex-basis: 100%;
+    flex-wrap: wrap;
     justify-content: flex-start;
   }
 

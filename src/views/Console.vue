@@ -282,7 +282,7 @@ import TonePill from '@/components/printers/TonePill.vue'
 import ConsoleMacros from '@/components/console/ConsoleMacros.vue'
 import { consoleView } from '@/services/console/view'
 import type { ShownMacro } from '@/mixins/macros'
-import { chipText, consoleConfig, quickCommandsFor, quickCommandsKey, type ConsoleConfig, type QuickCommand } from '@/services/console/settings'
+import { chipText, consoleConfig, quickCommandsFor, accountQuickKey, type ConsoleConfig, type QuickCommand } from '@/services/console/settings'
 import { cloudState } from '@/services/muon-cloud/state'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
@@ -492,7 +492,8 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
 
   /** This person's chips on this printer (Settings › Console). */
   get quick (): QuickCommand[] {
-    return quickCommandsFor(this.prefs, quickCommandsKey(cloudState.account?.id))
+    const key = accountQuickKey(cloudState)
+    return key ? quickCommandsFor(this.prefs, key) : []
   }
 
   get quickSettingsTo (): string {
