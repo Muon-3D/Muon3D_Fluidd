@@ -60,6 +60,7 @@ import FrameMixin from '@/mixins/frame'
 import { remoteRouteLabel } from '@/services/muon-ble/link'
 import BrowserMixin from '@/mixins/browser'
 import { pageMatches, type SectionPage } from '@/router/printerSections'
+import { SECTION_COMPONENTS, openSettingsSection, type SettingsSection } from '@/services/settings/sections'
 import ControlActions from '@/components/control/ControlActions.vue'
 import OverviewActions from '@/components/overview/OverviewActions.vue'
 import PrinterPageMenu from '@/components/overview/PrinterPageMenu.vue'
@@ -107,7 +108,16 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       const page = this.currentSection.pages.find(p => p.path !== '/settings' && this.isOn(p))
       if (page) return page.label
     }
+    const section = this.settingsSection
+    if (section && !(section.id === 'general' && !this.isMobileViewport)) return section.label
     return this.currentSection?.label ?? this.$route.name ?? ''
+  }
+
+  /** Settings' open section, by the address's anchor: it names the page, as a section's own header does. */
+  get settingsSection (): SettingsSection | null {
+    if (this.currentSection?.id !== 'settings' || this.currentPage !== '/settings') return null
+    const supports = (name: string) => this.$store.getters['server/componentSupport'](name) as boolean
+    return openSettingsSection(this.$route.hash, { components: SECTION_COMPONENTS.filter(supports) })
   }
 
   get pillTone (): TileTone {
@@ -142,7 +152,8 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       return 'Heat, move, filament, speed, fans and lights. Click any value to type it.'
     }
     if (this.currentPage === '/settings') {
-      return `Kept on ${printerNameParts(this.displayName).name}, so they're the same for everyone who opens it.`
+      const section = this.settingsSection
+      return section && section.id !== 'general' ? section.blurb : 'How Control looks and behaves on this printer'
     }
     if (this.currentPage === '/history') {
       return `Every print ${printerNameParts(this.displayName).name} has made`
