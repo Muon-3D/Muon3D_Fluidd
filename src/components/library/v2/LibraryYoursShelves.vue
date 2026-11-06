@@ -3,8 +3,11 @@
     class="myours"
     data-tid="library-yours-shelves"
   >
-    <!-- Collections: mosaic tiles, and New. One open shows its prints as a shelf. -->
-    <section class="mlib-shelf">
+    <!-- Collections: mosaic tiles, then New collection. One open shows its prints as a shelf. -->
+    <section
+      class="mlib-shelf"
+      data-tid="library-collections"
+    >
       <header class="mlib-shelf__head">
         <h2>Collections</h2>
         <span class="mlib-muted">Saved prints, grouped your way</span>
@@ -52,10 +55,7 @@
       >
         {{ error || collectionsError }}
       </p>
-      <div
-        v-if="collections.length"
-        class="mlib-cols"
-      >
+      <div class="mlib-cols">
         <button
           v-for="c in collections"
           :key="c.id"
@@ -77,57 +77,143 @@
           <strong>{{ c.name }}</strong>
           <span class="mlib-muted">{{ c.item_count }} {{ c.item_count === 1 ? 'print' : 'prints' }}</span>
         </button>
+        <button
+          v-if="!naming"
+          type="button"
+          class="mlib-col mlib-col--new"
+          data-tid="library-collection-new-tile"
+          @click="startNaming"
+        >
+          <frame-icon
+            name="plus"
+            small
+          /> New collection
+        </button>
       </div>
-      <p
-        v-else-if="loaded && !collectionsError"
-        class="mlib-muted"
-      >
-        Make a collection, then add prints to it from their quick look.
-      </p>
     </section>
 
-    <section
-      v-if="shelf.cards.length"
-      class="mlib-shelf"
-      :data-tid="openId ? 'library-collection-open' : 'library-saved'"
-    >
-      <header class="mlib-shelf__head">
-        <h2>{{ shelf.title }}</h2>
-        <span class="mlib-muted">{{ shelf.sub }}</span>
-      </header>
-      <div class="mlib-shelf__row">
-        <library-model-card
-          v-for="card in shelf.cards"
+    <library-shelf
+      v-if="open"
+      id="collection"
+      :title="open.name"
+      :sub="`${open.item_count} ${open.item_count === 1 ? 'print' : 'prints'}`"
+      :cards="(members[open.id] || []).map(withPicture)"
+      :printer-name="printerName"
+      :printing="printing"
+      :see-all="false"
+      data-tid="library-collection-open"
+      @print="$emit('print', $event)"
+      @open="$emit('open', $event)"
+    />
+
+    <template v-for="s in shelves">
+      <library-shelf
+        v-if="s.id === 'saved'"
+        id="saved"
+        :key="s.id"
+        title="Saved"
+        sub="From Discover"
+        :cards="saved.slice(0, ROW).map(withPicture)"
+        :printer-name="printerName"
+        :printing="printing"
+        :loading="!savedLoaded && !savedError"
+        :error="savedError"
+        :see-all="saved.length > 0"
+        data-tid="library-saved"
+        @see-all="$emit('see-all', 'saved')"
+        @retry="refresh"
+        @print="$emit('print', $event)"
+        @open="$emit('open', $event)"
+      >
+        <template v-if="savedLoaded && !saved.length">
+          <p
+            class="mlib-muted myours__empty"
+            data-tid="library-shelf-saved-empty"
+          >
+            Tap ♡ on a print in Discover and it is kept here.
+          </p>
+        </template>
+      </library-shelf>
+
+      <library-shelf
+        v-else-if="own && s.shown"
+        :id="s.id"
+        :key="s.id"
+        :title="s.title"
+        :sub="s.sub"
+        :loading="s.loading"
+        :error="s.error"
+        :see-all="s.cards.length > 0"
+        @see-all="$emit('see-all', s.id)"
+        @retry="readOwn(s.id)"
+      >
+        <library-own-card
+          v-for="card in s.cards.slice(0, ROW)"
           :key="card.key"
-          :card="withPicture(card)"
+          :card="card"
           :printer-name="printerName"
-          :busy="printing === card.key"
-          @print="$emit('print', withPicture($event))"
-          @open="$emit('open', withPicture($event))"
+          @act="$emit('own-act', $event)"
+          @open="$emit('own-open', $event)"
         />
-      </div>
-    </section>
+        <div
+          v-if="!s.cards.length"
+          class="myours__empty"
+          :data-tid="`library-shelf-${s.id}-empty`"
+        >
+          <p class="mlib-muted">
+            {{ s.empty }}
+          </p>
+          <button
+            v-if="s.id === 'sliced'"
+            type="button"
+            class="mlib-btn mlib-btn--sm mlib-btn--primary"
+            data-tid="library-go-slice"
+            @click="$emit('go-slice')"
+          >
+            Open Slice
+          </button>
+        </div>
+      </library-shelf>
+    </template>
   </div>
 </template>
 
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
-import LibraryModelCard from './LibraryModelCard.vue'
-import { describeLibraryError, type CommunityCollection, type CommunitySave } from '@/services/library/api'
-import { libraryClient } from '@/services/library/store'
+import LibraryOwnCard from './LibraryOwnCard.vue'
+import LibraryShelf from './LibraryShelf.vue'
+import { describeLibraryError, type CommunityCollection, type CommunitySave, type LibraryItem } from '@/services/library/api'
+import { libraryClient, libraryItems, libraryState, refreshLibrary } from '@/services/library/store'
 import { publicationPicture, saveCard, type ShelfCard } from '@/services/library/shelves'
+import { itemShelf, loadOwnShelf, OWN_SHELVES, type OwnCard, type OwnShelfId } from '@/services/library/yours'
 
 /** How many saved public prints have their picture read (the service sends none for them). */
 const PICTURES = 24
 
+/** What a shelf's row shows; See all has the rest. */
+const ROW = 12
+
+interface OwnShelf { cards: OwnCard[], loading: boolean, error: string, loaded: boolean }
+
+/** What an empty shelf says. Shared by you and Designs hide instead. */
+const EMPTY: Record<OwnShelfId, string> = {
+  sliced: 'Slice something and press Save. It appears here, ready to print on any of your printers.',
+  printed: 'What your printers print appears here, to print again.',
+  shared: '',
+  designs: ''
+}
+
 /**
- * Yours, above your own prints: your collections (mosaic tiles; one opened
- * shows its prints) and what you saved from Discover, as cards that print
- * from where they are. Signed in only; MuonLibrary owns the collection list
- * (the quick look's Add to… needs it on Discover too) and reads it again on
- * `changed`.
+ * Yours (Library v3, page 2), below Continue: your collections (mosaic tiles,
+ * then New collection; one opened shows its prints), then one shelf each for
+ * Sliced, Printed, Saved, Shared by you and Designs, each with See all. No
+ * tab row. Signed in only; MuonLibrary owns the collection list (the quick
+ * look's Add to… needs it on Discover too) and reads it again on `changed`.
+ *
+ * Each shelf reads on its own: one that fails says so with Retry while the
+ * others keep working.
  */
-@Component({ components: { LibraryModelCard } })
+@Component({ components: { LibraryOwnCard, LibraryShelf } })
 export default class LibraryYoursShelves extends Vue {
   @Prop({ type: String, default: null }) readonly printerName!: string | null
   /** The card whose print is being read (MuonLibrary's), for its Print button. */
@@ -135,38 +221,119 @@ export default class LibraryYoursShelves extends Vue {
   @Prop({ type: Array, default: () => [] }) readonly collections!: CommunityCollection[]
   /** Why MuonLibrary couldn't read them, if it couldn't. */
   @Prop({ type: String, default: '' }) readonly collectionsError!: string
+  /** Your Library is on and read: your own shelves show. Saved and Collections are the community's and always do. */
+  @Prop({ type: Boolean, default: true }) readonly own!: boolean
 
+  ROW = ROW
   /** Each collection's cards, read for its mosaic and when opened. */
   members: Record<string, ShelfCard[]> = {}
   /** Pictures of saved public prints, by publication id. */
   pictures: Record<string, string | null> = {}
   saved: ShelfCard[] = []
+  savedLoaded = false
+  savedError = ''
+  /** Printed and Shared by you, read from the service. Sliced and Designs are the synced Library's. */
+  read: Record<'printed' | 'shared', OwnShelf> = {
+    printed: blank(),
+    shared: blank()
+  }
+
   openId = ''
-  loaded = false
   naming = false
   name = ''
   busy = false
   error = ''
-  /** The newest read: an older, slower answer must not overwrite it. */
+  /** The newest read of each: an older, slower answer must not overwrite it. */
   private reads = 0
+  private ownReads: Record<string, number> = {}
 
   created () {
     this.refresh()
   }
 
-  /** Saved, and every collection's prints. After a heart or Add to… too. */
+  /** Saved, your own shelves, and every collection's prints. After a heart or Add to… too. */
   async refresh () {
     const read = ++this.reads
-    this.error = ''
+    if (this.own) this.readOwn('printed')
+    if (this.own) this.readOwn('shared')
+    this.savedError = ''
     try {
       const page = await libraryClient().saved()
       if (read !== this.reads) return
       this.saved = cards(page.saves)
     } catch (error) {
-      if (read === this.reads) this.error = describeLibraryError(error)
+      if (read === this.reads) this.savedError = describeLibraryError(error)
     }
+    if (read === this.reads) this.savedLoaded = true
     await this.readMembers(read)
-    if (read === this.reads) this.loaded = true
+  }
+
+  async readOwn (id: OwnShelfId) {
+    // Sliced and Designs are the synced Library's: Retry syncs it again.
+    if (id === 'sliced' || id === 'designs') {
+      refreshLibrary().catch(() => {})
+      return
+    }
+    const read = (this.ownReads[id] = (this.ownReads[id] ?? 0) + 1)
+    const shelf = this.read[id]
+    shelf.loading = !shelf.loaded
+    shelf.error = ''
+    try {
+      const cards = await loadOwnShelf(id, libraryClient(), libraryItems())
+      if (read !== this.ownReads[id]) return
+      shelf.cards = cards
+      shelf.loaded = true
+    } catch (error) {
+      // A re-read that failed keeps what the shelf shows; the next sync tries again.
+      if (read === this.ownReads[id] && !shelf.cards.length) shelf.error = describeLibraryError(error)
+    } finally {
+      if (read === this.ownReads[id]) shelf.loading = false
+    }
+  }
+
+  /**
+   * The Library synced something new (a slice saved, a print finished, a
+   * share's print arrived): Printed and Shared by you read again. Also while
+   * one is still loading: its answer may predate the change, and the newer
+   * read wins.
+   */
+  get syncRev (): number {
+    return libraryState.rev
+  }
+
+  @Watch('syncRev')
+  onSync () {
+    if (!this.own) return
+    this.readOwn('printed')
+    this.readOwn('shared')
+  }
+
+  @Watch('own')
+  onOwn (own: boolean) {
+    if (own) this.onSync()
+  }
+
+  /** Every item, from the synced Library: kept current by its sync, never a page short. */
+  get items (): LibraryItem[] {
+    return libraryItems()
+  }
+
+  /** In the mockup's order; Shared by you and Designs only once there is one. */
+  get shelves () {
+    // Before the first sync: reading, or why it could not (with Retry), not "nothing yet".
+    // While Retry reads it again (busy), it is loading, not still failed.
+    const failed = !libraryState.synced && !!libraryState.error && !libraryState.busy
+    const synced = { loading: !libraryState.synced && !failed, error: failed ? libraryState.error ?? '' : '' }
+    const sliced = { ...synced, cards: itemShelf('sliced', this.items) }
+    const designs = { ...synced, cards: itemShelf('designs', this.items) }
+    const shown = (s: { cards: OwnCard[], error: string }) => s.cards.length > 0 || !!s.error
+    return [
+      { ...OWN_SHELVES[0], ...sliced, empty: EMPTY.sliced, shown: true },
+      { ...OWN_SHELVES[1], ...this.read.printed, empty: EMPTY.printed, shown: true },
+      { id: 'saved' as const },
+      { ...OWN_SHELVES[2], ...this.read.shared, empty: EMPTY.shared, shown: shown(this.read.shared) },
+      { ...OWN_SHELVES[3], ...designs, empty: EMPTY.designs, shown: shown(designs) }
+    ]
   }
 
   @Watch('collections')
@@ -204,10 +371,8 @@ export default class LibraryYoursShelves extends Vue {
     return (this.members[id] ?? []).map(card => this.withPicture(card).picture).filter((url): url is string => !!url).slice(0, 4)
   }
 
-  get shelf (): { title: string, sub: string, cards: ShelfCard[] } {
-    const open = this.collections.find(c => c.id === this.openId)
-    if (open) return { title: open.name, sub: `${open.item_count} ${open.item_count === 1 ? 'print' : 'prints'}`, cards: this.members[open.id] ?? [] }
-    return { title: 'Saved', sub: 'From Discover', cards: this.saved }
+  get open (): CommunityCollection | null {
+    return this.collections.find(c => c.id === this.openId) ?? null
   }
 
   toggle (id: string) {
@@ -238,6 +403,10 @@ export default class LibraryYoursShelves extends Vue {
   }
 }
 
+function blank (): OwnShelf {
+  return { cards: [], loading: true, error: '', loaded: false }
+}
+
 function cards (saves: CommunitySave[] | undefined): ShelfCard[] {
   return (Array.isArray(saves) ? saves : []).map(saveCard).filter((card): card is ShelfCard => !!card)
 }
@@ -264,7 +433,30 @@ function cards (saves: CommunitySave[] | undefined): ShelfCard[] {
       font-size: var(--m3d-text-sm);
     }
   }
+
+  &__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 10px;
+    min-height: 120px;
+    max-width: 420px;
+    margin: 0;
+  }
 }
 
 .mlib-col--on { box-shadow: inset 0 0 0 2px var(--m3d-accent); }
+
+.mlib-col--new {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 120px;
+  color: var(--m3d-accent);
+  font-weight: 600;
+  border: 1px dashed var(--m3d-border, rgba(255, 255, 255, 0.16));
+  background: transparent;
+}
 </style>

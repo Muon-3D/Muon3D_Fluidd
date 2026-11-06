@@ -54,7 +54,12 @@ function fakeClient () {
     savesOf: vi.fn(async () => ({ saves: [] as Array<{ target: { kind: string, id: string }, save_id: string }> })),
     save: vi.fn(async (id: string) => publicationSave(id)),
     unsave: vi.fn(async () => null),
-    addToCollection: vi.fn(async () => null)
+    addToCollection: vi.fn(async () => null),
+    // Yours v3's own shelves: empty here (LibraryV3Yours.spec covers them).
+    sliced: vi.fn(async () => ({ items: [], rev: 1, reset: false, more: false })),
+    designs: vi.fn(async () => ({ items: [], rev: 1, reset: false, more: false })),
+    runs: vi.fn(async () => ({ runs: [], cursor: null })),
+    shares: vi.fn(async () => ({ shares: [] }))
   }
 }
 
@@ -108,7 +113,8 @@ describe('Library v2: Yours shelves', () => {
     await wrapper.find('[data-tid="library-collection-c1"]').trigger('click')
     await flush()
     expect(wrapper.find('[data-tid="library-collection-open"]').text()).toContain('Print p3')
-    expect(wrapper.find('[data-tid="library-saved"]').exists()).toBe(false)
+    // v3: Saved is a shelf of its own and stays.
+    expect(wrapper.find('[data-tid="library-saved"]').exists()).toBe(true)
   })
 
   it('reads an open collection again after a change, and says when collections couldn\'t be read', async () => {
