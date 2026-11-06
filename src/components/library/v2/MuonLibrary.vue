@@ -314,7 +314,7 @@ import { LIBRARY_URL } from '@/services/library/discover'
 import { libraryClient } from '@/services/library/store'
 import { lastEvent, nozzleText, printFacts } from '@/services/library/format'
 import { thumbnailFor } from '@/services/library/thumbnails'
-import { ago, loadFeedPage, loadPublication, loadShelves, publicationPrint, type FeedPost, type PublicationPrint, type ShelfCard } from '@/services/library/shelves'
+import { ago, isNetworkError, loadFeedPage, loadPublication, loadShelves, publicationPrint, type FeedPost, type PublicationPrint, type ShelfCard } from '@/services/library/shelves'
 
 export type LibraryTab = 'discover' | 'yours'
 
@@ -445,26 +445,34 @@ export default class MuonLibrary extends Vue {
       this.busy = false
       return
     }
-    const [shelves, feed] = await Promise.all([
-      loadShelves(fetch, controller.signal),
-      loadFeedPage(null, fetch, controller.signal).catch((error: unknown) => error instanceof Error ? error : new Error(String(error)))
-    ])
-    if (controller.signal.aborted) return
-    this.popular = shelves.popular
-    this.m1 = shelves.m1
-    this.popularError = shelves.errors.popular ?? ''
-    this.m1Error = shelves.errors.m1 ?? ''
-    if (feed instanceof Error) {
-      this.feedError = feed.message
-      this.posts = []
-      this.feedCursor = null
-    } else {
-      this.posts = feed.posts
-      this.feedCursor = feed.cursor
+    try {
+      const [shelves, feed] = await Promise.all([
+        loadShelves(fetch, controller.signal),
+        loadFeedPage(null, fetch, controller.signal).catch((error: unknown) => error instanceof Error ? error : new Error(String(error)))
+      ])
+      if (controller.signal.aborted) return
+      this.popular = shelves.popular
+      this.m1 = shelves.m1
+      this.popularError = shelves.errors.popular ?? ''
+      this.m1Error = shelves.errors.m1 ?? ''
+      if (feed instanceof Error) {
+        this.feedError = feed.message
+        this.posts = []
+        this.feedCursor = null
+      } else {
+        this.posts = feed.posts
+        this.feedCursor = feed.cursor
+      }
+      // Nothing answered and nothing could be reached: offline, not an outage.
+      this.offline = this.allFailed && (navigator.onLine === false || (shelves.unreachable && feed instanceof Error && isNetworkError(feed)))
+    } catch (error) {
+      // Something unreadable got past the readers: the page says so instead of loading forever.
+      if (controller.signal.aborted) return
+      const text = error instanceof Error ? error.message : String(error)
+      this.popularError = this.m1Error = this.feedError = text
+    } finally {
+      if (!controller.signal.aborted) this.busy = false
     }
-    // Nothing answered and the browser can't reach anything: offline, not an outage.
-    this.offline = this.allFailed && (navigator.onLine === false || /fetch|network/i.test(this.popularError))
-    this.busy = false
   }
 
   async loadMore () {
@@ -528,8 +536,9 @@ export default class MuonLibrary extends Vue {
     if (this.busy) return null
     if (this.offline) return { kind: 'error', icon: 'wifi', title: 'You\'re offline', text: 'Discover needs the internet. Your printers on this network still work.', action: 'Try again' }
     if (this.allFailed) return { kind: 'error', icon: 'alert', title: 'The Library didn\'t answer', text: this.popularError, action: 'Try again' }
-    // Nothing at all, whatever the filter (in Control "Fits" is on from the start).
-    if (!this.popular.length && !this.m1.length && !this.posts.length) {
+    // Nothing at all, whatever the filter (in Control "Fits" is on from the start),
+    // and no shelf failed (a failed shelf shows its own Retry instead).
+    if (!this.popular.length && !this.m1.length && !this.posts.length && !this.popularError && !this.m1Error && !this.feedError) {
       return { kind: 'empty', icon: 'library', title: 'Nothing to discover yet', text: 'Prints people share, and the ones we test on the M1, appear here.', action: '' }
     }
     return null

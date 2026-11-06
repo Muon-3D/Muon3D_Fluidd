@@ -23,7 +23,7 @@ test('Discover shows shelves and the feed from the model service, signed out', a
 test('Discover says so when the model service is down, and Try again recovers', async ({ page, models, open }) => {
   models.failWith = 503
   await open('/library?view=discover')
-  await expect(page.getByRole('alert')).toContainText('The Library didn\'t answer')
+  await expect(page.getByTestId('library-discover-state')).toContainText('The Library didn\'t answer')
   models.failWith = null
   await page.getByRole('button', { name: 'Try again' }).click()
   await expect(page.getByTestId('library-shelf-popular')).toBeVisible()

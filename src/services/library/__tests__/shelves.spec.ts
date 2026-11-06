@@ -62,6 +62,12 @@ describe('Library v2 shelves', () => {
     expect(down.popular).toEqual([])
     expect(down.errors.popular).toMatch(/didn't answer/)
     expect(down.errors.m1).toMatch(/didn't answer/)
+    expect(down.unreachable).toBe(false)
+  })
+
+  it('knows when nothing could be reached at all (fetch itself failed), whatever the browser calls it', async () => {
+    const offline = (async () => { throw new TypeError('Load failed') }) as unknown as typeof fetch
+    expect((await loadShelves(offline)).unreachable).toBe(true)
   })
 
   it('reads the feed newest first: a remix is said as one, and the cursor carries on', async () => {

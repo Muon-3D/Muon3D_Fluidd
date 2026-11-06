@@ -167,6 +167,13 @@ export interface DiscoverShelves {
   m1: ShelfCard[];
   /** Why a shelf couldn't be read, when neither of its sources answered (v3: the shelf says so, the rest work). */
   errors: { popular?: string, m1?: string };
+  /** No source could be reached at all: fetch itself failed (any browser's network error is a TypeError). */
+  unreachable: boolean;
+}
+
+/** Whether a failed read never reached the service: fetch rejects with a TypeError, whatever the browser's wording. */
+export function isNetworkError (error: unknown): boolean {
+  return error instanceof TypeError
 }
 
 const reason = (result: PromiseSettledResult<unknown>): string =>
@@ -187,6 +194,7 @@ export async function loadShelves (fetcher: typeof fetch = fetch, signal?: Abort
   const errors: DiscoverShelves['errors'] = {}
   if (trending.status === 'rejected' && !feed) errors.popular = reason(trending)
   if (tagged.status === 'rejected' && !feed) errors.m1 = reason(tagged)
+  const unreachable = [trending, tagged, discover].every(r => r.status === 'rejected' && isNetworkError(r.reason))
   const popular = trending.status === 'fulfilled' && trending.value.items.length
     ? trending.value.items.map(summaryCard)
     : (feed?.trending ?? []).filter(isSummary).map(summaryCard)
@@ -194,7 +202,7 @@ export async function loadShelves (fetcher: typeof fetch = fetch, signal?: Abort
     ...(tagged.status === 'fulfilled' ? tagged.value.items.map(summaryCard).map(card => ({ ...card, m1: true })) : []),
     ...(feed?.m1_ready ?? []).filter(item => !!item && text(item.slug) && text(item.title)).map(catalogueShelfCard)
   ]
-  return { popular: unique(popular), m1: unique(m1).slice(0, 12), errors }
+  return { popular: unique(popular), m1: unique(m1).slice(0, 12), errors, unreachable }
 }
 
 export interface FeedPost {

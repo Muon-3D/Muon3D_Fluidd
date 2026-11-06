@@ -16,6 +16,7 @@
           v-if="seeAll && !loading && !error"
           type="button"
           class="mlib-link"
+          :aria-label="`See all ${title}`"
           :data-tid="`library-shelf-${id}-all`"
           @click="$emit('see-all', id)"
         >
