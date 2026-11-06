@@ -331,14 +331,14 @@ export default class LibraryCollectionPage extends Vue {
   private unsent = 0
   /** Counts every reorder made: a read that began before the latest one did not see it. */
   private reorders = 0
-  /** Which collection the reorder bookkeeping is for; another one starts it afresh. */
-  private shownId = ''
+  /** Which showing of a collection the reorder bookkeeping is for: each switch starts it afresh (A, B, then A again is a new one). */
+  private showing = 0
 
   @Watch('collectionId', { immediate: true })
   onCollection () {
     this.collection = null
     // Reorders still being sent are the last collection's: this one starts with none.
-    this.shownId = this.collectionId
+    this.showing++
     this.order = []
     this.unsent = 0
     this.sending = Promise.resolve()
@@ -514,12 +514,13 @@ export default class LibraryCollectionPage extends Vue {
   reorder (next: string[]): Promise<void> {
     if (!this.collection || next.join() === this.order.join()) return Promise.resolve()
     const id = this.collection.id
+    const showing = this.showing
     this.order = next
     this.note = ''
     this.unsent++
     this.reorders++
-    // Only while the same collection is shown does the bookkeeping, a note or a reload apply.
-    const here = () => this.shownId === id
+    // Only while the same showing lasts does the bookkeeping, a note or a reload apply.
+    const here = () => this.showing === showing
     const send = async () => {
       try {
         await libraryClient().reorderCollection(id, next.map(key => saveIdOf({ key })))

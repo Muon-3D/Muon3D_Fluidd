@@ -117,6 +117,31 @@ describe('Library v3 collection: your order', () => {
     expect(titles(w)).toEqual(['Print c', 'Print b', 'Print a'])
   })
 
+  it('a send from before leaving and coming back does not count against the new one', async () => {
+    let answerOld: () => void = () => {}
+    const c = client({ reorderCollection: vi.fn(() => new Promise<null>(resolve => { answerOld = () => resolve(null) })) })
+    const w = await page(c)
+    await w.find('[data-tid="library-collection-cell-0"]').trigger('keydown', { key: 'ArrowRight', altKey: true })
+    // Away to c2 and back to c1 while that send is out.
+    c.collection.mockResolvedValueOnce({ ...c.detail, id: 'c2', name: 'Gifts', items: [item('x')] })
+    await w.setProps({ collectionId: 'c2' })
+    await flush()
+    await w.setProps({ collectionId: 'c1' })
+    await flush()
+    // A new reorder, still out; then the old send answers.
+    let answerNew: () => void = () => {}
+    c.reorderCollection.mockImplementation(() => new Promise<null>(resolve => { answerNew = () => resolve(null) }))
+    await w.find('[data-tid="library-collection-cell-1"]').trigger('keydown', { key: 'ArrowRight', altKey: true })
+    answerOld()
+    await flush()
+    // A read now must not put back the service's order over the one still being sent.
+    await (w.vm as unknown as { load: () => Promise<void> }).load()
+    await flush()
+    expect(titles(w)).toEqual(['Print a', 'Print c', 'Print b'])
+    answerNew()
+    await flush()
+  })
+
   it('a reorder still being sent for one collection does not freeze the next one', async () => {
     const c = client({ reorderCollection: vi.fn(() => new Promise<null>(() => {})) })
     const w = await page(c)
