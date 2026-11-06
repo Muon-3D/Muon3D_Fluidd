@@ -232,6 +232,12 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       const next = !more ? null : sort === 'new' ? page[page.length - 1].id : `o:${start + limit}`
       return json(route, { items: page.map(p => summary(p, all)), next_cursor: next })
     }
+    const related = path.match(/^\/v1\/public\/publications\/([^/]+)\/(makes|remixes)$/)
+    if (related) {
+      const field = related[2] === 'makes' ? 'make_of' : 'remix_of'
+      const items = all.filter(p => p[field] === related[1]).map(p => summary(p, all))
+      return json(route, { items: items.slice(0, Number(url.searchParams.get('limit') ?? 12)), next_cursor: null })
+    }
     if (path === '/v1/public/search') {
       if (state.noSearch) return json(route, { error: { code: 'not_found' } }, 404)
       const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
