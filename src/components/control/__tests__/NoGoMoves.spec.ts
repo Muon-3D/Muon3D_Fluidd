@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ControlMixin from '@/mixins/control'
 import { panelStore, waits } from './panel-fixture'
+import { handMoveLock } from '@/services/control/safe-move'
 
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn() }))
 vi.mock('@/api/socketActions', () => ({ SocketActions: socket }))
@@ -30,7 +31,7 @@ const sent = () => socket.printerGcodeScript.mock.calls.map(c => c[0] as string)
 const moves = () => sent().flatMap(s => s.split('\n')).filter(l => l.startsWith('G1'))
 
 describe('hand moves and the bed notch', () => {
-  afterEach(() => { socket.printerGcodeScript.mockClear(); bus.$emit.mockClear() })
+  afterEach(() => { socket.printerGcodeScript.mockClear(); bus.$emit.mockClear(); handMoveLock.target = null; vi.useRealTimers() })
 
   it('lifts to the traverse height before a pad click that crosses the notch low down', () => {
     const s = show([60, 10, 0.4])
@@ -133,6 +134,48 @@ describe('hand moves and the bed notch', () => {
     expect(socket.printerGcodeScript).not.toHaveBeenCalled()
     s.vm.moveBy('Z', 5)
     expect(moves()).toEqual(['G1 Z5 F600'])
+    s.wrapper.destroy()
+  })
+
+  it('shares the wait across components: another tile cannot plan from the stale spot', () => {
+    // Overview's Position and Jog tiles are separate components moving one head.
+    const a = show([150, 60, 1])
+    const b = show([150, 60, 1])
+    a.vm.moveTo({ X: 150, Y: 20 })
+    b.vm.moveTo({ X: 50, Y: 60 })
+    expect(sent()).toHaveLength(1)
+    a.wrapper.destroy(); b.wrapper.destroy()
+  })
+
+  it('clears the wait on the G-code position, even when a mesh moves the real Z', () => {
+    const s = show([150, 60, 1])
+    s.vm.moveTo({ X: 150, Y: 20 })
+    const p = s.store.state.printer.printer
+    // Arrived: G-code exactly at the target; the real Z differs by the mesh slope.
+    p.gcode_move.gcode_position = [150, 20, 1, 0]; p.toolhead.position = [150, 20, 1.04, 0]
+    s.vm.moveTo({ X: 140, Y: 60 })
+    expect(sent()).toHaveLength(2)
+    s.wrapper.destroy()
+  })
+
+  it('stops waiting after 8 s if the printer never reports the target (a refused move)', () => {
+    vi.useFakeTimers()
+    const s = show([150, 60, 1])
+    s.vm.moveTo({ X: 150, Y: 20 })
+    s.vm.moveTo({ X: 140, Y: 60 })
+    expect(sent()).toHaveLength(1)
+    vi.advanceTimersByTime(8001)
+    s.vm.moveTo({ X: 140, Y: 60 })
+    expect(sent()).toHaveLength(2)
+    s.wrapper.destroy()
+  })
+
+  it('converts X/Y offsets: plans where the nozzle really is, sends G-code coordinates', () => {
+    // G92-style X offset: G-code X reads 10 less than the real X.
+    const s = show([60, 10, 1])
+    s.store.state.printer.printer.gcode_move.gcode_position = [50, 10, 1, 0]
+    s.vm.moveTo({ X: 130, Y: 10 }) // G-code 130 is real 140: across the notch
+    expect(moves()).toEqual(['G1 Z6 F600', 'G1 X130 Y10 F7800', 'G1 Z1 F600'])
     s.wrapper.destroy()
   })
 })

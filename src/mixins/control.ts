@@ -26,7 +26,7 @@ import {
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
-import { meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
+import { handMoveSettling, lockHandMove, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
 import { EventBus } from '@/eventBus'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
@@ -280,14 +280,9 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     return d.every(Number.isFinite) ? d as [number, number, number] : null
   }
 
-  /** The last hand move sent near a no-go region, until the printer reports it. */
-  pendingHandMove: { target: number[], until: number } | null = null
-
-  /** A hand move is still on its way: the printer hasn't reported the head at its target. */
-  get handMoveSettling (): boolean {
-    const pending = this.pendingHandMove
-    if (!pending || Date.now() > pending.until) return false
-    return !pending.target.every((v, i) => Math.abs(Number(this.position[i]) - v) < 0.02)
+  /** A hand move is still on its way (shared by every component; read fresh, never cached). */
+  handMoveSettling (): boolean {
+    return handMoveSettling(this.$store.state.printer.printer.gcode_move?.gcode_position)
   }
 
   /**
@@ -316,9 +311,11 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     EventBus.$emit(reason, { type: 'warning' })
   }
 
-  /** Remember a hand move near no-go regions, so the next waits for it to land. */
+  /** On a printer with no-go regions, make the next hand move wait for this one to land. */
   markHandMove (realTo: number[]) {
-    if (this.noGo !== null) this.pendingHandMove = { target: realTo.slice(0, 3), until: Date.now() + 10_000 }
+    const offset = this.gcodeOffset
+    if (this.noGo === null || !offset) return
+    lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000))
   }
 
   /** Send a planned move: lift, across, down, as one absolute script. */
@@ -335,7 +332,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   moveBy (axis: Axis, distance: number) {
     if (!this.controlReady || this.busy || !this.isHomed(axis) || !Number.isFinite(distance)) return
     if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
-    if (this.handMoveSettling) { this.refuseMove('Wait for the head to finish moving.'); return }
+    if (this.handMoveSettling()) { this.refuseMove('Wait for the head to finish moving.'); return }
     const i = 'XYZ'.indexOf(axis)
     const signed = this.inverted(axis) ? -distance : distance
     const target = clampTo(this.position[i] + signed, this.axisMin[i], this.axisMax[i])
@@ -364,7 +361,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
       if (axis === 'Z') rate = Math.min(rate, this.zSpeed)
     }
     if (!parts.length) return
-    if (this.handMoveSettling) { this.refuseMove('Wait for the head to finish moving.'); return }
+    if (this.handMoveSettling()) { this.refuseMove('Wait for the head to finish moving.'); return }
     const offset = this.gcodeOffset ?? [0, 0, 0]
     const realTo = (['X', 'Y', 'Z'] as Axis[]).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
     const plan = this.planHandMove(realTo)
