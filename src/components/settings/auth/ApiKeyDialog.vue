@@ -44,6 +44,7 @@
 
 <script lang="ts">
 import { Component, Vue, VModel } from 'vue-property-decorator'
+import { printerNameParts } from '@/util/printer-name'
 
 @Component({})
 export default class ApiKeyDialog extends Vue {
@@ -55,7 +56,7 @@ export default class ApiKeyDialog extends Vue {
   }
 
   get printerName (): string {
-    return (this.$store.getters['config/getDisplayName'] as string) || 'this printer'
+    return printerNameParts((this.$store.getters['config/getDisplayName'] as string) || '').name || 'this printer'
   }
 
   /**
