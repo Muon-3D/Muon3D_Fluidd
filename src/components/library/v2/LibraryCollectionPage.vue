@@ -235,7 +235,7 @@
         :tabindex="sort === 'order' ? 0 : -1"
         :aria-label="sort === 'order' ? `${card.title}, ${i + 1} of ${shown.length}` : undefined"
         :data-tid="`library-collection-cell-${i}`"
-        @dragstart="dragging = card.key"
+        @dragstart="dragStart($event, card.key)"
         @dragover.prevent="over = card.key"
         @dragleave="over = over === card.key ? '' : over"
         @drop.prevent="drop(card.key)"
@@ -248,7 +248,7 @@
           :printer-name="printerName"
           :busy="printing === card.key"
           @print="$emit('print', $event)"
-          @open="$emit('open', $event)"
+          @open="$emit('open', $event, collection ? { id: collection.id, name: collection.name } : null)"
         />
       </div>
     </div>
@@ -325,10 +325,20 @@ export default class LibraryCollectionPage extends Vue {
   dragging = ''
   over = ''
   private reads = 0
+  /** Reorders go one at a time, in the order they were made. */
+  private sending: Promise<void> = Promise.resolve()
+  /** How many reorders are still to answer: a reload must not put back an order you just changed. */
+  private unsent = 0
 
   @Watch('collectionId', { immediate: true })
   onCollection () {
     this.collection = null
+    // Another collection: nothing open from the last one (a Delete check, Rename, the menu, a note).
+    this.confirming = false
+    this.renaming = false
+    this.menu = false
+    this.note = ''
+    this.sort = 'order'
     this.load()
   }
 
@@ -344,7 +354,8 @@ export default class LibraryCollectionPage extends Vue {
       ])
       if (read !== this.reads) return
       this.collection = detail
-      this.order = this.all.map(card => card.key)
+      // While a reorder is still being sent, the order you made stands; the last one reads again.
+      if (!this.unsent) this.order = this.all.map(card => card.key)
       if (saved) this.savedAt = Object.fromEntries((saved.saves ?? []).map((s: CommunitySave) => [s.id, s.created_at]))
       this.readPictures()
     } catch (error) {
@@ -419,15 +430,18 @@ export default class LibraryCollectionPage extends Vue {
 
   private async patch (patch: { name?: string, visibility?: 'private' | 'public' }): Promise<boolean> {
     if (!this.collection || this.saving) return false
+    const id = this.collection.id
     this.saving = true
     this.note = ''
     try {
-      const updated = await libraryClient().updateCollection(this.collection.id, patch)
-      this.collection = { ...this.collection, ...updated, items: this.collection.items }
+      const updated = await libraryClient().updateCollection(id, patch)
       this.$emit('changed')
+      // Moved on to another collection meanwhile: this answer is not about the one shown.
+      if (!this.collection || this.collection.id !== id) return false
+      this.collection = { ...this.collection, ...updated, id, items: this.collection.items }
       return true
     } catch (error) {
-      this.note = describeLibraryError(error)
+      if (this.collection?.id === id) this.note = describeLibraryError(error)
       return false
     } finally {
       this.saving = false
@@ -441,13 +455,21 @@ export default class LibraryCollectionPage extends Vue {
     try {
       await libraryClient().deleteCollection(this.collection.id)
       this.$emit('changed')
-      this.$emit('back')
+      // Gone: the host replaces this page in history, so Back does not return to it.
+      this.$emit('deleted')
     } catch (error) {
       this.note = describeLibraryError(error)
       this.confirming = false
     } finally {
       this.saving = false
     }
+  }
+
+  dragStart (event: DragEvent, key: string) {
+    this.dragging = key
+    // Some browsers start a drag only with data set.
+    event.dataTransfer?.setData('text/plain', key)
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
   }
 
   drop (target: string) {
@@ -459,26 +481,37 @@ export default class LibraryCollectionPage extends Vue {
 
   async move (key: string, step: number) {
     if (this.sort !== 'order') return
-    const next = moved(this.order, key, step)
-    await this.reorder(next)
-    // Keep the moved print focused, so the arrows can move it again.
+    await this.reorder(moved(this.order, key, step))
+    // Keep the moved print focused where it now is (after a refusal, where the service put it).
     await this.$nextTick()
-    const index = next.indexOf(key)
+    const index = this.shown.findIndex(card => card.key === key)
     ;(this.$el.querySelector(`[data-tid="library-collection-cell-${index}"]`) as HTMLElement | null)?.focus()
   }
 
-  /** Your order: shown at once, sent to the service, put back if it says no. */
-  async reorder (next: string[]) {
-    if (!this.collection || next === this.order || next.join() === this.order.join()) return
-    const before = this.order
+  /**
+   * Your order: shown at once, then sent, one reorder after another so the
+   * service ends on the last one you made. If it says no, the order is read
+   * again from the service (what it holds), and the note says why.
+   */
+  reorder (next: string[]): Promise<void> {
+    if (!this.collection || next.join() === this.order.join()) return Promise.resolve()
+    const id = this.collection.id
     this.order = next
     this.note = ''
-    try {
-      await libraryClient().reorderCollection(this.collection.id, next.map(key => saveIdOf({ key })))
-    } catch (error) {
-      this.order = before
-      this.note = describeLibraryError(error)
+    this.unsent++
+    const send = async () => {
+      try {
+        await libraryClient().reorderCollection(id, next.map(key => saveIdOf({ key })))
+      } catch (error) {
+        if (this.collection?.id === id) this.note = describeLibraryError(error)
+        this.unsent--
+        await this.load()
+        return
+      }
+      this.unsent--
     }
+    this.sending = this.sending.then(send)
+    return this.sending
   }
 }
 </script>

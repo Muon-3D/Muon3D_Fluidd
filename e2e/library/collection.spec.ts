@@ -127,3 +127,21 @@ test('an empty collection says how to fill it, and one that could not be read sa
   await page.getByTestId('library-collection-error').getByRole('button', { name: 'Try again' }).click()
   await expect(page.getByTestId('library-collection-empty')).toBeVisible()
 })
+
+test('a collection in a Discover address is ignored: Discover shows', async ({ page, models, open }) => {
+  stock(models)
+  await open('/library?view=discover&collection=col-1')
+  await expect(page.getByTestId('library-shelf-popular')).toBeVisible()
+  await expect(page.getByTestId('library-collection-page')).toHaveCount(0)
+})
+
+test('a reorder the service refuses shows the order it holds, and says why', async ({ page, models, open }) => {
+  stock(models)
+  await openWorkshop(page, open)
+  models.failOn = request => request.startsWith('POST /v1/community/collections/col-1/reorder') ? 400 : null
+  await page.getByTestId('library-collection-cell-0').focus()
+  await page.keyboard.press('Alt+ArrowRight')
+  await expect(page.getByTestId('library-collection-note')).toBeVisible()
+  await expect(titles(page)).toHaveText(['Print 1', 'Print 2', 'Print 3'])
+  expect(models.collections[0].items).toEqual(['save-1', 'save-2', 'save-3'])
+})

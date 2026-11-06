@@ -21,6 +21,7 @@
       @grid-back="gridBack"
       @update:collection="openCollection"
       @collection-back="gridBack"
+      @collection-deleted="collectionDeleted"
       @open-search="openSearch"
       @print="onLibraryPrint"
       @print-item="printOn($event, activePrinter ? activePrinter.id : null)"
@@ -217,6 +218,18 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     return this.view === 'mine' && typeof id === 'string' && id ? id : null
   }
 
+  /** Deleted on its page: Yours replaces it in history, so Back cannot return to it. */
+  collectionDeleted () {
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view: 'mine' }
+    delete query.collection
+    if (this.gridOpenedHere) {
+      this.gridOpenedHere = false
+      this.$router.back()
+      return
+    }
+    this.$router.replace({ query }).catch(() => {})
+  }
+
   /** A collection tile: its page, pushed so Back returns to Yours. */
   openCollection (id: string) {
     const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view: 'mine', collection: id }
@@ -272,7 +285,7 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   /** Discover or Yours, kept in the address so Back and a shared link land on it. */
   setView (tab: LibraryTab) {
     const view = tab === 'yours' ? 'mine' : 'discover'
-    if (view === this.view && !this.grid) return
+    if (view === this.view && !this.grid && !this.collection) return
     // A place starts at its top: no See all or search left in the address.
     const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view }
     delete query.shelf
