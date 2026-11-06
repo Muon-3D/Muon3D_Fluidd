@@ -60,7 +60,7 @@
     </header>
 
     <div
-      v-if="busy && !count"
+      v-if="(busy || waiting) && !count"
       class="mgrid__grid"
       role="status"
     >
@@ -139,9 +139,12 @@ import LibraryModelCard from './LibraryModelCard.vue'
 import LibraryOwnCard from './LibraryOwnCard.vue'
 import LibraryState from './LibraryState.vue'
 import { describeLibraryError, type CommunitySave } from '@/services/library/api'
-import { libraryClient, libraryItems } from '@/services/library/store'
-import { cardMatches, saveCard, type ShelfCard } from '@/services/library/shelves'
-import { findOwn, loadOwnShelf, OWN_SHELVES, type OwnCard, type OwnShelfId, type OwnSort } from '@/services/library/yours'
+import { libraryClient, libraryItems, libraryState } from '@/services/library/store'
+import { cardMatches, publicationPicture, saveCard, type ShelfCard } from '@/services/library/shelves'
+import { findOwn, itemShelf, loadOwnShelf, OWN_SHELVES, type OwnCard, type OwnShelfId, type OwnSort } from '@/services/library/yours'
+
+/** How many saved public prints have their picture read (the service sends none for them). */
+const PICTURES = 48
 
 export type YoursGridSource = OwnShelfId | 'saved'
 
@@ -157,8 +160,11 @@ export default class LibraryYoursGrid extends Vue {
   @Prop({ type: String, default: null }) readonly printerName!: string | null
   @Prop({ type: String, default: '' }) readonly printing!: string
 
-  own: OwnCard[] = []
+  /** Printed or Shared by you, as read; Sliced and Designs come from the synced Library. */
+  read: OwnCard[] = []
   saved: ShelfCard[] = []
+  /** Pictures of saved public prints, by publication id. */
+  pictures: Record<string, string | null> = {}
   busy = false
   error = ''
   query = ''
@@ -176,17 +182,18 @@ export default class LibraryYoursGrid extends Vue {
     const read = ++this.reads
     this.busy = true
     this.error = ''
-    this.own = []
+    this.read = []
     this.saved = []
     try {
       if (this.source === 'saved') {
         const page = await libraryClient().saved()
         if (read !== this.reads) return
         this.saved = (Array.isArray(page.saves) ? page.saves : [] as CommunitySave[]).map(saveCard).filter((c): c is ShelfCard => !!c)
-      } else {
-        const cards = await loadOwnShelf(this.source, libraryClient(), libraryItems())
+        this.readPictures()
+      } else if (this.source === 'printed' || this.source === 'shared') {
+        const cards = await loadOwnShelf(this.source, libraryClient(), libraryItems(), true)
         if (read !== this.reads) return
-        this.own = cards
+        this.read = cards
       }
     } catch (error) {
       if (read === this.reads) this.error = describeLibraryError(error)
@@ -195,14 +202,35 @@ export default class LibraryYoursGrid extends Vue {
     }
   }
 
-  /** Your prints arrived (or changed): a share can now show the print it is. */
-  get itemCount (): number {
-    return libraryItems().length
+  /** The Library synced something new: Printed and Shared by you read again (Sliced and Designs follow by themselves). */
+  get syncRev (): number {
+    return libraryState.rev
   }
 
-  @Watch('itemCount')
-  onItems () {
-    if (this.source === 'shared') this.load()
+  @Watch('syncRev')
+  onSync () {
+    if (this.source === 'printed' || this.source === 'shared') this.load()
+  }
+
+  /** The service sends no picture for a saved public print: its own page has them. */
+  async readPictures () {
+    const wanted = this.saved.filter(card => card.kind === 'publication' && !card.picture && !(card.id in this.pictures))
+      .map(card => card.id)
+      .slice(0, PICTURES)
+    for (const id of wanted) this.$set(this.pictures, id, null)
+    await Promise.all(wanted.map(async id => {
+      this.$set(this.pictures, id, await publicationPicture(id).catch(() => null))
+    }))
+  }
+
+  /** Sliced and Designs before the Library's first sync: still reading, not empty. */
+  get waiting (): boolean {
+    return (this.source === 'sliced' || this.source === 'designs') && !libraryState.synced
+  }
+
+  get own (): OwnCard[] {
+    if (this.source === 'sliced' || this.source === 'designs') return itemShelf(this.source, libraryItems())
+    return this.read
   }
 
   get title (): string {
@@ -220,7 +248,8 @@ export default class LibraryYoursGrid extends Vue {
   /** Saved keeps the order you saved in (newest first); Name sorts it. */
   get shownSaved (): ShelfCard[] {
     const q = this.query.trim()
-    const found = q ? this.saved.filter(card => cardMatches(card, q)) : this.saved
+    const withPictures = this.saved.map(card => card.picture || !this.pictures[card.id] ? card : { ...card, picture: this.pictures[card.id] })
+    const found = q ? withPictures.filter(card => cardMatches(card, q)) : withPictures
     return this.sort === 'name' ? [...found].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })) : found
   }
 
@@ -229,7 +258,7 @@ export default class LibraryYoursGrid extends Vue {
   }
 
   get countLine (): string {
-    if (this.busy && !this.count) return ''
+    if ((this.busy || this.waiting) && !this.count) return ''
     const n = this.query.trim() ? this.shownCount : this.count
     return `${n} ${n === 1 ? 'print' : 'prints'}${this.query.trim() ? ` match “${this.query.trim()}”` : ''}`
   }

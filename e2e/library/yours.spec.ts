@@ -42,8 +42,8 @@ test.describe('signed in', () => {
     await expect(shelf(page, 'shared')).not.toContainText('Link only')
     // A published print is printed as the item it shares, once your prints have synced.
     await expect(shelf(page, 'shared').getByRole('button', { name: 'Print on Boxwood: Hex planter' })).toBeVisible()
-    await expect(page.locator('[data-tid^="library-section-"]')).toHaveCount(0)
-    await expect(page.locator('[data-tid^="library-chip-"]')).toHaveCount(0)
+    // No section tab row: the only tabs are the Discover/Yours switch (the old row added All, Printed, Sliced, Saved).
+    await expect(page.getByRole('tab')).toHaveText(['Discover', 'Yours'])
   })
 
   test('each card does what its button says: Print on Boxwood, Print again, Slice, and its picture opens its page', async ({ page, models, open }) => {
@@ -103,11 +103,13 @@ test.describe('signed in', () => {
     await expect(page).not.toHaveURL(/shelf=/)
   })
 
-  test('an empty Library says what to do on Sliced, and Open Slice goes there', async ({ page, open }) => {
+  test('an empty Library says what to do on Sliced, and Open Slice goes there', async ({ page, models, open }) => {
     await open('/library?view=mine')
     await expect(page.getByTestId('library-shelf-sliced-empty')).toContainText('Slice something')
     await expect(page.getByTestId('library-shelf-printed-empty')).toBeVisible()
     await expect(page.getByTestId('library-shelf-saved-empty')).toBeVisible()
+    // Shared by you hides once its read has answered with nothing, not merely before it answers.
+    await expect.poll(() => models.seen.some(r => r.startsWith('GET /v1/community/shares'))).toBe(true)
     await expect(shelf(page, 'shared')).toHaveCount(0)
     await expect(shelf(page, 'designs')).toHaveCount(0)
     await expect(page.getByTestId('library-continue')).toHaveCount(0)
@@ -125,6 +127,22 @@ test.describe('signed in', () => {
     down = false
     await page.getByTestId('library-shelf-printed-error').getByRole('button', { name: 'Retry' }).click()
     await expect(shelf(page, 'printed')).toContainText('Desk bracket')
+  })
+})
+
+test.describe('signed in, Library off', () => {
+  test.use({ signedIn: true })
+
+  test('Saved and Collections stay; your own shelves and their See all wait for the Library', async ({ page, models, open }) => {
+    models.libraryOff = true
+    models.saves.push({ id: 'save-1', target: models.publications[0].id })
+    await open('/library?view=mine')
+    await expect(page.getByTestId('library-saved')).toContainText('Print 1')
+    await expect(page.getByTestId('library-collections')).toBeVisible()
+    await expect(shelf(page, 'sliced')).toHaveCount(0)
+    await open('/library?view=mine&shelf=sliced')
+    await expect(page.getByTestId('library-grid-sliced')).toHaveCount(0)
+    await expect(page.getByTestId('library-saved')).toBeVisible()
   })
 })
 

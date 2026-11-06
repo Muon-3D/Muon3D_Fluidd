@@ -116,6 +116,8 @@ export interface ModelServiceState {
   items: FakeItem[];
   runs: FakeRun[];
   shares: FakeShare[];
+  /** Your Library turned off (consented before, withdrawn), so Control does not turn it on for you. */
+  libraryOff: boolean;
   /** Answer every request with this status (outage tests), or null. */
   failWith: number | null;
   /** Answer matching requests with a status instead ("GET /v1/public/discover"): one shelf down. */
@@ -136,6 +138,7 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     items: [],
     runs: [],
     shares: [],
+    libraryOff: false,
     failWith: null,
     failOn: () => null,
     delayMs: 0,
@@ -253,7 +256,10 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       if (!p || share[2] !== `${p.id}-g`) return json(route, { error: { code: 'not_found' } }, 404)
       return route.fulfill({ status: 200, contentType: 'application/octet-stream', headers: { 'access-control-allow-origin': '*' }, body: GCODE_STORED })
     }
-    if (path === '/v1/library') return json(route, { enabled: true, account: { promise_version: '2026-10-01' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
+    if (path === '/v1/library') {
+      if (state.libraryOff) return json(route, { enabled: false, account: { promise_version: '2026-10-01', consented_at: '2026-10-02T00:00:00Z' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
+      return json(route, { enabled: true, account: { promise_version: '2026-10-01' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
+    }
     if (path === '/v1/items') {
       const origin = url.searchParams.get('origin')
       const items = state.items.filter(i => !origin || i.origin === origin).map(itemJson)
@@ -283,7 +289,7 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       return json(route, { runs, cursor: null })
     }
     if (path === '/v1/community/shares' && method === 'GET') {
-      return json(route, { shares: state.shares.map(sh => ({ id: sh.id, item: sh.item, title: sh.title, version: 1, audience: sh.audience, state: 'active', expires_at: null })) })
+      return json(route, { shares: state.shares.map(sh => ({ id: sh.id, item: sh.item, title: sh.title, version: 1, audience: sh.audience, state: 'approved', expires_at: '2099-01-01T00:00:00Z' })) })
     }
     if (path === '/v1/community/saves' && method === 'GET') {
       return json(route, { saves: state.saves.map(s => saveJson(s, all)), next_cursor: null })

@@ -24,7 +24,7 @@
 
     <!-- See all for a Yours shelf: one grid with search and sort. -->
     <library-yours-grid
-      v-else-if="tab === 'yours' && yoursGrid && signedIn"
+      v-else-if="tab === 'yours' && yoursGrid && signedIn && (ownReady || yoursGrid === 'saved')"
       :source="yoursGrid"
       :printer-name="printerName"
       :printing="printing"
@@ -321,8 +321,9 @@
       <template v-else>
         <slot name="yours" />
         <library-yours-shelves
-          v-if="signedIn && ownReady"
+          v-if="signedIn"
           ref="yours"
+          :own="ownReady"
           :printer-name="printerName"
           :printing="printing"
           :collections="collections"
