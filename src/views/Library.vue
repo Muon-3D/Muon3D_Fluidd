@@ -67,7 +67,7 @@
 
           <!-- It didn't answer before anything was read: the whole of Yours says so, with Try again. -->
           <library-state
-            v-if="signedIn && state.error && !state.synced"
+            v-if="signedIn && state.error && !state.synced && !deleting"
             kind="error"
             icon="alert"
             title="Your Library didn't answer"
@@ -79,7 +79,7 @@
           />
           <!-- It stopped answering later: what is shown stays, with Retry above it. -->
           <library-state
-            v-else-if="signedIn && state.error"
+            v-else-if="signedIn && state.error && !deleting"
             kind="callout"
             :title="`Your Library didn't answer: ${state.error}`"
             action="Retry"
@@ -96,18 +96,18 @@
             :action="promise ? 'Keep my Library' : ''"
             primary
             tid="library-off"
-            @action="turnOn"
+            @action="turnOnOnce"
           />
           <!-- Off for another reason (turning it on for you failed, or this Control can't show the promise). -->
           <library-state
             v-else-if="state.checked && !state.enabled && !consentDue"
             icon="library"
-            :title="promise ? 'Your Library isn\'t on yet' : 'Update Control to use your Library'"
-            :text="promise ? 'It turns on for you when you sign in, and this time it didn\'t. Turn it on to keep what you slice and print.' : 'Your Library has a promise this version of Control cannot show.'"
+            :title="offTitle"
+            :text="offText"
             :action="promise ? 'Turn it on' : ''"
             primary
             tid="library-off"
-            @action="turnOn"
+            @action="turnOnOnce"
           />
 
           <!-- Being read, or being turned on for you (KAN-735): skeletons in the final layout, not a line of text. -->
@@ -135,7 +135,7 @@
 
     <!-- On Yours an action's error is a callout in the page (above); elsewhere it shows here. -->
     <p
-      v-if="error && view !== 'mine'"
+      v-if="error && !errorOnYours"
       class="library__note library__note--error"
       role="alert"
     >
@@ -252,6 +252,35 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
       return
     }
     this.$router.replace({ query: { view: 'mine' } }).catch(() => {})
+  }
+
+  /** The Library is being deleted: that is what Yours says, whatever else did not answer. */
+  get deleting (): boolean {
+    return libraryState.checked && !libraryState.enabled && !!this.purgeDay
+  }
+
+  /** Yours' home shows an action's error itself (a callout); every other page shows it at the foot. */
+  get errorOnYours (): boolean {
+    return this.view === 'mine' && !this.grid && !this.collection && !this.printId && this.shareId === null
+  }
+
+  /** Why the Library is off, said as it is: turned off on purpose, or turning it on for you failed. */
+  get offTitle (): string {
+    if (!this.promise) return 'Update Control to use your Library'
+    return libraryState.withdrawn ? 'Your Library is off' : 'Your Library isn\'t on yet'
+  }
+
+  get offText (): string {
+    if (!this.promise) return 'Your Library has a promise this version of Control cannot show.'
+    return libraryState.withdrawn
+      ? 'Turn it on to keep what you slice and print, in your account and on every printer.'
+      : 'It turns on for you when you sign in, and this time it didn\'t. Turn it on to keep what you slice and print.'
+  }
+
+  /** Keep my Library / Turn it on: a second click while the first is working does nothing. */
+  turnOnOnce () {
+    if (this.busy) return
+    return this.turnOn()
   }
 
   /** A print's own page (`?print=<id>`), on Discover or Yours. */
