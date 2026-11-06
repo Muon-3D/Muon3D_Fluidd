@@ -68,6 +68,8 @@ export interface Remembered {
   startedAt?: number | null;
   /** When Fluidd last (re)connected to the printer, ms: the printer's first answers after an outage are not yet to be believed. */
   reconnectedAt?: number | null;
+  /** The job id the printer's install record held when Install was pressed (an earlier install's, if any): a different one is this install's. */
+  startedJobId?: string | null;
 }
 
 /** When the printer doesn't say how long a restart may take: 20 minutes (one slow boot took 15). */
@@ -172,11 +174,26 @@ export function bannerVisible (r: Remembered | null, now: number, answered: bool
   return !!r && answered && ACTIVE_PHASES.includes(r.phase) && !expired(r, now)
 }
 
-/** A terminal session that began before the person pressed Install belongs to an earlier job. */
+/** How far the printer's clock may be behind Fluidd's before a job that began "before the press" is believed to be an earlier one. */
+export const CLOCK_SKEW_MS = 60 * 1000
+
+/** A terminal session that began before the person pressed Install (beyond clock skew) belongs to an earlier job. */
 function beforePress (prev: Remembered, s: UpdateSession): boolean {
   if (!prev.startedAt || !s.started_at) return false
   const at = Date.parse(s.started_at)
-  return Number.isFinite(at) && at < prev.startedAt
+  return Number.isFinite(at) && at < prev.startedAt - CLOCK_SKEW_MS
+}
+
+/**
+ * Whether a terminal session is this install's. Once its job id is known it must match. Before
+ * that, a job id different from the one the printer held at the press is ours (so a fast failure
+ * is not lost to clock skew); else it is ours unless it began before the press, with a minute's
+ * tolerance for the printer's clock.
+ */
+function isOurs (prev: Remembered, s: UpdateSession): boolean {
+  if (prev.jobId) return !s.job_id || prev.jobId === s.job_id
+  if (s.job_id && prev.startedJobId) return s.job_id !== prev.startedJobId
+  return !beforePress(prev, s)
 }
 
 /**
@@ -203,7 +220,8 @@ export function remember (prev: Remembered | null, status: AuxUpdateStatus | nul
       lostAt: null,
       budgetMs: s.offline_budget_seconds ? s.offline_budget_seconds * 1000 : prev?.budgetMs ?? DEFAULT_BUDGET_MS,
       startedAt: prev?.startedAt ?? null,
-      reconnectedAt: prev?.reconnectedAt ?? null
+      reconnectedAt: prev?.reconnectedAt ?? null,
+      startedJobId: prev?.startedJobId ?? null
     }
   }
   const terminal = s && s.phase && s.phase !== 'idle' ? s : null
@@ -214,8 +232,7 @@ export function remember (prev: Remembered | null, status: AuxUpdateStatus | nul
     return s && s.phase === 'idle' ? null : prev
   }
   if (!status) return prev
-  const sameJob = !prev.jobId || !terminal?.job_id || prev.jobId === terminal.job_id
-  if (terminal && sameJob && !beforePress(prev, terminal)) {
+  if (terminal && isOurs(prev, terminal)) {
     return { ...prev, jobId: prev.jobId ?? terminal.job_id ?? null, phase: terminal.phase as SessionPhase, seenAt: now, lostAt: null }
   }
   // Nothing (usable) said about this install: its versions first, then the grace, then drop.
@@ -249,9 +266,8 @@ export function outcome (r: Remembered | null, status: AuxUpdateStatus | null): 
   if (!status) return null
   const s = sessionOf(status)
   if (s && s.phase && TERMINAL_PHASES.includes(s.phase)) {
-    const sameJob = !!s.job_id && !!r.jobId && s.job_id === r.jobId
-    const afterPress = !!r.startedAt && !!s.started_at && Date.parse(s.started_at) >= r.startedAt
-    if (sameJob || afterPress) return s.phase as 'updated' | 'rolled_back' | 'failed'
+    const known = !!r.jobId || !!r.startedAt
+    if (known && isOurs(r, s)) return s.phase as 'updated' | 'rolled_back' | 'failed'
   }
   // The printer says it is installing, restarting or committing now: not over.
   if (s?.phase && ACTIVE_PHASES.includes(s.phase)) return null
