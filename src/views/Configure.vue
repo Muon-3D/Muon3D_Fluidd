@@ -5,8 +5,8 @@
     data-tid="files-page"
   >
     <section
+      v-if="!isMobileViewport || view.pane === 'config'"
       class="files-tile"
-      :class="{ 'files-tile--hidden': isMobileViewport && view.pane !== 'config' }"
       data-tid="files-config"
     >
       <header class="files-tile__head">
@@ -21,13 +21,13 @@
       </header>
       <file-system
         ref="configFs"
-        :key="configRoots.join('|')"
         :roots="configRoots"
         :active-root="configActive"
         name="configure"
         tile
         bulk-actions
         class="files-tile__fs"
+        @dirty="configDirty = $event"
       />
       <footer class="files-tile__foot">
         <router-link
@@ -41,8 +41,8 @@
     </section>
 
     <section
+      v-if="!isMobileViewport || view.pane === 'other'"
       class="files-tile"
-      :class="{ 'files-tile--hidden': isMobileViewport && view.pane !== 'other' }"
       data-tid="files-other"
     >
       <header class="files-tile__head">
@@ -57,15 +57,18 @@
       </header>
       <file-system
         ref="otherFs"
-        :key="otherRoots.join('|')"
         :roots="otherRoots"
         :active-root="otherActive"
         name="configure"
         tile
         bulk-actions
         class="files-tile__fs"
+        @dirty="otherDirty = $event"
       />
-      <footer class="files-tile__foot">
+      <footer
+        v-if="otherRoots.length"
+        class="files-tile__foot"
+      >
         Logs, docs and examples are read only: no New or Upload
       </footer>
     </section>
@@ -74,6 +77,7 @@
 
 <script lang="ts">
 import { Component, Mixins, Watch } from 'vue-property-decorator'
+import type { NavigationGuardNext, Route } from 'vue-router'
 import OverviewMixin from '@/mixins/overview'
 import BrowserMixin from '@/mixins/browser'
 import FileSystem from '@/components/widgets/filesystem/FileSystem.vue'
@@ -97,6 +101,13 @@ export default class Configure extends Mixins(OverviewMixin, BrowserMixin) {
   view = filesView
   configRoot = ''
   otherRoot = ''
+  configDirty = false
+  otherDirty = false
+
+  /** An edit in the editor sheet that isn't saved. */
+  get dirty (): boolean {
+    return this.configDirty || this.otherDirty
+  }
 
   get configRoots (): string[] {
     return orderRoots(['calibration', 'defaults', ...(this.devMode ? ['config'] : [])])
@@ -144,6 +155,7 @@ export default class Configure extends Mixins(OverviewMixin, BrowserMixin) {
     else this.otherRoot = root
     this.view.pane = inConfig ? 'config' : 'other'
     await this.$nextTick()
+    await this.$nextTick()
     const fs = (inConfig ? this.$refs.configFs : this.$refs.otherFs) as FileSystem | undefined
     await fs?.openPath(root, dir, name, Number(this.$route.query.line) || 0)
   }
@@ -151,6 +163,18 @@ export default class Configure extends Mixins(OverviewMixin, BrowserMixin) {
   async mounted () {
     await refreshDevMode()
     await this.onOpenQuery()
+  }
+
+  // Leaving the page with edits that aren't saved asks first, whatever the setting for the editor's X.
+  async beforeRouteLeave (_to: Route, _from: Route, next: NavigationGuardNext) {
+    if (!this.dirty) return next()
+    const leave = await this.$confirm("Your changes to it aren't saved. If you go on, they're lost.", {
+      title: 'Drop your unsaved changes?',
+      buttonTrueText: 'Drop changes',
+      buttonFalseText: 'Keep editing',
+      danger: true
+    })
+    next(leave ? undefined : false)
   }
 }
 </script>

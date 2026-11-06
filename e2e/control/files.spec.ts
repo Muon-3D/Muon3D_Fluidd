@@ -14,7 +14,7 @@ const file = (filename: string, size = 2048) => ({ filename, modified: NOW - 360
 const dir = (dirname: string) => ({ dirname, modified: NOW - 86400, size: 0, permissions: 'rw' })
 
 const LISTINGS: Record<string, { dirs: unknown[], files: unknown[] }> = {
-  calibration: { dirs: [dir('backups')], files: [file('printer.cfg', 12_400), file('macros.cfg', 6100), file('probe.cfg')] },
+  calibration: { dirs: [dir('backups')], files: [file('printer.cfg', 12_400), file('macros.cfg', 6100), file('probe.cfg'), file('big.cfg', 3_000_000)] },
   defaults: { dirs: [], files: [file('m1.cfg')] },
   config: { dirs: [], files: [file('moonraker.conf')] },
   logs: { dirs: [], files: [file('klippy.log', 4_200_000), file('moonraker.log', 1_800_000)] },
@@ -164,22 +164,6 @@ test('a file opens in the editor sheet with its contents, and closes', async ({ 
   await expect(config(page)).toBeVisible()
 })
 
-test('Save sends the file back to the printer', async ({ page, open }) => {
-  await files(page)
-  let upload = ''
-  await page.route('**/server/files/upload', route => {
-    upload = route.request().postData() ?? ''
-    return route.fulfill({ json: { item: { path: 'printer.cfg', root: 'calibration' }, action: 'create_file' } })
-  })
-  await open('/configure')
-  await config(page).getByText('printer.cfg').click()
-  await editorOpen(page)
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect.poll(() => upload).toContain('printer.cfg')
-  expect(upload).toContain('mesh_min')
-  expect(upload).toContain('calibration')
-})
-
 test('defaults are read only: no Save in the editor', async ({ page, open }) => {
   await files(page)
   await open('/configure')
@@ -220,4 +204,224 @@ test('Clear drops the selection and the bar', async ({ page, open }) => {
   await tile.getByRole('row', { name: /macros\.cfg/ }).locator('.v-simple-checkbox').click()
   await tile.getByTestId('files-clear-selection').click()
   await expect(tile.getByTestId('files-bulk')).toHaveCount(0)
+})
+
+/** Types at the end of the file in whichever editor is open (Monaco on a desktop, a text box on a phone). */
+async function typeAtEnd (page: Page, text: string) {
+  await page.locator('.monaco-editor, textarea').first().click()
+  await page.keyboard.press('Control+End')
+  await page.keyboard.type(text)
+}
+
+/** Catches uploads: the page's POST goes here, and the body is kept. */
+function uploads (page: Page, answer = true) {
+  const seen: string[] = []
+  void page.route('**/server/files/upload', route => {
+    seen.push(route.request().postData() ?? '')
+    if (!answer) return
+    return route.fulfill({ json: { item: { path: 'printer.cfg', root: 'calibration' }, action: 'create_file' } })
+  })
+  return seen
+}
+
+test('Save sends what was typed, and the editor says how many lines are unsaved', async ({ page, open }) => {
+  await files(page)
+  const seen = uploads(page)
+  await open('/configure')
+  await config(page).getByText('printer.cfg').click()
+  await editorOpen(page)
+  await typeAtEnd(page, 'mesh_max: 190, 170')
+  await expect(page.getByTestId('files-unsaved')).toContainText('unsaved')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => seen.length).toBe(1)
+  expect(seen[0]).toContain('mesh_max: 190, 170')
+  expect(seen[0]).toContain('mesh_min: 10, 7')
+  await expect(page.getByTestId('files-unsaved')).toHaveCount(0)
+})
+
+test('Undo changes puts the saved text back', async ({ page, open }) => {
+  await files(page)
+  uploads(page)
+  await open('/configure')
+  await config(page).getByText('printer.cfg').click()
+  await editorOpen(page)
+  await typeAtEnd(page, 'zzz_added')
+  await expect(page.getByTestId('files-unsaved')).toBeVisible()
+  await page.getByTestId('files-undo').click()
+  await expect(page.getByTestId('files-unsaved')).toHaveCount(0)
+  await expect(page.getByText('zzz_added')).toHaveCount(0)
+})
+
+test('an emptied file is saved empty', async ({ page, open }) => {
+  await files(page)
+  const seen = uploads(page)
+  await open('/configure')
+  await config(page).getByText('printer.cfg').click()
+  await editorOpen(page)
+  await page.locator('.monaco-editor, textarea').first().click()
+  await page.keyboard.press('Control+A')
+  await page.keyboard.press('Delete')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => seen.length).toBe(1)
+  expect(seen[0]).toContain('filename="printer.cfg"')
+  expect(seen[0]).not.toContain('mesh_min')
+})
+
+test('Save and restart saves, then restarts Klipper', async ({ page, open }) => {
+  const printer = await files(page)
+  const seen = uploads(page)
+  await open('/configure')
+  await config(page).getByText('printer.cfg').click()
+  await editorOpen(page)
+  await typeAtEnd(page, 'x: 1')
+  await page.getByRole('button', { name: 'Save & Restart', exact: true }).click()
+  await expect.poll(() => seen.length).toBe(1)
+  await expect.poll(() => printer.called('printer.firmware_restart').length).toBe(1)
+  await expect(page.getByTestId('files-editor-title')).toHaveCount(0)
+})
+
+test('while printing there is no restart, and the editor says why', async ({ page, open }) => {
+  const printer = await files(page)
+  printer.state.status = { ...PRESETS.idleHomed(), idle_timeout: { state: 'Printing' }, print_stats: { state: 'printing', filename: 'part.gcode', message: '' }, virtual_sdcard: { is_active: true, progress: 0.4, file_path: 'part.gcode' } }
+  await open('/configure')
+  await config(page).getByText('printer.cfg').click()
+  await editorOpen(page)
+  await expect(page.getByTestId('files-restart-note')).toContainText('Restarting Klipper stops a print. Boxwood is printing')
+  await expect(page.getByRole('button', { name: 'Save & Restart', exact: true })).toHaveCount(0)
+  expect(printer.called('printer.firmware_restart')).toEqual([])
+})
+
+test('the X closes the sheet while a save is still in flight', async ({ page, open }) => {
+  await files(page)
+  const seen = uploads(page, false)
+  await open('/configure')
+  await config(page).getByText('printer.cfg').click()
+  await editorOpen(page)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => seen.length).toBe(1)
+  await page.getByTestId('files-close').click()
+  await expect(page.getByTestId('files-editor-title')).toHaveCount(0)
+})
+
+test('the X asks before dropping unsaved edits; keeping them stays, dropping closes', async ({ page, open }) => {
+  await files(page)
+  await open('/configure')
+  await config(page).getByText('printer.cfg').click()
+  await editorOpen(page)
+  await typeAtEnd(page, 'x: 1')
+  await page.getByTestId('files-close').click()
+  await page.getByTestId('confirm-cancel').last().click()
+  await expect(page.getByTestId('files-editor-title')).toBeVisible()
+  await page.getByTestId('files-close').click()
+  await page.getByTestId('confirm-ok').last().click()
+  await expect(page.getByTestId('files-editor-title')).toHaveCount(0)
+})
+
+test('browser Back with unsaved edits asks first; keep editing stays, dropping leaves', async ({ page, open }) => {
+  await files(page)
+  await open('/')
+  await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Files/ }).click()
+  await expect(page.getByTestId('files-page')).toBeVisible()
+  await config(page).getByText('printer.cfg').click()
+  await editorOpen(page)
+  await typeAtEnd(page, 'x: 1')
+  await page.goBack()
+  await expect(page.getByText('Drop your unsaved changes?')).toBeVisible()
+  await page.getByTestId('confirm-cancel').last().click()
+  await expect(page.getByTestId('files-editor-title')).toBeVisible()
+  await expect(page).toHaveURL(/\/configure/)
+  await page.goBack()
+  await page.getByTestId('confirm-ok').last().click()
+  await expect(page).not.toHaveURL(/\/configure/)
+})
+
+test('the page-leave guard stays out of the way when nothing is unsaved', async ({ page, open }) => {
+  await files(page)
+  await open('/')
+  await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Files/ }).click()
+  await config(page).getByText('printer.cfg').click()
+  await editorOpen(page)
+  await page.getByTestId('files-close').click()
+  await page.goBack()
+  await expect(page).not.toHaveURL(/\/configure/)
+  await expect(page.getByText('Drop your unsaved changes?')).toHaveCount(0)
+})
+
+test('a 4 MB log and a 3 MB config download instead of loading into the editor', async ({ page, open, isMobile }) => {
+  await files(page)
+  const fetched: string[] = []
+  page.on('request', r => {
+    if (/klippy\.log|big\.cfg/.test(r.url()) && ['xhr', 'fetch'].includes(r.resourceType())) fetched.push(r.url())
+  })
+  await open('/configure')
+  await config(page).getByText('big.cfg').click()
+  await showOther(page, isMobile)
+  await other(page).getByText('klippy.log').click()
+  await page.waitForTimeout(1500)
+  await expect(page.getByTestId('files-editor-title')).toHaveCount(0)
+  expect(fetched).toEqual([])
+})
+
+test('?open= a config file with Developer mode off shows it read only', async ({ page, open }) => {
+  await files(page)
+  await open('/configure?open=config/moonraker.conf&line=1')
+  await expect(page.getByTestId('files-editor-title')).toContainText('moonraker.conf')
+  await editorOpen(page)
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0)
+})
+
+test('?open= with a line puts the cursor on that line', async ({ page, open }) => {
+  await files(page)
+  await open('/configure?open=calibration/printer.cfg&line=3')
+  await editorOpen(page)
+  if (await page.locator('textarea').count()) {
+    await expect.poll(() => page.locator('textarea').evaluate((t: HTMLTextAreaElement) => t.value.slice(0, t.selectionStart).split('\n').length)).toBe(3)
+  } else {
+    await expect(page.locator('.line-numbers.active-line-number')).toHaveText('3')
+  }
+})
+
+test('a new file is made and opened to write in', async ({ page, open }) => {
+  await files(page)
+  const seen = uploads(page)
+  await open('/configure')
+  await config(page).getByRole('button', { name: 'Add' }).click()
+  await page.getByRole('menuitem', { name: /Add File/i }).click()
+  await page.getByRole('textbox').last().fill('extra.cfg')
+  await page.getByRole('button', { name: /^(Save|Create|OK)$/i }).click()
+  await expect.poll(() => seen.length).toBe(1)
+  expect(seen[0]).toContain('filename="extra.cfg"')
+  await expect(page.getByTestId('files-editor-title')).toContainText('extra.cfg')
+})
+
+test('a row menu renames a file, and deletes it after asking', async ({ page, open }) => {
+  const printer = await files(page)
+  await open('/configure')
+  const tile = config(page)
+  await tile.getByRole('button', { name: 'Actions for probe.cfg' }).click()
+  await page.getByRole('menuitem', { name: 'Rename' }).click()
+  await page.getByRole('textbox').last().fill('probe2.cfg')
+  await page.getByRole('button', { name: /^(Save|Rename|OK)$/i }).click()
+  await expect.poll(() => printer.called('server.files.move')).toEqual([{ source: 'calibration/probe.cfg', dest: 'calibration/probe2.cfg' }])
+  await tile.getByRole('button', { name: 'Actions for macros.cfg' }).click()
+  await page.getByRole('menuitem', { name: 'Remove' }).click()
+  await page.getByTestId('confirm-cancel').last().click()
+  expect(printer.called('server.files.delete_file')).toEqual([])
+  await tile.getByRole('button', { name: 'Actions for macros.cfg' }).click()
+  await page.getByRole('menuitem', { name: 'Remove' }).click()
+  await page.getByTestId('confirm-ok').last().click()
+  await expect.poll(() => printer.called('server.files.delete_file')).toEqual([{ path: 'calibration/macros.cfg' }])
+})
+
+test('Upload sends the chosen file into the folder shown', async ({ page, open }) => {
+  await files(page)
+  const seen = uploads(page)
+  await open('/configure')
+  await config(page).getByRole('button', { name: 'Add' }).click()
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('menuitem', { name: /Upload Files/i }).click()
+  await (await chooser).setFiles({ name: 'mine.cfg', mimeType: 'text/plain', buffer: Buffer.from('[mine]\n') })
+  await expect.poll(() => seen.length).toBe(1)
+  expect(seen[0]).toContain('filename="mine.cfg"')
+  expect(seen[0]).toContain('calibration')
 })
