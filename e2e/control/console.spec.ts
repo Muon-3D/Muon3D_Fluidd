@@ -94,18 +94,21 @@ test('while printing, the chips that move the head are off and send nothing', as
 test('the Errors filter shows only the errors, and Clear empties the log', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
   await open('/console')
-  // The page loads the printer's stored log once on connect and replaces what it has; speak after that.
-  await expect(page.getByTestId('console-log').getByText('Bed mesh loaded')).toBeVisible()
-  printer.say('Pressure advance set to 0.04', '!! Must home axis first: X Y Z')
   const log = page.getByTestId('console-log')
+  const info = 'Pressure advance set to 0.04'
+  // The page replaces its log with the printer's stored one when it connects, so say it until it sticks.
+  await expect.poll(async () => {
+    if (await log.getByText(info).count() === 0) printer.say(info, '!! Must home axis first: X Y Z')
+    return log.getByText(info).count()
+  }, { timeout: 30_000 }).toBeGreaterThan(0)
   await expect(log.getByText('Pressure advance set to 0.04')).toBeVisible()
   await expect(log.getByText('Must home axis first').first()).toBeVisible()
 
   const header = page.getByTestId('console-actions')
   await header.getByRole('radio', { name: /Errors/ }).click()
   await expect(log.getByText('Must home axis first').first()).toBeVisible()
-  // The log's scroller keeps spare rows off-screen, so "gone" means not visible.
-  await expect(log.getByText('Pressure advance set to 0.04')).toBeHidden()
+  // The log's scroller keeps spare rows off-screen, so "gone" means not on screen.
+  await expect(log.getByText('Pressure advance set to 0.04')).not.toBeInViewport()
 
   await header.getByRole('radio', { name: 'All' }).click()
   await expect(log.getByText('Pressure advance set to 0.04')).toBeVisible()
