@@ -53,3 +53,29 @@ export function ticks (lo: number, hi: number, step = 50): number[] {
   for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(Math.round(v) || 0)
   return out
 }
+
+/** The furthest one drag can take the plate, either way, so a flick at a grazing angle can't send it to the end of its travel. */
+export const PLATE_DRAG_MM = 50
+/** A drag stops the plate this far from the nozzle (Z 0 is the tip touching it), or where it already is if lower. */
+export const PLATE_DRAG_FLOOR_MM = 2
+
+/** The plate's Z for a drag that has moved `by` mm from `z0`: capped per drag, kept off the nozzle, inside the axis. */
+export function plateDragZ (z0: number, by: number, zMin: number, zMax: number): number {
+  const step = Math.max(-PLATE_DRAG_MM, Math.min(PLATE_DRAG_MM, by))
+  return clampMm(z0 + step, Math.max(zMin, Math.min(z0, PLATE_DRAG_FLOOR_MM)), zMax)
+}
+
+/**
+ * What a drag's release sends to moveTo: the target in G-code coordinates
+ * (toolhead less the offsets in force), kept inside the axis limits as
+ * G-code, since moveTo checks a G-code value against them.
+ */
+export function releasePlace (
+  target: { X: number, Y: number } | { Z: number },
+  offset: readonly number[],
+  min: readonly number[],
+  max: readonly number[]
+): { X: number, Y: number } | { Z: number } {
+  const g = (v: number, i: number) => clampMm(v - (offset[i] ?? 0), min[i], max[i])
+  return 'Z' in target ? { Z: g(target.Z, 2) } : { X: g(target.X, 0), Y: g(target.Y, 1) }
+}
