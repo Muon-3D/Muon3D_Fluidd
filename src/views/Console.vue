@@ -200,8 +200,8 @@
             :key="q.command"
             type="button"
             class="cons__quick"
-            :disabled="!klippyConnected || (q.moves && printerBusy)"
-            :title="q.moves && printerBusy ? 'Not while the printer is busy' : q.command"
+            :disabled="chipOff(q)"
+            :title="chipTitle(q)"
             :data-tid="`console-quick-${q.command}`"
             @click="sendNow(q.command)"
           >
@@ -214,8 +214,8 @@
       </section>
       <console-macros
         v-if="!isMobileViewport"
-        :locked="!klippyConnected"
-        :busy="printerBusy"
+        :locked="!controlReady"
+        :busy="busy"
         @run="onMacro"
       />
       <section
@@ -228,9 +228,9 @@
         </header>
         <dl class="cons__now">
           <dt>Hotend</dt>
-          <dd>{{ reading(extruder) }}</dd>
+          <dd>{{ reading(hotendReading) }}</dd>
           <dt>Bed</dt>
-          <dd>{{ reading(bed) }}</dd>
+          <dd>{{ reading(bedReading) }}</dd>
         </dl>
       </section>
     </div>
@@ -239,7 +239,7 @@
 
 <script lang="ts">
 import { Component, Mixins, Ref, Watch } from 'vue-property-decorator'
-import TypedCommandsMixin from '@/mixins/typed-commands'
+import ControlMixin from '@/mixins/control'
 import FilesMixin from '@/mixins/files'
 import BrowserMixin from '@/mixins/browser'
 import { Globals } from '@/globals'
@@ -250,14 +250,14 @@ import ConsoleMacros from '@/components/console/ConsoleMacros.vue'
 import { consoleView } from '@/services/console/view'
 import type { ShownMacro } from '@/mixins/macros'
 
-/** One tap sends these. `moves` ones need an idle printer. */
+/** One tap sends these. `moves` ones need an idle printer; `homed` ones also need every axis homed. */
 const QUICK_COMMANDS = [
-  { command: 'G28', moves: true },
-  { command: 'M105', moves: false },
-  { command: 'BED_MESH_CALIBRATE', moves: true },
-  { command: 'QUERY_PROBE', moves: false },
-  { command: 'FIRMWARE_RESTART', moves: false },
-  { command: 'STATUS', moves: false }
+  { command: 'G28', moves: true, homed: false },
+  { command: 'M105', moves: false, homed: false },
+  { command: 'BED_MESH_CALIBRATE', moves: true, homed: true },
+  { command: 'QUERY_PROBE', moves: false, homed: false },
+  { command: 'FIRMWARE_RESTART', moves: false, homed: false },
+  { command: 'STATUS', moves: false, homed: false }
 ]
 
 interface Line {
@@ -276,7 +276,7 @@ interface Line {
  * goes into the line.
  */
 @Component({ components: { TonePill, ConsoleMacros } })
-export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, BrowserMixin) {
+export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMixin) {
   @Ref('scroller')
   readonly scroller!: { $el: HTMLElement, scrollToBottom: () => void }
 
@@ -450,12 +450,29 @@ export default class Console extends Mixins(TypedCommandsMixin, FilesMixin, Brow
     return this.klippyReady ? 'Klipper ready' : 'Klipper not ready'
   }
 
-  get extruder (): { temperature?: number, target?: number } { return this.$store.state.printer.printer.extruder ?? {} }
-  get bed (): { temperature?: number, target?: number } { return this.$store.state.printer.printer.heater_bed ?? {} }
+  get hotendReading (): { temperature?: number, target?: number } { return this.$store.state.printer.printer.extruder ?? {} }
+  get bedReading (): { temperature?: number, target?: number } { return this.$store.state.printer.printer.heater_bed ?? {} }
 
   reading (h: { temperature?: number, target?: number }): string {
     if (typeof h.temperature !== 'number') return '–'
     return `${h.temperature.toFixed(1)}° / ${Math.round(h.target ?? 0)}`
+  }
+
+  /** Why a chip can't be tapped now, or '' when it can. FIRMWARE_RESTART follows the restart rule, since it is how a stopped Klipper is recovered. */
+  chipRefusal (q: { command: string, moves: boolean, homed: boolean }): string {
+    if (q.command === 'FIRMWARE_RESTART') return this.restartRefusal ? 'Not now. The printer must be connected, under your control, and idle.' : ''
+    if (!this.controlReady) return 'You can only send when Klipper is ready and you can control this printer'
+    if (q.moves && this.busy) return 'Not while the printer is busy'
+    if (q.homed && !this.isHomed('XYZ')) return 'Home the printer first'
+    return ''
+  }
+
+  chipOff (q: { command: string, moves: boolean, homed: boolean }): boolean {
+    return !!this.chipRefusal(q)
+  }
+
+  chipTitle (q: { command: string, moves: boolean, homed: boolean }): string {
+    return this.chipRefusal(q) || q.command
   }
 
   /** A tap on a chip goes the way a typed line does: same checks, same restart confirm. */

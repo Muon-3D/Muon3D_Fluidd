@@ -25,6 +25,8 @@ export interface PrinterState {
   status: Json
   /** Methods to answer with a JSON-RPC error: method → message. */
   failOn: Record<string, string>
+  /** Laid over the result of a method the page asks (server.info: `{ klippy_state: 'startup' }`). */
+  results: Record<string, Json>
 }
 
 export interface PrinterHandle {
@@ -35,6 +37,8 @@ export interface PrinterHandle {
   moves: () => string[]
   /** The printer reports `status` now: it becomes the overlay and is pushed to the page at once. */
   report: (status: Json) => void
+  /** The printer prints these lines to the console now (a notify_gcode_response each). */
+  say: (...lines: string[]) => void
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -59,14 +63,18 @@ function overlayUpdate (update: Json, over: Json): Json {
 
 export async function usePrinter (page: Page, status: Json = {}): Promise<PrinterHandle> {
   const handle: PrinterHandle = {
-    state: { status, failOn: {} },
+    state: { status, failOn: {}, results: {} },
     gcode: [],
     moves: () => handle.gcode.flatMap(s => s.split('\n')).filter(l => l.startsWith('G1 ')),
     report: (next: Json) => {
       handle.state.status = next
       pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_status_update', params: [next, Date.now() / 1000] }))
+    },
+    say: (...lines: string[]) => {
+      for (const line of lines) pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_gcode_response', params: [line] }))
     }
   }
+  const asked = new Map<unknown, string>()
   let pageSocket: { send: (message: string) => void } | null = null
 
   await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
@@ -76,6 +84,7 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
     ws.onMessage(raw => {
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { server.send(raw); return }
+      if (msg.id !== undefined && msg.method) asked.set(msg.id, msg.method)
       const failure = handle.state.failOn[msg.method]
       if (failure !== undefined) {
         ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: 400, message: failure } }))
@@ -93,6 +102,8 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { ws.send(raw); return }
       const over = handle.state.status
+      const method = asked.get(msg.id)
+      if (method && isObject(msg.result) && handle.state.results[method]) msg.result = overlay(msg.result, handle.state.results[method])
       if (isObject(msg.result) && isObject(msg.result.status)) {
         msg.result.status = overlay(msg.result.status, over)
       } else if (msg.method === 'notify_status_update' && Array.isArray(msg.params) && isObject(msg.params[0])) {
