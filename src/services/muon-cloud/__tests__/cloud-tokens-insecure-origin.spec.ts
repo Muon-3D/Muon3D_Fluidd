@@ -28,6 +28,10 @@ describe('cloud tokens on an insecure origin', () => {
     expect(cloudTokensPersist({ protocol: 'https:', hostname: 'control.muon3d.com' })).toBe(true)
     expect(cloudTokensPersist({ protocol: 'http:', hostname: 'localhost' })).toBe(true)
     expect(cloudTokensPersist({ protocol: 'http:', hostname: '127.0.0.1' })).toBe(true)
+    expect(cloudTokensPersist({ protocol: 'http:', hostname: '[::1]' })).toBe(true)
+    expect(cloudTokensPersist({ protocol: 'http:', hostname: '[fe80::1]' })).toBe(false)
+    expect(cloudTokensPersist({ protocol: 'http:', hostname: 'localhost.example.com' })).toBe(false)
+    expect(cloudTokensPersist({ protocol: 'https:', hostname: 'muon-m1.local' })).toBe(true)
   })
 
   it('keeps the access and refresh tokens out of localStorage and sessionStorage', async () => {
@@ -85,5 +89,65 @@ describe('cloud tokens on an insecure origin', () => {
     api.storeRefreshToken(null)
     expect(api.storedToken()).toBeNull()
     expect(api.storedRefreshToken()).toBeNull()
+  })
+})
+
+describe('every cloud token writer on an insecure origin', () => {
+  function noCloudTokenStored () {
+    for (const store of [localStorage, sessionStorage]) {
+      for (let i = 0; i < store.length; i++) {
+        const key = store.key(i)!
+        expect(key === 'muon.cloud.token' || key === 'muon.cloud.refresh', `${key} in storage`).toBe(false)
+        expect(store.getItem(key)).not.toMatch(/^(access|refresh)-/)
+      }
+    }
+  }
+
+  it('sign-in, rekey, refresh, central-login checks and sign-out leave no muon.cloud token in storage', async () => {
+    vi.resetModules()
+    vi.stubGlobal('navigator', {})
+    const account = { id: 'a1', email: 'a@example.test', name: 'A' }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const path = new URL(String(url), 'http://muon-m1.local').pathname
+      const body = path === '/v1/auth/sign-in'
+        ? { token: 'access-signin', account }
+        : path === '/token'
+          ? { access_token: 'access-rotated', refresh_token: 'refresh-rotated' }
+          : path === '/v1/me' ? { account } : { printers: [], members: [] }
+      return { ok: true, status: 200, redirected: false, url: String(url), body: null, json: async () => body, text: async () => JSON.stringify(body) } as unknown as Response
+    }))
+    const api = await import('../api')
+    const state = await import('../state')
+    const central = await import('../centralLogin')
+    const client = await import('../../account/client')
+
+    // Password sign-in (the in-page path on the printer's address).
+    expect(await state.signIn('a@example.test', 'pw')).toBeNull()
+    expect(api.storedToken()).toBe('access-signin')
+    noCloudTokenStored()
+
+    // A credential change hands this tab a new pair.
+    client.adoptRekeyedSession({ session: { access_token: 'access-rekey', refresh_token: 'refresh-rekey' } })
+    expect(api.storedRefreshToken()).toBe('refresh-rekey')
+    noCloudTokenStored()
+
+    // Refresh rotation.
+    expect(await api.refreshSession()).toBe(true)
+    expect(api.storedToken()).toBe('access-rotated')
+    noCloudTokenStored()
+
+    // The central login's code exchange and silent check are off on this
+    // origin; running them must not write either.
+    expect(central.centralLoginEnabled()).toBe(false)
+    await central.checkCentralSession()
+    await state.initCloud()
+    noCloudTokenStored()
+
+    // Sign-out.
+    await state.signOut()
+    expect(api.storedToken()).toBeNull()
+    expect(api.storedRefreshToken()).toBeNull()
+    noCloudTokenStored()
+    vi.unstubAllGlobals()
   })
 })
