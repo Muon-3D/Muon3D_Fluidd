@@ -103,6 +103,8 @@ async function withNoPrinters (page: Page) {
   await page.route('**/config.json', async route => {
     const response = await route.fetch()
     const config = await response.json()
+    // Like the fixture: localhost blacklisted, or the page counts the dev server itself as a printer.
+    config.blacklist = [...(config.blacklist ?? []), 'localhost', '127.0.0.1']
     config.endpoints = []
     await route.fulfill({ response, json: config })
   })
