@@ -59,6 +59,8 @@ export interface LibraryItem {
   printed_count?: number;
   last_printed_at?: string | null;
   last_printer_name?: string | null;
+  /** Where it came from: slice, upload, import, remix, design or printer. */
+  origin?: string;
 }
 
 export type FileRole = 'project' | 'gcode' | 'thumbnail'
@@ -391,6 +393,10 @@ export function createLibraryClient (options: LibraryClientOptions) {
     // An empty cursor is left out: the service reads a present-but-empty one as a malformed timestamp.
     runs: (cursor = '', limit = 50) => request<LibraryRunsPage>('GET', `/v1/library/runs?${cursor ? `cursor=${encodeURIComponent(cursor)}&` : ''}limit=${limit}`),
     sliced: () => request<FeedPage>('GET', '/v1/items?origin=slice'),
+    /** Designs from Create (Library v3 Yours). */
+    designs: () => request<FeedPage>('GET', '/v1/items?origin=design'),
+    /** Your shares, newest first (public ones are your published prints). */
+    shares: () => request<unknown>('GET', '/v1/community/shares'),
     saved: () => request<CommunitySavesPage>('GET', '/v1/community/saves'),
     /** Save a public print (the Library's heart): the save, new or the one already there. */
     save: (publicationId: string) => request<CommunitySave>('PUT', '/v1/community/saves', { kind: 'publication', id: publicationId }),
