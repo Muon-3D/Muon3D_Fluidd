@@ -18,6 +18,8 @@ const calls = vi.hoisted(() => ({
   sendGcode: vi.fn()
 }))
 
+const router = vi.hoisted(() => vi.fn(async () => undefined))
+
 const bedMesh = { id: 'bedMesh', gcode: 'BED_MESH_CALIBRATE', wait: 'w', confirm: '', title: 'Level the bed' }
 
 function show (computed: Record<string, unknown> = {}, confirm = vi.fn(async (): Promise<boolean> => true)) {
@@ -33,11 +35,14 @@ function show (computed: Record<string, unknown> = {}, confirm = vi.fn(async ():
       materials: () => [],
       material: () => null,
       loadedMaterial: () => ({ name: 'PLA', presetId: 'pla', nozzle: 215, bed: 60 }),
-      macroList: () => [{ name: 'M600', config: { gcode: 'M117 hi' } }],
+      printerPrinting: () => false,
+      printerPaused: () => false,
+      printerState: () => 'ready',
+      filamentMacros: () => [{ name: 'M600', config: { gcode: 'M117 hi' } }, { name: 'UNLOAD_FILAMENT', config: { gcode: 'M104 S250' } }],
       ...computed
     },
-    methods: { ...calls },
-    mocks: { $store: { getters: {}, state: {} }, $confirm: confirm },
+    methods: { ...calls, openFilamentPanel: router },
+    mocks: { $store: { getters: {}, state: { console: { promptDialog: { open: false } } } }, $confirm: confirm },
     stubs: {
       'v-menu': { template: '<div><slot name="activator" :on="{}" :attrs="{}" /><slot /></div>' },
       'frame-icon': true
@@ -73,10 +78,20 @@ describe('QuickActionsMenu', () => {
     expect(calls.sendTypedGcode).toHaveBeenCalledWith('RESTART')
   })
 
-  it('sends the printer own change filament macro', async () => {
+  it('idle, change filament sends nothing and opens the material panel on Control (KAN-1700)', async () => {
     const w = show()
     await item(w, 'filament').trigger('click')
-    expect(calls.sendGcode).toHaveBeenCalledWith('M600')
+    expect(calls.sendGcode).not.toHaveBeenCalled()
+    expect(router).toHaveBeenCalledTimes(1)
+  })
+
+  it('paused or prompting, change filament is off and sends nothing', async () => {
+    for (const over of [{ printerPaused: () => true, printerPrinting: () => true, busy: () => true }]) {
+      const w = show(over)
+      expect(item(w, 'filament').attributes('aria-disabled')).toBe('true')
+      await item(w, 'filament').trigger('click')
+      expect(calls.sendGcode).not.toHaveBeenCalled()
+    }
   })
 
   it('does nothing, and says why, when Control is not ready', async () => {
@@ -101,7 +116,7 @@ describe('QuickActionsMenu', () => {
 })
 
 describe('on a printer that is printing', () => {
-  const busy = { busy: () => true }
+  const busy = { busy: () => true, printerPrinting: () => true }
   const flush = () => new Promise(resolve => setTimeout(resolve, 0))
 
   it('asks before preheat changes the running print temperatures, and does nothing if declined', async () => {
@@ -139,14 +154,14 @@ describe('on a printer that is printing', () => {
 })
 
 describe('when the printer is idle', () => {
-  it('preheats and changes filament without asking', async () => {
+  it('preheats without asking; change filament sends nothing and opens the panel', async () => {
     const confirm = vi.fn(async (): Promise<boolean> => true)
     const w = show({}, confirm)
     await item(w, 'preheat').trigger('click')
     await item(w, 'filament').trigger('click')
     expect(confirm).not.toHaveBeenCalled()
     expect(calls.heatFor).toHaveBeenCalledTimes(1)
-    expect(calls.sendGcode).toHaveBeenCalledWith('M600')
+    expect(calls.sendGcode).not.toHaveBeenCalled()
   })
 })
 
