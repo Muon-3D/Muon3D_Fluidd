@@ -1,6 +1,7 @@
 <template>
   <control-card
-    title="Heat"
+    title="Heaters"
+    icon="thermometer"
     :locked="controlLock"
     note="Pick a material to heat both. The table is kept on the printer, so the panel, this page and the app agree."
     data-tid="control-heat"

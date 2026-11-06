@@ -112,6 +112,16 @@ export interface PublicPublication {
   licence?: string | null;
 }
 
+/** What a published print says about itself (model service src/publication.rs). */
+export interface PublishDetails {
+  licence: string;
+  rights_confirmed: boolean;
+  category: string;
+  tags: string[];
+  description?: string;
+  ai_generated?: 'no' | 'partly' | 'yes';
+}
+
 export type SaveOrigin = 'save' | 'autosave' | 'card' | 'print-check'
 
 export interface VersionBody {
@@ -399,6 +409,12 @@ export function createLibraryClient (options: LibraryClientOptions) {
     // An empty cursor is left out: the service reads a present-but-empty one as a malformed timestamp.
     runs: (cursor = '', limit = 50) => request<LibraryRunsPage>('GET', `/v1/library/runs?${cursor ? `cursor=${encodeURIComponent(cursor)}&` : ''}limit=${limit}`),
     sliced: () => request<FeedPage>('GET', '/v1/items?origin=slice'),
+    /**
+     * Publish one of your prints for everyone (`POST /v1/items/:id/publish`): it is reviewed
+     * first (state `pending`), then shows in Discover. Body is exactly `{version, title, publication}`.
+     */
+    publish: (id: string, body: { version: number, title: string, publication: PublishDetails }) =>
+      request<{ id: string, state: string, audience: string, title: string, version: number }>('POST', `${item(id)}/publish`, body),
     /** Your shares, newest first (public ones are your published prints). */
     shares: () => request<unknown>('GET', '/v1/community/shares'),
     saved: () => request<CommunitySavesPage>('GET', '/v1/community/saves'),
