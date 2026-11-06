@@ -12,10 +12,13 @@ import { running } from '@/services/maintenance/running'
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn(), printerQueryEndstops: vi.fn() }))
 vi.mock('@/api/socketActions', () => ({ SocketActions: socket }))
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'mock' }))
+// The gates ask the printer over the network; these tests are about the guards, not the gates.
+vi.mock('@/services/gates', () => ({ gateState: { epoch: 0 }, valueFor: () => null, refreshCanManageAccess: vi.fn(), refreshGateDevMode: vi.fn() }))
 
 function show (component: any = MaintenanceChecks) {
   const store = panelStore()
   store.getters['printer/getHomedAxes'] = () => true
+  Vue.set(store.state.printer.printer, 'muon_guard', { dev_mode: true })
   Vue.set(store.state.printer.printer, 'gcode', { commands: { BED_MESH_CALIBRATE: {}, PROBE_CALIBRATE: {}, SHAPER_CALIBRATE: {}, PID_CALIBRATE: {}, PROBE_ACCURACY: {} } })
   Vue.set(store.getters, 'printer/getSaveConfigPending', true)
   Vue.set(store.getters, 'printer/getSaveConfigPendingItems', {})
