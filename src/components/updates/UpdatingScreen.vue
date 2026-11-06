@@ -6,51 +6,43 @@
     role="status"
     aria-live="polite"
   >
-    <div class="upd__card">
-      <div
-        class="upd__dial"
-        aria-hidden="true"
-      >
-        <svg
-          viewBox="0 0 120 120"
-          class="upd__ring"
+    <section class="stile upd__card">
+      <header class="stile__head">
+        <frame-icon
+          :name="stage === 'updated' ? 'check' : tone === 'bad' ? 'alert' : 'download'"
+          class="upd__ico"
+        />
+        <h2 class="upd__title">
+          {{ headline.title }}
+        </h2>
+        <span
+          v-if="busy"
+          class="stile__aside"
         >
-          <circle
-            cx="60"
-            cy="60"
-            r="52"
-            class="upd__track"
-          />
-          <circle
-            cx="60"
-            cy="60"
-            r="52"
-            class="upd__arc"
-            :class="{ 'upd__arc--spin': spinning }"
-            :stroke-dasharray="`${dash} 327`"
-          />
-        </svg>
-        <span class="upd__middle">
-          <frame-icon
-            v-if="stage === 'updated'"
-            name="check"
-          />
-          <frame-icon
-            v-else-if="tone === 'bad'"
-            name="alert"
-          />
-          <template v-else-if="percent !== null">{{ percent }}%</template>
-          <frame-icon
-            v-else
-            name="refresh"
-            class="upd__turning"
-          />
+          <tone-pill tone="run">Step {{ stepNow }} of {{ steps.length }}</tone-pill>
         </span>
+      </header>
+
+      <div
+        v-if="percent !== null"
+        class="upd__big"
+        data-tid="updating-percent"
+      >
+        {{ percent }}<small> %</small>
+      </div>
+      <div
+        v-if="stage !== 'idle'"
+        class="sbar upd__bar"
+        :class="{ 'upd__bar--wait': spinning }"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        :aria-valuenow="percent !== null ? percent : undefined"
+        aria-label="Update progress"
+      >
+        <i :style="{ width: `${spinning ? 30 : Math.round(dash / 327 * 100)}%` }" />
       </div>
 
-      <h1 class="upd__title">
-        {{ headline.title }}
-      </h1>
       <p class="upd__text">
         {{ headline.text }}
       </p>
@@ -61,14 +53,32 @@
         {{ errorText }}
       </p>
 
-      <ol class="upd__steps">
+      <ol
+        v-if="stage !== 'idle'"
+        class="slist upd__steps"
+      >
         <li
-          v-for="s in steps"
+          v-for="(s, n) in steps"
           :key="s.id"
+          class="srow"
           :class="`upd__step--${s.state}`"
         >
-          <span class="upd__dot" />
-          {{ s.label }}
+          <span class="upd__st">
+            <frame-icon
+              v-if="s.state === 'done'"
+              name="check"
+              small
+            />
+            <span
+              v-else-if="s.state === 'now'"
+              class="upd__dot"
+            />
+            <template v-else>{{ n + 1 }}</template>
+          </span>
+          <span class="srow__text">
+            <span class="srow__t">{{ s.label }}</span>
+          </span>
+          <span class="srow__v">{{ s.state === 'done' ? 'Done' : s.state === 'now' ? 'Now' : 'Waiting' }}</span>
         </li>
       </ol>
 
@@ -85,6 +95,17 @@
         <b v-if="toText">{{ toText }}</b>
       </p>
 
+      <div
+        v-if="busy"
+        class="scallout"
+        data-tid="updating-warning"
+      >
+        <frame-icon name="alert" />
+        <div>
+          <b>Do not power off.</b> The printer restarts once by itself near the end. Prints cannot start until it is done.
+        </div>
+      </div>
+
       <div class="upd__actions">
         <button
           v-if="stage === 'updated'"
@@ -99,21 +120,42 @@
           v-if="tone === 'bad' || stage === 'updated'"
           type="button"
           class="cbtn"
+          data-tid="updating-done"
           @click="done"
         >
           Back to {{ printerName }}
+        </button>
+        <button
+          v-if="canLeave"
+          type="button"
+          class="cbtn cbtn--ghost"
+          data-tid="updating-leave"
+          @click="leave"
+        >
+          <frame-icon
+            name="home"
+            small
+          />
+          Back to Overview
         </button>
         <span
           v-if="offline"
           class="upd__waiting"
         >Waiting for {{ printerName }}…</span>
       </div>
-    </div>
+      <p
+        v-if="canLeave && busy"
+        class="stile__note"
+      >
+        You can leave this page: the update keeps going, and the bar at the top shows it.
+      </p>
+    </section>
   </div>
 </template>
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
+import TonePill from '@/components/printers/TonePill.vue'
 import { updateHeadline, updateSteps, versionLabel, type SessionPhase, type UpdateStep } from '@/services/updates/model'
 import { currentOutcome, forgetInstall, updateWatch } from '@/services/updates/watch'
 
@@ -124,9 +166,11 @@ type Stage = SessionPhase | 'offline' | 'late'
  * being written (with its progress), the restart (while the printer can't
  * answer, with no progress to show), the check that it works, and how it
  * ended. The connection screens show it while the printer restarts; it is
- * also the page an install opens.
+ * also the page an install opens, where it sits inside the frame (the sidebar
+ * and top bar still work) and leaves the page open to go back: the update
+ * keeps going without it.
  */
-@Component({})
+@Component({ components: { TonePill } })
 export default class UpdatingScreen extends Vue {
   /** Shown because the printer can't be reached: 'updating', or 'updating-late' past its budget. */
   @Prop({ type: String, default: null })
@@ -134,6 +178,10 @@ export default class UpdatingScreen extends Vue {
 
   @Prop({ type: String, default: 'the printer' })
   readonly printerName!: string
+
+  /** On the page (not the restart screen): offers a way back to Overview, without ending the install. */
+  @Prop({ type: Boolean, default: false })
+  readonly canLeave!: boolean
 
   get remembered () {
     return updateWatch.remembered
@@ -201,6 +249,22 @@ export default class UpdatingScreen extends Vue {
     window.location.reload()
   }
 
+  /** Which of the steps it is on, for "Step 2 of 4". */
+  get stepNow (): number {
+    const at = this.steps.findIndex(s => s.state === 'now')
+    return at < 0 ? this.steps.length : at + 1
+  }
+
+  /** Under way: the bar moves, the warning shows. */
+  get busy (): boolean {
+    return this.stage !== 'idle' && (this.tone === 'busy' || this.tone === 'late')
+  }
+
+  /** Leaves the page; the update carries on, so nothing is forgotten. */
+  leave () {
+    this.$emit('leave')
+  }
+
   done () {
     forgetInstall()
     this.$emit('done')
@@ -212,98 +276,80 @@ export default class UpdatingScreen extends Vue {
   .upd {
     display: flex;
     justify-content: center;
-    padding: 40px 16px;
+    padding: 24px 16px;
   }
 
   .upd__card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
     width: 100%;
-    max-width: 520px;
-    padding: 32px 28px;
-    border-radius: 24px;
-    background: var(--m3d-surface);
-    color: var(--m3d-text);
-    text-align: center;
+    max-width: 620px;
   }
 
-  .upd__dial {
-    position: relative;
-    width: 132px;
-    height: 132px;
-    margin-bottom: 6px;
+  .upd__ico {
+    color: var(--m3d-accent) !important;
   }
 
-  .upd__ring {
-    width: 100%;
-    height: 100%;
-    transform: rotate(-90deg);
+  .upd--good .upd__ico {
+    color: var(--m3d-success, #57c08a) !important;
   }
 
-  .upd__track {
-    fill: none;
-    stroke: var(--m3d-surface-2);
-    stroke-width: 8;
+  .upd--bad .upd__ico {
+    color: var(--m3d-danger, #e5534b) !important;
   }
 
-  .upd__arc {
-    fill: none;
-    stroke: var(--m3d-accent);
-    stroke-linecap: round;
-    stroke-width: 8;
-    transition: stroke-dasharray 0.6s var(--m3d-ease, ease);
-    transform-origin: 60px 60px;
-  }
-
-  .upd__arc--spin {
-    animation: upd-spin 1.4s linear infinite;
-  }
-
-  .upd--good .upd__arc {
-    stroke: var(--m3d-success, #57c08a);
-  }
-
-  .upd--bad .upd__arc {
-    stroke: var(--m3d-danger, #e5534b);
-  }
-
-  .upd--late .upd__arc {
-    stroke: var(--m3d-warning, #e8963c);
-  }
-
-  @keyframes upd-spin {
-    to { transform: rotate(360deg); }
-  }
-
-  .upd__middle {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 26px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .upd__turning {
-    animation: upd-spin 2.4s linear infinite;
-    opacity: 0.6;
+  .upd--late .upd__ico {
+    color: var(--m3d-warning, #e8963c) !important;
   }
 
   .upd__title {
-    margin: 0;
-    font-size: 24px;
+    font-size: 18px;
+  }
+
+  .upd__big {
+    font-size: 40px;
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+
+    small {
+      color: var(--m3d-text-muted);
+      font-size: 18px;
+      font-weight: 500;
+    }
+  }
+
+  .upd__bar {
+    height: 8px;
+
+    i {
+      transition: width 0.6s var(--m3d-ease, ease);
+    }
+  }
+
+  .upd__bar--wait i {
+    animation: upd-slide 1.6s ease-in-out infinite alternate;
+  }
+
+  .upd--good .upd__bar i {
+    background: var(--m3d-success, #57c08a);
+  }
+
+  .upd--bad .upd__bar i {
+    background: var(--m3d-danger, #e5534b);
+  }
+
+  .upd--late .upd__bar i {
+    background: var(--m3d-warning, #e8963c);
+  }
+
+  @keyframes upd-slide {
+    from { transform: translateX(0); }
+    to { transform: translateX(233%); }
   }
 
   .upd__text {
-    max-width: 420px;
     margin: 0;
     color: var(--m3d-text-muted);
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .upd__error {
@@ -313,53 +359,63 @@ export default class UpdatingScreen extends Vue {
   }
 
   .upd__steps {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;
-    max-width: 320px;
-    margin: 8px 0 0;
-    padding: 14px 16px;
+    margin: 0;
+    padding: 4px 14px;
     border-radius: 16px;
-    background: var(--m3d-surface-2);
+    background: var(--m3d-surface-2) !important;
     list-style: none;
-    text-align: left;
 
-    li {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      color: var(--m3d-text-subtle);
-      font-size: 14px;
+    .srow {
+      min-height: 48px;
+      padding-right: 0;
+      padding-left: 0;
+    }
+
+    .srow__v {
+      color: var(--m3d-text-muted);
+      font-size: 13px;
+      font-weight: 500;
     }
   }
 
-  .upd__dot {
+  .upd__st {
+    display: grid;
     flex: none;
-    width: 10px;
-    height: 10px;
-    border: 2px solid var(--m3d-border-strong);
+    place-items: center;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
+    background: var(--m3d-surface);
+    color: var(--m3d-text-subtle);
+    font-size: 12px;
+    font-weight: 700;
   }
 
-  .upd__step--done {
-    color: var(--m3d-text-muted) !important;
-
-    .upd__dot {
-      border-color: var(--m3d-success, #57c08a);
-      background: var(--m3d-success, #57c08a);
-    }
+  .upd__step--done .upd__st {
+    background: color-mix(in srgb, var(--m3d-success, #57c08a) 16%, transparent);
+    color: var(--m3d-success, #57c08a);
   }
 
   .upd__step--now {
-    color: var(--m3d-text) !important;
-    font-weight: 600;
-
-    .upd__dot {
-      border-color: var(--m3d-accent);
-      background: var(--m3d-accent);
-      animation: upd-pulse 1.2s ease-in-out infinite;
+    .upd__st {
+      background: var(--m3d-accent-soft);
     }
+
+    .srow__v {
+      color: var(--m3d-accent);
+    }
+  }
+
+  .upd__step--next .srow__t {
+    color: var(--m3d-text-muted);
+  }
+
+  .upd__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--m3d-accent);
+    animation: upd-pulse 1.2s ease-in-out infinite;
   }
 
   @keyframes upd-pulse {
@@ -370,7 +426,7 @@ export default class UpdatingScreen extends Vue {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin: 4px 0 0;
+    margin: 0;
     color: var(--m3d-text-muted);
     font-size: 13px;
   }
@@ -378,20 +434,18 @@ export default class UpdatingScreen extends Vue {
   .upd__actions {
     display: flex;
     flex-wrap: wrap;
-    justify-content: center;
-    gap: 8px;
-    margin-top: 6px;
+    gap: 10px;
   }
 
   .upd__waiting {
+    align-self: center;
     color: var(--m3d-text-subtle);
     font-size: 13px;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .upd__arc--spin,
-    .upd__turning,
-    .upd__step--now .upd__dot {
+    .upd__bar--wait i,
+    .upd__dot {
       animation: none;
     }
   }

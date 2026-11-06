@@ -13,6 +13,13 @@
       :title="shown ? 'Drag to turn it; double-click to put it back' : undefined"
       aria-hidden="true"
     />
+    <m1-parts
+      v-if="parts && shown"
+      :viewer="viewer"
+      :canvas="canvas"
+      :stage-state="state"
+      @select="$emit('select-part', $event)"
+    />
   </printer-stage>
 </template>
 
@@ -20,6 +27,7 @@
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import MaintenanceMixin from '@/mixins/maintenance'
 import PrinterStage from '@/components/printers/PrinterStage.vue'
+import M1Parts from './M1Parts.vue'
 import { Waits } from '@/globals'
 import { claimLiveView } from '@/services/m1-3d/live-slot'
 import { built, canDrawWebgl, loadViewer, newCanvas, park, prebuild, takeParked } from '@/services/m1-3d/parked'
@@ -35,7 +43,7 @@ import type { Move } from '@/store/gcodePreview/types'
 import { httpClientActions } from '@/api/httpClientActions'
 import { cloudState } from '@/services/muon-cloud/state'
 import { activeSlug } from '@/services/printer-pages'
-import { ACTIVE_PHASES } from '@/services/updates/model'
+import { bannerVisible } from '@/services/updates/model'
 import { updateWatch } from '@/services/updates/watch'
 import { afterFirstPaint } from '@/services/startup/idle'
 
@@ -73,7 +81,7 @@ const PART_STATES = ['printing', 'paused', 'complete', 'cancelled', 'error']
  * can't draw it, when another live M1 is on screen, or while this one is
  * scrolled away.
  */
-@Component({ components: { PrinterStage } })
+@Component({ components: { PrinterStage, M1Parts } })
 export default class M1Live extends Mixins(MaintenanceMixin) {
   @Prop({ type: String, default: 'idle' })
   readonly state!: ThumbState
@@ -81,6 +89,10 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   /** Moves the machine left by this share of the stage, to clear a card on the right. */
   @Prop({ type: Number, default: 0 })
   readonly shift!: number
+
+  /** Lets a person point at the plate, toolhead, filament and screen (M1Parts); the Overview turns it on. */
+  @Prop({ type: Boolean, default: false })
+  readonly parts!: boolean
 
   /** Whether this view holds the live M1 and has a canvas for it. */
   live = false
@@ -462,7 +474,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     const remembered = updateWatch.remembered
     return screenFrom({
       printState: this.printState,
-      updating: !!remembered && ACTIVE_PHASES.includes(remembered.phase),
+      updating: bannerVisible(remembered, updateWatch.now, !!updateWatch.answered),
       homing: this.hasWait([Waits.onHomeAll, Waits.onHomeXY, Waits.onHomeX, Waits.onHomeY, Waits.onHomeZ]) || phase === 'homing',
       probing: this.measuring || phase === 'measuring',
       progress: this.$store.getters['printer/getPrintProgress'] as number,

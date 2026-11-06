@@ -139,7 +139,7 @@ import ConnectingScreen from './components/layout/ConnectingScreen.vue'
 import UpdatingScreen from './components/updates/UpdatingScreen.vue'
 import UpdateBanner from './components/updates/UpdateBanner.vue'
 import { printerLost, updateWatch, watchUpdates } from '@/services/updates/watch'
-import { ACTIVE_PHASES, offlineScreen } from '@/services/updates/model'
+import { bannerVisible, offlineScreen } from '@/services/updates/model'
 import { printerNameParts } from '@/util/printer-name'
 import { connectionView, type ConnectionView } from '@/services/connection/view'
 import { cloudState } from '@/services/muon-cloud/state'
@@ -345,7 +345,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   get showUpdateBanner (): boolean {
     if (this.foreignPrinterRoute) return false
     const r = updateWatch.remembered
-    return !!r && ACTIVE_PHASES.includes(r.phase) && this.printerFrame && this.socketConnected &&
+    return bannerVisible(r, updateWatch.now, updateWatch.answered) && this.printerFrame && this.socketConnected &&
       this.$route.name !== 'Updating' && updateWatch.printer === (activeSlug() ?? '')
   }
 
@@ -381,7 +381,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
       otherPrinter: this.otherPrinterRoute,
       cloudPresence: presence === 'online' ? null : presence,
       updating: !this.socketConnected && updateWatch.printer === (activeSlug() ?? '')
-        ? offlineScreen(updateWatch.remembered, updateWatch.now)
+        ? offlineScreen(updateWatch.remembered, updateWatch.now, updateWatch.answered)
         : null
     })
   }
