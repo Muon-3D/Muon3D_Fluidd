@@ -139,6 +139,25 @@ export class MuonEndpoint {
      */
     connect(printer_id: string): Promise<any>;
     /**
+     * `connect` for a device that may be new to the printer (I-170). Tells the
+     * printer who is asking and reports what happens while it is held for a
+     * person to Accept or Reject. The same call serves a Web Bluetooth
+     * printer: `addLink` first, then pass the printer id.
+     *
+     * `name` is shown at the printer as a claimed device name. `requestedRole`
+     * is `"operator"` or `"viewer"` (anything else is ignored; an owner can
+     * never be requested). `onPending({ code, expiresIn })` is called with
+     * each pending notice (about every two seconds while held; show the
+     * latest), and `onClosed(reason)` once when the connection ends, with
+     * `reason` one of `"refused"`, `"timed_out"`, `"disabled"`, `"busy"`,
+     * `"cooldown"`, or `undefined` for any other end. `onMismatch()` is called
+     * when the printer's code differs from the one this page derived from the
+     * connection itself: show no printer-supplied code and treat the connection
+     * as suspect. `code` in `onPending` is always the locally derived one. All
+     * three callbacks are optional.
+     */
+    connectAs(printer_id: string, name: string, requestedRole?: string | null, onPending?: Function | null, onClosed?: Function | null, onMismatch?: Function | null): Promise<any>;
+    /**
      * Binds an endpoint that uses `relay_url` and nothing else.
      *
      * `secret` is the 32 bytes [`MuonEndpoint::secret_key`] returned last
@@ -149,6 +168,19 @@ export class MuonEndpoint {
      * This endpoint's id: what the printer's panel shows beside a pairing.
      */
     endpointId(): string;
+    /**
+     * Keeps the connection to `printer_id` on Bluetooth while a Bluetooth
+     * link to it is up (`pinned`), or lets it move to the relay as soon as
+     * that is found (the default, ADR 0032 D3). For a person who chose
+     * "Connect over Bluetooth" (D-080): uploads and the camera are then as
+     * slow as the radio, and the connection falls back to the relay only if
+     * the radio goes. Takes effect the next time iroh selects a path.
+     *
+     * # Errors
+     *
+     * A `config` error for a `printer_id` that is not an EndpointId.
+     */
+    pinBluetooth(printer_id: string, pinned: boolean): void;
     /**
      * The private key, so the page can bind the same identity next time.
      */
@@ -184,6 +216,13 @@ export class PrinterSession {
     free(): void;
     [Symbol.dispose](): void;
     /**
+     * Tells a printer that is holding this connection for approval who is
+     * asking (I-170). `name` is shown at the printer as the device's claimed
+     * name; `account` and `requestedRole` (`"operator"` or `"viewer"`) are
+     * optional. Send it right after `connect`.
+     */
+    announce(name: string, account?: string | null, requestedRole?: string | null): Promise<any>;
+    /**
      * Closes the connection.
      */
     close(): void;
@@ -202,6 +241,17 @@ export class PrinterSession {
      * `body` a `Uint8Array`. A policy `403` resolves; it is not a rejection.
      */
     fetch(method: string, path: string, headers: string[], body: Uint8Array): Promise<any>;
+    /**
+     * The next notice from the printer. For a connection the printer is
+     * holding for approval, resolves to
+     * `{ type: "pending", code: "F6QTDH", expiresIn: 120 }`: show "Waiting for
+     * approval at the printer" and the code, which is the same six symbols
+     * the printer shows. Resolves to `{ type: "unknown" }` for a notice this
+     * build does not know. Rejects with the connection's error (`kind`
+     * `"refused"` and a `reason` such as `"refused"`, `"timed_out"`,
+     * `"disabled"`, `"busy"` or `"cooldown"`) when the connection ends first.
+     */
+    nextNotice(): Promise<any>;
     /**
      * Upgrades `path` to a WebSocket.
      */
@@ -278,14 +328,18 @@ export interface InitOutput {
     readonly muonendpoint_beginPairing: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly muonendpoint_close: (a: number) => number;
     readonly muonendpoint_connect: (a: number, b: number, c: number) => number;
+    readonly muonendpoint_connectAs: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
     readonly muonendpoint_create: (a: number, b: number, c: number, d: number) => number;
     readonly muonendpoint_endpointId: (a: number, b: number) => void;
+    readonly muonendpoint_pinBluetooth: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly muonendpoint_secretKey: (a: number, b: number) => void;
     readonly pairing_comparison: (a: number, b: number) => void;
     readonly pairing_submitCode: (a: number, b: number) => number;
+    readonly printersession_announce: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly printersession_close: (a: number) => void;
     readonly printersession_comparison: (a: number, b: number) => void;
     readonly printersession_fetch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
+    readonly printersession_nextNotice: (a: number) => number;
     readonly printersession_openWebSocket: (a: number, b: number, c: number) => number;
     readonly printersession_printerId: (a: number, b: number) => void;
     readonly socket_close: (a: number) => number;
@@ -306,15 +360,15 @@ export interface InitOutput {
     readonly intounderlyingsource_cancel: (a: number) => void;
     readonly intounderlyingsource_pull: (a: number, b: number) => number;
     readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly __wasm_bindgen_func_elem_9615: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_9617: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_3956: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2218: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4755: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_3822: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4169: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4200: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_9513: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9832: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_9834: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4141: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_2403: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4938: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4009: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4362: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4394: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9730: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;
