@@ -4,7 +4,16 @@
     :class="{ 'library--phone': isMobileViewport }"
     data-tid="library-page"
   >
+    <!-- Share a print (v3 page 11), in place of the Library while it is open. -->
+    <library-share-page
+      v-if="shareId !== null && signedIn"
+      :items="everything"
+      :item-id="shareId === 'new' ? '' : shareId"
+      @back="shareBack"
+    />
+
     <muon-library
+      v-else
       context="page"
       :printer-id="activePrinter ? activePrinter.id : null"
       :printer-name="activePrinter ? activePrinter.name : null"
@@ -24,6 +33,7 @@
       @collection-back="gridBack"
       @collection-deleted="collectionDeleted"
       @update:print="openPrint"
+      @share="openShare('new')"
       @print-back="printBack"
       @open-search="openSearch"
       @print="onLibraryPrint"
@@ -171,6 +181,7 @@ import LibraryPageMixin from '@/mixins/library-page'
 import { storedToken } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
 import MuonLibrary, { type LibraryPrintRequest, type LibraryTab } from '@/components/library/v2/MuonLibrary.vue'
+import LibrarySharePage from '@/components/library/v2/LibrarySharePage.vue'
 import type { GridSource } from '@/services/library/shelves'
 import type { Dictionary } from 'vue-router/types/router'
 import PrintOnDialog from '@/components/library/PrintOnDialog.vue'
@@ -191,7 +202,7 @@ export const autoConsent = Vue.observable({ asked: {} as Record<string, 'pending
  * off, reading, an error), and does what a card asks: Print on…, Print again,
  * Slice, or the print's own page.
  */
-@Component({ components: { MuonLibrary, PrintOnDialog, FileNameDialog, CloudAccountDialog } })
+@Component({ components: { MuonLibrary, LibrarySharePage, PrintOnDialog, FileNameDialog, CloudAccountDialog } })
 export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   /**
    * Discover or your own Library: as the address says, else yours once you're
@@ -219,6 +230,30 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   get collection (): string | null {
     const id = this.$route?.query.collection
     return this.view === 'mine' && typeof id === 'string' && id ? id : null
+  }
+
+  /** Share a print (`?share=<id>`, or `new` to choose one), over Yours. */
+  get shareId (): string | null {
+    const id = this.$route?.query.share
+    return typeof id === 'string' && id ? id : null
+  }
+
+  shareOpenedHere = false
+
+  openShare (id: string) {
+    this.shareOpenedHere = true
+    this.$router.push({ query: { view: 'mine', share: id } }).catch(() => {})
+  }
+
+  /** ‹ Yours on Share a print: back where it was opened, else Yours. */
+  shareBack () {
+    // Opened here, or from one of your prints (its Share…): back to it.
+    if (this.shareOpenedHere || this.$route.query.from === 'print') {
+      this.shareOpenedHere = false
+      this.$router.back()
+      return
+    }
+    this.$router.replace({ query: { view: 'mine' } }).catch(() => {})
   }
 
   /** A print's own page (`?print=<id>`), on Discover or Yours. */
