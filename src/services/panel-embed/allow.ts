@@ -19,7 +19,9 @@ export const RPC_FORWARD: ReadonlySet<string> = new Set([
   'printer.info',
   'printer.objects.list',
   'printer.objects.query',
-  'printer.gcode.script',
+  // Not printer.gcode.script: raw G-code would skip the no-go planner and could
+  // run SAVE_CONFIG, SET_KINEMATIC_POSITION or any macro (Opus review, 6 Nov).
+  // The panel's own move/heat buttons are refused until structured verbs exist.
   'printer.print.start',
   'printer.print.pause',
   'printer.print.resume',
@@ -52,10 +54,26 @@ export const AUX_GET: ReadonlySet<string> = new Set([
   '/identity',
   '/update/status',
   '/wifi/current',
-  '/wifi/show',
+  // Not /wifi/show: it may carry the saved network's secret.
   '/wifi/device/status',
   '/wifi/ap/device/status'
 ])
+
+/** Moonraker notifications passed on to the embed: status and Klippy's state, nothing else (no console, history or other users' events). */
+export const NOTIFY_FORWARD: ReadonlySet<string> = new Set([
+  'notify_status_update',
+  'notify_klippy_ready',
+  'notify_klippy_shutdown',
+  'notify_klippy_disconnected'
+])
+
+/** Control's store actions for those notifications, mapped exactly (no case conversion). */
+export const NOTIFY_ACTIONS: Readonly<Record<string, string>> = {
+  'socket/notifyStatusUpdate': 'notify_status_update',
+  'socket/notifyKlippyReady': 'notify_klippy_ready',
+  'socket/notifyKlippyShutdown': 'notify_klippy_shutdown',
+  'socket/notifyKlippyDisconnected': 'notify_klippy_disconnected'
+}
 
 /** What a refused call says, on the screen and in the error. */
 export const ON_PRINTER = 'Do this on the printer itself'
@@ -71,6 +89,7 @@ export function rpcVerdict (method: unknown): Verdict {
 /** An Aux call's path without its query, if it is a plain path under /server/aux; else null. */
 export function auxPath (path: unknown): string | null {
   if (typeof path !== 'string' || !path.startsWith('/')) return null
+  if (/[#\r\n]/.test(path)) return null
   const bare = path.split('?')[0]
   // No way out of /server/aux: no dot segments, encoded slashes or doubled slashes.
   if (/(^|\/)\.\.?(\/|$)|%2f|%5c|\\|\/\//i.test(bare)) return null
