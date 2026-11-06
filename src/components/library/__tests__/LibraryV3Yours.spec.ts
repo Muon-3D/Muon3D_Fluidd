@@ -185,6 +185,70 @@ describe('Library v3 Yours: the shelves', () => {
   })
 })
 
+describe('Library v3 Yours: keeping up', () => {
+  it('reads Printed and Shared again when the Library syncs something new, keeping what is shown meanwhile', async () => {
+    synced([item('a')])
+    const c = client()
+    setLibraryClient(c as never)
+    const wrapper = mount(LibraryYoursShelves, { stubs: { 'frame-icon': true } })
+    wrappers.push(wrapper)
+    await flush()
+    expect(c.runs).toHaveBeenCalledTimes(1)
+    expect(c.shares).toHaveBeenCalledTimes(1)
+    libraryState.rev += 1
+    await Vue.nextTick()
+    expect(wrapper.find('[data-tid="library-shelf-printed"]').text()).toContain('Print again')
+    await flush()
+    expect(c.runs).toHaveBeenCalledTimes(2)
+    expect(c.shares).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads your shelves once the Library turns on', async () => {
+    synced([item('a')])
+    const c = client()
+    setLibraryClient(c as never)
+    const wrapper = mount(LibraryYoursShelves, { stubs: { 'frame-icon': true }, propsData: { own: false } })
+    wrappers.push(wrapper)
+    await flush()
+    expect(c.runs).not.toHaveBeenCalled()
+    await wrapper.setProps({ own: true })
+    await flush()
+    expect(c.runs).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-tid="library-shelf-printed"]').text()).toContain('Print again')
+  })
+
+  it('says why Sliced could not be read when the first sync failed, instead of loading for ever', async () => {
+    resetLibrary('fixture')
+    libraryState.error = 'The Library didn\'t answer.'
+    setLibraryClient(client() as never)
+    const wrapper = mount(LibraryYoursShelves, { stubs: { 'frame-icon': true } })
+    wrappers.push(wrapper)
+    await flush()
+    expect(wrapper.find('[data-tid="library-shelf-sliced-error"]').text()).toContain('didn\'t answer')
+    const grid = mount(LibraryYoursGrid, { stubs: { 'frame-icon': true }, propsData: { source: 'sliced' } })
+    wrappers.push(grid)
+    await flush()
+    expect(grid.find('[data-tid="library-grid-error"]').text()).toContain('didn\'t answer')
+  })
+
+  it('See all keeps Printed on screen while a sync reads it again', async () => {
+    let finish: (value: unknown) => void = () => {}
+    let calls = 0
+    const runs = vi.fn(() => ++calls === 1 ? Promise.resolve({ runs: [run('r1')], cursor: null }) : new Promise(resolve => { finish = resolve }))
+    setLibraryClient(client({ runs }) as never)
+    const grid = mount(LibraryYoursGrid, { stubs: { 'frame-icon': true }, propsData: { source: 'printed' } })
+    wrappers.push(grid)
+    await flush()
+    libraryState.rev += 1
+    await flush()
+    expect(runs).toHaveBeenCalledTimes(2)
+    expect(grid.findAll('.mcard')).toHaveLength(1)
+    finish({ runs: [], cursor: null })
+    await flush()
+    expect(grid.findAll('.mcard')).toHaveLength(0)
+  })
+})
+
 describe('Library v3 Yours: Library off', () => {
   it('keeps Saved and Collections, without your own shelves or their reads', async () => {
     synced([item('a')])
