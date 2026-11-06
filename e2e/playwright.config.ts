@@ -14,6 +14,8 @@ const PORT = Number(process.env.E2E_PORT || 8090)
 export default defineConfig({
   testDir: '.',
   globalSetup: './global-setup.ts',
+  // The whole run, warm-up included: a cold vite in CI can take minutes.
+  globalTimeout: 25 * 60_000,
   outputDir: '../test-results',
   timeout: 90_000,
   expect: { timeout: 15_000 },
@@ -46,8 +48,7 @@ export default defineConfig({
       port: PORT,
       cwd: '..',
       reuseExistingServer: !process.env.CI,
-      timeout: 240_000,
-      env: { VITE_E2E: '1' }
+      timeout: 240_000
     }
   ]
 })

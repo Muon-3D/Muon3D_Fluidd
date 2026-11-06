@@ -126,7 +126,7 @@ export async function serveModels (page: Page, state: ModelServiceState) {
     const path = url.pathname
     const method = request.method()
     state.seen.push(`${method} ${path}${url.search}`)
-    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } })
+    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
     if (state.failWith) return json(route, { error: { code: 'unavailable', message: 'Down for a moment.' } }, state.failWith)
     const all = state.publications
 
