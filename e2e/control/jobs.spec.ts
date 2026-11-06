@@ -68,9 +68,11 @@ test('search narrows the list, says so when nothing matches, and clears', async 
   await expect(page.getByTestId('jobs-row')).toHaveCount(5)
 })
 
-test('the order: Name puts the files A to Z under the one that is printing', async ({ page, open }) => {
+test('the order: the Name column puts the files A to Z under the one that is printing', async ({ page, open }) => {
   await open('/jobs')
-  await page.getByRole('radiogroup', { name: 'Order' }).getByRole('radio', { name: 'Name' }).click()
+  await expect(page.getByRole('radiogroup', { name: 'Order' })).toHaveCount(0)
+  await page.getByTestId('jobs-col-name').click()
+  await expect(page.getByTestId('jobs-col-name')).toHaveAttribute('data-sort', 'asc')
   const names = await page.getByTestId('jobs-row').locator('b').allTextContents()
   expect(names[0]).toContain('M1 bracket')
   expect(names.slice(1)).toEqual([...names.slice(1)].sort((a, b) => a.localeCompare(b)))
@@ -209,16 +211,16 @@ test('the Delete key on the printing file does nothing, and on another file it a
   expect(rpc('server.files.delete_file')).toHaveLength(0)
 })
 
-test('Select: tick files, one bar, one confirm, and the printing file is left out', async ({ page, open }) => {
+test('Select: tick files, one toolbar, one confirm, and the printing file is left out', async ({ page, open }) => {
   const rpc = recordRpc(page)
   await open('/jobs')
-  await page.getByRole('button', { name: 'More about jobs' }).click()
-  await page.getByTestId('jobs-select').click()
-  await expect(page.getByTestId('jobs-selection')).toContainText('0 selected')
+  await expect(page.getByTestId('jobs-select')).toHaveCount(0)
+  await expect(page.getByTestId('jobs-sel-count')).toHaveCount(0)
   await page.getByTestId('jobs-select-all').check()
-  await expect(page.getByTestId('jobs-selection')).toContainText('5 selected')
-  await expect(page.getByTestId('jobs-selection')).toContainText('is printing, so it stays where it is')
+  await expect(page.getByTestId('jobs-sel-count')).toContainText('5 selected')
+  await expect(page.getByTestId('jobs-toolbar')).toContainText('is printing, so it stays')
   await page.getByTestId('jobs-select-all').uncheck()
+  await expect(page.getByTestId('jobs-sel-count')).toHaveCount(0)
   await row(page, 'Fan duct').getByTestId('jobs-row-check').check()
   await row(page, 'Cable clip').getByTestId('jobs-row-check').check()
   await page.getByTestId('jobs-sel-delete').click()
@@ -226,22 +228,25 @@ test('Select: tick files, one bar, one confirm, and the printing file is left ou
   expect(rpc('server.files.delete_file')).toHaveLength(0)
   await page.getByTestId('confirm-ok').click()
   await expect.poll(() => rpc('server.files.delete_file').map(m => m.params.path).sort()).toEqual(['gcodes/cable_clip_x12.gcode', 'gcodes/fan_duct_v3.gcode'])
-  await expect(page.getByTestId('jobs-selection')).toHaveCount(0)
+  await expect(page.getByTestId('jobs-sel-count')).toHaveCount(0)
 })
 
-test('the filter shows only files never printed, or printed before', async ({ page, open }) => {
+test('no filter: the Last printed column sorts what was printed before ahead of what never was', async ({ page, open, isMobile }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
   printer.state.answers['server.files.get_directory'] = filesPrintedBefore()
   await open('/jobs')
   await expect(page.getByTestId('jobs-row')).toHaveCount(5)
   await page.getByRole('button', { name: 'More about jobs' }).click()
-  await page.getByTestId('jobs-filter-never').click()
-  await expect(page.getByTestId('jobs-row')).toHaveCount(3)
-  await expect(page.getByTestId('jobs-row').filter({ hasText: 'Benchy' })).toHaveCount(0)
-  await page.getByRole('button', { name: 'More about jobs' }).click()
-  await page.getByTestId('jobs-filter-before').click()
-  await expect(page.getByTestId('jobs-row')).toHaveCount(2)
-  await expect(page.getByTestId('jobs-row').filter({ hasText: 'Benchy' })).toHaveCount(1)
+  await expect(page.locator('[data-tid^="jobs-filter-"]')).toHaveCount(0)
+  await expect(page.getByRole('menu').getByText('Never printed')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await page.getByTestId('jobs-col-printed').click()
+  await expect(page.getByTestId('jobs-col-printed')).toHaveAttribute('aria-pressed', 'true')
+  const rows = page.getByTestId('jobs-row')
+  await expect(rows.nth(0)).toContainText(/calibration cube/i)
+  await expect(rows.nth(1)).toContainText(/benchy/i)
+  // A phone row has no Last printed cell; the order is the same.
+  if (!isMobile) await expect(rows.filter({ hasText: 'Never' })).toHaveCount(3)
 })
 
 test('Up next: move a job later, and take one out', async ({ page, open }) => {
