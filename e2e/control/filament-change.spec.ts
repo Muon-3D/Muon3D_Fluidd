@@ -106,6 +106,9 @@ test('already on Control, Quick actions → Change filament opens the panel, eve
 test('mid-print, Quick actions → Change filament asks, then sends M600 to pause the print', async ({ page, open }) => {
   const printer = await usePrinter(page, M1_MACROS) // the shared mock as it is: mid-print
   await open('/')
+  // The page learns it is mid-print from the printer's first status. Until then Change filament would just open
+  // the panel (as on an idle printer), so wait for the page to show the print before pressing it.
+  await expect(page.getByRole('banner').getByRole('button', { name: /Switch printer/ })).toContainText('Printing')
   await page.getByTestId('quick-actions').first().click()
   await page.getByTestId('quick-filament').click()
   const dialog = page.getByRole('dialog', { name: 'Pause the print to change filament?' })
