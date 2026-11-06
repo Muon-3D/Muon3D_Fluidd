@@ -69,6 +69,13 @@ describe('series discovery', () => {
     expect(by.extruder.axis).toBe(0)
   })
 
+  it('draws only the hotends, the bed and the chamber until others are picked', () => {
+    const on = defs.filter(d => isSeriesOn(d, {})).map(d => d.key)
+    expect([...on].sort()).toEqual(['extruder', 'extruder1', 'heater_bed', 'heater_generic chamber', 'temperature_sensor chamber_air'])
+    expect(isSeriesOn(by['temperature_sensor mcu_temp'], {})).toBe(false)
+    expect(isSeriesOn(by['temperature_sensor mcu_temp'], { 'temperature_sensor mcu_temp': true })).toBe(true)
+  })
+
   it('shows temperatures by default and leaves power and speed off until chosen', () => {
     expect(isSeriesOn(by.extruder, {})).toBe(true)
     expect(isSeriesOn(by.extruderPower, {})).toBe(false)

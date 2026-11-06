@@ -63,6 +63,14 @@ function heaterLabel (key: string): string {
   return pretty(split(key)[1] || key)
 }
 
+/**
+ * The lines drawn until someone picks others: the hotend(s), the bed and the
+ * chamber when there is one. Everything else is a click away on its chip.
+ */
+export function essential (key: string): boolean {
+  return /^extruder\d*$/.test(key) || key === 'heater_bed' || /chamber/i.test(key)
+}
+
 function fanLabel (key: string): string {
   if (key === 'fan') return 'Part fan'
   const name = pretty(split(key)[1] || key)
@@ -86,7 +94,7 @@ export function discoverSeries (printer: Record<string, any>): SeriesDef[] {
     })
   for (const key of heaters) {
     const label = heaterLabel(key)
-    temps.push({ ...base, key, object: key, label, group: 'Heaters', targetKey: isNum(printer[key].target) ? `${key}Target` : undefined, defaultOn: true })
+    temps.push({ ...base, key, object: key, label, group: 'Heaters', targetKey: isNum(printer[key].target) ? `${key}Target` : undefined, defaultOn: essential(key) })
     if (isNum(printer[key].power)) powers.push({ key: `${key}Power`, object: key, field: 'power', label: `${label} power`, group: 'Heaters', kind: 'power', axis: 1, scale: 100, unit: '%', defaultOn: false, parentKey: key })
   }
 
@@ -95,7 +103,7 @@ export function discoverSeries (printer: Record<string, any>): SeriesDef[] {
   for (const key of fans) {
     handled.add(key)
     const label = pretty(split(key)[1])
-    temps.push({ ...base, key, object: key, label, group: 'Temperature fans', targetKey: isNum(printer[key].target) ? `${key}Target` : undefined, defaultOn: true })
+    temps.push({ ...base, key, object: key, label, group: 'Temperature fans', targetKey: isNum(printer[key].target) ? `${key}Target` : undefined, defaultOn: essential(key) })
     if (isNum(printer[key].speed)) speeds.push({ key: `${key}Speed`, object: key, field: 'speed', label: `${label} speed`, group: 'Temperature fans', kind: 'speed', axis: 1, scale: 100, unit: '%', defaultOn: false, parentKey: key })
   }
 
@@ -108,7 +116,7 @@ export function discoverSeries (printer: Record<string, any>): SeriesDef[] {
     const driver = /^tmc\d+$/.test(prefix)
     const group: SeriesGroup = board ? 'Board and host' : driver ? 'Drivers' : 'Sensors'
     const label = name ? (driver ? `${pretty(name)} driver` : pretty(name)) : pretty(prefix)
-    return { ...base, key, object: key, label, group, defaultOn: !driver } as Omit<SeriesDef, 'color'>
+    return { ...base, key, object: key, label, group, defaultOn: essential(key) } as Omit<SeriesDef, 'color'>
   })
   // Board and host temperatures read as one set, so they go first among the sensors.
   temps.push(...sensorDefs.filter(d => d.group === 'Board and host'), ...sensorDefs.filter(d => d.group !== 'Board and host'))
