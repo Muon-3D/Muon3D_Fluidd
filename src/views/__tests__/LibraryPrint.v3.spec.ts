@@ -179,6 +179,24 @@ describe('Library v3: one of your prints', () => {
     expect(w.find('[data-tid="library-print-name"]').exists()).toBe(false)
   })
 
+  it('a read still out when the account changes is dropped: not shown, not kept in the new Library', async () => {
+    let answer: (value: LibraryItem) => void = () => {}
+    const c = client({ item: vi.fn(() => new Promise<LibraryItem>(resolve => { answer = resolve })) })
+    setLibraryClient(c as never)
+    const w = mountPage()
+    await flush()
+    expect(c.item).toHaveBeenCalledTimes(1)
+    // B signs in while A's read is out; B's read is refused (not hers).
+    c.item.mockRejectedValueOnce(new LibraryError('not_found', 'No such print.', 404))
+    resetLibrary('other')
+    Object.assign(libraryState, { checked: true, enabled: true })
+    await flush()
+    answer(item())
+    await flush()
+    expect(w.find('[data-tid="library-print-name"]').exists()).toBe(false)
+    expect(libraryState.items.a).toBeUndefined()
+  })
+
   it('when the Library itself could not be read it says why, and Try again reads the Library', async () => {
     Object.assign(libraryState, { checked: false, error: 'The Library didn\'t answer.' })
     const c = client()

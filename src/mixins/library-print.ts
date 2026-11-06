@@ -74,15 +74,22 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
     if (!id || !this.libraryKnown) return
     // Off: the page says so (libraryOff) rather than reading for ever.
     if (!libraryState.enabled) return
+    const account = libraryState.account
     try {
       const item = await loadItem(id)
-      if (id !== this.itemId) return
+      // An answer for another print, or for an account no longer signed in, is not this page's.
+      if (!this.stillFor(id, account)) return
       this.loaded = item
       this.missing = !item
     } catch (error) {
       // Not gone: the Library didn't answer. Say why, with Retry.
-      if (id === this.itemId) this.loadError = describeLibraryError(error)
+      if (this.stillFor(id, account)) this.loadError = describeLibraryError(error)
     }
+  }
+
+  /** The page still shows this print, for this account. */
+  stillFor (id: string, account: string | null): boolean {
+    return id === this.itemId && account === libraryState.account
   }
 
   /** Retry: the Library itself when it could not be read, else the print. */
@@ -109,9 +116,10 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
   /** Its prints, from the Library's newest runs (they carry the print they were of). */
   async readRuns () {
     const id = this.itemId
+    const account = libraryState.account
     try {
       const page = await libraryClient().runs('', 100)
-      if (id !== this.itemId) return
+      if (!this.stillFor(id, account)) return
       this.runs = (Array.isArray(page.runs) ? page.runs : []).filter(run => run.item_id === id)
     } catch { /* the tile says it has printed, from the item, without the list */ }
   }
@@ -139,10 +147,15 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
     return (this.item?.printed_count ?? 0) > this.runRows.length && this.runRows.length > 0
   }
 
-  /** Printed again (here or elsewhere): the list reads again. */
-  @Watch('item.printed_count')
-  onPrinted (count?: number, before?: number) {
-    if (before !== undefined && count !== before) this.readRuns()
+  /** The print and how often it printed: the same print printed again reads its list again. */
+  get printedKey (): string {
+    return this.item ? `${this.item.id}|${this.item.printed_count ?? 0}` : ''
+  }
+
+  /** Printed again (here or elsewhere): the list reads again. Another print arriving is read by onItemPicture. */
+  @Watch('printedKey')
+  onPrinted (key: string, before?: string) {
+    if (key && before && key !== before && key.split('|')[0] === before.split('|')[0]) this.readRuns()
   }
 
   /** "Version 3 · saved from Slice today · printed 4×". */
@@ -200,9 +213,10 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
   async readVersions () {
     const item = this.item
     if (!item?.versioned) return
+    const account = libraryState.account
     try {
       const versions = await printVersions(item.id)
-      if (item.id === this.itemId) this.versions = versions
+      if (this.stillFor(item.id, account)) this.versions = versions
     } catch { /* the page shows what the item says */ }
   }
 
