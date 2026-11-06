@@ -3,7 +3,7 @@
     class="filesystem-wrapper"
     :height="height"
     :max-height="maxHeight"
-    :class="{ 'no-pointer-events': dragState.overlay }"
+    :class="{ 'no-pointer-events': dragState.overlay, 'filesystem-wrapper--tile': tile }"
     flat
     @dragover="handleDragOver"
     @dragenter.self.prevent
@@ -11,7 +11,8 @@
     @drop.self.prevent="handleDrop"
   >
     <file-system-toolbar
-      v-if="selected.length <= 0"
+      v-if="tile || selected.length <= 0"
+      :tile="tile"
       :roots="availableRoots"
       :root="currentRoot"
       :name="name"
@@ -37,6 +38,7 @@
 
     <file-system-bulk-actions
       v-if="selected.length > 0"
+      :tile="tile"
       :root="currentRoot"
       :path="visiblePath"
       :count="selected.length"
@@ -93,6 +95,7 @@
       :filename="fileEditorDialogState.filename"
       :loading="fileEditorDialogState.loading"
       :readonly="fileEditorDialogState.readonly"
+      :line="fileEditorDialogState.line"
       :path="currentPath"
       :root="currentRoot"
       @save="handleSaveFileChanges"
@@ -216,6 +219,14 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
   @Prop({ type: Boolean })
   readonly bulkActions?: boolean
 
+  // The v3 tile: its own tools (the roots are the tile header's), no card of its own.
+  @Prop({ type: Boolean })
+  readonly tile?: boolean
+
+  // The root to show, when the tile header picks it.
+  @Prop({ type: String })
+  readonly activeRoot?: string
+
   // Maintains the path and root.
   currentRoot = ''
 
@@ -254,7 +265,8 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
     contents: '',
     filename: '',
     loading: false,
-    readonly: false
+    readonly: false,
+    line: 0
   }
 
   // Maintains the name change dialog state.
@@ -513,6 +525,34 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
     items.push(...thumbnails)
   }
 
+  @Watch('activeRoot')
+  onActiveRoot (root?: string) {
+    if (root && root !== this.currentRoot && this.availableRoots.includes(root)) this.handleRootChange(root)
+  }
+
+  /**
+   * Opens a file by where it is (`dir` below the root), at a line: the macros'
+   * Edit and `?open=` come here. The folder it is in is shown behind the editor.
+   */
+  async openPath (root: string, dir: string, name: string, line = 0) {
+    if (!this.availableRoots.includes(root)) return
+    if (this.currentRoot !== root) this.handleRootChange(root)
+    this.loadFiles(dir ? `${root}/${dir}` : root)
+    await this.$nextTick()
+    const dot = name.lastIndexOf('.')
+    const file = {
+      type: 'file',
+      name,
+      filename: name,
+      extension: dot >= 0 ? name.slice(dot + 1).toLowerCase() : '',
+      path: dir ? `${root}/${dir}` : root,
+      size: 0,
+      modified: 0,
+      permissions: this.rootProperties.readonly ? 'r' : 'rw'
+    } as AppFile
+    await this.handleFileOpenDialog(file, 'edit', line)
+  }
+
   // If the root changes, reset the path and load the root path files.
   handleRootChange (root: string) {
     if (root.length) {
@@ -672,7 +712,7 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
     this.goToFileDialogOpen = true
   }
 
-  async handleFileOpenDialog (file: AppFile, mode: 'edit' | 'view' | undefined = undefined) {
+  async handleFileOpenDialog (file: AppFile, mode: 'edit' | 'view' | undefined = undefined, line = 0) {
     try {
       const viewOnly = mode
         ? mode === 'view'
@@ -709,7 +749,8 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
           contents: response.data,
           filename: file.filename,
           loading: false,
-          readonly: file.permissions === 'r' || this.rootProperties.readonly
+          readonly: file.permissions === 'r' || this.rootProperties.readonly,
+          line
         }
       }
     } catch (error: unknown) {
@@ -1077,6 +1118,10 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
 </script>
 
 <style lang="scss" scoped>
+  .filesystem-wrapper--tile {
+    background: transparent !important;
+  }
+
   .filesystem-wrapper,
   .file-system,
   .file-system :deep(.v-data-table) {
