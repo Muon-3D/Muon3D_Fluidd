@@ -6,4 +6,4 @@ import Vue from 'vue'
  */
 export type FilesPane = 'config' | 'other'
 
-export const filesView = Vue.observable({ pane: 'config' as FilesPane })
+export const filesView = Vue.observable({ pane: 'config' as FilesPane, sheetOpen: false })
