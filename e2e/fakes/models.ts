@@ -101,8 +101,8 @@ export function itemJson (i: FakeItem) {
     updated_at: i.updated_at,
     deleted_at: null,
     versioned: true,
-    version: 1,
-    versions: 1,
+    version: 3,
+    versions: 3,
     origin: i.origin,
     setups: i.gcode ? [{ printer_model: 'Muon3D M1', nozzle_mm: 0.4, material: i.material, print_seconds: 3600, filament_g: 20, file_id: `${i.id}-g` }] : []
   }
@@ -265,6 +265,28 @@ export async function serveModels (page: Page, state: ModelServiceState) {
     if (path === '/v1/library') {
       if (state.libraryOff) return json(route, { enabled: false, account: { promise_version: '2026-10-01', consented_at: '2026-10-02T00:00:00Z' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
       return json(route, { enabled: true, account: { promise_version: '2026-10-01' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
+    }
+    const own = path.match(/^\/v1\/items\/([^/]+)(\/versions)?$/)
+    if (own && !own[2] && method === 'DELETE') {
+      const it = state.items.find(i => i.id === own[1])
+      if (!it) return json(route, { error: { code: 'not_found' } }, 404)
+      state.items = state.items.filter(i => i !== it)
+      return json(route, { ...itemJson(it), state: 'deleted', deleted_at: new Date().toISOString() })
+    }
+    if (own && method === 'GET') {
+      const it = state.items.find(i => i.id === own[1])
+      if (!it) return json(route, { error: { code: 'not_found', message: 'No such print.' } }, 404)
+      if (!own[2]) return json(route, itemJson(it))
+      // Its versions, newest first: the current one and two older (the last 10 are kept).
+      const versions = [1, 2, 3].map(n => ({
+        number: n,
+        origin: 'slice',
+        state: 'ready',
+        created_at: new Date(Date.parse(it.updated_at) - (3 - n) * 86_400_000).toISOString(),
+        summary: null,
+        files: [{ id: `${it.id}-g${n}`, role: 'gcode', format: 'gcode', encoding: 'gzip', size_bytes: 1, sha256: 'x', setup: { printer_model: 'Muon3D M1', nozzle_mm: 0.4, material: n === 3 ? it.material : 'PLA' } }]
+      })).reverse()
+      return json(route, { versions })
     }
     if (path === '/v1/items') {
       const origin = url.searchParams.get('origin')

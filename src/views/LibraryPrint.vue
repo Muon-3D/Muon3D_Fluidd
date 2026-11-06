@@ -2,80 +2,111 @@
   <div
     class="lprint"
     :class="{ 'lprint--phone': isMobileViewport }"
-    data-tid="library-print-page"
+    data-tid="library-own-print"
   >
-    <div class="lprint__crumbs">
-      <nav aria-label="Breadcrumb">
-        <router-link :to="libraryTo">
-          Library
+    <header class="lprint__head">
+      <div class="lprint__titles">
+        <router-link
+          :to="yoursTo"
+          class="lprint__back"
+          data-tid="library-own-back"
+        >
+          ‹ Yours
         </router-link>
-        <frame-icon
-          name="chevronRight"
-          small
-        />
-        <span>{{ item ? item.name : '' }}</span>
-      </nav>
-      <v-menu
+        <h1
+          v-if="item"
+          data-tid="library-print-name"
+        >
+          {{ item.name }}
+        </h1>
+        <p
+          v-if="item"
+          class="lprint__line"
+          data-tid="library-own-line"
+        >
+          {{ headLine }}
+        </p>
+      </div>
+      <div
         v-if="item"
-        left
-        offset-y
+        class="lprint__acts"
       >
-        <template #activator="{ on, attrs }">
-          <button
-            type="button"
-            class="lib-btn lib-btn--sm lib-btn--ghost lib-btn--sq"
-            aria-label="More"
-            data-tid="library-print-more"
-            v-bind="attrs"
-            v-on="on"
-          >
-            <frame-icon
-              name="more"
-              small
-            />
-          </button>
-        </template>
-        <v-list dense>
-          <v-list-item
-            v-if="item.versioned"
-            data-tid="library-copy"
-            @click="copy(item)"
-          >
-            <v-list-item-title>Save as copy</v-list-item-title>
-          </v-list-item>
-          <v-list-item
-            v-for="setup in item.setups || []"
-            :key="setup.file_id"
-            data-tid="library-download-gcode"
-            @click="downloadGcode(item, setup)"
-          >
-            <v-list-item-title>
-              {{ (item.setups || []).length > 1 ? `Download G-code (${setup.material}, ${setup.nozzle_mm} mm)` : 'Download G-code' }}
-            </v-list-item-title>
-          </v-list-item>
-          <v-list-item
-            v-if="item.project_file_id"
-            data-tid="library-download-project"
-            @click="downloadProject(item)"
-          >
-            <v-list-item-title>Download project (.3mf)</v-list-item-title>
-          </v-list-item>
-          <v-divider />
-          <v-list-item
-            data-tid="library-delete"
-            @click="removeHere"
-          >
-            <v-list-item-title class="lprint__danger">
-              Delete
-            </v-list-item-title>
-          </v-list-item>
-        </v-list>
-      </v-menu>
-    </div>
+        <button
+          v-if="item.versioned"
+          type="button"
+          class="lib-btn"
+          data-tid="library-open-slice"
+          @click="openInSlice(item)"
+        >
+          Open in Slice
+        </button>
+        <v-menu
+          left
+          offset-y
+        >
+          <template #activator="{ on, attrs }">
+            <button
+              type="button"
+              class="lib-btn lib-btn--sq"
+              aria-label="More"
+              data-tid="library-print-more"
+              v-bind="attrs"
+              v-on="on"
+            >
+              <frame-icon
+                name="more"
+                small
+              />
+            </button>
+          </template>
+          <v-list dense>
+            <v-list-item
+              data-tid="library-rename"
+              @click="rename(item)"
+            >
+              <v-list-item-title>Rename</v-list-item-title>
+            </v-list-item>
+            <v-list-item
+              v-if="item.versioned"
+              data-tid="library-copy"
+              @click="copy(item)"
+            >
+              <v-list-item-title>Save as copy</v-list-item-title>
+            </v-list-item>
+            <v-list-item
+              v-for="setup in item.setups || []"
+              :key="setup.file_id"
+              data-tid="library-download-gcode"
+              @click="downloadGcode(item, setup)"
+            >
+              <v-list-item-title>
+                {{ (item.setups || []).length > 1 ? `Download G-code (${setup.material}, ${setup.nozzle_mm} mm)` : 'Download G-code' }}
+              </v-list-item-title>
+            </v-list-item>
+            <v-list-item
+              v-if="item.project_file_id"
+              data-tid="library-download-project"
+              @click="downloadProject(item)"
+            >
+              <v-list-item-title>Download project (.3mf)</v-list-item-title>
+            </v-list-item>
+            <v-divider />
+            <v-list-item
+              data-tid="library-delete"
+              @click="removeHere"
+            >
+              <v-list-item-title class="lprint__danger">
+                Delete…
+              </v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+      </div>
+    </header>
 
     <section
       v-if="!signedIn"
-      class="lib-empty lib-surface"
+      class="lib-empty lib-surface lprint__state"
     >
       <h2>Sign in to see your Library</h2>
       <div class="lib-empty__actions">
@@ -89,34 +120,68 @@
       </div>
     </section>
     <section
+      v-else-if="loadError"
+      class="lib-empty lib-surface lprint__state"
+      role="alert"
+      data-tid="library-own-error"
+    >
+      <h2>Your Library didn't answer</h2>
+      <p>{{ loadError }}</p>
+      <div class="lib-empty__actions">
+        <button
+          type="button"
+          class="lib-btn lib-btn--pri"
+          data-tid="library-own-retry"
+          @click="reload"
+        >
+          Try again
+        </button>
+      </div>
+    </section>
+    <section
+      v-else-if="libraryOff"
+      class="lib-empty lib-surface lprint__state"
+      data-tid="library-own-off"
+    >
+      <h2>Your Library is off</h2>
+      <p>Your prints are kept only while it is on.</p>
+      <div class="lib-empty__actions">
+        <router-link
+          :to="yoursTo"
+          class="lib-btn"
+        >
+          Go to Yours
+        </router-link>
+      </div>
+    </section>
+    <section
       v-else-if="missing"
-      class="lib-empty lib-surface"
+      class="lib-empty lib-surface lprint__state"
       data-tid="library-print-missing"
     >
       <h2>This print isn't in your Library</h2>
       <p>It may have been deleted, on this or another device.</p>
       <div class="lib-empty__actions">
         <router-link
-          :to="libraryTo"
+          :to="yoursTo"
           class="lib-btn"
         >
-          Back to your Library
+          Back to Yours
         </router-link>
       </div>
     </section>
     <p
       v-else-if="!item"
       class="lprint__note"
+      role="status"
     >
       Reading the print…
     </p>
 
-    <div
-      v-else
-      class="lprint__layout"
-    >
-      <div class="lprint__left">
-        <div class="lib-stage lprint__stage">
+    <template v-else>
+      <div class="lprint__grid">
+        <!-- Its picture. -->
+        <div class="lprint__tile lprint__stage">
           <img
             v-if="picture"
             :src="picture"
@@ -127,137 +192,100 @@
             name="library"
             large
           />
-          <span
-            v-if="firstSetup"
-            class="lib-ov lib-ov--tr"
-          ><span class="lib-pill lib-pill--glass">{{ firstSetup }}</span></span>
-          <span
-            v-if="item.versioned"
-            class="lib-ov lib-ov--br"
+        </div>
+
+        <!-- Print: the facts, your printers with what each has loaded, one primary. -->
+        <section
+          class="lprint__tile"
+          aria-label="Print"
+          data-tid="library-own-print-tile"
+        >
+          <header class="lprint__tile-head">
+            <frame-icon
+              name="printer"
+              small
+            />
+            <h2>Print</h2>
+            <span class="lprint__grow" />
+            <span
+              v-if="readyHere && activePrinter"
+              class="lib-pill lib-pill--ok"
+              data-tid="library-own-ready"
+            >Ready on {{ activePrinter.name }}</span>
+          </header>
+          <dl
+            v-if="specs.length"
+            class="lprint__specs"
           >
+            <div
+              v-for="s in specs"
+              :key="s.label"
+            >
+              <dt>{{ s.label }}</dt><dd>{{ s.value }}</dd>
+            </div>
+          </dl>
+          <template v-if="item.versioned">
+            <printer-fit-list
+              :item="item"
+              @print="printOn(item, $event.id)"
+              @reslice="reslice"
+            />
             <button
               type="button"
-              class="lib-btn lib-btn--sm"
-              @click="openInSlice(item)"
+              class="lib-btn lib-btn--lg lib-btn--pri lprint__go"
+              data-tid="library-print-on"
+              @click="printOn(item, readyHere && activePrinter ? activePrinter.id : null)"
             >
               <frame-icon
-                name="slice"
+                name="printer"
                 small
               />
-              Open in Slice
+              {{ readyHere && activePrinter ? `Print on ${activePrinter.name}` : 'Print on…' }}
             </button>
-          </span>
-        </div>
+          </template>
+          <p
+            v-else
+            class="lprint__note"
+          >
+            A model from the app: slice it to print it.
+          </p>
+        </section>
       </div>
 
-      <div class="lprint__right">
-        <div class="lprint__titles">
-          <span class="lib-caps">{{ item.versioned ? 'Print · saved from Slice' : 'Model · from the app' }}</span>
-          <div class="lprint__name">
-            <h1 data-tid="library-print-name">
-              {{ item.name }}
-            </h1>
-            <button
-              type="button"
-              class="lib-btn lib-btn--sm lib-btn--ghost lib-btn--sq"
-              aria-label="Rename"
-              data-tid="library-rename"
-              @click="rename(item)"
-            >
-              <frame-icon
-                name="pencil"
-                small
-              />
-            </button>
-          </div>
-          <div class="lprint__meta">
-            <span
-              v-if="item.version"
-              class="lib-pill lib-pill--run"
-            >v{{ item.version }}</span>
-            <span>Saved {{ savedAgo }}</span>
-            <span class="lprint__dot">·</span>
-            <span>{{ printedTimes }}</span>
-          </div>
-        </div>
-
-        <div
-          v-if="item.versioned"
-          class="lprint__actions"
-        >
-          <button
-            type="button"
-            class="lib-btn lib-btn--lg lib-btn--pri"
-            data-tid="library-print-on"
-            @click="printOn(item, readyHere && activePrinter ? activePrinter.id : null)"
-          >
-            {{ readyHere && activePrinter ? `Print on ${activePrinter.name}` : 'Print on…' }}
-          </button>
-          <button
-            type="button"
-            class="lib-btn lib-btn--lg"
-            data-tid="library-open-slice"
-            @click="openInSlice(item)"
-          >
-            Open in Slice
-          </button>
-        </div>
-
-        <section
-          v-if="item.versioned"
-          class="lib-surface lprint__card"
-          aria-label="Your printers"
-        >
-          <div class="lprint__card-head">
-            <h2 class="lib-card-title">
-              Your printers
-            </h2>
-            <span>Checked against what each has loaded now</span>
-          </div>
-          <printer-fit-list
-            :item="item"
-            @print="printOn(item, $event.id)"
-            @reslice="reslice"
-          />
-        </section>
-
+      <div class="lprint__grid lprint__grid--half">
         <section
           v-if="versionRows.length"
-          class="lib-surface lprint__card"
+          class="lprint__tile"
           aria-label="Versions"
           data-tid="library-versions"
         >
-          <div class="lprint__card-head">
-            <h2 class="lib-card-title">
-              Versions
-            </h2>
-            <span>The last 10 are kept</span>
-          </div>
-          <div class="lprint__spine">
+          <header class="lprint__tile-head">
+            <frame-icon
+              name="copy"
+              small
+            />
+            <h2>Versions</h2>
+            <span class="lprint__grow" />
+            <span class="lprint__note">The last 10 are kept</span>
+          </header>
+          <div class="lprint__list">
             <div
               v-for="row in versionRows"
               :key="row.number"
-              class="lprint__ver"
+              class="lprint__row"
             >
-              <span
-                class="lprint__node"
-                :class="{ 'lprint__node--now': row.current }"
-              />
-              <span class="lprint__ver-text">
-                <b>{{ row.when }}<span
-                  v-if="row.current"
-                  class="lib-pill lib-pill--run lprint__current"
-                >Current</span></b>
-                <span>{{ row.line || row.origin }}</span>
+              <span class="lprint__row-text">
+                <b>Version {{ row.number }}<template v-if="row.line"> · {{ row.line }}</template></b>
+                <span>{{ row.when }} · {{ row.origin }}</span>
               </span>
               <span
                 v-if="row.current"
-                class="lprint__origin"
-              >{{ row.origin }}</span>
+                class="lib-pill lib-pill--run"
+              >Current</span>
               <button
                 v-else
                 type="button"
-                class="lib-btn lib-btn--sm lib-btn--ghost"
+                class="lib-btn lib-btn--sm"
                 :disabled="busy"
                 data-tid="library-restore"
                 @click="restore(row)"
@@ -269,40 +297,60 @@
         </section>
 
         <section
-          class="lib-surface lprint__card"
-          aria-label="History"
+          class="lprint__tile"
+          aria-label="Printed"
+          data-tid="library-own-printed"
         >
-          <h2 class="lib-card-title">
-            {{ printedTimes }}
-          </h2>
-          <div
-            v-if="item.last_printer_name"
-            class="lprint__history"
-          >
+          <header class="lprint__tile-head">
             <frame-icon
-              name="check"
+              name="clock"
               small
             />
-            <span>Last on {{ item.last_printer_name }}</span>
-            <span class="lprint__when">{{ lastPrinted }}</span>
+            <h2>Printed</h2>
+          </header>
+          <div
+            v-if="runRows.length"
+            class="lprint__list"
+          >
+            <div
+              v-for="row in runRows"
+              :key="row.id"
+              class="lprint__row"
+            >
+              <span class="lprint__row-text">
+                <b>{{ row.title }}</b>
+                <span>{{ row.line }}</span>
+              </span>
+              <span
+                v-if="row.status"
+                class="lib-pill"
+                :class="{ 'lib-pill--ok': row.tone === 'ok', 'lib-pill--run': row.tone === 'run', 'lprint__pill--bad': row.tone === 'bad' }"
+              >{{ row.status }}</span>
+            </div>
           </div>
+          <p
+            v-else-if="item.last_printer_name"
+            class="lprint__note"
+          >
+            {{ printedTimes }}, last on {{ item.last_printer_name }} {{ lastPrinted }}.
+          </p>
           <p
             v-else
             class="lprint__note"
           >
-            Print it on any of your printers, and each print is counted here.
+            Print it on any of your printers, and each print is listed here.
           </p>
         </section>
-
-        <p
-          v-if="error"
-          class="lprint__note lprint__note--error"
-          role="alert"
-        >
-          {{ error }}
-        </p>
       </div>
-    </div>
+
+      <p
+        v-if="error"
+        class="lprint__note lprint__note--error"
+        role="alert"
+      >
+        {{ error }}
+      </p>
+    </template>
 
     <print-on-dialog
       :item="printing"
@@ -337,10 +385,12 @@ import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
 
 /**
- * A print's own page (`/library/<id>`): its picture, Print on and Open in
- * Slice, how it fits each of your printers now, its versions (an older one
- * can be restored), and how often it has printed. What it does is
- * mixins/library-print.ts; only the look is here.
+ * One of your prints (`/library/<id>`, Library v3 page 9): ‹ Yours, its
+ * name and what happened to it; Open in Slice once, and the rest in ···
+ * (Rename, Save as copy, downloads, Delete, which asks first). Its picture;
+ * one Print tile with your printers and what each has loaded, and one
+ * primary; its Versions and when it Printed. When it can't be read it says
+ * why, with Retry. What it does is mixins/library-print.ts; only the look is here.
  */
 @Component({ components: { PrinterFitList, PrintOnDialog, FileNameDialog, CloudAccountDialog } })
 export default class LibraryPrint extends Mixins(LibraryPrintMixin, BrowserMixin) {}
@@ -350,224 +400,161 @@ export default class LibraryPrint extends Mixins(LibraryPrintMixin, BrowserMixin
   .lprint {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 18px;
     max-width: 1440px;
     margin: 0 auto;
     padding: 6px 12px 40px;
     color: var(--m3d-text);
   }
 
-  .lprint--phone {
-    padding: 4px 0 24px;
-  }
+  .lprint--phone { padding: 4px 0 24px; }
 
-  .lprint__crumbs {
+  .lprint__head {
     display: flex;
-    align-items: center;
+    flex-wrap: wrap;
+    align-items: flex-end;
     justify-content: space-between;
-    gap: 12px;
-
-    nav {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      min-width: 0;
-      color: var(--m3d-text-muted);
-      font-size: 13px;
-
-      a {
-        color: var(--m3d-text-muted) !important;
-        text-decoration: none;
-      }
-
-      span {
-        overflow: hidden;
-        color: var(--m3d-text);
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-    }
-  }
-
-  .lprint__layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-    gap: 24px;
-    align-items: start;
-  }
-
-  @media (max-width: 1100px) {
-    .lprint__layout {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-
-  .lprint__stage {
-    height: 560px;
-    border-radius: 10px;
-
-    > img {
-      width: 70%;
-      height: 70%;
-    }
-  }
-
-  .lprint--phone .lprint__stage {
-    height: 300px;
-  }
-
-  .lprint__right {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-width: 0;
+    gap: 16px;
   }
 
   .lprint__titles {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-  }
-
-  .lprint__name {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    gap: 2px;
     min-width: 0;
 
     h1 {
-      margin: 0;
+      margin: 2px 0 0;
       overflow-wrap: anywhere;
       font-size: 28px;
-      font-weight: 600;
+      font-weight: 700;
       line-height: 1.15;
     }
   }
 
-  .lprint--phone .lprint__name h1 {
-    font-size: 22px;
+  .lprint--phone .lprint__titles h1 { font-size: 22px; }
+
+  .lprint__back {
+    color: var(--m3d-accent) !important;
+    font-size: 13px;
+    text-decoration: none;
   }
 
-  .lprint__meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px;
+  .lprint__line {
+    margin: 4px 0 0;
     color: var(--m3d-text-muted);
     font-size: 13px;
   }
 
-  .lprint__dot {
-    color: var(--m3d-text-subtle);
-  }
-
-  .lprint__actions {
+  .lprint__acts {
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
     gap: 8px;
   }
 
-  .lprint__card {
+  .lprint__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  .lprint__grid--half { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+
+  .lprint--phone .lprint__grid { grid-template-columns: minmax(0, 1fr); }
+
+  @media (max-width: 1100px) {
+    .lprint__grid { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  .lprint__tile {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 14px 16px;
-  }
-
-  .lprint__card-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 4px 12px;
-
-    span {
-      color: var(--m3d-text-subtle);
-      font-size: 12px;
-    }
-  }
-
-  .lprint__spine {
-    position: relative;
-
-    &::before {
-      content: '';
-      position: absolute;
-      top: 14px;
-      bottom: 14px;
-      left: 7px;
-      width: 2px;
-      background: var(--m3d-border);
-    }
-  }
-
-  .lprint__ver {
-    position: relative;
-    display: grid;
-    grid-template-columns: 16px minmax(0, 1fr) auto;
     gap: 12px;
-    align-items: start;
-    padding: 10px 0;
+    min-width: 0;
+    padding: 16px;
+    border-radius: 18px;
+    background: var(--m3d-surface-2);
   }
 
-  .lprint__node {
-    width: 10px;
-    height: 10px;
-    margin: 5px 0 0 3px;
-    border: 2px solid var(--m3d-border-strong);
-    border-radius: 50%;
-    background: var(--m3d-surface);
-  }
-
-  .lprint__node--now {
-    border-color: var(--m3d-accent);
-    background: var(--m3d-accent);
-  }
-
-  .lprint__ver-text {
+  .lprint__tile-head {
     display: flex;
+    align-items: center;
+    gap: 8px;
+
+    h2 { margin: 0; font-size: 16px; font-weight: 700; }
+  }
+
+  .lprint__grow { flex: 1 1 auto; }
+
+  .lprint__stage {
+    display: grid;
+    place-items: center;
+    aspect-ratio: 4 / 3;
+
+    > img {
+      width: 80%;
+      height: 80%;
+      object-fit: contain;
+    }
+  }
+
+  .lprint__specs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin: 0;
+    overflow: hidden;
+    border-radius: 12px;
+    background: var(--m3d-surface-3, rgba(255, 255, 255, 0.04));
+
+    div {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 12px;
+    }
+
+    dt { color: var(--m3d-text-muted); }
+    dd { margin: 0; font-weight: 700; }
+  }
+
+  .lprint__go { width: 100%; justify-content: center; }
+
+  .lprint__list {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 14px;
+    background: var(--m3d-surface-3, rgba(255, 255, 255, 0.04));
+  }
+
+  .lprint__row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+
+    & + & { border-top: 1px solid var(--m3d-border); }
+  }
+
+  .lprint__row-text {
+    display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     gap: 2px;
     min-width: 0;
 
-    b {
-      font-weight: 600;
-    }
-
-    span {
-      color: var(--m3d-text-muted);
-      font-size: 12px;
-    }
+    span { color: var(--m3d-text-muted); font-size: 12px; }
   }
 
-  .lprint__current {
-    margin-left: 6px;
-    vertical-align: 1px;
+  .lprint__pill--bad {
+    background: color-mix(in srgb, var(--m3d-danger) 14%, transparent);
+    color: var(--m3d-danger);
   }
 
-  .lprint__origin {
-    color: var(--m3d-text-subtle);
-    font-size: 12px;
-  }
-
-  .lprint__history {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 0;
-    font-size: 13px;
-
-    .frame-icon {
-      color: var(--m3d-success);
-    }
-
-    span:first-of-type {
-      flex: 1 1 auto;
-    }
-  }
-
-  .lprint__when {
-    color: var(--m3d-text-muted);
+  .lprint__state {
+    max-width: 560px;
+    width: 100%;
+    margin: 24px auto 0;
   }
 
   .lprint__note {
@@ -576,11 +563,7 @@ export default class LibraryPrint extends Mixins(LibraryPrintMixin, BrowserMixin
     font-size: 13px;
   }
 
-  .lprint__note--error {
-    color: var(--m3d-danger);
-  }
+  .lprint__note--error { color: var(--m3d-danger); }
 
-  .lprint__danger {
-    color: var(--m3d-danger) !important;
-  }
+  .lprint__danger { color: var(--m3d-danger); }
 </style>
