@@ -117,9 +117,16 @@
         <template v-if="!inChild && !ownPage && current">
           <general-settings v-if="shows('general')" />
           <theme-settings v-if="shows('theme')" />
-          <people-access-settings v-if="shows('access') && isMuonPrinter === true && supports('muon_access')" />
+          <p
+            v-if="shows('access') && cards.loading"
+            class="settings-loading"
+            data-tid="settings-access-loading"
+          >
+            Loading…
+          </p>
+          <people-access-settings v-else-if="shows('access') && cards.peopleAccess" />
           <protection-settings v-else-if="shows('protection') && supports('muon_protection')" />
-          <auth-settings v-if="shows('auth') && supports('authorization') && isMuonPrinter === false" />
+          <auth-settings v-if="shows('auth') && cards.auth" />
           <software-settings v-if="shows('versions')" />
           <camera-settings v-if="shows('camera')" />
           <preset-settings v-if="shows('presets')" />
@@ -145,7 +152,7 @@ import StateMixin from '@/mixins/state'
 import BrowserMixin from '@/mixins/browser'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
-import { MOVED_TO_ACCOUNT, SECTION_COMPONENTS, searchSettingsSections, settingsSectionFor, visibleSettingsSections, type SettingsSection } from '@/services/settings/sections'
+import { MOVED_TO_ACCOUNT, SECTION_COMPONENTS, accessCards, type AccessCards, searchSettingsSections, settingsSectionFor, visibleSettingsSections, type SettingsSection } from '@/services/settings/sections'
 import { printerNameParts } from '@/util/printer-name'
 
 import MacroSettings from '@/components/settings/macros/MacroSettings.vue'
@@ -218,6 +225,11 @@ export default class Settings extends Mixins(StateMixin, BrowserMixin) {
   /** Three-state (#296): null until server.info has loaded for this printer, so neither access card shows. */
   get isMuonPrinter (): boolean | null {
     return this.$store.getters['server/isMuonPrinter'] as boolean | null
+  }
+
+  /** Which access card shows for this printer (null Muon-ness: loading). */
+  get cards (): AccessCards {
+    return accessCards(this.isMuonPrinter, SECTION_COMPONENTS.filter(name => this.supports(name)))
   }
 
   supports (component: string): boolean {
@@ -337,6 +349,12 @@ export default class Settings extends Mixins(StateMixin, BrowserMixin) {
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .settings-loading {
+    margin: 0;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
   }
 
   .settings-back {
