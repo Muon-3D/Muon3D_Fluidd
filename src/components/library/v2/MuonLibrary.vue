@@ -4,304 +4,326 @@
     :class="[`mlib--${context}`, { 'mlib--phone': phone }]"
     data-tid="muon-library"
   >
-    <!-- The two places, search and filters. No creator row, no page tabs. -->
-    <header class="mlib__head">
-      <div class="mlib__titles">
-        <div
-          v-if="context === 'page'"
-          class="mlib__title"
-        >
-          <h1>Library</h1>
-          <p data-tid="library-purpose">
-            {{ tab === 'discover' ? 'Prints people share, and ones tested on the M1' : 'What you sliced, printed, saved and shared' }}
-          </p>
+    <!-- See all and search results (v3 pages 3 and 4): one grid page. -->
+    <library-grid-page
+      v-if="tab === 'discover' && grid"
+      :source="grid"
+      :query="search"
+      :printer-name="printerName"
+      :fits-first="fits"
+      :fits-label="fitsLabel"
+      :categories="chips"
+      :printing="printing"
+      @back="$emit('grid-back')"
+      @yours="setTab('yours')"
+      @update:source="$emit('update:grid', $event)"
+      @update:query="openSearch"
+      @print="print"
+      @open="open"
+    />
+
+    <template v-else>
+      <!-- The two places, search and filters. No creator row, no page tabs. -->
+      <header class="mlib__head">
+        <div class="mlib__titles">
+          <div
+            v-if="context === 'page'"
+            class="mlib__title"
+          >
+            <h1>Library</h1>
+            <p data-tid="library-purpose">
+              {{ tab === 'discover' ? 'Prints people share, and ones tested on the M1' : 'What you sliced, printed, saved and shared' }}
+            </p>
+          </div>
+          <div
+            class="mlib-seg"
+            role="tablist"
+            aria-label="Library"
+            data-tid="library-views"
+          >
+            <button
+              v-for="t in tabs"
+              :key="t.id"
+              type="button"
+              role="tab"
+              class="mlib-seg__btn"
+              :class="{ 'mlib-seg__btn--on': tab === t.id }"
+              :aria-selected="tab === t.id ? 'true' : 'false'"
+              :data-tid="`library-view-${t.id === 'yours' ? 'mine' : t.id}`"
+              @click="setTab(t.id)"
+            >
+              {{ t.label }}
+            </button>
+          </div>
         </div>
+        <label
+          v-if="tab === 'discover'"
+          class="mlib-search"
+        >
+          <frame-icon
+            name="search"
+            small
+          />
+          <input
+            v-model="query"
+            type="search"
+            placeholder="Search models, makers, tags"
+            aria-label="Search Discover"
+            maxlength="64"
+            data-tid="library-discover-find"
+            @keydown.enter="!$event.isComposing && openSearch(query)"
+          >
+        </label>
+        <slot
+          v-else
+          name="yours-search"
+        />
         <div
-          class="mlib-seg"
-          role="tablist"
-          aria-label="Library"
-          data-tid="library-views"
+          v-if="tab === 'discover'"
+          class="mlib-chips"
+          role="group"
+          aria-label="Filter"
         >
           <button
-            v-for="t in tabs"
-            :key="t.id"
             type="button"
-            role="tab"
-            class="mlib-seg__btn"
-            :class="{ 'mlib-seg__btn--on': tab === t.id }"
-            :aria-selected="tab === t.id ? 'true' : 'false'"
-            :data-tid="`library-view-${t.id === 'yours' ? 'mine' : t.id}`"
-            @click="setTab(t.id)"
+            class="mlib-chip"
+            :class="{ 'mlib-chip--on': fits }"
+            :aria-pressed="fits ? 'true' : 'false'"
+            data-tid="library-discover-chip-fits"
+            @click="fits = !fits"
           >
-            {{ t.label }}
+            <frame-icon
+              v-if="fits"
+              name="check"
+              small
+            />
+            {{ fitsLabel }}
+          </button>
+          <button
+            v-for="c in chips"
+            :key="c.id"
+            type="button"
+            class="mlib-chip"
+            :class="{ 'mlib-chip--on': chip === c.id }"
+            :aria-pressed="chip === c.id ? 'true' : 'false'"
+            :data-tid="`library-discover-chip-${c.id}`"
+            @click="chip = c.id"
+          >
+            {{ c.label }}
           </button>
         </div>
-      </div>
-      <label
-        v-if="tab === 'discover'"
-        class="mlib-search"
+      </header>
+
+      <!-- Continue: the print you last saved, one tap to print it again. -->
+      <section
+        v-if="continueItem"
+        class="mlib-continue"
+        aria-label="Continue"
+        data-tid="library-continue"
       >
-        <frame-icon
-          name="search"
-          small
-        />
-        <input
-          v-model="query"
-          type="search"
-          placeholder="Search models, makers, tags"
-          aria-label="Search Discover"
-          data-tid="library-discover-find"
+        <img
+          v-if="continuePicture"
+          :src="continuePicture"
+          alt=""
+          class="mlib-continue__img"
         >
-      </label>
-      <slot
-        v-else
-        name="yours-search"
-      />
-      <div
-        v-if="tab === 'discover'"
-        class="mlib-chips"
-        role="group"
-        aria-label="Filter"
-      >
-        <button
-          type="button"
-          class="mlib-chip"
-          :class="{ 'mlib-chip--on': fits }"
-          :aria-pressed="fits ? 'true' : 'false'"
-          data-tid="library-discover-chip-fits"
-          @click="fits = !fits"
-        >
-          <frame-icon
-            v-if="fits"
-            name="check"
-            small
-          />
-          {{ fitsLabel }}
-        </button>
-        <button
-          v-for="c in chips"
-          :key="c.id"
-          type="button"
-          class="mlib-chip"
-          :class="{ 'mlib-chip--on': chip === c.id }"
-          :aria-pressed="chip === c.id ? 'true' : 'false'"
-          :data-tid="`library-discover-chip-${c.id}`"
-          @click="chip = c.id"
-        >
-          {{ c.label }}
-        </button>
-      </div>
-    </header>
+        <span
+          v-else
+          class="mlib-continue__img mlib-continue__img--blank"
+        ><frame-icon name="library" /></span>
+        <div class="mlib-continue__text">
+          <span class="mlib-eyebrow">Continue</span>
+          <strong>{{ continueItem.name }}</strong>
+          <span class="mlib-muted">{{ continueFacts }}</span>
+        </div>
+        <div class="mlib-continue__acts">
+          <button
+            type="button"
+            class="mlib-btn mlib-btn--primary"
+            data-tid="library-continue-print"
+            @click="$emit('print-item', continueItem)"
+          >
+            <frame-icon
+              name="printer"
+              small
+            />
+            {{ printerName ? `Print again on ${printerName}` : 'Print again' }}
+          </button>
+        </div>
+      </section>
 
-    <!-- Continue: the print you last saved, one tap to print it again. -->
-    <section
-      v-if="continueItem"
-      class="mlib-continue"
-      aria-label="Continue"
-      data-tid="library-continue"
-    >
-      <img
-        v-if="continuePicture"
-        :src="continuePicture"
-        alt=""
-        class="mlib-continue__img"
-      >
-      <span
-        v-else
-        class="mlib-continue__img mlib-continue__img--blank"
-      ><frame-icon name="library" /></span>
-      <div class="mlib-continue__text">
-        <span class="mlib-eyebrow">Continue</span>
-        <strong>{{ continueItem.name }}</strong>
-        <span class="mlib-muted">{{ continueFacts }}</span>
-      </div>
-      <div class="mlib-continue__acts">
-        <button
-          type="button"
-          class="mlib-btn mlib-btn--primary"
-          data-tid="library-continue-print"
-          @click="$emit('print-item', continueItem)"
-        >
-          <frame-icon
-            name="printer"
-            small
-          />
-          {{ printerName ? `Print again on ${printerName}` : 'Print again' }}
-        </button>
-      </div>
-    </section>
-
-    <!-- DISCOVER -->
-    <template v-if="tab === 'discover'">
-      <!-- The whole of Discover: offline, nothing answered, or nothing yet (v3 §6). -->
-      <library-state
-        v-if="pageState"
-        :kind="pageState.kind"
-        :icon="pageState.icon"
-        :title="pageState.title"
-        :text="pageState.text"
-        :action="pageState.action"
-        primary
-        tid="library-discover-state"
-        @action="load"
-      />
-
-      <template v-else>
-        <library-shelf
-          v-for="shelf in visibleShelves"
-          :id="shelf.id"
-          :key="shelf.id"
-          :title="shelf.title"
-          :sub="shelf.sub"
-          :cards="shelf.cards"
-          :loading="busy"
-          :error="shelf.error"
-          :printer-name="printerName"
-          :printing="printing"
-          @print="print"
-          @open="open"
-          @retry="load"
-          @see-all="seeAll"
-        />
-
+      <!-- DISCOVER -->
+      <template v-if="tab === 'discover'">
+        <!-- The whole of Discover: offline, nothing answered, or nothing yet (v3 §6). -->
         <library-state
-          v-if="noMatch"
-          icon="search"
-          :title="noMatchTitle"
-          text="Clear the filter to see prints that need a re-slice, or try another word."
-          action="Clear filter"
-          tid="library-discover-empty"
-          @action="clearFilter"
+          v-if="pageState"
+          :kind="pageState.kind"
+          :icon="pageState.icon"
+          :title="pageState.title"
+          :text="pageState.text"
+          :action="pageState.action"
+          primary
+          tid="library-discover-state"
+          @action="load"
         />
 
-        <!-- The feed: what people share, newest first, below the shelves. -->
-        <section
-          v-if="visiblePosts.length"
-          class="mlib-shelf"
-          data-tid="library-feed"
-        >
-          <header class="mlib-shelf__head">
-            <h2>From the community</h2>
-            <span class="mlib-muted">What people are sharing for their M1s</span>
-          </header>
-          <div class="mlib-feed">
-            <article
-              v-for="(p, i) in visiblePosts"
-              :key="p.key"
-              class="mlib-post"
-              :class="{ 'mlib-post--tall': i % 3 === 0 }"
-              :data-tid="`library-post-${p.card.id}`"
-            >
-              <header class="mlib-post__by">
-                <span
-                  class="mlib-ava"
-                  :style="{ background: colourOf(p.card.creator) }"
-                >{{ initials(p.card.creator) }}</span>
-                <span><strong>{{ p.card.creator }}</strong> {{ p.verb }} <a
-                  href="#"
-                  @click.prevent="open(p.card)"
-                >{{ p.card.title }}</a><template v-if="p.card.makeOf">, from <a
-                  :href="publicationHref(p.card.makeOf.slug)"
-                  target="_blank"
-                  rel="noopener"
-                >{{ p.card.makeOf.title }}</a></template><template v-else-if="p.card.remixOf"> from {{ p.card.remixOf.title }}</template></span>
-                <span class="mlib-muted mlib-post__when">{{ ago(p.card.createdAt) }}</span>
-              </header>
-              <button
-                type="button"
-                class="mlib-post__pic"
-                :aria-label="`Quick look at ${p.card.title}`"
-                @click="open(p.card)"
+        <template v-else>
+          <library-shelf
+            v-for="shelf in visibleShelves"
+            :id="shelf.id"
+            :key="shelf.id"
+            :title="shelf.title"
+            :sub="shelf.sub"
+            :cards="shelf.cards"
+            :loading="busy"
+            :error="shelf.error"
+            :printer-name="printerName"
+            :printing="printing"
+            @print="print"
+            @open="open"
+            @retry="load"
+            @see-all="seeAll"
+          />
+
+          <library-state
+            v-if="noMatch"
+            icon="search"
+            :title="noMatchTitle"
+            text="Clear the filter to see prints that need a re-slice, or try another word."
+            action="Clear filter"
+            tid="library-discover-empty"
+            @action="clearFilter"
+          />
+
+          <!-- The feed: what people share, newest first, below the shelves. -->
+          <section
+            v-if="visiblePosts.length"
+            class="mlib-shelf"
+            data-tid="library-feed"
+          >
+            <header class="mlib-shelf__head">
+              <h2>From the community</h2>
+              <span class="mlib-muted">What people are sharing for their M1s</span>
+            </header>
+            <div class="mlib-feed">
+              <article
+                v-for="(p, i) in visiblePosts"
+                :key="p.key"
+                class="mlib-post"
+                :class="{ 'mlib-post--tall': i % 3 === 0 }"
+                :data-tid="`library-post-${p.card.id}`"
               >
-                <img
-                  v-if="p.card.picture"
-                  :src="p.card.picture"
-                  alt=""
-                  loading="lazy"
-                >
-                <span
-                  v-if="p.card.m1"
-                  class="mlib-badge mlib-badge--glass"
-                >Made for M1</span>
-              </button>
-              <footer class="mlib-post__foot">
-                <span
-                  v-if="p.card.saves"
-                  class="mlib-stat"
-                  :aria-label="`${p.card.saves} saves`"
-                >♡ {{ p.card.saves }}</span>
-                <span
-                  v-if="p.card.makes"
-                  class="mlib-stat"
-                ><frame-icon
-                  name="printer"
-                  small
-                />{{ p.card.makes }} made</span>
-                <span
-                  v-if="p.card.remixes"
-                  class="mlib-stat"
-                ><frame-icon
-                  name="copy"
-                  small
-                />{{ p.card.remixes }} {{ p.card.remixes === 1 ? 'remix' : 'remixes' }}</span>
-                <span class="mlib-grow" />
+                <header class="mlib-post__by">
+                  <span
+                    class="mlib-ava"
+                    :style="{ background: colourOf(p.card.creator) }"
+                  >{{ initials(p.card.creator) }}</span>
+                  <span><strong>{{ p.card.creator }}</strong> {{ p.verb }} <a
+                    href="#"
+                    @click.prevent="open(p.card)"
+                  >{{ p.card.title }}</a><template v-if="p.card.makeOf">, from <a
+                    :href="publicationHref(p.card.makeOf.slug)"
+                    target="_blank"
+                    rel="noopener"
+                  >{{ p.card.makeOf.title }}</a></template><template v-else-if="p.card.remixOf"> from {{ p.card.remixOf.title }}</template></span>
+                  <span class="mlib-muted mlib-post__when">{{ ago(p.card.createdAt) }}</span>
+                </header>
                 <button
                   type="button"
-                  class="mlib-btn mlib-btn--sm mlib-btn--tint"
-                  :aria-label="`Print ${p.card.title}`"
-                  @click="print(p.card)"
+                  class="mlib-post__pic"
+                  :aria-label="`Quick look at ${p.card.title}`"
+                  @click="open(p.card)"
                 >
-                  <frame-icon
+                  <img
+                    v-if="p.card.picture"
+                    :src="p.card.picture"
+                    alt=""
+                    loading="lazy"
+                  >
+                  <span
+                    v-if="p.card.m1"
+                    class="mlib-badge mlib-badge--glass"
+                  >Made for M1</span>
+                </button>
+                <footer class="mlib-post__foot">
+                  <span
+                    v-if="p.card.saves"
+                    class="mlib-stat"
+                    :aria-label="`${p.card.saves} saves`"
+                  >♡ {{ p.card.saves }}</span>
+                  <span
+                    v-if="p.card.makes"
+                    class="mlib-stat"
+                  ><frame-icon
                     name="printer"
                     small
-                  />
-                  Print this
-                </button>
-              </footer>
-            </article>
-          </div>
-          <button
-            v-if="feedCursor"
-            ref="more"
-            type="button"
-            class="mlib-btn mlib-more"
-            :disabled="feedBusy"
-            data-tid="library-feed-more"
-            @click="loadMore"
-          >
-            {{ feedBusy ? 'Loading…' : 'Show more' }}
-          </button>
-        </section>
+                  />{{ p.card.makes }} made</span>
+                  <span
+                    v-if="p.card.remixes"
+                    class="mlib-stat"
+                  ><frame-icon
+                    name="copy"
+                    small
+                  />{{ p.card.remixes }} {{ p.card.remixes === 1 ? 'remix' : 'remixes' }}</span>
+                  <span class="mlib-grow" />
+                  <button
+                    type="button"
+                    class="mlib-btn mlib-btn--sm mlib-btn--tint"
+                    :aria-label="`Print ${p.card.title}`"
+                    @click="print(p.card)"
+                  >
+                    <frame-icon
+                      name="printer"
+                      small
+                    />
+                    Print this
+                  </button>
+                </footer>
+              </article>
+            </div>
+            <button
+              v-if="feedCursor"
+              ref="more"
+              type="button"
+              class="mlib-btn mlib-more"
+              :disabled="feedBusy"
+              data-tid="library-feed-more"
+              @click="loadMore"
+            >
+              {{ feedBusy ? 'Loading…' : 'Show more' }}
+            </button>
+          </section>
+        </template>
       </template>
-    </template>
 
-    <!-- YOURS: collections and saves, then the host's own Library (sign in, sections, your prints). -->
-    <template v-else>
-      <library-yours-shelves
-        v-if="signedIn"
-        ref="yours"
-        :printer-name="printerName"
-        :printing="printing"
-        :collections="collections"
-        :collections-error="collectionsError"
-        @print="print"
-        @open="open"
-        @changed="readCollections"
-      />
-      <section
-        v-if="signedIn"
-        class="mlib-shelf mlib-shelf--own"
-      >
-        <header class="mlib-shelf__head">
-          <h2>Your prints</h2>
-          <span class="mlib-muted">Sliced and saved from Slice, on every printer</span>
-        </header>
-        <slot name="yours" />
-      </section>
-      <slot
-        v-else
-        name="yours"
-      />
+      <!-- YOURS: collections and saves, then the host's own Library (sign in, sections, your prints). -->
+      <template v-else>
+        <library-yours-shelves
+          v-if="signedIn"
+          ref="yours"
+          :printer-name="printerName"
+          :printing="printing"
+          :collections="collections"
+          :collections-error="collectionsError"
+          @print="print"
+          @open="open"
+          @changed="readCollections"
+        />
+        <section
+          v-if="signedIn"
+          class="mlib-shelf mlib-shelf--own"
+        >
+          <header class="mlib-shelf__head">
+            <h2>Your prints</h2>
+            <span class="mlib-muted">Sliced and saved from Slice, on every printer</span>
+          </header>
+          <slot name="yours" />
+        </section>
+        <slot
+          v-else
+          name="yours"
+        />
+      </template>
     </template>
 
     <library-quick-look
@@ -325,12 +347,13 @@ import LibraryQuickLook from './LibraryQuickLook.vue'
 import LibraryYoursShelves from './LibraryYoursShelves.vue'
 import LibraryShelf from './LibraryShelf.vue'
 import LibraryState from './LibraryState.vue'
+import LibraryGridPage from './LibraryGridPage.vue'
 import { describeLibraryError, type CommunityCollection, type LibraryItem } from '@/services/library/api'
 import { LIBRARY_URL } from '@/services/library/discover'
 import { libraryClient } from '@/services/library/store'
 import { lastEvent, nozzleText, printFacts } from '@/services/library/format'
 import { thumbnailFor } from '@/services/library/thumbnails'
-import { ago, isNetworkError, loadFeedPage, loadPublication, loadShelves, publicationPrint, type FeedPost, type PublicationPrint, type ShelfCard } from '@/services/library/shelves'
+import { ago, isNetworkError, loadFeedPage, loadPublication, loadShelves, publicationPrint, type FeedPost, type GridSource, type PublicationPrint, type ShelfCard } from '@/services/library/shelves'
 
 export type LibraryTab = 'discover' | 'yours'
 
@@ -353,7 +376,7 @@ const PALETTE = ['#ff9f0a', '#ff453a', '#64d2ff', '#30d158', '#bf5af2', '#80d6d1
  * prints from where it is, through the host: `print` and `print-item`.
  * No router in here; it sizes to its container.
  */
-@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState } })
+@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState, LibraryGridPage } })
 export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: 'page' }) readonly context!: 'page' | 'control'
   @Prop({ type: String, default: null }) readonly printerId!: string | null
@@ -364,6 +387,9 @@ export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: 'discover' }) readonly tab!: LibraryTab
   /** Signed in: Yours shows collections and saves, the quick look a heart. */
   @Prop({ type: Boolean, default: false }) readonly signedIn!: boolean
+  /** A See all page or search results instead of Discover's shelves; the host keeps it in the address. */
+  @Prop({ type: String, default: null }) readonly grid!: GridSource | null
+  @Prop({ type: String, default: '' }) readonly search!: string
   /** The print to continue with (the last one saved), or none. */
   @Prop({ type: Object, default: null }) readonly continueItem!: LibraryItem | null
 
@@ -598,14 +624,16 @@ export default class MuonLibrary extends Vue {
     this.fits = false
   }
 
-  /** See all: the shelf's own page arrives with v3 page 3; until then, the Library site's list. */
+  /** See all: the shelf as a grid page (v3 page 3). */
   seeAll (id: string) {
-    const where: Record<string, string> = {
-      popular: `${LIBRARY_URL}/community?sort=trending`,
-      m1: `${LIBRARY_URL}/search?sources=muon3d`,
-      new: `${LIBRARY_URL}/community?sort=new`
-    }
-    if (where[id]) window.open(where[id], '_blank', 'noopener')
+    this.$emit('update:grid', id)
+  }
+
+  /** Enter in a search box: the results page (v3 page 4), for two letters or more. */
+  openSearch (query: string) {
+    const q = query.trim()
+    if (q.length < 2 || q.length > 64) return
+    this.$emit('open-search', q)
   }
 
   get visiblePosts (): FeedPost[] {

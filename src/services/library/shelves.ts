@@ -359,3 +359,69 @@ export async function publicationPicture (id: string, fetcher: typeof fetch = fe
   }
   return null
 }
+
+/** Which list a See all page shows: a Discover shelf, or search results. */
+export type GridSource = 'popular' | 'm1' | 'new' | 'search'
+
+export interface GridPage {
+  cards: ShelfCard[];
+  cursor: string | null;
+  /** Search answered by filtering the newest prints here: the service has no search yet. */
+  local?: boolean;
+}
+
+/**
+ * One page of a See all grid (Library v3 page 3/4). Popular, Made for M1
+ * and New are the public lists; search is `GET /v1/public/search?q=`, and
+ * on a service without it (404) the newest prints filtered here, so search
+ * still works while that ships.
+ */
+export async function loadGrid (
+  source: GridSource,
+  options: { cursor?: string | null, query?: string } = {},
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal
+): Promise<GridPage> {
+  const cursor = options.cursor ?? null
+  if (source === 'search') return searchPublications(options.query ?? '', cursor, fetcher, signal)
+  const query = source === 'popular'
+    ? { sort: 'popular' as const }
+    : source === 'm1' ? { sort: 'trending' as const, tag: 'm1-ready' } : { sort: 'new' as const }
+  const page = await loadPublications({ ...query, cursor, limit: 24 }, fetcher, signal)
+  return {
+    cards: page.items.map(summaryCard).map(card => source === 'm1' ? { ...card, m1: true } : card),
+    cursor: page.next_cursor
+  }
+}
+
+/** The words a card is found by: its title, maker and tags. */
+export function cardMatches (card: ShelfCard, query: string): boolean {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const haystack = [card.title, card.creator, card.handle ?? '', ...card.tags].join(' ').toLowerCase()
+  return words.every(word => haystack.includes(word))
+}
+
+/** As the service searches: the whole query within the title, the maker or a tag. */
+export function searchMatches (card: ShelfCard, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  return [card.title, card.creator, card.handle ?? '', ...card.tags].some(field => field.toLowerCase().includes(q))
+}
+
+async function searchPublications (query: string, cursor: string | null, fetcher: typeof fetch, signal?: AbortSignal): Promise<GridPage> {
+  const q = query.trim()
+  if (q.length < 2) throw new Error('Search for at least two letters.')
+  if (q.length > 64) throw new Error('Search for at most 64 characters.')
+  const params = new URLSearchParams({ q, limit: '24' })
+  if (cursor) params.set('cursor', cursor)
+  const response = await fetcher(`${MODELS_URL}/v1/public/search?${params}`, { method: 'GET', credentials: 'omit', signal })
+  if (response.status === 404) {
+    // An older model service: search the newest prints here instead.
+    const newest = await loadPublications({ sort: 'new', limit: 48 }, fetcher, signal)
+    return { cards: newest.items.map(summaryCard).filter(card => searchMatches(card, q)), cursor: null, local: true }
+  }
+  if (response.status === 429) throw new Error('Too many searches for a moment. Try again in a minute.')
+  if (!response.ok) throw new Error('The Library didn\'t answer. Try again.')
+  const body = await response.json().catch(() => null) as Partial<PublicationsPage> | null
+  if (!body || !Array.isArray(body.items)) throw new Error('The Library sent an answer this version of Control can\'t read.')
+  return { cards: body.items.filter(isSummary).map(summaryCard), cursor: text(body.next_cursor) ? body.next_cursor : null }
+}
