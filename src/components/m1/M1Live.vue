@@ -5,6 +5,9 @@
     :state="state"
     data-tid="m1-live"
     :data-live="shown ? 'on' : 'off'"
+    :data-state-source="accessories ? accessories.source : undefined"
+    :data-fan-fault="fanFacts.fault ? 'yes' : 'no'"
+    :data-part-fan="Math.round(fanFacts.partSpeed * 100)"
   >
     <div
       v-if="live"
@@ -24,12 +27,12 @@ import { Waits } from '@/globals'
 import { claimLiveView } from '@/services/m1-3d/live-slot'
 import { built, canDrawWebgl, loadViewer, newCanvas, park, prebuild, takeParked } from '@/services/m1-3d/parked'
 import { liveSyncFor, type LiveSync } from '@/services/m1-3d/live-sync'
-import { liveAccessories, sameAccessories, type Accessories } from '@/services/m1-3d/accessories'
+import { fansFrom, liveAccessories, sameAccessories, type Accessories, type FanFacts } from '@/services/m1-3d/accessories'
 import { plateTaps, screenFrom, type LedStrip, type PlateTap, type ScreenState } from '@/services/m1-3d/live-state'
 import { motionPathFrom, type MotionPath } from '@/services/m1-3d/motion'
 import { modelPose, samePose, type ModelPose } from '@/services/m1-3d/pose'
 import { partColour, segmentsDone, toolpathFrom, toolpathFromGcode, type Toolpath } from '@/services/m1-3d/toolpath'
-import type { M1Viewer } from '@/services/m1-3d/viewer'
+import type { DrawnState, M1Viewer } from '@/services/m1-3d/viewer'
 import type { ThumbState } from '@/components/ui/PrinterThumb.vue'
 import type { Move } from '@/store/gcodePreview/types'
 import { httpClientActions } from '@/api/httpClientActions'
@@ -137,7 +140,21 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     return (this.$store.state.printer.printer.print_stats?.state as string | undefined) ?? ''
   }
 
-  /** Null until the printer's first status has arrived (see liveAccessories). */
+  /**
+   * The fans as the printer reports them. The accurate model has no fan to
+   * turn (the deck fan is part of the base's one mesh, and there is no part
+   * fan), so they are only marked on the stage's element.
+   */
+  get fanFacts (): FanFacts {
+    return fansFrom(this.$store.state.printer.printer)
+  }
+
+  /**
+   * The plate, toolhead, Z column and filament the model shows: from Harry's
+   * printer-state machine (Klipper's m1_machine) when the printer runs it,
+   * else from each sensor (accessories.ts). Null until the printer's first
+   * status has arrived (see liveAccessories).
+   */
   get accessories (): Accessories | null {
     return liveAccessories(
       this.$store.state.printer.printer,
@@ -244,6 +261,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
         viewer.onFrame = null
       }
       viewer.setShift(this.shift)
+      viewer.onDraw = drawn => this.markDrawn(drawn)
       this.viewer = viewer
       this.sync().setPose(this.pose)
       this.lastReport = ''
@@ -263,6 +281,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   stop () {
     const viewer = this.viewer
     const canvas = this.canvas
+    if (viewer) viewer.onDraw = null
     this.viewer = null
     this.canvas = null
     this.live = false
@@ -270,6 +289,27 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     this.giveBack?.()
     this.giveBack = null
     if (viewer && canvas) park({ viewer, canvas })
+  }
+
+  /**
+   * Marks what the model drew on the stage's element (data-model,
+   * data-plate, data-toolhead, data-column, data-filament): the state once a
+   * clip ends, the clip's name while it plays. Written straight to the
+   * element, not through Vue, since it runs every frame.
+   */
+  markDrawn ({ model, accessories: a }: DrawnState) {
+    const el = this.$el as HTMLElement | undefined
+    if (!el?.dataset) return
+    const marks: Record<string, string> = { model }
+    if (a) {
+      marks.plate = a.plate.clip ?? (a.plate.on ? 'on' : 'off')
+      marks.toolhead = a.tube.clip ?? (a.tube.attached ? (a.tube.unlocking ? 'unlocking' : 'connected') : 'disconnected')
+      marks.column = a.column.clip ?? a.column.state
+      marks.filament = a.filament.clip ?? (a.filament.loaded ? 'loaded' : 'empty')
+    }
+    for (const [key, value] of Object.entries(marks)) {
+      if (el.dataset[key] !== value) el.dataset[key] = value
+    }
   }
 
   // -- where the head and the bed are ----------------------------------------
