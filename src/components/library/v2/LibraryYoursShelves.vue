@@ -136,7 +136,7 @@
       </library-shelf>
 
       <library-shelf
-        v-else-if="s.shown"
+        v-else-if="own && s.shown"
         :id="s.id"
         :key="s.id"
         :title="s.title"
@@ -182,10 +182,10 @@
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryOwnCard from './LibraryOwnCard.vue'
 import LibraryShelf from './LibraryShelf.vue'
-import { describeLibraryError, type CommunityCollection, type CommunitySave } from '@/services/library/api'
-import { libraryClient, libraryItems } from '@/services/library/store'
+import { describeLibraryError, type CommunityCollection, type CommunitySave, type LibraryItem } from '@/services/library/api'
+import { libraryClient, libraryItems, libraryState } from '@/services/library/store'
 import { publicationPicture, saveCard, type ShelfCard } from '@/services/library/shelves'
-import { loadOwnShelf, OWN_SHELVES, type OwnCard, type OwnShelfId } from '@/services/library/yours'
+import { itemShelf, loadOwnShelf, OWN_SHELVES, type OwnCard, type OwnShelfId } from '@/services/library/yours'
 
 /** How many saved public prints have their picture read (the service sends none for them). */
 const PICTURES = 24
@@ -221,6 +221,8 @@ export default class LibraryYoursShelves extends Vue {
   @Prop({ type: Array, default: () => [] }) readonly collections!: CommunityCollection[]
   /** Why MuonLibrary couldn't read them, if it couldn't. */
   @Prop({ type: String, default: '' }) readonly collectionsError!: string
+  /** Your Library is on and read: your own shelves show. Saved and Collections are the community's and always do. */
+  @Prop({ type: Boolean, default: true }) readonly own!: boolean
 
   ROW = ROW
   /** Each collection's cards, read for its mosaic and when opened. */
@@ -230,11 +232,10 @@ export default class LibraryYoursShelves extends Vue {
   saved: ShelfCard[] = []
   savedLoaded = false
   savedError = ''
-  own: Record<OwnShelfId, OwnShelf> = {
-    sliced: blank(),
+  /** Printed and Shared by you, read from the service. Sliced and Designs are the synced Library's. */
+  read: Record<'printed' | 'shared', OwnShelf> = {
     printed: blank(),
-    shared: blank(),
-    designs: blank()
+    shared: blank()
   }
 
   openId = ''
@@ -253,7 +254,8 @@ export default class LibraryYoursShelves extends Vue {
   /** Saved, your own shelves, and every collection's prints. After a heart or Add to… too. */
   async refresh () {
     const read = ++this.reads
-    for (const s of OWN_SHELVES) this.readOwn(s.id)
+    if (this.own) this.readOwn('printed')
+    if (this.own) this.readOwn('shared')
     this.savedError = ''
     try {
       const page = await libraryClient().saved()
@@ -267,8 +269,9 @@ export default class LibraryYoursShelves extends Vue {
   }
 
   async readOwn (id: OwnShelfId) {
+    if (id === 'sliced' || id === 'designs') return
     const read = (this.ownReads[id] = (this.ownReads[id] ?? 0) + 1)
-    const shelf = this.own[id]
+    const shelf = this.read[id]
     shelf.loading = !shelf.loaded
     shelf.error = ''
     try {
@@ -283,24 +286,45 @@ export default class LibraryYoursShelves extends Vue {
     }
   }
 
-  /** Your prints arrived (or changed): a share can now show the print it is. */
-  get itemCount (): number {
-    return libraryItems().length
+  /**
+   * The Library synced something new (a slice saved, a print finished, a
+   * share's print arrived): Printed and Shared by you read again. Also while
+   * one is still loading: its answer may predate the change, and the newer
+   * read wins.
+   */
+  get syncRev (): number {
+    return libraryState.rev
   }
 
-  @Watch('itemCount')
-  onItems () {
-    // Also while it is still loading: its answer may predate the items, and this newer read wins.
+  @Watch('syncRev')
+  onSync () {
+    if (!this.own) return
+    this.readOwn('printed')
     this.readOwn('shared')
+  }
+
+  @Watch('own')
+  onOwn (own: boolean) {
+    if (own) this.onSync()
+  }
+
+  /** Every item, from the synced Library: kept current by its sync, never a page short. */
+  get items (): LibraryItem[] {
+    return libraryItems()
   }
 
   /** In the mockup's order; Shared by you and Designs only once there is one. */
   get shelves () {
+    const synced = { loading: !libraryState.synced, error: '' }
+    const sliced = { ...synced, cards: itemShelf('sliced', this.items) }
+    const designs = { ...synced, cards: itemShelf('designs', this.items) }
+    const shown = (s: { cards: OwnCard[], error: string }) => s.cards.length > 0 || !!s.error
     return [
-      { ...OWN_SHELVES[0], ...this.own.sliced, empty: EMPTY.sliced, shown: true },
-      { ...OWN_SHELVES[1], ...this.own.printed, empty: EMPTY.printed, shown: true },
+      { ...OWN_SHELVES[0], ...sliced, empty: EMPTY.sliced, shown: true },
+      { ...OWN_SHELVES[1], ...this.read.printed, empty: EMPTY.printed, shown: true },
       { id: 'saved' as const },
-      ...OWN_SHELVES.slice(2).map(s => ({ ...s, ...this.own[s.id], empty: EMPTY[s.id], shown: this.own[s.id].cards.length > 0 || !!this.own[s.id].error }))
+      { ...OWN_SHELVES[2], ...this.read.shared, empty: EMPTY.shared, shown: shown(this.read.shared) },
+      { ...OWN_SHELVES[3], ...designs, empty: EMPTY.designs, shown: shown(designs) }
     ]
   }
 

@@ -35,7 +35,7 @@ export interface OwnCard {
   at: string;
 }
 
-/** A share as `GET /v1/community/shares` lists it (sharing_routes.rs). */
+/** A share as `GET /v1/community/shares` lists it (sharing_routes.rs). Live public: approved and not expired (community/guard.rs). */
 export interface OwnShare {
   id: string;
   item: string;
@@ -74,7 +74,7 @@ export function slicedCard (item: LibraryItem, now = Date.now()): OwnCard {
     title: item.name,
     material: setup?.material || null,
     facts: printFacts(setup),
-    note: ago ? `sliced ${ago}` : '',
+    note: ago ? `${item.origin && item.origin !== 'slice' ? 'saved' : 'sliced'} ${ago}` : '',
     action: printable(item) ? 'print' : null,
     at: item.updated_at
   }
@@ -133,26 +133,40 @@ export function sharedCard (share: OwnShare, items: Map<string, LibraryItem>): O
   }
 }
 
-/** Public, live shares: the prints you published (a link share is not one). */
-export function publicShares (value: unknown): OwnShare[] {
+/** Public, live shares: approved by review and not expired, one per print (a link share is not one). */
+export function publicShares (value: unknown, now = Date.now()): OwnShare[] {
   const shares = (value as { shares?: unknown } | null)?.shares
   if (!Array.isArray(shares)) return []
-  return shares.filter((s): s is OwnShare =>
-    !!s && typeof s === 'object' && typeof (s as OwnShare).id === 'string' && typeof (s as OwnShare).item === 'string' &&
-    (s as OwnShare).audience === 'public' && (s as OwnShare).state !== 'revoked' && (s as OwnShare).state !== 'withdrawn')
+  const seen = new Set<string>()
+  return shares.filter((s): s is OwnShare => {
+    const share = s as OwnShare | null
+    if (!share || typeof share !== 'object' || typeof share.id !== 'string' || typeof share.item !== 'string') return false
+    if (share.audience !== 'public' || share.state !== 'approved') return false
+    if (share.expires_at && !(Date.parse(share.expires_at) > now)) return false
+    if (seen.has(share.item)) return false
+    seen.add(share.item)
+    return true
+  })
 }
 
-/** Items still in the Library, from a `/v1/items` page. */
-export function liveItems (value: unknown): LibraryItem[] {
-  const items = (value as { items?: unknown } | null)?.items
-  return Array.isArray(items) ? (items as LibraryItem[]).filter(live) : []
+/**
+ * Your prints from the synced Library (store.ts, every item, kept current):
+ * Sliced is everything that is not a design (slices, uploads, imports, the
+ * phone app's models); Designs is what Create made.
+ */
+export function itemShelf (id: 'sliced' | 'designs', items: LibraryItem[], now = Date.now()): OwnCard[] {
+  const mine = items.filter(live)
+  const cards = id === 'designs'
+    ? mine.filter(item => item.origin === 'design').map(designCard)
+    : mine.filter(item => item.origin !== 'design').map(item => slicedCard(item, now))
+  return findOwn(cards, '', 'new')
 }
 
 /** Runs, newest first, one card per print: printing the same thing three times is one card. */
 export function printedCards (runs: LibraryRun[]): OwnCard[] {
   const seen = new Set<string>()
   const cards: OwnCard[] = []
-  for (const run of [...runs].sort((a, b) => b.started_at.localeCompare(a.started_at))) {
+  for (const run of [...runs].sort((a, b) => time(b.started_at) - time(a.started_at))) {
     const id = run.item_id ?? `file:${run.file_name ?? run.id}`
     if (seen.has(id)) continue
     seen.add(id)
@@ -169,29 +183,40 @@ export function findOwn (cards: OwnCard[], query: string, sort: OwnSort): OwnCar
   const found = q ? cards.filter(c => c.title.toLowerCase().includes(q) || (c.material ?? '').toLowerCase().includes(q)) : cards
   return [...found].sort(sort === 'name'
     ? (a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' })
-    : (a, b) => b.at.localeCompare(a.at))
+    : (a, b) => time(b.at) - time(a.at))
+}
+
+/** An ISO time as a number for sorting; unknown sorts last. */
+function time (iso: string): number {
+  const at = Date.parse(iso)
+  return Number.isFinite(at) ? at : 0
 }
 
 /** What a shelf's loader needs from the Library client (store.ts libraryClient()). */
 export interface OwnClient {
-  sliced: () => Promise<unknown>;
-  designs: () => Promise<unknown>;
-  runs: (cursor?: string, limit?: number) => Promise<{ runs?: LibraryRun[] }>;
+  runs: (cursor?: string, limit?: number) => Promise<{ runs?: LibraryRun[], cursor?: string | null }>;
   shares: () => Promise<unknown>;
 }
 
-/** One shelf's cards, newest first. `items` resolves a share to its print. */
-export async function loadOwnShelf (id: OwnShelfId, client: OwnClient, items: LibraryItem[], now = Date.now()): Promise<OwnCard[]> {
-  switch (id) {
-    case 'sliced': return findOwn(liveItems(await client.sliced()).map(item => slicedCard(item, now)), '', 'new')
-    case 'designs': return findOwn(liveItems(await client.designs()).map(designCard), '', 'new')
-    case 'printed': {
-      const page = await client.runs('', 100)
-      return printedCards(Array.isArray(page.runs) ? page.runs : [])
-    }
-    case 'shared': {
-      const byId = new Map(items.map(item => [item.id, item]))
-      return findOwn(publicShares(await client.shares()).map(share => sharedCard(share, byId)), '', 'new')
-    }
+/** How many pages of runs See all follows (100 each). */
+const RUN_PAGES = 10
+
+/**
+ * Printed or Shared by you, read from the service. `all` (See all) follows
+ * Printed's cursor; a shelf reads one page. `items` resolves a share to its print.
+ */
+export async function loadOwnShelf (id: 'printed' | 'shared', client: OwnClient, items: LibraryItem[], all = false): Promise<OwnCard[]> {
+  if (id === 'shared') {
+    const byId = new Map(items.map(item => [item.id, item]))
+    return findOwn(publicShares(await client.shares()).map(share => sharedCard(share, byId)), '', 'new')
   }
+  const runs: LibraryRun[] = []
+  let cursor = ''
+  for (let page = 0; page < (all ? RUN_PAGES : 1); page++) {
+    const answer = await client.runs(cursor, 100)
+    runs.push(...(Array.isArray(answer.runs) ? answer.runs : []))
+    if (!answer.cursor) break
+    cursor = answer.cursor
+  }
+  return printedCards(runs)
 }

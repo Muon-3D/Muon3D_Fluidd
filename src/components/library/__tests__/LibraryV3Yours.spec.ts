@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import Vue from 'vue'
 import LibraryYoursShelves from '../v2/LibraryYoursShelves.vue'
 import LibraryYoursGrid from '../v2/LibraryYoursGrid.vue'
-import { setLibraryClient } from '@/services/library/store'
+import { libraryState, resetLibrary, setLibraryClient } from '@/services/library/store'
 import type { LibraryItem, LibraryRun } from '@/services/library/api'
-import { findOwn, printedCards, publicShares, runCard, sharedCard, slicedCard } from '@/services/library/yours'
+import { findOwn, itemShelf, printedCards, publicShares, runCard, sharedCard, slicedCard } from '@/services/library/yours'
 
 const NOW = Date.parse('2026-11-06T12:00:00Z')
 
@@ -62,16 +62,31 @@ describe('Library v3 Yours: cards from your own prints', () => {
   it('Shared by you: public, live shares only, printed as the item they share', () => {
     const shares = publicShares({
       shares: [
-        { id: 's1', item: 'a', title: 'Hex planter', version: 1, audience: 'public', state: 'active' },
-        { id: 's2', item: 'a', title: 'Link', version: 1, audience: 'link', state: 'active' },
-        { id: 's3', item: 'a', title: 'Gone', version: 1, audience: 'public', state: 'revoked' },
+        { id: 's1', item: 'a', title: 'Hex planter', version: 1, audience: 'public', state: 'approved', expires_at: '2027-01-01T00:00:00Z' },
+        { id: 's2', item: 'b', title: 'Link', version: 1, audience: 'link', state: 'approved' },
+        { id: 's3', item: 'c', title: 'Withdrawn', version: 1, audience: 'public', state: 'revoked' },
+        { id: 's4', item: 'd', title: 'In review', version: 1, audience: 'public', state: 'pending' },
+        { id: 's5', item: 'e', title: 'Expired', version: 1, audience: 'public', state: 'approved', expires_at: '2026-11-01T00:00:00Z' },
+        { id: 's6', item: 'a', title: 'Twice', version: 2, audience: 'public', state: 'approved' },
         { id: 7, item: 'a', audience: 'public' }
       ]
-    })
+    }, NOW)
     expect(shares.map(s => s.id)).toEqual(['s1'])
     expect(sharedCard(shares[0], new Map([['a', item('a')]]))).toMatchObject({ title: 'Hex planter', action: 'print', note: 'Public' })
     expect(sharedCard(shares[0], new Map()).action).toBeNull()
     expect(publicShares(null)).toEqual([])
+  })
+
+  it('Sliced is every print that is not a design (uploads and phone models too); Designs is what Create made', () => {
+    const items = [item('s'), item('u', { origin: 'upload' }), item('d', { origin: 'design', setups: [] }), item('x', { state: 'deleted', deleted_at: '2026-11-05T00:00:00Z' })]
+    expect(itemShelf('sliced', items, NOW).map(c => c.key)).toEqual(['sliced:s', 'sliced:u'])
+    expect(itemShelf('sliced', items, NOW)[1].note).toBe('saved 2 days ago')
+    expect(itemShelf('designs', items, NOW).map(c => [c.key, c.action])).toEqual([['designs:d', 'slice']])
+  })
+
+  it('sorts by time, not by how the time is written', () => {
+    const cards = [slicedCard(item('a', { updated_at: '2026-11-05T10:00:00Z' }), NOW), slicedCard(item('b', { updated_at: '2026-11-05T10:00:00.500Z' }), NOW)]
+    expect(findOwn(cards, '', 'new').map(c => c.key)).toEqual(['sliced:b', 'sliced:a'])
   })
 
   it('See all finds by name or filament, newest first or by name', () => {
@@ -88,8 +103,6 @@ function client (over: Record<string, unknown> = {}) {
     collections: vi.fn(async () => ({ collections: [] })),
     collection: vi.fn(async () => null),
     saved: vi.fn(async () => ({ saves: [], next_cursor: null })),
-    sliced: vi.fn(async () => ({ items: [item('a'), item('gone', { state: 'deleted', deleted_at: '2026-11-05T00:00:00Z' })], rev: 1, reset: false, more: false })),
-    designs: vi.fn(async () => ({ items: [], rev: 1, reset: false, more: false })),
     runs: vi.fn(async () => ({ runs: [run('r1')], cursor: null })),
     shares: vi.fn(async () => ({ shares: [] })),
     ...over
@@ -103,6 +116,13 @@ const flush = async () => {
   }
 }
 
+/** The synced Library, as store.ts keeps it. */
+function synced (items: LibraryItem[]) {
+  resetLibrary('fixture')
+  libraryState.items = Object.fromEntries(items.map(i => [i.id, i]))
+  libraryState.synced = true
+}
+
 let wrappers: Array<{ destroy: () => void }> = []
 afterEach(() => {
   wrappers.forEach(w => w.destroy())
@@ -111,6 +131,7 @@ afterEach(() => {
 
 describe('Library v3 Yours: the shelves', () => {
   it('shows Sliced, Printed and Saved in that order; Shared and Designs only once there is one', async () => {
+    synced([item('a'), item('gone', { state: 'deleted', deleted_at: '2026-11-05T00:00:00Z' })])
     setLibraryClient(client() as never)
     const wrapper = mount(LibraryYoursShelves, { stubs: { 'frame-icon': true }, propsData: { printerName: 'Boxwood' } })
     wrappers.push(wrapper)
@@ -125,9 +146,9 @@ describe('Library v3 Yours: the shelves', () => {
   })
 
   it('says what to do on an empty Sliced, and a shelf that failed has Retry while the rest work', async () => {
+    synced([])
     let fail = true
     const c = client({
-      sliced: vi.fn(async () => ({ items: [], rev: 1, reset: false, more: false })),
       runs: vi.fn(async () => {
         if (fail) throw new Error('Offline')
         return { runs: [run('r1')], cursor: null }
@@ -148,6 +169,7 @@ describe('Library v3 Yours: the shelves', () => {
   })
 
   it('a card says what to do with it: Print, Print again, or Open its page', async () => {
+    synced([item('a')])
     setLibraryClient(client() as never)
     const wrapper = mount(LibraryYoursShelves, { stubs: { 'frame-icon': true } })
     wrappers.push(wrapper)
@@ -163,11 +185,35 @@ describe('Library v3 Yours: the shelves', () => {
   })
 })
 
+describe('Library v3 Yours: Library off', () => {
+  it('keeps Saved and Collections, without your own shelves or their reads', async () => {
+    synced([item('a')])
+    const c = client()
+    setLibraryClient(c as never)
+    const wrapper = mount(LibraryYoursShelves, { stubs: { 'frame-icon': true }, propsData: { own: false } })
+    wrappers.push(wrapper)
+    await flush()
+    expect(wrapper.find('[data-tid="library-saved"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tid="library-collections"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tid="library-shelf-sliced"]').exists()).toBe(false)
+    expect(c.runs).not.toHaveBeenCalled()
+  })
+})
+
 describe('Library v3 Yours: See all', () => {
+  it('Printed follows the cursor to the end', async () => {
+    const runs = vi.fn(async (cursor = '') => cursor ? { runs: [run('r2', { item_id: 'b', item: item('b') })], cursor: null } : { runs: [run('r1')], cursor: 'c1' })
+    setLibraryClient(client({ runs }) as never)
+    const wrapper = mount(LibraryYoursGrid, { stubs: { 'frame-icon': true }, propsData: { source: 'printed' } })
+    wrappers.push(wrapper)
+    await flush()
+    expect(runs).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('.mcard')).toHaveLength(2)
+  })
+
   it('lists the whole shelf, searches it, sorts it, and says when nothing matches', async () => {
-    setLibraryClient(client({
-      sliced: vi.fn(async () => ({ items: [item('a', { name: 'Alpha clip' }), item('b', { name: 'Zeta knob', updated_at: '2026-11-05T00:00:00Z' })], rev: 1, reset: false, more: false }))
-    }) as never)
+    synced([item('a', { name: 'Alpha clip' }), item('b', { name: 'Zeta knob', updated_at: '2026-11-05T00:00:00Z' })])
+    setLibraryClient(client() as never)
     const wrapper = mount(LibraryYoursGrid, { stubs: { 'frame-icon': true }, propsData: { source: 'sliced' } })
     wrappers.push(wrapper)
     await flush()
