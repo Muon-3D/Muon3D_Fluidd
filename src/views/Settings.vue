@@ -117,9 +117,9 @@
         <template v-if="!inChild && !ownPage && current">
           <general-settings v-if="shows('general')" />
           <theme-settings v-if="shows('theme')" />
-          <access-settings v-if="shows('access') && supports('muon_access')" />
+          <people-access-settings v-if="shows('access') && supports('muon_access')" />
           <protection-settings v-else-if="shows('protection') && supports('muon_protection')" />
-          <auth-settings v-if="shows('auth') && supports('authorization')" />
+          <auth-settings v-if="shows('auth') && supports('authorization') && !supports('muon_access')" />
           <software-settings v-if="shows('versions')" />
           <camera-settings v-if="shows('camera')" />
           <preset-settings v-if="shows('presets')" />
@@ -164,7 +164,7 @@ import FileEditorSettings from '@/components/settings/FileEditorSettings.vue'
 import TimelapseSettings from '@/components/settings/timelapse/TimelapseSettings.vue'
 import SpoolmanSettings from '@/components/settings/SpoolmanSettings.vue'
 import ProtectionSettings from '@/components/settings/ProtectionSettings.vue'
-import AccessSettings from '@/components/settings/AccessSettings.vue'
+import PeopleAccessSettings from '@/components/settings/people-access/PeopleAccessSettings.vue'
 import WifiPage from '@/views/Wifi.vue'
 import MacroEditList from '@/components/settings/macros/MacroEditList.vue'
 import DeveloperModeSettings from '@/components/settings/DeveloperModeSettings.vue'
@@ -187,7 +187,7 @@ const countOrNone = (count: number) => count ? String(count) : 'none'
     MacroEditList,
     DeveloperModeSettings,
     ProtectionSettings,
-    AccessSettings,
+    PeopleAccessSettings,
     SpoolmanSettings,
     TimelapseSettings,
     MacroSettings,

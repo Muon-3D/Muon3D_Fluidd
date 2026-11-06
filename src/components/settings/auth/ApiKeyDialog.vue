@@ -33,6 +33,7 @@
         color="primary"
         text
         type="button"
+        data-tid="api-key-new"
         @click="handleRefreshApiKey"
       >
         {{ $t('app.general.btn.refresh') }}
@@ -53,8 +54,14 @@ export default class ApiKeyDialog extends Vue {
     return this.$store.getters['auth/getApiKey']
   }
 
-  handleRefreshApiKey () {
-    this.$store.dispatch('auth/refreshApiKey')
+  /** A new key stops the old one at once, so every tool using it must be given the new one: asked first (R8). */
+  async handleRefreshApiKey () {
+    const sure = await this.$confirm('Every tool using the current key stops working until you give it the new one.', {
+      title: 'Make a new API key?',
+      buttonTrueText: 'Make a new key',
+      danger: true
+    })
+    if (sure) this.$store.dispatch('auth/refreshApiKey')
   }
 }
 </script>
