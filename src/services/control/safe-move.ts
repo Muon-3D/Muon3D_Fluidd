@@ -10,9 +10,11 @@
  *     no_go_traverse_z: 6
  *
  * bed_mesh honours it itself; a plain `G1 X.. Y..` from the UI does not. Every
- * XY move Control sends goes through `planXYMove`, which reads the regions the
- * printer declares (never a hard-coded copy) and either lifts to the traverse
- * height before crossing, or refuses.
+ * hand move Control's mounted pages send (ControlMixin's moveBy / moveTo, the
+ * probe check) goes through `planMove`, which reads the regions the printer
+ * declares (never a hard-coded copy) and either lifts to the traverse height
+ * before crossing, or refuses. (Upstream Fluidd's toolhead widgets, which
+ * send moves directly, are only used by the unrouted views/Dashboard.vue.)
  */
 
 export interface NoGoRegion {
@@ -95,6 +97,31 @@ export function segmentHits (a: [number, number], b: [number, number], r: NoGoRe
     return true
   }
   return clip(-dx, a[0] - xmin) && clip(dx, xmax - a[0]) && clip(-dy, a[1] - ymin) && clip(dy, ymax - a[1])
+}
+
+/**
+ * The last hand move sent on a printer with no-go regions, shared by every
+ * component (Overview's tiles and Control's cards all move the same head), so
+ * the next move is planned from where the head will be, not from a position
+ * the printer hasn't updated yet. `target` is in G-code coordinates, which
+ * Klipper reports exactly (no mesh or skew in them).
+ */
+export const handMoveLock: { target: number[] | null, until: number } = { target: null, until: 0 }
+
+const SETTLE_MS = 8000
+
+export function lockHandMove (gcodeTarget: number[], now = Date.now()) {
+  handMoveLock.target = gcodeTarget.slice(0, 3)
+  handMoveLock.until = now + SETTLE_MS
+}
+
+/** Is the last hand move still on its way? Clears itself on arrival or after SETTLE_MS. */
+export function handMoveSettling (gcodePosition: number[] | undefined, now = Date.now()): boolean {
+  const target = handMoveLock.target
+  if (!target) return false
+  const arrived = Array.isArray(gcodePosition) && target.every((v, i) => Math.abs(Number(gcodePosition[i]) - v) < 0.02)
+  if (arrived || now > handMoveLock.until) { handMoveLock.target = null; return false }
+  return true
 }
 
 const round = (v: number) => Math.round(v * 1000) / 1000

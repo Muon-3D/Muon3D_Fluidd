@@ -203,7 +203,9 @@ export default class ProbeCard extends Mixins(MaintenanceMixin) {
       { title: 'Check how steady the probe is?', buttonTrueText: 'Start', plateCheck: plateCheckNeeded(this.$store.state.history?.jobs) }
     )
     if (!ok || target !== this.maintenanceTarget || !this.canCheck) return
-    const noGo = readNoGo(this.$store.state.printer.printer.configfile?.settings?.bed_mesh)
+    // Config not loaded yet counts as unreadable, as for every hand move.
+    const settings = this.$store.state.printer.printer.configfile?.settings
+    const noGo = settings && Object.keys(settings).length ? readNoGo(settings.bed_mesh) : 'invalid'
     if (noGo === 'invalid') {
       EventBus.$emit('The printer’s no-go regions could not be read, so the probe check will not move the head. Check [bed_mesh] in printer.cfg.', { type: 'warning' })
       return
