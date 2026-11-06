@@ -79,6 +79,28 @@ test.describe('signed in', () => {
     await expect(look(page).getByTestId('library-quick-look-collect').locator('option', { hasText: 'Gifts' })).toHaveCount(1)
   })
 
+  test('Create and add, retried after the add failed, uses the collection it already made', async ({ page, models, open }) => {
+    let failed = false
+    models.failOn = request => {
+      if (!failed && /^PUT \/v1\/community\/collections\/[^/]+\/items\//.test(request)) {
+        failed = true
+        return 503
+      }
+      return null
+    }
+    await open('/library?view=discover')
+    await openLook(page)
+    await look(page).getByTestId('library-quick-look-collect').selectOption('__new')
+    await look(page).getByTestId('library-quick-look-new-name').fill('Gifts')
+    await look(page).getByRole('button', { name: 'Create and add' }).click()
+    await expect.poll(() => failed).toBe(true)
+    await expect(look(page)).not.toContainText('Added to Gifts.')
+    await look(page).getByRole('button', { name: 'Create and add' }).click()
+    await expect(look(page)).toContainText('Added to Gifts.')
+    expect(models.collections.map(c => c.name)).toEqual(['Gifts'])
+    expect(models.collections[0].items).toHaveLength(1)
+  })
+
   test('Add to collection puts it in one you already have', async ({ page, models, open }) => {
     models.collections.push({ id: 'col-1', name: 'Workshop', items: [] })
     await open('/library?view=discover')
