@@ -96,10 +96,10 @@
       </div>
       <div class="hist__tile">
         <dt>Filament</dt>
-        <dd>{{ weight.value }}<small> {{ weight.unit }}</small></dd>
+        <dd>{{ rollup.estimated ? '~' : '' }}{{ weight.value }}<small> {{ weight.unit }}</small></dd>
         <span
           v-if="rollup.material"
-          title="Worked out from the length of filament used"
+          :title="rollup.estimated ? '~ means worked out from the length of filament used' : undefined"
         >
           <i
             class="hist__dot"
@@ -110,37 +110,43 @@
     </dl>
 
     <section
-      v-if="!items.length"
+      v-if="empty"
       class="hist__tile hist__empty"
-      data-tid="history-empty"
+      :data-tid="empty.kind === 'none' ? 'history-empty' : 'history-no-match'"
     >
-      <span class="hist__empty-icon"><frame-icon name="history" /></span>
-      <b>No prints yet</b>
-      <p>Finished, failed and cancelled prints land here.</p>
+      <span class="hist__empty-icon"><frame-icon :name="empty.kind === 'none' ? 'history' : 'filter'" /></span>
+      <b>{{ empty.title }}</b>
+      <p>{{ empty.hint }}</p>
       <router-link
+        v-if="empty.kind === 'none'"
         :to="pagePath('/jobs')"
         class="cbtn cbtn--primary"
       >
         Go to Jobs
       </router-link>
-    </section>
-
-    <section
-      v-else-if="!rows.length"
-      class="hist__tile hist__empty"
-      data-tid="history-no-match"
-    >
-      <span class="hist__empty-icon"><frame-icon name="filter" /></span>
-      <b>{{ noMatch }}</b>
-      <p>{{ query ? 'Check the spelling, or try another name.' : 'Try a wider date range.' }}</p>
-      <button
-        type="button"
-        class="cbtn"
-        data-tid="history-clear-filters"
-        @click="clearFilters"
+      <div
+        v-else
+        class="hist__empty-actions"
       >
-        Clear filters
-      </button>
+        <button
+          v-if="empty.widen"
+          type="button"
+          class="cbtn cbtn--primary"
+          data-tid="history-widen-range"
+          @click="range = 0"
+        >
+          Show all time
+        </button>
+        <button
+          v-if="filter !== 'all' || query"
+          type="button"
+          class="cbtn"
+          data-tid="history-clear-filters"
+          @click="clearFilters"
+        >
+          Clear filters
+        </button>
+      </div>
     </section>
 
     <section
@@ -246,7 +252,7 @@
                     v-if="row.exists"
                     type="button"
                     role="menuitem"
-                    :disabled="!klippyReady || busy"
+                    :disabled="!controlReady || busy"
                     data-tid="history-print-again"
                     @click="printAgain(row.filename)"
                   >
@@ -418,7 +424,7 @@
             v-if="detail.exists"
             type="button"
             class="cbtn cbtn--primary"
-            :disabled="!klippyReady || busy"
+            :disabled="!controlReady || busy"
             data-tid="history-detail-print-again"
             @click="printAgain(detail.filename)"
           >
@@ -456,7 +462,7 @@ import { jobTitle } from '@/services/jobs/model'
 import { longDuration } from '@/services/overview/model'
 import { fileFilament } from '@/services/control/model'
 import {
-  RANGE_DAYS, filterHistory, finishedAt, grams, historyResult, historyRollup, inRange, metres, rangeLabel, slicerFacts, tileDuration, tileWeight,
+  RANGE_DAYS, emptyState, filamentGrams, filterHistory, finishedAt, historyResult, historyRollup, inRange, metres, rangeLabel, slicerFacts, tileDuration, tileWeight,
   type HistoryFilter
 } from '@/services/history/model'
 import getFilePaths from '@/util/get-file-paths'
@@ -554,11 +560,9 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
     return item ? this.row(item) : null
   }
 
-  get noMatch (): string {
-    if (this.query) return `No print matches "${this.query}"`
-    const kind = { finished: 'done', failed: 'failed', stopped: 'cancelled', all: '' }[this.filter]
-    const when = this.range ? `in the last ${this.range} days` : 'yet'
-    return kind ? `No ${kind} prints ${when}` : `No prints ${when}`
+  /** Why there is nothing to list, when there isn't. */
+  get empty () {
+    return emptyState(this.items, this.filter, this.query, this.range)
   }
 
   row (item: HistoryItem): Row {
@@ -571,12 +575,11 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
       ...(end ? [{ label: 'Ended', value: clock(end) }] : []),
       { label: 'Printing', value: longDuration(item.print_duration) },
       { label: 'With the warm-up', value: longDuration(item.total_duration) },
-      { label: 'Filament used', value: `${metres(item.filament_used)} · about ${tileWeight(grams(item.filament_used, meta as never)).value} ${tileWeight(grams(item.filament_used, meta as never)).unit}` },
+      { label: 'Filament used', value: `${metres(item.filament_used)} · ${this.weightText(item)}` },
       ...slicerFacts(meta),
       ...(meta?.size ? [{ label: 'File', value: `${(meta.size / 1e6).toFixed(1)} MB` }] : [])
     ]
     const finished = finishedAt(item)
-    const weight = grams(item.filament_used || 0, meta as never)
     return {
       id: item.job_id,
       filename: item.filename,
@@ -589,11 +592,18 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
         : '',
       material: fileFilament(meta),
       took: this.compact(item.print_duration),
-      used: item.filament_used ? `${tileWeight(weight).value} ${tileWeight(weight).unit}` : '—',
+      used: item.filament_used ? this.weightText(item) : '—',
       finished,
       day: finished.replace(/ \d\d:\d\d$/, ''),
       facts
     }
+  }
+
+  /** "11.4 g", or "~11.4 g" when worked out from the length. */
+  weightText (item: HistoryItem): string {
+    const w = filamentGrams(item.filament_used || 0, item.metadata as never)
+    const t = tileWeight(w.grams)
+    return `${w.estimated ? '~' : ''}${t.value} ${t.unit}`
   }
 
   /** "38 m", "2 h 45 m", "1 h". */
@@ -803,6 +813,13 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
     border-radius: 12px;
     background: var(--m3d-surface-2);
     color: var(--m3d-text-muted);
+  }
+
+  .hist__empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
   }
 
   .hist__table {
