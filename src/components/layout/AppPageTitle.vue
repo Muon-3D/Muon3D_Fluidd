@@ -144,6 +144,9 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     if (this.currentPage === '/settings') {
       return `Kept on ${printerNameParts(this.displayName).name}, so they're the same for everyone who opens it.`
     }
+    if (this.currentPage === '/history') {
+      return `Every print ${printerNameParts(this.displayName).name} has made`
+    }
     if (this.currentPage === '/maintenance') {
       return "What keeps prints coming out right. Each check says when it last ran and whether it's due."
     }

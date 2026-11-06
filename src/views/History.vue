@@ -4,40 +4,10 @@
     :class="{ 'hist--phone': isMobileViewport }"
     data-tid="history-page"
   >
-    <dl
-      class="hist__totals"
-      data-tid="history-totals"
+    <div
+      v-if="items.length"
+      class="hist__bar"
     >
-      <div>
-        <dt>Prints</dt>
-        <dd>{{ rollup.total_jobs || 0 }}</dd>
-        <span>{{ items.length ? finished : 'none yet' }}</span>
-      </div>
-      <div>
-        <dt>Printing time</dt>
-        <dd>{{ duration(rollup.total_print_time) }}</dd>
-        <span v-if="rollup.total_jobs">about {{ duration(rollup.print_avg) }} each</span>
-      </div>
-      <div>
-        <dt>Filament</dt>
-        <dd>{{ length(rollup.total_filament_used) }}</dd>
-        <span v-if="rollup.total_jobs">about {{ length(rollup.filament_avg) }} each</span>
-      </div>
-      <div>
-        <dt>Longest print</dt>
-        <dd>{{ duration(rollup.longest_print) }}</dd>
-        <span v-if="rollup.longest_job">{{ duration(rollup.longest_job) }} with the warm-up</span>
-      </div>
-    </dl>
-
-    <div class="hist__bar">
-      <seg-picker
-        :options="filterOptions"
-        :value="filter"
-        label="Show"
-        @input="filter = $event"
-      />
-      <span class="hist__grow" />
       <label class="hist__find">
         <frame-icon
           name="search"
@@ -51,120 +21,308 @@
           data-tid="history-find"
         >
       </label>
-    </div>
-
-    <p
-      v-if="!items.length"
-      class="hist__note"
-    >
-      Nothing has printed yet. Prints appear here as they finish, stop or fail.
-    </p>
-    <p
-      v-else-if="!groups.length"
-      class="hist__note"
-    >
-      {{ query ? `No print matches "${query}".` : 'None here.' }}
-    </p>
-
-    <section
-      v-for="group in groups"
-      :key="group.label"
-      class="hist__day"
-    >
-      <h2>{{ group.label }}</h2>
-      <div class="hist__list">
-        <div
-          v-for="row in group.items"
-          :key="row.id"
-          class="hist__item"
-          :class="{ 'hist__item--open': open === row.id, 'hist__item--gone': !row.exists }"
-          :data-job="row.id"
-        >
+      <span class="hist__grow" />
+      <seg-picker
+        :options="filterOptions"
+        :value="filter"
+        label="Show"
+        @input="filter = $event"
+      />
+      <v-menu
+        offset-y
+        left
+        content-class="hist__menu"
+      >
+        <template #activator="{ on, attrs }">
           <button
             type="button"
-            class="hist__row"
-            :aria-expanded="open === row.id ? 'true' : 'false'"
-            @click="open = open === row.id ? null : row.id"
+            class="cbtn cbtn--ghost hist__range"
+            data-tid="history-range"
+            aria-haspopup="menu"
+            v-bind="attrs"
+            v-on="on"
           >
-            <span class="hist__thumb">
-              <img
-                v-if="row.thumbnail"
-                :src="row.thumbnail"
-                alt=""
-                loading="lazy"
-                @error="dropThumbnail(row.id)"
-              >
-              <frame-icon
-                v-else
-                name="jobs"
-                small
-              />
-            </span>
-            <span class="hist__names">
-              <b>{{ row.title }}</b>
-              <span>{{ row.file }}</span>
-            </span>
-            <tone-pill
-              :tone="row.status.tone"
-              :dot="false"
-            >
-              {{ row.status.text }}
-            </tone-pill>
-            <span class="hist__cell hist__time">{{ row.started }}</span>
-            <span class="hist__cell">{{ row.took }}</span>
-            <span class="hist__cell hist__used">{{ row.used }}</span>
             <frame-icon
-              :name="open === row.id ? 'chevronUp' : 'chevronDown'"
+              name="history"
               small
             />
+            {{ rangeText }}
           </button>
-
-          <div
-            v-if="open === row.id"
-            class="hist__detail"
-            data-tid="history-detail"
+        </template>
+        <div
+          class="hist__menu-list"
+          role="menu"
+        >
+          <button
+            v-for="days in rangeDays"
+            :key="days"
+            type="button"
+            role="menuitemradio"
+            :aria-checked="days === range ? 'true' : 'false'"
+            :class="{ on: days === range }"
+            :data-tid="`history-range-${days}`"
+            @click="range = days"
           >
-            <dl class="hist__facts">
-              <div
-                v-for="fact in row.facts"
-                :key="fact.label"
-              >
-                <dt>{{ fact.label }}</dt>
-                <dd>{{ fact.value }}</dd>
-              </div>
-            </dl>
-            <p
-              v-if="!row.exists"
-              class="hist__gone"
-            >
-              The file is no longer on {{ printerName }}, so it can't print again from here.
-            </p>
-            <div class="hist__actions">
-              <button
-                v-if="row.exists"
-                type="button"
-                class="cbtn cbtn--primary"
-                :disabled="!klippyReady || busy"
-                data-tid="history-print-again"
-                @click="printAgain(row.filename)"
-              >
-                Print again
-              </button>
-              <button
-                type="button"
-                class="cbtn cbtn--ghost"
-                data-tid="history-remove"
-                @click="remove(row.id)"
-              >
-                Remove from history
-              </button>
-            </div>
-          </div>
+            {{ rangeLabel(days) }}
+          </button>
         </div>
+      </v-menu>
+    </div>
+
+    <dl
+      v-if="items.length"
+      class="hist__tiles"
+      data-tid="history-totals"
+    >
+      <div class="hist__tile">
+        <dt>Prints</dt>
+        <dd>{{ rollup.prints }}</dd>
+        <span>{{ range ? `in the last ${range} days` : 'all time' }}</span>
       </div>
+      <div class="hist__tile">
+        <dt>Success rate</dt>
+        <dd v-if="rollup.successPercent !== null">
+          {{ rollup.successPercent }}<small> %</small>
+        </dd>
+        <dd v-else>
+          —
+        </dd>
+        <span v-if="rollup.successPercent !== null">{{ rollup.done }} done · {{ rollup.notDone }} not</span>
+      </div>
+      <div class="hist__tile">
+        <dt>Print time</dt>
+        <dd>{{ time.value }}<small> {{ time.unit }}</small></dd>
+        <span v-if="rollup.prints">avg {{ longDuration(rollup.averageSeconds) }}</span>
+      </div>
+      <div class="hist__tile">
+        <dt>Filament</dt>
+        <dd>{{ weight.value }}<small> {{ weight.unit }}</small></dd>
+        <span
+          v-if="rollup.material"
+          title="Worked out from the length of filament used"
+        >
+          <i
+            class="hist__dot"
+            :style="dotStyle(rollup.material.colour)"
+          />{{ rollup.material.name }}{{ materialCount > 1 ? ' mostly' : '' }}
+        </span>
+      </div>
+    </dl>
+
+    <section
+      v-if="!items.length"
+      class="hist__tile hist__empty"
+      data-tid="history-empty"
+    >
+      <span class="hist__empty-icon"><frame-icon name="history" /></span>
+      <b>No prints yet</b>
+      <p>Finished, failed and cancelled prints land here.</p>
+      <router-link
+        :to="pagePath('/jobs')"
+        class="cbtn cbtn--primary"
+      >
+        Go to Jobs
+      </router-link>
     </section>
 
-    <div class="hist__foot">
+    <section
+      v-else-if="!rows.length"
+      class="hist__tile hist__empty"
+      data-tid="history-no-match"
+    >
+      <span class="hist__empty-icon"><frame-icon name="filter" /></span>
+      <b>{{ noMatch }}</b>
+      <p>{{ query ? 'Check the spelling, or try another name.' : 'Try a wider date range.' }}</p>
+      <button
+        type="button"
+        class="cbtn"
+        data-tid="history-clear-filters"
+        @click="clearFilters"
+      >
+        Clear filters
+      </button>
+    </section>
+
+    <section
+      v-else-if="!isMobileViewport"
+      class="hist__tile hist__tile--flush"
+    >
+      <table
+        class="hist__table"
+        data-tid="history-table"
+      >
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Result</th>
+            <th>Material</th>
+            <th>Duration</th>
+            <th>Filament</th>
+            <th>Finished</th>
+            <th><span class="hist__sr">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="row in rows"
+            :key="row.id"
+            :class="{ 'hist__item--gone': !row.exists }"
+            :data-job="row.id"
+            data-tid="history-row"
+          >
+            <td>
+              <button
+                type="button"
+                class="hist__name"
+                :aria-label="`Details of ${row.title}`"
+                @click="detailId = row.id"
+              >
+                <span class="hist__thumb">
+                  <img
+                    v-if="row.thumbnail"
+                    :src="row.thumbnail"
+                    alt=""
+                    loading="lazy"
+                    @error="dropThumbnail(row.id)"
+                  >
+                  <frame-icon
+                    v-else
+                    name="jobs"
+                    small
+                  />
+                </span>
+                <b>{{ row.title }}</b>
+              </button>
+            </td>
+            <td>
+              <tone-pill
+                :tone="row.result.tone"
+                :dot="false"
+                :title="row.result.detail"
+              >
+                {{ row.result.text }}
+              </tone-pill>
+            </td>
+            <td>
+              <template v-if="row.material">
+                <i
+                  class="hist__dot"
+                  :style="dotStyle(row.material.colour)"
+                />{{ row.material.name }}
+              </template>
+              <template v-else>
+                —
+              </template>
+            </td>
+            <td>{{ row.took }}</td>
+            <td>{{ row.used }}</td>
+            <td>{{ row.finished }}</td>
+            <td class="hist__end">
+              <v-menu
+                offset-y
+                left
+                content-class="hist__menu"
+              >
+                <template #activator="{ on, attrs }">
+                  <button
+                    type="button"
+                    class="hist__dots"
+                    :aria-label="`More for ${row.title}`"
+                    data-tid="history-row-menu"
+                    v-bind="attrs"
+                    v-on="on"
+                  >
+                    <frame-icon
+                      name="dots"
+                      small
+                    />
+                  </button>
+                </template>
+                <div
+                  class="hist__menu-list"
+                  role="menu"
+                >
+                  <button
+                    v-if="row.exists"
+                    type="button"
+                    role="menuitem"
+                    :disabled="!klippyReady || busy"
+                    data-tid="history-print-again"
+                    @click="printAgain(row.filename)"
+                  >
+                    Print again
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-tid="history-details"
+                    @click="detailId = row.id"
+                  >
+                    Details
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="hist__menu-danger"
+                    data-tid="history-remove"
+                    @click="remove(row)"
+                  >
+                    Remove from history
+                  </button>
+                </div>
+              </v-menu>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div
+      v-else
+      class="hist__list"
+      data-tid="history-list"
+    >
+      <button
+        v-for="row in rows"
+        :key="row.id"
+        type="button"
+        class="hist__row"
+        :class="{ 'hist__item--gone': !row.exists }"
+        :data-job="row.id"
+        data-tid="history-row"
+        @click="detailId = row.id"
+      >
+        <span class="hist__thumb">
+          <img
+            v-if="row.thumbnail"
+            :src="row.thumbnail"
+            alt=""
+            loading="lazy"
+            @error="dropThumbnail(row.id)"
+          >
+          <frame-icon
+            v-else
+            name="jobs"
+            small
+          />
+        </span>
+        <span class="hist__names">
+          <b>{{ row.title }}</b>
+          <span>{{ row.day }} · {{ row.took }} · {{ row.used }}</span>
+        </span>
+        <tone-pill
+          :tone="row.result.tone"
+          :dot="false"
+        >
+          {{ row.result.text }}
+        </tone-pill>
+      </button>
+    </div>
+
+    <div
+      v-if="items.length"
+      class="hist__foot"
+    >
       <span v-if="items.length < saved">
         Showing the last {{ items.length }} of {{ saved }}.
         <button
@@ -176,9 +334,12 @@
           Load them all
         </button>
       </span>
+      <span v-if="rollup_all.total_jobs">
+        All time on {{ printerName }}: {{ rollup_all.total_jobs }} prints,
+        {{ duration(rollup_all.total_print_time) }}, {{ length(rollup_all.total_filament_used) }} of filament.
+      </span>
       <span class="hist__grow" />
       <button
-        v-if="items.length"
         type="button"
         class="cbtn cbtn--ghost"
         data-tid="history-clear"
@@ -187,7 +348,7 @@
         Clear history
       </button>
       <button
-        v-if="rollup.total_jobs"
+        v-if="rollup_all.total_jobs"
         type="button"
         class="cbtn cbtn--ghost"
         data-tid="history-reset-totals"
@@ -196,6 +357,92 @@
         Reset the totals
       </button>
     </div>
+
+    <v-dialog
+      :value="!!detail"
+      max-width="520"
+      @input="detailId = null"
+    >
+      <div
+        v-if="detail"
+        class="hist__panel"
+        data-tid="history-detail"
+      >
+        <div class="hist__panel-head">
+          <span class="hist__thumb">
+            <img
+              v-if="detail.thumbnail"
+              :src="detail.thumbnail"
+              alt=""
+            >
+            <frame-icon
+              v-else
+              name="jobs"
+              small
+            />
+          </span>
+          <span class="hist__names">
+            <b>{{ detail.title }}</b>
+            <span>{{ detail.file }}</span>
+          </span>
+          <tone-pill
+            :tone="detail.result.tone"
+            :dot="false"
+          >
+            {{ detail.result.text }}
+          </tone-pill>
+        </div>
+        <p
+          v-if="detail.result.detail !== detail.result.text && detail.result.detail !== 'Done'"
+          class="hist__gone"
+        >
+          {{ detail.result.detail }}
+        </p>
+        <dl class="hist__facts">
+          <div
+            v-for="fact in detail.facts"
+            :key="fact.label"
+          >
+            <dt>{{ fact.label }}</dt>
+            <dd>{{ fact.value }}</dd>
+          </div>
+        </dl>
+        <p
+          v-if="!detail.exists"
+          class="hist__gone"
+        >
+          The file is no longer on {{ printerName }}, so it can't print again from here.
+        </p>
+        <div class="hist__actions">
+          <button
+            v-if="detail.exists"
+            type="button"
+            class="cbtn cbtn--primary"
+            :disabled="!klippyReady || busy"
+            data-tid="history-detail-print-again"
+            @click="printAgain(detail.filename)"
+          >
+            Print again
+          </button>
+          <button
+            type="button"
+            class="cbtn cbtn--danger"
+            data-tid="history-detail-remove"
+            @click="remove(detail)"
+          >
+            Remove from history
+          </button>
+          <span class="hist__grow" />
+          <button
+            type="button"
+            class="cbtn cbtn--ghost"
+            @click="detailId = null"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </v-dialog>
   </div>
 </template>
 
@@ -207,7 +454,11 @@ import { SocketActions } from '@/api/socketActions'
 import type { HistoryItem } from '@/store/history/types'
 import { jobTitle } from '@/services/jobs/model'
 import { longDuration } from '@/services/overview/model'
-import { filterHistory, finishedShare, groupByDay, historyStatus, metres, slicerFacts, type HistoryFilter, type HistoryStatus } from '@/services/history/model'
+import { fileFilament } from '@/services/control/model'
+import {
+  RANGE_DAYS, filterHistory, finishedAt, grams, historyResult, historyRollup, inRange, metres, rangeLabel, slicerFacts, tileDuration, tileWeight,
+  type HistoryFilter
+} from '@/services/history/model'
 import getFilePaths from '@/util/get-file-paths'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
 import TonePill from '@/components/printers/TonePill.vue'
@@ -218,26 +469,33 @@ interface Row {
   file: string;
   title: string;
   exists: boolean;
-  status: HistoryStatus;
+  result: ReturnType<typeof historyResult>;
   thumbnail: string;
-  started: string;
+  material: { name: string, colour: string | null } | null;
   took: string;
   used: string;
+  finished: string;
+  day: string;
   facts: Array<{ label: string, value: string }>;
-  start_time: number;
 }
 
 /**
- * History: the printer's totals, then every print by the day it started,
- * filtered to how it ended and searched by name. A print opens to its
- * times, its filament and what the slicer set, with Print again and
- * Remove from history.
+ * History: how the printer has been doing (prints, success rate, time and
+ * filament over the date range), then every print as a table (rows on a
+ * phone). The result and the date range filter it, a name finds one. A print's
+ * ··· (or a tap on a phone) offers Print again, its details and Remove from
+ * history.
  */
 @Component({ components: { SegPicker, TonePill } })
 export default class History extends Mixins(OverviewMixin, BrowserMixin) {
   filter: HistoryFilter = 'all'
   query = ''
-  open: string | null = null
+  range = 30
+  detailId: string | null = null
+
+  readonly rangeDays = RANGE_DAYS
+  readonly rangeLabel = rangeLabel
+  readonly longDuration = longDuration
 
   get items (): HistoryItem[] {
     return (this.$store.getters['history/getHistory'] as HistoryItem[]) ?? []
@@ -248,32 +506,59 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
     return Number(this.$store.state.history.count ?? 0) || this.items.length
   }
 
-  get rollup () {
-    return this.$store.getters['history/getRollUp'] as {
-      total_jobs: number, total_print_time: number, total_filament_used: number, longest_job: number,
-      longest_print: number, print_avg: number, filament_avg: number
-    }
+  /** The printer's own totals over its whole life (they can be reset apart from the list). */
+  get rollup_all () {
+    return this.$store.getters['history/getRollUp'] as { total_jobs: number, total_print_time: number, total_filament_used: number }
   }
 
-  get finished (): string {
-    return finishedShare(this.items)
+  get ranged (): HistoryItem[] {
+    return inRange(this.items, this.range)
+  }
+
+  get rollup () {
+    return historyRollup(this.ranged)
+  }
+
+  get time () {
+    return tileDuration(this.rollup.printSeconds)
+  }
+
+  get weight () {
+    return tileWeight(this.rollup.grams)
+  }
+
+  /** More than one kind of material in the range, so "PLA mostly". */
+  get materialCount (): number {
+    return new Set(this.ranged.map(i => fileFilament(i.metadata as never)?.name).filter(Boolean)).size
+  }
+
+  get rangeText (): string {
+    return rangeLabel(this.range)
   }
 
   get filterOptions (): SegOption[] {
-    const count = (kind: HistoryFilter) => filterHistory(this.items, kind, '').length
     return [
       { value: 'all', label: 'All' },
-      { value: 'finished', label: 'Finished' },
-      { value: 'stopped', label: 'Stopped' },
-      { value: 'failed', label: count('failed') ? `Failed · ${count('failed')}` : 'Failed' }
+      { value: 'finished', label: 'Done' },
+      { value: 'failed', label: 'Failed' },
+      { value: 'stopped', label: 'Cancelled' }
     ]
   }
 
-  get groups (): Array<{ label: string, items: Row[] }> {
-    return groupByDay(filterHistory(this.items, this.filter, this.query)).map(g => ({
-      label: g.label,
-      items: g.items.map(item => this.row(item))
-    }))
+  get rows (): Row[] {
+    return filterHistory(this.ranged, this.filter, this.query).map(item => this.row(item))
+  }
+
+  get detail (): Row | null {
+    const item = this.detailId ? this.items.find(i => i.job_id === this.detailId) : null
+    return item ? this.row(item) : null
+  }
+
+  get noMatch (): string {
+    if (this.query) return `No print matches "${this.query}"`
+    const kind = { finished: 'done', failed: 'failed', stopped: 'cancelled', all: '' }[this.filter]
+    const when = this.range ? `in the last ${this.range} days` : 'yet'
+    return kind ? `No ${kind} prints ${when}` : `No prints ${when}`
   }
 
   row (item: HistoryItem): Row {
@@ -286,26 +571,42 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
       ...(end ? [{ label: 'Ended', value: clock(end) }] : []),
       { label: 'Printing', value: longDuration(item.print_duration) },
       { label: 'With the warm-up', value: longDuration(item.total_duration) },
-      { label: 'Filament used', value: metres(item.filament_used) },
+      { label: 'Filament used', value: `${metres(item.filament_used)} · about ${tileWeight(grams(item.filament_used, meta as never)).value} ${tileWeight(grams(item.filament_used, meta as never)).unit}` },
       ...slicerFacts(meta),
       ...(meta?.size ? [{ label: 'File', value: `${(meta.size / 1e6).toFixed(1)} MB` }] : [])
     ]
+    const finished = finishedAt(item)
+    const weight = grams(item.filament_used || 0, meta as never)
     return {
       id: item.job_id,
       filename: item.filename,
       file: item.filename.split('/').pop() ?? item.filename,
       title: jobTitle(item.filename),
       exists: item.exists,
-      status: historyStatus(item.status, item.filament_used, meta?.filament_total),
+      result: historyResult(item.status, item.filament_used, meta?.filament_total),
       thumbnail: meta?.thumbnails?.length
         ? this.getThumbUrl(meta as never, 'gcodes', getFilePaths(item.filename, 'gcodes').path, false, meta.modified) || ''
         : '',
-      started: clock(start),
-      took: longDuration(item.print_duration),
-      used: metres(item.filament_used),
-      facts,
-      start_time: item.start_time
+      material: fileFilament(meta),
+      took: this.compact(item.print_duration),
+      used: item.filament_used ? `${tileWeight(weight).value} ${tileWeight(weight).unit}` : '—',
+      finished,
+      day: finished.replace(/ \d\d:\d\d$/, ''),
+      facts
     }
+  }
+
+  /** "38 m", "2 h 45 m", "1 h". */
+  compact (seconds: number): string {
+    const minutes = Math.round((seconds || 0) / 60)
+    if (minutes < 60) return `${minutes} m`
+    const h = Math.floor(minutes / 60)
+    const m = minutes % 60
+    return m ? `${h} h ${m} m` : `${h} h`
+  }
+
+  dotStyle (colour: string | null): Record<string, string> {
+    return colour ? { background: colour } : {}
   }
 
   duration (seconds?: number): string {
@@ -320,9 +621,17 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
     this.$store.dispatch('history/clearHistoryThumbnails', id)
   }
 
-  remove (id: string) {
-    SocketActions.serverHistoryDeleteJob(id)
-    if (this.open === id) this.open = null
+  clearFilters () {
+    this.filter = 'all'
+    this.query = ''
+    this.range = 0
+  }
+
+  async remove (row: Row) {
+    const ok = await this.$confirm('The file stays on the printer, and so do the totals.', { title: `Remove ${row.title} from ${this.printerName}'s history?`, buttonTrueText: 'Remove', danger: true })
+    if (!ok) return
+    SocketActions.serverHistoryDeleteJob(row.id)
+    if (this.detailId === row.id) this.detailId = null
   }
 
   loadAll () {
@@ -345,43 +654,8 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
   .hist {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 16px;
     min-width: 0;
-  }
-
-  .hist__totals {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
-    margin: 0;
-
-    > div {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      padding: 14px 18px;
-      border-radius: 18px;
-      background: var(--m3d-surface);
-    }
-
-    dt {
-      color: var(--m3d-text-subtle);
-      font-size: 11px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    dd {
-      margin: 0;
-      font-size: 22px;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-    }
-
-    span {
-      color: var(--m3d-text-muted);
-      font-size: 12px;
-    }
   }
 
   .hist__bar,
@@ -399,6 +673,14 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
 
   .hist__grow {
     flex: 1 1 auto;
+  }
+
+  .hist__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
 
   .hist__find {
@@ -432,53 +714,170 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
     }
   }
 
-  .hist__note {
+  .hist__range {
+    gap: 8px;
+  }
+
+  .hist__tiles {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
     margin: 0;
-    color: var(--m3d-text-muted);
-    font-size: 14px;
   }
 
-  .hist__day h2 {
-    margin: 0 0 8px 4px;
-    color: var(--m3d-text-muted);
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
-  .hist__list {
-    overflow: hidden;
-    border-radius: 20px;
+  .hist__tile {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    padding: 18px;
+    border-radius: 22px;
     background: var(--m3d-surface);
 
-    > .hist__item + .hist__item {
-      border-top: 1px solid var(--m3d-border);
+    dt {
+      color: var(--m3d-text-subtle);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    dd {
+      margin: 4px 0 0;
+      font-size: 30px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.15;
+
+      small {
+        color: var(--m3d-text-muted);
+        font-size: 14px;
+        font-weight: 500;
+      }
+    }
+
+    > span {
+      color: var(--m3d-text-muted);
+      font-size: 13px;
     }
   }
 
-  .hist__row {
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) auto 64px 90px 80px 16px;
+  .hist__tile--flush {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .hist__dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: #f2f2f2;
+    box-shadow: 0 0 0 1px var(--m3d-border);
+  }
+
+  .hist__empty {
     align-items: center;
-    gap: 14px;
+    gap: 8px;
+    padding: 40px 18px;
+    text-align: center;
+
+    b {
+      font-size: 16px;
+    }
+
+    p {
+      margin: 0 0 8px;
+      color: var(--m3d-text-muted);
+      font-size: 14px;
+    }
+  }
+
+  .hist__empty-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 4px;
+    border-radius: 12px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text-muted);
+  }
+
+  .hist__table {
     width: 100%;
-    min-height: 62px;
-    padding: 8px 16px 8px 10px;
+    border-collapse: collapse;
+    font-size: 14px;
+
+    th {
+      padding: 14px 12px;
+      color: var(--m3d-text-subtle);
+      font-size: 12px;
+      font-weight: 600;
+      text-align: left;
+    }
+
+    td {
+      height: 62px;
+      padding: 0 12px;
+      border-top: 1px solid var(--m3d-border);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    th:first-child,
+    td:first-child {
+      padding-left: 18px;
+    }
+
+    tbody tr:hover {
+      background: var(--m3d-hover, rgba(255, 255, 255, 0.03));
+    }
+  }
+
+  .hist__name {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 380px;
     color: var(--m3d-text);
     text-align: left;
 
+    b {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 14px;
+    }
+  }
+
+  .hist__end {
+    width: 48px;
+    text-align: right;
+  }
+
+  .hist__dots {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    color: var(--m3d-text-muted);
+
     &:hover {
-      background: var(--m3d-hover, rgba(255, 255, 255, 0.03));
+      background: var(--m3d-surface-2);
+      color: var(--m3d-text);
     }
   }
 
   .hist__thumb {
     display: flex;
+    flex: none;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
+    width: 40px;
+    height: 40px;
     overflow: hidden;
     border-radius: 10px;
     background: radial-gradient(100% 100% at 50% 35%, #2f3133 0%, #1f2022 70%);
@@ -491,8 +890,30 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
     }
   }
 
+  .hist__list {
+    overflow: hidden;
+    border-radius: 22px;
+    background: var(--m3d-surface);
+
+    > .hist__row + .hist__row {
+      border-top: 1px solid var(--m3d-border);
+    }
+  }
+
+  .hist__row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 62px;
+    padding: 10px 14px;
+    color: var(--m3d-text);
+    text-align: left;
+  }
+
   .hist__names {
     display: flex;
+    flex: 1 1 0;
     flex-direction: column;
     min-width: 0;
 
@@ -508,38 +929,36 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
     }
 
     span {
-      color: var(--m3d-text-subtle);
-      font-family: var(--m3d-font-mono, monospace);
-      font-size: 11.5px;
+      color: var(--m3d-text-muted);
+      font-size: 13px;
     }
   }
 
-  .hist__cell {
-    color: var(--m3d-text-muted);
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-    white-space: nowrap;
-  }
-
-  .hist__item--gone .hist__names b {
+  .hist__item--gone .hist__names b,
+  .hist__item--gone .hist__name b {
     color: var(--m3d-text-muted);
   }
 
-  .hist__item--open {
-    background: rgba(255, 255, 255, 0.02);
-  }
-
-  .hist__detail {
+  .hist__panel {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 4px 16px 16px 68px;
+    padding: 18px;
+    border: 1px solid var(--m3d-border);
+    border-radius: 22px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text);
+  }
+
+  .hist__panel-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .hist__facts {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 8px;
     margin: 0;
 
@@ -579,27 +998,61 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
   }
 
   @media (max-width: 1100px) {
-    .hist__totals {
+    .hist__tiles {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
   .hist--phone {
+    .hist__bar {
+      > .hist__grow {
+        display: none;
+      }
+    }
+
     .hist__find {
-      flex: 1 1 auto;
+      flex: 1 1 100%;
       width: auto;
     }
 
-    .hist__row {
-      grid-template-columns: 44px minmax(0, 1fr) auto 16px;
+    .hist__tiles {
+      gap: 12px;
+    }
+  }
+</style>
+
+<style lang="scss">
+  .hist__menu {
+    border: 1px solid var(--m3d-border);
+    border-radius: 14px;
+    background: var(--m3d-surface) !important;
+  }
+
+  .hist__menu-list {
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+    padding: 6px;
+
+    button {
+      padding: 10px 12px;
+      border-radius: 10px;
+      color: var(--m3d-text);
+      font-size: 14px;
+      text-align: left;
+
+      &:hover:not(:disabled),
+      &.on {
+        background: var(--m3d-surface-2);
+      }
+
+      &:disabled {
+        opacity: 0.45;
+      }
     }
 
-    .hist__cell {
-      display: none;
-    }
-
-    .hist__detail {
-      padding-left: 16px;
+    .hist__menu-danger {
+      color: var(--m3d-danger, #ff6b6b);
     }
   }
 </style>
