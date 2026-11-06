@@ -36,6 +36,7 @@ vi.mock('@/services/updates/watch', () => ({
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'hazel', isForeignSlug: () => false, knownPrinters: () => [] }))
 vi.mock('@/services/muon-cloud/directory', () => ({ savedName: () => 'Hazel' }))
 vi.mock('@/services/slicer-bridge/slicerUrl', () => ({ slicerPresence: { state: 'absent' } }))
+vi.mock('@/services/design-bridge/designUrl', () => ({ designPresence: { state: 'absent' } }))
 
 interface Fixture {
   wrapper: Wrapper<Vue>

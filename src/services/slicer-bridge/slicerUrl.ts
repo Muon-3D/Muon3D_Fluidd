@@ -1,6 +1,14 @@
 import Vue from 'vue'
 
 /**
+ * The frame's sandbox when the slicer (or Design) is on another origin (a
+ * hosted Fluidd), which may be hostile: everything they use, but never a
+ * navigation of this page (no allow-top-navigation). On this page's own
+ * origin (a printer's copy) a sandbox would add nothing, so there is none.
+ */
+export const CROSS_ORIGIN_SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-downloads allow-modals allow-popups allow-popups-to-escape-sandbox'
+
+/**
  * Where /slice finds the slicer: VUE_MUON_SLICER_URL, the URL of its
  * embed.html. Relative to this page by default (`/slicer/embed.html`: the
  * copy a printer serves beside its own Fluidd); a hosted Fluidd sets the

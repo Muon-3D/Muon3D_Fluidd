@@ -11,6 +11,7 @@ vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { activePrinterId: n
 // Discovery reaches application startup (and installs router/Vuetify globally).
 vi.mock('@/services/muon-cloud/directory', () => ({ savedName: () => 'Hazel' }))
 vi.mock('@/services/slicer-bridge/slicerUrl', () => ({ slicerPresence: { state: 'absent' } }))
+vi.mock('@/services/design-bridge/designUrl', () => ({ designPresence: { state: 'absent' } }))
 
 function show () {
   return shallowMount(CommandBar, {

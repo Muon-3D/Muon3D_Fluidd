@@ -47,7 +47,11 @@ jobs:
       - run: npm run test:unit -- --run
       - run: npm run circular-check
 
+      # The hosted console frames Muon3D Design from its own site (D-077). A printer's
+      # copy keeps the default, /design/embed.html beside it (views/Design.vue).
       - run: npm run build
+        env:
+          VUE_MUON_DESIGN_URL: https://design.muon3d.com/embed.html
       - run: npm run check:setup-budget
 
       - name: Mark the release and pack it

@@ -153,6 +153,7 @@ export default class KeyboardShortcutsDialog extends Mixins(BrowserMixin) {
           { keys: goKeys('jobs'), what: 'Jobs' },
           { keys: goKeys('control'), what: 'Control' },
           { keys: goKeys('slice'), what: 'Slice' },
+          { keys: goKeys('design'), what: 'Design' },
           { keys: goKeys('camera'), what: 'Camera' },
           { keys: goKeys('maintenance'), what: 'Maintenance' },
           { keys: ['G', 'S', '·', 'W', '·', 'U'], what: 'Settings · Network · Updates' },

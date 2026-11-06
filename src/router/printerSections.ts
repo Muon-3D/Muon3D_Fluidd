@@ -6,11 +6,13 @@
  *
  * `key` is the second key of the G shortcut (G then O for Overview).
  */
-export type SectionId = 'overview' | 'jobs' | 'control' | 'slice' | 'camera' | 'maintenance' | 'settings' | 'console' | 'files'
+export type SectionId = 'overview' | 'jobs' | 'control' | 'slice' | 'design' | 'camera' | 'maintenance' | 'settings' | 'console' | 'files'
 
 /** What decides whether a section or a page shows. */
 export interface SectionContext {
   slicer: boolean;
+  /** Muon3D Design is there to frame (design-bridge/designUrl.ts). */
+  design?: boolean;
   camera: string | null;
   history: boolean;
   timelapse: boolean;
@@ -74,6 +76,14 @@ export const SECTIONS: Section[] = [
     key: 'l',
     shows: c => c.slicer,
     pages: [{ path: '/slice', label: 'Slice' }]
+  },
+  {
+    id: 'design',
+    label: 'Design',
+    icon: 'design',
+    key: 'd',
+    shows: c => !!c.design,
+    pages: [{ path: '/design', label: 'Design' }]
   },
   {
     id: 'camera',

@@ -2,6 +2,7 @@ import { Component, Mixins } from 'vue-property-decorator'
 import StateMixin from './state'
 import type { WebcamConfig } from '@/store/webcams/types'
 import { slicerPresence } from '@/services/slicer-bridge/slicerUrl'
+import { designPresence } from '@/services/design-bridge/designUrl'
 import { activeSlug, isForeignSlug } from '@/services/printer-pages'
 import { pageOfRoute, scopedPath } from '@/router/printerPagePaths'
 import {
@@ -24,6 +25,7 @@ export default class FrameMixin extends Mixins(StateMixin) {
     const cameras = this.$store.getters['webcams/getVisibleWebcams'] as WebcamConfig[]
     return {
       slicer: slicerPresence.state === 'present',
+      design: designPresence.state === 'present',
       camera: cameras.length ? encodeURI(cameras[0].uid) : null,
       history: this.$store.getters['server/componentSupport']('history') as boolean,
       timelapse: this.$store.getters['server/componentSupport']('timelapse') as boolean,
