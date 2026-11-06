@@ -12,7 +12,7 @@ import {
   type GroupFacts
 } from '../model'
 
-const facts = (over: Partial<GroupFacts> = {}): GroupFacts => ({ cloud: true, canManage: true, waiting: 1, links: 1, olderTools: true, ...over })
+const facts = (over: Partial<GroupFacts> = {}): GroupFacts => ({ cloud: true, canManage: true, waiting: 1, links: 1, olderTools: true, canAsk: false, ...over })
 
 describe('the role table (J1, R1)', () => {
   it('has the five fixed rows, Viewer watching only and the owner alone on Wi-Fi, people and developer mode', () => {
@@ -72,6 +72,12 @@ describe('which groups each role sees', () => {
 
   it("hides the printer's own rules when it doesn't let this browser manage them (refused, failed or not asked)", () => {
     expect(printerGroups('owner', facts({ canManage: false }))).toEqual(['you', 'people', 'waiting', 'links', 'devices', 'unlink'])
+  })
+
+  it("offers asking the printer's screen to an owner the printer lets ask (protection: ask), and never to a member", () => {
+    expect(printerGroups('owner', facts({ canManage: false, canAsk: true }))).toEqual(['you', 'people', 'waiting', 'links', 'devices', 'askAtPrinter', 'unlink'])
+    expect(printerGroups('owner', facts({ canManage: true, canAsk: true }))).not.toContain('askAtPrinter')
+    expect(printerGroups('operator', facts({ canManage: false, canAsk: true }))).not.toContain('askAtPrinter')
   })
 
   it('an operator sees the people read-only, what they can do, their devices and Leave', () => {

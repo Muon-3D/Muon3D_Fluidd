@@ -128,6 +128,9 @@ test('an operator sees no owner group, one lock line, the people read-only, and 
   await expect(page.getByTestId('pa-you-role')).toContainText('You: operator')
   for (const tid of ['pa-people-readonly', 'pa-can-do', 'pa-your-devices', 'pa-leave', 'pa-lock']) await expect(page.getByTestId(tid), tid).toBeVisible()
   for (const tid of OWNER_GROUPS) await expect(page.getByTestId(tid), tid).toHaveCount(0)
+  // On a Muon printer the old Moonraker key and users card is never drawn for a member.
+  await expect(page.locator('#auth')).toHaveCount(0)
+  await expect(page.getByText(/API key|Add user/i)).toHaveCount(0)
   // Hidden, not greyed: no disabled owner controls anywhere on the page.
   await expect(page.getByTestId('people-access').locator('button:disabled, select:disabled')).toHaveCount(0)
   // The console's owner-only lists are never asked for.
@@ -164,6 +167,9 @@ test('a viewer sees no list of people, their end date and who to ask', async ({ 
   await expect(page.getByTestId('pa-people-readonly')).toHaveCount(0)
   await expect(page.getByTestId('pa-lock')).toContainText("Viewers don't see the list of people")
   for (const tid of OWNER_GROUPS) await expect(page.getByTestId(tid), tid).toHaveCount(0)
+  // On a Muon printer the old Moonraker key and users card is never drawn for a member.
+  await expect(page.locator('#auth')).toHaveCount(0)
+  await expect(page.getByText(/API key|Add user/i)).toHaveCount(0)
 })
 
 test('the owner reaches Account from the printer at its top-level address, with no printer frame and a way back', async ({ page, open, account }) => {
@@ -210,7 +216,7 @@ test('a new Moonraker key is asked for first', async ({ page, open, account }) =
   await openAccess(page, open)
   await page.getByTestId('pa-api-key').click()
   await page.getByTestId('api-key-new').click()
-  await expect(page.getByTestId('confirm')).toContainText('Make a new API key?')
+  await expect(page.getByTestId('confirm')).toContainText('Make a new API key for Boxwood?')
   await page.getByTestId('confirm-cancel').click()
   await expect(page.getByTestId('confirm')).toHaveCount(0)
 })

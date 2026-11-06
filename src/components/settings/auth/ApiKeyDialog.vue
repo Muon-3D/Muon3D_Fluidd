@@ -54,14 +54,24 @@ export default class ApiKeyDialog extends Vue {
     return this.$store.getters['auth/getApiKey']
   }
 
-  /** A new key stops the old one at once, so every tool using it must be given the new one: asked first (R8). */
+  get printerName (): string {
+    return (this.$store.getters['config/getDisplayName'] as string) || 'this printer'
+  }
+
+  /**
+   * A new key stops the old one at once, so every tool using it must be given
+   * the new one: asked first, naming the printer (R8). A switch to another
+   * printer while it asks cancels it.
+   */
   async handleRefreshApiKey () {
-    const sure = await this.$confirm('Every tool using the current key stops working until you give it the new one.', {
-      title: 'Make a new API key?',
+    const apiUrl = this.$store.state.config.apiUrl
+    const name = this.printerName
+    const sure = await this.$confirm(`Every tool using ${name}'s current key stops working until you give it the new one.`, {
+      title: `Make a new API key for ${name}?`,
       buttonTrueText: 'Make a new key',
       danger: true
     })
-    if (sure) this.$store.dispatch('auth/refreshApiKey')
+    if (sure && this.$store.state.config.apiUrl === apiUrl) this.$store.dispatch('auth/refreshApiKey')
   }
 }
 </script>
