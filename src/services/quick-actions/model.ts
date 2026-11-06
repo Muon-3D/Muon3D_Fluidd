@@ -4,7 +4,7 @@
  * filament macros, Level the bed, Restart Klipper); this only decides which
  * are available, with the same plain-words reasons the controls give.
  */
-import { macroHeat, type FilamentMacro } from '@/services/control/filament-change'
+import type { FilamentMacro } from '@/services/control/filament-change'
 
 export type QuickActionId = 'home' | 'preheat' | 'cool' | 'filament' | 'level' | 'motors' | 'restart'
 
@@ -65,7 +65,7 @@ export function quickActions (c: QuickActionContext): QuickAction[] {
       label: 'Change filament',
       icon: 'spool',
       reason: locked || (c.changeFilament ? '' : (c.changeFilamentReason ?? 'This printer has no filament change macro (M600).')),
-      // Mid-print M600 pauses the print; idle it unloads (changeFilamentPlan).
+      // Mid-print M600 pauses the print, after its confirm; idle it sends nothing and opens the material panel (changeFilamentPlan).
       confirms: c.busy
     },
     {
@@ -89,5 +89,5 @@ export function findFilamentMacro (
   const macro = macros.find(m => typeof m.name === 'string' && names.includes(m.name.toLowerCase()))
   if (!macro) return null
   const gcode = String(macro.config?.gcode ?? '')
-  return { name: (macro.name as string).toUpperCase(), takesTemp: /params\.temp\b/i.test(gcode), heatsTo: macroHeat(gcode) }
+  return { name: (macro.name as string).toUpperCase(), takesTemp: /params\.temp\b/i.test(gcode) }
 }
