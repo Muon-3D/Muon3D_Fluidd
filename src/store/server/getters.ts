@@ -3,7 +3,7 @@ import type { ServerInfo, ServerConfig, ServerState, SystemInfo, ServerSystemSta
 import type { RootState } from '../types'
 import { Globals } from '@/globals'
 import { gte, valid } from 'semver'
-import { hasMuonComponents } from '@/services/gates/components'
+import { muonFromComponents } from '@/services/gates/components'
 
 export const getters: GetterTree<ServerState, RootState> = {
   /**
@@ -47,10 +47,10 @@ export const getters: GetterTree<ServerState, RootState> = {
   },
 
   /**
-   * True on a Muon printer: Moonraker reports muon_access or muon_protection.
+   * True on a Muon printer (muon_access or muon_protection reported), false on one with other components, null until server.info has loaded.
    */
-  isMuonPrinter: (state): boolean => {
-    return hasMuonComponents(state.info.components)
+  isMuonPrinter: (state): boolean | null => {
+    return muonFromComponents(state.info.components)
   },
 
   /**
