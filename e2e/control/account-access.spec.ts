@@ -28,6 +28,12 @@ async function openAccount (page: Page, account: ConsoleState, section: string) 
   await expect(page.getByTestId('account-pane')).toBeVisible()
 }
 
+/** The avatar menu: in the top bar, or on a phone in the tab bar's More sheet. */
+async function openAccountMenu (page: Page, isMobile: boolean) {
+  if (isMobile) await page.getByTestId('tab-more').click()
+  await page.locator('[data-tid="account"]:visible').first().click()
+}
+
 const printerChanges = (account: ConsoleState) => account.changes.map(c => c.call).filter(call => call.includes('/v1/printers/'))
 
 const OWNED = { id: 'prn-boxwood', name: 'Boxwood', model: 'M1', state: 'idle', online: true, linked_at: 1 }
@@ -123,16 +129,18 @@ test('Your data holds Delete account', async ({ page, account }) => {
   await expect(page).toHaveURL(/\/account\/delete$/)
 })
 
-test('3. the account menu inside a printer opens the top-level Account, with no printer frame', async ({ page, open }) => {
+test('3. the account menu inside a printer opens the top-level Account, with no printer frame', async ({ page, open, account, isMobile }) => {
+  // Where the console serves Control; on a printer's own address the menu opens the console's Account, as today.
+  await consoleHere(page, account)
   await open('/settings')
-  await page.getByTestId('account').first().click()
+  await openAccountMenu(page, isMobile)
   await page.getByTestId('account-open').click()
   await expect(page).toHaveURL(/\/account$/)
   expect(new URL(page.url()).pathname).toBe('/account')
   await expect(page.locator('.app-rail')).toHaveCount(0)
   await expect(page.getByTestId('account-printer-return')).toBeVisible()
   await page.getByTestId('account-printer-return').click()
-  await expect(page).toHaveURL(new RegExp(`${PRINTER}$`))
+  await expect(page).toHaveURL(new RegExp(`${PRINTER}/settings$`))
 })
 
 // Account is top-level (Jack, 6 Nov; identity storyboard frame 3).
@@ -152,9 +160,10 @@ test('2. /account stays top-level with a printer open, and has no printer rail',
   await expect(page.locator('.app-rail')).toHaveCount(0)
 })
 
-test('4. the Back chip returns to the printer page you came from', async ({ page, open }) => {
+test('4. the Back chip returns to the printer page you came from', async ({ page, open, account, isMobile }) => {
+  await consoleHere(page, account)
   await open('/settings#access')
-  await page.getByTestId('account').first().click()
+  await openAccountMenu(page, isMobile)
   await page.getByTestId('account-open').click()
   await expect.poll(() => new URL(page.url()).pathname).toBe('/account')
   const chip = page.getByTestId('account-printer-return')

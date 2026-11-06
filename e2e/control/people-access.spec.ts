@@ -179,8 +179,9 @@ test('the owner reaches Account from the printer at its top-level address, with 
   await expect(page.locator('.app-rail')).toHaveCount(0)
   await expect(page.locator('[data-tid^="rail-"]')).toHaveCount(0)
   await expect(page.getByTestId('account-printer-return')).toContainText('Back to Boxwood')
+  // Back to the page it was opened from.
   await page.getByTestId('account-printer-return').click()
-  await expect(page).toHaveURL(new RegExp(`${PRINTER}$`))
+  await expect(page).toHaveURL(new RegExp(`${PRINTER}/settings#access$`))
 })
 
 test('an old printer-scoped Account address opens the top-level Account', async ({ page, open }) => {
