@@ -116,8 +116,8 @@ export interface ModelServiceState {
   items: FakeItem[];
   runs: FakeRun[];
   shares: FakeShare[];
-  /** Your Library turned off (consented before, withdrawn), so Control does not turn it on for you. */
-  libraryOff: boolean;
+  /** Your Library turned off (consented before, withdrawn), so Control does not turn it on for you; 'deleting' with a deletion date. */
+  libraryOff: boolean | 'deleting';
   /** The Library's storage, as the service sends it on `GET /v1/library`; none by default. */
   storage: { used_bytes: number, quota_bytes: number, used_by_kind?: Record<string, number> } | null;
   /** Your public profile (Share a print needs one): set up, or not yet (403 community_setup_required). */
@@ -272,7 +272,8 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       return route.fulfill({ status: 200, contentType: 'application/octet-stream', headers: { 'access-control-allow-origin': '*' }, body: GCODE_STORED })
     }
     if (path === '/v1/library') {
-      if (state.libraryOff) return json(route, { enabled: false, account: { promise_version: '2026-10-01', consented_at: '2026-10-02T00:00:00Z' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
+      // Off: the promise is the one this Control shows (src/services/library/promise.ts), so it may offer to turn it on.
+      if (state.libraryOff) return json(route, { enabled: false, account: { promise_version: '2026-09-26', consented_at: '2026-10-02T00:00:00Z', ...(state.libraryOff === 'deleting' ? { purge_after: '2026-11-27T00:00:00Z' } : {}) }, promise: { version: '2026-09-26' }, promise_version: '2026-09-26', storage: { used_bytes: 0, quota_bytes: 2e9 } })
       return json(route, { enabled: true, account: { promise_version: '2026-10-01' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 }, ...(state.storage ?? {}) })
     }
     const own = path.match(/^\/v1\/items\/([^/]+)(\/versions)?$/)

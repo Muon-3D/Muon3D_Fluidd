@@ -121,6 +121,6 @@ describe('the spool on a printing printer', () => {
     // 14 Oct: Walnut printing showed no spool at all.
     expect(spoolFact('PETG', '#202022', { name: 'PLA', colour: null })).toBe('PETG · Black')
     expect(spoolFact(null, null, { name: 'PLA', colour: '#F2F2EE' })).toBe('PLA · White · from the file')
-    expect(spoolFact(null, null, null)).toBe('Not set')
+    expect(spoolFact(null, null, null)).toBe('No material loaded')
   })
 })
