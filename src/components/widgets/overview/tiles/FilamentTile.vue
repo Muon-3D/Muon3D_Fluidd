@@ -21,7 +21,14 @@
         />
       </span>
       <span class="ft__text">
-        <b data-tid="filament-type">{{ view.type }}</b>
+        <b data-tid="filament-type">
+          <v-icon
+            v-if="noMaterial"
+            x-small
+            class="ft__warn"
+            data-tid="filament-warning"
+          >$warning</v-icon>{{ view.type }}
+        </b>
         <span data-tid="filament-detail">{{ view.detail }}</span>
       </span>
     </div>
@@ -56,7 +63,15 @@ export default class FilamentTile extends Mixins(OverviewMixin) {
   get view (): FilamentView {
     const spool = this.$store.getters['spoolman/getActiveSpool']
     const loaded = this.loadedMaterial ? { name: this.loadedMaterial.name, colour: this.loadedColour } : null
-    return filamentView(spool, loaded, this.printingWith)
+    const view = filamentView(spool, loaded, this.printingWith)
+    // The sensor can see filament that nobody has named yet.
+    if (view.source === 'none' && this.filamentSensed) return { ...view, type: 'Filament loaded', detail: 'Say which material from the ⋯ menu' }
+    return view
+  }
+
+  /** Nothing is loaded: the one place to warn, in the one phrase. */
+  get noMaterial (): boolean {
+    return this.view.source === 'none' && !this.filamentSensed
   }
 
   get ink (): string { return inkFor(this.view.colour) }
@@ -83,5 +98,6 @@ export default class FilamentTile extends Mixins(OverviewMixin) {
 .ft__spool svg { width: 28px; height: 28px; }
 .ft__text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
 .ft__text b { font-size: 16px; font-weight: 600; }
+.ft__warn { margin-right: 6px; color: var(--m3d-warning) !important; }
 .ft__text span { overflow: hidden; color: var(--m3d-text-muted); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
 </style>
