@@ -1,5 +1,5 @@
 import { shallowMount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Vue from 'vue'
 
 vi.mock('@/services/muon-cloud/state', async () => {
@@ -77,8 +77,10 @@ const flush = async () => {
   }
 }
 
+let mounted: Array<{ destroy: () => void }> = []
+
 function mountPage () {
-  return shallowMount(LibraryPrint, {
+  const wrapper = shallowMount(LibraryPrint, {
     mocks: {
       $route: { params: { item: 'a' }, query: {} },
       $router: { push: vi.fn(() => Promise.resolve()) },
@@ -87,7 +89,14 @@ function mountPage () {
     },
     stubs: ['router-link', 'frame-icon', 'v-menu', 'v-list', 'v-list-item', 'v-list-item-title', 'v-divider']
   })
+  mounted.push(wrapper)
+  return wrapper
 }
+
+afterEach(() => {
+  mounted.forEach(w => w.destroy())
+  mounted = []
+})
 
 beforeEach(() => {
   resetLibrary('acct')
@@ -102,7 +111,10 @@ describe('Library v3: one of your prints', () => {
     expect(w.find('[data-tid="library-own-line"]').text()).toBe('Version 3 · saved from Slice just now · printed 4×')
     const vm = w.vm as any
     expect(vm.specs.map((s: { label: string }) => s.label)).toEqual(['Material', 'Time', 'Filament', 'Nozzle'])
-    expect(vm.runRows.map((r: { title: string, status: string }) => [r.title, r.status])).toEqual([['Boxwood · 1h 47m', 'Done'], ['Walnut · stopped at 62%', 'Stopped']])
+    expect(vm.runRows.map((r: { title: string, line: string, status: string }) => [r.title, r.line.replace(/^.* · /, ''), r.status]))
+      .toEqual([['Boxwood · 1h 47m', 'finished', 'Done'], ['Walnut · stopped at 62%', 'just now', 'Stopped']])
+    // Printed 4 times, two listed: the tile says the list is only the latest.
+    expect(w.find('[data-tid="library-own-more-runs"]').text()).toBe('Printed 4 times in all; the latest are listed.')
   })
 
   it('a Library that does not answer is not a print that is gone: it says why, and Try again reads it', async () => {
@@ -146,5 +158,48 @@ describe('Library v3: one of your prints', () => {
     await flush()
     expect(w.find('[data-tid="library-own-off"]').exists()).toBe(true)
     expect(c.item).not.toHaveBeenCalled()
+  })
+
+  it('forgets a print read for one account when another signs in, or nobody is signed in', async () => {
+    const c = client()
+    setLibraryClient(c as never)
+    const w = mountPage()
+    await flush()
+    expect(w.find('[data-tid="library-print-name"]').text()).toBe('Desk bracket')
+    // Signed out: no print, no header of one.
+    resetLibrary(null)
+    await flush()
+    expect(w.find('[data-tid="library-print-name"]').exists()).toBe(false)
+    // Another account: its own read, not the first one's print.
+    c.item.mockRejectedValueOnce(new LibraryError('not_found', 'No such print.', 404))
+    resetLibrary('other')
+    Object.assign(libraryState, { checked: true, enabled: true })
+    await flush()
+    expect(w.find('[data-tid="library-print-missing"]').exists()).toBe(true)
+    expect(w.find('[data-tid="library-print-name"]').exists()).toBe(false)
+  })
+
+  it('when the Library itself could not be read it says why, and Try again reads the Library', async () => {
+    Object.assign(libraryState, { checked: false, error: 'The Library didn\'t answer.' })
+    const c = client()
+    setLibraryClient(c as never)
+    const w = mountPage()
+    await flush()
+    expect(w.find('[data-tid="library-own-error"]').text()).toContain('didn\'t answer')
+    expect(c.item).not.toHaveBeenCalled()
+    const { refreshLibrary } = await import('@/services/library/store')
+    await w.find('[data-tid="library-own-retry"]').trigger('click')
+    expect(refreshLibrary).toHaveBeenCalled()
+  })
+
+  it('reads its prints again once it has printed again', async () => {
+    const c = client()
+    setLibraryClient(c as never)
+    mountPage()
+    await flush()
+    expect(c.runs).toHaveBeenCalledTimes(1)
+    libraryState.items = { a: item({ printed_count: 5 }) }
+    await flush()
+    expect(c.runs).toHaveBeenCalledTimes(2)
   })
 })

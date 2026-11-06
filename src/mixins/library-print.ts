@@ -4,7 +4,7 @@ import { activeSlug, printerPath } from '@/services/printer-pages'
 import { describeLibraryError, type LibraryItem, type LibraryRun, type Version } from '@/services/library/api'
 import { agoText, setupLine, versionLine, versionOrigin, versionWhen } from '@/services/library/format'
 import { loadThumbnail, thumbnailFor } from '@/services/library/thumbnails'
-import { libraryClient, libraryState, loadItem, printVersions, restoreVersion } from '@/services/library/store'
+import { libraryClient, libraryState, loadItem, printVersions, refreshLibrary, restoreVersion } from '@/services/library/store'
 import { shortDuration } from '@/util/short-duration'
 import type { TargetRow } from '@/services/library/print-targets'
 import LibraryPageMixin from './library-page'
@@ -18,6 +18,14 @@ export interface RunRow {
   line: string;
   status: string;
   tone: 'ok' | 'run' | 'bad';
+}
+
+const RUN_WORDS: Record<string, { line: string, status: string, tone: RunRow['tone'] }> = {
+  finished: { line: 'finished', status: 'Done', tone: 'ok' },
+  running: { line: 'printing now', status: 'Printing', tone: 'run' },
+  cancelled: { line: 'stopped', status: 'Stopped', tone: 'bad' },
+  failed: { line: 'failed', status: 'Failed', tone: 'bad' },
+  unknown: { line: '', status: '', tone: 'run' }
 }
 
 export interface VersionRow {
@@ -56,6 +64,7 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
 
   @Watch('itemId', { immediate: true })
   async onItemId (id: string) {
+    this.readFor = libraryState.account
     this.missing = false
     this.loadError = ''
     this.loaded = null
@@ -76,14 +85,25 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
     }
   }
 
-  /** Retry: read it again. */
+  /** Retry: the Library itself when it could not be read, else the print. */
   reload () {
+    if (!this.loadError && this.libraryError) return refreshLibrary().catch(() => {})
     return this.onItemId(this.itemId)
   }
 
-  /** The Library is off (or could not be read), so there is no print to show. */
+  /** The Library itself could not be read for this account (so the print can't be asked for yet). */
+  get libraryError (): string {
+    return this.signedIn && !this.libraryKnown && !libraryState.busy ? libraryState.error ?? '' : ''
+  }
+
+  /** Why the page can't show the print: it, or the Library, didn't answer. */
+  get readError (): string {
+    return this.loadError || this.libraryError
+  }
+
+  /** The Library is off: its synced list is empty of this print (a copy read earlier doesn't count). */
   get libraryOff (): boolean {
-    return this.signedIn && libraryState.checked && !libraryState.enabled && !this.item
+    return this.signedIn && libraryState.checked && !libraryState.enabled && !libraryState.items[this.itemId]
   }
 
   /** Its prints, from the Library's newest runs (they carry the print they were of). */
@@ -98,17 +118,31 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
 
   get runRows (): RunRow[] {
     return this.runs.slice(0, 8).map(run => {
+      // One word per outcome, the same in the line and the pill.
+      const words = RUN_WORDS[run.outcome] ?? RUN_WORDS.unknown
       const stopped = run.outcome === 'cancelled' || run.outcome === 'failed'
-      const at = stopped && typeof run.progress_pct === 'number' ? `stopped at ${Math.round(run.progress_pct)}%` : run.duration_s ? shortDuration(run.duration_s) : ''
-      const outcome = run.outcome === 'finished' ? 'finished' : run.outcome === 'running' ? 'printing now' : run.outcome
+      const at = stopped
+        ? (typeof run.progress_pct === 'number' ? `${words.line} at ${Math.round(run.progress_pct)}%` : words.line)
+        : run.duration_s ? shortDuration(run.duration_s) : ''
       return {
         id: run.id,
         title: [run.printer_name, at].filter(Boolean).join(' · '),
-        line: [agoText(run.started_at), outcome].filter(Boolean).join(' · '),
-        status: run.outcome === 'finished' ? 'Done' : run.outcome === 'running' ? 'Printing' : run.outcome === 'cancelled' ? 'Stopped' : run.outcome === 'failed' ? 'Failed' : '',
-        tone: run.outcome === 'finished' ? 'ok' : run.outcome === 'running' ? 'run' : 'bad'
+        line: [agoText(run.started_at), stopped ? '' : words.line].filter(Boolean).join(' · '),
+        status: words.status,
+        tone: words.tone
       }
     })
+  }
+
+  /** It printed more often than the runs listed: they are only the latest. */
+  get moreRuns (): boolean {
+    return (this.item?.printed_count ?? 0) > this.runRows.length && this.runRows.length > 0
+  }
+
+  /** Printed again (here or elsewhere): the list reads again. */
+  @Watch('item.printed_count')
+  onPrinted (count?: number, before?: number) {
+    if (before !== undefined && count !== before) this.readRuns()
   }
 
   /** "Version 3 · saved from Slice today · printed 4×". */
@@ -145,8 +179,20 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
     return `${libraryState.account ?? ''}|${libraryState.checked}|${libraryState.enabled}`
   }
 
+  /** Whose Library the page last read for: another account (or none) forgets what it read. */
+  private readFor: string | null = null
+
   @Watch('libraryKey')
   onLibrary () {
+    const account = libraryState.account
+    if (account !== this.readFor) {
+      this.readFor = account
+      this.loaded = null
+      this.missing = false
+      this.loadError = ''
+      this.versions = []
+      this.runs = []
+    }
     if (this.libraryKnown && !this.item) this.onItemId(this.itemId)
   }
 

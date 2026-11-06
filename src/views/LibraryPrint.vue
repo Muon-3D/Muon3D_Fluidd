@@ -14,13 +14,13 @@
           ‹ Yours
         </router-link>
         <h1
-          v-if="item"
+          v-if="item && signedIn"
           data-tid="library-print-name"
         >
           {{ item.name }}
         </h1>
         <p
-          v-if="item"
+          v-if="item && signedIn"
           class="lprint__line"
           data-tid="library-own-line"
         >
@@ -28,7 +28,7 @@
         </p>
       </div>
       <div
-        v-if="item"
+        v-if="item && signedIn"
         class="lprint__acts"
       >
         <button
@@ -120,13 +120,13 @@
       </div>
     </section>
     <section
-      v-else-if="loadError"
+      v-else-if="readError && !item"
       class="lib-empty lib-surface lprint__state"
       role="alert"
       data-tid="library-own-error"
     >
       <h2>Your Library didn't answer</h2>
-      <p>{{ loadError }}</p>
+      <p>{{ readError }}</p>
       <div class="lib-empty__actions">
         <button
           type="button"
@@ -155,7 +155,7 @@
       </div>
     </section>
     <section
-      v-else-if="missing"
+      v-else-if="missing && !item"
       class="lib-empty lib-surface lprint__state"
       data-tid="library-print-missing"
     >
@@ -329,13 +329,22 @@
             </div>
           </div>
           <p
-            v-else-if="item.last_printer_name"
+            v-if="moreRuns"
             class="lprint__note"
+            data-tid="library-own-more-runs"
           >
-            {{ printedTimes }}, last on {{ item.last_printer_name }} {{ lastPrinted }}.
+            {{ printedTimes }} in all; the latest are listed.
           </p>
           <p
-            v-else
+            v-else-if="!runRows.length && (item.printed_count || 0) > 0"
+            class="lprint__note"
+          >
+            {{ printedTimes }}<template v-if="item.last_printer_name">
+              , last on {{ item.last_printer_name }} {{ lastPrinted }}
+            </template>.
+          </p>
+          <p
+            v-else-if="!runRows.length"
             class="lprint__note"
           >
             Print it on any of your printers, and each print is listed here.
