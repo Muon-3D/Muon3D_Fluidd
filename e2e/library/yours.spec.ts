@@ -52,7 +52,7 @@ test.describe('signed in', () => {
     await shelf(page, 'sliced').getByRole('button', { name: 'Print on Boxwood: Hex planter' }).click()
     const dialog = page.getByTestId('print-on')
     await expect(dialog).toContainText('Print from your Library')
-    await expect(dialog).toContainText('Hex planter on…')
+    await expect(dialog.getByRole('heading', { name: 'Hex planter' })).toBeVisible()
     // Print on… itself is page 10 (its own e2e); start again without it.
     await open('/library?view=mine')
 
@@ -72,7 +72,7 @@ test.describe('signed in', () => {
     stock(models)
     await open('/library?view=mine')
     await page.getByTestId('library-continue-print').click()
-    await expect(page.getByTestId('print-on')).toContainText('Hex planter on…')
+    await expect(page.getByTestId('print-on').getByRole('heading', { name: 'Hex planter' })).toBeVisible()
     await open('/library?view=mine')
     await page.getByTestId('library-continue-open').click()
     await expect(page).toHaveURL(/\/library\/a(\?|$)/)
