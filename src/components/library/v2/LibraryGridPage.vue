@@ -59,6 +59,7 @@
             type="search"
             :placeholder="source === 'search' ? 'Search prints, makers, tags' : `Search ${title}`"
             :aria-label="source === 'search' ? 'Search the Library' : `Search ${title}`"
+            maxlength="64"
             data-tid="library-grid-find"
             @keydown.enter="submit($event)"
           >
@@ -342,9 +343,17 @@ export default class LibraryGridPage extends Vue {
   }
 
   async load (fresh: boolean) {
-    if (this.source === 'search' && this.tooShort) return
     // A newer list makes any read still out stale: cancelled, not just ignored.
     this.controller?.abort()
+    if (this.source === 'search' && this.tooShort) {
+      // Nothing to ask: no old results under the "two letters" message.
+      this.reads++
+      this.cards = []
+      this.cursor = null
+      this.busy = false
+      this.error = ''
+      return
+    }
     const controller = this.controller = new AbortController()
     const read = ++this.reads
     if (fresh) {

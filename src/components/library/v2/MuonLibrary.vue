@@ -69,6 +69,7 @@
             type="search"
             placeholder="Search models, makers, tags"
             aria-label="Search Discover"
+            maxlength="64"
             data-tid="library-discover-find"
             @keydown.enter="!$event.isComposing && openSearch(query)"
           >

@@ -559,8 +559,12 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   /** Discover or Yours, kept in the address so Back and a shared link land on it. */
   setView (tab: LibraryTab) {
     const view = tab === 'yours' ? 'mine' : 'discover'
-    if (view === this.view) return
-    this.$router.replace({ query: { ...this.$route.query, view } }).catch(() => {})
+    if (view === this.view && !this.grid) return
+    // A place starts at its top: no See all or search left in the address.
+    const query = { ...this.$route.query, view }
+    delete query.shelf
+    delete query.q
+    this.$router.replace({ query }).catch(() => {})
   }
 
   /**
