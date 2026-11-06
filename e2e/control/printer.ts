@@ -27,6 +27,8 @@ export interface PrinterState {
   failOn: Record<string, string>
   /** Methods this page's printer answers itself, with a result (or a function of the params), instead of the shared mock. */
   answers: Record<string, unknown>
+  /** Methods to answer with this result instead of the mock's: method -> result (server.history.list...). */
+  answer: Record<string, unknown>
   /** When set, server.info reports exactly these Moonraker components (what a page gates on). */
   components?: string[]
 }
@@ -35,7 +37,7 @@ export interface PrinterHandle {
   state: PrinterState
   /** Every printer.gcode.script the page sent, in order. */
   gcode: string[]
-  /** Every request the page sent, in order. */
+  /** Every RPC (method and params) the page sent, in order. */
   calls: Array<{ method: string, params: Json }>
   /** The params of every request of this method. */
   called: (method: string) => Json[]
@@ -67,7 +69,7 @@ function overlayUpdate (update: Json, over: Json): Json {
 
 export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[] } = {}): Promise<PrinterHandle> {
   const handle: PrinterHandle = {
-    state: { status, failOn: {}, answers: {}, components: options.components },
+    state: { status, failOn: {}, answers: {}, answer: {}, components: options.components },
     gcode: [],
     calls: [],
     called: (method: string) => handle.calls.filter(c => c.method === method).map(c => c.params),
@@ -88,8 +90,8 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { server.send(raw); return }
       if (msg.method) handle.calls.push({ method: msg.method, params: msg.params ?? {} })
-      const answer = handle.state.answers[msg.method]
-      if (answer !== undefined) {
+      const answer = msg.method in handle.state.answers ? handle.state.answers[msg.method] : handle.state.answer[msg.method]
+      if (msg.method in handle.state.answers || msg.method in handle.state.answer) {
         const result = typeof answer === 'function' ? (answer as (p: Json) => unknown)(msg.params ?? {}) : answer
         ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }))
         return
