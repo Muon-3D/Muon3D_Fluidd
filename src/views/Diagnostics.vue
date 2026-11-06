@@ -188,7 +188,7 @@ import { v4 as uuidv4 } from 'uuid'
 import StateMixin from '@/mixins/state'
 import BrowserMixin from '@/mixins/browser'
 import type { DiagnosticsCardConfig, DiagnosticsCardContainer } from '@/store/diagnostics/types'
-import { newChartTemplate } from '@/store/layout/state'
+import { chartPresets, newChartTemplate } from '@/store/layout/state'
 import {
   chartIcon, chartSpan, effectiveRange, flattenCharts, formatMetric, layoutFrom, metricError, metricValue, moveChart, nextSpan,
   type ChartSpan
@@ -355,7 +355,9 @@ export default class Diagnostics extends Mixins(StateMixin, BrowserMixin) {
   }
 
   add () {
-    const card = JSON.parse(JSON.stringify(newChartTemplate())) as DiagnosticsCardConfig
+    // A preset the header's menu named, else a custom chart from the default one.
+    const preset = chartPresets().find(c => c.title === this.page.addPreset)
+    const card = JSON.parse(JSON.stringify(preset ?? newChartTemplate())) as DiagnosticsCardConfig
     card.id = ''
     delete card.span
     this.dialog = { open: true, card }
