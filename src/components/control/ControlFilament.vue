@@ -17,6 +17,7 @@
         {{ spoolLoaded.text }}
       </span>
       <material-picker
+        ref="picker"
         chip
       />
     </template>
@@ -25,33 +26,32 @@
       :class="{ 'filament__buttons--phone': phone }"
     >
       <button
-        v-if="changeMacro || !phone"
         type="button"
         class="cbtn cbtn--primary cbtn--grow"
-        :disabled="!!lockReason || !changeMacro"
-        :title="changeMacro ? '' : 'This printer has no filament change macro (M600)'"
+        :disabled="!!lockReason || changePlan.kind === 'none'"
+        :title="changePlan.kind === 'none' ? changePlan.reason : ''"
         data-tid="change-filament"
-        @click="run(changeMacro)"
+        @click="changeFilament"
       >
         Change filament
       </button>
       <button
         type="button"
         class="cbtn cbtn--grow"
-        :disabled="!!lockReason || busy || !loadMacro"
-        :title="loadMacro ? '' : 'This printer has no LOAD_FILAMENT macro'"
+        :disabled="!!lockReason || loadPlan.kind === 'none'"
+        :title="loadPlan.kind === 'none' ? loadPlan.reason : ''"
         data-tid="load-filament"
-        @click="run(loadMacro)"
+        @click="runFilamentPlan('load')"
       >
         Load
       </button>
       <button
         type="button"
         class="cbtn cbtn--grow"
-        :disabled="!!lockReason || busy || !unloadMacro"
-        :title="unloadMacro ? '' : 'This printer has no UNLOAD_FILAMENT macro'"
+        :disabled="!!lockReason || unloadPlan.kind === 'none'"
+        :title="unloadPlan.kind === 'none' ? unloadPlan.reason : ''"
         data-tid="unload-filament"
-        @click="run(unloadMacro)"
+        @click="runFilamentPlan('unload')"
       >
         Unload
       </button>
@@ -155,8 +155,7 @@
 
 <script lang="ts">
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
-import ControlMixin from '@/mixins/control'
-import type { Macro } from '@/store/macros/types'
+import FilamentActionsMixin from '@/mixins/filament-actions'
 import type { Spool } from '@/store/spoolman/types'
 import ControlCard from './ControlCard.vue'
 import ControlTaskFold from './ControlTaskFold.vue'
@@ -167,12 +166,6 @@ import type { RunoutSensor } from '@/store/printer/types'
 import MaterialPicker from '@/components/overview/MaterialPicker.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 
-/** A macro, and whether it takes a temperature (TEMP=215). */
-interface FilamentMacro {
-  name: string;
-  takesTemp: boolean;
-}
-
 /**
  * Filament: change it, load or unload it, through the printer's own
  * macros (M600, LOAD_FILAMENT, UNLOAD_FILAMENT), which heat the nozzle,
@@ -180,7 +173,7 @@ interface FilamentMacro {
  * the material's nozzle heat.
  */
 @Component({ components: { ControlCard, MaterialPicker, ControlTaskFold, NumberField, SegPicker, ToggleSwitch } })
-export default class ControlFilament extends Mixins(ControlMixin) {
+export default class ControlFilament extends Mixins(FilamentActionsMixin) {
   @Prop({ type: Boolean })
   readonly phone?: boolean
 
@@ -246,29 +239,6 @@ export default class ControlFilament extends Mixins(ControlMixin) {
     return this.ready && !this.extrudeReason
   }
 
-  get macros (): Macro[] {
-    return ((this.$store.getters['macros/getMacros'] as Macro[]) ?? []).filter(m => typeof m.name === 'string')
-  }
-
-  find (...names: string[]): FilamentMacro | null {
-    const macro = this.macros.find(m => names.includes(m.name.toLowerCase()))
-    if (!macro) return null
-    const gcode = String(macro.config?.gcode ?? '')
-    return { name: macro.name.toUpperCase(), takesTemp: /params\.temp\b/i.test(gcode) }
-  }
-
-  get changeMacro (): FilamentMacro | null {
-    return this.find('m600', 'change_filament', 'filament_change')
-  }
-
-  get loadMacro (): FilamentMacro | null {
-    return this.find('load_filament', 'filament_load')
-  }
-
-  get unloadMacro (): FilamentMacro | null {
-    return this.find('unload_filament', 'filament_unload')
-  }
-
   get lockReason (): string {
     // Changing filament mid-print is what M600 is for; it pauses the print.
     return this.controlLock
@@ -294,11 +264,27 @@ export default class ControlFilament extends Mixins(ControlMixin) {
     return { text: parts.join(' · '), color: f.color_hex ? `#${f.color_hex.replace(/^#/, '')}` : 'var(--m3d-text-muted)' }
   }
 
-  /** Load and unload heat for the material the heaters are set to, else for what's loaded. */
-  run (macro: FilamentMacro | null) {
-    if (!macro || !this.controlReady || (this.busy && macro.name !== this.changeMacro?.name)) return
-    const temp = this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
-    this.sendGcode(macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name)
+  /**
+   * Mid-print: M600, which pauses the print, after its confirm. Idle: open
+   * the material panel and send nothing (KAN-1700); Load and Unload are there
+   * and here, each behind its own confirm.
+   */
+  async changeFilament () {
+    if (this.changePlan.kind === 'panel') {
+      this.openPanel()
+      return
+    }
+    await this.runFilamentPlan('change')
+  }
+
+  openPanel () {
+    const picker = this.$refs.picker as unknown as { open: boolean } | undefined
+    if (picker) picker.open = true
+  }
+
+  /** Quick actions' Change filament, idle, comes here with ?filament=open. */
+  mounted () {
+    if (this.$route?.query?.filament === 'open') this.$nextTick(() => this.openPanel())
   }
 }
 </script>
