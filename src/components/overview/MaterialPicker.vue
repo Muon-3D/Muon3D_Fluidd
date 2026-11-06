@@ -259,22 +259,42 @@
           />
           Heat for {{ loadedMaterial.name }}
         </button>
+      </div>
+      <div
+        v-if="loadMacro || unloadMacro"
+        class="matp__filament"
+        data-tid="material-load-unload"
+      >
         <button
-          v-if="hasMacro('LOAD_FILAMENT')"
+          v-if="loadMacro"
           type="button"
-          class="cbtn"
-          :disabled="!klippyReady || busy"
-          @click="run('LOAD_FILAMENT')"
+          class="cbtn matp__icon-btn"
+          :disabled="!klippyReady || loadPlan.kind === 'none'"
+          :title="loadPlan.kind === 'none' ? loadPlan.reason : 'Load filament'"
+          aria-label="Load filament"
+          data-tid="material-load"
+          @click="runOnce('load')"
         >
+          <frame-icon
+            name="down"
+            small
+          />
           Load
         </button>
         <button
-          v-if="hasMacro('UNLOAD_FILAMENT')"
+          v-if="unloadMacro"
           type="button"
-          class="cbtn"
-          :disabled="!klippyReady || busy"
-          @click="run('UNLOAD_FILAMENT')"
+          class="cbtn matp__icon-btn"
+          :disabled="!klippyReady || unloadPlan.kind === 'none'"
+          :title="unloadPlan.kind === 'none' ? unloadPlan.reason : 'Unload filament'"
+          aria-label="Unload filament"
+          data-tid="material-unload"
+          @click="runOnce('unload')"
         >
+          <frame-icon
+            name="up"
+            small
+          />
           Unload
         </button>
       </div>
@@ -291,7 +311,7 @@
 
 <script lang="ts">
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
-import ControlMixin from '@/mixins/control'
+import FilamentActionsMixin from '@/mixins/filament-actions'
 import { FILAMENT_COLOURS, colourName, normaliseColour, type MaterialChoice } from '@/services/control/model'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
@@ -305,7 +325,7 @@ import { activeSlug } from '@/services/printer-pages'
  * the printer's own macros.
  */
 @Component({})
-export default class MaterialPicker extends Mixins(ControlMixin) {
+export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
   @Prop({ type: Boolean })
   readonly phone?: boolean
 
@@ -422,9 +442,9 @@ export default class MaterialPicker extends Mixins(ControlMixin) {
     this.open = false
   }
 
-  run (macro: string) {
-    this.sendGcode(macro)
-    this.open = false
+  /** Load or Unload (FilamentActionsMixin), once however often it's pressed; the panel closes once it's sent. */
+  async runOnce (which: 'load' | 'unload') {
+    if (await this.runFilamentPlan(which)) this.open = false
   }
 }
 </script>

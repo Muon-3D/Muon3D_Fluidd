@@ -98,6 +98,7 @@
       <section
         class="jobs__list"
         data-tid="jobs-list"
+        @click="onListClick"
       >
         <nav
           v-if="path"
@@ -129,7 +130,27 @@
         </nav>
 
         <div
-          v-if="!dirLoaded"
+          v-if="!dirLoaded && loadError"
+          class="jobs__empty"
+          role="alert"
+          data-tid="jobs-error"
+        >
+          <span class="jobs__empty-icon"><frame-icon name="jobs" /></span>
+          <b>Couldn't load the files on {{ printerName }}</b>
+          <span>{{ loadError }}</span>
+          <button
+            v-if="socketConnected"
+            type="button"
+            class="cbtn"
+            data-tid="jobs-retry"
+            @click="retryLoad"
+          >
+            Try again
+          </button>
+        </div>
+
+        <div
+          v-else-if="!dirLoaded"
           class="jobs__skeleton"
           data-tid="jobs-loading"
           aria-busy="true"
@@ -175,84 +196,70 @@
 
         <template v-else>
           <div
-            v-if="selecting"
-            class="jobs__selection"
-            data-tid="jobs-selection"
-          >
-            <input
-              type="checkbox"
-              class="jobs__box"
-              :checked="allSelected"
-              aria-label="Select every row"
-              data-tid="jobs-select-all"
-              @change="toggleAll"
-            >
-            <b>{{ selection.length }} selected</b>
-            <button
-              v-if="canQueue && queueable.length"
-              type="button"
-              :disabled="!controlReady"
-              data-tid="jobs-sel-queue"
-              @click="queueSelected"
-            >
-              {{ queueLabel(queueable.length) }}
-            </button>
-            <button
-              v-if="changeable.length"
-              type="button"
-              :disabled="!controlReady"
-              data-tid="jobs-sel-move"
-              @click="moveSelected"
-            >
-              Move to…
-            </button>
-            <button
-              v-if="selectedFiles.length"
-              type="button"
-              data-tid="jobs-sel-download"
-              @click="downloadSelected"
-            >
-              Download
-            </button>
-            <button
-              v-if="changeable.length"
-              type="button"
-              class="jobs__danger"
-              :disabled="!controlReady"
-              data-tid="jobs-sel-delete"
-              @click="deleteSelected"
-            >
-              Delete
-            </button>
-            <span
-              v-if="heldCount"
-              class="jobs__note"
-            >{{ printingTitle }} is printing, so it stays where it is</span>
-            <span class="jobs__grow" />
-            <button
-              type="button"
-              data-tid="jobs-sel-done"
-              @click="stopSelecting"
-            >
-              Done
-            </button>
-          </div>
-          <div
-            v-if="!isMobileViewport"
             class="jobs__row jobs__row--head"
-            aria-hidden="true"
+            role="group"
+            aria-label="Sort the list"
+            data-tid="jobs-head"
           >
-            <span>Name</span>
-            <span>Material</span>
-            <span>Time</span>
-            <span>Size</span>
-            <span>Last printed</span>
-            <span />
+            <span class="jobs__head-name">
+              <input
+                type="checkbox"
+                class="jobs__box"
+                :checked="allSelected"
+                :indeterminate.prop="someSelected"
+                aria-label="Select all"
+                data-tid="jobs-select-all"
+                @click.stop
+                @change="toggleAll"
+              >
+              <button
+                v-for="col in columns.slice(0, 1)"
+                :key="col.value"
+                type="button"
+                class="jobs__sort"
+                :class="{ 'jobs__sort--on': sort === col.value }"
+                :aria-pressed="sort === col.value ? 'true' : 'false'"
+                :data-sort="sort === col.value ? sortDir : null"
+                :data-tid="`jobs-col-${col.value}`"
+                @click="sortBy(col.value)"
+              >
+                {{ col.label }}<span
+                  v-if="sort === col.value"
+                  class="jobs__arrow"
+                  aria-hidden="true"
+                >{{ sortDir === 'asc' ? '↑' : '↓' }}</span><span
+                  v-if="sort === col.value"
+                  class="jobs__sr"
+                >, sorted {{ sortDir === 'asc' ? 'ascending' : 'descending' }}</span>
+              </button>
+            </span>
+            <button
+              v-for="col in columns.slice(1)"
+              :key="col.value"
+              type="button"
+              class="jobs__sort"
+              :class="{ 'jobs__sort--on': sort === col.value }"
+              :aria-pressed="sort === col.value ? 'true' : 'false'"
+              :data-sort="sort === col.value ? sortDir : null"
+              :data-tid="`jobs-col-${col.value}`"
+              @click="sortBy(col.value)"
+            >
+              {{ col.label }}<span
+                v-if="sort === col.value"
+                class="jobs__arrow"
+                aria-hidden="true"
+              >{{ sortDir === 'asc' ? '↑' : '↓' }}</span><span
+                v-if="sort === col.value"
+                class="jobs__sr"
+              >, sorted {{ sortDir === 'asc' ? 'ascending' : 'descending' }}</span>
+            </button>
+            <span v-if="!isMobileViewport" />
           </div>
           <div
             ref="rows"
             class="jobs__rows"
             role="listbox"
+            aria-multiselectable="true"
             tabindex="0"
             aria-label="Files on the printer"
             data-tid="jobs-rows"
@@ -262,27 +269,25 @@
               v-for="row in rows"
               :key="row.key"
               class="jobs__row"
-              :class="{ 'jobs__row--sel': (selectedKey === row.key && !selecting) || selection.includes(row.key), 'jobs__row--now': row.printing }"
+              :class="{ 'jobs__row--sel': selection.includes(row.key), 'jobs__row--cursor': sel.cursor === row.key, 'jobs__row--now': row.printing }"
               role="option"
-              :aria-selected="selectedKey === row.key ? 'true' : 'false'"
+              :aria-selected="selection.includes(row.key) ? 'true' : 'false'"
               :data-key="row.key"
               data-tid="jobs-row"
+              @mousedown="onRowMouseDown"
               @click="onRowClick(row, $event)"
               @dblclick="openRow(row)"
-              @touchstart.passive="pressStart(row)"
-              @touchend="pressEnd"
-              @touchmove.passive="pressEnd"
-              @touchcancel="pressEnd"
             >
               <span class="jobs__name">
                 <input
-                  v-if="selecting"
                   type="checkbox"
                   class="jobs__box"
                   :checked="selection.includes(row.key)"
                   :aria-label="`Select ${row.title}`"
                   data-tid="jobs-row-check"
-                  @click.stop="onCheck(row, $event)"
+                  @click.stop
+                  @dblclick.stop
+                  @change="onCheck(row)"
                 >
                 <span
                   class="jobs__thumb"
@@ -347,31 +352,29 @@
                 <span class="jobs__cell">{{ row.kind === 'folder' ? '' : row.printing ? (startedAt ? `Started ${startedAt}` : 'Now') : lastPrinted(row.lastPrinted, row.printed) }}</span>
               </template>
               <span class="jobs__end">
-                <template v-if="!selecting">
-                  <router-link
-                    v-if="row.printing && isMobileViewport"
-                    :to="pagePath('/')"
-                    class="jobs__pct"
-                    data-tid="jobs-printing-link"
-                    @click.native.stop
-                  >
-                    {{ Math.floor(progress) }}%
-                  </router-link>
-                  <frame-icon
-                    v-if="isMobileViewport && selectedKey === row.key && row.kind === 'file'"
-                    name="check"
-                    class="jobs__check"
-                  />
-                  <job-menu
-                    v-else
-                    :kind="row.kind"
-                    :label="row.title"
-                    :printing="row.held"
-                    :queueing="busy && canQueue"
-                    :locked="!controlReady"
-                    @action="act($event, row)"
-                  />
-                </template>
+                <router-link
+                  v-if="row.printing && isMobileViewport"
+                  :to="pagePath('/')"
+                  class="jobs__pct"
+                  data-tid="jobs-printing-link"
+                  @click.native.stop
+                >
+                  {{ Math.floor(progress) }}%
+                </router-link>
+                <frame-icon
+                  v-if="isMobileViewport && selectedKey === row.key && row.kind === 'file'"
+                  name="check"
+                  class="jobs__check"
+                />
+                <job-menu
+                  v-else
+                  :kind="row.kind"
+                  :label="row.title"
+                  :printing="row.held"
+                  :queueing="busy && canQueue"
+                  :locked="!controlReady"
+                  @action="act($event, row)"
+                />
               </span>
             </div>
           </div>
@@ -571,9 +574,10 @@ import { SocketActions } from '@/api/socketActions'
 import { EventBus } from '@/eventBus'
 import type { QueuedJob } from '@/store/jobQueue/types'
 import type { AppDirectory, AppFileWithMeta, FileBrowserEntry } from '@/store/files/types'
-import { fileSize, isGcodeFile, jobTitle, parentFolder, queueLabel, rangeSelect, readyChecks, toggleKey } from '@/services/jobs/model'
-import { lastPrinted, layerCountOf, listDuration, materialOf, sortListRows } from '@/services/jobs/list'
-import { jobsPage, resetJobsPage } from '@/services/jobs/page-state'
+import { fileSize, isGcodeFile, jobTitle, parentFolder, queueLabel, readyChecks } from '@/services/jobs/model'
+import { NO_SELECTION, allSelected, clearSelection, clickRow, keepShown, moveCursor, selectAll, someSelected, toggleRow, type Selection } from '@/services/jobs/selection'
+import { JOBS_COLUMNS, lastPrinted, layerCountOf, listDuration, materialOf, nextColumnSort, sortDirection, sortListRows, type JobsSort } from '@/services/jobs/list'
+import { jobsPage, resetJobsPage, setJobsSort } from '@/services/jobs/page-state'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
@@ -621,12 +625,11 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   renameRow: ListRow | null = null
   moveRows: ListRow[] | null = null
   dialogTarget: string | null = null
-  /** Selecting many: rows have checkboxes and a bar offers what can be done to them. */
-  selecting = false
-  selection: string[] = []
-  anchor: string | null = null
-  pressTimer: number | null = null
-  longPressed = false
+  /** What's selected, File Explorer's way; the header's toolbar acts on it. */
+  sel: Selection = NO_SELECTION
+  /** Why the folder's listing failed, until it is asked for again. */
+  loadError = ''
+  unsubscribe: (() => void) | null = null
 
   readonly listDuration = listDuration
   readonly fileSize = fileSize
@@ -642,10 +645,24 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     this.openFolder(saved.startsWith(`${this.root}/`) ? saved.slice(this.root.length + 1) : '')
     this.loadFiles()
     this.publish()
+    // The store's error action carries the request, so a failed listing shows here.
+    if (typeof this.$store.subscribeAction !== 'function') return
+    this.unsubscribe = this.$store.subscribeAction(action => {
+      if (action.type !== 'socket/onSocketError') return
+      const error = action.payload as { message?: string, __request__?: { method?: string, params?: { path?: string } } } | undefined
+      const request = error?.__request__
+      if (request?.method !== 'server.files.get_directory' || String(request.params?.path ?? '').split('/')[0] !== this.root) return
+      this.loadError = error?.message || 'The printer did not answer.'
+    })
+  }
+
+  retryLoad () {
+    this.loadError = ''
+    SocketActions.serverFilesGetDirectory(this.root, this.dir)
   }
 
   beforeDestroy () {
-    this.pressEnd()
+    this.unsubscribe?.()
     resetJobsPage()
     jobsPage.files = 0
     jobsPage.free = ''
@@ -685,7 +702,10 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   }
 
   openFolder (path: string) {
-    if (path !== this.path) this.selectedKey = null
+    if (path !== this.path) {
+      this.selectedKey = null
+      this.sel = NO_SELECTION
+    }
     this.path = path
     // A file dropped anywhere on the page lands in the folder that's open.
     this.$store.dispatch('files/updateCurrentPathByRoot', { root: this.root, path: this.dir })
@@ -752,7 +772,6 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     const q = this.query.trim().toLowerCase()
     const all = [...this.folderRows, ...this.fileRows]
       .filter(r => !q || r.name.toLowerCase().includes(q) || r.title.toLowerCase().includes(q))
-      .filter(r => r.kind === 'folder' || jobsPage.filter === 'all' || (jobsPage.filter === 'before') === r.printed)
     return sortListRows(all, jobsPage.sort, jobsPage.reverse)
   }
 
@@ -763,8 +782,7 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   /** A desktop always has a file picked, so the tile is never empty; a phone waits for a tap. */
   @Watch('rows')
   keepSelection (rows: ListRow[]) {
-    const keys = new Set(rows.map(r => r.key))
-    if (this.selection.some(k => !keys.has(k))) this.selection = this.selection.filter(k => keys.has(k))
+    this.sel = keepShown(this.sel, rows.map(r => r.key))
     if (this.selectedKey && rows.some(r => r.key === this.selectedKey)) return
     if (this.isMobileViewport) {
       this.selectedKey = null
@@ -789,35 +807,69 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     jobsPage.printerName = this.printerName
   }
 
+  /** The keys of the rows, in the order shown: what ranges and the arrow keys go by. */
+  get order (): string[] {
+    return this.rows.map(r => r.key)
+  }
+
+  get selection (): string[] {
+    return this.sel.keys
+  }
+
+  /** The tile shows the file the cursor last landed on; it stays put while the cursor is on a folder. */
+  @Watch('sel')
+  onSel (sel: Selection) {
+    const row = sel.cursor === null ? undefined : this.rows.find(r => r.key === sel.cursor)
+    if (row?.kind === 'file') this.selectedKey = row.key
+  }
+
+  /**
+   * A plain click (or tap) selects that row alone. On a phone, a tap on a
+   * folder opens it, and a second tap on the file lets go of it, and the
+   * Print bar goes.
+   */
   pick (row: ListRow) {
-    if (row.kind === 'folder') {
-      this.openFolder(row.key)
-      return
+    if (this.isMobileViewport) {
+      if (row.kind === 'folder') {
+        this.openFolder(row.key)
+        return
+      }
+      if (this.selectedKey === row.key && this.selection.every(k => k === row.key)) {
+        this.sel = NO_SELECTION
+        this.selectedKey = null
+        return
+      }
     }
-    // A phone's second tap lets go of the file, and the Print bar goes.
-    this.selectedKey = this.isMobileViewport && this.selectedKey === row.key ? null : row.key
+    this.sel = clickRow(this.sel, this.order, row.key)
+    if (row.kind === 'file') this.selectedKey = row.key
   }
 
-  /** A click picks the file for the tile; with Ctrl, Shift or while selecting, it selects. */
+  /** File Explorer's click: plain, Ctrl (Cmd on a Mac), Shift, or Ctrl+Shift. */
   onRowClick (row: ListRow, event: MouseEvent) {
-    if (this.longPressed) {
-      this.longPressed = false
+    const ctrl = event.ctrlKey || event.metaKey
+    if (!ctrl && !event.shiftKey) {
+      this.pick(row)
       return
     }
-    if (this.selecting || event.ctrlKey || event.metaKey || event.shiftKey) {
-      this.selecting = true
-      this.onCheck(row, event)
-      return
-    }
-    this.pick(row)
+    this.sel = clickRow(this.sel, this.order, row.key, { ctrl, shift: event.shiftKey })
   }
 
-  onCheck (row: ListRow, event: MouseEvent) {
-    const order = this.rows.map(r => r.key)
-    this.selection = event.shiftKey
-      ? rangeSelect(order, this.selection, this.anchor, row.key)
-      : toggleKey(this.selection, row.key)
-    this.anchor = row.key
+  /** Shift and Ctrl clicks select rows, not the text in them. */
+  onRowMouseDown (event: MouseEvent) {
+    if (event.shiftKey || event.ctrlKey || event.metaKey) event.preventDefault()
+  }
+
+  /** A row's checkbox puts it in or takes it out, as a Ctrl-click does. A phone's Print bar stays as it was. */
+  onCheck (row: ListRow) {
+    const next = toggleRow(this.sel, this.order, row.key)
+    this.sel = this.isMobileViewport ? { ...next, cursor: this.sel.cursor } : next
+  }
+
+  /** A click on the list where there is no row lets go of everything. */
+  onListClick (event: MouseEvent) {
+    const target = event.target as HTMLElement | null
+    if (!target || target.closest('[data-tid="jobs-row"], [data-tid="jobs-head"], button, input, a, nav, [role="menu"]')) return
+    this.stopSelecting()
   }
 
   /** Enter or a double-click: a folder opens, a file opens its preview. */
@@ -831,35 +883,26 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     this.preview(row)
   }
 
-  /** A long press on a phone starts selecting. */
-  pressStart (row: ListRow) {
-    if (!this.isMobileViewport || this.selecting) return
-    this.pressEnd()
-    this.pressTimer = window.setTimeout(() => {
-      this.pressTimer = null
-      this.longPressed = true
-      this.selecting = true
-      this.selection = [row.key]
-      this.anchor = row.key
-    }, 500)
-  }
-
-  pressEnd () {
-    if (this.pressTimer !== null) window.clearTimeout(this.pressTimer)
-    this.pressTimer = null
-  }
-
-  @Watch('selectTick')
-  onSelectTick () {
-    this.selecting = true
-  }
-
-  get selectTick (): number { return jobsPage.selectTick }
-
   stopSelecting () {
-    this.selecting = false
-    this.selection = []
-    this.anchor = null
+    this.sel = clearSelection(this.sel)
+  }
+
+  // -- the columns -------------------------------------------------------------
+
+  readonly columns = JOBS_COLUMNS
+
+  get sort (): JobsSort {
+    return jobsPage.sort
+  }
+
+  get sortDir (): 'asc' | 'desc' {
+    return sortDirection(jobsPage.sort, jobsPage.reverse)
+  }
+
+  /** A click on a column header orders by it; a second click turns it round. */
+  sortBy (column: JobsSort) {
+    const next = nextColumnSort(jobsPage, column)
+    setJobsSort(next.sort, next.reverse)
   }
 
   get selectedRows (): ListRow[] {
@@ -884,12 +927,48 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   }
 
   get allSelected (): boolean {
-    return this.rows.length > 0 && this.rows.every(r => this.selection.includes(r.key))
+    return allSelected(this.sel, this.order)
+  }
+
+  get someSelected (): boolean {
+    return someSelected(this.sel, this.order)
   }
 
   toggleAll () {
-    this.selection = this.allSelected ? [] : this.rows.map(r => r.key)
+    this.sel = this.allSelected ? clearSelection(this.sel) : selectAll(this.sel, this.order)
   }
+
+  /** What the header's toolbar shows: its selection actions only while something is selected. */
+  @Watch('selectedRows', { immediate: true })
+  @Watch('canQueue')
+  publishSelection () {
+    jobsPage.selected = this.selectedRows.length
+    jobsPage.changeable = this.changeable.length
+    jobsPage.downloadable = this.selectedFiles.length
+    jobsPage.queueable = this.canQueue ? this.queueable.length : 0
+    jobsPage.heldNote = this.heldCount ? `${this.printingTitle || 'The file printing'} is printing, so it stays.` : ''
+  }
+
+  @Watch('moveTick')
+  onMoveTick () { this.moveSelected() }
+
+  @Watch('downloadTick')
+  onDownloadTick () { this.downloadSelected() }
+
+  @Watch('deleteTick')
+  onDeleteTick () { this.deleteSelected() }
+
+  @Watch('queueTick')
+  onQueueTick () { this.queueSelected() }
+
+  @Watch('clearTick')
+  onClearTick () { this.stopSelecting() }
+
+  get moveTick (): number { return jobsPage.moveTick }
+  get downloadTick (): number { return jobsPage.downloadTick }
+  get deleteTick (): number { return jobsPage.deleteTick }
+  get queueTick (): number { return jobsPage.queueTick }
+  get clearTick (): number { return jobsPage.clearTick }
 
   async queueSelected () {
     if (!this.controlReady || !this.canQueue) return
@@ -912,6 +991,11 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     if (!this.controlReady) return
     const rows = this.changeable.filter(r => !this.holds(r.key))
     if (!rows.length) return
+    // One row asks by its name, as its menu's Delete does; the list lets go of it once it's gone.
+    if (rows.length === 1) {
+      await this.removeRow(rows[0])
+      return
+    }
     const files = rows.filter(r => r.kind === 'file').length
     const folders = rows.length - files
     const what = [
@@ -936,37 +1020,49 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     jobsPage.query = ''
   }
 
+  /**
+   * File Explorer's keys, only while the list itself has the focus: the
+   * arrows (and Home, End) move, with Shift they select the range, Ctrl+A
+   * selects all, Space puts the row in or out, Escape lets go.
+   */
   onKey (event: KeyboardEvent) {
-    // Keys on a row's ... button or a menu belong to them: only the list itself takes these.
+    // Keys on a row's ... button, a menu or a field belong to them: only the list itself takes these.
     if (event.target !== this.$refs.rows) return
-    const keys = this.rows.map(r => r.key)
-    const at = this.selectedKey ? keys.indexOf(this.selectedKey) : -1
-    const go = (to: number) => {
-      const row = this.rows[Math.max(0, Math.min(keys.length - 1, to))]
-      if (!row) return
-      if (row.kind === 'file') this.selectedKey = row.key
-      this.$nextTick(() => (this.$el.querySelector(`[data-key="${CSS.escape(row.key)}"]`) as HTMLElement | null)?.scrollIntoView({ block: 'nearest' }))
+    const order = this.order
+    const mods = { ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey }
+    const go = (by: number, to?: number) => {
+      this.sel = moveCursor(this.sel, order, by, mods, to)
+      const key = this.sel.cursor
+      if (key === null) return
+      this.$nextTick(() => {
+        const rows = Array.from(this.$el.querySelectorAll<HTMLElement>('[data-key]'))
+        rows.find(el => el.dataset.key === key)?.scrollIntoView?.({ block: 'nearest' })
+      })
     }
     switch (event.key) {
-      case 'ArrowDown': go(at + 1); break
-      case 'ArrowUp': go(at - 1); break
-      case 'Home': go(0); break
-      case 'End': go(keys.length); break
+      case 'ArrowDown': go(1); break
+      case 'ArrowUp': go(-1); break
+      case 'Home': go(0, 0); break
+      case 'End': go(0, order.length - 1); break
+      case 'a':
+      case 'A':
+        if (!mods.ctrl || mods.shift) return
+        this.sel = selectAll(this.sel, order)
+        break
       case 'Delete':
-        if (this.selecting && this.selection.length) this.deleteSelected()
+        if (this.selection.length) this.deleteSelected()
         else if (this.selectedRow) this.removeRow(this.selectedRow)
         break
       case 'Enter':
-        this.openRow(this.selectedRow)
+        this.openRow(this.rows.find(r => r.key === this.sel.cursor) ?? this.selectedRow)
         break
       case ' ':
-        if (!this.selecting || !this.selectedRow) return
-        this.selection = toggleKey(this.selection, this.selectedRow.key)
+        if (this.sel.cursor === null) return
+        this.sel = toggleRow(this.sel, order, this.sel.cursor)
         break
       case 'Escape':
-        if (this.selection.length) this.selection = []
-        else if (this.selecting) this.stopSelecting()
-        else return
+        if (!this.selection.length) return
+        this.stopSelecting()
         break
       case 'Backspace':
         if (this.path) this.openFolder(this.parent)
@@ -1093,7 +1189,7 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
       if (this.holds(row.key)) continue
       SocketActions.serverFilesMove(`${this.root}/${row.key}`, `${this.root}/${folder ? `${folder}/` : ''}${row.name}`)
     }
-    if (this.selecting) this.stopSelecting()
+    this.stopSelecting()
   }
 
   makeFolder (name: string) {
@@ -1377,26 +1473,6 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     }
   }
 
-  .jobs__selection {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 14px;
-    padding: 10px 18px;
-    border-bottom: 1px solid var(--m3d-border);
-    background: var(--m3d-accent-soft);
-    font-size: 14px;
-
-    button {
-      color: var(--m3d-accent);
-      font-weight: 600;
-
-      &:disabled {
-        opacity: 0.45;
-      }
-    }
-  }
-
   .jobs__grow {
     flex: 1 1 auto;
   }
@@ -1426,6 +1502,7 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     font-size: 14px;
     font-variant-numeric: tabular-nums;
     cursor: pointer;
+    user-select: none;
 
     & + & {
       border-top: 1px solid var(--m3d-border);
@@ -1441,12 +1518,72 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     cursor: default;
   }
 
+  .jobs__head-name {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .jobs__sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 32px;
+    padding: 0 8px;
+    margin-left: -8px;
+    border-radius: 8px;
+    color: inherit;
+    font: inherit;
+    white-space: nowrap;
+    justify-self: start;
+
+    &:hover {
+      background: var(--m3d-surface-2);
+      color: var(--m3d-text);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--m3d-accent);
+    }
+  }
+
+  .jobs__sort--on {
+    color: var(--m3d-text);
+  }
+
+  .jobs__arrow {
+    color: var(--m3d-accent);
+    font-size: 13px;
+  }
+
+  .jobs__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .jobs__row--cursor:not(.jobs__row--sel) {
+    box-shadow: inset 3px 0 0 var(--m3d-border-strong, var(--m3d-border));
+  }
+
+  .jobs__row--sel.jobs__row--cursor {
+    box-shadow: inset 3px 0 0 var(--m3d-accent);
+  }
+
   .jobs__row--now {
     background: var(--m3d-surface-2);
   }
 
   .jobs__row--sel {
     background: var(--m3d-accent-soft);
+  }
+
+  .jobs__rows {
+    padding-bottom: 16px;
   }
 
   .jobs__rows:focus-visible {
@@ -1746,6 +1883,23 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
       grid-template-columns: minmax(0, 1fr) auto;
       min-height: 72px;
       padding: 10px 14px;
+    }
+
+    .jobs__row--head {
+      display: flex;
+      gap: 4px 14px;
+      min-height: 48px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .jobs__sort {
+      min-height: 40px;
+    }
+
+    .jobs__box {
+      width: 22px;
+      height: 22px;
     }
 
     .jobs__thumb {
