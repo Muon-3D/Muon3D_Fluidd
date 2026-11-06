@@ -1,16 +1,31 @@
 <template>
   <section
     class="hs"
-    :class="{ 'hs--compact': compact }"
+    :class="{ 'hs--compact': compact, 'stile stile--6 hs--page': !compact }"
     data-tid="hotspot-card"
   >
     <header class="hs__head">
       <div class="hs__titles">
-        <h2>{{ compact ? 'Hotspot' : 'The printer\'s hotspot' }}</h2>
-        <p v-if="deviceStatus && apCredentials && !locked && !remote">
+        <h2>
+          <frame-icon
+            v-if="!compact"
+            name="bolt"
+            class="hs__ico"
+          />
+          Hotspot
+        </h2>
+        <p v-if="compact && deviceStatus && apCredentials && !locked && !remote">
           {{ apState ? 'On' : 'Off' }} · {{ apCredentials.ssid }}{{ apCredentials.security_enabled === false ? ' · open' : '' }}
         </p>
       </div>
+      <tone-pill
+        v-if="!compact && deviceStatus && apCredentials && !locked && !remote"
+        :tone="apState ? 'ok' : 'off'"
+        :dot="apState"
+        data-tid="hotspot-state"
+      >
+        {{ apState ? 'On' : 'Off' }}
+      </tone-pill>
       <toggle-switch
         v-if="!remote"
         :value="apState"
@@ -20,6 +35,14 @@
         @input="requestToggle()"
       />
     </header>
+
+    <p
+      v-if="!compact && !locked && !remote"
+      class="hs__note"
+      data-tid="hotspot-help"
+    >
+      A network the printer makes itself, for when there is no Wi-Fi. Turning it on drops the current connection.
+    </p>
 
     <protected-notice />
     <p
@@ -194,6 +217,7 @@ import { useAuxApi } from '@/aux_api/useAuxApi'
 import type { APCredentials, Device } from '@/aux_api'
 import QrcodeVue from 'qrcode.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
+import TonePill from '@/components/printers/TonePill.vue'
 import i18n from '@/plugins/i18n'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import type { VForm } from '@/types'
@@ -233,7 +257,8 @@ const { onHotspot } = useHotspotCheck()
   },
   components: {
     QrcodeVue,
-    ToggleSwitch
+    ToggleSwitch,
+    TonePill
   }
 })
 export default class HotspotManagerCard extends Vue {
@@ -621,6 +646,23 @@ export default class HotspotManagerCard extends Vue {
     border-radius: 22px;
     background: var(--m3d-surface);
     color: var(--m3d-text);
+  }
+
+  .hs--page {
+    padding: 18px;
+    gap: 14px;
+  }
+
+  .hs__head {
+    .hs__titles h2 {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+  }
+
+  .hs__ico {
+    color: var(--m3d-text-muted);
   }
 
   .hs--compact {
