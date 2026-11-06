@@ -23,9 +23,9 @@ async function edit (page: Page) {
 test('the default layout: the printer left and wider, job and filament stacked on the right, then four tiles', async ({ page, open, isMobile }) => {
   await open('/')
   await expect(page.getByTestId('overview-page')).toBeVisible()
-  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'zoffset', 'jog', 'position', 'macros', 'graph'])
+  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'jog', 'position', 'macros', 'graph'])
   // Off by default, found in Add widget.
-  for (const id of ['trackpad', 'fans', 'camera', 'bedmesh', 'console', 'system', 'care', 'library']) await expect(cell(page, id)).toHaveCount(0)
+  for (const id of ['trackpad', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library']) await expect(cell(page, id)).toHaveCount(0)
   if (isMobile) return
   const stage = await box(cell(page, 'stage'))
   const job = await box(cell(page, 'job'))
@@ -34,7 +34,7 @@ test('the default layout: the printer left and wider, job and filament stacked o
   expect(stage.width).toBeGreaterThan(job.width * 1.5)
   expect(Math.abs(job.x - filament.x)).toBeLessThan(2)
   expect(filament.y).toBeGreaterThan(job.y)
-  const row = await Promise.all(['hotend', 'bed', 'mode', 'zoffset'].map(id => box(cell(page, id))))
+  const row = await Promise.all(['hotend', 'bed', 'mode', 'fans'].map(id => box(cell(page, id))))
   for (const b of row) expect(Math.abs(b.y - row[0].y)).toBeLessThan(2)
   expect(row[0].y).toBeGreaterThan(stage.y + stage.height - 2)
   // Jog and position show; the trackpad does not.
@@ -52,15 +52,15 @@ test('Add widget lists the catalogue by category with the sizes each offers, and
   await expect(page.getByTestId('widget-add-job')).toHaveCount(0)
   // The 3D printer has no S.
   await expect(page.getByTestId('widget-size-stage-S')).toHaveCount(0)
-  await page.getByTestId('widget-search').fill('fan')
-  await expect(page.getByTestId('widget-card-fans')).toBeVisible()
+  await page.getByTestId('widget-search').fill('cam')
+  await expect(page.getByTestId('widget-card-camera')).toBeVisible()
   await expect(page.getByTestId('widget-card-jog')).toHaveCount(0)
-  await page.getByTestId('widget-size-fans-M').click()
-  await page.getByTestId('widget-add-fans').click()
+  await page.getByTestId('widget-size-camera-M').click()
+  await page.getByTestId('widget-add-camera').click()
   await expect(page.getByTestId('widget-sheet')).toHaveCount(0)
-  await expect(cell(page, 'fans')).toBeVisible()
-  expect((await ids(page)).slice(-1)).toEqual(['fans'])
-  await expect(cell(page, 'fans')).toHaveAttribute('style', /--span: 4/)
+  await expect(cell(page, 'camera')).toBeVisible()
+  expect((await ids(page)).slice(-1)).toEqual(['camera'])
+  await expect(cell(page, 'camera')).toHaveAttribute('style', /--span: 6/)
 })
 
 test('a widget can be removed, and comes back from Add widget', async ({ page, open }) => {
@@ -107,13 +107,13 @@ test('a size that does not exist snaps to the nearest one the widget offers', as
 test('the layout persists after a reload, and Reset brings the default back', async ({ page, open }) => {
   await open('/')
   await edit(page)
-  await cell(page, 'zoffset').getByTestId('tile-remove').click()
+  await cell(page, 'fans').getByTestId('tile-remove').click()
   await page.getByTestId('widget-sheet-open').click()
   await page.getByTestId('widget-add-camera').click()
   await page.getByTestId('edit-done').click()
   await expect(page.getByTestId('edit-open')).toBeVisible()
   const after = await ids(page)
-  expect(after).not.toContain('zoffset')
+  expect(after).not.toContain('fans')
   expect(after.slice(-1)).toEqual(['camera'])
   await page.reload()
   await expect(page.getByTestId('overview-page')).toBeVisible()
@@ -121,7 +121,7 @@ test('the layout persists after a reload, and Reset brings the default back', as
   await edit(page)
   await page.getByTestId('edit-reset').click()
   await page.getByTestId('edit-done').click()
-  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'zoffset', 'jog', 'position', 'macros', 'graph'])
+  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'jog', 'position', 'macros', 'graph'])
 })
 
 test('the phone layout: one column, small widgets two to a row, the Add widget sheet from the bottom', async ({ page, open, isMobile }) => {

@@ -265,7 +265,7 @@ import {
   addTile, defaultLayout, moveBy, moveTile, nudgeSize, removeTile, resizeTile, serverLayoutKey,
   type OverviewLayout, type PlacedTile
 } from '@/services/overview/layout'
-import { searchWidgets, widgetCategories, type WidgetCategory } from '@/services/overview/widgets'
+import { isMuonPrinter, searchWidgets, widgetCategories, widgetsFor, type WidgetCategory } from '@/services/overview/widgets'
 import { loadLayout, saveLayout, type LayoutContext } from '@/services/overview/layout-store'
 
 /** A tile as drawn: what the registry says it is, at the size the layout gives it. */
@@ -286,7 +286,6 @@ const GRID_GAP = 16
  */
 @Component({})
 export default class Overview extends Vue {
-  readonly defs = overviewTiles
   layout: OverviewLayout = defaultLayout(overviewTiles)
   draft: OverviewLayout | null = null
   drag: Drag | null = null
@@ -302,6 +301,11 @@ export default class Overview extends Vue {
   picked: Record<string, string> = {}
   readonly categories = widgetCategories
   private stopDrag: (() => void) | null = null
+
+  /** The widgets this printer has: a Muon printer never has Z offset. */
+  get defs (): OverviewTileDef[] {
+    return widgetsFor(overviewTiles, isMuonPrinter(this.$store.state.server?.info?.components))
+  }
 
   get editing (): boolean { return this.draft !== null }
 
@@ -366,6 +370,7 @@ export default class Overview extends Vue {
 
   @Watch('contextKey')
   @Watch('savedLayouts')
+  @Watch('defs')
   load () {
     if (this.editing) return
     this.layout = loadLayout(this.context, this.savedLayouts, localStorage, this.defs)

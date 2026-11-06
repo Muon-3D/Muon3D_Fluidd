@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { overviewTiles } from '@/components/widgets/overview/registry'
 import { addTile, defaultLayout, nudgeSize, readLayout, removeTile, resizeTile, sizeKeyOf, snapSize, type TileDefault } from '../layout'
-import { searchWidgets, widgetCategories, widgetMeta } from '../widgets'
+import { isMuonPrinter, muonHidden, searchWidgets, widgetCategories, widgetMeta, widgetsFor } from '../widgets'
 
 const defs: TileDefault[] = overviewTiles
 const byId = (id: string) => overviewTiles.find(t => t.id === id)!
@@ -19,8 +19,8 @@ describe('the default layout', () => {
     expect(at('stage').span).toBeGreaterThan(at('job').span)
   })
 
-  it('has a row of four under them: hotend, bed, print mode and Z offset', () => {
-    expect(ids.slice(3, 7)).toEqual(['hotend', 'bed', 'mode', 'zoffset'])
+  it('has a row of four under them: hotend, bed, print mode and fans', () => {
+    expect(ids.slice(3, 7)).toEqual(['hotend', 'bed', 'mode', 'fans'])
     for (const id of ids.slice(3, 7)) expect(at(id)).toMatchObject({ span: 3, rows: 1 })
   })
 
@@ -30,12 +30,12 @@ describe('the default layout', () => {
   })
 
   it('puts everything else away until it is added', () => {
-    expect(layout.hidden).toEqual(['trackpad', 'fans', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(layout.hidden).toEqual(['trackpad', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
     expect(ids.length + layout.hidden.length).toBe(overviewTiles.length)
   })
 
   it('has the first four rows no wider than the 12 columns', () => {
-    expect(at('hotend').span + at('bed').span + at('mode').span + at('zoffset').span).toBe(12)
+    expect(at('hotend').span + at('bed').span + at('mode').span + at('fans').span).toBe(12)
     expect(at('stage').span + at('job').span).toBe(12)
   })
 })
@@ -147,8 +147,8 @@ describe('sizes in the layout', () => {
   })
 
   it('adds a widget at the size picked, or its default', () => {
-    expect(addTile(layout, 'fans', defs, undefined, 'L').tiles.slice(-1)[0]).toEqual({ id: 'fans', span: 6, rows: 2 })
-    expect(addTile(layout, 'fans', defs).tiles.slice(-1)[0]).toEqual({ id: 'fans', span: 3, rows: 1 })
+    expect(addTile(layout, 'camera', defs, undefined, 'L').tiles.slice(-1)[0]).toEqual({ id: 'camera', span: 12, rows: 2 })
+    expect(addTile(layout, 'zoffset', defs).tiles.slice(-1)[0]).toEqual({ id: 'zoffset', span: 3, rows: 1 })
     expect(addTile(layout, 'console', defs, undefined, 'S').tiles.slice(-1)[0]).toEqual({ id: 'console', span: 6, rows: 2 })
   })
 
@@ -218,5 +218,47 @@ describe('migrating a saved layout', () => {
     const out = readLayout(saved([{ id: 'job', span: 4 }]), defs)!
     expect(out.hidden).toContain('trackpad')
     expect(out.tiles).toHaveLength(1)
+  })
+})
+
+describe('Muon printers', () => {
+  const muonDefs = widgetsFor(defs as Array<TileDefault & { id: string }>, true)
+
+  it('knows a Muon printer by its components, and treats an unknown list as Muon', () => {
+    expect(isMuonPrinter(['file_manager', 'muon_access'])).toBe(true)
+    expect(isMuonPrinter(['file_manager', 'muon_protection'])).toBe(true)
+    expect(isMuonPrinter(['file_manager', 'history'])).toBe(false)
+    expect(isMuonPrinter([])).toBe(true)
+    expect(isMuonPrinter(undefined)).toBe(true)
+    expect(isMuonPrinter(null)).toBe(true)
+  })
+
+  it('never offers Z offset on a Muon printer, and keeps it elsewhere', () => {
+    expect(muonHidden).toEqual(['zoffset'])
+    expect(muonDefs.some(d => d.id === 'zoffset')).toBe(false)
+    expect(widgetsFor(overviewTiles, true).some(w => w.id === 'zoffset')).toBe(false)
+    expect(searchWidgets(widgetsFor(overviewTiles, true), '', null).some(w => w.id === 'zoffset')).toBe(false)
+    expect(widgetsFor(overviewTiles, false).some(w => w.id === 'zoffset')).toBe(true)
+    expect(widgetsFor(overviewTiles, false)).toHaveLength(overviewTiles.length)
+  })
+
+  it('has no Z offset in the default layout or the hidden list on a Muon printer', () => {
+    const layout = defaultLayout(muonDefs)
+    expect(layout.tiles.some(t => t.id === 'zoffset')).toBe(false)
+    expect(layout.hidden).not.toContain('zoffset')
+  })
+
+  it('drops a saved Z offset widget, placed or put away, on a Muon printer', () => {
+    const saved = { version: 1, savedAt: 1, tiles: [{ id: 'job', span: 4, rows: 1 }, { id: 'zoffset', span: 3, rows: 1 }, { id: 'graph', span: 12, rows: 1 }], hidden: [] }
+    const out = readLayout(saved, muonDefs)!
+    expect(out.tiles.map(t => t.id)).toEqual(['job', 'graph'])
+    expect(out.hidden).not.toContain('zoffset')
+    const away = readLayout({ ...saved, tiles: [saved.tiles[0]], hidden: ['zoffset'] }, muonDefs)!
+    expect(away.hidden).not.toContain('zoffset')
+  })
+
+  it('keeps a saved Z offset widget on a printer that is not Muon', () => {
+    const saved = { version: 1, savedAt: 1, tiles: [{ id: 'job', span: 4, rows: 1 }, { id: 'zoffset', span: 3, rows: 1 }], hidden: [] }
+    expect(readLayout(saved, defs)!.tiles.map(t => t.id)).toEqual(['job', 'zoffset'])
   })
 })
