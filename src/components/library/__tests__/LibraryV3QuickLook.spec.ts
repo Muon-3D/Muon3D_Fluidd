@@ -73,15 +73,34 @@ describe('Library v3 quick look: colours and what is loaded', () => {
   })
 
   it('shows Fits <printer> only for an M1 print with a printer open', async () => {
-    look({ printerName: 'Boxwood', card: card({ m1: false }) })
+    look({ printerName: 'Boxwood', printerFits: true, card: card({ m1: false }) })
     await flush()
     expect(document.querySelector('[data-tid="library-quick-look-fits"]')).toBeNull()
+  })
+
+  it('shows Fits <printer> for an M1 print on an M1, and not on another printer', async () => {
+    look({ printerName: 'Boxwood', printerFits: true })
+    await flush()
+    expect(document.querySelector('[data-tid="library-quick-look-fits"]')?.textContent).toBe('Fits Boxwood')
+    wrapper?.destroy()
+    look({ printerName: 'Ender', printerFits: false })
+    await flush()
+    expect(document.querySelector('[data-tid="library-quick-look-fits"]')).toBeNull()
+  })
+
+  it('rings a custom loaded colour without calling it Custom colour', async () => {
+    look({ printerName: 'Boxwood', card: card({ colours: ['#123456'] }) }, { muon_material: 'PETG', muon_material_colour: '123456' })
+    await flush()
+    expect(document.querySelector('.mlook__dot--on')).not.toBeNull()
+    expect(document.querySelector('[data-tid="library-quick-look-loaded"]')?.textContent).toBe('Boxwood has PETG loaded')
   })
 })
 
 describe('Library v3: colour lists from the service', () => {
   it('keeps only #rrggbb, lowercase, at most eight', () => {
-    expect(colourList(['#4FB3AD', 'teal', 'url(x)', '#12345', ...Array(10).fill('#000000')])).toEqual(['#4fb3ad', ...Array(7).fill('#000000')])
+    const many = Array.from({ length: 10 }, (_, i) => `#00000${i}`)
+    expect(colourList(['#4FB3AD', 'teal', 'url(x)', '#12345', ...many])).toEqual(['#4fb3ad', ...many.slice(0, 7)])
     expect(colourList(null)).toEqual([])
+    expect(colourList(['#4fb3ad', '#4FB3AD', '#e0675b'])).toEqual(['#4fb3ad', '#e0675b'])
   })
 })

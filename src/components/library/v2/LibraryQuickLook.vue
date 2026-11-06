@@ -93,7 +93,7 @@
             class="mlib-badge mlib-badge--ok"
           >Made for M1</span>
           <span
-            v-if="card.m1 && printerName"
+            v-if="card.m1 && printerFits && printerName"
             class="mlib-badge mlib-badge--ok"
             data-tid="library-quick-look-fits"
           >Fits {{ printerName }}</span>
@@ -148,30 +148,31 @@
           >
             {{ description }}
           </p>
-          <div
-            v-if="colours.length || loadedLine"
-            class="mlook__colours"
-            data-tid="library-quick-look-colours"
-          >
-            <template v-if="colours.length">
-              <span class="mlib-muted">Shown in</span>
-              <span
-                v-for="c in colours"
-                :key="c"
-                class="mlook__dot"
-                :class="{ 'mlook__dot--on': c === loadedColour }"
-                :style="{ background: c }"
-                role="img"
-                :aria-label="c === loadedColour ? `${colourLabel(c)}, loaded` : colourLabel(c)"
-              />
-            </template>
-            <span
-              v-if="loadedLine"
-              class="mlib-muted mlook__loaded"
-              data-tid="library-quick-look-loaded"
-            >{{ loadedLine }}</span>
-          </div>
         </template>
+
+        <div
+          v-if="colours.length || loadedLine"
+          class="mlook__colours"
+          data-tid="library-quick-look-colours"
+        >
+          <template v-if="colours.length">
+            <span class="mlib-muted">Shown in</span>
+            <span
+              v-for="c in colours"
+              :key="c"
+              class="mlook__dot"
+              :class="{ 'mlook__dot--on': c === loadedColour }"
+              :style="{ background: c }"
+              role="img"
+              :aria-label="c === loadedColour ? `${colourLabel(c)}, loaded` : colourLabel(c)"
+            />
+          </template>
+          <span
+            v-if="loadedLine"
+            class="mlib-muted mlook__loaded"
+            data-tid="library-quick-look-loaded"
+          >{{ loadedLine }}</span>
+        </div>
 
         <div class="mlook__acts">
           <button
@@ -308,6 +309,8 @@ import { colourName, savedMaterialColour, savedMaterialName } from '@/services/c
 export default class LibraryQuickLook extends Vue {
   @Prop({ type: Object, required: true }) readonly card!: ShelfCard
   @Prop({ type: String, default: null }) readonly printerName!: string | null
+  /** The open printer is an M1, so an M1 print fits it. */
+  @Prop({ type: Boolean, default: false }) readonly printerFits!: boolean
   @Prop({ type: Boolean, default: false }) readonly signedIn!: boolean
   @Prop({ type: Array, default: () => [] }) readonly collections!: CommunityCollection[]
 
@@ -319,6 +322,8 @@ export default class LibraryQuickLook extends Vue {
   before: Element | null = null
   /** This print's save (the heart), when you saved it. */
   saveId = ''
+  /** The collection New collection… made, kept so a retry after a failed add reuses it. */
+  made: { id: string, name: string } | null = null
   saving = false
   /** The heart or Add to… was used: the first lookup no longer applies. */
   touched = false
@@ -460,7 +465,8 @@ export default class LibraryQuickLook extends Vue {
     this.saving = true
     this.note = ''
     try {
-      const made = await libraryClient().createCollection(name)
+      if (!this.made || this.made.name !== name) this.made = await libraryClient().createCollection(name)
+      const made = this.made
       if (!this.saveId) this.saveId = (await libraryClient().save(this.card.id)).id
       await libraryClient().addToCollection(made.id, this.saveId)
       this.naming = false
@@ -517,7 +523,10 @@ export default class LibraryQuickLook extends Vue {
   get loadedLine (): string {
     const { material, colour } = this.loaded
     if (!this.printerName || (!material && !colour)) return ''
-    const what = [colour ? colourName(colour) : '', material ?? ''].filter(Boolean).join(' ')
+    // A custom colour alone says nothing a ring does not.
+    if (!material && colour && colourName(colour) === 'Custom colour') return ''
+    const name = colour ? colourName(colour) : ''
+    const what = [name === 'Custom colour' ? '' : name, material ?? ''].filter(Boolean).join(' ')
     return `${this.printerName} has ${what} loaded`
   }
 

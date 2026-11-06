@@ -2,7 +2,7 @@
  * A fake console (the Muon3D account service) for e2e tests: one signed-in
  * account, its linked printers, and the assertion the model service takes.
  * Control finds the console at the address saved under `muon.cloud.url`, so a
- * test points it here before the app starts (signIn below).
+ * test points it here before the app starts (useConsole below, every test).
  */
 import type { Page, Route } from '@playwright/test'
 
@@ -42,7 +42,6 @@ export async function serveConsole (page: Page, state: ConsoleState) {
   })
 }
 
-/** Signed in before the app starts: the stored session Control restores on load. */
 /**
  * Point the page at the fake console, signed in or not. With no saved URL a
  * page on localhost counts as served by the console, so its sign-in dialog
@@ -54,6 +53,7 @@ export async function useConsole (page: Page) {
   }, [CONSOLE])
 }
 
+/** Signed in before the app starts: the stored session Control restores on load. */
 export async function signIn (page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('muon.cloud.token', 'e2e-session')
