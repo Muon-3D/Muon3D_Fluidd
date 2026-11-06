@@ -30,6 +30,8 @@ const MDNS_NAME = 'muon-m1-serialnumberhere.local'
 
 export default defineConfig(async ({ command, mode }) => {
   const testing = mode === 'test' || !!process.env.VITEST
+  // The e2e harness (E2E=1): one vite per worktree and port, see e2e/ports.ts.
+  const e2e = process.env.E2E === '1'
   // only resolve when `vite serve` (dev mode)
   let deviceIP = '192.168.55.112'
   if (command === 'serve' && !testing) {
@@ -197,6 +199,18 @@ export default defineConfig(async ({ command, mode }) => {
   // still load /assets/…, not /boxwood-367a/assets/….
   base: '/',
 
+  // Under e2e, vite must never reload the page mid-test:
+  // - its dependency cache is per run, not node_modules/.vite, which every
+  //   worktree shares through the node_modules junction, so another run's
+  //   re-optimise can't reload this one;
+  // - every page's imports are scanned up front, so opening a lazily loaded
+  //   route (Console, History…) can't find a new dependency and reload;
+  // - no HMR, so an edit while tests run doesn't reload them either.
+  ...(e2e ? {
+    cacheDir: `.vite-e2e/${process.env.E2E_PORT || '8090'}`,
+    optimizeDeps: { entries: ['index.html', 'src/**/*.vue'] }
+  } : {}),
+
   build: {
     // Only the printer release job needs this inventory. Hosted builds must not
     // expose source paths through a publicly served .vite/manifest.json.
@@ -204,7 +218,7 @@ export default defineConfig(async ({ command, mode }) => {
   },
 
   server: {
-    hmr: !testing,
+    hmr: !testing && !e2e,
     host: '0.0.0.0',
     port: 8080,
     // proxy: {
