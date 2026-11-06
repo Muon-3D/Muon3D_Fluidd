@@ -369,6 +369,27 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     this.markHandMove(realTo)
   }
 
+  /**
+   * A diagonal step: X and Y at once, cut short at the machine's limits.
+   * Sent through moveTo, so it gets the same checks as every hand move
+   * (homed, not printing, the hand-move wait and the no-go planner).
+   */
+  moveByXY (dx: number, dy: number) {
+    if (!this.controlReady || this.busy || !this.isHomed('XY') || !Number.isFinite(dx) || !Number.isFinite(dy)) return
+    const gcode = this.$store.state.printer.printer.gcode_move?.gcode_position as number[] | undefined
+    if (!Array.isArray(gcode)) return
+    const place: { X?: number, Y?: number } = {}
+    ;(['X', 'Y'] as Axis[]).forEach((axis, i) => {
+      const d = axis === 'X' ? dx : dy
+      const signed = this.inverted(axis) ? -d : d
+      const from = Number(gcode[i])
+      const to = Math.round(clampTo(from + signed, this.axisMin[i], this.axisMax[i]) * 1000) / 1000
+      if (Number.isFinite(to) && to !== from) place[axis as 'X' | 'Y'] = to
+    })
+    if (place.X === undefined && place.Y === undefined) return
+    this.moveTo(place)
+  }
+
   /** To a place given in G-code coordinates, inside the machine and out of the bed's no-go regions. */
   moveTo (place: { X?: number, Y?: number, Z?: number }) {
     if (!this.controlReady || this.busy || ![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
