@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lastPrinted, layerCountOf, listDuration, materialOf, sortListRows } from '../list'
+import { JOBS_COLUMNS, lastPrinted, layerCountOf, listDuration, materialOf, nextColumnSort, sortDirection, sortListRows } from '../list'
 
 const file = (name: string, modified: number, time?: number, printing = false, extra: Record<string, number> = {}) => ({ kind: 'file' as const, name, modified, time, printing, ...extra })
 const folder = (name: string) => ({ kind: 'folder' as const, name, modified: 0 })
@@ -28,6 +28,41 @@ describe('sortListRows by a fact', () => {
   it('keeps files with no value last, even turned round', () => {
     expect(sortListRows(rows, 'layer', true).map(r => r.name)).toEqual(['a.gcode', 'b.gcode', 'c.gcode'])
     expect(sortListRows(rows, 'name', true).map(r => r.name)).toEqual(['c.gcode', 'b.gcode', 'a.gcode'])
+  })
+})
+
+describe('the columns', () => {
+  const rows = [
+    file('b.gcode', 2, 300, false, { size: 30 }),
+    { ...file('a.gcode', 1, 100, false, { size: 10 }), material: 'PLA', lastPrinted: 50 },
+    { ...file('c.gcode', 3, 200, false, { size: 20 }), material: 'PETG', lastPrinted: 90 },
+    folder('zeta'),
+    folder('alpha')
+  ]
+  const names = (sort: any, reverse = false) => sortListRows(rows, sort, reverse).map(r => r.name)
+
+  it('orders by every column both ways, with folders first and blanks last', () => {
+    expect(JOBS_COLUMNS.map(c => c.label)).toEqual(['Name', 'Material', 'Time', 'Size', 'Last printed'])
+    expect(names('name')).toEqual(['alpha', 'zeta', 'a.gcode', 'b.gcode', 'c.gcode'])
+    expect(names('name', true)).toEqual(['zeta', 'alpha', 'c.gcode', 'b.gcode', 'a.gcode'])
+    expect(names('material')).toEqual(['alpha', 'zeta', 'c.gcode', 'a.gcode', 'b.gcode'])
+    expect(names('material', true)).toEqual(['alpha', 'zeta', 'a.gcode', 'c.gcode', 'b.gcode'])
+    expect(names('longest')).toEqual(['alpha', 'zeta', 'b.gcode', 'c.gcode', 'a.gcode'])
+    expect(names('longest', true)).toEqual(['alpha', 'zeta', 'a.gcode', 'c.gcode', 'b.gcode'])
+    expect(names('size')).toEqual(['alpha', 'zeta', 'b.gcode', 'c.gcode', 'a.gcode'])
+    expect(names('size', true)).toEqual(['alpha', 'zeta', 'a.gcode', 'c.gcode', 'b.gcode'])
+    expect(names('printed')).toEqual(['alpha', 'zeta', 'c.gcode', 'a.gcode', 'b.gcode'])
+    expect(names('printed', true)).toEqual(['alpha', 'zeta', 'a.gcode', 'c.gcode', 'b.gcode'])
+  })
+
+  it('a header click orders by its column, a second turns it round, and the arrow follows', () => {
+    expect(nextColumnSort({ sort: 'newest', reverse: false }, 'size')).toEqual({ sort: 'size', reverse: false })
+    expect(nextColumnSort({ sort: 'size', reverse: false }, 'size')).toEqual({ sort: 'size', reverse: true })
+    expect(nextColumnSort({ sort: 'size', reverse: true }, 'name')).toEqual({ sort: 'name', reverse: false })
+    expect(sortDirection('name', false)).toBe('asc')
+    expect(sortDirection('name', true)).toBe('desc')
+    expect(sortDirection('size', false)).toBe('desc')
+    expect(sortDirection('size', true)).toBe('asc')
   })
 })
 

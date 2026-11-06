@@ -60,7 +60,6 @@ describe('Jobs, one list', () => {
     vi.spyOn(SocketActions, 'serverFilesGetDirectory').mockImplementation(vi.fn() as any)
     jobsPage.query = ''
     jobsPage.sort = 'newest'
-    jobsPage.filter = 'all'
     jobsPage.reverse = false
   })
   afterEach(() => { vi.restoreAllMocks() })
@@ -231,64 +230,130 @@ describe('Jobs, one list', () => {
     expect(w.text()).toContain('Never')
   })
 
-  it('filters to Never printed or Printed before, keeping folders', async () => {
+  it('has no Never printed / Printed before filter: every file stays listed', () => {
     const w = mountJobs()
-    jobsPage.filter = 'never'
-    await w.vm.$nextTick()
-    expect((w.vm as any).rows.map((r: any) => r.name)).toEqual(['parts', 'M1_bracket_PLA_0.2mm.gcode', 'benchy_PLA_0.2mm.gcode'])
-    jobsPage.filter = 'before'
-    await w.vm.$nextTick()
-    expect((w.vm as any).rows.map((r: any) => r.name)).toEqual(['parts', 'cable_clip_x6_PLA_0.2mm.gcode'])
+    expect('filter' in jobsPage).toBe(false)
+    expect((w.vm as any).rows.map((r: any) => r.name)).toEqual(expect.arrayContaining(['parts', 'M1_bracket_PLA_0.2mm.gcode', 'benchy_PLA_0.2mm.gcode', 'cable_clip_x6_PLA_0.2mm.gcode']))
   })
 
-  it('selects many: checkboxes, select all, a range, and Escape lets go', async () => {
+  const keyOn = (w: any, key: string, mods: Record<string, boolean> = {}) =>
+    w.vm.onKey({ key, target: w.vm.$refs.rows, preventDefault: vi.fn(), ...mods })
+
+  it('selects like File Explorer: a click, Ctrl, Shift and Ctrl+Shift', () => {
     const w = mountJobs()
-    jobsPage.selectTick++
-    await w.vm.$nextTick()
-    expect(w.find('[data-tid="jobs-selection"]').exists()).toBe(true)
-    const rows = (w.vm as any).rows
-    ;(w.vm as any).onCheck(rows[1], { shiftKey: false })
-    ;(w.vm as any).onCheck(rows[3], { shiftKey: true })
-    expect((w.vm as any).selection).toEqual([rows[1].key, rows[2].key, rows[3].key])
-    ;(w.vm as any).toggleAll()
-    expect((w.vm as any).selection).toHaveLength(rows.length)
-    ;(w.vm as any).onKey({ key: 'Escape', target: (w.vm as any).$refs.rows, preventDefault: vi.fn() })
-    expect((w.vm as any).selection).toEqual([])
-    expect((w.vm as any).selecting).toBe(true)
+    const vm = w.vm as any
+    const keys = vm.rows.map((r: any) => r.key)
+    vm.onRowClick(vm.rows[1], {})
+    expect(vm.selection).toEqual([keys[1]])
+    vm.onRowClick(vm.rows[3], { ctrlKey: true })
+    expect(vm.selection).toEqual([keys[1], keys[3]])
+    vm.onRowClick(vm.rows[0], { shiftKey: true })
+    expect(vm.selection).toEqual([keys[0], keys[1], keys[2], keys[3]])
+    vm.onRowClick(vm.rows[2], {})
+    expect(vm.selection).toEqual([keys[2]])
+    vm.onRowClick(vm.rows[0], { metaKey: true })
+    vm.onRowClick(vm.rows[3], { ctrlKey: true, shiftKey: true })
+    expect([...vm.selection].sort()).toEqual([...keys].sort())
+  })
+
+  it('has a checkbox on every row and Select all in the Name header, each with a name', async () => {
+    const w = mountJobs()
+    const vm = w.vm as any
+    const boxes = w.findAll('[data-tid="jobs-row-check"]')
+    expect(boxes).toHaveLength(vm.rows.length)
+    for (const box of boxes.wrappers) expect(box.attributes('aria-label')).toMatch(/^Select /)
+    expect(w.find('[data-tid="jobs-select-all"]').attributes('aria-label')).toBe('Select all')
+    await boxes.at(1).trigger('change')
+    await boxes.at(2).trigger('change')
+    expect(vm.selection).toEqual([vm.rows[1].key, vm.rows[2].key])
+    await boxes.at(1).trigger('change')
+    expect(vm.selection).toEqual([vm.rows[2].key])
+    await w.find('[data-tid="jobs-select-all"]').trigger('change')
+    expect(vm.selection).toHaveLength(vm.rows.length)
+    await w.find('[data-tid="jobs-select-all"]').trigger('change')
+    expect(vm.selection).toEqual([])
+  })
+
+  it('lets go when the list is clicked where there is no row', async () => {
+    const w = mountJobs()
+    const vm = w.vm as any
+    vm.onRowClick(vm.rows[1], {})
+    await w.find('[data-tid="jobs-list"]').trigger('click')
+    expect(vm.selection).toEqual([])
+    vm.onRowClick(vm.rows[1], {})
+    await w.findAll('[data-tid="jobs-row"]').at(2).trigger('click')
+    expect(vm.selection).toEqual([vm.rows[2].key])
+  })
+
+  it('takes the arrows, Shift+arrows, Ctrl+A, Space and Escape on the list', () => {
+    const w = mountJobs()
+    const vm = w.vm as any
+    const keys = vm.rows.map((r: any) => r.key)
+    vm.onRowClick(vm.rows[0], {})
+    keyOn(w, 'ArrowDown')
+    expect(vm.selection).toEqual([keys[1]])
+    keyOn(w, 'ArrowDown', { shiftKey: true })
+    keyOn(w, 'ArrowDown', { shiftKey: true })
+    expect(vm.selection).toEqual([keys[1], keys[2], keys[3]])
+    keyOn(w, 'ArrowUp', { shiftKey: true })
+    expect(vm.selection).toEqual([keys[1], keys[2]])
+    keyOn(w, 'a', { ctrlKey: true })
+    expect(vm.selection).toHaveLength(keys.length)
+    keyOn(w, 'Escape')
+    expect(vm.selection).toEqual([])
+    keyOn(w, ' ')
+    expect(vm.selection).toEqual([keys[2]])
+  })
+
+  it('tells the header what is selected, so its toolbar shows and goes', async () => {
+    const w = mountJobs({ busy: true, printing: 'benchy_PLA_0.2mm.gcode' })
+    const vm = w.vm as any
+    expect(jobsPage.selected).toBe(0)
+    vm.sel = { keys: vm.rows.map((r: any) => r.key), anchor: null, cursor: null }
+    await vm.$nextTick()
+    expect(jobsPage.selected).toBe(vm.rows.length)
+    expect(jobsPage.changeable).toBe(vm.rows.length - 1)
+    expect(jobsPage.heldNote).toMatch(/is printing/)
+    jobsPage.clearTick++
+    await vm.$nextTick()
+    await vm.$nextTick()
+    expect(jobsPage.selected).toBe(0)
   })
 
   it('bulk Delete asks once, and leaves the printing file out', async () => {
     const deleteFile = vi.spyOn(SocketActions, 'serverFilesDeleteFile').mockImplementation(vi.fn() as any)
     const deleteDirectory = vi.spyOn(SocketActions, 'serverFilesDeleteDirectory').mockImplementation(vi.fn() as any)
     const w = mountJobs({ busy: true, printing: 'benchy_PLA_0.2mm.gcode' })
-    jobsPage.selectTick++
-    ;(w.vm as any).selection = (w.vm as any).rows.map((r: any) => r.key)
+    ;(w.vm as any).sel = { keys: (w.vm as any).rows.map((r: any) => r.key), anchor: null, cursor: null }
     await (w.vm as any).deleteSelected()
     expect((w.vm as any).$confirm).toHaveBeenCalledTimes(1)
     expect(deleteFile.mock.calls.map(c => c[0]).sort()).toEqual(['gcodes/M1_bracket_PLA_0.2mm.gcode', 'gcodes/cable_clip_x6_PLA_0.2mm.gcode'])
     expect(deleteDirectory).toHaveBeenCalledWith('gcodes/parts', true)
-    expect((w.vm as any).selecting).toBe(false)
+    expect((w.vm as any).selection).toEqual([])
   })
 
   it('bulk Queue sends the files that are not printing', async () => {
     const post = vi.spyOn(SocketActions, 'serverJobQueuePostJob').mockImplementation(vi.fn() as any)
     const w = mountJobs({ busy: true, printing: 'benchy_PLA_0.2mm.gcode' })
-    jobsPage.selectTick++
-    ;(w.vm as any).selection = ['benchy_PLA_0.2mm.gcode', 'cable_clip_x6_PLA_0.2mm.gcode']
+    ;(w.vm as any).sel = { keys: ['benchy_PLA_0.2mm.gcode', 'cable_clip_x6_PLA_0.2mm.gcode'], anchor: null, cursor: null }
     await (w.vm as any).queueSelected()
     expect(post).toHaveBeenCalledWith(['cable_clip_x6_PLA_0.2mm.gcode'])
   })
 
-  it('a long press on a phone starts selecting, and the click that follows does not undo it', () => {
-    vi.useFakeTimers()
+  it('on a phone, a checkbox selects without opening the Print bar, and a tap on a folder opens it', () => {
     const w = mountJobs({ mobile: true })
-    const row = (w.vm as any).rows[1]
-    ;(w.vm as any).pressStart(row)
-    vi.advanceTimersByTime(600)
-    ;(w.vm as any).onRowClick(row, {})
-    expect((w.vm as any).selecting).toBe(true)
-    expect((w.vm as any).selection).toEqual([row.key])
-    vi.useRealTimers()
+    const vm = w.vm as any
+    const file = vm.rows.find((r: any) => r.kind === 'file' && !r.printing)
+    vm.onCheck(file)
+    expect(vm.selection).toEqual([file.key])
+    expect(vm.selectedKey).toBe(null)
+    vm.onRowClick(file, {})
+    expect(vm.selectedKey).toBe(file.key)
+    vm.onRowClick(file, {})
+    expect(vm.selectedKey).toBe(null)
+    expect(vm.selection).toEqual([])
+    vm.onRowClick(vm.rows.find((r: any) => r.kind === 'folder'), {})
+    expect(vm.path).toBe('parts')
   })
 
   it('shows folders as breadcrumbs that jump to any ancestor', () => {
