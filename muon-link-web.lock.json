@@ -2,28 +2,27 @@
   "format": 1,
   "name": "muon-link-web",
   "source": "https://github.com/Muon-3D/muon-link",
-  "commit": "4b2e45af918324e726bbbe8ac7387a72c3b658d6",
-  "dir": "4b2e45a",
-  "provenance": "built",
+  "commit": "2a796885b777e2209575781fae5b9a35b1ac0690",
+  "dir": "2a79688",
+  "provenance": "ci-release",
+  "release": {
+    "tag": "web-2a796885",
+    "url": "https://github.com/Muon-3D/muon-link/releases/download/web-2a796885/muon-link-web-2a796885.tar.gz",
+    "sha256": "14df64df3e49139fd9e61899c654767da996242dd82312581544627850617ec0",
+    "run": "42194688566"
+  },
   "license": "Apache-2.0",
   "wasmBindgen": "0.2.127",
   "toolchain": {
     "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
-    "host": "x86_64-pc-windows-msvc",
-    "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+    "host": "x86_64-unknown-linux-gnu",
     "wasmBindgen": "wasm-bindgen 0.2.127",
-    "zig": "zig 0.13.0 (ziglang, -target wasm32-freestanding)"
-  },
-  "pathRemap": {
-    "CARGO_HOME": "/cargo",
-    "muon-link checkout": "/muon-link",
-    "rustc sysroot": "/rustc"
+    "zig": "zig 0.16.0 (ziglang, -target wasm32-freestanding)"
   },
   "recipe": [
     "rustup target add wasm32-unknown-unknown  # toolchain 1.97.1 (rust-toolchain.toml)",
-    "CC_wasm32_unknown_unknown=\"zig cc -target wasm32-freestanding, --target=* dropped\"  AR_wasm32_unknown_unknown=\"zig ar\"  # ziglang 0.13.0",
-    "CARGO_ENCODED_RUSTFLAGS=\"--remap-path-prefix=$CARGO_HOME=/cargo --remap-path-prefix=<muon-link checkout>=/muon-link --remap-path-prefix=$(rustc --print sysroot)=/rustc\"  # separated by 0x1f, the longest folder last",
-    "cargo build --release --target wasm32-unknown-unknown -p muon-link-web --locked",
+    "CC_wasm32_unknown_unknown=\"zig cc -target wasm32-freestanding, --target=* dropped\"  AR_wasm32_unknown_unknown=\"zig ar\"  # ziglang 0.16.0",
+    "cargo build --release --target wasm32-unknown-unknown -p muon-link-client -p muon-link-web --locked",
     "wasm-bindgen --target web --out-dir pkg --out-name muon_link_web target/wasm32-unknown-unknown/release/muon_link_web.wasm"
   ],
   "exports": [
@@ -41,18 +40,18 @@
     "uuids"
   ],
   "files": {
-    "muon_link_web.js": "905a16890f7e9ff5052c8e4a8666e81d210f31c07c838ba0b3627ff30a68f49d",
-    "muon_link_web_bg.wasm": "f23da4880e386af69a59f5f845bde323f7b47c60e93f7c88aab639ef1f873f60",
-    "muon_link_web.d.ts": "80abcd2149829c44e2b3a73e4bc07343b847a2a85231c77bfe58786060d67ce2",
-    "muon_link_web_bg.wasm.d.ts": "c0bc9d64b93c3292de721c110ba729747668fcff06cf93bece3217f76a5fcf5c",
+    "muon_link_web.js": "781b89cd4c8e8d31222e41b84e9fdafa00650d54379d53f32c0000f4e77500de",
+    "muon_link_web_bg.wasm": "14d020879e01309a851b443f3b8696be2ddca159cc514c683cf64c37afb3c3a5",
+    "muon_link_web.d.ts": "9b6128b61bd57346a3c01b14cfec3c671cf5ac3fbb9b6034ada2a074c3a99607",
+    "muon_link_web_bg.wasm.d.ts": "ced3f754db188a21e6f6c72795617aefaaa5dc2c379e87d174c44383c223bd3e",
     "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "NOTICE": "7c17d0c00905eeeff7c383ed3c50c924f0268fbd08750d1cf88b3d9958b92cf0",
-    "THIRD-PARTY-NOTICES.md": "d83b992cbfa5e6c2f2d06fd73ebc3d2964ad5faf0bcce678d466ad6b94936f1d",
-    "SOURCE.md": "6704a008917fde58fd868e2a6df8c275e908adc4158bec88dc6c70aa6f66397e"
+    "NOTICE": "c82c8deff044cfc00b00bfb43724d0b58f8c0420921625d99f96e72b17bd3614",
+    "THIRD-PARTY-NOTICES.md": "3a0fcc2eea02ccd1c3e8511cd3f35d9fade900c4fab39ab9e642c52cf63c7daa",
+    "SOURCE.md": "89809372c19a75c7b7c45b939cb09b38831ebbd0f3fe81c0509d68d37d8a2ae5"
   },
   "bytes": {
-    "muon_link_web.js": 65783,
-    "muon_link_web_bg.wasm": 2955485
+    "muon_link_web.js": 71126,
+    "muon_link_web_bg.wasm": 3022024
   },
   "crates": [
     "aead 0.5.2 MIT OR Apache-2.0",
@@ -200,6 +199,7 @@
     "serde 1.0.229 MIT OR Apache-2.0",
     "serde_bytes 0.11.19 MIT OR Apache-2.0",
     "serde_core 1.0.229 MIT OR Apache-2.0",
+    "serde_json 1.0.151 MIT OR Apache-2.0",
     "serdect 0.4.3 Apache-2.0 OR MIT",
     "sha1_smol 1.0.1 BSD-3-Clause",
     "sha2 0.10.9 MIT OR Apache-2.0",
@@ -251,6 +251,7 @@
     "zerofrom 0.1.8 Unicode-3.0",
     "zeroize 1.9.0 Apache-2.0 OR MIT",
     "zerotrie 0.2.5 Unicode-3.0",
-    "zerovec 0.11.8 Unicode-3.0"
+    "zerovec 0.11.8 Unicode-3.0",
+    "zmij 1.0.23 MIT"
   ]
 }
