@@ -18,7 +18,23 @@ test('See all opens the shelf as a grid, and Back returns to Discover', async ({
   await expect(page.getByTestId('library-shelf-popular')).toBeVisible()
   await page.getByRole('button', { name: 'See all Popular this week' }).click()
   await page.getByTestId('library-grid-back').click()
+  await expect(page).not.toHaveURL(/shelf=/)
   await expect(page.getByTestId('library-shelf-popular')).toBeVisible()
+  // ‹ Discover was the browser's Back, so Forward returns to the grid.
+  await page.goForward()
+  await expect(page).toHaveURL(/shelf=popular/)
+})
+
+test('a filter that hides every loaded print still offers Load more', async ({ page, models, open }) => {
+  // The first 24 newest are workshop-free; the workshop prints come later.
+  models.publications = Array.from({ length: 40 }, (_, i) => publication(i + 1, { category: i >= 30 ? 'workshop' : 'home' }))
+  await open('/library?view=discover&shelf=new')
+  const grid = page.getByTestId('library-grid-new')
+  await grid.getByTestId('library-grid-chip-fits').click()
+  await grid.getByTestId('library-grid-chip-workshop').click()
+  await expect(grid.getByTestId('library-grid-nomatch')).toBeVisible()
+  await grid.getByTestId('library-grid-more').click()
+  await expect(grid.getByTestId('library-grid-cards').locator('.mcard')).toHaveCount(10)
 })
 
 test('Load more reads the next page, each print once, and the count follows', async ({ page, models, open }) => {
@@ -37,11 +53,15 @@ test('Load more reads the next page, each print once, and the count follows', as
   expect(new Set(titles).size).toBe(40)
 })
 
-test('the sort switches the grid between Popular, New and Made for M1', async ({ page, open }) => {
+test('the sort switches the grid between Popular, New and Made for M1, without adding history', async ({ page, open }) => {
   await open('/library?view=discover&shelf=popular')
+  await page.getByTestId('library-grid-popular').getByTestId('library-grid-chip-fits').click()
+  // Popular is most made first (Print 12), New is newest first (Print 1).
+  await expect(page.getByTestId('library-grid-cards').locator('.mcard__title').first()).toHaveText('Print 12')
   await page.getByTestId('library-grid-sort-new').click()
   await expect(page).toHaveURL(/shelf=new/)
   await expect(page.getByTestId('library-grid-new').getByRole('heading', { name: 'New' })).toBeVisible()
+  await expect(page.getByTestId('library-grid-new').getByTestId('library-grid-cards').locator('.mcard__title').first()).toHaveText('Print 1')
   await page.getByTestId('library-grid-sort-m1').click()
   await expect(page.getByTestId('library-grid-m1')).toBeVisible()
 })
@@ -67,7 +87,9 @@ test('Enter in Discover\'s search opens the results; the results search again', 
   await page.getByTestId('library-discover-find').press('Enter')
   await expect(page).toHaveURL(/shelf=search&q=planter|q=planter.*shelf=search/)
   const grid = page.getByTestId('library-grid-search')
-  await expect(grid.getByRole('heading', { level: 1 })).toHaveText('"planter"')
+  await expect(grid.getByRole('heading', { level: 1 })).toHaveText('Library')
+  await expect(grid.getByTestId('library-grid-find')).toHaveValue('planter')
+  await expect(grid.getByRole('heading', { level: 2, name: 'On Muon3D' })).toBeVisible()
   await expect(grid.getByTestId('library-grid-cards').locator('.mcard__title')).toHaveText(['Print 5'])
   await expect(grid.getByTestId('library-grid-count')).toHaveText('1 print for "planter"')
   expect(models.seen.some(r => r.startsWith('GET /v1/public/search?q=planter'))).toBe(true)
@@ -76,7 +98,7 @@ test('Enter in Discover\'s search opens the results; the results search again', 
   await grid.getByTestId('library-grid-find').fill('maker 2')
   await grid.getByTestId('library-grid-find').press('Enter')
   await expect(page).toHaveURL(/q=maker/)
-  await expect(grid.getByTestId('library-grid-cards').locator('.mcard').first()).toBeVisible()
+  await expect(grid.getByTestId('library-grid-count')).toContainText('for "maker 2"')
   for (const title of await grid.getByTestId('library-grid-cards').locator('.mcard__title').allTextContents()) {
     expect(Number(title.replace('Print ', '')) % 4).toBe(2)
   }
@@ -110,4 +132,25 @@ test('a card in the grid opens quick look', async ({ page, open }) => {
   await open('/library?view=discover&shelf=popular')
   await page.getByTestId('library-grid-cards').getByRole('button', { name: 'Quick look at Print 11' }).first().click()
   await expect(page.getByTestId('library-quick-look')).toContainText('Print 11')
+})
+
+test('a search address with one letter asks for two, without an error', async ({ page, open }) => {
+  await open('/library?view=discover&shelf=search&q=a')
+  await expect(page.getByTestId('library-grid-short')).toContainText('Search for two letters or more')
+  await expect(page.getByTestId('library-grid-error')).toHaveCount(0)
+})
+
+test('too many searches says to wait', async ({ page, models, open }) => {
+  models.failOn = r => r.startsWith('GET /v1/public/search') ? 429 : null
+  await open('/library?view=discover&shelf=search&q=vase')
+  await expect(page.getByTestId('library-grid-error')).toContainText('Too many searches')
+})
+
+test('Discover from the results returns to the shelves', async ({ page, open }) => {
+  await open('/library?view=discover')
+  await page.getByTestId('library-discover-find').fill('print')
+  await page.getByTestId('library-discover-find').press('Enter')
+  await page.getByTestId('library-grid-discover').click()
+  await expect(page).not.toHaveURL(/shelf=/)
+  await expect(page.getByTestId('library-shelf-popular')).toBeVisible()
 })

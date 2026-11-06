@@ -14,7 +14,8 @@
       :fits-label="fitsLabel"
       :categories="chips"
       :printing="printing"
-      @back="$emit('update:grid', null)"
+      @back="$emit('grid-back')"
+      @yours="setTab('yours')"
       @update:source="$emit('update:grid', $event)"
       @update:query="openSearch"
       @print="print"
@@ -69,7 +70,7 @@
             placeholder="Search models, makers, tags"
             aria-label="Search Discover"
             data-tid="library-discover-find"
-            @keydown.enter="openSearch(query)"
+            @keydown.enter="!$event.isComposing && openSearch(query)"
           >
         </label>
         <slot
@@ -630,9 +631,8 @@ export default class MuonLibrary extends Vue {
   /** Enter in a search box: the results page (v3 page 4), for two letters or more. */
   openSearch (query: string) {
     const q = query.trim()
-    if (q.length < 2) return
-    this.$emit('update:search', q)
-    this.$emit('update:grid', 'search')
+    if (q.length < 2 || q.length > 64) return
+    this.$emit('open-search', q)
   }
 
   get visiblePosts (): FeedPost[] {

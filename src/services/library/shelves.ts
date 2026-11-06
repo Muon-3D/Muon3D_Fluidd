@@ -401,16 +401,23 @@ export function cardMatches (card: ShelfCard, query: string): boolean {
   return words.every(word => haystack.includes(word))
 }
 
+/** As the service searches: the whole query within the title, the maker or a tag. */
+export function searchMatches (card: ShelfCard, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  return [card.title, card.creator, card.handle ?? '', ...card.tags].some(field => field.toLowerCase().includes(q))
+}
+
 async function searchPublications (query: string, cursor: string | null, fetcher: typeof fetch, signal?: AbortSignal): Promise<GridPage> {
   const q = query.trim()
   if (q.length < 2) throw new Error('Search for at least two letters.')
+  if (q.length > 64) throw new Error('Search for at most 64 characters.')
   const params = new URLSearchParams({ q, limit: '24' })
   if (cursor) params.set('cursor', cursor)
   const response = await fetcher(`${MODELS_URL}/v1/public/search?${params}`, { method: 'GET', credentials: 'omit', signal })
   if (response.status === 404) {
     // An older model service: search the newest prints here instead.
     const newest = await loadPublications({ sort: 'new', limit: 48 }, fetcher, signal)
-    return { cards: newest.items.map(summaryCard).filter(card => cardMatches(card, q)), cursor: null, local: true }
+    return { cards: newest.items.map(summaryCard).filter(card => searchMatches(card, q)), cursor: null, local: true }
   }
   if (response.status === 429) throw new Error('Too many searches for a moment. Try again in a minute.')
   if (!response.ok) throw new Error('The Library didn\'t answer. Try again.')

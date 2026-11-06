@@ -16,7 +16,8 @@
       :search="searchQuery"
       @update:tab="setView"
       @update:grid="setGrid"
-      @update:search="setSearch"
+      @grid-back="gridBack"
+      @open-search="openSearch"
       @print="onLibraryPrint"
       @print-item="printOn($event, activePrinter ? activePrinter.id : null)"
     >
@@ -519,20 +520,40 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     return typeof q === 'string' ? q : ''
   }
 
-  /** Pushed, not replaced: Back returns to Discover's shelves. */
-  setGrid (grid: GridSource | null) {
+  /** Whether this page opened the grid itself (then ‹ Discover is the browser's Back). */
+  gridOpenedHere = false
+
+  /**
+   * A grid in the address. Opening one from Discover is pushed, so Back
+   * returns to the shelves; changing the grid's sort replaces, so it adds
+   * no history.
+   */
+  setGrid (grid: GridSource | null, q?: string) {
     const rest = { ...this.$route.query }
     delete rest.shelf
     delete rest.q
-    const query = grid ? { ...rest, view: 'discover', shelf: grid, ...(grid === 'search' ? { q: this.pendingSearch || this.searchQuery } : {}) } : rest
-    this.pendingSearch = ''
+    const query = grid ? { ...rest, view: 'discover', shelf: grid, ...(grid === 'search' ? { q: q ?? this.searchQuery } : {}) } : rest
+    if (this.grid && grid) {
+      this.$router.replace({ query }).catch(() => {})
+      return
+    }
+    if (grid) this.gridOpenedHere = true
     this.$router.push({ query }).catch(() => {})
   }
 
-  /** The search to open next (MuonLibrary emits it just before the grid). */
-  pendingSearch = ''
-  setSearch (q: string) {
-    this.pendingSearch = q
+  /** A search, from Discover or the results page itself. */
+  openSearch (q: string) {
+    this.setGrid('search', q)
+  }
+
+  /** ‹ Discover: back where it came from, or Discover when the grid was opened by its address. */
+  gridBack () {
+    if (this.gridOpenedHere) {
+      this.gridOpenedHere = false
+      this.$router.back()
+      return
+    }
+    this.setGrid(null)
   }
 
   /** Discover or Yours, kept in the address so Back and a shared link land on it. */

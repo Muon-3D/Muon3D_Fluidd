@@ -2,11 +2,12 @@
   <section
     class="mgrid"
     :data-tid="`library-grid-${source}`"
-    :aria-label="title"
+    :aria-label="source === 'search' ? `Results for ${title}` : title"
   >
     <header class="mgrid__head">
       <div class="mgrid__titles">
         <button
+          v-if="source !== 'search'"
           type="button"
           class="mlib-link mgrid__back"
           data-tid="library-grid-back"
@@ -14,15 +15,40 @@
         >
           ‹ Discover
         </button>
-        <h1>{{ title }}</h1>
+        <h1>{{ source === 'search' ? 'Library' : title }}</h1>
         <p
           class="mlib-muted"
+          aria-live="polite"
           data-tid="library-grid-count"
         >
           {{ countLine }}
         </p>
       </div>
       <div class="mgrid__acts">
+        <div
+          v-if="source === 'search'"
+          class="mlib-seg"
+          role="group"
+          aria-label="Library"
+        >
+          <button
+            type="button"
+            class="mlib-seg__btn mlib-seg__btn--on"
+            aria-pressed="true"
+            data-tid="library-grid-discover"
+            @click="$emit('back')"
+          >
+            Discover
+          </button>
+          <button
+            type="button"
+            class="mlib-seg__btn"
+            aria-pressed="false"
+            @click="$emit('yours')"
+          >
+            Yours
+          </button>
+        </div>
         <label class="mlib-search mgrid__search">
           <frame-icon
             name="search"
@@ -34,23 +60,22 @@
             :placeholder="source === 'search' ? 'Search prints, makers, tags' : `Search ${title}`"
             :aria-label="source === 'search' ? 'Search the Library' : `Search ${title}`"
             data-tid="library-grid-find"
-            @keydown.enter="submit"
+            @keydown.enter="submit($event)"
           >
         </label>
         <div
           v-if="source !== 'search'"
           class="mlib-seg"
-          role="tablist"
+          role="group"
           aria-label="Sort"
         >
           <button
             v-for="s in sorts"
             :key="s.id"
             type="button"
-            role="tab"
             class="mlib-seg__btn"
             :class="{ 'mlib-seg__btn--on': source === s.id }"
-            :aria-selected="source === s.id ? 'true' : 'false'"
+            :aria-pressed="source === s.id ? 'true' : 'false'"
             :data-tid="`library-grid-sort-${s.id}`"
             @click="$emit('update:source', s.id)"
           >
@@ -94,8 +119,23 @@
       </button>
     </div>
 
+    <h2
+      v-if="source === 'search' && cards.length"
+      class="mgrid__section"
+    >
+      On Muon3D
+    </h2>
+
+    <library-state
+      v-if="source === 'search' && tooShort"
+      icon="search"
+      title="Search for two letters or more"
+      text="Type a print, a maker or a tag, then press Enter."
+      tid="library-grid-short"
+    />
+
     <div
-      v-if="busy && !cards.length"
+      v-else-if="busy && !cards.length"
       class="mgrid__grid"
       role="status"
     >
@@ -129,15 +169,26 @@
       tid="library-grid-empty"
     />
 
-    <library-state
-      v-else-if="!shown.length"
-      icon="filter"
-      :title="noMatchTitle"
-      text="Clear the filter to see everything here."
-      action="Clear filter"
-      tid="library-grid-nomatch"
-      @action="clearFilter"
-    />
+    <template v-else-if="!shown.length">
+      <library-state
+        icon="filter"
+        :title="noMatchTitle"
+        :text="cursor ? 'Clear the filter, or load more to look further.' : 'Clear the filter to see everything here.'"
+        action="Clear filter"
+        tid="library-grid-nomatch"
+        @action="clearFilter"
+      />
+      <button
+        v-if="cursor"
+        type="button"
+        class="mlib-btn mlib-more"
+        :disabled="busy"
+        data-tid="library-grid-more"
+        @click="more"
+      >
+        {{ busy ? 'Loading…' : 'Load more' }}
+      </button>
+    </template>
 
     <template v-else>
       <div
@@ -180,7 +231,7 @@
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryModelCard from './LibraryModelCard.vue'
 import LibraryState from './LibraryState.vue'
-import { cardMatches, loadGrid, type GridSource, type ShelfCard } from '@/services/library/shelves'
+import { cardMatches, isNetworkError, loadGrid, type GridSource, type ShelfCard } from '@/services/library/shelves'
 
 const TITLES: Record<GridSource, string> = {
   popular: 'Popular',
@@ -266,9 +317,15 @@ export default class LibraryGridPage extends Vue {
     if (this.source !== 'search') this.draft = ''
   }
 
-  submit () {
+  /** Enter: search again (results page) — not while an input method is composing. */
+  submit (event?: KeyboardEvent) {
+    if (event?.isComposing) return
     const q = this.draft.trim()
-    if (q) this.$emit('update:query', q)
+    if (q.length >= 2 && q.length <= 64) this.$emit('update:query', q)
+  }
+
+  get tooShort (): boolean {
+    return this.query.trim().length < 2
   }
 
   @Watch('source', { immediate: true })
@@ -278,7 +335,17 @@ export default class LibraryGridPage extends Vue {
     this.load(true)
   }
 
+  controller: AbortController | null = null
+
+  beforeDestroy () {
+    this.controller?.abort()
+  }
+
   async load (fresh: boolean) {
+    if (this.source === 'search' && this.tooShort) return
+    // A newer list makes any read still out stale: cancelled, not just ignored.
+    this.controller?.abort()
+    const controller = this.controller = new AbortController()
     const read = ++this.reads
     if (fresh) {
       this.cards = []
@@ -288,14 +355,15 @@ export default class LibraryGridPage extends Vue {
     this.busy = true
     this.error = ''
     try {
-      const page = await loadGrid(this.source, { cursor: fresh ? null : this.cursor, query: this.query })
+      const page = await loadGrid(this.source, { cursor: fresh ? null : this.cursor, query: this.query }, fetch, controller.signal)
       if (read !== this.reads) return
       const seen = new Set(this.cards.map(card => card.key))
       this.cards = [...this.cards, ...page.cards.filter(card => !seen.has(card.key))]
       this.cursor = page.cursor
       this.local = !!page.local
     } catch (error) {
-      if (read === this.reads) this.error = error instanceof Error ? error.message : String(error)
+      if (read !== this.reads || controller.signal.aborted) return
+      this.error = isNetworkError(error) ? 'The Library couldn\'t be reached. Check the connection and try again.' : error instanceof Error ? error.message : String(error)
     } finally {
       if (read === this.reads) this.busy = false
     }
@@ -327,6 +395,7 @@ export default class LibraryGridPage extends Vue {
   }
 
   &__back { font-size: var(--m3d-text-sm); }
+  &__section { margin: 0; font-size: var(--m3d-text-lg); font-weight: 700; }
   &__acts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   &__search { width: 280px; max-width: 100%; }
 
