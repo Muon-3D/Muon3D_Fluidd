@@ -7,6 +7,9 @@ export type SettingsSectionId =
   'general' | 'network' | 'access' | 'updates' | 'cameras' | 'materials' | 'macros' |
   'timelapse' | 'spoolman' | 'console' | 'files' | 'toolhead' | 'gcodePreview' | 'developer' | 'system'
 
+/** The Moonraker components a settings section can depend on. */
+export const SECTION_COMPONENTS = ['authorization', 'update_manager', 'timelapse', 'spoolman', 'muon_access', 'muon_protection']
+
 /** What decides whether a section shows. */
 export interface SettingsContext {
   /** Moonraker components the printer has: authorization, update_manager, timelapse, spoolman, muon_access, muon_protection. */
@@ -60,6 +63,11 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
 /** The sections that show, each only where the printer has what it sets. */
 export function visibleSettingsSections (c: SettingsContext): SettingsSection[] {
   return SETTINGS_SECTIONS.filter(s => !s.shows || s.shows(c))
+}
+
+/** The section an address opens on a printer with these components: only one that shows there, else null. */
+export function openSettingsSection (hash: string, c: SettingsContext): SettingsSection | null {
+  return settingsSectionFor(hash, visibleSettingsSections(c))
 }
 
 /**

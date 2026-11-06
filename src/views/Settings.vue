@@ -30,7 +30,7 @@
           <input
             v-model="query"
             type="search"
-            placeholder="Search settings…"
+            placeholder="Search settingsâ€¦"
             aria-label="Search settings"
             data-tid="settings-search"
           >
@@ -49,7 +49,10 @@
             :data-tid="`settings-${section.id}`"
           >
             <span class="settings-list__ico"><frame-icon :name="section.icon" /></span>
-            <span class="settings-list__label">{{ section.label }}</span>
+            <span class="settings-list__label">
+              {{ section.label }}
+              <small>{{ section.blurb }}</small>
+            </span>
             <span
               v-if="hintOf(section)"
               class="settings-list__hint"
@@ -95,6 +98,12 @@
             />
           </router-link>
         </nav>
+        <p
+          class="settings-kept"
+          data-tid="settings-kept"
+        >
+          Kept on {{ printerName }}, so they're the same for everyone who opens it.
+        </p>
       </div>
 
       <div
@@ -136,7 +145,7 @@ import StateMixin from '@/mixins/state'
 import BrowserMixin from '@/mixins/browser'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
-import { MOVED_TO_ACCOUNT, searchSettingsSections, settingsSectionFor, visibleSettingsSections, type SettingsSection } from '@/services/settings/sections'
+import { MOVED_TO_ACCOUNT, SECTION_COMPONENTS, searchSettingsSections, settingsSectionFor, visibleSettingsSections, type SettingsSection } from '@/services/settings/sections'
 import { printerNameParts } from '@/util/printer-name'
 
 import MacroSettings from '@/components/settings/macros/MacroSettings.vue'
@@ -163,9 +172,6 @@ import { devModeState, refreshDevMode } from '@/services/dev-mode/state'
 import SystemPage from '@/views/System.vue'
 
 const countOrNone = (count: number) => count ? String(count) : 'none'
-
-/** The Moonraker components a settings section can depend on. */
-const SECTION_COMPONENTS = ['authorization', 'update_manager', 'timelapse', 'spoolman', 'muon_access', 'muon_protection']
 
 /**
  * Settings (`/boxwood-367a/settings`): the sections on the left, the one
@@ -256,6 +262,10 @@ export default class Settings extends Mixins(StateMixin, BrowserMixin) {
   get developerLine (): string {
     const state = devModeState.enabled === null ? '' : devModeState.enabled ? 'On. ' : 'Off. '
     return `${state}${this.developer?.blurb ?? ''}`
+  }
+
+  get printerName (): string {
+    return printerNameParts(this.$store.getters['config/getDisplayName'] as string).name
   }
 
   get showList (): boolean {
@@ -448,6 +458,13 @@ export default class Settings extends Mixins(StateMixin, BrowserMixin) {
       font-weight: 400;
       line-height: 1.35;
     }
+  }
+
+  .settings-kept {
+    margin: 0;
+    padding: 0 4px;
+    color: var(--m3d-text-subtle);
+    font-size: 12px;
   }
 
   .settings-list__hint {

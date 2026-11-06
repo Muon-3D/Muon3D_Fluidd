@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MOVED_TO_ACCOUNT, SETTINGS_SECTIONS, searchSettingsSections, settingsSectionFor, visibleSettingsSections } from '../sections'
+import { MOVED_TO_ACCOUNT, SETTINGS_SECTIONS, openSettingsSection, searchSettingsSections, settingsSectionFor, visibleSettingsSections } from '../sections'
 import { readFileSync } from 'node:fs'
 import { PAGE_KEYS } from '@/router/printerSections'
 
@@ -55,6 +55,15 @@ describe("Settings' sections", () => {
   it('give every card one home', () => {
     const anchors = SETTINGS_SECTIONS.flatMap(s => s.anchors)
     expect(new Set(anchors).size).toBe(anchors.length)
+  })
+})
+
+describe('the section an address opens', () => {
+  it('is only one the printer shows', () => {
+    expect(openSettingsSection('#versions', { components: ['update_manager'] })?.label).toBe('Updates')
+    expect(openSettingsSection('#versions', { components: [] })).toBeNull()
+    expect(openSettingsSection('#timelapse', simple)).toBeNull()
+    expect(openSettingsSection('#camera', { components: [] })?.id).toBe('cameras')
   })
 })
 
