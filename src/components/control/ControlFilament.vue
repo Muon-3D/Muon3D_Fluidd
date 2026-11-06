@@ -1,6 +1,7 @@
 <template>
   <control-card
     title="Filament"
+    icon="spool"
     :locked="lockReason"
     :note="lockReason ? '' : note"
     data-tid="control-filament"
