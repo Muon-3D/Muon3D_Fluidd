@@ -188,7 +188,9 @@ export default defineConfig(async ({ command, mode }) => {
     ],
     alias: [
       { find: /^vue$/, replacement: 'vue/dist/vue.runtime.common.js' }
-    ]
+    ],
+    // e2e/ is Playwright's (npm run test:e2e), not vitest's.
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**']
   },
 
   // Absolute: Fluidd routes by path, so a page at /boxwood-367a/jobs must
