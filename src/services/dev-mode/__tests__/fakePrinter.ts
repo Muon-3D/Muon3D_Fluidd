@@ -27,6 +27,8 @@ export class FakePrinter {
   routeMissing = false
   confirmed = false
   refused = false
+  /** MuonOS KAN-1739: Aux opens a challenge only for the printer's own panel. */
+  panelOnly = false
   waiver: typeof WAIVER | null = WAIVER
   /** The waiver version the printer would accept at redeem. */
   currentWaiver = WAIVER.version
@@ -78,6 +80,7 @@ export class FakePrinter {
     if (typeof args.enabled !== 'boolean') throw moonrakerError(400, "'enabled' is required")
     if (!this.mayAsk) this.refuse()
     if (!('challenge_id' in args)) {
+      if (this.panelOnly) throw moonrakerError(403, "dev-mode:panel_only: Developer mode is entered at the printer's own panel.")
       if (args.enabled === this.devMode) {
         throw moonrakerError(409, `dev-mode:no_change: Developer mode is already ${this.devMode ? 'on' : 'off'}.`)
       }
