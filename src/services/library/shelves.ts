@@ -31,6 +31,9 @@ export interface ShelfCard {
   remixes: number;
   /** How many people saved it (the heart); 0 from a service that doesn't say. */
   saves: number;
+  /** The filament it was sliced for ("PLA") and its colour (#hex), when a source says: the glass badge (v3 L1). */
+  material?: string | null;
+  colour?: string | null;
   /** "2 h 5 min · 98 g · PLA", when known. */
   facts: string;
   /** Made for M1: tagged m1-ready, or a catalogue print Muon3D tested on one. */
@@ -162,11 +165,24 @@ export async function loadPublications (
 export interface DiscoverShelves {
   popular: ShelfCard[];
   m1: ShelfCard[];
+  /** Why a shelf couldn't be read, when neither of its sources answered (v3: the shelf says so, the rest work). */
+  errors: { popular?: string, m1?: string };
+  /** No source could be reached at all: fetch itself failed (any browser's network error is a TypeError). */
+  unreachable: boolean;
 }
 
+/** Whether a failed read never reached the service: fetch rejects with a TypeError, whatever the browser's wording. */
+export function isNetworkError (error: unknown): boolean {
+  return error instanceof TypeError
+}
+
+const reason = (result: PromiseSettledResult<unknown>): string =>
+  result.status === 'rejected' ? (result.reason instanceof Error ? result.reason.message : String(result.reason)) : ''
+
 /**
- * Popular this week and Made for M1. One shelf failing doesn't empty the
- * other; both failing is an error the page shows with Try again.
+ * Popular this week and Made for M1, each from its own source with
+ * Discover's shelf as the fallback. It never throws: a shelf neither source
+ * answered for carries its reason in `errors`.
  */
 export async function loadShelves (fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<DiscoverShelves> {
   const [trending, tagged, discover] = await Promise.allSettled([
@@ -174,8 +190,11 @@ export async function loadShelves (fetcher: typeof fetch = fetch, signal?: Abort
     loadPublications({ sort: 'trending', tag: 'm1-ready', limit: 12 }, fetcher, signal),
     loadDiscover(fetcher, signal)
   ])
-  if (trending.status === 'rejected' && discover.status === 'rejected') throw trending.reason
   const feed = discover.status === 'fulfilled' ? discover.value : null
+  const errors: DiscoverShelves['errors'] = {}
+  if (trending.status === 'rejected' && !feed) errors.popular = reason(trending)
+  if (tagged.status === 'rejected' && !feed) errors.m1 = reason(tagged)
+  const unreachable = [trending, tagged, discover].every(r => r.status === 'rejected' && isNetworkError(r.reason))
   const popular = trending.status === 'fulfilled' && trending.value.items.length
     ? trending.value.items.map(summaryCard)
     : (feed?.trending ?? []).filter(isSummary).map(summaryCard)
@@ -183,7 +202,7 @@ export async function loadShelves (fetcher: typeof fetch = fetch, signal?: Abort
     ...(tagged.status === 'fulfilled' ? tagged.value.items.map(summaryCard).map(card => ({ ...card, m1: true })) : []),
     ...(feed?.m1_ready ?? []).filter(item => !!item && text(item.slug) && text(item.title)).map(catalogueShelfCard)
   ]
-  return { popular: unique(popular), m1: unique(m1).slice(0, 12) }
+  return { popular: unique(popular), m1: unique(m1).slice(0, 12), errors, unreachable }
 }
 
 export interface FeedPost {
