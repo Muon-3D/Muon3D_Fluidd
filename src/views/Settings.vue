@@ -123,8 +123,7 @@
           <software-settings v-if="shows('versions')" />
           <camera-settings v-if="shows('camera')" />
           <preset-settings v-if="shows('presets')" />
-          <macro-edit-list v-if="shows('macros')" />
-          <macro-settings v-if="shows('macros')" />
+          <macro-panel v-if="shows('macros')" />
           <timelapse-settings v-if="shows('timelapse')" />
           <spoolman-settings v-if="shows('spoolman')" />
           <console-settings v-if="shows('console')" />
@@ -148,7 +147,7 @@ import { scopedPath } from '@/router/printerPagePaths'
 import { MOVED_TO_ACCOUNT, SECTION_COMPONENTS, searchSettingsSections, settingsSectionFor, visibleSettingsSections, type SettingsSection } from '@/services/settings/sections'
 import { printerNameParts } from '@/util/printer-name'
 
-import MacroSettings from '@/components/settings/macros/MacroSettings.vue'
+import MacroPanel from '@/components/settings/macros/MacroPanel.vue'
 import GeneralSettings from '@/components/settings/GeneralSettings.vue'
 import PresetSettings from '@/components/settings/presets/PresetSettings.vue'
 import CameraSettings from '@/components/settings/cameras/CameraSettings.vue'
@@ -166,7 +165,6 @@ import SpoolmanSettings from '@/components/settings/SpoolmanSettings.vue'
 import ProtectionSettings from '@/components/settings/ProtectionSettings.vue'
 import AccessSettings from '@/components/settings/AccessSettings.vue'
 import WifiPage from '@/views/Wifi.vue'
-import MacroEditList from '@/components/settings/macros/MacroEditList.vue'
 import DeveloperModeSettings from '@/components/settings/DeveloperModeSettings.vue'
 import { devModeState, refreshDevMode } from '@/services/dev-mode/state'
 import SystemPage from '@/views/System.vue'
@@ -184,13 +182,12 @@ const countOrNone = (count: number) => count ? String(count) : 'none'
   components: {
     WifiPage,
     SystemPage,
-    MacroEditList,
     DeveloperModeSettings,
     ProtectionSettings,
     AccessSettings,
     SpoolmanSettings,
     TimelapseSettings,
-    MacroSettings,
+    MacroPanel,
     GeneralSettings,
     PresetSettings,
     CameraSettings,

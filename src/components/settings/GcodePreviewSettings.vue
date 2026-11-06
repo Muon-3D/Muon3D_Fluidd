@@ -8,6 +8,63 @@
       dense
       class="mb-4"
     >
+      <app-setting
+        title="3D model detail"
+        sub-title="The printer's 3D model and this preview: lower draws fewer pixels and shadows, for a slower device"
+      >
+        <v-btn-toggle
+          :value="modelDetail"
+          mandatory
+          dense
+          data-tid="model-detail"
+        >
+          <v-btn
+            v-for="d in modelDetails"
+            :key="d.value"
+            small
+            :value="d.value"
+            :data-tid="`model-detail-${d.value}`"
+            @click="modelDetail = d.value"
+          >
+            {{ d.label }}
+          </v-btn>
+        </v-btn-toggle>
+      </app-setting>
+
+      <v-divider />
+
+      <app-setting
+        title="Show the printer's 3D model"
+        sub-title="Off, the Overview shows the printer's picture"
+      >
+        <v-switch
+          v-model="showPrinterModel"
+          hide-details
+          class="mb-5"
+          aria-label="Show the printer's 3D model"
+          data-tid="show-printer-model"
+          @click.native.stop
+        />
+      </app-setting>
+
+      <v-divider />
+
+      <app-setting
+        title="Animations"
+        :sub-title="modelAnimationsHint"
+      >
+        <v-switch
+          v-model="modelAnimations"
+          hide-details
+          class="mb-5"
+          aria-label="Animations"
+          data-tid="model-animations"
+          @click.native.stop
+        />
+      </app-setting>
+
+      <v-divider />
+
       <app-setting :title="$t('app.setting.label.show_animations')">
         <v-switch
           v-model="showAnimations"
@@ -202,11 +259,62 @@
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
 import { defaultState } from '@/store/config/state'
+import { MODEL_DETAILS, modelAnimates, modelDetail, type ModelDetail } from '@/services/m1-3d/render-options'
 
 @Component({
   components: {}
 })
 export default class GcodePreviewSettings extends Vue {
+  readonly modelDetails = MODEL_DETAILS
+  reducedMotion = false
+
+  mounted () {
+    this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  }
+
+  get modelDetail (): ModelDetail {
+    return modelDetail(this.$store.state.config.uiSettings.gcodePreview.modelDetail)
+  }
+
+  set modelDetail (value: ModelDetail) {
+    this.$store.dispatch('config/saveByPath', {
+      path: 'uiSettings.gcodePreview.modelDetail',
+      value,
+      server: true
+    })
+  }
+
+  get showPrinterModel (): boolean {
+    return this.$store.state.config.uiSettings.gcodePreview.showPrinterModel !== false
+  }
+
+  set showPrinterModel (value: boolean) {
+    this.$store.dispatch('config/saveByPath', {
+      path: 'uiSettings.gcodePreview.showPrinterModel',
+      value,
+      server: true
+    })
+  }
+
+  get modelAnimations (): boolean {
+    return modelAnimates(this.$store.state.config.uiSettings.gcodePreview.modelAnimations, this.reducedMotion)
+  }
+
+  set modelAnimations (value: boolean) {
+    this.$store.dispatch('config/saveByPath', {
+      path: 'uiSettings.gcodePreview.modelAnimations',
+      value,
+      server: true
+    })
+  }
+
+  get modelAnimationsHint (): string {
+    const set = typeof this.$store.state.config.uiSettings.gcodePreview.modelAnimations === 'boolean'
+    return set
+      ? 'The 3D printer turns and moves smoothly; off, it jumps'
+      : `The 3D printer turns and moves smoothly; until set, it follows your system's reduce-motion choice (${this.reducedMotion ? 'reduced' : 'full'})`
+  }
+
   get extrusionLineWidth () {
     return this.$store.state.config.uiSettings.gcodePreview.extrusionLineWidth
   }

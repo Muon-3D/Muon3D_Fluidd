@@ -10,6 +10,7 @@ import { CONTENTS_ORDER, flattenGlass } from './glass-material'
 import { createRenderGate } from './render-gate'
 import { createFrameLoop } from './frame-loop'
 import { FrameWatch, wantsCheapGlass } from './glass-cost'
+import { modelRenderOptions, type ModelDetail, type ModelRenderOptions } from './render-options'
 import { placeAccurate } from './accurate/klipper-map'
 import type { AccurateRig } from './accurate/rig'
 
@@ -56,9 +57,16 @@ export interface M1Viewer {
   restyle: () => void;
   /** Moves the machine left by this share of the stage's width, to clear something on the right. */
   setShift: (share: number) => void;
+  /** Settings › G-code preview: how much detail to draw with, and whether it animates. */
+  setSettings: (settings: ViewerSettings) => void;
   /** Called after each frame drawn; the first means it can be shown. */
   onFrame: (() => void) | null;
   dispose: () => void;
+}
+
+export interface ViewerSettings {
+  detail: ModelDetail;
+  animate: boolean;
 }
 
 /** Seen from the mast side and a little above, as the s1_1 product shot is. */
@@ -632,13 +640,40 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     let pulsing = false
     taps.forEach((t, i) => {
       const age = now - (tapSeen.get(tapKey(t)) ?? 0)
-      const swell = age < PULSE_MS ? 1 + 1.4 * Math.sin(Math.PI * age / PULSE_MS) : 1
-      if (age < PULSE_MS) pulsing = true
+      const swell = age < PULSE_MS && settings.animate ? 1 + 1.4 * Math.sin(Math.PI * age / PULSE_MS) : 1
+      if (age < PULSE_MS && settings.animate) pulsing = true
       tapMatrix.makeScale(swell, swell, swell).setPosition(t.x, t.y, 0)
       tapMarks.setMatrixAt(i, tapMatrix)
     })
     tapMarks.instanceMatrix.needsUpdate = true
     return pulsing
+  }
+
+  let settings: ViewerSettings = { detail: 'high', animate: true }
+  function renderOptions (): ModelRenderOptions {
+    return modelRenderOptions({
+      detail: settings.detail,
+      animations: settings.animate,
+      reducedMotion: false,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      width: width || canvas.clientWidth
+    })
+  }
+  /** Draws with the detail asked for: the pixels, the shadow and the glass. Plain glass stays plain until the model is next loaded. */
+  function applyDetail () {
+    const o = renderOptions()
+    if (width && height && renderer.getPixelRatio() !== o.pixelRatio) {
+      renderer.setPixelRatio(o.pixelRatio)
+      renderer.setSize(width, height, false)
+    }
+    key.castShadow = o.shadows
+    ground.visible = o.shadows
+    if (key.shadow.mapSize.x !== o.shadowMapSize) {
+      key.shadow.mapSize.set(o.shadowMapSize, o.shadowMapSize)
+      key.shadow.map?.dispose()
+      key.shadow.map = null
+    }
+    if (o.cheapGlass && autoCheap && rig.kind === 'accurate') cheapenGlass('detail')
   }
 
   const watch = new FrameWatch()
@@ -660,7 +695,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       loop.invalidate()
       return
     }
-    const d = 0.25
+    const d = settings.animate ? 0.25 : 1
     view.theta += (view.goalTheta - view.theta) * d
     view.phi += (view.goalPhi - view.phi) * d
     const moving = follow(now)
@@ -760,6 +795,12 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       shift = share
       invalidate()
     },
+    setSettings (next) {
+      if (next.detail === settings.detail && next.animate === settings.animate) return
+      settings = { ...next }
+      applyDetail()
+      invalidate()
+    },
     dispose () {
       disposed = true
       loop.stop()
@@ -784,7 +825,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     if (!w || !h || (w === width && h === height)) return
     width = w
     height = h
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, w < 600 ? 1.5 : 2))
+    renderer.setPixelRatio(renderOptions().pixelRatio)
     renderer.setSize(w, h, false)
     restyle()
     invalidate()
@@ -815,6 +856,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       const forced = glassOverride()
       if (forced) autoCheap = false
       if (forced === 'cheap') cheapenGlass('forced')
+      else if (forced !== 'real' && renderOptions().cheapGlass) cheapenGlass('detail')
       else if (forced !== 'real' && wantsCheapGlass({
         width: canvas.clientWidth || window.innerWidth,
         cores: navigator.hardwareConcurrency,
