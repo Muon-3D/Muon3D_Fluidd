@@ -19,6 +19,7 @@ import {
 } from '@/services/managed-transport'
 import axios from 'axios'
 import { cloudState } from '@/services/muon-cloud/state'
+import { headStatus } from '@/services/control/safe-move'
 
 /** The longest wait between two tries to reconnect. */
 const MAX_RECONNECT_DELAY_MS = 30_000
@@ -48,6 +49,8 @@ export class WebSocketClient {
   reconnectCount = 0
   logPrefix = '[WEBSOCKET]'
   requests: Array<Request> = []
+  /** The next JSON-RPC id. Starts somewhere random so a reload doesn't reuse a recent one. */
+  private nextRequestId = 10000 + Math.floor(Math.random() * 80000)
   store: any | null = null
   pingTimeout: any
   deadTimeout: any
@@ -212,6 +215,8 @@ export class WebSocketClient {
 
   /** Ends an adopted session without allowing its close event to reconnect. */
   releaseTransportSocket (closeConnection = true) {
+    // A printer switch or a released transport: the head position held is the old one's.
+    headStatus.fresh = false
     this.attempt++
     this.purgeRequests()
     this.cancelRetry()
@@ -459,11 +464,11 @@ export class WebSocketClient {
     }
 
     if (this.connection?.readyState === PRINTER_SOCKET_OPEN) {
-      // moonraker expects a unique id for us to reference back to when data is returned.
-      const getRandomNumber = (min: number, max: number) => {
-        return Math.floor(Math.random() * (max - min + 1)) + min
-      }
-      const id = getRandomNumber(10000, 99999)
+      // moonraker expects a unique id for us to reference back to when data is
+      // returned. Counted, not random: two pending requests must never share
+      // one, or one's answer would settle the other (a running G28 ending early
+      // for the in-flight G-code count, safe-move.ts).
+      const id = this.nextRequestId++
       const packet: SocketRequest = {
         id,
         method,

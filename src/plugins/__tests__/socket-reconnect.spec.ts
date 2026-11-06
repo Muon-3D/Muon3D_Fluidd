@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PrinterSocket } from '@/services/managed-transport'
 
-const tokens = vi.hoisted(() => ({ get: vi.fn() }))
-vi.mock('@/api/httpClientActions', () => ({ httpClientActions: { accessOneshotTokenGet: tokens.get } }))
-
 // eslint-disable-next-line import/first
 import { WebSocketClient } from '../socketClient'
+import { headStatus } from '@/services/control/safe-move'
+
+const tokens = vi.hoisted(() => ({ get: vi.fn() }))
+vi.mock('@/api/httpClientActions', () => ({ httpClientActions: { accessOneshotTokenGet: tokens.get } }))
 
 /** A socket the test drives: it opens, talks and closes when told to. */
 class FakeSocket implements PrinterSocket {
@@ -102,6 +103,30 @@ describe('WebSocketClient reconnecting', () => {
 
     expect(client.requests).toHaveLength(0)
     expect(store.commit).toHaveBeenCalledWith('wait/setRemoveWait', 'history')
+  })
+
+  it('settles the promise of every request it drops, so nothing waits on an answer forever', async () => {
+    // The in-flight G-code count (safe-move.ts) ends with these promises.
+    const { client } = lanClient()
+    const socket = await opened(client)
+    const answer = client.emit('printer.gcode.script', { params: { script: 'G28' } })
+    socket.emit('close', { code: 1006, reason: 'lost', wasClean: false })
+    await expect(answer).resolves.toBeUndefined()
+  })
+
+  it('gives every pending request its own id', async () => {
+    const { client } = lanClient()
+    await opened(client)
+    for (let i = 0; i < 50; i++) client.emit('server.info', {})
+    expect(new Set(client.requests.map(r => r.id)).size).toBe(50)
+  })
+
+  it('marks the head position stale when a transport is released (a printer switch)', async () => {
+    const { client } = lanClient()
+    await opened(client)
+    headStatus.fresh = true
+    client.releaseTransportSocket()
+    expect(headStatus.fresh).toBe(false)
   })
 
   it('retries a clean close it did not ask for, and tells the store it was not clean', async () => {
