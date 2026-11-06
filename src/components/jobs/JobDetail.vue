@@ -203,7 +203,7 @@ import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import BrowserMixin from '@/mixins/browser'
 import FilesMixin from '@/mixins/files'
 import type { JobFile } from '@/mixins/jobs'
-import { readyChecks, type ReadyCheck } from '@/services/jobs/model'
+import { readyChecks, type LoadedFilament, type ReadyCheck } from '@/services/jobs/model'
 import { longDuration } from '@/services/overview/model'
 import GcodePreview from '@/components/widgets/gcode-preview/GcodePreview.vue'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
@@ -237,8 +237,8 @@ export default class JobDetail extends Mixins(BrowserMixin, FilesMixin) {
   @Prop({ type: Boolean })
   readonly hasNext?: boolean
 
-  @Prop({ type: String, default: null })
-  readonly material!: string | null
+  @Prop({ type: Object, default: () => ({ loaded: false, name: null }) })
+  readonly filament!: LoadedFilament
 
   @Prop({ type: String, default: '' })
   readonly printerName!: string
@@ -355,7 +355,7 @@ export default class JobDetail extends Mixins(BrowserMixin, FilesMixin) {
 
   get checks (): ReadyCheck[] {
     if (!this.job) return []
-    return readyChecks(this.job.file, this.job.filename, { loaded: !!this.material, name: this.material }, this.printerName, !!this.busy)
+    return readyChecks(this.job.file, this.job.filename, this.filament, this.printerName, !!this.busy)
   }
 
   get facts (): Array<{ label: string, value: string }> {

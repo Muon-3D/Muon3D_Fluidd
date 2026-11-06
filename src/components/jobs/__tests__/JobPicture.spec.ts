@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import JobPicture from '../JobPicture.vue'
+import { clearRemoteThumbnails, remoteJobThumbnail, thumbnailKey, MAX_READING } from '@/services/jobs/thumbnail'
 
 const mountIt = (src: string) => mount(JobPicture, { propsData: { src }, stubs: { 'frame-icon': { template: '<svg class="frame-icon" />' } } })
 
@@ -34,4 +35,18 @@ describe('JobPicture', () => {
     expect(w.find('img').attributes('src')).toBe('/new.png')
     w.destroy()
   })
+
+  it('drops its read from the queue when it is destroyed before its turn', async () => {
+    const release: Array<() => void> = []
+    const read = vi.fn(() => new Promise<Blob>(resolve => release.push(() => resolve(new Blob(['x'])))))
+    for (let i = 0; i < MAX_READING + 1; i++) remoteJobThumbnail('p', `/q${i}.png`, 1, read)
+    const w = mount(JobPicture, { propsData: { src: '', thumbKey: thumbnailKey('p', `/q${MAX_READING}.png`, 1) }, stubs: { 'frame-icon': true } })
+    w.destroy()
+    release.splice(0).forEach(r => r())
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(read).toHaveBeenCalledTimes(MAX_READING)
+    release.splice(0).forEach(r => r())
+  })
 })
+
+afterEach(() => clearRemoteThumbnails())

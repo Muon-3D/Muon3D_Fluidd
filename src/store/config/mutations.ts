@@ -198,7 +198,8 @@ export const mutations: MutationTree<ConfigState> = {
    */
   setRemovePreset (state, payload) {
     const i = state.uiSettings.dashboard.tempPresets.findIndex(preset => preset.id === payload.id)
-    state.uiSettings.dashboard.tempPresets.splice(i, 1)
+    // splice(-1, 1) would remove the last preset: a preset that is not there removes nothing.
+    if (i >= 0) state.uiSettings.dashboard.tempPresets.splice(i, 1)
   },
 
   setFileSystemActiveFilters (state, payload: { root: string, value: FileFilterType[] }) {

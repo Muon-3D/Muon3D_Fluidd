@@ -55,11 +55,11 @@
             class="matp__swatch"
             :style="{ background: shown.colour }"
           /><v-icon
-            v-if="!shown"
+            v-if="!shown && !filamentSensed"
             x-small
             class="matp__warn"
             data-tid="material-warning"
-          >$warning</v-icon>{{ shown ? shown.name : 'No material loaded' }}
+          >$warning</v-icon><span data-tid="material-name">{{ shown ? shown.name : filamentSensed ? 'Filament loaded' : 'No material loaded' }}</span>
         </span>
         <span class="ov-tile__sub">{{ subtitle }}</span>
       </button>
@@ -370,7 +370,7 @@ export default class MaterialPicker extends Mixins(ControlMixin) {
       const colour = this.printingWith.colour ? colourName(this.printingWith.colour) : ''
       return [colour, 'From the file printing. Tap to say what\'s loaded'].filter(Boolean).join(' · ')
     }
-    if (!m) return 'Tap to say what\'s loaded'
+    if (!m) return this.filamentSensed ? 'Tap to say which material' : 'Tap to say what\'s loaded'
     return [this.loadedColour ? this.loadedColourName : '', this.temps(m)].filter(Boolean).join(' · ')
   }
 

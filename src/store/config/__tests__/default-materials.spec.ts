@@ -18,6 +18,24 @@ describe('default materials', () => {
     ])
   })
 
+  it('gives the defaults uuid-like string ids, as presets added in Settings have', () => {
+    const ids = defaultState().uiSettings.dashboard.tempPresets.map(p => p.id as unknown as string)
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    expect(new Set(ids).size).toBe(4)
+  })
+
+  it('removing a preset that is not there removes nothing', () => {
+    const state = defaultState()
+    mutations.setRemovePreset(state, { id: 'missing' } as never)
+    expect(names(state)).toEqual(['ABS', 'PETG', 'PLA', 'TPU'])
+  })
+
+  it('removing a preset removes just that one', () => {
+    const state = defaultState()
+    mutations.setRemovePreset(state, state.uiSettings.dashboard.tempPresets[1])
+    expect(names(state)).toEqual(['ABS', 'PLA', 'TPU'])
+  })
+
   it('every call returns fresh objects, so editing one printer\'s list cannot change another\'s', () => {
     const a = defaultState()
     a.uiSettings.dashboard.tempPresets[0].name = 'changed'
