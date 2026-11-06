@@ -227,19 +227,29 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     return typeof id === 'string' && id ? id : null
   }
 
-  /** Whether this page opened the print's page (then ‹ is the browser's Back). */
-  printOpenedHere = false
+  /** Off the print's pages (Back, the switch, a grid, a collection): nothing of ours to go back through. */
+  @Watch('printId')
+  onPrintId (id: string | null) {
+    if (!id) this.printDepth = 0
+  }
+
+  /**
+   * How many print's pages this page pushed, one on another (a make opened
+   * from a print's page is one more): ‹ goes back through them, then to the
+   * place under them. Leaving the print's pages any other way starts it again.
+   */
+  printDepth = 0
 
   /** Open page: the print's page, pushed so Back returns to where it was opened. */
   openPrint (id: string) {
-    this.printOpenedHere = true
+    this.printDepth++
     this.$router.push({ query: { ...this.$route.query, print: id } }).catch(() => {})
   }
 
   /** ‹ on a print's page: back where it came from, or (opened by its address) to the place under it. */
   printBack () {
-    if (this.printOpenedHere) {
-      this.printOpenedHere = false
+    if (this.printDepth > 0) {
+      this.printDepth--
       this.$router.back()
       return
     }
