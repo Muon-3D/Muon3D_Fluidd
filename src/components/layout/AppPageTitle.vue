@@ -35,6 +35,18 @@
         <maintenance-due v-if="currentPage === '/maintenance'" />
         <console-actions v-if="currentSection && currentSection.id === 'console'" />
         <camera-actions v-if="currentSection && currentSection.id === 'camera' && !isMobileViewport" />
+        <router-link
+          v-if="settingsSection && settingsSection.id === 'console' && !isMobileViewport"
+          :to="consoleTo"
+          class="cbtn cbtn--ghost"
+          data-tid="settings-open-console"
+        >
+          <frame-icon
+            name="console"
+            small
+          />
+          Open Console
+        </router-link>
       </div>
     </div>
     <nav
@@ -78,7 +90,8 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { jobName } from '@/services/printers-page/model'
 import { printerNameParts } from '@/util/printer-name'
 import type { TileTone } from '@/services/printers-page/model'
-import { foreignRecordForSlug, isForeignSlug } from '@/services/printer-pages'
+import { activeSlug, foreignRecordForSlug, isForeignSlug } from '@/services/printer-pages'
+import { scopedPath } from '@/router/printerPagePaths'
 import { liveForeign } from '@/services/foreign-printers/live'
 import { emptyStatus } from '@/services/foreign-printers/adapters/base'
 import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@/services/foreign-printers/types'
@@ -123,6 +136,10 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     if (this.currentSection?.id !== 'settings' || this.currentPage !== '/settings') return null
     const supports = (name: string) => this.$store.getters['server/componentSupport'](name) as boolean
     return openSettingsSection(this.$route.hash, { components: SECTION_COMPONENTS.filter(supports) })
+  }
+
+  get consoleTo (): string {
+    return scopedPath('/console', activeSlug())
   }
 
   /** Jobs' own page: its header carries the search, the order and Upload, and History and Timelapse sit in its ··· menu. */

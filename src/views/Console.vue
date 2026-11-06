@@ -55,6 +55,7 @@
 
       <div
         class="cons__log"
+        :class="`cons__log--${prefs.textSize}`"
         data-tid="console-log"
         aria-live="polite"
       >
@@ -76,9 +77,9 @@
             >
               <div
                 class="cons__line"
-                :class="`cons__line--${item.kind}`"
+                :class="[`cons__line--${item.kind}`, { 'cons__line--notime': !prefs.timestamps }]"
               >
-                <time>{{ item.time }}</time>
+                <time v-if="prefs.timestamps">{{ item.time }}</time>
                 <span
                   class="cons__msg"
                   @click="onLineClick"
@@ -106,13 +107,51 @@
         >
           Latest
           <frame-icon
-            name="chevronDown"
+            :name="flipped ? 'chevronUp' : 'chevronDown'"
             small
           />
         </button>
       </div>
 
       <div class="cons__input">
+        <div
+          v-if="quick.length"
+          class="cons__chips"
+          role="toolbar"
+          aria-label="Quick commands"
+          data-tid="console-quick"
+        >
+          <button
+            v-for="q in quick"
+            :key="q.id"
+            type="button"
+            class="cons__quick"
+            :disabled="chipOff(q)"
+            :title="chipTitle(q)"
+            :data-tid="`console-quick-${q.command}`"
+            @click="tapQuick(q)"
+          >
+            {{ chipLabel(q) }}
+          </button>
+          <router-link
+            :to="quickSettingsTo"
+            class="cons__quick cons__quick--edit"
+            aria-label="Edit the quick commands"
+            title="Edit the quick commands"
+          >
+            <frame-icon
+              name="settings"
+              small
+            />
+          </router-link>
+        </div>
+        <p
+          v-if="quickNote"
+          class="cons__help"
+          data-tid="console-quick-note"
+        >
+          {{ quickNote }}
+        </p>
         <p
           v-if="commandRefusal"
           role="alert"
@@ -153,6 +192,7 @@
           >
             <span aria-hidden="true">›</span>
             <input
+              v-if="prefs.enterSends"
               ref="input"
               v-model="command"
               type="text"
@@ -166,6 +206,21 @@
               @keydown="onKey"
               @blur="open = false"
             >
+            <textarea
+              v-else
+              ref="input"
+              v-model="command"
+              rows="2"
+              spellcheck="false"
+              autocomplete="off"
+              :disabled="!klippyConnected"
+              placeholder="G-code, or a macro name… (Ctrl Enter sends)"
+              aria-label="Send G-code"
+              data-tid="console-input"
+              @input="open = true; picked = -1"
+              @keydown="onKey"
+              @blur="open = false"
+            />
             <span
               v-if="!isMobileViewport"
               class="cons__hint"
@@ -181,37 +236,15 @@
           </form>
         </div>
         <p class="cons__keys">
-          Tab completes · ↑ history · Enter sends
+          {{ keysLine }}
         </p>
       </div>
     </section>
 
-    <div class="cons__side">
-      <section
-        class="cons__tile"
-        data-tid="console-quick"
-      >
-        <header class="cons__head">
-          <h2><frame-icon name="bolt" /> Quick commands</h2>
-        </header>
-        <div class="cons__chips">
-          <button
-            v-for="q in quickCommands"
-            :key="q.command"
-            type="button"
-            class="cons__quick"
-            :disabled="chipOff(q)"
-            :title="chipTitle(q)"
-            :data-tid="`console-quick-${q.command}`"
-            @click="sendNow(q.command)"
-          >
-            {{ q.command }}
-          </button>
-        </div>
-        <p class="cons__note">
-          Tap to send.
-        </p>
-      </section>
+    <div
+      v-if="!isMobileViewport"
+      class="cons__side"
+    >
       <console-macros
         v-if="!isMobileViewport"
         :locked="!controlReady"
@@ -249,16 +282,18 @@ import TonePill from '@/components/printers/TonePill.vue'
 import ConsoleMacros from '@/components/console/ConsoleMacros.vue'
 import { consoleView } from '@/services/console/view'
 import type { ShownMacro } from '@/mixins/macros'
+import { chipText, consoleConfig, quickCommandsFor, quickCommandsKey, type ConsoleConfig, type QuickCommand } from '@/services/console/settings'
+import { cloudState } from '@/services/muon-cloud/state'
+import { activeSlug } from '@/services/printer-pages'
+import { scopedPath } from '@/router/printerPagePaths'
 
-/** One tap sends these. `moves` ones need an idle printer; `homed` ones also need every axis homed. */
-const QUICK_COMMANDS = [
-  { command: 'G28', moves: true, homed: false },
-  { command: 'M105', moves: false, homed: false },
-  { command: 'BED_MESH_CALIBRATE', moves: true, homed: true },
-  { command: 'QUERY_PROBE', moves: false, homed: false },
-  { command: 'FIRMWARE_RESTART', moves: false, homed: false },
-  { command: 'STATUS', moves: false, homed: false }
-]
+/** Quick commands that need more than a ready printer: `moves` ones an idle one; `homed` ones every axis homed too. */
+const QUICK_RULES: Record<string, { moves: boolean, homed: boolean }> = {
+  G28: { moves: true, homed: false },
+  BED_MESH_CALIBRATE: { moves: true, homed: true }
+}
+
+const firstWord = (command: string) => command.trim().split(/\s/)[0]?.toUpperCase() ?? ''
 
 interface Line {
   key: string;
@@ -299,8 +334,18 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
     return (this.$store.getters['console/getAllKnownCommands'] as GcodeHelp) ?? {}
   }
 
+  /** Settings › Console. */
+  get prefs (): ConsoleConfig {
+    return consoleConfig(this.$store.state.config.uiSettings.console)
+  }
+
+  /** Newest at the top (Settings › Console › Newest at). */
+  get flipped (): boolean {
+    return !!this.$store.state.config.uiSettings.general?.flipConsoleLayout
+  }
+
   get shown (): Line[] {
-    return filterEntries(this.entries, this.filter, this.find).map((e, i) => {
+    const lines = filterEntries(this.entries.slice(-this.prefs.linesKept), this.filter, this.find).map((e, i) => {
       const kind = entryKind(e)
       return {
         key: `${e.id ?? 'n'}-${e.time ?? 0}-${i}`,
@@ -310,6 +355,7 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
         why: kind === 'error' || kind === 'warning' ? explain(e.message) : null
       }
     })
+    return this.flipped ? lines.reverse() : lines
   }
 
   /** Commands Klipper knows, in a reply, become links that put them in the line, as Fluidd's console does. */
@@ -340,7 +386,7 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
   /** Scrolled up to read, the log stays put; at the bottom, it follows. */
   onScroll () {
     const el = this.scroller.$el
-    this.paused = el.scrollHeight - el.scrollTop - el.clientHeight > 4
+    this.paused = this.flipped ? el.scrollTop > 4 : el.scrollHeight - el.scrollTop - el.clientHeight > 4
   }
 
   @Watch('shown')
@@ -350,7 +396,9 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
 
   toLatest (force = false) {
     if (this.paused && !force) return
-    this.scroller?.scrollToBottom()
+    if (this.flipped) {
+      if (this.scroller) this.scroller.$el.scrollTop = 0
+    } else this.scroller?.scrollToBottom()
     if (force) this.paused = false
   }
 
@@ -380,7 +428,7 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
   }
 
   get list (): Suggestion[] {
-    return suggestions(this.command, this.knownCommands, this.history)
+    return this.prefs.suggest ? suggestions(this.command, this.knownCommands, this.history) : []
   }
 
   get typedCommand (): string {
@@ -405,16 +453,21 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
         this.take(this.list[Math.max(0, this.picked)])
         break
       case 'ArrowDown':
+        if (!listing && this.command.includes('\n')) return
         if (listing) this.picked = Math.min(this.list.length - 1, this.picked + 1)
         else this.recall(-1)
         break
       case 'ArrowUp':
+        if (!listing && this.command.includes('\n')) return
         if (listing && this.picked > 0) this.picked--
         else if (listing && this.picked === 0) this.picked = -1
         else this.recall(1)
         break
       case 'Enter':
         if (listing && this.picked >= 0) this.take(this.list[this.picked])
+        else if (this.prefs.enterSends) return
+        // Enter sends off: Enter adds a line, Ctrl Enter sends.
+        else if (event.ctrlKey || event.metaKey) this.send()
         else return
         break
       case 'Escape':
@@ -437,7 +490,35 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
 
   // -- the side tiles -----------------------------------------------------------
 
-  readonly quickCommands = QUICK_COMMANDS
+  /** This person's chips on this printer (Settings › Console). */
+  get quick (): QuickCommand[] {
+    return quickCommandsFor(this.prefs, quickCommandsKey(cloudState.account?.id))
+  }
+
+  get quickSettingsTo (): string {
+    return `${scopedPath('/settings', activeSlug())}#console`
+  }
+
+  readonly chipLabel = chipText
+
+  /** Why the chips are greyed out, said once under them. */
+  get quickNote (): string {
+    if (!this.quick.length) return ''
+    if (!this.commandControlAvailable) return "You can't send commands to this printer, so the quick commands are off. Who may type is set in People and access."
+    return ''
+  }
+
+  get keysLine (): string {
+    return [this.prefs.suggest ? 'Tab completes' : '', '↑ history', this.prefs.enterSends ? 'Enter sends' : 'Enter adds a line · Ctrl Enter sends'].filter(Boolean).join(' · ')
+  }
+
+  /** A chip set to "Put it in the input" fills the line to be edited; the rest send. */
+  tapQuick (q: QuickCommand) {
+    if (q.send) { this.sendNow(q.command); return }
+    this.command = q.command
+    this.open = false
+    this.$nextTick(() => (this.$refs.input as HTMLInputElement | undefined)?.focus())
+  }
 
   get klippyTone (): 'ok' | 'warn' | 'err' | 'off' {
     if (!this.socketConnected || !this.klippyConnected) return 'off'
@@ -459,26 +540,29 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
   }
 
   /** Why a chip can't be tapped now, or '' when it can. FIRMWARE_RESTART follows the restart rule, since it is how a stopped Klipper is recovered. */
-  chipRefusal (q: { command: string, moves: boolean, homed: boolean }): string {
-    if (q.command === 'FIRMWARE_RESTART') return this.restartRefusal ? 'Not now. The printer must be connected, under your control, and idle.' : ''
+  chipRefusal (chip: QuickCommand): string {
+    const word = firstWord(chip.command)
+    const q = QUICK_RULES[word] ?? { moves: false, homed: false }
+    if (!chip.send) return this.commandControlAvailable ? '' : 'You can only send when you can control this printer'
+    if (word === 'FIRMWARE_RESTART') return this.restartRefusal ? 'Not now. The printer must be connected, under your control, and idle.' : ''
     if (!this.controlReady) return 'You can only send when Klipper is ready and you can control this printer'
     if (q.moves && this.busy) return 'Not while the printer is busy'
     if (q.homed && !this.isHomed('XYZ')) return 'Home the printer first'
     return ''
   }
 
-  chipOff (q: { command: string, moves: boolean, homed: boolean }): boolean {
+  chipOff (q: QuickCommand): boolean {
     return !!this.chipRefusal(q)
   }
 
-  chipTitle (q: { command: string, moves: boolean, homed: boolean }): string {
+  chipTitle (q: QuickCommand): string {
     return this.chipRefusal(q) || q.command
   }
 
   /** A tap on a chip goes the way a typed line does: same checks, same restart confirm. */
   async sendNow (gcode: string) {
     if (!await this.sendTypedGcode(gcode)) return
-    this.$store.dispatch('console/onUpdateCommandHistory', [gcode, ...this.history].slice(0, Globals.CONSOLE_COMMAND_HISTORY))
+    this.$store.dispatch('console/onUpdateCommandHistory', [gcode, ...this.history].slice(0, this.prefs.historyCount))
     this.toLatest(true)
   }
 
@@ -493,7 +577,7 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
   async send () {
     const gcode = this.command.trim()
     if (!await this.sendTypedGcode(gcode)) return
-    this.$store.dispatch('console/onUpdateCommandHistory', [gcode, ...this.history].slice(0, Globals.CONSOLE_COMMAND_HISTORY))
+    this.$store.dispatch('console/onUpdateCommandHistory', [gcode, ...this.history].slice(0, this.prefs.historyCount))
     this.command = ''
     this.back = -1
     this.open = false
@@ -632,6 +716,16 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
       white-space: nowrap;
     }
   }
+
+  .cons__line--notime {
+    grid-template-columns: minmax(0, 1fr);
+
+    .cons__why { grid-column: 1; }
+  }
+
+  // Settings › Console › Text size.
+  .cons__log--sm .cons__line { font-size: 11px; }
+  .cons__log--lg .cons__line { font-size: 14.5px; }
 
   .cons__msg {
     min-width: 0;
@@ -774,6 +868,20 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
     color: var(--m3d-text-subtle);
     font-family: var(--m3d-font-mono, monospace);
 
+    textarea {
+      flex: 1 1 auto;
+      min-width: 0;
+      padding: 9px 0;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: var(--m3d-text);
+      font: inherit;
+      font-size: 14px;
+      line-height: 1.5;
+      resize: vertical;
+    }
+
     input {
       flex: 1 1 auto;
       min-width: 0;
@@ -794,6 +902,7 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
 
   // The ring goes round the well, not the text box in it.
   .cons__send input:focus-visible,
+  .cons__send textarea:focus-visible,
   .cons__find input:focus-visible {
     outline: none;
   }
@@ -824,6 +933,13 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
     font-size: 12px;
 
     &:disabled { opacity: 0.45; }
+  }
+
+  .cons__quick--edit {
+    display: inline-flex;
+    align-items: center;
+    color: var(--m3d-text-muted);
+    text-decoration: none;
   }
 
   .cons__note {
@@ -864,7 +980,7 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
       padding: 8px 12px;
     }
 
-    .cons__line {
+    .cons__log--md .cons__line {
       font-size: 11.5px;
     }
 

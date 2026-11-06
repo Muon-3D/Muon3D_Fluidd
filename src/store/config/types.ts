@@ -1,3 +1,4 @@
+import type { ConsoleConfig } from '@/services/console/settings'
 import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { FileFilterType } from '../files/types'
 
@@ -27,6 +28,7 @@ export interface UiSettings {
   spoolman: SpoolmanConfig;
   maintenance: MaintenanceConfig;
   overview: OverviewConfig;
+  console: ConsoleConfig;
 }
 
 /** Each person's Overview layout on this printer, by key (see services/overview/layout), as saved by Edit mode. */
