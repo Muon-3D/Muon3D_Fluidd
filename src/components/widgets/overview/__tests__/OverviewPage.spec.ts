@@ -37,7 +37,7 @@ describe('Overview page', () => {
     const store = tileStore({ empty: true })
     const w = mount(Overview, tileMount(store, { stubs: { ...tileMount(store).stubs, ...heavy } }))
     expect(w.findAll('[data-tile]')).toHaveLength(overviewTiles.length)
-    expect(w.find('[data-tile="filament"]').text()).toContain('Unknown')
+    expect(w.find('[data-tile="filament"]').text()).toContain('No material loaded')
     w.destroy()
   })
 

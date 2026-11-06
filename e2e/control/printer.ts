@@ -33,6 +33,8 @@ export interface PrinterState {
   answer: Record<string, unknown>
   /** When set, server.info reports exactly these Moonraker components (what a page gates on). */
   components?: string[]
+  /** While set, the printer can't be reached: every websocket the page opens is closed at once. */
+  offline?: boolean
 }
 
 export interface PrinterHandle {
@@ -49,6 +51,10 @@ export interface PrinterHandle {
   report: (status: Json) => void
   /** The printer prints these lines to the console now (a notify_gcode_response each). */
   say: (...lines: string[]) => void
+  /** The printer drops off the network now: the page's websocket closes, and every new one is refused. */
+  goOffline: () => Promise<void>
+  /** The printer is reachable again: the page's next websocket connects. */
+  goOnline: () => void
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -80,17 +86,38 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     moves: () => handle.gcode.flatMap(s => s.split('\n')).filter(l => l.startsWith('G1 ')),
     report: (next: Json) => {
       handle.state.status = next
-      pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_status_update', params: [next, Date.now() / 1000] }))
+      // The page's socket client holds status updates back (socketClient.handleMessage): the first one it sees only
+      // starts its cache, and later ones are applied when an update stamped 1 s or more after the cache began arrives.
+      // The mock's own ticks are stamped in seconds since it started, so a report stamped with the wall clock was
+      // applied only if a tick had come first, and a second report within a second of the first waited. So the
+      // update is followed by an empty one stamped later, which applies it at once, and the stamps only ever grow.
+      eventTime = Math.max(eventTime, Date.now() / 1000) + 2
+      pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_status_update', params: [next, eventTime] }))
+      eventTime += 2
+      pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_status_update', params: [{}, eventTime] }))
     },
     say: (...lines: string[]) => {
       for (const line of lines) pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_gcode_response', params: [line] }))
+    },
+    goOffline: async () => {
+      handle.state.offline = true
+      await pageSocket?.close()
+      pageSocket = null
+    },
+    goOnline: () => {
+      handle.state.offline = false
     }
   }
+  let eventTime = 0
   const asked = new Map<unknown, string>()
   const infoRequests = new Set<unknown>()
-  let pageSocket: { send: (message: string) => void } | null = null
+  let pageSocket: { send: (message: string) => void, close: () => Promise<void> } | null = null
 
   await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
+    if (handle.state.offline) {
+      ws.close().catch(() => {})
+      return
+    }
     pageSocket = ws
     const server = ws.connectToServer()
 

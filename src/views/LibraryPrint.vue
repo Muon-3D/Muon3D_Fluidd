@@ -40,6 +40,14 @@
         >
           Open in Slice
         </button>
+        <router-link
+          v-if="item.versioned"
+          :to="{ path: libraryTo, query: { view: 'mine', share: item.id, from: 'print' } }"
+          class="lib-btn"
+          data-tid="library-own-share"
+        >
+          Share…
+        </router-link>
         <v-menu
           left
           offset-y
