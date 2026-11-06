@@ -108,6 +108,8 @@ export interface GeneralConfig {
   showUploadAndPrint: boolean;
   flipConsoleLayout: boolean;
   cameraFullscreenAction: CameraFullscreenAction;
+  /** Camera uids in the order they are listed and switched through; cameras not named go last, by name. */
+  cameraOrder: string[];
   topNavPowerToggle: null | string;
   showManualProbeDialogAutomatically: boolean;
   showBedScrewsAdjustDialogAutomatically: boolean;
