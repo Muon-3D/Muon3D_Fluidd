@@ -45,12 +45,40 @@ test('a quick-command chip sends its command on one tap', async ({ page, open })
   await expect.poll(() => printer.gcode).toEqual(['M105'])
 })
 
-test('a chip that restarts Klipper still asks first, and sends nothing if you keep it running', async ({ page, open }) => {
+test('a chip that restarts Klipper asks first; keeping it running sends nothing, even after a wait', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
   await open('/console')
   await page.getByTestId('console-quick-FIRMWARE_RESTART').click()
   await expect(page.getByText('Restart Klipper?')).toBeVisible()
   await page.getByTestId('confirm-cancel').click()
+  await page.waitForTimeout(1000)
+  expect(printer.gcode).toEqual([])
+})
+
+test('confirming the restart sends FIRMWARE_RESTART', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await open('/console')
+  await page.getByTestId('console-quick-FIRMWARE_RESTART').click()
+  await page.getByTestId('confirm-ok').click()
+  await expect.poll(() => printer.gcode).toEqual(['FIRMWARE_RESTART'])
+})
+
+test('Klipper connected but not ready: no chip sends, and the mesh chip says why when not homed', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  printer.state.results['server.info'] = { klippy_state: 'startup' }
+  await open('/console')
+  await expect(page.getByTestId('console-quick-G28')).toBeDisabled()
+  await expect(page.getByTestId('console-quick-M105')).toBeDisabled()
+  await expect(page.getByTestId('console-quick-BED_MESH_CALIBRATE')).toBeDisabled()
+  expect(printer.gcode).toEqual([])
+})
+
+test('the mesh chip is off until the head is homed, and says why', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed({ homed: '' }))
+  await open('/console')
+  await expect(page.getByTestId('console-quick-BED_MESH_CALIBRATE')).toBeDisabled()
+  await expect(page.getByTestId('console-quick-G28')).toBeEnabled()
+  await expect(page.getByTestId('console-quick-BED_MESH_CALIBRATE')).toHaveAttribute('title', 'Home the printer first')
   expect(printer.gcode).toEqual([])
 })
 
@@ -63,15 +91,26 @@ test('while printing, the chips that move the head are off and send nothing', as
   expect(printer.gcode).toEqual([])
 })
 
-test('the Errors filter narrows the log, and Clear empties it', async ({ page, open }) => {
-  await usePrinter(page, PRESETS.idleHomed())
+test('the Errors filter shows only the errors, and Clear empties the log', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
   await open('/console')
+  // The page loads the printer's stored log once on connect and replaces what it has; speak after that.
+  await expect(page.getByTestId('console-log').getByText('Bed mesh loaded')).toBeVisible()
+  printer.say('Pressure advance set to 0.04', '!! Must home axis first: X Y Z')
+  const log = page.getByTestId('console-log')
+  await expect(log.getByText('Pressure advance set to 0.04')).toBeVisible()
+  await expect(log.getByText('Must home axis first').first()).toBeVisible()
+
   const header = page.getByTestId('console-actions')
   await header.getByRole('radio', { name: /Errors/ }).click()
-  await expect(header.getByRole('radio', { name: /Errors/ })).toBeChecked()
+  await expect(log.getByText('Must home axis first').first()).toBeVisible()
+  // The log's scroller keeps spare rows off-screen, so "gone" means not visible.
+  await expect(log.getByText('Pressure advance set to 0.04')).toBeHidden()
+
   await header.getByRole('radio', { name: 'All' }).click()
+  await expect(log.getByText('Pressure advance set to 0.04')).toBeVisible()
   await header.getByRole('button', { name: 'Clear the log' }).click()
-  await expect(page.getByTestId('console-log').getByText('Nothing yet.')).toBeVisible()
+  await expect(log.getByText('Nothing yet.')).toBeVisible()
 })
 
 test('desktop has the Macros and Now tiles beside the output; a phone keeps only the quick commands', async ({ page, open, isMobile }) => {
