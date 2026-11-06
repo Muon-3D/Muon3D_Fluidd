@@ -1,5 +1,6 @@
 <template>
   <control-card
+    v-agent-highlight="'fans'"
     title="Fans and lights"
     :locked="controlLock"
     data-tid="control-fans"
