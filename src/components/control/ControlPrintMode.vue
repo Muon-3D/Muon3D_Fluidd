@@ -245,15 +245,17 @@ export default class ControlPrintMode extends ControlSpeed {
     return `Speed ${this.speedFactor}% · Flow ${this.flowFactor}%${pa}`
   }
 
+  /** Kept inside the fine-adjustment range: an overshoot goes to the bound, not nowhere. */
   setPa (value: number) {
-    const v = Math.round(value * 1000) / 1000
-    if (v < this.paRange.min || v > this.paRange.max) return
+    if (!Number.isFinite(value)) return
+    const { min, max } = this.paRange
+    const v = Math.round(Math.min(max, Math.max(min, value)) * 1000) / 1000
     this.setPressureAdvance(v)
   }
 
   nudgePa (by: number) {
     if (this.pressureAdvance === null) return
-    this.setPa(this.pressureAdvance + by * 0.002)
+    this.setPa(this.pressureAdvance + by * this.paRange.step)
   }
 
   backToNormal () {
