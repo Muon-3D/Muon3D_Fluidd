@@ -7,7 +7,11 @@
     data-tid="library-quick-look"
     @click.self="$emit('close')"
   >
-    <div class="mlook__card">
+    <div
+      ref="card"
+      class="mlook__card"
+      tabindex="-1"
+    >
       <div class="mlook__stage">
         <span class="mlib-badge mlib-badge--glass mlook__tag">Quick look</span>
         <button
@@ -309,8 +313,12 @@ export default class LibraryQuickLook extends Vue {
   // into the app's root, where its theme tokens still apply.
   mounted () {
     this.before = document.activeElement;
-    (document.querySelector('[data-app]') ?? document.body).appendChild(this.$el);
-    (this.$refs.close as HTMLElement | undefined)?.focus()
+    (document.querySelector('[data-app]') ?? document.body).appendChild(this.$el)
+    // Focus moves into the quick look: its Close where it shows (phone),
+    // else the dialog itself, so Escape and Tab start inside it.
+    const close = this.$refs.close as HTMLElement | undefined
+    const target = close && close.offsetParent !== null ? close : this.$refs.card as HTMLElement | undefined
+    target?.focus()
     document.addEventListener('keydown', this.onKey)
   }
 
