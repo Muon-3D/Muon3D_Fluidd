@@ -1,43 +1,31 @@
 <template>
-  <control-card
+  <maintenance-tile
     title="Probe"
+    icon="firstLayer"
     :locked="controlLock"
     data-tid="probe-card"
   >
-    <template
-      v-if="probeLabel !== 'probe'"
-      #aside
-    >
-      <span>{{ probeLabel }}</span>
-    </template>
-
-    <div class="probe__rows">
-      <div
-        v-if="zOffset !== null"
-        class="crow"
-      >
-        <span class="crow__name">Z offset <span class="crow__sub">· printer.cfg</span></span>
-        <span class="crow__value">{{ zOffset.toFixed(3) }} mm</span>
+    <div class="probe__row">
+      <div class="probe__name">
+        <div class="probe__title">
+          {{ probeTitle }}
+        </div>
+        <div
+          v-if="zOffset !== null"
+          class="probe__sub"
+        >
+          z offset {{ signedMm(zOffset, 3) }} mm
+        </div>
       </div>
-      <div class="crow">
-        <span class="crow__name">Now <span class="crow__sub">· {{ queried ? 'as last asked' : 'not asked yet' }}</span></span>
-        <span class="probe__now">
-          <span
-            v-if="queried"
-            class="probe__state"
-            :class="{ 'probe__state--hit': triggered }"
-          >{{ triggered ? 'Triggered' : 'Open' }}</span>
-          <button
-            type="button"
-            class="probe__link"
-            :disabled="!controlReady || hasWait($waits.onQueryProbe)"
-            data-tid="probe-query"
-            @click="query"
-          >
-            Ask
-          </button>
-        </span>
-      </div>
+      <span
+        v-if="queried"
+        class="probe__state"
+        :class="{ 'probe__state--hit': triggered }"
+      >{{ triggered ? 'Triggered: yes' : 'Triggered: no' }}</span>
+      <span
+        v-else
+        class="probe__state probe__state--unknown"
+      >Not asked yet</span>
     </div>
 
     <div
@@ -71,42 +59,50 @@
       v-else
       class="probe__note"
     >
-      Probe accuracy probes the middle of the bed ten times and shows how far apart the heights land.
+      Accuracy test probes the middle of the bed ten times and shows how far apart the heights land.
     </p>
 
     <div class="probe__buttons">
       <button
         type="button"
-        class="cbtn"
+        class="cbtn probe__button"
+        :disabled="!controlReady || hasWait($waits.onQueryProbe)"
+        title="Ask the probe whether it is triggered now"
+        data-tid="probe-query"
+        @click="query"
+      >
+        Query probe
+      </button>
+      <button
+        type="button"
+        class="cbtn probe__button"
         :disabled="!canCheck"
         :title="checksBlocked"
         data-tid="probe-accuracy-run"
         @click="checkAccuracy"
       >
-        {{ checking ? 'Probing…' : 'Check probe accuracy' }}
+        {{ checking ? 'Probing…' : 'Accuracy test' }}
       </button>
     </div>
-  </control-card>
+  </maintenance-tile>
 </template>
 
 <script lang="ts">
 import { Component, Mixins, Watch } from 'vue-property-decorator'
-import MaintenanceMixin from '@/mixins/maintenance'
+import ProbeAccuracyMixin from '@/mixins/probe-accuracy'
 import type { ConsoleEntry } from '@/store/console/types'
 import type { Probe } from '@/store/printer/types'
-import { bedMiddle, parseProbeAccuracy, probeAccuracyScript, probeVerdict, type ProbeAccuracy } from '@/services/maintenance/model'
-import { meshSpan, readNoGo } from '@/services/control/safe-move'
-import { EventBus } from '@/eventBus'
-import ControlCard from '@/components/control/ControlCard.vue'
-import { plateCheckNeeded } from '@/services/jobs/plate'
+import { signedMm } from '@/services/maintenance/heatmap'
+import MaintenanceTile from './MaintenanceTile.vue'
 
 /**
- * The probe's Z offset, whether it is triggered when asked, and probe
- * accuracy (ten probes in the middle of the bed) with how repeatable the
- * heights are. The result comes from Klipper's own line in the console.
+ * The probe: its Z offset, whether it is triggered when asked (Query probe),
+ * and probe accuracy (ten probes in the middle of the bed) with how
+ * repeatable the heights are. Accuracy test goes to the middle of the bed
+ * by the no-go-aware path in ProbeAccuracyMixin.
  */
-@Component({ components: { ControlCard } })
-export default class ProbeCard extends Mixins(MaintenanceMixin) {
+@Component({ components: { MaintenanceTile } })
+export default class ProbeCard extends Mixins(ProbeAccuracyMixin) {
   queryAfter = Infinity
   queryPrevious: ConsoleEntry[] = []
 
@@ -130,8 +126,10 @@ export default class ProbeCard extends Mixins(MaintenanceMixin) {
     return this.$store.getters['printer/getProbe'] as Probe | undefined
   }
 
-  get probeLabel (): string {
-    return (this.probe?.name ?? 'probe').replace(/_/g, ' ')
+  /** "Probe", or the probe's own name: "Load cell probe", "Bltouch". */
+  get probeTitle (): string {
+    const name = (this.probe?.name ?? 'probe').replace(/_/g, ' ')
+    return name.charAt(0).toUpperCase() + name.slice(1)
   }
 
   get zOffset (): number | null {
@@ -144,132 +142,57 @@ export default class ProbeCard extends Mixins(MaintenanceMixin) {
     return this.queryReport === true
   }
 
+  signedMm (value: number, places: number): string {
+    return signedMm(value, places)
+  }
+
   query () {
     if (!this.probe || !this.controlReady || this.hasWait(this.$waits.onQueryProbe)) return
     this.queryPrevious = [...(this.$store.state.console.console ?? [])]
     this.queryAfter = Math.floor(Date.now() / 1000)
     this.sendGcode('QUERY_PROBE', this.$waits.onQueryProbe)
   }
-
-  /** The newest PROBE_ACCURACY result in the console, and when it came. */
-  get latest (): { result: ProbeAccuracy, time: number } | null {
-    const entries = (this.$store.state.console.console as ConsoleEntry[] | undefined) ?? []
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const result = parseProbeAccuracy(entries[i].message ?? '')
-      if (result) return { result, time: entries[i].time ?? 0 }
-    }
-    return null
-  }
-
-  get accuracy (): ProbeAccuracy | null {
-    return this.latest?.result ?? null
-  }
-
-  get verdict () {
-    return probeVerdict(this.accuracy?.stddev ?? 0)
-  }
-
-  get accuracyWhen (): string {
-    const t = this.latest?.time
-    if (!t) return ''
-    const d = new Date(t * 1000)
-    return `· ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
-  }
-
-  micron (mm: number): string {
-    return `${Math.round(mm * 1000)} µm`
-  }
-
-  get checking (): boolean {
-    return this.hasWait(this.$waits.onProbeAccuracy)
-  }
-
-  get canCheck (): boolean {
-    return 'PROBE_ACCURACY' in this.gcodeCommands && !this.checksBlocked && !this.checking
-  }
-
-  get middle (): [number, number] {
-    const mesh = this.$store.state.printer.printer.configfile?.settings?.bed_mesh
-    return bedMiddle(mesh?.mesh_min, mesh?.mesh_max, this.axisMin, this.axisMax)
-  }
-
-  async checkAccuracy () {
-    if (!this.canCheck) return
-    const target = this.maintenanceTarget
-    const [x, y] = this.middle
-    const ok = await this.$confirm(
-      `${this.allHomed ? 'The head' : 'It homes, then the head'} goes to the middle of the bed (X${x} Y${y}) and probes there ten times. Keep the plate on and the nozzle clean.`,
-      // It touches the middle of the plate ten times: the plate check first, as for a print.
-      { title: 'Check how steady the probe is?', buttonTrueText: 'Start', plateCheck: plateCheckNeeded(this.$store.state.history?.jobs) }
-    )
-    if (!ok || target !== this.maintenanceTarget || !this.canCheck) return
-    // Config not loaded yet counts as unreadable, as for every hand move.
-    const settings = this.$store.state.printer.printer.configfile?.settings
-    const noGo = settings && Object.keys(settings).length ? readNoGo(settings.bed_mesh) : 'invalid'
-    if (noGo === 'invalid') {
-      EventBus.$emit('The printer’s no-go regions could not be read, so the probe check will not move the head. Check [bed_mesh] in printer.cfg.', { type: 'warning' })
-      return
-    }
-    let lift: number | undefined
-    if (noGo) {
-      // Where homing leaves the head isn't known here, so with no-go regions
-      // the check starts from a homed head whose height is known.
-      if (!this.allHomed) {
-        EventBus.$emit('Home the printer first: the way to the middle of the bed passes the notch.', { type: 'warning' })
-        return
-      }
-      // Lift only if the head is below the crossing height (never lower it onto
-      // whatever is on the plate), sent in G-code coordinates.
-      const printer = this.$store.state.printer.printer
-      const toolZ = Number(printer.toolhead?.position?.[2])
-      const gcodeZ = Number(printer.gcode_move?.gcode_position?.[2])
-      if (!Number.isFinite(toolZ) || !Number.isFinite(gcodeZ)) return
-      const clear = noGo.traverseZ + meshSpan(printer.bed_mesh)
-      if (toolZ < clear) lift = Math.round((clear - (toolZ - gcodeZ)) * 1000) / 1000
-    }
-    this.sendGcode(probeAccuracyScript(this.allHomed, this.middle, lift), this.$waits.onProbeAccuracy)
-  }
 }
 </script>
 
 <style lang="scss" scoped>
-  .probe__rows {
+  .probe__row {
     display: flex;
-    flex-direction: column;
-
-    > .crow + .crow {
-      border-top: 1px solid var(--m3d-border);
-    }
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
   }
 
-  .probe__now {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
+  .probe__title {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .probe__sub {
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
   }
 
   .probe__state {
+    flex: none;
     padding: 2px 10px;
     border-radius: 999px;
-    background: var(--m3d-surface-2);
-    color: var(--m3d-text-muted);
+    background: color-mix(in srgb, var(--m3d-success) 16%, transparent);
+    color: var(--m3d-success);
     font-size: 12px;
     font-weight: 600;
   }
 
-  .probe__state--hit {
-    background: rgba(255, 159, 10, 0.16);
-    color: var(--m3d-warning, #ff9f0a);
+  .probe__state--unknown {
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text-muted);
   }
 
-  .probe__link {
-    color: var(--m3d-accent);
-    font-size: 13px;
-    font-weight: 600;
-
-    &:disabled {
-      opacity: 0.45;
-    }
+  .probe__state--hit {
+    background: color-mix(in srgb, var(--m3d-warning) 16%, transparent);
+    color: var(--m3d-warning, #ff9f0a);
   }
 
   .probe__result {
@@ -325,11 +248,17 @@ export default class ProbeCard extends Mixins(MaintenanceMixin) {
   .probe__note {
     margin: 0;
     color: var(--m3d-text-muted);
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .probe__buttons {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
+  }
+
+  .probe__button {
+    flex: 1 1 0;
+    justify-content: center;
   }
 </style>
