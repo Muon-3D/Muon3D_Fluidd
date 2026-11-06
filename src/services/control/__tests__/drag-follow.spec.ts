@@ -6,7 +6,7 @@ function host () {
   const h = {
     sent: [] as DragTarget[],
     inFlight: false,
-    refuse: (_t: DragTarget) => '',
+    refuse: ((): string => '') as (t: DragTarget) => string,
     land () { h.inFlight = false }
   }
   return {
