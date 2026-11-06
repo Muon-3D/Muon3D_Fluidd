@@ -458,7 +458,9 @@ export default class MuonLibrary extends Vue {
       { id: 'toys-games', label: 'Toys & games' },
       { id: 'spare-parts', label: 'Spare parts' },
       { id: 'art', label: 'Art' },
-      { id: 'education', label: 'Education' }
+      { id: 'education', label: 'Education' },
+      { id: 'cosplay', label: 'Cosplay' },
+      { id: 'other', label: 'Other' }
     ]
   }
 
@@ -527,7 +529,8 @@ export default class MuonLibrary extends Vue {
 
   matches (card: ShelfCard): boolean {
     if (this.fits && !card.m1) return false
-    if (this.chip !== 'all' && card.category !== this.chip) return false
+    // A print with no category (Muon3D's tested catalogue) is Other, never lost from every chip but All.
+    if (this.chip !== 'all' && (card.category || 'other') !== this.chip) return false
     const words = this.query.trim().toLowerCase().split(/\s+/).filter(Boolean)
     const haystack = [card.title, card.creator, card.handle ?? '', ...card.tags].join(' ').toLowerCase()
     return words.every(word => haystack.includes(word))

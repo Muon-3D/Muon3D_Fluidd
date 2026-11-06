@@ -19,6 +19,7 @@ test('the header says what Discover is, and the switch takes you to Yours', asyn
   await page.getByRole('tab', { name: 'Yours' }).click()
   await expect(page).toHaveURL(/view=mine/)
   await expect(page.getByTestId('library-signed-out')).toContainText('Sign in to see yours')
+  await expect(page.getByTestId('library-purpose')).toHaveText('What you sliced, printed, saved and shared')
 })
 
 test('in Control, Discover opens on what the open printer can print, and the chip turns that off', async ({ page, open }) => {
@@ -27,7 +28,9 @@ test('in Control, Discover opens on what the open printer can print, and the chi
   await expect(fits).toHaveText(/Fits Boxwood/)
   await expect(fits).toHaveAttribute('aria-pressed', 'true')
   // The fake marks odd prints Made for M1: with Fits on, Popular holds only those.
-  for (const title of await titles(page, 'popular')) expect(Number(title.replace('Print ', '')) % 2).toBe(1)
+  const fitting = await titles(page, 'popular')
+  expect(fitting.length).toBeGreaterThan(0)
+  for (const title of fitting) expect(Number(title.replace('Print ', '')) % 2).toBe(1)
   await fits.click()
   await expect(fits).toHaveAttribute('aria-pressed', 'false')
   await expect(shelf(page, 'popular')).toContainText('Print 12')
@@ -47,7 +50,10 @@ test('search finds prints by maker, and Clear filter brings everything back', as
   await open('/library?view=discover')
   await page.getByTestId('library-discover-chip-fits').click()
   await page.getByRole('searchbox', { name: 'Search Discover' }).fill('maker 3')
-  for (const title of await titles(page, 'popular')) expect(Number(title.replace('Print ', '')) % 4).toBe(3)
+  await expect(shelf(page, 'popular').locator('.mcard__title').first()).toBeVisible()
+  const found = await titles(page, 'popular')
+  expect(found.length).toBeGreaterThan(0)
+  for (const title of found) expect(Number(title.replace('Print ', '')) % 4).toBe(3)
   await page.getByRole('searchbox', { name: 'Search Discover' }).fill('no such print')
   await page.getByTestId('library-discover-empty').getByRole('button', { name: 'Clear filter' }).click()
   await expect(shelf(page, 'popular')).toContainText('Print 12')
