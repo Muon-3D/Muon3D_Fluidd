@@ -2,7 +2,8 @@ import { defaultLayout, layoutKey, readLayout, serverLayoutKey, type OverviewLay
 
 /** What is written, in the browser and in the printer's settings. */
 export interface SavedLayout extends OverviewLayout { version: 1; savedAt: number }
-export interface LayoutContext { accountId: string | null; printerId: string | null }
+/** Whose layout, on which printer, and of which page ('overview' when not said). */
+export interface LayoutContext { accountId: string | null; printerId: string | null; page?: string }
 type Storage_ = Pick<Storage, 'getItem' | 'setItem'>
 
 function checked (raw: unknown, defs: TileDefault[]): { layout: OverviewLayout; savedAt: number } | null {
@@ -31,13 +32,13 @@ export function loadLayout (context: LayoutContext, serverLayouts: unknown, stor
   const server = serverLayouts && typeof serverLayouts === 'object'
     ? checked((serverLayouts as Record<string, unknown>)[serverLayoutKey(context.accountId, context.printerId)], defs)
     : null
-  const local = fromBrowser(layoutKey(context.accountId, context.printerId), storage, defs)
+  const local = fromBrowser(layoutKey(context.accountId, context.printerId, context.page), storage, defs)
   return (server ?? local)?.layout ?? defaultLayout(defs)
 }
 
 /** Keeps the layout in this browser and returns the copy to send to the printer's settings. */
 export function saveLayout (context: LayoutContext, layout: OverviewLayout, storage: Storage_, now: number = Date.now()): SavedLayout {
   const record: SavedLayout = { version: 1, savedAt: now, tiles: layout.tiles.map(t => ({ ...t })), hidden: [...layout.hidden] }
-  try { storage.setItem(layoutKey(context.accountId, context.printerId), JSON.stringify(record)) } catch { /* the printer still keeps it */ }
+  try { storage.setItem(layoutKey(context.accountId, context.printerId, context.page), JSON.stringify(record)) } catch { /* the printer still keeps it */ }
   return record
 }

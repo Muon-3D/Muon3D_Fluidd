@@ -43,6 +43,7 @@
             type="button"
             class="cset__chip cset__add"
             data-tid="console-settings-add-quick"
+            :disabled="!quickKey"
             @click="editQuick(null)"
           >
             <frame-icon
@@ -53,7 +54,17 @@
           </button>
         </app-draggable>
       </div>
-      <p class="cset__help">
+      <p
+        v-if="!quickKey"
+        class="cset__help"
+        data-tid="console-settings-quick-loading"
+      >
+        Loading your account…
+      </p>
+      <p
+        v-else
+        class="cset__help"
+      >
         Shown as chips above the console input. Drag to reorder; double-click to edit. Saved for you on this printer.
       </p>
     </section>
@@ -272,7 +283,7 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import {
-  HISTORY_COUNTS, LINES_KEPT, chipText, consoleConfig, describeFilter, moveQuickCommand, quickCommandsFor, quickCommandsKey, saveQuickCommand,
+  HISTORY_COUNTS, LINES_KEPT, chipText, consoleConfig, describeFilter, moveQuickCommand, quickCommandsFor, accountQuickKey, saveQuickCommand,
   type ConsoleConfig, type QuickCommand
 } from '@/services/console/settings'
 import { SocketActions } from '@/api/socketActions'
@@ -320,12 +331,13 @@ export default class ConsoleSettings extends Mixins(StateMixin) {
 
   // -- quick commands -----------------------------------------------------------
 
-  get quickKey (): string {
-    return quickCommandsKey(cloudState.account?.id)
+  /** This person's key, or null while the account is still loading: nothing is read or saved before it is known. */
+  get quickKey (): string | null {
+    return accountQuickKey(cloudState)
   }
 
   get quick (): QuickCommand[] {
-    return quickCommandsFor(this.config, this.quickKey)
+    return this.quickKey ? quickCommandsFor(this.config, this.quickKey) : []
   }
 
   get quickOrder (): QuickCommand[] {
@@ -338,14 +350,17 @@ export default class ConsoleSettings extends Mixins(StateMixin) {
 
   /** Kept per person: the whole map in the page, only this person's list written to the printer. */
   saveQuickList (list: QuickCommand[]) {
+    const key = this.quickKey
+    if (!key) return
     this.$store.dispatch('config/saveByPath', {
       path: 'uiSettings.console.quickCommands',
-      value: { ...this.config.quickCommands, [this.quickKey]: list }
+      value: { ...this.config.quickCommands, [key]: list }
     })
-    SocketActions.serverWrite(`uiSettings.console.quickCommands.${this.quickKey}`, list)
+    SocketActions.serverWrite(`uiSettings.console.quickCommands.${key}`, list)
   }
 
   editQuick (q: QuickCommand | null) {
+    if (!this.quickKey) return
     this.quickEditing = q ? { ...q } : null
     this.quickOpen = true
   }

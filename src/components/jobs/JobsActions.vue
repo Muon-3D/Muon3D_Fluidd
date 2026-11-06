@@ -22,12 +22,6 @@
         @keydown.esc="page.query = ''"
       >
     </label>
-    <seg-picker
-      :options="sorts"
-      :value="page.sort"
-      label="Order"
-      @input="setSort"
-    />
     <button
       v-if="isMobileViewport"
       type="button"
@@ -57,6 +51,93 @@
         @keydown.esc="page.query = ''"
       >
     </label>
+    <div
+      class="jobs-actions__tools"
+      role="toolbar"
+      aria-label="Files"
+      data-tid="jobs-toolbar"
+    >
+      <button
+        type="button"
+        class="cbtn"
+        :disabled="!controlReady"
+        data-tid="jobs-toolbar-new-folder"
+        @click="page.folderTick++"
+      >
+        <frame-icon
+          name="plus"
+          small
+        />
+        New folder
+      </button>
+      <template v-if="page.selected">
+        <button
+          type="button"
+          class="cbtn cbtn--ghost jobs-actions__count"
+          :aria-label="`Clear the selection of ${page.selected}`"
+          data-tid="jobs-sel-count"
+          @click="page.clearTick++"
+        >
+          <frame-icon
+            name="x"
+            small
+          />
+          {{ page.selected }} selected
+        </button>
+        <button
+          v-if="page.queueable"
+          type="button"
+          class="cbtn"
+          :disabled="!controlReady"
+          data-tid="jobs-sel-queue"
+          @click="page.queueTick++"
+        >
+          {{ queueText }}
+        </button>
+        <button
+          v-if="page.changeable"
+          type="button"
+          class="cbtn"
+          :disabled="!controlReady"
+          data-tid="jobs-sel-move"
+          @click="page.moveTick++"
+        >
+          <frame-icon
+            name="files"
+            small
+          />
+          Move to
+        </button>
+        <button
+          v-if="page.downloadable"
+          type="button"
+          class="jobs-actions__round"
+          :aria-label="page.downloadable === 1 ? 'Download' : `Download ${page.downloadable} files`"
+          title="Download"
+          data-tid="jobs-sel-download"
+          @click="page.downloadTick++"
+        >
+          <frame-icon name="download" />
+        </button>
+        <button
+          v-if="page.changeable"
+          type="button"
+          class="jobs-actions__round jobs-actions__round--danger"
+          :disabled="!controlReady"
+          :aria-label="page.changeable === 1 ? 'Delete' : `Delete ${page.changeable} items`"
+          title="Delete"
+          data-tid="jobs-sel-delete"
+          @click="page.deleteTick++"
+        >
+          <frame-icon name="trash" />
+        </button>
+        <span
+          v-if="page.heldNote"
+          class="jobs-actions__note"
+          data-tid="jobs-sel-held"
+        >{{ page.heldNote }}</span>
+      </template>
+    </div>
     <button
       type="button"
       class="cbtn cbtn--primary jobs-actions__upload"
@@ -96,12 +177,6 @@
           <v-list-item-title>{{ item.label }}</v-list-item-title>
         </v-list-item>
         <v-list-item
-          data-tid="jobs-select"
-          @click="page.selectTick++"
-        >
-          <v-list-item-title>Select</v-list-item-title>
-        </v-list-item>
-        <v-list-item
           :disabled="!controlReady"
           data-tid="jobs-new-folder"
           @click="page.folderTick++"
@@ -122,20 +197,9 @@
         <v-list-item
           :input-value="page.reverse"
           data-tid="jobs-reverse"
-          @click="page.reverse = !page.reverse"
+          @click="turnRound"
         >
           <v-list-item-title>{{ page.reverse ? 'Reversed' : 'Reverse order' }}</v-list-item-title>
-        </v-list-item>
-        <v-divider />
-        <v-subheader>Show</v-subheader>
-        <v-list-item
-          v-for="item in filters"
-          :key="item.value"
-          :input-value="page.filter === item.value"
-          :data-tid="`jobs-filter-${item.value}`"
-          @click="page.filter = item.value"
-        >
-          <v-list-item-title>{{ item.label }}</v-list-item-title>
         </v-list-item>
       </v-list>
     </v-menu>
@@ -147,33 +211,37 @@ import { Component, Mixins } from 'vue-property-decorator'
 import FrameMixin from '@/mixins/frame'
 import BrowserMixin from '@/mixins/browser'
 import ControlMixin from '@/mixins/control'
-import SegPicker from '@/components/control/SegPicker.vue'
-import { JOBS_FILTERS, JOBS_SORTS, MORE_SORTS, type JobsSort } from '@/services/jobs/list'
+import { MORE_SORTS, type JobsSort } from '@/services/jobs/list'
+import { queueLabel } from '@/services/jobs/model'
 import { jobsPage, setJobsSort } from '@/services/jobs/page-state'
 import type { SectionPage } from '@/router/printerSections'
 
 /**
- * Jobs' page actions, top right: search, the order, Upload, and a ··· menu
- * that holds the pages Jobs used to show as tabs (History, Timelapse).
+ * Jobs' one toolbar, top right, as File Explorer has it: search, New folder,
+ * and, only while something is selected, what can be done to the selection
+ * (Move to, Download, Delete). Then Upload, the page's one primary button,
+ * and a ··· menu with the pages Jobs used to show as tabs (History,
+ * Timelapse) and the orders that have no column. The list's column
+ * headers are the order.
  */
-@Component({ components: { SegPicker } })
+@Component({})
 export default class JobsActions extends Mixins(FrameMixin, BrowserMixin, ControlMixin) {
   page = jobsPage
 
-  get sorts () {
-    return JOBS_SORTS
+  get queueText (): string {
+    return queueLabel(jobsPage.queueable)
   }
 
   get moreSorts () {
     return MORE_SORTS
   }
 
-  get filters () {
-    return JOBS_FILTERS
+  setSort (sort: JobsSort) {
+    setJobsSort(sort, false)
   }
 
-  setSort (sort: JobsSort) {
-    setJobsSort(sort)
+  turnRound () {
+    setJobsSort(jobsPage.sort, !jobsPage.reverse)
   }
 
   /** Pages of the Jobs section other than Jobs itself. */
@@ -210,21 +278,25 @@ export default class JobsActions extends Mixins(FrameMixin, BrowserMixin, Contro
 <style lang="scss" scoped>
   .jobs-actions {
     display: flex;
-    flex-wrap: wrap;
+    flex: 1 1 auto;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-end;
     gap: 10px;
+    min-width: 0;
   }
 
   .jobs-actions--phone {
+    flex-wrap: wrap;
     justify-content: flex-start;
   }
 
   .jobs-actions__find {
     display: inline-flex;
     align-items: center;
+    flex: 0 1 220px;
     gap: 8px;
-    width: 220px;
+    min-width: 120px;
     height: 44px;
     padding: 0 14px;
     border-radius: 14px;
@@ -259,6 +331,39 @@ export default class JobsActions extends Mixins(FrameMixin, BrowserMixin, Contro
     border-radius: 50%;
     background: var(--m3d-surface-2);
     color: var(--m3d-text);
+  }
+
+  .jobs-actions__tools {
+    display: flex;
+    flex: none;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .jobs-actions__count {
+    padding: 0 12px;
+  }
+
+  .jobs-actions__note {
+    max-width: 220px;
+    color: var(--m3d-text-muted);
+    font-size: 12px;
+  }
+
+  .jobs-actions__round--danger {
+    background: color-mix(in srgb, var(--m3d-danger) 16%, transparent);
+    color: var(--m3d-danger);
+  }
+
+  .jobs-actions__round:disabled {
+    opacity: 0.45;
+  }
+
+  .jobs-actions--phone .jobs-actions__tools {
+    order: 8;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
   }
 
   .jobs-actions__round--on {

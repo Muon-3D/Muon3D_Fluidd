@@ -79,6 +79,20 @@ describe('developer mode in Settings', () => {
     expect(devModeState.canManage).toBe(false)
   })
 
+  it('resolves to the value this request got, and null when it got none', async () => {
+    api.getDevModeStatusDevModeGet.mockResolvedValue(status({ enabled: true }))
+    expect(await refreshDevMode()).toBe(true)
+
+    api.getDevModeStatusDevModeGet.mockRejectedValue(new Error('down'))
+    http.serverMuonDevModeGet.mockResolvedValue({ data: { result: { enabled: false } } })
+    expect(await refreshDevMode()).toBe(false)
+
+    // Neither route answers: the shared state keeps the last value, the return does not.
+    http.serverMuonDevModeGet.mockRejectedValue(new Error('down'))
+    expect(await refreshDevMode()).toBeNull()
+    expect(devModeState.enabled).toBe(false)
+  })
+
   it('shows the switch to the owner, and to nobody else on a linked printer', async () => {
     const owner = mounted()
     await settle()

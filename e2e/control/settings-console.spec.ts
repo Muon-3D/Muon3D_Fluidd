@@ -210,7 +210,7 @@ test('with the printer gone, the Console\'s chips are greyed out and say why, an
   const { printer } = await setUp(page)
   await open('/console')
   await expect(page.getByTestId('console-quick-M105')).toBeEnabled()
-  printer.goOffline()
+  await printer.offline()
   await expect(page.getByTestId('console-quick-M105')).toBeDisabled()
   await expect(page.getByTestId('console-quick-note')).toContainText("You can't send commands to this printer")
   await page.getByTestId('console-quick-M105').click({ force: true })
@@ -231,4 +231,40 @@ test('Text size and Newest at change the console', async ({ page, open }) => {
   await expect(log).toHaveClass(/cons__log--lg/)
   const [first, last] = [await log.getByText('first line').boundingBox(), await log.getByText('last line').boundingBox()]
   expect(last!.y).toBeLessThan(first!.y)
+})
+
+test.describe('signed in to a Muon3D account', () => {
+  test.use({ signedIn: true })
+
+  test('the chips are kept under the account\'s own key, never under "anonymous", and are there again after a reload', async ({ page, open, account }) => {
+    const { db } = await setUp(page)
+    const key = `uiSettings.console.quickCommands.${account.account.id}`
+    await open('/settings#console')
+    await expect(settings(page).getByRole('heading', { name: 'Quick commands · 6' })).toBeVisible()
+    await addQuick(page, 'M115', 'Firmware')
+    await expect.poll(() => db.posts().filter(p => p.key === key).at(-1)?.value.map((q: { command: string }) => q.command))
+      .toEqual(['G28', 'M105', 'BED_MESH_CALIBRATE', 'QUERY_PROBE', 'FIRMWARE_RESTART', 'STATUS', 'M115'])
+    expect(quickSaves(db)).toEqual([])
+
+    await open('/console')
+    await expect(page.getByTestId('console-quick-M115')).toHaveText('Firmware')
+  })
+
+  test('nothing is read or written for "anonymous" while the account is still loading', async ({ page, open }) => {
+    const { db } = await setUp(page)
+    let release: () => void = () => {}
+    const gate = new Promise<void>(resolve => { release = resolve })
+    await page.route('**/v1/me', async route => {
+      await gate
+      await route.fallback()
+    })
+    await open('/settings#console')
+    await expect(settings(page).getByTestId('console-settings-quick-loading')).toBeVisible()
+    await expect(settings(page).getByTestId('console-settings-add-quick')).toBeDisabled()
+    await expect(settings(page).getByRole('heading', { name: 'Quick commands · 0' })).toBeVisible()
+    release()
+    await expect(settings(page).getByRole('heading', { name: 'Quick commands · 6' })).toBeVisible()
+    await expect(settings(page).getByTestId('console-settings-add-quick')).toBeEnabled()
+    expect(db.posts().filter(p => String(p.key).startsWith('uiSettings.console.quickCommands'))).toEqual([])
+  })
 })

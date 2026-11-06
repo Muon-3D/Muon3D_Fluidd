@@ -29,6 +29,8 @@ export interface UiSettings {
   maintenance: MaintenanceConfig;
   overview: OverviewConfig;
   console: ConsoleConfig;
+  /** Each person's Control layout on this printer, the same shape as Overview's. */
+  control: OverviewConfig;
 }
 
 /** Each person's Overview layout on this printer, by key (see services/overview/layout), as saved by Edit mode. */
@@ -110,6 +112,8 @@ export interface GeneralConfig {
   showUploadAndPrint: boolean;
   flipConsoleLayout: boolean;
   cameraFullscreenAction: CameraFullscreenAction;
+  /** Camera uids in the order they are listed and switched through; cameras not named go last, by name. */
+  cameraOrder: string[];
   topNavPowerToggle: null | string;
   showManualProbeDialogAutomatically: boolean;
   showBedScrewsAdjustDialogAutomatically: boolean;

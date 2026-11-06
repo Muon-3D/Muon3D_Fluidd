@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_QUICK_COMMANDS, chipText, compileFilter, consoleConfig, defaultConsoleConfig, describeFilter, filterProblem,
-  moveQuickCommand, previewFilter, quickCommandsFor, quickCommandsKey, saveQuickCommand
+  accountQuickKey, moveQuickCommand, previewFilter, quickCommandsFor, quickCommandsKey, saveQuickCommand
 } from '../settings'
 import type { ConsoleEntry } from '@/store/console/types'
 
@@ -32,6 +32,13 @@ describe('quick commands', () => {
   it('key a person so a dot cannot split the settings path', () => {
     expect(quickCommandsKey('acc.1@x')).toBe('acc_1_x')
     expect(quickCommandsKey(null)).toBe('anonymous')
+  })
+
+  it('has no key while the account is still loading, then the account key, or anonymous when nobody is signed in', () => {
+    expect(accountQuickKey({ ready: false, account: null })).toBeNull()
+    expect(accountQuickKey({ ready: false, account: { id: 'a1' } })).toBeNull()
+    expect(accountQuickKey({ ready: true, account: { id: 'a1' } })).toBe('a1')
+    expect(accountQuickKey({ ready: true, account: null })).toBe('anonymous')
   })
 
   it('add with a fresh id, replace by id, and move', () => {
