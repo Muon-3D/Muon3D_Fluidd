@@ -54,7 +54,12 @@
             v-if="shown && shown.colour"
             class="matp__swatch"
             :style="{ background: shown.colour }"
-          />{{ shown ? shown.name : 'Not set' }}
+          /><v-icon
+            v-if="!shown && !filamentSensed"
+            x-small
+            class="matp__warn"
+            data-tid="material-warning"
+          >$warning</v-icon><span data-tid="material-name">{{ shown ? shown.name : filamentSensed ? 'Filament loaded' : 'No material loaded' }}</span>
         </span>
         <span class="ov-tile__sub">{{ subtitle }}</span>
       </button>
@@ -254,22 +259,42 @@
           />
           Heat for {{ loadedMaterial.name }}
         </button>
+      </div>
+      <div
+        v-if="loadMacro || unloadMacro"
+        class="matp__filament"
+        data-tid="material-load-unload"
+      >
         <button
-          v-if="hasMacro('LOAD_FILAMENT')"
+          v-if="loadMacro"
           type="button"
-          class="cbtn"
-          :disabled="!klippyReady || busy"
-          @click="run('LOAD_FILAMENT')"
+          class="cbtn matp__icon-btn"
+          :disabled="!klippyReady || loadPlan.kind === 'none'"
+          :title="loadPlan.kind === 'none' ? loadPlan.reason : 'Load filament'"
+          aria-label="Load filament"
+          data-tid="material-load"
+          @click="runOnce('load')"
         >
+          <frame-icon
+            name="down"
+            small
+          />
           Load
         </button>
         <button
-          v-if="hasMacro('UNLOAD_FILAMENT')"
+          v-if="unloadMacro"
           type="button"
-          class="cbtn"
-          :disabled="!klippyReady || busy"
-          @click="run('UNLOAD_FILAMENT')"
+          class="cbtn matp__icon-btn"
+          :disabled="!klippyReady || unloadPlan.kind === 'none'"
+          :title="unloadPlan.kind === 'none' ? unloadPlan.reason : 'Unload filament'"
+          aria-label="Unload filament"
+          data-tid="material-unload"
+          @click="runOnce('unload')"
         >
+          <frame-icon
+            name="up"
+            small
+          />
           Unload
         </button>
       </div>
@@ -286,7 +311,7 @@
 
 <script lang="ts">
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
-import ControlMixin from '@/mixins/control'
+import FilamentActionsMixin from '@/mixins/filament-actions'
 import { FILAMENT_COLOURS, colourName, normaliseColour, type MaterialChoice } from '@/services/control/model'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
@@ -300,7 +325,7 @@ import { activeSlug } from '@/services/printer-pages'
  * the printer's own macros.
  */
 @Component({})
-export default class MaterialPicker extends Mixins(ControlMixin) {
+export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
   @Prop({ type: Boolean })
   readonly phone?: boolean
 
@@ -365,7 +390,7 @@ export default class MaterialPicker extends Mixins(ControlMixin) {
       const colour = this.printingWith.colour ? colourName(this.printingWith.colour) : ''
       return [colour, 'From the file printing. Tap to say what\'s loaded'].filter(Boolean).join(' · ')
     }
-    if (!m) return 'Tap to say what\'s loaded'
+    if (!m) return this.filamentSensed ? 'Tap to say which material' : 'Tap to say what\'s loaded'
     return [this.loadedColour ? this.loadedColourName : '', this.temps(m)].filter(Boolean).join(' · ')
   }
 
@@ -417,9 +442,9 @@ export default class MaterialPicker extends Mixins(ControlMixin) {
     this.open = false
   }
 
-  run (macro: string) {
-    this.sendGcode(macro)
-    this.open = false
+  /** Load or Unload (FilamentActionsMixin), once however often it's pressed; the panel closes once it's sent. */
+  async runOnce (which: 'load' | 'unload') {
+    if (await this.runFilamentPlan(which)) this.open = false
   }
 }
 </script>
@@ -438,6 +463,11 @@ export default class MaterialPicker extends Mixins(ControlMixin) {
 
   .matp__tile--phone {
     grid-column: 1 / -1;
+  }
+
+  .matp__warn {
+    margin-right: 6px;
+    color: var(--m3d-warning) !important;
   }
 
   .matp__swatch {

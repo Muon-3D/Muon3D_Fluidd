@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from 'vitest'
-import { diskUse, frequency, latest, networkLines, osName, serviceState } from '../model'
+import { diskUse, frequency, interfaceIp, latest, loadBars, loadHealth, networkLines, osName, servicesLine, serviceState, signalWord } from '../model'
 
 describe('a service', () => {
   test.each([
@@ -52,5 +52,62 @@ describe('usage', () => {
     expect(latest([{ load: '0.40' }, { load: '1.25' }], 'load')).toBe(1.25)
     expect(latest([], 'load')).toBeNull()
     expect(latest([{ load: 'x' }], 'load')).toBeNull()
+  })
+})
+
+describe('the load bars', () => {
+  const size = (b: number) => `${Math.round(b / 1024 ** 3)} GB`
+  const input = { load: 0.72, cores: 4, memoryPercent: 27, memoryTotalKb: 4 * 1024 * 1024, disk: { share: 0.34, text: '9 of 28 GB used' }, temperature: 47 }
+
+  it('puts the processor against its cores, memory against its total, disk and temperature as they are', () => {
+    const bars = loadBars(input, size)
+    expect(bars.map(b => [b.key, b.value])).toEqual([['cpu', '18%'], ['memory', '27%'], ['disk', '34%'], ['temperature', '47 °C']])
+    expect(bars[1].sub).toBe('of 4 GB')
+    expect(bars[3].share).toBeCloseTo(47 / 85)
+  })
+
+  it('shows a dash and an empty bar for what the printer has not reported', () => {
+    const bars = loadBars({ ...input, load: null, memoryPercent: null, disk: null, temperature: null }, size)
+    expect(bars.map(b => [b.value, b.share])).toEqual([['—', 0], ['—', 0], ['—', 0], ['—', 0]])
+  })
+
+  it('never fills past the end', () => {
+    expect(loadBars({ ...input, load: 9 }, size)[0].share).toBe(1)
+  })
+
+  it('is healthy until something is nearly full', () => {
+    expect(loadHealth(loadBars(input, size))).toEqual({ text: 'Healthy', tone: 'ok' })
+    expect(loadHealth(loadBars({ ...input, load: 3.8 }, size))).toEqual({ text: 'Busy', tone: 'warn' })
+  })
+})
+
+describe('the services line', () => {
+  const on = { inactive: false, state: { tone: 'ok' as const } }
+  it('says what is not right, else that all run', () => {
+    expect(servicesLine([])).toBe('')
+    expect(servicesLine([on, on])).toBe('all services running')
+    expect(servicesLine([on, { inactive: true, state: { tone: 'off' as const } }])).toBe('1 service stopped')
+    expect(servicesLine([on, { inactive: false, state: { tone: 'err' as const } }])).toBe('1 service has failed')
+  })
+})
+
+describe('the network interfaces', () => {
+  const network = {
+    lo: { ip_addresses: [{ family: 'ipv4', address: '127.0.0.1' }] },
+    eth0: { ip_addresses: [{ family: 'ipv6', address: 'fe80::1' }] },
+    wlan0: { ip_addresses: [{ family: 'ipv6', address: 'fe80::2' }, { family: 'ipv4', address: '192.168.1.42' }] }
+  }
+
+  it('finds an interface by its name and gives its IPv4 address', () => {
+    expect(interfaceIp(network, ['wlan', 'wl'])).toEqual({ name: 'wlan0', ip: '192.168.1.42' })
+  })
+
+  it('finds nothing for a cable that has no address', () => {
+    expect(interfaceIp(network, ['eth', 'en'])).toBeNull()
+    expect(interfaceIp(undefined, ['eth'])).toBeNull()
+  })
+
+  it('puts a signal in a word', () => {
+    expect([90, 60, 30, 5].map(signalWord)).toEqual(['Excellent', 'Good', 'Fair', 'Weak'])
   })
 })

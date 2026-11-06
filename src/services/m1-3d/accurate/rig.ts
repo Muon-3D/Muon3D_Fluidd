@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { Y_TOWARD_FRONT } from '@/services/machine/orientation'
 import type { ModelPlacement } from '../pose'
-import { GLASS_ORDER } from '../glass-material'
+import { FROSTED_PLATE, GLASS_ORDER } from '../glass-material'
 import { bindNodes } from './node-binding'
 import { ACCURATE_M1 } from './node-config'
 import { ACCURATE_RIG } from './klipper-map'
@@ -62,6 +62,11 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
     mesh.receiveShadow = true
     if (see) glass.push({ mesh, material })
   })
+  for (const { material } of glass) {
+    if (material.name !== FROSTED_PLATE.name) continue
+    material.roughness = FROSTED_PLATE.roughness
+    material.transmission = FROSTED_PLATE.transmission
+  }
 
   const front = Y_TOWARD_FRONT
   const printFrame = new THREE.Matrix4().set(
@@ -72,8 +77,11 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
   )
 
   // The hose is skinned to hose_base (fixed) and hose_head (a child of the carriage), so posing the
-  // carriage and gantry moves it; three works out a skinned mesh's bounds once, at rest, so it must not be culled.
-  scene.getObjectByName('M1_Hose')?.traverse(o => { o.frustumCulled = false })
+  // carriage and gantry moves it. The cross-rail belt is skinned the same way, to belt_base (the
+  // motor pulleys, fixed) and belt_gantry (a child of the gantry): its rail strand rides with the
+  // gantry and the strands back to the motors stretch. three works out a skinned mesh's bounds
+  // once, at rest, so neither may be culled.
+  for (const name of ['M1_Hose', 'M1_Belt']) scene.getObjectByName(name)?.traverse(o => { o.frustumCulled = false })
 
   // Moves the cargo into the plate's carrier, under the bed: it rides with the bed, the plate and the column.
   const accessories = buildAccurateAccessories(scene, cargo)
@@ -101,7 +109,7 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
         material.transmission = 0
         material.thickness = 0
         material.transparent = true
-        material.opacity = CHEAP_GLASS_OPACITY
+        material.opacity = material.name === FROSTED_PLATE.name ? FROSTED_PLATE.cheapOpacity : CHEAP_GLASS_OPACITY
         material.depthWrite = false
         material.needsUpdate = true
         mesh.renderOrder = GLASS_ORDER
