@@ -70,16 +70,17 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import MaintenanceMixin from '@/mixins/maintenance'
+import FilamentActionsMixin from '@/mixins/filament-actions'
+import { scopedPath } from '@/router/printerPagePaths'
+import { activeSlug } from '@/services/printer-pages'
 import { materialChoices, type MaterialChoice } from '@/services/control/model'
 import { EventBus } from '@/eventBus'
-import { findFilamentMacro, quickActions, type QuickAction } from '@/services/quick-actions/model'
+import { quickActions, type QuickAction } from '@/services/quick-actions/model'
 
 interface MacroLike {
   name?: unknown;
   config?: { gcode?: unknown };
 }
-
-const CHANGE_NAMES = ['m600', 'change_filament', 'filament_change']
 
 /**
  * The top bar's Quick actions: the things done most, a press each. Every one
@@ -88,7 +89,7 @@ const CHANGE_NAMES = ['m600', 'change_filament', 'filament_change']
  * same way, and says in plain words why it cannot be used when it cannot.
  */
 @Component({})
-export default class QuickActionsMenu extends Mixins(MaintenanceMixin) {
+export default class QuickActionsMenu extends Mixins(MaintenanceMixin, FilamentActionsMixin) {
   open = false
 
   /** The material to offer: the one loaded, else the one the heaters are set to, else PLA, else the first. */
@@ -102,10 +103,6 @@ export default class QuickActionsMenu extends Mixins(MaintenanceMixin) {
     return (this.$store.getters['macros/getMacros'] as MacroLike[] | undefined) ?? []
   }
 
-  get changeMacro () {
-    return findFilamentMacro(this.macroList, ...CHANGE_NAMES)
-  }
-
   get levelRow () {
     return this.checks.find(c => c.id === 'bedMesh') ?? null
   }
@@ -116,7 +113,8 @@ export default class QuickActionsMenu extends Mixins(MaintenanceMixin) {
       busy: this.busy,
       restartRefusal: this.restartRefusal,
       preheatName: this.preheatChoice?.name ?? null,
-      changeFilament: !!this.changeMacro,
+      changeFilament: this.changePlan.kind !== 'none',
+      changeFilamentReason: this.changePlan.kind === 'none' ? this.changePlan.reason : undefined,
       levelGcode: this.levelRow?.gcode ?? null,
       levelBlocked: this.checksBlocked
     })
@@ -160,21 +158,23 @@ export default class QuickActionsMenu extends Mixins(MaintenanceMixin) {
     if (this.commandRefusal) EventBus.$emit(this.commandRefusal, { type: 'error', timeout: 6000 })
   }
 
-  /** As Control's Filament card runs it: a macro that takes a TEMP is told the material's nozzle heat. Mid-print it pauses the print, so it asks first. */
+  /**
+   * As Control's Filament card does it (FilamentActionsMixin, KAN-1700).
+   * Mid-print: M600, which pauses the print, after its confirm. Idle: it
+   * sends nothing and opens the material panel on Control, where Load and
+   * Unload each ask first.
+   */
+  /** The material panel lives on Control's Filament card: open it there. */
+  openFilamentPanel () {
+    this.$router.push({ path: scopedPath('/control', activeSlug()), query: { filament: 'open' } }).catch(() => {})
+  }
+
   async changeFilament () {
-    const macro = this.changeMacro
-    if (!macro || !this.controlReady) return
-    const target = this.panelTarget
-    if (this.busy) {
-      const ok = await this.$confirm('The print pauses so the filament can be changed. Follow the steps on the printer, then resume.', {
-        title: 'Pause the print to change filament?',
-        buttonTrueText: 'Pause and change',
-        buttonFalseText: 'Keep printing'
-      })
-      if (!ok || target !== this.panelTarget || !this.controlReady) return
+    if (this.changePlan.kind === 'panel') {
+      this.openFilamentPanel()
+      return
     }
-    const temp = this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
-    this.sendGcode(macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name)
+    await this.runFilamentPlan('change')
   }
 }
 </script>
