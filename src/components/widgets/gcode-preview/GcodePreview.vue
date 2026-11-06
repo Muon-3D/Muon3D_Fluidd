@@ -329,6 +329,7 @@ import ExcludeObjects from '@/components/widgets/exclude-objects/ExcludeObjects.
 import GcodePreviewButton from './GcodePreviewButton.vue'
 import type { AppFile } from '@/store/files/types'
 import type { BedSize } from '@/store/printer/types'
+import { gcodeShapeRendering } from '@/services/m1-3d/render-options'
 
 @Component({
   components: {
@@ -409,7 +410,7 @@ export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
   }
 
   get shapeRendering () {
-    return this.panning ? 'optimizeSpeed' : 'geometricPrecision'
+    return gcodeShapeRendering(this.getUiSetting('modelDetail'), this.panning)
   }
 
   get showExcludeObjects () {

@@ -55,7 +55,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'console', label: 'Console', anchors: ['console'], icon: 'console', blurb: 'How the console reads and filters', keywords: ['terminal', 'filter', 'log'] },
   { id: 'files', label: 'Files and editor', anchors: ['browser', 'editor'], icon: 'files', blurb: 'How files are listed and edited', keywords: ['browser', 'editor', 'gcode', 'config'] },
   { id: 'toolhead', label: 'Moving and extruding', anchors: ['toolhead'], icon: 'control', blurb: "How Control's move pad, extrude buttons and macros behave", keywords: ['moving', 'extruding', 'speed', 'axis', 'homing', 'paper test'] },
-  { id: 'gcodePreview', label: 'G-code preview', anchors: ['gcodePreview'], icon: 'jobs', blurb: 'How the G-code preview draws a print', keywords: ['layers', '3d', 'render', 'preview'] },
+  { id: 'gcodePreview', label: 'G-code preview', anchors: ['gcodePreview'], icon: 'jobs', blurb: 'How the G-code preview and the 3D model draw', keywords: ['layers', '3d', 'render', 'preview', 'model', 'detail', 'animations', 'motion'] },
   { id: 'developer', label: 'Developer mode', anchors: ['developer'], icon: 'code', blurb: 'For people building on the printer', keywords: ['dev', 'developer', 'configuration'] },
   { id: 'system', label: 'System', anchors: [], icon: 'chip', blurb: "Restart, logs and the printer's health", keywords: ['restart', 'reboot', 'logs', 'shutdown', 'host'], page: '/system' }
 ]

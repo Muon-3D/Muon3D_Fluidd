@@ -1,10 +1,13 @@
 <template>
   <printer-stage
     class="m1-live"
-    :class="{ 'm1-live--on': shown }"
+    :class="{ 'm1-live--on': shown, 'm1-live--still': !viewerSettings.animate }"
     :state="state"
     data-tid="m1-live"
     :data-live="shown ? 'on' : 'off'"
+    :data-model="showModel ? 'on' : 'off'"
+    :data-detail="viewerSettings.detail"
+    :data-animations="viewerSettings.animate ? 'on' : 'off'"
   >
     <div
       v-if="live"
@@ -29,9 +32,11 @@ import { plateTaps, screenFrom, type LedStrip, type PlateTap, type ScreenState }
 import { motionPathFrom, type MotionPath } from '@/services/m1-3d/motion'
 import { modelPose, samePose, type ModelPose } from '@/services/m1-3d/pose'
 import { partColour, segmentsDone, toolpathFrom, toolpathFromGcode, type Toolpath } from '@/services/m1-3d/toolpath'
-import type { M1Viewer } from '@/services/m1-3d/viewer'
+import type { M1Viewer, ViewerSettings } from '@/services/m1-3d/viewer'
+import { modelAnimates, modelDetail } from '@/services/m1-3d/render-options'
 import type { ThumbState } from '@/components/ui/PrinterThumb.vue'
 import type { Move } from '@/store/gcodePreview/types'
+import type { GcodePreviewConfig } from '@/store/config/types'
 import { httpClientActions } from '@/api/httpClientActions'
 import { cloudState } from '@/services/muon-cloud/state'
 import { activeSlug } from '@/services/printer-pages'
@@ -96,6 +101,8 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   reducedMotionQuery: MediaQueryList | null = null
   reducedMotionListener: ((event: MediaQueryListEvent) => void) | null = null
   lastAccessories: Accessories | null = null
+  /** The system's prefers-reduced-motion, the animations' default. */
+  reducedMotion = false
 
   /** The print drawn, built from the preview once per file; frozen, so Vue leaves it alone. */
   printPath: Readonly<Toolpath> | null = null
@@ -124,6 +131,34 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     return liveSyncFor(activeSlug() ?? (this.$store.state.config.apiUrl as string) ?? '')
   }
 
+  get gcodePreviewSettings (): Partial<GcodePreviewConfig> {
+    return this.$store.state.config?.uiSettings?.gcodePreview ?? {}
+  }
+
+  /** Settings › G-code preview › Show the printer's 3D model; off, the stage shows its picture. */
+  get showModel (): boolean {
+    return this.gcodePreviewSettings.showPrinterModel !== false
+  }
+
+  get viewerSettings (): ViewerSettings {
+    return {
+      detail: modelDetail(this.gcodePreviewSettings.modelDetail),
+      animate: modelAnimates(this.gcodePreviewSettings.modelAnimations, this.reducedMotion)
+    }
+  }
+
+  @Watch('viewerSettings')
+  onViewerSettings (settings: ViewerSettings) {
+    this.sync().accessories.reducedMotion = !settings.animate
+    this.viewer?.setSettings(settings)
+  }
+
+  @Watch('showModel')
+  onShowModel (show: boolean) {
+    if (show) this.wake()
+    else this.stop()
+  }
+
   get pose (): ModelPose {
     return modelPose({
       position: this.position,
@@ -149,9 +184,10 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   mounted () {
     this.sync().setPose(this.pose)
     this.reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null
-    this.sync().accessories.reducedMotion = this.reducedMotionQuery?.matches ?? false
+    this.reducedMotion = this.reducedMotionQuery?.matches ?? false
+    this.sync().accessories.reducedMotion = !this.viewerSettings.animate
     this.reducedMotionListener = event => {
-      this.sync().accessories.reducedMotion = event.matches
+      this.reducedMotion = event.matches
       this.viewer?.wake()
     }
     if (this.reducedMotionQuery?.addEventListener) {
@@ -207,13 +243,13 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   /** Starts the live M1 when it can show (on screen, the printer there), and draws only while it shows. */
   wake () {
     if (!this.armed) return
-    const showing = this.visible && this.state !== 'offline' && !document.hidden
+    const showing = this.visible && this.showModel && this.state !== 'offline' && !document.hidden
     this.viewer?.setActive(showing)
     if (showing && !this.live) this.start()
   }
 
   async start () {
-    if (!this.armed) return
+    if (!this.armed || !this.showModel) return
     this.live = true
     this.giveBack = claimLiveView(() => this.stop())
     try {
@@ -237,6 +273,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
       }
       const { viewer, canvas } = held
       this.canvas = canvas
+      viewer.setSettings(this.viewerSettings)
       viewer.setActive(true)
       viewer.restyle()
       viewer.onFrame = () => {
@@ -286,7 +323,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   onAccessories (a: Accessories | null) {
     if (!a || sameAccessories(this.lastAccessories, a)) return
     this.lastAccessories = a
-    this.sync().accessories.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    this.sync().accessories.reducedMotion = !this.viewerSettings.animate
     this.sync().setAccessories(a, performance.now(), !!this.printPath)
     this.viewer?.wake()
   }
@@ -553,6 +590,10 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     &:active {
       cursor: grabbing;
     }
+  }
+
+  .m1-live--still :deep(.m1-live__canvas) {
+    transition: none;
   }
 
   .m1-live--on {
