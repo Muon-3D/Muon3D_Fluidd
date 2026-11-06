@@ -40,6 +40,7 @@
           {{ saveId ? '♥' : '♡' }}
         </button>
         <button
+          v-if="slug"
           type="button"
           class="mlib-btn"
           data-tid="library-print-share"
@@ -48,6 +49,7 @@
           Share
         </button>
         <a
+          v-if="slug"
           class="mlib-btn mlib-btn--icon"
           :href="pageHref"
           target="_blank"
@@ -213,6 +215,7 @@
               </select>
             </label>
             <a
+              v-if="slug"
               class="mlib-btn mlib-btn--sm"
               :href="remixLink"
               target="_blank"
@@ -368,7 +371,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
+import { Component, Mixins, Prop } from 'vue-property-decorator'
 import LibraryShelf from './LibraryShelf.vue'
 import LibraryState from './LibraryState.vue'
 import LibraryPublicationMixin from '@/mixins/library-publication'
@@ -401,24 +404,12 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
 
   private relatedReads: Record<string, number> = {}
 
-  @Watch('card.id', { immediate: true })
-  onPrint (id: string, before?: string) {
-    // Another print in the same page (a make or remix opened from its shelf): start again at its top.
-    if (before && id !== before) {
-      this.publication = null
-      this.print = null
-      this.pic = 0
-      this.saveId = ''
-      this.touched = false
-      this.note = ''
-      if (this.card.kind === 'publication') {
-        this.read()
-        if (this.signedIn) this.readSave()
-      }
-    }
+  // Each print is its own page: MuonLibrary keys it by id, so another print mounts afresh.
+  mounted () {
     this.readRelated('makes')
     this.readRelated('remixes')
-    if (typeof window !== 'undefined') window.scrollTo?.({ top: 0 })
+    // A page opened from a shelf far down starts at its top.
+    ;(this.$el as HTMLElement).scrollIntoView?.({ block: 'start' })
   }
 
   async readRelated (kind: 'makes' | 'remixes') {
@@ -494,7 +485,9 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
 
   /** Share: the print's page on library.muon3d.com, copied (or shared, where the device can). */
   async share () {
+    if (!this.slug) return
     const url = this.pageHref
+    this.note = ''
     try {
       const nav = navigator as Navigator & { share?: (data: { title: string, url: string }) => Promise<void> }
       if (nav.share && window.matchMedia?.('(pointer: coarse)').matches) {
@@ -503,7 +496,9 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
       }
       await navigator.clipboard.writeText(url)
       this.note = 'Link copied.'
-    } catch {
+    } catch (error) {
+      // Closing the share sheet is not a failure.
+      if ((error as { name?: string })?.name === 'AbortError') return
       this.note = `Copy this link: ${url}`
     }
   }

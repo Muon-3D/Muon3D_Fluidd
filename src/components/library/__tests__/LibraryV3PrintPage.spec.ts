@@ -94,6 +94,24 @@ describe('Library v3 print page', () => {
     expect(text(w, 'library-print-title')).toBe('Pocket robot, no supports')
   })
 
+  it('closing the share sheet says nothing; a page not yet read offers no links to its web page', async () => {
+    const share = vi.fn(async () => { throw Object.assign(new Error('closed'), { name: 'AbortError' }) })
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true })
+    vi.stubGlobal('matchMedia', () => ({ matches: true }))
+    const w = await page()
+    await w.find('[data-tid="library-print-share"]').trigger('click')
+    await flush()
+    expect(share).toHaveBeenCalledWith({ title: 'Pocket robot, no supports', url: 'https://library.muon3d.com/p/pocket-robot' })
+    expect(w.find('[data-tid="library-print-note"]').exists()).toBe(false)
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+
+    // Opened by its address (no slug yet) and its read failed: no Share, ↗ or Remix to a page with no address.
+    const bare = await page({ card: card({ slug: '' }) }, service({}, {}, ['/publications/p1']))
+    expect(bare.find('[data-tid="library-print-error"]').exists()).toBe(true)
+    expect(bare.find('[data-tid="library-print-share"]').exists()).toBe(false)
+    expect(bare.find('[data-tid="library-print-web"]').exists()).toBe(false)
+  })
+
   it('Share copies the link, or shows it to copy when the clipboard is refused', async () => {
     const w = await page()
     const writeText = vi.fn(async () => {})

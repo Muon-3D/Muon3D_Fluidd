@@ -1,5 +1,6 @@
 import { shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import Vue from 'vue'
 
 vi.mock('@/services/muon-cloud/state', async () => {
   const { default: Vue } = await import('vue')
@@ -107,6 +108,42 @@ describe('Library v3: Yours See all in the address', () => {
     direct.vm.collectionDeleted()
     expect(direct.back).not.toHaveBeenCalled()
     expect(direct.replace).toHaveBeenCalledWith({ query: { view: 'mine' } })
+  })
+
+  it('‹ on print pages goes back through the ones opened here, then to the place under them', () => {
+    const { vm, push, back, replace } = at({ view: 'discover' })
+    vm.openPrint('a')
+    vm.openPrint('b')
+    expect(push).toHaveBeenCalledTimes(2)
+    vm.printBack()
+    vm.printBack()
+    expect(back).toHaveBeenCalledTimes(2)
+    expect(replace).not.toHaveBeenCalled()
+    // Opened by its address: nothing of ours to go back through.
+    vm.printBack()
+    expect(back).toHaveBeenCalledTimes(2)
+    expect(replace).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaving the print pages another way forgets them, so ‹ never leaves the Library', async () => {
+    const route = Vue.observable({ query: { view: 'discover' } as Record<string, string> })
+    const back = vi.fn()
+    const replace = vi.fn(() => Promise.resolve())
+    const vm = shallowMount(Library, {
+      mocks: { $route: route, $router: { push: vi.fn(() => Promise.resolve()), replace, back }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
+      stubs: ['router-link', 'frame-icon', 'print-on-dialog', 'file-name-dialog', 'cloud-account-dialog']
+    }).vm as any
+    vm.openPrint('a')
+    route.query = { view: 'discover', print: 'a' }
+    await Vue.nextTick()
+    // Browser Back to Discover, then a print's page opened by its address.
+    route.query = { view: 'discover' }
+    await Vue.nextTick()
+    route.query = { view: 'discover', print: 'z' }
+    await Vue.nextTick()
+    vm.printBack()
+    expect(back).not.toHaveBeenCalled()
+    expect(replace).toHaveBeenCalledWith({ query: { view: 'discover' } })
   })
 
   it('Yours from a collection leaves it for Yours', () => {
