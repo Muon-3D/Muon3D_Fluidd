@@ -407,6 +407,15 @@ export function createLibraryClient (options: LibraryClientOptions) {
     createCollection: (name: string) => request<CommunityCollection>('POST', '/v1/community/collections', { name, visibility: 'private' }),
     addToCollection: (collectionId: string, saveId: string) =>
       request<null>('PUT', `/v1/community/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(saveId)}`),
+    /** Rename it, or make it public or private (PATCH takes only these). */
+    updateCollection: (id: string, patch: { name?: string, visibility?: 'private' | 'public' }) =>
+      request<CommunityCollection>('PATCH', `/v1/community/collections/${encodeURIComponent(id)}`, patch),
+    deleteCollection: (id: string) => request<null>('DELETE', `/v1/community/collections/${encodeURIComponent(id)}`),
+    removeFromCollection: (collectionId: string, saveId: string) =>
+      request<null>('DELETE', `/v1/community/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(saveId)}`),
+    /** Your order: every save in it, in the new order (the service checks it is the same set). */
+    reorderCollection: (id: string, saveIds: string[]) =>
+      request<null>('POST', `/v1/community/collections/${encodeURIComponent(id)}/reorder`, { save_ids: saveIds }),
     createPrint: (body: VersionBody & { name: string }) => request<Created>('POST', '/v1/prints', body),
     createVersion: (id: string, body: VersionBody) => request<Created>('POST', `${item(id)}/versions`, body),
     complete: (id: string, version: number) =>
