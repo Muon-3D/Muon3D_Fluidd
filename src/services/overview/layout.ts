@@ -95,9 +95,9 @@ export function readLayout (raw: unknown, defs: TileDefault[]): OverviewLayout |
 
 const safe = (s: string) => s.replace(/[^a-z0-9_-]/gi, '_')
 
-/** The browser's key for one person on one printer; no account is "anonymous". */
-export function layoutKey (accountId: string | null, printerId: string | null): string {
-  return `muon.overview.layout.v3.${safe(accountId ?? 'anonymous')}.${safe(printerId ?? 'printer')}`
+/** The browser's key for one person on one printer and page (Overview or Control); no account is "anonymous". */
+export function layoutKey (accountId: string | null, printerId: string | null, page = 'overview'): string {
+  return `muon.${safe(page)}.layout.v3.${safe(accountId ?? 'anonymous')}.${safe(printerId ?? 'printer')}`
 }
 
 /** The key inside the printer's settings (uiSettings.overview.layouts), where a dot would split the path. */
