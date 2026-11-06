@@ -21,8 +21,15 @@ describe('orderCameras', () => {
     expect(names(orderCameras([C, A, B], undefined))).toEqual(['Alpha', 'Bravo', 'Charlie'])
   })
 
-  it('matches an entry by name when no uid matches', () => {
-    expect(names(orderCameras([A, B, C], ['Charlie', 'u-a']))).toEqual(['Charlie', 'Alpha', 'Bravo'])
+  it('matches an entry by uid only, never by name', () => {
+    expect(names(orderCameras([A, B, C], ['Charlie', 'u-a']))).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  })
+
+  it('ignores an order that is not a list, and entries that are not text', () => {
+    expect(names(orderCameras([C, A, B], 'u-c' as unknown))).toEqual(['Alpha', 'Bravo', 'Charlie'])
+    expect(names(orderCameras([C, A, B], { 0: 'u-c' } as unknown))).toEqual(['Alpha', 'Bravo', 'Charlie'])
+    expect(names(orderCameras([C, A, B], null))).toEqual(['Alpha', 'Bravo', 'Charlie'])
+    expect(names(orderCameras([C, A, B], [null, 3, 'u-c'] as unknown))).toEqual(['Charlie', 'Alpha', 'Bravo'])
   })
 
   it('skips entries for cameras that are gone and repeats', () => {

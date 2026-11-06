@@ -80,7 +80,7 @@ test('no cameras: the standard empty state, with one button to add one', async (
   const empty = page.getByTestId('cameras-empty')
   await expect(empty).toContainText('No cameras yet')
   await expect(empty).toContainText('Plug a USB camera into the printer, or add one by its address.')
-  await expect(page.getByRole('button', { name: 'Add a camera' })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Add Camera' })).toHaveCount(1)
   await expect(page.getByTestId('cameras-list')).toHaveCount(0)
   expect(printer.called('server.webcams.post_item')).toEqual([])
 })
@@ -123,7 +123,7 @@ test('the show switch saves at once, and sends the camera as it was with the cha
   await openCameras(page, open)
   await page.getByTestId('camera-show-Toolhead').click()
   await expect.poll(() => printer.called('server.webcams.post_item')).toHaveLength(1)
-  expect(printer.called('server.webcams.post_item')[0]).toMatchObject({ uid: 'uid-toolhead', name: 'Toolhead', enabled: false, rotation: 180 })
+  expect(printer.called('server.webcams.post_item')[0]).toEqual({ ...TOOLHEAD, enabled: false })
 })
 
 test('adding starts with the stream types as cards, then the detail view pre-filled', async ({ page, open }) => {
@@ -131,7 +131,7 @@ test('adding starts with the stream types as cards, then the detail view pre-fil
   await openCameras(page, open)
   await page.getByTestId('camera-add').click()
   const types = page.getByTestId('camera-types')
-  await expect(types).toContainText('Add a camera')
+  await expect(types).toContainText('Add Camera')
   for (const name of ['MJPEG Adaptive', 'MJPEG Stream', 'WebRTC (camera-streamer)', 'WebRTC (go2rtc)', 'WebRTC (MediaMTX)', 'HLS Stream', 'IP Camera', 'HTTP page']) {
     await expect(types.getByRole('button', { name: new RegExp(name.replace(/[()]/g, '\\$&')) })).toBeVisible()
   }
@@ -152,15 +152,18 @@ test('adding starts with the stream types as cards, then the detail view pre-fil
   await page.getByTestId('camera-name').fill('Door')
   await page.getByTestId('camera-save').click()
   await expect.poll(() => printer.called('server.webcams.post_item')).toHaveLength(1)
-  expect(printer.called('server.webcams.post_item')[0]).toMatchObject({
+  // Exactly what the old dialog sent for a new camera: no uid, location, icon or aspect ratio.
+  expect(printer.called('server.webcams.post_item')[0]).toEqual({
     name: 'Door',
-    service: 'webrtc-go2rtc',
     enabled: true,
-    rotation: 0,
+    service: 'webrtc-go2rtc',
+    stream_url: '/webcam/?action=stream',
+    snapshot_url: '/webcam/?action=snapshot',
+    target_fps: 15,
+    target_fps_idle: 5,
     flip_horizontal: false,
     flip_vertical: false,
-    stream_url: '/webcam/?action=stream',
-    snapshot_url: '/webcam/?action=snapshot'
+    rotation: 0
   })
   await expect(page.getByTestId('cameras-list')).toBeVisible()
   await expect(page.getByTestId('camera-row-Door')).toBeVisible()
@@ -208,10 +211,120 @@ test('editing rotation and flips: the preview follows, and Save sends the camera
 
   await page.getByTestId('camera-save').click()
   await expect.poll(() => printer.called('server.webcams.post_item')).toHaveLength(1)
-  expect(printer.called('server.webcams.post_item')[0]).toMatchObject({
-    uid: 'uid-chamber', name: 'Chamber', rotation: 90, flip_horizontal: true, flip_vertical: true, service: 'webrtc-camerastreamer'
-  })
+  // Every field of the camera goes back, with what changed: uid, location, icon, aspect ratio and all.
+  expect(printer.called('server.webcams.post_item')[0]).toEqual({ ...CHAMBER, rotation: 90, flip_horizontal: true, flip_vertical: true })
   await expect(page.getByTestId('cameras-list')).toBeVisible()
+})
+
+test('an HTTP page: the aspect ratio is asked for and sent with the rest', async ({ page, open }) => {
+  const printer = await withCameras(page, [CHAMBER])
+  await openCameras(page, open)
+  await page.getByTestId('camera-add').click()
+  await page.getByTestId('camera-type-iframe').click()
+  await expect(page.getByTestId('camera-type')).toHaveValue('iframe')
+  await expect(page.getByTestId('camera-aspect')).toHaveValue('4:3')
+  await expect(page.getByTestId('camera-fps')).toHaveCount(0)
+
+  await page.getByTestId('camera-name').fill('Dashboard')
+  await page.getByTestId('camera-stream-url').fill('http://127.0.0.1:9/page')
+  await page.getByTestId('camera-snapshot-url').fill('http://127.0.0.1:9/shot')
+  await page.getByTestId('camera-aspect').fill('16:9')
+  await page.getByTestId('camera-save').click()
+  await expect.poll(() => printer.called('server.webcams.post_item')).toHaveLength(1)
+  expect(printer.called('server.webcams.post_item')[0]).toEqual({
+    name: 'Dashboard',
+    enabled: true,
+    service: 'iframe',
+    stream_url: 'http://127.0.0.1:9/page',
+    snapshot_url: 'http://127.0.0.1:9/shot',
+    target_fps: 15,
+    target_fps_idle: 5,
+    aspect_ratio: '16:9',
+    flip_horizontal: false,
+    flip_vertical: false,
+    rotation: 0
+  })
+})
+
+test('the address fields are URL fields without spellcheck', async ({ page, open }) => {
+  await withCameras(page, [TOOLHEAD])
+  await openCameras(page, open)
+  await page.getByTestId('camera-open-Toolhead').click()
+  for (const id of ['camera-stream-url', 'camera-snapshot-url']) {
+    await expect(page.getByTestId(id)).toHaveAttribute('type', 'url')
+    await expect(page.getByTestId(id)).toHaveAttribute('spellcheck', 'false')
+  }
+})
+
+test('Save needs what the old dialog needed: nothing is sent until each field is right', async ({ page, open }) => {
+  const printer = await withCameras(page, [TOOLHEAD])
+  await openCameras(page, open)
+  await page.getByTestId('camera-open-Toolhead').click()
+  const save = page.getByTestId('camera-save')
+  const problem = page.getByTestId('camera-problem')
+  const sent = () => printer.called('server.webcams.post_item')
+
+  // Each field in turn: wrong, refused with its own reason, then put right.
+  const cases: Array<[string, string, string, string]> = [
+    ['camera-name', '', 'Give the camera a name.', 'Toolhead'],
+    ['camera-stream-url', '', 'Enter the stream address.', TOOLHEAD.stream_url],
+    ['camera-snapshot-url', '', 'Enter the snapshot address.', TOOLHEAD.snapshot_url],
+    ['camera-fps', '', 'Enter the frame rate as a whole number, 1 or more.', '15'],
+    ['camera-fps', '0', 'Enter the frame rate as a whole number, 1 or more.', '15'],
+    ['camera-fps', '2.5', 'Enter the frame rate as a whole number, 1 or more.', '15'],
+    ['camera-fps-idle', '0', 'Enter the background frame rate as a whole number, 1 or more, or leave it empty.', '5'],
+    ['camera-fps-idle', '1.5', 'Enter the background frame rate as a whole number, 1 or more, or leave it empty.', '5']
+  ]
+  for (const [id, bad, message, good] of cases) {
+    await page.getByTestId(id).fill(bad)
+    await page.getByTestId(id).blur()
+    await save.click()
+    await expect(problem, `${id} = '${bad}'`).toHaveText(message)
+    await expect(page.getByTestId(id)).toHaveAttribute('aria-invalid', 'true')
+    expect(sent()).toEqual([])
+    await page.getByTestId(id).fill(good)
+    await page.getByTestId(id).blur()
+    await expect(page.getByTestId(id)).not.toHaveAttribute('aria-invalid', 'true')
+  }
+
+  // An empty idle rate is allowed, and is left out, not posted as ''.
+  await page.getByTestId('camera-fps-idle').fill('')
+  await save.click()
+  await expect.poll(sent).toHaveLength(1)
+  const { target_fps_idle: idle, ...rest } = TOOLHEAD
+  expect(idle).toBe(5)
+  expect(sent()[0]).toEqual(rest)
+})
+
+test('an HTTP page needs its aspect ratio as width:height', async ({ page, open }) => {
+  const printer = await withCameras(page, [camera('uid-web', 'Web', { service: 'iframe', aspect_ratio: '16:9' })])
+  await openCameras(page, open)
+  await page.getByTestId('camera-open-Web').click()
+  for (const bad of ['', '16', 'wide', '16:']) {
+    await page.getByTestId('camera-aspect').fill(bad)
+    await page.getByTestId('camera-save').click()
+    await expect(page.getByTestId('camera-problem'), `'${bad}'`).toHaveText('Enter the aspect ratio as width:height, like 16:9.')
+    await expect(page.getByTestId('camera-aspect')).toHaveAttribute('aria-invalid', 'true')
+  }
+  expect(printer.called('server.webcams.post_item')).toEqual([])
+  await page.getByTestId('camera-aspect').fill('21:9')
+  await page.getByTestId('camera-save').click()
+  await expect.poll(() => printer.called('server.webcams.post_item')).toHaveLength(1)
+  expect(printer.called('server.webcams.post_item')[0]).toMatchObject({ uid: 'uid-web', service: 'iframe', aspect_ratio: '21:9' })
+})
+
+test('the saved order is the default camera on the Camera page and on Overview', async ({ page, open, isMobile }) => {
+  // Alphabetical would open Chamber; the saved order puts Toolhead first.
+  await withCameras(page, [CHAMBER, TOOLHEAD], ['uid-toolhead', 'uid-chamber'])
+  await open('/camera')
+  // A stream that never answers leaves the stage empty, so it is attached, not necessarily visible.
+  await expect(page.getByTestId('camera-stage')).toBeAttached()
+  await expect(page.getByTestId('camera-stage').locator('.camera-name')).toHaveText('Toolhead')
+  if (!isMobile) await expect(page.getByTestId('camera-tabs').getByRole('link').first()).toHaveText('Toolhead')
+
+  await open('/')
+  await page.getByTestId('view-toggle').getByRole('button', { name: 'Camera' }).click()
+  await expect(page.getByTestId('stage-camera').locator('.camera-name')).toHaveText('Toolhead')
 })
 
 test('Cancel leaves the camera as it was and sends nothing', async ({ page, open }) => {
@@ -326,10 +439,10 @@ test('a camera from moonraker.conf opens read-only, with a lock note and no Save
   expect(printer.called('server.webcams.post_item')).toEqual([])
 })
 
-test('Viewing: Fullscreen opens is a segmented row that saves, and Camera on Overview links to General', async ({ page, open, isMobile }) => {
+test('Viewing: Fullscreen action is a segmented row that saves, and Camera on Overview links to General', async ({ page, open, isMobile }) => {
   const printer = await withCameras(page, [CHAMBER])
   await openCameras(page, open)
-  const fullscreen = page.getByRole('radiogroup', { name: 'Fullscreen opens' })
+  const fullscreen = page.getByRole('radiogroup', { name: 'Fullscreen action' })
   await expect(fullscreen.getByRole('radio', { name: 'Embed' })).toHaveAttribute('aria-checked', 'true')
   await fullscreen.getByRole('radio', { name: 'Raw stream' }).click()
   await expect(fullscreen.getByRole('radio', { name: 'Raw stream' })).toHaveAttribute('aria-checked', 'true')
@@ -355,7 +468,7 @@ test('phone: no sideways scroll, the arrows work by touch, and a camera opens wi
 
   await page.getByTestId('camera-open-Toolhead').tap()
   await expect(page.getByTestId('camera-preview')).toBeVisible()
-  await expect(page.getByRole('switch', { name: 'Show this camera' })).toBeVisible()
+  await expect(page.getByRole('switch', { name: 'Enable' })).toBeVisible()
   expect(await overflow()).toBeLessThanOrEqual(0)
   const [preview, name] = [await page.getByTestId('camera-preview').boundingBox(), await page.getByTestId('camera-name').boundingBox()]
   expect(preview!.y).toBeLessThan(name!.y)

@@ -23,7 +23,7 @@
       <div class="m3-set__row cams__head">
         <div class="m3-set__label">
           <h2 class="m3-set__title">
-            Add a camera
+            {{ $t('app.general.label.add_camera') }}
           </h2>
           <span>Choose the stream type. Then set its addresses and name.</span>
         </div>
@@ -48,7 +48,7 @@
           :data-tid="`camera-type-${type.value}`"
           @click="startNew(type.value)"
         >
-          <b>{{ type.label }}</b>
+          <b>{{ $t(type.labelKey) }}</b>
           <span>{{ type.hint }}</span>
         </button>
       </div>
@@ -70,7 +70,7 @@
           data-tid="camera-add"
           @click="view = 'types'"
         >
-          Add a camera
+          {{ $t('app.setting.btn.add_camera') }}
         </button>
       </section>
 
@@ -83,7 +83,7 @@
         <div class="m3-set__row cams__head">
           <div class="m3-set__label">
             <h2 class="m3-set__title">
-              Cameras · {{ cameras.length }}
+              {{ $tc('app.setting.title.camera', 2) }} · {{ cameras.length }}
             </h2>
             <span>The cameras Control shows, in the order you switch between them</span>
           </div>
@@ -98,7 +98,7 @@
                 name="plus"
                 small
               />
-              Add a camera
+              {{ $t('app.setting.btn.add_camera') }}
             </button>
           </div>
         </div>
@@ -120,6 +120,7 @@
             class="cams__grip"
             :aria-label="`Reorder ${camera.name}: Up and Down arrow keys move it`"
             :data-tid="`camera-grip-${camera.name}`"
+            :data-cam="camera.uid"
             @keydown.up.prevent="moveBy(index, -1)"
             @keydown.down.prevent="moveBy(index, 1)"
           >
@@ -171,6 +172,7 @@
                 :disabled="index === 0"
                 :aria-label="`Move ${camera.name} up`"
                 :data-tid="`camera-up-${camera.name}`"
+                :data-cam="camera.uid"
                 @click="moveBy(index, -1)"
               >
                 <frame-icon
@@ -183,6 +185,7 @@
                 :disabled="index === cameras.length - 1"
                 :aria-label="`Move ${camera.name} down`"
                 :data-tid="`camera-down-${camera.name}`"
+                :data-cam="camera.uid"
                 @click="moveBy(index, 1)"
               >
                 <frame-icon
@@ -212,14 +215,14 @@
       <section class="m3-set">
         <div class="m3-set__row">
           <div class="m3-set__label">
-            <b>Fullscreen opens</b>
+            <b>{{ $t('app.setting.label.camera_fullscreen_action.title') }}</b>
             <span>Embed keeps Control's controls on top. Raw stream opens the camera's own address.</span>
           </div>
           <div class="m3-set__control">
             <seg-picker
-              :options="FULLSCREEN"
+              :options="fullscreen"
               :value="defaultFullscreenAction"
-              label="Fullscreen opens"
+              :label="$t('app.setting.label.camera_fullscreen_action.title')"
               data-tid="camera-fullscreen"
               @input="defaultFullscreenAction = $event"
             />
@@ -254,7 +257,7 @@ import { Component, Vue } from 'vue-property-decorator'
 import type { NewWebcamConfig, WebcamConfig, WebcamService } from '@/store/webcams/types'
 import { Globals } from '@/globals'
 import { moveCamera } from '@/services/camera/order'
-import { STREAM_TYPES, newCamera, pictureFacts, streamLine } from '@/services/camera/types'
+import { STREAM_TYPES, newCamera, pictureFacts, streamLine, streamTypeKey } from '@/services/camera/types'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import SegPicker from '@/components/control/SegPicker.vue'
@@ -270,10 +273,12 @@ import CameraThumb from './CameraThumb.vue'
  */
 @Component({ components: { CameraDetail, CameraThumb, SegPicker, ToggleSwitch } })
 export default class CameraSettings extends Vue {
-  readonly FULLSCREEN = [
-    { value: 'embed', label: 'Embed' },
-    { value: 'rawstream', label: 'Raw stream' }
-  ]
+  get fullscreen () {
+    return [
+      { value: 'embed', label: this.$t('app.setting.label.camera_fullscreen_action.embed') as string },
+      { value: 'rawstream', label: this.$t('app.setting.label.camera_fullscreen_action.rawstream') as string }
+    ]
+  }
 
   readonly types = STREAM_TYPES
 
@@ -293,7 +298,8 @@ export default class CameraSettings extends Vue {
   }
 
   line (camera: WebcamConfig): string {
-    return streamLine(camera)
+    const key = streamTypeKey(camera.service)
+    return streamLine(camera, key ? this.$t(key) as string : camera.service === 'device' ? 'This device' : 'Unknown type')
   }
 
   facts (camera: WebcamConfig): string[] {
@@ -338,14 +344,16 @@ export default class CameraSettings extends Vue {
   moveBy (index: number, step: number) {
     const to = index + step
     if (to < 0 || to >= this.cameras.length) return
-    const name = this.cameras[index].name
+    const uid = this.cameras[index].uid
     const focused = document.activeElement as HTMLElement | null
-    const keepFocus = !!focused && this.$el.contains(focused) && (focused.dataset.tid ?? '').startsWith('camera-')
-    const kind = (focused?.dataset.tid ?? '').split('-')[1]
+    const kind = focused && this.$el.contains(focused) ? (focused.dataset.tid ?? '').split('-')[1] : ''
     this.saveOrder(moveCamera(this.cameras, index, to))
-    // The row moved, not the keys: keep the focus on the same camera's control.
-    if (keepFocus) {
-      this.$nextTick(() => this.$el.querySelector<HTMLElement>(`[data-tid="camera-${kind}-${name}"]`)?.focus())
+    // The row moved, not the keys: keep the focus on the same camera's control, found by uid.
+    if (kind) {
+      this.$nextTick(() => {
+        const controls = Array.from(this.$el.querySelectorAll<HTMLElement>(`[data-tid^="camera-${kind}-"]`))
+        controls.find(c => c.dataset.cam === uid)?.focus()
+      })
     }
   }
 
