@@ -149,6 +149,23 @@
       </div>
     </template>
 
+    <!-- Screen: use the printer's own screen from here, when Control serves it (/panel/). -->
+    <template v-else-if="part === 'screen'">
+      <div
+        v-if="panelServed"
+        class="m1-opts__row"
+      >
+        <button
+          type="button"
+          class="m1-opts__btn"
+          data-tid="m1-use-screen"
+          @click="$emit('use-screen')"
+        >
+          Use the printer's screen
+        </button>
+      </div>
+    </template>
+
     <!-- Filament: load, unload and what is loaded, as the filament panel does it. -->
     <template v-else-if="part === 'filament'">
       <div class="m1-opts__row">
@@ -217,6 +234,9 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin) {
   @Prop({ type: String, required: true })
   readonly part!: PartId
 
+  /** Whether this Control serves the printer screen's embed build. */
+  panelServed = false
+
   readonly xySteps = [1, 10, 50]
   readonly zSteps = [1, 10]
   step = 10
@@ -268,6 +288,16 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin) {
 
   get unloadMacro (): FilamentMacro | null {
     return findFilamentMacro(this.macroList, 'unload_filament', 'filament_unload')
+  }
+
+  async mounted () {
+    if (this.part !== 'screen') return
+    try {
+      const r = await fetch('/panel/index.html', { method: 'HEAD', cache: 'no-store' })
+      this.panelServed = r.ok && (r.headers.get('content-type') ?? '').includes('text/html')
+    } catch {
+      this.panelServed = false
+    }
   }
 
   hasMacro (name: string): boolean {
