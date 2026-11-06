@@ -11,13 +11,13 @@
       @input="open"
     />
     <button
-      v-if="page === 'bed' && meshRow"
+      v-if="page === 'bed'"
       type="button"
       class="cbtn cbtn--primary"
-      :disabled="!!checksBlocked"
-      :title="checksBlocked || undefined"
+      :disabled="!meshRow || !!checksBlocked"
+      :title="meshRow ? (checksBlocked || undefined) : 'This printer has no BED_MESH_CALIBRATE command.'"
       data-tid="mesh-calibrate"
-      @click="runCheck(meshRow)"
+      @click="meshRow && runCheck(meshRow)"
     >
       <frame-icon name="refresh" />
       {{ measuring ? 'Calibrating…' : 'Calibrate mesh' }}

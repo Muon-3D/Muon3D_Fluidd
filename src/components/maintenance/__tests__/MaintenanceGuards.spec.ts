@@ -143,3 +143,28 @@ it('rejects a profile removal after an account switch in confirmation', async ()
   expect(socket.printerGcodeScript).not.toHaveBeenCalled()
   wrapper.destroy()
 })
+
+it('dims the Probe and Profiles tiles and says why when control is lost', async () => {
+  for (const component of [ProbeCard, MeshProfiles]) {
+    const { wrapper, store } = show(component)
+    expect(wrapper.find('.mtile--locked').exists()).toBe(false)
+    store.getters['auth/getAuthenticated'] = false
+    await Vue.nextTick()
+    expect(wrapper.find('.mtile--locked').exists()).toBe(true)
+    expect(wrapper.find('.mtile__lock').text().length).toBeGreaterThan(0)
+    expect(wrapper.find('.mtile__body--locked').exists()).toBe(true)
+    wrapper.destroy()
+  }
+})
+
+it('names each confirmation for its row', async () => {
+  const { wrapper, vm, confirm } = show()
+  await vm.runCheck(vm.checks.find((r: any) => r.id === 'bedMesh'))
+  await vm.runCheck(vm.checks.find((r: any) => r.id === 'shaper'))
+  expect(confirm.mock.calls.map(c => c[1].title)).toEqual(['Bed mesh calibrate', 'Resonance test'])
+  wrapper.destroy()
+  const probe = show(ProbeCard)
+  await probe.vm.checkAccuracy()
+  expect(probe.confirm.mock.calls[0][1].title).toBe('Probe accuracy')
+  probe.wrapper.destroy()
+})

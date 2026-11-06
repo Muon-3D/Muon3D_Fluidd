@@ -2,6 +2,7 @@
   <maintenance-tile
     title="Probe"
     icon="firstLayer"
+    :locked="controlLock"
     data-tid="probe-card"
   >
     <div class="probe__row">
@@ -66,6 +67,7 @@
         type="button"
         class="cbtn probe__button"
         :disabled="!controlReady || hasWait($waits.onQueryProbe)"
+        title="Ask the probe whether it is triggered now"
         data-tid="probe-query"
         @click="query"
       >
@@ -82,17 +84,6 @@
         {{ checking ? 'Probing…' : 'Accuracy test' }}
       </button>
     </div>
-
-    <p
-      v-if="controlLock"
-      class="probe__note probe__lock"
-    >
-      <frame-icon
-        name="lock"
-        small
-      />
-      {{ controlLock }}
-    </p>
   </maintenance-tile>
 </template>
 
@@ -258,13 +249,6 @@ export default class ProbeCard extends Mixins(ProbeAccuracyMixin) {
     margin: 0;
     color: var(--m3d-text-muted);
     font-size: 13px;
-  }
-
-  .probe__lock {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--m3d-text-subtle);
   }
 
   .probe__buttons {

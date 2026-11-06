@@ -1,7 +1,7 @@
 <template>
   <section
     class="mtile"
-    :class="{ 'mtile--flush': flush }"
+    :class="{ 'mtile--flush': flush, 'mtile--locked': !!locked }"
   >
     <header
       v-if="title"
@@ -19,7 +19,22 @@
         class="mtile__aside"
       ><slot name="aside" /></span>
     </header>
-    <slot />
+    <div
+      class="mtile__body"
+      :class="{ 'mtile__body--locked': !!locked }"
+    >
+      <slot />
+    </div>
+    <p
+      v-if="locked"
+      class="mtile__lock"
+    >
+      <frame-icon
+        name="lock"
+        small
+      />
+      {{ locked }}
+    </p>
   </section>
 </template>
 
@@ -41,6 +56,10 @@ export default class MaintenanceTile extends Vue {
 
   @Prop({ type: Boolean })
   readonly flush?: boolean
+
+  /** Why the tile cannot be used now: its content dims and the reason shows under it. */
+  @Prop({ type: String, default: '' })
+  readonly locked!: string
 }
 </script>
 
@@ -64,6 +83,28 @@ export default class MaintenanceTile extends Vue {
       padding: 16px 18px 0;
     }
   }
+
+  .mtile__body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .mtile--flush .mtile__body { gap: 6px; }
+
+  .mtile__body--locked { opacity: 0.6; }
+
+  .mtile__lock {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--m3d-text-subtle);
+    font-size: 13px;
+  }
+
+  .mtile--flush .mtile__lock { margin: 0 18px 8px; }
 
   .mtile__head {
     display: flex;

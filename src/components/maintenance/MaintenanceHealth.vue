@@ -58,12 +58,11 @@ import { attentionCount, healthRows, type HealthRow } from '@/services/maintenan
 import { maintenancePage } from '@/services/maintenance/page-state'
 import { meshFigures } from '@/services/maintenance/heatmap'
 import type { Heater, MCU } from '@/store/printer/types'
-import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 
 /**
  * Checks: what the printer can say about itself without moving or running a
- * test. Klipper, its boards, the heater readings, the bed mesh, storage and
- * the cloud link, each as a row with a verdict. The tests that move the head
+ * test. Klipper, its boards, the heater readings, the bed mesh and storage,
+ * each as a row with a verdict. The tests that move the head
  * live in Calibration.
  */
 @Component({ components: { MaintenanceTile, TonePill } })
@@ -79,7 +78,6 @@ export default class MaintenanceHealth extends Mixins(MaintenanceMixin) {
     const heaters = (this.$store.getters['printer/getHeaters'] as Heater[] | undefined) ?? []
     const meshAt = this.lastRun.bedMesh
     const figures = meshFigures(this.mesh)
-    const managed = isManagedApiUrl(this.$store.state.config.apiUrl)
     return healthRows({
       socketConnected: !!this.$store.getters['socket/getConnectionState'],
       klippyState: this.$store.getters['printer/getKlippyState'] as string,
@@ -88,10 +86,9 @@ export default class MaintenanceHealth extends Mixins(MaintenanceMixin) {
       mcus: mcus.map(m => ({ name: m.name, awake: Number(m.last_stats?.mcu_awake) })),
       heaters: heaters.map(h => ({ name: h.name, temperature: h.temperature, maxTemp: h.maxTemp })),
       bedMesh: this.supportsBedMesh
-        ? { status: checkStatus('bedMesh', meshAt, Date.now()), spread: figures?.spread ?? null, measured: meshAt ? daysAgo(meshAt, Date.now()) : '' }
+        ? { loaded: this.meshMeasured, status: checkStatus('bedMesh', meshAt, Date.now()), spread: figures?.spread ?? null, measured: meshAt ? daysAgo(meshAt, Date.now()) : '' }
         : null,
-      disk: disk ?? null,
-      cloud: managed ? { connected: !!this.$store.getters['socket/getConnectionState'] } : null
+      disk: disk ?? null
     })
   }
 

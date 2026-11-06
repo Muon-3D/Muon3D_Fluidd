@@ -7,19 +7,27 @@
   >
     <maintenance-health
       class="maintenance-page__checks"
-      :class="{ 'maintenance-page__checks--alone': !supportsBedMesh }"
+      :class="{ 'maintenance-page__checks--alone': !supportsBedMesh && !hasProbe }"
     />
     <maintenance-mesh
       v-if="supportsBedMesh"
       class="maintenance-page__mesh"
     />
+    <probe-card
+      v-else-if="hasProbe"
+      class="maintenance-page__mesh"
+    />
     <maintenance-calibration class="maintenance-page__third" />
     <maintenance-consumables class="maintenance-page__third" />
     <maintenance-wear class="maintenance-page__third maintenance-page__wear" />
-    <control-outputs
-      diagnostics-only
+    <control-task-fold
+      fold-key="maintenance.sensors"
+      title="Switches and sensors"
+      summary="Endstops, probe and filament state"
       class="maintenance-page__wide"
-    />
+    >
+      <control-outputs diagnostics-only />
+    </control-task-fold>
   </div>
 </template>
 
@@ -33,18 +41,26 @@ import MaintenanceCalibration from '@/components/maintenance/MaintenanceCalibrat
 import MaintenanceConsumables from '@/components/maintenance/MaintenanceConsumables.vue'
 import MaintenanceWear from '@/components/maintenance/MaintenanceWear.vue'
 import ControlOutputs from '@/components/control/ControlOutputs.vue'
+import ControlTaskFold from '@/components/control/ControlTaskFold.vue'
+import ProbeCard from '@/components/maintenance/ProbeCard.vue'
 
 /**
  * Health (`/boxwood-367a/maintenance`): what keeps prints coming out right,
  * as tiles. Checks and the bed mesh sit side by side; Calibration, the
  * consumables and the printer's wear are the second row, and the switches
- * and sensors (endstops, filament) close the page. The bed mesh is here once,
- * as a small map with a way into Bed.
+ * and sensors (endstops, filament) close the page, folded. The bed mesh is here
+ * once, as a small map with a way into Bed; on a printer with a probe but no
+ * bed mesh, the Probe tile takes its place.
  */
-@Component({ components: { MaintenanceHealth, MaintenanceMesh, MaintenanceCalibration, MaintenanceConsumables, MaintenanceWear, ControlOutputs } })
+@Component({ components: { MaintenanceHealth, MaintenanceMesh, MaintenanceCalibration, MaintenanceConsumables, MaintenanceWear, ControlOutputs, ControlTaskFold, ProbeCard } })
 export default class Maintenance extends Mixins(BrowserMixin, TypedCommandsMixin) {
   get supportsBedMesh (): boolean {
     return this.$store.getters['mesh/getSupportsBedMesh'] as boolean
+  }
+
+  /** A probe without a [bed_mesh] has no Bed page: its Query probe and Z offset stay here. */
+  get hasProbe (): boolean {
+    return !!this.$store.getters['printer/getProbe']
   }
 }
 </script>

@@ -9,7 +9,7 @@
       <span v-else-if="measuredWhen">measured {{ measuredWhen }}</span>
     </template>
 
-    <mesh-map />
+    <mesh-map numbers />
 
     <div
       v-if="figures"
@@ -74,7 +74,7 @@ export default class MaintenanceMesh extends Mixins(MaintenanceMixin) {
 
   get measuredWhen (): string {
     const at = this.lastRun.bedMesh
-    return at && this.mesh.length ? daysAgo(at, Date.now()) : ''
+    return at && this.meshMeasured ? daysAgo(at, Date.now()) : ''
   }
 }
 </script>

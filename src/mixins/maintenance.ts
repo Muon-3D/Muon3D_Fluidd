@@ -4,6 +4,7 @@ import { Waits } from '@/globals'
 import { activeSlug } from '@/services/printer-pages'
 import { running } from '@/services/maintenance/running'
 import { plateCheckNeeded } from '@/services/jobs/plate'
+import { meshFigures } from '@/services/maintenance/heatmap'
 import {
   checkCommand,
   checkProduced,
@@ -74,7 +75,7 @@ interface CheckInfo {
 const CHECKS: CheckInfo[] = [
   {
     id: 'bedMesh',
-    title: 'Level the bed',
+    title: 'Bed mesh calibrate',
     description: 'Measures the plate at a grid of points.',
     icon: 'mesh',
     action: 'Run',
@@ -92,7 +93,7 @@ const CHECKS: CheckInfo[] = [
   },
   {
     id: 'shaper',
-    title: 'Vibration tuning',
+    title: 'Resonance test',
     description: 'Lets it print fast without ripples. Run it again after moving the printer to a new table.',
     icon: 'pulse',
     action: 'Run',
@@ -215,6 +216,14 @@ export default class MaintenanceMixin extends Mixins(ControlMixin) {
     return meshSummary(this.mesh)
   }
 
+  /**
+   * Whether the printer holds a measured mesh. Klipper reports a cleared or
+   * never-loaded mesh as `[[]]` (one empty row), so this asks for a value, not a length.
+   */
+  get meshMeasured (): boolean {
+    return meshFigures(this.mesh) !== null
+  }
+
   /** Whether a mesh is loaded, so moves follow it. */
   get meshInUse (): boolean {
     return !!this.$store.state.printer.printer.bed_mesh?.profile_name
@@ -224,7 +233,7 @@ export default class MaintenanceMixin extends Mixins(ControlMixin) {
   get meshSize (): [number, number] | null {
     const settings = this.$store.state.printer.printer.configfile?.settings?.bed_mesh
     return probeCount(settings?.probe_count) ??
-      (this.mesh.length ? [this.mesh[0].length, this.mesh.length] : null)
+      (this.meshMeasured ? [this.mesh[0].length, this.mesh.length] : null)
   }
 
   get measuring (): boolean {
