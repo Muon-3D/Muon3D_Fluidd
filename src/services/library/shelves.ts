@@ -31,6 +31,8 @@ export interface ShelfCard {
   remixes: number;
   /** How many people saved it (the heart); 0 from a service that doesn't say. */
   saves: number;
+  /** The publication's category (home, workshop, tools, …), for the category chips. */
+  category?: string | null;
   /** The filament it was sliced for ("PLA") and its colour (#hex), when a source says: the glass badge (v3 L1). */
   material?: string | null;
   colour?: string | null;
@@ -101,6 +103,7 @@ export function summaryCard (item: PublicationSummary): ShelfCard {
     makes: item.make_count ?? 0,
     remixes: item.remix_count ?? 0,
     saves: item.save_count ?? 0,
+    category: text(item.category) ? item.category : null,
     facts: '',
     m1: tags.includes('m1-ready'),
     tags,

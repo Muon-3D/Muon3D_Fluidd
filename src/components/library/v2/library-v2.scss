@@ -61,12 +61,13 @@
   align-items: center;
   gap: 20px;
 
+  // v3 §2: page titles in the Control frame are the title face, bold 28 px (Krona stays the wordmark's).
   h1 {
     margin: 0;
-    font-family: var(--m3d-font-display);
-    font-size: var(--m3d-text-3xl);
-    font-weight: 400;
-    line-height: 1.1;
+    font-family: var(--m3d-font-title, var(--m3d-font-sans));
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.15;
   }
 }
 
@@ -741,3 +742,8 @@
 .mlib-skeleton--line { aspect-ratio: auto; height: 12px; width: 70%; border-radius: 6px; }
 
 button.mlib-link { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; cursor: pointer; }
+
+.mlib__title {
+  h1 { margin: 0; }
+  p { margin: 4px 0 0; color: var(--m3d-text-muted); font-size: var(--m3d-text-sm); }
+}
