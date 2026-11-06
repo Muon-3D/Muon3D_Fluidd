@@ -58,7 +58,15 @@ export interface M1Viewer {
   setShift: (share: number) => void;
   /** Called after each frame drawn; the first means it can be shown. */
   onFrame: (() => void) | null;
+  /** Called after every frame drawn with the model shown and the accessories as drawn (for the page's data attributes and tests). */
+  onDraw: ((drawn: DrawnState) => void) | null;
   dispose: () => void;
+}
+
+/** What a frame drew: which model, and the plate, hose, column and filament as placed. */
+export interface DrawnState {
+  model: 'pending' | 'accurate' | 'simple';
+  accessories: AccessoryFrame | null;
 }
 
 /** Seen from the mast side and a little above, as the s1_1 product shot is. */
@@ -410,7 +418,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     }
   }
 
-  /** The accurate model: nodes driven by name from Klipper's position, no accessories. */
+  /** The accurate model: nodes driven by name from Klipper's position; the plate, the hose's end and the column (accurate/accessories.ts). */
   function accurateRig (a: AccurateRig): Rig {
     // The print rides in the opaque pass, so it is in the glass's transmission pass and seen through the plate.
     partMaterial.transparent = false
@@ -425,13 +433,16 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       cargo: a.cargo,
       printFrame: a.printFrame,
       place: placeAccurate,
-      show: placement => a.place(placement),
+      show (placement, led) {
+        a.place(placement)
+        a.lights.setLed(led)
+      },
       setSpool () { /* no spool in the exterior model */ },
-      setScreen () { /* the screen is its static logo */ },
-      setLeds () { /* the strips are static */ },
-      apply () { /* no plate, hose or filament motion in the accurate model */ },
-      plateOff: () => 0,
-      plateOffBox: new THREE.Box3(),
+      setScreen: screen => a.lights.setScreen(screen),
+      setLeds: (left, right) => a.lights.setLeds(left, right),
+      apply: a.apply,
+      plateOff: a.plateOff,
+      plateOffBox: a.plateOffBox,
       setColour () { /* the print's own material carries it */ },
       useCheapGlass () { a.useCheapGlass() }
     }
@@ -547,9 +558,13 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** The sync's crossfade count last drawn: with reduced motion a change is shown by fading, not moving. */
   let lastCrossfade = -1
   let lastLeds = ''
+  /** The screen and the strips as last given, for a model adopted after they came (the GLB loads after the page sets them). */
+  let screenShown: ScreenState | null = null
+  let ledsShown: [LedStrip, LedStrip] | null = null
   /** The strips' own pixels, when the printer reports them; else the light's switch alone. */
   let strips: { lit: boolean } | null = null
   let lastDraw = 0
+  let drawnAccessories: AccessoryFrame | null = null
   let dragging = false
   let ready = false
   let disposed = false
@@ -597,6 +612,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     }
     showTrace()
     rig.apply(accessories, f.partGone)
+    drawnAccessories = accessories
     return f.moving || accessories.animating
   }
 
@@ -677,6 +693,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       if (watch.slow) cheapenGlass('slow')
     }
     viewer.onFrame?.()
+    viewer.onDraw?.({ model: rig.kind, accessories: drawnAccessories })
     const turning = Math.abs(view.goalTheta - view.theta) > 1e-3 || Math.abs(view.goalPhi - view.phi) > 1e-3
     if (moving || pulsing || turning) invalidate()
   }
@@ -693,6 +710,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   const viewer: M1Viewer = {
     onFrame: null,
+    onDraw: null,
     follow (next) {
       sync = next
       lastCrossfade = -1
@@ -725,6 +743,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         Math.round(screen.bedTemp), Math.round(screen.bedTarget), screen.jobName, screen.connected].join('|')
       if (shown === lastScreen) return
       lastScreen = shown
+      screenShown = screen
       rig.setScreen(screen)
       invalidate()
     },
@@ -732,6 +751,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       const shown = JSON.stringify([left, right])
       if (shown === lastLeds) return
       lastLeds = shown
+      ledsShown = [left, right]
       strips = left || right ? { lit: stripsLit(left, right) } : null
       rig.setLeds(left, right)
       lastPlacement = ''
@@ -823,8 +843,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       })) cheapenGlass('device')
     }
     lastPlacement = ''
-    lastScreen = ''
-    lastLeds = ''
+    if (screenShown) next.setScreen(screenShown)
+    if (ledsShown) next.setLeds(...ledsShown)
     // Posed once so the box is the machine's; the follower puts it where the printer is on the first frame.
     next.show(next.place({ x: null, y: null, z: null, led: false, progress: 0 }), false)
     onBox.copy(shownBox(next.root))
