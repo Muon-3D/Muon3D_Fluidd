@@ -311,7 +311,7 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
    * Account is a top-level page with no printer frame, but a printer open behind it can still be stopped.
    */
   get showEstop (): boolean {
-    return (!this.sectionContext.foreign && this.printerFrame) || this.accountOverPrinter
+    return (!this.sectionContext.foreign && this.printerFrame) || this.accountOverPrinter === true
   }
 
   /** Account (always top-level) with a printer open. */
