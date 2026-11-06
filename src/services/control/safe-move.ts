@@ -102,21 +102,26 @@ const round = (v: number) => Math.round(v * 1000) / 1000
 /**
  * Plan an absolute move of the head to `to`.
  *
- * `from.z` must be the LOWEST of the head's known heights (toolhead and gcode
- * position): with a mesh active the two differ, and the safe reading is the
- * lower one. `to.z` is the height to end at, in G-code coordinates; for an XY
- * move it is where the head is now.
+ * Everything here is in TOOLHEAD coordinates: the real place of the nozzle,
+ * the frame Klipper's own no-go handling uses. The caller converts to G-code
+ * coordinates (minus the mesh and G-code offsets) to send.
+ *
+ * `margin` is how much the real height can differ between where the head is
+ * and the region it crosses: the span of the active bed mesh. Crossing
+ * heights and the "high enough already" check add it, so a lift judged here
+ * still clears the notch where the mesh is lower.
  *
  * A single straight move is returned whenever it is safe, so ordinary jogs
  * are unchanged. A low path through a region (or its tolerance band) becomes
- * up to the traverse height, across, then down to `to.z`. Raising Z alone is
+ * up to the crossing height, across, then down to `to.z`. Raising Z alone is
  * always allowed, even when the regions cannot be read: it is the way out.
  */
 export function planMove (
   from: { x: number, y: number, z: number },
   to: { x: number, y: number, z: number },
   noGo: NoGoConfig | null | 'invalid',
-  limits: Limits
+  limits: Limits,
+  margin = 0
 ): MovePlan {
   const known = (vs: number[]) => vs.every(Number.isFinite)
   if (!known([to.x, to.y, to.z])) return { ok: false, reason: 'The head position is not known.' }
@@ -125,7 +130,7 @@ export function planMove (
     if (v < limits.min[i] || v > limits.max[i]) return { ok: false, reason: 'That spot is outside the machine.' }
   }
   if (noGo === null) return { ok: true, steps: [{ X: round(to.x), Y: round(to.y), Z: round(to.z) }], lifted: false }
-  if (!known([from.x, from.y, from.z])) return { ok: false, reason: 'The head position is not known.' }
+  if (!known([from.x, from.y, from.z, margin]) || margin < 0) return { ok: false, reason: 'The head position is not known.' }
   const movesXY = round(to.x) !== round(from.x) || round(to.y) !== round(from.y)
   const target: Place = movesXY ? { X: round(to.x), Y: round(to.y), Z: round(to.z) } : { Z: round(to.z) }
   const direct: MovePlan = { ok: true, steps: [target], lifted: false }
@@ -135,23 +140,31 @@ export function planMove (
     return { ok: false, reason: 'The printer’s no-go regions could not be read, so Control will only raise the head. Check [bed_mesh] in printer.cfg.' }
   }
 
+  const clear = noGo.traverseZ + margin
   // Ending low inside a region is refused outright; the tolerance band only
   // makes the crossing check more cautious.
-  if (to.z < noGo.traverseZ && noGo.regions.some(r => inside(to.x, to.y, r, 0))) {
-    return { ok: false, reason: `That spot is over the bed notch. Raise Z to ${noGo.traverseZ} mm first.` }
+  if (to.z < clear && noGo.regions.some(r => inside(to.x, to.y, r, 0))) {
+    return { ok: false, reason: `That spot is over the bed notch. Raise Z to ${round(clear)} mm first.` }
   }
   if (!movesXY) return direct
 
   // A combined move changes Z along the way, so judge it at its lowest point.
   const lowest = Math.min(from.z, to.z)
   const crosses = noGo.regions.some(r => segmentHits([from.x, from.y], [to.x, to.y], r, noGo.tolerance))
-  if (lowest >= noGo.traverseZ || !crosses) return direct
+  if (lowest >= clear || !crosses) return direct
 
-  const over = Math.max(noGo.traverseZ, to.z)
+  const over = Math.max(clear, to.z)
   if (over > limits.max[2]) return { ok: false, reason: 'The safe crossing height is above the Z limit.' }
   const steps: Place[] = [{ Z: round(over) }, { X: round(to.x), Y: round(to.y) }]
   if (to.z < over) steps.push({ Z: round(to.z) })
   return { ok: true, steps, lifted: true }
+}
+
+/** How far the active mesh's heights spread: the margin a crossing needs. 0 with no mesh active. */
+export function meshSpan (bedMesh: { profile_name?: string, mesh_matrix?: number[][] } | undefined | null): number {
+  if (!bedMesh?.profile_name || !Array.isArray(bedMesh.mesh_matrix)) return 0
+  const values = bedMesh.mesh_matrix.flat().map(Number).filter(Number.isFinite)
+  return values.length ? Math.max(...values) - Math.min(...values) : 0
 }
 
 /** An XY move that ends at the height it started. */

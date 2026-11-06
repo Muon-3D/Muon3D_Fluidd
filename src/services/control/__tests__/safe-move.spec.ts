@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readNoGo, planMove, planXYMove, segmentHits, type NoGoConfig, type Limits } from '../safe-move'
+import { meshSpan, readNoGo, planMove, planXYMove, segmentHits, type NoGoConfig, type Limits } from '../safe-move'
 
 // The M1's [bed_mesh], as the printer reports it in configfile.settings.
 const M1_BED_MESH = {
@@ -119,5 +119,19 @@ describe('planMove (with Z)', () => {
   it('still allows raising Z when the regions cannot be read, and nothing else', () => {
     expect(planMove({ x: 100, y: 10, z: 1 }, { x: 100, y: 10, z: 11 }, 'invalid', LIMITS).ok).toBe(true)
     expect(planMove({ x: 100, y: 10, z: 11 }, { x: 100, y: 10, z: 1 }, 'invalid', LIMITS).ok).toBe(false)
+  })
+})
+
+describe('the mesh margin', () => {
+  it('is the spread of the active mesh, and 0 with none active', () => {
+    expect(meshSpan({ profile_name: 'default', mesh_matrix: [[-0.3, 0.1], [0.2, 0.4]] })).toBeCloseTo(0.7)
+    expect(meshSpan({ profile_name: '', mesh_matrix: [[-0.3, 0.4]] })).toBe(0)
+    expect(meshSpan(undefined)).toBe(0)
+  })
+
+  it('raises the crossing height and the "high enough already" line', () => {
+    expect(planMove({ x: 60, y: 10, z: 6.2 }, { x: 140, y: 10, z: 6.2 }, m1, LIMITS, 0.5))
+      .toEqual({ ok: true, steps: [{ Z: 6.5 }, { X: 140, Y: 10 }, { Z: 6.2 }], lifted: true })
+    expect(planMove({ x: 60, y: 10, z: 6.6 }, { x: 140, y: 10, z: 6.6 }, m1, LIMITS, 0.5)).toEqual({ ok: true, steps: [{ X: 140, Y: 10, Z: 6.6 }], lifted: false })
   })
 })

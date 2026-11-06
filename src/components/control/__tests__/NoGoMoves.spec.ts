@@ -21,9 +21,9 @@ function show (head: [number, number, number], bedMesh: unknown = M1_BED_MESH, g
   const p = store.state.printer.printer
   p.toolhead.position = [...head, 0]
   p.gcode_move.gcode_position = [head[0], head[1], gcodeZ, 0]
-  p.configfile.settings = bedMesh ? { bed_mesh: bedMesh } : {}
+  p.configfile.settings = bedMesh ? { printer: {}, bed_mesh: bedMesh } : { printer: {} }
   const wrapper = mount({ mixins: [ControlMixin], render: h => h('div') }, { mocks: { $store: store, $waits: waits, $route: { params: { printer: 'mock' } }, $confirm: vi.fn().mockResolvedValue(true) } })
-  return { wrapper, vm: wrapper.vm as any }
+  return { store, wrapper, vm: wrapper.vm as any }
 }
 
 const sent = () => socket.printerGcodeScript.mock.calls.map(c => c[0] as string)
@@ -62,12 +62,53 @@ describe('hand moves and the bed notch', () => {
     s.wrapper.destroy()
   })
 
-  it('judges height by the lower of toolhead and G-code Z (mesh active)', () => {
-    // G-code says 6.5 (above the traverse height), toolhead says 5.6: unsafe.
+  it('judges height by the real (toolhead) Z and sends the lift in G-code Z (offsets in force)', () => {
+    // G-code says 6.5, above the traverse height; the nozzle is really at 5.6.
+    // The lift must bring the REAL height to 6, which is G-code 6.9; the head
+    // then comes back down to where it was (G-code 6.5).
     const s = show([60, 10, 5.6], M1_BED_MESH, 6.5)
     s.vm.moveTo({ X: 140, Y: 10 })
-    expect(moves()[0]).toBe('G1 Z6.5 F600')
-    expect(moves()).toHaveLength(2)
+    expect(moves()).toEqual(['G1 Z6.9 F600', 'G1 X140 Y10 F7800', 'G1 Z6.5 F600'])
+    s.wrapper.destroy()
+  })
+
+  it('refuses Z steps down over the notch even when G-code Z reads higher than the real height', () => {
+    // The hole the review found: G-code 6.2, real 6.0, over the notch.
+    const s = show([100, 20, 6.0], M1_BED_MESH, 6.2)
+    s.vm.moveBy('Z', -0.1)
+    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    s.wrapper.destroy()
+  })
+
+  it('adds the spread of the active mesh to the crossing height', () => {
+    const s = show([60, 10, 1])
+    s.store.state.printer.printer.bed_mesh = { profile_name: 'default', mesh_matrix: [[-0.3, 0.1], [0.2, 0.4]] }
+    s.vm.moveTo({ X: 140, Y: 10 })
+    expect(moves()).toEqual(['G1 Z6.7 F600', 'G1 X140 Y10 F7800', 'G1 Z1 F600'])
+    s.wrapper.destroy()
+  })
+
+  it('waits for one hand move to land before planning the next from a stale position', () => {
+    const s = show([150, 60, 1])
+    s.vm.moveTo({ X: 150, Y: 20 })
+    s.vm.moveTo({ X: 50, Y: 60 }) // the printer hasn't reported the first yet
+    expect(sent()).toHaveLength(1)
+    expect(bus.$emit).toHaveBeenCalledWith('Wait for the head to finish moving.', { type: 'warning' })
+    // The printer reports the head at the first target: the next move is planned from there.
+    const p = s.store.state.printer.printer
+    p.toolhead.position = [150, 20, 1, 0]; p.gcode_move.gcode_position = [150, 20, 1, 0]
+    s.vm.moveTo({ X: 50, Y: 60 })
+    expect(moves().slice(1)).toEqual(['G1 Z6 F600', 'G1 X50 Y60 F7800', 'G1 Z1 F600'])
+    s.wrapper.destroy()
+  })
+
+  it('treats a printer whose config has not loaded as unreadable: only up', () => {
+    const s = show([10, 100, 1])
+    s.store.state.printer.printer.configfile.settings = {}
+    s.vm.moveBy('X', 10)
+    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    s.vm.moveBy('Z', 5)
+    expect(moves()).toEqual(['G1 Z5 F600'])
     s.wrapper.destroy()
   })
 
