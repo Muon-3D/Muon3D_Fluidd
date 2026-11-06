@@ -7,28 +7,6 @@
       v-if="phone"
       type="button"
       class="cbtn"
-      :disabled="!controlReady || busy"
-      data-tid="home-all"
-      title="G28"
-      @click="home()"
-    >
-      <v-progress-circular
-        v-if="homing()"
-        indeterminate
-        size="14"
-        width="2"
-      />
-      <frame-icon
-        v-else
-        name="home"
-        small
-      />
-      Home all
-    </button>
-    <button
-      v-if="phone"
-      type="button"
-      class="cbtn"
       :disabled="!controlReady"
       data-tid="cool-down"
       @click="coolDown"
@@ -52,16 +30,6 @@
         More
       </summary>
       <div class="control-actions__menu">
-        <button
-          type="button"
-          class="cbtn"
-          :disabled="!controlReady || busy"
-          title="M84"
-          data-tid="motors-off"
-          @click="motorsOff"
-        >
-          Motors off
-        </button>
         <button
           type="button"
           class="cbtn"
@@ -105,7 +73,7 @@
 import { Component, Mixins, Prop } from 'vue-property-decorator'
 import ControlMixin from '@/mixins/control'
 
-/** Home and heat up front; idle-only actions use the shared command checks. */
+/** Cool down up front on a phone, and the restarts; homing and Motors off are in the Move tile. */
 @Component({})
 export default class ControlActions extends Mixins(ControlMixin) {
   @Prop({ type: Boolean }) readonly phone?: boolean

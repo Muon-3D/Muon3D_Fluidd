@@ -7,6 +7,7 @@ const wifiScan = vi.fn()
 const wifiDetails = vi.fn()
 const wifiConnect = vi.fn()
 const wifiCurrent = vi.fn()
+const wifiForget = vi.fn()
 const apDeviceStatus = vi.fn()
 
 vi.mock('@/aux_api/useAuxApi', () => ({
@@ -15,7 +16,8 @@ vi.mock('@/aux_api/useAuxApi', () => ({
       wifiScanWifiScanGet: wifiScan,
       getDetailsWifiShowGet: wifiDetails,
       wifiConnectWifiConnectPost: wifiConnect,
-      wifiCurrentWifiCurrentGet: wifiCurrent
+      wifiCurrentWifiCurrentGet: wifiCurrent,
+      wifiForgetWifiForgetDelete: wifiForget
     },
     ap: {
       wifiStatusWifiApDeviceStatusGet: apDeviceStatus
@@ -183,6 +185,60 @@ describe('WifiManagerCard joining another network', () => {
     expect(card.showWarningDialog).toBe(true)
     expect(wifiConnect).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('app.wifi.modal.warning.hotspot_message')
+    wrapper.destroy()
+  })
+})
+
+describe('WifiManagerCard forgetting a network', () => {
+  const confirm = vi.fn()
+  const withConfirm = () => ({ ...mocks(false), $confirm: confirm, $store: { ...mocks(false).$store, state: { printer: { printer: { info: {} } } } } })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    wifiScan.mockResolvedValue({ data: [] })
+    wifiForget.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('asks first, saying the page may be lost and the printer drops off the network, and forgets nothing until yes', async () => {
+    confirm.mockResolvedValueOnce(false)
+    const wrapper = shallowMount(WifiManagerCard, { mocks: withConfirm() })
+    await vi.advanceTimersByTimeAsync(0)
+    await (wrapper.vm as any).forgetConfirm({ ssid: 'Workshop', in_use: true })
+
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(confirm.mock.calls[0][0]).toMatch(/lose this page/)
+    expect(confirm.mock.calls[0][0]).toMatch(/drop off this network/)
+    expect(confirm.mock.calls[0][1]).toMatchObject({ danger: true })
+    expect(wifiForget).not.toHaveBeenCalled()
+
+    confirm.mockResolvedValueOnce(true)
+    await (wrapper.vm as any).forgetConfirm({ ssid: 'Workshop', in_use: true })
+    expect(wifiForget).toHaveBeenCalledWith('Workshop')
+    wrapper.destroy()
+  })
+
+  it('shows the network it is on even when its name is hidden, as connected', async () => {
+    wifiScan.mockResolvedValue({ data: [{ ssid: '', in_use: true, signal: 70, security: 'WPA2', chan: 36, freq: 5180, rate: 540 }, { ssid: '', in_use: false, signal: 40, security: 'WPA2', chan: 1, freq: 2412, rate: 65 }] })
+    const wrapper = shallowMount(WifiManagerCard, { mocks: withConfirm() })
+    await vi.advanceTimersByTimeAsync(0)
+    const card = wrapper.vm as any
+
+    expect(card.connectedNetwork?.ssid).toBe('Hidden network')
+    // The other hidden one is still left out.
+    expect(card.sortedNetworks).toHaveLength(1)
+    expect(card.isHidden(card.connectedNetwork)).toBe(true)
+    wrapper.destroy()
+  })
+
+  it('says the channel, speed and frequency in words a row can show', async () => {
+    const wrapper = shallowMount(WifiManagerCard, { mocks: withConfirm() })
+    const detail = (wrapper.vm as any).detail({ chan: 36, freq: 5180, rate: 540, chanList: '36', freqList: '5180' })
+    expect(detail).toBe('channel 36 · 540 Mbps · 5180 MHz')
     wrapper.destroy()
   })
 })

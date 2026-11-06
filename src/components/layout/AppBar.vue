@@ -620,6 +620,24 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
 </script>
 
 <style lang="scss">
+  // The top bar's icon button: one box for every icon in it. Not scoped, since
+  // Quick actions renders its own button from another component.
+  .app-header__icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    color: var(--m3d-text-muted);
+
+    &:hover {
+      background: var(--m3d-hover);
+      color: var(--m3d-text);
+    }
+  }
+
   // A sheet's scrim must not cover STOP: while one is open on a phone, the
   // top bar stands above the scrim. The sheet rises from the bottom, so the
   // two never overlap.
@@ -799,22 +817,6 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     :deep(> div) {
       display: flex;
       align-items: center;
-    }
-  }
-
-  .app-header__icon {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    color: var(--m3d-text-muted);
-
-    &:hover {
-      background: var(--m3d-hover);
-      color: var(--m3d-text);
     }
   }
 
