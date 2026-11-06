@@ -12,7 +12,12 @@
       :tab="view === 'mine' ? 'yours' : 'discover'"
       :continue-item="signedIn && state.synced && prints.length ? prints[0] : null"
       :signed-in="signedIn"
+      :grid="grid"
+      :search="searchQuery"
       @update:tab="setView"
+      @update:grid="setGrid"
+      @grid-back="gridBack"
+      @open-search="openSearch"
       @print="onLibraryPrint"
       @print-item="printOn($event, activePrinter ? activePrinter.id : null)"
     >
@@ -459,6 +464,8 @@ import { storedToken } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
 import LibraryCard from '@/components/library/LibraryCard.vue'
 import MuonLibrary, { type LibraryPrintRequest, type LibraryTab } from '@/components/library/v2/MuonLibrary.vue'
+import type { GridSource } from '@/services/library/shelves'
+import type { Dictionary } from 'vue-router/types/router'
 import LibraryRecentCard from '@/components/library/LibraryRecentCard.vue'
 import PrintOnDialog from '@/components/library/PrintOnDialog.vue'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
@@ -503,11 +510,62 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     return this.mineShown ? 'mine' : 'discover'
   }
 
+  /** A See all page or search results, from the address (`?shelf=popular`, `?shelf=search&q=…`). */
+  get grid (): GridSource | null {
+    const shelf = this.$route?.query.shelf
+    return shelf === 'popular' || shelf === 'm1' || shelf === 'new' || shelf === 'search' ? shelf : null
+  }
+
+  get searchQuery (): string {
+    const q = this.$route?.query.q
+    return typeof q === 'string' ? q : ''
+  }
+
+  /** Whether this page opened the grid itself (then ‹ Discover is the browser's Back). */
+  gridOpenedHere = false
+
+  /**
+   * A grid in the address. Opening one from Discover is pushed, so Back
+   * returns to the shelves; changing the grid's sort replaces, so it adds
+   * no history.
+   */
+  setGrid (grid: GridSource | null, q?: string) {
+    const rest = { ...this.$route.query }
+    delete rest.shelf
+    delete rest.q
+    const query = grid ? { ...rest, view: 'discover', shelf: grid, ...(grid === 'search' ? { q: q ?? this.searchQuery } : {}) } : rest
+    if (this.grid && grid) {
+      this.$router.replace({ query }).catch(() => {})
+      return
+    }
+    if (grid) this.gridOpenedHere = true
+    this.$router.push({ query }).catch(() => {})
+  }
+
+  /** A search, from Discover or the results page itself. */
+  openSearch (q: string) {
+    this.setGrid('search', q)
+  }
+
+  /** ‹ Discover: back where it came from, or Discover when the grid was opened by its address. */
+  gridBack () {
+    if (this.gridOpenedHere) {
+      this.gridOpenedHere = false
+      this.$router.back()
+      return
+    }
+    this.setGrid(null)
+  }
+
   /** Discover or Yours, kept in the address so Back and a shared link land on it. */
   setView (tab: LibraryTab) {
     const view = tab === 'yours' ? 'mine' : 'discover'
-    if (view === this.view) return
-    this.$router.replace({ query: { ...this.$route.query, view } }).catch(() => {})
+    if (view === this.view && !this.grid) return
+    // A place starts at its top: no See all or search left in the address.
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view }
+    delete query.shelf
+    delete query.q
+    this.$router.replace({ query }).catch(() => {})
   }
 
   /**

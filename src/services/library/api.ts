@@ -102,6 +102,9 @@ export interface PublicPublication {
   creator?: { handle: string | null, display_name: string | null, avatar_url?: string | null };
   images?: Array<{ id: string, name: string, format: string, size_bytes: number, url: string }>;
   counts?: { makes?: number, remixes?: number, saves?: number };
+  colours?: string[];
+  material?: string | null;
+  size_mm?: number[] | null;
   created_at?: string;
 }
 

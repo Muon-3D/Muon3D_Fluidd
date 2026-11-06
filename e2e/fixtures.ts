@@ -11,7 +11,7 @@
  */
 import { test as base, expect, type Page } from '@playwright/test'
 import { modelService, serveModels, type ModelServiceState } from './fakes/models'
-import { consoleState, serveConsole, signIn, type ConsoleState } from './fakes/console'
+import { consoleState, serveConsole, signIn, useConsole, type ConsoleState } from './fakes/console'
 import { MOCK_PORT } from './ports'
 
 /** The mock printer's page prefix: Control puts a printer's pages under its name. */
@@ -51,6 +51,7 @@ export const test = base.extend<Options & Fixtures>({
   account: [async ({ page, signedIn }, use) => {
     const state = consoleState()
     await serveConsole(page, state)
+    await useConsole(page)
     if (signedIn) await signIn(page)
     await use(state)
   }, { auto: true }],

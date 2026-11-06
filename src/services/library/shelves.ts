@@ -31,6 +31,13 @@ export interface ShelfCard {
   remixes: number;
   /** How many people saved it (the heart); 0 from a service that doesn't say. */
   saves: number;
+  /** The publication's category (home, workshop, tools, …), for the category chips. */
+  category?: string | null;
+  /** Every colour its pictures show it in (#rrggbb), first is the card's. */
+  colours?: string[];
+  /** The filament it was sliced for ("PLA") and its colour (#hex), when a source says: the glass badge (v3 L1). */
+  material?: string | null;
+  colour?: string | null;
   /** "2 h 5 min · 98 g · PLA", when known. */
   facts: string;
   /** Made for M1: tagged m1-ready, or a catalogue print Muon3D tested on one. */
@@ -56,6 +63,10 @@ export interface PublicationSummary {
   make_count?: number;
   remix_count?: number;
   save_count?: number;
+  /** From publishing (#rrggbb) and the first G-code's setup; null on a service from before them. */
+  colours?: string[];
+  material?: string | null;
+  size_mm?: number[] | null;
   remix_of?: { id: string, slug: string, title: string } | null;
   make_of?: { id: string, slug: string, title: string } | null;
   thumbnail_url?: string | null;
@@ -98,6 +109,10 @@ export function summaryCard (item: PublicationSummary): ShelfCard {
     makes: item.make_count ?? 0,
     remixes: item.remix_count ?? 0,
     saves: item.save_count ?? 0,
+    category: text(item.category) ? item.category : null,
+    colours: colourList(item.colours),
+    material: text(item.material) ? item.material : null,
+    colour: colourList(item.colours)[0] ?? null,
     facts: '',
     m1: tags.includes('m1-ready'),
     tags,
@@ -162,11 +177,24 @@ export async function loadPublications (
 export interface DiscoverShelves {
   popular: ShelfCard[];
   m1: ShelfCard[];
+  /** Why a shelf couldn't be read, when neither of its sources answered (v3: the shelf says so, the rest work). */
+  errors: { popular?: string, m1?: string };
+  /** No source could be reached at all: fetch itself failed (any browser's network error is a TypeError). */
+  unreachable: boolean;
 }
 
+/** Whether a failed read never reached the service: fetch rejects with a TypeError, whatever the browser's wording. */
+export function isNetworkError (error: unknown): boolean {
+  return error instanceof TypeError
+}
+
+const reason = (result: PromiseSettledResult<unknown>): string =>
+  result.status === 'rejected' ? (result.reason instanceof Error ? result.reason.message : String(result.reason)) : ''
+
 /**
- * Popular this week and Made for M1. One shelf failing doesn't empty the
- * other; both failing is an error the page shows with Try again.
+ * Popular this week and Made for M1, each from its own source with
+ * Discover's shelf as the fallback. It never throws: a shelf neither source
+ * answered for carries its reason in `errors`.
  */
 export async function loadShelves (fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<DiscoverShelves> {
   const [trending, tagged, discover] = await Promise.allSettled([
@@ -174,8 +202,11 @@ export async function loadShelves (fetcher: typeof fetch = fetch, signal?: Abort
     loadPublications({ sort: 'trending', tag: 'm1-ready', limit: 12 }, fetcher, signal),
     loadDiscover(fetcher, signal)
   ])
-  if (trending.status === 'rejected' && discover.status === 'rejected') throw trending.reason
   const feed = discover.status === 'fulfilled' ? discover.value : null
+  const errors: DiscoverShelves['errors'] = {}
+  if (trending.status === 'rejected' && !feed) errors.popular = reason(trending)
+  if (tagged.status === 'rejected' && !feed) errors.m1 = reason(tagged)
+  const unreachable = [trending, tagged, discover].every(r => r.status === 'rejected' && isNetworkError(r.reason))
   const popular = trending.status === 'fulfilled' && trending.value.items.length
     ? trending.value.items.map(summaryCard)
     : (feed?.trending ?? []).filter(isSummary).map(summaryCard)
@@ -183,7 +214,7 @@ export async function loadShelves (fetcher: typeof fetch = fetch, signal?: Abort
     ...(tagged.status === 'fulfilled' ? tagged.value.items.map(summaryCard).map(card => ({ ...card, m1: true })) : []),
     ...(feed?.m1_ready ?? []).filter(item => !!item && text(item.slug) && text(item.title)).map(catalogueShelfCard)
   ]
-  return { popular: unique(popular), m1: unique(m1).slice(0, 12) }
+  return { popular: unique(popular), m1: unique(m1).slice(0, 12), errors, unreachable }
 }
 
 export interface FeedPost {
@@ -336,4 +367,76 @@ export async function publicationPicture (id: string, fetcher: typeof fetch = fe
     if (url) return url
   }
   return null
+}
+
+/** Which list a See all page shows: a Discover shelf, or search results. */
+export type GridSource = 'popular' | 'm1' | 'new' | 'search'
+
+export interface GridPage {
+  cards: ShelfCard[];
+  cursor: string | null;
+  /** Search answered by filtering the newest prints here: the service has no search yet. */
+  local?: boolean;
+}
+
+/**
+ * One page of a See all grid (Library v3 page 3/4). Popular, Made for M1
+ * and New are the public lists; search is `GET /v1/public/search?q=`, and
+ * on a service without it (404) the newest prints filtered here, so search
+ * still works while that ships.
+ */
+export async function loadGrid (
+  source: GridSource,
+  options: { cursor?: string | null, query?: string } = {},
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal
+): Promise<GridPage> {
+  const cursor = options.cursor ?? null
+  if (source === 'search') return searchPublications(options.query ?? '', cursor, fetcher, signal)
+  const query = source === 'popular'
+    ? { sort: 'popular' as const }
+    : source === 'm1' ? { sort: 'trending' as const, tag: 'm1-ready' } : { sort: 'new' as const }
+  const page = await loadPublications({ ...query, cursor, limit: 24 }, fetcher, signal)
+  return {
+    cards: page.items.map(summaryCard).map(card => source === 'm1' ? { ...card, m1: true } : card),
+    cursor: page.next_cursor
+  }
+}
+
+/** The words a card is found by: its title, maker and tags. */
+export function cardMatches (card: ShelfCard, query: string): boolean {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const haystack = [card.title, card.creator, card.handle ?? '', ...card.tags].join(' ').toLowerCase()
+  return words.every(word => haystack.includes(word))
+}
+
+/** As the service searches: the whole query within the title, the maker or a tag. */
+export function searchMatches (card: ShelfCard, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  return [card.title, card.creator, card.handle ?? '', ...card.tags].some(field => field.toLowerCase().includes(q))
+}
+
+async function searchPublications (query: string, cursor: string | null, fetcher: typeof fetch, signal?: AbortSignal): Promise<GridPage> {
+  const q = query.trim()
+  if (q.length < 2) throw new Error('Search for at least two letters.')
+  if (q.length > 64) throw new Error('Search for at most 64 characters.')
+  const params = new URLSearchParams({ q, limit: '24' })
+  if (cursor) params.set('cursor', cursor)
+  const response = await fetcher(`${MODELS_URL}/v1/public/search?${params}`, { method: 'GET', credentials: 'omit', signal })
+  if (response.status === 404) {
+    // An older model service: search the newest prints here instead.
+    const newest = await loadPublications({ sort: 'new', limit: 48 }, fetcher, signal)
+    return { cards: newest.items.map(summaryCard).filter(card => searchMatches(card, q)), cursor: null, local: true }
+  }
+  if (response.status === 429) throw new Error('Too many searches for a moment. Try again in a minute.')
+  if (!response.ok) throw new Error('The Library didn\'t answer. Try again.')
+  const body = await response.json().catch(() => null) as Partial<PublicationsPage> | null
+  if (!body || !Array.isArray(body.items)) throw new Error('The Library sent an answer this version of Control can\'t read.')
+  return { cards: body.items.filter(isSummary).map(summaryCard), cursor: text(body.next_cursor) ? body.next_cursor : null }
+}
+
+/** Only #rrggbb colours, lowercase, at most 8: the service's are, this keeps anything else out of a style. */
+export function colourList (value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((c): c is string => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)).map(c => c.toLowerCase()).filter((c, i, all) => all.indexOf(c) === i).slice(0, 8)
 }

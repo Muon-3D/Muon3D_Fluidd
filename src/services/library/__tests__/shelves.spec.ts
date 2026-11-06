@@ -3,7 +3,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { MODELS_URL, type PublicPublication } from '../api'
-import { ago, loadFeedPage, loadPublication, loadShelves, publicationPrint, summaryCard, type PublicationSummary } from '../shelves'
+import { ago, cardMatches, loadFeedPage, loadGrid, loadPublication, loadShelves, publicationPrint, summaryCard, type PublicationSummary } from '../shelves'
 
 const summary = (over: Partial<PublicationSummary> = {}): PublicationSummary => ({
   id: 'p1',
@@ -36,6 +36,11 @@ describe('Library v2 shelves', () => {
     expect(card.href).toBe('https://library.muon3d.com/p/spiral-vase')
   })
 
+  it('carries the publication\'s category, for the category chips', () => {
+    expect(summaryCard(summary({ category: 'workshop' })).category).toBe('workshop')
+    expect(summaryCard(summary({ category: undefined })).category).toBeNull()
+  })
+
   it('drops a picture that is not https or the model service', () => {
     expect(summaryCard(summary({ thumbnail_url: 'javascript:alert(1)' })).picture).toBeNull()
   })
@@ -53,10 +58,21 @@ describe('Library v2 shelves', () => {
     expect(shelves.m1[1].facts).toBe('38 min · 9 g · PLA')
   })
 
-  it('keeps Discover\'s own shelves when the publications list fails, and fails only when both do', async () => {
+  it('keeps Discover\'s own shelves when the publications list fails; a shelf neither source answers says why', async () => {
     const fallback = answer({ '/v1/public/discover': { m1_ready: [], trending: [summary()], new: [] } })
-    expect((await loadShelves(fallback)).popular.map(card => card.id)).toEqual(['p1'])
-    await expect(loadShelves(answer({}))).rejects.toThrow()
+    const kept = await loadShelves(fallback)
+    expect(kept.popular.map(card => card.id)).toEqual(['p1'])
+    expect(kept.errors).toEqual({})
+    const down = await loadShelves(answer({}))
+    expect(down.popular).toEqual([])
+    expect(down.errors.popular).toMatch(/didn't answer/)
+    expect(down.errors.m1).toMatch(/didn't answer/)
+    expect(down.unreachable).toBe(false)
+  })
+
+  it('knows when nothing could be reached at all (fetch itself failed), whatever the browser calls it', async () => {
+    const offline = (async () => { throw new TypeError('Load failed') }) as unknown as typeof fetch
+    expect((await loadShelves(offline)).unreachable).toBe(true)
   })
 
   it('reads the feed newest first: a remix is said as one, and the cursor carries on', async () => {
@@ -123,5 +139,43 @@ describe('Library v2: printing a public print from its card', () => {
     expect((await loadPublication('p1', fetcher)).title).toBe('Spiral vase')
     expect((fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatchObject({ credentials: 'omit' })
     await expect(loadPublication('gone', answer({ '/v1/public/publications/gone': new Response('', { status: 404 }) }))).rejects.toThrow(/no longer public/)
+  })
+})
+
+describe('Library v3 See all and search', () => {
+  it('reads a shelf as a grid page from its own list, Made for M1 marked as such', async () => {
+    const fetcher = answer({ '/v1/public/publications?sort=trending&tag=m1-ready': { items: [summary()], next_cursor: 'o:24' } })
+    const page = await loadGrid('m1', {}, fetcher)
+    expect(page.cards.map(c => [c.id, c.m1])).toEqual([['p1', true]])
+    expect(page.cursor).toBe('o:24')
+  })
+
+  it('searches the service, passing the cursor on', async () => {
+    const fetcher = answer({ '/v1/public/search?q=vase': { items: [summary()], next_cursor: null } })
+    const page = await loadGrid('search', { query: ' vase ' }, fetcher)
+    expect(page.cards.map(c => c.id)).toEqual(['p1'])
+    expect(page.local).toBeFalsy()
+  })
+
+  it('without the search route (404), searches the newest prints here', async () => {
+    const fetcher = answer({
+      '/v1/public/search': new Response('', { status: 404 }),
+      '/v1/public/publications?sort=new': { items: [summary(), summary({ id: 'p2', slug: 'p2', title: 'Gear' })], next_cursor: null }
+    })
+    const page = await loadGrid('search', { query: 'gear' }, fetcher)
+    expect(page.cards.map(c => c.id)).toEqual(['p2'])
+    expect(page.local).toBe(true)
+  })
+
+  it('refuses a one-letter search, and says when searching too fast', async () => {
+    await expect(loadGrid('search', { query: 'a' }, answer({}))).rejects.toThrow(/two letters/)
+    await expect(loadGrid('search', { query: 'vase' }, answer({ '/v1/public/search': new Response('', { status: 429 }) }))).rejects.toThrow(/Too many searches/)
+  })
+
+  it('finds a card by every word of a query, in its title, maker or tags', () => {
+    const card = summaryCard(summary({ tags: ['vase'] }))
+    expect(cardMatches(card, 'spiral okoro')).toBe(true)
+    expect(cardMatches(card, 'vase')).toBe(true)
+    expect(cardMatches(card, 'spiral gear')).toBe(false)
   })
 })

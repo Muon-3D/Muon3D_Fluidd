@@ -6,6 +6,13 @@
  * Library routes; extend it as pages need more.
  */
 import type { Page, Route } from '@playwright/test'
+import { createHash } from 'node:crypto'
+import { gzipSync } from 'node:zlib'
+
+/** The G-code every fake print serves: gzip-stored like the Library's, with its real size and hash. */
+export const GCODE_TEXT = '; e2e print\nG28\nG1 X10 Y10 E1\n'
+const GCODE_STORED = gzipSync(Buffer.from(GCODE_TEXT))
+const GCODE_SHA256 = createHash('sha256').update(GCODE_STORED).digest('hex')
 
 export const MODELS = 'https://models.muon3d.com'
 
@@ -19,9 +26,12 @@ export interface FakePublication {
   remix_count: number;
   save_count: number;
   created_at: string;
+  category: string;
   colour: string;
   /** A G-code sliced for the M1 that Print on… can send. */
   gcode: boolean;
+  /** The colours its pictures show it in (#rrggbb), as publishing sets them. */
+  colours: string[];
   make_of?: string | null;
   remix_of?: string | null;
 }
@@ -44,8 +54,10 @@ export function publication (n: number, over: Partial<FakePublication> = {}): Fa
     remix_count: n % 3,
     save_count: 5 * n,
     created_at: new Date(Date.UTC(2026, 10, 5, 12) - n * 3_600_000).toISOString(),
+    category: ['home', 'workshop', 'tools', 'art'][n % 4],
     colour: COLOURS[n % COLOURS.length],
     gcode: true,
+    colours: [COLOURS[n % COLOURS.length], COLOURS[(n + 3) % COLOURS.length]],
     ...over
   }
 }
@@ -59,6 +71,12 @@ export interface ModelServiceState {
   collections: FakeCollection[];
   /** Answer every request with this status (outage tests), or null. */
   failWith: number | null;
+  /** Answer matching requests with a status instead ("GET /v1/public/discover"): one shelf down. */
+  failOn: (request: string) => number | null;
+  /** Hold every answer this long (loading states). */
+  delayMs: number;
+  /** Answer search with 404, as a model service from before search did. */
+  noSearch: boolean;
   /** Requests seen, for assertions ("method path"). */
   seen: string[];
 }
@@ -69,6 +87,9 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     saves: [],
     collections: [],
     failWith: null,
+    failOn: () => null,
+    delayMs: 0,
+    noSearch: false,
     seen: [],
     ...over
   }
@@ -83,7 +104,7 @@ function summary (p: FakePublication, all: FakePublication[]) {
     id: p.id,
     slug: p.slug,
     title: p.title,
-    category: 'home',
+    category: p.category,
     tags: p.tags,
     ai_generated: 'no',
     creator: p.creator,
@@ -92,6 +113,9 @@ function summary (p: FakePublication, all: FakePublication[]) {
     make_count: p.make_count,
     remix_count: p.remix_count,
     save_count: p.save_count,
+    colours: p.colours,
+    material: p.gcode ? 'PLA' : null,
+    size_mm: null,
     make_of: parent(p.make_of),
     remix_of: parent(p.remix_of),
     thumbnail_url: `${MODELS}/v1/public/publications/${p.id}/images/thumb`
@@ -109,7 +133,7 @@ function detail (p: FakePublication, all: FakePublication[]) {
     counts: { makes: p.make_count, remixes: p.remix_count, saves: p.save_count, comments: 0 },
     images: [{ id: 'thumb', name: 'Image 1', format: 'svg', size_bytes: 1, url: s.thumbnail_url }],
     files: p.gcode
-      ? [{ id: `${p.id}-g`, name: 'gcode.gcode', role: 'gcode', format: 'gcode', encoding: 'gzip', size_bytes: 120, sha256: 'a'.repeat(64), setup: { printer_model: 'Muon3D M1', nozzle_mm: 0.4, material: 'PLA' } }]
+      ? [{ id: `${p.id}-g`, name: 'gcode.gcode', role: 'gcode', format: 'gcode', encoding: 'gzip', size_bytes: GCODE_STORED.length, sha256: GCODE_SHA256, setup: { printer_model: 'Muon3D M1', nozzle_mm: 0.4, material: 'PLA' } }]
       : [],
     remix_of: s.remix_of
   }
@@ -127,7 +151,9 @@ export async function serveModels (page: Page, state: ModelServiceState) {
     const method = request.method()
     state.seen.push(`${method} ${path}${url.search}`)
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
-    if (state.failWith) return json(route, { error: { code: 'unavailable', message: 'Down for a moment.' } }, state.failWith)
+    if (state.delayMs) await new Promise(resolve => setTimeout(resolve, state.delayMs))
+    const failure = state.failWith ?? state.failOn(`${method} ${path}${url.search}`)
+    if (failure) return json(route, { error: { code: 'unavailable', message: 'Down for a moment.' } }, failure)
     const all = state.publications
 
     const image = path.match(/^\/v1\/public\/publications\/([^/]+)\/images\//)
@@ -153,6 +179,16 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       const next = !more ? null : sort === 'new' ? page[page.length - 1].id : `o:${start + limit}`
       return json(route, { items: page.map(p => summary(p, all)), next_cursor: next })
     }
+    if (path === '/v1/public/search') {
+      if (state.noSearch) return json(route, { error: { code: 'not_found' } }, 404)
+      const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
+      if (q.length < 2 || q.length > 64) return json(route, { error: { code: 'query', message: 'Search for 2 to 64 characters.' } }, 400)
+      const found = all.filter(p => [p.title, p.creator.handle ?? '', p.creator.display_name ?? '', ...p.tags].join(' ').toLowerCase().includes(q))
+      const start = Number((url.searchParams.get('cursor') ?? 'o:0').slice(2)) || 0
+      const limit = Number(url.searchParams.get('limit') ?? 24)
+      const page = found.slice(start, start + limit)
+      return json(route, { items: page.map(p => summary(p, all)), next_cursor: found.length > start + limit ? `o:${start + limit}` : null })
+    }
     const one = path.match(/^\/v1\/public\/publications\/([^/]+)$/)
     if (one) {
       const p = all.find(q => q.id === one[1] || q.slug === one[1])
@@ -161,6 +197,12 @@ export async function serveModels (page: Page, state: ModelServiceState) {
 
     // Signed in: the assertion the console handed out must come with it.
     if (!request.headers().authorization) return json(route, { error: { code: 'unauthorized' } }, 401)
+    const share = path.match(/^\/v1\/shares\/([^/]+)\/files\/([^/]+)$/)
+    if (share && method === 'POST') {
+      const p = all.find(q => q.id === share[1])
+      if (!p || share[2] !== `${p.id}-g`) return json(route, { error: { code: 'not_found' } }, 404)
+      return route.fulfill({ status: 200, contentType: 'application/octet-stream', headers: { 'access-control-allow-origin': '*' }, body: GCODE_STORED })
+    }
     if (path === '/v1/library') return json(route, { enabled: true, account: { promise_version: '2026-10-01' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
     if (path === '/v1/items') return json(route, { items: [], rev: 1, more: false, reset: true })
     if (path === '/v1/library/sections') return json(route, { all: 0, printed: 0, sliced: 0, saved: state.saves.length })
