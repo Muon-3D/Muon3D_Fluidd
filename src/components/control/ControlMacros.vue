@@ -1,6 +1,7 @@
 <template>
   <control-card
     title="Macros"
+    icon="macro"
     :locked="controlLock"
     :note="klippyReady ? note : ''"
     data-tid="control-macros"
