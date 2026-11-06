@@ -242,8 +242,11 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
 
   /** Open page: the print's page, pushed so Back returns to where it was opened. */
   openPrint (id: string) {
-    this.printDepth++
-    this.$router.push({ query: { ...this.$route.query, print: id } }).catch(() => {})
+    // The print already open adds no page, so nothing to go back through.
+    if (id === this.printId) return
+    this.$router.push({ query: { ...this.$route.query, print: id } })
+      .then(() => { this.printDepth++ })
+      .catch(() => {})
   }
 
   /** ‹ on a print's page: back where it came from, or (opened by its address) to the place under it. */

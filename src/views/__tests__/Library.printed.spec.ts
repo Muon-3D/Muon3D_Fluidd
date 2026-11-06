@@ -110,10 +110,11 @@ describe('Library v3: Yours See all in the address', () => {
     expect(direct.replace).toHaveBeenCalledWith({ query: { view: 'mine' } })
   })
 
-  it('‹ on print pages goes back through the ones opened here, then to the place under them', () => {
+  it('‹ on print pages goes back through the ones opened here, then to the place under them', async () => {
     const { vm, push, back, replace } = at({ view: 'discover' })
     vm.openPrint('a')
     vm.openPrint('b')
+    await new Promise(resolve => setTimeout(resolve, 0))
     expect(push).toHaveBeenCalledTimes(2)
     vm.printBack()
     vm.printBack()
@@ -125,6 +126,18 @@ describe('Library v3: Yours See all in the address', () => {
     expect(replace).toHaveBeenCalledTimes(1)
   })
 
+  it('a push that went nowhere (refused, or the print already open) is not one to go back through', async () => {
+    const { vm, push, back, replace } = at({ view: 'discover', print: 'a' })
+    vm.openPrint('a')
+    expect(push).not.toHaveBeenCalled()
+    push.mockImplementationOnce(() => Promise.reject(new Error('NavigationDuplicated')))
+    vm.openPrint('b')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    vm.printBack()
+    expect(back).not.toHaveBeenCalled()
+    expect(replace).toHaveBeenCalledWith({ query: { view: 'discover' } })
+  })
+
   it('leaving the print pages another way forgets them, so ‹ never leaves the Library', async () => {
     const route = Vue.observable({ query: { view: 'discover' } as Record<string, string> })
     const back = vi.fn()
@@ -134,6 +147,7 @@ describe('Library v3: Yours See all in the address', () => {
       stubs: ['router-link', 'frame-icon', 'print-on-dialog', 'file-name-dialog', 'cloud-account-dialog']
     }).vm as any
     vm.openPrint('a')
+    await new Promise(resolve => setTimeout(resolve, 0))
     route.query = { view: 'discover', print: 'a' }
     await Vue.nextTick()
     // Browser Back to Discover, then a print's page opened by its address.
