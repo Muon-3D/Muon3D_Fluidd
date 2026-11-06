@@ -13,7 +13,7 @@ describe('the tile list', () => {
   it('has unique ids, a width on every screen, and the order the brief gives', () => {
     const ids = overviewTiles.map(t => t.id)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(ids).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'zoffset', 'jog', 'position', 'macros', 'graph', 'trackpad', 'fans', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(ids).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'jog', 'position', 'macros', 'graph', 'trackpad', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
     for (const t of overviewTiles) {
       expect(t.span).toBeGreaterThan(0); expect(t.span).toBeLessThanOrEqual(12)
       expect([6, 12]).toContain(t.tablet); expect([1, 2]).toContain(t.phone)
@@ -26,7 +26,7 @@ describe('Overview page', () => {
     const store = tileStore({ printing: true })
     const w = mount(Overview, tileMount(store, { stubs: { ...tileMount(store).stubs, ...heavy } }))
     expect(w.findAll('[data-cell]').wrappers.map(c => c.attributes('data-cell'))).toEqual(overviewTiles.filter(t => t.defaultOn).map(t => t.id))
-    for (const id of ['stage', 'job', 'filament', 'hotend', 'bed', 'speed', 'zoffset', 'jog', 'position', 'macros', 'graph']) {
+    for (const id of ['stage', 'job', 'filament', 'hotend', 'bed', 'speed', 'fans', 'jog', 'position', 'macros', 'graph']) {
       expect(w.findAll(`[data-tile="${id}"]`)).toHaveLength(1)
     }
     expect(w.find('[data-tid="overview-customise"]').exists()).toBe(false)

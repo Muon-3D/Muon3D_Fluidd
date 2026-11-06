@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Overview from '@/views/Overview.vue'
 import { overviewTiles } from '../registry'
 import { defaultLayout, layoutKey, serverLayoutKey } from '@/services/overview/layout'
+import { widgetsFor } from '@/services/overview/widgets'
 import { resetSocket, socket, tileMount, tileStore } from './fixture'
 
 vi.mock('@/components/ui/M3Dialog.vue', async () => (await import('./fixture')).m3DialogModule)
@@ -10,7 +11,7 @@ vi.mock('@/api/socketActions', async () => ({ SocketActions: (await import('./fi
 
 const heavy = { 'overview-stage': true, 'thermal-graph': true, 'first-layer-nudges': true, 'material-picker': true }
 const allIds = overviewTiles.map(t => t.id)
-const defaults = defaultLayout(overviewTiles)
+const defaults = defaultLayout(widgetsFor(overviewTiles, true))
 const onIds = defaults.tiles.map(t => t.id)
 const mine = { version: 1, savedAt: 5, tiles: [{ id: 'bed', span: 6, rows: 1 }, { id: 'stage', span: 12, rows: 2 }], hidden: allIds.filter(i => i !== 'bed' && i !== 'stage') }
 
@@ -122,11 +123,35 @@ describe('Overview, edit mode', () => {
     expect(w.find('[data-tid="widget-on-job"]').text()).toBe('On')
     expect(w.find('[data-tid="widget-add-job"]').exists()).toBe(false)
     expect(w.find('[data-tid="widget-size-console-S"]').exists()).toBe(false)
-    await w.find('[data-tid="widget-size-fans-L"]').trigger('click')
-    await w.find('[data-tid="widget-add-fans"]').trigger('click')
-    expect(w.find('[data-cell="fans"]').attributes('style')).toContain('--span: 6')
-    expect(w.find('[data-cell="fans"]').attributes('style')).toContain('--rows: 2')
+    await w.find('[data-tid="widget-size-camera-L"]').trigger('click')
+    await w.find('[data-tid="widget-add-camera"]').trigger('click')
+    expect(w.find('[data-cell="camera"]').attributes('style')).toContain('--span: 12')
+    expect(w.find('[data-cell="camera"]').attributes('style')).toContain('--rows: 2')
     w.destroy()
+  })
+
+  it('never offers Z offset on a Muon printer (or one not yet known), and offers it on others', async () => {
+    const muon = open()
+    await muon.w.find('[data-tid="edit-open"]').trigger('click')
+    await muon.w.find('[data-tid="widget-sheet-open"]').trigger('click')
+    expect(muon.w.find('[data-tid="widget-card-zoffset"]').exists()).toBe(false)
+    expect(muon.w.find('[data-tid="widget-card-fans"]').exists()).toBe(true)
+    muon.w.destroy()
+    const store = tileStore()
+    ;(store.state as any).server = { info: { components: ['file_manager', 'history'] } }
+    const other = mount(Overview, tileMount(store, { stubs: { ...tileMount(store).stubs, ...heavy } }))
+    await other.find('[data-tid="edit-open"]').trigger('click')
+    await other.find('[data-tid="widget-sheet-open"]').trigger('click')
+    expect(other.find('[data-tid="widget-card-zoffset"]').exists()).toBe(true)
+    expect(cells(other)).not.toContain('zoffset')
+    other.destroy()
+    const known = tileStore()
+    ;(known.state as any).server = { info: { components: ['file_manager', 'muon_access'] } }
+    const muonKnown = mount(Overview, tileMount(known, { stubs: { ...tileMount(known).stubs, ...heavy } }))
+    await muonKnown.find('[data-tid="edit-open"]').trigger('click')
+    await muonKnown.find('[data-tid="widget-sheet-open"]').trigger('click')
+    expect(muonKnown.find('[data-tid="widget-card-zoffset"]').exists()).toBe(false)
+    muonKnown.destroy()
   })
 
   it('searches and filters the sheet by category', async () => {
