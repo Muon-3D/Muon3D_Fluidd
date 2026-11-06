@@ -12,12 +12,6 @@
   >
     <app-rail v-if="showRail" />
 
-    <inline-svg
-      v-if="!managedConsoleRoute && showBackgroundLogo && !isMobileViewport"
-      :src="logoSrc"
-      class="muon-background-logo"
-    />
-
     <app-bar v-if="!managedConsoleRoute" />
 
     <flash-message
@@ -145,7 +139,7 @@ import ConnectingScreen from './components/layout/ConnectingScreen.vue'
 import UpdatingScreen from './components/updates/UpdatingScreen.vue'
 import UpdateBanner from './components/updates/UpdateBanner.vue'
 import { printerLost, updateWatch, watchUpdates } from '@/services/updates/watch'
-import { ACTIVE_PHASES, offlineScreen } from '@/services/updates/model'
+import { bannerVisible, offlineScreen } from '@/services/updates/model'
 import { printerNameParts } from '@/util/printer-name'
 import { connectionView, type ConnectionView } from '@/services/connection/view'
 import { cloudState } from '@/services/muon-cloud/state'
@@ -252,14 +246,6 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     return this.$store.state.config.uiSettings.theme as ThemeConfig
   }
 
-  get showBackgroundLogo () {
-    return this.theme.backgroundLogo
-  }
-
-  get logoSrc () {
-    return `${import.meta.env.BASE_URL}${this.theme.logo.src}`
-  }
-
   get primaryColor (): string {
     return this.$vuetify.theme.currentTheme.primary?.toString() ?? ''
   }
@@ -359,7 +345,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   get showUpdateBanner (): boolean {
     if (this.foreignPrinterRoute) return false
     const r = updateWatch.remembered
-    return !!r && ACTIVE_PHASES.includes(r.phase) && this.printerFrame && this.socketConnected &&
+    return bannerVisible(r, updateWatch.now, updateWatch.answered) && this.printerFrame && this.socketConnected &&
       this.$route.name !== 'Updating' && updateWatch.printer === (activeSlug() ?? '')
   }
 
@@ -395,7 +381,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
       otherPrinter: this.otherPrinterRoute,
       cloudPresence: presence === 'online' ? null : presence,
       updating: !this.socketConnected && updateWatch.printer === (activeSlug() ?? '')
-        ? offlineScreen(updateWatch.remembered, updateWatch.now)
+        ? offlineScreen(updateWatch.remembered, updateWatch.now, updateWatch.answered)
         : null
     })
   }
@@ -897,15 +883,5 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   // Room for the tab bar, so the last card can scroll clear of it.
   .muon-shell--tabbed .muon-content {
     padding-bottom: calc(96px + env(safe-area-inset-bottom)) !important;
-  }
-
-  .muon-background-logo {
-    pointer-events: none;
-    position: fixed;
-    width: 40%;
-    height: auto;
-    right: -8%;
-    bottom: -16%;
-    opacity: 0.04;
   }
 </style>
