@@ -200,4 +200,42 @@ describe('updateWatch polling', () => {
     printerLost()
     expect(offlineScreen(updateWatch.remembered, Date.now(), updateWatch.answered)).toBe('updating')
   })
+
+  it('press, reboot, the reconnect refused twice: the bar clears (it is not believed, then it runs out) and does not stay up', async () => {
+    const installing = () => Promise.resolve({ status: 200, data: { result: { state: 'installing', current_version: '1.0', target_version: '1.1', progress: 40, install: { phase: 'installing', job_id: 'j1' } } } })
+    watchUpdates('boxwood', vi.fn(installing))
+    await settle()
+    expect(bannerVisible(updateWatch.remembered, Date.now(), updateWatch.answered)).toBe(true)
+    // The printer reboots; Fluidd reconnects and is refused, twice.
+    printerLost()
+    const get = vi.fn(refused)
+    watchUpdates('boxwood', get)
+    await settle()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(get).toHaveBeenCalledTimes(2)
+    expect(updateWatch.answered).toBe(false)
+    expect(bannerVisible(updateWatch.remembered, Date.now(), updateWatch.answered)).toBe(false)
+    // No requests are made, but time goes on: the entry runs out and is dropped.
+    await vi.advanceTimersByTimeAsync(21 * 60_000)
+    expect(get).toHaveBeenCalledTimes(2)
+    expect(updateWatch.remembered).toBeNull()
+  })
+
+  it('keeps time moving while an install is remembered and the route is refused', async () => {
+    localStorage.setItem('muon3d.update.boxwood', JSON.stringify({ jobId: 'j1', phase: 'installing', from: '1.0', to: '1.1', progress: 40, seenAt: Date.now(), lostAt: null, budgetMs: 600_000 }))
+    watchUpdates('boxwood', vi.fn(refused))
+    await settle()
+    await vi.advanceTimersByTimeAsync(10_000)
+    const before = updateWatch.now
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(updateWatch.now).toBeGreaterThan(before)
+  })
+
+  it('records the job the printer held at the press, so a different one is this install', async () => {
+    const old = () => Promise.resolve({ status: 200, data: { result: { state: 'idle', current_version: '1.0', target_version: '1.1', install: { phase: 'failed', job_id: 'old', started_at: '2026-11-02T12:00:00Z' } } } })
+    watchUpdates('boxwood', vi.fn(old))
+    await settle()
+    installStarted('1.0', '1.1')
+    expect(updateWatch.remembered?.startedJobId).toBe('old')
+  })
 })

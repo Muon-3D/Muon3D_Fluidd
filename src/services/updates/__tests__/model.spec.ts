@@ -275,3 +275,30 @@ describe('a fast failure or rollback of an install the person started', () => {
     expect(outcome({ ...preparing, phase: 'failed' }, null)).toBe('failed')
   })
 })
+
+describe('a fast failure with the printer clock behind, or a job id Fluidd has not learned yet', () => {
+  const press = Date.parse('2026-11-06T12:00:00Z')
+  const base = { jobId: null, phase: 'preparing' as const, from: FROM, to: TO, progress: null, seenAt: press, lostAt: null, budgetMs: DEFAULT_BUDGET_MS, startedAt: press }
+  const failed = (jobId: string, startedAt: string): AuxUpdateStatus => ({ state: 'idle', current_version: FROM, target_version: TO, install: { phase: 'failed', job_id: jobId, started_at: startedAt } })
+
+  it('reports "failed" when the printer clock is 2 s behind: the job id differs from the one held at the press', () => {
+    const pressed = { ...base, startedJobId: 'old' }
+    const behind = failed('new', '2026-11-06T11:59:58Z')
+    expect(remember(pressed, behind, press + 20_000)?.phase).toBe('failed')
+    expect(outcome(pressed, behind)).toBe('failed')
+  })
+
+  it('still reports it with no job id known at the press, within a minute of clock tolerance', () => {
+    expect(remember(base, failed('new', '2026-11-06T11:59:58Z'), press + 20_000)?.phase).toBe('failed')
+  })
+
+  it('does not take the earlier install that was there at the press for this one', () => {
+    const pressed = { ...base, startedJobId: 'old' }
+    expect(remember(pressed, failed('old', '2026-11-06T11:59:58Z'), press + 20_000)).toBe(pressed)
+    expect(outcome(pressed, failed('old', '2026-11-02T12:00:00Z'))).toBeNull()
+  })
+
+  it('still ignores an install from days before the press, beyond the tolerance', () => {
+    expect(outcome(base, failed('old', '2026-11-02T12:00:00Z'))).toBeNull()
+  })
+})

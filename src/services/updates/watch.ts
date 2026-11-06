@@ -74,20 +74,41 @@ const RETRY_DENIED_MS = 10 * 1000
 /** Under way and within its time: a stale entry that nothing can confirm (a refused route) does not poll fast for ever. */
 const active = () => !!updateWatch.remembered && ACTIVE_PHASES.includes(updateWatch.remembered.phase) && !expired(updateWatch.remembered, Date.now())
 
+const hasActiveEntry = () => !!updateWatch.remembered && ACTIVE_PHASES.includes(updateWatch.remembered.phase)
+
+function stopTicker () {
+  if (ticker) clearInterval(ticker)
+  ticker = null
+}
+
+/**
+ * Keeps `now` moving while an install is remembered, so its time can run out (the bar and the
+ * restart screen read it). While the route is refused it makes no requests, and an entry that
+ * has run out is dropped, since nothing can confirm it any more.
+ */
+function startTicker () {
+  if (ticker) return
+  ticker = setInterval(() => {
+    updateWatch.now = Date.now()
+    if (refused && expired(updateWatch.remembered, updateWatch.now)) {
+      updateWatch.remembered = null
+      save()
+      stopTicker()
+    }
+  }, 5000)
+}
+
 function schedule (delay?: number) {
   if (timer) clearTimeout(timer)
   timer = null
   if (refused) {
-    if (ticker) clearInterval(ticker)
-    ticker = null
+    if (hasActiveEntry()) startTicker()
+    else stopTicker()
     return
   }
   timer = setTimeout(() => { poll() }, delay ?? (active() ? 5000 : 60000))
-  if (active() && !ticker) ticker = setInterval(() => { updateWatch.now = Date.now() }, 5000)
-  if (!active() && ticker) {
-    clearInterval(ticker)
-    ticker = null
-  }
+  if (active()) startTicker()
+  else stopTicker()
 }
 
 /** Reads the printer's update status now. A refusal (network protection, over Iroh) shows nothing and stops the polling. */
@@ -104,6 +125,8 @@ export async function poll (): Promise<void> {
       return
     }
     refused = denied
+    // A refusal confirms nothing: what was believed before the restart is not believed now.
+    if (denied) updateWatch.answered = false
     if (denied && expired(updateWatch.remembered, Date.now())) {
       // Nothing can confirm it any more: a stale entry does not wait for ever on a refused route.
       updateWatch.remembered = null
@@ -160,7 +183,8 @@ export function installStarted (from: string | null, to: string | null) {
     lostAt: null,
     budgetMs: updateWatch.remembered?.budgetMs ?? DEFAULT_BUDGET_MS,
     startedAt: Date.now(),
-    reconnectedAt: null
+    reconnectedAt: null,
+    startedJobId: updateWatch.status?.install?.job_id ?? null
   }
   save()
   refused = false
