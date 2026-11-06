@@ -9,6 +9,7 @@
  */
 import { test, expect } from '../fixtures'
 import { usePrinter, PRESETS } from './printer'
+import { BOXWOOD_STAGED } from '../../src/services/updates/__tests__/fixtures/boxwood-staged'
 
 const SYSTEM_INFO = {
   system_info: {
@@ -314,5 +315,191 @@ test.describe('Updating', () => {
     await expect(page.getByTestId('update-banner')).toHaveCount(0)
     await expect(page.getByText('Verifying update')).toHaveCount(0)
     await expect(page.getByRole('status').filter({ hasText: /Restarting|Restart delayed/ })).toHaveCount(0)
+  })
+})
+
+/** The requests that would change the printer's network, with their query and body. */
+function watchCalls (page: import('@playwright/test').Page) {
+  const calls: Array<{ method: string, path: string, query: string, body: string }> = []
+  page.on('request', request => {
+    const url = new URL(request.url())
+    if (/\/server\/aux\/wifi\//.test(url.pathname) && request.method() !== 'GET') {
+      calls.push({ method: request.method(), path: url.pathname.replace('/server/aux', ''), query: url.search, body: request.postData() ?? '' })
+    }
+  })
+  return calls
+}
+
+test.describe('Wi-Fi: every change asks first and sends the right call', () => {
+  test('Disconnect asks, sends nothing until confirmed, then POST /wifi/disconnect', async ({ page, open }) => {
+    await usePrinter(page)
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await page.getByTestId('wifi-connected').getByTestId('wifi-disconnect').click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    expect(calls).toEqual([])
+    await dialog.getByRole('button', { name: /cancel/i }).click()
+    expect(calls).toEqual([])
+
+    await page.getByTestId('wifi-connected').getByTestId('wifi-disconnect').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Disconnect', exact: true }).click()
+    await expect.poll(() => calls.map(c => `${c.method} ${c.path}`)).toEqual(['POST /wifi/disconnect'])
+  })
+
+  test('Forget on the connected network warns that the page may be lost, and sends nothing until confirmed, then DELETE /wifi/forget', async ({ page, open }) => {
+    await usePrinter(page)
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await page.getByTestId('wifi-connected').getByTestId('wifi-forget').click()
+    const dialog = page.getByRole('dialog', { name: 'Forget Workshop?' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('You may lose this page')
+    await expect(dialog).toContainText('drop off this network')
+    expect(calls).toEqual([])
+    await dialog.getByTestId('confirm-cancel').click()
+    expect(calls).toEqual([])
+
+    await page.getByTestId('wifi-connected').getByTestId('wifi-forget').click()
+    await page.getByRole('dialog', { name: 'Forget Workshop?' }).last().getByTestId('confirm-ok').click()
+    await expect.poll(() => calls.map(c => `${c.method} ${c.path}${c.query}`)).toEqual(['DELETE /wifi/forget?ssid=Workshop'])
+  })
+
+  test('joining an open network sends POST /wifi/connect with its name, only after Proceed', async ({ page, open }) => {
+    await usePrinter(page)
+    // The printer has not saved Guest: asking for its details fails, so it is joined with a new connection.
+    await page.route('**/server/aux/wifi/show**', route => (route.request().url().includes('ssid=Guest') ? route.fulfill({ status: 404, json: {} }) : route.fallback()))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await expect(page.getByTestId('wifi-networks').locator('[data-ssid="Guest"]')).toBeVisible()
+    await page.getByTestId('wifi-networks').locator('[data-ssid="Guest"]').getByRole('button', { name: 'Connect' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    expect(calls).toEqual([])
+    await page.getByTestId('wifi-proceed').click()
+    await expect.poll(() => calls.map(c => `${c.method} ${c.path}`)).toEqual(['POST /wifi/connect'])
+    expect(JSON.parse(calls[0].body)).toMatchObject({ ssid: 'Guest' })
+  })
+
+  test('joining a saved network sends POST /wifi/up for it, only after Proceed', async ({ page, open }) => {
+    await usePrinter(page)
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await page.getByTestId('wifi-networks').locator('[data-ssid="Workshop-2G"]').getByRole('button', { name: 'Connect' }).click()
+    expect(calls).toEqual([])
+    await page.getByTestId('wifi-proceed').click()
+    await expect.poll(() => calls.map(c => `${c.method} ${c.path}${c.query}`)).toEqual(['POST /wifi/up?ssid=Workshop-2G'])
+  })
+
+  test('the hotspot switch turns it on with POST /wifi/ap/up (it asks first only when this page is reached over the hotspot)', async ({ page, open }) => {
+    await usePrinter(page)
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await expect(page.getByTestId('hotspot-state')).toHaveText('Off')
+    expect(calls).toEqual([])
+    await page.getByTestId('hotspot-switch').click()
+    await expect.poll(() => calls.map(c => `${c.method} ${c.path}`)).toEqual(['POST /wifi/ap/up'])
+  })
+
+  test('a row shows its channel, speed and frequency in sight, and Forget sits apart from Connect', async ({ page, open }) => {
+    await usePrinter(page)
+    await open('/wifi')
+    const row = page.getByTestId('wifi-networks').locator('[data-ssid="Workshop-2G"]')
+    await expect(row.getByTestId('wifi-detail')).toContainText(/channel 6 · 130 Mbps · 2437 MHz/)
+    const [forget, connect] = [await row.getByTestId('wifi-forget').boundingBox(), await row.getByRole('button', { name: 'Connect' }).boundingBox()]
+    expect(connect!.x - (forget!.x + forget!.width)).toBeGreaterThanOrEqual(12)
+  })
+})
+
+test.describe('System: power devices, Klipper and activity', () => {
+  async function withDevice (page: import('@playwright/test').Page) {
+    const printer = await usePrinter(page, PRESETS.idleHomed(), { components: ['power'] })
+    printer.state.results['machine.system_info'] = SYSTEM_INFO
+    printer.state.answers['machine.device_power.devices'] = { devices: [{ device: 'printer_psu', status: 'on', locked_while_printing: false, type: 'gpio' }] }
+    for (const method of ['machine.device_power.on', 'machine.device_power.off', 'printer.restart', 'printer.firmware_restart']) printer.state.answers[method] = 'ok'
+    return printer
+  }
+
+  test('a power device switches at once when the setting is off, as it did', async ({ page, open }) => {
+    const printer = await withDevice(page)
+    await open('/system')
+    await page.getByTestId('system-power-devices').getByRole('switch', { name: 'printer_psu' }).click()
+    await expect.poll(() => printer.called('machine.device_power.off')).toEqual([{ printer_psu: null }])
+  })
+
+  test('Restart Klipper sends its one call', async ({ page, open }) => {
+    const printer = await withDevice(page)
+    await open('/system')
+    expect(printer.called('printer.restart')).toEqual([])
+    await page.getByTestId('system-restart-klipper').click()
+    await expect.poll(() => printer.called('printer.restart').length).toBe(1)
+    expect(printer.called('printer.firmware_restart')).toEqual([])
+  })
+
+  test('Restart the firmware sends its one call', async ({ page, open }) => {
+    const printer = await withDevice(page)
+    await open('/system')
+    await page.getByTestId('system-firmware-restart').click()
+    await expect.poll(() => printer.called('printer.firmware_restart').length).toBe(1)
+    expect(printer.called('printer.restart')).toEqual([])
+  })
+
+  test('the activity tile still has the computer and its memory, with Klipper and Moonraker', async ({ page, open }) => {
+    await withDevice(page)
+    await open('/system')
+    const activity = page.getByTestId('system-activity')
+    for (const label of ['The computer', 'Memory', 'Klipper', 'Moonraker']) await expect(activity).toContainText(label)
+  })
+})
+
+test.describe('Updating: following an install, and a refused route', () => {
+  test('follows an install across a restart and an offline gap to "Updated"', async ({ page, open }) => {
+    await usePrinter(page)
+    type Phase = 'installing' | 'rebooting' | 'gap' | 'back'
+    let phase: Phase = 'installing'
+    const bodies: Record<Exclude<Phase, 'gap'>, unknown> = {
+      installing: { state: 'installing', current_version: '0.9.3', target_version: '0.9.4', update_available: true, progress: 60, install: { phase: 'installing', job_id: 'job-1', progress: 60 } },
+      rebooting: { state: 'rebooting', current_version: '0.9.3', target_version: '0.9.4', install: { phase: 'rebooting', job_id: 'job-1' } },
+      back: { state: 'idle', current_version: '0.9.4', session: null }
+    }
+    await page.route('**/server/aux/update/status', route => (phase === 'gap' ? route.abort() : route.fulfill({ json: bodies[phase] })))
+    await open('/updating')
+    await expect(page.getByTestId('updating-installing')).toContainText('Installing update')
+    await expect(page.getByTestId('updating-percent')).toContainText('60')
+    // The printer restarts, goes quiet for a while, and comes back on the new version.
+    phase = 'rebooting'
+    await expect(page.getByTestId('updating-rebooting')).toBeVisible({ timeout: 30_000 })
+    phase = 'gap'
+    await page.waitForTimeout(11_000)
+    phase = 'back'
+    await expect(page.getByTestId('updating-updated')).toContainText('Updated', { timeout: 60_000 })
+    await expect(page.getByTestId('updating-reload')).toBeVisible()
+  })
+
+  test('a refused route is not hammered, and shows no bar or restart screen', async ({ page, open }) => {
+    await usePrinter(page)
+    let asked = 0
+    await page.route('**/server/aux/update/status', route => {
+      asked++
+      return route.fulfill({ status: 403, json: { error: { code: 403, message: 'Forbidden by policy' } } })
+    })
+    await open('/updating')
+    await expect.poll(() => asked, { timeout: 30_000 }).toBeGreaterThan(0)
+    await page.waitForTimeout(15_000)
+    // Not hammered: the load, at most one more, then nothing every few seconds.
+    expect(asked).toBeLessThanOrEqual(3)
+    await expect(page.getByRole('status').filter({ hasText: /Restarting|Restart delayed/ })).toHaveCount(0)
+    await expect(page.getByTestId('update-banner')).toHaveCount(0)
+  })
+})
+
+test.describe('An update staged on the spare slot (real Boxwood status)', () => {
+  test('shows no bar and no restart screen on load', async ({ page, open }) => {
+    await usePrinter(page, {}, { components: ['update_manager', 'authorization'] })
+    await page.route('**/server/aux/update/status', route => route.fulfill({ json: BOXWOOD_STAGED }))
+    await open('/')
+    await expect(page.getByTestId('page-title')).toBeVisible()
+    await expect(page.getByTestId('update-banner')).toHaveCount(0)
+    await expect(page.getByText('Verifying update')).toHaveCount(0)
+    await expect(page.getByRole('status').filter({ hasText: /Restarting|Restart delayed|Verifying/ })).toHaveCount(0)
   })
 })

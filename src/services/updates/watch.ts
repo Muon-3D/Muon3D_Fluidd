@@ -17,6 +17,8 @@ export const updateWatch = Vue.observable({
   remembered: null as Remembered | null,
   /** The printer these are for (its address name). */
   printer: '',
+  /** The printer has answered (any answer) since this page loaded: what the browser kept is believed only after that. */
+  answered: false,
   /** Ticks while an install is under way, so the screens can say when the restart is taking long. */
   now: Date.now()
 })
@@ -33,16 +35,17 @@ function save () {
   } catch { /* private window: it lasts until the tab closes */ }
 }
 
-/** What this browser remembered of the printer's install, unless it is long past (an install that never ended must not greet every load). */
+/**
+ * What this browser remembered of the printer's install. Kept even past its
+ * time: a tab discarded mid-install must still hear how it ended (updated, or
+ * rolled back), and the first answer from the printer decides. Until it
+ * answers, the bar and the restart screen hold back (model.ts bannerVisible,
+ * offlineScreen).
+ */
 function load (printer: string): Remembered | null {
   try {
     const raw = localStorage.getItem(storageKey(printer))
-    const r = raw ? JSON.parse(raw) as Remembered : null
-    if (!r || expired(r, Date.now())) {
-      if (raw) localStorage.removeItem(storageKey(printer))
-      return null
-    }
-    return r
+    return raw ? JSON.parse(raw) as Remembered : null
   } catch {
     return null
   }
@@ -58,10 +61,18 @@ let get: Get | null = null
  * printer, or an install the user just asked for.
  */
 let refused = false
+/**
+ * A refusal right after a reconnect may only be an identity that is not ready
+ * yet (the printer has just restarted): it is asked once more shortly, and
+ * only that once, so a printer that does refuse is still not hammered.
+ */
+let retryDenied = false
+const RETRY_DENIED_MS = 10 * 1000
 
-const active = () => !!updateWatch.remembered && ACTIVE_PHASES.includes(updateWatch.remembered.phase)
+/** Under way and within its time: a stale entry that nothing can confirm (a refused route) does not poll fast for ever. */
+const active = () => !!updateWatch.remembered && ACTIVE_PHASES.includes(updateWatch.remembered.phase) && !expired(updateWatch.remembered, Date.now())
 
-function schedule () {
+function schedule (delay?: number) {
   if (timer) clearTimeout(timer)
   timer = null
   if (refused) {
@@ -69,7 +80,7 @@ function schedule () {
     ticker = null
     return
   }
-  timer = setTimeout(() => { poll() }, active() ? 5000 : 60000)
+  timer = setTimeout(() => { poll() }, delay ?? (active() ? 5000 : 60000))
   if (active() && !ticker) ticker = setInterval(() => { updateWatch.now = Date.now() }, 5000)
   if (!active() && ticker) {
     clearInterval(ticker)
@@ -82,7 +93,16 @@ export async function poll (): Promise<void> {
   if (!get) return
   try {
     const answer = await get('/server/aux/update/status')
-    refused = answer.status === 401 || answer.status === 403
+    updateWatch.answered = true
+    const denied = answer.status === 401 || answer.status === 403
+    if (denied && retryDenied) {
+      retryDenied = false
+      refused = false
+      updateWatch.now = Date.now()
+      schedule(RETRY_DENIED_MS)
+      return
+    }
+    refused = denied
     const data = answer.data as Record<string, unknown> | undefined
     const status = (data && typeof data === 'object' && 'result' in data ? data.result : data) as AuxUpdateStatus | undefined
     if (answer.status === 200 && status && typeof status === 'object') {
@@ -99,11 +119,15 @@ export async function poll (): Promise<void> {
 export function watchUpdates (printer: string, http: Get) {
   get = http
   refused = false
+  retryDenied = true
   if (printer !== updateWatch.printer) {
     updateWatch.printer = printer
     updateWatch.status = null
+    updateWatch.answered = false
     updateWatch.remembered = load(printer)
   }
+  // The printer has just been reached (a load, a reconnect, after a restart): its first answers are not yet to be believed.
+  if (updateWatch.remembered) updateWatch.remembered = { ...updateWatch.remembered, reconnectedAt: Date.now() }
   poll()
 }
 
@@ -125,7 +149,9 @@ export function installStarted (from: string | null, to: string | null) {
     progress: null,
     seenAt: Date.now(),
     lostAt: null,
-    budgetMs: updateWatch.remembered?.budgetMs ?? DEFAULT_BUDGET_MS
+    budgetMs: updateWatch.remembered?.budgetMs ?? DEFAULT_BUDGET_MS,
+    startedAt: Date.now(),
+    reconnectedAt: null
   }
   save()
   refused = false

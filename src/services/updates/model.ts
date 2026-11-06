@@ -43,7 +43,11 @@ export interface AuxUpdateStatus {
   last_checked?: string | null;
   error?: string | null;
   release_notes?: string | null;
-  install?: { phase?: string, job_id?: string | null, progress?: number | null } | null;
+  install?: { phase?: string, job_id?: string | null, started_at?: string | null, finished_at?: string | null, progress?: number | null } | null;
+  /** The image written to the spare slot ahead of an install; "staged" waits for a person. */
+  stage?: { state?: string, version?: string | null, progress?: number | null, finished_at?: string | null, slot_fingerprint?: Record<string, unknown> | null } | null;
+  /** The commit after a restart into the new slot. An error here with state "committed" is an old one (see commitPending). */
+  commit?: { state?: string, required?: boolean, error?: { kind?: string, message?: string } | null } | null;
   session?: UpdateSession | null;
 }
 
@@ -59,6 +63,10 @@ export interface Remembered {
   /** When the printer went quiet during it, ms. */
   lostAt: number | null;
   budgetMs: number;
+  /** When the person pressed Install, ms: a terminal session that began before this is an earlier job's, not this one's. */
+  startedAt?: number | null;
+  /** When Fluidd last (re)connected to the printer, ms: the printer's first answers after an outage are not yet to be believed. */
+  reconnectedAt?: number | null;
 }
 
 /** When the printer doesn't say how long a restart may take: 20 minutes (one slow boot took 15). */
@@ -81,16 +89,63 @@ export function sessionOf (status: AuxUpdateStatus | null): UpdateSession | null
   const state = status.state ?? ''
   if (state === 'installing') return { phase: 'installing', from_version: status.current_version, to_version: status.target_version, job_id: status.install?.job_id }
   if (state === 'rebooting') return { phase: 'rebooting', from_version: status.current_version, to_version: status.target_version, job_id: status.install?.job_id }
-  if (status.requires_commit || state === 'commit_pending' || state === 'committing') return { phase: 'verifying', to_version: status.current_version }
+  if (commitPending(status) || state === 'commit_pending' || state === 'committing') return { phase: 'verifying', to_version: status.current_version }
   return null
 }
 
 /**
- * How long an install the printer has stopped mentioning is kept before it
- * is dropped: the first answer after Install may still be "idle" for a
- * moment, so a remembered install is not cleared the instant it is missing.
+ * The printer is checking a new version it restarted into: it asks for a commit
+ * (requires_commit) or the commit is not "committed". An error left in commit
+ * while its state is "committed" is an old failure and says nothing about now.
+ */
+export function commitPending (status: AuxUpdateStatus | null): boolean {
+  if (!status) return false
+  if (status.requires_commit) return true
+  return !!status.commit?.state && status.commit.state !== 'committed'
+}
+
+/**
+ * An update written to the spare slot and waiting for a person, not under way:
+ * one is available, its stage is "staged", nothing is installing (install.phase
+ * is "idle", whatever job id and times an old install left there) and no commit
+ * is pending. Settings shows it as "Update ready to install"; nothing remembers
+ * it as an install, so it shows no bar and no restart screen.
+ */
+export function isStaged (status: AuxUpdateStatus | null): boolean {
+  if (!status || !status.update_available) return false
+  if (status.stage?.state !== 'staged') return false
+  if (status.install?.phase !== 'idle') return false
+  return !commitPending(status)
+}
+
+/**
+ * A staged record that cannot prove the spare slot still holds that version:
+ * its slot fingerprint is empty (KAN-1364). Control does not offer a one-tap
+ * install from it.
+ */
+export function stagedUnverified (status: AuxUpdateStatus | null): boolean {
+  if (status?.stage?.state !== 'staged') return false
+  return !status.stage.slot_fingerprint || Object.keys(status.stage.slot_fingerprint).length === 0
+}
+
+/**
+ * How long an install the printer does not mention is kept before it is
+ * dropped: the first answers after Install, or after an outage, may still be
+ * "idle" for a moment, so it is not cleared the instant it is missing.
  */
 export const UNSEEN_GRACE_MS = 30 * 1000
+
+/** A slow "preparing" (download and check) can take minutes before the printer says "installing". */
+export const PREPARING_GRACE_MS = 5 * 60 * 1000
+
+/** The time since this install was last heard of, or Fluidd reconnected, or the person pressed Install. */
+function heardAt (r: Remembered): number {
+  return Math.max(r.seenAt, r.reconnectedAt ?? 0, r.startedAt ?? 0)
+}
+
+function graceOf (r: Remembered): number {
+  return r.phase === 'preparing' ? PREPARING_GRACE_MS : UNSEEN_GRACE_MS
+}
 
 /** Active, and past the time it was allowed (counted from when the printer went quiet, else last heard). */
 export function expired (r: Remembered | null, now: number): boolean {
@@ -99,40 +154,65 @@ export function expired (r: Remembered | null, now: number): boolean {
 }
 
 /**
+ * Whether the bar over every page shows: an install under way and within its
+ * time, once the printer has answered in this page load (what was kept in
+ * the browser is not believed until then).
+ */
+export function bannerVisible (r: Remembered | null, now: number, answered: boolean): boolean {
+  return !!r && answered && ACTIVE_PHASES.includes(r.phase) && !expired(r, now)
+}
+
+/** A terminal session that began before the person pressed Install belongs to an earlier job. */
+function beforePress (prev: Remembered, s: UpdateSession): boolean {
+  if (!prev.startedAt || !s.started_at) return false
+  const at = Date.parse(s.started_at)
+  return Number.isFinite(at) && at < prev.startedAt
+}
+
+/**
  * What to keep after hearing the printer: the active session (with progress);
- * how it ended, until it has been shown (see outcome()); and nothing once
- * the printer says there is no install under way. A remembered install
- * that the printer no longer reports (no session, or another job's) never
- * stays "under way": it ends with its outcome if the versions tell one, or
- * is dropped. Otherwise a "Verifying an update" bar outlived its install and
- * came back on every load.
+ * how it ended, until it has been shown (see outcome()); and nothing once the
+ * printer says there is no install under way. An install the printer no longer
+ * reports (no session, an idle one, a stale or another job's) never stays
+ * "under way" for good, but is not dropped on the first quiet answer either:
+ * the versions are asked first (updated, rolled back), and what they do not
+ * decide is kept for a grace counted from the last time it was heard of, the
+ * last reconnect or the press of Install (longer while preparing).
  */
 export function remember (prev: Remembered | null, status: AuxUpdateStatus | null, now: number): Remembered | null {
   const s = sessionOf(status)
   const prevActive = !!prev && ACTIVE_PHASES.includes(prev.phase)
-  if (!s || !s.phase) {
-    if (!prev || !prevActive || !status) return prev
-    if (now - prev.seenAt <= UNSEEN_GRACE_MS) return prev
-    // A bare commit-pending (no version it came from) was never an install anyone started: nothing to show.
-    const ended = prev.from ? outcome(prev, status) : null
-    return ended ? { ...prev, phase: ended, seenAt: now, lostAt: null } : null
+  if (s && s.phase && ACTIVE_PHASES.includes(s.phase)) {
+    return {
+      jobId: s.job_id ?? prev?.jobId ?? null,
+      phase: s.phase,
+      from: s.from_version ?? prev?.from ?? null,
+      to: s.to_version ?? prev?.to ?? null,
+      progress: typeof status?.progress === 'number' ? status.progress : (s.phase === prev?.phase ? prev?.progress ?? null : null),
+      seenAt: now,
+      lostAt: null,
+      budgetMs: s.offline_budget_seconds ? s.offline_budget_seconds * 1000 : prev?.budgetMs ?? DEFAULT_BUDGET_MS,
+      startedAt: prev?.startedAt ?? null,
+      reconnectedAt: prev?.reconnectedAt ?? null
+    }
   }
-  if (!ACTIVE_PHASES.includes(s.phase)) {
-    if (s.phase === 'idle') return prevActive && now - (prev?.seenAt ?? 0) <= UNSEEN_GRACE_MS ? prev : null
+  const terminal = s && s.phase && s.phase !== 'idle' ? s : null
+  if (!prev) return null
+  if (!prevActive) {
     // The outcome of what we remembered: keep it until it has been shown (see outcome()).
-    if (prev && prev.jobId && s.job_id && prev.jobId !== s.job_id) return prevActive ? null : prev
-    return prev ? { ...prev, phase: s.phase, seenAt: now, lostAt: null } : null
+    if (terminal && !(prev.jobId && terminal.job_id && prev.jobId !== terminal.job_id)) return { ...prev, phase: terminal.phase as SessionPhase, seenAt: now, lostAt: null }
+    return s && s.phase === 'idle' ? null : prev
   }
-  return {
-    jobId: s.job_id ?? prev?.jobId ?? null,
-    phase: s.phase,
-    from: s.from_version ?? prev?.from ?? null,
-    to: s.to_version ?? prev?.to ?? null,
-    progress: typeof status?.progress === 'number' ? status.progress : (s.phase === prev?.phase ? prev?.progress ?? null : null),
-    seenAt: now,
-    lostAt: null,
-    budgetMs: s.offline_budget_seconds ? s.offline_budget_seconds * 1000 : prev?.budgetMs ?? DEFAULT_BUDGET_MS
+  if (!status) return prev
+  const sameJob = !prev.jobId || !terminal?.job_id || prev.jobId === terminal.job_id
+  if (terminal && sameJob && !beforePress(prev, terminal)) {
+    return { ...prev, jobId: prev.jobId ?? terminal.job_id ?? null, phase: terminal.phase as SessionPhase, seenAt: now, lostAt: null }
   }
+  // Nothing (usable) said about this install: its versions first, then the grace, then drop.
+  // A bare commit-pending (no version it came from) was never an install anyone started.
+  const ended = prev.from ? outcome(prev, status) : null
+  if (ended) return { ...prev, phase: ended, seenAt: now, lostAt: null }
+  return now - heardAt(prev) <= graceOf(prev) ? prev : null
 }
 
 /** The printer went quiet: when, if an install was under way. */
@@ -142,8 +222,11 @@ export function lost (prev: Remembered | null, now: number): Remembered | null {
 }
 
 /** While the printer can't be reached: the Updating screen, its late version, or nothing (the usual "can't reach"). */
-export function offlineScreen (r: Remembered | null, now: number): 'updating' | 'updating-late' | null {
+export function offlineScreen (r: Remembered | null, now: number, answered = true): 'updating' | 'updating-late' | null {
   if (!r || !['preparing', 'installing', 'rebooting', 'verifying'].includes(r.phase)) return null
+  // Not lost in this page (the printer was never seen up and then down): what the browser kept is
+  // believed only once the printer has answered, and only while it is within its time.
+  if (!r.lostAt && (!answered || expired(r, now))) return null
   const since = r.lostAt ?? r.seenAt
   return now - since <= r.budgetMs ? 'updating' : 'updating-late'
 }
@@ -156,8 +239,11 @@ export function outcome (r: Remembered | null, status: AuxUpdateStatus | null): 
     return s.phase as 'updated' | 'rolled_back' | 'failed'
   }
   if (s && s.phase && ACTIVE_PHASES.includes(s.phase)) return null
+  // The printer says it is installing, restarting or committing now (the real status has no session, only state): not over.
+  const live = sessionOf(status)
+  if (live?.phase && ACTIVE_PHASES.includes(live.phase)) return null
   // No session for this job (an image that predates it): the versions tell.
-  if (status.requires_commit) return null
+  if (commitPending(status)) return null
   if (r.to && status.current_version === r.to) return 'updated'
   if (r.phase === 'rebooting' || r.phase === 'verifying') return r.from && status.current_version === r.from ? 'rolled_back' : null
   return null
