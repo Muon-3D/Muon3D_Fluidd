@@ -178,4 +178,26 @@ describe('hand moves and the bed notch', () => {
     expect(moves()).toEqual(['G1 Z6 F600', 'G1 X130 Y10 F7800', 'G1 Z1 F600'])
     s.wrapper.destroy()
   })
+
+  it('a wait on one printer never blocks another', () => {
+    const s = show([150, 60, 1])
+    s.vm.moveTo({ X: 150, Y: 20 })
+    s.store.state.config.apiUrl = 'http://other.local'
+    s.vm.moveTo({ X: 140, Y: 60 })
+    expect(sent()).toHaveLength(2)
+    s.wrapper.destroy()
+  })
+
+  it('losing control ends the wait, so the next move plans afresh', async () => {
+    const s = show([150, 60, 1])
+    s.vm.moveTo({ X: 150, Y: 20 })
+    s.store.getters['printer/getKlippyReady'] = false
+    await s.vm.$nextTick()
+    expect(handMoveLock.target).toBeNull()
+    s.store.getters['printer/getKlippyReady'] = true
+    await s.vm.$nextTick()
+    s.vm.moveTo({ X: 140, Y: 60 })
+    expect(sent()).toHaveLength(2)
+    s.wrapper.destroy()
+  })
 })

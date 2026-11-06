@@ -106,19 +106,31 @@ export function segmentHits (a: [number, number], b: [number, number], r: NoGoRe
  * the printer hasn't updated yet. `target` is in G-code coordinates, which
  * Klipper reports exactly (no mesh or skew in them).
  */
-export const handMoveLock: { target: number[] | null, until: number } = { target: null, until: 0 }
+export const handMoveLock: { target: number[] | null, until: number, printer: string } = { target: null, until: 0, printer: '' }
 
 const SETTLE_MS = 8000
 
-export function lockHandMove (gcodeTarget: number[], now = Date.now()) {
+/**
+ * Note a hand move to `gcodeTarget` on `printer` (any key naming the printer
+ * and session). Released by: the printer reporting the head there, SETTLE_MS
+ * passing (a move Klipper refuses never arrives; there is no per-script error
+ * to hook), control being lost (`releaseHandMove`), or another printer.
+ */
+export function lockHandMove (gcodeTarget: number[], printer: string, now = Date.now()) {
   handMoveLock.target = gcodeTarget.slice(0, 3)
   handMoveLock.until = now + SETTLE_MS
+  handMoveLock.printer = printer
 }
 
-/** Is the last hand move still on its way? Clears itself on arrival or after SETTLE_MS. */
-export function handMoveSettling (gcodePosition: number[] | undefined, now = Date.now()): boolean {
+export function releaseHandMove () {
+  handMoveLock.target = null
+}
+
+/** Is the last hand move on `printer` still on its way? Clears itself on arrival, after SETTLE_MS, or for another printer. */
+export function handMoveSettling (gcodePosition: number[] | undefined, printer: string, now = Date.now()): boolean {
   const target = handMoveLock.target
   if (!target) return false
+  if (printer !== handMoveLock.printer) { handMoveLock.target = null; return false }
   const arrived = Array.isArray(gcodePosition) && target.every((v, i) => Math.abs(Number(gcodePosition[i]) - v) < 0.02)
   if (arrived || now > handMoveLock.until) { handMoveLock.target = null; return false }
   return true
