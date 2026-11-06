@@ -453,7 +453,7 @@ describe('HotspotManagerCard on a printer with MuonOS #492 (KAN-1799)', () => {
 
     expect(apModify).toHaveBeenCalledTimes(1)
     expect(apChange).toHaveBeenCalledWith({ password: 'new-password-1' })
-    expect(emit).toHaveBeenCalledWith(expect.stringContaining("printer's screen"), { type: 'primary', timeout: 10000 })
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining('Press the knob on the printer to confirm'), { type: 'primary', timeout: 10000 })
     expect(apUp).not.toHaveBeenCalled()
   })
 
@@ -526,6 +526,19 @@ describe('HotspotManagerCard on a printer with MuonOS #492 (KAN-1799)', () => {
     expect(card.hotspotOffIsPanelOnly).toBe(true)
     expect(card.apState).toBe(true)
     expect(dispatch).not.toHaveBeenCalledWith('protection/onRefused')
+  })
+
+  it('says to do it at the printer when /wifi/ap/up is refused (strict mode), and keeps the switch', async () => {
+    apDeviceStatus.mockResolvedValue({ data: { device: 'ap0', device_type: 'wifi', state: 'disconnected', connection: null } })
+    apUp.mockRejectedValueOnce(panelOnly())
+    const wrapper = await mountLoaded()
+    const card = wrapper.vm as any
+
+    await card.confirmToggle()
+
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining("Do this at the printer's screen"), { type: 'error', timeout: 8000 })
+    expect(card.hotspotOffIsPanelOnly).toBe(false)
+    expect(card.apState).toBe(false)
   })
 
   it('turning the hotspot on is still /wifi/ap/up', async () => {
