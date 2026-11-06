@@ -465,6 +465,7 @@ import { cloudState } from '@/services/muon-cloud/state'
 import LibraryCard from '@/components/library/LibraryCard.vue'
 import MuonLibrary, { type LibraryPrintRequest, type LibraryTab } from '@/components/library/v2/MuonLibrary.vue'
 import type { GridSource } from '@/services/library/shelves'
+import type { Dictionary } from 'vue-router/types/router'
 import LibraryRecentCard from '@/components/library/LibraryRecentCard.vue'
 import PrintOnDialog from '@/components/library/PrintOnDialog.vue'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
@@ -561,7 +562,7 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     const view = tab === 'yours' ? 'mine' : 'discover'
     if (view === this.view && !this.grid) return
     // A place starts at its top: no See all or search left in the address.
-    const query = { ...this.$route.query, view }
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view }
     delete query.shelf
     delete query.q
     this.$router.replace({ query }).catch(() => {})
