@@ -1,7 +1,7 @@
 import Vue from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, expect, it, vi } from 'vitest'
-import MaintenanceChecks from '../MaintenanceChecks.vue'
+import MaintenanceCalibration from '../MaintenanceCalibration.vue'
 import ProbeCard from '../ProbeCard.vue'
 import MeshProfiles from '../MeshProfiles.vue'
 import { panelStore, panelStubs, waits } from '@/components/control/__tests__/panel-fixture'
@@ -13,7 +13,7 @@ const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn(), printerQueryEnds
 vi.mock('@/api/socketActions', () => ({ SocketActions: socket }))
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'mock' }))
 
-function show (component: any = MaintenanceChecks) {
+function show (component: any = MaintenanceCalibration) {
   const store = panelStore()
   store.getters['printer/getHomedAxes'] = () => true
   Vue.set(store.state.printer.printer, 'gcode', { commands: { BED_MESH_CALIBRATE: {}, PROBE_CALIBRATE: {}, SHAPER_CALIBRATE: {}, PID_CALIBRATE: {}, PROBE_ACCURACY: {} } })
@@ -91,11 +91,11 @@ it('confirms Save and restart once with the save wait', async () => {
 it('keeps a probe query unknown until its response rather than claiming the cached open value', async () => {
   const { wrapper, vm, store } = show(ProbeCard)
   vm.query(); await Vue.nextTick()
-  expect(wrapper.find('.probe__state').exists()).toBe(false)
+  expect(wrapper.find('.probe__state:not(.probe__state--unknown)').exists()).toBe(false)
   expect(socket.printerGcodeScript).toHaveBeenCalledWith('QUERY_PROBE', 'query')
   store.state.console.console.push({ type: 'response', message: '// probe: TRIGGERED', time: Date.now() / 1000 })
   await Vue.nextTick()
-  expect(wrapper.find('.probe__state').text()).toBe('Triggered')
+  expect(wrapper.find('.probe__state').text()).toBe('Triggered: yes')
   wrapper.destroy()
 })
 
@@ -103,12 +103,12 @@ it('ignores old probe responses from the same second and clears a reading on the
   const { wrapper, vm, store } = show(ProbeCard)
   store.state.console.console.push({ type: 'response', message: '// probe: open', time: Math.floor(Date.now() / 1000) })
   vm.query(); await Vue.nextTick()
-  expect(wrapper.find('.probe__state').exists()).toBe(false)
+  expect(wrapper.find('.probe__state:not(.probe__state--unknown)').exists()).toBe(false)
   store.state.console.console.push({ type: 'response', message: '// probe: TRIGGERED', time: Math.floor(Date.now() / 1000) })
   await Vue.nextTick()
-  expect(wrapper.find('.probe__state').text()).toBe('Triggered')
+  expect(wrapper.find('.probe__state').text()).toBe('Triggered: yes')
   vm.query(); await Vue.nextTick()
-  expect(wrapper.find('.probe__state').exists()).toBe(false)
+  expect(wrapper.find('.probe__state:not(.probe__state--unknown)').exists()).toBe(false)
   wrapper.destroy()
 })
 

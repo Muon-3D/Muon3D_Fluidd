@@ -292,6 +292,13 @@ export default class MaintenanceMixin extends Mixins(ControlMixin) {
     return seconds === undefined ? null : Math.round(seconds / 3600)
   }
 
+  /** Prints on this printer's record, from the print history. */
+  get printCount (): number | null {
+    if (!this.$store.getters['server/componentSupport']('history')) return null
+    const jobs = this.$store.getters['history/getRollUp']?.total_jobs as number | undefined
+    return typeof jobs === 'number' ? jobs : null
+  }
+
   get saveConfigPending (): boolean {
     return this.$store.getters['printer/getSaveConfigPending'] as boolean
   }
