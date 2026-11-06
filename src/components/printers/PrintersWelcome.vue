@@ -79,7 +79,10 @@
           Add by address
         </button>
       </div>
-      <div class="row">
+      <div
+        v-if="!signedIn"
+        class="row"
+      >
         <span class="row__icon"><frame-icon name="cloud" /></span>
         <div class="row__text">
           <span class="row__title">Sign in to reach your printers from anywhere</span>
@@ -116,6 +119,9 @@ import { Component, Prop, Vue } from 'vue-property-decorator'
  */
 @Component({})
 export default class PrintersWelcome extends Vue {
+  @Prop({ type: Boolean })
+  readonly signedIn?: boolean
+
   @Prop({ type: Boolean })
   readonly searching?: boolean
 

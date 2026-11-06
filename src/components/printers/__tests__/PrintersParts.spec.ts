@@ -5,6 +5,8 @@ import PrintersSection from '../PrintersSection.vue'
 import FoundList from '../FoundList.vue'
 import PrintersWelcome from '../PrintersWelcome.vue'
 import AddPrinterSheet from '../AddPrinterSheet.vue'
+import OfflineList from '../OfflineList.vue'
+import PrintingNowCard from '../PrintingNowCard.vue'
 
 const found = (over: Record<string, unknown> = {}) => ({
   key: 'found:hazel',
@@ -54,7 +56,7 @@ describe('a section', () => {
 })
 
 describe('the found list', () => {
-  it('puts Add on the row for a printer it can open, and sends its id', async () => {
+  it('puts Open on the row for a printer it can open (it opens it, it does not just save it), and sends its id', async () => {
     const tile = found()
     const w = shallowMount(FoundList, {
       propsData: { tiles: [tile], actionsFor: () => [{ id: 'connect', label: 'Connect', icon: '' }] },
@@ -62,7 +64,8 @@ describe('the found list', () => {
     })
     expect(w.text()).toContain('192.168.1.37')
     const add = w.find('[data-tid="found-connect"]')
-    expect(add.text()).toContain('Add')
+    expect(add.text()).toContain('Open')
+    expect(add.text()).not.toContain('Add')
     await add.trigger('click')
     expect(w.emitted('action')![0]).toEqual([tile, 'connect'])
   })
@@ -72,6 +75,43 @@ describe('the found list', () => {
     expect(fresh.find('[data-tid="found-set-up"]').exists()).toBe(true)
     const none = shallowMount(FoundList, { propsData: { tiles: [found()], actionsFor: () => [] } })
     expect(none.find('.btn--primary').exists()).toBe(false)
+  })
+})
+
+describe('the found row text', () => {
+  it('keeps the printer own detail line', () => {
+    const w = shallowMount(FoundList, { propsData: { tiles: [found({ entry: { host: '192.168.1.37', detail: '192.168.1.37 · not linked to an account', row: { action: 'open' } } })], actionsFor: () => [] } })
+    expect(w.text()).toContain('not linked to an account')
+  })
+})
+
+describe('the offline row', () => {
+  const offline = (seen: number) => ({ key: 'cloud:pine', name: 'Pine', state: 'offline', tone: 'off', label: 'Offline', detail: 'Offline', groupName: 'Workshop', entry: { cloud: { last_seen: seen } } }) as never
+
+  it('says when it was last seen, and in which group', () => {
+    const w = shallowMount(OfflineList, { propsData: { tiles: [offline(Date.now() / 1000 - 3 * 86400)], actionsFor: () => [] }, stubs: { 'v-menu': true } })
+    expect(w.find('[data-tid="offline-reason"]').text()).toContain('Last seen 3 days ago · Workshop')
+  })
+
+  it('falls back to what the page knows when no time is known', () => {
+    const w = shallowMount(OfflineList, { propsData: { tiles: [offline(0)], actionsFor: () => [] }, stubs: { 'v-menu': true } })
+    expect(w.find('[data-tid="offline-reason"]').text()).toContain('Offline · Workshop')
+  })
+})
+
+describe('the printing card', () => {
+  const printing = (label: string, state = 'printing') => ({ key: 'a', name: 'Boxwood', state, tone: 'run', label, detail: 'bracket', remote: false, groupName: null, job: { file: 'bracket.gcode', progress: 44, secondsLeft: 600 } }) as never
+  const mountCard = (propsData: Record<string, unknown>) => shallowMount(PrintingNowCard, { propsData, stubs: { 'v-icon': true, 'frame-icon': true } })
+
+  it('reads its pill from the label: Paused for a paused print, Printing when the label is the percent', () => {
+    expect(mountCard({ tile: printing('Paused', 'paused'), variant: 'card' }).findComponent({ name: 'TonePill' }).text()).toBe('Paused')
+    expect(mountCard({ tile: printing('44%'), variant: 'card' }).findComponent({ name: 'TonePill' }).text()).toBe('Printing')
+  })
+
+  it('waits while a control is busy, so a second click is not sent', () => {
+    const w = mountCard({ tile: printing('44%'), variant: 'card', controllable: true, busy: true })
+    expect(w.find('[data-tid="printing-now-pause"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-tid="printing-now-stop"]').attributes('disabled')).toBeDefined()
   })
 })
 
@@ -87,6 +127,12 @@ describe('the empty state', () => {
     expect(w.emitted('address')).toHaveLength(1)
     expect(w.emitted('sign-in')).toHaveLength(1)
     expect(w.emitted('look-nearby')).toHaveLength(1)
+  })
+
+  it('leaves the Sign in way out for someone signed in', () => {
+    const w = shallowMount(PrintersWelcome, { propsData: { signedIn: true } })
+    expect(w.find('[data-tid="sign-in"]').exists()).toBe(false)
+    expect(w.find('[data-tid="enter-address"]').exists()).toBe(true)
   })
 
   it('hides Look nearby when Bluetooth is off', () => {

@@ -14,7 +14,7 @@
           class="now__pill now__pill--state"
           :tone="tile.tone"
         >
-          {{ paused ? 'Paused' : 'Printing' }}
+          {{ stateText }}
         </tone-pill>
         <span
           v-if="material"
@@ -117,6 +117,7 @@
             :aria-label="paused ? 'Resume' : 'Pause'"
             :title="paused ? 'Resume' : 'Pause'"
             data-tid="printing-now-pause"
+            :disabled="busy"
             @click="$emit(paused ? 'resume' : 'pause')"
           >
             <v-icon small>
@@ -133,6 +134,7 @@
             aria-label="Stop print"
             title="Stop print"
             data-tid="printing-now-stop"
+            :disabled="busy"
             @click="$emit('stop')"
           >
             <v-icon small>
@@ -187,6 +189,10 @@ export default class PrintingNowCard extends Vue {
   @Prop({ type: Boolean })
   readonly controllable?: boolean
 
+  /** A pause, resume or stop was just sent: the buttons wait, so a double click sends once. */
+  @Prop({ type: Boolean })
+  readonly busy?: boolean
+
   get job (): TileJob | null {
     return this.tile.job
   }
@@ -219,6 +225,11 @@ export default class PrintingNowCard extends Vue {
     if (left == null || left <= 0) return null
     const at = new Date(Date.now() + left * 1000)
     return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+  }
+
+  /** The pill says the state from the label; a percent there is the big number below, so it reads Printing. */
+  get stateText (): string {
+    return /%$/.test(this.tile.label) ? 'Printing' : this.tile.label
   }
 
   get material () {
