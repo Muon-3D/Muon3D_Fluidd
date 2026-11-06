@@ -337,19 +337,28 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     color: var(--m3d-text) !important;
   }
 
-  // Jobs: the header holds a toolbar, so on a phone it goes under the title.
-  .app-page-header--jobs .app-page-header__row {
-    flex-wrap: wrap;
+  // Jobs: the header holds a toolbar. On a desktop it stays beside the title,
+  // so picking a file never moves the list; on a phone it goes under the title.
+  .app-page-header--jobs .app-page-header__actions {
+    flex: 1 1 0;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    min-width: 0;
   }
 
-  .app-page-header--jobs .app-page-header__actions {
-    flex: 1 1 auto;
+  .app-page-header--jobs:not(.app-page-header--phone) .app-page-header__subtitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-page-header--jobs.app-page-header--phone .app-page-header__row {
     flex-wrap: wrap;
-    justify-content: flex-end;
   }
 
   .app-page-header--jobs.app-page-header--phone .app-page-header__actions {
     flex-basis: 100%;
+    flex-wrap: wrap;
     justify-content: flex-start;
   }
 
