@@ -4,9 +4,27 @@
     :class="[`mlib--${context}`, { 'mlib--phone': phone }]"
     data-tid="muon-library"
   >
+    <!-- A print's own page (v3 page 6), over whichever place it was opened from. -->
+    <library-print-page
+      v-if="printId"
+      :key="printId"
+      :card="pageCard"
+      :printer-name="printerName"
+      :printer-fits="isM1"
+      :signed-in="signedIn"
+      :collections="collections"
+      :printing="printing"
+      :back-label="tab === 'yours' ? 'Yours' : 'Discover'"
+      @back="$emit('print-back')"
+      @saved="onSaved"
+      @print="printFromLook"
+      @print-card="print"
+      @open="open"
+    />
+
     <!-- See all and search results (v3 pages 3 and 4): one grid page. -->
     <library-grid-page
-      v-if="tab === 'discover' && discoverGrid"
+      v-else-if="tab === 'discover' && discoverGrid"
       :source="discoverGrid"
       :query="search"
       :printer-name="printerName"
@@ -366,6 +384,7 @@
       @close="looking = null; lookingIn = null"
       @saved="onSaved"
       @removed="onRemoved"
+      @page="openPage"
       @print="printFromLook"
     />
   </div>
@@ -381,6 +400,7 @@ import LibraryState from './LibraryState.vue'
 import LibraryGridPage from './LibraryGridPage.vue'
 import LibraryYoursGrid, { YOURS_GRIDS, type YoursGridSource } from './LibraryYoursGrid.vue'
 import LibraryCollectionPage, { saveIdOf } from './LibraryCollectionPage.vue'
+import LibraryPrintPage from './LibraryPrintPage.vue'
 import type { OwnCard } from '@/services/library/yours'
 import { describeLibraryError, type CommunityCollection, type LibraryItem } from '@/services/library/api'
 import { LIBRARY_URL } from '@/services/library/discover'
@@ -410,7 +430,7 @@ const PALETTE = ['#ff9f0a', '#ff453a', '#64d2ff', '#30d158', '#bf5af2', '#80d6d1
  * prints from where it is, through the host: `print` and `print-item`.
  * No router in here; it sizes to its container.
  */
-@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState, LibraryGridPage, LibraryYoursGrid, LibraryCollectionPage } })
+@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState, LibraryGridPage, LibraryYoursGrid, LibraryCollectionPage, LibraryPrintPage } })
 export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: 'page' }) readonly context!: 'page' | 'control'
   @Prop({ type: String, default: null }) readonly printerId!: string | null
@@ -426,6 +446,8 @@ export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: '' }) readonly search!: string
   /** The print to continue with (the last one saved), or none. */
   @Prop({ type: Object, default: null }) readonly continueItem!: LibraryItem | null
+  /** A print's own page (its publication id), over everything else; the host keeps it in the address. */
+  @Prop({ type: String, default: null }) readonly printId!: string | null
   /** A collection's page instead of Yours' shelves (its id); the host keeps it in the address. */
   @Prop({ type: String, default: null }) readonly collection!: string | null
   /** Your Library is on and read: Yours' shelves can show (the host says what to do otherwise). */
@@ -756,6 +778,40 @@ export default class MuonLibrary extends Vue {
     this.lookingIn = null
     this.looking = card
     this.$emit('open-model', card.id)
+  }
+
+  /** Cards a print's page was opened from, by id, so its header shows at once. */
+  pageCards: Record<string, ShelfCard> = {}
+
+  /** Open page in a quick look: the print's own page (the host puts it in the address). */
+  openPage (card: ShelfCard) {
+    this.$set(this.pageCards, card.id, card)
+    this.$emit('update:print', card.id)
+  }
+
+  /** The page's card: the one it was opened from, else (opened by its address) one the page fills in. */
+  get pageCard (): ShelfCard {
+    const id = this.printId ?? ''
+    return this.pageCards[id] ?? {
+      key: `pub:${id}`,
+      kind: 'publication',
+      id,
+      slug: '',
+      title: '',
+      picture: null,
+      creator: '',
+      handle: null,
+      makes: 0,
+      remixes: 0,
+      saves: 0,
+      facts: '',
+      m1: false,
+      tags: [],
+      remixOf: null,
+      makeOf: null,
+      createdAt: null,
+      href: ''
+    }
   }
 
   /** A card on a collection's page: its quick look can take it out of that collection. */

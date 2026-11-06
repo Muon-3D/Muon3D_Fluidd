@@ -136,6 +136,13 @@ describe('Print on… (Library v3, page 10): how it reads', () => {
     const onRow = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
     wrapper.findAll('[role="radio"]').at(0).element.dispatchEvent(onRow)
     expect(onRow.defaultPrevented).toBe(true)
+    // Space too, both ways.
+    const space = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })
+    tid(wrapper, 'print-on-reslice').element.dispatchEvent(space)
+    expect(space.defaultPrevented).toBe(false)
+    const spaceOnRow = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })
+    wrapper.findAll('[role="radio"]').at(0).element.dispatchEvent(spaceOnRow)
+    expect(spaceOnRow.defaultPrevented).toBe(true)
     expect(wrapper.findAll('[role="radio"]').at(0).attributes('aria-checked')).toBe('true')
     wrapper.destroy()
   })

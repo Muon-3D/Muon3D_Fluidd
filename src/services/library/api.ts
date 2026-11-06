@@ -108,6 +108,8 @@ export interface PublicPublication {
   material?: string | null;
   size_mm?: number[] | null;
   created_at?: string;
+  /** "CC-BY-4.0". */
+  licence?: string | null;
 }
 
 export type SaveOrigin = 'save' | 'autosave' | 'card' | 'print-check'
