@@ -440,3 +440,15 @@ export function colourList (value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.filter((c): c is string => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)).map(c => c.toLowerCase()).filter((c, i, all) => all.indexOf(c) === i).slice(0, 8)
 }
+
+/**
+ * A print's makes or remixes (its page's shelves), newest first, as
+ * `GET /v1/public/publications/:id/makes` (or `/remixes`) answers: `{items, next_cursor}`.
+ */
+export async function loadRelated (id: string, kind: 'makes' | 'remixes', fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<{ cards: ShelfCard[], more: boolean }> {
+  const response = await fetcher(`${MODELS_URL}/v1/public/publications/${encodeURIComponent(id)}/${kind}?limit=12`, { method: 'GET', credentials: 'omit', signal })
+  if (!response.ok) throw new Error('The Library didn\'t answer. Try again.')
+  const body = await response.json().catch(() => null) as Partial<PublicationsPage> | null
+  if (!body || !Array.isArray(body.items)) throw new Error('The Library sent an answer this version of Control can\'t read.')
+  return { cards: body.items.filter(isSummary).map(summaryCard), more: text(body.next_cursor) }
+}
