@@ -152,6 +152,7 @@ test('a diagonal jog is one planned absolute move', async ({ page, open }) => {
 })
 
 test('Edit layout hides a tile, sends nothing while editing, and keeps the layout after Done', async ({ page, open }) => {
+  test.slow() // two full page loads
   const printer = await usePrinter(page, idle([150, 100, 10]))
   // The layout save is answered here, so the shared mock's settings (which every other test reads) stay as they are.
   printer.state.answers['server.database.post_item'] = (p: Record<string, unknown>) => ({ namespace: p.namespace, key: p.key, value: p.value })
@@ -162,7 +163,8 @@ test('Edit layout hides a tile, sends nothing while editing, and keeps the layou
   await expect(page.getByTestId('add-macros')).toBeVisible()
   await page.getByTestId('edit-done').click()
   await expect(page.getByTestId('control-macros')).toHaveCount(0)
-  await page.reload()
+  // Open the page afresh (past the splash, as a person coming back would).
+  await open('/control')
   await expect(page.getByTestId('control-move')).toBeVisible()
   await expect(page.getByTestId('control-macros')).toHaveCount(0)
   expect(printer.gcode).toEqual([])
