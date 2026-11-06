@@ -88,12 +88,14 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   }
 
   /**
-   * A Muon printer (an M1): its Moonraker has Muon's own components.
-   * TODO: switch to the gate primitive `isMuonPrinter` once Muon3D_Fluidd #296 merges.
+   * Whether this is a Muon printer (an M1), from the gate primitive
+   * `server/isMuonPrinter` (#296): true, false, or null until server.info
+   * has answered. Named apart from MuonGatesMixin's isMuonPrinter so the
+   * two mixins can sit together.
    */
-  get isMuonPrinter (): boolean {
-    const has = this.$store.getters['server/componentSupport'] as ((c: string) => boolean) | undefined
-    return !!has && (has('muon_access') || has('muon_protection'))
+  get muonPrinter (): boolean | null {
+    const v = this.$store.getters['server/isMuonPrinter'] as boolean | null | undefined
+    return v === undefined ? null : v
   }
 
   get busy (): boolean {

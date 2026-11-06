@@ -21,7 +21,7 @@ function show ({ head = [150, 100, 10] as number[], bedMesh = M1_BED_MESH as unk
   p.toolhead.position = [...head, 0]
   p.gcode_move.gcode_position = [...head, 0]
   p.configfile.settings = bedMesh ? { printer: {}, bed_mesh: bedMesh } : { printer: {} }
-  store.getters['server/componentSupport'] = (c: string) => muon && c === 'muon_protection'
+  store.getters['server/isMuonPrinter'] = muon
   const wrapper = mount(ControlMove, { propsData: {}, mocks: { $store: store, $waits: waits, $route: { params: { printer: 'mock' } }, $confirm: vi.fn() }, stubs: panelStubs })
   return { store, wrapper, vm: wrapper.vm as any }
 }
@@ -86,7 +86,7 @@ describe('the Z keys and Z offset follow the Muon gate', () => {
 
   it('a Muon printer has no Z offset anywhere on the tile', () => {
     const s = show({ muon: true })
-    expect(s.vm.isMuonPrinter).toBe(true)
+    expect(s.vm.muonPrinter).toBe(true)
     expect(s.wrapper.find('[data-tid="menu-zoffset"]').exists()).toBe(false)
     expect(s.wrapper.find('[data-tid="jog-z-up"]').text()).toBe('Plate up')
     s.wrapper.destroy()
@@ -94,7 +94,7 @@ describe('the Z keys and Z offset follow the Muon gate', () => {
 
   it('a printer that is not a Muon has Z offset in the ··· menu', async () => {
     const s = show({ muon: false })
-    expect(s.vm.isMuonPrinter).toBe(false)
+    expect(s.vm.muonPrinter).toBe(false)
     await s.wrapper.find('[data-tid="menu-zoffset"]').trigger('click')
     expect(s.wrapper.find('[data-tid="control-zoffset"]').exists()).toBe(true)
     expect(s.wrapper.find('[data-tid="jog-z-up"]').text()).toBe('Z+')
