@@ -5,7 +5,57 @@
     data-tid="m1-parts"
     :data-interactive="interactive ? 'on' : 'off'"
     :data-hovered="hovered || ''"
+    :data-view="topView ? 'top' : 'free'"
   >
+    <!-- Looking straight down at the head: X along the bottom, Y up the left, in the printer's millimetres. -->
+    <div
+      v-if="topView && axisMarks"
+      class="m1-parts__axes"
+      data-tid="m1-axes"
+      aria-hidden="true"
+    >
+      <span
+        v-for="m in axisMarks.x"
+        :key="`x${m.v}`"
+        class="m1-parts__tick m1-parts__tick--x"
+        :style="{ left: `${m.px}px` }"
+      >{{ m.v }}</span>
+      <span class="m1-parts__axis-name m1-parts__axis-name--x">X</span>
+      <span
+        v-for="m in axisMarks.y"
+        :key="`y${m.v}`"
+        class="m1-parts__tick m1-parts__tick--y"
+        :style="{ top: `${m.px}px` }"
+      >{{ m.v }}</span>
+      <span class="m1-parts__axis-name m1-parts__axis-name--y">Y</span>
+    </div>
+
+    <!-- While dragging: a target on the cursor, and a live line from where the part is to it. -->
+    <svg
+      v-if="drag && dragPx"
+      class="m1-parts__drag"
+      data-tid="m1-drag-target"
+      :data-target="dragText"
+      aria-hidden="true"
+    >
+      <line
+        :x1="dragPx.from.x"
+        :y1="dragPx.from.y"
+        :x2="dragPx.to.x"
+        :y2="dragPx.to.y"
+      />
+      <circle
+        :cx="dragPx.to.x"
+        :cy="dragPx.to.y"
+        r="9"
+      />
+      <path :d="`M${dragPx.to.x - 14} ${dragPx.to.y}h28M${dragPx.to.x} ${dragPx.to.y - 14}v28`" />
+      <text
+        :x="dragPx.to.x + 14"
+        :y="dragPx.to.y - 12"
+      >{{ dragText }}</text>
+    </svg>
+
     <svg
       v-if="selected && anchor && leader"
       class="m1-parts__leader"
@@ -30,10 +80,23 @@
       :class="[`m1-parts__label--${side}`, { 'm1-parts__label--info': !interactive }]"
       data-tid="m1-parts-label"
       :data-part="selected"
-      aria-hidden="true"
     >
       <b>{{ names[selected] }}</b>
       <span class="m1-parts__fact">{{ facts[selected] }}</span>
+      <span
+        v-if="refused"
+        class="m1-parts__refused"
+        role="status"
+        data-tid="m1-drag-refused"
+      >{{ refused }}</span>
+      <span
+        v-else-if="dragHint"
+        class="m1-parts__hint"
+      >{{ dragHint }}</span>
+      <m1-part-options
+        v-if="interactive && selected !== 'screen'"
+        :part="selected"
+      />
     </div>
 
     <div
@@ -65,8 +128,19 @@
 <script lang="ts">
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import ControlMixin from '@/mixins/control'
+import M1PartOptions from './M1PartOptions.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
+import { HEAD_PLANE_Y, clampMm, headToWorld, plateTopForZ, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
+
+/** A drag on the toolhead (X and Y) or the plate (Z), in the printer's toolhead millimetres. */
+interface PartDrag {
+  part: 'toolhead' | 'plate';
+  target: { X: number, Y: number } | { Z: number };
+  /** For the plate: the bed's Z and the height the pointer met it at, when the drag began. */
+  startZ?: number;
+  startY?: number;
+}
 
 /** A pointer must rest on a part this long before it lights, so passing over doesn't. */
 const HOVER_INTENT_MS = 120
@@ -84,15 +158,21 @@ const LABEL_INSET = 16
  * (control-mockups/v3/overview-3d, Jack's OK 6 Nov): hovering one glows it in
  * the accent and leans the camera toward it; a click, a tap or the keyboard
  * selects it, and only then a quiet panel names it with one live fact, out of
- * the way in a top corner, joined to the part by a hairline. Selecting emits `select`; this component sends
- * nothing to the printer. Not idle, or not the person's to control, a part
- * is only named, in white, with no lean.
+ * the way in a top corner, joined to the part by a hairline, with the part's
+ * options under it (M1PartOptions). Not idle, or not the person's to
+ * control, a part is only named, in grey, with no lean and no options.
+ *
+ * Selected, the toolhead and the plate can be dragged (Jack, 6 Nov): the
+ * toolhead's camera looks straight down, the plate hidden, with X and Y
+ * marked along the bottom and left; a target follows the cursor with a live
+ * line from where the part is. Letting go sends the move through moveTo and
+ * the no-go planner. Nothing here builds G-code of its own.
  *
  * The chips are the same parts as plain buttons: a row under the stage on a
  * touch screen, and for the keyboard and screen readers everywhere (hidden
  * on a desktop until focused).
  */
-@Component
+@Component({ components: { M1PartOptions } })
 export default class M1Parts extends Mixins(ControlMixin) {
   /** The live viewer, once it draws. */
   @Prop({ type: Object, default: null })
@@ -129,9 +209,42 @@ export default class M1Parts extends Mixins(ControlMixin) {
   bound: HTMLCanvasElement | null = null
   motionQuery: MediaQueryList | null = null
 
+  drag: PartDrag | null = null
+  dragPx: { from: { x: number, y: number }, to: { x: number, y: number } } | null = null
+  axisMarks: { x: Array<{ v: number, px: number }>, y: Array<{ v: number, px: number }> } | null = null
+  /** Why the last drag's move was refused, said in the label until the next drag. */
+  refused = ''
+
   /** Parts offer their options only on an idle printer this person can control. */
   get interactive (): boolean {
     return this.stageState === 'idle' && this.controlReady && !this.busy
+  }
+
+  /** The selected part can be dragged: the toolhead in X and Y, the plate in Z, once homed, on the accurate model (whose millimetres the drag is read in). */
+  get movable (): 'toolhead' | 'plate' | null {
+    const part = this.selected
+    if (!this.interactive || !this.viewer?.accurate) return null
+    if (part === 'toolhead' && this.isHomed('XY')) return 'toolhead'
+    if (part === 'plate' && this.isHomed('Z')) return 'plate'
+    return null
+  }
+
+  /** The toolhead selected: look straight down for clear axes, the plate out of the way. */
+  get topView (): boolean {
+    return this.selected === 'toolhead' && this.interactive && !!this.viewer?.accurate
+  }
+
+  get dragHint (): string {
+    if (this.movable === 'toolhead') return 'Drag to move the head'
+    if (this.movable === 'plate') return 'Drag up or down to move the plate'
+    if ((this.selected === 'toolhead' || this.selected === 'plate') && this.interactive && !this.isHomed('XYZ')) return 'Home it to move it by hand'
+    return ''
+  }
+
+  get dragText (): string {
+    const t = this.drag?.target
+    if (!t) return ''
+    return 'Z' in t ? `Z ${t.Z.toFixed(1)}` : `X ${t.X.toFixed(1)}  Y ${t.Y.toFixed(1)}`
   }
 
   get shownPart (): PartId | null {
@@ -175,6 +288,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
     cancelAnimationFrame(this.pickFrame)
     cancelAnimationFrame(this.followFrame)
     this.viewer?.setFocus(null, 'info', false)
+    this.viewer?.setView('free')
+    this.viewer?.setOrbit(true)
   }
 
   onMotionPref (e: MediaQueryListEvent) {
@@ -206,14 +321,22 @@ export default class M1Parts extends Mixins(ControlMixin) {
   onCancel () {
     this.down = null
     this.dragged = false
+    this.drag = null
+    this.dragPx = null
   }
 
   onDown (e: PointerEvent) {
     this.down = { x: e.clientX, y: e.clientY }
     this.dragged = false
+    if (this.movable && e.button === 0) this.bound?.setPointerCapture?.(e.pointerId)
   }
 
   onMove (e: PointerEvent) {
+    if (this.down && this.movable && (this.drag || Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > TAP_PX)) {
+      this.dragged = true
+      this.dragTo(e.clientX, e.clientY)
+      return
+    }
     if (this.down && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > TAP_PX) {
       // Turning the model: hover is off until the button comes up.
       if (!this.dragged) {
@@ -259,11 +382,106 @@ export default class M1Parts extends Mixins(ControlMixin) {
   onUp (e: PointerEvent) {
     const start = this.down
     this.down = null
+    if (this.drag) {
+      this.release()
+      return
+    }
     if (!start || this.dragged || e.button !== 0) return
     // A click or a tap: select what is under it, or clear on empty stage.
     const part = this.viewer?.pick(e.clientX, e.clientY) ?? null
     if (part) this.select(part)
     else this.selected = null
+  }
+
+  /** The drag's target under the pointer: the head on its plane, or the plate up or down from where it was. */
+  dragTo (x: number, y: number) {
+    const viewer = this.viewer
+    const part = this.movable
+    if (!viewer || !part) return
+    if (part === 'toolhead') {
+      const hit = viewer.onLevel(x, y, HEAD_PLANE_Y)
+      if (!hit) return
+      const at = worldToHead(hit)
+      if (!this.drag) this.refused = ''
+      this.drag = {
+        part,
+        target: { X: clampMm(at.X, this.axisMin[0], this.axisMax[0]), Y: clampMm(at.Y, this.axisMin[1], this.axisMax[1]) }
+      }
+    } else {
+      const z0 = this.drag?.startZ ?? Number(this.position[2])
+      const through = { x: 0, y: plateTopForZ(z0), z: 0 }
+      const hit = viewer.onUpright(x, y, through)
+      if (!hit) return
+      if (!this.drag) {
+        this.refused = ''
+        this.drag = { part, target: { Z: z0 }, startZ: z0, startY: hit.y }
+      }
+      const z = z0 + (zForPlateTop(hit.y) - zForPlateTop(this.drag.startY ?? hit.y))
+      this.drag = { ...this.drag, target: { Z: clampMm(z, this.axisMin[2], this.axisMax[2]) } }
+    }
+    this.follow()
+  }
+
+  /**
+   * Letting go sends the target once, through moveTo: the same checks as
+   * every hand move (homed, idle, the hand-move wait and the no-go planner,
+   * lifting over the bed's notch when it must). moveTo takes G-code
+   * coordinates; the drag is read in the toolhead's.
+   */
+  release () {
+    const drag = this.drag
+    this.drag = null
+    this.dragPx = null
+    if (!drag || !this.movable) return
+    const offset = this.gcodeOffset ?? [0, 0, 0]
+    const t = drag.target
+    const place = 'Z' in t
+      ? { Z: Math.round((t.Z - offset[2]) * 1000) / 1000 }
+      : { X: Math.round((t.X - offset[0]) * 1000) / 1000, Y: Math.round((t.Y - offset[1]) * 1000) / 1000 }
+    const sent = this.moveTo(place)
+    if (!sent) this.refused = 'That move was refused; see the message.'
+  }
+
+  /** The drag's line and target, and the axes' marks, as drawn now. */
+  placeDrag () {
+    const viewer = this.viewer
+    if (!viewer) return
+    const drag = this.drag
+    if (drag) {
+      const t = drag.target
+      const world = 'Z' in t
+        ? { x: 0, y: plateTopForZ(t.Z), z: 0 }
+        : headToWorld(t.X, t.Y)
+      const to = viewer.project(world)
+      const from = viewer.anchor(drag.part)
+      this.dragPx = to && from ? { from, to } : null
+    }
+    if (this.topView) {
+      const [x0, y0] = [this.axisMin[0], this.axisMin[1]]
+      const [x1, y1] = [this.axisMax[0], this.axisMax[1]]
+      const xs = ticks(Math.max(0, x0), x1).map(v => ({ v, px: viewer.project(headToWorld(v, y1))?.x ?? NaN }))
+      const ys = ticks(Math.max(0, y0), y1).map(v => ({ v, px: viewer.project(headToWorld(x0, v))?.y ?? NaN }))
+      this.axisMarks = { x: xs.filter(m => Number.isFinite(m.px)), y: ys.filter(m => Number.isFinite(m.px)) }
+    } else if (this.axisMarks) {
+      this.axisMarks = null
+    }
+  }
+
+  @Watch('topView')
+  onTopView (top: boolean) {
+    this.viewer?.setView(top ? 'top' : 'free')
+    this.follow()
+  }
+
+  /** A selected part that can be dragged takes the drag from the model: the model stops turning, and touch stops scrolling the page. */
+  @Watch('movable')
+  onMovable (part: 'toolhead' | 'plate' | null) {
+    this.viewer?.setOrbit(!part)
+    if (this.bound) this.bound.style.touchAction = part ? 'none' : ''
+    if (!part && this.drag) {
+      this.drag = null
+      this.dragPx = null
+    }
   }
 
   select (part: PartId) {
@@ -293,8 +511,17 @@ export default class M1Parts extends Mixins(ControlMixin) {
   }
 
   onEscape (e: KeyboardEvent) {
-    if (e.key !== 'Escape' || !this.selected) return
+    if (e.key !== 'Escape') return
+    // Esc mid-drag drops the drag and sends nothing; otherwise it lets the part go.
+    if (this.drag) {
+      this.drag = null
+      this.dragPx = null
+      this.down = null
+      return
+    }
+    if (!this.selected) return
     this.selected = null
+    this.refused = ''
   }
 
   @Watch('shownPart')
@@ -315,7 +542,11 @@ export default class M1Parts extends Mixins(ControlMixin) {
       if (this.leader) this.leader = null
       return
     }
-    const side = a.x < el.clientWidth / 2 ? 'right' : 'left'
+    // Looking down at the head, the label keeps right, clear of the Y marks on the left. Otherwise it goes
+    // to the side away from the part, and changes side only once the part is well past the middle, so a
+    // part near the middle doesn't flip it every frame.
+    const w = el.clientWidth
+    const side = this.topView ? 'right' : a.x < w * 0.42 ? 'right' : a.x > w * 0.58 ? 'left' : this.side
     if (side !== this.side) this.side = side
     const label = this.$refs.label as HTMLElement | undefined
     if (!label) return
@@ -338,7 +569,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
       const part = this.selected
       this.anchor = part ? this.viewer?.anchor(part) ?? null : null
       this.placeLabel()
-      this.followFrame = performance.now() < this.followUntil || this.down ? requestAnimationFrame(step) : 0
+      this.placeDrag()
+      // A head or plate that may move keeps its line followed for as long as it is selected.
+      const moving = this.selected === 'toolhead' || this.selected === 'plate'
+      this.followFrame = performance.now() < this.followUntil || this.down || moving ? requestAnimationFrame(step) : 0
     }
     this.followFrame = requestAnimationFrame(step)
   }
@@ -402,6 +636,98 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
     circle {
       fill: rgb(36 36 40 / 78%);
+    }
+  }
+
+  .m1-parts__hint,
+  .m1-parts__refused {
+    font-size: 12px;
+    color: #98989d;
+  }
+
+  .m1-parts__refused {
+    color: #ffc48a;
+  }
+
+  .m1-parts__label {
+    pointer-events: auto;
+    white-space: normal;
+    max-width: 260px;
+  }
+
+  .m1-parts__drag {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+
+    line {
+      stroke: #80d6d1;
+      stroke-width: 1.5;
+      stroke-dasharray: 4 4;
+    }
+
+    circle {
+      fill: rgb(128 214 209 / 18%);
+      stroke: #80d6d1;
+      stroke-width: 1.5;
+    }
+
+    path {
+      stroke: #80d6d1;
+      stroke-width: 1;
+    }
+
+    text {
+      fill: #f5f5f7;
+      font-size: 12px;
+      font-weight: 600;
+      paint-order: stroke;
+      stroke: rgb(0 0 0 / 60%);
+      stroke-width: 3px;
+    }
+  }
+
+  .m1-parts__axes {
+    position: absolute;
+    inset: 0;
+    color: #98989d;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m1-parts__tick {
+    position: absolute;
+
+    &--x {
+      bottom: 58px;
+      transform: translateX(-50%);
+      border-left: 1px solid rgb(152 152 157 / 50%);
+      padding-left: 3px;
+    }
+
+    &--y {
+      left: 12px;
+      transform: translateY(-50%);
+      border-top: 1px solid rgb(152 152 157 / 50%);
+      padding-top: 1px;
+    }
+  }
+
+  .m1-parts__axis-name {
+    position: absolute;
+    font-weight: 700;
+    color: #d8d8dc;
+
+    &--x {
+      right: 16px;
+      bottom: 58px;
+    }
+
+    &--y {
+      left: 12px;
+      top: 12px;
     }
   }
 
