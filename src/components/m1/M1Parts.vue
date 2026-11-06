@@ -152,6 +152,8 @@ const LEAVE_MS = 600
 const TAP_PX = 10
 /** The furthest one drag can take the plate, either way, so a flick at a grazing angle can't send it to the end of its travel. */
 const PLATE_DRAG_MM = 50
+/** A drag stops the plate this far from the nozzle (Z 0 is the tip touching it); the Plate down button still goes as Control's does. */
+const PLATE_DRAG_FLOOR_MM = 2
 /** The label follows the part while the camera eases, for this long after a change. */
 const FOLLOW_MS = 700
 /** The label's distance from the stage's top and side, as its style has it. */
@@ -327,6 +329,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     canvas.addEventListener('pointercancel', this.onCancel)
     // Capture lost mid-drag (focus gone, a context menu): the drag ends and sends nothing.
     canvas.addEventListener('lostpointercapture', this.onCancel)
+    if (this.movable) canvas.style.touchAction = 'none'
   }
 
   /** Ends any drag and sends nothing. */
@@ -450,7 +453,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
         this.drag = { part, printer: this.panelTarget, target: { Z: z0 }, startZ: z0, startY: hit.y }
       }
       const by = Math.max(-PLATE_DRAG_MM, Math.min(PLATE_DRAG_MM, zForPlateTop(hit.y) - zForPlateTop(this.drag.startY ?? hit.y)))
-      this.drag = { ...this.drag, target: { Z: clampMm(z0 + by, this.axisMin[2], this.axisMax[2]) } }
+      this.drag = { ...this.drag, target: { Z: clampMm(z0 + by, Math.max(this.axisMin[2], Math.min(z0, PLATE_DRAG_FLOOR_MM)), this.axisMax[2]) } }
     }
     this.follow()
   }
