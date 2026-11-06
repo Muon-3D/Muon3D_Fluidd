@@ -70,6 +70,8 @@ test.describe('desktop pointer', () => {
   })
 
   test('a click selects a part and Esc lets it go; a drag selects nothing', async ({ page, open }) => {
+    // A drag turns the model, redrawing every frame: in software WebGL (CI) that stalls the page for seconds.
+    test.skip(!GPU, 'turning the model needs the GPU')
     const printer = await usePrinter(page, PRESETS.idleHomed())
     await open('/')
     await partsReady(page)
