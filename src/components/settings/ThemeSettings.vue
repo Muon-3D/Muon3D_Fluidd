@@ -22,20 +22,6 @@
     </div>
     <div class="m3-set__row">
       <div class="m3-set__label">
-        <b>Panels</b>
-        <span>Glass lets the page show through a little; flat is solid.</span>
-      </div>
-      <div class="m3-set__control">
-        <seg-picker
-          :options="uiStyles.map(s => ({ value: s, label: $t(`app.setting.label.interface_style_${s}`) }))"
-          :value="uiStyle"
-          label="Panels"
-          @input="uiStyle = $event"
-        />
-      </div>
-    </div>
-    <div class="m3-set__row">
-      <div class="m3-set__label">
         <b>Colour</b>
         <span>Buttons, switches and highlights. Reset goes back to {{ themePreset ? themePreset.name : 'the preset' }}'s.</span>
       </div>
@@ -51,18 +37,6 @@
           v-if="theme"
           v-model="themeColor"
           :title="$t('app.setting.btn.select_theme')"
-        />
-      </div>
-    </div>
-    <div class="m3-set__row">
-      <div class="m3-set__label">
-        <b>Logo behind the pages</b>
-      </div>
-      <div class="m3-set__control">
-        <toggle-switch
-          :value="backgroundLogo"
-          label="Logo behind the pages"
-          @input="backgroundLogo = $event"
         />
       </div>
     </div>
@@ -91,17 +65,14 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
-import type { ThemePreset, ThemeConfig, UiStyle } from '@/store/config/types'
-import { UI_STYLES } from '@/util/ui-style'
+import type { ThemePreset, ThemeConfig } from '@/store/config/types'
 import ThemePicker from '../ui/AppColorPicker.vue'
 import SegPicker from '@/components/control/SegPicker.vue'
-import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 
 @Component({
   components: {
     ThemePicker,
-    SegPicker,
-    ToggleSwitch
+    SegPicker
   }
 })
 export default class ThemeSettings extends Mixins(StateMixin) {
@@ -140,20 +111,6 @@ export default class ThemeSettings extends Mixins(StateMixin) {
     }
   }
 
-  get uiStyles () {
-    return UI_STYLES
-  }
-
-  get uiStyle (): UiStyle {
-    return this.theme.style
-  }
-
-  set uiStyle (value: UiStyle) {
-    this.updateTheme({
-      style: value
-    })
-  }
-
   get isDark () {
     return this.theme.isDark
   }
@@ -161,16 +118,6 @@ export default class ThemeSettings extends Mixins(StateMixin) {
   set isDark (value: boolean) {
     this.updateTheme({
       isDark: value
-    })
-  }
-
-  get backgroundLogo () {
-    return this.theme.backgroundLogo
-  }
-
-  set backgroundLogo (value: boolean) {
-    this.updateTheme({
-      backgroundLogo: value
     })
   }
 

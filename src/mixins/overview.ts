@@ -1,5 +1,6 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import ControlMixin from './control'
+import { NO_MATERIAL_LOADED } from '@/services/jobs/model'
 import FilesMixin from './files'
 import { SocketActions } from '@/api/socketActions'
 import type { TimeEstimates } from '@/store/printer/types'
@@ -108,7 +109,8 @@ export default class OverviewMixin extends Mixins(ControlMixin, FilesMixin) {
    * attached even though it's printing").
    */
   get spoolFact (): string {
-    return spoolFact(this.loadedMaterial?.name ?? null, this.loadedColour, this.printingWith)
+    const fact = spoolFact(this.loadedMaterial?.name ?? null, this.loadedColour, this.printingWith)
+    return fact === NO_MATERIAL_LOADED && this.filamentSensed ? 'Filament loaded' : fact
   }
 
   get runningFor (): string | null {

@@ -27,6 +27,8 @@ export interface UiSettings {
   spoolman: SpoolmanConfig;
   maintenance: MaintenanceConfig;
   overview: OverviewConfig;
+  /** Each person's Control layout on this printer, the same shape as Overview's. */
+  control: OverviewConfig;
 }
 
 /** Each person's Overview layout on this printer, by key (see services/overview/layout), as saved by Edit mode. */
@@ -145,10 +147,10 @@ export type PrintProgressCalculation = 'file' | 'fileAbsolute' | 'slicer' | 'fil
 
 export type PrintEtaCalculation = 'file' | 'slicer'
 
-// 'flat' is the hairline graphite look; 'glass' is the Apple-style look:
-// neutral surfaces, system colours and a glass chrome
-// (src/scss/muon3d-glass.scss).
-export type UiStyle = 'flat' | 'glass'
+// Glass is the only interface style: neutral surfaces, system colours and a
+// glass chrome (src/scss/muon3d-glass.scss). A printer that saved 'flat' (the
+// retired style) is read as glass.
+export type UiStyle = 'glass'
 
 // Config stored in moonraker db
 export interface ThemeConfig {

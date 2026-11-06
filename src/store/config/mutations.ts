@@ -47,11 +47,9 @@ export const mutations: MutationTree<ConfigState> = {
           payload.theme.logo.src = logoSrc.substring(1)
         }
 
-        // A theme saved before styles existed has none, and is the default
-        // style; the style this browser restored for sign-in must not stick.
-        if (payload.theme.style == null) {
-          payload.theme.style = DEFAULT_UI_STYLE
-        }
+        // Glass is the only style. A theme saved before styles existed has
+        // none, and one saved as 'flat' (retired) reads as glass too.
+        payload.theme.style = DEFAULT_UI_STYLE
       }
 
       const mergedSettings = mergeWith(
@@ -200,7 +198,8 @@ export const mutations: MutationTree<ConfigState> = {
    */
   setRemovePreset (state, payload) {
     const i = state.uiSettings.dashboard.tempPresets.findIndex(preset => preset.id === payload.id)
-    state.uiSettings.dashboard.tempPresets.splice(i, 1)
+    // splice(-1, 1) would remove the last preset: a preset that is not there removes nothing.
+    if (i >= 0) state.uiSettings.dashboard.tempPresets.splice(i, 1)
   },
 
   setFileSystemActiveFilters (state, payload: { root: string, value: FileFilterType[] }) {
