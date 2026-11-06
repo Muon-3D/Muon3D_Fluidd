@@ -76,14 +76,14 @@
     </div>
 
     <library-state
-      v-else-if="error"
+      v-else-if="error || syncError"
       kind="error"
       icon="alert"
-      :title="error"
+      :title="error || syncError"
       action="Try again"
       primary
       tid="library-grid-error"
-      @action="load"
+      @action="retry"
     />
 
     <library-state
@@ -139,7 +139,7 @@ import LibraryModelCard from './LibraryModelCard.vue'
 import LibraryOwnCard from './LibraryOwnCard.vue'
 import LibraryState from './LibraryState.vue'
 import { describeLibraryError, type CommunitySave } from '@/services/library/api'
-import { libraryClient, libraryItems, libraryState } from '@/services/library/store'
+import { libraryClient, libraryItems, libraryState, refreshLibrary } from '@/services/library/store'
 import { cardMatches, publicationPicture, saveCard, type ShelfCard } from '@/services/library/shelves'
 import { findOwn, itemShelf, loadOwnShelf, OWN_SHELVES, type OwnCard, type OwnShelfId, type OwnSort } from '@/services/library/yours'
 
@@ -175,15 +175,19 @@ export default class LibraryYoursGrid extends Vue {
   @Watch('source', { immediate: true })
   onSource () {
     this.query = ''
+    this.read = []
+    this.saved = []
     this.load()
   }
 
+  /**
+   * Read the shelf. What is shown stays until the new answer is in, so a
+   * sync reading Printed again does not blank the grid.
+   */
   async load () {
     const read = ++this.reads
     this.busy = true
     this.error = ''
-    this.read = []
-    this.saved = []
     try {
       if (this.source === 'saved') {
         const page = await libraryClient().saved()
@@ -225,7 +229,17 @@ export default class LibraryYoursGrid extends Vue {
 
   /** Sliced and Designs before the Library's first sync: still reading, not empty. */
   get waiting (): boolean {
-    return (this.source === 'sliced' || this.source === 'designs') && !libraryState.synced
+    return (this.source === 'sliced' || this.source === 'designs') && !libraryState.synced && !libraryState.error
+  }
+
+  /** Sliced and Designs when the Library's first sync failed. */
+  get syncError (): string {
+    return (this.source === 'sliced' || this.source === 'designs') && !libraryState.synced ? libraryState.error ?? '' : ''
+  }
+
+  retry () {
+    if (this.source === 'sliced' || this.source === 'designs') refreshLibrary().catch(() => {})
+    else this.load()
   }
 
   get own (): OwnCard[] {

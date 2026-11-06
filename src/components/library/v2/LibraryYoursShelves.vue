@@ -183,7 +183,7 @@ import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryOwnCard from './LibraryOwnCard.vue'
 import LibraryShelf from './LibraryShelf.vue'
 import { describeLibraryError, type CommunityCollection, type CommunitySave, type LibraryItem } from '@/services/library/api'
-import { libraryClient, libraryItems, libraryState } from '@/services/library/store'
+import { libraryClient, libraryItems, libraryState, refreshLibrary } from '@/services/library/store'
 import { publicationPicture, saveCard, type ShelfCard } from '@/services/library/shelves'
 import { itemShelf, loadOwnShelf, OWN_SHELVES, type OwnCard, type OwnShelfId } from '@/services/library/yours'
 
@@ -269,7 +269,11 @@ export default class LibraryYoursShelves extends Vue {
   }
 
   async readOwn (id: OwnShelfId) {
-    if (id === 'sliced' || id === 'designs') return
+    // Sliced and Designs are the synced Library's: Retry syncs it again.
+    if (id === 'sliced' || id === 'designs') {
+      refreshLibrary().catch(() => {})
+      return
+    }
     const read = (this.ownReads[id] = (this.ownReads[id] ?? 0) + 1)
     const shelf = this.read[id]
     shelf.loading = !shelf.loaded
@@ -315,7 +319,9 @@ export default class LibraryYoursShelves extends Vue {
 
   /** In the mockup's order; Shared by you and Designs only once there is one. */
   get shelves () {
-    const synced = { loading: !libraryState.synced, error: '' }
+    // Before the first sync: reading, or why it could not (with Retry), not "nothing yet".
+    const failed = !libraryState.synced && !!libraryState.error
+    const synced = { loading: !libraryState.synced && !failed, error: failed ? libraryState.error ?? '' : '' }
     const sliced = { ...synced, cards: itemShelf('sliced', this.items) }
     const designs = { ...synced, cards: itemShelf('designs', this.items) }
     const shown = (s: { cards: OwnCard[], error: string }) => s.cards.length > 0 || !!s.error
