@@ -26,6 +26,15 @@
         v-if="card.m1"
         class="mlib-badge mlib-badge--glass mcard__badge"
       >Made for M1</span>
+      <span
+        v-if="card.material"
+        class="mlib-badge mlib-badge--glass mcard__fil"
+        data-tid="library-card-filament"
+      ><span
+        v-if="card.colour"
+        class="mcard__dot"
+        :style="{ background: card.colour }"
+      />{{ card.material }}</span>
     </button>
     <div class="mcard__act">
       <button
@@ -68,7 +77,7 @@
           :aria-label="`${card.saves} saves`"
         >♡ {{ count(card.saves) }}</span>
         <span
-          v-if="card.makes"
+          v-else-if="card.makes"
           class="mlib-stat"
         ><frame-icon
           name="printer"

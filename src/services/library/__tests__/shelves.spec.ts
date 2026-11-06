@@ -53,10 +53,15 @@ describe('Library v2 shelves', () => {
     expect(shelves.m1[1].facts).toBe('38 min · 9 g · PLA')
   })
 
-  it('keeps Discover\'s own shelves when the publications list fails, and fails only when both do', async () => {
+  it('keeps Discover\'s own shelves when the publications list fails; a shelf neither source answers says why', async () => {
     const fallback = answer({ '/v1/public/discover': { m1_ready: [], trending: [summary()], new: [] } })
-    expect((await loadShelves(fallback)).popular.map(card => card.id)).toEqual(['p1'])
-    await expect(loadShelves(answer({}))).rejects.toThrow()
+    const kept = await loadShelves(fallback)
+    expect(kept.popular.map(card => card.id)).toEqual(['p1'])
+    expect(kept.errors).toEqual({})
+    const down = await loadShelves(answer({}))
+    expect(down.popular).toEqual([])
+    expect(down.errors.popular).toMatch(/didn't answer/)
+    expect(down.errors.m1).toMatch(/didn't answer/)
   })
 
   it('reads the feed newest first: a remix is said as one, and the cursor carries on', async () => {
