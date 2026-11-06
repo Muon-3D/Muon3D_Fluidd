@@ -16,7 +16,7 @@ export default defineConfig({
   testDir: '.',
   globalSetup: './global-setup.ts',
   // The whole run, warm-up included: a cold vite in CI can take minutes.
-  globalTimeout: 45 * 60_000,
+  globalTimeout: 35 * 60_000,
   outputDir: '../test-results',
   timeout: 90_000,
   expect: { timeout: 15_000 },
