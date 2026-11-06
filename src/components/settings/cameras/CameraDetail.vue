@@ -22,8 +22,12 @@
         name="chevronRight"
         small
       />
-      <span aria-current="page">{{ draft.name || 'New camera' }}</span>
+      <span aria-current="page">{{ draft.name || $t('app.general.label.add_camera') }}</span>
     </nav>
+
+    <h2 class="cdet__title">
+      {{ isNew ? $t('app.general.label.add_camera') : $t('app.general.label.edit_camera') }}
+    </h2>
 
     <div
       v-if="readOnly"
@@ -83,40 +87,40 @@
         <section class="m3-set">
           <div class="m3-set__row">
             <div class="m3-set__label">
-              <b>Rotate by</b>
+              <b>{{ $t('app.setting.label.camera_rotate_by') }}</b>
             </div>
             <div class="m3-set__control">
               <seg-picker
-                :options="ROTATIONS"
+                :options="rotations"
                 :value="draft.rotation || 0"
                 :disabled="readOnly"
-                label="Rotate by"
+                :label="$t('app.setting.label.camera_rotate_by')"
                 @input="draft.rotation = $event"
               />
             </div>
           </div>
           <div class="m3-set__row">
             <div class="m3-set__label">
-              <b>Flip horizontally</b>
+              <b>{{ $t('app.setting.label.camera_flip_x') }}</b>
             </div>
             <div class="m3-set__control">
               <toggle-switch
                 :value="!!draft.flip_horizontal"
                 :disabled="readOnly"
-                label="Flip horizontally"
+                :label="$t('app.setting.label.camera_flip_x')"
                 @input="draft.flip_horizontal = $event"
               />
             </div>
           </div>
           <div class="m3-set__row">
             <div class="m3-set__label">
-              <b>Flip vertically</b>
+              <b>{{ $t('app.setting.label.camera_flip_y') }}</b>
             </div>
             <div class="m3-set__control">
               <toggle-switch
                 :value="!!draft.flip_vertical"
                 :disabled="readOnly"
-                label="Flip vertically"
+                :label="$t('app.setting.label.camera_flip_y')"
                 @input="draft.flip_vertical = $event"
               />
             </div>
@@ -133,7 +137,7 @@
             <label
               class="m3-set__label"
               for="camera-name"
-            ><b>Name</b></label>
+            ><b>{{ $t('app.general.label.name') }}</b></label>
             <div class="m3-set__control m3-set__control--wide">
               <input
                 id="camera-name"
@@ -141,21 +145,21 @@
                 class="cdet__field"
                 type="text"
                 :disabled="readOnly"
-                :aria-invalid="triedSave && !draft.name ? 'true' : undefined"
+                :aria-invalid="invalid('name')"
                 data-tid="camera-name"
               >
             </div>
           </div>
           <div class="m3-set__row">
             <div class="m3-set__label">
-              <b>Show this camera</b>
+              <b>{{ $t('app.setting.label.enable') }}</b>
               <span>Off keeps it here but hides it from the camera view.</span>
             </div>
             <div class="m3-set__control">
               <toggle-switch
                 :value="draft.enabled !== false"
                 :disabled="readOnly"
-                label="Show this camera"
+                :label="$t('app.setting.label.enable')"
                 @input="draft.enabled = $event"
               />
             </div>
@@ -171,7 +175,7 @@
               class="m3-set__label"
               for="camera-type"
             >
-              <b>Stream type</b>
+              <b>{{ $t('app.setting.label.camera_stream_type') }}</b>
               <span>What the camera sends. Adaptive works with most USB cameras.</span>
             </label>
             <div class="m3-set__control">
@@ -187,7 +191,7 @@
                   :key="type.value"
                   :value="type.value"
                 >
-                  {{ type.label }}
+                  {{ $t(type.labelKey) }}
                 </option>
               </select>
             </div>
@@ -196,16 +200,16 @@
             <label
               class="m3-set__label"
               for="camera-stream"
-            ><b>Stream address</b></label>
+            ><b>{{ $t('app.setting.label.camera_url_stream') }}</b></label>
             <div class="m3-set__control m3-set__control--wide">
               <input
                 id="camera-stream"
                 v-model.lazy.trim="draft.stream_url"
                 class="cdet__field cdet__field--mono"
-                type="text"
+                type="url"
                 spellcheck="false"
                 :disabled="readOnly"
-                :aria-invalid="triedSave && !draft.stream_url ? 'true' : undefined"
+                :aria-invalid="invalid('stream_url')"
                 data-tid="camera-stream-url"
               >
             </div>
@@ -215,7 +219,7 @@
               class="m3-set__label"
               for="camera-snapshot"
             >
-              <b>Snapshot address</b>
+              <b>{{ $t('app.setting.label.camera_url_snapshot') }}</b>
               <span>Used for thumbnails and Snapshot.</span>
             </label>
             <div class="m3-set__control m3-set__control--wide">
@@ -223,10 +227,10 @@
                 id="camera-snapshot"
                 v-model.lazy.trim="draft.snapshot_url"
                 class="cdet__field cdet__field--mono"
-                type="text"
+                type="url"
                 spellcheck="false"
                 :disabled="readOnly"
-                :aria-invalid="triedSave && !draft.snapshot_url ? 'true' : undefined"
+                :aria-invalid="invalid('snapshot_url')"
                 data-tid="camera-snapshot-url"
               >
             </div>
@@ -237,7 +241,7 @@
                 class="m3-set__label"
                 for="camera-fps"
               >
-                <b>Frame rate</b>
+                <b>{{ $t('app.setting.label.fps_target') }}</b>
                 <span>Adaptive only.</span>
               </label>
               <div class="m3-set__control">
@@ -248,6 +252,7 @@
                   type="number"
                   min="1"
                   :disabled="readOnly"
+                  :aria-invalid="invalid('target_fps')"
                   data-tid="camera-fps"
                 >
                 fps
@@ -258,7 +263,7 @@
                 class="m3-set__label"
                 for="camera-fps-idle"
               >
-                <b>When Control is in the background</b>
+                <b>{{ $t('app.setting.label.fps_idle_target') }}</b>
                 <span>Adaptive only. Saves the printer's bandwidth.</span>
               </label>
               <div class="m3-set__control">
@@ -269,6 +274,7 @@
                   type="number"
                   min="1"
                   :disabled="readOnly"
+                  :aria-invalid="invalid('target_fps_idle')"
                   data-tid="camera-fps-idle"
                 >
                 fps
@@ -283,8 +289,8 @@
               class="m3-set__label"
               for="camera-aspect"
             >
-              <b>Aspect ratio</b>
-              <span>Width:height, like 16:9. HTTP page only.</span>
+              <b>{{ $t('app.setting.label.aspect_ratio') }}</b>
+              <span>{{ $t('app.setting.label.aspect_ratio_format') }} · HTTP page only.</span>
             </label>
             <div class="m3-set__control">
               <input
@@ -294,7 +300,7 @@
                 type="text"
                 spellcheck="false"
                 :disabled="readOnly"
-                :aria-invalid="triedSave && !aspectOk ? 'true' : undefined"
+                :aria-invalid="invalid('aspect_ratio')"
                 data-tid="camera-aspect"
               >
             </div>
@@ -353,7 +359,7 @@
             data-tid="camera-save"
             @click="save"
           >
-            {{ isNew ? 'Add camera' : 'Save' }}
+            {{ isNew ? $t('app.general.btn.add') : $t('app.general.btn.save') }}
           </button>
         </div>
       </div>
@@ -364,17 +370,12 @@
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import type { NewWebcamConfig, WebcamConfig, WebcamRotation } from '@/store/webcams/types'
-import { STREAM_TYPES } from '@/services/camera/types'
+import { STREAM_TYPES, cameraProblem, cameraProblems, cameraToSave, type CameraField } from '@/services/camera/types'
 import SegPicker from '@/components/control/SegPicker.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import CameraPreview from './CameraPreview.vue'
 
-const ROTATIONS = [
-  { value: 0, label: 'None' },
-  { value: 90, label: '90°' },
-  { value: 180, label: '180°' },
-  { value: 270, label: '270°' }
-]
+const TURNS: WebcamRotation[] = [0, 90, 180, 270]
 
 /**
  * One camera: a live preview that leads, then its settings. Edits are kept
@@ -386,7 +387,6 @@ export default class CameraDetail extends Vue {
   @Prop({ type: Object, required: true })
   readonly camera!: WebcamConfig | NewWebcamConfig
 
-  readonly ROTATIONS = ROTATIONS
   readonly types = STREAM_TYPES
 
   draft: WebcamConfig | NewWebcamConfig = {}
@@ -404,34 +404,45 @@ export default class CameraDetail extends Vue {
     return 'source' in this.camera && this.camera.source === 'config'
   }
 
-  get aspectOk (): boolean {
-    return /^\d+\s*[:/]\s*\d+$/.test(this.draft.aspect_ratio ?? '')
+  /** Rotate by's choices: None, 90°, 180°, 270°. */
+  get rotations () {
+    return TURNS.map(value => ({ value, label: this.$t(`app.setting.camera_rotate_options.${value || 'none'}`) as string }))
+  }
+
+  get problems () {
+    return cameraProblems(this.draft)
+  }
+
+  /** `'true'` for a field that stops Save, once Save has been tried. */
+  invalid (field: CameraField): 'true' | undefined {
+    return this.triedSave && this.problems[field] ? 'true' : undefined
   }
 
   /** What stops Save, in plain words; empty when it can go. */
   get problem (): string {
-    if (!this.draft.name) return 'Give the camera a name.'
-    if (!this.draft.stream_url) return 'Enter the stream address.'
-    if (!this.draft.snapshot_url) return 'Enter the snapshot address.'
-    if (this.draft.service === 'iframe' && !this.aspectOk) return 'Enter the aspect ratio as width:height, like 16:9.'
-    return ''
+    return cameraProblem(this.draft)
   }
 
   rotateNext () {
-    const turns = ROTATIONS.map(r => r.value)
-    const at = turns.indexOf(this.draft.rotation ?? 0)
-    this.draft.rotation = turns[(at + 1) % turns.length] as WebcamRotation
+    const at = TURNS.indexOf(this.draft.rotation ?? 0)
+    this.draft.rotation = TURNS[(at + 1) % TURNS.length]
   }
 
   save () {
     this.triedSave = true
     if (this.problem) return
-    this.$emit('save', { ...this.draft })
+    this.$emit('save', cameraToSave(this.draft))
   }
 }
 </script>
 
 <style lang="scss" scoped>
+  .cdet__title {
+    margin: 0 0 12px;
+    font-size: 17px;
+    font-weight: 600;
+  }
+
   .cdet__crumb {
     display: flex;
     align-items: center;
