@@ -41,11 +41,10 @@
           class="jobs__queued"
         >
           <span class="jobs__thumb jobs__thumb--small">
-            <img
-              v-if="thumbnailOf(queued.filename)"
+            <job-picture
               :src="thumbnailOf(queued.filename)"
-              alt=""
-            >
+              :thumb-key="thumbnailKeyOf(queued.filename)"
+            />
           </span>
           <span class="jobs__queued-text">
             <b>{{ titleOf(queued.filename) }}</b>
@@ -298,12 +297,11 @@
                     v-if="row.kind === 'folder'"
                     name="files"
                   />
-                  <img
-                    v-else-if="row.job && row.job.thumbnail"
+                  <job-picture
+                    v-else-if="row.job"
                     :src="row.job.thumbnail"
-                    alt=""
-                    loading="lazy"
-                  >
+                    :thumb-key="row.job.thumbnailKey"
+                  />
                 </span>
                 <span class="jobs__name-text">
                   <b :title="row.name">{{ row.title }}</b>
@@ -402,14 +400,9 @@
           />
         </div>
         <div class="jobs__picture">
-          <img
-            v-if="selectedRow.job.thumbnail"
+          <job-picture
             :src="selectedRow.job.thumbnail"
-            alt=""
-          >
-          <frame-icon
-            v-else
-            name="jobs"
+            :thumb-key="selectedRow.job.thumbnailKey"
             large
           />
         </div>
@@ -439,6 +432,12 @@
             v-for="warning in warnings"
             :key="warning"
           >
+            <v-icon
+              x-small
+              class="jobs__warning-icon"
+            >
+              $warning
+            </v-icon>
             {{ warning }}
           </li>
         </ul>
@@ -583,6 +582,8 @@ import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
 import JobMenu, { type JobMenuAction } from '@/components/jobs/JobMenu.vue'
+import JobPicture from '@/components/jobs/JobPicture.vue'
+import { retryFailedThumbnails } from '@/services/jobs/thumbnail'
 import TonePill from '@/components/printers/TonePill.vue'
 
 /** A row of the list: a folder, or a G-code file in the folder that's open. */
@@ -616,7 +617,7 @@ interface ListRow {
  * a file is in its ··· menu. The search, the order, Upload and the
  * pages that used to be tabs are in the header (JobsActions).
  */
-@Component({ components: { FileNameDialog, JobMenu, TonePill } })
+@Component({ components: { FileNameDialog, JobMenu, JobPicture, TonePill } })
 export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   path = ''
   selectedKey: string | null = null
@@ -638,6 +639,8 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   get query (): string { return jobsPage.query }
 
   mounted () {
+    // Pictures that gave up while Jobs was last open get another go.
+    retryFailedThumbnails()
     const saved = (this.$store.getters['files/getCurrentPathByRoot'](this.root) as string | undefined) ?? ''
     this.openFolder(saved.startsWith(`${this.root}/`) ? saved.slice(this.root.length + 1) : '')
     this.loadFiles()
@@ -1090,7 +1093,7 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   get warnings (): string[] {
     const job = this.selectedRow?.job
     if (!job) return []
-    return readyChecks(job.file, job.filename, this.material ? this.material.name : null, this.printerName, this.busy)
+    return readyChecks(job.file, job.filename, this.loadedFilament, this.printerName, this.busy)
       .filter(c => !c.ok && !c.text.endsWith('it can go next in the queue'))
       .map(c => c.text)
   }
@@ -1260,6 +1263,10 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
 
   thumbnailOf (filename: string): string {
     return this.fileFor(filename)?.thumbnail ?? ''
+  }
+
+  thumbnailKeyOf (filename: string): string {
+    return this.fileFor(filename)?.thumbnailKey ?? ''
   }
 
   titleOf (filename: string): string {
@@ -1763,6 +1770,11 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
       display: flex;
       flex-direction: column;
     }
+  }
+
+  .jobs__warning-icon {
+    margin-right: 6px;
+    color: var(--m3d-warning) !important;
   }
 
   .jobs__warnings {
