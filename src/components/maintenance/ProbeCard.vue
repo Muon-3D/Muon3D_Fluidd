@@ -95,7 +95,7 @@ import MaintenanceMixin from '@/mixins/maintenance'
 import type { ConsoleEntry } from '@/store/console/types'
 import type { Probe } from '@/store/printer/types'
 import { bedMiddle, parseProbeAccuracy, probeAccuracyScript, probeVerdict, type ProbeAccuracy } from '@/services/maintenance/model'
-import { readNoGo } from '@/services/control/safe-move'
+import { meshSpan, readNoGo } from '@/services/control/safe-move'
 import { EventBus } from '@/eventBus'
 import ControlCard from '@/components/control/ControlCard.vue'
 import { plateCheckNeeded } from '@/services/jobs/plate'
@@ -208,7 +208,24 @@ export default class ProbeCard extends Mixins(MaintenanceMixin) {
       EventBus.$emit('The printer’s no-go regions could not be read, so the probe check will not move the head. Check [bed_mesh] in printer.cfg.', { type: 'warning' })
       return
     }
-    this.sendGcode(probeAccuracyScript(this.allHomed, this.middle, noGo?.traverseZ), this.$waits.onProbeAccuracy)
+    let lift: number | undefined
+    if (noGo) {
+      // Where homing leaves the head isn't known here, so with no-go regions
+      // the check starts from a homed head whose height is known.
+      if (!this.allHomed) {
+        EventBus.$emit('Home the printer first: the way to the middle of the bed passes the notch.', { type: 'warning' })
+        return
+      }
+      // Lift only if the head is below the crossing height (never lower it onto
+      // whatever is on the plate), sent in G-code coordinates.
+      const printer = this.$store.state.printer.printer
+      const toolZ = Number(printer.toolhead?.position?.[2])
+      const gcodeZ = Number(printer.gcode_move?.gcode_position?.[2])
+      if (!Number.isFinite(toolZ) || !Number.isFinite(gcodeZ)) return
+      const clear = noGo.traverseZ + meshSpan(printer.bed_mesh)
+      if (toolZ < clear) lift = Math.round((clear - (toolZ - gcodeZ)) * 1000) / 1000
+    }
+    this.sendGcode(probeAccuracyScript(this.allHomed, this.middle, lift), this.$waits.onProbeAccuracy)
   }
 }
 </script>
