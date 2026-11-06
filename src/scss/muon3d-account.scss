@@ -734,3 +734,145 @@ a.acct-tile:hover {
 .acct-actions--center {
   justify-content: center;
 }
+
+// v3 grouped settings (PRINCIPLES §4): a caps title over one tile of rows,
+// label left, control right, a short helper line under the label.
+.acct-gt {
+  margin: 6px 6px -8px;
+  color: var(--m3d-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.acct-gh {
+  margin: -8px 8px 0;
+  color: var(--m3d-text-muted);
+  font-size: 12px;
+}
+
+.acct-glist {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--m3d-surface);
+}
+
+.acct-grow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 52px;
+  padding: 12px 18px;
+
+  & + & {
+    border-top: 1px solid var(--m3d-border);
+  }
+}
+
+.acct-grow__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  b {
+    font-weight: 600;
+  }
+
+  span {
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+  }
+}
+
+.acct-grow__value {
+  flex: none;
+  color: var(--m3d-text-muted);
+  text-align: right;
+}
+
+.acct-tile {
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px;
+  border-radius: 22px;
+  background: var(--m3d-surface);
+}
+
+.acct-tile__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  font-size: 15px;
+  font-weight: 700;
+
+  .frame-icon {
+    color: var(--m3d-text-muted);
+  }
+
+  .lib-pill {
+    margin-left: auto;
+  }
+}
+
+.acct-big {
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+
+  small {
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+    font-weight: 500;
+  }
+}
+
+.acct-callout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--m3d-surface-2);
+  font-size: 13px;
+
+  .frame-icon {
+    flex: none;
+    color: var(--m3d-text-muted);
+  }
+}
+
+// A link to where something else is set, as one tinted row.
+.acct-xl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--m3d-accent-soft);
+  color: var(--m3d-text-muted) !important;
+  font-size: 13px;
+  text-decoration: none;
+
+  .frame-icon {
+    flex: none;
+    color: var(--m3d-accent);
+  }
+
+  b {
+    color: var(--m3d-text);
+  }
+}
+
+.acct-xl__go {
+  margin-left: auto;
+  color: var(--m3d-accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
