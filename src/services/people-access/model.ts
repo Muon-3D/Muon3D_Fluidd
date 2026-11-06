@@ -95,10 +95,10 @@ export function accessViewer (printer: PrinterSays | null | undefined, cloud: Cl
 /** The page's groups, top to bottom. */
 export type PrinterGroup =
   'you' | 'people' | 'peopleReadOnly' | 'waiting' | 'links' | 'devices' | 'yourDevices' |
-  'entry' | 'roles' | 'canDo' | 'needToPrint' | 'olderTools' | 'developer' | 'unlink' | 'leave'
+  'entry' | 'askAtPrinter' | 'roles' | 'canDo' | 'needToPrint' | 'olderTools' | 'developer' | 'unlink' | 'leave'
 
 /** Groups only the owner ever sees. A member gets one lock line instead (hide, don't grey). */
-export const OWNER_ONLY_GROUPS: readonly PrinterGroup[] = ['people', 'waiting', 'links', 'devices', 'entry', 'roles', 'olderTools', 'developer', 'unlink']
+export const OWNER_ONLY_GROUPS: readonly PrinterGroup[] = ['people', 'waiting', 'links', 'devices', 'entry', 'askAtPrinter', 'roles', 'olderTools', 'developer', 'unlink']
 
 export interface GroupFacts {
   /** This printer is in the signed-in account (the console's people, invites, links, Unlink and Leave apply). */
@@ -115,6 +115,11 @@ export interface GroupFacts {
   links: number;
   /** The printer has Moonraker's authorization component (the API key). */
   olderTools: boolean;
+  /**
+   * The printer doesn't let this browser change who can get in, but lets it
+   * ask the printer's own screen (`protection: 'ask'`), as from away.
+   */
+  canAsk: boolean;
 }
 
 /**
@@ -134,6 +139,8 @@ export function printerGroups (viewer: AccessViewer, facts: GroupFacts): Printer
       groups.push('entry', 'roles')
       if (facts.olderTools) groups.push('olderTools')
       groups.push('developer')
+    } else if (facts.canAsk) {
+      groups.push('askAtPrinter')
     }
     if (facts.cloud) groups.push('unlink')
     return groups

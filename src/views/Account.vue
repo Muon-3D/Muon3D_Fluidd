@@ -223,9 +223,9 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import { cloudBaseUrl } from '@/services/muon-cloud/api'
 import { centralLoginEnabled } from '@/services/muon-cloud/centralLogin'
-import { activeSlug, printerPath } from '@/services/printer-pages'
+import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
-import { accountCameFrom } from '@/services/account/came-from'
+import { accountCameFrom, backTarget } from '@/services/account/came-from'
 import { scopedPath } from '@/router/printerPagePaths'
 import { accountNav, accountNavId, accountSectionFor, accountSections, libraryReturnUrl, type AccountNavGroup, type AccountSection, type AccountSectionId } from '@/services/account/model'
 import { accountState, loadMe } from '@/services/account/state'
@@ -274,9 +274,7 @@ export default class Account extends Mixins(BrowserMixin) {
     if (!slug) return null
     const name = printerNameParts((this.$store.getters['config/getDisplayName'] as string) || '').name
     // The page you came from on that printer, else its home.
-    const came = accountCameFrom.path
-    const to = came && came.startsWith(`/${slug}`) ? came : printerPath(slug)
-    return { to, name: name || 'the printer' }
+    return { to: backTarget(accountCameFrom.path, slug), name: name || 'the printer' }
   }
 
   get returnToLibrary (): string | null {

@@ -27,6 +27,8 @@ const api = vi.hoisted(() => ({
   answerApproval: vi.fn(async () => ({}))
 }))
 const unlinkPrinter = vi.hoisted(() => vi.fn(async () => ({})))
+/** The EndpointId the connected printer reports about itself. */
+const ident = vi.hoisted(() => ({ id: 'prn-1' as string | null }))
 
 vi.mock('@/services/muon-access/api', () => ({
   currentPrinterAccess: () => ({
@@ -53,6 +55,10 @@ vi.mock('@/services/account/client', () => ({ isMissing: () => false }))
 vi.mock('@/services/account/state', () => ({ accountState: account, loadApprovals: async () => {}, describe: (e: Error) => e.message }))
 vi.mock('@/services/dev-mode/state', () => ({ devModeState: { enabled: false } }))
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'boxwood-367a' }))
+vi.mock('@/services/people-access/identity', () => ({
+  connectedEndpointId: async () => ident.id,
+  sameEndpoint: (id: string, reported: string | null) => !!reported && id.toLowerCase() === reported
+}))
 
 // eslint-disable-next-line import/first
 import PeopleAccessSettings from '../PeopleAccessSettings.vue'
@@ -77,12 +83,13 @@ const $confirm = vi.fn(async () => confirmAnswer)
 function open (components: string[] = ['authorization', 'muon_access']) {
   const store = {
     state: Vue.observable({ config: { apiUrl: API, instances: [{ apiUrl: API, endpointId: 'prn-1', name: 'Boxwood', active: true }] } }),
-    getters: {
+    getters: Vue.observable({
       'config/getDisplayName': 'Boxwood',
       'server/componentSupport': (name: string) => components.includes(name),
-      'auth/getUsers': [],
+      'socket/getConnectionState': true,
+      'auth/getUsers': [{ username: 'octo', source: 'moonraker' }],
       'auth/getCurrentUser': null
-    },
+    }) as Record<string, unknown>,
     dispatch: vi.fn()
   }
   return mount(PeopleAccessSettings, {
@@ -92,7 +99,8 @@ function open (components: string[] = ['authorization', 'muon_access']) {
       'frame-icon': true,
       M3Dialog: { props: ['value', 'title'], template: '<div v-if="value" data-dialog><h2>{{ title }}</h2><slot /><slot name="actions" /></div>' },
       ToggleSwitch: { props: ['value'], template: '<button data-toggle @click="$emit(\'input\', !value)" />' },
-      ApiKeyDialog: true
+      ApiKeyDialog: { template: '<div data-tid="api-key-dialog" />' },
+      AccessRequestDialog: { props: ['ask'], template: '<div data-tid="access-request-dialog">{{ ask.entry }}</div>' }
     }
   })
 }
@@ -118,6 +126,7 @@ describe('People and access on the printer', () => {
     confirmAnswer = true
     access.fail = null
     access.gate = null
+    ident.id = 'prn-1'
     account.approvals = []
     cloud.activePrinterId = null
     Object.values(api).forEach(fn => fn.mockClear())
@@ -359,6 +368,131 @@ describe('People and access on the printer', () => {
     await settle(); await settle()
     expect(w.find('[data-tid="pa-entry"]').exists()).toBe(false)
     expect(w.find('[data-tid="pa-unknown"]').text()).toContain('The other printer refused')
+    w.destroy()
+  })
+
+  it("hides the console's groups when the printer on the other end says it is another printer (a reused address)", async () => {
+    asOwner()
+    ident.id = 'prn-other'
+    const w = open()
+    await settle(); await settle()
+    for (const tid of ['pa-invite', 'pa-people', 'pa-waiting', 'pa-links', 'pa-unlink']) expect(w.find(`[data-tid="${tid}"]`).exists()).toBe(false)
+    expect(api.shares).not.toHaveBeenCalled()
+    w.destroy()
+    // A printer that won't say who it is counts as not matching.
+    ident.id = null
+    const w2 = open()
+    await settle(); await settle()
+    expect(w2.find('[data-tid="pa-unlink"]').exists()).toBe(false)
+    w2.destroy()
+  })
+
+  it("names the account's printer in every confirm, not the name on the screen", async () => {
+    asOwner()
+    cloud.printers = [{ id: 'prn-1', name: 'Workshop M1', shared: false, role: 'operator', online: true }]
+    api.shares.mockResolvedValue({ shares: [{ id: 's1', printer_id: 'prn-1', email: 'harry@example.test', role: 'operator', ends_at: null, created_at: 1 }] })
+    api.invites.mockResolvedValue({ invites: [{ id: 'i1', printer_id: 'prn-1', email: 'alex@example.test', role: 'viewer', ends_at: null, created_at: 1 }] })
+    confirmAnswer = false
+    const w = open()
+    await settle(); await settle()
+    await w.find('[data-tid="pa-person-remove"]').trigger('click')
+    await w.find('[data-tid="pa-invite-cancel"]').trigger('click')
+    await w.find('[data-tid="pa-unlink-button"]').trigger('click')
+    await settle()
+    const titles = $confirm.mock.calls.map(call => ((call as unknown[])[1] as { title: string }).title)
+    expect(titles).toEqual(['Remove harry@example.test from Workshop M1?', 'Cancel this invite to Workshop M1?', 'Unlink Workshop M1?'])
+    w.destroy()
+
+    asMember('operator', { name: 'Walnut at work' })
+    $confirm.mockClear()
+    const m = open()
+    await settle(); await settle()
+    await m.find('[data-tid="pa-leave-button"]').trigger('click')
+    await settle()
+    expect((($confirm.mock.calls[0] as unknown[])[1] as { title: string }).title).toBe('Leave Walnut at work?')
+    m.destroy()
+  })
+
+  it('cancels a confirmed action when the printer changed while the confirm was open', async () => {
+    asOwner()
+    api.shares.mockResolvedValue({ shares: [{ id: 's1', printer_id: 'prn-1', email: 'harry@example.test', role: 'operator', ends_at: null, created_at: 1 }] })
+    const w = open()
+    await settle(); await settle()
+    const config = w.vm.$store.state.config as { apiUrl: string }
+    $confirm.mockImplementationOnce(async () => { config.apiUrl = 'http://walnut.local'; return true })
+    await w.find('[data-tid="pa-person-remove"]').trigger('click')
+    await settle(); await settle()
+    expect(api.removeShare).not.toHaveBeenCalled()
+    config.apiUrl = API
+    await settle(); await settle()
+    $confirm.mockImplementationOnce(async () => { config.apiUrl = 'http://walnut.local'; return true })
+    await w.find('[data-tid="pa-unlink-button"]').trigger('click')
+    await settle(); await settle()
+    expect(unlinkPrinter).not.toHaveBeenCalled()
+    w.destroy()
+  })
+
+  it('closes the API key dialog when the printer changes', async () => {
+    asOwner()
+    const w = open()
+    await settle(); await settle()
+    await w.find('[data-tid="pa-api-key"]').trigger('click')
+    expect(w.find('[data-tid="api-key-dialog"]').exists()).toBe(true)
+    ;(w.vm.$store.state.config as { apiUrl: string }).apiUrl = 'http://walnut.local'
+    await settle()
+    expect(w.find('[data-tid="api-key-dialog"]').exists()).toBe(false)
+    w.destroy()
+  })
+
+  it("offers an owner from away asking the printer's own screen when the printer says ask", async () => {
+    asOwner()
+    access.capabilities = { protection: 'ask' }
+    const w = open()
+    await settle(); await settle()
+    expect(w.find('[data-tid="pa-entry"]').exists()).toBe(false)
+    await w.find('[data-tid="pa-ask-at-printer-button"]').trigger('click')
+    // Protected now, so the ask is to make it Open; the printer's screen answers.
+    expect(w.find('[data-tid="access-request-dialog"]').text()).toBe('open')
+    w.destroy()
+  })
+
+  it('a disconnect forgets everything, and the reconnect reads it all again', async () => {
+    asOwner()
+    const w = open()
+    await settle(); await settle()
+    expect(w.find('[data-tid="pa-entry"]').exists()).toBe(true)
+    const getters = w.vm.$store.getters as Record<string, unknown>
+    getters['socket/getConnectionState'] = false
+    await settle()
+    expect(w.find('[data-tid="pa-entry"]').exists()).toBe(false)
+    expect(w.find('[data-tid="pa-people"]').exists()).toBe(false)
+    access.capabilities = { protection: 'refused' }
+    getters['socket/getConnectionState'] = true
+    await settle(); await settle()
+    // Read again: the printer now refuses, so the rules stay hidden.
+    expect(w.find('[data-tid="pa-you"]').exists()).toBe(true)
+    expect(w.find('[data-tid="pa-entry"]').exists()).toBe(false)
+    w.destroy()
+  })
+
+  it('tells a signed-out visitor on an owned printer to sign in to manage people', async () => {
+    access.state = printerState('operator', {}, 'admin')
+    access.capabilities = { protection: 'allowed' }
+    cloud.account = null
+    cloud.printers = []
+    const w = open()
+    await settle(); await settle()
+    expect(w.find('[data-tid="pa-sign-in"]').text()).toContain('Sign in to manage people')
+    w.destroy()
+  })
+
+  it('lists no Moonraker users on a Muon printer, even when the printer has some (R8)', async () => {
+    asOwner()
+    const w = open()
+    await settle(); await settle()
+    expect(w.find('[data-tid="pa-older-tools"]').exists()).toBe(true)
+    expect(w.find('[data-tid="pa-moonraker-user"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('octo')
     w.destroy()
   })
 

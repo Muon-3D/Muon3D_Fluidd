@@ -16,6 +16,18 @@ export const accountCameFrom = Vue.observable({ path: null as string | null })
 
 const isAccount = (route: RouteLike) => !!route.name?.startsWith('Account')
 
+/**
+ * Where "Back to <printer>" goes: the page Account was opened from when it is
+ * that printer's own page (its slug exactly: "/box" is not "/boxwood-367a"),
+ * else the printer's home.
+ */
+export function backTarget (came: string | null, slug: string): string {
+  const home = `/${slug}`
+  if (!came) return home
+  const rest = came.slice(home.length)
+  return came.startsWith(home) && (rest === '' || /^[/?#]/.test(rest)) ? came : home
+}
+
 /** Called after every navigation. */
 export function noteAccountEntry (to: RouteLike, from: RouteLike) {
   if (!isAccount(to) || isAccount(from)) return

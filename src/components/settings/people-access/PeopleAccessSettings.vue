@@ -431,6 +431,33 @@
         </div>
       </template>
 
+      <!-- Owner, from away: the printer lets its own screen be asked (protection: ask) -->
+      <template v-if="shows('askAtPrinter') && state">
+        <div class="pa-gt">
+          Who can get in
+        </div>
+        <div
+          class="pa-list"
+          data-tid="pa-ask-at-printer"
+        >
+          <div class="pa-row">
+            <div class="pa-row__text">
+              <b>This printer is {{ state.entry === 'open' ? 'Open' : 'Protected' }}</b>
+              <span>From here, changing it is asked at the printer's own screen, which shows a code to compare.</span>
+            </div>
+            <button
+              type="button"
+              class="lib-btn lib-btn--sm"
+              :disabled="busy"
+              data-tid="pa-ask-at-printer-button"
+              @click="askAtPrinter"
+            >
+              Ask at the printer
+            </button>
+          </div>
+        </div>
+      </template>
+
       <!-- Owner: the role table -->
       <template v-if="shows('roles')">
         <div class="pa-gt">
@@ -489,26 +516,6 @@
               Show
             </button>
           </div>
-          <div
-            v-for="user in moonrakerUsers"
-            :key="user.username"
-            class="pa-row"
-            data-tid="pa-moonraker-user"
-          >
-            <span class="pa-ico"><frame-icon name="user" /></span>
-            <div class="pa-row__text">
-              <b>{{ user.username }}</b>
-              <span>A Moonraker user, from before accounts</span>
-            </div>
-            <button
-              type="button"
-              class="lib-btn lib-btn--sm lib-btn--danger"
-              :disabled="user.username === currentUser || user.source !== 'moonraker'"
-              @click="removeMoonrakerUser(user)"
-            >
-              Remove…
-            </button>
-          </div>
         </div>
       </template>
 
@@ -540,7 +547,7 @@
         >
           <span class="pa-ico pa-ico--red"><frame-icon name="link" /></span>
           <div class="pa-row__text">
-            <b class="pa-red">Unlink {{ printerName }} from your account</b>
+            <b class="pa-red">Unlink {{ accountPrinterName }} from your account</b>
             <span>Everyone you share it with loses access. It keeps working on your network.</span>
           </div>
           <button
@@ -563,7 +570,7 @@
         >
           <div class="pa-row">
             <div class="pa-row__text">
-              <b class="pa-red">Leave {{ printerName }}</b>
+              <b class="pa-red">Leave {{ accountPrinterName }}</b>
               <span v-if="!shareId">Leaving from here isn't available yet for this printer.</span>
             </div>
             <button
@@ -594,6 +601,20 @@
     </template>
 
     <p
+      v-if="signInHint"
+      class="pa__note"
+      data-tid="pa-sign-in"
+    >
+      Sign in to manage people on {{ printerName }}: who's in, invites and links are kept with the owner's account.
+      <router-link
+        to="/sign-in"
+        class="pa-lnk"
+      >
+        Sign in
+      </router-link>
+    </p>
+
+    <p
       v-if="message"
       class="pa__note"
       role="status"
@@ -604,7 +625,7 @@
 
     <m3-dialog
       :value="dialog === 'invite'"
-      title="Invite someone"
+      :title="`Invite someone to ${accountPrinterName}`"
       :persistent="busy"
       max-width="460"
       @close="dialog = ''"
@@ -696,7 +717,7 @@
       @close="dialog = ''"
     >
       <p class="m3-dlg__text">
-        What {{ changing && changing.email }} can do on {{ printerName }}.
+        What {{ changing && changing.email }} can do on {{ accountPrinterName }}.
       </p>
       <div class="pa-opt">
         <button
@@ -742,6 +763,15 @@
       v-if="apiKeyOpen"
       v-model="apiKeyOpen"
     />
+
+    <access-request-dialog
+      v-if="askingOpen && asking"
+      v-model="askingOpen"
+      :client="client"
+      :ask="asking"
+      :printer-name="printerName"
+      @answered="refresh"
+    />
   </section>
 </template>
 
@@ -751,8 +781,11 @@ import StateMixin from '@/mixins/state'
 import M3Dialog from '@/components/ui/M3Dialog.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import ApiKeyDialog from '@/components/settings/auth/ApiKeyDialog.vue'
+import AccessRequestDialog from '@/components/muon-access/AccessRequestDialog.vue'
+import { connectedEndpointId, sameEndpoint } from '@/services/people-access/identity'
 import {
   currentPrinterAccess,
+  type AccessAsk,
   type AccessEntry,
   type AccessState,
   type DataMode,
@@ -770,7 +803,6 @@ import { devModeState } from '@/services/dev-mode/state'
 import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
 import type { InstanceConfig } from '@/store/config/types'
-import type { AppUser } from '@/store/auth/types'
 import {
   ROLE_TABLE,
   ROLE_WORDS,
@@ -808,7 +840,7 @@ const PRESET_WORDS: Record<string, string> = { relaxed: 'Relaxed', standard: 'St
  * printer (`muon_access` capabilities) and then the console; every change is
  * the printer's or the console's own call, which refuses what it must.
  */
-@Component({ components: { M3Dialog, ToggleSwitch, ApiKeyDialog } })
+@Component({ components: { M3Dialog, ToggleSwitch, ApiKeyDialog, AccessRequestDialog } })
 export default class PeopleAccessSettings extends Mixins(StateMixin) {
   client = currentPrinterAccess()
   state: AccessState | null = null
@@ -826,6 +858,11 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
   links: InviteLink[] = []
   apiKeyOpen = false
   renderKey = 0
+  /** The EndpointId the connected printer reports about itself, read with the rest. */
+  reportedEndpoint: string | null = null
+  asking: AccessAsk | null = null
+  /** The ask dialog is mounted only while open, so closing it withdraws the request. */
+  askingOpen = false
 
   mounted () {
     this.refresh()
@@ -856,10 +893,20 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
   forget () {
     this.state = null
     this.capabilities = {}
+    this.reportedEndpoint = null
     this.shares = []
     this.invites = []
     this.links = []
     this.dialog = ''
+    this.changing = null
+    this.apiKeyOpen = false
+    this.askingOpen = false
+    this.asking = null
+  }
+
+  /** The account's name for the printer acted on: what every console action and its confirm names. */
+  get accountPrinterName (): string {
+    return this.cloudPrinter?.name ?? this.printerName
   }
 
   get printerName (): string {
@@ -875,10 +922,21 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
     return instances.find(i => i.apiUrl === apiUrl)?.endpointId ?? null
   }
 
+  /**
+   * The account's record of the printer connected, only once that printer has
+   * said it is that one. Through Muon3D the connection is to that id; on the
+   * network a saved address can belong to another printer now (DHCP), so the
+   * printer's own EndpointId must match, or the console's groups stay hidden
+   * and nothing is sent to the wrong printer's people. Names aren't compared:
+   * renaming in Account doesn't rename the printer's own screen.
+   */
   get cloudPrinter (): (CloudPrinter & { share_id?: string }) | null {
     if (!cloudState.account) return null
     const id = this.cloudPrinterId
-    return id ? cloudState.printers.find(p => p.id === id) ?? null : null
+    const record = id ? cloudState.printers.find(p => p.id === id) ?? null : null
+    if (!record) return null
+    if (isManagedApiUrl(this.$store.state.config.apiUrl)) return record
+    return sameEndpoint(record.id, this.reportedEndpoint) ? record : null
   }
 
   /** Owner, operator or viewer: the printer's owner and your level there, else the console. Never from "may manage access". */
@@ -914,7 +972,8 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
       canManage: this.canManage,
       waiting: this.waitingCount,
       links: this.links.length,
-      olderTools: this.$store.getters['server/componentSupport']('authorization') as boolean
+      olderTools: this.$store.getters['server/componentSupport']('authorization') as boolean,
+      canAsk: !!this.state && this.capabilities.protection === 'ask'
     })
   }
 
@@ -1021,14 +1080,6 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
     return accountAccessPath(section)
   }
 
-  get moonrakerUsers (): AppUser[] {
-    return (this.$store.getters['auth/getUsers'] ?? []) as AppUser[]
-  }
-
-  get currentUser (): string {
-    return this.$store.getters['auth/getCurrentUser']?.username ?? ''
-  }
-
   linkLine (link: InviteLink): string {
     const parts = [this.roleWord(link.role)]
     if (link.max_uses === 1) parts.push('single use')
@@ -1044,6 +1095,8 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
     let state: AccessState | null = null
     let capabilities: Record<string, Capability> = {}
     let printerError = ''
+    const managed = isManagedApiUrl(this.$store.state.config.apiUrl)
+    const endpoint = managed ? Promise.resolve(null) : connectedEndpointId()
     try {
       [state, capabilities] = await Promise.all([this.client.get(), this.client.capabilities()])
     } catch (error) {
@@ -1053,7 +1106,9 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
       printerError = (error as Error).message
     }
     if (cloudState.account) await refreshPrinters().catch(() => {})
+    const reported = await endpoint
     if (key !== this.printerKey) return
+    this.reportedEndpoint = reported
     this.state = state
     this.capabilities = capabilities
     this.printerError = printerError
@@ -1133,7 +1188,7 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
     if (!p) return
     const email = this.form.email.trim()
     const endsAt = this.form.until ? Math.floor(new Date(`${this.form.until}T23:59:59`).getTime() / 1000) : null
-    if (await this.run(() => accountApi.share(p.id, email, this.form.role, endsAt), `${email} can use ${this.printerName}. We've emailed them.`, true)) {
+    if (await this.run(() => accountApi.share(p.id, email, this.form.role, endsAt), `${email} can use ${p.name}. We've emailed them.`, true)) {
       this.dialog = ''
       this.refreshCloud()
     }
@@ -1161,13 +1216,14 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
   async removePerson (row: PersonRow) {
     const p = this.cloudPrinter
     if (!p) return
-    const sure = await this.$confirm(`${row.email} loses access to ${this.printerName} now, from every device. Their account and other printers aren't touched.`, {
-      title: `Remove ${row.email} from ${this.printerName}?`,
+    const key = this.printerKey
+    const sure = await this.$confirm(`${row.email} loses access to ${p.name} now, from every device. Their account and other printers aren't touched.`, {
+      title: `Remove ${row.email} from ${p.name}?`,
       buttonTrueText: 'Remove',
       danger: true
     })
-    if (!sure) return
-    await this.run(() => accountApi.removeShare(p.id, row.id), `${row.email} can't use ${this.printerName} any more.`)
+    if (!sure || !this.stillOn(key, p.id)) return
+    await this.run(() => accountApi.removeShare(p.id, row.id), `${row.email} can't use ${p.name} any more.`)
     this.refreshCloud()
   }
 
@@ -1188,12 +1244,13 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
   async cancelInvite (invite: PrinterInvite) {
     const p = this.cloudPrinter
     if (!p) return
-    const sure = await this.$confirm(`${invite.email} won't be able to join ${this.printerName} with it.`, {
-      title: 'Cancel this invite?',
+    const key = this.printerKey
+    const sure = await this.$confirm(`${invite.email} won't be able to join ${p.name} with it.`, {
+      title: `Cancel this invite to ${p.name}?`,
       buttonTrueText: 'Cancel invite',
       danger: true
     })
-    if (!sure) return
+    if (!sure || !this.stillOn(key, p.id)) return
     await this.run(() => accountApi.withdrawInvite(p.id, invite.id), 'Invite cancelled.')
     this.refreshCloud()
   }
@@ -1215,35 +1272,45 @@ export default class PeopleAccessSettings extends Mixins(StateMixin) {
   async unlink () {
     const p = this.cloudPrinter
     if (!p) return
-    const sure = await this.$confirm(`${this.printerName} leaves your account: you can't reach it from outside your home, and everyone you share it with loses access. It keeps working on your network, and you can link it again at its screen.`, {
-      title: `Unlink ${this.printerName}?`,
+    const key = this.printerKey
+    const sure = await this.$confirm(`${p.name} leaves your account: you can't reach it from outside your home, and everyone you share it with loses access. It keeps working on your network, and you can link it again at its screen.`, {
+      title: `Unlink ${p.name}?`,
       buttonTrueText: 'Unlink',
       danger: true
     })
-    if (!sure) return
-    if (await this.run(() => cloudApi.unlinkPrinter(p.id), `${this.printerName} is unlinked.`)) await refreshPrinters().catch(() => {})
+    if (!sure || !this.stillOn(key, p.id)) return
+    if (await this.run(() => cloudApi.unlinkPrinter(p.id), `${p.name} is unlinked.`)) await refreshPrinters().catch(() => {})
   }
 
   async leave () {
     const p = this.cloudPrinter
     const shareId = this.shareId
     if (!p || !shareId) return
-    const sure = await this.$confirm(`You'll lose access from all your devices. ${this.ownerFirstName === 'the owner' ? 'The owner' : this.ownerFirstName} would need to invite you again. The owner can't leave; they unlink instead.`, {
-      title: `Leave ${this.printerName}?`,
+    const key = this.printerKey
+    const sure = await this.$confirm(`You'll lose access to ${p.name} from all your devices. ${this.ownerFirstName === 'the owner' ? 'The owner' : this.ownerFirstName} would need to invite you again. The owner can't leave; they unlink instead.`, {
+      title: `Leave ${p.name}?`,
       buttonTrueText: 'Leave',
       danger: true
     })
-    if (!sure) return
-    if (await this.run(() => accountApi.removeShare(p.id, shareId), `You've left ${this.printerName}.`)) await refreshPrinters().catch(() => {})
+    if (!sure || !this.stillOn(key, p.id)) return
+    if (await this.run(() => accountApi.removeShare(p.id, shareId), `You've left ${p.name}.`)) await refreshPrinters().catch(() => {})
   }
 
-  async removeMoonrakerUser (user: AppUser) {
-    const sure = await this.$confirm(`${user.username} can't sign in to this printer any more.`, {
-      title: `Remove ${user.username}?`,
-      buttonTrueText: 'Remove',
-      danger: true
-    })
-    if (sure) this.$store.dispatch('auth/removeUser', user)
+  /** After a confirm: still the same printer, still that account printer. A switch while it was open cancels the action. */
+  stillOn (key: string, printerId: string): boolean {
+    return key === this.printerKey && this.cloudPrinter?.id === printerId
+  }
+
+  /** The printer lets this browser ask its own screen to change who can get in (protection: ask). */
+  askAtPrinter () {
+    if (!this.state) return
+    this.asking = { kind: 'entry', entry: this.state.entry === 'open' ? 'protected' : 'open' }
+    this.askingOpen = true
+  }
+
+  /** Signed out on a printer an account owns: the owner's groups need the owner signed in. */
+  get signInHint (): boolean {
+    return !cloudState.account && this.state?.owner.kind === 'account'
   }
 }
 </script>
