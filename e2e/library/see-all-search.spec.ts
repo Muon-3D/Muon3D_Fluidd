@@ -154,3 +154,20 @@ test('Discover from the results returns to the shelves', async ({ page, open }) 
   await expect(page).not.toHaveURL(/shelf=/)
   await expect(page.getByTestId('library-shelf-popular')).toBeVisible()
 })
+
+test('Yours from the results, then Discover, shows the shelves, not the old results', async ({ page, open }) => {
+  await open('/library?view=discover&shelf=search&q=print')
+  await page.getByTestId('library-grid-search').getByRole('button', { name: 'Yours' }).click()
+  await expect(page).toHaveURL(/view=mine/)
+  await expect(page).not.toHaveURL(/shelf=|q=/)
+  await page.getByRole('tab', { name: 'Discover' }).click()
+  await expect(page.getByTestId('library-shelf-popular')).toBeVisible()
+})
+
+test('going from results to a too-short search address leaves no old results', async ({ page, open }) => {
+  await open('/library?view=discover&shelf=search&q=print')
+  await expect(page.getByTestId('library-grid-cards').locator('.mcard').first()).toBeVisible()
+  await page.goto('/boxwood-367a/library?view=discover&shelf=search&q=p')
+  await expect(page.getByTestId('library-grid-short')).toBeVisible()
+  await expect(page.getByTestId('library-grid-cards')).toHaveCount(0)
+})

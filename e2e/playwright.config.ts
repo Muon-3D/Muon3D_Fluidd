@@ -48,7 +48,8 @@ export default defineConfig({
       port: PORT,
       cwd: '..',
       reuseExistingServer: !process.env.CI,
-      timeout: 240_000
+      timeout: 240_000,
+      env: { E2E: '1' }
     }
   ]
 })

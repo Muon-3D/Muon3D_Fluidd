@@ -135,7 +135,9 @@ export default defineConfig(async ({ command, mode }) => {
     }),
     // Vitest runs after the separate type-check; do not start another
     // compiler alongside its workers.
-    !testing && checker({
+    // Not under e2e (Playwright): its overlay would sit over the page and take the clicks;
+    // type errors are npm run type-check's and CI's.
+    !testing && !process.env.E2E && checker({
       vueTsc: {
         tsconfigPath: path.resolve(__dirname, './tsconfig.app.json')
       }
