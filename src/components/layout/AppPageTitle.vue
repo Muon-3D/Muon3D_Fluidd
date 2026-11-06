@@ -34,6 +34,7 @@
         <jobs-actions v-if="jobsHome" />
         <maintenance-due v-if="currentPage === '/maintenance'" />
         <console-actions v-if="currentSection && currentSection.id === 'console'" />
+        <files-actions v-if="currentSection && currentSection.id === 'files' && isMobileViewport" />
         <camera-actions v-if="currentSection && currentSection.id === 'camera' && !isMobileViewport" />
       </div>
     </div>
@@ -69,6 +70,7 @@ import PrinterPageMenu from '@/components/overview/PrinterPageMenu.vue'
 import MaintenanceDue from '@/components/maintenance/MaintenanceDue.vue'
 import CameraTabs from '@/components/camera/CameraTabs.vue'
 import ConsoleActions from '@/components/console/ConsoleActions.vue'
+import FilesActions from '@/components/files/FilesActions.vue'
 import CameraActions from '@/components/camera/CameraActions.vue'
 import JobsActions from '@/components/jobs/JobsActions.vue'
 import { jobsPage } from '@/services/jobs/page-state'
@@ -88,7 +90,7 @@ import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@
  * with the section's pages as tabs under it (Jobs: Jobs, Preview, History,
  * Timelapse).
  */
-@Component({ components: { ConsoleActions, CameraActions, CameraTabs, JobsActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
+@Component({ components: { FilesActions, ConsoleActions, CameraActions, CameraTabs, JobsActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
 export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, PrinterStatusMixin) {
   get foreignRecord () {
     const slug = this.$route.params.printer
@@ -155,6 +157,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       return parts.join(' · ')
     }
     if (this.currentSection?.id === 'console') return 'Send G-code and read what Klipper says back'
+    if (this.currentSection?.id === 'files') return `${printerNameParts(this.displayName).name}'s config and other files · tap a file to edit it`
     if (this.isMobileViewport) return ''
     if (this.overviewHome) {
       if (this.foreignRecord) return ''
