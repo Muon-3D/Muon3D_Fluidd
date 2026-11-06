@@ -828,6 +828,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     // Posed once so the box is the machine's; the follower puts it where the printer is on the first frame.
     next.show(next.place({ x: null, y: null, z: null, led: false, progress: 0 }), false)
     onBox.copy(shownBox(next.root))
+    // The shadow falls on the floor the machine stands on. The accurate model's origin is the plate's
+    // top, about 155 mm above its feet: a floor at 0 sliced through the box and printed the shadow on it.
+    const feet = next.kind === 'accurate' ? next.root.getObjectByName('M1_Base') : null
+    ground.position.y = (feet ? shownBox(feet).min.y : 0) - 0.4
     offBox.copy(onBox).union(next.plateOffBox.isEmpty() ? onBox : next.plateOffBox)
     box.copy(onBox)
     performance.mark('m1:built')
