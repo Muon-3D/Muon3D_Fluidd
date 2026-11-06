@@ -40,7 +40,11 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue, Watch } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
+import ControlMixin from '@/mixins/control'
+import { findFilamentMacro } from '@/services/quick-actions/model'
+import type { Macro } from '@/store/macros/types'
+import type { Verb } from '@/services/panel-embed/protocol'
 import { PanelBridge } from '@/services/panel-embed/bridge'
 import { httpClientActions } from '@/api/httpClientActions'
 import { NOTIFY_ACTIONS } from '@/services/panel-embed/allow'
@@ -57,7 +61,7 @@ const bridges = new WeakMap<object, PanelBridge>()
  * screen. The knob is the mouse wheel and a click, inside the frame.
  */
 @Component
-export default class M1Screen extends Vue {
+export default class M1Screen extends Mixins(ControlMixin) {
   stopActions: (() => void) | null = null
   refusedLast = false
   refusedTimer = 0
@@ -76,7 +80,8 @@ export default class M1Screen extends Vue {
       },
       auxGet: async path => (await httpClientActions.get(`/server/aux${path}`)).data,
       status: () => this.$store.state.printer.printer as Record<string, unknown>,
-      connectionId: () => (this.$store.state.socket.connectionId as number | null) ?? null
+      connectionId: () => (this.$store.state.socket.connectionId as number | null) ?? null,
+      verb: v => this.runVerb(v)
     }, {
       onRefused: () => {
         this.refusedLast = true
@@ -115,6 +120,47 @@ export default class M1Screen extends Vue {
   get connectionKey (): string {
     const s = this.$store.state.socket
     return `${this.$store.state.config.apiUrl ?? ''}|${s.connectionId ?? ''}|${s.open ? 1 : 0}|${this.$store.state.printer.printer.webhooks?.state ?? ''}`
+  }
+
+  /**
+   * A verb from the screen, run as Control's own buttons run it: a jog by
+   * moveBy (the no-go planner and the hand-move wait), home, a heater target
+   * by setHeater (inside its limits), load and unload as the Filament card
+   * runs them. Only while the printer is idle and Control can act; '' when
+   * it was sent, else why not.
+   */
+  runVerb (v: Verb): string {
+    if (!this.controlReady) return this.controlLock
+    if (this.busy) return 'Not while the printer is busy.'
+    switch (v.verb) {
+      case 'jog': {
+        if (!this.isHomed(v.axis)) return 'Home the printer first.'
+        const wait = this.handMoveWait()
+        if (wait) return wait
+        this.moveBy(v.axis, v.by)
+        return ''
+      }
+      case 'home':
+        this.home(v.axes)
+        return ''
+      case 'heat': {
+        const heater = v.heater === 'extruder' ? this.nozzle : this.bed
+        if (!heater) return 'That heater is not on this printer.'
+        if (v.target > (heater.maxTemp ?? 300)) return 'That is hotter than this heater goes.'
+        this.setHeater(heater, v.target)
+        return ''
+      }
+      case 'filament': {
+        const macros = ((this.$store.getters['macros/getMacros'] as Macro[]) ?? []).filter(m => typeof m.name === 'string')
+        const macro = v.action === 'load'
+          ? findFilamentMacro(macros, 'load_filament', 'filament_load')
+          : findFilamentMacro(macros, 'unload_filament', 'filament_unload')
+        if (!macro) return 'This printer has no macro for that.'
+        const temp = this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
+        this.sendGcode(macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name)
+        return ''
+      }
+    }
   }
 
   onKey (e: KeyboardEvent) {
