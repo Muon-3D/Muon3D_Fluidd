@@ -32,6 +32,8 @@ export interface PrinterHandle {
   gcode: string[]
   /** The G1 lines of every script sent, in order. */
   moves: () => string[]
+  /** The printer reports `status` now: it becomes the overlay and is pushed to the page at once. */
+  report: (status: Json) => void
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -58,10 +60,16 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
   const handle: PrinterHandle = {
     state: { status, failOn: {} },
     gcode: [],
-    moves: () => handle.gcode.flatMap(s => s.split('\n')).filter(l => l.startsWith('G1 '))
+    moves: () => handle.gcode.flatMap(s => s.split('\n')).filter(l => l.startsWith('G1 ')),
+    report: (next: Json) => {
+      handle.state.status = next
+      pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_status_update', params: [next, Date.now() / 1000] }))
+    }
   }
+  let pageSocket: { send: (message: string) => void } | null = null
 
   await page.routeWebSocket(/:7125\/websocket\?/, ws => {
+    pageSocket = ws
     const server = ws.connectToServer()
 
     ws.onMessage(raw => {

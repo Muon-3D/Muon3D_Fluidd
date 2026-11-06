@@ -395,6 +395,9 @@ export class WebSocketClient {
         if (request.wait?.length) this.store.commit('wait/setRemoveWait', request.wait)
       }
     }
+    // Settle their promises too, so nothing waiting on an answer waits forever
+    // (the in-flight G-code count, safe-move.ts, ends with them).
+    for (const request of this.requests) request.resolve?.(undefined)
     this.requests = []
   }
 
