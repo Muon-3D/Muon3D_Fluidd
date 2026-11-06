@@ -329,7 +329,8 @@ import ExcludeObjects from '@/components/widgets/exclude-objects/ExcludeObjects.
 import GcodePreviewButton from './GcodePreviewButton.vue'
 import type { AppFile } from '@/store/files/types'
 import type { BedSize } from '@/store/printer/types'
-import { gcodeShapeRendering } from '@/services/m1-3d/render-options'
+import { gcodeShapeRendering, modelAnimates } from '@/services/m1-3d/render-options'
+import { modelSettings } from '@/services/m1-3d/device-settings'
 
 @Component({
   components: {
@@ -391,8 +392,9 @@ export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
     return this.getUiSetting('drawOrigin')
   }
 
+  /** Settings › Animations, which follows the device's reduce-motion setting until set. */
   get showAnimations () {
-    return this.getUiSetting('showAnimations')
+    return modelAnimates(modelSettings.animations, window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
   }
 
   get autoZoom () {
@@ -410,7 +412,7 @@ export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
   }
 
   get shapeRendering () {
-    return gcodeShapeRendering(this.getUiSetting('modelDetail'), this.panning)
+    return gcodeShapeRendering(modelSettings.detail, this.panning)
   }
 
   get showExcludeObjects () {

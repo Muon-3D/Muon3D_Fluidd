@@ -116,7 +116,7 @@ export const getters: GetterTree<MacrosState, RootState> = {
   getCategories: (state, getters) => {
     const categories = state.categories
       .map(category => {
-        const { id, name } = category
+        const { id, name, order } = category
 
         const macros = getters.getMacrosByCategory(id) as Macro[]
         const count = macros.length
@@ -127,11 +127,12 @@ export const getters: GetterTree<MacrosState, RootState> = {
         return {
           id,
           name,
+          order,
           visible,
           count
         }
       })
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.name.localeCompare(b.name))
 
     return categories
   }

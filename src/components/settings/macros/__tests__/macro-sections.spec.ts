@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Macro } from '@/store/macros/types'
-import { macroSections, macrosMovedTo } from '../macro-sections'
+import { macroSections, macrosMovedTo, rangeOf, sectionsMoved } from '../macro-sections'
 
 const macro = (name: string, categoryId = '0', visible = true, order?: number): Macro => ({ name, categoryId, visible, order, config: { description: `${name} it` } })
 
@@ -55,5 +55,27 @@ describe('macrosMovedTo', () => {
   it('does nothing for an unknown macro or a drop on itself', () => {
     expect(macrosMovedTo(all, macrosIn, 'nope', 'a')).toBeNull()
     expect(macrosMovedTo(all, macrosIn, 'purge', '0', 'purge')).toBeNull()
+  })
+})
+
+describe('macrosMovedTo, several at once', () => {
+  it('moves them together, in the order given', () => {
+    expect(macrosMovedTo(all, macrosIn, ['purge', 'park'], 'a')?.slice(-2).map(m => [m.name, m.categoryId]))
+      .toEqual([['purge', 'a'], ['park', 'a']])
+  })
+})
+
+describe('rangeOf', () => {
+  it('is everything between the two, either way round', () => {
+    expect(rangeOf(['a', 'b', 'c', 'd'], 'c', 'a')).toEqual(['a', 'b', 'c'])
+    expect(rangeOf(['a', 'b'], 'x', 'b')).toEqual(['b'])
+  })
+})
+
+describe('sectionsMoved', () => {
+  it('puts the dragged section before the one dropped on, or last', () => {
+    expect(sectionsMoved(['a', 'b', 'c'], 'c', 'a')).toEqual(['c', 'a', 'b'])
+    expect(sectionsMoved(['a', 'b', 'c'], 'a')).toEqual(['b', 'c', 'a'])
+    expect(sectionsMoved(['a', 'b'], 'a', 'a')).toBeNull()
   })
 })

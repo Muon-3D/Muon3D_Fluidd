@@ -7,6 +7,7 @@
     :data-live="shown ? 'on' : 'off'"
     :data-model="showModel ? 'on' : 'off'"
     :data-detail="viewerSettings.detail"
+    :data-glass="viewerSettings.glass"
     :data-animations="viewerSettings.animate ? 'on' : 'off'"
   >
     <div
@@ -33,10 +34,10 @@ import { motionPathFrom, type MotionPath } from '@/services/m1-3d/motion'
 import { modelPose, samePose, type ModelPose } from '@/services/m1-3d/pose'
 import { partColour, segmentsDone, toolpathFrom, toolpathFromGcode, type Toolpath } from '@/services/m1-3d/toolpath'
 import type { M1Viewer, ViewerSettings } from '@/services/m1-3d/viewer'
-import { modelAnimates, modelDetail } from '@/services/m1-3d/render-options'
+import { modelAnimates, modelDetail, modelGlass } from '@/services/m1-3d/render-options'
+import { modelSettings } from '@/services/m1-3d/device-settings'
 import type { ThumbState } from '@/components/ui/PrinterThumb.vue'
 import type { Move } from '@/store/gcodePreview/types'
-import type { GcodePreviewConfig } from '@/store/config/types'
 import { httpClientActions } from '@/api/httpClientActions'
 import { cloudState } from '@/services/muon-cloud/state'
 import { activeSlug } from '@/services/printer-pages'
@@ -131,20 +132,27 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     return liveSyncFor(activeSlug() ?? (this.$store.state.config.apiUrl as string) ?? '')
   }
 
-  get gcodePreviewSettings (): Partial<GcodePreviewConfig> {
-    return this.$store.state.config?.uiSettings?.gcodePreview ?? {}
-  }
-
-  /** Settings › G-code preview › Show the printer's 3D model; off, the stage shows its picture. */
+  /** Settings › G-code preview and 3D › Show the 3D printer; off, the stage shows its picture. */
   get showModel (): boolean {
-    return this.gcodePreviewSettings.showPrinterModel !== false
+    return modelSettings.show
   }
 
   get viewerSettings (): ViewerSettings {
     return {
-      detail: modelDetail(this.gcodePreviewSettings.modelDetail),
-      animate: modelAnimates(this.gcodePreviewSettings.modelAnimations, this.reducedMotion)
+      detail: modelDetail(modelSettings.detail),
+      glass: modelGlass(modelSettings.glass),
+      animate: modelAnimates(modelSettings.animations, this.reducedMotion)
     }
+  }
+
+  /** The print so far on the model's plate, unless Settings turned that off. */
+  get shownPrintPath (): Readonly<Toolpath> | null {
+    return modelSettings.printGrowing ? this.printPath : null
+  }
+
+  @Watch('shownPrintPath')
+  onShownPrintPath () {
+    this.viewer?.setPrint(this.shownPrintPath, this.partColour)
   }
 
   @Watch('viewerSettings')
@@ -472,7 +480,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     // A finished print is followed no longer: all of it is on the plate.
     this.sync().setPath(this.printState === 'complete' ? null : this.motionPath)
     this.onFilePosition()
-    this.viewer?.setPrint(this.printPath, this.partColour)
+    this.viewer?.setPrint(this.shownPrintPath, this.partColour)
   }
 
   @Watch('filePosition')

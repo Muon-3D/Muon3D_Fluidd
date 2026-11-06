@@ -36,23 +36,44 @@ export function macroSections (
 }
 
 /**
- * The section's macros once `name` is moved in, before `before` or else
- * last, the moved one in its new category: what's saved as the section's
- * order. Null when there is nothing to move.
+ * The section's macros once `names` are moved in, together and in the
+ * order given, before `before` or else last, each in its new category:
+ * what's saved as the section's order. Null when there is nothing to move.
  */
 export function macrosMovedTo (
   all: Macro[],
   macrosIn: (id: string) => Macro[],
-  name: string,
+  names: string | string[],
   sectionId: string,
   before?: string
 ): Macro[] | null {
-  const macro = all.find(m => m.name === name)
-  if (!macro || before === name) return null
-  const rest = macrosIn(sectionId).filter(m => m.name !== name)
-  const at = before ? rest.findIndex(m => m.name === before) : -1
-  const moved = { ...macro, categoryId: sectionId }
-  if (at < 0) rest.push(moved)
-  else rest.splice(at, 0, moved)
+  const list = Array.isArray(names) ? names : [names]
+  const moving = list
+    .map(n => all.find(m => m.name === n))
+    .filter((m): m is Macro => !!m)
+  if (!moving.length || (before && list.includes(before) && moving.length === 1)) return null
+  const rest = macrosIn(sectionId).filter(m => !list.includes(m.name))
+  const at = before && !list.includes(before) ? rest.findIndex(m => m.name === before) : -1
+  const moved = moving.map(m => ({ ...m, categoryId: sectionId }))
+  if (at < 0) rest.push(...moved)
+  else rest.splice(at, 0, ...moved)
   return rest
+}
+
+/** The names from `a` to `b`, either way round, in the panel's order: a Shift-click's range. */
+export function rangeOf (order: string[], a: string, b: string): string[] {
+  const i = order.indexOf(a)
+  const j = order.indexOf(b)
+  if (i < 0 || j < 0) return [b]
+  return order.slice(Math.min(i, j), Math.max(i, j) + 1)
+}
+
+/** The categories' ids once `id` is dragged before `before` (or last). */
+export function sectionsMoved (ids: string[], id: string, before?: string): string[] | null {
+  if (!ids.includes(id) || id === before) return null
+  const rest = ids.filter(i => i !== id)
+  const at = before ? rest.indexOf(before) : -1
+  if (at < 0) rest.push(id)
+  else rest.splice(at, 0, id)
+  return rest.join() === ids.join() ? null : rest
 }

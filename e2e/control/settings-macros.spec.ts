@@ -1,8 +1,8 @@
 /**
- * Settings › Macros: one panel, each category a section and Uncategorised
- * the last. A click chooses a macro, a double-click (or Enter) opens it, and
- * it moves to another section by dragging or by its Move to…; the move is
- * saved to Moonraker's database and is there after a reload.
+ * Settings › Macros: one list, each category a section and Uncategorised
+ * the last. Selection follows File Explorer, a double-click (or Enter) opens
+ * a macro's sheet, and macros move to another section by dragging or by
+ * Move to…; moves are saved to Moonraker's database and kept after a reload.
  */
 import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
@@ -18,6 +18,11 @@ async function configFiles (page: Page, fail = false) {
     ? route.fulfill({ status: 500, json: { error: { code: 500, message: 'no' } } })
     : route.fulfill({ json: { result: [{ path: 'macros.cfg', size: MACROS_CFG.length, modified: 1 }] } }))
   await page.route(new RegExp(`:${MOCK_PORT}/server/files/config/macros\\.cfg`), route => route.fulfill({ body: MACROS_CFG, contentType: 'text/plain' }))
+}
+
+/** Developer mode on (the mock's M1 has it off), so Edit in Files opens. */
+async function developerMode (page: Page) {
+  await page.route(new RegExp(`:${MOCK_PORT}/server/aux/dev_mode`), route => route.fulfill({ json: { enabled: true, guard_armed: false } }))
 }
 
 /** A printer with a Filament category, its macros database this test's own. */
@@ -51,36 +56,102 @@ test('one panel: each category a section, Uncategorised a section in it, and no 
   await expect(section(page, '0')).toHaveAttribute('data-section', /Uncategori[sz]ed/)
   await expect(section(page, '0').getByTestId('macro-row-load_filament')).toBeVisible()
   await expect(section(page, FILAMENT.id)).toContainText('Drag a macro here')
-  await expect(panel.getByRole('button', { name: /^(Read|Edit)$/ })).toHaveCount(0)
+  await expect(panel.getByRole('button', { name: /^Read$/ })).toHaveCount(0)
   await expect(page.getByTestId('macro-edit-list')).toHaveCount(0)
   // The categories' controls are in the panel.
   await expect(panel.getByTestId('macro-add-category')).toBeVisible()
 })
 
-test('a click chooses a macro; a double-click opens it in the editor at its line', async ({ page, open }) => {
+test('a click selects; a double-click opens a sheet with the code read-only, and Edit in Files opens at its line', async ({ page, open }) => {
   await macrosPrinter(page)
   await configFiles(page)
+  await developerMode(page)
   await openMacros(page, open)
   const load = row(page, 'load_filament')
   await expect(load).toContainText('macros.cfg:1')
+  await expect(page.getByTestId('macro-selected-count')).toHaveCount(0)
   await load.click()
   await expect(load).toHaveAttribute('aria-selected', 'true')
-  await expect(page).toHaveURL(/\/settings/)
+  await expect(page.getByTestId('macro-selected-count')).toHaveText('1 selected')
   await load.dblclick()
+  const sheet = page.getByRole('dialog')
+  await expect(sheet).toContainText('LOAD_FILAMENT · macros.cfg line 1')
+  for (const label of ['Name in Control', 'Section', 'Colour', 'Shown', 'Not while printing', 'What it does']) {
+    await expect(sheet).toContainText(label)
+  }
+  await expect(page).toHaveURL(/\/settings/)
+  await sheet.getByTestId('macro-sheet-edit').click()
   await expect(page).toHaveURL(/\/configure\?.*open=config%2Fmacros\.cfg.*line=1/)
 })
 
-test('Enter opens the chosen macro; one not in the config files opens its details', async ({ page, open }) => {
+test('on a Muon printer without developer mode, Edit in Files is locked and says why', async ({ page, open }) => {
   await macrosPrinter(page)
   await configFiles(page)
   await openMacros(page, open)
+  await expect(page.getByTestId('macro-edit-readonly')).toBeVisible()
+  await row(page, 'load_filament').dblclick()
+  const sheet = page.getByRole('dialog')
+  await expect(sheet.getByTestId('macro-sheet-edit')).toBeDisabled()
+  await expect(sheet.getByTestId('macro-sheet-lock')).toContainText('needs developer mode')
+  await expect(sheet.getByRole('link', { name: 'Developer mode' })).toBeVisible()
+})
+
+test('Enter opens the selected macro\'s sheet; one not in the config files has Edit in Files locked, with the reason', async ({ page, open }) => {
+  await macrosPrinter(page)
+  await configFiles(page)
+  await developerMode(page)
+  await openMacros(page, open)
   await row(page, 'clean_nozzle').click()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('dialog')).toContainText('CLEAN_NOZZLE')
-  await page.keyboard.press('Escape')
-  await row(page, 'load_filament').click()
-  await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/configure\?.*line=1/)
+  const sheet = page.getByRole('dialog')
+  await expect(sheet).toContainText('CLEAN_NOZZLE')
+  await expect(sheet.getByTestId('macro-sheet-edit')).toBeDisabled()
+  await expect(sheet.getByTestId('macro-sheet-lock')).toContainText("wasn't found")
+})
+
+test('Ctrl and Shift select several, the toolbar hides them all, and clicking empty space clears', async ({ page, open }) => {
+  const printer = await macrosPrinter(page)
+  await configFiles(page)
+  await openMacros(page, open)
+  const names = await section(page, '0').locator('[data-tid^="macro-row-"]').evaluateAll(rows => rows.map(r => r.getAttribute('data-tid')!.slice('macro-row-'.length)))
+  expect(names.length).toBeGreaterThanOrEqual(3)
+  await row(page, names[0]).click()
+  await row(page, names[2]).click({ modifiers: ['Shift'] })
+  await expect(page.getByTestId('macro-selected-count')).toHaveText('3 selected')
+  await row(page, names[1]).click({ modifiers: ['ControlOrMeta'] })
+  await expect(page.getByTestId('macro-selected-count')).toHaveText('2 selected')
+  await page.getByTestId('macro-toolbar-hide').click()
+  await expect.poll(() => stored(printer).filter(m => [names[0], names[2]].includes(m.name)).map(m => m.visible)).toEqual([false, false])
+  await page.getByTestId('macro-toolbar-done').click()
+  await expect(page.getByTestId('macro-selected-count')).toHaveCount(0)
+})
+
+test('the checkboxes select without a keyboard, and the toolbar\'s Move to… moves them all', async ({ page, open }) => {
+  const printer = await macrosPrinter(page)
+  await configFiles(page)
+  await openMacros(page, open)
+  await page.getByTestId('macro-check-load_filament').click()
+  await page.getByTestId('macro-check-clean_nozzle').click()
+  await expect(page.getByTestId('macro-selected-count')).toHaveText('2 selected')
+  await page.getByTestId('macro-toolbar-move').click()
+  await expect(page.getByRole('dialog')).toContainText('Move 2 macros to')
+  await page.getByTestId(`macro-move-to-${FILAMENT.id}`).click()
+  await expect(section(page, FILAMENT.id).getByTestId('macro-row-load_filament')).toBeVisible()
+  await expect(section(page, FILAMENT.id).getByTestId('macro-row-clean_nozzle')).toBeVisible()
+  await expect.poll(() => stored(printer).filter(m => ['load_filament', 'clean_nozzle'].includes(m.name)).map(m => m.categoryId)).toEqual([FILAMENT.id, FILAMENT.id])
+})
+
+test('a section is dragged by its header to a new place, and that order is saved', async ({ page, open }) => {
+  const printer = await macrosPrinter(page)
+  printer.database.fluidd = { macros: { categories: [FILAMENT, { id: 'cal-1', name: 'Calibration' }], stored: [], expanded: [] } }
+  await configFiles(page)
+  await openMacros(page, open)
+  const order = () => page.getByTestId('macro-panel').locator('[data-section]').evaluateAll(s => s.map(e => e.getAttribute('data-section')))
+  await expect.poll(order).toEqual(['Calibration', 'Filament', expect.stringMatching(/Uncategori[sz]ed/)])
+  await page.getByTestId(`macro-section-head-${FILAMENT.id}`).dragTo(page.getByTestId('macro-section-head-cal-1'))
+  await expect.poll(order).toEqual(['Filament', 'Calibration', expect.stringMatching(/Uncategori[sz]ed/)])
+  await expect.poll(() => (printer.database.fluidd?.macros?.categories ?? []).map((c: { id: string, order?: number }) => [c.id, c.order]))
+    .toEqual([[FILAMENT.id, 0], ['cal-1', 1]])
 })
 
 test('a macro dragged into a category moves there, is saved, and is still there after a reload', async ({ page, open }) => {
@@ -195,4 +266,15 @@ test('offline: with the printer gone the panel keeps its last view, says so, and
   await row(page, 'load_filament').dragTo(section(page, FILAMENT.id), { force: true })
   await expect(section(page, FILAMENT.id).getByTestId('macro-row-load_filament')).toHaveCount(0)
   expect(printer.called('server.database.post_item')).toHaveLength(writes)
+})
+
+test('macros starting with _ are listed locked under Uncategorised, and can\'t be shown', async ({ page, open }) => {
+  const printer = await macrosPrinter(page)
+  printer.state.status['gcode_macro _PROBE_HELPER'] = {}
+  await configFiles(page)
+  await openMacros(page, open)
+  const hidden = section(page, '0').getByTestId('macro-hidden-_PROBE_HELPER')
+  await expect(hidden).toContainText("can't be shown")
+  await expect(hidden.getByRole('switch')).toHaveCount(0)
+  await expect(row(page, '_probe_helper')).toHaveCount(0)
 })
