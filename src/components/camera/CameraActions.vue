@@ -4,6 +4,7 @@
     class="camera-actions"
   >
     <button
+      v-if="!isMobileViewport"
       type="button"
       class="cbtn cbtn--ghost"
       data-tid="camera-snapshot"
@@ -45,6 +46,7 @@
       </template>
       <v-list dense>
         <v-list-item
+          v-if="!isMobileViewport"
           data-tid="camera-fullscreen"
           @click="send('camera-fullscreen')"
         >
@@ -62,12 +64,6 @@
         >
           <v-list-item-title>Camera settings</v-list-item-title>
         </v-list-item>
-        <v-list-item
-          :to="settingsTo"
-          data-tid="camera-more-add"
-        >
-          <v-list-item-title>Add a camera</v-list-item-title>
-        </v-list-item>
       </v-list>
     </v-menu>
   </div>
@@ -82,8 +78,10 @@ import { scopedPath } from '@/router/printerPagePaths'
 
 /**
  * Camera's actions in the page header: Snapshot, Timelapse (when the
- * printer records them) and a ··· menu with Full screen (F), the camera
- * settings and adding a camera. The page takes the snapshot and fills the screen.
+ * printer records them) and a ··· menu with Full screen (F) and the camera
+ * settings (where a camera is added). The page takes the snapshot and fills
+ * the screen. On a phone Snapshot and Full screen are on the picture, so the
+ * header does not repeat them.
  */
 @Component({})
 export default class CameraActions extends Mixins(BrowserMixin) {

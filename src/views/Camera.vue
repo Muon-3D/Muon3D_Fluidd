@@ -286,6 +286,7 @@ export default class Camera extends Mixins(OverviewMixin, BrowserMixin) {
 
   /** "Live view of Boxwood · M1 bracket · 44% · 49m left", under the title. */
   get headerLine (): string {
+    if (!this.camera) return ''
     const facts = this.facts
     return `Live view of ${this.printerName}${facts ? ` · ${facts}` : ''}`
   }

@@ -216,8 +216,9 @@ describe('Camera v3 layout', () => {
     expect(cameraPage.subtitle).toBe('')
   })
 
-  it('offers to add a camera when the printer has none', () => {
+  it('offers to add a camera when the printer has none, and says nothing about a live view', () => {
     const wrapper = mountCamera([], undefined, false)
+    expect(cameraPage.subtitle).toBe('')
     expect(wrapper.find('[data-tid="camera-tile"]').exists()).toBe(false)
     const empty = wrapper.get('[data-tid="camera-empty"]')
     expect(empty.text()).toContain('This printer has no camera set up')
