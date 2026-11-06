@@ -43,9 +43,19 @@ export async function serveConsole (page: Page, state: ConsoleState) {
 }
 
 /** Signed in before the app starts: the stored session Control restores on load. */
-export async function signIn (page: Page) {
+/**
+ * Point the page at the fake console, signed in or not. With no saved URL a
+ * page on localhost counts as served by the console, so its sign-in dialog
+ * leaves for a real /authorize on the dev server mid-test.
+ */
+export async function useConsole (page: Page) {
   await page.addInitScript(([url]) => {
     localStorage.setItem('muon.cloud.url', url)
-    localStorage.setItem('muon.cloud.token', 'e2e-session')
   }, [CONSOLE])
+}
+
+export async function signIn (page: Page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('muon.cloud.token', 'e2e-session')
+  })
 }

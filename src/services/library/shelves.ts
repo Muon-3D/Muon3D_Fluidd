@@ -33,6 +33,8 @@ export interface ShelfCard {
   saves: number;
   /** The publication's category (home, workshop, tools, …), for the category chips. */
   category?: string | null;
+  /** Every colour its pictures show it in (#rrggbb), first is the card's. */
+  colours?: string[];
   /** The filament it was sliced for ("PLA") and its colour (#hex), when a source says: the glass badge (v3 L1). */
   material?: string | null;
   colour?: string | null;
@@ -61,6 +63,10 @@ export interface PublicationSummary {
   make_count?: number;
   remix_count?: number;
   save_count?: number;
+  /** From publishing (#rrggbb) and the first G-code's setup; null on a service from before them. */
+  colours?: string[];
+  material?: string | null;
+  size_mm?: number[] | null;
   remix_of?: { id: string, slug: string, title: string } | null;
   make_of?: { id: string, slug: string, title: string } | null;
   thumbnail_url?: string | null;
@@ -104,6 +110,9 @@ export function summaryCard (item: PublicationSummary): ShelfCard {
     remixes: item.remix_count ?? 0,
     saves: item.save_count ?? 0,
     category: text(item.category) ? item.category : null,
+    colours: colourList(item.colours),
+    material: text(item.material) ? item.material : null,
+    colour: colourList(item.colours)[0] ?? null,
     facts: '',
     m1: tags.includes('m1-ready'),
     tags,
@@ -424,4 +433,10 @@ async function searchPublications (query: string, cursor: string | null, fetcher
   const body = await response.json().catch(() => null) as Partial<PublicationsPage> | null
   if (!body || !Array.isArray(body.items)) throw new Error('The Library sent an answer this version of Control can\'t read.')
   return { cards: body.items.filter(isSummary).map(summaryCard), cursor: text(body.next_cursor) ? body.next_cursor : null }
+}
+
+/** Only #rrggbb colours, lowercase, at most 8: the service's are, this keeps anything else out of a style. */
+export function colourList (value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((c): c is string => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)).map(c => c.toLowerCase()).slice(0, 8)
 }
