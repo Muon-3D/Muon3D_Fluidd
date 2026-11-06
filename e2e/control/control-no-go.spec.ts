@@ -55,3 +55,36 @@ test('while printing, the move controls are locked and send nothing', async ({ p
   await expect(page.getByRole('button', { name: 'Head right (X+)' })).toBeDisabled()
   expect(printer.gcode).toEqual([])
 })
+
+test('two jog sources cannot interleave: the pad waits for the arrow move to land', async ({ page, open }) => {
+  // The fixture holds the reported head still, so the arrow move never "arrives".
+  const printer = await usePrinter(page, PRESETS.idleHomed({ position: [150, 100, 10] }))
+  await open('/control')
+  await chooseStep(page, '10')
+  await page.getByRole('button', { name: 'Head right (X+)' }).click()
+  await expect.poll(() => printer.gcode.length).toBe(1)
+
+  const pad = page.getByTestId('move-pad')
+  const box = await pad.boundingBox()
+  if (!box) throw new Error('no move pad')
+  await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.5)
+
+  await expect(page.getByText('Wait for the head to finish moving.')).toBeVisible()
+  expect(printer.gcode).toHaveLength(1)
+})
+
+test('once the printer reports the head there, the next move goes', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed({ position: [150, 100, 10] }))
+  await open('/control')
+  await chooseStep(page, '10')
+  await page.getByRole('button', { name: 'Head right (X+)' }).click()
+  await expect.poll(() => printer.gcode.length).toBe(1)
+  // The printer reports the head at X160.
+  printer.state.status = PRESETS.idleHomed({ position: [160, 100, 10] })
+  await expect(page.getByTestId('control-move')).toBeVisible()
+  await expect.poll(async () => {
+    await page.getByRole('button', { name: 'Head right (X+)' }).click()
+    return printer.gcode.length
+  }, { timeout: 10_000 }).toBeGreaterThanOrEqual(2)
+  expect(printer.gcode[1]).toContain('G1 X10 F7800')
+})

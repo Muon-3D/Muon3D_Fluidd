@@ -1,4 +1,4 @@
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import TypedCommandsMixin from './typed-commands'
 import { cloudState } from '@/services/muon-cloud/state'
 import ToolheadMixin from './toolhead'
@@ -26,7 +26,7 @@ import {
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
-import { handMoveSettling, lockHandMove, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
+import { handMoveSettling, lockHandMove, releaseHandMove, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
 import { EventBus } from '@/eventBus'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
@@ -282,7 +282,13 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
 
   /** A hand move is still on its way (shared by every component; read fresh, never cached). */
   handMoveSettling (): boolean {
-    return handMoveSettling(this.$store.state.printer.printer.gcode_move?.gcode_position)
+    return handMoveSettling(this.$store.state.printer.printer.gcode_move?.gcode_position, this.panelTarget)
+  }
+
+  /** Losing control (disconnect, Klippy not ready, sign-out) ends any wait: the next move plans afresh. */
+  @Watch('controlReady')
+  onControlReadyForHandMove (ready: boolean) {
+    if (!ready) releaseHandMove()
   }
 
   /**
@@ -315,7 +321,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   markHandMove (realTo: number[]) {
     const offset = this.gcodeOffset
     if (this.noGo === null || !offset) return
-    lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000))
+    lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000), this.panelTarget)
   }
 
   /** Send a planned move: lift, across, down, as one absolute script. */
