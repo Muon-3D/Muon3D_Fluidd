@@ -240,6 +240,16 @@
             data-tid="library-quick-look-remix"
           >Remix ↗</a>
           <button
+            v-if="signedIn && inCollection"
+            type="button"
+            class="mlib-btn mlib-btn--sm"
+            :disabled="saving"
+            data-tid="library-quick-look-uncollect"
+            @click="uncollect"
+          >
+            Remove from {{ inCollection.name }}
+          </button>
+          <button
             v-if="signedIn && print"
             type="button"
             class="mlib-btn mlib-btn--sm"
@@ -313,6 +323,8 @@ export default class LibraryQuickLook extends Vue {
   @Prop({ type: Boolean, default: false }) readonly printerFits!: boolean
   @Prop({ type: Boolean, default: false }) readonly signedIn!: boolean
   @Prop({ type: Array, default: () => [] }) readonly collections!: CommunityCollection[]
+  /** Opened from a collection's page: Remove from it. */
+  @Prop({ type: Object, default: null }) readonly inCollection!: { id: string, name: string, saveId: string } | null
 
   pic = 0
   busy = false
@@ -479,6 +491,22 @@ export default class LibraryQuickLook extends Vue {
     } catch (error) {
       // The collection is gone (deleted elsewhere): the retry makes it again.
       if (adding && (error as { status?: number }).status === 404) this.made = null
+      this.note = describeLibraryError(error)
+    } finally {
+      this.saving = false
+    }
+  }
+
+  /** Take it out of the collection its page opened it from (it stays saved). */
+  async uncollect () {
+    const c = this.inCollection
+    if (!c || this.saving) return
+    this.saving = true
+    this.note = ''
+    try {
+      await libraryClient().removeFromCollection(c.id, c.saveId)
+      this.$emit('removed', c.id)
+    } catch (error) {
       this.note = describeLibraryError(error)
     } finally {
       this.saving = false
