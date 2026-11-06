@@ -6,6 +6,15 @@
     <div class="app-page-header__row">
       <div class="app-page-header__titles">
         <div class="app-page-header__title-row">
+          <router-link
+            v-if="bedPage"
+            :to="healthTo"
+            class="app-page-header__back"
+            aria-label="Back to Health"
+            data-tid="bed-back"
+          >
+            <frame-icon name="chevronLeft" />
+          </router-link>
           <h1
             class="app-page-header__title"
             data-tid="page-title"
@@ -31,7 +40,10 @@
         <overview-actions v-if="overviewHome && !foreignRecord && !isMobileViewport" />
         <printer-page-menu v-if="overviewHome && !foreignRecord" />
         <jobs-actions v-if="jobsHome" />
-        <maintenance-due v-if="currentPage === '/maintenance'" />
+        <maintenance-actions
+          v-if="maintenancePages"
+          :page="bedPage ? 'bed' : 'health'"
+        />
         <console-actions v-if="currentSection && currentSection.id === 'console'" />
         <files-actions v-if="currentSection && currentSection.id === 'files' && isMobileViewport" />
         <camera-actions v-if="currentSection && currentSection.id === 'camera'" />
@@ -66,7 +78,10 @@ import { SECTION_COMPONENTS, openSettingsSection, type SettingsSection } from '@
 import ControlActions from '@/components/control/ControlActions.vue'
 import OverviewActions from '@/components/overview/OverviewActions.vue'
 import PrinterPageMenu from '@/components/overview/PrinterPageMenu.vue'
-import MaintenanceDue from '@/components/maintenance/MaintenanceDue.vue'
+import MaintenanceActions from '@/components/maintenance/MaintenanceActions.vue'
+import { maintenancePage } from '@/services/maintenance/page-state'
+import { healthSummary } from '@/services/maintenance/health'
+import { scopedPath } from '@/router/printerPagePaths'
 import ConsoleActions from '@/components/console/ConsoleActions.vue'
 import FilesActions from '@/components/files/FilesActions.vue'
 import CameraActions from '@/components/camera/CameraActions.vue'
@@ -79,7 +94,7 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { jobName } from '@/services/printers-page/model'
 import { printerNameParts } from '@/util/printer-name'
 import type { TileTone } from '@/services/printers-page/model'
-import { foreignRecordForSlug, isForeignSlug } from '@/services/printer-pages'
+import { activeSlug, foreignRecordForSlug, isForeignSlug } from '@/services/printer-pages'
 import { liveForeign } from '@/services/foreign-printers/live'
 import { emptyStatus } from '@/services/foreign-printers/adapters/base'
 import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@/services/foreign-printers/types'
@@ -89,7 +104,7 @@ import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@
  * with the section's pages as tabs under it (Jobs: Jobs, Preview, History,
  * Timelapse).
  */
-@Component({ components: { FilesActions, ConsoleActions, CameraActions, JobsActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
+@Component({ components: { FilesActions, ConsoleActions, CameraActions, JobsActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceActions, TonePill } })
 export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, PrinterStatusMixin) {
   get foreignRecord () {
     const slug = this.$route.params.printer
@@ -114,6 +129,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       const page = this.currentSection.pages.find(p => p.path !== '/settings' && this.isOn(p))
       if (page) return page.label
     }
+    if (this.maintenancePages) return this.bedPage ? 'Bed' : 'Health'
     const section = this.settingsSection
     if (section && !(section.id === 'general' && !this.isMobileViewport)) return section.label
     return this.currentSection?.label ?? this.$route.name ?? ''
@@ -124,6 +140,19 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     if (this.currentSection?.id !== 'settings' || this.currentPage !== '/settings') return null
     const supports = (name: string) => this.$store.getters['server/componentSupport'](name) as boolean
     return openSettingsSection(this.$route.hash, { components: SECTION_COMPONENTS.filter(supports) })
+  }
+
+  /** Maintenance's two pages are named for themselves: Health, and Bed with a way back to Health. */
+  get maintenancePages (): boolean {
+    return this.currentSection?.id === 'maintenance' && !this.foreignRecord
+  }
+
+  get bedPage (): boolean {
+    return this.maintenancePages && this.currentPage === '/tune'
+  }
+
+  get healthTo (): string {
+    return scopedPath('/maintenance', activeSlug())
   }
 
   /** Jobs' own page: its header carries the search, the order and Upload, and History and Timelapse sit in its ··· menu. */
@@ -154,6 +183,12 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
         parts.push('History and Timelapse are in the ··· menu')
       }
       return parts.join(' · ')
+    }
+    if (this.bedPage) return `Mesh and probe for ${printerNameParts(this.displayName).name} · Maintenance`
+    if (this.maintenancePages && this.currentPage === '/maintenance' && !this.isMobileViewport) {
+      return maintenancePage.rows.length
+        ? healthSummary(printerNameParts(this.displayName).name, maintenancePage.rows, maintenancePage.lastRun, Date.now())
+        : "What keeps prints coming out right. Each check says when it last ran and whether it's due."
     }
     if (this.currentSection?.id === 'control' && this.currentPage === '/control') {
       const name = printerNameParts(this.displayName).name
@@ -186,14 +221,11 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     if (this.currentPage === '/history') {
       return `Every print ${printerNameParts(this.displayName).name} has made`
     }
-    if (this.currentPage === '/maintenance') {
-      return "What keeps prints coming out right. Each check says when it last ran and whether it's due."
-    }
     return ''
   }
 
   get tabs (): SectionPage[] {
-    if (!this.currentSection || this.currentSection.id === 'settings' || this.jobsHome) return []
+    if (!this.currentSection || this.currentSection.id === 'settings' || this.jobsHome || this.maintenancePages) return []
     return this.pagesOf(this.currentSection)
   }
 
@@ -231,6 +263,17 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     align-items: center;
     gap: 12px;
     min-width: 0;
+  }
+
+  .app-page-header__back {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text) !important;
   }
 
   .app-page-header__subtitle {
