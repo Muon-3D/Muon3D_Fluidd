@@ -139,8 +139,8 @@ export class PredictionLoop {
 
   constructor (
     private readonly draw: (now: number) => boolean,
-    private readonly raf: Frame = (cb) => window.requestAnimationFrame(cb),
-    private readonly caf: (h: number) => void = (h) => window.cancelAnimationFrame(h),
+    private readonly raf: Frame = (cb) => typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame(cb) : window.setTimeout(() => cb(performance.now()), 16),
+    private readonly caf: (h: number) => void = (h) => typeof window.cancelAnimationFrame === 'function' ? window.cancelAnimationFrame(h) : window.clearTimeout(h),
     private readonly doc: Document | null = typeof document === 'undefined' ? null : document
   ) {
     this.doc?.addEventListener('visibilitychange', this.onVisibility)

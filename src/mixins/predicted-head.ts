@@ -20,7 +20,6 @@ export default class PredictedHeadMixin extends Vue {
   /** X, Y, Z to draw, or null before the first report. */
   predictedHead: Vec3 | null = null
 
-
   get headReport (): { live: number[] | null, velocity: number | null, commanded: number[] | null } {
     const printer = this.$store.state.printer.printer
     // Mid-print the commanded end is the far end of the look-ahead queue, not
