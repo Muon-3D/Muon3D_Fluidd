@@ -12,6 +12,8 @@ import { createFrameLoop } from './frame-loop'
 import { FrameWatch, wantsCheapGlass } from './glass-cost'
 import { placeAccurate } from './accurate/klipper-map'
 import type { AccurateRig } from './accurate/rig'
+import { LEAN_LIMIT, NO_LEAN, PART_IDS, leanToward, partMeshes, partOf, type Lean, type PartId } from './parts'
+import { PartLight, type LightMode } from './part-light'
 
 /** Frees a model's GPU resources: geometries, materials, their textures, and a rigged mesh's bone texture. */
 function disposeTree (root: THREE.Object3D) {
@@ -58,6 +60,12 @@ export interface M1Viewer {
   setShift: (share: number) => void;
   /** Called after each frame drawn; the first means it can be shown. */
   onFrame: (() => void) | null;
+  /** The part under this point of the page (clientX, clientY), if any. */
+  pick: (x: number, y: number) => PartId | null;
+  /** Lights a part (or none) and, with `lean`, leans the camera toward it; with none, the camera eases back. */
+  setFocus: (part: PartId | null, mode: LightMode, lean: boolean) => void;
+  /** Where a part's middle is drawn, in CSS pixels from the canvas's top left, or null if this model hasn't it. */
+  anchor: (part: PartId) => { x: number, y: number } | null;
   dispose: () => void;
 }
 
@@ -74,6 +82,8 @@ const MAX_TAPS = 256
 
 /** The share of the stage the machine fills, edge to edge. */
 const FILL = 0.86
+/** Each frame the lean closes this share of the gap: about 450 ms to settle at 30 frames a second, easing out. */
+const LEAN_EASE = 0.16
 
 /** The accurate model gets this long to load before the simple one is shown instead. */
 const ACCURATE_TIMEOUT_MS = 20000
@@ -498,13 +508,24 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   const target = box.getCenter(new THREE.Vector3())
   const view = { theta: VIEW.theta, phi: VIEW.phi, goalTheta: VIEW.theta, goalPhi: VIEW.phi }
   let distance = 1300
+  /** The lean toward a pointed-at part, on top of the person's own view, and where it is going. */
+  const lean: Lean = { ...NO_LEAN }
+  let leanGoal: Lean = { ...NO_LEAN }
+  /** The part pointed at; its middle is measured once, when it is pointed at (the hose's bounds cost too much to measure each frame). */
+  let focus: { part: PartId, mode: LightMode, lean: boolean, centred: boolean } | null = null
+  const light = new PartLight()
+  const raycaster = new THREE.Raycaster()
+  const focusPoint = new THREE.Vector3()
   let centre = [0, 0]
   let shift = 0
   let width = 0
   let height = 0
 
-  const direction = () => new THREE.Vector3(
-    Math.sin(view.phi) * Math.sin(view.theta), Math.cos(view.phi), Math.sin(view.phi) * Math.cos(view.theta))
+  const direction = () => {
+    const theta = view.theta + lean.theta
+    const phi = Math.min(PHI_RANGE[1], Math.max(PHI_RANGE[0], view.phi + lean.phi))
+    return new THREE.Vector3(Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta))
+  }
 
   const frame = () => {
     camera.position.copy(target).addScaledVector(direction(), distance)
@@ -524,8 +545,28 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     box.max.lerpVectors(onBox.max, offBox.max, off)
     box.getCenter(target)
     const f = fit(camera, box, target, direction())
-    distance = f.distance
+    distance = f.distance * (1 - LEAN_LIMIT.closer * lean.closer)
     centre = f.centre
+    // Leaning, the camera also looks a little toward the part.
+    if (focus?.centred && lean.closer > 0) target.lerp(focusPoint, 0.12 * lean.closer)
+  }
+
+  /** A part's middle in the scene, or null if this model hasn't it. */
+  function partCentre (part: PartId, into: THREE.Vector3): THREE.Vector3 | null {
+    const meshes = partMeshes(rig.root, part)
+    if (!meshes.length) return null
+    const b = new THREE.Box3()
+    for (const m of meshes) b.expandByObject(m)
+    return b.getCenter(into)
+  }
+
+  /** The lean the focus asks for now, from where the person has the camera. */
+  function aimLean () {
+    if (!focus?.lean) {
+      leanGoal = { ...NO_LEAN }
+      return
+    }
+    leanGoal = focus.centred ? leanToward(focusPoint, box.getCenter(new THREE.Vector3()), view.goalTheta, view.goalPhi) : { ...NO_LEAN }
   }
 
   const restyle = () => {
@@ -663,6 +704,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     const d = 0.25
     view.theta += (view.goalTheta - view.theta) * d
     view.phi += (view.goalPhi - view.phi) * d
+    if (dragging) aimLean()
+    lean.theta += (leanGoal.theta - lean.theta) * LEAN_EASE
+    lean.phi += (leanGoal.phi - lean.phi) * LEAN_EASE
+    lean.closer += (leanGoal.closer - lean.closer) * LEAN_EASE
     const moving = follow(now)
     const pulsing = pulseTaps(now)
     // Fitted afresh each frame, so the machine keeps filling the stage as it turns.
@@ -677,7 +722,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       if (watch.slow) cheapenGlass('slow')
     }
     viewer.onFrame?.()
-    const turning = Math.abs(view.goalTheta - view.theta) > 1e-3 || Math.abs(view.goalPhi - view.phi) > 1e-3
+    const turning = Math.abs(view.goalTheta - view.theta) > 1e-3 || Math.abs(view.goalPhi - view.phi) > 1e-3 ||
+      Math.abs(leanGoal.theta - lean.theta) > 1e-4 || Math.abs(leanGoal.phi - lean.phi) > 1e-4 || Math.abs(leanGoal.closer - lean.closer) > 1e-3
     if (moving || pulsing || turning) invalidate()
   }
 
@@ -760,9 +806,37 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       shift = share
       invalidate()
     },
+    pick (x, y) {
+      if (!ready || !width || !height) return null
+      const r = canvas.getBoundingClientRect()
+      const ndc = new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1)
+      // The view offset (the machine centred, then shifted) is part of the camera's projection, so the ray follows it.
+      raycaster.setFromCamera(ndc, camera)
+      const targets = PART_IDS.flatMap(id => partMeshes(rig.root, id)).filter(m => m.visible)
+      const hit = raycaster.intersectObjects(targets, false)[0]
+      return hit ? partOf(hit.object) : null
+    },
+    setFocus (part, mode, leanIn) {
+      const same = focus?.part === part && focus?.mode === mode && focus?.lean === leanIn
+      if (same) return
+      const moved = focus?.part !== part
+      focus = part ? { part, mode, lean: leanIn, centred: moved ? !!partCentre(part, focusPoint) : !!focus?.centred } : null
+      if (part) light.light(partMeshes(rig.root, part), mode)
+      else light.clear()
+      aimLean()
+      invalidate()
+    },
+    anchor (part) {
+      if (!width || !height) return null
+      const p = focus?.part === part && focus.centred ? focusPoint.clone() : partCentre(part, new THREE.Vector3())
+      if (!p) return null
+      p.project(camera)
+      return { x: (p.x + 1) / 2 * width, y: (1 - p.y) / 2 * height }
+    },
     dispose () {
       disposed = true
       loop.stop()
+      light.dispose()
       gate.dispose()
       resize.disconnect()
       canvas.removeEventListener('pointerdown', onDown)
@@ -801,6 +875,9 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   function adopt (next: Rig) {
     if (disposed) return
     const old = rig
+    light.clear()
+    focus = null
+    leanGoal = { ...NO_LEAN }
     rig = next
     if (next.root.parent !== scene) scene.add(next.root)
     for (const o of plated) {
