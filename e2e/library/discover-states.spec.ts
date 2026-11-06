@@ -70,10 +70,21 @@ test('with nothing shared yet, Discover says so instead of empty shelves', async
   await open('/library?view=discover')
   await expect(page.getByTestId('library-discover-state')).toContainText('Nothing to discover yet')
   await expect(page.getByTestId('library-shelf-popular')).toHaveCount(0)
+  await expect(page.getByTestId('library-feed')).toHaveCount(0)
+  // The model service did answer: this is "nothing yet", not an outage.
+  expect(models.seen.some(r => r.startsWith('GET /v1/public/publications'))).toBe(true)
 })
 
 test('a shelf\'s See all is a button with the shelf\'s name, for every shelf shown', async ({ page, open }) => {
   await open('/library?view=discover')
-  await expect(page.getByTestId('library-shelf-popular-all')).toBeVisible()
-  await expect(page.getByTestId('library-shelf-new-all')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'See all Popular this week' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'See all New' })).toBeVisible()
+})
+
+test('when two shelves fail and the feed is empty, the shelves keep their Retry instead of "Nothing to discover"', async ({ page, models, open }) => {
+  models.failOn = r => r.startsWith('GET /v1/public/discover') || r.includes('sort=trending') ? 503 : null
+  models.publications = []
+  await open('/library?view=discover')
+  await expect(page.getByTestId('library-shelf-popular-error')).toBeVisible()
+  await expect(page.getByTestId('library-discover-state')).toHaveCount(0)
 })

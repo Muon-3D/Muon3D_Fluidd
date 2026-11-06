@@ -79,6 +79,7 @@
         <span
           v-else-if="card.makes"
           class="mlib-stat"
+          :aria-label="`${card.makes} made`"
         ><frame-icon
           name="printer"
           small
