@@ -110,6 +110,25 @@ describe('Library v3 collection: your order', () => {
     expect(titles(w)).toEqual(['Print b', 'Print a', 'Print c'])
     answer()
     await flush()
+    // Sent and answered: a later read applies what the service holds again.
+    c.detail.items = [item('c'), item('b'), item('a')]
+    await (w.vm as unknown as { load: () => Promise<void> }).load()
+    await flush()
+    expect(titles(w)).toEqual(['Print c', 'Print b', 'Print a'])
+  })
+
+  it('a reorder still being sent for one collection does not freeze the next one', async () => {
+    const c = client({ reorderCollection: vi.fn(() => new Promise<null>(() => {})) })
+    const w = await page(c)
+    await w.find('[data-tid="library-collection-cell-0"]').trigger('keydown', { key: 'ArrowRight', altKey: true })
+    c.collection.mockResolvedValueOnce({ ...c.detail, id: 'c2', name: 'Gifts', items: [item('x'), item('y')] })
+    await w.setProps({ collectionId: 'c2' })
+    await flush()
+    expect(titles(w)).toEqual(['Print x', 'Print y'])
+    c.reorderCollection.mockResolvedValue(null)
+    await w.find('[data-tid="library-collection-cell-0"]').trigger('keydown', { key: 'ArrowRight', altKey: true })
+    await flush()
+    expect(titles(w)).toEqual(['Print y', 'Print x'])
   })
 
   it('does not reorder while sorted by Recent or Name', async () => {
