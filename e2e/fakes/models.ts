@@ -63,7 +63,7 @@ export function publication (n: number, over: Partial<FakePublication> = {}): Fa
 }
 
 export interface FakeSave { id: string, target: string }
-export interface FakeCollection { id: string, name: string, items: string[] }
+export interface FakeCollection { id: string, name: string, items: string[], visibility?: 'private' | 'public' }
 
 /** One of your own prints in the Library (`GET /v1/items`), as the service sends it. */
 export interface FakeItem {
@@ -317,11 +317,35 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       return json(route, collectionJson(made), 201)
     }
     const col = path.match(/^\/v1\/community\/collections\/([^/]+)(?:\/items\/([^/]+))?$/)
+    const reorder = path.match(/^\/v1\/community\/collections\/([^/]+)\/reorder$/)
+    if (reorder && method === 'POST') {
+      const c = state.collections.find(x => x.id === reorder[1])
+      if (!c) return json(route, { error: { code: 'not_found' } }, 404)
+      const ids = (request.postDataJSON() as { save_ids: string[] }).save_ids
+      // The service takes only the same set, each once (saves.rs reorder).
+      if (ids.length !== c.items.length || new Set(ids).size !== ids.length || ids.some(id => !c.items.includes(id))) return json(route, { error: { code: 'invalid_order', message: 'That is not this collection.' } }, 400)
+      c.items = [...ids]
+      return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
+    }
     if (col) {
       const c = state.collections.find(x => x.id === col[1])
       if (!c) return json(route, { error: { code: 'not_found' } }, 404)
       if (col[2] && method === 'PUT') {
         if (!c.items.includes(col[2])) c.items.push(col[2])
+        return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
+      }
+      if (col[2] && method === 'DELETE') {
+        c.items = c.items.filter(id => id !== col[2])
+        return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
+      }
+      if (!col[2] && method === 'PATCH') {
+        const body = request.postDataJSON() as { name?: string, visibility?: 'private' | 'public' }
+        if (body.name !== undefined) c.name = body.name
+        if (body.visibility !== undefined) c.visibility = body.visibility
+        return json(route, collectionJson(c))
+      }
+      if (!col[2] && method === 'DELETE') {
+        state.collections = state.collections.filter(x => x !== c)
         return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
       }
       return json(route, { ...collectionJson(c), items: c.items.map(id => state.saves.find(s => s.id === id)).filter(Boolean).map(s => { const j = saveJson(s as FakeSave, all); return { save_id: j.id, target: j.target, card: j.card } }) })
@@ -343,5 +367,5 @@ function saveJson (s: FakeSave, all: FakePublication[]) {
 }
 
 function collectionJson (c: FakeCollection) {
-  return { id: c.id, name: c.name, description: '', visibility: 'private', created_at: '2026-11-05T12:00:00Z', updated_at: '2026-11-05T12:00:00Z', item_count: c.items.length }
+  return { id: c.id, name: c.name, description: '', visibility: c.visibility ?? 'private', created_at: '2026-11-05T12:00:00Z', updated_at: '2026-11-05T12:00:00Z', item_count: c.items.length }
 }
