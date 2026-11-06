@@ -97,14 +97,69 @@ describe('Timelapse, a page to watch', () => {
     expect(wrapper.get('[data-tid="timelapse-unsupported"]').text()).toContain("Timelapse isn't set up on Boxwood")
   })
 
-  it('renames a video and the picture beside it', () => {
-    vi.spyOn(SocketActions, 'serverFilesGetDirectory').mockResolvedValue({} as never)
-    const move = vi.spyOn(SocketActions, 'serverFilesMove').mockImplementation(vi.fn() as never)
-    const wrapper = mountTimelapse()
-    const vm = wrapper.vm as unknown as { items: Array<{ name: string }>, renaming: unknown, rename: (name: string) => void }
-    vm.renaming = vm.items.find(item => item.name === files[0].filename)
-    vm.rename('bracket')
-    expect(move).toHaveBeenCalledWith('timelapse/timelapse_M1_bracket_PLA_0.2mm_20261104_0912.mp4', 'timelapse/bracket.mp4')
-    expect(move).toHaveBeenCalledWith('timelapse/timelapse_M1_bracket_PLA_0.2mm_20261104_0912.jpg', 'timelapse/bracket.jpg')
+  describe('renaming a video', () => {
+    const rename = async (wrapper: ReturnType<typeof mountTimelapse>, from: string, to: string) => {
+      const vm = wrapper.vm as unknown as { items: Array<{ name: string }>, renaming: unknown, rename: (name: string) => Promise<void> }
+      vm.renaming = vm.items.find(item => item.name === from)
+      await vm.rename(to)
+    }
+    const note = (wrapper: ReturnType<typeof mountTimelapse>) => (wrapper.vm as unknown as { renameNote: string }).renameNote
+
+    it('moves the video, then the picture beside it', async () => {
+      vi.spyOn(SocketActions, 'serverFilesGetDirectory').mockResolvedValue({} as never)
+      const move = vi.spyOn(SocketActions, 'serverFilesMove').mockResolvedValue({ item: {} } as never)
+      const wrapper = mountTimelapse()
+      await rename(wrapper, files[0].filename, 'bracket')
+      expect(move.mock.calls).toEqual([
+        ['timelapse/timelapse_M1_bracket_PLA_0.2mm_20261104_0912.mp4', 'timelapse/bracket.mp4'],
+        ['timelapse/timelapse_M1_bracket_PLA_0.2mm_20261104_0912.jpg', 'timelapse/bracket.jpg']
+      ])
+      expect(note(wrapper)).toBe('')
+    })
+
+    it('waits for the video to move before it moves the picture', async () => {
+      vi.spyOn(SocketActions, 'serverFilesGetDirectory').mockResolvedValue({} as never)
+      let release: (value: unknown) => void = () => {}
+      const move = vi.spyOn(SocketActions, 'serverFilesMove').mockImplementationOnce(() => new Promise(resolve => { release = resolve }) as never)
+      move.mockResolvedValue({ item: {} } as never)
+      const wrapper = mountTimelapse()
+      const done = rename(wrapper, files[0].filename, 'bracket')
+      await Promise.resolve()
+      expect(move).toHaveBeenCalledTimes(1)
+      release({ item: {} })
+      await done
+      expect(move).toHaveBeenCalledTimes(2)
+    })
+
+    it('says so and moves nothing more when the video will not move', async () => {
+      vi.spyOn(SocketActions, 'serverFilesGetDirectory').mockResolvedValue({} as never)
+      const move = vi.spyOn(SocketActions, 'serverFilesMove').mockResolvedValue(undefined as never)
+      const wrapper = mountTimelapse()
+      await rename(wrapper, files[0].filename, 'bracket')
+      expect(move).toHaveBeenCalledTimes(1)
+      expect(note(wrapper)).toContain("Couldn't rename M1 bracket")
+      expect(wrapper.get('[data-tid="timelapse-rename-note"]').text()).toContain("Couldn't rename")
+    })
+
+    it('refuses a name the folder already holds, and moves nothing', async () => {
+      vi.spyOn(SocketActions, 'serverFilesGetDirectory').mockResolvedValue({} as never)
+      const move = vi.spyOn(SocketActions, 'serverFilesMove').mockResolvedValue({ item: {} } as never)
+      const wrapper = mountTimelapse()
+      await rename(wrapper, files[0].filename, 'timelapse_cable_clip_x6_PLA_0.2mm_20261103_1720')
+      expect(move).not.toHaveBeenCalled()
+      expect(note(wrapper)).toContain("There's already a file called timelapse_cable_clip_x6_PLA_0.2mm_20261103_1720.mp4")
+    })
+
+    it('keeps the extension of the picture beside it', async () => {
+      vi.spyOn(SocketActions, 'serverFilesGetDirectory').mockResolvedValue({} as never)
+      const move = vi.spyOn(SocketActions, 'serverFilesMove').mockResolvedValue({ item: {} } as never)
+      const png = [
+        { type: 'file', filename: 'clip.mp4', size: 1, modified: 1 },
+        { type: 'file', filename: 'clip.png', size: 1, modified: 1 }
+      ]
+      const wrapper = mountTimelapse({ entries: png })
+      await rename(wrapper, 'clip.mp4', 'bracket')
+      expect(move.mock.calls[1]).toEqual(['timelapse/clip.png', 'timelapse/bracket.png'])
+    })
   })
 })
