@@ -59,6 +59,17 @@ describe('renaming a timelapse', () => {
       .toEqual({ name: 'Bracket run.mp4', thumbnail: 'Bracket run.jpg' })
   })
 
+  it('keeps a dot in the name, and takes only the video\'s own extension off the end', () => {
+    expect(renamedTimelapse({ name: 'a.mp4', thumbnail: null }, 'cable_clip_PLA_0.2mm_20261103_1720')).toEqual({ name: 'cable_clip_PLA_0.2mm_20261103_1720.mp4', thumbnail: null })
+    expect(renamedTimelapse({ name: 'a.mp4', thumbnail: null }, 'run.MP4')).toEqual({ name: 'run.mp4', thumbnail: null })
+  })
+
+  it('finds a picture that is not a .jpg, and keeps its extension', () => {
+    const items = timelapseItems([{ filename: 'a.mp4', size: 1, modified: 1 }, { filename: 'a.png', size: 1, modified: 1 }])
+    expect(items[0].thumbnail).toBe('a.png')
+    expect(renamedTimelapse({ name: 'a.mp4', thumbnail: 'a.png' }, 'b')).toEqual({ name: 'b.mp4', thumbnail: 'b.png' })
+  })
+
   it('takes a name typed with the extension once, and no folders', () => {
     expect(renamedTimelapse({ name: 'a.mp4', thumbnail: null }, 'parts/b.mp4')).toEqual({ name: 'parts_b.mp4', thumbnail: null })
   })

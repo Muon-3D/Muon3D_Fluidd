@@ -630,9 +630,10 @@ export const SocketActions = {
     )
   },
 
+  /** Moves or renames a file; answers Moonraker's result, or nothing when it refused or the socket is not up. */
   async serverFilesMove (source: string, dest: string) {
     const wait = `${Waits.onFileSystem}/${source}/`
-    baseEmit(
+    return baseEmit(
       'server.files.move', {
         dispatch: 'void',
         wait,

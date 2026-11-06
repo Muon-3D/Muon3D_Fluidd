@@ -60,6 +60,7 @@ export const defaultState = (): ConfigState => {
         showUploadAndPrint: true,
         flipConsoleLayout: false,
         cameraFullscreenAction: 'embed',
+        cameraOrder: [],
         topNavPowerToggle: null,
         showManualProbeDialogAutomatically: true,
         showBedScrewsAdjustDialogAutomatically: true,
@@ -178,6 +179,9 @@ export const defaultState = (): ConfigState => {
         lastRun: {}
       },
       overview: {
+        layouts: {}
+      },
+      control: {
         layouts: {}
       }
     }

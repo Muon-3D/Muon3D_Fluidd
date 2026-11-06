@@ -65,14 +65,28 @@ describe('G-code preview, canvas first', () => {
     expect(show.get('[data-tid="preview-legend"]').text()).not.toContain('Travel moves')
   })
 
-  it('shows only the current layer, or the layer below again', () => {
-    const { wrapper, commit } = mountPreview({ options: { showPreviousLayer: true } })
+  it('shows only the current layer, and turning it off brings back the layers as they were', () => {
+    for (const before of [
+      { showPreviousLayer: true, showNextLayer: false },
+      { showPreviousLayer: false, showNextLayer: true },
+      { showPreviousLayer: true, showNextLayer: true }
+    ]) {
+      const { wrapper, commit } = mountPreview({ options: before })
+      const vm = wrapper.vm as unknown as { onlyCurrentLayer: boolean }
+      expect(vm.onlyCurrentLayer).toBe(false)
+      vm.onlyCurrentLayer = true
+      expect(commit).toHaveBeenLastCalledWith('gcodePreview/setViewerState', { showPreviousLayer: false, showNextLayer: false })
+      vm.onlyCurrentLayer = false
+      expect(commit).toHaveBeenLastCalledWith('gcodePreview/setViewerState', before)
+    }
+  })
+
+  it('turned off from the start (both layers were already off), it shows the layer below and above', () => {
+    const { wrapper, commit } = mountPreview()
     const vm = wrapper.vm as unknown as { onlyCurrentLayer: boolean }
-    expect(vm.onlyCurrentLayer).toBe(false)
-    vm.onlyCurrentLayer = true
-    expect(commit).toHaveBeenLastCalledWith('gcodePreview/setViewerState', { showPreviousLayer: false, showNextLayer: false })
+    expect(vm.onlyCurrentLayer).toBe(true)
     vm.onlyCurrentLayer = false
-    expect(commit).toHaveBeenLastCalledWith('gcodePreview/setViewerState', { showPreviousLayer: true })
+    expect(commit).toHaveBeenLastCalledWith('gcodePreview/setViewerState', { showPreviousLayer: true, showNextLayer: true })
   })
 
   it('stacks the canvas above the controls on a phone', () => {

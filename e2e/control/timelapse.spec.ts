@@ -113,6 +113,61 @@ test('a video\'s ··· renames it with its picture, and deletes it after asking
   ])
 })
 
+const BRACKET = 'timelapse_M1_bracket_PLA_0.2mm_20261104_0912'
+
+/** Opens the rename box on the bracket video and types `name` in it. */
+async function renameBracket (page: Page, name: string) {
+  const card = page.locator(`[data-file="${BRACKET}.mp4"]`)
+  await card.getByTestId('timelapse-item-more').click()
+  await page.getByTestId('timelapse-rename').click()
+  await page.getByTestId('file-name-input').fill(name)
+  await page.getByTestId('file-name-save').click()
+}
+
+test('a rename the printer refuses says so, and the picture is not moved after it', async ({ page, open }) => {
+  const printer = await timelapsePrinter(page)
+  printer.state.failOn['server.files.move'] = 'The file is in use'
+  await openTimelapse(page, open)
+  await renameBracket(page, 'bracket_run')
+  await expect(page.getByTestId('timelapse-rename-note')).toContainText("Couldn't rename M1 bracket")
+  // The video was tried once; the picture beside it was left alone.
+  expect(printer.called('server.files.move')).toEqual([{ source: `timelapse/${BRACKET}.mp4`, dest: 'timelapse/bracket_run.mp4' }])
+  await expect(page.locator(`[data-file="${BRACKET}.mp4"]`)).toBeVisible()
+})
+
+test('a name the folder already holds is refused with a message, and nothing is moved', async ({ page, open }) => {
+  const printer = await timelapsePrinter(page)
+  await openTimelapse(page, open)
+  await renameBracket(page, 'timelapse_cable_clip_x6_PLA_0.2mm_20261103_1720')
+  await expect(page.getByTestId('timelapse-rename-note')).toContainText("There's already a file called timelapse_cable_clip_x6_PLA_0.2mm_20261103_1720.mp4")
+  expect(printer.called('server.files.move')).toEqual([])
+})
+
+test('a picture that is not a .jpg is renamed with its own extension', async ({ page, open }) => {
+  const printer = await timelapsePrinter(page, [
+    { filename: 'clip.mp4', size: 1_000_000, modified: NOW },
+    { filename: 'clip.png', size: 200_000, modified: NOW }
+  ])
+  await openTimelapse(page, open)
+  const card = page.locator('[data-file="clip.mp4"]')
+  await card.getByTestId('timelapse-item-more').click()
+  await page.getByTestId('timelapse-rename').click()
+  await page.getByTestId('file-name-input').fill('bracket_run')
+  await page.getByTestId('file-name-save').click()
+  await expect.poll(() => printer.called('server.files.move')).toEqual([
+    { source: 'timelapse/clip.mp4', dest: 'timelapse/bracket_run.mp4' },
+    { source: 'timelapse/clip.png', dest: 'timelapse/bracket_run.png' }
+  ])
+})
+
+test('the header has a way back to History', async ({ page, open }) => {
+  await timelapsePrinter(page)
+  await openTimelapse(page, open)
+  await expect(page.getByTestId('page-back')).toHaveAttribute('aria-label', 'Back to History')
+  await page.getByTestId('page-back').click()
+  await expect(page).toHaveURL(/\/boxwood-367a\/history$/)
+})
+
 test('this print comes first while it renders, with its progress and no play button; its frames can be saved', async ({ page, open }) => {
   const printer = await timelapsePrinter(page)
   printer.state.answers['machine.timelapse.lastframeinfo'] = { count: 240, lastframefile: 'frame000240.jpg' }

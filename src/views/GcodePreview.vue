@@ -380,6 +380,8 @@ type ShowOption = keyof Pick<ViewerOptions, 'showMoves' | 'showRetractions' | 's
 })
 export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
   shownLayer = 0
+  /** The previous- and next-layer settings from before "Only current layer" was turned on. */
+  layersBeside: { showPreviousLayer: boolean, showNextLayer: boolean } | null = null
   moveEnd = 0
   fetching = ''
   error = ''
@@ -554,7 +556,16 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
   }
 
   set onlyCurrentLayer (value: boolean) {
-    this.$store.commit('gcodePreview/setViewerState', value ? { showPreviousLayer: false, showNextLayer: false } : { showPreviousLayer: true })
+    if (value) {
+      // Remember the layers beside it as they were, so turning this off brings back both.
+      if (this.option('showPreviousLayer') || this.option('showNextLayer')) {
+        this.layersBeside = { showPreviousLayer: this.option('showPreviousLayer'), showNextLayer: this.option('showNextLayer') }
+      }
+      this.$store.commit('gcodePreview/setViewerState', { showPreviousLayer: false, showNextLayer: false })
+      return
+    }
+    // Both were off already (the viewer's default): show both, as the legend says "below and above".
+    this.$store.commit('gcodePreview/setViewerState', this.layersBeside ?? { showPreviousLayer: true, showNextLayer: true })
   }
 
   stopReading () {

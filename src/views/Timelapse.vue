@@ -21,6 +21,14 @@
       >
         {{ printerShortName }} is offline. The videos here can't be played, renamed or deleted until it's back.
       </p>
+      <p
+        v-if="renameNote"
+        class="tl__offline"
+        role="alert"
+        data-tid="timelapse-rename-note"
+      >
+        {{ renameNote }}
+      </p>
       <section
         v-if="loadError"
         class="tl__tile tl__state"
@@ -325,6 +333,8 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
   renderOpen = false
   playing: string | null = null
   renaming: TimelapseItem | null = null
+  /** Why the last rename didn't happen; empty when it did, or before one. */
+  renameNote = ''
   loadError = false
 
   frameValueText (value: number): string {
@@ -380,9 +390,13 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
     return !!this.$store.getters['files/getDirectory']('timelapse')
   }
 
-  get items (): TimelapseItem[] {
+  get folder (): AppFile[] {
     const entries = (this.$store.getters['files/getDirectory']('timelapse') as FileBrowserEntry[] | undefined) ?? []
-    return timelapseItems(entries.filter((e): e is AppFile => e.type === 'file'))
+    return entries.filter((e): e is AppFile => e.type === 'file')
+  }
+
+  get items (): TimelapseItem[] {
+    return timelapseItems(this.folder)
   }
 
   url (name: string): string {
@@ -405,15 +419,34 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
     this.downloadFile(name, 'timelapse')
   }
 
-  rename (title: string) {
+  /**
+   * Renames a video and the picture saved beside it. A name the folder
+   * already holds is refused (a move would write over that file). The picture
+   * moves only once the video has, and nothing else moves after a refusal.
+   */
+  async rename (title: string) {
     const item = this.renaming
     this.renaming = null
+    this.renameNote = ''
     if (!item) return
     const next = renamedTimelapse(item, title)
     if (!next) return
-    SocketActions.serverFilesMove(`timelapse/${item.name}`, `timelapse/${next.name}`)
+    const held = new Set(this.folder.map(f => f.filename))
+    const taken = [next.name, next.thumbnail].find(name => !!name && held.has(name))
+    if (taken) {
+      this.renameNote = `There's already a file called ${taken} on ${this.printerShortName}. ${item.title} keeps its name; pick another.`
+      return
+    }
+    const moved = await SocketActions.serverFilesMove(`timelapse/${item.name}`, `timelapse/${next.name}`)
+    if (!moved) {
+      this.renameNote = `Couldn't rename ${item.title}: ${this.printerShortName} refused. It keeps its name, and so does its picture.`
+      return
+    }
     // The picture saved beside a video keeps its name matching, so the video keeps its picture.
-    if (item.thumbnail && next.thumbnail) SocketActions.serverFilesMove(`timelapse/${item.thumbnail}`, `timelapse/${next.thumbnail}`)
+    if (item.thumbnail && next.thumbnail) {
+      const picture = await SocketActions.serverFilesMove(`timelapse/${item.thumbnail}`, `timelapse/${next.thumbnail}`)
+      if (!picture) this.renameNote = `${next.name} is renamed, but ${this.printerShortName} wouldn't rename its picture, ${item.thumbnail}.`
+    }
   }
 
   async remove (item: TimelapseItem) {
