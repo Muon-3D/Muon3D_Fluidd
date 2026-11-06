@@ -1,43 +1,67 @@
-import Vue from 'vue'
 import consola from 'consola'
 import { currentPrinterAccess } from '@/services/muon-access/api'
+import { refreshDevMode, devModeState } from '@/services/dev-mode/state'
+import { activeSlug } from '@/services/printer-pages'
+import { gateState, keep } from './state'
+
+export { MUON_COMPONENTS, muonFromComponents } from './components'
+export { gateState, resetGates, valueFor } from './state'
 
 /**
  * Shared gates for Settings pages. They only read what Control already
  * knows; they decide nothing the printer does not also enforce.
+ *
+ * Every answer belongs to the printer it was asked of. A reply is kept only
+ * if no reset happened and the active printer is still the one asked.
  */
 
-export { MUON_COMPONENTS, hasMuonComponents } from './components'
-
-export interface OwnerState {
-  /** null while unknown: not asked yet, no access component, or the printer didn't answer. */
-  isOwner: boolean | null;
-  checking: boolean;
+function stale (epoch: number, key: string): boolean {
+  return gateState.epoch !== epoch || activeSlug() !== key
 }
 
-export const ownerState: OwnerState = Vue.observable({ isOwner: null, checking: false })
-
 /**
- * Whether this browser is the printer's owner. It is the same test the
- * Access settings use for "Only the owner can change this": the printer
- * allows this client to change who can use it (`protection: 'allowed'`).
- * 'ask' (a request at the panel) is not ownership.
+ * Whether this client may manage access on the active printer: the printer
+ * reports `protection: allowed`. A refusal (403), a server error, a
+ * timeout, or no muon_access leaves it unknown, and unknown is never shown
+ * as permitted.
+ *
+ * Not "is the account owner": the printer also allows it to any admin, to
+ * the panel, to local addresses and to gateway callers with no level.
  */
-export async function refreshOwner (): Promise<void> {
-  ownerState.checking = true
+export async function refreshCanManageAccess (): Promise<void> {
+  const key = activeSlug()
+  if (key === null || gateState.checking.manage) return
+  const epoch = gateState.epoch
+  gateState.checking.manage = true
   try {
     const actions = await currentPrinterAccess().capabilities()
-    ownerState.isOwner = actions.protection === 'allowed'
+    if (stale(epoch, key)) return
+    keep('manage', key, actions.protection === 'allowed')
   } catch (err) {
-    consola.debug('Owner is not known on this printer:', err)
-    ownerState.isOwner = null
+    consola.debug('Access management is not known on this printer:', err)
+    if (!stale(epoch, key)) keep('manage', key, null)
   } finally {
-    ownerState.checking = false
+    if (gateState.epoch === epoch) gateState.checking.manage = false
   }
 }
 
-/** Forgets the answer, e.g. when the active printer changes. */
-export function resetOwner (): void {
-  ownerState.isOwner = null
-  ownerState.checking = false
+/**
+ * Developer mode on the active printer. The shared devModeState is one
+ * global, kept whatever printer it came from, and it keeps its last value
+ * when the printer cannot be reached, so it is cleared first and read only
+ * once this printer has answered.
+ */
+export async function refreshGateDevMode (): Promise<void> {
+  const key = activeSlug()
+  if (key === null || gateState.checking.dev) return
+  const epoch = gateState.epoch
+  gateState.checking.dev = true
+  devModeState.enabled = null
+  try {
+    await refreshDevMode()
+    if (stale(epoch, key)) return
+    keep('dev', key, devModeState.enabled)
+  } finally {
+    if (gateState.epoch === epoch) gateState.checking.dev = false
+  }
 }

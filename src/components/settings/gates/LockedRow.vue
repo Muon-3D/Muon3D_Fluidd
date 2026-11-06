@@ -1,7 +1,9 @@
 <template>
-  <router-link
-    :to="to"
+  <component
+    :is="linked ? 'router-link' : 'div'"
+    v-bind="linked ? { to } : {}"
     class="locked-row"
+    :class="{ 'locked-row--plain': !linked }"
     data-tid="locked-row"
   >
     <frame-icon
@@ -18,7 +20,7 @@
         data-tid="locked-row-reason"
       >{{ reason }}</span>
     </span>
-  </router-link>
+  </component>
 </template>
 
 <script lang="ts">
@@ -34,12 +36,26 @@ import { activeSlug } from '@/services/printer-pages'
  * Control, so a tap goes to Settings > Developer mode, which is it.
  *
  * Render it in place of the real row while `devModeEnabled` is false:
- * `<locked-row v-if="!devModeEnabled" label="..." />`.
+ * `<locked-row v-if="!devModeEnabled" label="..." />`. With
+ * `lock="muon"` ("Needs a Muon printer") nothing here can unlock it, so the
+ * row has no link. `reason-text` replaces the words, never the link.
  */
 @Component({ components: { FrameIcon } })
 export default class LockedRow extends Vue {
   @Prop({ type: String, required: true }) readonly label!: string
-  @Prop({ type: String, default: 'Needs developer mode' }) readonly reason!: string
+  /** What locks it. Only developer mode can be unlocked from here, so only it links. */
+  @Prop({ type: String, default: 'developer-mode', validator: (v: string) => ['developer-mode', 'muon'].includes(v) })
+  readonly lock!: 'developer-mode' | 'muon'
+
+  @Prop({ type: String, default: '' }) readonly reasonText!: string
+
+  get linked (): boolean {
+    return this.lock === 'developer-mode'
+  }
+
+  get reason (): string {
+    return this.reasonText || (this.linked ? 'Needs developer mode' : 'Needs a Muon printer')
+  }
 
   get to (): string {
     return `${scopedPath('/settings', activeSlug())}#developer`
@@ -58,6 +74,10 @@ export default class LockedRow extends Vue {
     color: var(--m3d-text-muted);
     text-decoration: none;
     cursor: pointer;
+  }
+
+  .locked-row--plain {
+    cursor: default;
   }
 
   .locked-row__text {
