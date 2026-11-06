@@ -1,5 +1,5 @@
 import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION, type BridgeRequest, type BridgeResponse } from './protocol'
-import { ON_PRINTER, auxVerdict, rpcVerdict } from './allow'
+import { NOTIFY_FORWARD, ON_PRINTER, auxVerdict, rpcVerdict } from './allow'
 
 /**
  * Control's end of the embedded printer screen (MuonUI's embed build, framed
@@ -33,31 +33,38 @@ export interface BridgeEvents {
 
 export class PanelBridge {
   private port: MessagePort | null = null
-  private handedOver = false
   /** The objects the embed subscribed to (null = all), for forwarding status updates. */
-  private watched: Set<string> | null | undefined = undefined
+  private watched: Set<string> | undefined = undefined
   refused = 0
   private readonly onWindowMessage = (e: MessageEvent) => this.hello(e)
 
   constructor (
     private readonly frame: HTMLIFrameElement,
     private readonly host: BridgeHost,
-    private readonly events: BridgeEvents = {},
-    private readonly origin: string = window.location.origin
+    private readonly events: BridgeEvents = {}
   ) {
     window.addEventListener('message', this.onWindowMessage)
   }
 
-  /** The embed's hello: from our frame, from our origin, once. */
+  /**
+   * The embed's hello, from our frame. The frame is sandboxed without
+   * allow-same-origin, so its origin is opaque ("null") and it can't reach
+   * Control's storage, cookies or window: the source check binds the port to
+   * this frame, and the port can't go anywhere else. A new hello from the same
+   * frame (it reloaded) closes the old port and hands over a new one.
+   */
   private hello (e: MessageEvent) {
     const data = e.data as { type?: unknown, version?: unknown } | null
-    if (this.handedOver || !data || data.type !== HELLO_TYPE || data.version !== PROTOCOL_VERSION) return
-    if (e.origin !== this.origin || !this.frame.contentWindow || e.source !== this.frame.contentWindow) return
+    if (!data || data.type !== HELLO_TYPE || data.version !== PROTOCOL_VERSION) return
+    const target = this.frame.contentWindow
+    if (!target || e.source !== target || e.origin !== 'null') return
+    this.port?.close()
+    this.watched = undefined
     const channel = new MessageChannel()
     this.port = channel.port1
     this.port.onmessage = m => { this.handle(m.data).catch(() => undefined) }
-    this.handedOver = true
-    this.frame.contentWindow.postMessage({ type: PORT_TYPE }, this.origin, [channel.port2])
+    // An opaque origin can't be named as a target; the window itself is the binding.
+    target.postMessage({ type: PORT_TYPE }, '*', [channel.port2])
   }
 
   private reply (r: BridgeResponse) {
@@ -111,14 +118,12 @@ export class PanelBridge {
     if (method === 'server.connection.identify') return { connection_id: this.host.connectionId() }
     const objects = params?.objects
     const status = this.host.status()
-    if (!objects || typeof objects !== 'object') {
-      this.watched = null
-      return { eventtime: Date.now() / 1000, status }
-    }
+    // A subscribe must name its objects: "everything" is not passed on.
+    if (!objects || typeof objects !== 'object' || Array.isArray(objects)) return { eventtime: Date.now() / 1000, status: {} }
     const names = Object.keys(objects as Record<string, unknown>)
     this.watched = new Set(names)
     const picked: Record<string, unknown> = {}
-    for (const n of names) if (n in status) picked[n] = status[n]
+    for (const n of names) if (Object.prototype.hasOwnProperty.call(status, n)) picked[n] = status[n]
     return { eventtime: Date.now() / 1000, status: picked }
   }
 
@@ -127,8 +132,8 @@ export class PanelBridge {
    * carries only the objects the embed subscribed to, and nothing before it has.
    */
   notify (method: string, params: unknown) {
-    if (!this.port || this.watched === undefined) return
-    if (method === 'notify_status_update' && this.watched) {
+    if (!this.port || this.watched === undefined || !NOTIFY_FORWARD.has(method)) return
+    if (method === 'notify_status_update') {
       const p = params as [Record<string, unknown>, number?] | Record<string, unknown>
       const update = Array.isArray(p) ? p[0] : p
       const picked: Record<string, unknown> = {}

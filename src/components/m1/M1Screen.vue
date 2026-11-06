@@ -22,6 +22,7 @@
         ref="frame"
         class="m1-screen__frame"
         src="/panel/"
+        sandbox="allow-scripts"
         title="The printer's screen"
         data-tid="m1-screen-frame"
         referrerpolicy="same-origin"
@@ -39,11 +40,11 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+import { Component, Vue, Watch } from 'vue-property-decorator'
 import { PanelBridge } from '@/services/panel-embed/bridge'
 import { httpClientActions } from '@/api/httpClientActions'
+import { NOTIFY_ACTIONS } from '@/services/panel-embed/allow'
 
-const snake = (s: string) => s.replace(/[A-Z]/g, c => `_${c.toLowerCase()}`)
 /** Each view's bridge, kept out of Vue's reach: Vue must not walk it or its port. */
 const bridges = new WeakMap<object, PanelBridge>()
 
@@ -90,9 +91,8 @@ export default class M1Screen extends Vue {
       if (action.type === 'printer/onFastNotifyStatusUpdate') {
         const { key, payload } = action.payload as { key: string, payload: unknown }
         bridge.notify('notify_status_update', [{ [key]: payload }])
-      } else if (action.type.startsWith('socket/notify')) {
-        const method = snake(action.type.slice('socket/'.length))
-        bridge.notify(method, [action.payload])
+      } else if (action.type in NOTIFY_ACTIONS) {
+        bridge.notify(NOTIFY_ACTIONS[action.type], [action.payload])
       }
     })
     document.addEventListener('keydown', this.onKey)
@@ -104,6 +104,17 @@ export default class M1Screen extends Vue {
     bridges.get(this)?.dispose()
     bridges.delete(this)
     clearTimeout(this.refusedTimer)
+  }
+
+  /** Another printer, or Klippy gone: the screen was this printer's, so it closes. */
+  @Watch('connectionKey')
+  onConnectionChange () {
+    this.$emit('close')
+  }
+
+  get connectionKey (): string {
+    const s = this.$store.state.socket
+    return `${this.$store.state.config.apiUrl ?? ''}|${s.connectionId ?? ''}|${s.open ? 1 : 0}|${this.$store.state.printer.printer.webhooks?.state ?? ''}`
   }
 
   onKey (e: KeyboardEvent) {
