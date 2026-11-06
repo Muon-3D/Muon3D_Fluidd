@@ -93,14 +93,16 @@ test('while printing, the chips that move the head are off and send nothing', as
 
 test('the Errors filter shows only the errors, and Clear empties the log', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
+  const now = Date.now() / 1000
+  printer.state.answer['server.gcode_store'] = {
+    gcode_store: [
+      { message: 'Pressure advance set to 0.04', time: now, type: 'response' },
+      { message: '!! Must home axis first: X Y Z', time: now, type: 'response' }
+    ]
+  }
   await open('/console')
   const log = page.getByTestId('console-log')
-  const info = 'Pressure advance set to 0.04'
-  // The page replaces its log with the printer's stored one when it connects, so say it until it sticks.
-  await expect.poll(async () => {
-    if (await log.getByText(info).count() === 0) printer.say(info, '!! Must home axis first: X Y Z')
-    return log.getByText(info).count()
-  }, { timeout: 30_000 }).toBeGreaterThan(0)
+  // The page loads its log from the printer's stored one when it connects, so the store holds the lines.
   await expect(log.getByText('Pressure advance set to 0.04')).toBeVisible()
   await expect(log.getByText('Must home axis first').first()).toBeVisible()
 
