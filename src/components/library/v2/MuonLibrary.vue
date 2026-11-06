@@ -331,6 +331,7 @@
       :key="looking.key"
       :card="looking"
       :printer-name="printerName"
+      :printer-fits="isM1"
       :signed-in="signedIn"
       :collections="collections"
       @close="looking = null"

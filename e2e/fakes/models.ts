@@ -6,6 +6,13 @@
  * Library routes; extend it as pages need more.
  */
 import type { Page, Route } from '@playwright/test'
+import { createHash } from 'node:crypto'
+import { gzipSync } from 'node:zlib'
+
+/** The G-code every fake print serves: gzip-stored like the Library's, with its real size and hash. */
+export const GCODE_TEXT = '; e2e print\nG28\nG1 X10 Y10 E1\n'
+const GCODE_STORED = gzipSync(Buffer.from(GCODE_TEXT))
+const GCODE_SHA256 = createHash('sha256').update(GCODE_STORED).digest('hex')
 
 export const MODELS = 'https://models.muon3d.com'
 
@@ -23,6 +30,8 @@ export interface FakePublication {
   colour: string;
   /** A G-code sliced for the M1 that Print on… can send. */
   gcode: boolean;
+  /** The colours its pictures show it in (#rrggbb), as publishing sets them. */
+  colours: string[];
   make_of?: string | null;
   remix_of?: string | null;
 }
@@ -48,6 +57,7 @@ export function publication (n: number, over: Partial<FakePublication> = {}): Fa
     category: ['home', 'workshop', 'tools', 'art'][n % 4],
     colour: COLOURS[n % COLOURS.length],
     gcode: true,
+    colours: [COLOURS[n % COLOURS.length], COLOURS[(n + 3) % COLOURS.length]],
     ...over
   }
 }
@@ -103,6 +113,9 @@ function summary (p: FakePublication, all: FakePublication[]) {
     make_count: p.make_count,
     remix_count: p.remix_count,
     save_count: p.save_count,
+    colours: p.colours,
+    material: p.gcode ? 'PLA' : null,
+    size_mm: null,
     make_of: parent(p.make_of),
     remix_of: parent(p.remix_of),
     thumbnail_url: `${MODELS}/v1/public/publications/${p.id}/images/thumb`
@@ -120,7 +133,7 @@ function detail (p: FakePublication, all: FakePublication[]) {
     counts: { makes: p.make_count, remixes: p.remix_count, saves: p.save_count, comments: 0 },
     images: [{ id: 'thumb', name: 'Image 1', format: 'svg', size_bytes: 1, url: s.thumbnail_url }],
     files: p.gcode
-      ? [{ id: `${p.id}-g`, name: 'gcode.gcode', role: 'gcode', format: 'gcode', encoding: 'gzip', size_bytes: 120, sha256: 'a'.repeat(64), setup: { printer_model: 'Muon3D M1', nozzle_mm: 0.4, material: 'PLA' } }]
+      ? [{ id: `${p.id}-g`, name: 'gcode.gcode', role: 'gcode', format: 'gcode', encoding: 'gzip', size_bytes: GCODE_STORED.length, sha256: GCODE_SHA256, setup: { printer_model: 'Muon3D M1', nozzle_mm: 0.4, material: 'PLA' } }]
       : [],
     remix_of: s.remix_of
   }
@@ -184,6 +197,12 @@ export async function serveModels (page: Page, state: ModelServiceState) {
 
     // Signed in: the assertion the console handed out must come with it.
     if (!request.headers().authorization) return json(route, { error: { code: 'unauthorized' } }, 401)
+    const share = path.match(/^\/v1\/shares\/([^/]+)\/files\/([^/]+)$/)
+    if (share && method === 'POST') {
+      const p = all.find(q => q.id === share[1])
+      if (!p || share[2] !== `${p.id}-g`) return json(route, { error: { code: 'not_found' } }, 404)
+      return route.fulfill({ status: 200, contentType: 'application/octet-stream', headers: { 'access-control-allow-origin': '*' }, body: GCODE_STORED })
+    }
     if (path === '/v1/library') return json(route, { enabled: true, account: { promise_version: '2026-10-01' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
     if (path === '/v1/items') return json(route, { items: [], rev: 1, more: false, reset: true })
     if (path === '/v1/library/sections') return json(route, { all: 0, printed: 0, sliced: 0, saved: state.saves.length })

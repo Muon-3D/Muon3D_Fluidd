@@ -747,3 +747,22 @@ button.mlib-link { padding: 0; border: 0; background: none; font: inherit; font-
   h1 { margin: 0; }
   p { margin: 4px 0 0; color: var(--m3d-text-muted); font-size: var(--m3d-text-sm); }
 }
+
+/* ---------------------------------------------- v3: quick look actions -- */
+
+.mlook__secondary { display: flex; flex-wrap: wrap; gap: 8px; }
+.mlook__secondary .mlook__collect { height: 32px; }
+.mlook__new { display: flex; gap: 8px; }
+.mlook__new input {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--m3d-radius-sm);
+  background: var(--m3d-fill, var(--m3d-surface-2));
+  color: var(--m3d-text);
+  font: inherit;
+  font-size: var(--m3d-text-sm);
+}
+.mlook__colours { flex-wrap: wrap; }
+.mlook__loaded { margin-left: auto; font-size: var(--m3d-text-xs); }
