@@ -10,6 +10,8 @@ vi.mock('@/api/socketActions', async () => ({ SocketActions: (await import('./fi
 
 const heavy = { 'overview-stage': true, 'thermal-graph': true, 'first-layer-nudges': true, 'material-picker': true }
 const allIds = overviewTiles.map(t => t.id)
+const defaults = defaultLayout(overviewTiles)
+const onIds = defaults.tiles.map(t => t.id)
 const mine = { version: 1, savedAt: 5, tiles: [{ id: 'bed', span: 6, rows: 1 }, { id: 'stage', span: 12, rows: 2 }], hidden: allIds.filter(i => i !== 'bed' && i !== 'stage') }
 
 function open (options: { printing?: boolean; layouts?: Record<string, unknown> } = {}) {
@@ -29,7 +31,7 @@ describe('Overview, normal mode', () => {
   it('has an Edit button and no handles, tray or Done', () => {
     const { w } = open()
     expect(w.find('[data-tid="edit-open"]').text()).toBe('Edit')
-    for (const tid of ['tile-grip', 'tile-resize', 'tile-remove', 'add-tile-tray', 'edit-done', 'edit-reset']) expect(w.find(`[data-tid="${tid}"]`).exists()).toBe(false)
+    for (const tid of ['tile-grip', 'tile-resize', 'tile-remove', 'widget-sheet-open', 'edit-done', 'edit-reset']) expect(w.find(`[data-tid="${tid}"]`).exists()).toBe(false)
     expect(w.find('[data-tid="tile-body"]').attributes('inert')).toBeUndefined()
     w.destroy()
   })
@@ -45,7 +47,7 @@ describe('Overview, normal mode', () => {
     for (const bad of ['{not json', '{"tiles":[{"id":"ghost"}]}', 'null', '"x"', '{"tiles":7}']) {
       localStorage.setItem(layoutKey(null, 'http://mock.local'), bad)
       const { w } = open({ layouts: { [serverLayoutKey(null, 'http://mock.local')]: 'junk' } })
-      expect(cells(w)).toEqual(allIds)
+      expect(cells(w)).toEqual(onIds)
       w.destroy()
     }
   })
@@ -54,7 +56,8 @@ describe('Overview, normal mode', () => {
     localStorage.setItem(layoutKey(null, 'http://mock.local'), JSON.stringify({ version: 1, savedAt: 1, tiles: [{ id: 'ghost', span: 3 }, { id: 'jog', span: 40, rows: 9 }], hidden: [] }))
     const { w } = open()
     expect(cells(w)).toEqual(['jog'])
-    expect(w.find('[data-cell="jog"]').attributes('style')).toContain('--span: 12')
+    // 40 by 9 is no size; the nearest the Jog widget offers is its L.
+    expect(w.find('[data-cell="jog"]').attributes('style')).toContain('--span: 6')
     w.destroy()
   })
 })
@@ -64,11 +67,10 @@ describe('Overview, edit mode', () => {
     const { w } = open()
     await w.find('[data-tid="edit-open"]').trigger('click')
     expect(w.find('[data-tid="edit-open"]').exists()).toBe(false)
-    expect(w.findAll('[data-tid="tile-grip"]')).toHaveLength(allIds.length)
-    expect(w.findAll('[data-tid="tile-resize"]')).toHaveLength(allIds.length)
-    expect(w.findAll('[data-tid="tile-remove"]')).toHaveLength(allIds.length)
-    expect(w.find('[data-tid="add-tile-tray"]').exists()).toBe(true)
-    expect(w.find('[data-tid="add-none"]').text()).toContain('Every tile is on the page')
+    expect(w.findAll('[data-tid="tile-grip"]')).toHaveLength(onIds.length)
+    expect(w.findAll('[data-tid="tile-resize"]')).toHaveLength(onIds.length)
+    expect(w.findAll('[data-tid="tile-remove"]')).toHaveLength(onIds.length)
+    expect(w.find('[data-tid="widget-sheet-open"]').text()).toBe('Add widget')
     expect(w.find('[data-tid="edit-reset"]').text()).toBe('Reset layout')
     expect(w.find('[data-tid="edit-done"]').text()).toBe('Done')
     w.destroy()
@@ -100,15 +102,44 @@ describe('Overview, edit mode', () => {
     w.destroy()
   })
 
-  it('removes a tile into the tray and adds it back at the end', async () => {
+  it('puts a widget away and adds it back from the Add widget sheet, at the end', async () => {
     const { w } = open()
     await w.find('[data-tid="edit-open"]').trigger('click')
     await w.find('[data-cell="hotend"] [data-tid="tile-remove"]').trigger('click')
     expect(cells(w)).not.toContain('hotend')
-    expect(w.find('[data-tid="add-hotend"]').text()).toContain('Hotend')
-    await w.find('[data-tid="add-hotend"]').trigger('click')
+    await w.find('[data-tid="widget-sheet-open"]').trigger('click')
+    expect(w.find('[data-tid="widget-card-hotend"]').text()).toContain('Hotend')
+    await w.find('[data-tid="widget-add-hotend"]').trigger('click')
     expect(cells(w).slice(-1)).toEqual(['hotend'])
-    expect(w.find('[data-tid="add-hotend"]').exists()).toBe(false)
+    expect(w.find('[data-tid="widget-sheet"]').exists()).toBe(false)
+    w.destroy()
+  })
+
+  it('adds a widget that is off by default at the size picked, and shows On for those on the page', async () => {
+    const { w } = open()
+    await w.find('[data-tid="edit-open"]').trigger('click')
+    await w.find('[data-tid="widget-sheet-open"]').trigger('click')
+    expect(w.find('[data-tid="widget-on-job"]').text()).toBe('On')
+    expect(w.find('[data-tid="widget-add-job"]').exists()).toBe(false)
+    expect(w.find('[data-tid="widget-size-console-S"]').exists()).toBe(false)
+    await w.find('[data-tid="widget-size-fans-L"]').trigger('click')
+    await w.find('[data-tid="widget-add-fans"]').trigger('click')
+    expect(w.find('[data-cell="fans"]').attributes('style')).toContain('--span: 6')
+    expect(w.find('[data-cell="fans"]').attributes('style')).toContain('--rows: 2')
+    w.destroy()
+  })
+
+  it('searches and filters the sheet by category', async () => {
+    const { w } = open()
+    await w.find('[data-tid="edit-open"]').trigger('click')
+    await w.find('[data-tid="widget-sheet-open"]').trigger('click')
+    await w.find('[data-tid="widget-search"]').setValue('mesh')
+    expect(w.findAll('[data-tid^="widget-card-"]').wrappers.map(c => c.attributes('data-tid'))).toEqual(['widget-card-bedmesh'])
+    await w.find('[data-tid="widget-search"]').setValue('zzz')
+    expect(w.find('[data-tid="widget-none"]').exists()).toBe(true)
+    await w.find('[data-tid="widget-search"]').setValue('')
+    await w.find('[data-tid="widget-cat-Motion"]').trigger('click')
+    expect(w.findAll('[data-tid^="widget-card-"]').wrappers.map(c => c.attributes('data-tid'))).toEqual(['widget-card-jog', 'widget-card-position', 'widget-card-trackpad'])
     w.destroy()
   })
 
@@ -117,7 +148,9 @@ describe('Overview, edit mode', () => {
     await w.find('[data-tid="edit-open"]').trigger('click')
     await w.find('[data-cell="stage"] [data-tid="tile-remove"]').trigger('click')
     expect(w.find('[data-tile="stage"]').exists()).toBe(false)
-    expect(w.find('[data-tid="add-stage"]').exists()).toBe(true)
+    await w.find('[data-tid="widget-sheet-open"]').trigger('click')
+    expect(w.find('[data-tid="widget-add-stage"]').exists()).toBe(true)
+    expect(w.find('[data-tid="widget-size-stage-S"]').exists()).toBe(false)
     w.destroy()
   })
 
@@ -129,13 +162,13 @@ describe('Overview, edit mode', () => {
     expect(cells(w).slice(0, 3)).toEqual(['stage', 'filament', 'job'])
     await grip(w, 'job').trigger('keydown', { key: 'ArrowLeft' })
     expect(cells(w).slice(0, 3)).toEqual(['stage', 'job', 'filament'])
-    await grip(w, 'job').trigger('keydown', { key: 'ArrowRight', shiftKey: true })
-    expect(w.find('[data-cell="job"]').attributes('style')).toContain('--span: 6')
+    // Shift and the arrows step through the sizes the widget offers, never between them.
     await grip(w, 'job').trigger('keydown', { key: 'ArrowDown', shiftKey: true })
     expect(w.find('[data-cell="job"]').attributes('style')).toContain('--rows: 2')
+    await grip(w, 'job').trigger('keydown', { key: 'ArrowUp', shiftKey: true })
+    expect(w.find('[data-cell="job"]').attributes('style')).toContain('--rows: 1')
     await grip(w, 'job').trigger('keydown', { key: 'ArrowLeft', shiftKey: true })
-    await grip(w, 'job').trigger('keydown', { key: 'ArrowLeft', shiftKey: true })
-    await grip(w, 'job').trigger('keydown', { key: 'ArrowLeft', shiftKey: true })
+    expect(w.find('[data-cell="job"]').attributes('style')).toContain('--span: 3')
     await grip(w, 'job').trigger('keydown', { key: 'ArrowLeft', shiftKey: true })
     expect(w.find('[data-cell="job"]').attributes('style')).toContain('--span: 3')
     expect(w.find('[data-tid="edit-status"]').text()).toContain('3 columns wide')
@@ -145,16 +178,16 @@ describe('Overview, edit mode', () => {
   it('moves a tile by dragging its grip onto another tile', async () => {
     const { w } = open()
     await w.find('[data-tid="edit-open"]').trigger('click')
-    const target = w.find('[data-cell="speed"]').element
+    const target = w.find('[data-cell="mode"]').element
     document.elementFromPoint = vi.fn(() => target)
     await grip(w, 'graph').trigger('pointerdown', { button: 0 })
     window.dispatchEvent(new MouseEvent('pointerup', { clientX: 5, clientY: 5 }))
     await w.vm.$nextTick()
-    expect(cells(w).indexOf('graph')).toBe(allIds.indexOf('speed'))
+    expect(cells(w).indexOf('graph')).toBe(onIds.indexOf('mode'))
     w.destroy()
   })
 
-  it('resizes by dragging the corner handle in grid steps', async () => {
+  it('resizes by dragging the corner handle, snapping to the nearest size the widget offers', async () => {
     const { w } = open()
     await w.find('[data-tid="edit-open"]').trigger('click')
     const rect = (width: number, height: number) => ({ x: 0, y: 0, left: 0, top: 0, right: width, bottom: height, width, height, toJSON: () => ({}) })
@@ -165,22 +198,23 @@ describe('Overview, edit mode', () => {
     window.dispatchEvent(new MouseEvent('pointermove', { clientX: 200, clientY: 0 }))
     window.dispatchEvent(new MouseEvent('pointerup', { clientX: 200, clientY: 0 }))
     await w.vm.$nextTick()
-    expect(w.find('[data-cell="hotend"]').attributes('style')).toContain('--span: 5')
+    expect(w.find('[data-cell="hotend"]').attributes('style')).toContain('--span: 6')
     w.destroy()
   })
 
-  it('adds a tile by dragging it from the tray onto the page', async () => {
+  it('snaps a drag to a size the widget offers when the size asked for does not exist', async () => {
     const { w } = open()
     await w.find('[data-tid="edit-open"]').trigger('click')
-    await w.find('[data-cell="fans"] [data-tid="tile-remove"]').trigger('click')
-    const target = w.find('[data-cell="job"]').element
-    document.elementFromPoint = vi.fn(() => target)
-    vi.spyOn(w.find('[data-tid="overview-grid"]').element, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 900, bottom: 900, width: 900, height: 900, toJSON: () => ({}) })
-    await w.find('[data-tid="add-fans"]').trigger('pointerdown', { button: 0, clientX: 0, clientY: 0 })
-    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 300 }))
-    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 300, clientY: 300 }))
+    const rect = (width: number, height: number) => ({ x: 0, y: 0, left: 0, top: 0, right: width, bottom: height, width, height, toJSON: () => ({}) })
+    vi.spyOn(w.find('[data-tid="overview-grid"]').element, 'getBoundingClientRect').mockReturnValue(rect(1184, 800))
+    vi.spyOn(w.find('[data-cell="stage"]').element, 'getBoundingClientRect').mockReturnValue(rect(780, 320))
+    // The printer view has no 4 by 1; dragging it small lands on its M, 8 by 2.
+    await w.find('[data-cell="stage"] [data-tid="tile-resize"]').trigger('pointerdown', { button: 0, clientX: 0, clientY: 0 })
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: -400, clientY: -170 }))
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: -400, clientY: -170 }))
     await w.vm.$nextTick()
-    expect(cells(w).indexOf('fans')).toBe(1)
+    expect(w.find('[data-cell="stage"]').attributes('style')).toContain('--span: 8')
+    expect(w.find('[data-cell="stage"]').attributes('style')).toContain('--rows: 2')
     w.destroy()
   })
 
@@ -190,8 +224,8 @@ describe('Overview, edit mode', () => {
     const { w } = open()
     await w.find('[data-tid="edit-open"]').trigger('click')
     expect(w.findAll('[data-tid="tile-resize"]')).toHaveLength(0)
-    expect(w.findAll('[data-tid="tile-grip"]')).toHaveLength(allIds.length)
-    expect(w.findAll('[data-tid="tile-remove"]')).toHaveLength(allIds.length)
+    expect(w.findAll('[data-tid="tile-grip"]')).toHaveLength(onIds.length)
+    expect(w.findAll('[data-tid="tile-remove"]')).toHaveLength(onIds.length)
     await grip(w, 'hotend').trigger('keydown', { key: 'ArrowRight', shiftKey: true })
     expect(w.find('[data-cell="hotend"]').attributes('style')).toContain('--span: 3')
     w.destroy()
@@ -206,8 +240,8 @@ describe('Overview, edit mode', () => {
     expect(saved()).toBeNull()
     await w.find('[data-tid="edit-done"]').trigger('click')
     const local = saved()
-    expect(local.hidden).toEqual(['macros'])
-    expect(local.tiles.map((t: { id: string }) => t.id).slice(-2)).toEqual(['zoffset', 'graph'])
+    expect(local.hidden).toEqual([...defaults.hidden, 'macros'])
+    expect(local.tiles.map((t: { id: string }) => t.id).slice(-2)).toEqual(['position', 'graph'])
     expect(store.dispatch).toHaveBeenCalledWith('config/saveByPath', {
       // Only this person's own key: never the whole map, which could wipe another person's layout.
       path: `uiSettings.overview.layouts.${serverLayoutKey(null, 'http://mock.local')}`,
@@ -231,12 +265,12 @@ describe('Overview, edit mode', () => {
     w.destroy()
   })
 
-  it('Reset layout brings every tile back to its start, and Done keeps that', async () => {
+  it('Reset layout brings every widget back to its start, and Done keeps that', async () => {
     const { w, store } = open({ layouts: { [serverLayoutKey(null, 'http://mock.local')]: mine } })
     expect(cells(w)).toEqual(['bed', 'stage'])
     await w.find('[data-tid="edit-open"]').trigger('click')
     await w.find('[data-tid="edit-reset"]').trigger('click')
-    expect(cells(w)).toEqual(allIds)
+    expect(cells(w)).toEqual(onIds)
     expect(w.find('[data-cell="hotend"]').attributes('style')).toContain('--span: 3')
     await w.find('[data-tid="edit-done"]').trigger('click')
     expect(saved().tiles).toEqual(defaultLayout(overviewTiles).tiles)
