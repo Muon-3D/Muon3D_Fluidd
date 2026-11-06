@@ -258,11 +258,8 @@ export interface GcodePreviewConfig {
   drawBackground: boolean;
   showAnimations: boolean;
   /** The printer's 3D model's and this preview's detail: low, medium or high. */
-  modelDetail: 'low' | 'medium' | 'high';
   /** The Overview's live 3D printer; off, its picture. */
-  showPrinterModel: boolean;
   /** Whether the 3D printer animates; null follows the system's prefers-reduced-motion. */
-  modelAnimations: boolean | null;
   minLayerHeight: number;
   autoLoadOnPrintStart: boolean;
   autoLoadMobileOnPrintStart: boolean;

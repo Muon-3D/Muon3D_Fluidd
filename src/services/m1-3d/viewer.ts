@@ -10,7 +10,7 @@ import { CONTENTS_ORDER, flattenGlass } from './glass-material'
 import { createRenderGate } from './render-gate'
 import { createFrameLoop } from './frame-loop'
 import { FrameWatch, wantsCheapGlass } from './glass-cost'
-import { modelRenderOptions, type ModelDetail, type ModelRenderOptions } from './render-options'
+import { glassChoice, modelRenderOptions, type ModelDetail, type ModelGlass, type ModelRenderOptions } from './render-options'
 import { placeAccurate } from './accurate/klipper-map'
 import type { AccurateRig } from './accurate/rig'
 
@@ -57,7 +57,7 @@ export interface M1Viewer {
   restyle: () => void;
   /** Moves the machine left by this share of the stage's width, to clear something on the right. */
   setShift: (share: number) => void;
-  /** Settings › G-code preview: how much detail to draw with, and whether it animates. */
+  /** Settings › G-code preview and 3D: the detail, the glass, and whether it animates. */
   setSettings: (settings: ViewerSettings) => void;
   /** Called after each frame drawn; the first means it can be shown. */
   onFrame: (() => void) | null;
@@ -66,6 +66,7 @@ export interface M1Viewer {
 
 export interface ViewerSettings {
   detail: ModelDetail;
+  glass: ModelGlass;
   animate: boolean;
 }
 
@@ -649,7 +650,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     return pulsing
   }
 
-  let settings: ViewerSettings = { detail: 'high', animate: true }
+  let settings: ViewerSettings = { detail: 'auto', glass: 'auto', animate: true }
   function renderOptions (): ModelRenderOptions {
     return modelRenderOptions({
       detail: settings.detail,
@@ -659,7 +660,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       width: width || canvas.clientWidth
     })
   }
-  /** Draws with the detail asked for: the pixels, the shadow and the glass. Plain glass stays plain until the model is next loaded. */
+  /** Draws with the detail asked for: the pixels and the shadow. */
   function applyDetail () {
     const o = renderOptions()
     if (width && height && renderer.getPixelRatio() !== o.pixelRatio) {
@@ -673,11 +674,12 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       key.shadow.map?.dispose()
       key.shadow.map = null
     }
-    if (o.cheapGlass && autoCheap && rig.kind === 'accurate') cheapenGlass('detail')
   }
 
   const watch = new FrameWatch()
   let cheapGlass = false
+  /** Set once the first model is asked for, after the caller's settings. */
+  let started = false
   /** Off when the page pins the real glass (?m1glass=real), so a measurement isn't changed under it. */
   let autoCheap = true
   /** The glass plate goes plain on a small or weak screen, or once the frames come slowly. */
@@ -796,9 +798,19 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       invalidate()
     },
     setSettings (next) {
-      if (next.detail === settings.detail && next.animate === settings.animate) return
+      if (next.detail === settings.detail && next.glass === settings.glass && next.animate === settings.animate) return
+      const was = { model: wantedModel(), glass: settings.glass }
       settings = { ...next }
       applyDetail()
+      const glassChanged = was.glass !== settings.glass && !glassOverride()
+      if (started && wantedModel() !== was.model) reloadModel()
+      else if (glassChanged && settings.glass === 'plain' && rig.kind === 'accurate') {
+        autoCheap = false
+        cheapenGlass('forced')
+      } else if (glassChanged && rig.kind === 'accurate') {
+        if (cheapGlass) reloadModel()
+        else autoCheap = settings.glass === 'auto'
+      }
       invalidate()
     },
     dispose () {
@@ -853,11 +865,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       disposeTree(old.root)
     }
     if (next.kind === 'accurate') {
-      const forced = glassOverride()
-      if (forced) autoCheap = false
-      if (forced === 'cheap') cheapenGlass('forced')
-      else if (forced !== 'real' && renderOptions().cheapGlass) cheapenGlass('detail')
-      else if (forced !== 'real' && wantsCheapGlass({
+      const glass = glassChoice(settings.glass, glassOverride())
+      autoCheap = glass === 'auto'
+      if (glass === 'plain') cheapenGlass('forced')
+      else if (glass === 'auto' && wantsCheapGlass({
         width: canvas.clientWidth || window.innerWidth,
         cores: navigator.hardwareConcurrency,
         memory: (navigator as unknown as { deviceMemory?: number }).deviceMemory,
@@ -885,9 +896,19 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       })
   }
 
-  /** The accurate model if the GLB loads, the simple one if it can't (or if the page asks for it). */
+  /** Which model the settings (or the page) ask for. */
+  function wantedModel (): 'accurate' | 'simple' {
+    return wantsSimpleModel() ? 'simple' : renderOptions().model
+  }
+
+  let choosing = 0
+  /**
+   * The accurate model if the GLB loads (in time, on Auto), the simple one if
+   * it can't, or if the settings or the page ask for it. A later choice wins.
+   */
   async function chooseModel () {
-    if (!wantsSimpleModel()) {
+    const turn = ++choosing
+    if (wantedModel() === 'accurate') {
       try {
         // Behind dynamic imports, so neither the loader nor the 3 MB asset is in the first-load bundle.
         const [{ loadAccurateModel }, { buildAccurateRig }, { default: url }] = await Promise.all([
@@ -897,6 +918,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         ])
         let timer = 0
         const timeout = new Promise<never>((_resolve, reject) => {
+          if (!renderOptions().loadTimeout) return
           timer = window.setTimeout(() => reject(new Error('the accurate M1 took too long to load')), ACCURATE_TIMEOUT_MS)
         })
         const loading = loadAccurateModel(url)
@@ -906,7 +928,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         const loaded = await Promise.race([loading, timeout])
           .catch(e => { timedOut = true; throw e })
           .finally(() => clearTimeout(timer))
-        if (disposed) {
+        if (disposed || turn !== choosing) {
           disposeTree(loaded.scene)
           return
         }
@@ -916,12 +938,19 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         adopt(accurateRig(built))
         return
       } catch (e) {
+        if (turn !== choosing) return
         console.warn('[m1] the accurate model could not be shown; using the simple one', e)
       }
     }
-    if (!disposed) adopt(buildSimpleRig())
+    if (!disposed && turn === choosing) adopt(buildSimpleRig())
   }
-  chooseModel().catch(e => console.warn('[m1] no model could be shown', e))
+  function reloadModel () {
+    started = true
+    cheapGlass = false
+    chooseModel().catch(e => console.warn('[m1] no model could be shown', e))
+  }
+  // Begun once the caller has given its settings, so the model they ask for is the one loaded.
+  Promise.resolve().then(reloadModel)
 
   // A mouse drag turns the machine; a double click puts it back.
   let drag: { x: number, y: number } | null = null

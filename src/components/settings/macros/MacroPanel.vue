@@ -3,11 +3,12 @@
     id="macros"
     class="mpanel"
     data-tid="macro-panel"
+    @keydown.esc="clear"
   >
     <header class="mpanel__head">
       <div>
         <h2>Macros</h2>
-        <p>{{ headline }}</p>
+        <p>Which macros Control shows, in which section, and what they're called</p>
       </div>
       <div class="mpanel__tools">
         <label class="mpanel__find">
@@ -18,7 +19,7 @@
           <input
             v-model="query"
             type="search"
-            placeholder="Find"
+            :placeholder="`Search ${allMacros.length} macros`"
             aria-label="Find a macro"
           >
         </label>
@@ -26,32 +27,17 @@
           type="button"
           class="cbtn"
           data-tid="macro-add-category"
-          :disabled="!connected"
-          @click="addCategory"
+          :disabled="locked"
+          @click="addCategory()"
         >
           <frame-icon
             name="plus"
             small
           />
-          Add a category
+          New section
         </button>
       </div>
     </header>
-
-    <p
-      v-if="!editable"
-      class="mpanel__note"
-      data-tid="macro-edit-readonly"
-    >
-      Developer mode is off, so each macro opens to read. Turn developer mode on to change them.
-      <router-link :to="developerTo">
-        Developer mode
-      </router-link>
-    </p>
-
-    <p class="mpanel__hint">
-      Click a macro to choose it, double-click (or Enter) to open it, and drag it to another section to move it.
-    </p>
 
     <p
       v-if="allMacros.length && !connected"
@@ -61,120 +47,104 @@
       The printer isn't connected, so these can't be moved or hidden until it's back.
     </p>
     <p
+      v-else-if="viewerOnly"
+      class="mpanel__note"
+      data-tid="macro-panel-viewer"
+    >
+      You can view this printer, so the list is read-only. Its owner or an Operator can change it.
+    </p>
+
+    <p
       v-if="!allMacros.length"
       class="mpanel__note"
       data-tid="macro-panel-empty"
     >
-      {{ connected ? 'This printer has no macros yet. A [gcode_macro] in its config shows here.' : 'The printer isn\'t connected, so its macros can\'t be listed.' }}
+      {{ connected ? 'This printer has no macros yet. A [gcode_macro] in its config shows here.' : 'The printer isn\'t connected, so its macros can\'t be listed yet.' }}
     </p>
 
-    <section
-      v-for="section in sections"
-      :key="section.id"
-      class="mpanel__section"
-      :class="{ 'mpanel__section--drop': dropOn === section.id }"
-      :data-tid="`macro-section-${section.id}`"
-      :data-section="section.name"
-      @dragover="onDragOver($event, section.id)"
-      @dragleave="onDragLeave($event, section.id)"
-      @drop="onDrop($event, section.id)"
+    <div
+      class="mpanel__list"
+      data-tid="macro-list"
+      @click.self="clear"
     >
-      <header class="mpanel__section-head">
-        <h3>
-          {{ section.name }}
-          <span :data-tid="`macro-section-count-${section.id}`">{{ section.visible }} of {{ section.count }} shown</span>
-        </h3>
-        <v-menu
-          offset-y
-          left
-        >
-          <template #activator="{ on, attrs }">
-            <button
-              type="button"
-              class="mpanel__more"
-              :aria-label="`${section.name}: more`"
-              :data-tid="`macro-section-menu-${section.id}`"
-              v-bind="attrs"
-              v-on="on"
-            >
-              <frame-icon
-                name="more"
-                small
-              />
-            </button>
-          </template>
-          <v-list dense>
-            <v-list-item
-              v-if="section.id !== '0'"
-              data-tid="macro-category-rename"
-              @click="renameCategory(section)"
-            >
-              <v-list-item-title>Rename…</v-list-item-title>
-            </v-list-item>
-            <v-list-item
-              :disabled="!section.count"
-              data-tid="macro-section-all-on"
-              @click="setAllVisible(section, true)"
-            >
-              <v-list-item-title>Show all on the dashboard</v-list-item-title>
-            </v-list-item>
-            <v-list-item
-              :disabled="!section.count"
-              data-tid="macro-section-all-off"
-              @click="setAllVisible(section, false)"
-            >
-              <v-list-item-title>Hide all from the dashboard</v-list-item-title>
-            </v-list-item>
-            <v-list-item
-              v-if="section.id !== '0'"
-              data-tid="macro-category-remove"
-              @click="removeCategory(section)"
-            >
-              <v-list-item-title>Remove the category</v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-menu>
-      </header>
-
       <div
-        role="listbox"
-        :aria-label="section.name"
-        class="mpanel__rows"
+        class="mpanel__bar"
+        :class="{ 'mpanel__bar--on': selected.length }"
+        data-tid="macro-toolbar"
       >
-        <div
-          v-for="m in section.macros"
-          :key="m.name"
-          role="option"
-          class="mpanel__row"
-          :class="{ 'mpanel__row--selected': selected === m.name, 'mpanel__row--dragging': dragging === m.name }"
-          :aria-selected="selected === m.name ? 'true' : 'false'"
-          :tabindex="selected === m.name || (!selected && m.name === firstName) ? 0 : -1"
-          :data-tid="`macro-row-${m.name}`"
-          :draggable="connected ? 'true' : 'false'"
-          @click="select(m.name)"
-          @dblclick="open(m)"
-          @keydown="onKey($event, m)"
-          @dragstart="onDragStart($event, m.name)"
+        <template v-if="selected.length">
+          <b data-tid="macro-selected-count">{{ selected.length }} selected</b>
+          <button
+            type="button"
+            class="cbtn"
+            data-tid="macro-toolbar-move"
+            :disabled="locked"
+            @click="moveFor = [...selected]"
+          >
+            Move to…
+          </button>
+          <button
+            type="button"
+            class="cbtn"
+            data-tid="macro-toolbar-show"
+            :disabled="locked"
+            @click="setSelectedVisible(true)"
+          >
+            Show
+          </button>
+          <button
+            type="button"
+            class="cbtn"
+            data-tid="macro-toolbar-hide"
+            :disabled="locked"
+            @click="setSelectedVisible(false)"
+          >
+            Hide
+          </button>
+          <button
+            type="button"
+            class="cbtn mpanel__done"
+            data-tid="macro-toolbar-done"
+            @click="clear"
+          >
+            Done
+          </button>
+        </template>
+        <span
+          v-else
+          class="mpanel__hint"
+        >Click selects · Ctrl/Shift adds · drag between sections · double-click opens</span>
+      </div>
+
+      <section
+        v-for="section in sections"
+        :key="section.id"
+        class="mpanel__section"
+        :class="{ 'mpanel__section--drop': dropOn === section.id }"
+        :data-tid="`macro-section-${section.id}`"
+        :data-section="section.name"
+        @dragover="onDragOver($event, section.id)"
+        @dragleave="onDragLeave($event, section.id)"
+        @drop="onDrop($event, section.id)"
+      >
+        <header
+          class="mpanel__section-head"
+          :draggable="section.id !== '0' && !locked ? 'true' : 'false'"
+          :data-tid="`macro-section-head-${section.id}`"
+          @dragstart="onSectionDragStart($event, section.id)"
           @dragend="onDragEnd"
-          @dragover="onDragOver($event, section.id)"
-          @drop.stop="onDrop($event, section.id, m.name)"
+          @click.self="clear"
         >
-          <div class="mpanel__what">
-            <b>{{ titleOf(m) }}</b>
-            <span>{{ m.name }}{{ placeText(m.name) }}</span>
-          </div>
-          <v-switch
-            :input-value="m.visible"
-            hide-details
-            dense
-            class="mpanel__shown mt-0 pt-0"
-            :aria-label="`Show ${titleOf(m)} on the dashboard`"
-            :disabled="!connected"
-            :data-tid="`macro-visible-${m.name}`"
-            @click.native.stop
-            @dblclick.native.stop
-            @change="setVisible(m, $event)"
+          <span
+            v-if="section.id !== '0'"
+            class="mpanel__grip"
+            aria-hidden="true"
           />
+          <h3>{{ section.name }}</h3>
+          <span
+            class="mpanel__count"
+            :data-tid="`macro-section-count-${section.id}`"
+          >{{ section.visible }} of {{ countOf(section) }} shown</span>
           <v-menu
             offset-y
             left
@@ -183,10 +153,9 @@
               <button
                 type="button"
                 class="mpanel__more"
-                :aria-label="`${titleOf(m)}: more`"
-                :data-tid="`macro-menu-${m.name}`"
+                :aria-label="`${section.name}: more`"
+                :data-tid="`macro-section-menu-${section.id}`"
                 v-bind="attrs"
-                @dblclick.stop
                 v-on="on"
               >
                 <frame-icon
@@ -197,36 +166,201 @@
             </template>
             <v-list dense>
               <v-list-item
-                :disabled="!placeOf(m.name)"
-                data-tid="macro-open"
-                @click="openInEditor(m.name)"
+                v-if="section.id !== '0'"
+                data-tid="macro-category-rename"
+                :disabled="locked"
+                @click="renameCategory(section)"
               >
-                <v-list-item-title>{{ editable ? 'Open in the editor' : 'Open to read' }}</v-list-item-title>
+                <v-list-item-title>Rename…</v-list-item-title>
               </v-list-item>
               <v-list-item
-                data-tid="macro-details"
-                @click="openDetails(m)"
+                :disabled="!section.count || locked"
+                data-tid="macro-section-all-on"
+                @click="setAllVisible(section, true)"
               >
-                <v-list-item-title>Details…</v-list-item-title>
+                <v-list-item-title>Show all</v-list-item-title>
               </v-list-item>
               <v-list-item
-                data-tid="macro-move"
-                :disabled="!connected"
-                @click="moveFor = m"
+                :disabled="!section.count || locked"
+                data-tid="macro-section-all-off"
+                @click="setAllVisible(section, false)"
               >
-                <v-list-item-title>Move to…</v-list-item-title>
+                <v-list-item-title>Hide all</v-list-item-title>
+              </v-list-item>
+              <v-list-item
+                v-if="section.id !== '0'"
+                data-tid="macro-category-remove"
+                :disabled="locked"
+                @click="removeCategory(section)"
+              >
+                <v-list-item-title>Remove</v-list-item-title>
               </v-list-item>
             </v-list>
           </v-menu>
-        </div>
-        <p
-          v-if="!section.macros.length"
-          class="mpanel__empty"
+        </header>
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          :aria-label="section.name"
+          class="mpanel__rows"
+          @click.self="clear"
         >
-          {{ query ? 'None found here.' : 'None yet. Drag a macro here, or use its Move to….' }}
-        </p>
-      </div>
-    </section>
+          <div
+            v-for="m in section.macros"
+            :key="m.name"
+            role="option"
+            class="mpanel__row"
+            :class="{ 'mpanel__row--selected': isSelected(m.name), 'mpanel__row--dragging': dragging.includes(m.name) }"
+            :aria-selected="isSelected(m.name) ? 'true' : 'false'"
+            :tabindex="m.name === focusName ? 0 : -1"
+            :data-tid="`macro-row-${m.name}`"
+            :draggable="locked ? 'false' : 'true'"
+            @click="onRowClick($event, m.name)"
+            @dblclick="open(m)"
+            @keydown="onKey($event, m)"
+            @touchstart.passive="onPressStart(m.name)"
+            @touchmove.passive="onPressEnd"
+            @touchend="onPressEnd"
+            @contextmenu="pressed && $event.preventDefault()"
+            @dragstart="onDragStart($event, m.name)"
+            @dragend="onDragEnd"
+            @dragover="onDragOver($event, section.id)"
+            @drop.stop="onDrop($event, section.id, m.name)"
+          >
+            <span
+              class="mpanel__grip"
+              aria-hidden="true"
+            />
+            <input
+              type="checkbox"
+              class="mpanel__check"
+              :checked="isSelected(m.name)"
+              :aria-label="`Select ${titleOf(m)}`"
+              :data-tid="`macro-check-${m.name}`"
+              @click.stop="toggle(m.name)"
+              @dblclick.stop
+            >
+            <span
+              class="mpanel__dot"
+              :style="m.color ? { background: m.color } : undefined"
+              aria-hidden="true"
+            />
+            <div class="mpanel__what">
+              <b>{{ titleOf(m) }}</b>
+              <span>{{ m.name.toUpperCase() }}{{ placeText(m.name) }}</span>
+            </div>
+            <span
+              v-if="m.disabledWhilePrinting"
+              class="mpanel__chip"
+            >Not while printing</span>
+            <v-switch
+              :input-value="m.visible"
+              hide-details
+              dense
+              class="mpanel__shown mt-0 pt-0"
+              :aria-label="`Show ${titleOf(m)} on the dashboard`"
+              :disabled="locked"
+              :data-tid="`macro-visible-${m.name}`"
+              @click.native.stop
+              @dblclick.native.stop
+              @change="setVisible(m, $event)"
+            />
+            <v-menu
+              offset-y
+              left
+            >
+              <template #activator="{ on, attrs }">
+                <button
+                  type="button"
+                  class="mpanel__more"
+                  :aria-label="`${titleOf(m)}: more`"
+                  :data-tid="`macro-menu-${m.name}`"
+                  v-bind="attrs"
+                  @dblclick.stop
+                  v-on="on"
+                >
+                  <frame-icon
+                    name="more"
+                    small
+                  />
+                </button>
+              </template>
+              <v-list dense>
+                <v-list-item
+                  data-tid="macro-details"
+                  @click="open(m)"
+                >
+                  <v-list-item-title>Open…</v-list-item-title>
+                </v-list-item>
+                <v-list-item
+                  data-tid="macro-move"
+                  :disabled="locked"
+                  @click="moveFor = [m.name]"
+                >
+                  <v-list-item-title>Move to…</v-list-item-title>
+                </v-list-item>
+              </v-list>
+            </v-menu>
+          </div>
+          <template v-if="section.id === '0'">
+            <div
+              v-for="name in shownHidden"
+              :key="name"
+              class="mpanel__row mpanel__row--hidden"
+              :data-tid="`macro-hidden-${name}`"
+            >
+              <span
+                class="mpanel__grip"
+                aria-hidden="true"
+              />
+              <span
+                class="mpanel__dot"
+                aria-hidden="true"
+              />
+              <div class="mpanel__what">
+                <b class="mpanel__mono">{{ name.toUpperCase() }}</b>
+                <span>Starts with _ : hidden from everyone, can't be shown</span>
+              </div>
+              <frame-icon
+                name="lock"
+                small
+                aria-label="Can't be shown"
+              />
+            </div>
+            <button
+              v-if="hiddenMacros.length > shownHidden.length"
+              type="button"
+              class="mpanel__more-rows"
+              data-tid="macro-hidden-more"
+              @click="allHidden = true"
+            >
+              + {{ hiddenMacros.length - shownHidden.length }} more
+            </button>
+          </template>
+          <p
+            v-if="!section.macros.length && !(section.id === '0' && hiddenMacros.length)"
+            class="mpanel__empty"
+          >
+            {{ query ? 'None found here.' : 'None yet. Drag a macro here, or use its Move to….' }}
+          </p>
+        </div>
+      </section>
+    </div>
+
+    <p class="mpanel__foot">
+      Shown macros appear in Control's Macros tile and in Quick actions, in this order. Sections are saved on the printer, for everyone.
+    </p>
+
+    <p
+      v-if="!editable"
+      class="mpanel__note"
+      data-tid="macro-edit-readonly"
+    >
+      <b>Editing what a macro does</b> needs developer mode on a Muon printer. Non-Muon printers open the file straight away.
+      <router-link :to="developerTo">
+        Developer mode ›
+      </router-link>
+    </p>
 
     <p
       v-if="error"
@@ -242,11 +376,10 @@
         Try again
       </button>
     </p>
-
     <app-dialog
       v-if="moveFor"
       :value="!!moveFor"
-      :title="`Move ${titleOf(moveFor)} to`"
+      :title="moveFor.length === 1 ? `Move ${titleOfName(moveFor[0])} to` : `Move ${moveFor.length} macros to`"
       max-width="360"
       no-actions
       @input="moveFor = $event ? moveFor : null"
@@ -255,23 +388,40 @@
         <v-list-item
           v-for="section in sections"
           :key="section.id"
-          :disabled="sectionOf(moveFor) === section.id"
           :data-tid="`macro-move-to-${section.id}`"
-          @click="moveTo(moveFor.name, section.id)"
+          :disabled="allIn(moveFor, section.id)"
+          @click="moveTo(moveFor, section.id)"
         >
           <v-list-item-title>{{ section.name }}</v-list-item-title>
+          <v-list-item-action v-if="allIn(moveFor, section.id)">
+            <frame-icon
+              name="check"
+              small
+            />
+          </v-list-item-action>
+        </v-list-item>
+        <v-list-item
+          data-tid="macro-move-to-new"
+          @click="addCategory(moveFor)"
+        >
+          <v-list-item-title>New section…</v-list-item-title>
         </v-list-item>
       </v-list>
     </app-dialog>
-
-    <macro-settings-dialog
-      v-if="details"
-      :key="details.name"
-      :value="!!details"
-      :macro="details"
-      @input="details = $event ? details : null"
+    <macro-sheet
+      v-if="sheetMacro"
+      :key="sheetMacro.name"
+      :macro="sheetMacro"
+      :sections="sections"
+      :section-id="sectionOf(sheetMacro)"
+      :place="placeOf(sheetMacro.name)"
+      :editable="editable"
+      :read-only="locked"
+      :developer-to="developerTo"
+      @move="moveTo([sheetMacro.name], $event)"
+      @edit="openInEditor(sheetMacro.name)"
+      @close="sheetFor = null"
     />
-
     <macro-category-dialog
       v-if="categoryDialog.open"
       v-model="categoryDialog.open"
@@ -287,36 +437,50 @@
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import MacroCategoryDialog from './MacroCategoryDialog.vue'
-import MacroSettingsDialog from './MacroSettingsDialog.vue'
+import MacroSheet from './MacroSheet.vue'
 import { devModeState, refreshDevMode } from '@/services/dev-mode/state'
 import { macroPlacesOn } from '@/services/macros/places'
 import type { MacroPlace } from '@/services/macros/locate'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
+import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { cloudState } from '@/services/muon-cloud/state'
 import type { Macro, MacroCategory } from '@/store/macros/types'
-import { macroSections, macrosMovedTo, type MacroSection } from './macro-sections'
+import { macroSections, macrosMovedTo, rangeOf, sectionsMoved, type MacroSection } from './macro-sections'
+
+const LONG_PRESS_MS = 500
+const HIDDEN_SHOWN = 3
 
 /**
- * Settings › Macros, as one panel: every category a section, and
- * Uncategorised the last. A macro is chosen with a click and opened (in
- * the Files editor, at its [gcode_macro] line) with a double-click or
- * Enter; dragged, or moved with its Move to…, into another section; and
- * shown on, or hidden from, the dashboard. With developer mode off the
- * macros open to read: the Muon3D defaults can't be changed.
+ * Settings › Macros, as one list: every category a section (a header row
+ * with a grip, its count and a ··· menu), and Uncategorised the last.
+ * Selection follows File Explorer: click selects one, Ctrl-click toggles,
+ * Shift-click selects a range, a checkbox (or, on a phone, a long-press)
+ * selects without a keyboard, and the toolbar acts on the selection.
+ * Macros are dragged, or moved with Move to…, between sections. A
+ * double-click or Enter opens the macro's sheet, with its code read-only.
  */
 @Component({
-  components: { MacroCategoryDialog, MacroSettingsDialog }
+  components: { MacroCategoryDialog, MacroSheet }
 })
 export default class MacroPanel extends Mixins(StateMixin) {
   query = ''
   places: Map<string, MacroPlace> = new Map()
   error = ''
   dev = devModeState
-  selected: string | null = null
-  dragging: string | null = null
+  selected: string[] = []
+  anchor: string | null = null
+  focused: string | null = null
+  dragging: string[] = []
+  draggingSection: string | null = null
   dropOn: string | null = null
-  moveFor: Macro | null = null
-  details: Macro | null = null
+  moveFor: string[] | null = null
+  sheetFor: string | null = null
+  allHidden = false
+  pressTimer = 0
+  pressed = false
+  /** Set by a long-press: taps then add to the selection, as on a phone's file list. */
+  picking = false
   categoryDialog: { open: boolean, title: string, name: string, save: (name: string) => void } = {
     open: false,
     title: '',
@@ -328,8 +492,22 @@ export default class MacroPanel extends Mixins(StateMixin) {
     refreshDevMode().then(() => this.load())
   }
 
+  beforeDestroy () {
+    clearTimeout(this.pressTimer)
+  }
+
   get connected (): boolean {
     return this.$store.state.socket.open === true
+  }
+
+  /** On a printer shared to view, the list is read-only: only its owner or an Operator changes it. */
+  get viewerOnly (): boolean {
+    if (!isManagedApiUrl(this.$store.state.config?.apiUrl)) return false
+    return cloudState.printers.find(p => p.id === cloudState.activePrinterId)?.role === 'viewer'
+  }
+
+  get locked (): boolean {
+    return !this.connected || this.viewerOnly
   }
 
   get registered (): string[] {
@@ -342,7 +520,7 @@ export default class MacroPanel extends Mixins(StateMixin) {
     return 'defaults'
   }
 
-  /** The config folder is the printer's to change unless developer mode says it's off (an M1's copy is read only then). */
+  /** Edit in Files opens: a non-Muon printer's config, or a Muon's in developer mode. */
   get editable (): boolean {
     return this.root === 'config' && this.dev.enabled !== false
   }
@@ -357,12 +535,25 @@ export default class MacroPanel extends Mixins(StateMixin) {
     try {
       this.places = await macroPlacesOn(this.root)
     } catch {
-      this.error = 'The printer didn\'t list its config files, so the macros can\'t be opened yet.'
+      this.error = 'The printer didn\'t list its config files, so where each macro is written isn\'t known yet.'
     }
   }
 
   get allMacros (): Macro[] {
     return this.$store.getters['macros/getMacros'] as Macro[]
+  }
+
+  /** Macros whose names start with _: Klipper's helpers, hidden from everyone. */
+  get hiddenMacros (): string[] {
+    const q = this.query.trim().toLowerCase()
+    return Object.keys(this.$store.state.printer.printer ?? {})
+      .filter(key => /^gcode_macro _/.test(key))
+      .map(key => key.slice('gcode_macro '.length))
+      .filter(name => !q || name.toLowerCase().includes(q))
+  }
+
+  get shownHidden (): string[] {
+    return this.allHidden ? this.hiddenMacros : this.hiddenMacros.slice(0, HIDDEN_SHOWN)
   }
 
   get sections (): MacroSection[] {
@@ -374,26 +565,45 @@ export default class MacroPanel extends Mixins(StateMixin) {
     )
   }
 
-  get headline (): string {
-    const n = this.allMacros.length
-    const c = this.sections.length
-    return `${n} ${n === 1 ? 'macro' : 'macros'} in ${c} ${c === 1 ? 'section' : 'sections'}`
+  countOf (section: MacroSection): number {
+    return section.count + (section.id === '0' ? this.hiddenMacros.length : 0)
   }
 
-  get order (): Macro[] {
-    return this.sections.flatMap(s => s.macros)
+  get order (): string[] {
+    return this.sections.flatMap(s => s.macros.map(m => m.name))
   }
 
-  get firstName (): string | undefined {
-    return this.order[0]?.name
+  /** The row that takes Tab: the one last chosen, else the first. */
+  get focusName (): string | undefined {
+    return this.focused && this.order.includes(this.focused) ? this.focused : this.order[0]
+  }
+
+  get sheetMacro (): Macro | undefined {
+    return this.sheetFor ? this.allMacros.find(m => m.name === this.sheetFor) : undefined
+  }
+
+  macro (name: string): Macro | undefined {
+    return this.allMacros.find(m => m.name === name)
   }
 
   titleOf (m: Macro): string {
     return m.alias || m.name.toUpperCase()
   }
 
+  titleOfName (name: string): string {
+    const m = this.macro(name)
+    return m ? this.titleOf(m) : name
+  }
+
   sectionOf (m: Macro): string {
     return m.categoryId && m.category ? m.categoryId : '0'
+  }
+
+  allIn (names: string[], sectionId: string): boolean {
+    return names.every(n => {
+      const m = this.macro(n)
+      return m && this.sectionOf(m) === sectionId
+    })
   }
 
   placeOf (name: string): MacroPlace | undefined {
@@ -410,28 +620,69 @@ export default class MacroPanel extends Mixins(StateMixin) {
     return `${scopedPath('/settings', activeSlug())}#developer`
   }
 
-  select (name: string) {
-    this.selected = name
+  isSelected (name: string): boolean {
+    return this.selected.includes(name)
   }
 
-  /** Opens it where it's written; one not found in the config files opens its details. */
+  select (name: string) {
+    this.selected = [name]
+    this.anchor = name
+    this.focused = name
+  }
+
+  toggle (name: string) {
+    this.selected = this.isSelected(name) ? this.selected.filter(n => n !== name) : [...this.selected, name]
+    this.anchor = name
+    this.focused = name
+  }
+
+  clear () {
+    this.selected = []
+    this.anchor = null
+    this.picking = false
+  }
+
+  onRowClick (event: MouseEvent, name: string) {
+    if (this.pressed) {
+      this.pressed = false
+      return
+    }
+    if (event.shiftKey && this.anchor) {
+      this.selected = rangeOf(this.order, this.anchor, name)
+      this.focused = name
+    } else if (event.ctrlKey || event.metaKey || this.picking) {
+      this.toggle(name)
+    } else {
+      this.select(name)
+    }
+  }
+
+  onPressStart (name: string) {
+    clearTimeout(this.pressTimer)
+    this.pressed = false
+    this.pressTimer = window.setTimeout(() => {
+      this.pressed = true
+      this.picking = true
+      if (!this.isSelected(name)) this.toggle(name)
+    }, LONG_PRESS_MS)
+  }
+
+  onPressEnd () {
+    clearTimeout(this.pressTimer)
+  }
+
   open (m: Macro) {
-    this.selected = m.name
-    if (this.placeOf(m.name)) this.openInEditor(m.name)
-    else this.openDetails(m)
+    this.select(m.name)
+    this.sheetFor = m.name
   }
 
   openInEditor (name: string) {
     const place = this.placeOf(name)
-    if (!place) return
+    if (!place || !this.editable) return
     this.$router.push({
       path: scopedPath('/configure', activeSlug()),
       query: { open: `${place.root}/${place.path}`, line: String(place.line) }
     })
-  }
-
-  openDetails (m: Macro) {
-    this.details = m
   }
 
   onKey (event: KeyboardEvent, m: Macro) {
@@ -443,36 +694,54 @@ export default class MacroPanel extends Mixins(StateMixin) {
     }
     if (event.key === ' ') {
       event.preventDefault()
-      this.select(m.name)
+      if (event.ctrlKey || event.metaKey) this.toggle(m.name)
+      else this.select(m.name)
       return
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
     event.preventDefault()
-    const i = this.order.findIndex(o => o.name === m.name)
+    const i = this.order.indexOf(m.name)
     const next = this.order[i + (event.key === 'ArrowDown' ? 1 : -1)]
     if (!next) return
-    this.select(next.name)
+    if (event.shiftKey && this.anchor) {
+      this.selected = rangeOf(this.order, this.anchor, next)
+      this.focused = next
+    } else {
+      this.select(next)
+    }
     this.$nextTick(() => {
-      (this.$el.querySelector(`[data-tid=${JSON.stringify(`macro-row-${next.name}`)}]`) as HTMLElement | null)?.focus()
+      (this.$el.querySelector(`[data-tid=${JSON.stringify(`macro-row-${next}`)}]`) as HTMLElement | null)?.focus()
     })
   }
 
+  /** Drags the selection when the row is in it, else just the row. */
   onDragStart (event: DragEvent, name: string) {
-    this.dragging = name
-    this.selected = name
+    if (this.locked) return
+    if (!this.isSelected(name)) this.select(name)
+    this.dragging = this.order.filter(n => this.isSelected(n))
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move'
-      event.dataTransfer.setData('text/plain', name)
+      event.dataTransfer.setData('text/plain', this.dragging.join('\n'))
+    }
+  }
+
+  onSectionDragStart (event: DragEvent, id: string) {
+    if (id === '0' || this.locked) return
+    this.draggingSection = id
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', `section:${id}`)
     }
   }
 
   onDragEnd () {
-    this.dragging = null
+    this.dragging = []
+    this.draggingSection = null
     this.dropOn = null
   }
 
   onDragOver (event: DragEvent, sectionId: string) {
-    if (!this.dragging) return
+    if (!this.dragging.length && !this.draggingSection) return
     event.preventDefault()
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
     this.dropOn = sectionId
@@ -485,25 +754,33 @@ export default class MacroPanel extends Mixins(StateMixin) {
   }
 
   onDrop (event: DragEvent, sectionId: string, before?: string) {
-    const name = this.dragging || event.dataTransfer?.getData('text/plain')
+    const section = this.draggingSection
+    const names = this.dragging.length ? this.dragging : (event.dataTransfer?.getData('text/plain') ?? '').split('\n').filter(n => n && !n.startsWith('section:'))
     this.onDragEnd()
-    if (!name || !this.connected) return
+    if (this.locked) return
     event.preventDefault()
-    this.moveTo(name, sectionId, before)
+    if (section) this.moveSection(section, sectionId)
+    else if (names.length) this.moveTo(names, sectionId, before)
   }
 
-  /** Moves the macro into the section, before `before` (or last), and saves the section's order. */
-  moveTo (name: string, sectionId: string, before?: string) {
+  /** Puts the dragged section before the one it's dropped on (Uncategorised stays last). */
+  moveSection (id: string, onto: string) {
+    const ids = this.sections.map(s => s.id).filter(s => s !== '0')
+    const next = sectionsMoved(ids, id, onto === '0' ? undefined : onto)
+    if (next) this.$store.dispatch('macros/saveCategoryOrder', next)
+  }
+
+  /** Moves the macros into the section, before `before` (or last), and saves the section's order. */
+  moveTo (names: string[], sectionId: string, before?: string) {
     this.moveFor = null
     const macros = macrosMovedTo(
       this.allMacros,
       (id: string) => this.$store.getters['macros/getMacrosByCategory'](id) as Macro[],
-      name,
+      names,
       sectionId,
       before
     )
     if (!macros) return
-    this.selected = name
     this.$store.dispatch('macros/saveAllOrder', macros)
   }
 
@@ -511,24 +788,35 @@ export default class MacroPanel extends Mixins(StateMixin) {
     this.$store.dispatch('macros/saveMacro', { ...m, visible: !!visible })
   }
 
+  setSelectedVisible (visible: boolean) {
+    const macros = this.selected.map(n => this.macro(n)).filter((m): m is Macro => !!m)
+    if (macros.length) this.$store.dispatch(visible ? 'macros/saveAllOn' : 'macros/saveAllOff', macros)
+  }
+
   setAllVisible (section: MacroSection, visible: boolean) {
     const macros = this.$store.getters['macros/getMacrosByCategory'](section.id) as Macro[]
     this.$store.dispatch(visible ? 'macros/saveAllOn' : 'macros/saveAllOff', macros)
   }
 
-  addCategory () {
+  /** A new section; from Move to…, the macros go into it. */
+  addCategory (moving?: string[]) {
+    this.moveFor = null
     this.categoryDialog = {
       open: true,
-      title: this.$t('app.general.label.add_category').toString(),
+      title: 'New section',
       name: '',
-      save: (name: string) => this.$store.dispatch('macros/addCategory', name)
+      save: async (name: string) => {
+        await this.$store.dispatch('macros/addCategory', name)
+        const made = [...(this.$store.state.macros.categories as MacroCategory[])].reverse().find(c => c.name === name)
+        if (moving?.length && made) this.moveTo(moving, made.id)
+      }
     }
   }
 
   renameCategory (section: MacroSection) {
     this.categoryDialog = {
       open: true,
-      title: this.$t('app.general.label.edit_category').toString(),
+      title: 'Rename the section',
       name: section.name,
       save: (name: string) => this.$store.dispatch('macros/editCategory', { id: section.id, name })
     }
@@ -729,4 +1017,25 @@ export default class MacroPanel extends Mixins(StateMixin) {
     color: var(--m3d-text-subtle);
     font-size: 13px;
   }
+</style>
+
+<style lang="scss" scoped>
+  .mpanel__list { display: flex; flex-direction: column; border-radius: 16px; overflow: hidden; background: var(--m3d-surface-2); }
+  .mpanel__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; padding: 6px 12px; }
+  .mpanel__bar--on { background: color-mix(in srgb, var(--m3d-accent) 14%, transparent); }
+  .mpanel__done { margin-left: auto; }
+  .mpanel__section-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; text-transform: uppercase; letter-spacing: .06em; font-size: 12px; color: var(--m3d-text-muted); }
+  .mpanel__section-head h3 { flex: 1 1 auto; margin: 0; font-size: 12px; }
+  .mpanel__section-head[draggable="true"] { cursor: grab; }
+  .mpanel__count { font-size: 12px; text-transform: none; letter-spacing: 0; }
+  .mpanel__grip { flex: none; width: 8px; height: 14px; opacity: .5; background-image: radial-gradient(currentColor 1.2px, transparent 1.3px); background-size: 4px 4px; }
+  .mpanel__check { flex: none; width: 16px; height: 16px; accent-color: var(--m3d-accent); }
+  .mpanel__row:not(.mpanel__row--selected):not(:hover) .mpanel__check { opacity: .35; }
+  .mpanel__dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--m3d-text-muted); }
+  .mpanel__chip { flex: none; padding: 2px 8px; border-radius: 999px; background: var(--m3d-surface); color: var(--m3d-text-muted); font-size: 12px; }
+  .mpanel__mono { font-family: var(--m3d-font-mono, monospace); }
+  .mpanel__row--hidden { opacity: .75; cursor: default; }
+  .mpanel__more-rows { padding: 8px 16px; text-align: left; color: var(--m3d-text-muted); font-size: 13px; cursor: pointer; }
+  .mpanel__foot { margin: 0; color: var(--m3d-text-muted); font-size: 12px; }
+  @media (hover: none) { .mpanel__check { opacity: 1 !important; } }
 </style>
