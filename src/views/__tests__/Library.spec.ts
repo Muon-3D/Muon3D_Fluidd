@@ -397,3 +397,85 @@ describe('Library: always on (KAN-735)', () => {
     }
   })
 })
+
+describe('Library v3 states (page 12)', () => {
+  it('a Library turned off on purpose says so, rather than that turning it on failed', async () => {
+    Object.assign(libraryState, { enabled: false, withdrawn: true, promiseVersion: PROMISE_VERSION, purgeAfter: null })
+    const wrapper = renderLibrary()
+    try {
+      await wrapper.vm.$nextTick()
+      const off = wrapper.find('[data-tid="library-off"]')
+      expect(off.text()).toContain('Your Library is off')
+      expect(off.text()).not.toContain('this time it didn')
+      expect(off.find('button').text()).toBe('Turn it on')
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('turning it on for you failed: it says so, and Turn it on is offered', async () => {
+    Object.assign(libraryState, { enabled: false, withdrawn: false, promiseVersion: PROMISE_VERSION, purgeAfter: null })
+    autoConsent.asked = { fixture: 'failed' }
+    const wrapper = renderLibrary()
+    try {
+      await wrapper.vm.$nextTick()
+      const off = wrapper.find('[data-tid="library-off"]')
+      expect(off.text()).toContain('Your Library isn\'t on yet')
+      expect(off.text()).toContain('this time it didn\'t')
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('an error from a preferences read does not hide a Library that is being deleted', async () => {
+    Object.assign(libraryState, { enabled: false, promiseVersion: PROMISE_VERSION, purgeAfter: '2026-11-27T00:00:00Z', error: 'Preferences unavailable', errorCode: 'service_unavailable' })
+    const wrapper = renderLibrary()
+    try {
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('[data-tid="library-off"]').text()).toContain('Your Library is being deleted')
+      expect(wrapper.find('[data-tid="library-error"]').exists()).toBe(false)
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('a second click on Keep my Library while it works does nothing', async () => {
+    Object.assign(libraryState, { enabled: false, promiseVersion: PROMISE_VERSION, purgeAfter: '2026-11-27T00:00:00Z' })
+    const wrapper = renderLibrary()
+    try {
+      await wrapper.vm.$nextTick()
+      const vm = wrapper.vm as unknown as { $confirm: () => Promise<boolean>, busy: boolean }
+      vm.$confirm = vi.fn(async () => true)
+      vm.busy = true
+      await wrapper.find('[data-tid="library-off"] button').trigger('click')
+      expect(vm.$confirm).not.toHaveBeenCalled()
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('an action that failed is a callout on Yours, and at the foot of any other page', async () => {
+    const yours = renderLibrary({ view: 'mine' })
+    const pages = [['print', 'p1'], ['shelf', 'sliced'], ['collection', 'c1'], ['share', 'a']].map(([k, v]) => renderLibrary({ view: 'mine', [k]: v }))
+    type Page = { error: string, errorOnYours: boolean }
+    try {
+      (yours.vm as unknown as Page).error = 'It could not be deleted.'
+      await yours.vm.$nextTick()
+      expect(yours.find('[data-tid="library-action-error"]').text()).toContain('It could not be deleted.')
+      // On Yours' home the callout shows it, so the foot does not repeat it.
+      expect(yours.find('.library__note--error').exists()).toBe(false)
+      expect((yours.vm as unknown as Page).errorOnYours).toBe(true)
+      // A print's page, a See all, a collection and Share have no callout: the error is at the foot, not lost.
+      for (const page of pages) {
+        const vm = page.vm as unknown as Page
+        vm.error = 'It could not be deleted.'
+        await page.vm.$nextTick()
+        expect(vm.errorOnYours).toBe(false)
+        expect(page.find('.library__note--error').text()).toContain('It could not be deleted.')
+      }
+    } finally {
+      yours.destroy()
+      pages.forEach(page => page.destroy())
+    }
+  })
+})
