@@ -57,7 +57,7 @@ export function publication (n: number, over: Partial<FakePublication> = {}): Fa
     category: ['home', 'workshop', 'tools', 'art'][n % 4],
     colour: COLOURS[n % COLOURS.length],
     gcode: true,
-    colours: [COLOURS[n % COLOURS.length], '#f4f6f7'],
+    colours: [COLOURS[n % COLOURS.length], COLOURS[(n + 3) % COLOURS.length]],
     ...over
   }
 }

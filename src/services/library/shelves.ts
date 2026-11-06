@@ -438,5 +438,5 @@ async function searchPublications (query: string, cursor: string | null, fetcher
 /** Only #rrggbb colours, lowercase, at most 8: the service's are, this keeps anything else out of a style. */
 export function colourList (value: unknown): string[] {
   if (!Array.isArray(value)) return []
-  return value.filter((c): c is string => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)).map(c => c.toLowerCase()).slice(0, 8)
+  return value.filter((c): c is string => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c)).map(c => c.toLowerCase()).filter((c, i, all) => all.indexOf(c) === i).slice(0, 8)
 }
