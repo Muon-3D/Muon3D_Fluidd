@@ -1,4 +1,4 @@
-import type { AuxMethod } from './protocol'
+import type { Verb, AuxMethod } from './protocol'
 
 /**
  * What the embedded printer screen (MuonUI's embed build at /panel/) may ask
@@ -102,3 +102,34 @@ export function auxVerdict (method: unknown, path: unknown): 'forward' | 'refuse
 }
 
 export const AUX_METHODS: readonly AuxMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+
+/** The most one jog may move, mm; the panel's own steps are 0.1 to 50. */
+export const JOG_LIMIT_MM = 50
+
+/**
+ * A verb from the embed, checked field by field and rebuilt from known
+ * values only (nothing of the request passes through as it came), or null.
+ */
+export function readVerb (raw: unknown): Verb | null {
+  if (!raw || typeof raw !== 'object') return null
+  const r = raw as Record<string, unknown>
+  const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+  switch (r.verb) {
+    case 'jog':
+      if ((r.axis === 'X' || r.axis === 'Y' || r.axis === 'Z') && finite(r.by) && r.by !== 0 && Math.abs(r.by) <= JOG_LIMIT_MM) {
+        return { verb: 'jog', axis: r.axis, by: Math.round(r.by * 1000) / 1000 }
+      }
+      return null
+    case 'home':
+      return r.axes === '' || r.axes === 'XY' || r.axes === 'Z' ? { verb: 'home', axes: r.axes } : null
+    case 'heat':
+      if ((r.heater === 'extruder' || r.heater === 'heater_bed') && finite(r.target) && r.target >= 0) {
+        return { verb: 'heat', heater: r.heater, target: Math.round(r.target) }
+      }
+      return null
+    case 'filament':
+      return r.action === 'load' || r.action === 'unload' ? { verb: 'filament', action: r.action } : null
+    default:
+      return null
+  }
+}

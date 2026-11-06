@@ -102,3 +102,18 @@ export function isBridgeNotify (m: unknown): m is BridgeNotify {
   const r = m as Record<string, unknown>
   return r.kind === 'notify' && typeof r.method === 'string'
 }
+
+/**
+ * A printer action the embed asks for by name (protocol version 1 addition).
+ * Control runs it with its own gated methods: a jog through the no-go
+ * planner and the hand-move wait, home, a heater target within its limits,
+ * load or unload as Control's Filament card runs them. Raw G-code is never
+ * accepted.
+ */
+export type Verb =
+  | { verb: 'jog', axis: 'X' | 'Y' | 'Z', by: number }
+  | { verb: 'home', axes: '' | 'XY' | 'Z' }
+  | { verb: 'heat', heater: 'extruder' | 'heater_bed', target: number }
+  | { verb: 'filament', action: 'load' | 'unload' }
+
+export type VerbRequest = { id: number, kind: 'verb' } & Verb

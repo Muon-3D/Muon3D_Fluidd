@@ -1,5 +1,5 @@
-import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION, type BridgeRequest, type BridgeResponse } from './protocol'
-import { NOTIFY_FORWARD, ON_PRINTER, auxVerdict, rpcVerdict } from './allow'
+import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION, type BridgeRequest, type BridgeResponse, type Verb } from './protocol'
+import { NOTIFY_FORWARD, ON_PRINTER, auxVerdict, readVerb, rpcVerdict } from './allow'
 
 /**
  * Control's end of the embedded printer screen (MuonUI's embed build, framed
@@ -24,6 +24,8 @@ export interface BridgeHost {
   status: () => Record<string, unknown>;
   /** Control's connection id, for the embed's identify. */
   connectionId: () => number | null;
+  /** Runs a checked verb with Control's own gated methods: '' when it was sent, else why not (in words). */
+  verb: (v: Verb) => string;
 }
 
 export interface BridgeEvents {
@@ -108,6 +110,14 @@ export class PanelBridge {
         const status = (err as { response?: { status?: number } }).response?.status
         this.reply({ id, ok: false, error: { message: err instanceof Error ? err.message : 'The printer refused that.', status } })
       }
+      return
+    }
+    if (req.kind === 'verb') {
+      const verb = readVerb(req)
+      if (!verb) return this.refuse(id, 'malformed verb')
+      const why = this.host.verb(verb)
+      if (why) this.reply({ id, ok: false, error: { message: why, status: 409 } })
+      else this.reply({ id, ok: true, result: null })
       return
     }
     this.refuse(id, 'unknown request')

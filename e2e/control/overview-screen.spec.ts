@@ -26,6 +26,8 @@ const STUB = `<!doctype html><html><body><script>
     port.postMessage({ id: 1, kind: 'rpc', method: 'printer.info' })
     port.postMessage({ id: 2, kind: 'rpc', method: 'printer.gcode.script', params: { script: 'G1 X100 Y10 Z0' } })
     port.postMessage({ id: 3, kind: 'aux', method: 'POST', path: '/wifi/ap/down', body: {} })
+    port.postMessage({ id: 4, kind: 'verb', verb: 'jog', axis: 'X', by: 10, script: 'G1 Z0' })
+    port.postMessage({ id: 5, kind: 'verb', verb: 'gcode', script: 'SAVE_CONFIG' })
   })
   window.parent.postMessage({ type: 'muon-panel-hello', version: 1 }, '*')
 </script></body></html>`
@@ -49,17 +51,21 @@ test('the screen opens the printer\'s own screen; only allowed calls reach the p
   await expect(page.getByTestId('m1-screen')).toBeVisible()
 
   const frame = page.frameLocator('[data-tid="m1-screen-frame"]')
-  await expect.poll(() => frame.locator('body').evaluate(() => (window as unknown as { results: unknown[] }).results.length)).toBe(3)
+  await expect.poll(() => frame.locator('body').evaluate(() => (window as unknown as { results: unknown[] }).results.length)).toBe(5)
   const results = await frame.locator('body').evaluate(() => (window as unknown as { results: Array<{ id: number, ok: boolean, error?: { message: string } }> }).results)
   const byId = Object.fromEntries(results.map(r => [r.id, r]))
   expect(byId[1].ok).toBe(true)
   expect(byId[2]).toMatchObject({ ok: false, error: { message: 'Do this on the printer itself' } })
   expect(byId[3]).toMatchObject({ ok: false, error: { message: 'Do this on the printer itself' } })
+  // A jog by name runs as Control's own jog (moveBy, through the planner); a made-up verb does not.
+  expect(byId[4].ok).toBe(true)
+  expect(byId[5]).toMatchObject({ ok: false, error: { message: 'Do this on the printer itself' } })
 
-  // Only printer.info went out; the reboot never did, and no G-code was sent.
+  // Only printer.info and the jog went out (the jog as Control's own: moveBy); nothing raw.
   expect(printer.calls.map(c => c.method)).toContain('printer.info')
-  expect(printer.calls.map(c => c.method)).not.toContain('printer.gcode.script')
-  expect(printer.gcode).toEqual([])
+  const lines = printer.gcode.flatMap(g => g.split('\n'))
+  expect(lines.filter(l => l.startsWith('G1 '))).toEqual(['G1 X10 F7800'])
+  expect(lines.some(l => /SAVE_CONFIG|G1 Z0/.test(l))).toBe(false)
   // Sandboxed: the frame has no way to Control's storage or window.
   await expect(page.getByTestId('m1-screen-frame')).toHaveAttribute('sandbox', 'allow-scripts')
   await expect(page.getByTestId('m1-screen-refused')).toBeVisible()
