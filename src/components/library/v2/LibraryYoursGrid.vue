@@ -76,7 +76,7 @@
     </div>
 
     <library-state
-      v-else-if="error || syncError"
+      v-else-if="(error && !count) || syncError"
       kind="error"
       icon="alert"
       :title="error || syncError"
@@ -103,33 +103,43 @@
       @action="query = ''"
     />
 
-    <div
-      v-else
-      class="mgrid__grid"
-      data-tid="library-grid-cards"
-    >
-      <template v-if="source === 'saved'">
-        <library-model-card
-          v-for="card in shownSaved"
-          :key="card.key"
-          :card="card"
-          :printer-name="printerName"
-          :busy="printing === card.key"
-          @print="$emit('print', $event)"
-          @open="$emit('open', $event)"
-        />
-      </template>
-      <template v-else>
-        <library-own-card
-          v-for="card in shownOwn"
-          :key="card.key"
-          :card="card"
-          :printer-name="printerName"
-          @act="$emit('own-act', $event)"
-          @open="$emit('own-open', $event)"
-        />
-      </template>
-    </div>
+    <template v-else>
+      <!-- A re-read that failed: what was shown stays, with Retry above it. -->
+      <library-state
+        v-if="error"
+        kind="callout"
+        :title="error"
+        action="Retry"
+        tid="library-grid-reread-error"
+        @action="load"
+      />
+      <div
+        class="mgrid__grid"
+        data-tid="library-grid-cards"
+      >
+        <template v-if="source === 'saved'">
+          <library-model-card
+            v-for="card in shownSaved"
+            :key="card.key"
+            :card="card"
+            :printer-name="printerName"
+            :busy="printing === card.key"
+            @print="$emit('print', $event)"
+            @open="$emit('open', $event)"
+          />
+        </template>
+        <template v-else>
+          <library-own-card
+            v-for="card in shownOwn"
+            :key="card.key"
+            :card="card"
+            :printer-name="printerName"
+            @act="$emit('own-act', $event)"
+            @open="$emit('own-open', $event)"
+          />
+        </template>
+      </div>
+    </template>
   </section>
 </template>
 
@@ -229,12 +239,12 @@ export default class LibraryYoursGrid extends Vue {
 
   /** Sliced and Designs before the Library's first sync: still reading, not empty. */
   get waiting (): boolean {
-    return (this.source === 'sliced' || this.source === 'designs') && !libraryState.synced && !libraryState.error
+    return (this.source === 'sliced' || this.source === 'designs') && !libraryState.synced && (!libraryState.error || libraryState.busy)
   }
 
   /** Sliced and Designs when the Library's first sync failed. */
   get syncError (): string {
-    return (this.source === 'sliced' || this.source === 'designs') && !libraryState.synced ? libraryState.error ?? '' : ''
+    return (this.source === 'sliced' || this.source === 'designs') && !libraryState.synced && !libraryState.busy ? libraryState.error ?? '' : ''
   }
 
   retry () {

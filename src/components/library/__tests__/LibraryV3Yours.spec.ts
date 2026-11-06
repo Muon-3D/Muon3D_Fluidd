@@ -231,6 +231,41 @@ describe('Library v3 Yours: keeping up', () => {
     expect(grid.find('[data-tid="library-grid-error"]').text()).toContain('didn\'t answer')
   })
 
+  it('Retry on a failed first sync shows loading while it reads again', async () => {
+    resetLibrary('fixture')
+    libraryState.error = 'Offline'
+    setLibraryClient(client() as never)
+    const wrapper = mount(LibraryYoursShelves, { stubs: { 'frame-icon': true } })
+    wrappers.push(wrapper)
+    await flush()
+    expect(wrapper.find('[data-tid="library-shelf-sliced-error"]').exists()).toBe(true)
+    // What refreshLibrary() sets while it reads (store.ts readLibrary).
+    libraryState.busy = true
+    await Vue.nextTick()
+    expect(wrapper.find('[data-tid="library-shelf-sliced-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid="library-shelf-sliced"]').attributes('aria-busy')).toBe('true')
+  })
+
+  it('See all keeps what it shows when a re-read fails, with Retry above it', async () => {
+    let calls = 0
+    const runs = vi.fn(async () => {
+      if (++calls === 2) throw new Error('Offline')
+      return { runs: [run('r1')], cursor: null }
+    })
+    setLibraryClient(client({ runs }) as never)
+    const grid = mount(LibraryYoursGrid, { stubs: { 'frame-icon': true }, propsData: { source: 'printed' } })
+    wrappers.push(grid)
+    await flush()
+    libraryState.rev += 1
+    await flush()
+    expect(grid.findAll('.mcard')).toHaveLength(1)
+    expect(grid.find('[data-tid="library-grid-reread-error"]').exists()).toBe(true)
+    await grid.find('[data-tid="library-grid-reread-error"]').find('button').trigger('click')
+    await flush()
+    expect(grid.find('[data-tid="library-grid-reread-error"]').exists()).toBe(false)
+    expect(runs).toHaveBeenCalledTimes(3)
+  })
+
   it('See all keeps Printed on screen while a sync reads it again', async () => {
     let finish: (value: unknown) => void = () => {}
     let calls = 0
