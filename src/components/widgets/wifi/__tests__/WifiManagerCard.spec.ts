@@ -2,6 +2,7 @@ import { enableAutoDestroy, shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WifiManagerCard from '../WifiManagerCard.vue'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import { refusedHere } from '@/services/wifi/panel-only'
 
 const wifiScan = vi.fn()
 const wifiDetails = vi.fn()
@@ -9,6 +10,8 @@ const wifiConnect = vi.fn()
 const wifiCurrent = vi.fn()
 const wifiForget = vi.fn()
 const apDeviceStatus = vi.fn()
+const wifiDisconnect = vi.fn()
+const wifiSwitch = vi.fn()
 
 vi.mock('@/aux_api/useAuxApi', () => ({
   useAuxApi: () => ({
@@ -17,7 +20,9 @@ vi.mock('@/aux_api/useAuxApi', () => ({
       getDetailsWifiShowGet: wifiDetails,
       wifiConnectWifiConnectPost: wifiConnect,
       wifiCurrentWifiCurrentGet: wifiCurrent,
-      wifiForgetWifiForgetDelete: wifiForget
+      wifiForgetWifiForgetDelete: wifiForget,
+      wifiDisconnectWifiDisconnectPost: wifiDisconnect,
+      wifiSwitchWifiUpPost: wifiSwitch
     },
     ap: {
       wifiStatusWifiApDeviceStatusGet: apDeviceStatus
@@ -50,6 +55,10 @@ const mocks = (locked = false) => ({
 /** Moonraker's refusal, as axios hands it to the card. */
 const refused = (message: string) => Object.assign(new Error('Request failed with status code 403'), {
   response: { status: 403, statusText: 'Forbidden', data: { error: { code: 403, message } } }
+})
+
+const panelOnly = () => Object.assign(new Error('Request failed with status code 403'), {
+  response: { status: 403, statusText: 'Forbidden', data: { detail: 'panel_only' } }
 })
 
 // A card polls on a real interval until destroyed. Without this, a wrapper
@@ -239,6 +248,56 @@ describe('WifiManagerCard forgetting a network', () => {
     const wrapper = shallowMount(WifiManagerCard, { mocks: withConfirm() })
     const detail = (wrapper.vm as any).detail({ chan: 36, freq: 5180, rate: 540, chanList: '36', freqList: '5180' })
     expect(detail).toBe('channel 36 · 540 Mbps · 5180 MHz')
+    wrapper.destroy()
+  })
+})
+
+describe('WifiManagerCard on a printer with MuonOS #492 (KAN-1799)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    refusedHere.disconnect = false
+    wifiScan.mockResolvedValue({ data: [] })
+    wifiConnect.mockResolvedValue({ data: {} })
+    wifiDisconnect.mockResolvedValue({ status: 200 })
+    hotspot.value = false
+  })
+
+  it('joins a saved network with /wifi/connect and no password, never /wifi/up', async () => {
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    const card = wrapper.vm as any
+    card.knownSsids.add('Workshop')
+    card.selectedNetwork = { ssid: 'Workshop', security: 'WPA2' }
+    card.password = 'left over from another network'
+
+    await card.promptOrConnect()
+
+    expect(wifiConnect).toHaveBeenCalledWith({ ssid: 'Workshop', password: undefined })
+    expect(wifiSwitch).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('says to do it at the printer, and swaps the button for that note, when disconnect is refused', async () => {
+    wifiDisconnect.mockRejectedValueOnce(panelOnly())
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    const card = wrapper.vm as any
+
+    await card.disconnect()
+    await wrapper.vm.$nextTick()
+
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining("Do this at the printer's screen"), { type: 'error', timeout: 8000 })
+    expect(card.disconnectIsPanelOnly).toBe(true)
+    expect(card.disconnectConfirmDialog).toBe(false)
+    wrapper.destroy()
+  })
+
+  it('still reports any other failure of disconnect as before', async () => {
+    wifiDisconnect.mockRejectedValueOnce(Object.assign(new Error('boom'), { response: { status: 500, data: { detail: 'nmcli failed' } } }))
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+
+    await (wrapper.vm as any).disconnect()
+
+    expect(emit).toHaveBeenCalledWith('app.wifi.msg.disconnect.error nmcli failed', { type: 'error', timeout: 5000 })
+    expect((wrapper.vm as any).disconnectIsPanelOnly).toBe(false)
     wrapper.destroy()
   })
 })

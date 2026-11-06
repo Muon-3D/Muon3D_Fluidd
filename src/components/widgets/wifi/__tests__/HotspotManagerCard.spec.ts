@@ -3,12 +3,14 @@ import Vue from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HotspotManagerCard from '../HotspotManagerCard.vue'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import { refusedHere } from '@/services/wifi/panel-only'
 
 const apShowCredentials = vi.fn()
 const apDeviceStatus = vi.fn()
 const apModify = vi.fn()
 const apUp = vi.fn()
 const apDown = vi.fn()
+const apChange = vi.fn()
 
 vi.mock('@/aux_api/useAuxApi', () => ({
   useAuxApi: () => ({
@@ -18,7 +20,8 @@ vi.mock('@/aux_api/useAuxApi', () => ({
       apModifyWifiApModifyPost: apModify,
       apUpWifiApUpPost: apUp,
       apDownWifiApDownPost: apDown
-    }
+    },
+    apChange
   })
 }))
 
@@ -45,6 +48,10 @@ const mocks = (locked = false) => ({
 /** Moonraker's refusal, as axios hands it to the card. */
 const refused = (message: string) => Object.assign(new Error('Request failed with status code 403'), {
   response: { status: 403, statusText: 'Forbidden', data: { error: { code: 403, message } } }
+})
+
+const panelOnly = () => Object.assign(new Error('Request failed with status code 403'), {
+  response: { status: 403, statusText: 'Forbidden', data: { detail: 'panel_only' } }
 })
 
 // A card polls on a real interval until destroyed. Without this, a wrapper
@@ -412,5 +419,123 @@ describe('HotspotManagerCard over Iroh (07 §3)', () => {
 
     expect(apShowCredentials).toHaveBeenCalledTimes(1)
     wrapper.destroy()
+  })
+})
+
+describe('HotspotManagerCard on a printer with MuonOS #492 (KAN-1799)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    hotspot.value = false
+    refusedHere.hotspotOff = false
+    refusedHere.hotspotEdit = false
+    apChange.mockResolvedValue({ status: 202, data: { challenge_id: 'c1' } })
+    apModify.mockResolvedValue({ data: {} })
+    apUp.mockResolvedValue({ data: {} })
+    apDown.mockResolvedValue({ data: {} })
+    apDeviceStatus.mockResolvedValue({ data: { device: 'ap0', device_type: 'wifi', state: 'connected', connection: 'ap0-con' } })
+    apShowCredentials.mockResolvedValue({ data: { ssid: 'Muon-M1', password: null, security_enabled: true } })
+  })
+
+  const mountLoaded = async () => {
+    const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    return wrapper
+  }
+
+  it('changes the name or key through /wifi/ap/change when /wifi/ap/modify is refused, and tells you to confirm at the printer', async () => {
+    apModify.mockRejectedValueOnce(panelOnly())
+    const wrapper = await mountLoaded()
+    const card = wrapper.vm as any
+    card.form.password = 'new-password-1'
+    await card.$nextTick()
+
+    await card.applyChanges()
+
+    expect(apModify).toHaveBeenCalledTimes(1)
+    expect(apChange).toHaveBeenCalledWith({ password: 'new-password-1' })
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining("printer's screen"), { type: 'primary', timeout: 10000 })
+    expect(apUp).not.toHaveBeenCalled()
+  })
+
+  it('goes straight to /wifi/ap/change once it has seen the refusal', async () => {
+    apModify.mockRejectedValueOnce(panelOnly())
+    const wrapper = await mountLoaded()
+    const card = wrapper.vm as any
+    card.form.password = 'new-password-1'
+    await card.applyChanges()
+    card.form.securityEnabled = true
+    card.form.password = 'another-password'
+    await card.applyChanges()
+
+    expect(apModify).toHaveBeenCalledTimes(1)
+    expect(apChange).toHaveBeenCalledTimes(2)
+  })
+
+  it('falls back on a 404 too, for a printer that does not have /wifi/ap/modify', async () => {
+    apModify.mockRejectedValueOnce(Object.assign(new Error('nf'), { response: { status: 404, data: {} } }))
+    const wrapper = await mountLoaded()
+    const card = wrapper.vm as any
+    card.form.password = 'new-password-1'
+    await card.applyChanges()
+
+    expect(apChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fall back on any other failure of /wifi/ap/modify', async () => {
+    apModify.mockRejectedValueOnce(Object.assign(new Error('bad'), { response: { status: 500, data: { detail: 'nmcli failed' } } }))
+    const wrapper = await mountLoaded()
+    const card = wrapper.vm as any
+    card.form.password = 'new-password-1'
+    await card.applyChanges()
+
+    expect(apChange).not.toHaveBeenCalled()
+    expect(emit).toHaveBeenCalledWith('app.wifi.msg.hotspot.apply_error nmcli failed', { type: 'error', timeout: 5000 })
+  })
+
+  it('cannot make the hotspot open through /wifi/ap/change, and says so', async () => {
+    apModify.mockRejectedValueOnce(panelOnly())
+    const wrapper = await mountLoaded()
+    const card = wrapper.vm as any
+    card.form.securityEnabled = false
+    await card.applyChanges()
+
+    expect(apChange).not.toHaveBeenCalled()
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining("Do this at the printer's screen"), { type: 'error', timeout: 8000 })
+  })
+
+  it('shows a refused /wifi/ap/change as a message, never silently', async () => {
+    refusedHere.hotspotEdit = true
+    apChange.mockRejectedValueOnce(panelOnly())
+    const wrapper = await mountLoaded()
+    const card = wrapper.vm as any
+    card.form.password = 'new-password-1'
+    await card.applyChanges()
+
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining("Do this at the printer's screen"), { type: 'error', timeout: 8000 })
+  })
+
+  it('swaps the off switch for the note when /wifi/ap/down is refused', async () => {
+    apDown.mockRejectedValueOnce(panelOnly())
+    const wrapper = await mountLoaded()
+    const card = wrapper.vm as any
+
+    await card.confirmToggle()
+    await card.$nextTick()
+
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining("Do this at the printer's screen"), { type: 'error', timeout: 8000 })
+    expect(card.hotspotOffIsPanelOnly).toBe(true)
+    expect(card.apState).toBe(true)
+    expect(dispatch).not.toHaveBeenCalledWith('protection/onRefused')
+  })
+
+  it('turning the hotspot on is still /wifi/ap/up', async () => {
+    refusedHere.hotspotOff = true
+    apDeviceStatus.mockResolvedValue({ data: { device: 'ap0', device_type: 'wifi', state: 'disconnected', connection: null } })
+    const wrapper = await mountLoaded()
+    const card = wrapper.vm as any
+
+    await card.confirmToggle()
+
+    expect(apUp).toHaveBeenCalledTimes(1)
   })
 })
