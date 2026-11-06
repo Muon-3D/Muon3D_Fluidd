@@ -27,12 +27,22 @@ export interface PrinterState {
   failOn: Record<string, string>
   /** Laid over the result of a method the page asks (server.info: `{ klippy_state: 'startup' }`). */
   results: Record<string, Json>
+  /** Methods this page's printer answers itself, with a result (or a function of the params), instead of the shared mock. */
+  answers: Record<string, unknown>
+  /** Methods to answer with this result instead of the mock's: method -> result (server.history.list...). */
+  answer: Record<string, unknown>
+  /** When set, server.info reports exactly these Moonraker components (what a page gates on). */
+  components?: string[]
 }
 
 export interface PrinterHandle {
   state: PrinterState
   /** Every printer.gcode.script the page sent, in order. */
   gcode: string[]
+  /** Every RPC (method and params) the page sent, in order. */
+  calls: Array<{ method: string, params: Json }>
+  /** The params of every request of this method. */
+  called: (method: string) => Json[]
   /** The G1 lines of every script sent, in order. */
   moves: () => string[]
   /** The printer reports `status` now: it becomes the overlay and is pushed to the page at once. */
@@ -61,10 +71,12 @@ function overlayUpdate (update: Json, over: Json): Json {
   return out
 }
 
-export async function usePrinter (page: Page, status: Json = {}): Promise<PrinterHandle> {
+export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[] } = {}): Promise<PrinterHandle> {
   const handle: PrinterHandle = {
-    state: { status, failOn: {}, results: {} },
+    state: { status, failOn: {}, results: {}, answers: {}, answer: {}, components: options.components },
     gcode: [],
+    calls: [],
+    called: (method: string) => handle.calls.filter(c => c.method === method).map(c => c.params),
     moves: () => handle.gcode.flatMap(s => s.split('\n')).filter(l => l.startsWith('G1 ')),
     report: (next: Json) => {
       handle.state.status = next
@@ -75,6 +87,7 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
     }
   }
   const asked = new Map<unknown, string>()
+  const infoRequests = new Set<unknown>()
   let pageSocket: { send: (message: string) => void } | null = null
 
   await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
@@ -85,6 +98,14 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { server.send(raw); return }
       if (msg.id !== undefined && msg.method) asked.set(msg.id, msg.method)
+      if (msg.method) handle.calls.push({ method: msg.method, params: msg.params ?? {} })
+      const answer = msg.method in handle.state.answers ? handle.state.answers[msg.method] : handle.state.answer[msg.method]
+      if (msg.method in handle.state.answers || msg.method in handle.state.answer) {
+        const result = typeof answer === 'function' ? (answer as (p: Json) => unknown)(msg.params ?? {}) : answer
+        ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }))
+        return
+      }
+      if (msg.method === 'server.info') infoRequests.add(msg.id)
       const failure = handle.state.failOn[msg.method]
       if (failure !== undefined) {
         ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: 400, message: failure } }))
@@ -104,6 +125,9 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
       const over = handle.state.status
       const method = asked.get(msg.id)
       if (method && isObject(msg.result) && handle.state.results[method]) msg.result = overlay(msg.result, handle.state.results[method])
+      if (infoRequests.has(msg.id) && handle.state.components && isObject(msg.result)) {
+        msg.result.components = handle.state.components
+      }
       if (isObject(msg.result) && isObject(msg.result.status)) {
         msg.result.status = overlay(msg.result.status, over)
       } else if (msg.method === 'notify_status_update' && Array.isArray(msg.params) && isObject(msg.params[0])) {

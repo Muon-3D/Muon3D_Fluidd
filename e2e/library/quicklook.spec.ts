@@ -25,13 +25,13 @@ test('it shows the maker, Made for M1 and Fits Boxwood, the facts, and the colou
   await expect(colours.locator('.mlook__dot')).toHaveCount(2)
 })
 
-test('one Print, then the secondary row: Open page and Remix go to its page on the Library site', async ({ page, models, open }) => {
+test('one Print, then the secondary row: Remix goes to the Library site, Open page to its page here', async ({ page, models, open }) => {
   await open('/library?view=discover')
   await openLook(page)
   await expect(look(page).getByTestId('library-quick-look-print')).toHaveText(/Print on Boxwood/)
   const p11 = models.publications[10]
-  await expect(look(page).getByTestId('library-quick-look-page')).toHaveAttribute('href', `https://library.muon3d.com/p/${p11.slug}`)
   await expect(look(page).getByTestId('library-quick-look-remix')).toHaveAttribute('href', `https://library.muon3d.com/p/${p11.slug}/remix`)
+  await expect(look(page).getByTestId('library-quick-look-page')).toHaveText('Open page')
   // Signed out: nothing that needs an account.
   await expect(look(page).getByTestId('library-quick-look-save')).toHaveCount(0)
   await expect(look(page).getByTestId('library-quick-look-collect')).toHaveCount(0)
