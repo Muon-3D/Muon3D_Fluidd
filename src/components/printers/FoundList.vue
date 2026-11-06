@@ -56,7 +56,7 @@
         />
         <frame-icon
           v-else-if="primary(tile).id === 'connect'"
-          name="plus"
+          name="chevronRight"
           small
         />
         {{ primary(tile).label }}
@@ -73,7 +73,7 @@ import TonePill from './TonePill.vue'
 
 /**
  * Printers found on this network that are not yours yet: one row each, with
- * the one thing to do with it on the row (Add, Set it up, What is this?),
+ * the one thing to do with it on the row (Open, Set it up, What is this?),
  * and the rest beside it. The page hides the whole list when nothing is found.
  */
 @Component({ components: { TonePill } })
@@ -97,7 +97,7 @@ export default class FoundList extends Vue {
     if (tile.state === 'new') return { id: 'set-up', label: 'Set it up', icon: '' }
     if (tile.entry.row?.action === 'nearby-info') return { id: 'nearby-info', label: 'What is this?', icon: '' }
     const open = this.actionsFor(tile).find(a => a.id === 'connect')
-    return open ? { ...open, label: 'Add' } : { id: '', label: '', icon: '' }
+    return open ? { ...open, label: 'Open' } : { id: '', label: '', icon: '' }
   }
 
   secondary (tile: PrinterTile): CardAction[] {
@@ -108,7 +108,7 @@ export default class FoundList extends Vue {
     if (tile.state === 'new') return 'Not set up yet. Setup takes a few minutes: Wi-Fi, a name and a test print.'
     if (tile.entry.linkedTo === 'other') return 'Linked to another account. Use it on this network, or ask its owner to share it.'
     if (tile.state === 'locked') return 'It wants to know who you are before it lets this browser in.'
-    return ''
+    return tile.entry.detail
   }
 }
 </script>

@@ -9,7 +9,8 @@
     />
     <!-- Nothing saved, linked or found yet: the empty state helps find the first printer. -->
     <printers-welcome
-      v-if="page.welcome"
+      v-if="showWelcome"
+      :signed-in="!!account"
       :searching="searching"
       :network="scanNetwork || ''"
       :bluetooth-search="bluetoothSearch"
@@ -32,6 +33,18 @@
         @add="addSheetOpen = true"
       />
 
+      <p
+        v-if="searching && !page.found.length"
+        class="printers__looking"
+        data-tid="printers-looking"
+      >
+        <v-progress-circular
+          indeterminate
+          size="11"
+          width="2"
+        />
+        Looking{{ scanNetwork ? ` on ${scanNetwork}` : '' }} for printers…
+      </p>
       <p
         v-if="secureSite"
         class="printers__secure"
@@ -78,10 +91,11 @@
           variant="wide"
           :thumbnail="thumbnailFor(printingNow[0])"
           :controllable="!!printingNow[0].entry.active"
+          :busy="controlBusy"
           @open="openEntry(printingNow[0].entry)"
-          @pause="pausePrint()"
-          @resume="resumePrint()"
-          @stop="cancelPrint()"
+          @pause="control(pausePrint)"
+          @resume="control(resumePrint)"
+          @stop="control(cancelPrint)"
         />
         <div
           v-else
@@ -94,10 +108,11 @@
             variant="card"
             :thumbnail="thumbnailFor(tile)"
             :controllable="!!tile.entry.active"
+            :busy="controlBusy"
             @open="openEntry(tile.entry)"
-            @pause="pausePrint()"
-            @resume="resumePrint()"
-            @stop="cancelPrint()"
+            @pause="control(pausePrint)"
+            @resume="control(resumePrint)"
+            @stop="control(cancelPrint)"
           />
         </div>
       </printers-section>
@@ -171,7 +186,6 @@
             :stage-height="150"
             :actions="actionsFor(tile.entry)"
             :busy="busyKey === tile.key"
-            :shown-above="isShownAbove(tile)"
             :draggable="canGroup && !!tile.entry.cloud"
             @open="openEntry(tile.entry)"
             @action="onAction(tile.entry, $event)"
@@ -236,9 +250,9 @@
 
       <printers-section
         v-if="otherShown.length"
-        title="Other printers"
+        title="Other brands"
         :count="otherShown.length"
-        note="Saved in this browser only. They never go through Muon3D's servers."
+        note="Not M1s, saved in this browser only. They never go through Muon3D's servers."
         data-tid="other-printers"
       >
         <p
@@ -460,6 +474,8 @@ function readView (): View {
 })
 export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, FilesMixin) {
   query = ''
+  /** A print control was just used: the next one waits a moment (a double click is one). */
+  controlBusy = false
   view: View = readView()
   addSheetOpen = false
   dragging: string | null = null
@@ -631,13 +647,20 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
     return words.join(' ').toLowerCase().includes(q)
   }
 
-  /** Printing and paused printers lead the page, once each: their groups point up at them. */
+  /** Nothing saved, linked or found, signed in or not: the empty state helps find the first printer. */
+  get showWelcome (): boolean {
+    return this.page.welcome || (!this.page.counts.printers && !this.page.found.length)
+  }
+
+  /** Printing and paused printers lead the page, and stay in their groups too, with their menu and drag. */
   get printingNow (): PrinterTile[] {
     return this.page.printingNow.filter(t => this.matches(t))
   }
 
-  get printingKeys (): Set<string> {
-    return new Set(this.page.printingNow.map(t => t.key))
+  /** Without printers to search among, search is gone: a query left in it would hide everything. */
+  @Watch('page.counts.printers')
+  onPrinterCount (count: number) {
+    if (count <= 1) this.query = ''
   }
 
   /** "next to finish: Walnut in 3m". */
@@ -648,9 +671,9 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
     return `next to finish: ${next.name} in ${shortDuration(next.job!.secondsLeft!)}`
   }
 
-  /** A group's printers still to draw in it: not the ones shown above, and matching the search. */
+  /** A group's printers matching the search. */
   filtered (tiles: PrinterTile[]): PrinterTile[] {
-    return tiles.filter(t => !this.printingKeys.has(t.key) && this.matches(t))
+    return tiles.filter(t => this.matches(t))
   }
 
   get shownGroups (): TileGroup[] {
@@ -662,16 +685,9 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
     })
   }
 
-  /** "Boxwood is printing, shown above", or the group's own summary. */
+  /** "1 printing · 2 ready", and for your own groups how to rearrange them. */
   groupNote (g: TileGroup): string {
-    const above = g.tiles.filter(t => this.printingKeys.has(t.key))
-    let note = g.summary
-    if (above.length) {
-      const names = above.map(t => t.name).join(', ')
-      note = `${names} ${above.length === 1 ? 'is' : 'are'} ${above.every(t => t.state === 'paused') ? 'paused' : 'printing'}, shown above`
-    } else if (!g.tiles.length) {
-      note = ''
-    }
+    let note = g.tiles.length ? g.summary : ''
     if (g.editable && !this.isMobileViewport) note = [note, 'drag printers in or out'].filter(Boolean).join(' · ')
     return note
   }
@@ -722,8 +738,13 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
     return `printers__grid printers__grid--${this.tileVariant}`
   }
 
-  isShownAbove (tile: PrinterTile): boolean {
-    return this.printingKeys.has(tile.key)
+  /** Pause, resume or stop the print on the printer Fluidd is on, once per click however fast it is clicked. */
+  control (action: () => unknown) {
+    if (this.controlBusy) return
+    this.controlBusy = true
+    Promise.resolve(action.call(this)).catch(() => {}).finally(() => {
+      window.setTimeout(() => { this.controlBusy = false }, 1200)
+    })
   }
 
   setView (view: View) {
@@ -983,6 +1004,10 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
     height: 56px;
     border-radius: 16px;
     background: var(--m3d-surface-2);
+  }
+
+  p.printers__looking {
+    margin: 0;
   }
 
   .printers__looking {

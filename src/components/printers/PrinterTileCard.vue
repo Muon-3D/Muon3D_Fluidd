@@ -134,10 +134,6 @@ export default class PrinterTileCard extends Vue {
   @Prop({ type: Boolean })
   readonly draggable?: boolean
 
-  /** It is printing, and shown larger above. */
-  @Prop({ type: Boolean })
-  readonly shownAbove?: boolean
-
   @Prop({ type: Number, default: 236 })
   readonly stageHeight!: number
 
@@ -157,7 +153,7 @@ export default class PrinterTileCard extends Vue {
       if (this.tile.state === 'printing') return this.tile.label === 'Printing' ? 'Printing' : `Printing · ${this.tile.label}`
       return this.tile.state === 'ready' ? `Ready · ${this.tile.detail}` : this.tile.detail
     }
-    return this.shownAbove ? 'Printing · shown above' : this.tile.detail
+    return this.tile.detail
   }
 
   get detailTone (): TileTone | 'muted' {
