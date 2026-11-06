@@ -61,6 +61,9 @@ function base (component: any, options: Record<string, any> = {}): Fixture {
   store.getters['history/getUniqueHistory'] = () => []
   store.getters['config/getDisplayName'] = 'Hazel'
   store.getters['files/getRootFiles'] = () => []
+  store.getters['files/getCurrentPathByRoot'] = () => ''
+  store.getters['files/getDirectory'] = () => undefined
+  store.getters['files/getRootProperties'] = () => ({})
   store.getters['macros/getVisibleMacros'] = []
   const confirm = vi.fn().mockResolvedValue(true)
   const wrapper = shallowMount(component, {
@@ -101,7 +104,7 @@ function overview (): Fixture {
 function jobs (): Fixture {
   const fixture = base(Jobs, {
     computed: { queue: () => [{ job_id: 'q1', filename: 'part.gcode' }], jobFiles: () => [], history: () => [], printerName: () => 'Hazel' },
-    stubs: { 'job-detail': true, 'jobs-table': true, 'job-viewer': true, 'seg-picker': true, 'tone-pill': true, 'control-task-fold': true, 'router-link': true }
+    stubs: { 'job-menu': true, 'file-name-dialog': true, 'v-dialog': true, 'tone-pill': true, 'frame-icon': true, 'router-link': true }
   })
   fixture.store.getters['server/componentSupport'] = () => true
   return fixture
