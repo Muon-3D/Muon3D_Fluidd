@@ -434,7 +434,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     // Shown with the page: while connected, and through a drop, when the page keeps its last view.
     if (!this.connection.page || this.connection.screen) return false
     // On a phone, Overview leads with the printer itself; the top bar names it.
-    return !(this.isMobileViewport && ['/', '/preview'].includes(this.currentPage))
+    return !(this.isMobileViewport && this.currentPage === '/')
   }
 
   get columnCount (): number {
