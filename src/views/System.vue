@@ -579,7 +579,13 @@ export default class System extends Mixins(OverviewMixin, ServicesMixin, Browser
     const klipper = this.series('klipper')
     const moonraker = this.series('moonraker')
     const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v)}%`)
+    const cores = this.systemInfo?.cpu_info?.cpu_count || 1
+    const computer = this.series('klipper')
+    const load = latest(computer, 'load')
+    const memory = this.series('memory')
     return [
+      { key: 'load', label: 'The computer', value: load === null ? '—' : load.toFixed(2), sub: `load, of ${cores} ${cores === 1 ? 'core' : 'cores'}`, path: this.spark(computer, 'load') },
+      { key: 'memory', label: 'Memory', value: pct(latest(memory, 'memused')), sub: 'in use', path: this.spark(memory, 'memused') },
       { key: 'klipper', label: 'Klipper', value: pct(latest(klipper, 'cputime_change')), sub: 'of a core', path: this.spark(klipper, 'cputime_change') },
       { key: 'moonraker', label: 'Moonraker', value: pct(latest(moonraker, 'load')), sub: 'of a core', path: this.spark(moonraker, 'load') },
       ...this.mcus.map(m => {

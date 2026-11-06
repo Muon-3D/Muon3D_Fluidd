@@ -170,7 +170,7 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import TypedCommandsMixin from '@/mixins/typed-commands'
 import { SocketActions } from '@/api/socketActions'
-import { ACTIVE_PHASES, versionLabel } from '@/services/updates/model'
+import { ACTIVE_PHASES, commitPending, isStaged, stagedUnverified, versionLabel } from '@/services/updates/model'
 import { currentOutcome, installStarted, poll, updateWatch } from '@/services/updates/watch'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
@@ -260,7 +260,9 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
     if (phase === 'installing') return { text: this.progress !== null ? `Updating · ${this.progress}%` : 'Updating', tone: 'busy' }
     if (phase === 'preparing') return { text: 'Starting the update', tone: 'busy' }
     if (phase === 'rebooting') return { text: 'Restarting', tone: 'busy' }
-    if (phase === 'verifying' || this.status.requires_commit) return { text: 'Checking the update', tone: 'busy' }
+    if (phase === 'verifying' || this.status.state === 'committing' || commitPending(this.status as never)) return { text: 'Checking the update', tone: 'busy' }
+    // Staged on the spare slot and waiting for a person: a quiet badge, never "checking".
+    if (isStaged(this.status as never)) return { text: 'Update ready to install', tone: 'warn' }
     if (this.available) return { text: 'Update ready', tone: 'warn' }
     return { text: 'Up to date', tone: 'ok' }
   }
@@ -279,7 +281,9 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
     if (!this.klippyConnected) return 'Klipper is not connected.'
     if (this.printerBusy) return 'Not while printing.'
     if (this.active) return 'An update is already under way.'
-    if (this.status?.requires_commit) return 'The printer is still checking the last update.'
+    if (commitPending(this.status as never)) return 'The printer is still checking the last update.'
+    // The staged record cannot prove the spare slot still holds that version (empty slot fingerprint, KAN-1364).
+    if (stagedUnverified(this.status as never)) return "An update is staged, but it can't be checked from here yet. Install it from the printer's screen."
     return ''
   }
 

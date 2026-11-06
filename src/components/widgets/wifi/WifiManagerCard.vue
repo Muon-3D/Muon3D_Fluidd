@@ -91,10 +91,11 @@
               {{ $t('app.general.btn.disconnect') }}
             </button>
             <button
+              v-if="!isHidden(connectedNetwork)"
               type="button"
               class="cbtn cbtn--sm cbtn--danger"
               data-tid="wifi-forget"
-              @click="forget(connectedNetwork)"
+              @click="forgetConfirm(connectedNetwork)"
             >
               Forget this network
             </button>
@@ -155,6 +156,10 @@
             >
               <span class="srow__t">{{ network.ssid }}</span>
               <span class="srow__s">{{ rowState(network) }}{{ band(network) ? ` · ${band(network)}` : '' }}</span>
+              <span
+                class="srow__s wf__detail"
+                data-tid="wifi-detail"
+              >{{ detail(network) }}</span>
             </div>
             <tone-pill
               v-if="network.in_use"
@@ -171,7 +176,7 @@
                 type="button"
                 class="cbtn cbtn--sm cbtn--ghost"
                 data-tid="wifi-forget"
-                @click="forget(network)"
+                @click="forgetConfirm(network)"
               >
                 Forget
               </button>
@@ -361,6 +366,9 @@ import { interfaceIp, signalWord } from '@/services/system/model'
 
 const { onHotspot } = useHotspotCheck()
 
+/** What the network the printer is on is called when it does not broadcast its name. */
+const HIDDEN_NAME = 'Hidden network'
+
 type AggWifi = DeviceWifi & { chanList?: string; freqList?: string }
 
 @Component({ components: { TonePill } })
@@ -476,8 +484,9 @@ export default class WifiManagerCard extends Vue {
   get groupedNetworks (): AggWifi[] {
     const bySsid = new Map<string, AggWifi & { _chans: Set<string>, _freqs: Set<string> }>()
     for (const n of this.wifi_available_networks) {
-      const ssid = (n.ssid || '').trim()
-      if (!ssid) continue // hide hidden networks altogether
+      // Hidden networks are left out, unless this is the one the printer is on: that is shown, as connected.
+      const ssid = (n.ssid || '').trim() || (n.in_use ? HIDDEN_NAME : '')
+      if (!ssid) continue
 
       const isSecured = !!(n.security && !/^\s*open\s*$/i.test(n.security))
       if (!bySsid.has(ssid)) {
@@ -520,7 +529,7 @@ export default class WifiManagerCard extends Vue {
   // Sorting
   get sortedNetworks (): AggWifi[] {
     const groups = this.groupedNetworks
-    const connectedSsid = this.wifi_available_networks.find(n => n.in_use)?.ssid?.trim() || null
+    const connectedSsid = groups.find(n => n.in_use)?.ssid ?? null
     const map = new Map(groups.map(n => [n.ssid, n]))
     const others = this.wifiOrder
       .filter(ssid => map.has(ssid) && ssid !== connectedSsid)
@@ -639,6 +648,18 @@ export default class WifiManagerCard extends Vue {
     return this.sortedNetworks.find(n => n.in_use) ?? null
   }
 
+  /** A hidden network has no name to forget or to join by, only to leave. */
+  isHidden (network: DeviceWifi): boolean {
+    return network.ssid === HIDDEN_NAME && !this.knownSsids.has(HIDDEN_NAME)
+  }
+
+  /** What the row says under its name, in sight: the channel, the speed and the frequency. */
+  detail (network: AggWifi): string {
+    const chan = network.chanList || network.chan
+    const freq = network.freqList || network.freq
+    return [chan ? `channel ${chan}` : '', network.rate ? `${network.rate} Mbps` : '', freq ? `${freq} MHz` : ''].filter(Boolean).join(' · ')
+  }
+
   /** The IPv4 address of the Wi-Fi interface, from the computer's own report. */
   get wifiIp (): string {
     const network = (this.$store.getters['server/getSystemInfo'] as { network?: Record<string, { ip_addresses?: Array<{ family?: string, address?: string }> }> } | null)?.network
@@ -678,6 +699,18 @@ export default class WifiManagerCard extends Vue {
       `channel ${network.chanList || network.chan}`,
       `${network.freqList || network.freq} MHz`
     ].join(' · ')
+  }
+
+  /**
+   * Forgetting asks first. For the network this page is reached over, it
+   * says what that costs: the page may be lost, and the printer leaves the network.
+   */
+  async forgetConfirm (network: DeviceWifi) {
+    const text = network.in_use
+      ? 'You may lose this page, and the printer will drop off this network. It will not rejoin it by itself until you join it again.'
+      : 'The printer will not join it by itself any more. You can join it again with its password.'
+    const yes = await this.$confirm(text, { title: `Forget ${network.ssid}?`, buttonTrueText: 'Forget', danger: true })
+    if (yes) await this.forget(network)
   }
 
   async forget (network: DeviceWifi) {
@@ -760,6 +793,14 @@ export default class WifiManagerCard extends Vue {
 
   .wf__empty {
     padding: 12px 0;
+  }
+
+  .wf__net .srow__act {
+    gap: 16px;
+  }
+
+  .wf__detail {
+    color: var(--m3d-text-subtle);
   }
 
   .wf__net .wf__bars {
