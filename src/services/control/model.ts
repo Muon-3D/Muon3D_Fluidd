@@ -101,6 +101,17 @@ export function fileFilament (metadata: Record<string, unknown> | null | undefin
   return { name, colour }
 }
 
+/**
+ * Why a material can't be heated for on this hotend, or null when it can: the
+ * extruder's max_temp (printer.cfg) is a hard limit and Klipper refuses
+ * anything above it, so nothing is sent and the person is told instead.
+ */
+export function hotendLimitReason (material: string | null | undefined, nozzle: number | null | undefined, maxTemp: number | null | undefined): string | null {
+  if (nozzle === null || nozzle === undefined || typeof maxTemp !== 'number' || !Number.isFinite(maxTemp)) return null
+  if (nozzle <= maxTemp) return null
+  return `${material?.trim() || 'This material'} needs a higher-temperature hotend`
+}
+
 /** Remembers the loaded material on the printer, exactly as the panel does, so either can change it. */
 export function saveMaterialCommand (name: string): string {
   const safe = name.replace(/["'\\]/g, '').trim()
