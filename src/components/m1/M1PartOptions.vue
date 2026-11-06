@@ -48,7 +48,7 @@
           type="button"
           class="m1-opts__chip"
           :data-tid="`m1-heat-${m.name}`"
-          @click="heatFor(m)"
+          @click="heatNozzle(m)"
         >
           {{ m.name }} {{ m.nozzle }}°
         </button>
@@ -67,7 +67,7 @@
           class="m1-opts__btn"
           :disabled="!hasMacro('LOAD_FILAMENT')"
           data-tid="m1-load"
-          @click="sendGcode('LOAD_FILAMENT')"
+          @click="runFilament('LOAD_FILAMENT')"
         >
           Load
         </button>
@@ -76,7 +76,7 @@
           class="m1-opts__btn"
           :disabled="!hasMacro('UNLOAD_FILAMENT')"
           data-tid="m1-unload"
-          @click="sendGcode('UNLOAD_FILAMENT')"
+          @click="runFilament('UNLOAD_FILAMENT')"
         >
           Unload
         </button>
@@ -157,7 +157,7 @@
           class="m1-opts__btn"
           :disabled="!hasMacro('LOAD_FILAMENT')"
           data-tid="m1-load"
-          @click="sendGcode('LOAD_FILAMENT')"
+          @click="runFilament('LOAD_FILAMENT')"
         >
           Load
         </button>
@@ -166,7 +166,7 @@
           class="m1-opts__btn"
           :disabled="!hasMacro('UNLOAD_FILAMENT')"
           data-tid="m1-unload"
-          @click="sendGcode('UNLOAD_FILAMENT')"
+          @click="runFilament('UNLOAD_FILAMENT')"
         >
           Unload
         </button>
@@ -198,12 +198,14 @@ import MaintenanceMixin from '@/mixins/maintenance'
 import { Y_BACK } from '@/services/machine/orientation'
 import type { CheckRow } from '@/mixins/maintenance'
 import type { MaterialChoice } from '@/services/control/model'
+import { findFilamentMacro, type FilamentMacro } from '@/services/quick-actions/model'
+import type { Macro } from '@/store/macros/types'
 import type { PartId } from '@/services/m1-3d/parts'
 
 /**
  * A selected part's options on the Overview's 3D M1 (control-mockups/v3/
  * overview-3d, Jack's OK 6 Nov). Every button calls what Control's own
- * buttons call: home, heatFor/setHeater, moveBy/moveByXY (each move through
+ * buttons call: home, setHeater, moveBy (each move through
  * the no-go planner, the shared hand-move lock and its waits), the
  * Maintenance bed-mesh check, and the LOAD_FILAMENT / UNLOAD_FILAMENT macros
  * the filament panel runs. Nothing here builds G-code of its own, and none
@@ -255,11 +257,42 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin) {
     return this.checks.find(c => c.id === 'bedMesh')
   }
 
+  get macroList (): Macro[] {
+    return ((this.$store.getters['macros/getMacros'] as Macro[]) ?? []).filter(m => typeof m.name === 'string')
+  }
+
+  /** Load and unload by any of their usual names, as Control's Filament card finds them. */
+  get loadMacro (): FilamentMacro | null {
+    return findFilamentMacro(this.macroList, 'load_filament', 'filament_load')
+  }
+
+  get unloadMacro (): FilamentMacro | null {
+    return findFilamentMacro(this.macroList, 'unload_filament', 'filament_unload')
+  }
+
   hasMacro (name: string): boolean {
-    return `gcode_macro ${name.toLowerCase()}` in (this.$store.state.printer.printer.configfile?.settings ?? {})
+    return name === 'LOAD_FILAMENT' ? !!this.loadMacro : !!this.unloadMacro
+  }
+
+  /**
+   * As Control's Filament card runs them (ControlFilament.run): idle only,
+   * and a macro that takes a TEMP is told the material's nozzle temperature.
+   */
+  runFilament (name: 'LOAD_FILAMENT' | 'UNLOAD_FILAMENT') {
+    const macro = name === 'LOAD_FILAMENT' ? this.loadMacro : this.unloadMacro
+    if (!macro || !this.controlReady || this.busy) return
+    const temp = this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
+    this.sendGcode(macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name)
+  }
+
+  /** On the toolhead a chip heats the nozzle only, to the material's temperature; the bed is the plate's. */
+  heatNozzle (m: MaterialChoice) {
+    if (this.busy || m.nozzle === null) return
+    this.setHeater(this.nozzle, m.nozzle)
   }
 
   nozzleOff () {
+    if (this.busy) return
     this.setHeater(this.nozzle, 0)
   }
 }

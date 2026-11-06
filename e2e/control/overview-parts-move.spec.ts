@@ -82,6 +82,41 @@ test('dragging the head shows a target and sends one planned move on release', a
   expect(line).toMatch(/^G1 X[\d.]+ Y[\d.]+ F\d+$/)
 })
 
+test('a drag that starts off the head, or with the right button, sends nothing', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await open('/')
+  await ready(page)
+  await page.getByTestId('m1-part-toolhead').focus()
+  const at = await partPoint(page)
+  const stage = await page.getByTestId('m1-parts').boundingBox()
+
+  // From empty stage, well away from the head.
+  await page.mouse.move(stage!.x + 30, stage!.y + stage!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(stage!.x + 120, stage!.y + stage!.height / 2 - 40, { steps: 5 })
+  await expect(page.getByTestId('m1-drag-target')).toHaveCount(0)
+  await page.mouse.up()
+
+  // From the head, but with the right button.
+  await page.mouse.move(at.x, at.y)
+  await page.mouse.down({ button: 'right' })
+  await page.mouse.move(at.x + 60, at.y, { steps: 5 })
+  await page.mouse.up({ button: 'right' })
+  await page.waitForTimeout(500)
+  expect(moveLines(printer.gcode)).toEqual([])
+})
+
+test('a heat chip on the toolhead heats the nozzle only', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await open('/')
+  await ready(page)
+  await page.getByTestId('m1-part-toolhead').focus()
+  const chip = page.getByTestId('m1-options-toolhead').locator('[data-tid^="m1-heat-"]').first()
+  await chip.click()
+  await expect.poll(() => printer.gcode.length).toBeGreaterThan(0)
+  expect(printer.gcode.every(g => /^SET_HEATER_TEMPERATURE HEATER=extruder TARGET=\d+$/.test(g))).toBe(true)
+})
+
 test('Esc in the middle of a drag drops it and sends nothing', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
   await open('/')

@@ -136,6 +136,8 @@ import type { M1Viewer } from '@/services/m1-3d/viewer'
 /** A drag on the toolhead (X and Y) or the plate (Z), in the printer's toolhead millimetres. */
 interface PartDrag {
   part: 'toolhead' | 'plate';
+  /** The printer the drag began on: a switch mid-drag drops it. */
+  printer: string;
   target: { X: number, Y: number } | { Z: number };
   /** For the plate: the bed's Z and the height the pointer met it at, when the drag began. */
   startZ?: number;
@@ -148,6 +150,8 @@ const HOVER_INTENT_MS = 120
 const LEAVE_MS = 600
 /** A press that moves less than this is a click or a tap, not a drag. */
 const TAP_PX = 10
+/** The furthest one drag can take the plate, either way, so a flick at a grazing angle can't send it to the end of its travel. */
+const PLATE_DRAG_MM = 50
 /** The label follows the part while the camera eases, for this long after a change. */
 const FOLLOW_MS = 700
 /** The label's distance from the stage's top and side, as its style has it. */
@@ -210,6 +214,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
   motionQuery: MediaQueryList | null = null
 
   drag: PartDrag | null = null
+  /** The pointer a drag may come from: one that went down on the selected part with the main button. Null for anything else. */
+  dragPointer: number | null = null
   dragPx: { from: { x: number, y: number }, to: { x: number, y: number } } | null = null
   axisMarks: { x: Array<{ v: number, px: number }>, y: Array<{ v: number, px: number }> } | null = null
   /** Why the last drag's move was refused, said in the label until the next drag. */
@@ -235,8 +241,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
   }
 
   get dragHint (): string {
-    if (this.movable === 'toolhead') return 'Drag to move the head'
-    if (this.movable === 'plate') return 'Drag up or down to move the plate'
+    if (this.movable === 'toolhead') return 'Drag the head to move it'
+    if (this.movable === 'plate') return 'Drag the plate up or down to move it'
     if ((this.selected === 'toolhead' || this.selected === 'plate') && this.interactive && !this.isHomed('XYZ')) return 'Home it to move it by hand'
     return ''
   }
@@ -303,38 +309,60 @@ export default class M1Parts extends Mixins(ControlMixin) {
     if (old) {
       old.removeEventListener('pointermove', this.onMove)
       old.removeEventListener('pointerleave', this.onLeave)
-      old.removeEventListener('pointerdown', this.onDown)
+      old.removeEventListener('pointerdown', this.onDown, true)
       old.removeEventListener('pointerup', this.onUp)
       old.removeEventListener('pointercancel', this.onCancel)
+      old.removeEventListener('lostpointercapture', this.onCancel)
       old.style.cursor = ''
+      old.style.touchAction = ''
     }
     this.bound = canvas
     if (!canvas) return
     canvas.addEventListener('pointermove', this.onMove)
     canvas.addEventListener('pointerleave', this.onLeave)
-    canvas.addEventListener('pointerdown', this.onDown)
+    // In the capture phase, so it runs before the viewer's own pointerdown and can keep a drag on a part from also turning the model.
+    canvas.addEventListener('pointerdown', this.onDown, true)
     canvas.addEventListener('pointerup', this.onUp)
     // A touch that becomes a page scroll ends here, not in pointerup.
     canvas.addEventListener('pointercancel', this.onCancel)
+    // Capture lost mid-drag (focus gone, a context menu): the drag ends and sends nothing.
+    canvas.addEventListener('lostpointercapture', this.onCancel)
   }
 
+  /** Ends any drag and sends nothing. */
   onCancel () {
     this.down = null
     this.dragged = false
     this.drag = null
     this.dragPx = null
+    this.dragPointer = null
+    this.viewer?.setOrbit(!this.topView)
   }
 
   onDown (e: PointerEvent) {
+    // A second finger, or any new press, ends a drag in progress without sending it.
+    if (this.drag || this.dragPointer !== null) {
+      this.onCancel()
+      return
+    }
     this.down = { x: e.clientX, y: e.clientY }
     this.dragged = false
-    if (this.movable && e.button === 0) this.bound?.setPointerCapture?.(e.pointerId)
+    // A part moves only by a drag that starts on it, with the main button.
+    const onPart = !!this.movable && e.button === 0 && e.isPrimary && this.viewer?.pick(e.clientX, e.clientY) === this.movable
+    this.viewer?.setOrbit(!onPart && !this.topView)
+    if (onPart) {
+      this.dragPointer = e.pointerId
+      this.bound?.setPointerCapture?.(e.pointerId)
+    }
   }
 
   onMove (e: PointerEvent) {
-    if (this.down && this.movable && (this.drag || Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > TAP_PX)) {
-      this.dragged = true
-      this.dragTo(e.clientX, e.clientY)
+    if (this.dragPointer !== null) {
+      if (e.pointerId !== this.dragPointer) return
+      if (this.drag || (this.down && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > TAP_PX)) {
+        this.dragged = true
+        this.dragTo(e.clientX, e.clientY)
+      }
       return
     }
     if (this.down && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > TAP_PX) {
@@ -382,8 +410,12 @@ export default class M1Parts extends Mixins(ControlMixin) {
   onUp (e: PointerEvent) {
     const start = this.down
     this.down = null
+    const dragPointer = this.dragPointer
+    this.dragPointer = null
+    this.viewer?.setOrbit(!this.topView)
     if (this.drag) {
-      this.release()
+      if (e.pointerId === dragPointer && e.button === 0) this.release()
+      else this.onCancel()
       return
     }
     if (!start || this.dragged || e.button !== 0) return
@@ -405,6 +437,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
       if (!this.drag) this.refused = ''
       this.drag = {
         part,
+        printer: this.drag?.printer ?? this.panelTarget,
         target: { X: clampMm(at.X, this.axisMin[0], this.axisMax[0]), Y: clampMm(at.Y, this.axisMin[1], this.axisMax[1]) }
       }
     } else {
@@ -414,10 +447,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
       if (!hit) return
       if (!this.drag) {
         this.refused = ''
-        this.drag = { part, target: { Z: z0 }, startZ: z0, startY: hit.y }
+        this.drag = { part, printer: this.panelTarget, target: { Z: z0 }, startZ: z0, startY: hit.y }
       }
-      const z = z0 + (zForPlateTop(hit.y) - zForPlateTop(this.drag.startY ?? hit.y))
-      this.drag = { ...this.drag, target: { Z: clampMm(z, this.axisMin[2], this.axisMax[2]) } }
+      const by = Math.max(-PLATE_DRAG_MM, Math.min(PLATE_DRAG_MM, zForPlateTop(hit.y) - zForPlateTop(this.drag.startY ?? hit.y)))
+      this.drag = { ...this.drag, target: { Z: clampMm(z0 + by, this.axisMin[2], this.axisMax[2]) } }
     }
     this.follow()
   }
@@ -432,12 +465,15 @@ export default class M1Parts extends Mixins(ControlMixin) {
     const drag = this.drag
     this.drag = null
     this.dragPx = null
-    if (!drag || !this.movable) return
+    // Only to the printer the drag began on, and only while that part can still be moved.
+    if (!drag || this.movable !== drag.part || drag.printer !== this.panelTarget) return
     const offset = this.gcodeOffset ?? [0, 0, 0]
     const t = drag.target
+    // moveTo checks a G-code value against the axis limits, so the target is kept inside them as G-code.
+    const gcode = (v: number, i: number) => clampMm(v - offset[i], this.axisMin[i], this.axisMax[i])
     const place = 'Z' in t
-      ? { Z: Math.round((t.Z - offset[2]) * 1000) / 1000 }
-      : { X: Math.round((t.X - offset[0]) * 1000) / 1000, Y: Math.round((t.Y - offset[1]) * 1000) / 1000 }
+      ? { Z: gcode(t.Z, 2) }
+      : { X: gcode(t.X, 0), Y: gcode(t.Y, 1) }
     const sent = this.moveTo(place)
     if (!sent) this.refused = 'That move was refused; see the message.'
   }
@@ -470,18 +506,21 @@ export default class M1Parts extends Mixins(ControlMixin) {
   @Watch('topView')
   onTopView (top: boolean) {
     this.viewer?.setView(top ? 'top' : 'free')
+    this.viewer?.setOrbit(!top)
     this.follow()
+  }
+
+  /** Another printer: a drag on this one ends, sending nothing. */
+  @Watch('panelTarget')
+  onPrinterChange () {
+    if (this.drag || this.dragPointer !== null) this.onCancel()
   }
 
   /** A selected part that can be dragged takes the drag from the model: the model stops turning, and touch stops scrolling the page. */
   @Watch('movable')
   onMovable (part: 'toolhead' | 'plate' | null) {
-    this.viewer?.setOrbit(!part)
     if (this.bound) this.bound.style.touchAction = part ? 'none' : ''
-    if (!part && this.drag) {
-      this.drag = null
-      this.dragPx = null
-    }
+    if (!part && (this.drag || this.dragPointer !== null)) this.onCancel()
   }
 
   select (part: PartId) {
@@ -513,10 +552,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
   onEscape (e: KeyboardEvent) {
     if (e.key !== 'Escape') return
     // Esc mid-drag drops the drag and sends nothing; otherwise it lets the part go.
-    if (this.drag) {
-      this.drag = null
-      this.dragPx = null
-      this.down = null
+    if (this.drag || this.dragPointer !== null) {
+      this.onCancel()
       return
     }
     if (!this.selected) return

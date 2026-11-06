@@ -851,7 +851,9 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       const ndc = new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1)
       // The view offset (the machine centred, then shifted) is part of the camera's projection, so the ray follows it.
       raycaster.setFromCamera(ndc, camera)
-      const targets = PART_IDS.flatMap(id => partMeshes(rig.root, id)).filter(m => m.visible)
+      // Only what is drawn: the plate hidden for the top-down view must not catch the ray.
+      const shown = (o: THREE.Object3D | null): boolean => !o || (o.visible && shown(o.parent))
+      const targets = PART_IDS.flatMap(id => partMeshes(rig.root, id)).filter(m => shown(m))
       const hit = raycaster.intersectObjects(targets, false)[0]
       return hit ? partOf(hit.object) : null
     },
