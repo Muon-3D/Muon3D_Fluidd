@@ -1,4 +1,4 @@
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import TypedCommandsMixin from './typed-commands'
 import { cloudState } from '@/services/muon-cloud/state'
 import ToolheadMixin from './toolhead'
@@ -26,6 +26,8 @@ import {
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
+import { handMoveSettling, headStatus, lockHandMove, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
+import { EventBus } from '@/eventBus'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
 
@@ -254,19 +256,120 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     return !!this.$store.state.config.uiSettings.general.axis?.[axis.toLowerCase()]?.inverted
   }
 
-  /** A step along one axis, cut short at the machine's limits. */
+  /**
+   * The no-go regions this printer declares in [bed_mesh], read live. Until
+   * the printer's config has loaded at all, the regions are unknown: treated
+   * as unreadable, so only raising the head is allowed.
+   */
+  get noGo (): NoGoConfig | null | 'invalid' {
+    const settings = this.$store.state.printer.printer.configfile?.settings
+    if (!settings || !Object.keys(settings).length) return 'invalid'
+    return readNoGo(settings.bed_mesh)
+  }
+
+  /**
+   * Toolhead minus G-code position, per axis: the mesh and G-code offsets now
+   * in force. Planning is done in toolhead (real) coordinates; a move is sent
+   * in G-code coordinates, so a planned place is sent minus this. Null when
+   * the G-code position isn't known.
+   */
+  get gcodeOffset (): [number, number, number] | null {
+    const gcode = this.$store.state.printer.printer.gcode_move?.gcode_position as number[] | undefined
+    if (!Array.isArray(gcode)) return null
+    const d = [0, 1, 2].map(i => Number(this.position[i]) - Number(gcode[i]))
+    return d.every(Number.isFinite) ? d as [number, number, number] : null
+  }
+
+  /**
+   * Why a hand move must wait, on a printer with no-go regions, or '' if it
+   * can go: the head position isn't this connection's yet, a G-code script is
+   * still running (a move sent now would run from wherever it leaves the
+   * head), or the last hand move hasn't been reported. Read fresh, never cached.
+   */
+  handMoveWait (): string {
+    if (this.noGo === null) return ''
+    if (!headStatus.fresh) return 'Wait for the printer to report where the head is.'
+    if (scriptsInFlight.count > 0) return 'Wait for the printer to finish what it is doing.'
+    if (handMoveSettling(this.$store.state.printer.printer.gcode_move?.gcode_position, this.panelTarget)) return 'Wait for the head to finish moving.'
+    return ''
+  }
+
+  /** Losing control (disconnect, Klippy not ready, sign-out) ends any wait: the next move plans afresh. */
+  @Watch('controlReady')
+  onControlReadyForHandMove (ready: boolean) {
+    if (!ready) {
+      releaseHandMove()
+      // Klippy gone (restart, shutdown, disconnect): it is subscribed afresh
+      // when it comes back, so wait for that status before planning. (Losing
+      // control for other reasons keeps the same subscription.)
+      if (!this.klippyReady || !this.klippyConnected) headStatus.fresh = false
+    }
+  }
+
+  /**
+   * Plan a move to `realTo` (toolhead coordinates) against the bed's no-go
+   * regions. Steps come back in G-code coordinates, ready to send.
+   */
+  planHandMove (realTo: [number, number, number]): MovePlan {
+    const noGo = this.noGo
+    const limits = { min: this.axisMin.slice(0, 3) as [number, number, number], max: this.axisMax.slice(0, 3) as [number, number, number] }
+    const from = { x: Number(this.position[0]), y: Number(this.position[1]), z: Number(this.position[2]) }
+    const to = { x: realTo[0], y: realTo[1], z: realTo[2] }
+    if (noGo === null) return planMove(from, to, null, limits)
+    const offset = this.gcodeOffset
+    if (!offset) return { ok: false, reason: 'The head position is not known.' }
+    const plan = planMove(from, to, noGo, limits, meshSpan(this.$store.state.printer.printer.bed_mesh))
+    if (!plan.ok) return plan
+    const toGcode = (p: Place): Place => {
+      const out: Place = {}
+      ;(['X', 'Y', 'Z'] as Axis[]).forEach((a, i) => { if (p[a] !== undefined) out[a] = Math.round((p[a] as number - offset[i]) * 1000) / 1000 })
+      return out
+    }
+    return { ...plan, steps: plan.steps.map(toGcode) }
+  }
+
+  refuseMove (reason: string) {
+    EventBus.$emit(reason, { type: 'warning' })
+  }
+
+  /** On a printer with no-go regions, make the next hand move wait for this one to land. */
+  markHandMove (realTo: number[]) {
+    const offset = this.gcodeOffset
+    if (this.noGo === null || !offset) return
+    lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000), this.panelTarget)
+  }
+
+  /** Send a planned move: lift, across, down, as one absolute script. */
+  sendPlannedMoves (steps: Place[]) {
+    const line = (p: Place) => {
+      const words = (['X', 'Y', 'Z'] as Axis[]).filter(a => p[a] !== undefined).map(a => `${a}${p[a]}`)
+      const rate = p.Z !== undefined ? this.zSpeed : this.xySpeed
+      return `G1 ${words.join(' ')} F${rate * 60}`
+    }
+    this.sendGcode(['SAVE_GCODE_STATE NAME=_ui_movement', 'G90', ...steps.map(line), 'RESTORE_GCODE_STATE NAME=_ui_movement'].join('\n'))
+  }
+
+  /** A step along one axis, cut short at the machine's limits, kept out of the bed's no-go regions. */
   moveBy (axis: Axis, distance: number) {
     if (!this.controlReady || this.busy || !this.isHomed(axis) || !Number.isFinite(distance)) return
     if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
+    const wait = this.handMoveWait()
+    if (wait) { this.refuseMove(wait); return }
     const i = 'XYZ'.indexOf(axis)
     const signed = this.inverted(axis) ? -distance : distance
     const target = clampTo(this.position[i] + signed, this.axisMin[i], this.axisMax[i])
     const by = Math.round((target - this.position[i]) * 1000) / 1000
     if (!by) return
-    this.sendMoveGcode(`${axis}${by}`, axis === 'Z' ? this.zSpeed : this.xySpeed)
+    const realTo = [0, 1, 2].map(j => Number(this.position[j])) as [number, number, number]
+    realTo[i] = target
+    const plan = this.planHandMove(realTo)
+    if (!plan.ok) { this.refuseMove(plan.reason); return }
+    if (plan.lifted) this.sendPlannedMoves(plan.steps)
+    else this.sendMoveGcode(`${axis}${by}`, axis === 'Z' ? this.zSpeed : this.xySpeed)
+    this.markHandMove(realTo)
   }
 
-  /** To a place, inside the machine. */
+  /** To a place given in G-code coordinates, inside the machine and out of the bed's no-go regions. */
   moveTo (place: { X?: number, Y?: number, Z?: number }) {
     if (!this.controlReady || this.busy || ![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
     const parts: string[] = []
@@ -279,7 +382,16 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
       parts.push(`${axis}${value}`)
       if (axis === 'Z') rate = Math.min(rate, this.zSpeed)
     }
-    if (parts.length) this.sendMoveGcode(parts.join(' '), rate, true)
+    if (!parts.length) return
+    const wait = this.handMoveWait()
+    if (wait) { this.refuseMove(wait); return }
+    const offset = this.gcodeOffset ?? [0, 0, 0]
+    const realTo = (['X', 'Y', 'Z'] as Axis[]).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
+    const plan = this.planHandMove(realTo)
+    if (!plan.ok) { this.refuseMove(plan.reason); return }
+    if (plan.lifted) this.sendPlannedMoves(plan.steps)
+    else this.sendMoveGcode(parts.join(' '), rate, true)
+    this.markHandMove(realTo)
   }
 
   homeWait (axes = ''): string {

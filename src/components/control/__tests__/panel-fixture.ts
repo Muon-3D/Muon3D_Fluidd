@@ -5,7 +5,7 @@ export function panelStore () {
   const printer = Vue.observable<any>({
     toolhead: { position: [100, 87, 12.4, 0], axis_minimum: [0, -10, 0], axis_maximum: [200, 174, 160], homed_axes: 'xyz', max_velocity: 800, max_accel: 20000, square_corner_velocity: 7, minimum_cruise_ratio: 0.5 },
     gcode_move: { speed_factor: 1, extrude_factor: 1 },
-    configfile: { settings: {}, config: {} },
+    configfile: { settings: { printer: { kinematics: 'cartesian' } }, config: {} },
     firmware_retraction: { retract_length: 0.8, retract_speed: 35, unretract_extra_length: 0, unretract_speed: 35 }
   })
   const extruder = Vue.observable<any>({ temperature: 215, can_extrude: true, min_extrude_temp: 170, pressure_advance: 0.076, config: { max_extrude_only_velocity: 20, max_extrude_only_distance: 50 } })

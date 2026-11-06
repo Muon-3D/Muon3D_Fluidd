@@ -313,6 +313,8 @@ async def http_aux(request):
     reason = refused(request.path)
     if reason:
         return web.json_response({'error': {'code': 403, 'message': reason}}, status=403)
+    if tail == '/openapi.json':
+        return web.json_response({'openapi': '3.0.0', 'info': {'title': 'aux', 'version': '0'}, 'paths': {}})
     if tail == '/wifi/current':
         return web.json_response(NETWORKS[0])
     if tail in ('/wifi/show', '/wifi/scan'):
@@ -377,6 +379,12 @@ async def http_generic(request):
     path = request.path
     if MOCK_ACCESS and path.startswith('/server/muon/access/'):
         return await http_access(request, path.rsplit('/', 1)[1])
+    # The printer's own name: Control gives its pages the address /boxwood-367a/...
+    if path == '/server/muon/identity':
+        ident = {'name': 'Boxwood', 'display': 'Boxwood', 'derived_name': 'boxwood', 'suffix': '367a', 'endpoint_id': 'mockendpointboxwood367a'}
+        return web.json_response({'result': ident, **ident})
+    if path == '/server/muon/link':
+        return web.json_response({'phase': 'unsupported'})
     if path == '/server/info':
         return web.json_response({'result': server_info()})
     if path == '/server/muon/protection':

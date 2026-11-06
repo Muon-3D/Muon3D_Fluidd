@@ -12,6 +12,7 @@
 import { test as base, expect, type Page } from '@playwright/test'
 import { modelService, serveModels, type ModelServiceState } from './fakes/models'
 import { consoleState, serveConsole, signIn, useConsole, type ConsoleState } from './fakes/console'
+import { MOCK_PORT } from './ports'
 
 /** The mock printer's page prefix: Control puts a printer's pages under its name. */
 export const PRINTER = '/boxwood-367a'
@@ -21,6 +22,7 @@ interface Options {
 }
 
 interface Fixtures {
+  printerAddress: void;
   models: ModelServiceState;
   account: ConsoleState;
   open: (path: string) => Promise<void>;
@@ -32,6 +34,19 @@ export const test = base.extend<Options & Fixtures>({
     const state = modelService()
     await serveModels(page, state)
     await use(state)
+  }, { auto: true }],
+  // Control finds its printer from config.json: point it at this run's mock
+  // only (localhost blacklisted, so it doesn't also probe :7125, where another
+  // run's mock may be).
+  printerAddress: [async ({ page }, use) => {
+    await page.route('**/config.json', async route => {
+      const response = await route.fetch()
+      const config = await response.json()
+      config.blacklist = [...(config.blacklist ?? []), 'localhost', '127.0.0.1']
+      config.endpoints = [`http://localhost:${MOCK_PORT}`]
+      await route.fulfill({ response, json: config })
+    })
+    await use()
   }, { auto: true }],
   account: [async ({ page, signedIn }, use) => {
     const state = consoleState()
