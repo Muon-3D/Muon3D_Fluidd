@@ -7,6 +7,30 @@
     :data-hovered="hovered || ''"
     :data-view="topView ? 'top' : 'free'"
   >
+    <div
+      class="m1-parts__chips"
+      role="toolbar"
+      :aria-label="`${printerName}, 3D view: parts`"
+      @keydown="onKeys"
+    >
+      <button
+        v-for="(id, i) in ids"
+        :key="id"
+        ref="chips"
+        type="button"
+        class="m1-parts__chip"
+        :class="{ 'm1-parts__chip--on': selected === id }"
+        :data-tid="`m1-part-${id}`"
+        :aria-pressed="selected === id ? 'true' : 'false'"
+        :aria-label="`${names[id]}, ${facts[id]}`"
+        :tabindex="i === focusIndex ? 0 : -1"
+        @click="select(id)"
+        @focus="onChipFocus(id)"
+      >
+        {{ names[id] }}
+      </button>
+    </div>
+
     <!-- Looking straight down at the head: X along the bottom, Y up the left, in the printer's millimetres. -->
     <div
       v-if="topView && axisMarks"
@@ -98,30 +122,6 @@
         :part="selected"
       />
     </div>
-
-    <div
-      class="m1-parts__chips"
-      role="toolbar"
-      :aria-label="`${printerName}, 3D view: parts`"
-      @keydown="onKeys"
-    >
-      <button
-        v-for="(id, i) in ids"
-        :key="id"
-        ref="chips"
-        type="button"
-        class="m1-parts__chip"
-        :class="{ 'm1-parts__chip--on': selected === id }"
-        :data-tid="`m1-part-${id}`"
-        :aria-pressed="selected === id ? 'true' : 'false'"
-        :aria-label="`${names[id]}, ${facts[id]}`"
-        :tabindex="i === focusIndex ? 0 : -1"
-        @click="select(id)"
-        @focus="onChipFocus(id)"
-      >
-        {{ names[id] }}
-      </button>
-    </div>
   </div>
 </template>
 
@@ -130,10 +130,14 @@ import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import ControlMixin from '@/mixins/control'
 import M1PartOptions from './M1PartOptions.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
-import { HEAD_PLANE_Y, clampMm, headToWorld, plateTopForZ, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
+import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
 
 /** A drag on the toolhead (X and Y) or the plate (Z), in the printer's toolhead millimetres. */
+const round = (p: { x: number, y: number }) => ({ x: Math.round(p.x), y: Math.round(p.y) })
+type Px = { from: { x: number, y: number }, to: { x: number, y: number } } | null
+const samePx = (a: Px, b: Px) => a === b || (!!a && !!b && a.from.x === b.from.x && a.from.y === b.from.y && a.to.x === b.to.x && a.to.y === b.to.y)
+
 interface PartDrag {
   part: 'toolhead' | 'plate';
   /** The printer the drag began on: a switch mid-drag drops it. */
@@ -150,10 +154,6 @@ const HOVER_INTENT_MS = 120
 const LEAVE_MS = 600
 /** A press that moves less than this is a click or a tap, not a drag. */
 const TAP_PX = 10
-/** The furthest one drag can take the plate, either way, so a flick at a grazing angle can't send it to the end of its travel. */
-const PLATE_DRAG_MM = 50
-/** A drag stops the plate this far from the nozzle (Z 0 is the tip touching it); the Plate down button still goes as Control's does. */
-const PLATE_DRAG_FLOOR_MM = 2
 /** The label follows the part while the camera eases, for this long after a change. */
 const FOLLOW_MS = 700
 /** The label's distance from the stage's top and side, as its style has it. */
@@ -452,8 +452,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
         this.refused = ''
         this.drag = { part, printer: this.panelTarget, target: { Z: z0 }, startZ: z0, startY: hit.y }
       }
-      const by = Math.max(-PLATE_DRAG_MM, Math.min(PLATE_DRAG_MM, zForPlateTop(hit.y) - zForPlateTop(this.drag.startY ?? hit.y)))
-      this.drag = { ...this.drag, target: { Z: clampMm(z0 + by, Math.max(this.axisMin[2], Math.min(z0, PLATE_DRAG_FLOOR_MM)), this.axisMax[2]) } }
+      const by = zForPlateTop(hit.y) - zForPlateTop(this.drag.startY ?? hit.y)
+      this.drag = { ...this.drag, target: { Z: plateDragZ(z0, by, this.axisMin[2], this.axisMax[2]) } }
     }
     this.follow()
   }
@@ -470,15 +470,21 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.dragPx = null
     // Only to the printer the drag began on, and only while that part can still be moved.
     if (!drag || this.movable !== drag.part || drag.printer !== this.panelTarget) return
-    const offset = this.gcodeOffset ?? [0, 0, 0]
-    const t = drag.target
-    // moveTo checks a G-code value against the axis limits, so the target is kept inside them as G-code.
-    const gcode = (v: number, i: number) => clampMm(v - offset[i], this.axisMin[i], this.axisMax[i])
-    const place = 'Z' in t
-      ? { Z: gcode(t.Z, 2) }
-      : { X: gcode(t.X, 0), Y: gcode(t.Y, 1) }
+    const place = releasePlace(drag.target, this.gcodeOffset ?? [0, 0, 0], this.axisMin, this.axisMax)
+    // Why it can't go, said in the label: moveTo toasts only the planner's refusals.
+    const wait = this.handMoveWait()
     const sent = this.moveTo(place)
-    if (!sent) this.refused = 'That move was refused; see the message.'
+    if (!sent) this.refused = `Not moved: ${wait || this.refusalFor(place)}`
+  }
+
+  /** Why moveTo would turn this place down, in words. */
+  refusalFor (place: { X?: number, Y?: number, Z?: number }): string {
+    if (!this.controlReady) return this.controlLock
+    if (this.busy) return 'the printer is busy.'
+    const offset = this.gcodeOffset ?? [0, 0, 0]
+    const realTo = (['X', 'Y', 'Z'] as const).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
+    const plan = this.planHandMove(realTo)
+    return plan.ok ? 'that is outside what the printer can reach.' : plan.reason
   }
 
   /** The drag's line and target, and the axes' marks, as drawn now. */
@@ -493,14 +499,17 @@ export default class M1Parts extends Mixins(ControlMixin) {
         : headToWorld(t.X, t.Y)
       const to = viewer.project(world)
       const from = viewer.anchor(drag.part)
-      this.dragPx = to && from ? { from, to } : null
+      const next = to && from ? { from: round(from), to: round(to) } : null
+      if (!samePx(next, this.dragPx)) this.dragPx = next
     }
     if (this.topView) {
       const [x0, y0] = [this.axisMin[0], this.axisMin[1]]
       const [x1, y1] = [this.axisMax[0], this.axisMax[1]]
       const xs = ticks(Math.max(0, x0), x1).map(v => ({ v, px: viewer.project(headToWorld(v, y1))?.x ?? NaN }))
       const ys = ticks(Math.max(0, y0), y1).map(v => ({ v, px: viewer.project(headToWorld(x0, v))?.y ?? NaN }))
-      this.axisMarks = { x: xs.filter(m => Number.isFinite(m.px)), y: ys.filter(m => Number.isFinite(m.px)) }
+      const next = { x: xs.filter(m => Number.isFinite(m.px)).map(m => ({ v: m.v, px: Math.round(m.px) })), y: ys.filter(m => Number.isFinite(m.px)).map(m => ({ v: m.v, px: Math.round(m.px) })) }
+      // Written only when a mark moves, so an idle top-down view doesn't render every frame.
+      if (JSON.stringify(next) !== JSON.stringify(this.axisMarks)) this.axisMarks = next
     } else if (this.axisMarks) {
       this.axisMarks = null
     }
@@ -554,6 +563,9 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   onEscape (e: KeyboardEvent) {
     if (e.key !== 'Escape') return
+    // Not while typing somewhere or inside a dialog: that Esc is theirs.
+    const t = e.target as HTMLElement | null
+    if (t && t !== document.body && !this.$el.contains(t) && (t.closest('input, textarea, select, [contenteditable], .v-dialog, [role="dialog"]'))) return
     // Esc mid-drag drops the drag and sends nothing; otherwise it lets the part go.
     if (this.drag || this.dragPointer !== null) {
       this.onCancel()
@@ -607,7 +619,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
     if (this.followFrame) return
     const step = () => {
       const part = this.selected
-      this.anchor = part ? this.viewer?.anchor(part) ?? null : null
+      const at = part ? this.viewer?.anchor(part) ?? null : null
+      const next = at ? round(at) : null
+      // Written only when it moves a pixel: a selected head that sits still renders nothing.
+      if (next?.x !== this.anchor?.x || next?.y !== this.anchor?.y) this.anchor = next
       this.placeLabel()
       this.placeDrag()
       // A head or plate that may move keeps its line followed for as long as it is selected.

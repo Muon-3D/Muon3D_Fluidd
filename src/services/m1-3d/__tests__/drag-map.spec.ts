@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ACCURATE_RIG, placeAccurate } from '../accurate/klipper-map'
-import { clampMm, headToWorld, plateTopForZ, ticks, worldToHead, zForPlateTop } from '../drag-map'
+import { clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '../drag-map'
 
 describe('drag-map', () => {
   it('reads back the Klipper X and Y it drew', () => {
@@ -46,5 +46,37 @@ describe('drag-map', () => {
   it('marks every 50 mm along an axis', () => {
     expect(ticks(0, 200.1)).toEqual([0, 50, 100, 150, 200])
     expect(ticks(-10, 174.1)).toEqual([0, 50, 100, 150])
+  })
+})
+
+describe('plateDragZ', () => {
+  it('caps one drag at 50 mm either way', () => {
+    expect(plateDragZ(20, 400, 0, 160)).toBe(70)
+    expect(plateDragZ(100, -400, 0, 160)).toBe(50)
+  })
+  it('stops 2 mm off the nozzle, or where the plate already is if lower', () => {
+    expect(plateDragZ(10, -30, 0, 160)).toBe(2)
+    expect(plateDragZ(1, -30, 0, 160)).toBe(1)
+    expect(plateDragZ(10, -30, 5, 160)).toBe(5)
+  })
+  it('stays inside the axis', () => {
+    expect(plateDragZ(150, 40, 0, 160)).toBe(160)
+  })
+})
+
+describe('releasePlace', () => {
+  const min = [0, -10, -4]
+  const max = [200.1, 174.1, 160]
+  it('sends the target in G-code coordinates', () => {
+    expect(releasePlace({ X: 120, Y: 80 }, [0.5, -0.2, 0.1], min, max)).toEqual({ X: 119.5, Y: 80.2 })
+    expect(releasePlace({ Z: 12 }, [0, 0, 0.3], min, max)).toEqual({ Z: 11.7 })
+  })
+  it('keeps the G-code value inside the limits moveTo checks', () => {
+    expect(releasePlace({ X: 200.1, Y: 174.1 }, [-1, -1, 0], min, max)).toEqual({ X: 200.1, Y: 174.1 })
+    expect(releasePlace({ X: -5, Y: -20 }, [0, 0, 0], min, max)).toEqual({ X: 0, Y: -10 })
+  })
+  it('never sends a toolhead target as Z or the other way round', () => {
+    expect(Object.keys(releasePlace({ Z: 5 }, [0, 0, 0], min, max))).toEqual(['Z'])
+    expect(Object.keys(releasePlace({ X: 5, Y: 5 }, [0, 0, 0], min, max)).sort()).toEqual(['X', 'Y'])
   })
 })
