@@ -464,6 +464,7 @@
 
 <script lang="ts">
 import { Component, Mixins, Watch } from 'vue-property-decorator'
+import consola from 'consola'
 import JobsMixin, { type JobFile } from '@/mixins/jobs'
 import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
