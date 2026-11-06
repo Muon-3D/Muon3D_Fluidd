@@ -7,6 +7,9 @@ import GeneralSettings from '../GeneralSettings.vue'
 import ThemeSettings from '../ThemeSettings.vue'
 import SoftwareSettings from '../SoftwareSettings.vue'
 import Settings from '@/views/Settings.vue'
+import { updateWatch, installStarted } from '@/services/updates/watch'
+
+import { BOXWOOD_STAGED } from '@/services/updates/__tests__/fixtures/boxwood-staged'
 
 vi.mock('@/services/updates/watch', () => ({
   updateWatch: { status: null, remembered: null }, currentOutcome: () => null, installStarted: vi.fn(), poll: vi.fn()
@@ -65,8 +68,8 @@ interface InstallState {
   printerState: string;
 }
 
-function softwareInstall (state: InstallState, confirm: () => Promise<boolean>) {
-  const status = () => ({
+function softwareInstall (state: InstallState, confirm: () => Promise<boolean>, statusOver: Record<string, unknown> | null = null, ownRemembered = false) {
+  const status = () => statusOver ?? ({
     update_available: true,
     current_version: '1.0.0',
     target_version: state.version,
@@ -90,7 +93,7 @@ function softwareInstall (state: InstallState, confirm: () => Promise<boolean>) 
     computed: {
       printerName: () => 'M1',
       status,
-      remembered: () => null,
+      ...(ownRemembered ? {} : { remembered: () => null }),
       enableNotifications: () => true,
       others: () => [],
       commandTarget: () => state.target,
@@ -285,6 +288,69 @@ describe('Settings in one layout', () => {
     await (wrapper.vm as any).install()
     expect(update).toHaveBeenCalledOnce()
     expect(update).toHaveBeenCalledWith('muonos')
+    wrapper.destroy()
+  })
+
+  it('sends no install or commit call until Install is pressed and confirmed', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: '2.0.0', printerState: 'standby' })
+    const confirm = vi.fn().mockResolvedValue(false)
+    const wrapper = softwareInstall(state, confirm)
+    // Mounted, polled, rendered: nothing sent.
+    expect(update).not.toHaveBeenCalled()
+    expect(installStarted).not.toHaveBeenCalled()
+    // Pressed, then declined: nothing sent.
+    await (wrapper.vm as any).install()
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(update).not.toHaveBeenCalled()
+    expect(installStarted).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('refuses a one-tap install from a staged record that cannot prove the spare slot (empty slot fingerprint, KAN-1364)', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: BOXWOOD_STAGED.target_version as string, printerState: 'standby' })
+    const confirm = vi.fn().mockResolvedValue(true)
+    const wrapper = softwareInstall(state, confirm, BOXWOOD_STAGED as never)
+
+    await (wrapper.vm as any).install()
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain("Install it from the printer's screen.")
+    wrapper.destroy()
+  })
+
+  it('offers the install once the staged record carries a slot fingerprint', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: BOXWOOD_STAGED.target_version as string, printerState: 'standby' })
+    const proven = { ...BOXWOOD_STAGED, stage: { ...BOXWOOD_STAGED.stage, slot_fingerprint: { 'system-b': 'sha512-256:abc' } } }
+    const wrapper = softwareInstall(state, vi.fn().mockResolvedValue(true), proven as never)
+    await (wrapper.vm as any).install()
+    expect(update).toHaveBeenCalledOnce()
+    wrapper.destroy()
+  })
+
+  it('shows the staged update as "Update ready to install", not "Checking the update"', () => {
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: BOXWOOD_STAGED.target_version as string, printerState: 'standby' })
+    const wrapper = softwareInstall(state, vi.fn(), BOXWOOD_STAGED as never)
+    expect((wrapper.vm as any).chip).toEqual({ text: 'Update ready to install', tone: 'warn' })
+    wrapper.destroy()
+  })
+
+  it('does not let a stale remembered install block Install', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    Object.assign(updateWatch, {
+      answered: false,
+      now: Date.now(),
+      remembered: { jobId: 'j1', phase: 'installing', from: '1.0', to: '1.1', progress: 40, seenAt: Date.now() - 3 * 3_600_000, lostAt: null, budgetMs: 1_200_000 }
+    })
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: '2.0.0', printerState: 'standby' })
+    const wrapper = softwareInstall(state, vi.fn().mockResolvedValue(true), null, true)
+    expect((wrapper.vm as any).active).toBe(false)
+    await (wrapper.vm as any).install()
+    expect(update).toHaveBeenCalledOnce()
+    updateWatch.remembered = null
     wrapper.destroy()
   })
 })
