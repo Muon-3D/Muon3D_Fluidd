@@ -30,6 +30,7 @@
       :printer-name="printerName"
       :printing="printing"
       @back="$emit('collection-back')"
+      @deleted="$emit('collection-deleted')"
       @changed="readCollections"
       @print="print"
       @open="openInCollection"
@@ -758,11 +759,10 @@ export default class MuonLibrary extends Vue {
   }
 
   /** A card on a collection's page: its quick look can take it out of that collection. */
-  openInCollection (card: ShelfCard) {
-    const c = this.collections.find(x => x.id === this.collection)
+  openInCollection (card: ShelfCard, from: { id: string, name: string } | null) {
     const saveId = saveIdOf(card)
     this.open(card)
-    this.lookingIn = c && saveId ? { id: c.id, name: c.name, saveId } : null
+    this.lookingIn = from && saveId ? { id: from.id, name: from.name, saveId } : null
   }
 
   /** Taken out of a collection from its quick look: the page and the tiles read again. */

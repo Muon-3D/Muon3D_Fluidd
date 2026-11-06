@@ -63,7 +63,7 @@ describe('Library v3 collection: your order', () => {
     expect(titles(w)).toEqual(['Print a', 'Print b', 'Print c'])
   })
 
-  it('Alt + → moves a print and sends the whole new order; a refusal puts it back and says so', async () => {
+  it('Alt + → moves a print and sends the whole new order; a refusal shows what the service holds, and says why', async () => {
     const c = client()
     const w = await page(c)
     await w.find('[data-tid="library-collection-cell-0"]').trigger('keydown', { key: 'ArrowRight', altKey: true })
@@ -71,11 +71,45 @@ describe('Library v3 collection: your order', () => {
     expect(titles(w)).toEqual(['Print b', 'Print a', 'Print c'])
     expect(c.reorderCollection).toHaveBeenCalledWith('c1', ['s-b', 's-a', 's-c'])
 
+    // The service now holds b, a, c; the next move is refused, so the page reads it again.
+    c.detail.items = [item('b'), item('a'), item('c')]
     c.reorderCollection.mockRejectedValueOnce(new Error('No'))
     await w.find('[data-tid="library-collection-cell-2"]').trigger('keydown', { key: 'ArrowLeft', altKey: true })
     await flush()
     expect(titles(w)).toEqual(['Print b', 'Print a', 'Print c'])
     expect(w.find('[data-tid="library-collection-note"]').exists()).toBe(true)
+    // Focus stays on the print that was moved, where it is now.
+    expect(document.activeElement?.getAttribute('data-tid')).toBe('library-collection-cell-2')
+  })
+
+  it('two quick moves are sent one after the other, so the service ends on the last', async () => {
+    const answers: Array<() => void> = []
+    const c = client({ reorderCollection: vi.fn(() => new Promise<null>(resolve => answers.push(() => resolve(null)))) })
+    const w = await page(c)
+    await w.find('[data-tid="library-collection-cell-0"]').trigger('keydown', { key: 'ArrowRight', altKey: true })
+    await w.find('[data-tid="library-collection-cell-1"]').trigger('keydown', { key: 'ArrowRight', altKey: true })
+    await flush()
+    // The second waits for the first.
+    expect(c.reorderCollection).toHaveBeenCalledTimes(1)
+    answers[0]()
+    await flush()
+    expect(c.reorderCollection).toHaveBeenCalledTimes(2)
+    expect(c.reorderCollection).toHaveBeenLastCalledWith('c1', ['s-b', 's-c', 's-a'])
+    answers[1]()
+    await flush()
+    expect(titles(w)).toEqual(['Print b', 'Print c', 'Print a'])
+  })
+
+  it('a reload while a reorder is being sent keeps the order you made', async () => {
+    let answer: () => void = () => {}
+    const c = client({ reorderCollection: vi.fn(() => new Promise<null>(resolve => { answer = () => resolve(null) })) })
+    const w = await page(c)
+    await w.find('[data-tid="library-collection-cell-0"]').trigger('keydown', { key: 'ArrowRight', altKey: true })
+    await (w.vm as unknown as { load: () => Promise<void> }).load()
+    await flush()
+    expect(titles(w)).toEqual(['Print b', 'Print a', 'Print c'])
+    answer()
+    await flush()
   })
 
   it('does not reorder while sorted by Recent or Name', async () => {
@@ -106,6 +140,27 @@ describe('Library v3 collection: name, who can see it, delete', () => {
     expect(w.emitted('changed')).toHaveLength(2)
   })
 
+  it('Escape leaves Rename without changing it; an answer for another collection is not shown on this one', async () => {
+    let answer: (value: object) => void = () => {}
+    const c = client({ updateCollection: vi.fn(() => new Promise(resolve => { answer = resolve })) })
+    const w = await page(c)
+    await w.find('[data-tid="library-collection-rename"]').trigger('click')
+    await flush()
+    await w.find('[data-tid="library-collection-rename-input"]').setValue('Garage')
+    await w.find('[data-tid="library-collection-rename-input"]').trigger('keydown', { key: 'Escape' })
+    expect(w.find('[data-tid="library-collection-title"]').text()).toBe('Workshop')
+    expect(c.updateCollection).not.toHaveBeenCalled()
+
+    await w.find('[data-tid="library-collection-public"]').trigger('click')
+    c.collection.mockResolvedValueOnce({ ...c.detail, id: 'c2', name: 'Gifts' })
+    await w.setProps({ collectionId: 'c2' })
+    await flush()
+    answer({ ...c.detail, visibility: 'public' })
+    await flush()
+    expect(w.find('[data-tid="library-collection-title"]').text()).toBe('Gifts')
+    expect(w.find('[data-tid="library-collection-private"]').attributes('aria-pressed')).toBe('true')
+  })
+
   it('Delete sits in ··· and asks first; Keep it keeps it', async () => {
     const c = client()
     const w = await page(c)
@@ -120,7 +175,7 @@ describe('Library v3 collection: name, who can see it, delete', () => {
     await w.find('[data-tid="library-collection-confirm-delete"]').trigger('click')
     await flush()
     expect(c.deleteCollection).toHaveBeenCalledWith('c1')
-    expect(w.emitted('back')).toHaveLength(1)
+    expect(w.emitted('deleted')).toHaveLength(1)
   })
 
   it('says what to do when it is empty, and why when it could not be read', async () => {
