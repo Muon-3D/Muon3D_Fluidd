@@ -36,6 +36,11 @@ describe('Library v2 shelves', () => {
     expect(card.href).toBe('https://library.muon3d.com/p/spiral-vase')
   })
 
+  it('carries the publication\'s category, for the category chips', () => {
+    expect(summaryCard(summary({ category: 'workshop' })).category).toBe('workshop')
+    expect(summaryCard(summary({ category: undefined })).category).toBeNull()
+  })
+
   it('drops a picture that is not https or the model service', () => {
     expect(summaryCard(summary({ thumbnail_url: 'javascript:alert(1)' })).picture).toBeNull()
   })
