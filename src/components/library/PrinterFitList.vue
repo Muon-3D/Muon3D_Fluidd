@@ -53,8 +53,8 @@ import PrinterRowsMixin from '@/mixins/printer-rows'
 
 /**
  * A print's "Your printers": each account printer and whether the print
- * fits it now (printer-rows.ts). Ready and Queue open Print on… for that
- * printer; Re-slice opens Slice on it.
+ * fits it now (printer-rows.ts), as a pill (Ready, Queue, Offline); the
+ * page's one Print does it. Re-slice opens Slice on that printer.
  */
 @Component({ components: { PrinterThumb } })
 export default class PrinterFitList extends Mixins(PrinterRowsMixin) {}
