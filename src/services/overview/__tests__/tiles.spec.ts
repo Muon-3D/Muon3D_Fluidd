@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { filamentView, inkFor, signed, spanText } from '../tiles'
 
 describe('filamentView', () => {
-  it('says Unknown plainly when nothing is known, with no amount', () => {
+  it('says "No material loaded" plainly when nothing is known, with no amount', () => {
     const v = filamentView(null, null, null)
-    expect(v).toEqual({ type: 'Unknown', detail: 'Set it from the ⋯ menu', colour: null, source: 'none' })
+    expect(v).toEqual({ type: 'No material loaded', detail: 'Set it from the ⋯ menu', colour: null, source: 'none' })
     expect(JSON.stringify(v)).not.toMatch(/%| g\b|remaining/)
   })
   it('prefers the active Spoolman spool', () => {
