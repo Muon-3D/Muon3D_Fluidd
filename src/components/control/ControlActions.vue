@@ -5,6 +5,7 @@
   >
     <button
       v-if="phone"
+      v-agent-highlight="'home'"
       type="button"
       class="cbtn"
       :disabled="!controlReady || busy"

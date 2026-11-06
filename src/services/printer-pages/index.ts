@@ -65,11 +65,18 @@ export const printerPagesState = Vue.observable({
    * opened in that moment keeps working, and is corrected to the real one.
    */
   aliases: {} as Record<string, string>,
+  /** Local printers' account endpoint ids learned from `/server/muon/identity`, by API address. */
+  endpoints: {} as Record<string, string>,
   /** An address whose printer Fluidd could not find, to say so. */
   missing: null as string | null
 })
 
 const addressKey = (apiUrl: string) => apiUrl.replace(/\/+$/, '').toLowerCase()
+
+/** The account endpoint id the printer at `apiUrl` gave, saved or not. */
+export function learnedEndpointId (apiUrl: string): string | null {
+  return printerPagesState.endpoints[addressKey(apiUrl)] ?? null
+}
 
 /** The slug of a saved printer: learned, else from its .local name, its account entry, or its address. */
 export function slugForInstance (instance: InstanceConfig): string {
@@ -234,6 +241,7 @@ export async function learnActiveIdentity (timeout = 3000): Promise<string | nul
     // Kept with the saved printer, so the next visit knows its slug at once.
     const mdnsHost = mdnsHostFor(identity)
     const endpointId = typeof identity?.endpoint_id === 'string' && identity.endpoint_id ? identity.endpoint_id : undefined
+    if (endpointId) Vue.set(printerPagesState.endpoints, addressKey(apiUrl), endpointId)
     const saved = savedInstances().find(i => addressKey(i.apiUrl) === addressKey(apiUrl))
     if (saved && ((mdnsHost && saved.mdnsHost !== mdnsHost) || (endpointId && saved.endpointId !== endpointId))) {
       store.commit('config/setUpdateInstanceName', {
