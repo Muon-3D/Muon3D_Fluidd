@@ -512,7 +512,7 @@ export default class HotspotManagerCard extends Vue {
     }
     try {
       await this.auxApi.apChange(body)
-      EventBus.$emit("Confirm the change at the printer's screen. The hotspot changes when you do.", { type: 'primary', timeout: 10000 })
+      EventBus.$emit("Press the knob on the printer to confirm. The hotspot changes when you do.", { type: 'primary', timeout: 10000 })
     } catch (e) {
       if (isPanelOnlyRefusal(e)) {
         EventBus.$emit(panelOnlyMessage('change the hotspot'), { type: 'error', timeout: 8000 })
@@ -640,6 +640,11 @@ export default class HotspotManagerCard extends Vue {
         // Turning the hotspot off has no open route: it is the printer's screen now.
         refusedHere.hotspotOff = true
         EventBus.$emit(panelOnlyMessage('turn the hotspot off'), { type: 'error', timeout: 8000 })
+        return
+      }
+      if (turnOn && isPanelOnlyRefusal(e)) {
+        // An owner can turn AUX_NETWORK_STRICT on, and then /wifi/ap/up is refused too.
+        EventBus.$emit(panelOnlyMessage('turn the hotspot on'), { type: 'error', timeout: 8000 })
         return
       }
       if ((e as any)?.response?.status === 403) this.$store.dispatch('protection/onRefused')

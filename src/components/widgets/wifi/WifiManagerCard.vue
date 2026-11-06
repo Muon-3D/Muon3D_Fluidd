@@ -630,7 +630,12 @@ export default class WifiManagerCard extends Vue {
       EventBus.$emit(this.$t('app.wifi.msg.connect.success') + ' ' + this.selectedNetwork.ssid, { type: 'success', timeout: 2000 })
       await this.fetchDevices()
     } catch (err: any) {
-      EventBus.$emit(`${this.$t('app.wifi.msg.connect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
+      if (isPanelOnlyRefusal(err)) {
+        // An owner can turn AUX_NETWORK_STRICT on, and then /wifi/connect is refused too.
+        EventBus.$emit(panelOnlyMessage('join a network'), { type: 'error', timeout: 8000 })
+      } else {
+        EventBus.$emit(`${this.$t('app.wifi.msg.connect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
+      }
     }
   }
 

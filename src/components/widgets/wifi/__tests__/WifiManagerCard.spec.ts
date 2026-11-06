@@ -290,6 +290,18 @@ describe('WifiManagerCard on a printer with MuonOS #492 (KAN-1799)', () => {
     wrapper.destroy()
   })
 
+  it('says to do it at the printer when /wifi/connect is refused (strict mode)', async () => {
+    wifiConnect.mockRejectedValueOnce(panelOnly())
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    const card = wrapper.vm as any
+    card.selectedNetwork = { ssid: 'Workshop', security: 'WPA2' }
+
+    await card.connectToSelected()
+
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining("Do this at the printer's screen"), { type: 'error', timeout: 8000 })
+    wrapper.destroy()
+  })
+
   it('still reports any other failure of disconnect as before', async () => {
     wifiDisconnect.mockRejectedValueOnce(Object.assign(new Error('boom'), { response: { status: 500, data: { detail: 'nmcli failed' } } }))
     const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })

@@ -479,7 +479,29 @@ test.describe('Wi-Fi on a printer with MuonOS #492 (KAN-1799): panel-only routes
     await editHotspot(page)
     await expect.poll(() => calls.map(c => `${c.method} ${c.path}`)).toEqual(['POST /wifi/ap/modify', 'POST /wifi/ap/change'])
     expect(JSON.parse(calls[1].body)).toEqual({ password: 'a-new-passphrase' })
-    await expect(page.getByText("Confirm the change at the printer's screen", { exact: false })).toBeVisible()
+    await expect(page.getByText('Press the knob on the printer to confirm', { exact: false })).toBeVisible()
+  })
+
+  test('a refused /wifi/connect (strict mode) shows the printer-screen note', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/wifi/connect', route => route.fulfill({ status: 403, json: PANEL_ONLY }))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await page.getByTestId('wifi-networks').locator('[data-ssid="Workshop-2G"]').getByRole('button', { name: 'Connect' }).click()
+    await page.getByTestId('wifi-proceed').click()
+    await expect.poll(() => calls.map(c => c.path)).toEqual(['/wifi/connect'])
+    await expect(page.getByText(PANEL_NOTE, { exact: false }).first()).toBeVisible()
+  })
+
+  test('a refused /wifi/ap/up (strict mode) shows the printer-screen note', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/wifi/ap/up', route => route.fulfill({ status: 403, json: PANEL_ONLY }))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await expect(page.getByTestId('hotspot-state')).toHaveText('Off')
+    await page.getByTestId('hotspot-switch').click()
+    await expect.poll(() => calls.map(c => c.path)).toEqual(['/wifi/ap/up'])
+    await expect(page.getByText(PANEL_NOTE, { exact: false }).first()).toBeVisible()
   })
 
   test('a refused /wifi/ap/change shows the note, never a silent failure', async ({ page, open }) => {
