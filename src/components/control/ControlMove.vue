@@ -59,7 +59,7 @@
                 class="move__pick-note"
                 :class="{ 'move__pick-note--bad': !!targetProblem }"
                 data-tid="trackpad-note"
-              >{{ targetProblem || targetNote }}</span>
+              >{{ targetProblem || pickWait || targetNote }}</span>
             </span>
             <button
               type="button"
@@ -125,16 +125,10 @@
           >
             Z+
           </button>
-          <button
-            type="button"
-            class="move__b move__b--home"
-            aria-label="Home Z"
-            title="Home Z"
-            :disabled="!ready || busy"
-            @click="home('Z')"
-          >
-            Z
-          </button>
+          <span
+            class="move__zlabel"
+            aria-hidden="true"
+          >Z</span>
           <button
             type="button"
             class="move__b"
@@ -231,6 +225,9 @@
         />
         Home Z
       </button>
+    </div>
+    <!-- Apart from the homing row, so a mis-tap on Home Z can't land on it. -->
+    <div class="move__after">
       <button
         type="button"
         class="cbtn move__motors"
@@ -282,8 +279,22 @@ export default class ControlMove extends Mixins(ControlMixin) {
   target: Point | null = null
   targetFor = ''
 
+  /** Ticks while a pick is shown, so "is the head still moving?" is read again (that state is not reactive). */
+  tick = 0
+  private ticker: number | null = null
+
   @Watch('panelTarget')
   clearDraft () { this.goTo = [null, null, null]; this.target = null }
+
+  @Watch('target')
+  onTarget (target: Point | null) {
+    if (target && this.ticker === null) this.ticker = window.setInterval(() => { this.tick++ }, 250)
+    if (!target && this.ticker !== null) { window.clearInterval(this.ticker); this.ticker = null }
+  }
+
+  beforeDestroy () {
+    if (this.ticker !== null) window.clearInterval(this.ticker)
+  }
 
   /** A pick is dropped the moment moving is no longer allowed (a print starts, homing is lost). */
   @Watch('canMoveXY')
@@ -396,22 +407,29 @@ export default class ControlMove extends Mixins(ControlMixin) {
     const plan = this.targetPlan
     if (!plan || !plan.ok) return ''
     if (plan.lifted) {
-      const lift = plan.steps[0].Z
-      return `Lifts to Z ${lift} first, to cross the no-go region`
+      // The plan's steps are in G-code coordinates; say the height in real Z, as the refusals do.
+      const lift = Number(plan.steps[0].Z) + (this.gcodeOffset ?? [0, 0, 0])[2]
+      return `Lifts to Z ${Math.round(lift * 100) / 100} first, to cross the no-go region`
     }
     return 'Straight there, at this height'
   }
 
-  get canConfirm (): boolean {
-    return this.canMoveXY && !!this.target && !this.targetProblem && this.targetFor === this.panelTarget
+  /** Why Move here must wait (the last hand move or a script hasn't landed), or ''. */
+  get pickWait (): string {
+    // Read so this is worked out again on each tick and each reported position.
+    const seen = [this.tick, this.$store.state.printer.printer.gcode_move?.gcode_position]
+    return this.target && seen ? this.handMoveWait() : ''
   }
 
-  /** The confirm step: only here does a pick become a move, through moveTo and its planner. */
+  get canConfirm (): boolean {
+    return this.canMoveXY && !!this.target && !this.targetProblem && !this.pickWait && this.targetFor === this.panelTarget
+  }
+
+  /** The confirm step: only here does a pick become a move, through moveTo and its planner. The pick stays if nothing was sent. */
   confirmMove () {
     const place = this.targetPlace
     if (!this.canConfirm || !place) return
-    this.moveTo(place)
-    this.target = null
+    if (this.moveTo(place)) this.target = null
   }
 
   // -- keys and exact moves --------------------------------------------------
@@ -576,6 +594,15 @@ export default class ControlMove extends Mixins(ControlMixin) {
     }
   }
 
+  .move__zlabel {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--m3d-text-muted);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
   .move__b--home {
     background: color-mix(in srgb, var(--m3d-accent) 22%, var(--m3d-surface-2));
   }
@@ -612,13 +639,14 @@ export default class ControlMove extends Mixins(ControlMixin) {
 
   .move__actions {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
   }
 
-  .move__body--phone ~ .move__actions {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-
-    .move__motors { grid-column: 1 / -1; }
+  .move__after {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 8px;
+    border-top: 1px solid var(--m3d-border);
   }
 </style>
