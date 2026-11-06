@@ -171,6 +171,8 @@ export const actions: ActionTree<SocketState, RootState> = {
    * This is fired when, for example - the service is stopped.
    */
   async notifyKlippyDisconnected () {
+    // Klipper restarts unhomed; until it's subscribed again the position held is stale.
+    headStatus.fresh = false
     SocketActions.serverInfo()
   },
 
@@ -178,6 +180,7 @@ export const actions: ActionTree<SocketState, RootState> = {
    * This is fired when, for example - an estop is emitted.
    */
   async notifyKlippyShutdown () {
+    headStatus.fresh = false
     SocketActions.serverInfo()
   },
 

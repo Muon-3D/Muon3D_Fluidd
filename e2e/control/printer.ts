@@ -16,6 +16,7 @@
  *   expect(printer.moves()).toEqual(['G1 Z6 F600', …])
  */
 import type { Page } from '@playwright/test'
+import { MOCK_PORT } from '../ports'
 
 type Json = Record<string, any>
 
@@ -68,7 +69,7 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
   }
   let pageSocket: { send: (message: string) => void } | null = null
 
-  await page.routeWebSocket(/:7125\/websocket\?/, ws => {
+  await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
     pageSocket = ws
     const server = ws.connectToServer()
 

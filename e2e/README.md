@@ -11,7 +11,8 @@ npm run test:e2e -- --project=desktop library/discover
 
 ## What runs
 - **Control:** served by vite (the config starts it), so a test sees the code in the tree.
-- **The printer:** `mock/moonraker.py` on :7125, a mid-print M1 called Boxwood. Control finds it there by itself. A printer's pages live under `/boxwood-367a/...`; `open('/library')` adds that prefix.
+- **The printer:** `mock/moonraker.py`, a mid-print M1 called Boxwood, on `E2E_MOCK_PORT` (default :7125). Each test serves Control a `config.json` that names only that mock. **Parallel runs** (one per worktree or worker) must each set their own `E2E_PORT` and `E2E_MOCK_PORT`, or they share a mock and a vite: `E2E_PORT=8211 E2E_MOCK_PORT=7211 npm run test:e2e`.
+- **Control's printer, per test** (`control/printer.ts`): `usePrinter(page, PRESETS.idleHomed({ position }))` lays a state over the shared mock for this page only, answers and records every G-code script (`gcode`, `moves()`), pushes a new status with `report()`, and fails a method with `state.failOn[method]`. A printer's pages live under `/boxwood-367a/...`; `open('/library')` adds that prefix.
 - **The model service** (`fakes/models.ts`): models.muon3d.com answered with `page.route` from in-memory state. That covers publications, discover, a print's page and pictures, saves, collections, and the Library basics. Each test gets its own copy as `models`:
   - add data before `open(...)`;
   - flip `models.failWith = 503` for an outage;
