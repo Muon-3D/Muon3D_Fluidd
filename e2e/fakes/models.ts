@@ -65,6 +65,8 @@ export interface ModelServiceState {
   failOn: (request: string) => number | null;
   /** Hold every answer this long (loading states). */
   delayMs: number;
+  /** Answer search with 404, as a model service from before search did. */
+  noSearch: boolean;
   /** Requests seen, for assertions ("method path"). */
   seen: string[];
 }
@@ -77,6 +79,7 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     failWith: null,
     failOn: () => null,
     delayMs: 0,
+    noSearch: false,
     seen: [],
     ...over
   }
@@ -162,6 +165,16 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       const more = list.length > limit
       const next = !more ? null : sort === 'new' ? page[page.length - 1].id : `o:${start + limit}`
       return json(route, { items: page.map(p => summary(p, all)), next_cursor: next })
+    }
+    if (path === '/v1/public/search') {
+      if (state.noSearch) return json(route, { error: { code: 'not_found' } }, 404)
+      const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
+      if (q.length < 2 || q.length > 64) return json(route, { error: { code: 'query', message: 'Search for 2 to 64 characters.' } }, 400)
+      const found = all.filter(p => [p.title, p.creator.handle ?? '', p.creator.display_name ?? '', ...p.tags].join(' ').toLowerCase().includes(q))
+      const start = Number((url.searchParams.get('cursor') ?? 'o:0').slice(2)) || 0
+      const limit = Number(url.searchParams.get('limit') ?? 24)
+      const page = found.slice(start, start + limit)
+      return json(route, { items: page.map(p => summary(p, all)), next_cursor: found.length > start + limit ? `o:${start + limit}` : null })
     }
     const one = path.match(/^\/v1\/public\/publications\/([^/]+)$/)
     if (one) {
