@@ -35,7 +35,7 @@ import type { Move } from '@/store/gcodePreview/types'
 import { httpClientActions } from '@/api/httpClientActions'
 import { cloudState } from '@/services/muon-cloud/state'
 import { activeSlug } from '@/services/printer-pages'
-import { ACTIVE_PHASES } from '@/services/updates/model'
+import { bannerVisible } from '@/services/updates/model'
 import { updateWatch } from '@/services/updates/watch'
 import { afterFirstPaint } from '@/services/startup/idle'
 
@@ -462,7 +462,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     const remembered = updateWatch.remembered
     return screenFrom({
       printState: this.printState,
-      updating: !!remembered && ACTIVE_PHASES.includes(remembered.phase),
+      updating: bannerVisible(remembered, updateWatch.now, !!updateWatch.answered),
       homing: this.hasWait([Waits.onHomeAll, Waits.onHomeXY, Waits.onHomeX, Waits.onHomeY, Waits.onHomeZ]) || phase === 'homing',
       probing: this.measuring || phase === 'measuring',
       progress: this.$store.getters['printer/getPrintProgress'] as number,

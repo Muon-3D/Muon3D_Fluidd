@@ -502,4 +502,27 @@ test.describe('An update staged on the spare slot (real Boxwood status)', () => 
     await expect(page.getByText('Verifying update')).toHaveCount(0)
     await expect(page.getByRole('status').filter({ hasText: /Restarting|Restart delayed|Verifying/ })).toHaveCount(0)
   })
+
+  test('the bar DOES show for a real install under way, so its absence elsewhere means something', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/update/status', route => route.fulfill({ json: { state: 'installing', current_version: '0.9.3', target_version: '0.9.4', update_available: true, progress: 58, install: { phase: 'installing', job_id: 'job-1', progress: 58 } } }))
+    await open('/updating')
+    await expect(page.getByTestId('updating-installing')).toBeVisible()
+    await page.getByTestId('updating-leave').click()
+    await expect(page.getByTestId('update-banner')).toBeVisible()
+    await expect(page.getByTestId('update-banner')).toContainText('Installing update')
+  })
+
+  test('a stale entry with a refused route shows no bar after leaving the Updating page', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/update/status', route => route.fulfill({ status: 403, json: { error: { code: 403, message: 'Forbidden by policy' } } }))
+    await page.addInitScript(([k, seen]) => {
+      localStorage.setItem(k, JSON.stringify({ jobId: 'j1', phase: 'installing', from: '0.9.3', to: '0.9.4', progress: 40, seenAt: seen, lostAt: seen, budgetMs: 1_200_000 }))
+    }, ['muon3d.update.boxwood-367a', Date.now() - 3 * 3_600_000] as const)
+    await open('/updating')
+    await page.getByTestId('updating-leave').click()
+    await expect(page.getByTestId('page-title')).toBeVisible()
+    await expect(page.getByTestId('update-banner')).toHaveCount(0)
+    await expect(page.getByRole('status').filter({ hasText: /Restart delayed|Restarting/ })).toHaveCount(0)
+  })
 })

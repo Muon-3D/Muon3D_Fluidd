@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installStarted, stopWatching, updateWatch, watchUpdates } from '../watch'
-import { bannerVisible } from '../model'
+import { installStarted, printerLost, stopWatching, updateWatch, watchUpdates } from '../watch'
+import { bannerVisible, offlineScreen } from '../model'
+import { BOXWOOD_STAGED } from './fixtures/boxwood-staged'
 
 const refused = () => Promise.resolve({ status: 403, data: { error: { message: 'Forbidden by policy' } } })
 const idle = () => Promise.resolve({ status: 200, data: { result: { phase: 'idle', session: null } } })
@@ -150,5 +151,53 @@ describe('updateWatch polling', () => {
     watchUpdates('boxwood', () => new Promise(() => undefined))
     expect(updateWatch.answered).toBe(false)
     expect(bannerVisible(updateWatch.remembered, Date.now(), updateWatch.answered)).toBe(false)
+  })
+
+  it('with the real staged status (Boxwood), remembers nothing and shows nothing', async () => {
+    const real = () => Promise.resolve({ status: 200, data: { result: BOXWOOD_STAGED } })
+    watchUpdates('boxwood', vi.fn(real))
+    await settle()
+    expect(updateWatch.remembered).toBeNull()
+    expect(bannerVisible(updateWatch.remembered, Date.now(), updateWatch.answered)).toBe(false)
+  })
+
+  it('with the real status and the top-level state left at commit_pending, still shows no bar', async () => {
+    const real = () => Promise.resolve({ status: 200, data: { result: { ...BOXWOOD_STAGED, state: 'commit_pending' } } })
+    watchUpdates('boxwood', vi.fn(real))
+    await settle()
+    expect(updateWatch.remembered).toBeNull()
+  })
+
+  it('a stale active entry that the route refuses twice shows nothing and is not held for ever', async () => {
+    const key = 'muon3d.update.boxwood'
+    localStorage.setItem(key, JSON.stringify({ jobId: 'j1', phase: 'installing', from: '1.0', to: '1.1', progress: 40, seenAt: Date.now() - 3 * 3_600_000, lostAt: Date.now() - 3 * 3_600_000, budgetMs: 1_200_000 }))
+    const get = vi.fn(refused)
+    watchUpdates('boxwood', get)
+    await settle()
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(get).toHaveBeenCalledTimes(2)
+    // Refused: never confirmed, so no bar and no restart screen; and past its time it is dropped.
+    expect(updateWatch.answered).toBe(false)
+    expect(bannerVisible(updateWatch.remembered, Date.now(), updateWatch.answered)).toBe(false)
+    expect(updateWatch.remembered).toBeNull()
+    expect(localStorage.getItem(key)).toBeNull()
+  })
+
+  it('a stale entry does not become "lost" when the socket drops, so no "Restart delayed"', async () => {
+    localStorage.setItem('muon3d.update.boxwood', JSON.stringify({ jobId: 'j1', phase: 'installing', from: '1.0', to: '1.1', progress: 40, seenAt: Date.now() - 3 * 3_600_000, lostAt: Date.now() - 3 * 3_600_000, budgetMs: 1_200_000 }))
+    watchUpdates('boxwood', vi.fn(refused))
+    await settle()
+    printerLost()
+    expect(updateWatch.remembered?.lostAt ?? null).toBeNull()
+    expect(offlineScreen(updateWatch.remembered, Date.now(), updateWatch.answered)).toBeNull()
+  })
+
+  it('an install the printer confirmed does go "lost" when the socket drops, and shows the restart screen', async () => {
+    const installing = () => Promise.resolve({ status: 200, data: { result: { state: 'installing', current_version: '1.0', target_version: '1.1', progress: 40, install: { phase: 'installing', job_id: 'j1' } } } })
+    watchUpdates('boxwood', vi.fn(installing))
+    await settle()
+    expect(bannerVisible(updateWatch.remembered, Date.now(), updateWatch.answered)).toBe(true)
+    printerLost()
+    expect(offlineScreen(updateWatch.remembered, Date.now(), updateWatch.answered)).toBe('updating')
   })
 })

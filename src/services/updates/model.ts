@@ -19,6 +19,7 @@
 export type SessionPhase = 'idle' | 'preparing' | 'installing' | 'rebooting' | 'verifying' | 'updated' | 'rolled_back' | 'failed'
 
 export const ACTIVE_PHASES: SessionPhase[] = ['preparing', 'installing', 'rebooting', 'verifying']
+const TERMINAL_PHASES: string[] = ['updated', 'rolled_back', 'failed']
 
 export interface UpdateSession {
   job_id?: string | null;
@@ -47,7 +48,7 @@ export interface AuxUpdateStatus {
   /** The image written to the spare slot ahead of an install; "staged" waits for a person. */
   stage?: { state?: string, version?: string | null, progress?: number | null, finished_at?: string | null, slot_fingerprint?: Record<string, unknown> | null } | null;
   /** The commit after a restart into the new slot. An error here with state "committed" is an old one (see commitPending). */
-  commit?: { state?: string, required?: boolean, error?: { kind?: string, message?: string } | null } | null;
+  commit?: { state?: string, required?: boolean, last_failure?: string | null, error?: { kind?: string, message?: string, occurred_at?: string | null } | null } | null;
   session?: UpdateSession | null;
 }
 
@@ -89,13 +90,22 @@ export function sessionOf (status: AuxUpdateStatus | null): UpdateSession | null
   const state = status.state ?? ''
   if (state === 'installing') return { phase: 'installing', from_version: status.current_version, to_version: status.target_version, job_id: status.install?.job_id }
   if (state === 'rebooting') return { phase: 'rebooting', from_version: status.current_version, to_version: status.target_version, job_id: status.install?.job_id }
-  if (commitPending(status) || state === 'commit_pending' || state === 'committing') return { phase: 'verifying', to_version: status.current_version }
+  // Verifying only when the commit says so. A top-level state of commit_pending can last for
+  // hours with the commit committed (MuonOS records it so), and was a perpetual bar.
+  if (commitPending(status)) return { phase: 'verifying', to_version: status.current_version }
+  // A fast failure or rollback of an install shows only in install: a terminal session, which
+  // remember() adopts only if it began after the person pressed Install.
+  const ip = status.install?.phase
+  if (ip === 'failed' || ip === 'rolled_back') {
+    return { phase: ip, job_id: status.install?.job_id, from_version: status.current_version, to_version: status.target_version, started_at: status.install?.started_at, finished_at: status.install?.finished_at }
+  }
   return null
 }
 
 /**
  * The printer is checking a new version it restarted into: it asks for a commit
- * (requires_commit) or the commit is not "committed". An error left in commit
+ * (requires_commit) or the commit is not "committed". The top-level state
+ * (commit_pending, committing) is not read: MuonOS leaves commit_pending there for hours. An error left in commit
  * while its state is "committed" is an old failure and says nothing about now.
  */
 export function commitPending (status: AuxUpdateStatus | null): boolean {
@@ -233,18 +243,26 @@ export function offlineScreen (r: Remembered | null, now: number, answered = tru
 
 /** How an install that Fluidd followed ended, once the printer is back; null while it is still going. */
 export function outcome (r: Remembered | null, status: AuxUpdateStatus | null): 'updated' | 'rolled_back' | 'failed' | null {
-  if (!r || !status) return null
-  const s = status.session
-  if (s && s.job_id && r.jobId && s.job_id === r.jobId && s.phase && ['updated', 'rolled_back', 'failed'].includes(s.phase)) {
-    return s.phase as 'updated' | 'rolled_back' | 'failed'
+  if (!r) return null
+  // Already ended and kept to be shown: that is the outcome, whatever the printer says now.
+  if (TERMINAL_PHASES.includes(r.phase)) return r.phase as 'updated' | 'rolled_back' | 'failed'
+  if (!status) return null
+  const s = sessionOf(status)
+  if (s && s.phase && TERMINAL_PHASES.includes(s.phase)) {
+    const sameJob = !!s.job_id && !!r.jobId && s.job_id === r.jobId
+    const afterPress = !!r.startedAt && !!s.started_at && Date.parse(s.started_at) >= r.startedAt
+    if (sameJob || afterPress) return s.phase as 'updated' | 'rolled_back' | 'failed'
   }
-  if (s && s.phase && ACTIVE_PHASES.includes(s.phase)) return null
-  // The printer says it is installing, restarting or committing now (the real status has no session, only state): not over.
-  const live = sessionOf(status)
-  if (live?.phase && ACTIVE_PHASES.includes(live.phase)) return null
-  // No session for this job (an image that predates it): the versions tell.
+  // The printer says it is installing, restarting or committing now: not over.
+  if (s?.phase && ACTIVE_PHASES.includes(s.phase)) return null
   if (commitPending(status)) return null
+  // No session for this job (an image that predates it): the versions tell.
   if (r.to && status.current_version === r.to) return 'updated'
+  // Back on the old version with a failure newer than the press: rolled back.
+  if (r.startedAt && r.from && status.current_version === r.from) {
+    const times = [status.commit?.last_failure, status.commit?.error?.occurred_at].map(t => (t ? Date.parse(t) : NaN)).filter(Number.isFinite)
+    if (times.some(t => t > r.startedAt!)) return 'rolled_back'
+  }
   if (r.phase === 'rebooting' || r.phase === 'verifying') return r.from && status.current_version === r.from ? 'rolled_back' : null
   return null
 }

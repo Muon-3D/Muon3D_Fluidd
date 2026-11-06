@@ -45,7 +45,9 @@ function save () {
 function load (printer: string): Remembered | null {
   try {
     const raw = localStorage.getItem(storageKey(printer))
-    return raw ? JSON.parse(raw) as Remembered : null
+    const r = raw ? JSON.parse(raw) as Remembered : null
+    // "Lost" was about the page that wrote it: in this one the printer has not yet gone quiet.
+    return r ? { ...r, lostAt: null } : null
   } catch {
     return null
   }
@@ -93,7 +95,6 @@ export async function poll (): Promise<void> {
   if (!get) return
   try {
     const answer = await get('/server/aux/update/status')
-    updateWatch.answered = true
     const denied = answer.status === 401 || answer.status === 403
     if (denied && retryDenied) {
       retryDenied = false
@@ -103,9 +104,15 @@ export async function poll (): Promise<void> {
       return
     }
     refused = denied
+    if (denied && expired(updateWatch.remembered, Date.now())) {
+      // Nothing can confirm it any more: a stale entry does not wait for ever on a refused route.
+      updateWatch.remembered = null
+      save()
+    }
     const data = answer.data as Record<string, unknown> | undefined
     const status = (data && typeof data === 'object' && 'result' in data ? data.result : data) as AuxUpdateStatus | undefined
     if (answer.status === 200 && status && typeof status === 'object') {
+      updateWatch.answered = true
       updateWatch.status = status
       updateWatch.remembered = remember(updateWatch.remembered, status, Date.now())
       save()
@@ -133,6 +140,8 @@ export function watchUpdates (printer: string, http: Get) {
 
 /** The printer stopped answering: remember when, if an install was under way. */
 export function printerLost () {
+  // An entry the printer has not confirmed in this page (never answered, or refused) is not "lost".
+  if (!updateWatch.answered) return
   updateWatch.remembered = lost(updateWatch.remembered, Date.now())
   updateWatch.now = Date.now()
   save()
