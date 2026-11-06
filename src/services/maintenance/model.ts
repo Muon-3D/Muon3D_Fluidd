@@ -60,7 +60,7 @@ export function meshSummary (matrix: number[][] | undefined): MeshSummary | null
   const max = Math.max(...values)
   const range = Math.round((max - min) * 1000) / 1000
   if (range <= 0.25) return { range, min, max, verdict: 'Flat enough to print well', tone: 'ok' }
-  if (range <= 0.6) return { range, min, max, verdict: 'A little uneven; the mesh evens out the first layer', tone: 'warn' }
+  if (range <= 0.6) return { range, min, max, verdict: 'A little uneven', tone: 'warn' }
   return { range, min, max, verdict: 'Very uneven: check the plate sits flat and clean', tone: 'err' }
 }
 
