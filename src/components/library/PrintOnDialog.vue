@@ -50,7 +50,8 @@
         :tabindex="choosable(row) ? 0 : undefined"
         :data-tid="`print-on-${row.slug}`"
         @click="choose(row)"
-        @keydown.enter.space.prevent="choose(row)"
+        @keydown.enter.self.prevent="choose(row)"
+        @keydown.space.self.prevent="choose(row)"
       >
         <span
           class="print-on__icon"
@@ -85,24 +86,36 @@
     </div>
 
     <!-- Print now only: the plate must be clear. A queued print waits for it anyway. -->
-    <label
+    <div
       v-if="asksPlate && chosenRow"
-      class="print-on__plate"
-      data-tid="print-on-plate"
+      class="print-on__plate-box"
     >
-      <input
-        v-model="plateClear"
-        type="checkbox"
-        role="switch"
-        :aria-checked="plateClear ? 'true' : 'false'"
-        :disabled="sending"
+      <label
+        class="print-on__plate"
+        data-tid="print-on-plate"
       >
-      <span
-        class="print-on__switch"
-        aria-hidden="true"
-      />
-      The plate on {{ chosenRow.name }} is clear
-    </label>
+        <input
+          v-model="plateClear"
+          type="checkbox"
+          role="switch"
+          :aria-checked="plateClear ? 'true' : 'false'"
+          aria-describedby="print-on-plate-why"
+          :disabled="sending"
+        >
+        <span
+          class="print-on__switch"
+          aria-hidden="true"
+        />
+        The plate on {{ chosenRow.name }} is clear
+      </label>
+      <p
+        id="print-on-plate-why"
+        class="print-on__why"
+        data-tid="print-on-plate-why"
+      >
+        {{ $t('app.plate_check.why') }}
+      </p>
+    </div>
 
     <p
       v-if="step"
@@ -161,7 +174,7 @@
       >
         {{ shared ? 'The file is checked against what its maker published, then sent' : 'The file comes from your Library and is sent' }}
         to {{ chosenRow ? chosenRow.name : 'the printer' }} itself.
-        <template v-if="rows.length">
+        <template v-if="rows.length && !sending">
           Another printer?
           <router-link
             to="/"
@@ -279,14 +292,24 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
     gap: 10px;
   }
 
-  .print-on__plate {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  .print-on__plate-box {
     margin-top: 12px;
     padding: 12px 14px;
     border-radius: 14px;
     background: var(--m3d-surface-2);
+  }
+
+  .print-on__why {
+    margin: 6px 0 0 52px;
+    color: var(--m3d-text-subtle);
+    font-size: 12px;
+  }
+
+  .print-on__plate {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     font-weight: 500;
     cursor: pointer;
 
@@ -356,7 +379,7 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
     a { color: var(--m3d-accent); }
   }
 
-  // A phone stacks the buttons, the one that does it on top (M3Dialog): then Save to the printer only, then the fine print.
+  // A phone stacks the buttons, the one that does it on top (M3Dialog), then Cancel, then Save to the printer only, then the fine print.
   @media (max-width: 480px) {
     .print-on__save { order: -1; padding: 8px 0; }
     .print-on__fine { order: -2; }

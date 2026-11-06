@@ -118,9 +118,33 @@ describe('Print on… (Library v3, page 10): how it reads', () => {
   it('names the printer in the plate switch, and Cancel closes', async () => {
     const wrapper = open([row({})])
     expect(tid(wrapper, 'print-on-plate').text()).toBe('The plate on Hazel is clear')
+    // Why it matters stays with it: the M1 prints upside down onto its plate.
+    expect(tid(wrapper, 'print-on-plate-why').text()).toContain('upside down')
     expect(tid(wrapper, 'print-on-plate').find('input').attributes('role')).toBe('switch')
     await tid(wrapper, 'print-on-cancel').trigger('click')
     expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.destroy()
+  })
+
+  it('Enter on Re-slice re-slices; Enter on a row chooses it', async () => {
+    const wrapper = open([row({ id: 'a', slug: 'a', name: 'A' }), row({ id: 'b', slug: 'b', name: 'B', action: 'reslice', reslice: 'Re-slice', tone: 'warn', status: '' })])
+    // Enter on the button is not cancelled by its row, so the browser turns it into the button's click.
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    tid(wrapper, 'print-on-reslice').element.dispatchEvent(enter)
+    expect(enter.defaultPrevented).toBe(false)
+    // Enter on a row itself chooses it (and is not left to scroll the page).
+    const onRow = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    wrapper.findAll('[role="radio"]').at(0).element.dispatchEvent(onRow)
+    expect(onRow.defaultPrevented).toBe(true)
+    expect(wrapper.findAll('[role="radio"]').at(0).attributes('aria-checked')).toBe('true')
+    wrapper.destroy()
+  })
+
+  it('offers no way off the dialog while it is sending', async () => {
+    const wrapper = open([row({})])
+    ;(wrapper.vm as any).sending = true
+    await Vue.nextTick()
+    expect(tid(wrapper, 'print-on-fine').find('a').exists()).toBe(false)
     wrapper.destroy()
   })
 
