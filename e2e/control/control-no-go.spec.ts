@@ -35,7 +35,7 @@ test('a jog that would end over the notch is refused, says why, and sends nothin
   await chooseStep(page, '50 mm')
   await page.getByRole('button', { name: 'Head right (X+)' }).click()
 
-  await expect(page.getByText(/over the bed notch/)).toBeVisible()
+  await expect(page.getByText(/That spot is over the bed notch/)).toBeVisible()
   expect(printer.gcode).toEqual([])
 })
 
@@ -56,7 +56,7 @@ test('while printing, the move controls are locked and send nothing', async ({ p
   expect(printer.gcode).toEqual([])
 })
 
-test('two jog sources cannot interleave: the pad waits for the arrow move to land', async ({ page, open }) => {
+test('two jog sources cannot interleave: Move here on the trackpad waits for the arrow move to land', async ({ page, open }) => {
   // The fixture holds the reported head still, so the arrow move never "arrives".
   const printer = await usePrinter(page, PRESETS.idleHomed({ position: [150, 100, 10] }))
   await open('/control')
@@ -64,12 +64,16 @@ test('two jog sources cannot interleave: the pad waits for the arrow move to lan
   await page.getByRole('button', { name: 'Head right (X+)' }).click()
   await expect.poll(() => printer.gcode.length).toBe(1)
 
-  const pad = page.getByTestId('move-pad')
+  const pad = page.getByTestId('move-trackpad')
+  await pad.scrollIntoViewIfNeeded()
   const box = await pad.boundingBox()
-  if (!box) throw new Error('no move pad')
+  if (!box) throw new Error('no trackpad')
   await page.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.5)
 
-  await expect(page.getByText('Wait for the head to finish moving.')).toBeVisible()
+  await expect(page.getByTestId('trackpad-note')).toHaveText('Wait for the head to finish moving.')
+  await expect(page.getByTestId('trackpad-move')).toBeDisabled()
+  await page.getByTestId('trackpad-move').click({ force: true })
+  await page.waitForTimeout(300)
   expect(printer.gcode).toHaveLength(1)
 })
 
