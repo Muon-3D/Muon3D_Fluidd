@@ -40,7 +40,7 @@ function library (props: Record<string, unknown> = {}) {
   return wrapper.vm as unknown as Vm
 }
 
-const settle = async () => { for (let i = 0; i < 4; i++) { await Vue.nextTick(); await new Promise(r => setTimeout(r, 0)) } }
+const settle = async () => { for (let i = 0; i < 4; i++) { await Vue.nextTick(); await new Promise(resolve => setTimeout(resolve, 0)) } }
 
 describe('Library v3 Discover: filters', () => {
   it('turns Fits on when the open printer is an M1, and only once', async () => {
