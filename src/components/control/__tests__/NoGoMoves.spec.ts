@@ -1,8 +1,8 @@
 import { mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ControlMixin from '@/mixins/control'
 import { panelStore, waits } from './panel-fixture'
-import { handMoveLock } from '@/services/control/safe-move'
+import { handMoveLock, headStatus, scriptsInFlight, trackScript } from '@/services/control/safe-move'
 
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn() }))
 vi.mock('@/api/socketActions', () => ({ SocketActions: socket }))
@@ -31,6 +31,7 @@ const sent = () => socket.printerGcodeScript.mock.calls.map(c => c[0] as string)
 const moves = () => sent().flatMap(s => s.split('\n')).filter(l => l.startsWith('G1'))
 
 describe('hand moves and the bed notch', () => {
+  beforeEach(() => { headStatus.fresh = true; scriptsInFlight.count = 0 })
   afterEach(() => { socket.printerGcodeScript.mockClear(); bus.$emit.mockClear(); handMoveLock.target = null; vi.useRealTimers() })
 
   it('lifts to the traverse height before a pad click that crosses the notch low down', () => {
@@ -194,10 +195,47 @@ describe('hand moves and the bed notch', () => {
     s.store.getters['printer/getKlippyReady'] = false
     await s.vm.$nextTick()
     expect(handMoveLock.target).toBeNull()
+    expect(headStatus.fresh).toBe(false)
     s.store.getters['printer/getKlippyReady'] = true
     await s.vm.$nextTick()
+    s.vm.moveTo({ X: 140, Y: 60 }) // Klippy is back, but not yet subscribed afresh
+    expect(sent()).toHaveLength(1)
+    headStatus.fresh = true // the subscription answered
     s.vm.moveTo({ X: 140, Y: 60 })
     expect(sent()).toHaveLength(2)
     s.wrapper.destroy()
+  })
+
+  it('waits for a fresh status after a reconnect before planning from the head position', () => {
+    const s = show([150, 60, 1])
+    headStatus.fresh = false // the socket dropped; the position held is the old connection's
+    s.vm.moveTo({ X: 150, Y: 20 })
+    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    expect(bus.$emit).toHaveBeenCalledWith('Wait for the printer to report where the head is.', { type: 'warning' })
+    headStatus.fresh = true // the subscription answered
+    s.vm.moveTo({ X: 150, Y: 20 })
+    expect(sent()).toHaveLength(1)
+    s.wrapper.destroy()
+  })
+
+  it('waits behind any G-code script still running (homing, the probe check, a macro)', async () => {
+    const s = show([150, 60, 1])
+    let answer!: () => void
+    trackScript(new Promise<void>(resolve => { answer = resolve })) // e.g. G28 from Home all
+    s.vm.moveTo({ X: 150, Y: 20 })
+    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    expect(bus.$emit).toHaveBeenCalledWith('Wait for the printer to finish what it is doing.', { type: 'warning' })
+    answer(); await Promise.resolve(); await Promise.resolve()
+    expect(scriptsInFlight.count).toBe(0)
+    s.vm.moveTo({ X: 150, Y: 20 })
+    expect(sent()).toHaveLength(1)
+    s.wrapper.destroy()
+  })
+
+  it('a script that fails still ends', async () => {
+    trackScript(Promise.reject(new Error('Move out of range')))
+    expect(scriptsInFlight.count).toBe(1)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(scriptsInFlight.count).toBe(0)
   })
 })

@@ -80,11 +80,11 @@ test('once the printer reports the head there, the next move goes', async ({ pag
   await page.getByRole('button', { name: 'Head right (X+)' }).click()
   await expect.poll(() => printer.gcode.length).toBe(1)
   // The printer reports the head at X160.
-  printer.state.status = PRESETS.idleHomed({ position: [160, 100, 10] })
+  printer.report(PRESETS.idleHomed({ position: [160, 100, 10] }))
   await expect(page.getByTestId('control-move')).toBeVisible()
   await expect.poll(async () => {
     await page.getByRole('button', { name: 'Head right (X+)' }).click()
     return printer.gcode.length
-  }, { timeout: 10_000 }).toBeGreaterThanOrEqual(2)
+  }, { timeout: 3_000 }).toBeGreaterThanOrEqual(2) // well under the 8 s expiry: this must be the arrival
   expect(printer.gcode[1]).toContain('G1 X10 F7800')
 })

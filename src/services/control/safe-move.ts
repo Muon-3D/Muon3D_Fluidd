@@ -108,7 +108,38 @@ export function segmentHits (a: [number, number], b: [number, number], r: NoGoRe
  */
 export const handMoveLock: { target: number[] | null, until: number, printer: string } = { target: null, until: 0, printer: '' }
 
+/**
+ * How long a hand move's wait lasts at most. Expiring while the head is
+ * still physically moving is fine: the lock is about the COMMANDED position
+ * (toolhead.position moves to the target when Klipper queues the move), and
+ * while the head moves `idle_timeout` reads Printing, so ControlMixin's
+ * `busy` refuses every hand move anyway.
+ */
 const SETTLE_MS = 8000
+
+/**
+ * G-code scripts sent and not yet answered. Klipper runs scripts in order,
+ * so a hand move sent behind one (homing, the probe check, a macro, another
+ * jog) would run from wherever that one leaves the head, not from the
+ * position it was planned from. Counted in SocketActions.printerGcodeScript;
+ * an answer, an error or a dropped connection all end a script.
+ */
+export const scriptsInFlight = { count: 0 }
+
+export function trackScript (answer: Promise<unknown> | undefined) {
+  if (!answer) return
+  scriptsInFlight.count++
+  const done = () => { scriptsInFlight.count = Math.max(0, scriptsInFlight.count - 1) }
+  answer.then(done, done)
+}
+
+/**
+ * Whether the reported head position is this connection's. False until the
+ * printer's status subscription answers, and again from a dropped connection
+ * or lost control until it answers again: in between, Control keeps the last
+ * position it was told, which may no longer be where the head is.
+ */
+export const headStatus = { fresh: false }
 
 /**
  * Note a hand move to `gcodeTarget` on `printer` (any key naming the printer

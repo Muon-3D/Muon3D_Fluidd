@@ -26,7 +26,7 @@ import {
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
-import { handMoveSettling, lockHandMove, releaseHandMove, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
+import { handMoveSettling, headStatus, lockHandMove, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
 import { EventBus } from '@/eventBus'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
@@ -280,15 +280,30 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     return d.every(Number.isFinite) ? d as [number, number, number] : null
   }
 
-  /** A hand move is still on its way (shared by every component; read fresh, never cached). */
-  handMoveSettling (): boolean {
-    return handMoveSettling(this.$store.state.printer.printer.gcode_move?.gcode_position, this.panelTarget)
+  /**
+   * Why a hand move must wait, on a printer with no-go regions, or '' if it
+   * can go: the head position isn't this connection's yet, a G-code script is
+   * still running (a move sent now would run from wherever it leaves the
+   * head), or the last hand move hasn't been reported. Read fresh, never cached.
+   */
+  handMoveWait (): string {
+    if (this.noGo === null) return ''
+    if (!headStatus.fresh) return 'Wait for the printer to report where the head is.'
+    if (scriptsInFlight.count > 0) return 'Wait for the printer to finish what it is doing.'
+    if (handMoveSettling(this.$store.state.printer.printer.gcode_move?.gcode_position, this.panelTarget)) return 'Wait for the head to finish moving.'
+    return ''
   }
 
   /** Losing control (disconnect, Klippy not ready, sign-out) ends any wait: the next move plans afresh. */
   @Watch('controlReady')
   onControlReadyForHandMove (ready: boolean) {
-    if (!ready) releaseHandMove()
+    if (!ready) {
+      releaseHandMove()
+      // Klippy gone (restart, shutdown, disconnect): it is subscribed afresh
+      // when it comes back, so wait for that status before planning. (Losing
+      // control for other reasons keeps the same subscription.)
+      if (!this.klippyReady || !this.klippyConnected) headStatus.fresh = false
+    }
   }
 
   /**
@@ -338,7 +353,8 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   moveBy (axis: Axis, distance: number) {
     if (!this.controlReady || this.busy || !this.isHomed(axis) || !Number.isFinite(distance)) return
     if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
-    if (this.handMoveSettling()) { this.refuseMove('Wait for the head to finish moving.'); return }
+    const wait = this.handMoveWait()
+    if (wait) { this.refuseMove(wait); return }
     const i = 'XYZ'.indexOf(axis)
     const signed = this.inverted(axis) ? -distance : distance
     const target = clampTo(this.position[i] + signed, this.axisMin[i], this.axisMax[i])
@@ -367,7 +383,8 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
       if (axis === 'Z') rate = Math.min(rate, this.zSpeed)
     }
     if (!parts.length) return
-    if (this.handMoveSettling()) { this.refuseMove('Wait for the head to finish moving.'); return }
+    const wait = this.handMoveWait()
+    if (wait) { this.refuseMove(wait); return }
     const offset = this.gcodeOffset ?? [0, 0, 0]
     const realTo = (['X', 'Y', 'Z'] as Axis[]).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
     const plan = this.planHandMove(realTo)
