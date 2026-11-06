@@ -1,4 +1,5 @@
 import { enableAutoDestroy, shallowMount } from '@vue/test-utils'
+import Vue from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WifiManagerCard from '../WifiManagerCard.vue'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
@@ -183,6 +184,79 @@ describe('WifiManagerCard joining another network', () => {
     expect(card.showWarningDialog).toBe(true)
     expect(wifiConnect).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('app.wifi.modal.warning.hotspot_message')
+    wrapper.destroy()
+  })
+})
+
+describe('WifiManagerCard for the printer owner over muon-link (KAN-1565)', () => {
+  const request = vi.fn()
+  const answer = (status: number, data?: unknown) => Object.assign(new Error(`status ${status}`), { response: { status, data } })
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    wifiScan.mockResolvedValue({ data: [] })
+    request.mockReset()
+    ;(Vue as unknown as { $httpClient: unknown }).$httpClient = { request }
+    const { resetOwnerNetwork } = await import('@/services/muon-cloud/useOwnerNetwork')
+    resetOwnerNetwork()
+  })
+
+  afterEach(() => {
+    printerTransportBinding.remote = false
+    vi.useRealTimers()
+  })
+
+  const ownerSettings = { network_from_ble: 'allow', network_from_direct: 'allow', network_from_relay: 'reauth', current_path: 'ble' }
+
+  it('shows the owner Wi-Fi and the rules in place of the read-only line', async () => {
+    request.mockResolvedValue({ status: 200, data: ownerSettings })
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(request.mock.calls[0][0]).toMatchObject({ method: 'GET', url: '/muon-link/network/settings' })
+    expect(wrapper.findComponent({ name: 'OwnerWifiRemote' }).exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'OwnerNetworkSettings' }).exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('app.wifi.remote_read_only')
+    // The printer's own Aux API is still not asked.
+    expect(wifiScan).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it.each([
+    ['an older muon-link (404)', answer(404, 'not found')],
+    ['a session that is not the owner (403 forbidden)', answer(403, { error: 'forbidden' })]
+  ])('shows the read-only line as it was today, and nothing new, for %s', async (_name, failure) => {
+    request.mockRejectedValue(failure)
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(wrapper.text()).toContain('app.wifi.remote_read_only')
+    expect(wrapper.findComponent({ name: 'OwnerWifiRemote' }).exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'OwnerNetworkSettings' }).exists()).toBe(false)
+    wrapper.destroy()
+  })
+
+  it('asks nothing of muon-link when the printer is reached on its own network', async () => {
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    await vi.advanceTimersByTimeAsync(11000)
+
+    expect(request).not.toHaveBeenCalled()
+    expect(wrapper.findComponent({ name: 'OwnerWifiRemote' }).exists()).toBe(false)
+    expect(wifiScan).toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('keeps the quick menu as it was', async () => {
+    request.mockResolvedValue({ status: 200, data: ownerSettings })
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false), propsData: { compact: true } })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(wrapper.findComponent({ name: 'OwnerWifiRemote' }).exists()).toBe(false)
+    expect(wrapper.text()).toContain('app.wifi.remote_read_only')
     wrapper.destroy()
   })
 })
