@@ -81,7 +81,7 @@ describe('an install the printer no longer mentions', () => {
   const idle: AuxUpdateStatus = { state: 'idle', current_version: FROM, session: null }
 
   it('is dropped once the printer says nothing is under way, instead of staying "Verifying" for good', () => {
-    const verifying = remember(null, { state: 'committing', current_version: FROM }, 0)
+    const verifying = remember(null, { state: 'idle', requires_commit: true, current_version: FROM }, 0)
     expect(verifying?.phase).toBe('verifying')
     expect(remember(verifying, idle, UNSEEN_GRACE_MS + 1)).toBeNull()
   })
@@ -209,7 +209,10 @@ describe('an update staged on the spare slot, waiting for a person (Boxwood\'s r
     expect(commitPending(clone({ commit: { state: 'pending', required: true } }))).toBe(true)
     expect(sessionOf(clone({ requires_commit: true }))?.phase).toBe('verifying')
     expect(sessionOf(clone({ commit: { state: 'committing' } }))?.phase).toBe('verifying')
-    expect(sessionOf({ state: 'committing', current_version: TO })?.phase).toBe('verifying')
+    // The top-level state is not read: MuonOS leaves commit_pending there for hours with the commit committed.
+    expect(sessionOf(clone({ state: 'commit_pending' }))).toBeNull()
+    expect(sessionOf(clone({ state: 'committing' }))).toBeNull()
+    expect(bannerVisible(remember(null, clone({ state: 'commit_pending' }), 0), 0, true)).toBe(false)
   })
 
   it('does not adopt a stage into an install the person pressed, and drops it after the grace', () => {
@@ -233,5 +236,42 @@ describe('an install the printer says is under way, in its real status (state on
     expect(outcome(r, { state: 'installing', current_version: FROM })).toBeNull()
     // Back and idle on the old version: then it is a rollback.
     expect(outcome(r, { state: 'idle', current_version: FROM })).toBe('rolled_back')
+  })
+})
+
+describe('a fast failure or rollback of an install the person started', () => {
+  const press = Date.parse('2026-11-06T12:00:00Z')
+  const preparing = { jobId: null, phase: 'preparing' as const, from: FROM, to: TO, progress: null, seenAt: press, lostAt: null, budgetMs: DEFAULT_BUDGET_MS, startedAt: press }
+
+  it('reads install.phase failed, begun after the press, as "failed"', () => {
+    const failed: AuxUpdateStatus = { state: 'idle', current_version: FROM, target_version: TO, install: { phase: 'failed', job_id: 'new', started_at: '2026-11-06T12:00:05Z' } }
+    expect(remember(preparing, failed, press + 20_000)?.phase).toBe('failed')
+    expect(outcome(preparing, failed)).toBe('failed')
+  })
+
+  it('ignores a failed install from before the press', () => {
+    const old: AuxUpdateStatus = { state: 'idle', current_version: FROM, target_version: TO, install: { phase: 'failed', job_id: 'old', started_at: '2026-11-02T12:00:00Z' } }
+    expect(outcome(preparing, old)).toBeNull()
+    expect(remember(preparing, old, press + 5_000)).toBe(preparing)
+  })
+
+  it('reads a newer commit error on the old version as "rolled back": the printer came back on what it had', () => {
+    const back: AuxUpdateStatus = {
+      state: 'idle',
+      current_version: FROM,
+      target_version: TO,
+      commit: { state: 'committed', error: { kind: 'update_quarantined', occurred_at: '2026-11-06T12:05:00Z' } }
+    }
+    expect(outcome(preparing, back)).toBe('rolled_back')
+    expect(remember(preparing, back, press + 600_000)?.phase).toBe('rolled_back')
+    // The same error from 5 Oct is old: not an outcome of this install.
+    const old = { ...back, commit: { state: 'committed', error: { kind: 'update_quarantined', occurred_at: '2026-10-05T11:02:26Z' } } }
+    expect(outcome(preparing, old)).toBeNull()
+  })
+
+  it('returns an outcome already reached, so Settings can still say it', () => {
+    const done = { ...preparing, phase: 'rolled_back' as const }
+    expect(outcome(done, { state: 'idle', current_version: FROM })).toBe('rolled_back')
+    expect(outcome({ ...preparing, phase: 'failed' }, null)).toBe('failed')
   })
 })
