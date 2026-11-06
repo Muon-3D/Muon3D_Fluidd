@@ -25,12 +25,16 @@ export interface PrinterState {
   status: Json
   /** Methods to answer with a JSON-RPC error: method → message. */
   failOn: Record<string, string>
+  /** Methods to answer with this result instead of the mock's: method -> result (server.history.list...). */
+  answer: Record<string, unknown>
 }
 
 export interface PrinterHandle {
   state: PrinterState
   /** Every printer.gcode.script the page sent, in order. */
   gcode: string[]
+  /** Every RPC (method and params) the page sent, in order. */
+  calls: Array<{ method: string, params: Json }>
   /** The G1 lines of every script sent, in order. */
   moves: () => string[]
   /** The printer reports `status` now: it becomes the overlay and is pushed to the page at once. */
@@ -59,8 +63,9 @@ function overlayUpdate (update: Json, over: Json): Json {
 
 export async function usePrinter (page: Page, status: Json = {}): Promise<PrinterHandle> {
   const handle: PrinterHandle = {
-    state: { status, failOn: {} },
+    state: { status, failOn: {}, answer: {} },
     gcode: [],
+    calls: [],
     moves: () => handle.gcode.flatMap(s => s.split('\n')).filter(l => l.startsWith('G1 ')),
     report: (next: Json) => {
       handle.state.status = next
@@ -76,6 +81,11 @@ export async function usePrinter (page: Page, status: Json = {}): Promise<Printe
     ws.onMessage(raw => {
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { server.send(raw); return }
+      handle.calls.push({ method: msg.method, params: msg.params ?? {} })
+      if (msg.method in handle.state.answer) {
+        ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: handle.state.answer[msg.method] }))
+        return
+      }
       const failure = handle.state.failOn[msg.method]
       if (failure !== undefined) {
         ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: 400, message: failure } }))

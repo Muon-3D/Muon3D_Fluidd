@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from 'vitest'
-import { dayLabel, filterHistory, finishedShare, groupByDay, historyStatus, metres, slicerFacts } from '../model'
+import { dayLabel, filterHistory, finishedAt, finishedShare, grams, groupByDay, historyResult, historyRollup, historyStatus, inRange, metres, rangeLabel, slicerFacts, tileDuration, tileWeight } from '../model'
 
 describe('how a print ended', () => {
   test.each([
@@ -81,5 +81,78 @@ describe('numbers', () => {
         { label: 'Planned filament', value: '26 g' }
       ])
     expect(slicerFacts(undefined)).toEqual([])
+  })
+})
+
+describe('the v3 result pill', () => {
+  it('says Done, Failed or Cancelled, keeping how far a cancelled print got', () => {
+    expect(historyResult('completed')).toMatchObject({ kind: 'finished', text: 'Done', tone: 'ok' })
+    expect(historyResult('error')).toMatchObject({ kind: 'failed', text: 'Failed', tone: 'err' })
+    expect(historyResult('cancelled', 420, 4200)).toMatchObject({ kind: 'stopped', text: 'Cancelled', tone: 'warn', detail: 'Stopped at 10%' })
+    expect(historyResult('cancelled')).toMatchObject({ text: 'Cancelled', detail: 'Stopped' })
+  })
+})
+
+describe('the date range', () => {
+  const now = new Date(2026, 10, 6, 12, 0)
+  const ago = (days: number) => now.getTime() / 1000 - days * 86400
+
+  it('keeps the prints that started within the last N days, or all of them', () => {
+    const items = [{ start_time: ago(1) }, { start_time: ago(29) }, { start_time: ago(31) }]
+    expect(inRange(items, 30, now)).toHaveLength(2)
+    expect(inRange(items, 7, now)).toHaveLength(1)
+    expect(inRange(items, 0, now)).toHaveLength(3)
+  })
+
+  it('names the range', () => {
+    expect(rangeLabel(30)).toBe('Last 30 days')
+    expect(rangeLabel(0)).toBe('All time')
+  })
+})
+
+describe('the rollup tiles', () => {
+  const item = (status: string, mm: number, secs: number, type = 'PLA', colour = '#80d6d1') => ({
+    status, filament_used: mm, print_duration: secs, metadata: { filament_type: type, filament_colors: [colour] }
+  })
+
+  it('counts prints, the success rate, time, filament and the usual material', () => {
+    const r = historyRollup([item('completed', 1000, 3600), item('completed', 1000, 7200), item('error', 1000, 3600), item('cancelled', 0, 600)])
+    expect(r.prints).toBe(4)
+    expect(r.done).toBe(2)
+    expect(r.notDone).toBe(2)
+    expect(r.successPercent).toBe(50)
+    expect(r.printSeconds).toBe(15000)
+    expect(r.averageSeconds).toBe(3750)
+    expect(r.material).toEqual({ name: 'PLA', colour: '#80D6D1' })
+  })
+
+  it('has no success rate with nothing to rate', () => {
+    expect(historyRollup([]).successPercent).toBeNull()
+    expect(historyRollup([item('in_progress', 10, 10)]).successPercent).toBeNull()
+  })
+
+  it('weighs filament from its length, the slicer density and diameter when known', () => {
+    expect(grams(1000, undefined)).toBeCloseTo(2.98, 1)
+    expect(grams(1000, { filament_diameter: 2.85, filament_density: 1.27 })).toBeCloseTo(8.1, 1)
+  })
+
+  test.each([[64 * 3600, { value: '64', unit: 'h' }], [38 * 60, { value: '38', unit: 'm' }], [0, { value: '0', unit: 'm' }], [90 * 60, { value: '1.5', unit: 'h' }]])('%d s reads %j', (s, out) => {
+    expect(tileDuration(s)).toEqual(out)
+  })
+
+  test.each([[1200, { value: '1.2', unit: 'kg' }], [41, { value: '41', unit: 'g' }], [11.4, { value: '11.4', unit: 'g' }]])('%d g reads %j', (g, out) => {
+    expect(tileWeight(g)).toEqual(out)
+  })
+})
+
+describe('when it finished', () => {
+  const now = new Date(2026, 10, 6, 12, 0)
+  const at = (y: number, mo: number, d: number, h: number, m: number) => new Date(y, mo, d, h, m).getTime() / 1000
+
+  it('says Today or Yesterday with the time, else the date and time', () => {
+    expect(finishedAt({ start_time: at(2026, 10, 5, 20, 0), end_time: String(at(2026, 10, 5, 21, 2)) }, now)).toBe('Yesterday 21:02')
+    expect(finishedAt({ start_time: at(2026, 10, 6, 8, 0), end_time: null, total_duration: 600 }, now)).toBe('Today 08:10')
+    expect(finishedAt({ start_time: at(2026, 10, 2, 15, 0), end_time: String(at(2026, 10, 2, 16, 20)) }, now)).toBe('2 Nov 16:20')
+    expect(finishedAt({ start_time: at(2025, 11, 31, 9, 0), end_time: String(at(2025, 11, 31, 9, 30)) }, now)).toBe('31 Dec 2025 09:30')
   })
 })

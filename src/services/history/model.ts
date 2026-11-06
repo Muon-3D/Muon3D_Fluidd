@@ -1,4 +1,5 @@
 import type { TileTone } from '@/services/printers-page/model'
+import { fileFilament } from '@/services/control/model'
 
 export type HistoryKind = 'finished' | 'stopped' | 'failed' | 'printing' | 'other'
 
@@ -97,4 +98,108 @@ export function slicerFacts (meta: Record<string, unknown> | undefined): Array<{
   add('Height', num('object_height') !== null ? `${num('object_height')} mm` : null)
   add('Planned filament', num('filament_weight_total') !== null ? `${Math.round(num('filament_weight_total')!)} g` : null)
   return facts
+}
+
+/**
+ * The result pill the History table shows: Done, Failed or Cancelled. A
+ * cancelled print keeps how far it got in `detail`, for its details.
+ */
+export function historyResult (status: string, filamentUsed?: number, filamentTotal?: number): HistoryStatus & { detail: string } {
+  const was = historyStatus(status, filamentUsed, filamentTotal)
+  switch (was.kind) {
+    case 'finished': return { ...was, text: 'Done', detail: 'Done' }
+    case 'stopped': return { ...was, text: 'Cancelled', tone: 'warn', detail: was.text }
+    default: return { ...was, detail: was.text }
+  }
+}
+
+/** The prints that started within the last `days` days; 0 keeps them all. */
+export function inRange<T extends { start_time: number }> (items: T[], days: number, now: Date = new Date()): T[] {
+  if (!days) return items
+  const from = now.getTime() / 1000 - days * 86400
+  return items.filter(i => i.start_time >= from)
+}
+
+export const RANGE_DAYS = [7, 30, 90, 0]
+
+export function rangeLabel (days: number): string {
+  return days ? `Last ${days} days` : 'All time'
+}
+
+/** Grams of filament from the length used: the slicer's diameter and density when it said, else 1.75 mm PLA. */
+export function grams (mm: number, meta?: { filament_diameter?: number, filament_density?: number }): number {
+  const d = Number(meta?.filament_diameter) || 1.75
+  const rho = Number(meta?.filament_density) || 1.24
+  return mm * Math.PI * (d / 2) ** 2 * rho / 1000
+}
+
+export interface HistoryRollup {
+  prints: number;
+  done: number;
+  notDone: number;
+  successPercent: number | null;
+  printSeconds: number;
+  averageSeconds: number;
+  grams: number;
+  material: { name: string, colour: string | null } | null;
+}
+
+interface RollupItem { status: string, filament_used: number, print_duration: number, metadata?: unknown }
+
+/** The four tiles: how many prints, how many came out, the time, the filament, and the usual material. */
+export function historyRollup (items: RollupItem[]): HistoryRollup {
+  let done = 0
+  let notDone = 0
+  let seconds = 0
+  let weight = 0
+  const materials = new Map<string, { n: number, colour: string | null }>()
+  for (const i of items) {
+    const kind = historyStatus(i.status).kind
+    if (kind === 'finished') done++
+    else if (kind === 'stopped' || kind === 'failed') notDone++
+    seconds += i.print_duration || 0
+    const meta = i.metadata as Record<string, unknown> | undefined
+    weight += grams(i.filament_used || 0, meta as never)
+    const fil = fileFilament(meta)
+    if (fil) {
+      const seen = materials.get(fil.name)
+      materials.set(fil.name, { n: (seen?.n ?? 0) + 1, colour: seen?.colour ?? fil.colour })
+    }
+  }
+  const top = [...materials.entries()].sort((a, b) => b[1].n - a[1].n)[0]
+  return {
+    prints: items.length,
+    done,
+    notDone,
+    successPercent: done + notDone ? Math.round(done / (done + notDone) * 100) : null,
+    printSeconds: seconds,
+    averageSeconds: items.length ? Math.round(seconds / items.length) : 0,
+    grams: weight,
+    material: top ? { name: top[0], colour: top[1].colour } : null
+  }
+}
+
+/** A big number and its small unit: 64 h, 1.5 h, 38 m. */
+export function tileDuration (seconds: number): { value: string, unit: string } {
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return { value: String(minutes), unit: 'm' }
+  const hours = minutes / 60
+  return { value: hours >= 10 ? String(Math.round(hours)) : String(Math.round(hours * 10) / 10), unit: 'h' }
+}
+
+/** A big number and its small unit: 1.2 kg, 41 g, 11.4 g. */
+export function tileWeight (g: number): { value: string, unit: string } {
+  if (g >= 1000) return { value: String(Math.round(g / 100) / 10), unit: 'kg' }
+  return { value: g >= 100 ? String(Math.round(g)) : String(Math.round(g * 10) / 10), unit: 'g' }
+}
+
+/** "Yesterday 21:02", "2 Nov 16:20", "31 Dec 2025 09:30": when a print ended. */
+export function finishedAt (item: { start_time: number, end_time?: string | null, total_duration?: number }, now: Date = new Date()): string {
+  const seconds = item.end_time ? Number(item.end_time) : item.start_time + (item.total_duration || 0)
+  const d = new Date(seconds * 1000)
+  const clock = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const label = dayLabel(seconds, now)
+  if (label === 'Today' || label === 'Yesterday') return `${label} ${clock}`
+  const year = d.getFullYear() === now.getFullYear() ? '' : ` ${d.getFullYear()}`
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}${year} ${clock}`
 }
