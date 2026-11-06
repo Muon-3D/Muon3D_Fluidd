@@ -117,82 +117,46 @@
 
     <!-- DISCOVER -->
     <template v-if="tab === 'discover'">
-      <div
-        v-if="busy"
-        class="mlib-shelf__row"
-        role="status"
-        aria-busy="true"
-      >
-        <span class="mlib-hidden">Loading Discover</span>
-        <span
-          v-for="n in 5"
-          :key="n"
-          class="mlib-skeleton"
-        />
-      </div>
-
-      <section
-        v-else-if="error"
-        class="mlib-empty"
-        role="alert"
-      >
-        <h2>Discover didn't answer</h2>
-        <p>{{ error }}</p>
-        <div class="mlib-empty__acts">
-          <button
-            type="button"
-            class="mlib-btn"
-            @click="load"
-          >
-            Try again
-          </button>
-          <a
-            :href="libraryUrl"
-            target="_blank"
-            rel="noopener"
-            class="mlib-btn"
-          >Open library.muon3d.com ↗</a>
-        </div>
-      </section>
+      <!-- The whole of Discover: offline, nothing answered, or nothing yet (v3 §6). -->
+      <library-state
+        v-if="pageState"
+        :kind="pageState.kind"
+        :icon="pageState.icon"
+        :title="pageState.title"
+        :text="pageState.text"
+        :action="pageState.action"
+        primary
+        tid="library-discover-state"
+        @action="load"
+      />
 
       <template v-else>
-        <section
+        <library-shelf
           v-for="shelf in visibleShelves"
+          :id="shelf.id"
           :key="shelf.id"
-          class="mlib-shelf"
-          :data-tid="`library-shelf-${shelf.id}`"
-        >
-          <header class="mlib-shelf__head">
-            <h2>{{ shelf.title }}</h2>
-            <span class="mlib-muted">{{ shelf.sub }}</span>
-            <a
-              :href="shelf.more"
-              target="_blank"
-              rel="noopener"
-              class="mlib-link"
-            >See all</a>
-          </header>
-          <div class="mlib-shelf__row">
-            <library-model-card
-              v-for="card in shelf.cards"
-              :key="card.key"
-              :card="card"
-              :printer-name="printerName"
-              :busy="printing === card.key"
-              @print="print"
-              @open="open"
-            />
-          </div>
-        </section>
+          :title="shelf.title"
+          :sub="shelf.sub"
+          :cards="shelf.cards"
+          :loading="busy"
+          :error="shelf.error"
+          :printer-name="printerName"
+          :printing="printing"
+          @print="print"
+          @open="open"
+          @retry="load"
+          @see-all="seeAll"
+        />
 
-        <section
-          v-if="!visibleShelves.length && !visiblePosts.length"
-          class="mlib-empty"
-          data-tid="library-discover-empty"
-        >
-          <h2>{{ query || chip !== 'all' ? 'Nothing matches' : 'Nothing to discover yet' }}</h2>
-          <p>{{ query || chip !== 'all' ? 'Try another word or filter.' : 'Prints people share, and the ones we test on the M1, appear here.' }}</p>
-        </section>
+        <library-state
+          v-if="noMatch"
+          icon="search"
+          :title="noMatchTitle"
+          text="Clear the filter to see prints that need a re-slice, or try another word."
+          action="Clear filter"
+          tid="library-discover-empty"
+          @action="clearFilter"
+        />
 
         <!-- The feed: what people share, newest first, below the shelves. -->
         <section
@@ -343,6 +307,8 @@ import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryModelCard from './LibraryModelCard.vue'
 import LibraryQuickLook from './LibraryQuickLook.vue'
 import LibraryYoursShelves from './LibraryYoursShelves.vue'
+import LibraryShelf from './LibraryShelf.vue'
+import LibraryState from './LibraryState.vue'
 import { describeLibraryError, type CommunityCollection, type LibraryItem } from '@/services/library/api'
 import { LIBRARY_URL } from '@/services/library/discover'
 import { libraryClient } from '@/services/library/store'
@@ -371,7 +337,7 @@ const PALETTE = ['#ff9f0a', '#ff453a', '#64d2ff', '#30d158', '#bf5af2', '#80d6d1
  * prints from where it is, through the host: `print` and `print-item`.
  * No router in here; it sizes to its container.
  */
-@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves } })
+@Component({ components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState } })
 export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: 'page' }) readonly context!: 'page' | 'control'
   @Prop({ type: String, default: null }) readonly printerId!: string | null
@@ -388,7 +354,12 @@ export default class MuonLibrary extends Vue {
   query = ''
   chip = 'all'
   busy = true
-  error = ''
+  /** Why each part of Discover couldn't be read; '' when it was. */
+  popularError = ''
+  m1Error = ''
+  feedError = ''
+  /** The browser said it was offline, or nothing could be fetched at all. */
+  offline = false
   popular: ShelfCard[] = []
   m1: ShelfCard[] = []
   posts: FeedPost[] = []
@@ -416,7 +387,13 @@ export default class MuonLibrary extends Vue {
     if (name && !before && this.isM1 && this.chip === 'all') this.chip = 'fits'
   }
 
+  /** Back online after Discover couldn't be read: read it again, nobody needs to tap. */
+  onOnline () {
+    if (this.offline || this.allFailed) this.load()
+  }
+
   mounted () {
+    window.addEventListener('online', this.onOnline)
     if (typeof IntersectionObserver === 'undefined') return
     this.observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) this.loadMore()
@@ -435,6 +412,7 @@ export default class MuonLibrary extends Vue {
   }
 
   beforeDestroy () {
+    window.removeEventListener('online', this.onOnline)
     this.controller?.abort()
     this.observer?.disconnect()
   }
@@ -461,23 +439,32 @@ export default class MuonLibrary extends Vue {
     const controller = this.controller = new AbortController()
     this.feedBusy = false
     this.busy = true
-    this.error = ''
-    try {
-      const [shelves, feed] = await Promise.all([
-        loadShelves(fetch, controller.signal),
-        loadFeedPage(null, fetch, controller.signal).catch(() => ({ posts: [], cursor: null }))
-      ])
-      if (controller.signal.aborted) return
-      this.popular = shelves.popular
-      this.m1 = shelves.m1
+    this.popularError = this.m1Error = this.feedError = ''
+    this.offline = typeof navigator !== 'undefined' && navigator.onLine === false
+    if (this.offline) {
+      this.busy = false
+      return
+    }
+    const [shelves, feed] = await Promise.all([
+      loadShelves(fetch, controller.signal),
+      loadFeedPage(null, fetch, controller.signal).catch((error: unknown) => error instanceof Error ? error : new Error(String(error)))
+    ])
+    if (controller.signal.aborted) return
+    this.popular = shelves.popular
+    this.m1 = shelves.m1
+    this.popularError = shelves.errors.popular ?? ''
+    this.m1Error = shelves.errors.m1 ?? ''
+    if (feed instanceof Error) {
+      this.feedError = feed.message
+      this.posts = []
+      this.feedCursor = null
+    } else {
       this.posts = feed.posts
       this.feedCursor = feed.cursor
-    } catch (error) {
-      if (controller.signal.aborted) return
-      this.error = error instanceof Error ? error.message : String(error)
-    } finally {
-      if (!controller.signal.aborted) this.busy = false
     }
+    // Nothing answered and the browser can't reach anything: offline, not an outage.
+    this.offline = this.allFailed && (navigator.onLine === false || /fetch|network/i.test(this.popularError))
+    this.busy = false
   }
 
   async loadMore () {
@@ -506,15 +493,73 @@ export default class MuonLibrary extends Vue {
     return words.every(word => haystack.includes(word))
   }
 
+  /** Newly shared prints (not makes), from the feed's first page: the New shelf. */
+  get newest (): ShelfCard[] {
+    return this.posts.filter(post => post.verb !== 'made').map(post => post.card).slice(0, 12)
+  }
+
+  /**
+   * Popular this week, Made for M1, New (v3 L3). While Discover loads, all
+   * three show skeletons; a shelf that failed shows its error with Retry;
+   * an empty one hides. Filtered to what fits, Popular is already all M1
+   * prints, so Made for M1 would repeat it and hides.
+   */
   get visibleShelves () {
     const popular = this.popular.filter(this.matches)
-    const m1 = this.m1.filter(this.matches)
-    return [
-      { id: 'popular', title: 'Popular this week', sub: 'Most made and saved in the last 7 days', cards: popular, more: `${LIBRARY_URL}/community?sort=trending` },
-      { id: 'm1', title: 'Made for M1', sub: 'Sliced and test-printed on the M1', cards: m1, more: `${LIBRARY_URL}/search?sources=muon3d` }
+    const shelves = [
+      { id: 'popular', title: 'Popular this week', sub: 'Most made and saved in the last 7 days', cards: popular, error: this.popularError },
+      { id: 'm1', title: 'Made for M1', sub: 'Sliced and test-printed on the M1', cards: this.m1.filter(this.matches), error: this.m1Error },
+      { id: 'new', title: 'New', sub: 'Shared in the last few days', cards: this.newest.filter(this.matches), error: this.feedError }
     ]
-      // Filtered to what fits, Popular is already all M1 prints: one shelf says it.
-      .filter(shelf => shelf.cards.length > 0 && !(this.chip === 'fits' && shelf.id === 'm1' && popular.length > 0))
+    if (this.busy) return shelves
+    return shelves.filter(shelf => (shelf.error || shelf.cards.length > 0) && !(this.chip === 'fits' && shelf.id === 'm1' && popular.length > 0 && !shelf.error))
+  }
+
+  get allFailed (): boolean {
+    return !!(this.popularError && this.m1Error && this.feedError)
+  }
+
+  get filtered (): boolean {
+    return !!this.query.trim() || this.chip !== 'all'
+  }
+
+  /** Discover as a whole can't be shown: offline, nothing answered, or nothing yet. */
+  get pageState (): { kind: 'empty' | 'error', icon: string, title: string, text: string, action: string } | null {
+    if (this.busy) return null
+    if (this.offline) return { kind: 'error', icon: 'wifi', title: 'You\'re offline', text: 'Discover needs the internet. Your printers on this network still work.', action: 'Try again' }
+    if (this.allFailed) return { kind: 'error', icon: 'alert', title: 'The Library didn\'t answer', text: this.popularError, action: 'Try again' }
+    // Nothing at all, whatever the filter (in Control "Fits" is on from the start).
+    if (!this.popular.length && !this.m1.length && !this.posts.length) {
+      return { kind: 'empty', icon: 'library', title: 'Nothing to discover yet', text: 'Prints people share, and the ones we test on the M1, appear here.', action: '' }
+    }
+    return null
+  }
+
+  /** A filter or a search hides everything there is. */
+  get noMatch (): boolean {
+    return !this.busy && this.filtered && !this.visibleShelves.length && !this.visiblePosts.length
+  }
+
+  get noMatchTitle (): string {
+    const query = this.query.trim()
+    const chip = this.chips.find(c => c.id === this.chip)
+    const filter = this.chip !== 'all' && chip ? ` with ${chip.label}` : ''
+    return query ? `Nothing matches "${query}"${filter}` : `Nothing here${filter}`
+  }
+
+  clearFilter () {
+    this.query = ''
+    this.chip = 'all'
+  }
+
+  /** See all: the shelf's own page arrives with v3 page 3; until then, the Library site's list. */
+  seeAll (id: string) {
+    const where: Record<string, string> = {
+      popular: `${LIBRARY_URL}/community?sort=trending`,
+      m1: `${LIBRARY_URL}/search?sources=muon3d`,
+      new: `${LIBRARY_URL}/community?sort=new`
+    }
+    if (where[id]) window.open(where[id], '_blank', 'noopener')
   }
 
   get visiblePosts (): FeedPost[] {

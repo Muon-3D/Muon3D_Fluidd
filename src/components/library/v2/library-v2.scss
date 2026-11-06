@@ -684,3 +684,58 @@
 }
 
 .mlook__card:focus { outline: none; }
+
+/* ---------------------------------------------------- v3: shared pieces -- */
+
+.mcard__fil { position: absolute; top: 10px; right: 10px; gap: 6px; }
+.mcard__dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+/* One state, the same everywhere (v3 §6): icon, bold line, muted line, one button. */
+.mstate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 210px;
+  padding: 28px 24px;
+  border-radius: var(--mlib-r, 22px);
+  background: var(--m3d-surface);
+  text-align: center;
+
+  &__icon {
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 52px;
+    margin-bottom: 6px;
+    border-radius: 14px;
+    background: var(--m3d-fill-2, var(--m3d-surface-2));
+    color: var(--m3d-text-muted);
+  }
+
+  &__title { font-size: var(--m3d-text-md); }
+  &__text { max-width: 360px; margin: 0; color: var(--m3d-text-muted); font-size: var(--m3d-text-sm); }
+  .mlib-btn { margin-top: 8px; }
+}
+
+.mstate-callout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--m3d-danger) 12%, transparent);
+  color: var(--m3d-text);
+  font-size: var(--m3d-text-sm);
+
+  &__text { flex: 1; }
+}
+
+.mlib-skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mlib-skeleton--line { aspect-ratio: auto; height: 12px; width: 70%; border-radius: 6px; }

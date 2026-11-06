@@ -59,6 +59,10 @@ export interface ModelServiceState {
   collections: FakeCollection[];
   /** Answer every request with this status (outage tests), or null. */
   failWith: number | null;
+  /** Answer matching requests with a status instead ("GET /v1/public/discover"): one shelf down. */
+  failOn: (request: string) => number | null;
+  /** Hold every answer this long (loading states). */
+  delayMs: number;
   /** Requests seen, for assertions ("method path"). */
   seen: string[];
 }
@@ -69,6 +73,8 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     saves: [],
     collections: [],
     failWith: null,
+    failOn: () => null,
+    delayMs: 0,
     seen: [],
     ...over
   }
@@ -127,7 +133,9 @@ export async function serveModels (page: Page, state: ModelServiceState) {
     const method = request.method()
     state.seen.push(`${method} ${path}${url.search}`)
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
-    if (state.failWith) return json(route, { error: { code: 'unavailable', message: 'Down for a moment.' } }, state.failWith)
+    if (state.delayMs) await new Promise(resolve => setTimeout(resolve, state.delayMs))
+    const failure = state.failWith ?? state.failOn(`${method} ${path}${url.search}`)
+    if (failure) return json(route, { error: { code: 'unavailable', message: 'Down for a moment.' } }, failure)
     const all = state.publications
 
     const image = path.match(/^\/v1\/public\/publications\/([^/]+)\/images\//)
