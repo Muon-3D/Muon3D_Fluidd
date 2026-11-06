@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PanelBridge, type BridgeHost } from '../bridge'
-import { auxVerdict, rpcVerdict, ON_PRINTER } from '../allow'
+import { auxVerdict, readVerb, rpcVerdict, ON_PRINTER } from '../allow'
 import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION } from '../protocol'
 
 describe('allowlist', () => {
@@ -47,6 +47,7 @@ describe('PanelBridge', () => {
       auxGet: vi.fn(async () => ({ ssid: 'home' })),
       status: () => ({ extruder: { temperature: 210 }, heater_bed: { temperature: 60 } }),
       connectionId: () => 7,
+      verb: vi.fn(() => ''),
       ...overrides
     }
     const onRefused = vi.fn()
@@ -137,9 +138,45 @@ describe('PanelBridge', () => {
     expect(out[0]).toEqual({ id: 6, ok: true, result: { connection_id: 7 } })
   })
 
+  it('runs a checked verb on the host, and passes its refusal back', async () => {
+    const { frame, host } = setup({ verb: vi.fn((v: { verb: string }) => (v.verb === 'heat' ? 'Not while the printer is busy.' : '')) })
+    hello(frame)
+    const out = replies()
+    await bridge!.handle({ id: 10, kind: 'verb', verb: 'jog', axis: 'X', by: 10, script: 'G1 Z0' })
+    await bridge!.handle({ id: 11, kind: 'verb', verb: 'heat', heater: 'extruder', target: 215 })
+    await bridge!.handle({ id: 12, kind: 'verb', verb: 'gcode', script: 'SAVE_CONFIG' })
+    expect(host.verb).toHaveBeenCalledTimes(2)
+    expect(host.verb).toHaveBeenNthCalledWith(1, { verb: 'jog', axis: 'X', by: 10 })
+    expect(host.rpc).not.toHaveBeenCalled()
+    expect(out).toEqual([
+      { id: 10, ok: true, result: null },
+      { id: 11, ok: false, error: { message: 'Not while the printer is busy.', status: 409 } },
+      { id: 12, ok: false, error: { message: ON_PRINTER, code: -32601, status: 403 } }
+    ])
+  })
+
   it('sends nothing before the handshake', async () => {
     const { host } = setup()
     bridge!.notify('notify_status_update', [{ extruder: {} }])
     expect(host.rpc).not.toHaveBeenCalled()
+  })
+})
+
+describe('verbs', () => {
+  it('rebuilds a verb from known values only', () => {
+    expect(readVerb({ verb: 'jog', axis: 'X', by: 10, script: 'SAVE_CONFIG' })).toEqual({ verb: 'jog', axis: 'X', by: 10 })
+    expect(readVerb({ verb: 'home', axes: 'XY' })).toEqual({ verb: 'home', axes: 'XY' })
+    expect(readVerb({ verb: 'heat', heater: 'extruder', target: 215.4 })).toEqual({ verb: 'heat', heater: 'extruder', target: 215 })
+    expect(readVerb({ verb: 'filament', action: 'load' })).toEqual({ verb: 'filament', action: 'load' })
+  })
+
+  it('refuses anything else', () => {
+    for (const v of [
+      { verb: 'jog', axis: 'E', by: 5 }, { verb: 'jog', axis: 'X', by: 51 }, { verb: 'jog', axis: 'X', by: 0 },
+      { verb: 'jog', axis: 'X', by: Number.NaN }, { verb: 'jog', axis: 'X', by: '10' },
+      { verb: 'home', axes: 'XYZE' }, { verb: 'heat', heater: 'heater_generic chamber', target: 50 },
+      { verb: 'heat', heater: 'extruder', target: -1 }, { verb: 'filament', action: 'purge' },
+      { verb: 'gcode', script: 'G1 X0' }, { verb: 'macro', name: 'SAVE_CONFIG' }, null, 'jog'
+    ]) expect(readVerb(v)).toBeNull()
   })
 })
