@@ -70,10 +70,13 @@ export default class ConsoleCommand extends Vue {
   }
 
   newValue = ''
-  commandHistoryCount = Globals.CONSOLE_COMMAND_HISTORY
   history: string[] = []
   originalHistory: string[] = []
   isFirst = true
+
+  get commandHistoryCount (): number {
+    return this.$store.state.config.uiSettings.console?.historyCount ?? Globals.CONSOLE_COMMAND_HISTORY
+  }
 
   mounted () {
     this.newValue = this.value

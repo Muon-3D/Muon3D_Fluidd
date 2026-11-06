@@ -1,6 +1,7 @@
 import type { ConfigState } from './types'
 import { Globals } from '@/globals'
 import { DEFAULT_UI_STYLE } from '@/util/ui-style'
+import { defaultConsoleConfig } from '@/services/console/settings'
 
 export const defaultState = (): ConfigState => {
   return {
@@ -179,7 +180,8 @@ export const defaultState = (): ConfigState => {
       },
       overview: {
         layouts: {}
-      }
+      },
+      console: defaultConsoleConfig()
     }
   }
 }

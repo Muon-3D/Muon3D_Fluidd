@@ -33,6 +33,8 @@ export interface PrinterState {
   answer: Record<string, unknown>
   /** When set, server.info reports exactly these Moonraker components (what a page gates on). */
   components?: string[]
+  /** The printer can't be reached: its websocket closes as soon as the page opens one (see `goOffline`). */
+  offline?: boolean
 }
 
 export interface PrinterHandle {
@@ -49,6 +51,8 @@ export interface PrinterHandle {
   report: (status: Json) => void
   /** The printer prints these lines to the console now (a notify_gcode_response each). */
   say: (...lines: string[]) => void
+  /** The printer goes away: the page's websocket closes, and so does every new one. */
+  goOffline: () => void
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -84,13 +88,18 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     },
     say: (...lines: string[]) => {
       for (const line of lines) pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_gcode_response', params: [line] }))
+    },
+    goOffline: () => {
+      handle.state.offline = true
+      pageSocket?.close()
     }
   }
   const asked = new Map<unknown, string>()
   const infoRequests = new Set<unknown>()
-  let pageSocket: { send: (message: string) => void } | null = null
+  let pageSocket: { send: (message: string) => void, close: () => void } | null = null
 
   await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
+    if (handle.state.offline) { ws.close(); return }
     pageSocket = ws
     const server = ws.connectToServer()
 
@@ -164,4 +173,31 @@ export const PRESETS = {
       configfile: { settings: { bed_mesh: M1_NO_GO } }
     }
   }
+}
+
+/**
+ * The printer's settings database (Moonraker's `fluidd` namespace), for this
+ * test only: what the page saves (server.database.post_item) is answered
+ * here and kept in `saved`, and laid over the shared mock's copy when the
+ * page loads it again, so a reload sees it and no other test does.
+ */
+export async function useDatabase (page: Page, printer: PrinterHandle): Promise<{ saved: Json, posts: () => Json[] }> {
+  const saved: Json = {}
+  printer.state.answers['server.database.post_item'] = (params: Json) => {
+    if (params.namespace === 'fluidd' && typeof params.key === 'string') {
+      const parts = params.key.split('.')
+      let cur = saved
+      for (const part of parts.slice(0, -1)) cur = isObject(cur[part]) ? cur[part] : (cur[part] = {})
+      cur[parts[parts.length - 1]] = params.value
+    }
+    return { namespace: params.namespace, key: params.key, value: params.value }
+  }
+  await page.route(new RegExp(`:${MOCK_PORT}/server/database/item\\?namespace=fluidd`), async route => {
+    if (route.request().method() !== 'GET') { await route.continue(); return }
+    const response = await route.fetch()
+    const body = await response.json()
+    if (isObject(body?.result?.value)) body.result.value = overlay(body.result.value, saved)
+    await route.fulfill({ response, json: body })
+  })
+  return { saved, posts: () => printer.called('server.database.post_item') }
 }
