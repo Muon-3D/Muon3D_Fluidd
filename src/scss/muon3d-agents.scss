@@ -1,0 +1,142 @@
+// Agents acting live on Control (KAN-1359): the eight agent colours the
+// console hands out by `colour_index`, a neutral one for the console's own
+// safety watch, and the highlight `v-agent-highlight` draws.
+
+.v-application.theme--dark {
+  --m3d-agent-0: #ff6b70;
+  --m3d-agent-1: #ff8a3d;
+  --m3d-agent-2: #e3b23c;
+  --m3d-agent-3: #4cc283;
+  --m3d-agent-4: #2ec4cf;
+  --m3d-agent-5: #7b96ff;
+  --m3d-agent-6: #b48af0;
+  --m3d-agent-7: #f06bbf;
+  --m3d-agent-neutral: #9aa3ad;
+  --m3d-agent-fail: #ff5c5c;
+  --m3d-agent-label-ink: #0c0f13;
+}
+
+.v-application.theme--light {
+  --m3d-agent-0: #e5484d;
+  --m3d-agent-1: #e8590c;
+  --m3d-agent-2: #b8860b;
+  --m3d-agent-3: #2f9e5f;
+  --m3d-agent-4: #0e9aa7;
+  --m3d-agent-5: #476ce0;
+  --m3d-agent-6: #9158d1;
+  --m3d-agent-7: #d6409f;
+  --m3d-agent-neutral: #6b7480;
+  --m3d-agent-fail: #d93636;
+  --m3d-agent-label-ink: #ffffff;
+}
+
+.m3d-agent-host {
+  position: relative;
+}
+
+.m3d-agent-hl {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  --m3d-agent-hl: var(--m3d-agent-neutral);
+
+  &--off {
+    display: none;
+  }
+
+  &--active {
+    box-shadow: inset 0 0 0 2px var(--m3d-agent-hl);
+    background: color-mix(in srgb, var(--m3d-agent-hl) 12%, transparent);
+  }
+
+  &--asked {
+    box-shadow: inset 0 0 0 2px var(--m3d-agent-hl);
+    animation: m3d-agent-pulse 1.4s ease-in-out infinite;
+  }
+
+  &--approved,
+  &--denied {
+    box-shadow: inset 0 0 0 1px var(--m3d-agent-hl);
+  }
+
+  &--failed,
+  &--estop {
+    box-shadow: inset 0 0 0 2px var(--m3d-agent-fail);
+    background: color-mix(in srgb, var(--m3d-agent-fail) 18%, transparent);
+    animation: m3d-agent-flash 0.5s ease-out 3;
+  }
+
+  &__names {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    max-width: calc(100% - 12px);
+  }
+
+  &__name {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--m3d-agent-label-ink);
+    background: var(--m3d-agent-hl);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+
+    &--asked {
+      color: var(--m3d-agent-hl);
+      background: var(--m3d-surface, rgba(20, 24, 30, 0.9));
+      box-shadow: inset 0 0 0 1px var(--m3d-agent-hl);
+    }
+
+    &--denied {
+      text-decoration: line-through;
+      opacity: 0.85;
+    }
+
+    &--failed,
+    &--estop {
+      background: var(--m3d-agent-fail);
+    }
+  }
+
+  &__dot {
+    width: 6px;
+    height: 6px;
+    flex: none;
+    border-radius: 50%;
+    background: currentColor;
+  }
+}
+
+@keyframes m3d-agent-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--m3d-agent-hl); }
+  50% { box-shadow: inset 0 0 0 2px transparent, 0 0 0 3px color-mix(in srgb, var(--m3d-agent-hl) 35%, transparent); }
+}
+
+@keyframes m3d-agent-flash {
+  0% { opacity: 1; }
+  50% { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m3d-agent-hl--asked,
+  .m3d-agent-hl--failed,
+  .m3d-agent-hl--estop {
+    animation: none;
+  }
+}

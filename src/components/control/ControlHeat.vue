@@ -51,6 +51,7 @@
       <div
         v-for="h in steppers"
         :key="`${panelTarget}|${h.heater.name}`"
+        v-agent-highlight="h.label === 'Nozzle' ? 'hotend' : 'bed'"
         class="heat__stepper"
       >
         <span class="heat__stepper-name">{{ h.label }} <span class="crow__sub">{{ deg1(h.heater.temperature) }} · power {{ Math.round((h.heater.power || 0) * 100) }}%</span></span>

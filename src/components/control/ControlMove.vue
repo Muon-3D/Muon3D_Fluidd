@@ -1,5 +1,6 @@
 <template>
   <control-card
+    v-agent-highlight="'jog'"
     title="Move"
     :locked="lockReason"
     :note="note"
@@ -176,6 +177,7 @@
           Plate up
         </button>
         <button
+          v-agent-highlight="'home'"
           type="button"
           class="cbtn"
           :disabled="!ready || busy"
@@ -194,6 +196,7 @@
       </template>
       <template v-else>
         <button
+          v-agent-highlight="'home'"
           type="button"
           class="cbtn"
           :disabled="!ready || busy"
@@ -209,6 +212,7 @@
           Home X Y
         </button>
         <button
+          v-agent-highlight="'home'"
           type="button"
           class="cbtn"
           :disabled="!ready || busy"
