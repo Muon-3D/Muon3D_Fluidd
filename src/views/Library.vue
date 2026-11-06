@@ -16,12 +16,15 @@
       :search="searchQuery"
       :own-ready="state.checked && state.enabled"
       :collection="collection"
+      :print-id="printId"
       @update:tab="setView"
       @update:grid="setGrid"
       @grid-back="gridBack"
       @update:collection="openCollection"
       @collection-back="gridBack"
       @collection-deleted="collectionDeleted"
+      @update:print="openPrint"
+      @print-back="printBack"
       @open-search="openSearch"
       @print="onLibraryPrint"
       @print-item="printOn($event, activePrinter ? activePrinter.id : null)"
@@ -218,6 +221,33 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     return this.view === 'mine' && typeof id === 'string' && id ? id : null
   }
 
+  /** A print's own page (`?print=<id>`), on Discover or Yours. */
+  get printId (): string | null {
+    const id = this.$route?.query.print
+    return typeof id === 'string' && id ? id : null
+  }
+
+  /** Whether this page opened the print's page (then ‹ is the browser's Back). */
+  printOpenedHere = false
+
+  /** Open page: the print's page, pushed so Back returns to where it was opened. */
+  openPrint (id: string) {
+    this.printOpenedHere = true
+    this.$router.push({ query: { ...this.$route.query, print: id } }).catch(() => {})
+  }
+
+  /** ‹ on a print's page: back where it came from, or (opened by its address) to the place under it. */
+  printBack () {
+    if (this.printOpenedHere) {
+      this.printOpenedHere = false
+      this.$router.back()
+      return
+    }
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query }
+    delete query.print
+    this.$router.replace({ query }).catch(() => {})
+  }
+
   /** Deleted on its page: Yours replaces it in history, so Back cannot return to it. */
   collectionDeleted () {
     const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view: 'mine' }
@@ -235,6 +265,7 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view: 'mine', collection: id }
     delete query.shelf
     delete query.q
+    delete query.print
     this.gridOpenedHere = true
     this.$router.push({ query }).catch(() => {})
   }
@@ -257,6 +288,7 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     delete rest.shelf
     delete rest.q
     delete rest.collection
+    delete rest.print
     const view = YOURS_GRIDS.includes(grid as YoursGridSource) ? 'mine' : 'discover'
     const query = grid ? { ...rest, view, shelf: grid, ...(grid === 'search' ? { q: q ?? this.searchQuery } : {}) } : rest
     if (this.grid && grid) {
@@ -285,12 +317,13 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   /** Discover or Yours, kept in the address so Back and a shared link land on it. */
   setView (tab: LibraryTab) {
     const view = tab === 'yours' ? 'mine' : 'discover'
-    if (view === this.view && !this.grid && !this.collection) return
+    if (view === this.view && !this.grid && !this.collection && !this.printId) return
     // A place starts at its top: no See all or search left in the address.
     const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view }
     delete query.shelf
     delete query.q
     delete query.collection
+    delete query.print
     this.$router.replace({ query }).catch(() => {})
   }
 
