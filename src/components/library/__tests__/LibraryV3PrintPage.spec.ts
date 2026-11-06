@@ -52,6 +52,8 @@ afterEach(() => {
   wrappers.forEach(w => w.destroy())
   wrappers = []
   vi.unstubAllGlobals()
+  // A share sheet a test gave the page goes with it, passed or failed.
+  Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
 })
 
 async function page (props: Record<string, unknown> = {}, fetcher = service()) {
