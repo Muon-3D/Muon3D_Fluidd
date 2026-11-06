@@ -155,6 +155,9 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       const section = this.settingsSection
       return section && section.id !== 'general' ? section.blurb : 'How Control looks and behaves on this printer'
     }
+    if (this.currentPage === '/history') {
+      return `Every print ${printerNameParts(this.displayName).name} has made`
+    }
     if (this.currentPage === '/maintenance') {
       return "What keeps prints coming out right. Each check says when it last ran and whether it's due."
     }
