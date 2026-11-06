@@ -25,6 +25,8 @@ export interface PrinterState {
   status: Json
   /** Methods to answer with a JSON-RPC error: method → message. */
   failOn: Record<string, string>
+  /** Laid over the result of a method the page asks (server.info: `{ klippy_state: 'startup' }`). */
+  results: Record<string, Json>
   /** Methods this page's printer answers itself, with a result (or a function of the params), instead of the shared mock. */
   answers: Record<string, unknown>
   /** Methods to answer with this result instead of the mock's: method -> result (server.history.list...). */
@@ -45,6 +47,8 @@ export interface PrinterHandle {
   moves: () => string[]
   /** The printer reports `status` now: it becomes the overlay and is pushed to the page at once. */
   report: (status: Json) => void
+  /** The printer prints these lines to the console now (a notify_gcode_response each). */
+  say: (...lines: string[]) => void
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -69,7 +73,7 @@ function overlayUpdate (update: Json, over: Json): Json {
 
 export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[] } = {}): Promise<PrinterHandle> {
   const handle: PrinterHandle = {
-    state: { status, failOn: {}, answers: {}, answer: {}, components: options.components },
+    state: { status, failOn: {}, results: {}, answers: {}, answer: {}, components: options.components },
     gcode: [],
     calls: [],
     called: (method: string) => handle.calls.filter(c => c.method === method).map(c => c.params),
@@ -77,8 +81,12 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     report: (next: Json) => {
       handle.state.status = next
       pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_status_update', params: [next, Date.now() / 1000] }))
+    },
+    say: (...lines: string[]) => {
+      for (const line of lines) pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_gcode_response', params: [line] }))
     }
   }
+  const asked = new Map<unknown, string>()
   const infoRequests = new Set<unknown>()
   let pageSocket: { send: (message: string) => void } | null = null
 
@@ -89,6 +97,7 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     ws.onMessage(raw => {
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { server.send(raw); return }
+      if (msg.id !== undefined && msg.method) asked.set(msg.id, msg.method)
       if (msg.method) handle.calls.push({ method: msg.method, params: msg.params ?? {} })
       const answer = msg.method in handle.state.answers ? handle.state.answers[msg.method] : handle.state.answer[msg.method]
       if (msg.method in handle.state.answers || msg.method in handle.state.answer) {
@@ -114,6 +123,8 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { ws.send(raw); return }
       const over = handle.state.status
+      const method = asked.get(msg.id)
+      if (method && isObject(msg.result) && handle.state.results[method]) msg.result = overlay(msg.result, handle.state.results[method])
       if (infoRequests.has(msg.id) && handle.state.components && isObject(msg.result)) {
         msg.result.components = handle.state.components
       }

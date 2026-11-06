@@ -323,9 +323,11 @@ export async function recordPrinted (id: string, event: PrintedEvent): Promise<v
 export async function loadItem (id: string): Promise<LibraryItem | null> {
   const kept = libraryState.items[id]
   if (kept) return kept
+  const account = libraryState.account
   try {
     const item = await client.item(id)
-    keep(item)
+    // Signed out or another account meanwhile: not this Library's to keep.
+    if (libraryState.account === account) keep(item)
     return item
   } catch (error) {
     if (error instanceof LibraryError && error.code === 'not_found') return null
