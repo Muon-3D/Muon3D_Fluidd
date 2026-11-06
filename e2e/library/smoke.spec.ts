@@ -12,6 +12,10 @@ test('Discover shows shelves and the feed from the model service, signed out', a
   // "Fits Boxwood" is on in Control: Popular holds M1 prints (the odd ones here).
   await page.getByTestId('library-shelf-popular').getByRole('button', { name: 'Quick look at Print 11' }).first().click()
   await expect(page.getByTestId('library-quick-look')).toContainText('Print 11')
+  // Focus moves into the quick look, so Escape and Tab start there: Close on a phone, the dialog on desktop.
+  const close = page.getByTestId('library-quick-look-close')
+  if (await close.isVisible()) await expect(close).toBeFocused()
+  else await expect(page.getByTestId('library-quick-look').locator('.mlook__card')).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('library-quick-look')).toHaveCount(0)
 })

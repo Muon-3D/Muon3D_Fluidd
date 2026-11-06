@@ -1,7 +1,7 @@
 /**
  * The e2e test, with what every page test needs:
  * - `models`: the fake model service's state for this test, already served;
- * - `console`: the fake console's state, already served;
+ * - `account`: the fake console's state (the Muon3D account service), already served;
  * - `signedIn`: an option, false by default. `test.use({ signedIn: true })`
  *   starts the test with a stored session for the console's account;
  * - `open(path)`: Control at that page under the mock printer, loaded and
@@ -22,7 +22,7 @@ interface Options {
 
 interface Fixtures {
   models: ModelServiceState;
-  console: ConsoleState;
+  account: ConsoleState;
   open: (path: string) => Promise<void>;
 }
 
@@ -33,7 +33,7 @@ export const test = base.extend<Options & Fixtures>({
     await serveModels(page, state)
     await use(state)
   }, { auto: true }],
-  console: [async ({ page, signedIn }, use) => {
+  account: [async ({ page, signedIn }, use) => {
     const state = consoleState()
     await serveConsole(page, state)
     if (signedIn) await signIn(page)

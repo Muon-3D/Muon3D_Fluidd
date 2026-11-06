@@ -24,14 +24,14 @@ export function consoleState (over: Partial<ConsoleState> = {}): ConsoleState {
 }
 
 const json = (route: Route, body: unknown, status = 200) =>
-  route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }, body: JSON.stringify(body) })
+  route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key' }, body: JSON.stringify(body) })
 
 export async function serveConsole (page: Page, state: ConsoleState) {
   await page.route(`${CONSOLE}/**`, async route => {
     const request = route.request()
     const url = new URL(request.url())
     state.seen.push(`${request.method()} ${url.pathname}`)
-    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' } })
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
     switch (url.pathname) {
       case '/v1/me': return json(route, { account: { ...state.account, display_name: state.account.name }, endpoint_id: null })
       case '/v1/me/assertion': return json(route, { assertion: 'e2e-assertion', expires_at: Math.floor(Date.now() / 1000) + 3600 })

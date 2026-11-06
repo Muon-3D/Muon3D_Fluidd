@@ -16,8 +16,9 @@ npm run test:e2e -- --project=desktop library/discover
   - add data before `open(...)`;
   - flip `models.failWith = 503` for an outage;
   - read `models.seen` to check what was asked.
-- **The console** (`fakes/console.ts`): one account, its printers, and the model-service assertion. `test.use({ signedIn: true })` starts a test with a stored session; by default it's signed out.
+- **The account service** (`fakes/console.ts`, fixture `account`): one account, its printers, and the model-service assertion. `test.use({ signedIn: true })` starts a test with a stored session; by default it's signed out.
 - **Offline:** `await page.context().setOffline(true)`.
+- **The mock printer is shared** by every test and worker. A test that changes the printer's state (heats, moves, starts a print) must put it back, or run serially with `test.describe.configure({ mode: 'serial' })`.
 
 ## Writing a page test
 ```ts
