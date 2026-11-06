@@ -3,7 +3,7 @@
     ref="pad"
     class="tpad"
     :class="{ 'tpad--off': disabled }"
-    :style="{ aspectRatio: aspect }"
+    :style="{ aspectRatio: aspect, maxWidth: `calc(${MAX_HEIGHT}px * ${aspect})` }"
     tabindex="0"
     role="application"
     :aria-label="label"
@@ -60,6 +60,7 @@ import { Y_BACK } from '@/services/machine/orientation'
 
 /** Percentages of the trackpad: every drawing scales with it, desktop or phone. */
 const PERCENT = { width: 100, height: 100 }
+const MAX_HEIGHT = 360
 const pct = (r: Rect) => ({ left: `${r.left}%`, top: `${r.top}%`, width: `${r.width}%`, height: `${r.height}%` })
 
 /**
@@ -78,6 +79,8 @@ export default class ControlTrackpad extends Vue {
   @Prop({ type: Boolean }) readonly targetBad!: boolean
   @Prop({ type: Number, default: 10 }) readonly step!: number
 
+  /** The tallest the bed is drawn, px. Width is capped from it, so the bed stays to scale. */
+  readonly MAX_HEIGHT = MAX_HEIGHT
   private pointer: number | null = null
 
   get aspect (): string {
@@ -151,7 +154,6 @@ export default class ControlTrackpad extends Vue {
   .tpad {
     position: relative;
     width: 100%;
-    max-height: 360px;
     overflow: hidden;
     border-radius: 16px;
     background:
