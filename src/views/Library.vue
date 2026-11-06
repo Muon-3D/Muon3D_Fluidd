@@ -259,9 +259,35 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     return libraryState.checked && !libraryState.enabled && !!this.purgeDay
   }
 
-  /** Yours' home shows an action's error itself (a callout); every other page shows it at the foot. */
+  /**
+   * The Share page replaces the Library only for a signed-in person whose
+   * Library is on; otherwise `?share=` is ignored and Yours shows.
+   */
+  get shareShown (): boolean {
+    return this.shareId !== null && this.signedIn && libraryState.enabled
+  }
+
+  /**
+   * Yours' home (the callout's place) is on screen, as MuonLibrary draws it:
+   * not Share, a print's page (any state), a collection's page or a See all
+   * (both signed in only), and signed in, not the signed-out tile.
+   */
+  get yoursHome (): boolean {
+    if (this.view !== 'mine' || this.shareShown || this.printId) return false
+    if (this.collection && this.signedIn) return false
+    if (this.grid && this.signedIn && ((libraryState.checked && libraryState.enabled) || this.grid === 'saved')) return false
+    return this.mineShown
+  }
+
+  /** The action's error is the callout on Yours' home; everywhere else it is the foot note, so never twice and never lost. */
   get errorOnYours (): boolean {
-    return this.view === 'mine' && !this.grid && !this.collection && !this.printId && this.shareId === null
+    return this.yoursHome
+  }
+
+  /** Signing out takes an old error with it (the next person has not done anything yet). */
+  @Watch('signedIn')
+  onSignedIn (signedIn: boolean) {
+    if (!signedIn) this.error = ''
   }
 
   /** Why the Library is off, said as it is: turned off on purpose, or turning it on for you failed. */
