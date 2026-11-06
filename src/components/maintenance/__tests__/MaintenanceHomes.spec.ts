@@ -12,6 +12,7 @@ vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'mock' }))
 
 function show (phone = false) {
   const store = panelStore()
+  Vue.set(store.state.printer.printer, 'muon_guard', { dev_mode: true })
   Vue.set(store.state.printer.printer, 'gcode', { commands: { BED_MESH_CALIBRATE: {}, PROBE_CALIBRATE: {}, SHAPER_CALIBRATE: {}, PID_CALIBRATE: {}, PROBE_ACCURACY: {} } })
   Object.assign(store.state.printer.printer.configfile.settings, {
     input_shaper: { shaper_type_x: 'mzv', shaper_freq_x: 47.4, shaper_type_y: 'ei', shaper_freq_y: 71.4 },
