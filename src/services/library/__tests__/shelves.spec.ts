@@ -3,7 +3,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { MODELS_URL, type PublicPublication } from '../api'
-import { ago, loadFeedPage, loadPublication, loadShelves, publicationPrint, summaryCard, type PublicationSummary } from '../shelves'
+import { ago, cardMatches, loadFeedPage, loadGrid, loadPublication, loadShelves, publicationPrint, summaryCard, type PublicationSummary } from '../shelves'
 
 const summary = (over: Partial<PublicationSummary> = {}): PublicationSummary => ({
   id: 'p1',
@@ -139,5 +139,43 @@ describe('Library v2: printing a public print from its card', () => {
     expect((await loadPublication('p1', fetcher)).title).toBe('Spiral vase')
     expect((fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatchObject({ credentials: 'omit' })
     await expect(loadPublication('gone', answer({ '/v1/public/publications/gone': new Response('', { status: 404 }) }))).rejects.toThrow(/no longer public/)
+  })
+})
+
+describe('Library v3 See all and search', () => {
+  it('reads a shelf as a grid page from its own list, Made for M1 marked as such', async () => {
+    const fetcher = answer({ '/v1/public/publications?sort=trending&tag=m1-ready': { items: [summary()], next_cursor: 'o:24' } })
+    const page = await loadGrid('m1', {}, fetcher)
+    expect(page.cards.map(c => [c.id, c.m1])).toEqual([['p1', true]])
+    expect(page.cursor).toBe('o:24')
+  })
+
+  it('searches the service, passing the cursor on', async () => {
+    const fetcher = answer({ '/v1/public/search?q=vase': { items: [summary()], next_cursor: null } })
+    const page = await loadGrid('search', { query: ' vase ' }, fetcher)
+    expect(page.cards.map(c => c.id)).toEqual(['p1'])
+    expect(page.local).toBeFalsy()
+  })
+
+  it('without the search route (404), searches the newest prints here', async () => {
+    const fetcher = answer({
+      '/v1/public/search': new Response('', { status: 404 }),
+      '/v1/public/publications?sort=new': { items: [summary(), summary({ id: 'p2', slug: 'p2', title: 'Gear' })], next_cursor: null }
+    })
+    const page = await loadGrid('search', { query: 'gear' }, fetcher)
+    expect(page.cards.map(c => c.id)).toEqual(['p2'])
+    expect(page.local).toBe(true)
+  })
+
+  it('refuses a one-letter search, and says when searching too fast', async () => {
+    await expect(loadGrid('search', { query: 'a' }, answer({}))).rejects.toThrow(/two letters/)
+    await expect(loadGrid('search', { query: 'vase' }, answer({ '/v1/public/search': new Response('', { status: 429 }) }))).rejects.toThrow(/Too many searches/)
+  })
+
+  it('finds a card by every word of a query, in its title, maker or tags', () => {
+    const card = summaryCard(summary({ tags: ['vase'] }))
+    expect(cardMatches(card, 'spiral okoro')).toBe(true)
+    expect(cardMatches(card, 'vase')).toBe(true)
+    expect(cardMatches(card, 'spiral gear')).toBe(false)
   })
 })
