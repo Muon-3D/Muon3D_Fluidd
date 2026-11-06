@@ -12,7 +12,11 @@
       :tab="view === 'mine' ? 'yours' : 'discover'"
       :continue-item="signedIn && state.synced && prints.length ? prints[0] : null"
       :signed-in="signedIn"
+      :grid="grid"
+      :search="searchQuery"
       @update:tab="setView"
+      @update:grid="setGrid"
+      @update:search="setSearch"
       @print="onLibraryPrint"
       @print-item="printOn($event, activePrinter ? activePrinter.id : null)"
     >
@@ -459,6 +463,7 @@ import { storedToken } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
 import LibraryCard from '@/components/library/LibraryCard.vue'
 import MuonLibrary, { type LibraryPrintRequest, type LibraryTab } from '@/components/library/v2/MuonLibrary.vue'
+import type { GridSource } from '@/services/library/shelves'
 import LibraryRecentCard from '@/components/library/LibraryRecentCard.vue'
 import PrintOnDialog from '@/components/library/PrintOnDialog.vue'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
@@ -501,6 +506,33 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     const asked = this.$route?.query.view
     if (asked === 'discover' || asked === 'mine') return asked
     return this.mineShown ? 'mine' : 'discover'
+  }
+
+  /** A See all page or search results, from the address (`?shelf=popular`, `?shelf=search&q=…`). */
+  get grid (): GridSource | null {
+    const shelf = this.$route?.query.shelf
+    return shelf === 'popular' || shelf === 'm1' || shelf === 'new' || shelf === 'search' ? shelf : null
+  }
+
+  get searchQuery (): string {
+    const q = this.$route?.query.q
+    return typeof q === 'string' ? q : ''
+  }
+
+  /** Pushed, not replaced: Back returns to Discover's shelves. */
+  setGrid (grid: GridSource | null) {
+    const rest = { ...this.$route.query }
+    delete rest.shelf
+    delete rest.q
+    const query = grid ? { ...rest, view: 'discover', shelf: grid, ...(grid === 'search' ? { q: this.pendingSearch || this.searchQuery } : {}) } : rest
+    this.pendingSearch = ''
+    this.$router.push({ query }).catch(() => {})
+  }
+
+  /** The search to open next (MuonLibrary emits it just before the grid). */
+  pendingSearch = ''
+  setSearch (q: string) {
+    this.pendingSearch = q
   }
 
   /** Discover or Yours, kept in the address so Back and a shared link land on it. */
