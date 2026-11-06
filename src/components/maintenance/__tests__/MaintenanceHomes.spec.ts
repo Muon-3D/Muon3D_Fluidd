@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import Maintenance from '@/views/Maintenance.vue'
 import ControlTuning from '@/components/control/ControlTuning.vue'
 import ControlOutputs from '@/components/control/ControlOutputs.vue'
+import ControlTaskFold from '@/components/control/ControlTaskFold.vue'
 import { panelStore, panelStubs, waits } from '@/components/control/__tests__/panel-fixture'
 
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn(), printerQueryEndstops: vi.fn() }))
@@ -52,7 +53,18 @@ it.each([false, true])('shows Health as tiles with each result, no mode and no f
   expect(wrapper.text()).toContain('0.075 mm')
   expect(wrapper.text()).toContain('17.485')
   expect(wrapper.find('[data-tid="control-shaper"]').isVisible()).toBe(true)
+  const sensors = wrapper.find('[id="maintenance.sensors-trigger"]')
+  expect(sensors.exists()).toBe(true)
+  expect(sensors.attributes('aria-expanded')).toBe('false')
+  await sensors.trigger('click')
+  expect(sensors.attributes('aria-expanded')).toBe('true')
   expect(wrapper.find('[data-tid="control-endstops"]').isVisible()).toBe(true)
+  // Each row keeps its own open/closed choice under the key it always had.
+  const keys = wrapper.findAllComponents(ControlTaskFold).wrappers.map(w => (w.props() as any).foldKey)
+  expect(keys).toEqual(expect.arrayContaining(['maintenance.firstLayer', 'maintenance.shaper', 'maintenance.pid', 'maintenance.sensors']))
+  // A probe without a bed mesh keeps its Probe tile (Query probe, Z offset) on Health.
+  expect(wrapper.find('[data-tid="probe-card"]').exists()).toBe(true)
+  expect(wrapper.find('[data-tid="probe-query"]').exists()).toBe(true)
   expect(wrapper.find('[data-tid="consumable-nozzle"]').text()).toContain('212 of 400 h')
   expect(wrapper.find('[data-tid="maintenance-wear"]').text()).toContain('212 h')
   expect(wrapper.find('[data-tid="control-sensors"]').text()).toContain('always on')

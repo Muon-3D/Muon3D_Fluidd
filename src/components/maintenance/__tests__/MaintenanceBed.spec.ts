@@ -44,16 +44,28 @@ it('always writes the heights on the 2D map, with a scale, and offers no Colours
   wrapper.destroy()
 })
 
-it('says the bed is not levelled, with grey question marks, when there is no mesh', async () => {
+// Klipper reports a cleared or never-loaded mesh as one empty row, [[]], not as [].
+it.each([[[]], [[[]]], [[[NaN, null]]]])('says the bed is not levelled, with grey question marks, when the mesh is %j', async matrix => {
   const { wrapper, store } = show()
-  store.state.printer.printer.bed_mesh.probed_matrix = []
+  store.state.printer.printer.bed_mesh.probed_matrix = matrix
   await Vue.nextTick()
   expect(wrapper.find('[data-tid="mesh-heat"]').exists()).toBe(false)
   expect(wrapper.find('[data-tid="mesh-unlevelled"]').text()).toContain('Bed not levelled')
   expect(wrapper.findAll('.mmap__cell--empty').length).toBe(25)
   expect(wrapper.find('.mmap__cell--empty').text()).toBe('?')
   expect(wrapper.text()).toContain('Not levelled')
+  expect(wrapper.text()).not.toContain('Not loaded')
   wrapper.destroy()
+})
+
+it('draws the back row at the top and X left to right', () => {
+  const { wrapper, store } = show()
+  store.state.printer.printer.bed_mesh.probed_matrix = [[0.01, 0.02, 0.03], [0.04, 0.05, 0.06], [0.07, 0.08, 0.09]]
+  return Vue.nextTick().then(() => {
+    // Klipper's first row is the lowest Y, the back of the plate; it is drawn first.
+    expect(wrapper.findAll('.mmap__cell').wrappers.map(w => w.text())).toEqual(['0.01', '0.02', '0.03', '0.04', '0.05', '0.06', '0.07', '0.08', '0.09'])
+    wrapper.destroy()
+  })
 })
 
 it('is a 2D heat map first, and the 3D toggle swaps it for the 3D surface', async () => {
@@ -96,7 +108,7 @@ it('shows incomplete or invalid measurement cells as unmeasured without NaN colo
   wrapper.destroy()
 })
 
-it('shows Health a small map of the bed once, with the way into scoped Bed and no 3D choice, and no numbers on its small cells', () => {
+it('shows Health a small map of the bed once, with the way into scoped Bed and no 3D choice, and the heights on its cells', () => {
   const { wrapper } = show(false, MaintenanceMesh)
   expect(wrapper.find('[data-tid="mesh-heat"]').exists()).toBe(true)
   expect(wrapper.find('[data-tid="mesh-scale"]').exists()).toBe(false)
@@ -105,6 +117,6 @@ it('shows Health a small map of the bed once, with the way into scoped Bed and n
   expect(wrapper.text()).toContain('0.27 mm')
   expect(wrapper.text()).toContain('default')
   expect(wrapper.findAll('[role="radio"]').length).toBe(0)
-  expect(wrapper.findAll('.mmap__cell').at(0).text()).toBe('')
+  expect(wrapper.findAll('.mmap__cell').at(0).text()).toBe('-0.12')
   wrapper.destroy()
 })

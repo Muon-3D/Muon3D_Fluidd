@@ -20,7 +20,7 @@
               Measuring
             </tone-pill>
             <tone-pill
-              v-else-if="mesh.length"
+              v-else-if="meshMeasured"
               :tone="meshInUse ? 'ok' : 'off'"
             >
               {{ meshInUse ? 'Loaded' : 'Not loaded' }}

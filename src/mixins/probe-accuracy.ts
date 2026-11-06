@@ -63,7 +63,7 @@ export default class ProbeAccuracyMixin extends Mixins(MaintenanceMixin) {
     const ok = await this.$confirm(
       `${this.allHomed ? 'The head' : 'It homes, then the head'} goes to the middle of the bed (X${x} Y${y}) and probes there ten times. Keep the plate on and the nozzle clean.`,
       // It touches the middle of the plate ten times: the plate check first, as for a print.
-      { title: 'Check how steady the probe is?', buttonTrueText: 'Start', plateCheck: plateCheckNeeded(this.$store.state.history?.jobs) }
+      { title: 'Probe accuracy', buttonTrueText: 'Start', plateCheck: plateCheckNeeded(this.$store.state.history?.jobs) }
     )
     if (!ok || target !== this.maintenanceTarget || !this.canCheck) return
     // Config not loaded yet counts as unreadable, as for every hand move.

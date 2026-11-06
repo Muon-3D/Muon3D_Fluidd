@@ -35,57 +35,67 @@
         class="mcal__item"
         :data-tid="`cal-${row.id}`"
       >
-        <div class="mcal__row">
-          <span class="mcal__text">
-            <span class="mcal__title">{{ row.title }}</span>
-            <span class="mcal__sub">{{ row.sub }}</span>
-          </span>
-          <tone-pill
-            v-if="row.due"
-            tone="warn"
-            :dot="false"
-          >
-            Due
-          </tone-pill>
-          <button
-            v-if="row.details"
-            type="button"
-            class="mcal__more"
-            :aria-expanded="isOpen(row.id) ? 'true' : 'false'"
-            :aria-label="`${isOpen(row.id) ? 'Hide' : 'Show'} the values for ${row.title}`"
-            :data-tid="`cal-more-${row.id}`"
-            @click="toggle(row.id)"
-          >
-            <frame-icon :name="isOpen(row.id) ? 'chevronUp' : 'chevronDown'" />
-          </button>
-          <button
-            type="button"
-            class="cbtn mcal__run"
-            :disabled="row.disabled"
-            :title="row.disabled ? blockedReason : undefined"
-            :aria-label="`${row.action} ${row.title}`"
-            :data-tid="`cal-run-${row.id}`"
-            @click="row.run()"
-          >
-            {{ row.busy ? 'Running…' : row.action }}
-          </button>
-        </div>
-        <div
-          v-if="row.details && isOpen(row.id)"
-          class="mcal__details"
+        <control-task-fold
+          :fold-key="`maintenance.${row.id}`"
+          :title="row.title"
+          summary="Values"
+          choice
+          :show-unsaved-note="false"
         >
-          <p class="mcal__desc">
-            {{ row.description }}
-          </p>
-          <maintenance-result
-            v-if="row.details === 'result'"
-            :check="row.id"
-          />
-          <control-tuning
-            v-else
-            shaper-only
-          />
-        </div>
+          <template #default="{ value: open, choose }">
+            <div class="mcal__row">
+              <span class="mcal__text">
+                <span class="mcal__title">{{ row.title }}</span>
+                <span class="mcal__sub">{{ row.sub }}</span>
+              </span>
+              <tone-pill
+                v-if="row.due"
+                tone="warn"
+                :dot="false"
+              >
+                Due
+              </tone-pill>
+              <button
+                v-if="row.details"
+                type="button"
+                class="mcal__more"
+                :aria-expanded="open ? 'true' : 'false'"
+                :aria-label="`${open ? 'Hide' : 'Show'} the values for ${row.title}`"
+                :data-tid="`cal-more-${row.id}`"
+                @click="choose(!open)"
+              >
+                <frame-icon :name="open ? 'chevronUp' : 'chevronDown'" />
+              </button>
+              <button
+                type="button"
+                class="cbtn mcal__run"
+                :disabled="row.disabled"
+                :title="row.disabled ? blockedReason : undefined"
+                :aria-label="`${row.action} ${row.title}`"
+                :data-tid="`cal-run-${row.id}`"
+                @click="row.run()"
+              >
+                {{ row.busy ? 'Running…' : row.action }}
+              </button>
+            </div>
+            <div
+              v-if="row.details && open"
+              class="mcal__details"
+            >
+              <p class="mcal__desc">
+                {{ row.description }}
+              </p>
+              <maintenance-result
+                v-if="row.details === 'result'"
+                :check="row.id"
+              />
+              <control-tuning
+                v-else
+                shaper-only
+              />
+            </div>
+          </template>
+        </control-task-fold>
       </li>
     </ul>
     <div
@@ -123,6 +133,7 @@ import MaintenanceDue from './MaintenanceDue.vue'
 import MaintenanceResult from './MaintenanceResult.vue'
 import TonePill from '@/components/printers/TonePill.vue'
 import ControlTuning from '@/components/control/ControlTuning.vue'
+import ControlTaskFold from '@/components/control/ControlTaskFold.vue'
 import type { CheckId } from '@/services/maintenance/model'
 
 interface CalibrationRow {
@@ -139,13 +150,7 @@ interface CalibrationRow {
   run: () => void;
 }
 
-/** What each check is called here, in the order Calibration lists them (Probe accuracy goes first). */
-const TITLES: Record<CheckId, string> = {
-  bedMesh: 'Bed mesh calibrate',
-  shaper: 'Resonance test',
-  firstLayer: 'First layer height',
-  pid: 'Heater tuning'
-}
+/** The order Calibration lists the checks in (Probe accuracy goes first). */
 const ORDER: CheckId[] = ['bedMesh', 'shaper', 'firstLayer', 'pid']
 
 /**
@@ -154,10 +159,9 @@ const ORDER: CheckId[] = ['bedMesh', 'shaper', 'firstLayer', 'pid']
  * and is off while the printer is busy or printing: the checks and probe
  * accuracy keep the confirmation, homed and no-go paths they always had.
  */
-@Component({ components: { MaintenanceTile, MaintenanceDue, MaintenanceResult, TonePill, ControlTuning } })
+@Component({ components: { MaintenanceTile, MaintenanceDue, MaintenanceResult, TonePill, ControlTuning, ControlTaskFold } })
 export default class MaintenanceCalibration extends Mixins(ProbeAccuracyMixin, BrowserMixin) {
   manualProbeDialogOpen = false
-  opened: Record<string, boolean> = {}
 
   get hasProbe (): boolean { return !!this.$store.getters['printer/getProbe'] }
 
@@ -170,9 +174,6 @@ export default class MaintenanceCalibration extends Mixins(ProbeAccuracyMixin, B
   onEvidence () {
     this.recordIfDone()
   }
-
-  isOpen (id: string): boolean { return !!this.opened[id] }
-  toggle (id: string) { this.$set(this.opened, id, !this.opened[id]) }
 
   /** Why no Run works now: the checks' reason, and for the probe test its own (a test already under way). */
   get blockedReason (): string { return this.checksBlocked }
@@ -199,7 +200,7 @@ export default class MaintenanceCalibration extends Mixins(ProbeAccuracyMixin, B
       if (!check) continue
       rows.push({
         id,
-        title: TITLES[id],
+        title: check.title,
         sub: this.runningId === id ? 'Running…' : check.status.text,
         description: check.description,
         action: check.action,

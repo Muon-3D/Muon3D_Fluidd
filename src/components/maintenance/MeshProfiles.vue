@@ -3,6 +3,7 @@
     title="Profiles"
     icon="mesh"
     flush
+    :locked="controlLock"
     data-tid="mesh-profiles"
   >
     <template #aside>
@@ -42,7 +43,7 @@
       >
         <span class="mprof__text">
           <span class="mprof__name">{{ profile.name }}</span>
-          <span class="mprof__sub">{{ profile.range.toFixed(2) }} mm spread{{ profile.adaptive ? ' · adaptive' : '' }}</span>
+          <span class="mprof__sub">{{ profile.range.toFixed(3) }} mm spread{{ profile.adaptive ? ' · adaptive' : '' }}</span>
         </span>
         <tone-pill
           v-if="profile.active"
@@ -82,17 +83,6 @@
       <b>No saved profiles yet</b>
       <p>Calibrate the mesh, then save it under a name.</p>
     </div>
-
-    <p
-      v-if="controlLock"
-      class="mprof__lock"
-    >
-      <frame-icon
-        name="lock"
-        small
-      />
-      {{ controlLock }}
-    </p>
 
     <div
       v-if="saveConfigPending"
@@ -274,15 +264,6 @@ export default class MeshProfiles extends Mixins(MaintenanceMixin) {
     border-radius: 10px;
     background: var(--m3d-surface-2);
     color: var(--m3d-text-muted);
-  }
-
-  .mprof__lock {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 4px 18px 8px;
-    color: var(--m3d-text-subtle);
-    font-size: 13px;
   }
 
   .mprof__pending {

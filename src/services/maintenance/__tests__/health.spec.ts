@@ -10,9 +10,8 @@ const healthy = (): HealthInput => ({
   version: 'v0.12.0-402',
   mcus: [{ name: 'mcu', awake: 0.04 }, { name: 'mcu toolhead', awake: 0.02 }],
   heaters: [{ name: 'extruder', temperature: 219.8, maxTemp: 300 }, { name: 'heater_bed', temperature: 59.5, maxTemp: 120 }],
-  bedMesh: { status: { tone: 'ok', text: 'Good · 3 days ago', due: false }, spread: 0.09, measured: '3 days ago' },
-  disk: { used: 6 * GB, total: 32 * GB, free: 24 * GB },
-  cloud: { connected: true }
+  bedMesh: { loaded: true, status: { tone: 'ok', text: 'Good · 3 days ago', due: false }, spread: 0.09, measured: '3 days ago' },
+  disk: { used: 6 * GB, total: 32 * GB, free: 24 * GB }
 })
 
 const row = (input: HealthInput, id: string) => healthRows(input).find(r => r.id === id)
@@ -20,24 +19,24 @@ const row = (input: HealthInput, id: string) => healthRows(input).find(r => r.id
 describe('the Checks rows', () => {
   it('say OK for a printer that is well, with the reading behind each', () => {
     const rows = healthRows(healthy())
-    expect(rows.map(r => r.id)).toEqual(['klipper', 'mcu', 'heaters', 'bedMesh', 'storage', 'cloud'])
+    expect(rows.map(r => r.id)).toEqual(['klipper', 'mcu', 'heaters', 'bedMesh', 'storage'])
     expect(rows.every(r => r.tone === 'ok')).toBe(true)
     expect(row(healthy(), 'klipper')!.sub).toBe('Running · v0.12.0-402')
     expect(row(healthy(), 'mcu')!.sub).toBe('Both connected · load 4%')
-    expect(row(healthy(), 'heaters')!.sub).toBe('Hotend 219.8 °C · Bed 59.5 °C within range')
+    expect(row(healthy(), 'heaters')!.sub).toBe('Hotend 219.8 °C · Bed 59.5 °C')
     expect(row(healthy(), 'bedMesh')!.sub).toBe('Last calibrated 3 days ago · 0.09 mm spread')
     expect(row(healthy(), 'storage')!.sub).toBe('19% used · 24 GB free')
   })
 
   it('leave out what the printer does not have, rather than invent a reading', () => {
-    const rows = healthRows({ ...healthy(), mcus: [], heaters: [], bedMesh: null, disk: null, cloud: null })
+    const rows = healthRows({ ...healthy(), mcus: [], heaters: [], bedMesh: null, disk: null })
     expect(rows.map(r => r.id)).toEqual(['klipper'])
   })
 
   it('flag a mesh that is due, and one never measured from here', () => {
-    const due = { ...healthy(), bedMesh: { status: { tone: 'warn' as const, text: 'Due', due: true }, spread: 0.09, measured: '12 days ago' } }
+    const due = { ...healthy(), bedMesh: { loaded: true, status: { tone: 'warn' as const, text: 'Due', due: true }, spread: 0.09, measured: '12 days ago' } }
     expect(row(due, 'bedMesh')).toMatchObject({ tone: 'warn', pill: 'Re-run soon' })
-    const never = { ...healthy(), bedMesh: { status: { tone: 'warn' as const, text: 'Due', due: true }, spread: null, measured: '' } }
+    const never = { ...healthy(), bedMesh: { loaded: true, status: { tone: 'warn' as const, text: 'Due', due: true }, spread: null, measured: '' } }
     expect(row(never, 'bedMesh')!.sub).toBe('Not calibrated from here yet')
     expect(row(never, 'bedMesh')!.pill).toBe('Run it')
   })
@@ -56,9 +55,19 @@ describe('the Checks rows', () => {
     expect(row(hot, 'heaters')).toMatchObject({ tone: 'err', pill: 'Too hot' })
   })
 
-  it('flag low storage and a cloud link that is down', () => {
+  it('flag low storage', () => {
     expect(row({ ...healthy(), disk: { used: 31.5 * GB, total: 32 * GB, free: 0.5 * GB } }, 'storage')).toMatchObject({ tone: 'warn', pill: 'Low' })
-    expect(row({ ...healthy(), cloud: { connected: false } }, 'cloud')).toMatchObject({ tone: 'warn', pill: 'Offline' })
+  })
+
+  it('warn Not levelled when no mesh is loaded, even if a check ran from here recently', () => {
+    const none = { ...healthy(), bedMesh: { loaded: false, status: { tone: 'ok' as const, text: 'Good · today', due: false }, spread: null, measured: 'today' } }
+    expect(row(none, 'bedMesh')).toMatchObject({ tone: 'warn', pill: 'Not levelled' })
+  })
+
+  it('say Unknown, not OK, for live readings while Moonraker is not answering', () => {
+    const down = { ...healthy(), socketConnected: false, klippyReady: false }
+    for (const id of ['mcu', 'heaters', 'storage']) expect(row(down, id)).toMatchObject({ tone: 'off', pill: 'Unknown' })
+    expect(row(down, 'klipper')).toMatchObject({ tone: 'err', pill: 'Offline' })
   })
 })
 
@@ -75,7 +84,7 @@ describe('naming and counting', () => {
   })
 
   it('counts the rows that want a look, and says it under the title', () => {
-    const rows = healthRows({ ...healthy(), cloud: { connected: false } })
+    const rows = healthRows({ ...healthy(), disk: { used: 31.5 * GB, total: 32 * GB, free: 0.5 * GB } })
     expect(attentionCount(rows)).toBe(1)
     const now = Date.UTC(2026, 10, 6)
     expect(healthSummary('Boxwood', rows, now - 3 * 86_400_000, now)).toBe('Boxwood has 1 thing to look at · last check 3 days ago')

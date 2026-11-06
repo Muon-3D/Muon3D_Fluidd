@@ -30,7 +30,7 @@
     </div>
 
     <div
-      v-if="grid.length"
+      v-if="scale"
       class="mmap__body"
     >
       <div
