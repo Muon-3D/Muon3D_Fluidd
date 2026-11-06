@@ -262,6 +262,7 @@
 </template>
 
 <script lang="ts">
+import { activeSlug } from '@/services/printer-pages'
 import CloudAccountMenu from '@/components/muon-cloud/CloudAccountMenu.vue'
 import NoticesBell from '@/components/muon-cloud/NoticesBell.vue'
 import { Component, Mixins } from 'vue-property-decorator'
@@ -305,9 +306,17 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     return this.isMobileViewport
   }
 
-  /** Always in the bar on a printer: it is greyed, never gone, while the printer cannot be reached. */
+  /**
+   * Always in the bar on a printer: it is greyed, never gone, while the printer cannot be reached.
+   * Account is a top-level page with no printer frame, but a printer open behind it can still be stopped.
+   */
   get showEstop (): boolean {
-    return !this.sectionContext.foreign && this.printerFrame
+    return (!this.sectionContext.foreign && this.printerFrame) || this.accountOverPrinter
+  }
+
+  /** Account (always top-level) with a printer open. */
+  get accountOverPrinter (): boolean {
+    return !!this.$route?.name?.startsWith('Account') && !!activeSlug()
   }
 
   get estopReady (): boolean {
