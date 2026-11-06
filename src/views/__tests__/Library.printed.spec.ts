@@ -79,12 +79,41 @@ describe('Library Printed (Yours shelf)', () => {
 describe('Library v3: Yours See all in the address', () => {
   function at (query: Record<string, string>) {
     const push = vi.fn(() => Promise.resolve())
+    const replace = vi.fn(() => Promise.resolve())
+    const back = vi.fn()
     const wrapper = shallowMount(Library, {
-      mocks: { $route: { query }, $router: { push, replace: vi.fn(() => Promise.resolve()) }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
+      mocks: { $route: { query }, $router: { push, replace, back }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
       stubs: ['router-link', 'frame-icon', 'print-on-dialog', 'file-name-dialog', 'cloud-account-dialog']
     })
-    return { vm: wrapper.vm as any, push }
+    return { vm: wrapper.vm as any, push, replace, back }
   }
+
+  it('reads a collection only on Yours, and opens one pushed so Back returns', () => {
+    expect(at({ view: 'mine', collection: 'col-1' }).vm.collection).toBe('col-1')
+    expect(at({ view: 'discover', collection: 'col-1' }).vm.collection).toBe(null)
+    const { vm, push } = at({ view: 'mine', shelf: 'sliced' })
+    vm.openCollection('col-1')
+    expect(push).toHaveBeenCalledWith({ query: { view: 'mine', collection: 'col-1' } })
+  })
+
+  it('a deleted collection goes back when this page opened it, and is replaced in history when it was opened by its address', () => {
+    const opened = at({ view: 'mine' })
+    opened.vm.openCollection('col-1')
+    opened.vm.collectionDeleted()
+    expect(opened.back).toHaveBeenCalledTimes(1)
+    expect(opened.replace).not.toHaveBeenCalled()
+
+    const direct = at({ view: 'mine', collection: 'col-1' })
+    direct.vm.collectionDeleted()
+    expect(direct.back).not.toHaveBeenCalled()
+    expect(direct.replace).toHaveBeenCalledWith({ query: { view: 'mine' } })
+  })
+
+  it('Yours from a collection leaves it for Yours', () => {
+    const { vm, replace } = at({ view: 'mine', collection: 'col-1' })
+    vm.setView('yours')
+    expect(replace).toHaveBeenCalledWith({ query: { view: 'mine' } })
+  })
 
   it('reads a Yours shelf only on Yours, and a Discover shelf only on Discover', () => {
     expect(at({ view: 'mine', shelf: 'sliced' }).vm.grid).toBe('sliced')
