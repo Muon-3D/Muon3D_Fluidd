@@ -1,7 +1,7 @@
 <template>
   <header
     class="app-page-header"
-    :class="{ 'app-page-header--phone': isMobileViewport }"
+    :class="{ 'app-page-header--phone': isMobileViewport, 'app-page-header--jobs': jobsHome }"
   >
     <div class="app-page-header__row">
       <div class="app-page-header__titles">
@@ -31,6 +31,7 @@
         <control-actions v-if="currentSection && currentSection.id === 'control' && !isMobileViewport" />
         <overview-actions v-if="overviewHome && !foreignRecord && !isMobileViewport" />
         <printer-page-menu v-if="overviewHome && !foreignRecord" />
+        <jobs-actions v-if="jobsHome" />
         <maintenance-due v-if="currentPage === '/maintenance'" />
         <camera-actions v-if="currentSection && currentSection.id === 'camera' && !isMobileViewport" />
       </div>
@@ -66,6 +67,8 @@ import PrinterPageMenu from '@/components/overview/PrinterPageMenu.vue'
 import MaintenanceDue from '@/components/maintenance/MaintenanceDue.vue'
 import CameraTabs from '@/components/camera/CameraTabs.vue'
 import CameraActions from '@/components/camera/CameraActions.vue'
+import JobsActions from '@/components/jobs/JobsActions.vue'
+import { jobsPage } from '@/services/jobs/page-state'
 import TonePill from '@/components/printers/TonePill.vue'
 import PrinterStatusMixin from '@/mixins/printer-status'
 import { cloudState } from '@/services/muon-cloud/state'
@@ -82,7 +85,7 @@ import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@
  * with the section's pages as tabs under it (Jobs: Jobs, Preview, History,
  * Timelapse).
  */
-@Component({ components: { CameraActions, CameraTabs, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
+@Component({ components: { CameraActions, CameraTabs, JobsActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceDue, TonePill } })
 export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, PrinterStatusMixin) {
   get foreignRecord () {
     const slug = this.$route.params.printer
@@ -110,6 +113,11 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     return this.currentSection?.label ?? this.$route.name ?? ''
   }
 
+  /** Jobs' own page: its header carries the search, the order and Upload, and History and Timelapse sit in its ··· menu. */
+  get jobsHome (): boolean {
+    return this.currentSection?.id === 'jobs' && this.currentPage === '/jobs' && !this.foreignRecord
+  }
+
   get pillTone (): TileTone {
     if (this.foreignStatus) return FOREIGN_STATE_TONES[this.foreignStatus.state]
     const tones: Record<string, TileTone> = { ok: 'ok', active: 'run', warn: 'warn', fault: 'err', off: 'off' }
@@ -125,6 +133,15 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
 
   /** A line under the title, for a page that says what it holds. */
   get subtitle (): string {
+    if (this.jobsHome) {
+      const files = jobsPage.files
+      const parts = [`${files} ${files === 1 ? 'file' : 'files'}${jobsPage.printerName ? ` on ${jobsPage.printerName}` : ''}`]
+      if (jobsPage.free) parts.push(jobsPage.free)
+      if (this.currentSection && this.pagesOf(this.currentSection).some(p => p.path === '/history' || p.path === '/timelapse')) {
+        parts.push('History and Timelapse are in the ··· menu')
+      }
+      return parts.join(' · ')
+    }
     if (this.isMobileViewport) return ''
     if (this.overviewHome) {
       if (this.foreignRecord) return ''
@@ -151,7 +168,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
   }
 
   get tabs (): SectionPage[] {
-    if (!this.currentSection || this.currentSection.id === 'settings') return []
+    if (!this.currentSection || this.currentSection.id === 'settings' || this.jobsHome) return []
     return this.pagesOf(this.currentSection)
   }
 
@@ -250,6 +267,22 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
   .app-page-header__tab--on {
     background: var(--m3d-fill-strong, var(--m3d-border-strong));
     color: var(--m3d-text) !important;
+  }
+
+  // Jobs: the header holds a toolbar, so on a phone it goes under the title.
+  .app-page-header--jobs .app-page-header__row {
+    flex-wrap: wrap;
+  }
+
+  .app-page-header--jobs .app-page-header__actions {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .app-page-header--jobs.app-page-header--phone .app-page-header__actions {
+    flex-basis: 100%;
+    justify-content: flex-start;
   }
 
   .app-page-header--phone {
