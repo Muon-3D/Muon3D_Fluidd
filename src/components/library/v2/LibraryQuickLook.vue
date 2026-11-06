@@ -313,7 +313,7 @@ export default class LibraryQuickLook extends Vue {
   // into the app's root, where its theme tokens still apply.
   mounted () {
     this.before = document.activeElement;
-    (document.querySelector('[data-app]') ?? document.body).appendChild(this.$el);
+    (document.querySelector('[data-app]') ?? document.body).appendChild(this.$el)
     // Focus moves into the quick look: its Close where it shows (phone),
     // else the dialog itself, so Escape and Tab start inside it.
     const close = this.$refs.close as HTMLElement | undefined
