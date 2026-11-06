@@ -9,6 +9,7 @@ import {
   fanCommand,
   fanPercent,
   fileFilament,
+  filamentSensed,
   lightsOutput,
   loadedChoice,
   materialChoices,
@@ -169,14 +170,12 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   }
 
   /**
-   * Whether filament is in the printer, from the filament sensor: true or
-   * false when an enabled sensor reports, null when none does (no sensor, or
-   * it is switched off), where only what someone said is loaded can tell.
+   * Whether filament is in the printer, from a trustworthy filament sensor
+   * (a switch sensor, switched on; see filamentSensed): null when none
+   * reports, where only what someone said is loaded can tell.
    */
   get filamentSensed (): boolean | null {
-    const sensors = (this.$store.getters['printer/getRunoutSensors'] as Array<{ enabled?: boolean, filament_detected?: boolean }>) ?? []
-    const reporting = sensors.filter(s => s.enabled !== false && typeof s.filament_detected === 'boolean')
-    return reporting.length ? reporting.some(s => s.filament_detected) : null
+    return filamentSensed(this.$store.state.printer.printer)
   }
 
   /**

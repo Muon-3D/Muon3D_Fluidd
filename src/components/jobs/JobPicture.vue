@@ -21,6 +21,7 @@
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
+import { cancelQueuedThumbnail } from '@/services/jobs/thumbnail'
 
 /**
  * A job's picture. A file with no thumbnail, or one whose thumbnail can't be
@@ -31,6 +32,10 @@ export default class JobPicture extends Vue {
   @Prop({ type: String, default: '' })
   readonly src!: string
 
+  /** Names a picture read over the remote route: dropped from the queue if this goes before its turn. */
+  @Prop({ type: String, default: '' })
+  readonly thumbKey!: string
+
   @Prop({ type: Boolean })
   readonly large!: boolean
 
@@ -39,6 +44,10 @@ export default class JobPicture extends Vue {
 
   get shown (): string {
     return this.src && this.src !== this.failed ? this.src : ''
+  }
+
+  beforeDestroy () {
+    if (this.thumbKey && !this.src) cancelQueuedThumbnail(this.thumbKey)
   }
 }
 </script>

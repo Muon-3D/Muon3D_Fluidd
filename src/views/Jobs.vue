@@ -41,7 +41,10 @@
           class="jobs__queued"
         >
           <span class="jobs__thumb jobs__thumb--small">
-            <job-picture :src="thumbnailOf(queued.filename)" />
+            <job-picture
+              :src="thumbnailOf(queued.filename)"
+              :thumb-key="thumbnailKeyOf(queued.filename)"
+            />
           </span>
           <span class="jobs__queued-text">
             <b>{{ titleOf(queued.filename) }}</b>
@@ -290,8 +293,9 @@
                     name="files"
                   />
                   <job-picture
-                    v-else
-                    :src="row.job ? row.job.thumbnail : ''"
+                    v-else-if="row.job"
+                    :src="row.job.thumbnail"
+                    :thumb-key="row.job.thumbnailKey"
                   />
                 </span>
                 <span class="jobs__name-text">
@@ -395,6 +399,7 @@
         <div class="jobs__picture">
           <job-picture
             :src="selectedRow.job.thumbnail"
+            :thumb-key="selectedRow.job.thumbnailKey"
             large
           />
         </div>
@@ -574,6 +579,7 @@ import { scopedPath } from '@/router/printerPagePaths'
 import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
 import JobMenu, { type JobMenuAction } from '@/components/jobs/JobMenu.vue'
 import JobPicture from '@/components/jobs/JobPicture.vue'
+import { retryFailedThumbnails } from '@/services/jobs/thumbnail'
 import TonePill from '@/components/printers/TonePill.vue'
 
 /** A row of the list: a folder, or a G-code file in the folder that's open. */
@@ -630,6 +636,8 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   get query (): string { return jobsPage.query }
 
   mounted () {
+    // Pictures that gave up while Jobs was last open get another go.
+    retryFailedThumbnails()
     const saved = (this.$store.getters['files/getCurrentPathByRoot'](this.root) as string | undefined) ?? ''
     this.openFolder(saved.startsWith(`${this.root}/`) ? saved.slice(this.root.length + 1) : '')
     this.loadFiles()
@@ -1159,6 +1167,10 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
 
   thumbnailOf (filename: string): string {
     return this.fileFor(filename)?.thumbnail ?? ''
+  }
+
+  thumbnailKeyOf (filename: string): string {
+    return this.fileFor(filename)?.thumbnailKey ?? ''
   }
 
   titleOf (filename: string): string {
