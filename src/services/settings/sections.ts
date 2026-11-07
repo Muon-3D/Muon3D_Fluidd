@@ -52,7 +52,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'macros', label: 'Macros', anchors: ['macros'], icon: 'macro', blurb: 'Which macros show, and in which category', keywords: ['gcode', 'quick actions', 'buttons'] },
   { id: 'timelapse', label: 'Timelapse', anchors: ['timelapse'], icon: 'clock', blurb: 'How print timelapses are made', keywords: ['video', 'render', 'frames'], shows: has('timelapse') },
   { id: 'spoolman', label: 'Spoolman', anchors: ['spoolman'], icon: 'spool', blurb: 'Your spool inventory', keywords: ['filament', 'spools'], shows: has('spoolman') },
-  { id: 'console', label: 'Console', anchors: ['console'], icon: 'console', blurb: 'How the console reads and filters', keywords: ['terminal', 'filter', 'log'] },
+  { id: 'console', label: 'Console', anchors: ['console'], icon: 'console', blurb: 'What the console shows, the one-tap commands above the input, and who may type', keywords: ['terminal', 'filter', 'log', 'quick commands', 'history', 'timestamps'] },
   { id: 'files', label: 'Files and editor', anchors: ['browser', 'editor'], icon: 'files', blurb: 'How files are listed and edited', keywords: ['browser', 'editor', 'gcode', 'config'] },
   { id: 'toolhead', label: 'Moving and extruding', anchors: ['toolhead'], icon: 'control', blurb: "How Control's move pad, extrude buttons and macros behave", keywords: ['moving', 'extruding', 'speed', 'axis', 'homing', 'paper test'] },
   { id: 'gcodePreview', label: 'G-code preview and 3D', anchors: ['gcodePreview'], icon: 'jobs', blurb: 'The 3D printer on Overview, and how the G-code preview draws a print', keywords: ['layers', '3d', 'render', 'preview', 'model', 'detail', 'glass', 'animations', 'motion', 'camera', 'opens on'] },
@@ -96,4 +96,24 @@ export function searchSettingsSections (sections: SettingsSection[], query: stri
     const hay = [s.label, s.blurb, ...(s.keywords ?? [])].join(' ').toLowerCase()
     return words.every(w => hay.includes(w))
   })
+}
+
+/** Which access card People and access shows. */
+export interface AccessCards {
+  /** The new People and access page (a Muon printer with `muon_access`). */
+  peopleAccess: boolean;
+  /** Moonraker's API key and users card: a non-Muon printer, or a Muon one whose MuonOS predates `muon_access`. */
+  auth: boolean;
+  /** Muon or not isn't known yet (server.info hasn't loaded): a muted loading line, never the wrong card. */
+  loading: boolean;
+}
+
+export function accessCards (isMuonPrinter: boolean | null, components: string[]): AccessCards {
+  if (isMuonPrinter === null) return { peopleAccess: false, auth: false, loading: true }
+  const access = components.includes('muon_access')
+  return {
+    peopleAccess: isMuonPrinter && access,
+    auth: components.includes('authorization') && (!isMuonPrinter || !access),
+    loading: false
+  }
 }

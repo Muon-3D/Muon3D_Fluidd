@@ -11,10 +11,11 @@
       ref="console-wrapper"
       flat
       class="console-wrapper"
+      :class="`console-wrapper--${textSize}`"
     >
       <DynamicScroller
         ref="scroller"
-        :items="flipLayout ? [...items].reverse() : items"
+        :items="flipLayout ? [...shown].reverse() : shown"
         :min-item-size="24"
         class="console-scroller"
         :class="{
@@ -59,6 +60,7 @@ import StateMixin from '@/mixins/state'
 import ConsoleCommand from './ConsoleCommand.vue'
 import ConsoleItem from './ConsoleItem.vue'
 import { SocketActions } from '@/api/socketActions'
+import { Globals } from '@/globals'
 import type { DinamicScroller } from 'vue-virtual-scroller'
 import type { ConsoleEntry } from '@/store/console/types'
 import type { UpdateResponse } from '@/store/version/types'
@@ -93,6 +95,17 @@ export default class Console extends Mixins(StateMixin) {
 
   set currentCommand (val: string) {
     this.$store.commit('console/setConsoleCommand', val)
+  }
+
+  /** Settings › Console: the text size, and how many lines to keep. The update dialog's output keeps its own. */
+  get textSize (): string {
+    return this.readonly ? 'md' : this.$store.state.config.uiSettings.console?.textSize ?? 'md'
+  }
+
+  get shown (): ConsoleEntry[] | UpdateResponse[] {
+    if (this.readonly) return this.items
+    const kept = this.$store.state.config.uiSettings.console?.linesKept ?? Globals.CONSOLE_HISTORY_RETENTION
+    return this.items.slice(-kept) as ConsoleEntry[] | UpdateResponse[]
   }
 
   get flipLayout (): boolean {
@@ -203,6 +216,9 @@ export default class Console extends Mixins(StateMixin) {
     line-height: 1.6;
     padding: 8px 16px;
   }
+
+  .console-wrapper--sm { font-size: 11px; }
+  .console-wrapper--lg { font-size: 14.5px; }
 
   .console-scroller {
     height: 300px;

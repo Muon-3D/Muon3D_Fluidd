@@ -9,6 +9,8 @@ import { running } from '@/services/maintenance/running'
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn() }))
 vi.mock('@/api/socketActions', () => ({ SocketActions: socket }))
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'alpha' }))
+// The gates ask the printer over the network; this test is about the guards, not the gates.
+vi.mock('@/services/gates', () => ({ gateState: { epoch: 0 }, valueFor: () => null, refreshCanManageAccess: vi.fn(), refreshGateDevMode: vi.fn() }))
 
 type Profile = { name: string; range: number; active: boolean; adaptive?: boolean }
 
@@ -53,7 +55,7 @@ describe('MeshProfiles risky confirmation paths', () => {
     const { wrapper, vm, store, confirm } = show()
     confirm.mockResolvedValue(false)
     store.getters['printer/getPrinterState'] = 'printing'
-    if (_label === 'calibrate') await vm.runCheck(vm.meshRow)
+    if (_label === 'calibrate') await vm.runCheck(vm.checks.find((c: any) => c.id === 'bedMesh'))
     else await vm[_label](...(args as readonly ['spare']))
     expect(sent()).toEqual([])
     wrapper.destroy()
@@ -71,7 +73,7 @@ describe('MeshProfiles risky confirmation paths', () => {
       if (action === 'load') await vm.load('spare')
       else if (action === 'remove') await vm.remove('spare')
       else if (action === 'clear') await vm.clear()
-      else await vm.runCheck(vm.meshRow)
+      else await vm.runCheck(vm.checks.find((c: any) => c.id === 'bedMesh'))
       expect(sent()).toEqual([])
       wrapper.destroy()
       vi.clearAllMocks()
@@ -86,7 +88,7 @@ describe('MeshProfiles risky confirmation paths', () => {
     if (action === 'load') await vm.load('spare')
     else if (action === 'remove') await vm.remove('spare')
     else if (action === 'clear') await vm.clear()
-    else await vm.runCheck(vm.meshRow)
+    else await vm.runCheck(vm.checks.find((c: any) => c.id === 'bedMesh'))
     expect(sent()).toEqual([])
     wrapper.destroy()
   })

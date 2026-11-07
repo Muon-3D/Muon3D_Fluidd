@@ -393,8 +393,16 @@ export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
   }
 
   /** Settings › Animations, which follows the device's reduce-motion setting until set. */
+  /** The system's prefers-reduced-motion, kept current: the animations' default. */
+  reducedMotion = false
+  reducedMotionQuery: MediaQueryList | null = null
+
   get showAnimations () {
-    return modelAnimates(modelSettings.animations, window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+    return modelAnimates(modelSettings.animations, this.reducedMotion)
+  }
+
+  onReducedMotion (event: MediaQueryListEvent) {
+    this.reducedMotion = event.matches
   }
 
   get autoZoom () {
@@ -589,6 +597,9 @@ export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
   }
 
   mounted () {
+    this.reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null
+    this.reducedMotion = this.reducedMotionQuery?.matches ?? false
+    this.reducedMotionQuery?.addEventListener?.('change', this.onReducedMotion)
     this.panzoom = panzoom(this.svg, {
       maxZoom: 20,
       minZoom: 0.95,
@@ -610,6 +621,7 @@ export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
   }
 
   beforeDestroy () {
+    this.reducedMotionQuery?.removeEventListener?.('change', this.onReducedMotion)
     this.panzoom?.dispose()
   }
 

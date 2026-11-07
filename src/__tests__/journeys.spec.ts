@@ -131,7 +131,7 @@ describe.sequential('Muon3D M1 journeys through the application router', () => {
     expect(wrapper.find('[data-tid="overview-stop"]').exists()).toBe(true)
 
     await go(`/${slug}/control`, '[data-tid="control-page"]', wrapper)
-    expect(wrapper.findAll('.control-page > *').length).toBeGreaterThanOrEqual(6)
+    expect(wrapper.findAll('.control-page [data-cell]').length).toBeGreaterThanOrEqual(6)
     const hotter = wrapper.find('button[aria-label="Nozzle hotter"]')
     await hotter.trigger('click')
     expect(SocketActions.printerGcodeScript).toHaveBeenCalledTimes(1)
@@ -141,14 +141,14 @@ describe.sequential('Muon3D M1 journeys through the application router', () => {
     await go(`/${slug}/tune`, '[data-tid="bedmesh-page"]', wrapper)
 
     await go(`/${slug}/jobs`, '.jobs', wrapper)
-    // One list, with its order and Upload in the header.
+    // One list, with its toolbar and Upload in the header.
     expect(wrapper.find('[data-tid="jobs-list"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Newest')
+    expect(wrapper.text()).toContain('New folder')
     expect(wrapper.text()).toContain('Upload')
 
     await go(`/${slug}/camera/toolhead`, '[data-tid="camera-page"]', wrapper)
-    await wrapper.find('[data-tid="camera-details-trigger"]').trigger('click')
-    expect(wrapper.text()).toContain('Stream')
+    // On a desktop the stream's details are the side tile beside the picture.
+    expect(wrapper.find('[data-tid="camera-info"]').text()).toContain('Stream')
 
     await go(`/${slug}/settings`, '[data-tid="settings-page"]', wrapper)
     expect(wrapper.text()).toContain('Charts')
@@ -200,7 +200,7 @@ describe.sequential('Muon3D M1 journeys through the application router', () => {
     retireProStorage()
     expect(localStorage.getItem('muon3d.pro')).toBeNull()
     await go(`/${slug}/control`, '[data-tid="control-page"]', wrapper)
-    expect(wrapper.findAll('.control-page > *').length).toBeGreaterThanOrEqual(6)
+    expect(wrapper.findAll('.control-page [data-cell]').length).toBeGreaterThanOrEqual(6)
   })
 
   // Product bug: Console assumes its async scroller ref exists in mounted/beforeDestroy.

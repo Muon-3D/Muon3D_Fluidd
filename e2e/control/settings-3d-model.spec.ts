@@ -11,9 +11,19 @@ import { PRESETS, usePrinter, type PrinterHandle } from './printer'
 
 const KEY = 'muon3d.model3d'
 const CAMERA = {
-  name: 'Bed', enabled: true, service: 'mjpegstreamer-adaptive', target_fps: 15, target_fps_idle: 5,
-  stream_url: '/webcam/?action=stream', snapshot_url: '/webcam/?action=snapshot',
-  flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: '4:3', source: 'database', uid: 'bed-1'
+  name: 'Bed',
+  enabled: true,
+  service: 'mjpegstreamer-adaptive',
+  target_fps: 15,
+  target_fps_idle: 5,
+  stream_url: '/webcam/?action=stream',
+  snapshot_url: '/webcam/?action=snapshot',
+  flip_horizontal: false,
+  flip_vertical: false,
+  rotation: 0,
+  aspect_ratio: '4:3',
+  source: 'database',
+  uid: 'bed-1'
 }
 
 async function openPreviewSettings (page: Page, open: (path: string) => Promise<void>) {
@@ -32,6 +42,11 @@ function noneSaved (printer: PrinterHandle) {
 }
 
 const stage = (page: Page) => page.getByTestId('m1-live')
+/** The canvas the live model draws on, and the pixels it draws with per CSS pixel. */
+const canvas = (page: Page) => stage(page).locator('canvas.m1-live__canvas')
+const pixelRatio = (page: Page) => canvas(page).evaluate((c: HTMLCanvasElement) => c.width / c.clientWidth)
+/** The simple model, so a headless browser without the real GPU still draws one. */
+const simpleModel = (page: Page) => page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
 const active = /v-btn--active/
 const showModel = (page: Page) => page.getByRole('switch', { name: 'Show the 3D printer' })
 
@@ -53,6 +68,7 @@ test('the storyboard\'s rows, at their defaults: shown, Auto, Auto, growing, Lik
 })
 
 test('detail Low and glass Plain are kept on this device, after a reload, and the Overview model draws with them', async ({ page, open }) => {
+  await simpleModel(page)
   const printer = await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await openPreviewSettings(page, open)
   await page.getByTestId('model-detail-low').click()
@@ -69,7 +85,28 @@ test('detail Low and glass Plain are kept on this device, after a reload, and th
   noneSaved(printer)
 })
 
+test.describe('on a 2x screen, the model draws with the detail asked for', () => {
+  test.use({ deviceScaleFactor: 2 })
+
+  test('Low draws one pixel per pixel; Auto draws two', async ({ page, open }) => {
+    await simpleModel(page)
+    await usePrinter(page, PRESETS.idleHomed(), { database: true })
+    await open('/')
+    await expect(stage(page)).toHaveAttribute('data-model', 'simple', { timeout: 60_000 })
+    const wide = await canvas(page).evaluate((c: HTMLCanvasElement) => c.clientWidth >= 600)
+    await expect.poll(() => pixelRatio(page)).toBeCloseTo(wide ? 2 : 1.5, 1)
+
+    await openPreviewSettings(page, open)
+    await page.getByTestId('model-detail-low').click()
+    await open('/')
+    await expect(stage(page)).toHaveAttribute('data-detail', 'low')
+    await expect(stage(page)).toHaveAttribute('data-model', 'simple', { timeout: 60_000 })
+    await expect.poll(() => pixelRatio(page)).toBeCloseTo(1, 1)
+  })
+})
+
 test('detail High asks for the accurate model, and Auto comes back as it was', async ({ page, open }) => {
+  await simpleModel(page)
   await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await openPreviewSettings(page, open)
   await page.getByTestId('model-detail-high').click()
@@ -84,9 +121,13 @@ test('detail High asks for the accurate model, and Auto comes back as it was', a
 })
 
 test('the 3D printer off, with no camera, shows the still picture on Overview', async ({ page, open }) => {
+  await simpleModel(page)
   const printer = await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await open('/')
-  await expect(stage(page)).toHaveAttribute('data-model', 'on')
+  await expect(stage(page)).toHaveAttribute('data-show-model', 'on')
+  // On, the model is really drawn, so the Off below is a change in what is on screen.
+  await expect(stage(page)).toHaveAttribute('data-model', 'simple', { timeout: 60_000 })
+  await expect(canvas(page)).toHaveCount(1)
 
   await openPreviewSettings(page, open)
   await showModel(page).click({ force: true })
@@ -96,8 +137,12 @@ test('the 3D printer off, with no camera, shows the still picture on Overview', 
   await expect(showModel(page)).not.toBeChecked({ timeout: 60_000 })
 
   await open('/')
-  await expect(stage(page)).toHaveAttribute('data-model', 'off')
+  await expect(stage(page)).toHaveAttribute('data-show-model', 'off')
+  // No model at all: no canvas, nothing drawn, and the stage never says which model it drew.
+  await expect(stage(page).locator('canvas')).toHaveCount(0)
   await expect(stage(page).locator('.m1-live__slot')).toHaveCount(0)
+  await expect(stage(page)).not.toHaveAttribute('data-model', /.+/)
+  await expect(stage(page)).toHaveAttribute('data-live', 'off')
   await expect(page.getByTestId('overview-stage')).toBeVisible()
   await expect(page.getByTestId('stage-camera')).toHaveCount(0)
   noneSaved(printer)
@@ -131,6 +176,7 @@ test('with reduce motion set, Like this device doesn\'t animate; On does, and is
   await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await open('/')
   await expect(stage(page)).toHaveAttribute('data-animations', 'off')
+  await expect(stage(page)).toHaveClass(/m1-live--still/)
 
   await openPreviewSettings(page, open)
   await page.getByTestId('model-animations-on').click()
@@ -139,17 +185,35 @@ test('with reduce motion set, Like this device doesn\'t animate; On does, and is
   await expect(page.getByTestId('model-animations-on')).toHaveClass(active, { timeout: 60_000 })
   await open('/')
   await expect(stage(page)).toHaveAttribute('data-animations', 'on')
+  await expect(stage(page)).not.toHaveClass(/m1-live--still/)
 })
 
-test('animations Off stops the model animating with full motion too', async ({ page, open }) => {
+test('animations Off stops the model animating with full motion too: the still class, and no frame loop once it has settled', async ({ page, open }) => {
+  await simpleModel(page)
+  await page.addInitScript(() => {
+    // Counts the frames the page asks for, to see the loop stop when nothing moves.
+    const w = window as unknown as { __frames: number }
+    w.__frames = 0
+    const raf = window.requestAnimationFrame.bind(window)
+    window.requestAnimationFrame = cb => raf(t => { w.__frames++; cb(t) })
+  })
   await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await open('/')
   await expect(stage(page)).toHaveAttribute('data-animations', 'on')
+  await expect(stage(page)).not.toHaveClass(/m1-live--still/)
   await openPreviewSettings(page, open)
   await page.getByTestId('model-animations-off').click()
   await expect.poll(() => kept(page)).toMatchObject({ animations: false })
   await open('/')
   await expect(stage(page)).toHaveAttribute('data-animations', 'off')
+  await expect(stage(page)).toHaveClass(/m1-live--still/)
+  await expect(stage(page)).toHaveAttribute('data-model', 'simple', { timeout: 60_000 })
+  // Settled: the model has drawn, nothing is moving, and no further frames are asked for.
+  const frames = () => page.evaluate(() => (window as unknown as { __frames: number }).__frames)
+  await page.waitForTimeout(1500)
+  const before = await frames()
+  await page.waitForTimeout(1500)
+  expect(await frames() - before).toBeLessThanOrEqual(2)
 })
 
 test('the print growing turned off is kept', async ({ page, open }) => {
@@ -178,7 +242,7 @@ test('error: settings this device can\'t read come back as the defaults, and the
 test('offline: with the printer gone the settings page keeps its view, held still, and nothing is saved', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await openPreviewSettings(page, open)
-  printer.disconnect()
+  await printer.offline()
   await expect(page.getByText('Reconnecting', { exact: false }).first()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByTestId('model-detail-auto')).toHaveClass(active)
   await expect(page.locator('[inert]').getByTestId('model-settings')).toBeVisible()
@@ -188,8 +252,8 @@ test('offline: with the printer gone the settings page keeps its view, held stil
 test('offline: with the printer gone, the Overview model stops drawing live', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await open('/')
-  await expect(stage(page)).toHaveAttribute('data-model', 'on')
-  printer.disconnect()
+  await expect(stage(page)).toHaveAttribute('data-show-model', 'on')
+  await printer.offline()
   await expect(page.getByText('Reconnecting', { exact: false }).first()).toBeVisible({ timeout: 30_000 })
   await expect(stage(page)).toHaveAttribute('data-live', 'off')
   noneSaved(printer)

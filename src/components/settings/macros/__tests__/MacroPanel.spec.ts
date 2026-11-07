@@ -76,6 +76,58 @@ describe('MacroPanel', () => {
     expect(w.find('[data-tid="macro-selected-count"]').exists()).toBe(false)
   })
 
+  it('clears the selection on any empty space: section padding, a heading, the gap between rows', async () => {
+    const w = mount()
+    await settle()
+    for (const target of ['[data-tid="macro-section-head-a"]', '[data-section="Uncategorised"]', '[role="listbox"]', '.mpanel__head']) {
+      await w.find('[data-tid="macro-row-purge"]').trigger('click')
+      expect(w.find('[data-tid="macro-selected-count"]').exists()).toBe(true)
+      await w.find(target).trigger('click')
+      expect(w.find('[data-tid="macro-selected-count"]').exists(), target).toBe(false)
+    }
+  })
+
+  it('keeps the selection when a row or a button is clicked', async () => {
+    const w = mount()
+    await settle()
+    await w.find('[data-tid="macro-row-purge"]').trigger('click')
+    await w.find('[data-tid="macro-toolbar-hide"]').trigger('click')
+    expect(w.find('[data-tid="macro-selected-count"]').exists()).toBe(true)
+  })
+
+  it('selects every macro shown with Ctrl+A, and leaves the native select-all alone in a field', async () => {
+    const w = mount()
+    await settle()
+    await w.find('[data-tid="macro-row-purge"]').trigger('keydown', { key: 'a', ctrlKey: true })
+    expect(w.find('[data-tid="macro-selected-count"]').text()).toBe('3 selected')
+    await w.find('[data-tid="macro-row-purge"]').trigger('click')
+    await w.find('[data-tid="macro-row-purge"]').trigger('keydown', { key: 'a', metaKey: true })
+    expect(w.find('[data-tid="macro-selected-count"]').text()).toBe('3 selected')
+    await w.find('[data-tid="macro-list"]').trigger('click')
+    const input = document.createElement('input')
+    w.element.appendChild(input)
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }))
+    await w.vm.$nextTick()
+    expect(w.find('[data-tid="macro-selected-count"]').exists()).toBe(false)
+  })
+
+  it('stops a shift-mousedown on a row selecting text', async () => {
+    const w = mount()
+    await settle()
+    const shifted = new MouseEvent('mousedown', { shiftKey: true, bubbles: true, cancelable: true })
+    w.find('[data-tid="macro-row-purge"]').element.dispatchEvent(shifted)
+    expect(shifted.defaultPrevented).toBe(true)
+    const plain = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
+    w.find('[data-tid="macro-row-purge"]').element.dispatchEvent(plain)
+    expect(plain.defaultPrevented).toBe(false)
+  })
+
+  it('does not lock the list on a role: the printer decides what it allows', async () => {
+    const w = mount()
+    await settle()
+    expect(w.find('[data-tid="macro-panel-viewer"]').exists()).toBe(false)
+  })
+
   it('selects with the checkbox, and shows or hides the selection from the toolbar', async () => {
     const w = mount()
     await settle()

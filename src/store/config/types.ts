@@ -1,3 +1,4 @@
+import type { ConsoleConfig } from '@/services/console/settings'
 import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { FileFilterType } from '../files/types'
 
@@ -27,6 +28,9 @@ export interface UiSettings {
   spoolman: SpoolmanConfig;
   maintenance: MaintenanceConfig;
   overview: OverviewConfig;
+  console: ConsoleConfig;
+  /** Each person's Control layout on this printer, the same shape as Overview's. */
+  control: OverviewConfig;
 }
 
 /** Each person's Overview layout on this printer, by key (see services/overview/layout), as saved by Edit mode. */
@@ -145,10 +149,10 @@ export type PrintProgressCalculation = 'file' | 'fileAbsolute' | 'slicer' | 'fil
 
 export type PrintEtaCalculation = 'file' | 'slicer'
 
-// 'flat' is the hairline graphite look; 'glass' is the Apple-style look:
-// neutral surfaces, system colours and a glass chrome
-// (src/scss/muon3d-glass.scss).
-export type UiStyle = 'flat' | 'glass'
+// Glass is the only interface style: neutral surfaces, system colours and a
+// glass chrome (src/scss/muon3d-glass.scss). A printer that saved 'flat' (the
+// retired style) is read as glass.
+export type UiStyle = 'glass'
 
 // Config stored in moonraker db
 export interface ThemeConfig {
@@ -258,10 +262,8 @@ export interface GcodePreviewConfig {
   retractionIconSize: number;
   drawOrigin: boolean;
   drawBackground: boolean;
+  /** Retired: animations are now this device's (m1-3d/device-settings); a saved `false` is carried over once. */
   showAnimations: boolean;
-  /** The printer's 3D model's and this preview's detail: low, medium or high. */
-  /** The Overview's live 3D printer; off, its picture. */
-  /** Whether the 3D printer animates; null follows the system's prefers-reduced-motion. */
   minLayerHeight: number;
   autoLoadOnPrintStart: boolean;
   autoLoadMobileOnPrintStart: boolean;
