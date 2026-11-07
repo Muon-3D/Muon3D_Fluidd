@@ -7,6 +7,15 @@
       <div class="app-page-header__titles">
         <div class="app-page-header__title-row">
           <router-link
+            v-if="back"
+            :to="back.to"
+            class="app-page-header__back"
+            :aria-label="`Back to ${back.label}`"
+            data-tid="page-back"
+          >
+            <frame-icon name="chevronLeft" />
+          </router-link>
+          <router-link
             v-if="bedPage"
             :to="healthTo"
             class="app-page-header__back"
@@ -40,6 +49,8 @@
         <overview-actions v-if="overviewHome && !foreignRecord && !isMobileViewport" />
         <printer-page-menu v-if="overviewHome && !foreignRecord" />
         <jobs-actions v-if="jobsHome" />
+        <timelapse-actions v-if="timelapseHome" />
+        <preview-actions v-if="previewPage" />
         <maintenance-actions
           v-if="maintenancePages"
           :page="bedPage ? 'bed' : 'health'"
@@ -47,6 +58,18 @@
         <console-actions v-if="currentSection && currentSection.id === 'console'" />
         <files-actions v-if="currentSection && currentSection.id === 'files' && isMobileViewport" />
         <camera-actions v-if="currentSection && currentSection.id === 'camera'" />
+        <router-link
+          v-if="settingsSection && settingsSection.id === 'console' && !isMobileViewport"
+          :to="consoleTo"
+          class="cbtn cbtn--ghost"
+          data-tid="settings-open-console"
+        >
+          <frame-icon
+            name="console"
+            small
+          />
+          Open Console
+        </router-link>
         <charts-actions v-if="chartsHome" />
       </div>
     </div>
@@ -88,6 +111,12 @@ import FilesActions from '@/components/files/FilesActions.vue'
 import CameraActions from '@/components/camera/CameraActions.vue'
 import { cameraPage } from '@/services/camera/page-state'
 import JobsActions from '@/components/jobs/JobsActions.vue'
+import TimelapseActions from '@/components/timelapse/TimelapseActions.vue'
+import PreviewActions from '@/components/gcode-preview/PreviewActions.vue'
+import { timelapseSummary } from '@/services/timelapse/model'
+import { fileSize } from '@/services/jobs/model'
+import { activeSlug, foreignRecordForSlug, isForeignSlug } from '@/services/printer-pages'
+import type { AppFile, FileBrowserEntry } from '@/store/files/types'
 import ChartsActions from '@/components/charts/ChartsActions.vue'
 import { chartsPage } from '@/services/charts/page-state'
 import { effectiveRange, rangeText } from '@/services/charts/model'
@@ -98,7 +127,6 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { jobName } from '@/services/printers-page/model'
 import { printerNameParts } from '@/util/printer-name'
 import type { TileTone } from '@/services/printers-page/model'
-import { activeSlug, foreignRecordForSlug, isForeignSlug } from '@/services/printer-pages'
 import { liveForeign } from '@/services/foreign-printers/live'
 import { emptyStatus } from '@/services/foreign-printers/adapters/base'
 import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@/services/foreign-printers/types'
@@ -108,7 +136,7 @@ import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@
  * with the section's pages as tabs under it (Jobs: Jobs, Preview, History,
  * Timelapse).
  */
-@Component({ components: { FilesActions, ChartsActions, ConsoleActions, CameraActions, JobsActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceActions, TonePill } })
+@Component({ components: { FilesActions, ChartsActions, ConsoleActions, CameraActions, JobsActions, TimelapseActions, PreviewActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceActions, TonePill } })
 export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, PrinterStatusMixin) {
   get foreignRecord () {
     const slug = this.$route.params.printer
@@ -134,6 +162,8 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
   get title (): string {
     if (this.chartsHome) return 'Charts'
     if (this.overviewHome) return this.foreignRecord?.name ?? printerNameParts(this.displayName).name
+    if (this.previewPage) return this.previewFile?.filename.replace(/\.g(code)?$/i, '') || 'G-code preview'
+    if (this.timelapseHome) return 'Timelapse'
     // Settings lists its own sections; Wi-Fi and System are named for themselves.
     if (this.currentSection?.id === 'settings') {
       const page = this.currentSection.pages.find(p => p.path !== '/settings' && this.isOn(p))
@@ -165,9 +195,63 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     return scopedPath('/maintenance', activeSlug())
   }
 
+  get consoleTo (): string {
+    return scopedPath('/console', activeSlug())
+  }
+
   /** Jobs' own page: its header carries the search, the order and Upload, and History and Timelapse sit in its ··· menu. */
   get jobsHome (): boolean {
     return this.currentSection?.id === 'jobs' && this.currentPage === '/jobs' && !this.foreignRecord
+  }
+
+  /** Timelapse is a page to watch: its header counts the videos and links to its settings. */
+  get timelapseHome (): boolean {
+    return this.currentSection?.id === 'jobs' && this.currentPage === '/timelapse' && !this.foreignRecord
+  }
+
+  /** The G-code preview: its header names the file, with a way back to Jobs, Open another and Print this. */
+  get previewPage (): boolean {
+    return this.currentSection?.id === 'jobs' && this.currentPage === '/preview' && !this.foreignRecord
+  }
+
+  get jobsPath (): string {
+    return scopedPath('/jobs', activeSlug())
+  }
+
+  /** The way back from a page that sits under another: the preview to Jobs, Timelapse to History (Jobs, when the printer keeps no history). */
+  get back (): { to: string, label: string } | null {
+    if (this.previewPage) return { to: this.jobsPath, label: 'Jobs' }
+    if (this.timelapseHome) {
+      if (this.$store.getters['server/componentSupport']('history')) return { to: scopedPath('/history', activeSlug()), label: 'History' }
+      return { to: this.jobsPath, label: 'Jobs' }
+    }
+    return null
+  }
+
+  get previewFile (): AppFile | undefined {
+    return this.$store.getters['gcodePreview/getFile'] as AppFile | undefined
+  }
+
+  get previewSubtitle (): string {
+    const file = this.previewFile
+    if (!file) return "Load what's printing, or open a file"
+    const layers = (this.$store.getters['gcodePreview/getLayers'] as unknown[] | undefined)?.length ?? 0
+    const parts = ['G-code preview']
+    if (file.size) parts.push(fileSize(file.size))
+    if (layers) parts.push(`${layers.toLocaleString()} ${layers === 1 ? 'layer' : 'layers'}`)
+    const current = this.$store.state.printer.printer.current_file as AppFile | undefined
+    const running = (this.printerPrinting || this.printerPaused) && !!current?.filename &&
+      `${current.path}/${current.filename}` === `${file.path}/${file.filename}`
+    if (running) parts.push('showing the running print')
+    return parts.join(' · ')
+  }
+
+  get timelapseSubtitle (): string {
+    const entries = this.$store.getters['files/getDirectory']('timelapse') as FileBrowserEntry[] | undefined
+    if (!entries) return ''
+    const files = entries.filter((e): e is AppFile => e.type === 'file')
+    const { videos, bytes } = timelapseSummary(files)
+    return `${videos} ${videos === 1 ? 'video' : 'videos'} · ${fileSize(bytes)} on ${printerNameParts(this.displayName).name}`
   }
 
   get pillTone (): TileTone {
@@ -209,6 +293,8 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       return head
     }
     if (this.currentSection?.id === 'console') return 'Send G-code and read what Klipper says back'
+    if (this.timelapseHome && this.$store.getters['server/componentSupport']('timelapse')) return this.timelapseSubtitle
+    if (this.previewPage) return this.previewSubtitle
     if (this.chartsHome) {
       const name = printerNameParts(this.displayName).name
       if (!this.$store.state.config.uiSettings.general.enableDiagnostics) return `Your own charts, from anything ${name} reports`
@@ -241,7 +327,8 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
   }
 
   get tabs (): SectionPage[] {
-    if (!this.currentSection || this.currentSection.id === 'settings' || this.jobsHome || this.maintenancePages) return []
+    // Timelapse and the preview are pages of their own: the preview goes back to Jobs, Timelapse to History, and both are in Jobs' ··· menu.
+    if (!this.currentSection || this.currentSection.id === 'settings' || this.jobsHome || this.timelapseHome || this.previewPage || this.maintenancePages) return []
     return this.pagesOf(this.currentSection)
   }
 
@@ -252,6 +339,18 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
 </script>
 
 <style lang="scss" scoped>
+  .app-page-header__back {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text) !important;
+  }
+
   .app-page-header {
     display: flex;
     flex-direction: column;
