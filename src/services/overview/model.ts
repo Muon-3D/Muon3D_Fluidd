@@ -32,12 +32,12 @@ export function filamentFact (usedMm: number, totalMm: number | null, totalGrams
 
 /**
  * The spool on the printer, in words: "PETG · Blue" as someone said, else
- * "PLA · from the file" from the file being printed, else "Not set".
+ * "PLA · from the file" from the file being printed, else "No material loaded".
  */
 export function spoolFact (loaded: string | null, loadedColour: string | null, fromFile: { name: string, colour: string | null } | null): string {
   if (loaded) return [loaded, loadedColour ? colourName(loadedColour) : ''].filter(Boolean).join(' · ')
   if (fromFile) return [fromFile.name, fromFile.colour ? colourName(fromFile.colour) : '', 'from the file'].filter(Boolean).join(' · ')
-  return 'Not set'
+  return 'No material loaded'
 }
 
 /** "10 min", "1 h 5 min": how long, for people. */
