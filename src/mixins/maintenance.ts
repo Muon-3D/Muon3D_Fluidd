@@ -1,5 +1,6 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import ControlMixin from './control'
+import DevGuardMixin from './dev-guard'
 import { Waits } from '@/globals'
 import { activeSlug } from '@/services/printer-pages'
 import { running } from '@/services/maintenance/running'
@@ -120,7 +121,7 @@ const CHECKS: CheckInfo[] = [
  * halfway isn't recorded as done.
  */
 @Component({})
-export default class MaintenanceMixin extends Mixins(ControlMixin) {
+export default class MaintenanceMixin extends Mixins(ControlMixin, DevGuardMixin) {
   get maintenanceTarget (): string { return this.panelTarget }
 
   get gcodeCommands (): Record<string, unknown> {
@@ -140,7 +141,7 @@ export default class MaintenanceMixin extends Mixins(ControlMixin) {
 
   get checks (): CheckRow[] {
     const now = Date.now()
-    const context = { commands: this.gcodeCommands, homed: this.allHomed, nozzleTarget: this.tuneTemperature }
+    const context = { commands: this.gcodeCommands, homed: this.allHomed, nozzleTarget: this.tuneTemperature, pidFallback: !this.devOnlyLocked }
     return CHECKS
       .map(info => ({
         id: info.id,
