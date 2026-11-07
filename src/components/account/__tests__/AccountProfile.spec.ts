@@ -4,6 +4,7 @@ import Vue from 'vue'
 import AccountProfile from '../AccountProfile.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { accountState } from '@/services/account/state'
+import { forgetOwnAvatar } from '@/services/account/avatar'
 import { LibraryError } from '@/services/library/api'
 import type { CommunityIdentity, CommunityProfile } from '@/services/account/community'
 
@@ -43,6 +44,7 @@ async function open (id = identity(), p: CommunityProfile | null = profile(), qu
 }
 
 beforeEach(() => {
+  forgetOwnAvatar()
   vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:photo', revokeObjectURL: () => {} }))
   cloudState.account = { id: 'a1', email: 'jack@example.test', name: 'Jack' } as typeof cloudState.account
   accountState.accountId = 'a1'
@@ -214,7 +216,7 @@ describe('Account › Profile', () => {
     expect(api.photo).toHaveBeenCalled()
     expect(tid(w, 'profile-tile-photo').find('img').exists()).toBe(true)
     w.destroy()
-    api.photo.mockRejectedValue(new Error('none'))
+    api.photo.mockRejectedValue(Object.assign(new Error('none'), { status: 404 }))
     const bare = await open()
     expect(tid(bare, 'profile-tile-photo').find('img').exists()).toBe(false)
     expect(tid(bare, 'profile-tile-photo').text()).toBe('J')
