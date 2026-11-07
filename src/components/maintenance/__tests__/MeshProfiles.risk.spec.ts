@@ -9,6 +9,8 @@ import { running } from '@/services/maintenance/running'
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn() }))
 vi.mock('@/api/socketActions', () => ({ SocketActions: socket }))
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'alpha' }))
+// The gates ask the printer over the network; this test is about the guards, not the gates.
+vi.mock('@/services/gates', () => ({ gateState: { epoch: 0 }, valueFor: () => null, refreshCanManageAccess: vi.fn(), refreshGateDevMode: vi.fn() }))
 
 type Profile = { name: string; range: number; active: boolean; adaptive?: boolean }
 

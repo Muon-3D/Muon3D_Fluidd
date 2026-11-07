@@ -78,6 +78,7 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
+import { printerHasPauseAtLayer } from '@/services/pause-at-layer'
 import type { Macro } from '@/store/macros/types'
 
 @Component({})
@@ -99,7 +100,7 @@ export default class PauseResumeBtn extends Mixins(StateMixin) {
       'set_pause_at_layer'
     ) as Macro | undefined
 
-    return macro != null
+    return macro != null && printerHasPauseAtLayer(this.$store.getters['printer/getAvailableCommands'])
   }
 
   get setPrintStatsInfoMacro (): Macro | undefined {
