@@ -59,6 +59,7 @@
         <console-actions v-if="currentSection && currentSection.id === 'console'" />
         <files-actions v-if="currentSection && currentSection.id === 'files' && isMobileViewport" />
         <camera-actions v-if="currentSection && currentSection.id === 'camera' && !isMobileViewport" />
+        <charts-actions v-if="chartsHome" />
       </div>
     </div>
     <nav
@@ -105,6 +106,9 @@ import { timelapseSummary } from '@/services/timelapse/model'
 import { fileSize } from '@/services/jobs/model'
 import { activeSlug, foreignRecordForSlug, isForeignSlug } from '@/services/printer-pages'
 import type { AppFile, FileBrowserEntry } from '@/store/files/types'
+import ChartsActions from '@/components/charts/ChartsActions.vue'
+import { chartsPage } from '@/services/charts/page-state'
+import { effectiveRange, rangeText } from '@/services/charts/model'
 import { jobsPage } from '@/services/jobs/page-state'
 import TonePill from '@/components/printers/TonePill.vue'
 import PrinterStatusMixin from '@/mixins/printer-status'
@@ -121,7 +125,7 @@ import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@
  * with the section's pages as tabs under it (Jobs: Jobs, Preview, History,
  * Timelapse).
  */
-@Component({ components: { FilesActions, ConsoleActions, CameraActions, CameraTabs, JobsActions, TimelapseActions, PreviewActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceActions, TonePill } })
+@Component({ components: { FilesActions, ChartsActions, ConsoleActions, CameraActions, CameraTabs, JobsActions, TimelapseActions, PreviewActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceActions, TonePill } })
 export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, PrinterStatusMixin) {
   get foreignRecord () {
     const slug = this.$route.params.printer
@@ -139,7 +143,13 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     return this.currentSection?.id === 'overview' && this.currentPage === '/'
   }
 
+  /** Charts, under Overview: the shared time range and Add chart sit in its header. */
+  get chartsHome (): boolean {
+    return this.currentPage === '/diagnostics' && !this.foreignRecord
+  }
+
   get title (): string {
+    if (this.chartsHome) return 'Charts'
     if (this.overviewHome) return this.foreignRecord?.name ?? printerNameParts(this.displayName).name
     if (this.previewPage) return this.previewFile?.filename.replace(/\.g(code)?$/i, '') || 'G-code preview'
     if (this.timelapseHome) return 'Timelapse'
@@ -270,6 +280,12 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     if (this.currentSection?.id === 'console') return 'Send G-code and read what Klipper says back'
     if (this.timelapseHome && this.$store.getters['server/componentSupport']('timelapse')) return this.timelapseSubtitle
     if (this.previewPage) return this.previewSubtitle
+    if (this.chartsHome) {
+      const name = printerNameParts(this.displayName).name
+      if (!this.$store.state.config.uiSettings.general.enableDiagnostics) return `Your own charts, from anything ${name} reports`
+      const range = effectiveRange(chartsPage.range, this.$store.getters['charts/getChartRetention'] as number)
+      return `Live diagnostics for ${name} · last ${rangeText(range)}`
+    }
     if (this.currentSection?.id === 'files') return `${printerNameParts(this.displayName).name}'s config and other files · tap a file to edit it`
     if (this.isMobileViewport) return ''
     if (this.overviewHome) {
