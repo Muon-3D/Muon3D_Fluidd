@@ -14,14 +14,20 @@ const steps = [
   'filament-load',
   'autoload-grabbed',
   'autoload-done',
-  'filament-unload'
+  'filament-unload',
+  'column-unlock',
+  'column-remove',
+  'column-fit',
+  'column-lock'
 ]
 
 const printer: Record<string, any> = {
   bed_removal_detector: { bedRemoved: false, restoreTarget: 0 },
   'mcu toolhead': { non_critical_disconnected: false, mcu_version: 'v0.12.0' },
   'gcode_button toolhead_umbilical_unlock_button': { state: 'RELEASED' },
-  'filament_switch_sensor filament_sensor_toolhead': { filament_detected: false, enabled: true }
+  'filament_switch_sensor filament_sensor_toolhead': { filament_detected: false, enabled: true },
+  // The Z column as z_power reads it (m1_machine's conditions.column, where the printer runs it).
+  z_power: { z: 'locked' }
 }
 let prompt: PromptFacts = { open: false }
 
@@ -108,6 +114,18 @@ function step (name: string): void {
       break
     case 'filament-unload':
       printer['filament_switch_sensor filament_sensor_toolhead'].filament_detected = false
+      break
+    case 'column-unlock':
+      printer.z_power.z = 'unlocked'
+      break
+    case 'column-remove':
+      printer.z_power.z = 'absent'
+      break
+    case 'column-fit':
+      printer.z_power.z = 'unlocked'
+      break
+    case 'column-lock':
+      printer.z_power.z = 'locked'
       break
     default:
       throw new Error(`Unknown M1 stage step: ${name}`)

@@ -140,6 +140,8 @@ export function useAuxApi () {
     ap: apApiProxy,
     update: updateApiProxy,
     wifi: wifiApiProxy,
+    /** POST /wifi/ap/change: the hotspot's name or key, applied once the person at the printer confirms. */
+    apChange: (body: { ssid?: string, password?: string }) => auxAxios.post(`${basePathRef.value}/wifi/ap/change`, body),
     devMode: _cachedDevModeClient,
     isReachable
   }
