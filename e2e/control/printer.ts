@@ -51,6 +51,8 @@ export interface PrinterHandle {
   report: (status: Json) => void
   /** The printer prints these lines to the console now (a notify_gcode_response each). */
   say: (...lines: string[]) => void
+  /** The printer sends this notification now (notify_timelapse_event...). */
+  notify: (method: string, ...params: unknown[]) => void
   /** The printer drops off the network now: the page's websocket closes, and every new one is refused. */
   offline: () => Promise<void>
   /** The printer is reachable again: the page's next websocket connects. */
@@ -98,6 +100,9 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     },
     say: (...lines: string[]) => {
       for (const line of lines) pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_gcode_response', params: [line] }))
+    },
+    notify: (method: string, ...params: unknown[]) => {
+      pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method, params }))
     },
     offline: async () => {
       handle.state.offline = true
