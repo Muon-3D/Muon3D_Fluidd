@@ -116,7 +116,7 @@ test.describe('on a 2x screen, the model draws with the detail asked for', () =>
   test.use({ deviceScaleFactor: 2 })
 
   test('Low draws one pixel per pixel; Auto draws two', async ({ page, open }) => {
-    test.fixme(!!process.env.CI, 'CI's software WebGL starves page.evaluate; the detail to renderer mapping is covered by device-settings.spec.ts; runs locally on a GPU')
+    test.fixme(!!process.env.CI, 'the CI software WebGL starves page.evaluate; the detail to renderer mapping is covered by device-settings.spec.ts; runs locally on a GPU')
     await simpleModel(page)
     await probeGl(page)
     await usePrinter(page, PRESETS.idleHomed(), { database: true })
