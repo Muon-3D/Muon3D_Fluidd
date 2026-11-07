@@ -4,133 +4,128 @@
     data-tid="account-notifications"
   >
     <div class="acct-head">
-      <div class="acct-head__title">
-        <h1>Notifications</h1>
-        <acct-more label="Where alerts go">
-          Print alerts go to your phone, sealed by the printer so we can't read them. Email is only for your account, never for what you print.
-        </acct-more>
-      </div>
+      <h1>Notifications</h1>
+      <p>What we tell you, and where: your phone, email, or Control's bell</p>
     </div>
 
-    <div class="acct-grid2 note__grid">
-      <section
-        class="lib-surface acct-card"
-        aria-label="What you hear about"
+    <div class="acct-gt">
+      Your printers
+    </div>
+    <div
+      class="acct-glist note__mx"
+      role="group"
+      aria-label="Your printers"
+      data-tid="notify-grid"
+    >
+      <div class="acct-grow note__hd">
+        <span class="acct-grow__text" />
+        <span
+          v-for="channel in channels"
+          :key="channel.id"
+          class="note__c"
+        >{{ channel.label }}</span>
+      </div>
+      <div
+        v-for="kind in printKinds"
+        :key="kind.id"
+        class="acct-grow"
+        :data-tid="`notify-row-${kind.id}`"
       >
-        <div class="note__mx note__th">
-          <span>Prints</span><span class="note__c">Phone</span><span class="note__c">Email</span>
-        </div>
-        <div class="acct-list">
-          <div
-            v-for="kind in printKinds"
-            :key="kind.id"
-            class="note__mx"
-          >
-            <span class="acct-row__label"><span class="note__label">{{ kind.label }}</span><span
-              v-if="kind.sub"
-              class="acct-subtle"
-            >{{ kind.sub }}</span></span>
-            <span class="note__c acct-soon">In the app</span>
-            <span class="note__c acct-subtle">Phone only</span>
-          </div>
-        </div>
-        <div class="note__mx note__th">
-          <span>Your account</span><span /><span />
-        </div>
-        <div class="acct-list">
-          <div
-            v-for="kind in accountKinds"
-            :key="kind.id"
-            class="note__mx"
-          >
-            <span class="acct-row__label"><span class="note__label">{{ kind.label }}</span><span
-              v-if="kind.sub"
-              class="acct-subtle"
-            >{{ kind.sub }}</span></span>
-            <span class="note__c acct-subtle">{{ kind.phone }}</span>
-            <span class="note__c">
-              <span
-                v-if="kind.always"
-                class="lib-pill lib-pill--ok"
-              >Always</span>
-              <toggle-switch
-                v-else
-                :value="preference(kind.id)"
-                :label="`${kind.label} by email`"
-                :disabled="!preferences || busy"
-                :data-tid="`notify-${kind.id}`"
-                @input="set(kind.id, $event)"
-              />
-            </span>
-          </div>
-        </div>
-        <p
-          v-if="prefsMissing"
-          class="acct-field__note note__soon"
-          data-tid="notify-soon"
+        <span class="acct-grow__text"><b>{{ kind.label }}</b><span v-if="kind.sub">{{ kind.sub }}</span></span>
+        <span
+          v-for="channel in channels"
+          :key="channel.id"
+          class="note__c"
+          :title="supported(cellKey(channel.id, kind.id)) ? undefined : 'Coming soon'"
         >
-          Email choices come soon. Until then: account emails only, no news.
-        </p>
-      </section>
-
-      <div class="note__side">
-        <section
-          class="lib-surface acct-card"
-          aria-label="Which printers"
-        >
-          <div class="acct-card__title">
-            <h2>Which printers</h2>
-            <span class="acct-card__aside">Print alerts</span>
-          </div>
-          <div class="acct-list">
-            <div
-              v-for="p in printers"
-              :key="p.id"
-              class="acct-row note__row"
-            >
-              <span class="note__printer"><printer-thumb
-                :size="32"
-                :state="p.online ? 'idle' : 'offline'"
-              /><span class="acct-row__label"><span class="note__label">{{ p.name }}</span><span
-                v-if="p.shared"
-                class="acct-subtle"
-              >Shared with you</span></span></span>
-              <span class="acct-soon">Chosen on each phone</span>
-            </div>
-            <p
-              v-if="!printers.length"
-              class="acct-muted note__empty"
-            >
-              No printers in your account yet.
-            </p>
-          </div>
-        </section>
-        <section
-          class="lib-surface acct-card"
-          aria-label="Phones that get them"
-        >
-          <div class="acct-card__title">
-            <h2>Phones that get them</h2>
-          </div>
-          <div class="acct-list">
-            <div
-              v-for="phone in phones"
-              :key="phone.id"
-              class="acct-row note__row"
-            >
-              <span class="note__printer"><span class="acct-icon-box note__phone"><frame-icon
-                name="phone"
-                small
-              /></span><span class="note__label">{{ phone.label }}</span></span>
-              <span class="lib-pill">Set in the app</span>
-            </div>
-          </div>
-          <p class="acct-field__note note__empty">
-            {{ phones.length ? 'Each phone picks its printers in the Muon3D app.' : 'Print alerts need the Muon3D app.' }}
-          </p>
-        </section>
+          <toggle-switch
+            small
+            :value="preference(cellKey(channel.id, kind.id))"
+            :label="`${kind.label}: ${channel.label}${supported(cellKey(channel.id, kind.id)) ? '' : ' (coming soon)'}`"
+            :disabled="!supported(cellKey(channel.id, kind.id)) || busy"
+            :data-tid="`notify-${cellKey(channel.id, kind.id)}`"
+            @input="set(cellKey(channel.id, kind.id), $event)"
+          />
+        </span>
       </div>
     </div>
+    <p
+      v-if="!gridSupported"
+      class="acct-gh"
+      data-tid="notify-grid-soon"
+    >
+      Coming soon: choosing where each print alert goes.
+    </p>
+    <p
+      class="acct-gh"
+      data-tid="notify-phones"
+    >
+      {{ phonesLine }} Per-printer choices: open the printer's row in <router-link
+        :to="printersLink"
+        data-tid="notify-printers-link"
+      >
+        Account › Printers and access
+      </router-link>.
+    </p>
+
+    <div class="acct-gt">
+      People and access
+    </div>
+    <div
+      class="acct-glist"
+      role="group"
+      aria-label="People and access"
+    >
+      <div
+        v-for="kind in accessKinds"
+        :key="kind.id"
+        class="acct-grow"
+      >
+        <span class="acct-grow__text"><b>{{ kind.label }}</b></span>
+        <toggle-switch
+          :value="preference(kind.id)"
+          :label="kind.label"
+          :disabled="!supported(kind.id) || busy"
+          :data-tid="`notify-${kind.id}`"
+          @input="set(kind.id, $event)"
+        />
+      </div>
+    </div>
+
+    <div class="acct-gt">
+      From Muon3D
+    </div>
+    <div
+      class="acct-glist"
+      role="group"
+      aria-label="From Muon3D"
+    >
+      <div class="acct-grow">
+        <span class="acct-grow__text"><b>News and new features</b></span>
+        <toggle-switch
+          :value="preference('email_news')"
+          label="News and new features"
+          :disabled="!supported('email_news') || busy"
+          data-tid="notify-email_news"
+          @input="set('email_news', $event)"
+        />
+      </div>
+      <div class="acct-grow">
+        <span class="acct-grow__text"><b>Security</b><span>Always on.</span></span>
+        <span
+          class="acct-grow__value"
+          data-tid="notify-security"
+        >Always</span>
+      </div>
+    </div>
+
+    <p
+      v-if="prefsMissing"
+      class="acct-gh"
+      data-tid="notify-soon"
+    >
+      Email choices come soon. Until then: account emails only, no news.
+    </p>
 
     <p
       v-if="error"
@@ -145,74 +140,100 @@
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
-import PrinterThumb from '@/components/ui/PrinterThumb.vue'
-import AcctMore from './AcctMore.vue'
-import { cloudState } from '@/services/muon-cloud/state'
-import type { CloudPrinter } from '@/services/muon-cloud/api'
 import { accountApi, type EmailPreferences } from '@/services/account/api'
 import { isMissing } from '@/services/account/client'
 import { accountState, describe, loadSessions } from '@/services/account/state'
 import { devicesFrom, type Device } from '@/services/account/model'
+import { activeSlug } from '@/services/printer-pages'
+import { scopedPath } from '@/router/printerPagePaths'
 
-type PreferenceId = keyof EmailPreferences
+type Channel = 'push' | 'email' | 'bell'
+type Preferences = EmailPreferences & Record<string, boolean | undefined>
+
+/** Today's defaults, shown (switched off) while the console has no preferences. */
+const DEFAULTS: Record<string, boolean> = { email_access_requests: true, email_shared_with_you: true }
 
 /**
- * Notifications (the canvas's "Account · Notifications"). Print alerts are
- * sealed by the printer for one phone (ADR 0028), so they're chosen on that
- * phone, in the app, and never sent by email: here they're described, not
- * switched. Email is for the account: access requests, sharing, and news
- * only when asked for (`/v1/me/preferences`). Security email is always on.
+ * Notifications: where each alert goes. The console's `/v1/me/preferences`
+ * holds the choices. A switch works only once the console answers with its
+ * key: print alerts are `<push|email|bell>_<event>` (none are sent yet, so
+ * they say "Coming soon"), sharing alerts and news are the email keys it has
+ * today. Nothing is shown as saved that the console doesn't hold. Security
+ * email is always on.
  */
-@Component({ components: { ToggleSwitch, PrinterThumb, AcctMore } })
+@Component({ components: { ToggleSwitch } })
 export default class AccountNotifications extends Vue {
-  preferences: EmailPreferences | null = null
+  preferences: Preferences | null = null
   prefsMissing = false
   busy = false
   error = ''
 
-  printKinds = [
-    { id: 'finished', label: 'Finished' },
-    { id: 'failed', label: 'Failed or stopped' },
-    { id: 'paused', label: 'Paused, needs you', sub: 'Filament ran out, or a check failed' },
-    { id: 'update', label: 'Update ready' }
+  readonly channels: Array<{ id: Channel, label: string }> = [
+    { id: 'push', label: 'Phone' },
+    { id: 'email', label: 'Email' },
+    { id: 'bell', label: 'Bell' }
   ]
 
-  accountKinds: Array<{ id: PreferenceId | 'security', label: string, sub?: string, phone: string, always?: boolean }> = [
-    { id: 'email_access_requests', label: 'Someone asks to use a printer', phone: 'In the app' },
-    { id: 'email_shared_with_you', label: 'A printer is shared with you', phone: 'In the app' },
-    { id: 'email_news', label: 'News from Muon3D', sub: 'A few a year', phone: '–' },
-    { id: 'security', label: 'Security', sub: 'New sign-ins, password and email changes', phone: '–', always: true }
+  readonly printKinds = [
+    { id: 'print_finished', label: 'A print finished' },
+    { id: 'print_failed', label: 'A print failed or stopped' },
+    { id: 'print_paused', label: 'Paused, needs you', sub: 'Filament ran out, or a check failed' },
+    { id: 'update_ready', label: 'An update is ready' }
+  ]
+
+  readonly accessKinds = [
+    { id: 'email_access_requests', label: 'Someone asks to use a printer' },
+    { id: 'email_shared_with_you', label: 'A printer is shared with you' }
   ]
 
   created () {
     loadSessions().catch(() => {})
     accountApi.preferences()
-      .then((p) => { this.preferences = p })
+      .then((p) => { this.preferences = p as Preferences })
       .catch((error) => {
         if (isMissing(error)) this.prefsMissing = true
         else this.error = describe(error)
       })
   }
 
-  get printers (): CloudPrinter[] {
-    return cloudState.printers
+  cellKey (channel: Channel, kind: string): string {
+    return `${channel}_${kind}`
+  }
+
+  supported (key: string): boolean {
+    return typeof this.preferences?.[key] === 'boolean'
+  }
+
+  get gridSupported (): boolean {
+    return this.printKinds.some(kind => this.channels.some(channel => this.supported(this.cellKey(channel.id, kind.id))))
   }
 
   get phones (): Device[] {
     return accountState.sessions ? devicesFrom(accountState.sessions).filter(d => d.kind === 'phone') : []
   }
 
-  preference (id: string): boolean {
-    if (!this.preferences) return id === 'email_access_requests' || id === 'email_shared_with_you'
-    return this.preferences[id as PreferenceId] === true
+  get phonesLine (): string {
+    const names = this.phones.map(p => p.label)
+    if (!names.length) return 'Phone alerts need the Muon3D app.'
+    const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]
+    return `Phone alerts go to the Muon3D app on ${list}.`
   }
 
-  async set (id: string, value: boolean) {
-    if (!this.preferences) return
+  get printersLink (): string {
+    return scopedPath('/account/printers', activeSlug())
+  }
+
+  preference (key: string): boolean {
+    if (!this.preferences) return DEFAULTS[key] === true
+    return this.preferences[key] === true
+  }
+
+  async set (key: string, value: boolean) {
+    if (!this.supported(key)) return
     this.busy = true
     this.error = ''
     try {
-      this.preferences = await accountApi.setPreferences({ [id]: value })
+      this.preferences = await accountApi.setPreferences({ [key]: value }) as Preferences
     } catch (error) {
       this.error = describe(error)
     } finally {
@@ -223,72 +244,35 @@ export default class AccountNotifications extends Vue {
 </script>
 
 <style lang="scss" scoped>
-  .note__grid {
-    align-items: start;
-  }
-
-  .note__mx {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 92px 92px;
-    gap: 12px;
-    align-items: center;
-    min-height: 44px;
-    padding: 10px 0;
-  }
-
-  .note__th {
-    min-height: 0;
-    padding: 14px 0 2px;
-    color: var(--m3d-text-subtle);
-    font-size: 11px;
+  .note__hd {
+    min-height: 36px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    color: var(--m3d-text-muted);
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
   }
 
   .note__c {
     display: flex;
+    flex: none;
     justify-content: center;
-    font-size: 11.5px;
-    text-align: center;
+    width: 64px;
   }
 
-  .note__label {
-    color: var(--m3d-text) !important;
-    font-size: 14px !important;
+  .acct-gh a {
+    color: var(--m3d-accent) !important;
+    text-decoration: none;
   }
 
-  .note__soon {
-    display: block;
-    padding: 0 0 14px;
-  }
+  @media (max-width: 600px) {
+    .note__mx .acct-grow {
+      gap: 6px;
+      padding-right: 10px;
+    }
 
-  .note__side {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .note__row {
-    min-height: 52px;
-  }
-
-  .note__printer {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .note__phone {
-    width: 32px;
-    height: 32px;
-  }
-
-  .note__empty {
-    display: block;
-    margin: 0;
-    padding: 10px 0 14px;
-    font-size: 12px;
+    .note__c {
+      width: 52px;
+    }
   }
 </style>

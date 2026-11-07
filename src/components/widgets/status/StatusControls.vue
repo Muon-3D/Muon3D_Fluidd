@@ -84,7 +84,7 @@
     />
 
     <pause-at-layer-dialog
-      v-if="showPauseAtLayerDialog"
+      v-if="showPauseAtLayerDialog && hasPauseAtLayer"
       v-model="showPauseAtLayerDialog"
     />
   </div>
@@ -97,6 +97,7 @@ import JobHistoryItemStatus from '@/components/widgets/history/JobHistoryItemSta
 import ExcludeObjectsDialog from '@/components/widgets/exclude-objects/ExcludeObjectsDialog.vue'
 import PauseResumeBtn from './PauseResumeBtn.vue'
 import PauseAtLayerDialog from './PauseAtLayerDialog.vue'
+import { printerHasPauseAtLayer } from '@/services/pause-at-layer'
 
 @Component({
   components: {
@@ -109,6 +110,10 @@ import PauseAtLayerDialog from './PauseAtLayerDialog.vue'
 export default class StatusControls extends Mixins(StateMixin) {
   showExcludeObjectDialog = false
   showPauseAtLayerDialog = false
+
+  get hasPauseAtLayer (): boolean {
+    return printerHasPauseAtLayer(this.$store.getters['printer/getAvailableCommands'])
+  }
 
   get filename () {
     return this.$store.state.printer.printer.print_stats.filename

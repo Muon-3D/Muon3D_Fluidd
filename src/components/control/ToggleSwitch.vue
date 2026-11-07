@@ -3,7 +3,7 @@
     type="button"
     role="switch"
     class="toggle"
-    :class="{ 'toggle--on': value }"
+    :class="{ 'toggle--on': value, 'toggle--sm': small }"
     :aria-checked="value ? 'true' : 'false'"
     :aria-label="label"
     :disabled="disabled"
@@ -25,6 +25,10 @@ export default class ToggleSwitch extends Vue {
 
   @Prop({ type: Boolean })
   readonly disabled?: boolean
+
+  /** 36 px wide, for a grid of switches. */
+  @Prop({ type: Boolean })
+  readonly small?: boolean
 }
 </script>
 
@@ -62,6 +66,21 @@ export default class ToggleSwitch extends Vue {
 
     &::after {
       left: 20px;
+    }
+  }
+
+  .toggle--sm {
+    width: 36px;
+    height: 22px;
+    border-radius: 11px;
+
+    &::after {
+      width: 18px;
+      height: 18px;
+    }
+
+    &.toggle--on::after {
+      left: 16px;
     }
   }
 </style>
