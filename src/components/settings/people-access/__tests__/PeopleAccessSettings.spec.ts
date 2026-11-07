@@ -54,6 +54,7 @@ vi.mock('@/services/muon-cloud/origin', () => ({ isManagedApiUrl: () => false })
 vi.mock('@/services/muon-ble/link', () => ({ remoteRouteLabel: () => 'Through Muon3D' }))
 vi.mock('@/services/account/api', () => ({ accountApi: api }))
 vi.mock('@/services/account/client', () => ({ isMissing: () => false }))
+vi.mock('@/services/account/community', () => ({ communityApi: {} }))
 vi.mock('@/services/account/state', () => ({ accountState: account, loadApprovals: async () => {}, describe: (e: Error) => e.message }))
 vi.mock('@/services/gates', () => ({
   gateState: { epoch: 0 },
@@ -159,6 +160,30 @@ describe('People and access on the printer', () => {
     expect(w.find('[data-tid="pa-you-role"]').text()).toContain('You: owner')
     expect(w.findAll('[data-tid="pa-person"]')).toHaveLength(1)
     expect(w.findAll('[data-role-row]')).toHaveLength(5)
+    w.destroy()
+  })
+
+  it('shows the profile name and public photo, and the initials when they have neither or the photo does not load (KAN-1826)', async () => {
+    asOwner()
+    api.shares.mockResolvedValue({
+      shares: [
+        { id: 's1', printer_id: 'prn-1', email: 'harry@example.test', name: 'Harry Jones', avatar_url: '/v1/public/avatars/aaa', role: 'operator', ends_at: null, created_at: 1 },
+        { id: 's2', printer_id: 'prn-1', email: 'kim@example.test', role: 'viewer', ends_at: null, created_at: 1 }
+      ]
+    })
+    const w = open()
+    await settle(); await settle()
+    const rows = w.findAll('[data-tid="pa-person"]')
+    expect(rows.at(0).find('b').text()).toBe('Harry Jones')
+    expect(rows.at(0).text()).toContain('harry@example.test')
+    expect(rows.at(0).find('img').attributes('src')).toMatch(/\/v1\/public\/avatars\/aaa$/)
+    // The public route 404s while their profile isn't visible: the initials stand in.
+    await rows.at(0).find('img').trigger('error')
+    expect(rows.at(0).find('img').exists()).toBe(false)
+    expect(rows.at(0).find('[data-tid="pa-person-face"]').text()).toBe('H')
+    expect(rows.at(1).find('b').text()).toBe('kim@example.test')
+    expect(rows.at(1).find('img').exists()).toBe(false)
+    expect(rows.at(1).find('[data-tid="pa-person-face"]').text()).toBe('K')
     w.destroy()
   })
 

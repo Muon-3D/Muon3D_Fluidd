@@ -24,6 +24,7 @@ import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession,
 import { consolePresence } from './presence'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
+import { forgetOwnAvatar } from '@/services/account/avatar'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
 
@@ -423,6 +424,7 @@ function stopPolling () {
 }
 
 async function dropSession () {
+  forgetOwnAvatar()
   stopPolling()
   sessionAbort.abort()
   sessionAbort = new AbortController()
