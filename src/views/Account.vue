@@ -160,7 +160,10 @@
           v-if="current.id === 'overview'"
           :link-to="linkTo"
         />
-        <account-profile v-else-if="current.id === 'profile'" />
+        <account-profile
+          v-else-if="current.id === 'profile'"
+          :link-to="linkTo"
+        />
         <account-security
           v-else-if="current.id === 'security'"
           :link-to="linkTo"

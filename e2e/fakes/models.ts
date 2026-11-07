@@ -16,6 +16,9 @@ const GCODE_SHA256 = createHash('sha256').update(GCODE_STORED).digest('hex')
 
 export const MODELS = 'https://models.muon3d.com'
 
+/** A one-pixel PNG: the photo the fake serves back. */
+export const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
 export interface FakePublication {
   id: string;
   slug: string;
@@ -108,6 +111,41 @@ export function itemJson (i: FakeItem) {
   }
 }
 
+/** Your community profile as `GET /v1/community/profile` answers it (muon3d-model-service community/store.rs). */
+export interface FakeCommunity {
+  handle: string | null;
+  /** RFC 3339: when the handle last changed (the 30-day limit). */
+  handle_changed_at: string | null;
+  public_name: string | null;
+  identity_public: boolean;
+  can_community: boolean;
+  can_public: boolean;
+  page_on: boolean;
+  bio: string | null;
+  avatar_url: string | null;
+  /** Open community cases on the profile: the name or the photo is being checked. */
+  review: { name: boolean, photo: boolean } | null;
+  /** Handles other people hold: `GET /v1/community/handles/:h` says taken, reserved or held. */
+  handles: Record<string, 'taken' | 'reserved' | 'held'>;
+}
+
+export function fakeCommunity (over: Partial<FakeCommunity> = {}): FakeCommunity {
+  return {
+    handle: 'jack',
+    handle_changed_at: null,
+    public_name: 'Jack',
+    identity_public: false,
+    can_community: true,
+    can_public: true,
+    page_on: true,
+    bio: null,
+    avatar_url: null,
+    review: null,
+    handles: { taken: 'taken', muon3d: 'reserved' },
+    ...over
+  }
+}
+
 export interface ModelServiceState {
   publications: FakePublication[];
   saves: FakeSave[];
@@ -120,6 +158,10 @@ export interface ModelServiceState {
   libraryOff: boolean | 'deleting';
   /** Your public profile (Share a print needs one): set up, or not yet (403 community_setup_required). */
   profile: 'ready' | 'none' | 'page-off';
+  /** The editable community profile (Account › Profile); null leaves the older `profile` answers above. */
+  community: FakeCommunity | null;
+  /** The bytes of the photo last uploaded, and its content type. */
+  avatar: { type: string, bytes: number } | null;
   /** What Publish sent, in order (`POST /v1/items/:id/publish` bodies). */
   published: Array<{ item: string, body: Record<string, unknown> }>;
   /** Answer every request with this status (outage tests), or null. */
@@ -144,6 +186,8 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     shares: [],
     libraryOff: false,
     profile: 'ready',
+    community: null,
+    avatar: null,
     published: [],
     failWith: null,
     failOn: () => null,
@@ -322,6 +366,41 @@ export async function serveModels (page: Page, state: ModelServiceState) {
         }
       })
       return json(route, { runs, cursor: null })
+    }
+    const c = state.community
+    if (c && path.startsWith('/v1/community/') && (path === '/v1/community/profile' || path.startsWith('/v1/community/profile/') || path.startsWith('/v1/community/handles/'))) {
+      const fail = (status: number, code: string, message: string) => json(route, { error: { code, message } }, status)
+      if (path === '/v1/community/profile' && method === 'GET') return json(route, c)
+      if (path === '/v1/community/profile' && method === 'PUT') {
+        const body = request.postDataJSON() as { bio?: string | null, page_on?: boolean }
+        if (body.bio !== undefined) c.bio = body.bio
+        if (body.page_on !== undefined) c.page_on = body.page_on
+        return json(route, c)
+      }
+      const asked = path.match(/^\/v1\/community\/handles\/([^/]+)$/)
+      if (asked && method === 'GET') return json(route, { handle: asked[1], status: c.handles[asked[1].toLowerCase()] ?? 'available' })
+      if (path === '/v1/community/profile/handle' && method === 'PUT') {
+        const { handle } = request.postDataJSON() as { handle: string }
+        if (c.handle_changed_at && Date.now() - Date.parse(c.handle_changed_at) < 30 * 86_400_000) return fail(429, 'handle_cooldown', 'A handle can change once every 30 days.')
+        const status = c.handles[handle.toLowerCase()]
+        if (status) return fail(409, `handle_${status}`, 'This handle is not available.')
+        c.handle = handle
+        c.handle_changed_at = new Date().toISOString()
+        return json(route, c)
+      }
+      if (path === '/v1/community/profile/avatar') {
+        if (method === 'PUT') {
+          state.avatar = { type: request.headers()['content-type'] ?? '', bytes: request.postDataBuffer()?.length ?? 0 }
+          c.avatar_url = `${MODELS}/v1/public/avatars/00000000-0000-4000-8000-000000000001`
+          return json(route, c)
+        }
+        if (method === 'DELETE') {
+          state.avatar = null
+          c.avatar_url = null
+          return json(route, c)
+        }
+        if (method === 'GET') return c.avatar_url ? route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: Buffer.from(PNG_1X1, 'base64') }) : json(route, { error: { code: 'not_found', message: 'No photo.' } }, 404)
+      }
     }
     if (path === '/v1/community/profile' && method === 'GET') {
       // As the service answers: 200, with no handle yet, or the page off.
