@@ -170,7 +170,7 @@
                 {{ busy === 'photo' ? 'Saving…' : 'Change' }}
               </button>
               <button
-                v-if="hasPhoto"
+                v-if="photoRemove && hasPhoto"
                 type="button"
                 class="lib-btn lib-btn--sm lib-btn--ghost"
                 :disabled="busy === 'photo'"
@@ -447,7 +447,7 @@
               v-if="cooldown"
               class="profile__warn"
               data-tid="profile-handle-cooldown"
-            >You can change it again on {{ cooldown }}.</span>
+            >Available again on {{ cooldown }}.</span>
             <span
               v-else-if="handleNote"
               class="acct-subtle"
@@ -583,12 +583,6 @@
       >
         Saved
       </p>
-      <a
-        v-if="saved && backToLibrary"
-        class="lib-btn lib-btn--sm profile__back"
-        :href="backToLibrary"
-        data-tid="profile-return"
-      >‹ Back to the Library</a>
     </template>
   </div>
 </template>
@@ -601,10 +595,10 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { storedToken } from '@/services/muon-cloud/api'
 import { accountState, describe, loadMe, renameAccount } from '@/services/account/state'
 import { communityApi, type CommunityIdentity, type CommunityProfile } from '@/services/account/community'
-import { initialsOf, libraryReturnUrl } from '@/services/account/model'
+import { initialsOf } from '@/services/account/model'
 import {
-  ageText, cleanHandle, handleChangeableAt, handleProblem, handleStatusText, libraryUpdating, longDay, makerSince,
-  missingForPublic, pageAddress, pageUrl, photoProblem, underReview, type PendingChange
+  HANDLE_COOLDOWN_DAYS, ageText, cleanHandle, handleChangeableAt, handleProblem, handleStatusText, libraryUpdating, longDay, makerSince,
+  missingForPublic, pageAddress, pageUrl, photoProblem, photoRefusal, photoRemoveEnabled, underReview, type PendingChange
 } from '@/services/account/profile'
 import { LibraryError } from '@/services/library/api'
 
@@ -648,7 +642,7 @@ export default class AccountProfile extends Vue {
   private checkTimer: ReturnType<typeof setTimeout> | null = null
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private generation = 0
-  private photoSeen: string | null = null
+  private photoGen = 0
 
   created () {
     this.load()
@@ -700,7 +694,11 @@ export default class AccountProfile extends Vue {
   }
 
   get hasPhoto (): boolean {
-    return !!this.profile?.avatar_url
+    return !!this.photoUrl
+  }
+
+  get photoRemove (): boolean {
+    return photoRemoveEnabled()
   }
 
   get review () {
@@ -760,11 +758,6 @@ export default class AccountProfile extends Vue {
     return this.linkTo ? this.linkTo('security') : '/account/security'
   }
 
-  /** "‹ Back to the Library", when the page was opened from there. */
-  get backToLibrary (): string | null {
-    return libraryReturnUrl(this.$route?.query?.return)
-  }
-
   get cooldown (): string {
     const at = handleChangeableAt(this.profile?.handle_changed_at, this.now)
     return at === null ? '' : longDay(at)
@@ -778,11 +771,31 @@ export default class AccountProfile extends Vue {
 
   @Watch('session')
   onSession () {
+    // Another account, or none: nothing of the last one stays (edits, drafts, polls, notices).
     this.generation++
+    this.photoGen++
+    this.stopPolling()
+    if (this.checkTimer) clearTimeout(this.checkTimer)
+    this.checkSeq++
     this.identity = null
     this.profile = null
     this.revokePhoto()
-    this.load()
+    this.editing = ''
+    this.nameDraft = ''
+    this.aboutDraft = ''
+    this.handleDraft = ''
+    this.age = ''
+    this.ageTouched = false
+    this.rowError = {}
+    this.saved = false
+    this.blockedPublic = false
+    this.pending = null
+    this.busy = ''
+    this.failed = ''
+    this.libraryError = ''
+    this.availability = { kind: 'idle', text: '' }
+    this.handleNote = ''
+    if (this.session) this.load()
   }
 
   get session (): string {
@@ -804,6 +817,7 @@ export default class AccountProfile extends Vue {
           const profile = await communityApi.profile()
           if (mine !== this.generation || token !== storedToken()) return
           this.setProfile(profile)
+          this.loadPhoto()
         } catch (error) {
           if (mine === this.generation) this.libraryError = (error as Error).message
         }
@@ -820,25 +834,28 @@ export default class AccountProfile extends Vue {
   setProfile (profile: CommunityProfile) {
     this.profile = profile
     if (profile.identity_public || this.identity?.can_public) this.blockedPublic = false
-    this.loadPhoto(profile.avatar_url ?? null)
     if (!this.updating) this.stopPolling()
   }
 
-  async loadPhoto (avatar: string | null) {
-    if (avatar === this.photoSeen && (avatar === null || this.photoUrl)) return
-    this.photoSeen = avatar
-    if (!avatar) {
-      this.revokePhoto()
-      return
-    }
+  /**
+   * Your own photo comes from the authenticated GET /v1/community/profile/avatar,
+   * never from avatar_url (the public route, which 404s while the page is not
+   * visible). No photo, or the Library unreachable: the initials stand in.
+   */
+  async loadPhoto () {
+    const mine = ++this.photoGen
     try {
       const blob = await communityApi.photo()
-      if (this.photoSeen !== avatar) return
-      this.revokePhoto()
-      this.photoUrl = URL.createObjectURL(blob)
+      if (mine !== this.photoGen) return
+      this.showPhoto(blob)
     } catch {
-      // The initials stand in until the photo can be read.
+      // Initials.
     }
+  }
+
+  showPhoto (blob: Blob) {
+    this.revokePhoto()
+    this.photoUrl = URL.createObjectURL(blob)
   }
 
   revokePhoto () {
@@ -897,6 +914,7 @@ export default class AccountProfile extends Vue {
 
   succeeded () {
     this.saved = true
+    this.$emit('saved')
   }
 
   async saveName () {
@@ -1000,9 +1018,16 @@ export default class AccountProfile extends Vue {
     this.busy = 'photo'
     try {
       this.setProfile(await communityApi.uploadPhoto(file))
+      // Show the new photo at once; the Library's processed copy replaces it when it can be read.
+      this.photoGen++
+      this.showPhoto(file)
+      this.loadPhoto()
       this.succeeded()
     } catch (error) {
-      this.fail('photo', error)
+      const code = error instanceof LibraryError ? error.code : ''
+      const words = photoRefusal(code)
+      if (words) this.rowError = { photo: words }
+      else this.fail('photo', error)
     } finally {
       this.busy = ''
     }
@@ -1015,6 +1040,8 @@ export default class AccountProfile extends Vue {
     this.saved = false
     try {
       this.setProfile(await communityApi.removePhoto())
+      this.photoGen++
+      this.revokePhoto()
       this.succeeded()
     } catch (error) {
       this.fail('photo', error)
@@ -1062,7 +1089,7 @@ export default class AccountProfile extends Vue {
         const reason = handleStatusText(status)
         this.availability = reason ? { kind: 'bad', text: reason } : { kind: 'free', text: 'Free' }
         if (!reason) {
-          const when = longDay(Date.now() + 30 * 86_400_000)
+          const when = longDay(Date.now() + HANDLE_COOLDOWN_DAYS * 86_400_000)
           const old = this.handle ? ` Links to @${this.handle} keep working for 12 months.` : ''
           this.handleNote = `Your page moves to ${pageAddress(handle)}.${old} You can change it again on ${when}.`
         }
@@ -1275,10 +1302,6 @@ export default class AccountProfile extends Vue {
 
   .profile__saved {
     margin: 0;
-  }
-
-  .profile__back {
-    align-self: flex-start;
   }
 
   @media (max-width: 720px) {

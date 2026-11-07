@@ -123,8 +123,8 @@ export interface FakeCommunity {
   page_on: boolean;
   bio: string | null;
   avatar_url: string | null;
-  /** Open community cases on the profile: the name or the photo is being checked. */
-  review: { name: boolean, photo: boolean } | null;
+  links: string[];
+  indexable: boolean;
   /** Handles other people hold: `GET /v1/community/handles/:h` says taken, reserved or held. */
   handles: Record<string, 'taken' | 'reserved' | 'held'>;
 }
@@ -140,7 +140,8 @@ export function fakeCommunity (over: Partial<FakeCommunity> = {}): FakeCommunity
     page_on: true,
     bio: null,
     avatar_url: null,
-    review: null,
+    links: [],
+    indexable: false,
     handles: { taken: 'taken', muon3d: 'reserved' },
     ...over
   }
@@ -161,7 +162,11 @@ export interface ModelServiceState {
   /** The editable community profile (Account › Profile); null leaves the older `profile` answers above. */
   community: FakeCommunity | null;
   /** The bytes of the photo last uploaded, and its content type. */
-  avatar: { type: string, bytes: number } | null;
+  avatar: { type: string, bytes: number, body: string } | null;
+  /** What the community profile routes were sent (writes): JSON bodies as parsed. */
+  communityWrites: Array<{ call: string, body: unknown }>;
+  /** The service cannot read the next photo (avatar_invalid). */
+  avatarInvalid: boolean;
   /** What Publish sent, in order (`POST /v1/items/:id/publish` bodies). */
   published: Array<{ item: string, body: Record<string, unknown> }>;
   /** Answer every request with this status (outage tests), or null. */
@@ -188,6 +193,8 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     profile: 'ready',
     community: null,
     avatar: null,
+    communityWrites: [],
+    avatarInvalid: false,
     published: [],
     failWith: null,
     failOn: () => null,
@@ -369,6 +376,7 @@ export async function serveModels (page: Page, state: ModelServiceState) {
     }
     const c = state.community
     if (c && path.startsWith('/v1/community/') && (path === '/v1/community/profile' || path.startsWith('/v1/community/profile/') || path.startsWith('/v1/community/handles/'))) {
+      if (method === 'PUT' && path !== '/v1/community/profile/avatar') state.communityWrites.push({ call: `${method} ${path}`, body: request.postDataJSON() })
       const fail = (status: number, code: string, message: string) => json(route, { error: { code, message } }, status)
       if (path === '/v1/community/profile' && method === 'GET') return json(route, c)
       if (path === '/v1/community/profile' && method === 'PUT') {
@@ -390,16 +398,17 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       }
       if (path === '/v1/community/profile/avatar') {
         if (method === 'PUT') {
-          state.avatar = { type: request.headers()['content-type'] ?? '', bytes: request.postDataBuffer()?.length ?? 0 }
+          const type = request.headers()['content-type'] ?? ''
+          const bytes = request.postDataBuffer()?.length ?? 0
+          // As the service refuses: raw JPEG, PNG or WebP only, at most 4 MiB.
+          if (!['image/png', 'image/jpeg', 'image/webp'].includes(type)) return fail(400, 'avatar_format', 'Choose JPEG, PNG or WebP.')
+          if (bytes > 4 * 1024 * 1024) return fail(400, 'avatar_too_large', 'Choose a photo of at most 4 MiB.')
+          if (state.avatarInvalid) return fail(400, 'avatar_invalid', 'The profile photo could not be read.')
+          state.avatar = { type, bytes, body: (request.postDataBuffer() ?? Buffer.alloc(0)).toString('base64') }
           c.avatar_url = `${MODELS}/v1/public/avatars/00000000-0000-4000-8000-000000000001`
           return json(route, c)
         }
-        if (method === 'DELETE') {
-          state.avatar = null
-          c.avatar_url = null
-          return json(route, c)
-        }
-        if (method === 'GET') return c.avatar_url ? route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: Buffer.from(PNG_1X1, 'base64') }) : json(route, { error: { code: 'not_found', message: 'No photo.' } }, 404)
+        if (method === 'GET') return c.avatar_url || state.avatar ? route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: Buffer.from(PNG_1X1, 'base64') }) : json(route, { error: { code: 'not_found', message: 'No photo.' } }, 404)
       }
     }
     if (path === '/v1/community/profile' && method === 'GET') {

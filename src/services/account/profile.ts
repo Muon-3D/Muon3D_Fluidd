@@ -85,11 +85,11 @@ export function pageUrl (handle: string): string {
  */
 export function missingForPublic (identity: CommunityIdentity | null, profile: CommunityProfile | null): string | null {
   if (!identity) return null
-  if (identity.declared_age === null || !identity.can_community) return 'Confirm your age first, under Private to you.'
+  if (!identity.can_community) return 'Confirm your age first, under Private to you.'
   if (!identity.can_public) return 'Public pages are for people 18 and over.'
   if (!profile?.handle) return 'Choose a username first.'
   if (!identity.identity_public) return 'Choose Public to turn your page on.'
-  if (!profile.page_on) return 'Your page is switched off. Turn it back on in your page settings in the Library.'
+  if (!profile.page_on) return "Your page isn't on yet. Turn it on in your page settings in the Library."
   return null
 }
 
@@ -113,7 +113,8 @@ export interface PendingChange {
 export function libraryUpdating (pending: PendingChange | null, profile: CommunityProfile | null, now: number = Date.now()): boolean {
   if (!pending || !profile) return false
   if (now - pending.since >= PROJECTION_WINDOW_MS) return false
-  if (pending.name !== undefined && profile.public_name !== pending.name) return true
+  // A private profile may report no public name at all: only wait on the name when it is shown.
+  if (pending.name !== undefined && profile.identity_public && profile.public_name !== pending.name) return true
   if (pending.identityPublic !== undefined && profile.identity_public !== pending.identityPublic) return true
   return false
 }
@@ -122,6 +123,24 @@ export function libraryUpdating (pending: PendingChange | null, profile: Communi
 export function ageText (declaredAge: number | null | undefined): string | null {
   if (typeof declaredAge !== 'number') return null
   return declaredAge >= 18 ? 'Over 18' : 'Under 18'
+}
+
+/**
+ * Photo Remove waits for the model service's route (KAN-1594; there is none
+ * today). Off unless VITE_PROFILE_PHOTO_REMOVE is "true".
+ */
+export function photoRemoveEnabled (): boolean {
+  return import.meta.env.VITE_PROFILE_PHOTO_REMOVE === 'true'
+}
+
+/** What the service's photo refusals say, in words. */
+export function photoRefusal (code: string): string | null {
+  switch (code) {
+    case 'avatar_too_large': return 'Choose a photo of at most 4 MB.'
+    case 'avatar_format': return 'Choose a JPEG, PNG or WebP photo.'
+    case 'avatar_invalid': return 'That photo could not be read. Try another one.'
+    default: return null
+  }
 }
 
 /** The error from an upload that can be refused before sending it, or null. */
