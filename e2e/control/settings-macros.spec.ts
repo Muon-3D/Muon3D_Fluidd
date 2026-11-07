@@ -126,6 +126,27 @@ test('Ctrl and Shift select several, the toolbar hides them all, and clicking em
   await expect(page.getByTestId('macro-selected-count')).toHaveCount(0)
 })
 
+test('clicking any empty space in the panel clears the selection, and Ctrl+A selects every macro', async ({ page, open }) => {
+  await macrosPrinter(page)
+  await configFiles(page)
+  await openMacros(page, open)
+  const count = page.getByTestId('macro-selected-count')
+  const first = page.locator('[data-tid^="macro-row-"]').first()
+  await first.click()
+  await page.keyboard.press('ControlOrMeta+a')
+  const all = await page.locator('[role="option"]').count()
+  await expect(count).toHaveText(`${all} selected`)
+  // The panel's own padding, a section's heading row, the gap beside a row and the text under the title.
+  const empty = [page.getByTestId('macro-panel'), page.locator('[data-tid^="macro-section-head-"]').first(), page.locator('[role="listbox"]').first(), page.getByTestId('macro-panel').getByRole('heading', { name: 'Macros' })]
+  for (const target of empty) {
+    await first.click()
+    await expect(count).toHaveText('1 selected')
+    // A click whose target is the element itself is a click on its own padding; a toast may cover its corner on screen.
+    await target.dispatchEvent('click')
+    await expect(count).toHaveCount(0)
+  }
+})
+
 test('the checkboxes select without a keyboard, and the toolbar\'s Move to… moves them all', async ({ page, open }) => {
   const printer = await macrosPrinter(page)
   await configFiles(page)
@@ -256,7 +277,7 @@ test('offline: with the printer gone the panel keeps its last view, says so, and
   await configFiles(page)
   await openMacros(page, open)
   const writes = printer.called('server.database.post_item').length
-  printer.disconnect()
+  await printer.offline()
   await expect(page.getByText('Reconnecting', { exact: false }).first()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByTestId('macro-panel-offline')).toContainText("isn't connected")
   await expect(row(page, 'load_filament')).toBeVisible()

@@ -28,7 +28,7 @@
 
       <app-setting
         title="Detail"
-        sub-title="Auto picks Low on slow or small screens."
+        sub-title="Auto draws the full model with shadows, makes the glass plain on a small or weak device or when frames run slow, and uses the simple model if the full one takes over 20 seconds to load."
       >
         <v-btn-toggle
           :value="model.detail"

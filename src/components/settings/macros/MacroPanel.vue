@@ -4,6 +4,8 @@
     class="mpanel"
     data-tid="macro-panel"
     @keydown.esc="clear"
+    @keydown="onPanelKey"
+    @click="onPanelClick"
   >
     <header class="mpanel__head">
       <div>
@@ -46,13 +48,6 @@
     >
       The printer isn't connected, so these can't be moved or hidden until it's back.
     </p>
-    <p
-      v-else-if="viewerOnly"
-      class="mpanel__note"
-      data-tid="macro-panel-viewer"
-    >
-      You can view this printer, so the list is read-only. Its owner or an Operator can change it.
-    </p>
 
     <p
       v-if="!allMacros.length"
@@ -65,7 +60,6 @@
     <div
       class="mpanel__list"
       data-tid="macro-list"
-      @click.self="clear"
     >
       <div
         class="mpanel__bar"
@@ -133,7 +127,6 @@
           :data-tid="`macro-section-head-${section.id}`"
           @dragstart="onSectionDragStart($event, section.id)"
           @dragend="onDragEnd"
-          @click.self="clear"
         >
           <span
             v-if="section.id !== '0'"
@@ -203,7 +196,6 @@
           aria-multiselectable="true"
           :aria-label="section.name"
           class="mpanel__rows"
-          @click.self="clear"
         >
           <div
             v-for="m in section.macros"
@@ -215,6 +207,7 @@
             :tabindex="m.name === focusName ? 0 : -1"
             :data-tid="`macro-row-${m.name}`"
             :draggable="locked ? 'false' : 'true'"
+            @mousedown="onRowMouseDown"
             @click="onRowClick($event, m.name)"
             @dblclick="open(m)"
             @keydown="onKey($event, m)"
@@ -443,8 +436,6 @@ import { macroPlacesOn } from '@/services/macros/places'
 import type { MacroPlace } from '@/services/macros/locate'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
-import { isManagedApiUrl } from '@/services/muon-cloud/origin'
-import { cloudState } from '@/services/muon-cloud/state'
 import type { Macro, MacroCategory } from '@/store/macros/types'
 import { macroSections, macrosMovedTo, rangeOf, sectionsMoved, type MacroSection } from './macro-sections'
 
@@ -500,14 +491,8 @@ export default class MacroPanel extends Mixins(StateMixin) {
     return this.$store.state.socket.open === true
   }
 
-  /** On a printer shared to view, the list is read-only: only its owner or an Operator changes it. */
-  get viewerOnly (): boolean {
-    if (!isManagedApiUrl(this.$store.state.config?.apiUrl)) return false
-    return cloudState.printers.find(p => p.id === cloudState.activePrinterId)?.role === 'viewer'
-  }
-
   get locked (): boolean {
-    return !this.connected || this.viewerOnly
+    return !this.connected
   }
 
   get registered (): string[] {
@@ -640,6 +625,28 @@ export default class MacroPanel extends Mixins(StateMixin) {
     this.selected = []
     this.anchor = null
     this.picking = false
+  }
+
+  /** Empty space anywhere in the panel (padding, gaps, headings) clears the selection; a row, button, field or menu keeps it. */
+  onPanelClick (event: MouseEvent) {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('[role="option"], [role="menuitem"], button, a, input, textarea, select, label, .v-input, .v-menu__content')) return
+    this.clear()
+  }
+
+  /** Ctrl+A (Cmd+A) selects every macro shown, unless the keys are going to a field. */
+  onPanelKey (event: KeyboardEvent) {
+    if (event.key.toLowerCase() !== 'a' || !(event.ctrlKey || event.metaKey) || event.altKey) return
+    const target = event.target as HTMLElement | null
+    if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+    event.preventDefault()
+    this.selected = [...this.order]
+    this.anchor = this.order[0] ?? null
+  }
+
+  /** A shift-click selects a range; without this the browser also selects the text between. */
+  onRowMouseDown (event: MouseEvent) {
+    if (event.shiftKey) event.preventDefault()
   }
 
   onRowClick (event: MouseEvent, name: string) {

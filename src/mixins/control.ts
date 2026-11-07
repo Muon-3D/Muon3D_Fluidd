@@ -9,6 +9,7 @@ import {
   fanCommand,
   fanPercent,
   fileFilament,
+  filamentSensed,
   lightsOutput,
   loadedChoice,
   materialChoices,
@@ -22,12 +23,14 @@ import {
   savedMaterialColour,
   savedMaterialName,
   type Material,
+  hotendLimitReason,
   type MaterialChoice
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
 import { handMoveSettling, headStatus, lockHandMove, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
 import { EventBus } from '@/eventBus'
+import type { LoadedFilament } from '@/services/jobs/model'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
 
@@ -168,6 +171,27 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   }
 
   /**
+   * Whether filament is in the printer, from a trustworthy filament sensor
+   * (a switch sensor, switched on; see filamentSensed): null when none
+   * reports, where only what someone said is loaded can tell.
+   */
+  get filamentSensed (): boolean | null {
+    return filamentSensed(this.$store.state.printer.printer)
+  }
+
+  /**
+   * Whether the printer has a material loaded, and which: the filament sensor
+   * says whether there is any, the recorded material says which. With no
+   * sensor reporting, a recorded material is what there is to go on. A
+   * material chosen as a preset (the heater targets) says nothing about this.
+   */
+  get loadedFilament (): LoadedFilament {
+    const name = this.loadedMaterial?.name ?? null
+    const sensed = this.filamentSensed
+    return { loaded: sensed ?? !!name, name }
+  }
+
+  /**
    * While a print runs and nobody has said what's loaded: what its file was
    * sliced for, which is what is feeding now. Shown as that, never saved as
    * the loaded record (14 Oct: Walnut printing showed "Not set").
@@ -207,9 +231,24 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     }
   }
 
+  /** The extruder's hard limit, from printer.cfg, or null when the printer didn't say. */
+  get extruderMaxTemp (): number | null {
+    const max = Number(this.$store.state.printer?.printer?.configfile?.settings?.extruder?.max_temp)
+    return Number.isFinite(max) && max > 0 ? max : null
+  }
+
+  /** Tells the person why nothing was sent, when the material is hotter than the hotend can go. True if it is. */
+  refuseTooHot (name: string | undefined, nozzle: number | null | undefined): boolean {
+    const reason = hotendLimitReason(name, nozzle, this.extruderMaxTemp)
+    if (!reason) return false
+    EventBus.$emit(reason, { type: 'error', timeout: 8000 })
+    return true
+  }
+
   /** Heats for a material: as its preset says when it has one, else to its temperatures. */
   heatFor (choice: MaterialChoice) {
     if (!this.controlReady) return
+    if (this.refuseTooHot(choice.name, choice.nozzle)) return
     const preset = choice.presetId === null ? undefined : this.presets.find(p => p.id === choice.presetId)
     if (preset) {
       presetCommands(preset).forEach(g => this.sendGcode(g))
@@ -227,6 +266,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
 
   applyMaterial (material: Material) {
     if (!this.controlReady) return
+    if (this.refuseTooHot(material.name, material.nozzle)) return
     const preset = this.presets.find(p => p.id === material.id)
     if (preset) presetCommands(preset).forEach(g => this.sendGcode(g))
   }
@@ -369,29 +409,60 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     this.markHandMove(realTo)
   }
 
-  /** To a place given in G-code coordinates, inside the machine and out of the bed's no-go regions. */
-  moveTo (place: { X?: number, Y?: number, Z?: number }) {
-    if (!this.controlReady || this.busy || ![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
+  /**
+   * A diagonal step: X and Y at once, cut short at the machine's limits.
+   * Sent through moveTo, so it gets the same checks as every hand move
+   * (homed, not printing, the hand-move wait and the no-go planner).
+   */
+  moveByXY (dx: number, dy: number): boolean {
+    if (!this.controlReady || this.busy || !this.isHomed('XY') || !Number.isFinite(dx) || !Number.isFinite(dy)) return false
+    if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return false
+    const wait = this.handMoveWait()
+    if (wait) { this.refuseMove(wait); return false }
+    // Planned from the toolhead (commanded) position and sent as a relative
+    // step, as moveBy does, so a position that lags can't swallow a step.
+    const realTo = [0, 1, 2].map(j => Number(this.position[j])) as [number, number, number]
+    const by: number[] = [0, 0]
+    ;(['X', 'Y'] as Axis[]).forEach((axis, i) => {
+      const d = axis === 'X' ? dx : dy
+      const signed = this.inverted(axis) ? -d : d
+      const target = clampTo(this.position[i] + signed, this.axisMin[i], this.axisMax[i])
+      by[i] = Math.round((target - this.position[i]) * 1000) / 1000
+      realTo[i] = target
+    })
+    if (!by[0] && !by[1]) return false
+    const plan = this.planHandMove(realTo)
+    if (!plan.ok) { this.refuseMove(plan.reason); return false }
+    if (plan.lifted) this.sendPlannedMoves(plan.steps)
+    else this.sendMoveGcode(['X', 'Y'].filter((_, i) => by[i]).map(a => `${a}${by['XY'.indexOf(a)]}`).join(' '), this.xySpeed)
+    this.markHandMove(realTo)
+    return true
+  }
+
+  /** To a place given in G-code coordinates, inside the machine and out of the bed's no-go regions. True when it was sent. */
+  moveTo (place: { X?: number, Y?: number, Z?: number }): boolean {
+    if (!this.controlReady || this.busy || ![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return false
     const parts: string[] = []
     let rate = this.xySpeed
     for (const axis of ['X', 'Y', 'Z'] as Axis[]) {
       const value = place[axis]
       if (value === undefined) continue
       const i = 'XYZ'.indexOf(axis)
-      if (!this.isHomed(axis) || !Number.isFinite(value) || value < this.axisMin[i] || value > this.axisMax[i]) return
+      if (!this.isHomed(axis) || !Number.isFinite(value) || value < this.axisMin[i] || value > this.axisMax[i]) return false
       parts.push(`${axis}${value}`)
       if (axis === 'Z') rate = Math.min(rate, this.zSpeed)
     }
-    if (!parts.length) return
+    if (!parts.length) return false
     const wait = this.handMoveWait()
-    if (wait) { this.refuseMove(wait); return }
+    if (wait) { this.refuseMove(wait); return false }
     const offset = this.gcodeOffset ?? [0, 0, 0]
     const realTo = (['X', 'Y', 'Z'] as Axis[]).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
     const plan = this.planHandMove(realTo)
-    if (!plan.ok) { this.refuseMove(plan.reason); return }
+    if (!plan.ok) { this.refuseMove(plan.reason); return false }
     if (plan.lifted) this.sendPlannedMoves(plan.steps)
     else this.sendMoveGcode(parts.join(' '), rate, true)
     this.markHandMove(realTo)
+    return true
   }
 
   homeWait (axes = ''): string {

@@ -1,5 +1,5 @@
 import Vue from 'vue'
-import type { ModelDetail, ModelGlass } from './render-options'
+import { modelRenderOptions, type ModelDetail, type ModelGlass, type ModelRenderOptions } from './render-options'
 
 /**
  * Settings › G-code preview and 3D: the 3D printer and animation choices.
@@ -48,6 +48,27 @@ export function parseModelSettings (raw: string | null): ModelDeviceSettings {
   }
 }
 
+/** Set once the printer's old per-printer Animations choice has been looked at on this device. */
+export const LEGACY_ANIMATIONS_KEY = 'muon3d.model3d.legacyAnimations'
+
+/**
+ * Animations used to be `uiSettings.gcodePreview.showAnimations`, saved on
+ * the printer. They are this device's now, so the first time the old value
+ * is seen, and this device hasn't chosen yet, it starts from it. Only a
+ * saved `false` carries over: `true` was the default, and keeping the device
+ * following its reduce-motion setting is what the default meant.
+ */
+export function migrateLegacyAnimations (legacy: unknown) {
+  if (typeof legacy !== 'boolean') return
+  try {
+    if (localStorage.getItem(LEGACY_ANIMATIONS_KEY)) return
+    localStorage.setItem(LEGACY_ANIMATIONS_KEY, '1')
+  } catch {
+    return
+  }
+  if (legacy === false && modelSettings.animations === null) setModelSetting('animations', false)
+}
+
 function read (): string | null {
   try {
     return localStorage.getItem(MODEL_SETTINGS_KEY)
@@ -63,4 +84,24 @@ export function setModelSetting<K extends keyof ModelDeviceSettings> (key: K, va
   try {
     localStorage.setItem(MODEL_SETTINGS_KEY, JSON.stringify(modelSettings))
   } catch {}
+}
+
+/** The system's prefers-reduced-motion, asked now. */
+function prefersReducedMotion (): boolean {
+  try {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  } catch {
+    return false
+  }
+}
+
+/** What the renderer draws with now: the settings above, the device's pixel ratio and its reduced-motion choice. */
+export function liveRenderOptions (width: number): ModelRenderOptions {
+  return modelRenderOptions({
+    detail: modelSettings.detail,
+    animations: modelSettings.animations,
+    reducedMotion: prefersReducedMotion(),
+    devicePixelRatio: window.devicePixelRatio || 1,
+    width
+  })
 }

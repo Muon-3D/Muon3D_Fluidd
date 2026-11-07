@@ -10,9 +10,12 @@ import { CONTENTS_ORDER, flattenGlass } from './glass-material'
 import { createRenderGate } from './render-gate'
 import { createFrameLoop } from './frame-loop'
 import { FrameWatch, wantsCheapGlass } from './glass-cost'
-import { glassChoice, modelRenderOptions, type ModelDetail, type ModelGlass, type ModelRenderOptions } from './render-options'
+import { glassChoice } from './render-options'
+import { liveRenderOptions, modelSettings } from './device-settings'
 import { placeAccurate } from './accurate/klipper-map'
 import type { AccurateRig } from './accurate/rig'
+import { LEAN_LIMIT, NO_LEAN, PART_IDS, leanToward, partMeshes, partOf, type Lean, type PartId } from './parts'
+import { PartLight, type LightMode } from './part-light'
 
 /** Frees a model's GPU resources: geometries, materials, their textures, and a rigged mesh's bone texture. */
 function disposeTree (root: THREE.Object3D) {
@@ -57,17 +60,39 @@ export interface M1Viewer {
   restyle: () => void;
   /** Moves the machine left by this share of the stage's width, to clear something on the right. */
   setShift: (share: number) => void;
-  /** Settings â€º G-code preview and 3D: the detail, the glass, and whether it animates. */
-  setSettings: (settings: ViewerSettings) => void;
   /** Called after each frame drawn; the first means it can be shown. */
   onFrame: (() => void) | null;
+  /** Called after every frame drawn with the model shown and the accessories as drawn (for the page's data attributes and tests). */
+  onDraw: ((drawn: DrawnState) => void) | null;
+  /** The part under this point of the page (clientX, clientY), if any. */
+  pick: (x: number, y: number) => PartId | null;
+  /** Lights a part (or none) and, with `lean`, leans the camera toward it; with none, the camera eases back. */
+  setFocus: (part: PartId | null, mode: LightMode, lean: boolean) => void;
+  /** Where a part's middle is drawn, in CSS pixels from the canvas's top left, or null if this model hasn't it. */
+  anchor: (part: PartId) => { x: number, y: number } | null;
+  /**
+   * 'top' looks straight down, the front of the printer at the bottom and X
+   * to the right (as the jog buttons are seen from above), with the plate
+   * hidden so the head shows; 'free' goes back to where the person had it.
+   */
+  setView: (mode: 'free' | 'top') => void;
+  /** Whether a mouse drag turns the model (off while a drag moves a part instead). */
+  setOrbit: (on: boolean) => void;
+  /** Whether this is the accurate model, the one whose millimetres a drag can be read in. */
+  readonly accurate: boolean;
+  /** A world point, in CSS pixels from the canvas's top left. */
+  project: (p: { x: number, y: number, z: number }) => { x: number, y: number } | null;
+  /** Where the ray under this page point (clientX, clientY) meets the level plane at world height `y`, or null. */
+  onLevel: (x: number, y: number, planeY: number) => { x: number, y: number, z: number } | null;
+  /** Where that ray meets the upright plane through `through`, turned to face the camera, or null. */
+  onUpright: (x: number, y: number, through: { x: number, y: number, z: number }) => { x: number, y: number, z: number } | null;
   dispose: () => void;
 }
 
-export interface ViewerSettings {
-  detail: ModelDetail;
-  glass: ModelGlass;
-  animate: boolean;
+/** What a frame drew: which model, and the plate, hose, column and filament as placed. */
+export interface DrawnState {
+  model: 'pending' | 'accurate' | 'simple';
+  accessories: AccessoryFrame | null;
 }
 
 /** Seen from the mast side and a little above, as the s1_1 product shot is. */
@@ -83,6 +108,10 @@ const MAX_TAPS = 256
 
 /** The share of the stage the machine fills, edge to edge. */
 const FILL = 0.86
+/** Straight down, nearly: exactly 0 has no "up" to look along. */
+const TOP_PHI = 0.0015
+/** Each frame the lean closes this share of the gap: about 450 ms to settle at 30 frames a second, easing out. */
+const LEAN_EASE = 0.16
 
 /** The accurate model gets this long to load before the simple one is shown instead. */
 const ACCURATE_TIMEOUT_MS = 20000
@@ -340,8 +369,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   const key = new THREE.DirectionalLight(0xffffff, 2.55)
   key.position.set(-520, 780, 640)
-  key.castShadow = true
-  key.shadow.mapSize.set(1024, 1024)
+  // Settings › G-code preview and 3D › Detail: Low draws without the shadow.
+  const detail = liveRenderOptions(canvas.clientWidth)
+  key.castShadow = detail.shadows
+  key.shadow.mapSize.set(detail.shadowMapSize, detail.shadowMapSize)
   Object.assign(key.shadow.camera, { near: 20, far: 2600, left: -420, right: 420, top: 480, bottom: -180 })
   key.shadow.bias = -0.0006
   key.shadow.normalBias = 1.35
@@ -361,6 +392,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   ground.rotation.x = -Math.PI / 2
   ground.position.y = -0.4
   ground.receiveShadow = true
+  ground.visible = detail.shadows
   scene.add(ground)
 
   // The part, the lines no file drew, and the line being laid now, all in the filament's colour.
@@ -419,7 +451,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     }
   }
 
-  /** The accurate model: nodes driven by name from Klipper's position, no accessories. */
+  /** The accurate model: nodes driven by name from Klipper's position; the plate, the hose's end and the column (accurate/accessories.ts). */
   function accurateRig (a: AccurateRig): Rig {
     // The print rides in the opaque pass, so it is in the glass's transmission pass and seen through the plate.
     partMaterial.transparent = false
@@ -434,13 +466,16 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       cargo: a.cargo,
       printFrame: a.printFrame,
       place: placeAccurate,
-      show: placement => a.place(placement),
+      show (placement, led) {
+        a.place(placement)
+        a.lights.setLed(led)
+      },
       setSpool () { /* no spool in the exterior model */ },
-      setScreen () { /* the screen is its static logo */ },
-      setLeds () { /* the strips are static */ },
-      apply () { /* no plate, hose or filament motion in the accurate model */ },
-      plateOff: () => 0,
-      plateOffBox: new THREE.Box3(),
+      setScreen: screen => a.lights.setScreen(screen),
+      setLeds: (left, right) => a.lights.setLeds(left, right),
+      apply: a.apply,
+      plateOff: a.plateOff,
+      plateOffBox: a.plateOffBox,
       setColour () { /* the print's own material carries it */ },
       useCheapGlass () { a.useCheapGlass() }
     }
@@ -507,13 +542,28 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   const target = box.getCenter(new THREE.Vector3())
   const view = { theta: VIEW.theta, phi: VIEW.phi, goalTheta: VIEW.theta, goalPhi: VIEW.phi }
   let distance = 1300
+  /** The lean toward a pointed-at part, on top of the person's own view, and where it is going. */
+  const lean: Lean = { ...NO_LEAN }
+  let leanGoal: Lean = { ...NO_LEAN }
+  /** The part pointed at; its middle is measured once, when it is pointed at (the hose's bounds cost too much to measure each frame). */
+  let focus: { part: PartId, mode: LightMode, lean: boolean, centred: boolean } | null = null
+  const light = new PartLight()
+  let viewMode: 'free' | 'top' = 'free'
+  /** The person's own view, kept while the camera looks straight down. */
+  let freeView = { theta: VIEW.theta, phi: VIEW.phi }
+  let orbit = true
+  const raycaster = new THREE.Raycaster()
+  const focusPoint = new THREE.Vector3()
   let centre = [0, 0]
   let shift = 0
   let width = 0
   let height = 0
 
-  const direction = () => new THREE.Vector3(
-    Math.sin(view.phi) * Math.sin(view.theta), Math.cos(view.phi), Math.sin(view.phi) * Math.cos(view.theta))
+  const direction = () => {
+    const theta = view.theta + lean.theta
+    const phi = viewMode === 'top' ? view.phi : Math.min(PHI_RANGE[1], Math.max(PHI_RANGE[0], view.phi + lean.phi))
+    return new THREE.Vector3(Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta))
+  }
 
   const frame = () => {
     camera.position.copy(target).addScaledVector(direction(), distance)
@@ -533,8 +583,45 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     box.max.lerpVectors(onBox.max, offBox.max, off)
     box.getCenter(target)
     const f = fit(camera, box, target, direction())
-    distance = f.distance
+    distance = f.distance * (1 - LEAN_LIMIT.closer * lean.closer)
     centre = f.centre
+    // Leaning, the camera also looks a little toward the part.
+    if (focus?.centred && lean.closer > 0) target.lerp(focusPoint, 0.12 * lean.closer)
+  }
+
+  /** A part's middle in the scene, or null if this model hasn't it. */
+  function partCentre (part: PartId, into: THREE.Vector3): THREE.Vector3 | null {
+    const meshes = partMeshes(rig.root, part)
+    if (!meshes.length) return null
+    const b = new THREE.Box3()
+    for (const m of meshes) b.expandByObject(m)
+    return b.getCenter(into)
+  }
+
+  /** Hides or shows the plate and what it carries (the bed stage on the accurate model, the bed lift on the simple one). */
+  function showPlate (shown: boolean) {
+    for (const name of ['M1_Z_Stage', 'bedLift']) {
+      const node = rig.root.getObjectByName(name)
+      if (node) node.visible = shown
+    }
+    for (const o of plated) o.visible = shown
+  }
+
+  /** The ray under a page point, or null before the first frame. */
+  function rayAt (x: number, y: number): THREE.Ray | null {
+    if (!ready || !width || !height) return null
+    const r = canvas.getBoundingClientRect()
+    raycaster.setFromCamera(new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera)
+    return raycaster.ray
+  }
+
+  /** The lean the focus asks for now, from where the person has the camera. */
+  function aimLean () {
+    if (!focus?.lean || viewMode === 'top') {
+      leanGoal = { ...NO_LEAN }
+      return
+    }
+    leanGoal = focus.centred ? leanToward(focusPoint, box.getCenter(new THREE.Vector3()), view.goalTheta, view.goalPhi) : { ...NO_LEAN }
   }
 
   const restyle = () => {
@@ -556,9 +643,13 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** The sync's crossfade count last drawn: with reduced motion a change is shown by fading, not moving. */
   let lastCrossfade = -1
   let lastLeds = ''
+  /** The screen and the strips as last given, for a model adopted after they came (the GLB loads after the page sets them). */
+  let screenShown: ScreenState | null = null
+  let ledsShown: [LedStrip, LedStrip] | null = null
   /** The strips' own pixels, when the printer reports them; else the light's switch alone. */
   let strips: { lit: boolean } | null = null
   let lastDraw = 0
+  let drawnAccessories: AccessoryFrame | null = null
   let dragging = false
   let ready = false
   let disposed = false
@@ -606,6 +697,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     }
     showTrace()
     rig.apply(accessories, f.partGone)
+    drawnAccessories = accessories
     return f.moving || accessories.animating
   }
 
@@ -639,10 +731,11 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** Sizes the marks: a new one swells and settles. Whether one still is. */
   function pulseTaps (now: number): boolean {
     let pulsing = false
+    const animate = liveRenderOptions(width).animate
     taps.forEach((t, i) => {
       const age = now - (tapSeen.get(tapKey(t)) ?? 0)
-      const swell = age < PULSE_MS && settings.animate ? 1 + 1.4 * Math.sin(Math.PI * age / PULSE_MS) : 1
-      if (age < PULSE_MS && settings.animate) pulsing = true
+      const swell = age < PULSE_MS && animate ? 1 + 1.4 * Math.sin(Math.PI * age / PULSE_MS) : 1
+      if (age < PULSE_MS && animate) pulsing = true
       tapMatrix.makeScale(swell, swell, swell).setPosition(t.x, t.y, 0)
       tapMarks.setMatrixAt(i, tapMatrix)
     })
@@ -650,36 +743,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     return pulsing
   }
 
-  let settings: ViewerSettings = { detail: 'auto', glass: 'auto', animate: true }
-  function renderOptions (): ModelRenderOptions {
-    return modelRenderOptions({
-      detail: settings.detail,
-      animations: settings.animate,
-      reducedMotion: false,
-      devicePixelRatio: window.devicePixelRatio || 1,
-      width: width || canvas.clientWidth
-    })
-  }
-  /** Draws with the detail asked for: the pixels and the shadow. */
-  function applyDetail () {
-    const o = renderOptions()
-    if (width && height && renderer.getPixelRatio() !== o.pixelRatio) {
-      renderer.setPixelRatio(o.pixelRatio)
-      renderer.setSize(width, height, false)
-    }
-    key.castShadow = o.shadows
-    ground.visible = o.shadows
-    if (key.shadow.mapSize.x !== o.shadowMapSize) {
-      key.shadow.mapSize.set(o.shadowMapSize, o.shadowMapSize)
-      key.shadow.map?.dispose()
-      key.shadow.map = null
-    }
-  }
-
   const watch = new FrameWatch()
   let cheapGlass = false
-  /** Set once the first model is asked for, after the caller's settings. */
-  let started = false
   /** Off when the page pins the real glass (?m1glass=real), so a measurement isn't changed under it. */
   let autoCheap = true
   /** The glass plate goes plain on a small or weak screen, or once the frames come slowly. */
@@ -697,9 +762,13 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       loop.invalidate()
       return
     }
-    const d = settings.animate ? 0.25 : 1
+    const d = liveRenderOptions(width).animate ? 0.25 : 1
     view.theta += (view.goalTheta - view.theta) * d
     view.phi += (view.goalPhi - view.phi) * d
+    if (dragging) aimLean()
+    lean.theta += (leanGoal.theta - lean.theta) * LEAN_EASE
+    lean.phi += (leanGoal.phi - lean.phi) * LEAN_EASE
+    lean.closer += (leanGoal.closer - lean.closer) * LEAN_EASE
     const moving = follow(now)
     const pulsing = pulseTaps(now)
     // Fitted afresh each frame, so the machine keeps filling the stage as it turns.
@@ -714,7 +783,9 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       if (watch.slow) cheapenGlass('slow')
     }
     viewer.onFrame?.()
-    const turning = Math.abs(view.goalTheta - view.theta) > 1e-3 || Math.abs(view.goalPhi - view.phi) > 1e-3
+    viewer.onDraw?.({ model: rig.kind, accessories: drawnAccessories })
+    const turning = Math.abs(view.goalTheta - view.theta) > 1e-3 || Math.abs(view.goalPhi - view.phi) > 1e-3 ||
+      Math.abs(leanGoal.theta - lean.theta) > 1e-4 || Math.abs(leanGoal.phi - lean.phi) > 1e-4 || Math.abs(leanGoal.closer - lean.closer) > 1e-3
     if (moving || pulsing || turning) invalidate()
   }
 
@@ -730,6 +801,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   const viewer: M1Viewer = {
     onFrame: null,
+    onDraw: null,
     follow (next) {
       sync = next
       lastCrossfade = -1
@@ -762,6 +834,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         Math.round(screen.bedTemp), Math.round(screen.bedTarget), screen.jobName, screen.connected].join('|')
       if (shown === lastScreen) return
       lastScreen = shown
+      screenShown = screen
       rig.setScreen(screen)
       invalidate()
     },
@@ -769,6 +842,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       const shown = JSON.stringify([left, right])
       if (shown === lastLeds) return
       lastLeds = shown
+      ledsShown = [left, right]
       strips = left || right ? { lit: stripsLit(left, right) } : null
       rig.setLeds(left, right)
       lastPlacement = ''
@@ -797,25 +871,81 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       shift = share
       invalidate()
     },
-    setSettings (next) {
-      if (next.detail === settings.detail && next.glass === settings.glass && next.animate === settings.animate) return
-      const was = { model: wantedModel(), glass: settings.glass }
-      settings = { ...next }
-      applyDetail()
-      const glassChanged = was.glass !== settings.glass && !glassOverride()
-      if (started && wantedModel() !== was.model) reloadModel()
-      else if (glassChanged && settings.glass === 'plain' && rig.kind === 'accurate') {
-        autoCheap = false
-        cheapenGlass('forced')
-      } else if (glassChanged && rig.kind === 'accurate') {
-        if (cheapGlass) reloadModel()
-        else autoCheap = settings.glass === 'auto'
-      }
+    pick (x, y) {
+      if (!ready || !width || !height) return null
+      const r = canvas.getBoundingClientRect()
+      const ndc = new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1)
+      // The view offset (the machine centred, then shifted) is part of the camera's projection, so the ray follows it.
+      raycaster.setFromCamera(ndc, camera)
+      // Only what is drawn: the plate hidden for the top-down view must not catch the ray.
+      const shown = (o: THREE.Object3D | null): boolean => !o || (o.visible && shown(o.parent))
+      const targets = PART_IDS.flatMap(id => partMeshes(rig.root, id)).filter(m => shown(m))
+      const hit = raycaster.intersectObjects(targets, false)[0]
+      return hit ? partOf(hit.object) : null
+    },
+    setFocus (part, mode, leanIn) {
+      const same = focus?.part === part && focus?.mode === mode && focus?.lean === leanIn
+      if (same) return
+      const moved = focus?.part !== part
+      focus = part ? { part, mode, lean: leanIn, centred: moved ? !!partCentre(part, focusPoint) : !!focus?.centred } : null
+      if (part) light.light(partMeshes(rig.root, part), mode)
+      else light.clear()
+      aimLean()
       invalidate()
+    },
+    get accurate () {
+      return rig.kind === 'accurate'
+    },
+    setView (mode) {
+      if (mode === viewMode) return
+      if (mode === 'top') {
+        freeView = { theta: view.goalTheta, phi: view.goalPhi }
+        view.goalTheta = 0
+        view.goalPhi = TOP_PHI
+      } else {
+        view.goalTheta = freeView.theta
+        view.goalPhi = freeView.phi
+      }
+      viewMode = mode
+      showPlate(mode !== 'top')
+      aimLean()
+      invalidate()
+    },
+    setOrbit (on) {
+      orbit = on
+    },
+    project (p) {
+      if (!width || !height) return null
+      const v = new THREE.Vector3(p.x, p.y, p.z).project(camera)
+      return { x: (v.x + 1) / 2 * width, y: (1 - v.y) / 2 * height }
+    },
+    onLevel (x, y, planeY) {
+      const ray = rayAt(x, y)
+      const hit = ray?.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY), new THREE.Vector3())
+      return hit ? { x: hit.x, y: hit.y, z: hit.z } : null
+    },
+    onUpright (x, y, through) {
+      const ray = rayAt(x, y)
+      if (!ray) return null
+      const facing = camera.getWorldDirection(new THREE.Vector3()).setY(0)
+      if (facing.lengthSq() < 1e-6) return null
+      facing.normalize()
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(facing, new THREE.Vector3(through.x, through.y, through.z))
+      const hit = ray.intersectPlane(plane, new THREE.Vector3())
+      return hit ? { x: hit.x, y: hit.y, z: hit.z } : null
+    },
+    anchor (part) {
+      if (!width || !height) return null
+      // Measured as drawn now, so a line to a moving head follows it; only the hose (skinned, costly to measure) uses its measure from when it was pointed at.
+      const p = part === 'filament' && focus?.part === part && focus.centred ? focusPoint.clone() : partCentre(part, new THREE.Vector3())
+      if (!p) return null
+      p.project(camera)
+      return { x: (p.x + 1) / 2 * width, y: (1 - p.y) / 2 * height }
     },
     dispose () {
       disposed = true
       loop.stop()
+      light.dispose()
       gate.dispose()
       resize.disconnect()
       canvas.removeEventListener('pointerdown', onDown)
@@ -837,7 +967,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     if (!w || !h || (w === width && h === height)) return
     width = w
     height = h
-    renderer.setPixelRatio(renderOptions().pixelRatio)
+    renderer.setPixelRatio(liveRenderOptions(w).pixelRatio)
     renderer.setSize(w, h, false)
     restyle()
     invalidate()
@@ -854,6 +984,14 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   function adopt (next: Rig) {
     if (disposed) return
     const old = rig
+    light.clear()
+    focus = null
+    leanGoal = { ...NO_LEAN }
+    if (viewMode === 'top') {
+      viewMode = 'free'
+      view.goalTheta = freeView.theta
+      view.goalPhi = freeView.phi
+    }
     rig = next
     if (next.root.parent !== scene) scene.add(next.root)
     for (const o of plated) {
@@ -865,8 +1003,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       disposeTree(old.root)
     }
     if (next.kind === 'accurate') {
-      const glass = glassChoice(settings.glass, glassOverride())
-      autoCheap = glass === 'auto'
+      const glass = glassChoice(modelSettings.glass, glassOverride())
+      if (glass !== 'auto') autoCheap = false
       if (glass === 'plain') cheapenGlass('forced')
       else if (glass === 'auto' && wantsCheapGlass({
         width: canvas.clientWidth || window.innerWidth,
@@ -876,11 +1014,15 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       })) cheapenGlass('device')
     }
     lastPlacement = ''
-    lastScreen = ''
-    lastLeds = ''
+    if (screenShown) next.setScreen(screenShown)
+    if (ledsShown) next.setLeds(...ledsShown)
     // Posed once so the box is the machine's; the follower puts it where the printer is on the first frame.
     next.show(next.place({ x: null, y: null, z: null, led: false, progress: 0 }), false)
     onBox.copy(shownBox(next.root))
+    // The shadow falls on the floor the machine stands on. The accurate model's origin is the plate's
+    // top, about 155 mm above its feet: a floor at 0 sliced through the box and printed the shadow on it.
+    const feet = next.kind === 'accurate' ? next.root.getObjectByName('M1_Base') : null
+    ground.position.y = (feet ? shownBox(feet).min.y : 0) - 0.4
     offBox.copy(onBox).union(next.plateOffBox.isEmpty() ? onBox : next.plateOffBox)
     box.copy(onBox)
     performance.mark('m1:built')
@@ -896,19 +1038,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       })
   }
 
-  /** Which model the settings (or the page) ask for. */
-  function wantedModel (): 'accurate' | 'simple' {
-    return wantsSimpleModel() ? 'simple' : renderOptions().model
-  }
-
-  let choosing = 0
-  /**
-   * The accurate model if the GLB loads (in time, on Auto), the simple one if
-   * it can't, or if the settings or the page ask for it. A later choice wins.
-   */
+  /** The accurate model if the GLB loads, the simple one if it can't (or if the page asks for it). */
   async function chooseModel () {
-    const turn = ++choosing
-    if (wantedModel() === 'accurate') {
+    const options = liveRenderOptions(canvas.clientWidth)
+    if (!wantsSimpleModel() && options.model === 'accurate') {
       try {
         // Behind dynamic imports, so neither the loader nor the 3 MB asset is in the first-load bundle.
         const [{ loadAccurateModel }, { buildAccurateRig }, { default: url }] = await Promise.all([
@@ -918,7 +1051,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         ])
         let timer = 0
         const timeout = new Promise<never>((_resolve, reject) => {
-          if (!renderOptions().loadTimeout) return
+          if (!options.loadTimeout) return
           timer = window.setTimeout(() => reject(new Error('the accurate M1 took too long to load')), ACCURATE_TIMEOUT_MS)
         })
         const loading = loadAccurateModel(url)
@@ -928,7 +1061,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         const loaded = await Promise.race([loading, timeout])
           .catch(e => { timedOut = true; throw e })
           .finally(() => clearTimeout(timer))
-        if (disposed || turn !== choosing) {
+        if (disposed) {
           disposeTree(loaded.scene)
           return
         }
@@ -938,24 +1071,17 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         adopt(accurateRig(built))
         return
       } catch (e) {
-        if (turn !== choosing) return
         console.warn('[m1] the accurate model could not be shown; using the simple one', e)
       }
     }
-    if (!disposed && turn === choosing) adopt(buildSimpleRig())
+    if (!disposed) adopt(buildSimpleRig())
   }
-  function reloadModel () {
-    started = true
-    cheapGlass = false
-    chooseModel().catch(e => console.warn('[m1] no model could be shown', e))
-  }
-  // Begun once the caller has given its settings, so the model they ask for is the one loaded.
-  Promise.resolve().then(reloadModel)
+  chooseModel().catch(e => console.warn('[m1] no model could be shown', e))
 
   // A mouse drag turns the machine; a double click puts it back.
   let drag: { x: number, y: number } | null = null
   function onDown (e: PointerEvent) {
-    if (e.pointerType === 'touch' || e.button !== 0) return
+    if (!orbit || e.pointerType === 'touch' || e.button !== 0) return
     drag = { x: e.clientX, y: e.clientY }
     dragging = true
     canvas.setPointerCapture(e.pointerId)
@@ -976,6 +1102,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     canvas.removeEventListener('pointermove', onMove)
   }
   function onReset () {
+    if (viewMode === 'top') return
     view.goalTheta = VIEW.theta
     view.goalPhi = VIEW.phi
     invalidate()

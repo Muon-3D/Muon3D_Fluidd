@@ -22,7 +22,7 @@ it.each([false, true])('renders each printer action once across the Control page
       tabs: () => [],
       subtitle: () => ''
     },
-    stubs: { ...panelStubs, CameraTabs: true, OverviewActions: true, PrinterPageMenu: true, MaintenanceDue: true, CameraActions: true, TonePill: true }
+    stubs: { ...panelStubs, OverviewActions: true, PrinterPageMenu: true, MaintenanceDue: true, CameraActions: true, TonePill: true }
   })
 
   for (const action of printerActions) {
@@ -56,5 +56,39 @@ it('drops the previous printer’s macro form when the selected connection chang
   expect(wrapper.find('[data-tid="macro-send"]').exists()).toBe(true)
   store.state.config.apiUrl = 'http://other.local'; await wrapper.vm.$nextTick()
   expect(wrapper.find('[data-tid="macro-send"]').exists()).toBe(false)
+  wrapper.destroy()
+})
+
+it('lays the page out as D3 tiles, and Edit layout hides, reorders and saves per person per printer', async () => {
+  localStorage.clear()
+  const store = panelStore()
+  const mocks = { $store: store, $waits: waits, $route: { params: { printer: 'mock' } } }
+  const wrapper = mount(Control, { mocks, computed: { isMobileViewport: () => false }, stubs: { ...panelStubs, MaterialPicker: true } })
+  const order = () => wrapper.findAll('[data-cell]').wrappers.map(w => w.attributes('data-cell'))
+  expect(order()).toEqual(['move', 'heat', 'speed', 'fans', 'filament', 'zoffset', 'macros'])
+  expect(wrapper.find('[data-tid="control-zoffset"]').exists()).toBe(true)
+
+  await wrapper.find('[data-tid="edit-open"]').trigger('click')
+  await wrapper.find('[aria-label="Hide Macros"]').trigger('click')
+  await wrapper.find('[aria-label="Move Heaters later"]').trigger('click')
+  expect(order()).toEqual(['move', 'speed', 'heat', 'fans', 'filament', 'zoffset'])
+  expect(wrapper.find('[data-tid="add-macros"]').exists()).toBe(true)
+  await wrapper.find('[data-tid="edit-done"]').trigger('click')
+
+  expect(store.dispatch).toHaveBeenCalledWith('config/saveByPath', expect.objectContaining({ path: expect.stringMatching(/^uiSettings.control.layouts.anonymous__/), server: true }))
+  expect(Object.keys(localStorage).some(k => k.startsWith('muon.control.layout.v3.'))).toBe(true)
+  expect(Object.keys(localStorage).some(k => k.startsWith('muon.overview.layout.v3.'))).toBe(false)
+  wrapper.destroy()
+  localStorage.clear()
+})
+
+it('sends nothing from a tile while the layout is being edited', async () => {
+  const store = panelStore()
+  const wrapper = mount(Control, { mocks: { $store: store, $waits: waits, $route: { params: { printer: 'mock' } } }, computed: { isMobileViewport: () => false }, stubs: { ...panelStubs, MaterialPicker: true } })
+  await wrapper.find('[data-tid="edit-open"]').trigger('click')
+  await wrapper.find('[data-tid="home-all"]').trigger('click')
+  await wrapper.find('[aria-label="Head right (X+)"]').trigger('click')
+  const { SocketActions } = await import('@/api/socketActions')
+  expect(SocketActions.printerGcodeScript).not.toHaveBeenCalled()
   wrapper.destroy()
 })

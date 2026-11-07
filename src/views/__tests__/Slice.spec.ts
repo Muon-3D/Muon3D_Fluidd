@@ -39,7 +39,7 @@ async function mountSlice (confirm: (message: string) => Promise<boolean> = asyn
     stubs: { 'print-confirm-dialog': true, 'v-alert': true },
     ...options,
     // Fluidd's theme and density, set here rather than through the mocked $vuetify, which the host reads after the probe.
-    computed: { theme: () => 'dark', density: () => 'compact', ...(options.computed as object | undefined) }
+    computed: { theme: () => 'dark', density: () => 'compact', isMobileViewport: () => false, ...(options.computed as object | undefined) }
   })
   await flushPromises()
   await wrapper.vm.$nextTick()
@@ -161,7 +161,7 @@ describe('Slice', () => {
     serve(status, body)
     const wrapper = await mountSlice()
     expect(wrapper.find('iframe').exists()).toBe(false)
-    expect(wrapper.find('v-alert-stub').exists()).toBe(true)
+    expect(wrapper.find('[data-tid=slice-missing]').exists()).toBe(true)
     expect((wrapper.vm as any).host).toBeNull()
     wrapper.destroy()
   })
@@ -304,6 +304,56 @@ describe('Slice', () => {
     await vm.beforeRouteLeave({}, {}, next)
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(next).toHaveBeenLastCalledWith(false)
+    wrapper.destroy()
+  })
+})
+
+describe('Slice v3 layout', () => {
+  beforeEach(() => { resetSlicerProbe() })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    resetSlicerProbe()
+  })
+
+  it('frames the slicer in a tile under a page header naming the printer and what it has loaded', async () => {
+    serve(200, EMBED_HTML)
+    const wrapper = await mountSlice(undefined, {
+      computed: { printerName: () => 'Boxwood', socketConnected: () => true, loadedMaterial: () => ({ name: 'PLA', colour: '#00AA88' }), loadedColour: () => '#00AA88' }
+    })
+    expect(wrapper.get('[data-tid=page-title]').text()).toBe('Slice')
+    expect(wrapper.get('.slice-head__line').text()).toContain('slices for Boxwood')
+    expect(wrapper.get('[data-tid=slice-printer]').text()).toBe('Boxwood')
+    expect(wrapper.get('[data-tid=slice-material]').text()).toBe('PLA')
+    expect(wrapper.get('[data-tid=slice-material] i').attributes('style')).toContain('background')
+    expect(wrapper.get('[data-tid=slice-tile] iframe').attributes('title')).toBe('Muon3D Slicer')
+    expect(wrapper.get('[data-tid=slice-status]').text()).toBe('Opening')
+    wrapper.destroy()
+  })
+
+  it('says a printer is offline and, with no printer open, that the slicer saves the file', async () => {
+    serve(200, EMBED_HTML)
+    const offline = await mountSlice(undefined, { computed: { printerName: () => 'Boxwood', socketConnected: () => false, loadedMaterial: () => null } })
+    expect(offline.get('[data-tid=slice-printer]').text()).toBe('Boxwood · offline')
+    expect(offline.find('[data-tid=slice-material]').exists()).toBe(false)
+    offline.destroy()
+
+    const none = await mountSlice()
+    expect(none.get('[data-tid=slice-printer]').text()).toBe('No printer')
+    expect(none.get('.slice-head__line').text()).toContain('no printer open')
+    none.destroy()
+  })
+
+  it('shows a missing slicer in the tile and frames it once Look again finds it', async () => {
+    serve(404, 'Not Found')
+    const wrapper = await mountSlice()
+    expect(wrapper.get('[data-tid=slice-status]').text()).toBe('Not found')
+    expect(wrapper.get('[data-tid=slice-missing]').text()).toContain('app.slicer.msg.no_slicer')
+    serve(200, EMBED_HTML)
+    await wrapper.get('[data-tid=slice-retry]').trigger('click')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-tid=slice-missing]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid=slice-tile] iframe').exists()).toBe(true)
     wrapper.destroy()
   })
 })
