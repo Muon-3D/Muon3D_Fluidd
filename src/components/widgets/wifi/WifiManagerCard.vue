@@ -82,7 +82,13 @@
             </div>
           </dl>
           <div class="wf__now-acts">
+            <span
+              v-if="disconnectIsPanelOnly"
+              class="wf__note"
+              data-tid="wifi-disconnect-panel"
+            >{{ panelOnlyNote }}</span>
             <button
+              v-else
               type="button"
               class="cbtn cbtn--sm"
               data-tid="wifi-disconnect"
@@ -356,6 +362,7 @@
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
+import { PANEL_ONLY_NOTE, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import { EventBus } from '@/eventBus'
@@ -598,7 +605,10 @@ export default class WifiManagerCard extends Vue {
     if (!this.selectedNetwork) return
     const sec = this.selectedNetwork.security?.toLowerCase() || ''
     if (this.knownSsids.has(this.selectedNetwork.ssid)) {
-      await this.auxApi.wifi.wifiSwitchWifiUpPost(this.selectedNetwork.ssid)
+      // A saved network joins by POST /wifi/connect with no password. The old
+      // /wifi/up is panel-only on a printer with MuonOS #492.
+      this.password = ''
+      await this.connectToSelected()
       this.refresh()
       await this.fetchDevices()
     } else if (!sec || sec.includes('open')) {
@@ -620,11 +630,22 @@ export default class WifiManagerCard extends Vue {
       EventBus.$emit(this.$t('app.wifi.msg.connect.success') + ' ' + this.selectedNetwork.ssid, { type: 'success', timeout: 2000 })
       await this.fetchDevices()
     } catch (err: any) {
-      EventBus.$emit(`${this.$t('app.wifi.msg.connect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
+      if (isPanelOnlyRefusal(err)) {
+        // An owner can turn AUX_NETWORK_STRICT on, and then /wifi/connect is refused too.
+        EventBus.$emit(panelOnlyMessage('join a network'), { type: 'error', timeout: 8000 })
+      } else {
+        EventBus.$emit(`${this.$t('app.wifi.msg.connect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
+      }
     }
   }
 
   // Existing disconnect & forget
+  get disconnectIsPanelOnly (): boolean {
+    return routeFor('disconnect', refusedHere).kind === 'panel'
+  }
+
+  readonly panelOnlyNote = PANEL_ONLY_NOTE
+
   async disconnect () {
     try {
       const resp = await this.auxApi.wifi.wifiDisconnectWifiDisconnectPost()
@@ -632,7 +653,13 @@ export default class WifiManagerCard extends Vue {
         await this.fetchDevices()
       }
     } catch (err: any) {
-      EventBus.$emit(`${this.$t('app.wifi.msg.disconnect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
+      if (isPanelOnlyRefusal(err)) {
+        // No open route does this job: it is the printer's screen now.
+        refusedHere.disconnect = true
+        EventBus.$emit(panelOnlyMessage('disconnect from a network'), { type: 'error', timeout: 8000 })
+      } else {
+        EventBus.$emit(`${this.$t('app.wifi.msg.disconnect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
+      }
     }
     this.disconnectConfirmDialog = false
   }
