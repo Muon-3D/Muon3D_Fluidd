@@ -30,7 +30,6 @@
           >
             {{ title }}
           </h1>
-          <camera-tabs v-if="currentSection && currentSection.id === 'camera'" />
           <tone-pill
             v-if="overviewHome"
             :tone="pillTone"
@@ -58,7 +57,7 @@
         />
         <console-actions v-if="currentSection && currentSection.id === 'console'" />
         <files-actions v-if="currentSection && currentSection.id === 'files' && isMobileViewport" />
-        <camera-actions v-if="currentSection && currentSection.id === 'camera' && !isMobileViewport" />
+        <camera-actions v-if="currentSection && currentSection.id === 'camera'" />
         <router-link
           v-if="settingsSection && settingsSection.id === 'console' && !isMobileViewport"
           :to="consoleTo"
@@ -107,10 +106,10 @@ import MaintenanceActions from '@/components/maintenance/MaintenanceActions.vue'
 import { maintenancePage } from '@/services/maintenance/page-state'
 import { healthSummary } from '@/services/maintenance/health'
 import { scopedPath } from '@/router/printerPagePaths'
-import CameraTabs from '@/components/camera/CameraTabs.vue'
 import ConsoleActions from '@/components/console/ConsoleActions.vue'
 import FilesActions from '@/components/files/FilesActions.vue'
 import CameraActions from '@/components/camera/CameraActions.vue'
+import { cameraPage } from '@/services/camera/page-state'
 import JobsActions from '@/components/jobs/JobsActions.vue'
 import TimelapseActions from '@/components/timelapse/TimelapseActions.vue'
 import PreviewActions from '@/components/gcode-preview/PreviewActions.vue'
@@ -137,7 +136,7 @@ import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@
  * with the section's pages as tabs under it (Jobs: Jobs, Preview, History,
  * Timelapse).
  */
-@Component({ components: { FilesActions, ChartsActions, ConsoleActions, CameraActions, CameraTabs, JobsActions, TimelapseActions, PreviewActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceActions, TonePill } })
+@Component({ components: { FilesActions, ChartsActions, ConsoleActions, CameraActions, JobsActions, TimelapseActions, PreviewActions, ControlActions, OverviewActions, PrinterPageMenu, MaintenanceActions, TonePill } })
 export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, PrinterStatusMixin) {
   get foreignRecord () {
     const slug = this.$route.params.printer
@@ -302,6 +301,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       const range = effectiveRange(chartsPage.range, this.$store.getters['charts/getChartRetention'] as number)
       return `Live diagnostics for ${name} · last ${rangeText(range)}`
     }
+    if (this.currentSection?.id === 'camera') return cameraPage.subtitle
     if (this.currentSection?.id === 'files') return `${printerNameParts(this.displayName).name}'s config and other files · tap a file to edit it`
     if (this.isMobileViewport) return ''
     if (this.overviewHome) {
