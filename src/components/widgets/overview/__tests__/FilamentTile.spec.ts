@@ -10,10 +10,11 @@ vi.mock('@/api/socketActions', async () => ({ SocketActions: (await import('./fi
 const mountIt = (store: ReturnType<typeof tileStore>) => mount(FilamentTile, tileMount(store, { stubs: { ...tileMount(store).stubs, 'material-picker': true } }))
 
 describe('FilamentTile', () => {
-  it('says Unknown plainly with no data, and shows no amount', () => {
+  it('says "No material loaded" with a warning icon when there is no data, and shows no amount', () => {
     const w = mountIt(tileStore({ empty: true }))
     expect(w.text()).toContain('Filament')
-    expect(w.text()).toContain('Unknown')
+    expect(w.text()).toContain('No material loaded')
+    expect(w.find('[data-tid="filament-warning"]').exists()).toBe(true)
     expect(w.text()).not.toMatch(/\d\s?%|\d\s?g\b|remaining/i)
     w.destroy()
   })

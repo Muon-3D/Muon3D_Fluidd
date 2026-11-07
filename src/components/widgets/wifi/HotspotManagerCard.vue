@@ -26,8 +26,13 @@
       >
         {{ apState ? 'On' : 'Off' }}
       </tone-pill>
+      <span
+        v-if="!remote && hotspotOffIsPanelOnly && apState"
+        class="hs__note"
+        data-tid="hotspot-off-panel"
+      >{{ panelOnlyNote }}</span>
       <toggle-switch
-        v-if="!remote"
+        v-else-if="!remote"
         :value="apState"
         label="Hotspot on"
         :disabled="locked || !apCredentials || !deviceStatus || toggling"
@@ -214,6 +219,7 @@
 <script lang="ts">
 import { Vue, Component, Prop, Watch } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
+import { PANEL_ONLY_NOTE, fallsBack, hotspotChangeBody, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
 import type { APCredentials, Device } from '@/aux_api'
 import QrcodeVue from 'qrcode.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
@@ -459,7 +465,25 @@ export default class HotspotManagerCard extends Vue {
           ? this.form.password
           : null
       }
-      await this.auxApi.ap.apModifyWifiApModifyPost(payload)
+      const route = routeFor('hotspot-edit', refusedHere)
+      if (route.kind === 'call' && route.path === '/wifi/ap/change') {
+        await this.changeAtPrinter()
+        this.applying = false
+        this.toggleEditing()
+        return
+      }
+      try {
+        await this.auxApi.ap.apModifyWifiApModifyPost(payload)
+      } catch (e) {
+        // A printer with MuonOS #492 lets only its own screen use /wifi/ap/modify.
+        // An older one answers it; this runs only on a 403 or 404.
+        if (!fallsBack(e)) throw e
+        refusedHere.hotspotEdit = true
+        await this.changeAtPrinter()
+        this.applying = false
+        this.toggleEditing()
+        return
+      }
       // on success, commit new “original” snapshot
       // this.original = { ...this.form }
       await this.fetchConfig() // re-fetch to get the latest config
@@ -473,6 +497,29 @@ export default class HotspotManagerCard extends Vue {
     }
     this.applying = false
     this.toggleEditing() // close the form
+  }
+
+  /**
+   * POST /wifi/ap/change: the printer's screen asks the person standing there,
+   * and the new name or key applies when they confirm. Nothing changes here.
+   */
+  private async changeAtPrinter () {
+    const body = hotspotChangeBody(this.form, this.original.ssid)
+    if (!body) {
+      // /wifi/ap/change cannot make a hotspot open.
+      EventBus.$emit(panelOnlyMessage('make the hotspot open'), { type: 'error', timeout: 8000 })
+      return
+    }
+    try {
+      await this.auxApi.apChange(body)
+      EventBus.$emit('Press the knob on the printer to confirm. The hotspot changes when you do.', { type: 'primary', timeout: 10000 })
+    } catch (e) {
+      if (isPanelOnlyRefusal(e)) {
+        EventBus.$emit(panelOnlyMessage('change the hotspot'), { type: 'error', timeout: 8000 })
+      } else {
+        EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.apply_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
+      }
+    }
   }
 
   undoChanges () {
@@ -560,6 +607,12 @@ export default class HotspotManagerCard extends Vue {
 
   toggling: boolean = false
 
+  readonly panelOnlyNote = PANEL_ONLY_NOTE
+
+  get hotspotOffIsPanelOnly (): boolean {
+    return routeFor('hotspot-off', refusedHere).kind === 'panel'
+  }
+
   private async changeHotspotState (wantsOn?: boolean) {
     // guard: need credentials and not already toggling
     if (!this.apCredentials || this.toggling) return
@@ -583,6 +636,17 @@ export default class HotspotManagerCard extends Vue {
       this.requestedApState = null
       this.apState = this.deviceStatus?.state === 'connected'
       console.error('Hotspot toggle failed', e)
+      if (!turnOn && isPanelOnlyRefusal(e)) {
+        // Turning the hotspot off has no open route: it is the printer's screen now.
+        refusedHere.hotspotOff = true
+        EventBus.$emit(panelOnlyMessage('turn the hotspot off'), { type: 'error', timeout: 8000 })
+        return
+      }
+      if (turnOn && isPanelOnlyRefusal(e)) {
+        // An owner can turn AUX_NETWORK_STRICT on, and then /wifi/ap/up is refused too.
+        EventBus.$emit(panelOnlyMessage('turn the hotspot on'), { type: 'error', timeout: 8000 })
+        return
+      }
       if ((e as any)?.response?.status === 403) this.$store.dispatch('protection/onRefused')
       EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.toggle_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
     } finally {
