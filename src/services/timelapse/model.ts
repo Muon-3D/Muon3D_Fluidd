@@ -1,6 +1,8 @@
 import { jobTitle } from '@/services/jobs/model'
 
 const VIDEO = /\.(mp4|webm|mkv|mov|gif)$/i
+/** The pictures moonraker-timelapse (or a person) may leave beside a video, the usual first. */
+const PICTURE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
 const FRAMES = /\.zip$/i
 
 export interface TimelapseItem {
@@ -33,11 +35,12 @@ export function timelapseItems (files: Array<{ filename: string, size: number, m
   return files
     .filter(f => VIDEO.test(f.filename) || FRAMES.test(f.filename))
     .map(f => {
-      const jpg = f.filename.replace(/\.[^.]+$/, '.jpg')
+      const base = f.filename.replace(/\.[^.]+$/, '')
+      const picture = PICTURE_EXTENSIONS.map(ext => `${base}${ext}`).find(name => names.has(name))
       return {
         name: f.filename,
         kind: VIDEO.test(f.filename) ? 'video' as const : 'frames' as const,
-        thumbnail: names.has(jpg) ? jpg : null,
+        thumbnail: picture ?? null,
         ...timelapseName(f.filename),
         size: f.size,
         modified: f.modified
@@ -58,4 +61,27 @@ export function renderText (status: { status: string, progress?: number, count?:
   if (status.status === 'started') return `Starting to render${status.count ? ` ${status.count} frames` : ''}…`
   if (status.status === 'running') return `Rendering… ${Math.round(status.progress ?? 0)}%`
   return null
+}
+
+/** For the Timelapse header: how many videos the printer keeps, and the space the folder takes. */
+export function timelapseSummary (files: Array<{ filename: string, size: number }>): { videos: number, bytes: number } {
+  return {
+    videos: files.filter(f => VIDEO.test(f.filename)).length,
+    bytes: files.reduce((sum, f) => sum + (f.size || 0), 0)
+  }
+}
+
+/** A video's new file name, its extension kept, and the picture saved beside it renamed to match. */
+export function renamedTimelapse (item: { name: string, thumbnail: string | null }, title: string): { name: string, thumbnail: string | null } | null {
+  const ext = item.name.match(/\.[^.]+$/)?.[0] ?? ''
+  // The extension typed once is the video's own; a dot in a name ("0.2mm_PLA") is part of the name.
+  const typed = title.trim()
+  const withoutExt = ext && typed.toLowerCase().endsWith(ext.toLowerCase()) ? typed.slice(0, -ext.length) : typed
+  const base = withoutExt.replace(/[/\\]/g, '_')
+  if (!base) return null
+  const name = `${base}${ext}`
+  if (name === item.name) return null
+  // The picture keeps its own extension: it is not always a .jpg.
+  const pictureExt = item.thumbnail?.match(/\.[^.]+$/)?.[0] ?? '.jpg'
+  return { name, thumbnail: item.thumbnail ? `${base}${pictureExt}` : null }
 }
