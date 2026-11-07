@@ -342,6 +342,28 @@ export function filamentSensorRole (configfile: SensorConfigFile | undefined, na
 }
 
 /**
+ * Whether filament is in the printer, from the filament sensors: true or
+ * false when a trustworthy sensor reports, null when none does.
+ *
+ * Only a switch sensor can say "no filament present". A motion sensor reports
+ * filament_detected false while nothing moves, loaded or not, so it is
+ * ignored; so is a sensor that is switched off, and one whose settings have
+ * not arrived (role `unknown`), which may be a motion sensor or not yet known.
+ */
+export function filamentSensed (printer: Record<string, any> | undefined): boolean | null {
+  if (!printer) return null
+  const readings: boolean[] = []
+  for (const key of Object.keys(printer)) {
+    if (!key.startsWith('filament_switch_sensor ')) continue
+    const sensor = printer[key] as { enabled?: boolean, filament_detected?: boolean } | undefined
+    if (!sensor || sensor.enabled === false || typeof sensor.filament_detected !== 'boolean') continue
+    if (filamentSensorRole(printer.configfile, key.slice('filament_switch_sensor '.length)) === 'unknown') continue
+    readings.push(sensor.filament_detected)
+  }
+  return readings.length ? readings.some(Boolean) : null
+}
+
+/**
  * SET_FILAMENT_SENSOR for a sensor, or null when it would turn off one
  * that is not confirmed runout-only. On is always allowed: it re-arms.
  * The panels' handlers send through this, so they refuse an off even
