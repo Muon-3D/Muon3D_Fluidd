@@ -2,6 +2,7 @@ import type { ConfigState } from './types'
 import { Globals } from '@/globals'
 import { DEFAULT_UI_STYLE } from '@/util/ui-style'
 import { defaultConsoleConfig } from '@/services/console/settings'
+import { defaultMaterials } from './default-materials'
 
 export const defaultState = (): ConfigState => {
   return {
@@ -94,7 +95,7 @@ export const defaultState = (): ConfigState => {
         codeLens: true
       },
       dashboard: {
-        tempPresets: []
+        tempPresets: defaultMaterials()
       },
       tableHeaders: {
         gcodes_dashboard: [

@@ -2,6 +2,7 @@ import Vue from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, expect, it, vi } from 'vitest'
 import MaintenanceMesh from '../MaintenanceMesh.vue'
+import BedMeshTile from '../BedMeshTile.vue'
 import { panelStore, panelStubs } from '@/components/control/__tests__/panel-fixture'
 import { cloudState } from '@/services/muon-cloud/state'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
@@ -14,14 +15,14 @@ vi.mock('@/services/account/control-preferences', async () => {
   return { controlPreferenceStore: new ControlPreferenceStore({ read: async () => ({ version: 1, folds: {} }), patch: async (_, folds) => ({ version: 1, folds }) }, localStorage) }
 })
 const settle = async () => { for (let i = 0; i < 12; i++) { await Promise.resolve(); await Vue.nextTick() } }
-function show (managed = false) {
+function show (managed = false, component: any = BedMeshTile) {
   const store = panelStore()
   store.state.config.apiUrl = managed ? 'https://muon-cloud.invalid' : 'http://mock.local'
   printerTransportBinding.remote = managed
   cloudState.activePrinterId = managed ? 'stable-one' : null
   Vue.set(store.state.printer.printer, 'bed_mesh', { probed_matrix: [[-0.12, 0.04], [0.02, 0.15]], profile_name: 'default' })
   for (const [key, value] of Object.entries({ 'mesh/getSupportsBedMesh': true, 'printer/getHomedAxes': (): boolean => true, 'server/componentSupport': (): boolean => false })) Vue.set(store.getters, key, value)
-  const wrapper = mount(MaintenanceMesh, { mocks: { $store: store, $waits: {}, $route: { params: { printer: 'mock' } } }, stubs: { ...panelStubs, 'router-link': { props: ['to'], template: '<a :href="to"><slot /></a>' } } })
+  const wrapper = mount(component, { mocks: { $store: store, $waits: {}, $route: { params: { printer: 'mock' } } }, stubs: { ...panelStubs, 'bed-surface': { props: ['bare'], template: '<div data-tid="bed-3d" />' }, 'router-link': { props: ['to'], template: '<a :href="to"><slot /></a>' } } })
   return { wrapper, store }
 }
 afterEach(() => { localStorage.clear(); cloudState.account = null; cloudState.activePrinterId = null; printerTransportBinding.remote = false })
@@ -33,35 +34,68 @@ it('offers Bed only on a capable printer', () => {
   expect(visiblePages(section, { ...context, bedMesh: false }).map(p => p.label)).toEqual(['Health'])
 })
 
-it('switches Colours/Numbers with pressed states, keeps measured values accessible and links scoped Bed', async () => {
+it('always writes the heights on the 2D map, with a scale, and offers no Colours/Numbers choice', () => {
   const { wrapper } = show()
-  const numbers = wrapper.find('[data-tid="mesh-numbers"]')
-  expect(numbers.exists()).toBe(true)
-  expect(numbers.attributes('aria-pressed')).toBe('false')
-  expect(wrapper.findAll('.mmesh__cell').at(0).text()).toBe('')
-  await numbers.trigger('click'); await settle()
-  expect(numbers.attributes('aria-pressed')).toBe('true')
-  expect(wrapper.findAll('.mmesh__cell').at(0).text()).toBe('-0.12')
-  expect(wrapper.text()).toContain('this visit')
-  expect(wrapper.find('a').attributes('href')).toBe('/mock/tune')
+  const labels = wrapper.findAll('[role="radio"]').wrappers.map(w => w.text())
+  expect(labels).toEqual(['2D', '3D'])
+  expect(wrapper.findAll('.mmap__cell').at(0).text()).toBe('-0.12')
   expect(wrapper.find('[role="table"]').attributes('aria-label')).toContain('Bed mesh')
+  expect(wrapper.find('[data-tid="mesh-scale"]').text()).toContain('−0.12')
   wrapper.destroy()
 })
 
-it('remembers Numbers by stable printer and clears the previous account and printer view', async () => {
+// Klipper reports a cleared or never-loaded mesh as one empty row, [[]], not as [].
+it.each([[[]], [[[]]], [[[NaN, null]]]])('says the bed is not levelled, with grey question marks, when the mesh is %j', async matrix => {
+  const { wrapper, store } = show()
+  store.state.printer.printer.bed_mesh.probed_matrix = matrix
+  await Vue.nextTick()
+  expect(wrapper.find('[data-tid="mesh-heat"]').exists()).toBe(false)
+  expect(wrapper.find('[data-tid="mesh-unlevelled"]').text()).toContain('Bed not levelled')
+  expect(wrapper.findAll('.mmap__cell--empty').length).toBe(25)
+  expect(wrapper.find('.mmap__cell--empty').text()).toBe('?')
+  expect(wrapper.text()).toContain('Not levelled')
+  expect(wrapper.text()).not.toContain('Not loaded')
+  wrapper.destroy()
+})
+
+it('draws the back row at the top and X left to right', () => {
+  const { wrapper, store } = show()
+  store.state.printer.printer.bed_mesh.probed_matrix = [[0.01, 0.02, 0.03], [0.04, 0.05, 0.06], [0.07, 0.08, 0.09]]
+  return Vue.nextTick().then(() => {
+    // Klipper's first row is the lowest Y, the back of the plate; it is drawn first.
+    expect(wrapper.findAll('.mmap__cell').wrappers.map(w => w.text())).toEqual(['0.01', '0.02', '0.03', '0.04', '0.05', '0.06', '0.07', '0.08', '0.09'])
+    wrapper.destroy()
+  })
+})
+
+it('is a 2D heat map first, and the 3D toggle swaps it for the 3D surface', async () => {
+  const { wrapper } = show()
+  const radio = (label: string) => wrapper.findAll('[role="radio"]').wrappers.find(w => w.text() === label)!
+  expect(radio('2D').attributes('aria-checked')).toBe('true')
+  expect(wrapper.find('[data-tid="mesh-heat"]').exists()).toBe(true)
+  expect(wrapper.find('[data-tid="bed-3d"]').exists()).toBe(false)
+  await radio('3D').trigger('click'); await settle()
+  expect(radio('3D').attributes('aria-checked')).toBe('true')
+  expect(wrapper.find('[data-tid="bed-3d"]').exists()).toBe(true)
+  expect(wrapper.find('[data-tid="mesh-heat"]').exists()).toBe(false)
+  wrapper.destroy()
+})
+
+it('remembers 3D by stable printer and clears the previous account and printer view', async () => {
   const first = show(true)
   await settle()
-  await first.wrapper.find('[data-tid="mesh-numbers"]').trigger('click'); await settle()
+  await first.wrapper.findAll('[role="radio"]').wrappers.find(w => w.text() === '3D')!.trigger('click'); await settle()
   first.wrapper.destroy()
   const next = show(true)
   await settle()
-  expect(next.wrapper.find('[data-tid="mesh-numbers"]').attributes('aria-pressed')).toBe('true')
+  const threeD = () => next.wrapper.findAll('[role="radio"]').wrappers.find(w => w.text() === '3D')!
+  expect(threeD().attributes('aria-checked')).toBe('true')
   cloudState.account = { id: 'alice', email: 'alice@example.test', name: 'Alice', created_at: 1 }
   localStorage.setItem('muon.cloud.token', 'alice-token')
   await settle()
-  expect(next.wrapper.find('[data-tid="mesh-numbers"]').attributes('aria-pressed')).toBe('false')
+  expect(threeD().attributes('aria-checked')).toBe('false')
   cloudState.activePrinterId = 'stable-two'; await settle()
-  expect(next.wrapper.find('[data-tid="mesh-numbers"]').attributes('aria-pressed')).toBe('false')
+  expect(threeD().attributes('aria-checked')).toBe('false')
   next.wrapper.destroy()
 })
 
@@ -71,5 +105,18 @@ it('shows incomplete or invalid measurement cells as unmeasured without NaN colo
   await Vue.nextTick()
   expect(wrapper.findAll('[role="cell"][aria-label="Not measured"]').length).toBe(3)
   expect(wrapper.html()).not.toContain('NaN')
+  wrapper.destroy()
+})
+
+it('shows Health a small map of the bed once, with the way into scoped Bed and no 3D choice, and the heights on its cells', () => {
+  const { wrapper } = show(false, MaintenanceMesh)
+  expect(wrapper.find('[data-tid="mesh-heat"]').exists()).toBe(true)
+  expect(wrapper.find('[data-tid="mesh-scale"]').exists()).toBe(false)
+  expect(wrapper.find('a').attributes('href')).toBe('/mock/tune')
+  expect(wrapper.text()).toContain('Spread')
+  expect(wrapper.text()).toContain('0.27 mm')
+  expect(wrapper.text()).toContain('default')
+  expect(wrapper.findAll('[role="radio"]').length).toBe(0)
+  expect(wrapper.findAll('.mmap__cell').at(0).text()).toBe('-0.12')
   wrapper.destroy()
 })

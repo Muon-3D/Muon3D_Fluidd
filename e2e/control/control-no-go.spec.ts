@@ -85,10 +85,10 @@ test('once the printer reports the head there, the next move goes', async ({ pag
   await expect.poll(() => printer.gcode.length).toBe(1)
   // The printer reports the head at X160.
   printer.report(PRESETS.idleHomed({ position: [160, 100, 10] }))
-  await expect(page.getByTestId('control-move')).toBeVisible()
-  await expect.poll(async () => {
-    await page.getByRole('button', { name: 'Head right (X+)' }).click()
-    return printer.gcode.length
-  }, { timeout: 3_000 }).toBeGreaterThanOrEqual(2) // well under the 8 s expiry: this must be the arrival
+  // The page has the report (its X field shows 160), so the wait on the head is over because it ARRIVED,
+  // not because the 8 s expiry ran out: that is what this test is about.
+  await expect(page.getByRole('textbox', { name: 'X to go to' })).toHaveValue(/^160(\.0+)?$/)
+  await page.getByRole('button', { name: 'Head right (X+)' }).click()
+  await expect.poll(() => printer.gcode.length).toBe(2)
   expect(printer.gcode[1]).toContain('G1 X10 F7800')
 })
