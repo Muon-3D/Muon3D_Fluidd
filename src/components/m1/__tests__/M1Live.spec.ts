@@ -8,7 +8,8 @@ const parked = vi.hoisted(() => ({
   newCanvas: vi.fn(() => document.createElement('canvas')),
   park: vi.fn(),
   prebuild: vi.fn(async () => {}),
-  takeParked: vi.fn(() => null)
+  takeParked: vi.fn(() => null),
+  viewerKey: vi.fn(() => 'auto/auto')
 }))
 const idle = vi.hoisted(() => ({
   afterFirstPaint: vi.fn()

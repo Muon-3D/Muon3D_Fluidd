@@ -10,6 +10,7 @@ import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { FileFilterType } from '../files/types'
 import consola from 'consola'
 import { DEFAULT_UI_STYLE } from '@/util/ui-style'
+import { migrateLegacyAnimations } from '@/services/m1-3d/device-settings'
 
 export const mutations: MutationTree<ConfigState> = {
   /**
@@ -51,6 +52,8 @@ export const mutations: MutationTree<ConfigState> = {
         // none, and one saved as 'flat' (retired) reads as glass too.
         payload.theme.style = DEFAULT_UI_STYLE
       }
+
+      migrateLegacyAnimations(payload.gcodePreview?.showAnimations)
 
       const mergedSettings = mergeWith(
         cloneDeep(state.uiSettings),

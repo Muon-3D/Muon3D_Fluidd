@@ -9,7 +9,11 @@
  * - answers printer.gcode.script itself and records the script in `gcode`,
  *   so nothing reaches the shared mock and a test can assert exactly what
  *   Control asked the printer to do;
- * - can make any one method fail (`failOn`).
+ * - can make any one method fail (`failOn`);
+ * - with `{ database: true }`, keeps this page's Moonraker database writes
+ *   (server.database.post_item, over the websocket or HTTP) to itself and
+ *   lays them over what the shared mock reads back, so a setting survives a
+ *   reload without reaching the other tests.
  *
  *   const printer = await usePrinter(page, PRESETS.idleHomed({ position: [60, 40, 1] }))
  *   await open('/control')
@@ -33,6 +37,8 @@ export interface PrinterState {
   answer: Record<string, unknown>
   /** When set, server.info reports exactly these Moonraker components (what a page gates on). */
   components?: string[]
+  /** Printer objects this printer doesn't have: left out of objects.list and every status (`gcode_macro PAUSE`). */
+  without?: string[]
   /** While set, the printer can't be reached: every websocket the page opens is closed at once. */
   offline?: boolean
 }
@@ -51,6 +57,8 @@ export interface PrinterHandle {
   report: (status: Json) => void
   /** The printer prints these lines to the console now (a notify_gcode_response each). */
   say: (...lines: string[]) => void
+  /** With `{ database: true }`: what this page wrote to Moonraker's database, by namespace. */
+  database: Record<string, Json>
   /** The printer sends this notification now (notify_timelapse_event...). */
   notify: (method: string, ...params: unknown[]) => void
   /** The printer drops off the network now: the page's websocket closes, and every new one is refused. */
@@ -79,7 +87,22 @@ function overlayUpdate (update: Json, over: Json): Json {
   return out
 }
 
-export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[] } = {}): Promise<PrinterHandle> {
+/** Sets `key` (dotted) in `root` to `value`, as Moonraker's database does. */
+function setDotted (root: Json, key: string, value: unknown) {
+  const parts = key.split('.')
+  let cur = root
+  for (const p of parts.slice(0, -1)) {
+    if (!isObject(cur[p])) cur[p] = {}
+    cur = cur[p]
+  }
+  cur[parts[parts.length - 1]] = value
+}
+
+function getDotted (root: Json, key: string): unknown {
+  return key.split('.').reduce<unknown>((v, p) => isObject(v) ? v[p] : undefined, root)
+}
+
+export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[], database?: boolean } = {}): Promise<PrinterHandle> {
   const handle: PrinterHandle = {
     state: { status, failOn: {}, results: {}, answers: {}, answer: {}, components: options.components },
     gcode: [],
@@ -101,6 +124,7 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     say: (...lines: string[]) => {
       for (const line of lines) pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_gcode_response', params: [line] }))
     },
+    database: {},
     notify: (method: string, ...params: unknown[]) => {
       pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method, params }))
     },
@@ -112,6 +136,30 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     online: () => {
       handle.state.offline = false
     }
+  }
+  const written = (namespace: string): Json => (handle.database[namespace] ??= {})
+
+  if (options.database) {
+    await page.route(new RegExp(`:${MOCK_PORT}/server/database/item`), async route => {
+      const request = route.request()
+      if (request.method() === 'POST') {
+        const body = request.postDataJSON() as Json
+        handle.calls.push({ method: 'server.database.post_item', params: body })
+        setDotted(written(body.namespace), body.key, body.value)
+        await route.fulfill({ json: { result: { namespace: body.namespace, key: body.key, value: body.value } } })
+        return
+      }
+      const namespace = new URL(request.url()).searchParams.get('namespace') ?? ''
+      const response = await route.fetch()
+      const read = await response.json().catch(() => ({})) as Json
+      if (!response.ok() || !isObject(read.result)) {
+        await route.fulfill({ response })
+        return
+      }
+      const mine = handle.database[namespace]
+      const value = mine ? overlay(isObject(read.result.value) ? read.result.value : {}, mine) : read.result.value
+      await route.fulfill({ response, json: { result: { ...read.result, value } } })
+    })
   }
   let eventTime = 0
   const asked = new Map<unknown, string>()
@@ -143,6 +191,19 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
         ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: 400, message: failure } }))
         return
       }
+      if (options.database && msg.method === 'server.database.post_item') {
+        const { namespace, key, value } = msg.params ?? {}
+        setDotted(written(namespace), key, value)
+        ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { namespace, key, value } }))
+        return
+      }
+      if (options.database && msg.method === 'server.database.get_item' && msg.params?.key) {
+        const mine = getDotted(handle.database[msg.params.namespace] ?? {}, msg.params.key)
+        if (mine !== undefined) {
+          ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { namespace: msg.params.namespace, key: msg.params.key, value: mine } }))
+          return
+        }
+      }
       if (msg.method === 'printer.gcode.script') {
         handle.gcode.push(String(msg.params?.script ?? ''))
         ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: 'ok' }))
@@ -160,10 +221,15 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
       if (infoRequests.has(msg.id) && handle.state.components && isObject(msg.result)) {
         msg.result.components = handle.state.components
       }
+      const without = handle.state.without ?? []
+      if (without.length && method === 'printer.objects.list' && isObject(msg.result) && Array.isArray(msg.result.objects)) {
+        msg.result.objects = msg.result.objects.filter((o: string) => !without.includes(o))
+      }
+      const leaveOut = (s: Json) => { for (const o of without) delete s[o]; return s }
       if (isObject(msg.result) && isObject(msg.result.status)) {
-        msg.result.status = overlay(msg.result.status, over)
+        msg.result.status = leaveOut(overlay(msg.result.status, over))
       } else if (msg.method === 'notify_status_update' && Array.isArray(msg.params) && isObject(msg.params[0])) {
-        msg.params[0] = overlayUpdate(msg.params[0], over)
+        msg.params[0] = leaveOut(overlayUpdate(msg.params[0], over))
       }
       ws.send(JSON.stringify(msg))
     })

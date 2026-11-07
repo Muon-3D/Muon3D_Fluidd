@@ -66,6 +66,13 @@ export const actions: ActionTree<MacrosState, RootState> = {
     SocketActions.serverWrite(Globals.MOONRAKER_DB.fluidd.ROOTS.macros.name + '.categories', state.categories)
   },
 
+  saveCategoryOrder ({ commit, state }, ids: string[]) {
+    commit('setCategoryOrder', ids)
+
+    // Save to moonraker.
+    SocketActions.serverWrite(Globals.MOONRAKER_DB.fluidd.ROOTS.macros.name + '.categories', state.categories)
+  },
+
   editCategory ({ commit, state }, payload: MacroCategory) {
     commit('setEditCategory', payload)
 

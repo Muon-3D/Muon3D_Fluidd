@@ -10,6 +10,8 @@ import { CONTENTS_ORDER, flattenGlass } from './glass-material'
 import { createRenderGate } from './render-gate'
 import { createFrameLoop } from './frame-loop'
 import { FrameWatch, wantsCheapGlass } from './glass-cost'
+import { glassChoice } from './render-options'
+import { liveRenderOptions, modelSettings } from './device-settings'
 import { placeAccurate } from './accurate/klipper-map'
 import type { AccurateRig } from './accurate/rig'
 import { LEAN_LIMIT, NO_LEAN, PART_IDS, leanToward, partMeshes, partOf, type Lean, type PartId } from './parts'
@@ -367,8 +369,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   const key = new THREE.DirectionalLight(0xffffff, 2.55)
   key.position.set(-520, 780, 640)
-  key.castShadow = true
-  key.shadow.mapSize.set(1024, 1024)
+  // Settings › G-code preview and 3D › Detail: Low draws without the shadow.
+  const detail = liveRenderOptions(canvas.clientWidth)
+  key.castShadow = detail.shadows
+  key.shadow.mapSize.set(detail.shadowMapSize, detail.shadowMapSize)
   Object.assign(key.shadow.camera, { near: 20, far: 2600, left: -420, right: 420, top: 480, bottom: -180 })
   key.shadow.bias = -0.0006
   key.shadow.normalBias = 1.35
@@ -388,6 +392,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   ground.rotation.x = -Math.PI / 2
   ground.position.y = -0.4
   ground.receiveShadow = true
+  ground.visible = detail.shadows
   scene.add(ground)
 
   // The part, the lines no file drew, and the line being laid now, all in the filament's colour.
@@ -726,10 +731,11 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** Sizes the marks: a new one swells and settles. Whether one still is. */
   function pulseTaps (now: number): boolean {
     let pulsing = false
+    const animate = liveRenderOptions(width).animate
     taps.forEach((t, i) => {
       const age = now - (tapSeen.get(tapKey(t)) ?? 0)
-      const swell = age < PULSE_MS ? 1 + 1.4 * Math.sin(Math.PI * age / PULSE_MS) : 1
-      if (age < PULSE_MS) pulsing = true
+      const swell = age < PULSE_MS && animate ? 1 + 1.4 * Math.sin(Math.PI * age / PULSE_MS) : 1
+      if (age < PULSE_MS && animate) pulsing = true
       tapMatrix.makeScale(swell, swell, swell).setPosition(t.x, t.y, 0)
       tapMarks.setMatrixAt(i, tapMatrix)
     })
@@ -756,7 +762,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       loop.invalidate()
       return
     }
-    const d = 0.25
+    const d = liveRenderOptions(width).animate ? 0.25 : 1
     view.theta += (view.goalTheta - view.theta) * d
     view.phi += (view.goalPhi - view.phi) * d
     if (dragging) aimLean()
@@ -961,7 +967,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     if (!w || !h || (w === width && h === height)) return
     width = w
     height = h
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, w < 600 ? 1.5 : 2))
+    renderer.setPixelRatio(liveRenderOptions(w).pixelRatio)
     renderer.setSize(w, h, false)
     restyle()
     invalidate()
@@ -997,10 +1003,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       disposeTree(old.root)
     }
     if (next.kind === 'accurate') {
-      const forced = glassOverride()
-      if (forced) autoCheap = false
-      if (forced === 'cheap') cheapenGlass('forced')
-      else if (forced !== 'real' && wantsCheapGlass({
+      const glass = glassChoice(modelSettings.glass, glassOverride())
+      if (glass !== 'auto') autoCheap = false
+      if (glass === 'plain') cheapenGlass('forced')
+      else if (glass === 'auto' && wantsCheapGlass({
         width: canvas.clientWidth || window.innerWidth,
         cores: navigator.hardwareConcurrency,
         memory: (navigator as unknown as { deviceMemory?: number }).deviceMemory,
@@ -1034,7 +1040,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   /** The accurate model if the GLB loads, the simple one if it can't (or if the page asks for it). */
   async function chooseModel () {
-    if (!wantsSimpleModel()) {
+    const options = liveRenderOptions(canvas.clientWidth)
+    if (!wantsSimpleModel() && options.model === 'accurate') {
       try {
         // Behind dynamic imports, so neither the loader nor the 3 MB asset is in the first-load bundle.
         const [{ loadAccurateModel }, { buildAccurateRig }, { default: url }] = await Promise.all([
@@ -1044,6 +1051,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         ])
         let timer = 0
         const timeout = new Promise<never>((_resolve, reject) => {
+          if (!options.loadTimeout) return
           timer = window.setTimeout(() => reject(new Error('the accurate M1 took too long to load')), ACCURATE_TIMEOUT_MS)
         })
         const loading = loadAccurateModel(url)
