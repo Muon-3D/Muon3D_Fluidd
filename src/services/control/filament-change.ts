@@ -58,11 +58,12 @@ function blocked (state: FilamentState): string | null {
 }
 
 /** "Change filament": mid-print M600 (pauses the print) after a confirm; idle, the material panel. */
-export function changeFilamentPlan (state: FilamentState, change: FilamentMacro | null, temp: number | null): FilamentPlan {
+export function changeFilamentPlan (state: FilamentState, change: FilamentMacro | null, temp: number | null, tooHot: string | null = null): FilamentPlan {
   const why = blocked(state)
   if (why) return { kind: 'none', reason: why }
   if (!state.printing) return { kind: 'panel' }
   if (!change) return { kind: 'none', reason: 'This printer has no filament change macro (M600).' }
+  if (tooHot) return { kind: 'none', reason: tooHot }
   return {
     kind: 'pause',
     command: withTemp(change, temp),
@@ -76,12 +77,13 @@ export function changeFilamentPlan (state: FilamentState, change: FilamentMacro 
 }
 
 /** Load or Unload: never mid-print, paused, prompting or busy; otherwise sent at once. */
-export function loadUnloadPlan (state: FilamentState, kind: 'load' | 'unload', macro: FilamentMacro | null, temp: number | null): FilamentPlan {
+export function loadUnloadPlan (state: FilamentState, kind: 'load' | 'unload', macro: FilamentMacro | null, temp: number | null, tooHot: string | null = null): FilamentPlan {
   const why = blocked(state)
   if (why) return { kind: 'none', reason: why }
   if (state.printing) return { kind: 'none', reason: 'Not while printing.' }
   if (state.running) return { kind: 'none', reason: 'Wait until the printer finishes what it\'s doing.' }
   if (!macro) return { kind: 'none', reason: `This printer has no ${kind === 'load' ? 'LOAD_FILAMENT' : 'UNLOAD_FILAMENT'} macro.` }
+  if (tooHot) return { kind: 'none', reason: tooHot }
   return { kind, command: withTemp(macro, temp) }
 }
 
