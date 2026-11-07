@@ -380,14 +380,17 @@ test.describe('Wi-Fi: every change asks first and sends the right call', () => {
     expect(JSON.parse(calls[0].body)).toMatchObject({ ssid: 'Guest' })
   })
 
-  test('joining a saved network sends POST /wifi/up for it, only after Proceed', async ({ page, open }) => {
+  test('joining a saved network sends POST /wifi/connect with no password, never /wifi/up, only after Proceed', async ({ page, open }) => {
     await usePrinter(page)
+    await page.route('**/server/aux/wifi/connect', route => route.fulfill({ json: {} }))
     const calls = watchCalls(page)
     await open('/wifi')
     await page.getByTestId('wifi-networks').locator('[data-ssid="Workshop-2G"]').getByRole('button', { name: 'Connect' }).click()
     expect(calls).toEqual([])
     await page.getByTestId('wifi-proceed').click()
-    await expect.poll(() => calls.map(c => `${c.method} ${c.path}${c.query}`)).toEqual(['POST /wifi/up?ssid=Workshop-2G'])
+    await expect.poll(() => calls.map(c => `${c.method} ${c.path}${c.query}`)).toEqual(['POST /wifi/connect'])
+    const body = JSON.parse(calls[0].body)
+    expect(body).toEqual({ ssid: 'Workshop-2G' })
   })
 
   test('the hotspot switch turns it on with POST /wifi/ap/up (it asks first only when this page is reached over the hotspot)', async ({ page, open }) => {
@@ -407,6 +410,122 @@ test.describe('Wi-Fi: every change asks first and sends the right call', () => {
     await expect(row.getByTestId('wifi-detail')).toContainText(/channel 6 · 130 Mbps · 2437 MHz/)
     const [forget, connect] = [await row.getByTestId('wifi-forget').boundingBox(), await row.getByRole('button', { name: 'Connect' }).boundingBox()]
     expect(connect!.x - (forget!.x + forget!.width)).toBeGreaterThanOrEqual(12)
+  })
+})
+
+const PANEL_NOTE = "Do this at the printer's screen"
+const PANEL_ONLY = { error: { code: 403, message: 'panel_only' } }
+
+test.describe('Wi-Fi on a printer with MuonOS #492 (KAN-1799): panel-only routes', () => {
+  // The Aux API is plain HTTP, so these are answered with page.route, not usePrinter's websocket answers.
+  const hotspotOn = (page: import('@playwright/test').Page) => page.route('**/server/aux/wifi/ap/device/status', route => route.fulfill({ json: { device: 'ap0', device_type: 'wifi', state: 'connected', connection: 'ap0-con' } }))
+
+  test('Disconnect that the printer refuses says so, and the button gives way to the note', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/wifi/disconnect', route => route.fulfill({ status: 403, json: PANEL_ONLY }))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await page.getByTestId('wifi-connected').getByTestId('wifi-disconnect').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Disconnect', exact: true }).click()
+    await expect.poll(() => calls.map(c => `${c.method} ${c.path}`)).toEqual(['POST /wifi/disconnect'])
+    await expect(page.getByText(PANEL_NOTE, { exact: false }).first()).toBeVisible()
+    await expect(page.getByTestId('wifi-disconnect-panel')).toHaveText(PANEL_NOTE)
+    await expect(page.getByTestId('wifi-disconnect')).toHaveCount(0)
+  })
+
+  test('Disconnect on a printer without #492 still sends POST /wifi/disconnect and keeps its button', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/wifi/disconnect', route => route.fulfill({ json: {} }))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await page.getByTestId('wifi-connected').getByTestId('wifi-disconnect').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Disconnect', exact: true }).click()
+    await expect.poll(() => calls.map(c => `${c.method} ${c.path}`)).toEqual(['POST /wifi/disconnect'])
+    await expect(page.getByTestId('wifi-disconnect')).toBeVisible()
+    await expect(page.getByTestId('wifi-disconnect-panel')).toHaveCount(0)
+  })
+
+  test('turning the hotspot off that the printer refuses says so, and the switch gives way to the note', async ({ page, open }) => {
+    await usePrinter(page)
+    await hotspotOn(page)
+    await page.route('**/server/aux/wifi/ap/down', route => route.fulfill({ status: 403, json: PANEL_ONLY }))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await expect(page.getByTestId('hotspot-state')).toHaveText('On')
+    await page.getByTestId('hotspot-switch').click()
+    const proceed = page.getByRole('dialog').getByRole('button', { name: /proceed/i })
+    if (await proceed.isVisible().catch(() => false)) await proceed.click()
+    await expect.poll(() => calls.map(c => `${c.method} ${c.path}`)).toEqual(['POST /wifi/ap/down'])
+    await expect(page.getByTestId('hotspot-off-panel')).toHaveText(PANEL_NOTE)
+    await expect(page.getByTestId('hotspot-switch')).toHaveCount(0)
+    await expect(page.getByText(PANEL_NOTE, { exact: false }).first()).toBeVisible()
+  })
+
+  async function editHotspot (page: import('@playwright/test').Page) {
+    await page.getByTestId('hotspot-edit').click()
+    await page.getByTestId('hotspot-card').locator('input[type=password]').fill('a-new-passphrase')
+    await page.getByTestId('hotspot-apply').click()
+    const proceed = page.getByRole('dialog').getByRole('button', { name: /proceed/i })
+    if (await proceed.isVisible().catch(() => false)) await proceed.click()
+  }
+
+  test('changing the hotspot falls back from a refused /wifi/ap/modify to POST /wifi/ap/change, and says to confirm at the printer', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/wifi/ap/modify', route => route.fulfill({ status: 403, json: PANEL_ONLY }))
+    await page.route('**/server/aux/wifi/ap/change', route => route.fulfill({ status: 202, json: { challenge_id: 'c1', expires_at: 1 } }))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await expect(page.getByTestId('hotspot-state')).toBeVisible()
+    await editHotspot(page)
+    await expect.poll(() => calls.map(c => `${c.method} ${c.path}`)).toEqual(['POST /wifi/ap/modify', 'POST /wifi/ap/change'])
+    expect(JSON.parse(calls[1].body)).toEqual({ password: 'a-new-passphrase' })
+    await expect(page.getByText('Press the knob on the printer to confirm', { exact: false })).toBeVisible()
+  })
+
+  test('a refused /wifi/connect (strict mode) shows the printer-screen note', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/wifi/connect', route => route.fulfill({ status: 403, json: PANEL_ONLY }))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await page.getByTestId('wifi-networks').locator('[data-ssid="Workshop-2G"]').getByRole('button', { name: 'Connect' }).click()
+    await page.getByTestId('wifi-proceed').click()
+    await expect.poll(() => calls.map(c => c.path)).toEqual(['/wifi/connect'])
+    await expect(page.getByText(PANEL_NOTE, { exact: false }).first()).toBeVisible()
+  })
+
+  test('a refused /wifi/ap/up (strict mode) shows the printer-screen note', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/wifi/ap/up', route => route.fulfill({ status: 403, json: PANEL_ONLY }))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await expect(page.getByTestId('hotspot-state')).toHaveText('Off')
+    await page.getByTestId('hotspot-switch').click()
+    await expect.poll(() => calls.map(c => c.path)).toEqual(['/wifi/ap/up'])
+    await expect(page.getByText(PANEL_NOTE, { exact: false }).first()).toBeVisible()
+  })
+
+  test('a refused /wifi/ap/change shows the note, never a silent failure', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/wifi/ap/modify', route => route.fulfill({ status: 403, json: PANEL_ONLY }))
+    await page.route('**/server/aux/wifi/ap/change', route => route.fulfill({ status: 403, json: PANEL_ONLY }))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await expect(page.getByTestId('hotspot-state')).toBeVisible()
+    await editHotspot(page)
+    await expect.poll(() => calls.map(c => c.path)).toEqual(['/wifi/ap/modify', '/wifi/ap/change'])
+    await expect(page.getByText(PANEL_NOTE, { exact: false }).first()).toBeVisible()
+  })
+
+  test('changing the hotspot on a printer without #492 still sends only POST /wifi/ap/modify', async ({ page, open }) => {
+    await usePrinter(page)
+    await page.route('**/server/aux/wifi/ap/modify', route => route.fulfill({ json: {} }))
+    await page.route('**/server/aux/wifi/ap/up', route => route.fulfill({ json: {} }))
+    const calls = watchCalls(page)
+    await open('/wifi')
+    await expect(page.getByTestId('hotspot-state')).toBeVisible()
+    await editHotspot(page)
+    await expect.poll(() => calls.map(c => c.path)).toContain('/wifi/ap/modify')
+    expect(calls.map(c => c.path)).not.toContain('/wifi/ap/change')
   })
 })
 
