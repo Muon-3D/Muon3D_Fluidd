@@ -20,6 +20,41 @@
 
     <account-plan-summary />
 
+    <section
+      v-if="!paymentsOpen"
+      class="acct-tile"
+      aria-label="Your plan"
+      data-tid="plan-tile"
+    >
+      <div class="acct-tile__head">
+        <frame-icon name="card" />
+        <span data-tid="plan-tile-name">{{ planLabel || 'Free' }}</span>
+      </div>
+      <div class="acct-glist plan-tile__rows">
+        <div
+          v-for="row in tileRows"
+          :key="row.label"
+          class="acct-grow"
+          :data-tid="`plan-tile-${row.id}`"
+        >
+          <span class="acct-grow__text"><b>{{ row.label }}</b></span>
+          <span class="acct-grow__value">{{ row.value }}</span>
+        </div>
+      </div>
+    </section>
+    <p
+      v-if="!paymentsOpen"
+      class="acct-callout"
+      role="note"
+      data-tid="plan-closed"
+    >
+      <frame-icon
+        name="info"
+        small
+      />
+      <span>Paid plans open soon. Nothing here can charge you yet.</span>
+    </p>
+
     <p
       v-if="reading"
       class="acct-muted plan-reading"
@@ -45,7 +80,7 @@
           <template v-if="limit === 'reached' && topUp > 0">Your {{ fmt(topUp) }} credits are in use{{ usage && usage.ending ? '' : ' until then' }}.</template>
         </span>
         <button
-          v-if="limit === 'reached' && topUp === 0"
+          v-if="paymentsOpen && limit === 'reached' && topUp === 0"
           type="button"
           class="lib-btn lib-btn--sm"
           :disabled="!paymentsOpen"
@@ -110,7 +145,10 @@
           class="plan-usage__credits"
           data-tid="plan-topup"
         ><b>{{ fmt(topUp) }} credits</b> for after your limit</span>
-        <div class="acct-actions">
+        <div
+          v-if="paymentsOpen"
+          class="acct-actions"
+        >
           <button
             type="button"
             class="lib-btn"
@@ -124,6 +162,7 @@
 
       <!-- Plans side by side: the same rows on each, and only what costs us to run. -->
       <section
+        v-if="paymentsOpen"
         id="plan-plans"
         class="lib-surface acct-card"
         aria-labelledby="plan-plans-heading"
@@ -241,7 +280,7 @@
 
       <!-- Credits: a top-up for after the limit, offered, never pushed. -->
       <section
-        v-if="packs.length"
+        v-if="paymentsOpen && packs.length"
         id="plan-credits"
         class="lib-surface acct-card"
         aria-labelledby="plan-credits-heading"
@@ -338,6 +377,8 @@ import {
   type CreditAccount, type CreditHistoryRow, type CreditsUnavailable, type HistoryIcon, type LimitState, type PlanRow, type UsageWindow
 } from '@/services/account/credits'
 import { whenText } from '@/services/account/model'
+import { bytesText } from '@/services/library/format'
+import { libraryState, refreshLibrary, watchLibraryAccount } from '@/services/library/store'
 import AcctMore from './AcctMore.vue'
 import AccountPlanSummary from './AccountPlanSummary.vue'
 
@@ -351,7 +392,8 @@ type Period = 'monthly' | 'yearly'
  * `GET /v1/create/plan`. Every number on it comes from the model service:
  * the plans, packs and costs from its catalogue (`GET /v1/create/catalogue`,
  * KAN-1155), the usage from the account. No button takes money until
- * `paymentsOpen`.
+ * `paymentsOpen`; until then none of the plans, packs or change buttons
+ * show, only the plan, what it includes, and that nothing can charge you.
  */
 @Component({ components: { AcctMore, AccountPlanSummary } })
 export default class AccountPlan extends Vue {
@@ -366,6 +408,10 @@ export default class AccountPlan extends Vue {
   catalogueMissing = false
 
   async created () {
+    if (!this.paymentsOpen) {
+      watchLibraryAccount()
+      refreshLibrary().catch(() => {})
+    }
     loadCatalogue().then(read => { this.catalogueMissing = !read })
     try {
       this.account = await loadCredits()
@@ -379,6 +425,15 @@ export default class AccountPlan extends Vue {
 
   get paymentsOpen (): boolean {
     return CREDITS_CATALOGUE.paymentsOpen
+  }
+
+  /** What the plan includes, with the account's own numbers where Control has them. */
+  get tileRows (): Array<{ id: string, label: string, value: string }> {
+    const rows = [{ id: 'printers', label: 'Printers', value: 'Unlimited' }]
+    if (libraryState.account && libraryState.enabled && libraryState.usedBytes !== null && libraryState.quotaBytes) {
+      rows.push({ id: 'storage', label: 'Library storage', value: `${bytesText(libraryState.usedBytes)} of ${bytesText(libraryState.quotaBytes)}` })
+    }
+    return rows
   }
 
   get plans (): CataloguePlan[] {

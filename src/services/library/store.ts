@@ -20,6 +20,7 @@ import {
   type Preferences,
   type PreferencesPatch,
   type PrintedEvent,
+  type StorageKind,
   type Version
 } from './api'
 import { modelsAssertion } from './assertion'
@@ -41,6 +42,8 @@ export interface LibraryState {
   withdrawn: boolean;
   usedBytes: number | null;
   quotaBytes: number | null;
+  /** The used space split by kind, only when the service sends it. */
+  usedByKind: Partial<Record<StorageKind, number>> | null;
   preferences: Preferences | null;
   items: Record<string, LibraryItem>;
   rev: number;
@@ -62,6 +65,7 @@ function blank (account: string | null): LibraryState {
     withdrawn: false,
     usedBytes: null,
     quotaBytes: null,
+    usedByKind: null,
     preferences: null,
     items: {},
     rev: 0,
@@ -137,6 +141,17 @@ function takeInfo (info: LibraryInfo) {
   libraryState.purgeAfter = info.account?.purge_after ?? null
   libraryState.usedBytes = typeof info.used_bytes === 'number' ? info.used_bytes : null
   libraryState.quotaBytes = typeof info.quota_bytes === 'number' ? info.quota_bytes : null
+  libraryState.usedByKind = byKind(info.used_by_kind)
+}
+
+function byKind (split: unknown): Partial<Record<StorageKind, number>> | null {
+  if (!split || typeof split !== 'object') return null
+  const out: Partial<Record<StorageKind, number>> = {}
+  for (const kind of ['uploads', 'slices', 'designs'] as StorageKind[]) {
+    const bytes = (split as Record<string, unknown>)[kind]
+    if (typeof bytes === 'number' && Number.isFinite(bytes) && bytes >= 0) out[kind] = bytes
+  }
+  return Object.keys(out).length ? out : null
 }
 
 const signedInAccount = (): string | null => cloudState.account?.id ?? null
