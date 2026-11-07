@@ -346,14 +346,12 @@ export const appInit = async (apiConfig?: ApiConfig, hostConfig?: HostConfig, op
   // After a switch, a page of the old printer becomes the same page of this
   // one: the address always names the printer shown.
   const nextRoute = routeAfterInit(router.currentRoute, { slug: activeSlug(), isActive: isActiveSlug })
-  // A lazy page can take a while to load, so the address may not have changed
-  // yet; the correction below waits for it.
-  const moved: Promise<unknown> = nextRoute ? router.replace(nextRoute).catch(() => {}) : Promise.resolve()
+  if (nextRoute) router.replace(nextRoute).catch(() => {})
 
   // Learn the printer's own slug (its name and serial suffix), and correct an
   // address made before it was known, such as one from a saved IP.
   if (apiConnected && apiAuthenticated) {
-    learnActiveIdentity().then(() => moved).then(() => correctAddress(router)).catch(() => {})
+    learnActiveIdentity().then(() => correctAddress(router)).catch(() => {})
   }
 
   return { apiConfig, hostConfig, apiConnected, apiAuthenticated }
