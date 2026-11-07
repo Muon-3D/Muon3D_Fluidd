@@ -316,7 +316,11 @@
             <span
               class="mpage__avatar"
               aria-hidden="true"
-            >{{ initials }}</span>
+              data-tid="library-print-maker-face"
+            ><photo-face
+              :photo="makerPhoto"
+              :letter="initials"
+            /></span>
             <span class="mpage__who-text">
               <strong>{{ makerName }}</strong>
               <span
@@ -372,6 +376,8 @@
 
 <script lang="ts">
 import { Component, Mixins, Prop } from 'vue-property-decorator'
+import PhotoFace from '@/components/account/profile/PhotoFace.vue'
+import { publicAvatarUrl } from '@/services/account/avatar'
 import LibraryShelf from './LibraryShelf.vue'
 import LibraryState from './LibraryState.vue'
 import LibraryPublicationMixin from '@/mixins/library-publication'
@@ -388,7 +394,7 @@ interface Related { cards: ShelfCard[], loading: boolean, error: string }
  * people made from it and the remixes built on it, as shelves. What it does
  * with the print is mixins/library-publication.ts, shared with the quick look.
  */
-@Component({ components: { LibraryShelf, LibraryState } })
+@Component({ components: { LibraryShelf, LibraryState, PhotoFace } })
 export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
   /** The card being read for Print (MuonLibrary's), for the Print button. */
   @Prop({ type: String, default: '' }) readonly printing!: string
@@ -456,6 +462,11 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
 
   get makerHandle (): string | null {
     return this.publication?.creator?.handle ?? this.card.handle ?? null
+  }
+
+  /** The maker's public photo; it 404s while their profile isn't visible, and the initials stand in. */
+  get makerPhoto (): string | null {
+    return publicAvatarUrl(this.publication?.creator?.avatar_url)
   }
 
   get initials (): string {
@@ -596,6 +607,7 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
     place-items: center;
     width: 48px;
     height: 48px;
+    overflow: hidden;
     border-radius: 50%;
     background: var(--m3d-warning, #f2a33a);
     color: #111;
