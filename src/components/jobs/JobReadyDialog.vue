@@ -184,7 +184,7 @@ export default class JobReadyDialog extends Mixins(JobsMixin) {
 
   get checks (): ReadyCheck[] {
     if (!this.job) return []
-    return readyChecks(this.job.file, this.job.filename, this.material?.name ?? null, this.printerName, this.busy)
+    return readyChecks(this.job.file, this.job.filename, this.loadedFilament, this.printerName, this.busy)
   }
 
   get printingTitle (): string {

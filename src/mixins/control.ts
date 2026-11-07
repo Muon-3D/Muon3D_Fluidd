@@ -9,6 +9,7 @@ import {
   fanCommand,
   fanPercent,
   fileFilament,
+  filamentSensed,
   lightsOutput,
   loadedChoice,
   materialChoices,
@@ -29,6 +30,7 @@ import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
 import { handMoveSettling, headStatus, lockHandMove, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
 import { EventBus } from '@/eventBus'
+import type { LoadedFilament } from '@/services/jobs/model'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
 
@@ -166,6 +168,27 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     const choice = loadedChoice(this.materialChoices, name)
     const colour = this.loadedColour
     return choice && colour ? { ...choice, colour } : choice
+  }
+
+  /**
+   * Whether filament is in the printer, from a trustworthy filament sensor
+   * (a switch sensor, switched on; see filamentSensed): null when none
+   * reports, where only what someone said is loaded can tell.
+   */
+  get filamentSensed (): boolean | null {
+    return filamentSensed(this.$store.state.printer.printer)
+  }
+
+  /**
+   * Whether the printer has a material loaded, and which: the filament sensor
+   * says whether there is any, the recorded material says which. With no
+   * sensor reporting, a recorded material is what there is to go on. A
+   * material chosen as a preset (the heater targets) says nothing about this.
+   */
+  get loadedFilament (): LoadedFilament {
+    const name = this.loadedMaterial?.name ?? null
+    const sensed = this.filamentSensed
+    return { loaded: sensed ?? !!name, name }
   }
 
   /**
