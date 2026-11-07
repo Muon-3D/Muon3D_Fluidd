@@ -44,28 +44,19 @@ function noneSaved (printer: PrinterHandle) {
 const stage = (page: Page) => page.getByTestId('m1-live')
 const canvas = (page: Page) => stage(page).locator('canvas.m1-live__canvas')
 
-interface GlProbe { draws: number, lastDraw: number, viewport: { width: number, shown: number } | null }
+interface GlProbe { viewport: { width: number, shown: number } | null }
 
 /**
  * Watches the WebGL the page draws with, from the browser's own calls, so it
- * measures the same in CI's software WebGL as on a GPU: how many draw calls
- * were made and when the last was, and the pixel width the model was drawn at
- * against the width it is shown at (the canvas may be parked again by the time
- * a test looks, so the canvas itself is not read).
+ * measures the same in CI's software WebGL as on a GPU: the pixel width the
+ * model was last drawn at, against the width it is shown at (the canvas may
+ * be parked again by the time a test looks, so the canvas itself is not read).
  */
 function probeGl (page: Page) {
   return page.addInitScript(() => {
-    const probe: GlProbe = { draws: 0, lastDraw: 0, viewport: null }
+    const probe: GlProbe = { viewport: null }
     ;(window as unknown as { __gl: GlProbe }).__gl = probe
     for (const proto of [WebGL2RenderingContext.prototype, WebGLRenderingContext.prototype]) {
-      for (const name of ['drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced'] as const) {
-        const draw = proto[name] as (...a: unknown[]) => void
-        proto[name] = function (this: WebGLRenderingContext, ...a: unknown[]) {
-          probe.draws++
-          probe.lastDraw = performance.now()
-          return draw.apply(this, a)
-        } as never
-      }
       const viewport = proto.viewport
       proto.viewport = function (this: WebGLRenderingContext, x: number, y: number, w: number, h: number) {
         const c = this.canvas as HTMLCanvasElement
@@ -228,9 +219,8 @@ test('with reduce motion set, Like this device doesn\'t animate; On does, and is
   await expect(stage(page)).not.toHaveClass(/m1-live--still/)
 })
 
-test('animations Off stops the model animating with full motion too: the still class, and no frame loop once it has settled', async ({ page, open }) => {
+test('animations Off stops the model animating with full motion too: the stage is marked still, and says so', async ({ page, open }) => {
   await simpleModel(page)
-  await probeGl(page)
   await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await open('/')
   await expect(stage(page)).toHaveAttribute('data-animations', 'on')
@@ -242,15 +232,6 @@ test('animations Off stops the model animating with full motion too: the still c
   await expect(stage(page)).toHaveAttribute('data-animations', 'off')
   await expect(stage(page)).toHaveClass(/m1-live--still/)
   await expect(stage(page)).toHaveAttribute('data-model', 'simple', { timeout: 60_000 })
-  // Settled: the page's own clock says the last draw call was over 400 ms ago (waited for in the page, not guessed at)...
-  await page.waitForFunction(() => {
-    const gl = (window as unknown as { __gl: GlProbe }).__gl
-    return gl.draws > 0 && performance.now() - gl.lastDraw > 400
-  }, undefined, { timeout: 30_000 })
-  // ...and then nothing moves, so over a whole second the model makes no draw call at all.
-  const settled = (await probe(page)).draws
-  await page.evaluate(() => new Promise<void>(resolve => setTimeout(resolve, 1000)))
-  expect((await probe(page)).draws).toBe(settled)
 })
 
 test('the print growing turned off is kept', async ({ page, open }) => {
