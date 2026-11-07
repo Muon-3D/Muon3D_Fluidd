@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
-  ageText, cleanHandle, handleChangeableAt, handleProblem, handleStatusText, libraryUpdating, makerSince,
+  ageText, cleanHandle, photoRefusal, photoRemoveEnabled, handleChangeableAt, handleProblem, handleStatusText, libraryUpdating, makerSince,
   missingForPublic, pageAddress, pageUrl, photoProblem, underReview, PROJECTION_WINDOW_MS
 } from '../profile'
 import type { CommunityIdentity, CommunityProfile } from '../community'
@@ -52,7 +52,7 @@ describe('what stops a page going public', () => {
   it('says public pages are for adults', () => expect(missingForPublic(identity({ declared_age: 15, can_public: false }), profile())).toMatch(/18/))
   it('asks for a username', () => expect(missingForPublic(identity(), profile({ handle: null }))).toMatch(/username/))
   it('asks to choose Public', () => expect(missingForPublic(identity({ identity_public: false }), profile())).toMatch(/Public/))
-  it('says the page is off, without turning it on', () => expect(missingForPublic(identity(), profile({ page_on: false }))).toMatch(/switched off/))
+  it('says the page is off, without turning it on', () => expect(missingForPublic(identity(), profile({ page_on: false }))).toMatch(/isn't on yet/))
 })
 
 describe('the Library catching up', () => {
@@ -67,6 +67,10 @@ describe('the Library catching up', () => {
   it('is updating while privacy differs, and stops when it matches', () => {
     expect(libraryUpdating({ identityPublic: true, since }, profile({ identity_public: false }), since + 1000)).toBe(true)
     expect(libraryUpdating({ identityPublic: true, since }, profile({ identity_public: true }), since + 1000)).toBe(false)
+  })
+  it('does not wait for a name a private profile never reports', () => {
+    const private_ = profile({ identity_public: false, public_name: null })
+    expect(libraryUpdating({ name: 'Jack Smith', since }, private_, since + 1000)).toBe(false)
   })
   it('gives up after 2 minutes', () => {
     expect(libraryUpdating({ name: 'New', since }, profile(), since + PROJECTION_WINDOW_MS - 1)).toBe(true)
@@ -85,6 +89,18 @@ describe('small words', () => {
     expect(ageText(null)).toBeNull()
   })
   it('says the month somebody became a maker', () => expect(makerSince(Date.parse('2026-10-14T12:00:00Z') / 1000)).toBe('Oct 2026'))
+  it('says what the photo refusals mean', () => {
+    expect(photoRefusal('avatar_too_large')).toMatch(/4 MB/)
+    expect(photoRefusal('avatar_format')).toMatch(/JPEG, PNG or WebP/)
+    expect(photoRefusal('avatar_invalid')).toMatch(/could not be read/)
+    expect(photoRefusal('other')).toBeNull()
+  })
+  it('keeps photo Remove off until the service has the route', () => {
+    expect(photoRemoveEnabled()).toBe(false)
+    vi.stubEnv('VITE_PROFILE_PHOTO_REMOVE', 'true')
+    expect(photoRemoveEnabled()).toBe(true)
+    vi.unstubAllEnvs()
+  })
   it('refuses a photo the service would', () => {
     expect(photoProblem({ type: 'image/gif', size: 10 })).toMatch(/JPEG, PNG or WebP/)
     expect(photoProblem({ type: 'image/png', size: 5 * 1024 * 1024 })).toMatch(/4 MB/)

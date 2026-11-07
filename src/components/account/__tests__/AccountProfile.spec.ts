@@ -72,7 +72,7 @@ describe('Account › Profile', () => {
   })
 
   it('renames through the console, then says the Library is updating', async () => {
-    const w = await open(identity(), profile())
+    const w = await open(identity({ identity_public: true }), profile({ identity_public: true }))
     await tid(w, 'profile-name-change').trigger('click')
     await tid(w, 'account-name').setValue('Jack Smith')
     await tid(w, 'account-name-save').trigger('click')
@@ -108,7 +108,7 @@ describe('Account › Profile', () => {
     await tid(w, 'profile-public').trigger('click')
     await settle()
     expect(api.saveIdentity).toHaveBeenCalledWith({ identity_public: true })
-    expect(tid(w, 'profile-public-missing').text()).toContain('switched off')
+    expect(tid(w, 'profile-public-missing').text()).toContain("isn't on yet")
     expect(tid(w, 'profile-view-page').exists()).toBe(false)
     w.destroy()
   })
@@ -180,7 +180,7 @@ describe('Account › Profile', () => {
   it('holds the change inside 30 days and says when it opens again', async () => {
     const w = await open(identity(), profile({ handle_changed_at: new Date(Date.now() - 3 * 86_400_000).toISOString() }))
     await tid(w, 'profile-username-change').trigger('click')
-    expect(tid(w, 'profile-handle-cooldown').text()).toMatch(/^You can change it again on \d+ \w+\.$/)
+    expect(tid(w, 'profile-handle-cooldown').text()).toMatch(/^Available again on \d+ \w+\.$/)
     expect(tid(w, 'community-handle').attributes('disabled')).toBe('disabled')
     expect(tid(w, 'community-claim').attributes('disabled')).toBe('disabled')
     w.destroy()
@@ -200,22 +200,113 @@ describe('Account › Profile', () => {
     w.destroy()
   })
 
-  it('uploads a photo and removes it', async () => {
-    api.uploadPhoto.mockResolvedValue(profile({ avatar_url: 'https://models.muon3d.com/v1/public/avatars/x' }))
+  async function pick (w: Wrapper<Vue>, file: File) {
+    const input = tid(w, 'profile-photo-input')
+    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
+    await input.trigger('change')
+    await settle()
+  }
+  const png = () => new File(['x'], 'me.png', { type: 'image/png' })
+
+  it('shows your photo from the authenticated route, not from avatar_url, and falls back to initials', async () => {
+    api.photo.mockResolvedValue(new Blob(['x'], { type: 'image/png' }))
+    const w = await open(identity(), profile({ avatar_url: null }))
+    expect(api.photo).toHaveBeenCalled()
+    expect(tid(w, 'profile-tile-photo').find('img').exists()).toBe(true)
+    w.destroy()
+    api.photo.mockRejectedValue(new Error('none'))
+    const bare = await open()
+    expect(tid(bare, 'profile-tile-photo').find('img').exists()).toBe(false)
+    expect(tid(bare, 'profile-tile-photo').text()).toBe('J')
+    bare.destroy()
+  })
+
+  it('shows an uploaded photo at once, even when the service sends no avatar_url or the read fails', async () => {
+    api.photo.mockRejectedValue(new Error('none'))
+    api.uploadPhoto.mockResolvedValue(profile())
+    const w = await open()
+    await pick(w, png())
+    expect(api.uploadPhoto).toHaveBeenCalledOnce()
+    expect(tid(w, 'profile-tile-photo').find('img').exists()).toBe(true)
+    w.destroy()
+  })
+
+  it('has no photo Remove until the service has the route', async () => {
+    api.photo.mockResolvedValue(new Blob(['x'], { type: 'image/png' }))
+    const w = await open()
+    expect(tid(w, 'profile-photo-remove').exists()).toBe(false)
+    expect(api.removePhoto).not.toHaveBeenCalled()
+    w.destroy()
+  })
+
+  it('removes the photo when the flag is on', async () => {
+    vi.stubEnv('VITE_PROFILE_PHOTO_REMOVE', 'true')
     api.photo.mockResolvedValue(new Blob(['x'], { type: 'image/png' }))
     api.removePhoto.mockResolvedValue(profile({ avatar_url: null }))
     const w = await open()
-    expect(tid(w, 'profile-photo-remove').exists()).toBe(false)
-    const input = tid(w, 'profile-photo-input')
-    Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'me.png', { type: 'image/png' })], configurable: true })
-    await input.trigger('change')
-    await settle()
-    expect(api.uploadPhoto).toHaveBeenCalledOnce()
-    expect(tid(w, 'profile-tile-photo').find('img').exists()).toBe(true)
     await tid(w, 'profile-photo-remove').trigger('click')
     await settle()
     expect(api.removePhoto).toHaveBeenCalledOnce()
     expect(tid(w, 'profile-tile-photo').find('img').exists()).toBe(false)
+    w.destroy()
+    vi.unstubAllEnvs()
+  })
+
+  it.each([
+    ['avatar_too_large', 'at most 4 MB'],
+    ['avatar_format', 'JPEG, PNG or WebP'],
+    ['avatar_invalid', 'could not be read']
+  ])('says what %s means', async (code, words) => {
+    api.photo.mockRejectedValue(new Error('none'))
+    api.uploadPhoto.mockRejectedValue(new LibraryError(code, 'raw', 400))
+    const w = await open()
+    await pick(w, png())
+    expect(tid(w, 'profile-photo-error').text()).toContain(words)
+    w.destroy()
+  })
+
+  it('does not wait on a name a private profile never reports', async () => {
+    const w = await open(identity({ identity_public: false }), profile({ identity_public: false, public_name: null }))
+    await tid(w, 'profile-name-change').trigger('click')
+    await tid(w, 'account-name').setValue('Jack Smith')
+    await tid(w, 'account-name-save').trigger('click')
+    await settle()
+    expect(rename).toHaveBeenCalledWith('Jack Smith')
+    expect(tid(w, 'profile-updating').exists()).toBe(false)
+    w.destroy()
+  })
+
+  it('leaves nothing behind when the account changes mid-edit', async () => {
+    const w = await open(identity({ identity_public: true }), profile({ identity_public: true }))
+    await tid(w, 'profile-name-change').trigger('click')
+    await tid(w, 'account-name').setValue('Half typed')
+    await tid(w, 'account-name-save').trigger('click')
+    await settle()
+    expect(tid(w, 'profile-updating').exists()).toBe(true)
+    await tid(w, 'profile-about-change').trigger('click')
+    await tid(w, 'profile-about-input').setValue('Draft about')
+    api.identity.mockResolvedValue(identity({ declared_age: null, can_community: false, can_public: false }))
+    cloudState.account = { id: 'a2', email: 'sam@example.test', name: 'Sam' } as typeof cloudState.account
+    await settle()
+    const vm = w.vm as unknown as Record<string, unknown>
+    expect(vm.editing).toBe('')
+    expect(vm.aboutDraft).toBe('')
+    expect(vm.nameDraft).toBe('')
+    expect(vm.pending).toBeNull()
+    expect(vm.saved).toBe(false)
+    expect(vm.blockedPublic).toBe(false)
+    expect(tid(w, 'profile-updating').exists()).toBe(false)
+    expect(tid(w, 'profile-saved').exists()).toBe(false)
+    expect(tid(w, 'profile-about-input').exists()).toBe(false)
+    w.destroy()
+  })
+
+  it('does not load anything once signed out', async () => {
+    const w = await open()
+    api.identity.mockClear()
+    cloudState.account = null
+    await settle()
+    expect(api.identity).not.toHaveBeenCalled()
     w.destroy()
   })
 
@@ -304,21 +395,17 @@ describe('Account › Profile', () => {
     w.destroy()
   })
 
-  it.each([
-    ['https://library.muon3d.com/library?view=discover', true],
-    ['/library?view=discover&creator=jack', true],
-    ['//evil.com', false],
-    ['https://evil.example/library', false]
-  ])('after saving, back to the Library for %s: %s', async (ret, shown) => {
+  it('tells Account a save happened (it emphasises its own Back to the Library link) and adds no second link', async () => {
     api.saveAbout.mockResolvedValue(profile({ bio: 'Hi' }))
-    const w = await open(identity(), profile(), { return: ret })
-    expect(tid(w, 'profile-return').exists()).toBe(false)
+    const w = await open(identity(), profile(), { return: '/library' })
+    expect(w.emitted('saved')).toBeUndefined()
     await tid(w, 'profile-about-change').trigger('click')
     await tid(w, 'profile-about-input').setValue('Hi')
     await tid(w, 'profile-about-save').trigger('click')
     await settle()
-    expect(tid(w, 'profile-return').exists()).toBe(shown)
-    if (shown) expect(tid(w, 'profile-return').text()).toBe('‹ Back to the Library')
+    expect(w.emitted('saved')).toHaveLength(1)
+    expect(tid(w, 'profile-return').exists()).toBe(false)
+    expect(w.text()).not.toContain('Back to the Library')
     w.destroy()
   })
 })

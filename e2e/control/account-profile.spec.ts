@@ -69,6 +69,8 @@ test('"How others see you" shows the Library card, a person on a printer and the
 })
 
 test('renaming sends PATCH /v1/me and shows "Updating the Library…" until the Library reports the new name', async ({ page, account, models }) => {
+  account.identity = { ...ADULT, identity_public: true }
+  models.community = fakeCommunity({ identity_public: true })
   await openProfile(page, account, models)
   await page.getByTestId('profile-name-change').click()
   await page.getByTestId('account-name').fill('Jack Smith')
@@ -80,6 +82,21 @@ test('renaming sends PATCH /v1/me and shows "Updating the Library…" until the 
   // The projection lands: the Library's copy of the name is now the new one.
   models.community!.public_name = 'Jack Smith'
   await expect(page.getByTestId('profile-updating')).toHaveCount(0, { timeout: 15_000 })
+})
+
+test('renaming while Private does not wait for a name the Library never reports', async ({ page, account, models }) => {
+  models.community = fakeCommunity({ public_name: null, identity_public: false })
+  await openProfile(page, account, models)
+  await page.getByTestId('profile-name-change').click()
+  await page.getByTestId('account-name').fill('Jack Smith')
+  await page.getByTestId('account-name-save').click()
+  await expect(page.getByTestId('profile-tile-name')).toHaveText('Jack Smith')
+  expect(changes(account, 'PATCH /v1/me')[0].body).toEqual({ name: 'Jack Smith' })
+  await expect(page.getByTestId('profile-saved')).toBeVisible()
+  await expect(page.getByTestId('profile-updating')).toHaveCount(0)
+  // And it stays gone: nothing is polling for a name that never comes.
+  await page.waitForTimeout(4000)
+  await expect(page.getByTestId('profile-updating')).toHaveCount(0)
 })
 
 test('the console refusing a rename is said in words, and the old name stays', async ({ page, account, models }) => {
@@ -104,6 +121,7 @@ test.describe('username', () => {
     await expect(page.getByTestId('profile-username-value')).toHaveText('@jacksmith')
     await expect(page.getByTestId('profile-tile-address')).toHaveText('@jacksmith · library.muon3d.com/@jacksmith')
     expect(models.seen).toContain('PUT /v1/community/profile/handle')
+    expect(models.communityWrites).toContainEqual({ call: 'PUT /v1/community/profile/handle', body: { handle: 'jacksmith' } })
     expect(models.community!.handle).toBe('jacksmith')
   })
 
@@ -136,7 +154,7 @@ test.describe('username', () => {
     models.community = fakeCommunity({ handle_changed_at: new Date(Date.now() - 3 * 86_400_000).toISOString() })
     await openProfile(page, account, models)
     await page.getByTestId('profile-username-change').click()
-    await expect(page.getByTestId('profile-handle-cooldown')).toContainText('You can change it again on')
+    await expect(page.getByTestId('profile-handle-cooldown')).toContainText('Available again on')
     await expect(page.getByTestId('community-handle')).toBeDisabled()
     await expect(page.getByTestId('community-claim')).toBeDisabled()
     expect(models.seen).not.toContain('PUT /v1/community/profile/handle')
@@ -156,18 +174,36 @@ test.describe('username', () => {
   })
 })
 
-test('a photo is uploaded with PUT .../avatar, shown in the tile, and removed', async ({ page, account, models }) => {
+const PNG = Buffer.from(PNG_1X1, 'base64')
+
+test('a photo is uploaded as raw bytes with PUT .../avatar and shown in the tile; there is no Remove yet', async ({ page, account, models }) => {
   await openProfile(page, account, models)
-  await expect(page.getByTestId('profile-photo-remove')).toHaveCount(0)
-  await page.getByTestId('profile-photo-input').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: Buffer.from(PNG_1X1, 'base64') })
-  await expect(page.getByTestId('profile-tile-photo').locator('img')).toBeVisible()
-  expect(models.avatar).toEqual({ type: 'image/png', bytes: Buffer.from(PNG_1X1, 'base64').length })
-  expect(models.seen).toContain('PUT /v1/community/profile/avatar')
-  await page.getByTestId('profile-photo-remove').click()
   await expect(page.getByTestId('profile-tile-photo').locator('img')).toHaveCount(0)
+  await page.getByTestId('profile-photo-input').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: PNG })
+  await expect(page.getByTestId('profile-tile-photo').locator('img')).toBeVisible()
+  expect(models.seen).toContain('PUT /v1/community/profile/avatar')
+  expect(models.avatar).toEqual({ type: 'image/png', bytes: PNG.length, body: PNG_1X1 })
+  // Your own preview is read from the authenticated route, never from avatar_url.
+  expect(models.seen).toContain('GET /v1/community/profile/avatar')
+  // The service has no way to remove a photo (KAN-1594): the button is not there, and nothing is sent.
   await expect(page.getByTestId('profile-photo-remove')).toHaveCount(0)
-  expect(models.seen).toContain('DELETE /v1/community/profile/avatar')
-  expect(models.avatar).toBeNull()
+  expect(models.seen.filter(s => s.startsWith('DELETE'))).toEqual([])
+})
+
+test('a photo is shown from the authenticated route when the profile has no avatar_url', async ({ page, account, models }) => {
+  models.community = fakeCommunity({ avatar_url: null })
+  models.avatar = { type: 'image/png', bytes: PNG.length, body: PNG_1X1 }
+  await openProfile(page, account, models)
+  await expect(page.getByTestId('profile-tile-photo').locator('img')).toBeVisible()
+})
+
+test('a replaced photo is just another PUT', async ({ page, account, models }) => {
+  await openProfile(page, account, models)
+  await page.getByTestId('profile-photo-input').setInputFiles({ name: 'a.png', mimeType: 'image/png', buffer: PNG })
+  await expect(page.getByTestId('profile-tile-photo').locator('img')).toBeVisible()
+  await page.getByTestId('profile-photo-input').setInputFiles({ name: 'b.webp', mimeType: 'image/webp', buffer: Buffer.from('RIFFxxxxWEBP') })
+  await expect.poll(() => models.avatar?.type).toBe('image/webp')
+  expect(models.seen.filter(s => s === 'PUT /v1/community/profile/avatar')).toHaveLength(2)
 })
 
 test('a photo that is not JPEG, PNG or WebP is refused before it is sent', async ({ page, account, models }) => {
@@ -175,6 +211,14 @@ test('a photo that is not JPEG, PNG or WebP is refused before it is sent', async
   await page.getByTestId('profile-photo-input').setInputFiles({ name: 'me.gif', mimeType: 'image/gif', buffer: Buffer.from('GIF89a') })
   await expect(page.getByTestId('profile-photo-error')).toContainText('JPEG, PNG or WebP')
   expect(models.seen).not.toContain('PUT /v1/community/profile/avatar')
+})
+
+test('a photo the service cannot read says so, and the old photo stays', async ({ page, account, models }) => {
+  models.avatarInvalid = true
+  await openProfile(page, account, models)
+  await page.getByTestId('profile-photo-input').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: PNG })
+  await expect(page.getByTestId('profile-photo-error')).toContainText('could not be read')
+  await expect(page.getByTestId('profile-tile-photo').locator('img')).toHaveCount(0)
 })
 
 test('the about line is saved to the Library', async ({ page, account, models }) => {
@@ -194,7 +238,7 @@ test.describe('who can see it', () => {
     await page.getByTestId('profile-public').click()
     await expect(page.getByTestId('profile-tile-visibility')).toHaveText('Public')
     expect(changes(account, 'PATCH /v1/me/community-identity')[0].body).toEqual({ identity_public: true })
-    await expect(page.getByTestId('profile-public-missing')).toContainText('switched off')
+    await expect(page.getByTestId('profile-public-missing')).toContainText("isn't on yet")
     await expect(page.getByTestId('profile-view-page')).toHaveCount(0)
     // The client never sets page_on: the Library service decides.
     expect(models.community.page_on).toBe(false)
@@ -236,11 +280,12 @@ test.describe('who can see it', () => {
   })
 })
 
-test('a name or photo under review shows "Being checked" on its row', async ({ page, account, models }) => {
-  models.community = fakeCommunity({ review: { name: true, photo: true } })
+test('"Being checked" stays off until the service reports a review', async ({ page, account, models }) => {
+  // The model service has no review field today: nothing says "Being checked".
   await openProfile(page, account, models)
-  await expect(page.getByTestId('profile-name-review')).toHaveText('Being checked')
-  await expect(page.getByTestId('profile-photo-review')).toHaveText('Being checked')
+  await expect(page.getByTestId('profile-name-review')).toHaveCount(0)
+  await expect(page.getByTestId('profile-photo-review')).toHaveCount(0)
+  await expect(page.getByText('Being checked')).toHaveCount(0)
 })
 
 test('the age is confirmed once, then shown as a status line', async ({ page, account, models }) => {
@@ -264,19 +309,21 @@ test.describe('?return=', () => {
     ['another host', 'https://evil.example/library', false],
     ['an http address', 'http://library.muon3d.com/', false]
   ] as const) {
-    test(`${label}: ${shown ? 'shows' : 'does not show'} "Back to the Library" after saving`, async ({ page, account, models }) => {
+    test(`${label}: ${shown ? 'has' : 'has no'} Back to the Library, and a save makes it stand out (no second link)`, async ({ page, account, models }) => {
       await openProfile(page, account, models, `?return=${encodeURIComponent(ret)}`)
+      const back = page.getByTestId('account-library-return')
       await expect(page.getByTestId('profile-return')).toHaveCount(0)
       await page.getByTestId('profile-about-change').click()
       await page.getByTestId('profile-about-input').fill('Hello')
       await page.getByTestId('profile-about-save').click()
       await expect(page.getByTestId('profile-saved')).toBeVisible()
+      await expect(page.getByTestId('profile-return')).toHaveCount(0)
       if (shown) {
-        await expect(page.getByTestId('profile-return')).toHaveText('‹ Back to the Library')
-        await expect(page.getByTestId('profile-return')).toHaveAttribute('href', ret)
+        await expect(back).toHaveCount(1)
+        await expect(back).toHaveAttribute('href', ret)
+        await expect(back).toHaveClass(/acct-back--saved/)
       } else {
-        await expect(page.getByTestId('profile-return')).toHaveCount(0)
-        await expect(page.getByTestId('account-library-return')).toHaveCount(0)
+        await expect(back).toHaveCount(0)
       }
     })
   }
@@ -308,6 +355,23 @@ test('on a phone or a desktop, nothing runs off the edge of the page', async ({ 
   await page.getByTestId('profile-username-change').click()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(1)
+})
+
+test('signing out mid-edit leaves no profile, draft or "Updating" behind', async ({ page, account, models, isMobile }) => {
+  account.identity = { ...ADULT, identity_public: true }
+  models.community = fakeCommunity({ identity_public: true })
+  await openProfile(page, account, models)
+  await page.getByTestId('profile-name-change').click()
+  await page.getByTestId('account-name').fill('Half typed')
+  await page.getByTestId('account-name-save').click()
+  await expect(page.getByTestId('profile-updating')).toBeVisible()
+  await page.getByTestId('profile-about-change').click()
+  await page.getByTestId('profile-about-input').fill('A draft')
+  if (isMobile) await page.getByTestId('account-pane').getByRole('link', { name: 'Account', exact: true }).click()
+  await page.getByTestId('account-sign-out').click()
+  await expect(page.getByTestId('account-profile')).toHaveCount(0)
+  await expect(page.getByTestId('profile-updating')).toHaveCount(0)
+  await expect(page.getByText('A draft')).toHaveCount(0)
 })
 
 test.describe('signed out', () => {

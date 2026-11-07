@@ -140,6 +140,15 @@
   text-decoration: none;
 }
 
+/* After Profile saved, the way back is the thing to press. */
+.acct-back--saved {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--m3d-accent-soft);
+  color: var(--m3d-accent) !important;
+  font-weight: 600;
+}
+
 .acct-head {
   display: flex;
   flex-direction: column;
