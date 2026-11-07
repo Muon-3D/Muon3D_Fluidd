@@ -262,6 +262,7 @@ export interface GcodePreviewConfig {
   retractionIconSize: number;
   drawOrigin: boolean;
   drawBackground: boolean;
+  /** Retired: animations are now this device's (m1-3d/device-settings); a saved `false` is carried over once. */
   showAnimations: boolean;
   minLayerHeight: number;
   autoLoadOnPrintStart: boolean;
