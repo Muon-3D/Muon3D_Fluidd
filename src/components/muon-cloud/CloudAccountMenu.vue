@@ -465,8 +465,9 @@ export default class CloudAccountMenu extends Vue {
     return ACCOUNT_SECTIONS.some(s => s.id === id && s.built)
   }
 
+  /** Account is its own top-level page, never under the printer that is open (Jack, 6 Nov). */
   accountTo (section: string): string {
-    return scopedPath(section ? `/account/${section}` : '/account', activeSlug())
+    return section ? `/account/${section}` : '/account'
   }
 
   get libraryTo (): string {

@@ -33,6 +33,7 @@
         color="primary"
         text
         type="button"
+        data-tid="api-key-new"
         @click="handleRefreshApiKey"
       >
         {{ $t('app.general.btn.refresh') }}
@@ -43,6 +44,7 @@
 
 <script lang="ts">
 import { Component, Vue, VModel } from 'vue-property-decorator'
+import { printerNameParts } from '@/util/printer-name'
 
 @Component({})
 export default class ApiKeyDialog extends Vue {
@@ -53,8 +55,24 @@ export default class ApiKeyDialog extends Vue {
     return this.$store.getters['auth/getApiKey']
   }
 
-  handleRefreshApiKey () {
-    this.$store.dispatch('auth/refreshApiKey')
+  get printerName (): string {
+    return printerNameParts((this.$store.getters['config/getDisplayName'] as string) || '').name || 'this printer'
+  }
+
+  /**
+   * A new key stops the old one at once, so every tool using it must be given
+   * the new one: asked first, naming the printer (R8). A switch to another
+   * printer while it asks cancels it.
+   */
+  async handleRefreshApiKey () {
+    const apiUrl = this.$store.state.config.apiUrl
+    const name = this.printerName
+    const sure = await this.$confirm(`Every tool using ${name}'s current key stops working until you give it the new one.`, {
+      title: `Make a new API key for ${name}?`,
+      buttonTrueText: 'Make a new key',
+      danger: true
+    })
+    if (sure && this.$store.state.config.apiUrl === apiUrl) this.$store.dispatch('auth/refreshApiKey')
   }
 }
 </script>
