@@ -5,11 +5,13 @@ import { CREDITS_CATALOGUE, catalogue, setCatalogue } from '@/services/account/c
 import { SERVICE_CATALOGUE } from '@/services/account/__tests__/catalogue-fixture'
 import { LibraryError } from '@/services/library/api'
 import type { CreditAccount } from '@/services/account/credits'
+import { libraryState, resetLibrary } from '@/services/library/store'
 
 const loadCredits = vi.hoisted(() => vi.fn())
 vi.mock('@/services/account/credits', async (actual) => ({ ...(await actual<object>()), loadCredits }))
 
 vi.mock('@/services/account/api', () => ({ accountApi: { plan: async () => ({ plan: { name: 'Plus' } }) } }))
+vi.mock('@/services/library/store', async (actual) => ({ ...(await actual<object>()), watchLibraryAccount: vi.fn(), refreshLibrary: vi.fn(async () => {}) }))
 
 const settle = () => new Promise(resolve => setTimeout(resolve))
 const monday = new Date(2026, 10, 2, 9).getTime()
@@ -41,9 +43,13 @@ async function open (answer: CreditAccount | Error) {
 
 const text = (w: { text: () => string }) => w.text().replace(/\s+/g, ' ')
 
-describe('Plan', () => {
-  beforeEach(() => { setCatalogue(SERVICE_CATALOGUE) })
+describe('Plan, once payments open', () => {
+  beforeEach(() => {
+    setCatalogue(SERVICE_CATALOGUE)
+    CREDITS_CATALOGUE.paymentsOpen = true
+  })
   afterEach(() => {
+    CREDITS_CATALOGUE.paymentsOpen = false
     vi.clearAllMocks()
     vi.unstubAllGlobals()
   })
@@ -225,19 +231,39 @@ describe('Plan', () => {
     expect(w.find('[data-tid="plan-period-yearly"]').attributes('aria-pressed')).toBe('true')
     w.destroy()
   })
+})
 
-  it('takes no money while payments are closed: every buying button is disabled and says so', async () => {
+describe('Plan while payments are closed', () => {
+  beforeEach(() => {
+    setCatalogue(SERVICE_CATALOGUE)
+    resetLibrary('fixture')
+    Object.assign(libraryState, { checked: true, enabled: true, usedBytes: 1.2e9, quotaBytes: 5e9 })
+  })
+  afterEach(() => { vi.clearAllMocks() })
+
+  it('shows the plan and what it includes, and says nothing can charge you', async () => {
     expect(CREDITS_CATALOGUE.paymentsOpen).toBe(false)
+    const w = await open(plus)
+    expect(w.find('[data-tid="plan-tile-name"]').text()).toBe('Plus')
+    const row = (id: string) => w.findAll(`[data-tid="plan-tile-${id}"] b, [data-tid="plan-tile-${id}"] .acct-grow__value`).wrappers.map(x => x.text())
+    expect(row('printers')).toEqual(['Printers', 'Unlimited'])
+    expect(row('storage')).toEqual(['Library storage', '1.2 GB of 5 GB'])
+    expect(w.find('[data-tid="plan-closed"]').text()).toBe('Paid plans open soon. Nothing here can charge you yet.')
+    w.destroy()
+  })
+
+  it('has no button to change plan, choose a plan or buy credits, even at the limit', async () => {
     const w = await open({ ...plus, weekly: { used: 100, limit: 100, resets: monday } })
-    const buying = w.findAll('[data-tid="plan-note-credits"], [data-tid^="plan-choose-"], [data-tid^="plan-pack-"] button').wrappers
-    expect(buying.length).toBeGreaterThan(4)
-    for (const b of buying) {
-      expect(b.attributes('disabled')).toBe('disabled')
-      expect(b.attributes('title')).toBe('Payments open soon')
-    }
-    expect(w.find('[data-tid="plan-soon"]').text()).toBe('Payments open soon.')
-    expect(w.find('a[href]').exists()).toBe(false)
-    expect(text(w)).not.toMatch(/(?:\d[\d,.]*\s*(?:GiB|GB|MiB|MB)|storage\s+(?:of\s+)?\d)/i)
+    expect(w.find('[data-tid="plan-usage"]').exists()).toBe(true)
+    expect(w.findAll('[data-tid="plan-change"], [data-tid="plan-note-credits"], [data-tid^="plan-choose-"], [data-tid="plan-credits"], #plan-plans').length).toBe(0)
+    expect(text(w)).not.toMatch(/Change plan|Choose |Buy credits/)
+    w.destroy()
+  })
+
+  it('leaves the storage row out until the Library says how much it holds', async () => {
+    libraryState.usedBytes = null
+    const w = await open(plus)
+    expect(w.find('[data-tid="plan-tile-storage"]').exists()).toBe(false)
     w.destroy()
   })
 })
