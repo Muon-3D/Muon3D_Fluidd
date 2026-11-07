@@ -50,6 +50,9 @@ import { bannerVisible } from '@/services/updates/model'
 import { updateWatch } from '@/services/updates/watch'
 import { afterFirstPaint } from '@/services/startup/idle'
 
+/** Per view: the clip each part is playing (M1Live.markDrawn). */
+const playingByView = new WeakMap<object, Record<string, string>>()
+
 /** The biggest file the stage loads into the G-code preview by itself (the preview keeps every move as an object). */
 const AUTO_LOAD_BYTES = 16 * 1024 * 1024
 /**
@@ -306,8 +309,10 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   /**
    * Marks what the model drew on the stage's element (data-model,
    * data-plate, data-toolhead, data-column, data-filament): the state once a
-   * clip ends, the clip's name while it plays. Written straight to the
-   * element, not through Vue, since it runs every frame.
+   * clip ends, the clip's name while it plays. data-played lists the last
+   * clips started ("part:clip", newest last), so a test can see a clip ran
+   * even when a slow renderer draws none of its frames. Written straight to
+   * the element, not through Vue, since it runs every frame.
    */
   markDrawn ({ model, accessories: a }: DrawnState) {
     const el = this.$el as HTMLElement | undefined
@@ -319,9 +324,25 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
       marks.column = a.column.clip ?? a.column.state
       marks.filament = a.filament.clip ?? (a.filament.loaded ? 'loaded' : 'empty')
     }
+    const clips = a ? { plate: a.plate.clip, toolhead: a.tube.clip, column: a.column.clip, filament: a.filament.clip } : {}
+    for (const [part, clip] of Object.entries(clips)) {
+      if (!clip || this.playing[part] === clip) continue
+      this.playing[part] = clip
+      const played = (el.dataset.played ?? '').split(' ').filter(Boolean)
+      played.push(`${part}:${clip}`)
+      el.dataset.played = played.slice(-24).join(' ')
+    }
+    for (const [part, clip] of Object.entries(clips)) if (!clip) delete this.playing[part]
     for (const [key, value] of Object.entries(marks)) {
       if (el.dataset[key] !== value) el.dataset[key] = value
     }
+  }
+
+  /** The clip each part is playing now, so a clip is listed in data-played once per start. Kept out of Vue. */
+  get playing (): Record<string, string> {
+    let p = playingByView.get(this)
+    if (!p) playingByView.set(this, p = {})
+    return p
   }
 
   // -- where the head and the bed are ----------------------------------------
