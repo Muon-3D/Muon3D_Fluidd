@@ -282,12 +282,14 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin) {
     const macro = name === 'LOAD_FILAMENT' ? this.loadMacro : this.unloadMacro
     if (!macro || !this.controlReady || this.busy) return
     const temp = this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
+    if (this.refuseTooHot(this.material?.name ?? this.loadedMaterial?.name, temp)) return
     this.sendGcode(macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name)
   }
 
   /** On the toolhead a chip heats the nozzle only, to the material's temperature; the bed is the plate's. */
   heatNozzle (m: MaterialChoice) {
     if (this.busy || m.nozzle === null) return
+    if (this.refuseTooHot(m.name, m.nozzle)) return
     this.setHeater(this.nozzle, m.nozzle)
   }
 

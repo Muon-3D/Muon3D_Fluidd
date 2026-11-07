@@ -35,6 +35,8 @@ vi.mock('@/services/updates/watch', () => ({
 }))
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'hazel', isForeignSlug: () => false, knownPrinters: () => [] }))
 vi.mock('@/services/muon-cloud/directory', () => ({ savedName: () => 'Hazel' }))
+// The dev-mode gates ask the printer over the network and import the router, which would stop this file's $route mocks.
+vi.mock('@/services/gates', () => ({ gateState: { epoch: 0 }, valueFor: () => null, refreshCanManageAccess: vi.fn(), refreshGateDevMode: vi.fn() }))
 vi.mock('@/services/slicer-bridge/slicerUrl', () => ({ slicerPresence: { state: 'absent' } }))
 
 interface Fixture {
