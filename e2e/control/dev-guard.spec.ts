@@ -21,13 +21,13 @@ async function withPrinter (page: import('@playwright/test').Page, status: Recor
   return printer
 }
 
-const pidRow = (page: import('@playwright/test').Page) => page.locator('[id="maintenance.pid-trigger"]')
+const pidRow = (page: import('@playwright/test').Page) => page.locator('[data-tid="cal-run-pid"]')
 
 test('outside developer mode a printer with only PID_CALIBRATE is not offered heater tuning', async ({ page, open }) => {
   const printer = await withPrinter(page, { muon_guard: { dev_mode: false } }, RAW_PID)
   await open('/maintenance')
   // The other checks are there, so the page has loaded and the missing row is the gate's doing.
-  await expect(page.locator('[id="maintenance.bedMesh-trigger"]')).toBeVisible()
+  await expect(page.locator('[data-tid="cal-run-bedMesh"]')).toBeVisible()
   await expect(pidRow(page)).toHaveCount(0)
   expect(printer.gcode.join('\n')).not.toContain('PID_CALIBRATE')
 })
@@ -49,5 +49,7 @@ test('the M1 keeps its own tuning macro outside developer mode and never runs PI
   await open('/maintenance')
   await expect(pidRow(page)).toBeVisible()
   await pidRow(page).click()
-  expect(printer.gcode.join('\n')).not.toContain('PID_CALIBRATE')
+  await page.getByTestId('confirm-ok').click()
+  await expect.poll(() => printer.gcode.length).toBe(1)
+  expect(printer.gcode).toEqual(['CALIBRATE_HEATING_HOTEND'])
 })
