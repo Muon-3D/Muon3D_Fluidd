@@ -341,6 +341,10 @@ export function installPrinterPages (router: VueRouter, how: PrinterOpeners): vo
   router.afterEach((to) => {
     const slug = to.params.printer
     if (slug && !isActiveSlug(slug)) openPrinterAt(slug).catch(() => {})
+    // A page that landed on the address made before the printer said who it
+    // is (a bare /slice redirected while the identity was in flight) is
+    // corrected as soon as it lands, or when the identity arrives (init.ts).
+    else correctAddress(router)
   })
 }
 
