@@ -52,7 +52,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'macros', label: 'Macros', anchors: ['macros'], icon: 'macro', blurb: 'Which macros show, and in which category', keywords: ['gcode', 'quick actions', 'buttons'] },
   { id: 'timelapse', label: 'Timelapse', anchors: ['timelapse'], icon: 'clock', blurb: 'How print timelapses are made', keywords: ['video', 'render', 'frames'], shows: has('timelapse') },
   { id: 'spoolman', label: 'Spoolman', anchors: ['spoolman'], icon: 'spool', blurb: 'Your spool inventory', keywords: ['filament', 'spools'], shows: has('spoolman') },
-  { id: 'console', label: 'Console', anchors: ['console'], icon: 'console', blurb: 'How the console reads and filters', keywords: ['terminal', 'filter', 'log'] },
+  { id: 'console', label: 'Console', anchors: ['console'], icon: 'console', blurb: 'What the console shows, the one-tap commands above the input, and who may type', keywords: ['terminal', 'filter', 'log', 'quick commands', 'history', 'timestamps'] },
   { id: 'files', label: 'Files and editor', anchors: ['browser', 'editor'], icon: 'files', blurb: 'How files are listed and edited', keywords: ['browser', 'editor', 'gcode', 'config'] },
   { id: 'toolhead', label: 'Moving and extruding', anchors: ['toolhead'], icon: 'control', blurb: "How Control's move pad, extrude buttons and macros behave", keywords: ['moving', 'extruding', 'speed', 'axis', 'homing', 'paper test'] },
   { id: 'gcodePreview', label: 'G-code preview', anchors: ['gcodePreview'], icon: 'jobs', blurb: 'How the G-code preview draws a print', keywords: ['layers', '3d', 'render', 'preview'] },

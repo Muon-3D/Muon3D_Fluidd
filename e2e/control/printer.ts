@@ -197,3 +197,30 @@ export const PRESETS = {
     }
   }
 }
+
+/**
+ * The printer's settings database (Moonraker's `fluidd` namespace), for this
+ * test only: what the page saves (server.database.post_item) is answered
+ * here and kept in `saved`, and laid over the shared mock's copy when the
+ * page loads it again, so a reload sees it and no other test does.
+ */
+export async function useDatabase (page: Page, printer: PrinterHandle): Promise<{ saved: Json, posts: () => Json[] }> {
+  const saved: Json = {}
+  printer.state.answers['server.database.post_item'] = (params: Json) => {
+    if (params.namespace === 'fluidd' && typeof params.key === 'string') {
+      const parts = params.key.split('.')
+      let cur = saved
+      for (const part of parts.slice(0, -1)) cur = isObject(cur[part]) ? cur[part] : (cur[part] = {})
+      cur[parts[parts.length - 1]] = params.value
+    }
+    return { namespace: params.namespace, key: params.key, value: params.value }
+  }
+  await page.route(new RegExp(`:${MOCK_PORT}/server/database/item\\?namespace=fluidd`), async route => {
+    if (route.request().method() !== 'GET') { await route.continue(); return }
+    const response = await route.fetch()
+    const body = await response.json()
+    if (isObject(body?.result?.value)) body.result.value = overlay(body.result.value, saved)
+    await route.fulfill({ response, json: body })
+  })
+  return { saved, posts: () => printer.called('server.database.post_item') }
+}
