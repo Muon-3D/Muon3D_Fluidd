@@ -37,7 +37,7 @@
         }"
         class="constrained-width muon-content pa-2 pa-sm-4"
       >
-        <deletion-banner v-if="deletionPending" />
+        <deletion-banner v-if="deletionPending && !onYourData" />
         <app-page-title
           v-if="showPageHeader"
           :class="{ 'muon-stale': connection.stale }"
@@ -184,6 +184,11 @@ import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletio
 export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, BrowserMixin) {
   get deletionPending (): boolean {
     return deletionState.deleteAfter !== null
+  }
+
+  /** Your data shows the Library's own deletion banner in its pane (KAN-1886). */
+  get onYourData (): boolean {
+    return this.$route.name === 'Account (no printer)' && this.$route.params.section === 'privacy'
   }
 
   get deletionCloudView (): boolean {

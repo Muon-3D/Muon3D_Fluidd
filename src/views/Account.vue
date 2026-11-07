@@ -188,6 +188,11 @@
         <account-plan v-else-if="current.id === 'plan'" />
         <template v-else-if="current.id === 'privacy'">
           <!-- Your data: privacy, then Delete account (settings/MAP.md). -->
+          <deletion-banner
+            v-if="deleting"
+            library
+            data-tid="account-data-deleting"
+          />
           <account-privacy :link-to="linkTo" />
           <router-link
             v-if="deleteSection"
@@ -265,6 +270,7 @@ import '@/scss/muon3d-account.scss'
     AccountNotifications: () => import('@/components/account/AccountNotifications.vue'),
     AccountPrivacy: () => import('@/components/account/AccountPrivacy.vue'),
     AccountDelete: () => import('@/components/account/AccountDelete.vue'),
+    DeletionBanner: () => import('@/components/account/DeletionBanner.vue'),
     AccountPlan,
     LibrarySettings,
     CloudAccountDialog

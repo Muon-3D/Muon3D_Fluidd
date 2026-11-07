@@ -121,6 +121,45 @@ export interface EmailPreferences {
   email_shared_with_you: boolean;
   email_community: boolean;
   email_news: boolean;
+  /** KAN-1886: absent reads as private, licence not chosen. */
+  library_defaults?: LibraryDefaults;
+}
+
+/**
+ * KAN-1886: the starting choices for new things in the Library, saved per
+ * account in `/v1/me/preferences`, as proj-api confirmed (console muon-link-cloud #130).
+ * Change the shape here and nowhere else. `licence` is an SPDX id; null
+ * is "not chosen", and the suggestion is never saved for the person.
+ */
+export type LibraryVisibility = 'private' | 'public'
+export interface LibraryDefaults {
+  visibility: LibraryVisibility;
+  licence: string | null;
+}
+
+export const DEFAULT_LIBRARY_VISIBILITY: LibraryVisibility = 'private'
+export const SUGGESTED_LICENCE = 'CC-BY-4.0'
+export const LICENCES: Array<{ id: string, label: string }> = [
+  { id: 'CC-BY-4.0', label: 'CC BY 4.0' },
+  { id: 'CC-BY-SA-4.0', label: 'CC BY-SA 4.0' },
+  { id: 'CC-BY-NC-4.0', label: 'CC BY-NC 4.0' },
+  { id: 'CC-BY-NC-SA-4.0', label: 'CC BY-NC-SA 4.0' },
+  { id: 'CC0-1.0', label: 'CC0 1.0 (public domain)' }
+]
+
+/**
+ * What the page shows: the saved choice, else the default and the suggestion
+ * (marked as not chosen). A console that answers preferences without the
+ * object reads as private and not chosen; no answer at all is unsupported.
+ */
+export function libraryDefaultsView (preferences: { library_defaults?: LibraryDefaults } | null | undefined) {
+  const saved = preferences?.library_defaults
+  return {
+    supported: !!preferences,
+    visibility: saved?.visibility ?? DEFAULT_LIBRARY_VISIBILITY,
+    licence: saved?.licence ?? SUGGESTED_LICENCE,
+    licenceChosen: !!saved?.licence
+  }
 }
 
 export interface PrinterShare {
@@ -230,7 +269,9 @@ export const accountApi = {
   /** New. */
   preferences: async () => preferencesFrom(await json<{ preferences: EmailPreferences }>('GET', '/v1/me/preferences')),
   /** Any of the four, flat. */
-  setPreferences: async (patch: Partial<EmailPreferences>) => preferencesFrom(await json<{ preferences: EmailPreferences }>('PUT', '/v1/me/preferences', patch)),
+  setPreferences: async (patch: Partial<Omit<EmailPreferences, 'library_defaults'>>) => preferencesFrom(await json<{ preferences: EmailPreferences }>('PUT', '/v1/me/preferences', patch)),
+  /** KAN-1886: only the part changed (a partial PUT; an unknown value is a 400). */
+  setLibraryDefaults: async (patch: Partial<LibraryDefaults>) => preferencesFrom(await json<{ preferences: EmailPreferences }>('PUT', '/v1/me/preferences', { library_defaults: patch })),
 
   /**
    * The whole account as one JSON file: the raw response, to save. A console

@@ -223,6 +223,116 @@
         The same in Control, Slice and the app on every device.
       </p>
 
+      <!-- KAN-1886: the starting choices for new things; the Share dialog offers them and never assumes them. -->
+      <div class="acct-gt">
+        When you add something new
+      </div>
+      <section
+        class="acct-glist"
+        aria-label="When you add something new"
+        data-tid="library-defaults"
+      >
+        <div class="acct-grow">
+          <div class="acct-grow__text">
+            <b>Who can see it</b>
+            <span>The starting choice for new uploads, designs and sliced files. You can change it on each one. Nothing is shared until you say so.</span>
+          </div>
+          <div
+            class="lib-set__seg"
+            role="radiogroup"
+            aria-label="Who can see it"
+          >
+            <button
+              type="button"
+              role="radio"
+              class="lib-set__seg-btn"
+              :class="{ 'lib-set__seg-btn--on': defaults.visibility === 'private' }"
+              :aria-checked="defaults.visibility === 'private' ? 'true' : 'false'"
+              :disabled="!defaults.supported || defaultsBusy"
+              data-tid="library-visibility-private"
+              @click="setVisibility('private')"
+            >
+              Only you
+            </button>
+            <button
+              type="button"
+              role="radio"
+              class="lib-set__seg-btn"
+              aria-checked="false"
+              title="Coming soon"
+              disabled
+              data-tid="library-visibility-chosen"
+            >
+              People I choose
+            </button>
+            <button
+              type="button"
+              role="radio"
+              class="lib-set__seg-btn"
+              :class="{ 'lib-set__seg-btn--on': defaults.visibility === 'public' }"
+              :aria-checked="defaults.visibility === 'public' ? 'true' : 'false'"
+              :disabled="!defaults.supported || defaultsBusy"
+              data-tid="library-visibility-public"
+              @click="setVisibility('public')"
+            >
+              Anyone
+            </button>
+          </div>
+        </div>
+        <div class="acct-grow">
+          <div class="acct-grow__text">
+            <b>Licence to offer</b>
+            <span>Offered when you publish. It's never assumed: you always see it and can change it before publishing.</span>
+            <span
+              v-if="defaults.supported && !defaults.licenceChosen"
+              data-tid="library-licence-suggested"
+            >Suggested, not chosen yet: nothing is saved until you pick one.</span>
+          </div>
+          <select
+            class="lib-set__select"
+            aria-label="Licence to offer"
+            :value="defaults.licenceChosen ? defaults.licence : ''"
+            :disabled="!defaults.supported || defaultsBusy"
+            data-tid="library-licence"
+            @change="setLicence($event)"
+          >
+            <option
+              v-if="!defaults.licenceChosen"
+              value=""
+            >
+              {{ licenceLabel(defaults.licence) }} (suggested)
+            </option>
+            <option
+              v-for="licence in licences"
+              :key="licence.id"
+              :value="licence.id"
+            >
+              {{ licence.label }}
+            </option>
+          </select>
+        </div>
+      </section>
+      <p
+        v-if="!defaults.supported"
+        class="acct-gh"
+        data-tid="library-defaults-soon"
+      >
+        Coming soon: your account service has not answered for these yet.
+      </p>
+      <p
+        v-else
+        class="acct-gh"
+      >
+        "Anyone" still asks you to confirm each time you publish; this only sets the first choice in the Share dialog.
+      </p>
+      <p
+        v-if="defaultsError"
+        class="lib-set__error"
+        role="alert"
+      >
+        {{ defaultsError }}
+      </p>
+
       <router-link
         :to="profileLink"
         class="acct-xl"
@@ -252,6 +362,8 @@
 import { Component, Vue } from 'vue-property-decorator'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
+import { accountApi, LICENCES, libraryDefaultsView, type EmailPreferences, type LibraryVisibility } from '@/services/account/api'
+import { describe } from '@/services/account/state'
 import { describeLibraryError, type Preferences, type StorageKind } from '@/services/library/api'
 import { bytesText, dayText } from '@/services/library/format'
 import { activeSlug } from '@/services/printer-pages'
@@ -289,6 +401,12 @@ export default class LibrarySettings extends Vue {
   error = ''
   accountDialog = false
 
+  /** The account's own preferences (`/v1/me/preferences`), where the defaults for new things are kept. */
+  accountPrefs: EmailPreferences | null = null
+  defaultsBusy = false
+  defaultsError = ''
+  licences = LICENCES
+
   promiseTitle = PROMISE_TITLE
   promiseUrl = PROMISE_URL
 
@@ -299,6 +417,43 @@ export default class LibrarySettings extends Vue {
   created () {
     watchLibraryAccount()
     this.refresh()
+    this.loadDefaults()
+  }
+
+  get defaults () {
+    return libraryDefaultsView(this.accountPrefs)
+  }
+
+  licenceLabel (id: string): string {
+    return LICENCES.find(licence => licence.id === id)?.label ?? id
+  }
+
+  loadDefaults () {
+    // A console from before the field (or the endpoint) leaves the rows disabled: nothing is faked.
+    accountApi.preferences().then((p) => { this.accountPrefs = p }).catch(() => { this.accountPrefs = null })
+  }
+
+  async saveDefaults (patch: { visibility?: LibraryVisibility, licence?: string }) {
+    this.defaultsBusy = true
+    this.defaultsError = ''
+    try {
+      this.accountPrefs = await accountApi.setLibraryDefaults(patch)
+    } catch (error) {
+      this.defaultsError = describe(error)
+    } finally {
+      this.defaultsBusy = false
+    }
+  }
+
+  setVisibility (visibility: LibraryVisibility) {
+    if (visibility === this.defaults.visibility) return
+    return this.saveDefaults({ visibility })
+  }
+
+  setLicence (event: Event) {
+    const licence = (event.target as HTMLSelectElement).value
+    if (!licence) return
+    return this.saveDefaults({ licence })
   }
 
   get state () {
@@ -428,6 +583,53 @@ export default class LibrarySettings extends Vue {
     }
   }
 
+  .lib-set__seg {
+    display: inline-flex;
+    flex: none;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--m3d-surface-2);
+  }
+
+  .lib-set__seg-btn {
+    padding: 6px 12px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--m3d-text-muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &--on {
+      background: var(--m3d-accent);
+      color: var(--m3d-on-accent, #fff);
+    }
+
+    &:disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
+  }
+
+  .lib-set__select {
+    flex: none;
+    max-width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--m3d-border, rgba(255, 255, 255, 0.16));
+    border-radius: 8px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text);
+    font: inherit;
+    font-size: 14px;
+
+    &:disabled {
+      opacity: 0.6;
+    }
+  }
+
   .lib-set__bar--full {
     background: var(--m3d-warning) !important;
   }
@@ -494,6 +696,11 @@ export default class LibrarySettings extends Vue {
   @media (max-width: 600px) {
     .lib-set__titles h2 {
       font-size: 20px;
+    }
+
+    .lib-set__seg-btn {
+      padding: 6px 9px;
+      font-size: 12px;
     }
   }
 </style>
