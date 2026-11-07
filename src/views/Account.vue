@@ -8,6 +8,7 @@
       v-if="returnToLibrary"
       :href="returnToLibrary"
       class="acct-back"
+      :class="{ 'acct-back--saved': profileSaved }"
       data-tid="account-library-return"
     >
       <frame-icon
@@ -160,7 +161,11 @@
           v-if="current.id === 'overview'"
           :link-to="linkTo"
         />
-        <account-profile v-else-if="current.id === 'profile'" />
+        <account-profile
+          v-else-if="current.id === 'profile'"
+          :link-to="linkTo"
+          @saved="profileSaved = true"
+        />
         <account-security
           v-else-if="current.id === 'security'"
           :link-to="linkTo"
@@ -267,6 +272,8 @@ import '@/scss/muon3d-account.scss'
 })
 export default class Account extends Mixins(BrowserMixin) {
   accountDialog = false
+  /** Profile saved: the way back to the Library is emphasised. */
+  profileSaved = false
 
   /** Account is its own page (Jack, 6 Nov); with a printer open, a way back to it. */
   get printerBack (): { to: string, name: string } | null {

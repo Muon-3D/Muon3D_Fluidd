@@ -23,7 +23,7 @@ export interface ConsolePrinter {
 }
 
 export interface ConsoleState {
-  account: { id: string, email: string, name: string };
+  account: { id: string, email: string, name: string, created_at?: number };
   printers: ConsolePrinter[];
   /** `/v1/me/preferences`, kept across reloads; null answers 404, as a console from before it. */
   preferences: Record<string, boolean> | null;
@@ -36,6 +36,10 @@ export interface ConsoleState {
   links: Record<string, unknown[]>;
   /** Join requests waiting for this account. */
   approvals: unknown[];
+  /** The community identity (`/v1/me/community-identity`), when a test needs it; otherwise the fake answers {}. */
+  identity?: { declared_age: number | null, declared_at: number | null, can_community: boolean, can_public: boolean, identity_public: boolean, revision: number, projection_pending: boolean };
+  /** Answer matching requests with a status ("PATCH /v1/me"): the console failing. */
+  failOn?: (request: string) => number | null;
   /** Every request that changes something (not a GET), with its body: `DELETE /v1/printers/p1/shares/s1`. */
   changes: Array<{ call: string, body: unknown }>;
 }
@@ -74,6 +78,24 @@ export async function answerConsole (route: Route, state: ConsoleState) {
     let body: unknown = null
     try { body = request.postDataJSON() } catch { body = request.postData() }
     state.changes.push({ call: `${request.method()} ${url.pathname}`, body })
+  }
+  const failure = state.failOn?.(`${request.method()} ${url.pathname}`)
+  if (failure) return json(route, { error: { code: 'unavailable', message: 'The console is down for a moment.' } }, failure)
+  if (request.method() === 'PATCH' && url.pathname === '/v1/me') {
+    const body = request.postDataJSON() as { name?: string }
+    if (typeof body.name === 'string') state.account.name = body.name
+    return json(route, { account: { ...state.account, display_name: state.account.name } })
+  }
+  if (state.identity && url.pathname === '/v1/me/community-identity') {
+    if (request.method() === 'PATCH') {
+      const body = request.postDataJSON() as { declared_age?: number, identity_public?: boolean }
+      if (body.declared_age !== undefined) {
+        const age = body.declared_age
+        state.identity = { ...state.identity, declared_age: age, declared_at: 1_790_000_000, can_community: true, can_public: age >= 18 }
+      }
+      if (body.identity_public !== undefined) state.identity = { ...state.identity, identity_public: body.identity_public, revision: state.identity.revision + 1, projection_pending: true }
+    }
+    return json(route, state.identity)
   }
   const list = url.pathname.match(PRINTER_LIST)
   if (list && request.method() === 'GET') {

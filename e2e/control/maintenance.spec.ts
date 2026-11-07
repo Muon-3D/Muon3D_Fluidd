@@ -19,6 +19,8 @@ function idle (position: [number, number, number] = [100, 100, 10]) {
   return {
     ...preset,
     gcode: { commands: COMMANDS },
+    // PID_CALIBRATE is the raw fallback, which Klipper#112 allows only in developer mode (KAN-1798).
+    muon_guard: { dev_mode: true },
     probe: { name: 'probe', last_query: false, last_z_result: 0 },
     configfile: { settings: { ...preset.configfile.settings, probe: { z_offset: -0.018 } } }
   }
@@ -241,7 +243,7 @@ test('Query probe sends QUERY_PROBE, which moves nothing', async ({ page, open }
 })
 
 test('while printing, Calibrate mesh and every Run are off and send nothing', async ({ page, open }) => {
-  const printer = await usePrinter(page, { gcode: { commands: COMMANDS }, probe: { name: 'probe', last_query: false } }) // the mock as it is: mid-print
+  const printer = await usePrinter(page, { gcode: { commands: COMMANDS }, muon_guard: { dev_mode: true }, probe: { name: 'probe', last_query: false } }) // the mock as it is: mid-print
   await open('/tune')
   await expect(page.getByTestId('mesh-calibrate')).toBeDisabled()
   await expect(page.getByTestId('probe-accuracy-run')).toBeDisabled()
