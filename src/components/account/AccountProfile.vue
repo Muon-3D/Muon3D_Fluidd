@@ -590,6 +590,7 @@
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import ProfileAvatar from './profile/ProfileAvatar.vue'
+import { forgetOwnAvatar, loadOwnAvatar, ownAvatar, removeOwnAvatar, setOwnAvatar } from '@/services/account/avatar'
 import ProfilePreviews from './profile/ProfilePreviews.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { storedToken } from '@/services/muon-cloud/api'
@@ -622,7 +623,6 @@ export default class AccountProfile extends Vue {
   failed = ''
   /** The Library could not be read: the public rows wait. */
   libraryError = ''
-  photoUrl: string | null = null
   busy: Busy = ''
   editing: Editing = ''
   nameDraft = ''
@@ -642,7 +642,6 @@ export default class AccountProfile extends Vue {
   private checkTimer: ReturnType<typeof setTimeout> | null = null
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private generation = 0
-  private photoGen = 0
 
   created () {
     this.load()
@@ -652,7 +651,6 @@ export default class AccountProfile extends Vue {
     this.generation++
     this.stopPolling()
     if (this.checkTimer) clearTimeout(this.checkTimer)
-    this.revokePhoto()
   }
 
   // ---- what the console and the Library say -------------------------------
@@ -773,13 +771,12 @@ export default class AccountProfile extends Vue {
   onSession () {
     // Another account, or none: nothing of the last one stays (edits, drafts, polls, notices).
     this.generation++
-    this.photoGen++
+    forgetOwnAvatar()
     this.stopPolling()
     if (this.checkTimer) clearTimeout(this.checkTimer)
     this.checkSeq++
     this.identity = null
     this.profile = null
-    this.revokePhoto()
     this.editing = ''
     this.nameDraft = ''
     this.aboutDraft = ''
@@ -843,24 +840,12 @@ export default class AccountProfile extends Vue {
    * visible). No photo, or the Library unreachable: the initials stand in.
    */
   async loadPhoto () {
-    const mine = ++this.photoGen
-    try {
-      const blob = await communityApi.photo()
-      if (mine !== this.photoGen) return
-      this.showPhoto(blob)
-    } catch {
-      // Initials.
-    }
+    // Shared with the top bar: one fetch, and a change here shows there at once.
+    await loadOwnAvatar(true)
   }
 
-  showPhoto (blob: Blob) {
-    this.revokePhoto()
-    this.photoUrl = URL.createObjectURL(blob)
-  }
-
-  revokePhoto () {
-    if (this.photoUrl) URL.revokeObjectURL(this.photoUrl)
-    this.photoUrl = null
+  get photoUrl (): string | null {
+    return ownAvatar.url
   }
 
   // ---- "Updating the Library…" --------------------------------------------
@@ -1019,8 +1004,7 @@ export default class AccountProfile extends Vue {
     try {
       this.setProfile(await communityApi.uploadPhoto(file))
       // Show the new photo at once; the Library's processed copy replaces it when it can be read.
-      this.photoGen++
-      this.showPhoto(file)
+      setOwnAvatar(file)
       this.loadPhoto()
       this.succeeded()
     } catch (error) {
@@ -1040,8 +1024,7 @@ export default class AccountProfile extends Vue {
     this.saved = false
     try {
       this.setProfile(await communityApi.removePhoto())
-      this.photoGen++
-      this.revokePhoto()
+      removeOwnAvatar()
       this.succeeded()
     } catch (error) {
       this.fail('photo', error)

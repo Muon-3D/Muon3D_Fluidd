@@ -56,7 +56,13 @@
         data-tid="pa-you"
       >
         <div class="pa-row">
-          <span class="pa-av pa-av--lg">{{ ownerLetter }}</span>
+          <span
+            class="pa-av pa-av--lg"
+            data-tid="pa-owner-face"
+          ><photo-face
+            :photo="ownerPhoto"
+            :letter="ownerLetter"
+          /></span>
           <div class="pa-row__text">
             <span class="pa-eyebrow">Owner</span>
             <b data-tid="pa-owner">{{ ownerName }}</b>
@@ -91,7 +97,10 @@
           data-tid="pa-people"
         >
           <div class="pa-row">
-            <span class="pa-av">{{ ownerLetter }}</span>
+            <span class="pa-av"><photo-face
+              :photo="ownerPhoto"
+              :letter="ownerLetter"
+            /></span>
             <div class="pa-row__text">
               <b>{{ ownerName }} <span class="pa__muted">· you</span></b>
               <span v-if="ownerEmail">{{ ownerEmail }}</span>
@@ -104,9 +113,15 @@
             class="pa-row"
             data-tid="pa-person"
           >
-            <span class="pa-av pa-av--b">{{ row.letter }}</span>
+            <span
+              class="pa-av pa-av--b"
+              data-tid="pa-person-face"
+            ><photo-face
+              :photo="row.photo"
+              :letter="row.letter"
+            /></span>
             <div class="pa-row__text">
-              <b>{{ row.email }}</b>
+              <b>{{ row.name || row.email }}</b>
               <span>{{ row.line }}</span>
             </div>
             <span class="pa-row__acts">
@@ -161,9 +176,12 @@
             class="pa-row"
             data-tid="pa-request"
           >
-            <span class="pa-av pa-av--d">{{ letterOf(request.requester && request.requester.email) }}</span>
+            <span class="pa-av pa-av--d"><photo-face
+              :photo="publicPhoto(request.requester && request.requester.avatar_url)"
+              :letter="letterOf((request.requester && request.requester.name) || (request.requester && request.requester.email))"
+            /></span>
             <div class="pa-row__text">
-              <b>{{ (request.requester && request.requester.email) || 'Someone' }} wants to join as {{ roleWord(request.role) }}</b>
+              <b>{{ (request.requester && (request.requester.name || request.requester.email)) || 'Someone' }} wants to join as {{ roleWord(request.role) }}</b>
               <span>Used your invite link · lapses {{ day(request.expires_at) }}</span>
             </div>
             <span class="pa-row__acts">
@@ -799,6 +817,8 @@ import { accountApi, type InviteLink, type JoinApproval, type PrinterInvite, typ
 import { accountState, describe, loadApprovals } from '@/services/account/state'
 import { isMissing } from '@/services/account/client'
 import { dayText } from '@/services/account/model'
+import { ownAvatar, publicAvatarUrl } from '@/services/account/avatar'
+import PhotoFace from '@/components/account/profile/PhotoFace.vue'
 import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
 import type { InstanceConfig } from '@/store/config/types'
@@ -819,6 +839,8 @@ import '@/scss/muon3d-account.scss'
 interface PersonRow {
   id: string;
   email: string;
+  name: string;
+  photo: string | null;
   letter: string;
   role: string;
   endsAt: number | null;
@@ -839,7 +861,7 @@ const PRESET_WORDS: Record<string, string> = { relaxed: 'Relaxed', standard: 'St
  * printer (`muon_access` capabilities) and then the console; every change is
  * the printer's or the console's own call, which refuses what it must.
  */
-@Component({ components: { M3Dialog, ToggleSwitch, ApiKeyDialog, AccessRequestDialog } })
+@Component({ components: { M3Dialog, ToggleSwitch, ApiKeyDialog, AccessRequestDialog, PhotoFace } })
 export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
   client = currentPrinterAccess()
   state: AccessState | null = null
@@ -1017,6 +1039,15 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
     return this.state?.owner.email ?? ''
   }
 
+  /** Your own photo when you are the owner here (one fetch, shared with the top bar); others' photos aren't known. */
+  get ownerPhoto (): string | null {
+    return this.viewer === 'owner' ? ownAvatar.url : null
+  }
+
+  publicPhoto (url: string | null | undefined): string | null {
+    return publicAvatarUrl(url)
+  }
+
   get ownerLetter (): string {
     return this.letterOf(this.ownerName)
   }
@@ -1058,10 +1089,12 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
     return this.shares.map(s => ({
       id: s.id,
       email: s.email,
-      letter: this.letterOf(s.email),
+      name: s.name || '',
+      photo: publicAvatarUrl(s.avatar_url),
+      letter: this.letterOf(s.name || s.email),
       role: s.role,
       endsAt: s.ends_at ?? null,
-      line: s.ends_at ? `Access ends ${dayText(s.ends_at)}` : s.accepted === false ? 'Not signed in yet' : `Since ${dayText(s.created_at)}`
+      line: [s.name ? s.email : '', s.ends_at ? `Access ends ${dayText(s.ends_at)}` : s.accepted === false ? 'Not signed in yet' : `Since ${dayText(s.created_at)}`].filter(Boolean).join(' � ')
     }))
   }
 
@@ -1460,6 +1493,7 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
     place-items: center;
     width: 36px;
     height: 36px;
+    overflow: hidden;
     border-radius: 50%;
     background: var(--m3d-accent-soft);
     color: var(--m3d-accent);
