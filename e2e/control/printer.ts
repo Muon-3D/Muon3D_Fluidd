@@ -52,9 +52,9 @@ export interface PrinterHandle {
   /** The printer prints these lines to the console now (a notify_gcode_response each). */
   say: (...lines: string[]) => void
   /** The printer drops off the network now: the page's websocket closes, and every new one is refused. */
-  goOffline: () => Promise<void>
+  offline: () => Promise<void>
   /** The printer is reachable again: the page's next websocket connects. */
-  goOnline: () => void
+  online: () => void
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -99,12 +99,12 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     say: (...lines: string[]) => {
       for (const line of lines) pageSocket?.send(JSON.stringify({ jsonrpc: '2.0', method: 'notify_gcode_response', params: [line] }))
     },
-    goOffline: async () => {
+    offline: async () => {
       handle.state.offline = true
       await pageSocket?.close()
       pageSocket = null
     },
-    goOnline: () => {
+    online: () => {
       handle.state.offline = false
     }
   }
