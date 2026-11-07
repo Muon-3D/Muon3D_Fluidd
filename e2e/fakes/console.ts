@@ -124,7 +124,7 @@ export async function signIn (page: Page) {
  * is answered on the page's origin, and its silent `/authorize` says no.
  */
 export async function serveConsoleHere (page: Page, state: ConsoleState, origin: string) {
-  await serveConsole(page, state, origin)
+  await page.route(`${origin}/v1/**`, route => answerConsole(route, state))
   await page.route(`${origin}/authorize**`, route => route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"login_required"}' }))
   await page.addInitScript(([url]) => {
     localStorage.setItem('muon.cloud.url', url)
