@@ -320,7 +320,7 @@ test('the saved order is the default camera on the Camera page and on Overview',
   // A stream that never answers leaves the stage empty, so it is attached, not necessarily visible.
   await expect(page.getByTestId('camera-stage')).toBeAttached()
   await expect(page.getByTestId('camera-stage').locator('.camera-name')).toHaveText('Toolhead')
-  if (!isMobile) await expect(page.getByTestId('camera-tabs').getByRole('link').first()).toHaveText('Toolhead')
+  await expect(page.getByTestId('camera-chips').getByRole('link').first()).toHaveText('Toolhead')
 
   await open('/')
   await page.getByTestId('view-toggle').getByRole('button', { name: 'Camera' }).click()
