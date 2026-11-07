@@ -875,4 +875,39 @@ a.acct-tile:hover {
   color: var(--m3d-accent);
   font-weight: 600;
   white-space: nowrap;
+/* The nav's groups: You, Access, Everything else (Control v3). */
+.acct-nav__group {
+  margin: 12px 12px 4px;
+  color: var(--m3d-text-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Your data's link to Delete account. */
+.acct-data-delete {
+  margin-top: 16px;
+  color: var(--m3d-text) !important;
+  text-decoration: none;
+}
+
+.acct-data-delete__title {
+  color: var(--m3d-danger);
+}
+
+/* Apps and agents: its two halves, under the page title. */
+.acct-apps__title,
+.acct-tokens__title {
+  margin: 12px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* Account is top-level: the chip back to the printer it was opened from. */
+.acct-back--chip {
+  padding: 4px 12px 4px 8px;
+  border: 1px solid var(--m3d-border);
+  border-radius: var(--m3d-radius-pill, 999px);
+  background: var(--m3d-surface);
 }
