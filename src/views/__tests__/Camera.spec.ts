@@ -1,6 +1,7 @@
 import { shallowMount, type Wrapper } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import Camera, { redactCameraUrl } from '../Camera.vue'
+import { cameraPage } from '@/services/camera/page-state'
 import type { WebcamConfig } from '@/store/webcams/types'
 
 const front: WebcamConfig = {
@@ -22,7 +23,7 @@ const side: WebcamConfig = {
   source: 'config'
 }
 
-function mountCamera (cameras: WebcamConfig[], cameraId = cameras[0]?.uid): Wrapper<Camera> {
+function mountCamera (cameras: WebcamConfig[], cameraId = cameras[0]?.uid, phone = true): Wrapper<Camera> {
   return shallowMount(Camera, {
     mocks: {
       $vuetify: { breakpoint: { mobile: false } },
@@ -38,18 +39,29 @@ function mountCamera (cameras: WebcamConfig[], cameraId = cameras[0]?.uid): Wrap
     computed: {
       cameras: () => cameras,
       camera: () => cameras.find(camera => camera.uid === cameraId) ?? cameras[0] ?? null,
-      isMobileViewport: () => false,
+      isMobileViewport: () => phone,
       facts: () => '',
       hasLights: () => false,
       printerPrinting: () => false,
       printerPaused: () => false
     },
-    stubs: ['camera-item', 'camera-actions', 'frame-icon', 'router-link'],
+    stubs: {
+      'camera-item': true,
+      'camera-actions': true,
+      'frame-icon': true,
+      'router-link': {
+        props: { to: [String, Object], custom: Boolean },
+        render (this: any, h: any) {
+          if (this.custom) return this.$scopedSlots.default({ href: this.to, navigate: () => {} })[0]
+          return h('router-link-stub', { attrs: { to: this.to } }, this.$slots.default)
+        }
+      }
+    },
     attachTo: document.body
   })
 }
 
-describe('Camera stream details', () => {
+describe('Camera stream details on a phone', () => {
   it('makes details reachable without a mode-specific camera stage', async () => {
     const wrapper = mountCamera([front])
     expect(wrapper.get('[data-tid="camera-stage"]').classes()).not.toContain('camera-stage--pro')
@@ -135,11 +147,82 @@ describe('Camera stream details', () => {
     outside.remove()
   })
 
+  it('lists the selected camera\'s stream in a side tile on a desktop', () => {
+    const wrapper = mountCamera([front], 'front', false)
+    expect(wrapper.find('[data-tid="camera-details-trigger"]').exists()).toBe(false)
+    const info = wrapper.get('[data-tid="camera-info"]')
+    expect(info.text()).toContain('Front camera')
+    expect(info.text()).toContain('webrtc-go2rtc')
+    expect(info.text()).toContain('30 fps, 5 idle')
+    expect(info.text()).not.toContain('secret')
+    expect(info.find('[data-tid="camera-settings"]').attributes('to')).toBe('/settings#camera')
+    wrapper.destroy()
+  })
+
   it('redacts usernames, passwords, hashes, and every query value', () => {
     const https = redactCameraUrl('https://viewer:secret@camera.local/live?token=private&quality=high#token')
     expect(https).toBe('https://camera.local/live?token=[redacted]&quality=[redacted]')
     expect(https).not.toContain('viewer')
     expect(https).not.toContain('#token')
     expect(redactCameraUrl('rtsp://user:pass@camera.local/live')).toBe('rtsp://camera.local/live')
+  })
+})
+
+describe('Camera v3 layout', () => {
+  it('shows camera chips only when there is more than one camera', () => {
+    const one = mountCamera([front], 'front', false)
+    expect(one.find('[data-tid="camera-chips"]').exists()).toBe(false)
+    one.destroy()
+
+    const two = mountCamera([front, side], 'side', false)
+    const chips = two.findAll('[data-tid="camera-chips"] a')
+    expect(chips.wrappers.map(chip => chip.text())).toEqual(['Front camera', 'Side camera'])
+    expect(chips.at(1).attributes('aria-current')).toBe('page')
+    expect(chips.at(0).attributes('aria-current')).toBeUndefined()
+    expect(chips.at(0).attributes('href')).toBe('/camera/front')
+    two.destroy()
+  })
+
+  it('puts Snapshot and Full screen on the stream', () => {
+    const wrapper = mountCamera([front], 'front', false)
+    const stage = wrapper.get('[data-tid="camera-stage"]')
+    expect(stage.find('[data-tid="camera-stage-snapshot"]').text()).toBe('Snapshot')
+    expect(stage.find('[data-tid="camera-stage-fullscreen"]').text()).toBe('Full screen')
+    expect(stage.find('[data-tid="camera-live"]').text()).toContain('30 fps')
+    wrapper.destroy()
+  })
+
+  it('says so in the tile when the stream does not load, and draws it again on Retry', async () => {
+    const wrapper = mountCamera([front], 'front', false)
+    const stage = wrapper.get('[data-tid="camera-stage"]')
+    const img = document.createElement('img')
+    stage.element.appendChild(img)
+    img.dispatchEvent(new Event('error'))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-tid="camera-error"]').text()).toContain("Can't reach Front camera")
+    expect(wrapper.find('[data-tid="camera-live"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid="camera-stage-snapshot"]').exists()).toBe(false)
+    const before = wrapper.get('camera-item-stub').element
+    await wrapper.get('[data-tid="camera-retry"]').trigger('click')
+    expect(wrapper.find('[data-tid="camera-error"]').exists()).toBe(false)
+    expect(wrapper.get('camera-item-stub').element).not.toBe(before)
+    wrapper.destroy()
+  })
+
+  it('names the printer under the page title and clears it on leaving', () => {
+    const wrapper = mountCamera([front], 'front', false)
+    expect(cameraPage.subtitle).toBe('Live view of M1')
+    wrapper.destroy()
+    expect(cameraPage.subtitle).toBe('')
+  })
+
+  it('offers to add a camera when the printer has none, and says nothing about a live view', () => {
+    const wrapper = mountCamera([], undefined, false)
+    expect(cameraPage.subtitle).toBe('')
+    expect(wrapper.find('[data-tid="camera-tile"]').exists()).toBe(false)
+    const empty = wrapper.get('[data-tid="camera-empty"]')
+    expect(empty.text()).toContain('This printer has no camera set up')
+    expect(empty.get('router-link-stub').attributes('to')).toBe('/settings#camera')
+    wrapper.destroy()
   })
 })
