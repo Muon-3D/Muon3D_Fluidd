@@ -5,6 +5,9 @@ import { FROSTED_PLATE, GLASS_ORDER } from '../glass-material'
 import { bindNodes } from './node-binding'
 import { ACCURATE_M1 } from './node-config'
 import { ACCURATE_RIG } from './klipper-map'
+import { buildAccurateAccessories } from './accessories'
+import { buildAccurateLights, type AccurateLights } from './lights'
+import type { AccessoryFrame } from '../accessory-motion'
 
 /**
  * The loaded accurate M1 as the viewer drives it: the head and the bed
@@ -12,10 +15,11 @@ import { ACCURATE_RIG } from './klipper-map'
  * the plate, and the glass either as the asset's transmissive material or,
  * on a phone, as a plain transparent one.
  *
- * Not driven, for want of a data source: the arm's fold (`M1_Arm`) and the
- * knob's spin (`M1_Knob`) stay at rest, and the belts are frozen at the rest
- * pose in the asset itself. The hose is skinned and follows the head on its own. The plate coming off, the hose's end,
- * the spool and the filament (accessory-parts.ts) are the simple model's.
+ * Not driven, for want of a data source: the arm's fold and the knob's spin
+ * (`M1_Knob`) stay at rest, and the belts are frozen at the rest pose in the
+ * asset itself. The hose is skinned and follows the head on its own. The
+ * plate coming off, the hose's end out of the head and the Z column lifted
+ * out are accessories.ts; the spool and the filament have no geometry here.
  */
 export interface AccurateRig {
   root: THREE.Object3D;
@@ -27,6 +31,13 @@ export interface AccurateRig {
   missing: string[];
   /** Poses the head, the gantry and the bed; the hose follows by skinning. */
   place: (placement: ModelPlacement) => void;
+  /** Places the plate, the hose's end and the Z column for an accessory frame (accessories.ts). */
+  apply: (frame: AccessoryFrame, partGone: boolean) => void;
+  /** How far the plate or the column is off the printer, 0 to 1, and the box round them there. */
+  plateOff: () => number;
+  plateOffBox: THREE.Box3;
+  /** The LED strip and the round screen (lights.ts). */
+  lights: AccurateLights;
   /** Swaps the transmissive glass for a plain transparent one. Returns whether anything changed. */
   useCheapGlass: () => boolean;
 }
@@ -57,7 +68,6 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
     material.transmission = FROSTED_PLATE.transmission
   }
 
-  const bed = ACCURATE_M1.bedHeight
   const front = Y_TOWARD_FRONT
   const printFrame = new THREE.Matrix4().set(
     1, 0, 0, -ACCURATE_RIG.plateHalfX,
@@ -73,17 +83,25 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
   // once, at rest, so neither may be culled.
   for (const name of ['M1_Hose', 'M1_Belt']) scene.getObjectByName(name)?.traverse(o => { o.frustumCulled = false })
 
+  // Moves the cargo into the plate's carrier, under the bed: it rides with the bed, the plate and the column.
+  const accessories = buildAccurateAccessories(scene, cargo)
+  if (accessories.missing.length) console.warn(`[m1] the accurate M1 lacks ${accessories.missing.join(', ')}; those parts stay still`)
+
+  const lights = buildAccurateLights(scene)
+
   let cheap = false
   return {
+    lights,
     root: scene,
     cargo,
     printFrame,
     missing: bindings.missing,
     place (p) {
       bindings.apply({ headX: p.headX, headZ: p.headZ, z: p.z })
-      // The plate's top, where the bed node puts it: the cargo is the plate's.
-      cargo.position.y = (p.z + (bed.zero ?? 0)) * bed.travel * ACCURATE_M1.scale
     },
+    apply: accessories.apply,
+    plateOff: accessories.plateOff,
+    plateOffBox: accessories.offBox,
     useCheapGlass () {
       if (cheap) return false
       cheap = true
