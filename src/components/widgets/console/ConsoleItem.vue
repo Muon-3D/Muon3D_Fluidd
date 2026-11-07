@@ -1,7 +1,7 @@
 <template>
   <v-layout class="console-item">
     <span
-      v-if="value.time"
+      v-if="value.time && timestamps"
       class="secondary--text mr-3 d-none d-sm-block text-no-wrap"
     >
       {{ itemTime }}&nbsp;
@@ -39,6 +39,10 @@ export default class ConsoleItem extends Vue {
     return (this.value.type === 'command')
       ? `${Globals.CONSOLE_SEND_PREFIX}<a class="primary--text text--lighten-1">${message}</a>`
       : message
+  }
+
+  get timestamps (): boolean {
+    return this.$store.state.config.uiSettings.console?.timestamps !== false
   }
 
   get itemTime () {

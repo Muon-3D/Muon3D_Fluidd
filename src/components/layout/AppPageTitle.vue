@@ -59,6 +59,18 @@
         <console-actions v-if="currentSection && currentSection.id === 'console'" />
         <files-actions v-if="currentSection && currentSection.id === 'files' && isMobileViewport" />
         <camera-actions v-if="currentSection && currentSection.id === 'camera' && !isMobileViewport" />
+        <router-link
+          v-if="settingsSection && settingsSection.id === 'console' && !isMobileViewport"
+          :to="consoleTo"
+          class="cbtn cbtn--ghost"
+          data-tid="settings-open-console"
+        >
+          <frame-icon
+            name="console"
+            small
+          />
+          Open Console
+        </router-link>
         <charts-actions v-if="chartsHome" />
       </div>
     </div>
@@ -182,6 +194,10 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
 
   get healthTo (): string {
     return scopedPath('/maintenance', activeSlug())
+  }
+
+  get consoleTo (): string {
+    return scopedPath('/console', activeSlug())
   }
 
   /** Jobs' own page: its header carries the search, the order and Upload, and History and Timelapse sit in its ··· menu. */
