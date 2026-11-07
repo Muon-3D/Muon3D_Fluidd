@@ -8,10 +8,32 @@ import type { Page, Route } from '@playwright/test'
 
 export const CONSOLE = 'https://console.e2e.test'
 
+export interface ConsolePrinter {
+  id: string;
+  name: string;
+  model: string;
+  state: string;
+  /** A share to this account rather than a printer it linked, with its role and share. */
+  shared?: boolean;
+  role?: 'operator' | 'viewer';
+  share_id?: string;
+  ends_at?: number | null;
+  sharer?: { account_id: string, display_name: string };
+  [key: string]: unknown;
+}
+
 export interface ConsoleState {
   account: { id: string, email: string, name: string };
-  printers: Array<{ id: string, name: string, model: string, state: string }>;
+  printers: ConsolePrinter[];
   seen: string[];
+  /** Per printer: its people (shares), pending email invites and invite links, for its owner. */
+  shares: Record<string, unknown[]>;
+  invites: Record<string, unknown[]>;
+  links: Record<string, unknown[]>;
+  /** Join requests waiting for this account. */
+  approvals: unknown[];
+  /** Every request that changes something (not a GET), with its body: `DELETE /v1/printers/p1/shares/s1`. */
+  changes: Array<{ call: string, body: unknown }>;
 }
 
 export function consoleState (over: Partial<ConsoleState> = {}): ConsoleState {
@@ -19,6 +41,11 @@ export function consoleState (over: Partial<ConsoleState> = {}): ConsoleState {
     account: { id: 'acct-e2e', email: 'jack@example.test', name: 'Jack' },
     printers: [],
     seen: [],
+    shares: {},
+    invites: {},
+    links: {},
+    approvals: [],
+    changes: [],
     ...over
   }
 }
@@ -27,19 +54,35 @@ const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key' }, body: JSON.stringify(body) })
 
 export async function serveConsole (page: Page, state: ConsoleState) {
-  await page.route(`${CONSOLE}/**`, async route => {
-    const request = route.request()
-    const url = new URL(request.url())
-    state.seen.push(`${request.method()} ${url.pathname}`)
-    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
-    switch (url.pathname) {
-      case '/v1/me': return json(route, { account: { ...state.account, display_name: state.account.name }, endpoint_id: null })
-      case '/v1/me/assertion': return json(route, { assertion: 'e2e-assertion', expires_at: Math.floor(Date.now() / 1000) + 3600 })
-      case '/v1/printers': return json(route, { printers: state.printers })
-      case '/v1/me/notices': return json(route, { notices: [], unread: 0, next: null })
-      default: return json(route, {})
-    }
-  })
+  await page.route(`${CONSOLE}/**`, route => answerConsole(route, state))
+}
+
+const PRINTER_LIST = /^\/v1\/printers\/([^/]+)\/(shares|invites|links)$/
+
+/** The console's answer to one request: also used where a test serves the console at another address. */
+export async function answerConsole (route: Route, state: ConsoleState) {
+  const request = route.request()
+  const url = new URL(request.url())
+  state.seen.push(`${request.method()} ${url.pathname}`)
+  if (request.method() !== 'GET' && request.method() !== 'OPTIONS') {
+    let body: unknown = null
+    try { body = request.postDataJSON() } catch { body = request.postData() }
+    state.changes.push({ call: `${request.method()} ${url.pathname}`, body })
+  }
+  const list = url.pathname.match(PRINTER_LIST)
+  if (list && request.method() === 'GET') {
+    const [, id, kind] = list
+    return json(route, { [kind]: state[kind as 'shares' | 'invites' | 'links'][decodeURIComponent(id)] ?? [] })
+  }
+  if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
+  switch (url.pathname) {
+    case '/v1/me': return json(route, { account: { ...state.account, display_name: state.account.name }, endpoint_id: null })
+    case '/v1/me/assertion': return json(route, { assertion: 'e2e-assertion', expires_at: Math.floor(Date.now() / 1000) + 3600 })
+    case '/v1/printers': return json(route, { printers: state.printers })
+    case '/v1/me/notices': return json(route, { notices: [], unread: 0, next: null })
+    case '/v1/approvals': return json(route, { approvals: state.approvals })
+    default: return json(route, {})
+  }
 }
 
 /**

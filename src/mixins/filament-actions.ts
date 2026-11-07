@@ -3,6 +3,7 @@ import { Component, Mixins } from 'vue-property-decorator'
 import ControlMixin from './control'
 import { EventBus } from '@/eventBus'
 import { cloudState } from '@/services/muon-cloud/state'
+import { hotendLimitReason } from '@/services/control/model'
 import { findFilamentMacro, type FilamentMacro } from '@/services/quick-actions/model'
 import {
   changeFilamentPlan,
@@ -74,6 +75,11 @@ export default class FilamentActionsMixin extends Mixins(ControlMixin) {
     return this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
   }
 
+  /** Why the material can't be heated for on this hotend, if it can't. */
+  get filamentTooHot (): string | null {
+    return hotendLimitReason(this.material?.name ?? this.loadedMaterial?.name, this.filamentTemp, this.extruderMaxTemp)
+  }
+
   get filamentState (): FilamentState {
     return {
       printing: this.printerPrinting,
@@ -85,9 +91,9 @@ export default class FilamentActionsMixin extends Mixins(ControlMixin) {
     }
   }
 
-  get changePlan (): FilamentPlan { return changeFilamentPlan(this.filamentState, this.changeMacro, this.filamentTemp) }
-  get loadPlan (): FilamentPlan { return loadUnloadPlan(this.filamentState, 'load', this.loadMacro, this.filamentTemp) }
-  get unloadPlan (): FilamentPlan { return loadUnloadPlan(this.filamentState, 'unload', this.unloadMacro, this.filamentTemp) }
+  get changePlan (): FilamentPlan { return changeFilamentPlan(this.filamentState, this.changeMacro, this.filamentTemp, this.filamentTooHot) }
+  get loadPlan (): FilamentPlan { return loadUnloadPlan(this.filamentState, 'load', this.loadMacro, this.filamentTemp, this.filamentTooHot) }
+  get unloadPlan (): FilamentPlan { return loadUnloadPlan(this.filamentState, 'unload', this.unloadMacro, this.filamentTemp, this.filamentTooHot) }
 
   /**
    * Sends the plan once. Mid-print M600 asks first, and after the answer the

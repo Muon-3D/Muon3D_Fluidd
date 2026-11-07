@@ -23,6 +23,7 @@ import {
   savedMaterialColour,
   savedMaterialName,
   type Material,
+  hotendLimitReason,
   type MaterialChoice
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
@@ -230,9 +231,24 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     }
   }
 
+  /** The extruder's hard limit, from printer.cfg, or null when the printer didn't say. */
+  get extruderMaxTemp (): number | null {
+    const max = Number(this.$store.state.printer?.printer?.configfile?.settings?.extruder?.max_temp)
+    return Number.isFinite(max) && max > 0 ? max : null
+  }
+
+  /** Tells the person why nothing was sent, when the material is hotter than the hotend can go. True if it is. */
+  refuseTooHot (name: string | undefined, nozzle: number | null | undefined): boolean {
+    const reason = hotendLimitReason(name, nozzle, this.extruderMaxTemp)
+    if (!reason) return false
+    EventBus.$emit(reason, { type: 'error', timeout: 8000 })
+    return true
+  }
+
   /** Heats for a material: as its preset says when it has one, else to its temperatures. */
   heatFor (choice: MaterialChoice) {
     if (!this.controlReady) return
+    if (this.refuseTooHot(choice.name, choice.nozzle)) return
     const preset = choice.presetId === null ? undefined : this.presets.find(p => p.id === choice.presetId)
     if (preset) {
       presetCommands(preset).forEach(g => this.sendGcode(g))
@@ -250,6 +266,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
 
   applyMaterial (material: Material) {
     if (!this.controlReady) return
+    if (this.refuseTooHot(material.name, material.nozzle)) return
     const preset = this.presets.find(p => p.id === material.id)
     if (preset) presetCommands(preset).forEach(g => this.sendGcode(g))
   }

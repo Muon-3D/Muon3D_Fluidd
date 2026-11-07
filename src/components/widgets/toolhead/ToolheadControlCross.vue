@@ -190,16 +190,18 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
+import DevGuardMixin from '@/mixins/dev-guard'
 import ToolheadMixin from '@/mixins/toolhead'
 
 type Axis = 'X' | 'Y' | 'Z'
 
 @Component({})
-export default class ToolheadControlCross extends Mixins(StateMixin, ToolheadMixin) {
+export default class ToolheadControlCross extends Mixins(StateMixin, ToolheadMixin, DevGuardMixin) {
   moveLength: number | null = null
 
   get forceMove (): boolean {
-    return this.$store.state.config.uiSettings.toolhead.forceMove as boolean
+    // FORCE_MOVE is developer-mode only (Klipper#112): outside it the head moves as normal.
+    return !this.devOnlyLocked && this.$store.state.config.uiSettings.toolhead.forceMove as boolean
   }
 
   get hasRoundBed (): boolean {
