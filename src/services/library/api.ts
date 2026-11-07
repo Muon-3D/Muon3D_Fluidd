@@ -159,7 +159,11 @@ export interface LibraryInfo {
   account: LibraryAccount | null;
   used_bytes: number;
   quota_bytes: number;
+  /** What the space holds, by kind, once the service splits it. Not sent yet. */
+  used_by_kind?: Partial<Record<StorageKind, number>>;
 }
+
+export type StorageKind = 'uploads' | 'slices' | 'designs'
 
 /** One page of `GET /v1/items?since=`. */
 export interface FeedPage {
