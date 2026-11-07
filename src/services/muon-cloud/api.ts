@@ -181,24 +181,62 @@ export function setCloudBaseUrl (url: string | null) {
   writeStorage(URL_KEY, url)
 }
 
+/**
+ * Whether cloud tokens may sit in localStorage on this origin (KAN-1800,
+ * H2/B9). Plain HTTP on the printer's own address (`*.local`, 10.42.0.1 on
+ * the hotspot, any LAN IP) lets anyone on the network read or inject script
+ * into the origin, so the long-lived pair must not outlive the tab there.
+ * HTTPS and loopback (a secure context, and the dev server) keep it.
+ */
+export function cloudTokensPersist (location: Pick<Location, 'protocol' | 'hostname'> | undefined = globalThis.location): boolean {
+  // No page (a worker or a test in node): nothing to judge, keep the old path.
+  if (!location) return true
+  return location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
+}
+
+// On an insecure origin the pair lives here only: a reload signs out.
+const memoryTokens = new Map<string, string>()
+
+function readTokenStorage (key: string): string | null {
+  if (cloudTokensPersist()) return readStorage(key)
+  return memoryTokens.get(key) ?? null
+}
+
+function writeTokenStorage (key: string, value: string | null) {
+  if (cloudTokensPersist()) return writeStorage(key, value)
+  if (value === null) memoryTokens.delete(key)
+  else memoryTokens.set(key, value)
+}
+
+// Migration: an older build stored the pair in localStorage on this origin.
+// Remove it on first load so it cannot be read later.
+try {
+  if (!cloudTokensPersist()) {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_KEY)
+  }
+} catch {
+  // No storage: nothing to clear.
+}
+
 export function storedToken (): string | null {
-  return readStorage(TOKEN_KEY)
+  return readTokenStorage(TOKEN_KEY)
 }
 
 export function storeToken (token: string | null) {
-  writeStorage(TOKEN_KEY, token)
+  writeTokenStorage(TOKEN_KEY, token)
   if (token === null) clearDeletion()
 }
 
 export function storedRefreshToken (): string | null {
-  return readStorage(REFRESH_KEY)
+  return readTokenStorage(REFRESH_KEY)
 }
 
 export function storeRefreshToken (token: string | null) {
   // A new session (or none) starts with no refresh backoff: a sign-out and
   // sign-in must not inherit the old session's wait.
-  if (token !== readStorage(REFRESH_KEY)) resetRefreshBackoff()
-  writeStorage(REFRESH_KEY, token)
+  if (token !== readTokenStorage(REFRESH_KEY)) resetRefreshBackoff()
+  writeTokenStorage(REFRESH_KEY, token)
 }
 
 /**
