@@ -31,7 +31,13 @@
           v-bind="attrs"
           v-on="on"
         >
-          <span class="muon-account__initials">{{ initials }}</span>
+          <span
+            class="muon-account__initials"
+            data-tid="account-face"
+          ><photo-face
+            :photo="photo"
+            :letter="initials"
+          /></span>
         </button>
       </template>
       <div
@@ -44,7 +50,10 @@
           <span class="acct-menu__caps">Muon3D account</span>
           <template v-if="account">
             <div class="acct-menu__who">
-              <span class="acct-menu__avatar">{{ initials }}</span>
+              <span class="acct-menu__avatar"><photo-face
+                :photo="photo"
+                :letter="initials"
+              /></span>
               <span class="acct-menu__names">
                 <b>{{ account.name }}</b>
                 <span>{{ account.email }}</span>
@@ -182,7 +191,10 @@
             v-if="account"
             class="acct-menu__who"
           >
-            <span class="acct-menu__avatar">{{ initials }}</span>
+            <span class="acct-menu__avatar"><photo-face
+              :photo="photo"
+              :letter="initials"
+            /></span>
             <span class="acct-menu__names">
               <b>{{ account.name }}</b>
               <span>{{ account.email }}</span>
@@ -361,6 +373,8 @@ import { EventBus } from '@/eventBus'
 import { Globals } from '@/globals'
 import CloudAccountDialog from './CloudAccountDialog.vue'
 import LinkPrinterDialog from './LinkPrinterDialog.vue'
+import PhotoFace from '@/components/account/profile/PhotoFace.vue'
+import { forgetOwnAvatar, loadOwnAvatar, ownAvatar } from '@/services/account/avatar'
 import AppUserMenu from '@/components/layout/AppUserMenu.vue'
 import UserPasswordDialog from '@/components/settings/auth/UserPasswordDialog.vue'
 
@@ -378,7 +392,7 @@ const NAMELESS_USERS = ['_TRUSTED_USER_', '_API__API_KEY_USER_USER_']
  * printer's login is "This printer": who can use it, its password, and
  * locking it in this browser.
  */
-@Component({ components: { CloudAccountDialog, LinkPrinterDialog, AppUserMenu, UserPasswordDialog } })
+@Component({ components: { CloudAccountDialog, LinkPrinterDialog, AppUserMenu, UserPasswordDialog, PhotoFace } })
 export default class CloudAccountMenu extends Vue {
   dialog = false
   linkDialog = false
@@ -450,6 +464,31 @@ export default class CloudAccountMenu extends Vue {
     return initialsOf(cloudState.account?.name || this.printerUser, cloudState.account?.email)
   }
 
+  /** Your photo (one fetch, shared with Account › Profile), or null: the initials stand in. */
+  get photo (): string | null {
+    return ownAvatar.url
+  }
+
+  get accountId (): string {
+    return cloudState.account?.id ?? ''
+  }
+
+  created () {
+    this.loadPhoto()
+  }
+
+  /** Another account or none: nothing of the last photo stays. */
+  @Watch('accountId')
+  onAccount () {
+    forgetOwnAvatar()
+    this.loadPhoto()
+  }
+
+  loadPhoto () {
+    // The Library's service answers where the console serves Control, to a signed-in account.
+    if (this.accountId && centralLoginEnabled()) loadOwnAvatar().catch(() => {})
+  }
+
   /** Requests to use one of your printers, waiting for you. */
   get waiting (): number {
     return accountState.approvals?.length ?? 0
@@ -516,6 +555,7 @@ export default class CloudAccountMenu extends Vue {
     width: 32px;
     height: 32px;
     border-radius: 50%;
+    overflow: hidden;
     background: color-mix(in srgb, var(--m3d-accent) 32%, var(--m3d-surface-2));
     color: var(--m3d-text);
     font-size: 13px;
@@ -554,6 +594,7 @@ export default class CloudAccountMenu extends Vue {
     width: 48px;
     height: 48px;
     border-radius: 50%;
+    overflow: hidden;
     background: color-mix(in srgb, var(--m3d-accent) 32%, var(--m3d-surface-2));
     font-size: 19px;
     font-weight: 600;
