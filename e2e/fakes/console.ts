@@ -23,8 +23,12 @@ export interface ConsolePrinter {
 }
 
 export interface ConsoleState {
-  account: { id: string, email: string, name: string };
+  account: { id: string, email: string, name: string, created_at?: number };
   printers: ConsolePrinter[];
+  /** `/v1/me/preferences`, kept across reloads; null answers 404, as a console from before it. */
+  preferences: Record<string, boolean> | null;
+  /** Bodies PUT to `/v1/me/preferences`, in order. */
+  preferencePatches: Array<Record<string, boolean>>;
   seen: string[];
   /** Per printer: its people (shares), pending email invites and invite links, for its owner. */
   shares: Record<string, unknown[]>;
@@ -32,6 +36,10 @@ export interface ConsoleState {
   links: Record<string, unknown[]>;
   /** Join requests waiting for this account. */
   approvals: unknown[];
+  /** The community identity (`/v1/me/community-identity`), when a test needs it; otherwise the fake answers {}. */
+  identity?: { declared_age: number | null, declared_at: number | null, can_community: boolean, can_public: boolean, identity_public: boolean, revision: number, projection_pending: boolean };
+  /** Answer matching requests with a status ("PATCH /v1/me"): the console failing. */
+  failOn?: (request: string) => number | null;
   /** Every request that changes something (not a GET), with its body: `DELETE /v1/printers/p1/shares/s1`. */
   changes: Array<{ call: string, body: unknown }>;
 }
@@ -40,6 +48,8 @@ export function consoleState (over: Partial<ConsoleState> = {}): ConsoleState {
   return {
     account: { id: 'acct-e2e', email: 'jack@example.test', name: 'Jack' },
     printers: [],
+    preferences: { email_access_requests: true, email_shared_with_you: true, email_community: false, email_news: false },
+    preferencePatches: [],
     seen: [],
     shares: {},
     invites: {},
@@ -69,6 +79,24 @@ export async function answerConsole (route: Route, state: ConsoleState) {
     try { body = request.postDataJSON() } catch { body = request.postData() }
     state.changes.push({ call: `${request.method()} ${url.pathname}`, body })
   }
+  const failure = state.failOn?.(`${request.method()} ${url.pathname}`)
+  if (failure) return json(route, { error: { code: 'unavailable', message: 'The console is down for a moment.' } }, failure)
+  if (request.method() === 'PATCH' && url.pathname === '/v1/me') {
+    const body = request.postDataJSON() as { name?: string }
+    if (typeof body.name === 'string') state.account.name = body.name
+    return json(route, { account: { ...state.account, display_name: state.account.name } })
+  }
+  if (state.identity && url.pathname === '/v1/me/community-identity') {
+    if (request.method() === 'PATCH') {
+      const body = request.postDataJSON() as { declared_age?: number, identity_public?: boolean }
+      if (body.declared_age !== undefined) {
+        const age = body.declared_age
+        state.identity = { ...state.identity, declared_age: age, declared_at: 1_790_000_000, can_community: true, can_public: age >= 18 }
+      }
+      if (body.identity_public !== undefined) state.identity = { ...state.identity, identity_public: body.identity_public, revision: state.identity.revision + 1, projection_pending: true }
+    }
+    return json(route, state.identity)
+  }
   const list = url.pathname.match(PRINTER_LIST)
   if (list && request.method() === 'GET') {
     const [, id, kind] = list
@@ -81,6 +109,15 @@ export async function answerConsole (route: Route, state: ConsoleState) {
     case '/v1/printers': return json(route, { printers: state.printers })
     case '/v1/me/notices': return json(route, { notices: [], unread: 0, next: null })
     case '/v1/approvals': return json(route, { approvals: state.approvals })
+    case '/v1/me/preferences': {
+      if (!state.preferences) return route.fulfill({ status: 404, contentType: 'text/html', headers: { 'access-control-allow-origin': '*' }, body: 'Not Found' })
+      if (request.method() === 'PUT') {
+        const patch = request.postDataJSON() as Record<string, boolean>
+        state.preferencePatches.push(patch)
+        for (const [key, value] of Object.entries(patch)) if (key in state.preferences) state.preferences[key] = value
+      }
+      return json(route, { preferences: state.preferences })
+    }
     default: return json(route, {})
   }
 }
@@ -101,4 +138,17 @@ export async function signIn (page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('muon.cloud.token', 'e2e-session')
   })
+}
+
+/**
+ * The console serving this page itself, as on control.muon3d.com: Account's
+ * settings only draw where the console serves Control (KAN-532 §2.1). Its API
+ * is answered on the page's origin, and its silent `/authorize` says no.
+ */
+export async function serveConsoleHere (page: Page, state: ConsoleState, origin: string) {
+  await page.route(`${origin}/v1/**`, route => answerConsole(route, state))
+  await page.route(`${origin}/authorize**`, route => route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"login_required"}' }))
+  await page.addInitScript(([url]) => {
+    localStorage.setItem('muon.cloud.url', url)
+  }, [origin])
 }
