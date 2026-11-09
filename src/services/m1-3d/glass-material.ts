@@ -9,6 +9,14 @@ import type * as THREE from 'three'
 export const CONTENTS_ORDER = 1
 export const GLASS_ORDER = 2
 
+/**
+ * The accurate M1's build plate is lightly frosted, not perfectly clear (Jack, 6 Nov).
+ * Its transmissive glass blurs what's behind it by `roughness` and lets `transmission`
+ * of it through, the rest scattering as a milky white; the cheap plain plate (a phone's)
+ * gets the same milkiness as `cheapOpacity` of white over the scene.
+ */
+export const FROSTED_PLATE = { name: 'M1_Glass', roughness: 0.14, transmission: 0.95, cheapOpacity: 0.28 } as const
+
 /** How much of the scene shows through the plate's faces. */
 const GLASS_OPACITY = 0.2
 const EDGE_OPACITY = 0.55

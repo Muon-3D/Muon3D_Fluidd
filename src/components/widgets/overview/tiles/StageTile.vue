@@ -56,6 +56,7 @@
 import { Component, Vue } from 'vue-property-decorator'
 import TileShell from './TileShell.vue'
 import OverviewStage from '@/components/overview/OverviewStage.vue'
+import { modelSettings } from '@/services/m1-3d/device-settings'
 import type { WebcamConfig } from '@/store/webcams/types'
 
 /**
@@ -71,7 +72,7 @@ import type { WebcamConfig } from '@/store/webcams/types'
   }
 })
 export default class StageTile extends Vue {
-  view: '3d' | 'camera' = '3d'
+  view: '3d' | 'camera' = modelSettings.opensOn
 
   get cameras (): WebcamConfig[] {
     return (this.$store.getters['webcams/getEnabledWebcams'] as WebcamConfig[] | undefined) ?? []
@@ -82,10 +83,12 @@ export default class StageTile extends Vue {
   }
 
   get toggleShown (): boolean {
-    return this.cameras.length > 0 && this.toggleAllowed
+    return this.cameras.length > 0 && this.toggleAllowed && modelSettings.show
   }
 
+  /** With the 3D printer off, the camera if there is one (else the stage's still picture). */
   get showCamera (): boolean {
+    if (!modelSettings.show) return this.cameras.length > 0
     return this.view === 'camera' && this.toggleShown
   }
 }

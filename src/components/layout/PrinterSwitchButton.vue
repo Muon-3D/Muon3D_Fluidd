@@ -112,6 +112,7 @@
 <script lang="ts">
 import { Component, Mixins, Prop } from 'vue-property-decorator'
 import PrinterStatusMixin from '@/mixins/printer-status'
+import { printModeLabel } from '@/services/control/print-mode'
 import PrinterSwitcher from '@/components/muon-cloud/PrinterSwitcher.vue'
 import type { ThumbState } from '@/components/ui/PrinterThumb.vue'
 import type { TimeEstimates } from '@/store/printer/types'
@@ -169,9 +170,20 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
     return seconds > 0 ? `${shortDuration(seconds)} left` : null
   }
 
+  /**
+   * The print mode, when it isn't the everyday one: "Quiet", "Turbo". From
+   * printer.fan_modes as Klipper reports it (it isn't saved across a restart
+   * yet; Klipper starts in Normal).
+   */
+  get printModeChip (): string {
+    const mode = this.$store.state.printer.printer.fan_modes?.mode
+    return typeof mode === 'string' && mode && mode.toLowerCase() !== 'normal' ? printModeLabel(mode) : ''
+  }
+
   get statusLine (): string {
     if (this.foreignStatus) return FOREIGN_STATE_LABELS[this.foreignStatus.state]
-    return this.timeLeft ? `${this.statusText} · ${this.timeLeft}` : this.statusText
+    const line = this.timeLeft ? `${this.statusText} · ${this.timeLeft}` : this.statusText
+    return this.printModeChip ? `${line} · ${this.printModeChip}` : line
   }
 
   get statusLineShort (): string {

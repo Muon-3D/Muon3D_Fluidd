@@ -4,116 +4,168 @@
     :class="{ 'prev--phone': isMobileViewport }"
     data-tid="preview-page"
   >
-    <section class="prev__stage">
-      <gcode-preview
-        v-if="loaded"
-        class="prev__drawing"
-        :layer="shownLayer"
-        :progress="following ? undefined : moveEnd"
-        :disabled="false"
-        bare
-        @cancelObject="cancelObject"
-      />
-      <div
-        v-else-if="parsing"
-        class="prev__busy"
-      >
-        <v-progress-circular
-          :value="parserProgress"
-          size="44"
-          width="3"
-          color="primary"
-        />
-        <span>Reading {{ fileName }}… {{ Math.round(parserProgress) }}%</span>
-        <button
-          type="button"
-          class="prev__link"
-          @click="stopReading"
-        >
-          Stop
-        </button>
-      </div>
-      <div
-        v-else-if="fetching"
-        class="prev__busy"
-      >
-        <v-progress-circular
-          indeterminate
-          size="44"
-          width="3"
-          color="primary"
-        />
-        <span>Fetching {{ fetching }} from {{ printerName }}…</span>
-      </div>
-      <div
-        v-else
-        class="prev__empty"
-      >
-        <frame-icon name="layout" />
-        <p>Nothing loaded. Load what's printing, or open a file.</p>
-      </div>
-    </section>
-
-    <aside class="prev__side">
-      <div class="prev__head">
-        <div class="prev__titles">
-          <h2>{{ loaded ? title : 'G-code preview' }}</h2>
-          <p v-if="loaded">
-            {{ fileName }}
-          </p>
-        </div>
-        <button
+    <p
+      v-if="!socketConnected"
+      class="prev__offline"
+      data-tid="preview-offline"
+    >
+      {{ printerName }} is offline. {{ loaded ? 'This file stays here to look through; printing and opening files wait until it\'s back.' : 'Files can be opened once it\'s back.' }}
+    </p>
+    <section
+      class="prev__tile prev__canvas"
+      data-tid="preview-canvas"
+    >
+      <div class="prev__stage">
+        <gcode-preview
           v-if="loaded"
-          type="button"
-          class="prev__link"
-          data-tid="preview-unload"
-          @click="unload"
+          ref="viewer"
+          class="prev__drawing"
+          :layer="shownLayer"
+          :progress="following ? undefined : moveEnd"
+          :disabled="false"
+          bare
+          @cancelObject="cancelObject"
+        />
+        <template v-if="loaded">
+          <span
+            class="prev__pill"
+            data-tid="preview-layer-pill"
+          >Layer {{ shownLayer + 1 }} of {{ fileLayers.length }} · Z {{ z.toFixed(2) }} mm</span>
+          <div class="prev__stage-actions">
+            <button
+              type="button"
+              class="prev__round"
+              aria-label="Load the file again"
+              data-tid="preview-reload"
+              :disabled="!socketConnected || !previewFile"
+              @click="reload"
+            >
+              <frame-icon
+                name="refresh"
+                small
+              />
+            </button>
+            <button
+              type="button"
+              class="cbtn prev__chip"
+              data-tid="preview-reset-view"
+              @click="resetView"
+            >
+              Reset view
+            </button>
+          </div>
+        </template>
+        <div
+          v-else-if="parsing"
+          class="prev__busy"
+          data-tid="preview-parsing"
         >
-          Unload
-        </button>
-      </div>
-
-      <button
-        v-if="printerFile && !printerFileLoaded"
-        type="button"
-        class="cbtn cbtn--primary"
-        data-tid="preview-load-print"
-        :disabled="parsing || !!fetching"
-        @click="load(printerFile)"
-      >
-        Load what's printing
-      </button>
-      <label class="prev__open">
-        <span>Open a file</span>
-        <select
-          :value="''"
-          :disabled="parsing || !!fetching || !files.length"
-          aria-label="Open a file"
-          data-tid="preview-open"
-          @change="openPicked"
-        >
-          <option value="">
-            {{ files.length ? 'Choose…' : 'No G-code on the printer' }}
-          </option>
-          <option
-            v-for="f in files"
-            :key="f.key"
-            :value="f.key"
+          <v-progress-circular
+            :value="parserProgress"
+            size="44"
+            width="3"
+            color="primary"
+          />
+          <span>Reading {{ fileName }}… {{ Math.round(parserProgress) }}%</span>
+          <button
+            type="button"
+            class="prev__link"
+            data-tid="preview-stop"
+            @click="stopReading"
           >
-            {{ f.title }}
-          </option>
-        </select>
-      </label>
-      <p
-        v-if="error"
-        class="prev__error"
+            Stop
+          </button>
+        </div>
+        <div
+          v-else-if="fetching"
+          class="prev__busy"
+        >
+          <v-progress-circular
+            indeterminate
+            size="44"
+            width="3"
+            color="primary"
+          />
+          <span>Fetching {{ fetching }} from {{ printerName }}…</span>
+        </div>
+        <div
+          v-else-if="error"
+          class="prev__state"
+          data-tid="preview-error"
+        >
+          <span class="prev__state-icon prev__state-icon--err"><frame-icon name="alert" /></span>
+          <b>Couldn't open {{ failedFile ? failedFile.filename : 'the file' }}</b>
+          <p>{{ error }}</p>
+          <button
+            v-if="failedFile"
+            type="button"
+            class="cbtn cbtn--primary"
+            data-tid="preview-retry"
+            :disabled="!socketConnected"
+            @click="load(failedFile)"
+          >
+            Retry
+          </button>
+        </div>
+        <div
+          v-else
+          class="prev__state"
+          data-tid="preview-empty"
+        >
+          <span class="prev__state-icon"><frame-icon name="layout" /></span>
+          <b>Nothing loaded</b>
+          <p>{{ printerFile ? 'Load what\'s printing to watch it layer by layer, or open any file.' : 'Open a file on the printer to look through it layer by layer.' }}</p>
+          <button
+            v-if="printerFile"
+            type="button"
+            class="cbtn cbtn--primary"
+            data-tid="preview-load-print"
+            :disabled="!socketConnected"
+            @click="load(printerFile)"
+          >
+            Load what's printing
+          </button>
+          <preview-open-menu
+            v-else
+            @pick="load"
+          >
+            <template #activator="{ on, attrs }">
+              <button
+                type="button"
+                class="cbtn cbtn--primary"
+                data-tid="preview-open"
+                :disabled="!socketConnected"
+                v-bind="attrs"
+                v-on="on"
+              >
+                Open a file
+              </button>
+            </template>
+          </preview-open-menu>
+        </div>
+      </div>
+      <div
+        v-if="loaded"
+        class="prev__under"
       >
-        {{ error }}
-      </p>
-
-      <template v-if="loaded">
-        <div class="prev__slider">
-          <span>Layer</span>
+        <button
+          v-if="printerFile && !printerFileLoaded"
+          type="button"
+          class="cbtn"
+          data-tid="preview-load-print"
+          :disabled="!socketConnected || parsing || !!fetching"
+          @click="load(printerFile)"
+        >
+          Load what's printing
+        </button>
+        <div
+          class="prev__slider"
+          data-tid="preview-layer"
+        >
+          <div class="prev__slider-head">
+            <b>Layer</b>
+            <span>{{ shownLayer + 1 }} / {{ fileLayers.length }}</span>
+          </div>
           <range-slider
             :value="shownLayer"
             :min="0"
@@ -122,12 +174,20 @@
             :value-text-formatter="layerValueText"
             @change="setLayer"
           />
+          <div class="prev__slider-foot">
+            <span>1</span>
+            <span>{{ following ? 'Live position tracks the nozzle' : 'Drag to look through the layers' }}</span>
+            <span>{{ fileLayers.length }}</span>
+          </div>
         </div>
         <div
           v-if="!following"
           class="prev__slider"
         >
-          <span>Along it</span>
+          <div class="prev__slider-head">
+            <b>Along the layer</b>
+            <span>{{ (moveEnd - layerStart + 1).toLocaleString() }} / {{ Math.max(1, layerEnd - layerStart + 1).toLocaleString() }}</span>
+          </div>
           <range-slider
             :value="moveEnd - layerStart"
             :min="0"
@@ -154,28 +214,133 @@
             <dd>{{ (layerEnd - layerStart).toLocaleString() }}</dd>
           </div>
         </dl>
-        <viewer-toggles />
-        <label
-          v-if="printerFileLoaded"
-          class="prev__follow"
+      </div>
+    </section>
+    <aside
+      class="prev__tile prev__show"
+      data-tid="preview-show"
+    >
+      <div class="prev__show-head">
+        <b>Show</b>
+        <v-menu
+          offset-y
+          left
+          :close-on-content-click="false"
         >
-          <span>
-            <b>Follow the print</b>
-            <span>The layer and the line it's on, as it prints</span>
+          <template #activator="{ on, attrs }">
+            <button
+              type="button"
+              class="prev__round"
+              aria-label="More to show"
+              data-tid="preview-show-more"
+              v-bind="attrs"
+              v-on="on"
+            >
+              <frame-icon
+                name="more"
+                small
+              />
+            </button>
+          </template>
+          <div
+            class="prev__menu"
+            data-tid="preview-show-menu"
+          >
+            <viewer-toggles />
+            <preview-open-menu @pick="load">
+              <template #activator="{ on, attrs }">
+                <button
+                  type="button"
+                  class="cbtn"
+                  data-tid="preview-show-open"
+                  :disabled="!socketConnected"
+                  v-bind="attrs"
+                  v-on="on"
+                >
+                  {{ loaded ? 'Open another…' : 'Open a file…' }}
+                </button>
+              </template>
+            </preview-open-menu>
+            <button
+              v-if="loaded"
+              type="button"
+              class="cbtn"
+              data-tid="preview-unload"
+              @click="unload"
+            >
+              Unload
+            </button>
+          </div>
+        </v-menu>
+      </div>
+      <div class="prev__rows">
+        <div class="crow">
+          <span class="crow__name">Travel moves</span>
+          <toggle-switch
+            :value="option('showMoves')"
+            label="Travel moves"
+            @input="setOption('showMoves', $event)"
+          />
+        </div>
+        <div class="crow">
+          <span class="crow__name">Retractions</span>
+          <toggle-switch
+            :value="option('showRetractions')"
+            label="Retractions"
+            @input="setOption('showRetractions', $event)"
+          />
+        </div>
+        <div
+          class="crow"
+          data-tid="preview-follow"
+        >
+          <span class="crow__name">
+            Follow the nozzle
+            <span
+              v-if="!printerFileLoaded"
+              class="crow__sub"
+            >· while this file prints</span>
           </span>
           <toggle-switch
             :value="following"
-            label="Follow the print"
+            label="Follow the nozzle"
+            :disabled="!printerFileLoaded"
             @input="following = $event"
           />
-        </label>
-        <p
-          v-if="printerFileLoaded && hasObjects"
-          class="prev__note"
-        >
-          Objects on the plate are outlined. Pick one in the drawing to stop printing it; the rest carry on.
-        </p>
-      </template>
+        </div>
+        <div class="crow">
+          <span class="crow__name">Only current layer</span>
+          <toggle-switch
+            :value="onlyCurrentLayer"
+            label="Only current layer"
+            @input="onlyCurrentLayer = $event"
+          />
+        </div>
+      </div>
+      <ul
+        class="prev__legend"
+        data-tid="preview-legend"
+      >
+        <li><i class="prev__swatch prev__swatch--extrusion" />Extrusions</li>
+        <li v-if="option('showMoves')">
+          <i class="prev__swatch prev__swatch--travel" />Travel moves
+        </li>
+        <li v-if="option('showRetractions')">
+          <i class="prev__swatch prev__swatch--retraction" />Retractions
+        </li>
+        <li v-if="!onlyCurrentLayer">
+          <i class="prev__swatch prev__swatch--ghost" />Layers below and above
+        </li>
+        <li v-if="printerFileLoaded">
+          <i class="prev__swatch prev__swatch--nozzle" />Nozzle
+        </li>
+      </ul>
+      <p
+        v-if="printerFileLoaded && hasObjects"
+        class="prev__note"
+      >
+        Objects on the plate are outlined. Pick one in the drawing to stop printing it; the rest carry on.
+      </p>
     </aside>
   </div>
 </template>
@@ -185,27 +350,42 @@ import { Component, Mixins, Watch } from 'vue-property-decorator'
 import JobsMixin from '@/mixins/jobs'
 import BrowserMixin from '@/mixins/browser'
 import type { AppFile } from '@/store/files/types'
-import type { Layer } from '@/store/gcodePreview/types'
+import type { Layer, ViewerOptions } from '@/store/gcodePreview/types'
 import { jobTitle } from '@/services/jobs/model'
-import GcodePreview from '@/components/widgets/gcode-preview/GcodePreview.vue'
 import RangeSlider from '@/components/control/RangeSlider.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import ViewerToggles from '@/components/jobs/ViewerToggles.vue'
+import PreviewOpenMenu from '@/components/gcode-preview/PreviewOpenMenu.vue'
+import { previewPage } from '@/services/gcode-preview/page-state'
+
+type ShowOption = keyof Pick<ViewerOptions, 'showMoves' | 'showRetractions' | 'showPreviousLayer' | 'showNextLayer'>
 
 /**
- * The full-screen G-code preview (Jobs › Preview): the drawing as large as
- * the window allows, and beside it the file, its layer, how far along the
- * layer, what's drawn, and following the print. It loads what's printing,
- * or any file on the printer; Jobs' viewer opens here with its file
- * already loaded. As Fluidd's own did, it loads a print as it starts and
- * follows it, when Settings says to.
+ * The G-code preview (Jobs › Preview): the drawing as large as the window
+ * allows, its layer slider under it, and beside it (under it, on a phone)
+ * what's drawn. The header names the file and carries Open another and
+ * Print this. It loads what's printing, or any file on the printer; Jobs'
+ * viewer opens here with its file already loaded. As Fluidd's own did, it
+ * loads a print as it starts and follows it, when Settings says to. The
+ * drawing itself loads only when this page opens: it's the heavy part.
  */
-@Component({ components: { GcodePreview, RangeSlider, ToggleSwitch, ViewerToggles } })
+@Component({
+  components: {
+    GcodePreview: () => import('@/components/widgets/gcode-preview/GcodePreview.vue'),
+    PreviewOpenMenu,
+    RangeSlider,
+    ToggleSwitch,
+    ViewerToggles
+  }
+})
 export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
   shownLayer = 0
+  /** The previous- and next-layer settings from before "Only current layer" was turned on. */
+  layersBeside: { showPreviousLayer: boolean, showNextLayer: boolean } | null = null
   moveEnd = 0
   fetching = ''
   error = ''
+  failedFile: AppFile | null = null
 
   layerValueText (value: number): string {
     return `Layer ${value + 1} of ${this.fileLayers.length}`
@@ -219,10 +399,6 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
     this.loadFiles()
     this.shownLayer = this.following ? this.printLayer : Math.floor(this.fileLayers.length / 4)
     this.moveEnd = this.layerEnd
-  }
-
-  get files () {
-    return [...this.jobFiles].sort((a, b) => b.modified - a.modified)
   }
 
   get previewFile (): AppFile | undefined {
@@ -329,15 +505,10 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
     if (auto && this.printerFile && !this.printerFileLoaded && !this.parsing) this.load(this.printerFile)
   }
 
-  openPicked (event: Event) {
-    const select = event.target as HTMLSelectElement
-    const job = this.files.find(f => f.key === select.value)
-    select.value = ''
-    if (job) this.load(job.file)
-  }
-
   async load (file: AppFile) {
+    if (!this.socketConnected) return
     this.error = ''
+    this.failedFile = null
     this.fetching = file.filename
     try {
       const response = await this.getGcode(file)
@@ -347,9 +518,54 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
       this.$store.dispatch('gcodePreview/loadGcode', { file, gcode })
     } catch {
       this.error = `${this.printerName} didn't send ${file.filename}. Try again in a moment.`
+      this.failedFile = file
     } finally {
       this.fetching = ''
     }
+  }
+
+  reload () {
+    if (this.previewFile) this.load(this.previewFile)
+  }
+
+  resetView () {
+    (this.$refs.viewer as { reset?: () => void } | undefined)?.reset?.()
+  }
+
+  created () {
+    this.$watch(() => previewPage.requested, this.onRequested)
+  }
+
+  onRequested (file: AppFile | null) {
+    if (!file) return
+    previewPage.requested = null
+    this.load(file)
+  }
+
+  option (key: ShowOption): boolean {
+    return !!this.$store.getters['gcodePreview/getViewerOption'](key)
+  }
+
+  setOption (key: ShowOption, value: boolean) {
+    this.$store.commit('gcodePreview/setViewerState', { [key]: value })
+  }
+
+  /** Only the layer shown: neither the layer below nor the one above drawn faintly beside it. */
+  get onlyCurrentLayer (): boolean {
+    return !this.option('showPreviousLayer') && !this.option('showNextLayer')
+  }
+
+  set onlyCurrentLayer (value: boolean) {
+    if (value) {
+      // Remember the layers beside it as they were, so turning this off brings back both.
+      if (this.option('showPreviousLayer') || this.option('showNextLayer')) {
+        this.layersBeside = { showPreviousLayer: this.option('showPreviousLayer'), showNextLayer: this.option('showNextLayer') }
+      }
+      this.$store.commit('gcodePreview/setViewerState', { showPreviousLayer: false, showNextLayer: false })
+      return
+    }
+    // Both were off already (the viewer's default): show both, as the legend says "below and above".
+    this.$store.commit('gcodePreview/setViewerState', this.layersBeside ?? { showPreviousLayer: true, showNextLayer: true })
   }
 
   stopReading () {
@@ -370,11 +586,39 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
 <style lang="scss" scoped>
   .prev {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 16px;
-    height: calc(100vh - 250px);
-    height: calc(100svh - 250px);
-    min-height: 480px;
+    align-items: start;
+  }
+
+  .prev__offline {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 12px 16px;
+    border: 1px solid var(--m3d-border);
+    border-radius: 12px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text-muted);
+    font-size: 14px;
+  }
+
+  .prev__tile {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--m3d-border);
+    border-radius: 22px;
+    background: var(--m3d-surface);
+  }
+
+  .prev__canvas {
+    grid-column: span 9;
+  }
+
+  .prev__show {
+    grid-column: span 3;
   }
 
   .prev__stage {
@@ -382,10 +626,11 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 0;
-    min-height: 0;
+    height: calc(100vh - 380px);
+    height: calc(100svh - 380px);
+    min-height: 420px;
     overflow: hidden;
-    border-radius: 22px;
+    border-radius: 16px;
     background: radial-gradient(90% 80% at 50% 45%, #1d2a2a 0%, #121516 75%);
   }
 
@@ -396,105 +641,117 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
     :deep(.v-input__slot) {
       min-height: 0 !important;
       max-height: none;
-      height: calc(100vh - 250px);
-      height: calc(100svh - 250px);
+      height: calc(100vh - 380px);
+      height: calc(100svh - 380px);
     }
   }
 
+  .prev__pill {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: rgb(0 0 0 / 55%);
+    color: #fff;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .prev__stage-actions {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 8px;
+  }
+
+  .prev__round {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text);
+  }
+
   .prev__busy,
-  .prev__empty {
+  .prev__state {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    padding: 18px;
     color: var(--m3d-text-muted);
     font-size: 14px;
     text-align: center;
 
-    p {
-      margin: 0;
-    }
-  }
-
-  .prev__side {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-width: 0;
-    overflow-y: auto;
-    padding: 18px;
-    border-radius: 22px;
-    background: var(--m3d-surface);
-  }
-
-  .prev__head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .prev__titles {
-    min-width: 0;
-
-    h2 {
-      margin: 0;
-      font-size: 17px;
-      font-weight: 600;
+    b {
+      color: var(--m3d-text);
+      font-size: 16px;
     }
 
     p {
-      margin: 2px 0 0;
-      overflow: hidden;
-      color: var(--m3d-text-muted);
-      font-family: var(--m3d-font-mono, monospace);
-      font-size: 12px;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      max-width: 420px;
+      margin: 0 0 6px;
     }
+  }
+
+  .prev__state-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text-muted);
+  }
+
+  .prev__state-icon--err {
+    color: var(--m3d-danger);
   }
 
   .prev__link {
-    flex: none;
     color: var(--m3d-accent);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
   }
 
-  .prev__open {
+  .prev__under {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    color: var(--m3d-text-muted);
-    font-size: 12px;
-
-    select {
-      height: 40px;
-      padding: 0 12px;
-      border: 0;
-      border-radius: 12px;
-      background: var(--m3d-surface-2);
-      color: var(--m3d-text);
-      font: inherit;
-      font-size: 14px;
-    }
-  }
-
-  .prev__error {
-    margin: 0;
-    color: var(--m3d-danger);
-    font-size: 13px;
+    gap: 12px;
   }
 
   .prev__slider {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
+  }
 
-    > span {
-      color: var(--m3d-text-subtle);
-      font-size: 12px;
+  .prev__slider-head,
+  .prev__slider-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .prev__slider-head {
+    font-size: 14px;
+
+    span {
+      color: var(--m3d-text-muted);
     }
+  }
+
+  .prev__slider-foot {
+    color: var(--m3d-text-subtle);
+    font-size: 12px;
   }
 
   .prev__stats {
@@ -524,26 +781,66 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
     }
   }
 
-  .prev__follow {
+  .prev__show-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    padding: 10px 12px;
-    border-radius: 14px;
-    background: var(--m3d-surface-2);
-    cursor: pointer;
 
-    > span {
-      display: flex;
-      flex-direction: column;
-      font-size: 13px;
-
-      span {
-        color: var(--m3d-text-muted);
-        font-size: 12px;
-      }
+    b {
+      font-size: 16px;
     }
+  }
+
+  .prev__rows {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .prev__menu {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 320px;
+    padding: 14px;
+    border-radius: 14px;
+    background: var(--m3d-surface);
+  }
+
+  .prev__legend {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 12px 0 0;
+    border-top: 1px solid var(--m3d-border);
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+    list-style: none;
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  }
+
+  .prev__swatch {
+    display: inline-block;
+    width: 18px;
+    height: 4px;
+    border-radius: 2px;
+  }
+
+  .prev__swatch--extrusion { background: var(--m3d-text); }
+  .prev__swatch--travel { background: var(--m3d-text-subtle); }
+  .prev__swatch--retraction { background: var(--m3d-danger); }
+  .prev__swatch--ghost { background: var(--m3d-border); }
+
+  .prev__swatch--nozzle {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--m3d-accent);
   }
 
   .prev__note {
@@ -554,11 +851,24 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
 
   .prev--phone {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(300px, 1fr) auto;
-    height: auto;
+    gap: 12px;
+
+    .prev__canvas,
+    .prev__show {
+      grid-column: 1 / -1;
+    }
+
+    .prev__tile {
+      padding: 12px;
+    }
+
+    .prev__stage {
+      height: 52svh;
+      min-height: 300px;
+    }
 
     .prev__drawing :deep(.v-input__slot) {
-      height: 60svh;
+      height: 52svh;
     }
   }
 </style>

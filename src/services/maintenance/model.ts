@@ -60,7 +60,7 @@ export function meshSummary (matrix: number[][] | undefined): MeshSummary | null
   const max = Math.max(...values)
   const range = Math.round((max - min) * 1000) / 1000
   if (range <= 0.25) return { range, min, max, verdict: 'Flat enough to print well', tone: 'ok' }
-  if (range <= 0.6) return { range, min, max, verdict: 'A little uneven; the mesh evens out the first layer', tone: 'warn' }
+  if (range <= 0.6) return { range, min, max, verdict: 'A little uneven', tone: 'warn' }
   return { range, min, max, verdict: 'Very uneven: check the plate sits flat and clean', tone: 'err' }
 }
 
@@ -136,6 +136,11 @@ export interface CheckContext {
   homed: boolean;
   /** The nozzle temperature heater tuning heats to. */
   nozzleTarget: number;
+  /**
+   * Whether the raw PID_CALIBRATE may stand in for a printer's own tuning macro.
+   * It is developer-mode only on a Muon printer (Klipper#112), so unset means no.
+   */
+  pidFallback?: boolean;
 }
 
 /**
@@ -156,7 +161,7 @@ export function checkCommand (id: CheckId, c: CheckContext): string | null {
     case 'pid':
       // A printer's own tuning macro knows its heater and temperature (the M1's tunes at 220°C).
       if (knows('CALIBRATE_HEATING_HOTEND')) return 'CALIBRATE_HEATING_HOTEND'
-      return knows('PID_CALIBRATE') ? `PID_CALIBRATE HEATER=extruder TARGET=${Math.round(c.nozzleTarget)}` : null
+      return c.pidFallback === true && knows('PID_CALIBRATE') ? `PID_CALIBRATE HEATER=extruder TARGET=${Math.round(c.nozzleTarget)}` : null
   }
 }
 

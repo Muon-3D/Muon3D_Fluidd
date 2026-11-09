@@ -62,3 +62,44 @@ describe('Library consent surfaces', () => {
     wrapper.destroy()
   })
 })
+
+describe('Account › Library and storage', () => {
+  const on = () => Object.assign(libraryState, { enabled: true, usedBytes: 1.2e9, quotaBytes: 5e9, preferences: { autosave: false, ask: true, save_from_print_check: true, updated_at: null } })
+  const mountOn = () => mount(LibrarySettings, { stubs: { 'frame-icon': true, 'cloud-account-dialog': true, 'router-link': { props: ['to'], template: '<a :data-to="to"><slot /></a>' } } })
+
+  it('leads with the storage used, of the quota, on a bar', () => {
+    on()
+    const wrapper = mountOn()
+    expect(wrapper.find('[data-tid="library-storage"]').text().replace(/\s+/g, ' ')).toBe('1.2 GB of 5 GB')
+    expect(wrapper.find('[role="meter"]').attributes('aria-valuenow')).toBe('24')
+    expect(wrapper.find('[data-tid="library-storage-split"]').exists()).toBe(false)
+    wrapper.destroy()
+  })
+
+  it('splits it into uploads, slices and designs only when the service sends the split', () => {
+    on()
+    libraryState.usedByKind = { uploads: 4e8, slices: 7e8, designs: 1e8 }
+    const wrapper = mountOn()
+    const parts = wrapper.findAll('[data-tid="library-storage-split"] > div').wrappers.map(p => `${p.find('span').text()}: ${p.find('b').text()}`)
+    expect(parts).toEqual(['Uploads: 400 MB', 'Slices: 700 MB', 'Designs: 100 MB'])
+    wrapper.destroy()
+  })
+
+  it('keeps the three switches, in the new words, and links to Profile', () => {
+    on()
+    const wrapper = mountOn()
+    const labels = wrapper.findAll('[data-tid="library-settings-on"] [role="switch"]').wrappers.map(s => s.attributes('aria-label'))
+    expect(labels).toEqual(['Save every slice', 'Ask after slicing something new', 'Offer to save it when you print'])
+    const profile = wrapper.find('[data-tid="library-profile-link"]')
+    expect(profile.attributes('data-to')).toMatch(/\/account\/profile$/)
+    expect(profile.text()).toContain('on Library are set in Profile.')
+    wrapper.destroy()
+  })
+
+  it('still asks a signed-out account to sign in to keep a Library', () => {
+    libraryState.account = null
+    const wrapper = mountOn()
+    expect(wrapper.find('[data-tid="library-settings-signed-out"]').text()).toContain('Sign in to keep a Library')
+    wrapper.destroy()
+  })
+})

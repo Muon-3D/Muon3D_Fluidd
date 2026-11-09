@@ -27,6 +27,8 @@ const signals = (overrides: Partial<Accessories> = {}): Accessories => ({
   filamentLoaded: false,
   autoLoad: 'idle',
   spoolMounted: true,
+  column: 'locked',
+  source: 'sensors',
   ...overrides
 })
 
@@ -44,7 +46,9 @@ describe('accessory signals from Klipper status', () => {
       tubeUnlocking: false,
       filamentLoaded: true,
       autoLoad: 'idle',
-      spoolMounted: true
+      spoolMounted: true,
+      column: 'locked',
+      source: 'sensors'
     })
 
     printer['mcu toolhead'].non_critical_disconnected = false
@@ -62,7 +66,9 @@ describe('accessory signals from Klipper status', () => {
       tubeUnlocking: false,
       filamentLoaded: false,
       autoLoad: 'idle',
-      spoolMounted: true
+      spoolMounted: true,
+      column: 'locked',
+      source: 'sensors'
     })
   })
 

@@ -9,6 +9,7 @@ import {
   fanCommand,
   fanPercent,
   fileFilament,
+  filamentSensed,
   lightsOutput,
   loadedChoice,
   materialChoices,
@@ -22,12 +23,14 @@ import {
   savedMaterialColour,
   savedMaterialName,
   type Material,
+  hotendLimitReason,
   type MaterialChoice
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
 import { handMoveSettling, headStatus, lockHandMove, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
 import { EventBus } from '@/eventBus'
+import type { LoadedFilament } from '@/services/jobs/model'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
 
@@ -62,6 +65,12 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
 
   adjustZ (by: number) {
     if (!this.controlReady || !this.isHomed('Z') || this.hasWait(this.$waits.onZAdjust)) return
+    // Idle, a nudge closer moves the head (MOVE=1): not while a hand move or a
+    // script is still in flight, or it runs from where they leave the head (KAN-1745).
+    if (!this.busy && by < 0) {
+      const wait = this.handMoveWait()
+      if (wait) { this.refuseMove(wait); return }
+    }
     const command = zAdjustCommand(by, true)
     if (command) this.sendGcode(command, this.$waits.onZAdjust)
   }
@@ -79,6 +88,17 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   /** Why the controls are locked when Klipper isn't ready: the connection, when that is what's gone. */
   get notReadyReason (): string {
     return this.socketConnected ? 'Klipper is not ready' : 'Not connected to the printer'
+  }
+
+  /**
+   * Whether this is a Muon printer (an M1), from the gate primitive
+   * `server/isMuonPrinter` (#296): true, false, or null until server.info
+   * has answered. Named apart from MuonGatesMixin's isMuonPrinter so the
+   * two mixins can sit together.
+   */
+  get muonPrinter (): boolean | null {
+    const v = this.$store.getters['server/isMuonPrinter'] as boolean | null | undefined
+    return v === undefined ? null : v
   }
 
   get busy (): boolean {
@@ -168,6 +188,27 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   }
 
   /**
+   * Whether filament is in the printer, from a trustworthy filament sensor
+   * (a switch sensor, switched on; see filamentSensed): null when none
+   * reports, where only what someone said is loaded can tell.
+   */
+  get filamentSensed (): boolean | null {
+    return filamentSensed(this.$store.state.printer.printer)
+  }
+
+  /**
+   * Whether the printer has a material loaded, and which: the filament sensor
+   * says whether there is any, the recorded material says which. With no
+   * sensor reporting, a recorded material is what there is to go on. A
+   * material chosen as a preset (the heater targets) says nothing about this.
+   */
+  get loadedFilament (): LoadedFilament {
+    const name = this.loadedMaterial?.name ?? null
+    const sensed = this.filamentSensed
+    return { loaded: sensed ?? !!name, name }
+  }
+
+  /**
    * While a print runs and nobody has said what's loaded: what its file was
    * sliced for, which is what is feeding now. Shown as that, never saved as
    * the loaded record (14 Oct: Walnut printing showed "Not set").
@@ -207,9 +248,24 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     }
   }
 
+  /** The extruder's hard limit, from printer.cfg, or null when the printer didn't say. */
+  get extruderMaxTemp (): number | null {
+    const max = Number(this.$store.state.printer?.printer?.configfile?.settings?.extruder?.max_temp)
+    return Number.isFinite(max) && max > 0 ? max : null
+  }
+
+  /** Tells the person why nothing was sent, when the material is hotter than the hotend can go. True if it is. */
+  refuseTooHot (name: string | undefined, nozzle: number | null | undefined): boolean {
+    const reason = hotendLimitReason(name, nozzle, this.extruderMaxTemp)
+    if (!reason) return false
+    EventBus.$emit(reason, { type: 'error', timeout: 8000 })
+    return true
+  }
+
   /** Heats for a material: as its preset says when it has one, else to its temperatures. */
   heatFor (choice: MaterialChoice) {
     if (!this.controlReady) return
+    if (this.refuseTooHot(choice.name, choice.nozzle)) return
     const preset = choice.presetId === null ? undefined : this.presets.find(p => p.id === choice.presetId)
     if (preset) {
       presetCommands(preset).forEach(g => this.sendGcode(g))
@@ -227,6 +283,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
 
   applyMaterial (material: Material) {
     if (!this.controlReady) return
+    if (this.refuseTooHot(material.name, material.nozzle)) return
     const preset = this.presets.find(p => p.id === material.id)
     if (preset) presetCommands(preset).forEach(g => this.sendGcode(g))
   }
@@ -281,13 +338,19 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   }
 
   /**
-   * Why a hand move must wait, on a printer with no-go regions, or '' if it
-   * can go: the head position isn't this connection's yet, a G-code script is
-   * still running (a move sent now would run from wherever it leaves the
-   * head), or the last hand move hasn't been reported. Read fresh, never cached.
+   * Why a hand move must wait, or '' if it can go: the head position isn't
+   * this connection's yet, a G-code script is still running (a move sent now
+   * would run from wherever it leaves the head), or the last hand move hasn't
+   * been reported. Read fresh, never cached.
+   *
+   * On every printer, not only one with no-go regions (KAN-1745): a jog is a
+   * relative move, and one planned from a position that lags can be refused
+   * by Klipper ("Move out of range"), which aborts the script before its
+   * RESTORE_GCODE_STATE and leaves the printer in G91 for the console and
+   * macros after it. Waiting for the last move to land keeps every jog inside
+   * the limits it was clamped to.
    */
   handMoveWait (): string {
-    if (this.noGo === null) return ''
     if (!headStatus.fresh) return 'Wait for the printer to report where the head is.'
     if (scriptsInFlight.count > 0) return 'Wait for the printer to finish what it is doing.'
     if (handMoveSettling(this.$store.state.printer.printer.gcode_move?.gcode_position, this.panelTarget)) return 'Wait for the head to finish moving.'
@@ -332,11 +395,32 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     EventBus.$emit(reason, { type: 'warning' })
   }
 
-  /** On a printer with no-go regions, make the next hand move wait for this one to land. */
+  /** Make the next hand move wait for this one to land (on every printer: see handMoveWait). */
   markHandMove (realTo: number[]) {
     const offset = this.gcodeOffset
-    if (this.noGo === null || !offset) return
-    lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000), this.panelTarget)
+    if (!offset) return
+    lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000), this.panelTarget, Date.now(), this.travelMs(realTo))
+  }
+
+  /**
+   * About how long a hand move to `realTo` takes, ms: across at the head's
+   * speed, up and down at the plate's, counting a lift to the notch's
+   * traverse height and back when the plan lifts.
+   */
+  travelMs (realTo: number[]): number {
+    const p = [0, 1, 2].map(i => Number(this.position[i]))
+    const xy = Math.hypot(realTo[0] - p[0], realTo[1] - p[1])
+    let z = Math.abs(realTo[2] - p[2])
+    const noGo = this.noGo
+    if (noGo && noGo !== 'invalid') {
+      const plan = this.planHandMove([realTo[0], realTo[1], realTo[2]])
+      if (plan.ok && plan.lifted) {
+        const over = Number(plan.steps[0].Z) + (this.gcodeOffset ?? [0, 0, 0])[2]
+        z = Math.abs(over - p[2]) + Math.abs(over - realTo[2])
+      }
+    }
+    const ms = (xy / this.xySpeed + z / this.zSpeed) * 1000
+    return Number.isFinite(ms) ? ms : 0
   }
 
   /** Send a planned move: lift, across, down, as one absolute script. */
@@ -397,6 +481,29 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     else this.sendMoveGcode(['X', 'Y'].filter((_, i) => by[i]).map(a => `${a}${by['XY'.indexOf(a)]}`).join(' '), this.xySpeed)
     this.markHandMove(realTo)
     return true
+  }
+
+  /**
+   * Why a move to a place in G-code coordinates would be refused now, or ''
+   * when moveTo would send it: the same gates and the same plan as moveTo,
+   * in words, not counting the hand-move wait. A live drag stops on it.
+   */
+  moveRefusal (place: { X?: number, Y?: number, Z?: number }): string {
+    if (!this.controlReady) return this.controlLock || 'Not connected to the printer'
+    if (this.busy) return 'Not while printing: moving the head would ruin the print.'
+    if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return 'Set the jog speeds in Settings first.'
+    const axes = (['X', 'Y', 'Z'] as Axis[]).filter(a => place[a] !== undefined)
+    if (!axes.length) return 'Nothing to move.'
+    for (const axis of axes) {
+      const i = 'XYZ'.indexOf(axis)
+      const value = place[axis] as number
+      if (!this.isHomed(axis)) return `Home ${axis} first.`
+      if (!Number.isFinite(value) || value < this.axisMin[i] || value > this.axisMax[i]) return 'That spot is outside the machine.'
+    }
+    const offset = this.gcodeOffset ?? [0, 0, 0]
+    const realTo = (['X', 'Y', 'Z'] as Axis[]).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
+    const plan = this.planHandMove(realTo)
+    return plan.ok ? '' : plan.reason
   }
 
   /** To a place given in G-code coordinates, inside the machine and out of the bed's no-go regions. True when it was sent. */
