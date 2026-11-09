@@ -4,7 +4,19 @@
  * can be checked before it is trusted. A layout that does not check out is
  * never partly used: the caller falls back to the default.
  */
-export interface TileDefault { id: string; span: number; rows?: number }
+/** One size a widget offers: S, M or L, in columns of the 12 and rows. */
+export interface SizeVariant { key: string; span: number; rows: number }
+export interface TileDefault {
+  id: string;
+  span: number;
+  rows?: number;
+  /** The sizes the widget offers. When given, a size is always one of these. */
+  sizes?: SizeVariant[];
+  /** On the page in the default layout; true when not said. */
+  defaultOn?: boolean;
+  /** Saved ids that now mean this widget. */
+  legacy?: string[];
+}
 export interface PlacedTile { id: string; span: number; rows: number }
 export interface OverviewLayout { tiles: PlacedTile[]; hidden: string[] }
 
@@ -17,12 +29,41 @@ export const MAX_ROWS = 4
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
 const whole = (n: unknown, fallback: number) => typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : fallback
 
-function place (id: string, span: unknown, rows: unknown, fallback: { span: number; rows?: number }): PlacedTile {
-  return { id, span: clamp(whole(span, fallback.span), MIN_SPAN, MAX_SPAN), rows: clamp(whole(rows, fallback.rows ?? 1), MIN_ROWS, MAX_ROWS) }
+/**
+ * The size a widget may have: the nearest of the sizes it offers that fits in
+ * `cols` columns. A size that does not fit is not allowed. Rows count for more
+ * than columns (a tall tile is a different shape), and a tie goes to the smaller.
+ * When none fits, the narrowest is used rather than none.
+ */
+export function snapSize (sizes: SizeVariant[], span: number, rows: number, cols = MAX_SPAN): SizeVariant | null {
+  if (!sizes.length) return null
+  const fitting = sizes.filter(s => s.span <= cols)
+  const pool = fitting.length ? fitting : [sizes.reduce((a, b) => (b.span < a.span ? b : a))]
+  const cost = (s: SizeVariant) => Math.abs(s.span - span) + 4 * Math.abs(s.rows - rows)
+  return pool.reduce((best, s) => {
+    const d = cost(s) - cost(best)
+    return d < 0 || (d === 0 && s.span * s.rows < best.span * best.rows) ? s : best
+  })
 }
 
+/** Which of the widget's sizes a placed tile is, if it is one. */
+export function sizeKeyOf (def: Pick<TileDefault, 'sizes'>, tile: { span: number; rows: number }): string | null {
+  return def.sizes?.find(s => s.span === tile.span && s.rows === tile.rows)?.key ?? null
+}
+
+function place (id: string, span: unknown, rows: unknown, fallback: TileDefault, cols = MAX_SPAN): PlacedTile {
+  const wantSpan = clamp(whole(span, fallback.span), MIN_SPAN, MAX_SPAN)
+  const wantRows = clamp(whole(rows, fallback.rows ?? 1), MIN_ROWS, MAX_ROWS)
+  const snapped = fallback.sizes ? snapSize(fallback.sizes, wantSpan, wantRows, cols) : null
+  return snapped ? { id, span: snapped.span, rows: snapped.rows } : { id, span: wantSpan, rows: wantRows }
+}
+
+/** The widgets that are on by default, in order; the rest are put away until added. */
 export function defaultLayout (defs: TileDefault[]): OverviewLayout {
-  return { tiles: defs.map(d => place(d.id, d.span, d.rows, d)), hidden: [] }
+  return {
+    tiles: defs.filter(d => d.defaultOn !== false).map(d => place(d.id, d.span, d.rows, d)),
+    hidden: defs.filter(d => d.defaultOn === false).map(d => d.id)
+  }
 }
 
 export function moveTile (layout: OverviewLayout, id: string, toIndex: number): OverviewLayout {
@@ -39,14 +80,29 @@ export function moveBy (layout: OverviewLayout, id: string, by: number): Overvie
   return from < 0 ? layout : moveTile(layout, id, from + by)
 }
 
-export function resizeTile (layout: OverviewLayout, id: string, span: number, rows: number): OverviewLayout {
+/** With `defs`, the size snaps to one the widget offers. */
+export function resizeTile (layout: OverviewLayout, id: string, span: number, rows: number, defs?: TileDefault[]): OverviewLayout {
   if (!layout.tiles.some(t => t.id === id)) return layout
-  return { ...layout, tiles: layout.tiles.map(t => t.id === id ? place(id, span, rows, t) : t) }
+  const def = defs?.find(d => d.id === id)
+  return { ...layout, tiles: layout.tiles.map(t => t.id === id ? place(id, span, rows, def ?? t) : t) }
 }
 
-export function nudgeSize (layout: OverviewLayout, id: string, dSpan: number, dRows: number): OverviewLayout {
+/**
+ * One step bigger or smaller. A widget with set sizes steps to the next size
+ * in that direction (by columns, or by rows for an up or down step); one
+ * without moves a column or a row.
+ */
+export function nudgeSize (layout: OverviewLayout, id: string, dSpan: number, dRows: number, defs?: TileDefault[]): OverviewLayout {
   const t = layout.tiles.find(x => x.id === id)
-  return t ? resizeTile(layout, id, t.span + dSpan, t.rows + dRows) : layout
+  if (!t) return layout
+  const sizes = defs?.find(d => d.id === id)?.sizes
+  if (!sizes?.length) return resizeTile(layout, id, t.span + dSpan, t.rows + dRows)
+  const dir = dSpan || dRows
+  if (!dir) return layout
+  const key = dSpan ? (s: { span: number; rows: number }) => s.span * 100 + s.rows : (s: { span: number; rows: number }) => s.rows * 100 + s.span
+  const here = key(t)
+  const next = sizes.filter(s => (dir > 0 ? key(s) > here : key(s) < here)).sort((a, b) => dir * (key(a) - key(b)))[0]
+  return next ? resizeTile(layout, id, next.span, next.rows, defs) : layout
 }
 
 export function removeTile (layout: OverviewLayout, id: string): OverviewLayout {
@@ -54,18 +110,24 @@ export function removeTile (layout: OverviewLayout, id: string): OverviewLayout 
   return { tiles: layout.tiles.filter(t => t.id !== id), hidden: [...layout.hidden, id] }
 }
 
-/** A hidden tile goes in at the given place (the end when not said), at the size it has by default. */
-export function addTile (layout: OverviewLayout, id: string, defs: TileDefault[], at?: number): OverviewLayout {
+/**
+ * A hidden tile goes in at the given place (the end when not said), at the
+ * size asked for: its default when not said, and the nearest that fits in
+ * `cols` columns when the one asked for does not.
+ */
+export function addTile (layout: OverviewLayout, id: string, defs: TileDefault[], at?: number, sizeKey?: string, cols = MAX_SPAN): OverviewLayout {
   const def = defs.find(d => d.id === id)
   if (!def || !layout.hidden.includes(id)) return layout
+  const asked = sizeKey ? def.sizes?.find(s => s.key === sizeKey) : undefined
   const tiles = [...layout.tiles]
-  tiles.splice(at === undefined ? tiles.length : clamp(whole(at, tiles.length), 0, tiles.length), 0, place(id, def.span, def.rows, def))
+  tiles.splice(at === undefined ? tiles.length : clamp(whole(at, tiles.length), 0, tiles.length), 0, place(id, asked?.span ?? def.span, asked?.rows ?? def.rows, def, cols))
   return { tiles, hidden: layout.hidden.filter(h => h !== id) }
 }
 
 /**
- * Checks something read from storage or the server. Unknown and repeated tiles
- * are dropped, sizes are clamped, and tiles the saved copy never heard of come
+ * Checks something read from storage or the server. Old ids are mapped to the
+ * widget that replaced them, unknown and repeated tiles are dropped, sizes
+ * snap to ones the widget offers, and tiles the saved copy never heard of come
  * back hidden. Returns null when nothing usable is there.
  */
 export function readLayout (raw: unknown, defs: TileDefault[]): OverviewLayout | null {
@@ -73,6 +135,8 @@ export function readLayout (raw: unknown, defs: TileDefault[]): OverviewLayout |
   const { tiles: rawTiles, hidden: rawHidden } = raw as { tiles?: unknown; hidden?: unknown }
   if (!Array.isArray(rawTiles)) return null
   const byId = new Map(defs.map(d => [d.id, d]))
+  // A widget's own id always wins over an old id that names it.
+  for (const d of defs) for (const old of d.legacy ?? []) if (!byId.has(old)) byId.set(old, d)
   const seen = new Set<string>()
   const tiles: PlacedTile[] = []
   for (const entry of rawTiles) {
@@ -80,12 +144,15 @@ export function readLayout (raw: unknown, defs: TileDefault[]): OverviewLayout |
     const def = e && typeof e === 'object' && typeof e.id === 'string' ? byId.get(e.id) : undefined
     if (!def || !e || seen.has(def.id)) continue
     seen.add(def.id)
-    tiles.push(place(def.id, e.span, e.rows, def))
+    // A tile saved under an old id keeps its place but takes the new widget's own size.
+    const renamed = e.id !== def.id
+    tiles.push(place(def.id, renamed ? undefined : e.span, renamed ? undefined : e.rows, def))
   }
   const hidden: string[] = []
   const chosen: string[] = []
-  for (const id of Array.isArray(rawHidden) ? rawHidden : []) {
-    if (typeof id === 'string' && byId.has(id) && !seen.has(id)) { seen.add(id); hidden.push(id); chosen.push(id) }
+  for (const old of Array.isArray(rawHidden) ? rawHidden : []) {
+    const def = typeof old === 'string' ? byId.get(old) : undefined
+    if (def && !seen.has(def.id)) { seen.add(def.id); hidden.push(def.id); chosen.push(def.id) }
   }
   for (const d of defs) if (!seen.has(d.id)) hidden.push(d.id)
   // Everything dropped, and no one chose to hide it all: that is damage, not a choice.
