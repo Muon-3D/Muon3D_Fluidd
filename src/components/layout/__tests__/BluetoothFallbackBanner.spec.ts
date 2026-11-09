@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import BluetoothFallbackBanner from '../BluetoothFallbackBanner.vue'
 import { cloudState } from '@/services/muon-cloud/state'
-import { noteBluetoothFellBack, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
+import { noteBluetoothDropped, noteBluetoothFellBack, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
 import { EID, fakePrinter } from '@/services/muon-ble/__tests__/fakes'
 
 afterEach(() => {
@@ -27,5 +27,15 @@ describe('the Bluetooth fallback banner (KAN-1396)', () => {
     noteBluetoothFellBack(EID, 'x')
     cloudState.activePrinterId = 'other'
     expect(mount(BluetoothFallbackBanner).text()).toBe('')
+  })
+
+  it('says the chosen Bluetooth route dropped, and offers no silent switch (KAN-1913)', () => {
+    cloudState.activePrinterId = EID
+    useBluetoothFor(EID, fakePrinter().device)
+    noteBluetoothDropped(EID, 'The Bluetooth link dropped.')
+    const text = mount(BluetoothFallbackBanner).text()
+    expect(text).toContain('Bluetooth dropped')
+    expect(text).toContain('choose how to connect')
+    expect(text).not.toContain('using Muon3D instead')
   })
 })
