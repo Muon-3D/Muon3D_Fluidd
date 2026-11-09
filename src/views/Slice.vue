@@ -728,7 +728,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
     to { transform: rotate(360deg); }
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  :root.m3d-reduced-motion {
     .slice-view__spinner {
       animation: none;
     }

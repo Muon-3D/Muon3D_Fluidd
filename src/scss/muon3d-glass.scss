@@ -1272,7 +1272,7 @@ $glass: "html[data-m3d-style='glass']";
     background-color: var(--m3d-estop) !important;
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  &.m3d-reduced-motion {
     .v-btn:not(.v-btn--disabled):active {
       transform: none;
     }
