@@ -10,42 +10,74 @@ import PositionTile from './tiles/PositionTile.vue'
 import ZOffsetTile from './tiles/ZOffsetTile.vue'
 import MacrosTile from './tiles/MacrosTile.vue'
 import GraphTile from './tiles/GraphTile.vue'
+import EmbedTile from './tiles/EmbedTile.vue'
+import LinkTile from './tiles/LinkTile.vue'
+import { widgetMeta, widgetSize, type WidgetMeta } from '@/services/overview/widgets'
 
 /**
  * One tile on the Overview, and where it sits by default. This list is every
- * tile there is and its starting layout. Edit mode keeps each person's own
- * order, sizes and hidden tiles per printer (services/overview/layout) and
- * checks them against this list: a tile named there that is not here is
- * dropped, and a tile here that it never heard of comes back hidden.
+ * widget there is and its starting layout; the sizes, categories and which are
+ * on by default are the catalogue in services/overview/widgets. Edit mode keeps
+ * each person's own order, sizes and hidden widgets per printer
+ * (services/overview/layout) and checks them against this list: a widget named
+ * there that is not here is dropped, an old id is mapped to the widget that
+ * replaced it, and a widget here that it never heard of comes back hidden.
  */
-export interface OverviewTileDef {
-  /** Stable name; what a saved layout calls it. Never reuse or rename one. */
-  id: string;
-  title: string;
+export interface OverviewTileDef extends WidgetMeta {
   component: Component;
   props?: Record<string, unknown>;
-  /** Columns wide of the 12 on a computer (1100 px and up). */
+  /** The default size, in columns of the 12 on a computer. */
   span: number;
-  /** Rows tall on a computer; 1 when not said. */
-  rows?: number;
-  /** Columns wide of 12 on a tablet. */
+  /** Rows tall on a computer at the default size. */
+  rows: number;
+  /** Columns wide of 12 on a tablet at the default size. */
   tablet: 6 | 12;
-  /** Columns wide of 2 on a phone: 1 sits two by two, 2 is a row of its own. */
+  /** Columns wide of 2 on a phone at the default size: 1 sits two by two, 2 is a row of its own. */
   phone: 1 | 2;
 }
 
+interface Drawn { component: Component; props?: Record<string, unknown> }
+
+/** A card that already exists elsewhere, loaded when the widget is on the page. */
+const embed = (tile: string, loader: () => Promise<unknown>): Drawn => ({ component: EmbedTile, props: { tile, loader } })
+
+// TODO(control-v3): the Control rebuild adds the Movement trackpad as its own piece (components/control/ControlTrackpad
+// with services/control/position-predict); until that merges, the Movement widget shows Control's current Move card.
+// TODO(control-v3): Print mode (Quiet / Normal / Turbo) is the mode picker in components/control/ControlSpeed (modes from
+// printer.fan_modes). Until it merges, the widget shows the Speed / flow tile under the Print mode name.
+// TODO(care): Care needs a maintenance store; none exists, so it links to the Maintenance page.
+// TODO(library): Print next becomes a LibraryShelf (library/v2/LibraryShelf) once the shelf can run without the Library page.
+const drawn: Record<string, Drawn> = {
+  stage: { component: StageTile },
+  job: { component: JobTile },
+  filament: { component: FilamentTile },
+  hotend: { component: HeaterTile, props: { kind: 'hotend' } },
+  bed: { component: HeaterTile, props: { kind: 'bed' } },
+  mode: { component: SpeedTile, props: { heading: 'Print mode' } },
+  zoffset: { component: ZOffsetTile },
+  jog: { component: JogTile },
+  position: { component: PositionTile },
+  macros: { component: MacrosTile },
+  graph: { component: GraphTile },
+  trackpad: embed('trackpad', () => import('@/components/control/ControlMove.vue')),
+  fans: { component: FansTile },
+  camera: embed('camera', () => import('@/components/widgets/camera/CameraCard.vue')),
+  bedmesh: embed('bedmesh', () => import('@/components/widgets/bedmesh/BedMeshCard.vue')),
+  console: embed('console', () => import('@/components/widgets/console/ConsoleCard.vue')),
+  system: embed('system', () => import('@/components/widgets/system/SystemOverviewCard.vue')),
+  care: { component: LinkTile, props: { tile: 'care', title: 'Care', icon: 'maintenance', note: 'Maintenance tasks and when they are due.', action: 'Open Maintenance', page: '/maintenance' } },
+  library: { component: LinkTile, props: { tile: 'library', title: 'Print next', icon: 'library', note: 'Pick the next print from your Library.', action: 'Open Library', page: '/library' } }
+}
+
 /** In reading order, which is also the phone order. */
-export const overviewTiles: OverviewTileDef[] = [
-  { id: 'stage', title: 'Printer view', component: StageTile, span: 7, rows: 2, tablet: 12, phone: 2 },
-  { id: 'job', title: 'Print job', component: JobTile, span: 5, tablet: 12, phone: 2 },
-  { id: 'filament', title: 'Filament', component: FilamentTile, span: 5, tablet: 12, phone: 2 },
-  { id: 'hotend', title: 'Hotend', component: HeaterTile, props: { kind: 'hotend' }, span: 3, tablet: 6, phone: 1 },
-  { id: 'bed', title: 'Bed', component: HeaterTile, props: { kind: 'bed' }, span: 3, tablet: 6, phone: 1 },
-  { id: 'fans', title: 'Fans', component: FansTile, span: 3, tablet: 6, phone: 1 },
-  { id: 'speed', title: 'Speed / flow', component: SpeedTile, span: 3, tablet: 6, phone: 1 },
-  { id: 'jog', title: 'Jog', component: JogTile, span: 4, rows: 2, tablet: 12, phone: 2 },
-  { id: 'position', title: 'Position', component: PositionTile, span: 4, tablet: 6, phone: 2 },
-  { id: 'zoffset', title: 'Z offset', component: ZOffsetTile, span: 4, tablet: 6, phone: 2 },
-  { id: 'macros', title: 'Macros', component: MacrosTile, span: 8, tablet: 12, phone: 2 },
-  { id: 'graph', title: 'Temperatures', component: GraphTile, span: 12, tablet: 12, phone: 2 }
-]
+export const overviewTiles: OverviewTileDef[] = widgetMeta.map(meta => {
+  const size = widgetSize(meta)
+  return {
+    ...meta,
+    ...drawn[meta.id],
+    span: size.span,
+    rows: size.rows,
+    tablet: size.span > 6 ? 12 : 6,
+    phone: size.span <= 3 ? 1 : 2
+  }
+})
