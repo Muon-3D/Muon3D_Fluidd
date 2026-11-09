@@ -3,6 +3,7 @@ import VueRouter, { type NavigationGuard, type RouteConfig, type Route } from 'v
 import { applyLegacyHash } from './legacyHash'
 import { readSignedOut } from '@/services/account/signed-out-note'
 import { activeSlugNow, foreignSlugNow } from './printerSlugSource'
+import { noteAccountEntry } from '@/services/account/came-from'
 import { PRINTER_PAGE_PATHS } from './printerPagePaths'
 import { ROUTE_SLUG_PATTERN } from '@/services/printer-pages/slug'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
@@ -205,16 +206,12 @@ const printerRoutes: Array<RouteConfig> = [
     }
   },
   {
-    // Your account (KAN-532), the account's like the Library, so the same
-    // whichever printer is open, drawn beside its rail. Lazy: the first load
-    // doesn't carry it.
+    // Your account (KAN-532) is its own top-level page, never inside a
+    // printer's view (Jack, 6 Nov): an old printer-scoped address opens it
+    // there. The page keeps a way back to the printer that is open.
     path: `${P}/account/:section?`,
-    name: 'Account',
-    component: () => import('@/views/Account.vue'),
-    meta: {
-      printerIndependent: true,
-      frame: 'printer'
-    }
+    name: 'Account under a printer',
+    redirect: to => ({ path: to.params.section ? `/account/${to.params.section}` : '/account', query: to.query, hash: to.hash })
   },
   {
     path: `${P}/configure`,
@@ -370,12 +367,11 @@ const routes: Array<RouteConfig> = [
       printerIndependent: true
     }
   },
-  // Your account (KAN-532) with no printer open: with one, under that printer.
+  // Your account (KAN-532): always top-level, with or without a printer open. Lazy.
   {
     path: '/account/:section?',
     name: 'Account (no printer)',
     component: () => import('@/views/Account.vue'),
-    beforeEnter: toLibraryOfActivePrinter,
     meta: {
       printerIndependent: true
     }
@@ -489,6 +485,9 @@ const router = new VueRouter({
     return { x: 0, y: 0 }
   }
 })
+
+// Account remembers the printer page it was opened from, for its way back.
+router.afterEach((to, from) => noteAccountEntry(to, from))
 
 // Where the navigation in flight is going, for a stale build's reload to land on.
 let pendingTarget: string | undefined

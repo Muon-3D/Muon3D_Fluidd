@@ -6,7 +6,7 @@
 import { test, expect } from '../fixtures'
 import { usePrinter } from './printer'
 
-const SECTIONS = ['General', 'Wi-Fi and network', 'Cameras', 'Materials', 'Macros', 'Console', 'Files and editor', 'Moving and extruding', 'G-code preview', 'System']
+const SECTIONS = ['General', 'Wi-Fi and network', 'Cameras', 'Materials', 'Macros', 'Console', 'Files and editor', 'Moving and extruding', 'G-code preview and 3D', 'System']
 
 test('the page has a title, a line saying what it is for and a search', async ({ page, open, isMobile }) => {
   await open('/settings')

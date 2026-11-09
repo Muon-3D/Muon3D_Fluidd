@@ -317,12 +317,12 @@ test('the listing fails: the list says why, and Try again brings the files', asy
 
 test('offline: Jobs says it is connecting and lists nothing, and the files come back with the printer', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
-  printer.state.offline = true
+  await printer.offline()
   await open('/jobs')
   await expect(page.getByText('Connecting to Boxwood')).toBeVisible({ timeout: 30_000 })
   await expect(rows(page)).toHaveCount(0)
   await expect(page.getByTestId('jobs-sel-delete')).toHaveCount(0)
-  printer.goOnline()
+  printer.online()
   await page.getByTestId('connection-try-again').click()
   await settled(page, 5)
 })

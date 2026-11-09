@@ -4,7 +4,7 @@
     data-tid="account-privacy"
   >
     <div class="acct-head">
-      <h1>Privacy and data</h1>
+      <h1>Your data</h1>
     </div>
 
     <section

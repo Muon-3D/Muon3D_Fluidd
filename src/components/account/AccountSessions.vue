@@ -6,7 +6,7 @@
     <div class="acct-head acct-head--row">
       <div class="acct-head">
         <div class="acct-head__title">
-          <h1>Devices and sessions</h1>
+          <h1>Your devices</h1>
           <acct-more label="What signing out does">
             Signing a device out ends its remote connections to your printers. Prints carry on. A device unused for 30 days signs out by itself.
           </acct-more>

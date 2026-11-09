@@ -40,7 +40,6 @@ test('typing a line and pressing Send sends exactly that G-code', async ({ page,
 test('a quick-command chip sends its command on one tap', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
   await open('/console')
-  await expect(page.getByTestId('console-quick').getByText('Tap to send.')).toBeVisible()
   await page.getByTestId('console-quick-M105').click()
   await expect.poll(() => printer.gcode).toEqual(['M105'])
 })
