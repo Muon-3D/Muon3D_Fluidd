@@ -261,3 +261,10 @@ it('has no Home Z between Z+ and Z−; Home Z is in the action row only', () => 
   expect(s.wrapper.findAll('[data-tid="home-z"]').length).toBe(1)
   s.wrapper.destroy()
 })
+
+it('offers the step sizes set in Settings › Moving and extruding, for the head and the plate', () => {
+  const s = show({})
+  s.store.state.config.uiSettings = { general: { toolheadXYMoveDistances: [5, 25], toolheadZMoveDistances: [0.2, 5] } }
+  expect(s.vm.stepOptions.map((o: { value: number }) => o.value)).toEqual([0.2, 5, 25])
+  s.wrapper.destroy()
+})
