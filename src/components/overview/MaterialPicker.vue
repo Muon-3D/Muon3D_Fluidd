@@ -9,60 +9,31 @@
     content-class="matp"
   >
     <template #activator="{ on, attrs }">
-      <button
-        v-if="chip"
-        type="button"
-        class="matp__chip"
-        :disabled="!klippyReady"
-        aria-haspopup="listbox"
-        :aria-expanded="open ? 'true' : 'false'"
-        data-tid="chip-filament"
-        v-bind="attrs"
-        v-on="on"
+      <slot
+        name="activator"
+        v-bind="{ on, attrs, disabled: !klippyReady }"
       >
-        <span
-          class="matp__swatch"
-          :style="{ background: shown && shown.colour ? shown.colour : 'transparent' }"
-        />
-        {{ chipText }}
-        <frame-icon
-          name="chevronDown"
-          small
-        />
-      </button>
-      <button
-        v-else
-        type="button"
-        class="ov-tile matp__tile"
-        :class="{ 'matp__tile--phone': phone }"
-        :disabled="!klippyReady"
-        aria-haspopup="listbox"
-        :aria-expanded="open ? 'true' : 'false'"
-        data-tid="tile-filament"
-        v-bind="attrs"
-        v-on="on"
-      >
-        <span class="ov-tile__head">
-          <span>Filament</span>
+        <button
+          type="button"
+          class="matp__chip"
+          :disabled="!klippyReady"
+          aria-haspopup="listbox"
+          :aria-expanded="open ? 'true' : 'false'"
+          data-tid="chip-filament"
+          v-bind="attrs"
+          v-on="on"
+        >
+          <span
+            class="matp__swatch"
+            :style="{ background: shown && shown.colour ? shown.colour : 'transparent' }"
+          />
+          {{ chipText }}
           <frame-icon
-            name="spool"
+            name="chevronDown"
             small
           />
-        </span>
-        <span class="ov-tile__value">
-          <span
-            v-if="shown && shown.colour"
-            class="matp__swatch"
-            :style="{ background: shown.colour }"
-          /><v-icon
-            v-if="!shown && !filamentSensed"
-            x-small
-            class="matp__warn"
-            data-tid="material-warning"
-          >$warning</v-icon><span data-tid="material-name">{{ shown ? shown.name : filamentSensed ? 'Filament loaded' : 'No material loaded' }}</span>
-        </span>
-        <span class="ov-tile__sub">{{ subtitle }}</span>
-      </button>
+        </button>
+      </slot>
     </template>
 
     <div
@@ -310,7 +281,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import FilamentActionsMixin from '@/mixins/filament-actions'
 import { FILAMENT_COLOURS, colourName, normaliseColour, type MaterialChoice } from '@/services/control/model'
 import { scopedPath } from '@/router/printerPagePaths'
@@ -326,13 +297,6 @@ import { activeSlug } from '@/services/printer-pages'
  */
 @Component({})
 export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
-  @Prop({ type: Boolean })
-  readonly phone?: boolean
-
-  /** A small button (Control's Filament card) rather than Overview's tile. */
-  @Prop({ type: Boolean })
-  readonly chip?: boolean
-
   open = false
   showAll = false
   search = ''
@@ -382,16 +346,6 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
   /** What the tile names: what's loaded, else what the print running was sliced for. */
   get shown (): { name: string, colour: string | null } | null {
     return this.loadedMaterial ?? this.printingWith
-  }
-
-  get subtitle (): string {
-    const m = this.loadedMaterial
-    if (!m && this.printingWith) {
-      const colour = this.printingWith.colour ? colourName(this.printingWith.colour) : ''
-      return [colour, 'From the file printing. Tap to say what\'s loaded'].filter(Boolean).join(' · ')
-    }
-    if (!m) return this.filamentSensed ? 'Tap to say which material' : 'Tap to say what\'s loaded'
-    return [this.loadedColour ? this.loadedColourName : '', this.temps(m)].filter(Boolean).join(' · ')
   }
 
   get loadedColourName (): string {
@@ -450,25 +404,6 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
 </script>
 
 <style lang="scss" scoped>
-  .matp__tile {
-    width: 100%;
-    font: inherit;
-    cursor: pointer;
-
-    &:disabled {
-      cursor: default;
-      opacity: 0.6;
-    }
-  }
-
-  .matp__tile--phone {
-    grid-column: 1 / -1;
-  }
-
-  .matp__warn {
-    margin-right: 6px;
-    color: var(--m3d-warning) !important;
-  }
 
   .matp__swatch {
     display: inline-block;
