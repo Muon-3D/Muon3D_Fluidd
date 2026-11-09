@@ -127,6 +127,7 @@
           <people-access-settings v-else-if="shows('access') && cards.peopleAccess" />
           <protection-settings v-else-if="shows('protection') && supports('muon_protection')" />
           <auth-settings v-if="shows('auth') && cards.auth" />
+          <security-settings v-if="shows('security')" />
           <software-settings v-if="shows('versions')" />
           <camera-settings v-if="shows('camera')" />
           <preset-settings v-if="shows('presets')" />
@@ -161,6 +162,7 @@ import CameraSettings from '@/components/settings/cameras/CameraSettings.vue'
 import ToolheadSettings from '@/components/settings/ToolheadSettings.vue'
 import ThemeSettings from '@/components/settings/ThemeSettings.vue'
 import SoftwareSettings from '@/components/settings/SoftwareSettings.vue'
+import SecuritySettings from '@/components/settings/SecuritySettings.vue'
 import { updateWatch } from '@/services/updates/watch'
 import GcodePreviewSettings from '@/components/settings/GcodePreviewSettings.vue'
 import AuthSettings from '@/components/settings/auth/AuthSettings.vue'
@@ -201,6 +203,7 @@ const countOrNone = (count: number) => count ? String(count) : 'none'
     ToolheadSettings,
     ThemeSettings,
     SoftwareSettings,
+    SecuritySettings,
     GcodePreviewSettings,
     AuthSettings,
     ConsoleSettings,
