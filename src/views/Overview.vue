@@ -300,6 +300,7 @@ export default class Overview extends Vue {
   private narrowQuery: MediaQueryList | null = null
   /** Where each tile was before the layout changed, so it can glide to where it is now. */
   private rects = new Map<string, DOMRect>()
+  private shape = ''
   sheet = false
   query = ''
   category: WidgetCategory | null = null
@@ -354,6 +355,10 @@ export default class Overview extends Vue {
    */
   @Watch('current')
   glide () {
+    // A new object with the same tiles is not a move: starting again from mid-spring would never let one settle.
+    const shape = this.current.tiles.map(t => `${t.id}:${t.span}:${t.rows}`).join('|')
+    if (shape === this.shape) return
+    this.shape = shape
     // Only what someone does in Edit moves with a spring; the page loading or a saved layout arriving just draws.
     if (reducedMotion() || !this.editing) return
     // User watchers run before the re-render, so this is still the old layout (mid-spring if one is running).
