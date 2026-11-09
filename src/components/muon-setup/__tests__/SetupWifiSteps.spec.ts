@@ -1,6 +1,7 @@
 import { shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SetupWifiSteps from '../SetupWifiSteps.vue'
+import SetupStepCard from '../SetupStepCard.vue'
 import { joinErrorCopy, validPsk } from '@/services/muon-setup/wifiCopy'
 import { resetSetupState, setLocal, setupState } from '@/services/muon-setup/state'
 import type { SetupClient } from '@/services/muon-setup/client'
@@ -11,6 +12,9 @@ import joining from '@/services/muon-setup/__tests__/fixtures/state.04-joining.j
 import regionConfirm from '@/services/muon-setup/__tests__/fixtures/state.04b-region-confirm.json'
 import wrongPassword from '@/services/muon-setup/__tests__/fixtures/state.05-network-wrong-password.json'
 import euNetworks from '@/services/muon-setup/__tests__/fixtures/networks.eu-unit.json'
+import linkCode from '@/services/muon-setup/__tests__/fixtures/state.06-remote-link-code.json'
+import readySelfTest from '@/services/muon-setup/__tests__/fixtures/state.07-ready-self-test.json'
+import pickerOptions from '@/services/muon-setup/__tests__/fixtures/options.picker-eu.json'
 
 // The fixtures' driver is this tab.
 const PHONE = '5b1f0c7e-9f7a-4f5e-8f0a-2d6f3c1a9b10'
@@ -31,7 +35,7 @@ function fakeClient () {
     claimDriver: vi.fn(async () => { order.push('driver'); return { ok: true, error: null, state: null } }),
     postClock: vi.fn(async () => { order.push('clock'); return null }),
     networks: vi.fn(async () => JSON.parse(JSON.stringify(euNetworks))),
-    options: vi.fn(async () => ({ languages: [{ code: 'en', endonym: 'English' }, { code: 'de', endonym: 'Deutsch' }] })),
+    options: vi.fn(async () => ({ ...JSON.parse(JSON.stringify(pickerOptions)), languages: [{ code: 'en', endonym: 'English' }, { code: 'de', endonym: 'Deutsch' }] })),
     uploadCaCert: vi.fn()
   }
   return { client: client as unknown as SetupClient & typeof client, posts, order }
@@ -43,7 +47,7 @@ const flush = async (wrapper: { vm: { $nextTick: () => Promise<void> } }) => {
 }
 
 function mount (client: SetupClient) {
-  return shallowMount(SetupWifiSteps, { propsData: { client, overBluetooth: true }, mocks: { $t: (k: string) => k } })
+  return shallowMount(SetupWifiSteps, { propsData: { client, overBluetooth: true }, stubs: { SetupStepCard }, mocks: { $t: (k: string) => k } })
 }
 
 const tid = (wrapper: ReturnType<typeof mount>, id: string) => wrapper.find(`[data-tid="${id}"]`)
@@ -161,6 +165,126 @@ describe('S4 and S4r', () => {
     expect(wrapper.text()).toContain('United Kingdom')
     await (wrapper.vm as any).confirmRegion()
     expect(posts).toEqual([['region', { country: 'GB' }, undefined]])
+  })
+})
+
+describe('the step card', () => {
+  it('puts each step in the card, with its place among the steps', async () => {
+    setupState.state = copy(networkPhone)
+    const { client } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    expect(tid(wrapper, 'step-eyebrow').text()).toBe('Step 2 of 7')
+    expect(wrapper.find('h1').text()).toBe('Choose Wi-Fi')
+  })
+
+  it('opens the chosen network\'s password in place, and enables Connect in the footer', async () => {
+    setupState.state = copy(networkPhone)
+    const { client } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    expect(tid(wrapper, 'wifi-connect').attributes('disabled')).toBeDefined()
+    await tid(wrapper, 'wifi-HomeWiFi').trigger('click')
+    expect(tid(wrapper, 'wifi-password').exists()).toBe(true)
+    ;(wrapper.vm as any).password = 'correct horse battery staple'
+    await wrapper.vm.$nextTick()
+    expect(tid(wrapper, 'wifi-connect').attributes('disabled')).toBeUndefined()
+    expect((wrapper.vm as any).selectedNetwork.ssid).toBe('HomeWiFi')
+  })
+})
+
+describe('S5 name, updates and your account', () => {
+  const at = (cursor: 'name' | 'update' | 'remote') => {
+    const state = copy(linkCode)
+    state.cursor = cursor
+    state.steps.remote = { status: 'pending', mode: null, link: null, error: null }
+    if (cursor === 'name') state.steps.name.status = 'pending'
+    if (cursor !== 'remote') state.steps.update.status = 'pending'
+    return state
+  }
+
+  it('names the printer, and Back goes to the step before', async () => {
+    setupState.state = at('name')
+    const { client, posts } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    const vm = wrapper.vm as any
+    expect(vm.screen).toBe('S5')
+    expect(vm.nameDraft).toBe('Walnut')
+    vm.nameDraft = '  Workshop  '
+    await vm.saveName()
+    await vm.goBack()
+    expect(posts).toEqual([['name', { name: 'Workshop' }, undefined], ['goto', { step: 'network' }, undefined]])
+  })
+
+  it('installs the update, or leaves it for later', async () => {
+    setupState.state = at('update')
+    const { client, posts } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    expect(wrapper.find('h1').text()).toBe('Update available')
+    await (wrapper.vm as any).installUpdate()
+    await (wrapper.vm as any).updateLater()
+    expect(posts.map(p => p[1])).toEqual([{ action: 'install' }, { action: 'later' }])
+  })
+
+  it('offers the account link, only on this network, or Skip for now', async () => {
+    setupState.state = at('remote')
+    const { client, posts } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    const vm = wrapper.vm as any
+    expect(vm.remoteChoice).toBe('cloud')
+    await vm.chooseRemote('cloud')
+    await vm.chooseRemote('later')
+    expect(posts).toEqual([['remote', { mode: 'cloud' }, undefined], ['remote', { mode: 'later' }, undefined]])
+  })
+
+  it("doesn't offer the account link without the internet", async () => {
+    const state = at('remote')
+    state.steps.network.internet = false
+    setupState.state = state
+    const { client } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    expect((wrapper.vm as any).remoteChoice).toBe('local')
+    expect(tid(wrapper, 'remote-cloud').attributes('disabled')).toBeDefined()
+    expect(tid(wrapper, 'remote-cloud').text()).toContain('Needs Walnut on the internet')
+  })
+})
+
+describe('S6 and S7', () => {
+  it('shows the link code, and Back cancels the link', async () => {
+    setupState.state = copy(linkCode)
+    const { client, posts } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    expect(tid(wrapper, 'link-code').text()).toBe('482913')
+    await (wrapper.vm as any).cancelLink()
+    expect(posts).toEqual([['remote/cancel', {}, { rev: false }]])
+  })
+
+  it('lists the first calibration, and offers Skip only for what is optional', async () => {
+    setupState.state = copy(readySelfTest)
+    setupState.state!.driver = { ...setupState.state!.driver!, kind: 'phone', client_id: PHONE }
+    const { client, posts } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    expect((wrapper.vm as any).screen).toBe('S7')
+    expect(tid(wrapper, 'ready-self_test').text()).toContain('Running now')
+    expect(tid(wrapper, 'ready-skip-transport_clips').exists()).toBe(false)
+    expect(tid(wrapper, 'ready-skip-self_test').exists()).toBe(false)
+    await (wrapper.vm as any).skipReadyItem('load_filament')
+    expect(posts).toEqual([['ready', { action: 'skip', item: 'load_filament' }, undefined]])
+  })
+
+  it("follows the printer's screen when it is in charge", async () => {
+    setupState.state = copy(readySelfTest)
+    const { client } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    expect((wrapper.vm as any).screen).toBe('S9')
+    expect(wrapper.find('h1').text()).toBe("Carry on at Walnut's screen")
   })
 })
 

@@ -1,6 +1,7 @@
 import { shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import BluetoothSetupDialog from '../BluetoothSetupDialog.vue'
+import SetupStepCard from '@/components/muon-setup/SetupStepCard.vue'
 import type { BleSetupResult } from '@/services/muon-ble/setup'
 import type { NearbyPrinter } from '@/services/muon-ble/nearby'
 import { resetSetupState, setupState } from '@/services/muon-setup/state'
@@ -46,6 +47,7 @@ const flush = async (wrapper: { vm: { $nextTick: () => Promise<void> } }) => {
 function mount (connector: () => Promise<BleSetupResult>) {
   return shallowMount(BluetoothSetupDialog, {
     propsData: { value: true, printer: WALNUT, connector },
+    stubs: { SetupStepCard },
     mocks: { $t: (k: string) => k }
   })
 }

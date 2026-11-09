@@ -1,42 +1,56 @@
 <template>
   <div class="muon-setup-steps">
     <!-- S1 Start (05 §3) -->
-    <template v-if="screen === 'S1'">
-      <p class="muon-setup-steps__title">
-        Set up {{ display }}
-      </p>
-      <p class="muon-setup-steps__lede">
-        <template v-if="overBluetooth">
-          About three minutes. This computer stays on its own network and talks to {{ name }} over
-          Bluetooth until {{ name }} is on Wi-Fi too.
-        </template>
-        <template v-else>
-          About three minutes.
-        </template>
+    <setup-step-card
+      v-if="screen === 'S1'"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      :title="`Set up ${display}`"
+      sub="About three minutes. Keep this page open until it says you're done."
+    >
+      <p
+        v-if="overBluetooth"
+        class="muon-setup-steps__lede"
+      >
+        This computer stays on its own network and talks to {{ name }} over
+        Bluetooth until {{ name }} is on Wi-Fi too.
       </p>
       <ol class="muon-setup-steps__plan">
         <li>Wi-Fi</li>
         <li>Name and updates</li>
-        <li>Remote access, if you want it</li>
+        <li>Your account, if you want remote access</li>
         <li>Last steps at the printer</li>
       </ol>
-      <app-btn
-        color="primary"
-        block
-        :loading="busy"
-        data-tid="setup-start"
-        @click="start"
+      <p
+        v-if="writeError"
+        class="muon-setup-steps__error"
       >
-        Start
-      </app-btn>
-    </template>
+        {{ writeError }}
+      </p>
+      <template #footer>
+        <app-btn
+          color="primary"
+          :loading="busy"
+          data-tid="setup-start"
+          @click="start"
+        >
+          Start
+        </app-btn>
+      </template>
+    </setup-step-card>
 
-    <!-- S3 Wi-Fi -->
-    <template v-else-if="screen === 'S3'">
+    <!-- S3 Wi-Fi: the chosen network opens its password field in place -->
+    <setup-step-card
+      v-else-if="screen === 'S3'"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      title="Choose Wi-Fi"
+      :sub="`${name} uses it to take prints and fetch updates.`"
+    >
       <div class="muon-setup-steps__head">
-        <p class="muon-setup-steps__title">
-          Choose Wi-Fi
-        </p>
+        <span class="muon-setup-steps__muted">
+          {{ scanning ? 'Looking for networks…' : `${networks.length} networks nearby` }}
+        </span>
         <v-btn
           small
           text
@@ -57,6 +71,7 @@
           small
           text
           :disabled="busy"
+          data-tid="wifi-cable"
           @click="useCable"
         >
           Use this connection
@@ -66,12 +81,14 @@
       <p
         v-if="scanError"
         class="muon-setup-steps__error"
+        data-tid="wifi-scan-error"
       >
         {{ scanError }}
       </p>
       <p
         v-else-if="!scanning && !networks.length"
         class="muon-setup-steps__muted"
+        data-tid="wifi-none"
       >
         {{ name }} can't see any Wi-Fi networks. Scan again, or move it closer to the router.
       </p>
@@ -86,6 +103,7 @@
           type="button"
           class="muon-setup-steps__network-row"
           :disabled="!!unusable(n) || busy"
+          :aria-pressed="selected === n.ssid ? 'true' : 'false'"
           :data-tid="`wifi-${n.ssid}`"
           @click="choose(n)"
         >
@@ -95,15 +113,14 @@
           </span>
         </button>
         <form
-          v-if="selected === n.ssid"
+          v-if="selected === n.ssid && needsPassword(n)"
           class="muon-setup-steps__join"
           @submit.prevent="join(n)"
         >
           <v-text-field
-            v-if="needsPassword(n)"
             v-model="password"
             :type="showPassword ? 'text' : 'password'"
-            label="Password"
+            :label="`Password for ${n.ssid}`"
             autocomplete="off"
             autocapitalize="off"
             spellcheck="false"
@@ -115,21 +132,13 @@
             data-tid="wifi-password"
             @click:append="showPassword = !showPassword"
           />
-          <app-btn
-            color="primary"
-            type="submit"
-            :loading="busy"
-            :disabled="needsPassword(n) && !password"
-            data-tid="wifi-connect"
-          >
-            Connect
-          </app-btn>
         </form>
       </div>
 
       <p
         v-if="writeError"
         class="muon-setup-steps__error"
+        data-tid="write-error"
       >
         {{ writeError }}
       </p>
@@ -137,6 +146,7 @@
       <div
         v-if="confirmSkip"
         class="muon-setup-steps__confirm"
+        data-tid="wifi-skip-confirm"
       >
         <p>{{ name }} will stay offline. You can connect it later from its screen.</p>
         <v-btn
@@ -144,34 +154,49 @@
           text
           @click="confirmSkip = false"
         >
-          Back
+          Keep Wi-Fi
         </v-btn>
         <v-btn
           small
           text
           color="primary"
           :loading="busy"
+          data-tid="wifi-skip-yes"
           @click="skipNetwork"
         >
           Skip Wi-Fi
         </v-btn>
       </div>
-      <v-btn
-        v-else
-        small
-        text
-        class="muon-setup-steps__skip"
-        @click="confirmSkip = true"
-      >
-        Skip for now
-      </v-btn>
-    </template>
+
+      <template #footer>
+        <v-btn
+          v-if="!confirmSkip"
+          text
+          data-tid="wifi-skip"
+          @click="confirmSkip = true"
+        >
+          Skip for now
+        </v-btn>
+        <app-btn
+          color="primary"
+          :loading="busy"
+          :disabled="!selectedNetwork || (needsPassword(selectedNetwork) && !password)"
+          data-tid="wifi-connect"
+          @click="selectedNetwork && join(selectedNetwork)"
+        >
+          Connect and continue
+        </app-btn>
+      </template>
+    </setup-step-card>
 
     <!-- S4 Joining -->
-    <template v-else-if="screen === 'S4'">
-      <p class="muon-setup-steps__title">
-        Joining {{ joiningSsid }}
-      </p>
+    <setup-step-card
+      v-else-if="screen === 'S4'"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      :title="`Joining ${joiningSsid}`"
+      sub="This takes up to a minute."
+    >
       <ul class="muon-setup-steps__checklist">
         <li
           v-for="item in checklist"
@@ -193,89 +218,108 @@
           <span>{{ item.label }}</span>
         </li>
       </ul>
-      <v-btn
+      <template
         v-if="state && state.op && state.op.kind === 'join'"
-        small
-        text
-        :loading="busy"
-        @click="cancelJoin"
+        #footer
       >
-        Cancel
-      </v-btn>
-    </template>
-
-    <!-- S4r Result, and the region line (§3.1) -->
-    <template v-else-if="screen === 'S4r' && state">
-      <template v-if="joinError">
-        <p
-          class="muon-setup-steps__title"
-          data-tid="join-error"
+        <v-btn
+          text
+          :loading="busy"
+          data-tid="join-cancel"
+          @click="cancelJoin"
         >
-          {{ joinError }}
-        </p>
-        <div class="muon-setup-steps__actions">
-          <app-btn
-            color="primary"
-            @click="tryAgain"
-          >
-            Try again
-          </app-btn>
-          <v-btn
-            text
-            @click="chooseAnother"
-          >
-            Choose another network
-          </v-btn>
-        </div>
+          Cancel
+        </v-btn>
       </template>
-      <template v-else>
-        <p
-          class="muon-setup-steps__title"
-          data-tid="join-done"
+    </setup-step-card>
+
+    <!-- S4r Result: the join failed -->
+    <setup-step-card
+      v-else-if="screen === 'S4r' && state && joinError"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      title="Wi-Fi didn't connect"
+    >
+      <p
+        class="muon-setup-steps__error"
+        data-tid="join-error"
+      >
+        {{ joinError }}
+      </p>
+      <template #footer>
+        <v-btn
+          text
+          data-tid="join-another"
+          @click="chooseAnother"
         >
-          {{ name }} is on {{ network.ssid || 'the network' }}
-        </p>
-        <p class="muon-setup-steps__muted">
-          {{ network.addresses.join(', ') }}<template v-if="network.hostname_local">
-            · {{ network.hostname_local }}
-          </template>
-        </p>
-        <p
-          v-if="network.internet === false"
-          class="muon-setup-steps__muted"
+          Choose another network
+        </v-btn>
+        <app-btn
+          color="primary"
+          data-tid="join-retry"
+          @click="tryAgain"
         >
-          No internet. Printing over the network works; updates and remote access are off.
+          Try again
+        </app-btn>
+      </template>
+    </setup-step-card>
+
+    <!-- S4r Result: joined, and the region line (§3.1) -->
+    <setup-step-card
+      v-else-if="screen === 'S4r' && state"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      title="Wi-Fi connected"
+    >
+      <p
+        class="muon-setup-steps__done"
+        data-tid="join-done"
+      >
+        {{ name }} is on {{ network.ssid || 'the network' }}
+      </p>
+      <p class="muon-setup-steps__muted">
+        {{ network.addresses.join(', ') }}<template v-if="network.hostname_local">
+          · {{ network.hostname_local }}
+        </template>
+      </p>
+      <p
+        v-if="network.internet === false"
+        class="muon-setup-steps__muted"
+      >
+        No internet. Printing over the network works; updates and remote access are off.
+      </p>
+      <p
+        v-if="network.internet === 'portal'"
+        class="muon-setup-steps__error"
+      >
+        {{ network.ssid }} needs a sign-in page, which a printer can't complete. Printing over this
+        network works, but updates and remote access won't.
+      </p>
+      <template v-if="!network.region_confirmed">
+        <p class="muon-setup-steps__region">
+          Region: <strong>{{ countryName(regionCountry) }}</strong>
         </p>
         <p
-          v-if="network.internet === 'portal'"
+          v-if="network.region_error"
           class="muon-setup-steps__error"
         >
-          {{ network.ssid }} needs a sign-in page, which a printer can't complete. Printing over this
-          network works, but updates and remote access won't.
+          {{ regionError }}
         </p>
-        <template v-if="!network.region_confirmed">
-          <p class="muon-setup-steps__region">
-            Region: <strong>{{ countryName(regionCountry) }}</strong>
-          </p>
-          <p
-            v-if="network.region_error"
-            class="muon-setup-steps__error"
-          >
-            {{ regionError }}
-          </p>
-          <p class="muon-setup-steps__muted">
-            To choose another region, use {{ name }}'s screen.
-          </p>
-          <app-btn
-            color="primary"
-            :loading="busy || !!(state.op && state.op.kind === 'region_apply')"
-            :disabled="!regionCountry"
-            data-tid="region-confirm"
-            @click="confirmRegion"
-          >
-            Confirm
-          </app-btn>
-        </template>
+        <p class="muon-setup-steps__muted">
+          To choose another region, use {{ name }}'s screen.
+        </p>
+      </template>
+      <template #footer>
+        <app-btn
+          v-if="!network.region_confirmed"
+          color="primary"
+          :loading="busy || !!(state.op && state.op.kind === 'region_apply')"
+          :disabled="!regionCountry"
+          data-tid="region-confirm"
+          @click="confirmRegion"
+        >
+          Confirm
+        </app-btn>
         <app-btn
           v-else
           color="primary"
@@ -285,27 +329,365 @@
           Continue
         </app-btn>
       </template>
-    </template>
+    </setup-step-card>
+
+    <!-- S5 Name -->
+    <setup-step-card
+      v-else-if="screen === 'S5' && cursor === 'name'"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      title="Name your printer"
+      sub="It shows up with this name in Control and on your network."
+    >
+      <form @submit.prevent="saveName">
+        <v-text-field
+          v-model="nameDraft"
+          label="Printer name"
+          autocomplete="off"
+          outlined
+          dense
+          hide-details="auto"
+          :placeholder="state ? state.steps.name.derived : ''"
+          data-tid="name-field"
+        />
+      </form>
+      <p
+        v-if="writeError"
+        class="muon-setup-steps__error"
+        data-tid="write-error"
+      >
+        {{ writeError }}
+      </p>
+      <template #footer>
+        <v-btn
+          v-if="previous"
+          text
+          class="setup-step__back"
+          :disabled="busy"
+          data-tid="setup-back"
+          @click="goBack"
+        >
+          Back
+        </v-btn>
+        <app-btn
+          color="primary"
+          :loading="busy"
+          :disabled="!nameDraft.trim()"
+          data-tid="name-save"
+          @click="saveName"
+        >
+          Continue
+        </app-btn>
+      </template>
+    </setup-step-card>
+
+    <!-- S5 Updates -->
+    <setup-step-card
+      v-else-if="screen === 'S5' && cursor === 'update' && state"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      :title="update.available ? 'Update available' : `${name} is up to date`"
+      :sub="update.available
+        ? `${name} runs ${update.current}. ${update.available} is ready to install; it takes a few minutes.`
+        : `${name} runs ${update.current}.`"
+    >
+      <p
+        v-if="update.error"
+        class="muon-setup-steps__error"
+        data-tid="update-error"
+      >
+        {{ name }} couldn't install the update. You can try again, or update later from Settings.
+      </p>
+      <p
+        v-if="writeError"
+        class="muon-setup-steps__error"
+        data-tid="write-error"
+      >
+        {{ writeError }}
+      </p>
+      <template #footer>
+        <v-btn
+          v-if="previous"
+          text
+          class="setup-step__back"
+          :disabled="busy"
+          data-tid="setup-back"
+          @click="goBack"
+        >
+          Back
+        </v-btn>
+        <v-btn
+          v-if="update.available"
+          text
+          :disabled="busy"
+          data-tid="update-later"
+          @click="updateLater"
+        >
+          Later
+        </v-btn>
+        <app-btn
+          color="primary"
+          :loading="busy"
+          data-tid="update-go"
+          @click="update.available ? installUpdate() : updateLater()"
+        >
+          {{ update.available ? 'Install update' : 'Continue' }}
+        </app-btn>
+      </template>
+    </setup-step-card>
+
+    <!-- S5 Your account (remote access) -->
+    <setup-step-card
+      v-else-if="screen === 'S5' && state"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      title="Your account"
+      :sub="`Link ${name} to your Muon3D account to watch and print from anywhere.`"
+    >
+      <div
+        class="muon-setup-steps__choices"
+        role="radiogroup"
+        aria-label="Remote access"
+      >
+        <button
+          v-for="option in remoteOptions"
+          :key="option.mode"
+          type="button"
+          role="radio"
+          class="muon-setup-steps__network muon-setup-steps__network-row"
+          :class="{ 'is-open': remoteChoice === option.mode, 'is-disabled': !!option.disabled }"
+          :aria-checked="remoteChoice === option.mode ? 'true' : 'false'"
+          :disabled="!!option.disabled || busy"
+          :data-tid="`remote-${option.mode}`"
+          @click="remoteChoice = option.mode"
+        >
+          <span class="muon-setup-steps__network-name">{{ option.title }}</span>
+          <span class="muon-setup-steps__network-meta">{{ option.disabled || option.detail }}</span>
+        </button>
+      </div>
+      <p
+        v-if="remote.error"
+        class="muon-setup-steps__error"
+        data-tid="remote-error"
+      >
+        {{ remoteError }}
+      </p>
+      <p
+        v-if="writeError"
+        class="muon-setup-steps__error"
+        data-tid="write-error"
+      >
+        {{ writeError }}
+      </p>
+      <template #footer>
+        <v-btn
+          v-if="previous"
+          text
+          class="setup-step__back"
+          :disabled="busy"
+          data-tid="setup-back"
+          @click="goBack"
+        >
+          Back
+        </v-btn>
+        <v-btn
+          text
+          :disabled="busy"
+          data-tid="remote-skip"
+          @click="chooseRemote('later')"
+        >
+          Skip for now
+        </v-btn>
+        <app-btn
+          color="primary"
+          :loading="busy"
+          :disabled="!remoteChoice"
+          data-tid="remote-continue"
+          @click="remoteChoice && chooseRemote(remoteChoice)"
+        >
+          Continue
+        </app-btn>
+      </template>
+    </setup-step-card>
+
+    <!-- S5u Installing the update -->
+    <setup-step-card
+      v-else-if="screen === 'S5u'"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      :title="`Updating ${name}`"
+      sub="Keep it switched on. It restarts when it's done, and this page carries on."
+    >
+      <v-progress-linear
+        :indeterminate="updateProgress === null"
+        :value="updateProgress === null ? 0 : updateProgress"
+        rounded
+        data-tid="update-progress"
+      />
+    </setup-step-card>
+
+    <!-- S6 Linking with a code -->
+    <setup-step-card
+      v-else-if="screen === 'S6'"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      :title="`Link ${name} to your account`"
+      :sub="linkSub"
+    >
+      <template v-if="link && link.phase === 'code'">
+        <p
+          class="muon-setup-steps__code"
+          data-tid="link-code"
+          :aria-label="`Code ${link.code.split('').join(' ')}`"
+        >
+          {{ link.code }}
+        </p>
+        <a
+          class="muon-setup-steps__link"
+          :href="link.url"
+          target="_blank"
+          rel="noopener"
+          data-tid="link-open"
+        >Open the link page</a>
+      </template>
+      <p
+        v-else-if="link && link.phase === 'failed'"
+        class="muon-setup-steps__error"
+        data-tid="link-failed"
+      >
+        Linking didn't finish. Try again, or skip and link {{ name }} later from Control.
+      </p>
+      <v-progress-circular
+        v-else
+        indeterminate
+        size="20"
+        width="2"
+      />
+      <p
+        v-if="writeError"
+        class="muon-setup-steps__error"
+        data-tid="write-error"
+      >
+        {{ writeError }}
+      </p>
+      <template #footer>
+        <v-btn
+          text
+          class="setup-step__back"
+          :disabled="busy"
+          data-tid="link-cancel"
+          @click="cancelLink"
+        >
+          Back
+        </v-btn>
+        <v-btn
+          text
+          :disabled="busy"
+          data-tid="remote-skip"
+          @click="chooseRemote('later')"
+        >
+          Skip for now
+        </v-btn>
+        <app-btn
+          v-if="link && link.phase === 'failed'"
+          color="primary"
+          :loading="busy"
+          data-tid="link-retry"
+          @click="chooseRemote('cloud')"
+        >
+          Try again
+        </app-btn>
+      </template>
+    </setup-step-card>
+
+    <!-- S7 First calibration: each item happens at the printer -->
+    <setup-step-card
+      v-else-if="screen === 'S7'"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      title="First calibration"
+      :sub="`These happen at ${name}. Follow its screen; this page moves on by itself.`"
+    >
+      <ul class="muon-setup-steps__checklist muon-setup-steps__ready">
+        <li
+          v-for="item in readyItems"
+          :key="item.id"
+          :class="`is-${item.status}`"
+          :data-tid="`ready-${item.id}`"
+        >
+          <v-progress-circular
+            v-if="item.running"
+            indeterminate
+            size="12"
+            width="2"
+          />
+          <v-icon
+            v-else-if="item.status === 'done'"
+            x-small
+          >
+            $check
+          </v-icon>
+          <span class="muon-setup-steps__ready-title">{{ item.title }}</span>
+          <span class="muon-setup-steps__network-meta">{{ item.note }}</span>
+          <v-btn
+            v-if="item.skippable"
+            x-small
+            text
+            :disabled="busy"
+            :data-tid="`ready-skip-${item.id}`"
+            @click="skipReadyItem(item.id)"
+          >
+            Skip
+          </v-btn>
+        </li>
+      </ul>
+      <p
+        v-if="writeError"
+        class="muon-setup-steps__error"
+        data-tid="write-error"
+      >
+        {{ writeError }}
+      </p>
+      <template
+        v-if="previous"
+        #footer
+      >
+        <v-btn
+          text
+          class="setup-step__back"
+          :disabled="busy"
+          data-tid="setup-back"
+          @click="goBack"
+        >
+          Back
+        </v-btn>
+      </template>
+    </setup-step-card>
 
     <!-- S8, S10: done -->
-    <template v-else-if="screen === 'S8' || screen === 'S10'">
-      <p class="muon-setup-steps__title">
-        {{ name }} is set up
-      </p>
+    <setup-step-card
+      v-else-if="screen === 'S8' || screen === 'S10'"
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      :title="`${name} is set up`"
+      sub="It's ready for its first print."
+    >
       <slot name="done" />
-    </template>
+    </setup-step-card>
 
-    <!-- S5 to S7, S9: the steps this page does not draw yet (FL-3). The panel
-         can finish every step on its own. -->
-    <template v-else>
-      <p class="muon-setup-steps__title">
-        <template v-if="network.addresses.length">
-          {{ name }} is on {{ network.ssid || 'the network' }}.
-        </template>
-        Carry on at {{ name }}'s screen: it shows the next step.
+    <!-- S9: the printer's screen is in charge. The panel can finish every step on its own. -->
+    <setup-step-card
+      v-else
+      :eyebrow="eyebrow"
+      :flat="overBluetooth"
+      :title="`Carry on at ${name}'s screen`"
+      :sub="network.addresses.length ? `${name} is on ${network.ssid || 'the network'}.` : ''"
+    >
+      <p class="muon-setup-steps__muted">
+        Someone is setting {{ name }} up at the printer. This page follows along.
       </p>
       <slot name="elsewhere" />
-    </template>
+    </setup-step-card>
   </div>
 </template>
 
@@ -314,21 +696,31 @@ import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import { SetupHttpError, type SetupClient } from '@/services/muon-setup/client'
 import { pageLanguageFor } from '@/services/muon-setup/language'
 import { screenFor, type ScreenId } from '@/services/muon-setup/screen'
+import { frameSteps, previousStep } from '@/services/muon-setup/steps'
 import { setLocal, setupState } from '@/services/muon-setup/state'
-import type { SetupNetwork, SetupResult, SetupState } from '@/services/muon-setup/types'
+import type { LinkState, SetupNetwork, SetupResult, SetupState, StepId } from '@/services/muon-setup/types'
 import { joinErrorCopy, validPsk, writeErrorCopy } from '@/services/muon-setup/wifiCopy'
+import SetupStepCard from './SetupStepCard.vue'
+
+type RemoteMode = 'local' | 'cloud' | 'later'
+
+const READY_TITLES: Record<string, string> = {
+  transport_clips: 'Take out the transport clips',
+  self_test: 'Run the self-test',
+  load_filament: 'Load filament'
+}
 
 const JOIN_PHASES = ['saving', 'associating', 'authenticating', 'dhcp', 'internet_check', 'update_check']
 
 /**
- * The Wi-Fi part of first-run setup (05-phone-setup-page.md §3: S1, S3, S4
- * and S4r), for any page with a `SetupClient`: the hosted page setting a
- * printer up over Bluetooth now, and the `/setup` page when FL-3 mounts it.
- * Which screen shows is `screenFor`'s answer alone; this component keeps no
- * step order. Other network (S3b), enterprise Wi-Fi and the region picker
- * are left to the printer's screen until FL-3.
+ * First-run setup's steps (05-phone-setup-page.md §3), each in the shared
+ * step card, for any page with a `SetupClient`: `/setup` on the printer's
+ * hotspot, and Control setting a printer up over Bluetooth. Which screen
+ * shows is `screenFor`'s answer alone; this component keeps no step order.
+ * Steps that need someone at the printer (the first calibration, other
+ * network, enterprise Wi-Fi and the region picker) stay on its screen.
  */
-@Component
+@Component({ components: { SetupStepCard } })
 export default class SetupWifiSteps extends Vue {
   @Prop({ type: Object, required: true })
   readonly client!: SetupClient
@@ -348,6 +740,9 @@ export default class SetupWifiSteps extends Vue {
   writeError: string | null = null
   confirmSkip = false
   languages: string[] = []
+  nameDraft = ''
+  readyManifest: Array<Record<string, unknown>> = []
+  remoteChoice: RemoteMode | null = null
 
   get state (): SetupState | null {
     return setupState.state
@@ -377,6 +772,104 @@ export default class SetupWifiSteps extends Vue {
       region_confirmed: false,
       region_error: null
     }
+  }
+
+  get cursor () {
+    return this.state?.cursor ?? null
+  }
+
+  get eyebrow (): string {
+    const steps = frameSteps(this.state, this.screen)
+    const at = steps.findIndex(step => step.status === 'on')
+    return at < 0 ? '' : `Step ${at + 1} of ${steps.length}`
+  }
+
+  /** Where Back goes: the printer's `goto` only takes an earlier done or skipped step. */
+  get previous (): StepId | null {
+    return previousStep(this.state)
+  }
+
+  get selectedNetwork (): SetupNetwork | null {
+    return this.networks.find(n => n.ssid === this.selected) ?? null
+  }
+
+  get update (): SetupState['steps']['update'] {
+    return this.state?.steps.update ?? { status: 'pending', current: '', available: null, error: null }
+  }
+
+  get updateProgress (): number | null {
+    const progress = this.state?.op?.kind === 'update_install' ? this.state.op.progress : null
+    return typeof progress === 'number' ? progress : null
+  }
+
+  get remote (): SetupState['steps']['remote'] {
+    return this.state?.steps.remote ?? { status: 'pending', mode: null, link: null, error: null }
+  }
+
+  get link (): LinkState | null {
+    return this.remote.link
+  }
+
+  /** Linking needs the internet and a synced clock (02 §5.9); say so rather than offer it. */
+  get cloudBlocked (): string | null {
+    if (!this.state) return null
+    if (this.state.capabilities.cloud_link === false) return `${this.name} can't link to an account`
+    if (this.network.internet !== true) return `Needs ${this.name} on the internet`
+    if (this.state.clock.synced !== true) return `Waiting for ${this.name}'s clock to set`
+    return null
+  }
+
+  get remoteOptions () {
+    return [
+      {
+        mode: 'cloud' as const,
+        title: 'Link to my Muon3D account',
+        detail: 'See it and print from anywhere',
+        disabled: this.cloudBlocked
+      },
+      {
+        mode: 'local' as const,
+        title: 'Only on this network',
+        detail: 'Nothing leaves your network',
+        disabled: null
+      }
+    ]
+  }
+
+  get remoteError (): string {
+    const code = this.remote.error?.code
+    if (code === 'no_internet') return `${this.name} needs the internet to link.`
+    if (code === 'clock_unsynced') return `${this.name}'s clock isn't set yet. Try again in a moment.`
+    return `${this.name} couldn't start linking. Try again, or skip for now.`
+  }
+
+  get linkSub (): string {
+    const link = this.link
+    if (link?.phase === 'code') return 'Enter this code on the link page, signed in to your Muon3D account.'
+    if (link?.phase === 'offer') return `Confirm ${link.account} on ${this.name}'s screen.`
+    if (link?.phase === 'linked') return `Linked to ${link.account}.`
+    if (link?.phase === 'failed') return ''
+    return 'Getting a code…'
+  }
+
+  get readyItems () {
+    const manifest = this.readyManifest as Array<{ id?: string, required?: boolean }>
+    // Until the manifest has loaded, nothing counts as optional.
+    const required = new Set(manifest.length ? manifest.filter(i => i.required).map(i => i.id) : this.state?.steps.ready.items.map(i => i.id))
+    const running = this.state?.op?.kind === 'ready_item' ? this.state.op.item : null
+    return (this.state?.steps.ready.items ?? [])
+      .filter(item => item.status !== 'hidden')
+      .map(item => ({
+        id: item.id,
+        status: item.status,
+        title: READY_TITLES[item.id] ?? item.id.replace(/_/g, ' '),
+        running: running === item.id,
+        note: running === item.id
+          ? 'Running now'
+          : item.status === 'done' ? 'Done' : item.status === 'skipped' ? 'Skipped' : item.status === 'failed' ? 'Failed: try again at the printer' : required.has(item.id) ? 'Needed' : 'Optional',
+        // Required items always happen; the phone can only skip the optional ones.
+        skippable: !required.has(item.id) && item.status === 'pending' && running !== item.id
+      }))
   }
 
   get joiningSsid (): string {
@@ -418,6 +911,13 @@ export default class SetupWifiSteps extends Vue {
     return 'We could not apply that region.'
   }
 
+  @Watch('cursor', { immediate: true })
+  onCursor (cursor: string | null) {
+    if (cursor === 'name') this.nameDraft = this.state?.steps.name.value || this.state?.steps.name.derived || ''
+    if (cursor === 'remote') this.remoteChoice = this.cloudBlocked ? 'local' : 'cloud'
+    this.writeError = null
+  }
+
   @Watch('screen', { immediate: true })
   onScreen (screen: ScreenId, before?: ScreenId) {
     if (screen === 'S3' && before !== 'S3') this.scan(true)
@@ -425,7 +925,10 @@ export default class SetupWifiSteps extends Vue {
 
   created () {
     this.client.options()
-      .then(o => { this.languages = (o.languages ?? []).map(l => l.code) })
+      .then(o => {
+        this.languages = (o.languages ?? []).map(l => l.code)
+        this.readyManifest = o.ready_manifest?.items ?? []
+      })
       .catch(() => {})
   }
 
@@ -574,6 +1077,36 @@ export default class SetupWifiSteps extends Vue {
 
   acknowledge () {
     setLocal({ joinRev: null })
+  }
+
+  goBack () {
+    if (this.previous) return this.write('goto', { step: this.previous })
+  }
+
+  saveName () {
+    const name = this.nameDraft.trim()
+    if (name) return this.write('name', { name })
+  }
+
+  installUpdate () {
+    return this.write('update', { action: 'install' })
+  }
+
+  updateLater () {
+    return this.write('update', { action: 'later' })
+  }
+
+  chooseRemote (mode: RemoteMode) {
+    return this.write('remote', { mode })
+  }
+
+  /** Back from the code: stop linking, and go back to the choice. */
+  cancelLink () {
+    return this.write('remote/cancel', {}, { rev: false })
+  }
+
+  skipReadyItem (item: string) {
+    return this.write('ready', { action: 'skip', item })
   }
 }
 
