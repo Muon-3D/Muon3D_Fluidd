@@ -92,7 +92,11 @@ async function leaderDot (page: Page): Promise<{ x: number, y: number }> {
 test.describe('desktop pointer', () => {
   test.skip(({ isMobile }) => isMobile, 'hover is a desktop pointer thing')
   // Without the camera's lean to a selection, a part is where it was measured once it is let go.
-  test.beforeEach(async ({ page }) => { await page.emulateMedia({ reducedMotion: 'reduce' }) })
+  test.beforeEach(async ({ page }) => {
+    // Pointer sweeps in software WebGL on a loaded CI runner outlast the default 90 s.
+    test.slow()
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+  })
 
   test('hovering the plate glows it without a label, and leaving puts it out', async ({ page, open }) => {
     const printer = await usePrinter(page, PRESETS.idleHomed())
