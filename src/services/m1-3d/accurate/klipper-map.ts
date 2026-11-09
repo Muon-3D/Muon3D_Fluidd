@@ -1,4 +1,4 @@
-import { Y_TOWARD_FRONT } from '@/services/machine/orientation'
+import { X_TOWARD_RIGHT, Y_TOWARD_FRONT } from '@/services/machine/orientation'
 import { RESTING, type ModelPlacement, type ModelPose } from '../pose'
 
 /**
@@ -59,7 +59,7 @@ export function placeAccurate (pose: ModelPose): ModelPlacement {
   return {
     headX: pose.x === null
       ? RESTING.headX
-      : railState(pose.x - r.plateHalfX, r.travelX[0], r.travelX[1], r.nozzleX),
+      : railState((X_TOWARD_RIGHT ? pose.x - r.plateHalfX : r.plateHalfX - pose.x), r.travelX[0], r.travelX[1], r.nozzleX),
     headZ: pose.y === null
       ? RESTING.headZ
       : railState((Y_TOWARD_FRONT ? pose.y - r.plateHalfZ : r.plateHalfZ - pose.y), r.travelZ[0], r.travelZ[1], r.nozzleZ),

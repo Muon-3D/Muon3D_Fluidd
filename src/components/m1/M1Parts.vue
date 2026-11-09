@@ -42,17 +42,45 @@
         v-for="m in axisMarks.x"
         :key="`x${m.v}`"
         class="m1-parts__tick m1-parts__tick--x"
-        :style="{ left: `${m.px}px` }"
+        :style="{ left: `${m.px}px`, top: `${m.at}px` }"
       >{{ m.v }}</span>
-      <span class="m1-parts__axis-name m1-parts__axis-name--x">X</span>
+      <span
+        v-if="axisMarks.x.length"
+        class="m1-parts__axis-name m1-parts__axis-name--x"
+        :style="{ left: `${axisMarks.x[axisMarks.x.length - 1].px}px`, top: `${axisMarks.x[axisMarks.x.length - 1].at}px` }"
+      >X</span>
       <span
         v-for="m in axisMarks.y"
         :key="`y${m.v}`"
         class="m1-parts__tick m1-parts__tick--y"
-        :style="{ top: `${m.px}px` }"
+        :style="{ top: `${m.px}px`, left: `${m.at}px` }"
       >{{ m.v }}</span>
-      <span class="m1-parts__axis-name m1-parts__axis-name--y">Y</span>
+      <span
+        v-if="axisMarks.y.length"
+        class="m1-parts__axis-name m1-parts__axis-name--y"
+        :style="{ top: `${axisMarks.y[axisMarks.y.length - 1].px}px`, left: `${axisMarks.y[axisMarks.y.length - 1].at}px` }"
+      >Y</span>
     </div>
+
+    <!-- Looking down: where the head can go (its corners), and the bed's notch, quietly. -->
+    <svg
+      v-if="topView && boundsPx"
+      class="m1-parts__bounds"
+      data-tid="m1-bounds"
+      aria-hidden="true"
+    >
+      <path
+        class="m1-parts__bounds-corners"
+        :d="boundsPx.corners"
+      />
+      <path
+        v-for="(d, i) in boundsPx.notch"
+        :key="`notch${i}`"
+        class="m1-parts__bounds-notch"
+        data-tid="m1-notch"
+        :d="d"
+      />
+    </svg>
 
     <!-- While dragging: a target on the cursor, and a live line from where the part is to it. -->
     <svg
@@ -144,9 +172,19 @@ import ControlMixin from '@/mixins/control'
 import M1PartOptions from './M1PartOptions.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
 import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
+import { axisEdges, boundCorners } from '@/services/m1-3d/drag-bounds'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
+import { DragFollow, controlDragHost, type DragFollowHost } from '@/services/control/drag-follow'
 import { modelAnimates } from '@/services/m1-3d/render-options'
 import { modelSettings } from '@/services/m1-3d/device-settings'
+
+/**
+ * Each stage's live drag, kept off the component so Vue doesn't watch it.
+ * The head and the plate follow a drag through DragFollow: one planned move
+ * (moveTo and the no-go planner) at a time, the newest target kept while one
+ * is in flight, at most one every 150 ms, and a refusal stops it.
+ */
+const followers = new WeakMap<object, DragFollow>()
 
 /** A drag on the toolhead (X and Y) or the plate (Z), in the printer's toolhead millimetres. */
 const round = (p: { x: number, y: number }) => ({ x: Math.round(p.x), y: Math.round(p.y) })
@@ -236,16 +274,38 @@ export default class M1Parts extends Mixins(ControlMixin) {
   motionQuery: MediaQueryList | null = null
 
   drag: PartDrag | null = null
+  /** The printer the follower's current drag began on (panelTarget); null before any. */
+  followPrinter: string | null = null
   /** The pointer a drag may come from: one that went down on the selected part with the main button. Null for anything else. */
   dragPointer: number | null = null
   dragPx: { from: { x: number, y: number }, to: { x: number, y: number } } | null = null
-  axisMarks: { x: Array<{ v: number, px: number }>, y: Array<{ v: number, px: number }> } | null = null
+  axisMarks: { x: Array<{ v: number, px: number, at: number }>, y: Array<{ v: number, px: number, at: number }> } | null = null
+  /** Looking down: the corners of where the head can go, and the bed's notch, as drawn now. */
+  boundsPx: { corners: string, notch: string[] } | null = null
   /** Why the last drag's move was refused, said in the label until the next drag. */
   refused = ''
 
-  /** Parts offer their options only on an idle printer this person can control. */
+  /**
+   * Parts offer their options only on an idle printer this person can control.
+   * Klipper running a move with no print counts as idle here (the stage calls
+   * any busy printer 'printing'), so the selection and the view hold through it.
+   */
   get interactive (): boolean {
-    return this.stageState === 'idle' && this.controlReady && !this.busy
+    const idle = this.stageState === 'idle' || (this.stageState === 'printing' && this.moving)
+    return idle && this.controlReady && !this.printerPrinting && !this.printerPaused
+  }
+
+  /**
+   * Klipper says 'busy' while it runs a move (idle_timeout Printing, no
+   * print): the head is moving for us. The part stays selected and the view
+   * stays down; the next drag step waits for it to finish.
+   */
+  get moving (): boolean {
+    return this.printerState === 'busy'
+  }
+
+  get follower (): DragFollow | undefined {
+    return followers.get(this)
   }
 
   /** The selected part can be dragged: the toolhead in X and Y, the plate in Z, once homed, on the accurate model (whose millimetres the drag is read in). */
@@ -336,7 +396,26 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.bind(this.canvas)
   }
 
+  created () {
+    const control = controlDragHost(this)
+    // A follower belongs to the printer it started on: anything it still owes (a release waiting for the
+    // last move to land) is refused, never sent, once Control is on another printer (Opus review of #340, B1).
+    const samePrinter = () => this.followPrinter === null || this.followPrinter === this.panelTarget
+    const host: DragFollowHost = {
+      ...control,
+      refusal: target => samePrinter() ? control.refusal(target) : 'The printer changed; that move was not sent.',
+      send: target => samePrinter() && control.send(target),
+      waiting: () => control.waiting() || this.moving
+    }
+    followers.set(this, new DragFollow(host, { onRefused: reason => this.onFollowRefused(reason) }))
+    window.addEventListener('blur', this.onBlur)
+    document.addEventListener('visibilitychange', this.onHidden)
+  }
+
   beforeDestroy () {
+    this.follower?.cancel()
+    window.removeEventListener('blur', this.onBlur)
+    document.removeEventListener('visibilitychange', this.onHidden)
     this.bind(null)
     this.motionQuery?.removeEventListener?.('change', this.onMotionPref)
     document.removeEventListener('keydown', this.onEscape)
@@ -384,6 +463,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   /** Ends any drag and sends nothing. */
   onCancel () {
+    this.follower?.cancel()
     this.down = null
     this.dragged = false
     this.drag = null
@@ -483,6 +563,37 @@ export default class M1Parts extends Mixins(ControlMixin) {
     else this.selected = null
   }
 
+  /** The window lost focus: a drag ends, sending nothing more. */
+  onBlur () {
+    this.follower?.cancel()
+    if (this.drag || this.dragPointer !== null) this.onCancel()
+  }
+
+  /** The tab was hidden: the same. */
+  onHidden () {
+    if (document.visibilityState === 'hidden') this.onBlur()
+  }
+
+  /** A step was refused: following stops, the drag ends, and the label says why. */
+  onFollowRefused (reason: string) {
+    this.refused = `Not moved: ${reason}`
+    const pointer = this.dragPointer
+    this.drag = null
+    this.dragPx = null
+    this.dragPointer = null
+    if (pointer !== null) this.bound?.releasePointerCapture?.(pointer)
+  }
+
+  /** A plate drag that hasn't left the Z it started at: nothing to send. */
+  atStart (drag: PartDrag): boolean {
+    return 'Z' in drag.target && drag.target.Z === drag.startZ
+  }
+
+  /** The drag's place in G-code millimetres, what moveTo takes. */
+  placeFor (target: { X: number, Y: number } | { Z: number }) {
+    return releasePlace(target, this.gcodeOffset ?? [0, 0, 0], this.axisMin, this.axisMax)
+  }
+
   /** The drag's target under the pointer: the head on its plane, or the plate up or down from where it was. */
   dragTo (x: number, y: number) {
     const viewer = this.viewer
@@ -504,42 +615,51 @@ export default class M1Parts extends Mixins(ControlMixin) {
       const hit = viewer.onUpright(x, y, through)
       if (!hit) return
       if (!this.drag) {
+        // Read from the press, not from where the pointer passed the tap slop, so the plate goes as far as the pointer did.
+        const from = this.down ? viewer.onUpright(this.down.x, this.down.y, through) : null
         this.refused = ''
-        this.drag = { part, printer: this.panelTarget, target: { Z: z0 }, startZ: z0, startY: hit.y }
+        this.drag = { part, printer: this.panelTarget, target: { Z: z0 }, startZ: z0, startY: (from ?? hit).y }
       }
       const by = zForPlateTop(hit.y) - zForPlateTop(this.drag.startY ?? hit.y)
       this.drag = { ...this.drag, target: { Z: plateDragZ(z0, by, this.axisMin[2], this.axisMax[2]) } }
+    }
+    // The part follows as the pointer moves, to the printer the drag began on, once it has somewhere to go.
+    const follower = this.follower
+    if (follower && this.drag.printer === this.panelTarget && (follower.following || !this.atStart(this.drag))) {
+      const place = this.placeFor(this.drag.target)
+      if (follower.following) follower.update(place)
+      else {
+        this.followPrinter = this.panelTarget
+        follower.start(place)
+      }
     }
     this.follow()
   }
 
   /**
-   * Letting go sends the target once, through moveTo: the same checks as
-   * every hand move (homed, idle, the hand-move wait and the no-go planner,
-   * lifting over the bed's notch when it must). moveTo takes G-code
-   * coordinates; the drag is read in the toolhead's.
+   * Letting go sends the last target, if it isn't where the part was last
+   * sent, through the same follower: moveTo with every hand move's checks
+   * (homed, idle, the hand-move wait and the no-go planner, lifting over the
+   * bed's notch when it must). moveTo takes G-code coordinates; the drag is
+   * read in the toolhead's.
    */
   release () {
     const drag = this.drag
     this.drag = null
     this.dragPx = null
+    const follower = this.follower
     // Only to the printer the drag began on, and only while that part can still be moved.
-    if (!drag || this.movable !== drag.part || drag.printer !== this.panelTarget) return
-    const place = releasePlace(drag.target, this.gcodeOffset ?? [0, 0, 0], this.axisMin, this.axisMax)
-    // Why it can't go, said in the label: moveTo toasts only the planner's refusals.
-    const wait = this.handMoveWait()
-    const sent = this.moveTo(place)
-    if (!sent) this.refused = `Not moved: ${wait || this.refusalFor(place)}`
-  }
-
-  /** Why moveTo would turn this place down, in words. */
-  refusalFor (place: { X?: number, Y?: number, Z?: number }): string {
-    if (!this.controlReady) return this.controlLock
-    if (this.busy) return 'the printer is busy.'
-    const offset = this.gcodeOffset ?? [0, 0, 0]
-    const realTo = (['X', 'Y', 'Z'] as const).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
-    const plan = this.planHandMove(realTo)
-    return plan.ok ? 'that is outside what the printer can reach.' : plan.reason
+    if (!drag || !follower || this.movable !== drag.part || drag.printer !== this.panelTarget || (!follower.following && this.atStart(drag))) {
+      follower?.cancel()
+      return
+    }
+    const place = this.placeFor(drag.target)
+    if (follower.following) follower.update(place)
+    else {
+      this.followPrinter = this.panelTarget
+      follower.start(place)
+    }
+    follower.release()
   }
 
   /** The drag's line and target, and the axes' marks, as drawn now. */
@@ -558,15 +678,31 @@ export default class M1Parts extends Mixins(ControlMixin) {
       if (!samePx(next, this.dragPx)) this.dragPx = next
     }
     if (this.topView) {
-      const [x0, y0] = [this.axisMin[0], this.axisMin[1]]
-      const [x1, y1] = [this.axisMax[0], this.axisMax[1]]
-      const xs = ticks(Math.max(0, x0), x1).map(v => ({ v, px: viewer.project(headToWorld(v, y1))?.x ?? NaN }))
-      const ys = ticks(Math.max(0, y0), y1).map(v => ({ v, px: viewer.project(headToWorld(x0, v))?.y ?? NaN }))
-      const next = { x: xs.filter(m => Number.isFinite(m.px)).map(m => ({ v: m.v, px: Math.round(m.px) })), y: ys.filter(m => Number.isFinite(m.px)).map(m => ({ v: m.v, px: Math.round(m.px) })) }
+      const lo = [this.axisMin[0], this.axisMin[1]] as [number, number]
+      const hi = [this.axisMax[0], this.axisMax[1]] as [number, number]
+      const screen = (x: number, y: number) => viewer.project(headToWorld(x, y))
+      // X marked along the limit nearest the bottom of the view, Y along the one nearest the left.
+      const edges = axisEdges(lo, hi, screen)
+      const mark = (v: number, p: { x: number, y: number } | null, axis: 'x' | 'y') =>
+        p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { v, px: Math.round(axis === 'x' ? p.x : p.y), at: Math.round(axis === 'x' ? p.y : p.x) } : null
+      const xs = ticks(Math.max(0, lo[0]), hi[0]).map(v => mark(v, screen(v, edges.y), 'x'))
+      const ys = ticks(Math.max(0, lo[1]), hi[1]).map(v => mark(v, screen(edges.x, v), 'y'))
+      const next = {
+        x: xs.filter((m): m is NonNullable<typeof m> => !!m),
+        y: ys.filter((m): m is NonNullable<typeof m> => !!m)
+      }
       // Written only when a mark moves, so an idle top-down view doesn't render every frame.
       if (JSON.stringify(next) !== JSON.stringify(this.axisMarks)) this.axisMarks = next
-    } else if (this.axisMarks) {
-      this.axisMarks = null
+      const noGo = this.noGo
+      const regions = noGo && noGo !== 'invalid' ? noGo.regions : []
+      const bounds = {
+        corners: boundCorners(lo, hi, screen),
+        notch: regions.map(r => boundCorners(r.min, r.max, screen, true)).filter(Boolean)
+      }
+      if (JSON.stringify(bounds) !== JSON.stringify(this.boundsPx)) this.boundsPx = bounds
+    } else {
+      if (this.axisMarks) this.axisMarks = null
+      if (this.boundsPx) this.boundsPx = null
     }
   }
 
@@ -580,6 +716,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   /** Another printer: a drag on this one ends, sending nothing. */
   @Watch('panelTarget')
   onPrinterChange () {
+    this.follower?.cancel()
     if (this.drag || this.dragPointer !== null) this.onCancel()
   }
 
@@ -587,6 +724,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   @Watch('movable')
   onMovable (part: 'toolhead' | 'plate' | null) {
     if (this.bound) this.bound.style.touchAction = part ? 'none' : ''
+    if (!part) this.follower?.cancel()
     if (!part && (this.drag || this.dragPointer !== null)) this.onCancel()
   }
 
@@ -621,7 +759,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
     // Not while typing somewhere or inside a dialog: that Esc is theirs.
     const t = e.target as HTMLElement | null
     if (t && t !== document.body && !this.$el.contains(t) && (t.closest('input, textarea, select, [contenteditable], .v-dialog, [role="dialog"]'))) return
-    // Esc mid-drag drops the drag and sends nothing; otherwise it lets the part go.
+    // Esc drops the drag, and any release still waiting to send; otherwise it lets the part go.
+    this.follower?.cancel()
     if (this.drag || this.dragPointer !== null) {
       this.onCancel()
       return
@@ -832,15 +971,13 @@ export default class M1Parts extends Mixins(ControlMixin) {
     position: absolute;
 
     &--x {
-      bottom: 58px;
-      transform: translateX(-50%);
+      transform: translate(-50%, 8px);
       border-left: 1px solid rgb(152 152 157 / 50%);
       padding-left: 3px;
     }
 
     &--y {
-      left: 12px;
-      transform: translateY(-50%);
+      transform: translate(calc(-100% - 8px), -50%);
       border-top: 1px solid rgb(152 152 157 / 50%);
       padding-top: 1px;
     }
@@ -852,14 +989,36 @@ export default class M1Parts extends Mixins(ControlMixin) {
     color: #d8d8dc;
 
     &--x {
-      right: 16px;
-      bottom: 58px;
+      transform: translate(18px, 8px);
     }
 
     &--y {
-      left: 12px;
-      top: 12px;
+      transform: translate(calc(-100% - 8px), calc(-100% - 10px));
     }
+  }
+
+  /* Where the head can go, and the notch it must not cross low: quiet, under everything else. */
+  .m1-parts__bounds {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .m1-parts__bounds-corners {
+    fill: none;
+    stroke: rgb(216 216 220 / 55%);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+
+  .m1-parts__bounds-notch {
+    fill: rgb(255 159 10 / 8%);
+    stroke: rgb(255 159 10 / 45%);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
   }
 
   .m1-parts__fact {
