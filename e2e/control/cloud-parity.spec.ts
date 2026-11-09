@@ -144,7 +144,7 @@ for (const route of ROUTES) {
 
     test('camera: one on the printer is drawn on its network; through Muon3D the page says it can\'t be', async ({ page, open, account, isMobile }) => {
       const cloud = await useRoute(page, account, route)
-      await page.route(/\/webcam\/\?action=/, r => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }))
+      await page.context().route(/\/webcam\/\?action=/, r => r.fulfill({ status: 200, contentType: 'image/png', body: PNG }))
       const printer = await usePrinter(page, PRESETS.idleHomed())
       printer.state.answer['server.webcams.list'] = { webcams: [webcam('chamber', 'Chamber', '/webcam/?action=stream', '/webcam/?action=snapshot')] }
       await open('/camera')
