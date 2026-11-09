@@ -65,18 +65,20 @@
         <button
           type="button"
           class="m1-opts__btn"
-          :disabled="!hasMacro('LOAD_FILAMENT')"
+          :disabled="loadPlan.kind === 'none'"
+          :title="loadPlan.kind === 'none' ? loadPlan.reason : ''"
           data-tid="m1-load"
-          @click="runFilament('LOAD_FILAMENT')"
+          @click="runFilamentPlan('load')"
         >
           Load
         </button>
         <button
           type="button"
           class="m1-opts__btn"
-          :disabled="!hasMacro('UNLOAD_FILAMENT')"
+          :disabled="unloadPlan.kind === 'none'"
+          :title="unloadPlan.kind === 'none' ? unloadPlan.reason : ''"
           data-tid="m1-unload"
-          @click="runFilament('UNLOAD_FILAMENT')"
+          @click="runFilamentPlan('unload')"
         >
           Unload
         </button>
@@ -155,38 +157,44 @@
         <button
           type="button"
           class="m1-opts__btn"
-          :disabled="!hasMacro('LOAD_FILAMENT')"
+          :disabled="loadPlan.kind === 'none'"
+          :title="loadPlan.kind === 'none' ? loadPlan.reason : ''"
           data-tid="m1-load"
-          @click="runFilament('LOAD_FILAMENT')"
+          @click="runFilamentPlan('load')"
         >
           Load
         </button>
         <button
           type="button"
           class="m1-opts__btn"
-          :disabled="!hasMacro('UNLOAD_FILAMENT')"
+          :disabled="unloadPlan.kind === 'none'"
+          :title="unloadPlan.kind === 'none' ? unloadPlan.reason : ''"
           data-tid="m1-unload"
-          @click="runFilament('UNLOAD_FILAMENT')"
+          @click="runFilamentPlan('unload')"
         >
           Unload
         </button>
       </div>
       <div class="m1-opts__row">
-        <button
-          v-for="m in materialChoices.slice(0, 6)"
-          :key="m.name"
-          type="button"
-          class="m1-opts__chip"
-          :class="{ on: loadedMaterial && loadedMaterial.name === m.name }"
-          :data-tid="`m1-material-${m.name}`"
-          @click="setLoadedMaterial(m)"
-        >
-          <span
-            class="m1-opts__swatch"
-            :style="{ background: m.colour }"
-          />
-          {{ m.name }}
-        </button>
+        <material-picker>
+          <template #activator="{ on, attrs, disabled }">
+            <button
+              type="button"
+              class="m1-opts__chip"
+              :disabled="disabled"
+              aria-haspopup="listbox"
+              data-tid="m1-material"
+              v-bind="attrs"
+              v-on="on"
+            >
+              <span
+                class="m1-opts__swatch"
+                :style="{ background: loadedColour || (loadedMaterial ? loadedMaterial.colour : 'transparent') }"
+              />
+              {{ loadedMaterial ? loadedMaterial.name : 'Material and colour' }}
+            </button>
+          </template>
+        </material-picker>
       </div>
     </template>
   </div>
@@ -195,11 +203,11 @@
 <script lang="ts">
 import { Component, Mixins, Prop } from 'vue-property-decorator'
 import MaintenanceMixin from '@/mixins/maintenance'
+import FilamentActionsMixin from '@/mixins/filament-actions'
+import MaterialPicker from '@/components/overview/MaterialPicker.vue'
 import { Y_BACK } from '@/services/machine/orientation'
 import type { CheckRow } from '@/mixins/maintenance'
 import type { MaterialChoice } from '@/services/control/model'
-import { findFilamentMacro, type FilamentMacro } from '@/services/quick-actions/model'
-import type { Macro } from '@/store/macros/types'
 import type { PartId } from '@/services/m1-3d/parts'
 
 /**
@@ -212,8 +220,8 @@ import type { PartId } from '@/services/m1-3d/parts'
  * of it asks to confirm: Jack (6 Nov) keeps confirms for AI agents, not people.
  * Only shown on an idle printer the person can control (M1Parts).
  */
-@Component
-export default class M1PartOptions extends Mixins(MaintenanceMixin) {
+@Component({ components: { MaterialPicker } })
+export default class M1PartOptions extends Mixins(MaintenanceMixin, FilamentActionsMixin) {
   @Prop({ type: String, required: true })
   readonly part!: PartId
 
@@ -255,35 +263,6 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin) {
 
   get meshRow (): CheckRow | undefined {
     return this.checks.find(c => c.id === 'bedMesh')
-  }
-
-  get macroList (): Macro[] {
-    return ((this.$store.getters['macros/getMacros'] as Macro[]) ?? []).filter(m => typeof m.name === 'string')
-  }
-
-  /** Load and unload by any of their usual names, as Control's Filament card finds them. */
-  get loadMacro (): FilamentMacro | null {
-    return findFilamentMacro(this.macroList, 'load_filament', 'filament_load')
-  }
-
-  get unloadMacro (): FilamentMacro | null {
-    return findFilamentMacro(this.macroList, 'unload_filament', 'filament_unload')
-  }
-
-  hasMacro (name: string): boolean {
-    return name === 'LOAD_FILAMENT' ? !!this.loadMacro : !!this.unloadMacro
-  }
-
-  /**
-   * As Control's Filament card runs them (ControlFilament.run): idle only,
-   * and a macro that takes a TEMP is told the material's nozzle temperature.
-   */
-  runFilament (name: 'LOAD_FILAMENT' | 'UNLOAD_FILAMENT') {
-    const macro = name === 'LOAD_FILAMENT' ? this.loadMacro : this.unloadMacro
-    if (!macro || !this.controlReady || this.busy) return
-    const temp = this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
-    if (this.refuseTooHot(this.material?.name ?? this.loadedMaterial?.name, temp)) return
-    this.sendGcode(macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name)
   }
 
   /** On the toolhead a chip heats the nozzle only, to the material's temperature; the bed is the plate's. */
