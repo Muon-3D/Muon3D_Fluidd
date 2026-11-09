@@ -183,9 +183,12 @@ test.describe('restore from a copy', () => {
     await setUp(page)
     const writes = await restoreWrites(page)
     await open('/settings#general')
-    await page.getByTestId('settings-restore-file').setInputFiles({ name: 'notes.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') })
+    // One flash message shows at a time, and the offline-ready notice can land on top of it: pick again until it is seen.
+    await expect(async () => {
+      await page.getByTestId('settings-restore-file').setInputFiles({ name: 'notes.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') })
+      await expect(page.getByText("That isn't a Control backup file.").first()).toBeVisible({ timeout: 3000 })
+    }).toPass()
     await expect(page.getByTestId('settings-restore-dialog').getByText('Restore these settings?')).toHaveCount(0)
-    await expect(page.getByText("That isn't a Control backup file.").first()).toBeVisible()
     expect(writes).toEqual([])
   })
 })
