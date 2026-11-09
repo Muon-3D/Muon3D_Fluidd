@@ -87,6 +87,8 @@ function stateOf (e: DirectoryEntry, status: Record<string, PrinterStatus>): Til
   // locally has its own socket's health, and a fault there is a fault.
   const s = e.cloud && e.active !== 'local' ? status[e.cloud.id] : undefined
   if (e.health === 'error' && s && !s.reachable) return 'unreachable'
+  // The printer Fluidd is on locally, whose own socket failed every try in a row (KAN-1461).
+  if (e.active === 'local' && e.health === 'offline') return 'unreachable'
   switch (e.health) {
     case 'printing': return 'printing'
     case 'paused': return 'paused'
@@ -190,7 +192,7 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
     detail = jobName(job.file) ?? e.detail
   } else if (state === 'ready') {
     detail = viaBluetooth ? 'Via Bluetooth' : remote ? 'Remote, through Muon3D' : 'On this network'
-  } else if (state === 'unreachable') {
+  } else if (state === 'unreachable' && e.active !== 'local') {
     detail = "Online, but this browser can't reach it"
   } else {
     detail = e.detail

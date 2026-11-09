@@ -39,6 +39,28 @@ function tokenNotOffered (status: number | undefined): boolean {
   return status === 403 || status === 404
 }
 
+/**
+ * Failed tries in a row, before the socket ever opened, after which the page
+ * says it can't reach the printer and why, rather than "Connecting" for good.
+ * It keeps trying all the same.
+ */
+export const UNREACHABLE_AFTER_TRIES = 3
+
+/** Why a one-shot token request failed, as the end of "Can't reach Boxwood: …". */
+function tokenFailure (error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    if (error.response) return `it answered with an error (HTTP ${error.response.status})`
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') return `it didn't answer within ${TOKEN_TIMEOUT_MS / 1000} s`
+  }
+  return "it didn't answer"
+}
+
+/** Why a socket closed before it opened. A browser says only 1006 for a refusal, a timeout or a bad address. */
+function closeFailure (event: SocketCloseEvent): string {
+  if (event.reason) return event.reason
+  return event.code === 1006 || !event.code ? "it didn't accept the connection" : `the connection closed (code ${event.code})`
+}
+
 export class WebSocketClient {
   url = ''
   connection: PrinterSocket | null = null
@@ -69,6 +91,11 @@ export class WebSocketClient {
    * the connection must not open a socket to its old address afterwards.
    */
   private attempt = 0
+  /** Tries that failed in a row since a connection last opened. */
+  private failedTries = 0
+  /** How many failed tries make the printer unreachable: fewer after Try again, which should answer quickly. */
+  private unreachableAfter = UNREACHABLE_AFTER_TRIES
+  private lastFailure: string | null = null
 
   constructor (options: SocketPluginOptions) {
     this.url = options.url
@@ -147,6 +174,7 @@ export class WebSocketClient {
     this.attempt++
     this.purgeRequests()
     this.cancelRetry()
+    this.clearFailure()
     clearTimeout(this.pingTimeout)
     clearTimeout(this.deadTimeout)
     if (this.connection) {
@@ -158,6 +186,7 @@ export class WebSocketClient {
   }
 
   async connect (url?: string) {
+    if (url && url !== this.url) this.clearFailure()
     if (url) this.url = url
     const attempt = ++this.attempt
     this.purgeRequests()
@@ -176,6 +205,7 @@ export class WebSocketClient {
       // Bad. If this is a 401, then don't retry.
       if (status === 401) return
       if (!tokenNotOffered(status)) {
+        this.noteFailure(tokenFailure(error))
         this.reconnect()
         return
       }
@@ -192,6 +222,7 @@ export class WebSocketClient {
       socket = new WebSocket(token === null ? this.url : `${this.url}?token=${token}`)
     } catch {
       // A browser that won't open this address (mixed content, a bad URL): try again later.
+      this.noteFailure("this browser won't open its address")
       this.reconnect()
       return
     }
@@ -210,6 +241,7 @@ export class WebSocketClient {
     this.purgeRequests()
     this.closing = false
     this.cancelRetry()
+    this.clearFailure()
     this.bindConnection(connection, reconnect ?? null)
   }
 
@@ -225,6 +257,7 @@ export class WebSocketClient {
     this.transportReconnect = null
     this.cache = null
     this.reconnectCount = 0
+    this.clearFailure()
     if (connection) {
       this.openedConnections.delete(connection as object)
       if (closeConnection) connection.close()
@@ -252,6 +285,7 @@ export class WebSocketClient {
 
     this.openedConnections.add(connection as object)
     this.reconnectCount = 0
+    this.clearFailure()
     this.armSilenceTimers()
     if (this.store) {
       this.store.dispatch('socket/onSocketConnecting', false)
@@ -279,6 +313,7 @@ export class WebSocketClient {
       this.store.dispatch('socket/onSocketClose', { code: event.code, reason: event.reason, wasClean: asked })
     }
     if (asked) return
+    if (!this.openedConnections.has(connection as object)) this.noteFailure(closeFailure(event))
     if (this.transportReconnect) {
       this.reconnectTransport(this.transportReconnect)
     } else {
@@ -412,7 +447,34 @@ export class WebSocketClient {
     if (!action) return
     this.cancelRetry()
     this.reconnectCount = 0
+    // Connecting again while this try runs; one more failure says so again.
+    if (this.failedTries > 0) {
+      this.unreachableAfter = this.failedTries + 1
+      this.commitFailure()
+    }
     action()
+  }
+
+  /** Why the printer could not be reached, once the tries in a row since it was last open come to unreachableAfter. */
+  private noteFailure (reason: string) {
+    this.failedTries += 1
+    this.lastFailure = reason
+    this.commitFailure()
+  }
+
+  private clearFailure () {
+    this.failedTries = 0
+    this.unreachableAfter = UNREACHABLE_AFTER_TRIES
+    this.lastFailure = null
+    this.commitFailure()
+  }
+
+  private commitFailure () {
+    if (!this.store) return
+    const failure = this.lastFailure === null ? null : { reason: this.lastFailure, unreachable: this.failedTries >= this.unreachableAfter }
+    const now = this.store.state.socket.failure
+    if (now?.reason === failure?.reason && now?.unreachable === failure?.unreachable) return
+    this.store.commit('socket/setSocketFailure', failure)
   }
 
   /** When the waiting try to reconnect runs (Date.now() ms), or null when none is waiting. */
@@ -436,8 +498,10 @@ export class WebSocketClient {
         } else {
           connection.close()
         }
-      } catch (_error) {
-        if (this.transportReconnect === reconnect) this.reconnectTransport(reconnect)
+      } catch (error) {
+        if (this.transportReconnect !== reconnect) return
+        this.noteFailure(error instanceof Error && error.message ? error.message : "it didn't answer")
+        this.reconnectTransport(reconnect)
       }
     })
   }

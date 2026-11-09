@@ -248,6 +248,18 @@ describe('the Printers page', () => {
     expect(page.counts.needsYou).toBe(0)
   })
 
+  it("says the printer Fluidd is on locally can't be reached, and why, once its socket failed every try (KAN-1461)", () => {
+    const page = printersPage(sources({
+      directory: {
+        cloud: [],
+        local: [entry('local:a', { health: 'offline', active: 'local', detail: "Can't reach it: it didn't accept the connection" })],
+        found: []
+      }
+    }))
+    expect(page.groups[0].tiles[0]).toMatchObject({ state: 'unreachable', label: 'Unreachable', detail: "Can't reach it: it didn't accept the connection" })
+    expect(page.counts.needsYou).toBe(0)
+  })
+
   it("shows a fault on the printer Fluidd is on locally, whatever the account's way in says", () => {
     const page = printersPage(sources({
       signedIn: true,

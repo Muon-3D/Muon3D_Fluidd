@@ -77,6 +77,7 @@
       <connecting-screen
         v-else-if="connection.screen"
         :state="connection.screen"
+        :reason="$store.state.socket.failure?.reason ?? null"
       />
 
       <template v-if="!managedConsoleRoute">
@@ -375,6 +376,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
       // A cloud printer being opened is connecting for the whole switch: its
       // first reads take seconds over Iroh, and "Can't reach" showed meanwhile.
       socketConnecting: this.socketConnecting || (!!activationState.switching && activationState.switching === cloudState.activePrinterId),
+      unreachable: !!this.$store.state.socket.failure?.unreachable,
       wasConnected: this.wasConnected,
       stalled: this.socketStalled,
       printerIndependent: this.managedConsoleRoute || this.printerIndependentRoute,

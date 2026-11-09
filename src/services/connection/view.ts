@@ -5,6 +5,8 @@ export interface ConnectionFacts {
   authenticated: boolean;
   /** The socket client is trying. */
   socketConnecting: boolean;
+  /** Enough tries in a row have failed to say it can't be reached (it keeps trying). */
+  unreachable?: boolean;
   /** Fluidd has been connected to this printer since it was chosen. */
   wasConnected: boolean;
   /** Connected, but nothing has arrived for a few seconds. */
@@ -50,7 +52,7 @@ export function connectionView (f: ConnectionFacts): ConnectionView {
   // Quiet because it is restarting into an update: say so, not "trying again" or "can't reach".
   if (f.updating) return { page: false, stale: false, banner: null, screen: f.updating }
   if (f.wasConnected) return { page: true, stale: true, banner: 'reconnecting', screen: null }
-  return { page: false, stale: false, banner: null, screen: f.socketConnecting ? 'connecting' : 'unreachable' }
+  return { page: false, stale: false, banner: null, screen: f.socketConnecting && !f.unreachable ? 'connecting' : 'unreachable' }
 }
 
 /** "4 s", "1 min 5 s": the wait before the next try. */
