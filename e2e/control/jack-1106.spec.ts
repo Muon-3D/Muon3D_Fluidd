@@ -310,22 +310,22 @@ test.describe('no material loaded', () => {
     await expect(page.getByTestId('filament-warning')).toHaveCount(0)
   })
 
-  test('the filament picker says what the tile says, with no sensor reading and with filament seen', async ({ page, open }) => {
+  test('the filament row opens the picker and says "No material loaded" when the sensor sees none', async ({ page, open }) => {
     const none = await usePrinter(page, sensors({ [SENSOR]: { filament_detected: false, enabled: true } }))
     await open('/')
-    await page.getByRole('button', { name: 'More for Filament' }).click()
-    await page.getByRole('menuitem', { name: /Set material and colour/ }).click()
-    await expect(page.getByTestId('tile-filament').getByTestId('material-name')).toHaveText('No material loaded')
-    await expect(page.getByTestId('material-warning')).toBeVisible()
+    await expect(page.getByTestId('filament-type')).toHaveText('No material loaded')
+    await page.getByTestId('filament-row').click()
+    await expect(page.getByTestId('material-picker')).toBeVisible()
+    await expect(page.getByTestId('filament-warning')).toBeVisible()
     expect(none.gcode).toEqual([])
   })
 
-  test('the filament picker says "Filament loaded", without the warning, when the sensor sees filament', async ({ page, open }) => {
+  test('the filament row opens the picker and says "Filament loaded", without the warning, when the sensor sees filament', async ({ page, open }) => {
     await usePrinter(page, sensors({ [SENSOR]: { filament_detected: true, enabled: true } }))
     await open('/')
-    await page.getByRole('button', { name: 'More for Filament' }).click()
-    await page.getByRole('menuitem', { name: /Set material and colour/ }).click()
-    await expect(page.getByTestId('tile-filament').getByTestId('material-name')).toHaveText('Filament loaded')
-    await expect(page.getByTestId('material-warning')).toHaveCount(0)
+    await expect(page.getByTestId('filament-type')).toHaveText('Filament loaded')
+    await page.getByTestId('filament-row').click()
+    await expect(page.getByTestId('material-picker')).toBeVisible()
+    await expect(page.getByTestId('filament-warning')).toHaveCount(0)
   })
 })
