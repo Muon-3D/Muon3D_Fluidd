@@ -34,7 +34,7 @@ test.describe('materials', () => {
     expect(printer.called('server.database.post_item')).toEqual([])
   })
 
-  test('a list someone already saved is shown as saved, not replaced', async ({ page, open }) => {
+  test('a list someone already saved is shown as saved, with the four defaults always beside it', async ({ page, open }) => {
     const printer = await usePrinter(page, PRESETS.idleHomed())
     await savedSettings(page, {
       dashboard: {
@@ -44,17 +44,19 @@ test.describe('materials', () => {
     await open(`${PRINTER}/settings#presets`)
     const pane = page.getByTestId('materials-settings')
     await expect(pane.getByTestId('material-row-Nylon')).toBeVisible()
-    await expect(pane.getByTestId('material-row-PLA')).toHaveCount(0)
+    // Settings › Materials (v3): PLA, PETG, ABS and TPU are always there; they can be unpinned, not deleted.
+    await expect(pane.getByTestId('material-row-PLA')).toBeVisible()
     expect(printer.called('server.database.post_item')).toEqual([])
   })
 
-  test('a list someone emptied stays empty: the defaults are not put back', async ({ page, open }) => {
+  test('a list someone emptied still shows the defaults, without writing them', async ({ page, open }) => {
     const printer = await usePrinter(page, PRESETS.idleHomed())
     await savedSettings(page, { dashboard: { tempPresets: [] } })
     await open(`${PRINTER}/settings#presets`)
     const pane = page.getByTestId('materials-settings')
-    await expect(pane).toBeVisible()
-    await expect(pane.locator('[data-tid^="material-row-"]')).toHaveCount(0)
+    for (const name of ['ABS', 'PETG', 'PLA', 'TPU']) {
+      await expect(pane.getByTestId(`material-row-${name}`), name).toBeVisible()
+    }
     expect(await storeValue(page, 'config.uiSettings.dashboard.tempPresets')).toEqual([])
     expect(printer.called('server.database.post_item')).toEqual([])
   })
