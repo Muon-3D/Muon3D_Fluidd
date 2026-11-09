@@ -48,6 +48,20 @@ async function partPoint (page: Page, part: string): Promise<{ x: number, y: num
   return point
 }
 
+/** A point on the stage well away from the model and the label: its lower left. */
+async function emptyPoint (page: Page): Promise<{ x: number, y: number }> {
+  const box = (await page.getByTestId('m1-parts').boundingBox())!
+  return { x: box.x + 28, y: box.y + box.height - 28 }
+}
+
+/** Where the label's hairline meets the selected part, on the page. */
+async function leaderDot (page: Page): Promise<{ x: number, y: number }> {
+  return page.getByTestId('m1-parts').evaluate(el => {
+    const dot = el.querySelector('.m1-parts__leader circle')!
+    return { x: Number(dot.getAttribute('cx')), y: Number(dot.getAttribute('cy')) }
+  })
+}
+
 test.describe('desktop pointer', () => {
   test.skip(({ isMobile }) => isMobile, 'hover is a desktop pointer thing')
 
@@ -99,6 +113,91 @@ test.describe('desktop pointer', () => {
     await expect(page.getByTestId('m1-part-plate')).toHaveAttribute('aria-pressed', 'false')
     expect(printer.gcode).toEqual([])
   })
+  for (const part of ['plate', 'toolhead', 'filament', 'screen']) {
+    test(`a click selects the ${part}, leaving keeps it, and a click on empty stage lets it go`, async ({ page, open }) => {
+      const printer = await usePrinter(page, PRESETS.idleHomed())
+      await open('/')
+      const parts = await partsReady(page)
+      const at = await partPoint(page, part)
+      const empty = await emptyPoint(page)
+
+      await page.mouse.move(at.x, at.y)
+      await expect(parts).toHaveAttribute('data-hovered', part)
+      await page.mouse.click(at.x, at.y)
+      const label = page.getByTestId('m1-parts-label')
+      await expect(label).toHaveAttribute('data-part', part)
+
+      // Off the part: still selected, however long the pointer stays away.
+      await page.mouse.move(empty.x, empty.y)
+      await page.waitForTimeout(500)
+      await expect(label).toHaveAttribute('data-part', part)
+
+      await page.mouse.click(empty.x, empty.y)
+      await expect(label).toHaveCount(0)
+      await expect(parts).toHaveAttribute('data-hovered', '')
+      await expect(page.getByTestId(`m1-part-${part}`)).toHaveAttribute('aria-pressed', 'false')
+      expect(printer.gcode).toEqual([])
+    })
+  }
+
+  test('hover is instant and leaving an unselected part puts its glow out at once', async ({ page, open }) => {
+    const printer = await usePrinter(page, PRESETS.idleHomed())
+    await open('/')
+    const parts = await partsReady(page)
+    const at = await partPoint(page, 'plate')
+    const empty = await emptyPoint(page)
+
+    await page.mouse.move(at.x, at.y)
+    await expect(parts).toHaveAttribute('data-hovered', 'plate', { timeout: 300 })
+    await page.mouse.move(empty.x, empty.y)
+    await expect(parts).toHaveAttribute('data-hovered', '', { timeout: 500 })
+    await expect(page.locator('.m1-live__canvas')).not.toHaveCSS('cursor', 'pointer')
+    expect(printer.gcode).toEqual([])
+  })
+
+  test('a click on another part switches the selection to it', async ({ page, open }) => {
+    // Without the lean to the selection the parts stay where they were measured.
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const printer = await usePrinter(page, PRESETS.idleHomed())
+    await open('/')
+    await partsReady(page)
+    const plate = await partPoint(page, 'plate')
+    const filament = await partPoint(page, 'filament')
+
+    await page.mouse.click(filament.x, filament.y)
+    const label = page.getByTestId('m1-parts-label')
+    await expect(label).toHaveAttribute('data-part', 'filament')
+    await page.mouse.click(plate.x, plate.y)
+    await expect(label).toHaveAttribute('data-part', 'plate')
+    await expect(page.getByTestId('m1-part-filament')).toHaveAttribute('aria-pressed', 'false')
+    expect(printer.gcode).toEqual([])
+  })
+
+  test('the plate selected holds the camera: a drag on empty stage keeps it selected and the view still', async ({ page, open }) => {
+    const printer = await usePrinter(page, PRESETS.idleHomed())
+    await open('/')
+    await partsReady(page)
+    const at = await partPoint(page, 'plate')
+    const empty = await emptyPoint(page)
+
+    await page.mouse.click(at.x, at.y)
+    const label = page.getByTestId('m1-parts-label')
+    await expect(label).toHaveAttribute('data-part', 'plate')
+    // The handle is on the accurate model, whose millimetres a drag is read in.
+    if (GPU) await expect(page.getByTestId('m1-plate-handle')).toBeVisible()
+    await page.waitForTimeout(900)
+    const before = await leaderDot(page)
+
+    await page.mouse.move(empty.x, empty.y)
+    await page.mouse.down()
+    await page.mouse.move(empty.x + 120, empty.y - 30, { steps: 8 })
+    await page.mouse.up()
+    await page.waitForTimeout(300)
+    await expect(label).toHaveAttribute('data-part', 'plate')
+    const after = await leaderDot(page)
+    expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeLessThan(2)
+    expect(printer.gcode).toEqual([])
+  })
 })
 
 test('the keyboard reaches every part: arrows and 1–4 move, Esc clears', async ({ page, open, isMobile }) => {
@@ -116,7 +215,7 @@ test('the keyboard reaches every part: arrows and 1–4 move, Esc clears', async
   await page.keyboard.press('ArrowRight')
   await expect(page.getByTestId('m1-part-toolhead')).toBeFocused()
   await expect(label).toHaveAttribute('data-part', 'toolhead')
-  await expect(page.getByTestId('m1-part-toolhead')).toHaveAttribute('aria-label', /^Toolhead, \d+ °C · (homed|not homed)$/)
+  await expect(page.getByTestId('m1-part-toolhead')).toHaveAttribute('aria-label', /^Toolhead, \d+ °C · (X \d+ Y \d+|not homed)$/)
 
   await page.keyboard.press('4')
   await expect(page.getByTestId('m1-part-screen')).toBeFocused()
