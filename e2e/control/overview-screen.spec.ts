@@ -97,6 +97,8 @@ test('the screen opens the printer\'s own screen; only allowed calls reach the p
 })
 
 test('it zooms in from the screen on the model, and Done or a click outside fly back out', async ({ page, open }) => {
+  // Three flights in and three out, each a few software-WebGL frames on a loaded CI runner.
+  test.slow()
   const printer = await usePrinter(page, PRESETS.idleHomed())
   await servePanel(page)
   await open('/')
