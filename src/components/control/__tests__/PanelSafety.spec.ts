@@ -1,9 +1,10 @@
 import { mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ControlMixin from '@/mixins/control'
 import { cloudState } from '@/services/muon-cloud/state'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 import { panelStore, waits } from './panel-fixture'
+import { handMoveLock, headStatus } from '@/services/control/safe-move'
 
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn() }))
 vi.mock('@/api/socketActions', () => ({ SocketActions: socket }))
@@ -15,7 +16,9 @@ function show () {
 }
 
 describe('generated Control commands', () => {
-  afterEach(() => { socket.printerGcodeScript.mockClear(); printerTransportBinding.remote = false; cloudState.activePrinterId = null })
+  // Every hand move waits for the head position to be this connection's (KAN-1745), on any printer.
+  beforeEach(() => { headStatus.fresh = true })
+  afterEach(() => { socket.printerGcodeScript.mockClear(); printerTransportBinding.remote = false; cloudState.activePrinterId = null; handMoveLock.target = null })
 
   it.each(['printing', 'paused', 'busy'])('refuses motion, homing and motors off in %s state at invocation', state => {
     const s = show(); s.store.getters['printer/getPrinterState'] = state
