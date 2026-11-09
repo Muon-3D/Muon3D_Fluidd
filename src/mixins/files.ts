@@ -5,6 +5,9 @@ import type { AxiosRequestConfig, AxiosProgressEvent } from 'axios'
 import { httpClientActions } from '@/api/httpClientActions'
 import type { FileWithPath } from '@/types'
 import consola from 'consola'
+import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { cloudState } from '@/services/muon-cloud/state'
+import { remoteJobThumbnail } from '@/services/jobs/thumbnail'
 
 type UploadResponse = ReturnType<typeof httpClientActions.serverFilesUploadPost>
 
@@ -148,6 +151,7 @@ export default class FilesMixin extends Vue {
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      if (url.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(url), 60_000)
     } catch {
       // Likely a 401.
     }
@@ -163,10 +167,32 @@ export default class FilesMixin extends Vue {
   createFileUrl (filename: string, path: string, date?: number) {
     const filepath = (path) ? `${path}/${filename}` : `${filename}`
 
+    // Through Muon3D the printer has no address the browser can load: the
+    // file is read through the gateway into this tab, '' until it arrives.
+    if (this.throughMuon3d) {
+      return remoteJobThumbnail(
+        `${cloudState.account?.id ?? ''}|${cloudState.activePrinterId ?? ''}`,
+        `/server/files/${encodeURI(filepath)}`,
+        date ?? 0,
+        async p => (await this.$httpClient.get(p, { responseType: 'blob' })).data as Blob
+      )
+    }
+
     return `${this.apiUrl}/server/files/${encodeURI(filepath)}?date=${date || Date.now()}`
   }
 
+  /** The printer is reached through Muon3D, not by its address. */
+  get throughMuon3d (): boolean {
+    return isManagedApiUrl(this.apiUrl)
+  }
+
   async createFileUrlWithToken (filename: string, path: string, date?: number) {
+    if (this.throughMuon3d) {
+      const filepath = (path) ? `${path}/${filename}` : `${filename}`
+      const response = await this.$httpClient.get(`/server/files/${encodeURI(filepath)}`, { responseType: 'blob' })
+      return URL.createObjectURL(response.data as Blob)
+    }
+
     const url = this.createFileUrl(filename, path, date)
 
     return this.isTrustedUser

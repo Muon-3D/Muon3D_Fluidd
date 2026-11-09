@@ -4,7 +4,16 @@
     class="camera-container"
     v-on="$listeners"
   >
-    <template v-if="cameraComponent">
+    <div
+      v-if="outOfReach"
+      class="camera-remote"
+      role="status"
+      data-tid="camera-remote"
+    >
+      <b>{{ camera.name || 'The camera' }} shows on the printer's network</b>
+      <span>Muon3D doesn't carry camera pictures yet. Open this printer on the same network to watch it.</span>
+    </div>
+    <template v-else-if="cameraComponent">
       <component
         :is="cameraComponent"
         ref="component-instance"
@@ -63,6 +72,8 @@ import { CameraComponents } from '@/dynamicImports'
 import CameraMixin from '@/mixins/camera'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import { cameraOutOfReach } from '@/services/camera/route'
 
 @Component({})
 export default class CameraItem extends Vue {
@@ -117,6 +128,11 @@ export default class CameraItem extends Vue {
     this.framesPerSecond = ''
   }
 
+  /** Through Muon3D, a camera whose picture the gateway doesn't carry. */
+  get outOfReach (): boolean {
+    return cameraOutOfReach(this.camera, printerTransportBinding.remote, window.location.protocol)
+  }
+
   get fullscreenMode (): CameraFullscreenAction {
     return this.$store.state.config.uiSettings.general.cameraFullscreenAction
   }
@@ -142,6 +158,21 @@ export default class CameraItem extends Vue {
     white-space: nowrap;
     margin: auto;
     pointer-events: none;
+  }
+
+  .camera-remote {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 180px;
+    padding: 24px;
+    text-align: center;
+  }
+
+  .camera-remote span {
+    opacity: 0.7;
   }
 
   .camera-container {
