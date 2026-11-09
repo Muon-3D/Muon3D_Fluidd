@@ -31,7 +31,9 @@ function setup (pins: string[] | null = null, busy = false) {
     stubs: {
       'frame-icon': true,
       'v-menu': { template: '<div><slot name="activator" :on="{}" :attrs="{}" /><slot /></div>' },
-      'v-dialog': { template: '<div><slot /></div>' }
+      'v-dialog': { template: '<div><slot /></div>' },
+      'add-material-dialog': true,
+      'router-link': { template: '<a><slot /></a>' }
     }
   })
   return {
@@ -45,67 +47,59 @@ function setup (pins: string[] | null = null, busy = false) {
   }
 }
 
-describe('material picker favorites', () => {
-  it('starts with five common materials and keeps the full catalog searchable', async () => {
-    const { wrapper } = setup()
-    expect(wrapper.find('[data-tid="material-shortlist"]').findAll('[role="option"]').wrappers.map(row => row.find('b').text()))
-      .toEqual(['PLA', 'PETG', 'ABS', 'ASA', 'TPU'])
+const names = (wrapper: ReturnType<typeof setup>['wrapper']) =>
+  wrapper.find('[data-tid="material-shortlist"]').findAll('[role="option"]').wrappers.map(row => row.find('b').text())
 
-    await wrapper.find('[data-tid="material-see-all"]').trigger('click')
-    const search = wrapper.find('[aria-label="Search materials"]')
-    await search.setValue('  bAmBoO  ')
-    expect(wrapper.find('[data-tid="material-catalog"]').findAll('[data-tid^="catalog-material-"]').wrappers.map(row => row.find('b').text()))
-      .toEqual(['Bamboo blend'])
-    await wrapper.find('[data-tid="catalog-material-Bamboo blend"]').trigger('click')
-    expect((wrapper.vm as unknown as { showAll: boolean }).showAll).toBe(false)
-    await wrapper.find('[data-tid="material-see-all"]').trigger('click')
-    expect((wrapper.find('[aria-label="Search materials"]').element as HTMLInputElement).value).toBe('')
-    expect(wrapper.find('[data-tid="material-catalog"]').findAll('[data-tid^="catalog-material-"]').length).toBe(8)
+describe('material picker (v3 storyboard)', () => {
+  it('shows the pinned materials only, in pin order, defaulting to the four every printer has', () => {
+    const { wrapper, cleanup } = setup()
+    expect(names(wrapper)).toEqual(['PLA', 'PETG', 'ABS', 'TPU'])
+    cleanup()
   })
 
-  it('persists pinning across shared picker instances without sending printer commands', async () => {
-    const { wrapper, general, dispatch, send } = setup()
-    await wrapper.find('[data-tid="material-see-all"]').trigger('click')
-    await wrapper.find('[aria-label="Pin PA"]').trigger('click')
-    expect(dispatch).toHaveBeenLastCalledWith('config/saveByPath', {
-      path: 'uiSettings.general.pinnedMaterials', value: ['PLA', 'PETG', 'ABS', 'ASA', 'TPU', 'PA'], server: true
-    })
-    expect(wrapper.find('[data-tid="material-shortlist"]').find('[data-tid="material-PA"]').exists()).toBe(true)
-    const other = setup(general.pinnedMaterials)
-    expect(other.wrapper.find('[data-tid="material-shortlist"]').find('[data-tid="material-PA"]').exists()).toBe(true)
-    expect(send).not.toHaveBeenCalled()
+  it('follows pins and their order as Settings › Materials changes them', async () => {
+    const { wrapper, general, cleanup } = setup(['TPU', 'Bamboo blend', 'PLA'])
+    expect(names(wrapper)).toEqual(['TPU', 'Bamboo blend', 'PLA'])
+    general.pinnedMaterials = ['PLA', 'TPU']
+    await wrapper.vm.$nextTick()
+    expect(names(wrapper)).toEqual(['PLA', 'TPU'])
+    cleanup()
   })
 
-  it('honors an empty pinned list and explains empty search results', async () => {
-    const { wrapper } = setup([])
-    expect(wrapper.find('[data-tid="material-shortlist"]').findAll('[role="option"]').length).toBe(0)
-    expect(wrapper.text()).toContain('Pin materials from See all')
-    await wrapper.find('[data-tid="material-see-all"]').trigger('click')
-    await wrapper.find('[aria-label="Search materials"]').setValue('unobtainium')
-    expect(wrapper.find('[data-tid="material-catalog"]').text()).toContain('No materials found')
+  it('never shows more than six', () => {
+    const { wrapper, cleanup } = setup(choices.map(c => c.name))
+    expect(names(wrapper)).toHaveLength(6)
+    cleanup()
   })
 
-  it('can unpin the last material and reacts to preferences changed by another picker', async () => {
-    const { wrapper, general, dispatch, send } = setup(['pa'])
-    expect(wrapper.find('[data-tid="material-shortlist"]').find('[data-tid="material-PA"]').exists()).toBe(true)
-    await wrapper.find('[data-tid="material-see-all"]').trigger('click')
-    await wrapper.find('[aria-label="Unpin PA"]').trigger('click')
-    expect(dispatch).toHaveBeenLastCalledWith('config/saveByPath', {
-      path: 'uiSettings.general.pinnedMaterials', value: [], server: true
-    })
-    expect(wrapper.find('[data-tid="material-shortlist"]').findAll('[role="option"]').length).toBe(0)
-    general.pinnedMaterials = ['Bamboo blend']
-    await Vue.nextTick()
-    expect(wrapper.find('[data-tid="material-shortlist"]').find('[data-tid="material-Bamboo blend"]').exists()).toBe(true)
-    expect(send).not.toHaveBeenCalled()
+  it('has no "See all materials" catalogue, no pin buttons and no temperatures link', () => {
+    const { wrapper, cleanup } = setup()
+    expect(wrapper.find('[data-tid="material-see-all"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid="material-catalog"]').exists()).toBe(false)
+    expect(wrapper.findAll('[aria-label^="Pin "]').length).toBe(0)
+    expect(wrapper.text()).not.toContain("Change the materials' temperatures")
+    expect(wrapper.find('[data-tid="material-see-materials"]').text()).toBe('See materials ›')
+    cleanup()
   })
 
-  it('lets users organize pins while busy but keeps material selection disabled', async () => {
-    const { wrapper, dispatch, send } = setup(null, true)
-    await wrapper.find('[data-tid="material-see-all"]').trigger('click')
-    expect(wrapper.find('[data-tid="catalog-material-PA"]').attributes('disabled')).toBeDefined()
-    await wrapper.find('[aria-label="Pin PA"]').trigger('click')
-    expect(dispatch).toHaveBeenCalledOnce()
-    expect(send).not.toHaveBeenCalled()
+  it('+ Add opens the shared Add-a-material popup and closes the picker', async () => {
+    const { wrapper, cleanup } = setup()
+    const vm = wrapper.vm as unknown as { open: boolean, adding: boolean }
+    vm.open = true
+    await wrapper.find('[data-tid="material-picker-add"]').trigger('click')
+    expect(vm.adding).toBe(true)
+    expect(vm.open).toBe(false)
+    expect(wrapper.findComponent({ name: 'AddMaterialDialog' }).exists()).toBe(true)
+    cleanup()
+  })
+
+  it('choosing sends the material and is refused while printing', async () => {
+    const busy = setup(null, true)
+    expect(busy.wrapper.find('[data-tid="material-PETG"]').attributes('disabled')).toBe('disabled')
+    busy.cleanup()
+    const { wrapper, send, cleanup } = setup()
+    await wrapper.find('[data-tid="material-PETG"]').trigger('click')
+    expect(send.mock.calls.flat().join('\n')).toContain('muon_material')
+    cleanup()
   })
 })
