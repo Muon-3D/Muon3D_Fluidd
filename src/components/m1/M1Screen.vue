@@ -118,9 +118,15 @@ export default class M1Screen extends Mixins(ControlMixin) {
   flyFrom (): Record<string, string> {
     const el = this.$el as HTMLElement
     const ms = `${this.reducedMotion ? 0 : FLY_MS}ms`
-    // Small stages (a phone) draw the bezel smaller, clear of the strip with Done.
-    const fit = Math.min(1, (el.clientHeight - 2 * STRIP_PX) / BEZEL_PX, (el.clientWidth - 24) / BEZEL_PX)
-    const style: Record<string, string> = { '--fly-ms': ms, '--fit': `${Math.max(0.4, fit).toFixed(3)}` }
+    // Small stages (a phone) draw the bezel smaller, in the room under the strip with Done.
+    const strip = el.querySelector('.m1-screen__strip') as HTMLElement | null
+    const top = strip ? strip.offsetTop + strip.offsetHeight + 8 : STRIP_PX
+    const fit = Math.min(1, (el.clientHeight - top - 12) / BEZEL_PX, (el.clientWidth - 24) / BEZEL_PX)
+    const style: Record<string, string> = {
+      '--fly-ms': ms,
+      '--fit': `${Math.max(0.4, fit).toFixed(3)}`,
+      '--drop': `${Math.max(0, Math.round((top - 12) / 2))}px`
+    }
     if (!this.from) return style
     const dx = Math.round(this.from.x - el.clientWidth / 2)
     const dy = Math.round(this.from.y - el.clientHeight / 2)
@@ -326,11 +332,20 @@ export default class M1Screen extends Mixins(ControlMixin) {
 
   .m1-screen__what {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .m1-screen__hint {
     color: #98989d;
     font-size: 12px;
+    white-space: nowrap;
+
+    @media (max-width: 600px) {
+      display: none;
+    }
   }
 
   .m1-screen__done {
@@ -352,7 +367,7 @@ export default class M1Screen extends Mixins(ControlMixin) {
     display: grid;
     place-items: center;
     box-shadow: 0 30px 60px rgb(0 0 0 / 60%);
-    transform: scale(var(--fit, 1));
+    transform: translateY(var(--drop, 0)) scale(var(--fit, 1));
   }
 
   .m1-screen__frame {
