@@ -88,6 +88,7 @@ export const actions: ActionTree<ConfigState, RootState> = {
   async initUiSettings ({ commit, dispatch, state }, payload: Partial<UiSettings>) {
     commit('setInitUiSettings', payload)
     await dispatch('applyPersonal')
+    dispatch('gcodePreview/applyViewerDefaults', undefined, { root: true })
 
     // Vuetify sometimes fails to apply the changes in a single operation but
     // doing it twice fixes it
