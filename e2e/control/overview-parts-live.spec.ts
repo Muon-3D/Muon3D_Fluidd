@@ -174,6 +174,38 @@ for (const how of ['Esc', 'a second pointer', 'the window losing focus', 'homing
   })
 }
 
+// Opus review of #340, B1: a release still waiting for the last move to land is not a drag any more,
+// so the cancels must reach it too, or it would send later (to another printer, after a switch).
+for (const how of ['Esc', 'the window losing focus'] as const) {
+  test(`${how} after letting go also drops the move still waiting to send`, async ({ page, open }) => {
+    const start: [number, number, number] = [60, 100, 10]
+    const printer = await usePrinter(page, PRESETS.idleHomed({ position: start }))
+    await open('/')
+    await ready(page)
+    await lookDown(page)
+    const toPage = await bedToPage(page)
+    const at = await partPoint(page)
+    await page.mouse.move(at.x, at.y)
+    await page.mouse.down()
+    const a = toPage(90, 100)
+    await page.mouse.move(a.x, a.y, { steps: 6 })
+    await expect.poll(() => moveLines(printer.gcode).length).toBe(1)
+    // Further on, then let go while the first move has not landed: the release waits to send.
+    const b = toPage(150, 120)
+    await page.mouse.move(b.x, b.y, { steps: 6 })
+    await page.mouse.up()
+    await page.waitForTimeout(300)
+    expect(moveLines(printer.gcode)).toHaveLength(1)
+
+    if (how === 'Esc') await page.keyboard.press('Escape')
+    else await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+
+    land(printer, headAfter(printer, start))
+    await page.waitForTimeout(1200)
+    expect(moveLines(printer.gcode)).toHaveLength(1)
+  })
+}
+
 test('a step across the bed notch low down lifts over it, through the planner', async ({ page, open }) => {
   const start: [number, number, number] = [40, 20, 1]
   const printer = await usePrinter(page, PRESETS.idleHomed({ position: start }))
