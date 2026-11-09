@@ -23,11 +23,6 @@ test.beforeEach(async ({ page }) => {
   if (!GPU) await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
 })
 
-// The photoreal M1 stalls software WebGL for seconds a frame (see overview-parts.spec.ts).
-test.beforeEach(async ({ page }) => {
-  if (process.platform !== 'win32') await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
-})
-
 const cell = (page: Page, id: string) => page.locator(`[data-cell="${id}"]`)
 const ids = async (page: Page) => page.locator('[data-cell]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.cell))
 const box = async (l: Locator) => {
