@@ -1,4 +1,4 @@
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Prop } from 'vue-property-decorator'
 import ControlMixin from './control'
 import { NO_MATERIAL_LOADED } from '@/services/jobs/model'
 import FilesMixin from './files'
@@ -30,6 +30,9 @@ export interface RecentJob {
  */
 @Component
 export default class OverviewMixin extends Mixins(ControlMixin, FilesMixin) {
+  /** The widget's size on the Overview: S, M or L. Each draws a different amount, not the same thing scaled. */
+  @Prop({ type: String, default: 'M' }) readonly size!: 'S' | 'M' | 'L'
+
   get printerName (): string {
     return printerNameParts(this.$store.getters['config/getDisplayName'] as string).name
   }

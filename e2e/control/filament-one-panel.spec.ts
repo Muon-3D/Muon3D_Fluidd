@@ -9,6 +9,11 @@ import { test, expect } from '../fixtures'
 import type { Page } from '@playwright/test'
 import { usePrinter, PRESETS, type PrinterHandle } from './printer'
 
+// The photoreal M1 stalls software WebGL for seconds a frame (see overview-parts.spec.ts).
+test.beforeEach(async ({ page }) => {
+  if (process.platform !== 'win32') await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
+})
+
 async function isThePanel (page: Page, printer: PrinterHandle) {
   await expect(page.getByTestId('material-picker')).toBeVisible()
   await expect(page.getByTestId('material-load')).toBeVisible()

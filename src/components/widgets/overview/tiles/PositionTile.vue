@@ -7,7 +7,7 @@
     :tone="homed ? 'ok' : 'warm'"
     :menu="menu"
     :open="open"
-    class="po"
+    :class="['po', `po--${size}`]"
     @toggle="open = !open"
   >
     <span class="po__xyz">
@@ -17,8 +17,32 @@
         class="po__axis"
         data-tid="axis"
       >
-        <span>{{ a.k }}</span><b>{{ a.v }}</b><small>mm</small>
+        <span>{{ a.k }}</span><b>{{ a.v }}</b><small v-if="size !== 'S'">mm</small>
       </span>
+    </span>
+    <span
+      v-if="size === 'L'"
+      class="po__homes po__homes--inline"
+      data-tid="position-homes"
+    >
+      <button
+        type="button"
+        class="cbtn"
+        :disabled="!canHome"
+        @click="home('XY')"
+      >Home X Y</button>
+      <button
+        type="button"
+        class="cbtn"
+        :disabled="!canHome"
+        @click="home('Z')"
+      >Home Z</button>
+      <button
+        type="button"
+        class="cbtn"
+        :disabled="!canHome"
+        @click="home()"
+      >Home all</button>
     </span>
 
     <template #popover>
@@ -168,6 +192,8 @@ export default class PositionTile extends Mixins(OverviewMixin) {
 .po__axis small { color: var(--m3d-text-subtle); font-size: 11px; }
 .po__pop { display: flex; flex-direction: column; gap: 12px; }
 .po__homes { display: flex; flex-wrap: wrap; gap: 8px; }
+.po__homes--inline { margin-top: 10px; }
+.po--S .po__xyz { flex-direction: column; gap: 0; }
 .po__go { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .po__field { display: flex; flex-direction: column; gap: 4px; color: var(--m3d-text-muted); font-size: 11.5px; }
 </style>

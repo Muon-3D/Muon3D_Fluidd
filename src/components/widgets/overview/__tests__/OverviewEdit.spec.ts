@@ -9,7 +9,7 @@ import { resetSocket, socket, tileMount, tileStore } from './fixture'
 vi.mock('@/components/ui/M3Dialog.vue', async () => (await import('./fixture')).m3DialogModule)
 vi.mock('@/api/socketActions', async () => ({ SocketActions: (await import('./fixture')).socket }))
 
-const heavy = { 'overview-stage': true, 'thermal-graph': true, 'first-layer-nudges': true, 'material-picker': true }
+const heavy = { 'overview-stage': true, 'thermal-graph': true, 'first-layer-nudges': true, 'material-picker': true, 'control-move': true }
 const allIds = overviewTiles.map(t => t.id)
 const defaults = defaultLayout(widgetsFor(overviewTiles, true))
 const onIds = defaults.tiles.map(t => t.id)
@@ -138,7 +138,7 @@ describe('Overview, edit mode', () => {
     expect(muon.w.find('[data-tid="widget-card-fans"]').exists()).toBe(true)
     muon.w.destroy()
     const store = tileStore()
-    ;(store.state as any).server = { info: { components: ['file_manager', 'history'] } }
+    ;(store.getters as any)['server/isMuonPrinter'] = false
     const other = mount(Overview, tileMount(store, { stubs: { ...tileMount(store).stubs, ...heavy } }))
     await other.find('[data-tid="edit-open"]').trigger('click')
     await other.find('[data-tid="widget-sheet-open"]').trigger('click')
@@ -146,7 +146,7 @@ describe('Overview, edit mode', () => {
     expect(cells(other)).not.toContain('zoffset')
     other.destroy()
     const known = tileStore()
-    ;(known.state as any).server = { info: { components: ['file_manager', 'muon_access'] } }
+    ;(known.getters as any)['server/isMuonPrinter'] = true
     const muonKnown = mount(Overview, tileMount(known, { stubs: { ...tileMount(known).stubs, ...heavy } }))
     await muonKnown.find('[data-tid="edit-open"]').trigger('click')
     await muonKnown.find('[data-tid="widget-sheet-open"]').trigger('click')
@@ -164,7 +164,7 @@ describe('Overview, edit mode', () => {
     expect(w.find('[data-tid="widget-none"]').exists()).toBe(true)
     await w.find('[data-tid="widget-search"]').setValue('')
     await w.find('[data-tid="widget-cat-Motion"]').trigger('click')
-    expect(w.findAll('[data-tid^="widget-card-"]').wrappers.map(c => c.attributes('data-tid'))).toEqual(['widget-card-jog', 'widget-card-position', 'widget-card-trackpad'])
+    expect(w.findAll('[data-tid^="widget-card-"]').wrappers.map(c => c.attributes('data-tid'))).toEqual(['widget-card-trackpad', 'widget-card-jog', 'widget-card-position'])
     w.destroy()
   })
 
@@ -203,9 +203,15 @@ describe('Overview, edit mode', () => {
   it('moves a tile by dragging its grip onto another tile', async () => {
     const { w } = open()
     await w.find('[data-tid="edit-open"]').trigger('click')
+    // The pointer finds a tile by its slot in the grid (jsdom lays nothing out, so give "mode" one).
     const target = w.find('[data-cell="mode"]').element
-    document.elementFromPoint = vi.fn(() => target)
+    const slot = { offsetParent: document.body, offsetLeft: 0, offsetTop: 0, offsetWidth: 100, offsetHeight: 100 }
+    for (const [k, v] of Object.entries(slot)) Object.defineProperty(target, k, { configurable: true, get: () => v })
     await grip(w, 'graph').trigger('pointerdown', { button: 0 })
+    // The others make room as it passes over them, before it is let go.
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 5, clientY: 5 }))
+    await w.vm.$nextTick()
+    expect(cells(w).indexOf('graph')).toBe(onIds.indexOf('mode'))
     window.dispatchEvent(new MouseEvent('pointerup', { clientX: 5, clientY: 5 }))
     await w.vm.$nextTick()
     expect(cells(w).indexOf('graph')).toBe(onIds.indexOf('mode'))

@@ -4,7 +4,7 @@
     title="Jog"
     icon="control"
     :menu="menu"
-    class="jg"
+    :class="['jg', `jg--${size}`]"
   >
     <div class="jg__body">
       <div class="jg__pad">
@@ -59,7 +59,10 @@
           <frame-icon name="chevronDown" />
         </button>
       </div>
-      <div class="jg__z">
+      <div
+        v-if="size !== 'S'"
+        class="jg__z"
+      >
         <button
           type="button"
           class="jg__b"
@@ -89,7 +92,26 @@
     >
       {{ lock }}
     </p>
+    <span
+      v-if="size === 'L'"
+      class="jg__homes"
+      data-tid="jog-homes"
+    >
+      <button
+        type="button"
+        class="cbtn"
+        :disabled="!controlReady || busy"
+        @click="home('XY')"
+      >Home X Y</button>
+      <button
+        type="button"
+        class="cbtn"
+        :disabled="!controlReady || busy"
+        @click="home()"
+      >Home all</button>
+    </span>
     <seg-picker
+      v-if="size !== 'S'"
       class="jg__step"
       :options="steps"
       :value="step"
@@ -156,6 +178,7 @@ export default class JogTile extends Mixins(OverviewMixin) {
 </script>
 
 <style lang="scss">
+.jg__homes { display: flex; gap: 8px; margin-top: 8px; }
 .jg { gap: 10px; }
 .jg__body { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 6px 0 2px; }
 .jg__pad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 6px; }

@@ -42,13 +42,13 @@ export const widgetMeta: WidgetMeta[] = [
   { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(), M(6)], size: 'S', defaultOn: true, legacy: ['speed'] },
   // The fourth tile: part cooling is the fan people reach for most, and it is on every printer.
   { id: 'fans', title: 'Fans', category: 'Tools', blurb: 'Part cooling and the other fans.', sizes: [S(), M(4), L(6, 2)], size: 'S', defaultOn: true },
-  // Jog and Position are separate widgets from the Movement trackpad.
+  // Movement (the trackpad, live drag), then Jog and Position as separate widgets.
+  { id: 'trackpad', title: 'Movement', category: 'Motion', blurb: 'The trackpad: drag to move the head, with the no-go zones.', sizes: [S(2), M(8, 2), L(12, 2)], size: 'M', defaultOn: true },
   { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Buttons to move the head and home it.', sizes: [S(2), M(4, 2), L(6, 2)], size: 'M', defaultOn: true },
-  { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(4), L(8)], size: 'L', defaultOn: true },
-  { id: 'macros', title: 'Quick actions', category: 'Tools', blurb: 'The commands you press most.', sizes: [S(), M(6), L(8)], size: 'L', defaultOn: true },
+  { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(4), L(8)], size: 'M', defaultOn: true },
+  { id: 'macros', title: 'Quick commands', category: 'Tools', blurb: 'The commands you press most.', sizes: [S(), M(6), L(8)], size: 'L', defaultOn: true },
   { id: 'graph', title: 'Temperatures', category: 'Temperature', blurb: 'The temperature graph. Hotend, bed and chamber show to begin with.', sizes: [S(), M(6), L(12)], size: 'L', defaultOn: true },
   // Off until added.
-  { id: 'trackpad', title: 'Movement', category: 'Motion', blurb: 'The trackpad: drag to move the head, with the no-go zones.', sizes: [S(2), M(6, 2), L(8, 2)], size: 'M', defaultOn: false },
   // Never on a Muon printer (see muonHidden); in Add widget on the others.
   { id: 'zoffset', title: 'Z offset', category: 'Print', blurb: 'The live Z offset, to nudge the first layer.', sizes: [S(), M(4)], size: 'S', defaultOn: false },
   { id: 'camera', title: 'Camera', category: 'Printer', blurb: 'The webcam.', sizes: [S(), M(6, 2), L(12, 2)], size: 'M', defaultOn: false },
@@ -71,15 +71,11 @@ export function searchWidgets (list: WidgetMeta[], query: string, category: Widg
 export const muonHidden: string[] = ['zoffset']
 
 /**
- * Whether this is a Muon printer, from Moonraker's component list. While the
- * list is not known yet (nothing loaded) it is treated as Muon, so Z offset
- * never flashes up on one.
- * TODO: use the `server/isMuonPrinter` getter (#296) once it has merged.
+ * Whether the Overview treats this printer as a Muon one, from the
+ * `server/isMuonPrinter` getter. While it is not known yet (null) it counts as
+ * Muon, so Z offset never flashes up on one.
  */
-export function isMuonPrinter (components: unknown): boolean {
-  if (!Array.isArray(components) || components.length === 0) return true
-  return components.includes('muon_access') || components.includes('muon_protection')
-}
+export const treatAsMuon = (isMuon: boolean | null | undefined): boolean => isMuon !== false
 
 /** The widgets that exist on this printer. */
 export function widgetsFor<T extends { id: string }> (list: T[], muon: boolean): T[] {

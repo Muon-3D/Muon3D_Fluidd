@@ -7,6 +7,11 @@
 import type { Locator, Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
 
+// The photoreal M1 stalls software WebGL for seconds a frame (see overview-parts.spec.ts).
+test.beforeEach(async ({ page }) => {
+  if (process.platform !== 'win32') await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
+})
+
 const cell = (page: Page, id: string) => page.locator(`[data-cell="${id}"]`)
 const ids = async (page: Page) => page.locator('[data-cell]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.cell))
 const box = async (l: Locator) => {
@@ -23,9 +28,9 @@ async function edit (page: Page) {
 test('the default layout: the printer left and wider, job and filament stacked on the right, then four tiles', async ({ page, open, isMobile }) => {
   await open('/')
   await expect(page.getByTestId('overview-page')).toBeVisible()
-  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'jog', 'position', 'macros', 'graph'])
+  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'trackpad', 'jog', 'position', 'macros', 'graph'])
   // Off by default, found in Add widget.
-  for (const id of ['trackpad', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library']) await expect(cell(page, id)).toHaveCount(0)
+  for (const id of ['zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library']) await expect(cell(page, id)).toHaveCount(0)
   if (isMobile) return
   const stage = await box(cell(page, 'stage'))
   const job = await box(cell(page, 'job'))
@@ -37,7 +42,8 @@ test('the default layout: the printer left and wider, job and filament stacked o
   const row = await Promise.all(['hotend', 'bed', 'mode', 'fans'].map(id => box(cell(page, id))))
   for (const b of row) expect(Math.abs(b.y - row[0].y)).toBeLessThan(2)
   expect(row[0].y).toBeGreaterThan(stage.y + stage.height - 2)
-  // Jog and position show; the trackpad does not.
+  // The Movement trackpad, then Jog and Position as their own widgets.
+  await expect(page.locator('[data-tile="trackpad"]')).toBeVisible()
   await expect(page.locator('[data-tile="jog"]')).toBeVisible()
   await expect(page.locator('[data-tile="position"]')).toBeVisible()
 })
@@ -87,7 +93,9 @@ test('a size that does not exist snaps to the nearest one the widget offers', as
   expect(await span()).toBe('6')
   await grip.press('Shift+ArrowRight')
   expect(await span()).toBe('6')
-  // Dragging the corner to about 4 columns lands on S (3), not on 4.
+  // Dragging the corner to about 4 columns lands on S (3), not on 4. Measured once the tile has sprung to its size.
+  await expect.poll(() => cell(page, 'hotend').evaluate(e => e.getAnimations().length)).toBe(0)
+  await cell(page, 'hotend').evaluate(e => e.scrollIntoView({ block: 'center' }))
   const handle = cell(page, 'hotend').getByTestId('tile-resize')
   const hb = await box(handle)
   const column = (await box(page.getByTestId('overview-grid'))).width / 12
@@ -121,7 +129,7 @@ test('the layout persists after a reload, and Reset brings the default back', as
   await edit(page)
   await page.getByTestId('edit-reset').click()
   await page.getByTestId('edit-done').click()
-  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'jog', 'position', 'macros', 'graph'])
+  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'trackpad', 'jog', 'position', 'macros', 'graph'])
 })
 
 test('the phone layout: one column, small widgets two to a row, the Add widget sheet from the bottom', async ({ page, open, isMobile }) => {
