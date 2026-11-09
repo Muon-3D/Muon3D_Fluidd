@@ -5,7 +5,7 @@
     data-tid="m1-parts"
     :data-interactive="interactive ? 'on' : 'off'"
     :data-hovered="hovered || ''"
-    :data-view="topView ? 'top' : 'free'"
+    :data-view="zoomedIn ? 'screen' : topView ? 'top' : 'free'"
   >
     <div
       class="m1-parts__chips"
@@ -121,11 +121,13 @@
         v-if="interactive"
         :key="selected"
         :part="selected"
-        @use-screen="screenOpen = true"
+        @use-screen="select('screen')"
       />
     </div>
     <m1-screen
       v-if="screenOpen && interactive"
+      :from="screenFrom"
+      :reduced-motion="reducedMotion"
       @close="screenOpen = false"
     />
   </div>
@@ -233,6 +235,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
   refused = ''
   /** The printer's own screen, open over the stage. */
   screenOpen = false
+  /** Where the screen was on the stage when it opened: the zoom flies in from there and back out to it. */
+  screenFrom: { x: number, y: number } | null = null
 
   /** Parts offer their options only on an idle printer this person can control. */
   get interactive (): boolean {
@@ -526,9 +530,19 @@ export default class M1Parts extends Mixins(ControlMixin) {
     }
   }
 
+  /** The screen open: the camera flies in to it (not with reduced motion: then the screen just opens). */
+  get zoomedIn (): boolean {
+    return this.screenOpen && this.interactive && !this.reducedMotion
+  }
+
+  @Watch('zoomedIn')
+  onZoomedIn () {
+    this.onTopView(this.topView)
+  }
+
   @Watch('topView')
   onTopView (top: boolean) {
-    this.viewer?.setView(top ? 'top' : 'free')
+    this.viewer?.setView(this.zoomedIn ? 'screen' : top ? 'top' : 'free')
     this.viewer?.setOrbit(!top)
     this.follow()
   }
@@ -548,6 +562,11 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   select (part: PartId) {
     this.selected = part
+    // A click on the screen goes into it: the printer's own screen, flown in from where it is on the model.
+    if (part === 'screen' && this.interactive) {
+      this.screenFrom = this.anchor ?? this.viewer?.anchor('screen') ?? null
+      this.screenOpen = true
+    }
     this.focusIndex = PART_IDS.indexOf(part)
     this.$emit('select', part)
   }
