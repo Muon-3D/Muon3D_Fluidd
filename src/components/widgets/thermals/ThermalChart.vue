@@ -20,6 +20,7 @@ import { Component, Watch, Prop, Ref, Mixins } from 'vue-property-decorator'
 import type { ECharts, EChartsOption } from 'echarts'
 import getKlipperType from '@/util/get-klipper-type'
 import BrowserMixin from '@/mixins/browser'
+import { chartInk } from '@/services/charts/theme'
 
 @Component({})
 export default class ThermalChart extends Mixins(BrowserMixin) {
@@ -174,7 +175,7 @@ export default class ThermalChart extends Mixins(BrowserMixin) {
   get options () {
     const isDark = this.$store.state.config.uiSettings.theme.isDark
 
-    const fontColor = (isDark) ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.45)'
+    const fontColor = chartInk(isDark).label
     const fontSize = (this.isMobileViewport) ? 13 : 14
 
     const lineStyle = {

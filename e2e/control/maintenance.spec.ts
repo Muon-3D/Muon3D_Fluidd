@@ -5,8 +5,8 @@
  * G-code is answered and recorded by usePrinter: nothing reaches the shared mock.
  */
 import type { Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
-import { usePrinter, PRESETS } from './printer'
+import { test, expect, PRINTER } from '../fixtures'
+import { usePrinter, PRESETS, useDatabase } from './printer'
 
 const COMMANDS = { BED_MESH_CALIBRATE: {}, PROBE_ACCURACY: {}, SHAPER_CALIBRATE: {}, PROBE_CALIBRATE: {}, PID_CALIBRATE: {} }
 
@@ -115,6 +115,26 @@ test('the mesh is a 2D heat map with heights and a scale, and 3D swaps it for th
 
   await tile.getByRole('radio', { name: '2D' }).click()
   await expect(tile.getByTestId('mesh-heat')).toBeVisible()
+})
+
+// KAN-1627: echarts-gl drew the 3D axis numbers white whatever the theme, so on
+// light they vanished into the card. They now take the theme's muted text token.
+test('the 3D mesh labels its axes in the theme text colour, light and dark', async ({ page, open }) => {
+  const printer = await usePrinter(page, idle())
+  await useDatabase(page, printer)
+  const axisColours = () => page.getByTestId('bed-surface').locator('.echarts').evaluate((el: any) => {
+    const option = el.__vue__.getOption()
+    return ['xAxis3D', 'yAxis3D', 'zAxis3D'].map(axis => option[axis][0].axisLabel.color)
+  })
+  for (const [theme, muted] of [['Light', '#6e6e73'], ['Dark', '#98989d']]) {
+    await open(`${PRINTER}/settings#theme`)
+    await page.getByTestId('theme-settings').getByRole('radio', { name: theme }).click()
+    await open('/tune')
+    const tile = page.getByTestId('bed-mesh-tile')
+    await tile.getByRole('radio', { name: '3D' }).click()
+    await expect(tile.getByTestId('bed-surface')).toBeVisible()
+    await expect.poll(axisColours).toEqual([muted, muted, muted])
+  }
 })
 
 test('the back row of the plate is at the top and X runs left to right', async ({ page, open }) => {

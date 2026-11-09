@@ -44,6 +44,7 @@ import { Component, Prop, Mixins } from 'vue-property-decorator'
 import type { DiagnosticsCardConfig } from '@/store/diagnostics/types'
 import type { EChartsOption } from 'echarts'
 import BrowserMixin from '@/mixins/browser'
+import { chartInk } from '@/services/charts/theme'
 
 @Component({})
 export default class DiagnosticsCard extends Mixins(BrowserMixin) {
@@ -64,7 +65,7 @@ export default class DiagnosticsCard extends Mixins(BrowserMixin) {
   get options () {
     const isDark = this.$store.state.config.uiSettings.theme.isDark
 
-    const fontColor = (isDark) ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.45)'
+    const fontColor = chartInk(isDark).label
     const fontSize = (this.isMobileViewport) ? 13 : 14
 
     const lineStyle = {
