@@ -175,6 +175,8 @@ import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePl
 import { axisEdges, boundCorners } from '@/services/m1-3d/drag-bounds'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
 import { DragFollow, controlDragHost, type DragFollowHost } from '@/services/control/drag-follow'
+import { modelAnimates } from '@/services/m1-3d/render-options'
+import { modelSettings } from '@/services/m1-3d/device-settings'
 
 /**
  * Each stage's live drag, kept off the component so Vue doesn't watch it.
@@ -773,7 +775,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   @Watch('viewer')
   show () {
     const part = this.shownPart
-    this.viewer?.setFocus(part, this.interactive ? 'active' : 'info', this.interactive && !this.reducedMotion)
+    this.viewer?.setFocus(part, this.interactive ? 'active' : 'info', this.interactive && modelAnimates(modelSettings.animations, this.reducedMotion))
     this.follow()
   }
 
@@ -1076,7 +1078,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     to { opacity: 1; }
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  :root.m3d-reduced-motion {
     .m1-parts__label {
       animation: none;
     }

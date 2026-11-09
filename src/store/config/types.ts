@@ -270,6 +270,9 @@ export interface GcodePreviewConfig {
   autoFollowOnFileLoad: boolean;
   hideSinglePartBoundingBox: boolean;
   autoZoom: boolean;
+  /** What a preview starts out showing: travel moves and retractions (each file's Show menu can change it). */
+  showMoves: boolean;
+  showRetractions: boolean;
   flip: {
     horizontal: boolean;
     vertical: boolean;
