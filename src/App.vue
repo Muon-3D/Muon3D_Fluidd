@@ -260,10 +260,6 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     return this.$store.state.version.busy
   }
 
-  get inLayout (): boolean {
-    return (this.$store.state.config.layoutMode)
-  }
-
   /**
    * A page for a printer Fluidd isn't on (yet): it shows that printer opening,
    * never the last printer's page under this printer's address.
