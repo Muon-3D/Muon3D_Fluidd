@@ -142,7 +142,7 @@ test('the view stays straight down while the printer is busy running the move', 
   await page.mouse.up()
 })
 
-for (const how of ['Esc', 'a second pointer', 'the window losing focus'] as const) {
+for (const how of ['Esc', 'a second pointer', 'the window losing focus', 'homing lost', 'a print starting'] as const) {
   test(`${how} stops a live drag: nothing more is sent`, async ({ page, open }) => {
     const start: [number, number, number] = [60, 100, 10]
     const printer = await usePrinter(page, PRESETS.idleHomed({ position: start }))
@@ -160,7 +160,9 @@ for (const how of ['Esc', 'a second pointer', 'the window losing focus'] as cons
     if (how === 'Esc') await page.keyboard.press('Escape')
     else if (how === 'a second pointer') {
       await page.locator('.m1-live__canvas').dispatchEvent('pointerdown', { pointerId: 99, isPrimary: false, button: 0, clientX: a.x + 40, clientY: a.y })
-    } else await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+    } else if (how === 'the window losing focus') await page.evaluate(() => window.dispatchEvent(new Event('blur')))
+    else if (how === 'homing lost') printer.report({ toolhead: { homed_axes: '' } })
+    else printer.report({ print_stats: { state: 'printing' }, idle_timeout: { state: 'Printing' } })
     await expect(page.getByTestId('m1-drag-target')).toHaveCount(0)
 
     land(printer, headAfter(printer, start))
