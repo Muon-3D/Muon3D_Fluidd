@@ -12,6 +12,8 @@ export const defaultState = (): ConfigState => {
     discovered: false,
     layoutMode: false,
     containerColumnCount: 2,
+    personalKey: null,
+    sharedPersonal: null,
     hostConfig: {
       endpoints: [],
       blacklist: [],
@@ -186,6 +188,7 @@ export const defaultState = (): ConfigState => {
       control: {
         layouts: {}
       },
+      personal: {},
       console: defaultConsoleConfig()
     }
   }
