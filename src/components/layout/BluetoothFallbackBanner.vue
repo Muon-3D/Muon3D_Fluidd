@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="reason"
+    v-if="reason || dropped"
     class="ble-fallback"
     role="status"
     aria-live="polite"
@@ -11,8 +11,14 @@
       class="ble-fallback__icon"
     />
     <div class="ble-fallback__text">
-      <strong>Bluetooth didn't connect, using Muon3D instead</strong>
-      <span>{{ reason }}</span>
+      <template v-if="dropped">
+        <strong>Bluetooth dropped</strong>
+        <span>{{ dropped }} Reconnect, or choose how to connect.</span>
+      </template>
+      <template v-else>
+        <strong>Bluetooth didn't connect, using Muon3D instead</strong>
+        <span>{{ reason }}</span>
+      </template>
     </div>
   </div>
 </template>
@@ -20,7 +26,7 @@
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
-import { bluetoothFellBack } from '@/services/muon-ble/link'
+import { bluetoothDropped, bluetoothFellBack } from '@/services/muon-ble/link'
 
 /**
  * Over the page when a printer opened through Muon3D though Bluetooth was
@@ -32,6 +38,12 @@ export default class BluetoothFallbackBanner extends Vue {
   get reason (): string | null {
     const id = cloudState.activePrinterId
     return id ? bluetoothFellBack(id) : null
+  }
+
+  /** The chosen Bluetooth route dropped mid-session (KAN-1913): never switched quietly. */
+  get dropped (): string | null {
+    const id = cloudState.activePrinterId
+    return id ? bluetoothDropped(id) : null
   }
 }
 </script>
