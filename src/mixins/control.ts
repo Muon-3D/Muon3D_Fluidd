@@ -292,7 +292,9 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     return axes.toUpperCase().split('').every(a => this.homedAxes.includes(a))
   }
 
+  /** Reverse Z is gone (it only crashed the plate): a Z saved reversed before moves the normal way. */
   inverted (axis: Axis): boolean {
+    if (axis.toLowerCase() === 'z') return false
     return !!this.$store.state.config.uiSettings.general.axis?.[axis.toLowerCase()]?.inverted
   }
 
