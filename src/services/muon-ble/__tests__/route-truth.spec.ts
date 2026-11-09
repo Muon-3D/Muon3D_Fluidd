@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   bluetoothCarrying,
+  bluetoothDropped,
   bluetoothFellBack,
   bluetoothLinkUp,
   bluetoothOpening,
@@ -184,5 +185,61 @@ describe('a Bluetooth link that fails is never swallowed (KAN-1396)', () => {
     }
     stopUsingBluetoothFor(EID)
     expect(bluetoothFellBack(EID)).toBeNull()
+  })
+})
+
+describe('the chosen route is the only route, and a drop is said, not hidden (KAN-1913)', () => {
+  it('chooses the Bluetooth route with chooseRoute where muon-link-web has it, and Auto when the person stops', async () => {
+    const { endpoint } = fakeEndpoint()
+    const chooseRoute = vi.fn()
+    const pinBluetooth = vi.fn()
+    const routed = Object.assign(endpoint, { chooseRoute, pinBluetooth })
+    useBluetoothFor(EID, fakePrinter().device)
+    await bluetoothRouteFor(routed, EID)
+    expect(chooseRoute).toHaveBeenCalledWith(EID, 'ble')
+    expect(pinBluetooth).not.toHaveBeenCalled()
+    stopUsingBluetoothFor(EID)
+    expect(chooseRoute).toHaveBeenLastCalledWith(EID, 'auto')
+  })
+
+  it('says the Bluetooth route dropped when the printer or the radio ends the link', async () => {
+    const printer = fakePrinter()
+    const { endpoint } = fakeEndpoint()
+    useBluetoothFor(EID, printer.device)
+    const link = await bluetoothRouteFor(endpoint, EID)
+    expect(bluetoothDropped(EID)).toBeNull()
+    printer.drop()
+    await link!.closed
+    await Promise.resolve()
+    expect(bluetoothDropped(EID)).not.toBeNull()
+    expect(wantsBluetoothFor(EID)).toBe(true)
+  })
+
+  it('does not call it a drop when the person hangs up', async () => {
+    const { endpoint } = fakeEndpoint()
+    useBluetoothFor(EID, fakePrinter().device)
+    const link = await bluetoothRouteFor(endpoint, EID)
+    await releaseBluetoothLink(EID)
+    await link!.closed
+    await Promise.resolve()
+    expect(bluetoothDropped(EID)).toBeNull()
+  })
+
+  it('says it dropped when muon-link reports the chosen route has no path', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { endpoint } = fakeEndpoint()
+      let unavailable = false
+      const routed = Object.assign(endpoint, { chooseRoute: vi.fn(), routeUnavailable: vi.fn(() => unavailable) })
+      useBluetoothFor(EID, fakePrinter().device)
+      await bluetoothRouteFor(routed, EID)
+      vi.advanceTimersByTime(1_500)
+      expect(bluetoothDropped(EID)).toBeNull()
+      unavailable = true
+      vi.advanceTimersByTime(1_500)
+      expect(bluetoothDropped(EID)).not.toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
