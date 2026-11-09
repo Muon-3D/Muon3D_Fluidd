@@ -331,10 +331,20 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     if (connected) this.wasConnected = true
     // The printer's own update: watched while connected, and a drop mid-install is remembered.
     if (connected && this.printerFrame) {
-      watchUpdates(activeSlug() ?? String(this.$store.state.config.apiUrl ?? ''), url => this.$httpClient.get(url, { validateStatus: () => true }))
+      this.watchPrinterUpdates()
     } else if (!connected && this.wasConnected) {
       printerLost()
     }
+  }
+
+  /** A load straight onto a printer's page can connect before the route has its printer. */
+  @Watch('printerFrame')
+  onPrinterFrame (frame: boolean) {
+    if (frame && this.socketConnected) this.watchPrinterUpdates()
+  }
+
+  watchPrinterUpdates () {
+    watchUpdates(activeSlug() ?? String(this.$store.state.config.apiUrl ?? ''), url => this.$httpClient.get(url, { validateStatus: () => true }))
   }
 
   get displayName (): string {

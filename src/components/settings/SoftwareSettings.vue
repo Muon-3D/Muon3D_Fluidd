@@ -77,7 +77,15 @@
         </details>
 
         <p
-          v-if="available"
+          v-if="restartReady"
+          class="soft__note"
+          data-tid="software-staged"
+        >
+          {{ stagedText }}
+        </p>
+
+        <p
+          v-else-if="available"
           class="soft__note"
         >
           Installing takes 10 to 40 minutes over Wi-Fi. The printer keeps working while the new version is written, then restarts for a few minutes. Not while printing.
@@ -85,7 +93,18 @@
 
         <div class="soft__actions">
           <button
-            v-if="available"
+            v-if="restartReady"
+            type="button"
+            class="cbtn cbtn--primary"
+            :disabled="!!restartWhy"
+            :title="restartWhy"
+            data-tid="software-restart"
+            @click="restartToUpdate"
+          >
+            Restart now to update
+          </button>
+          <button
+            v-else-if="available"
             type="button"
             class="cbtn cbtn--primary"
             :disabled="!canInstall"
@@ -105,7 +124,12 @@
             {{ checking ? 'Checking…' : 'Check now' }}
           </button>
           <span
-            v-if="installBlocked && available"
+            v-if="restartReady && restartWhy"
+            class="soft__why"
+            data-tid="software-restart-why"
+          >{{ restartWhy }}</span>
+          <span
+            v-else-if="!restartReady && installBlocked && available"
             class="soft__why"
           >{{ installBlocked }}</span>
         </div>
@@ -117,6 +141,59 @@
           {{ installRefusal }}
         </p>
       </template>
+    </section>
+
+    <section
+      class="soft__panel"
+      data-tid="software-policy"
+    >
+      <template v-if="autoInstall !== null">
+        <div class="soft__row">
+          <div class="soft__titles">
+            <h3>Automatic updates</h3>
+            <p data-tid="software-auto-text">
+              {{ autoText }}
+            </p>
+          </div>
+          <toggle-switch
+            :value="autoInstall"
+            :disabled="saving !== ''"
+            label="Automatic updates"
+            data-tid="software-auto"
+            @input="setFlag('auto', $event)"
+          />
+        </div>
+        <div
+          v-if="presence !== null"
+          class="soft__row"
+        >
+          <div class="soft__titles">
+            <h3>Confirm on the printer before installing</h3>
+            <p>Someone presses the knob on the printer before a new version installs.</p>
+          </div>
+          <toggle-switch
+            :value="presence"
+            :disabled="saving !== ''"
+            label="Confirm on the printer before installing"
+            data-tid="software-presence"
+            @input="setFlag('presence', $event)"
+          />
+        </div>
+        <p
+          v-if="policyNote"
+          class="soft__note soft__note--warn"
+          data-tid="software-policy-note"
+        >
+          {{ policyNote }}
+        </p>
+      </template>
+      <p
+        v-else
+        class="soft__note"
+        data-tid="software-policy-unknown"
+      >
+        {{ policyLoaded ? "This printer doesn't report its update settings yet." : 'Asking the printer…' }}
+      </p>
     </section>
 
     <section class="soft__panel">
@@ -177,6 +254,12 @@ import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import TaskFold from '@/components/control/TaskFold.vue'
+import {
+  AUTO_INSTALL_PATH, AUTO_OFF_TEXT, AUTO_ON_TEXT, KNOB_TEXT, PRESENCE_PATH, STAGED_TEXT,
+  anyHot, flagOf, needsKnob, restartBlocked, stagedReady, type PolicyStatus
+} from '@/services/updates/policy'
+import { isPanelOnlyRefusal, panelOnlyMessage } from '@/services/wifi/panel-only'
+import type { Heater } from '@/store/printer/types'
 
 interface OtherComponent {
   key: string;
@@ -191,15 +274,117 @@ interface OtherComponent {
  * and Install, which opens the Updating page. Moonraker's update row for
  * MuonOS shows "?" for its versions (OtaDeploy), so this reads the Aux API.
  * Whatever else the updater looks after is available in a nearby fold.
+ *
+ * Automatic updates (KAN-1925): new versions always download in the
+ * background; with the switch on, the printer installs a staged one the next
+ * time it restarts, and "Restart now to update" does that now. Control never
+ * restarts the printer on its own.
  */
 @Component({ components: { ToggleSwitch, TaskFold } })
 export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
   checking = false
   otherSoftwareOpen = false
   installRefusal = ''
+  autoInstall: boolean | null = null
+  presence: boolean | null = null
+  policyLoaded = false
+  policyNote = ''
+  saving = ''
 
   mounted () {
     poll()
+    this.loadPolicy()
+  }
+
+  async loadPolicy () {
+    const get = (url: string) => this.$httpClient.get(url, { validateStatus: () => true })
+      .then(r => (r.status >= 200 && r.status < 300 ? r.data : null))
+      .catch(() => null)
+    const [auto, presence] = await Promise.all([get(AUTO_INSTALL_PATH), get(PRESENCE_PATH)])
+    const status = this.status as PolicyStatus | null
+    this.autoInstall = flagOf(auto, 'enabled') ?? (typeof status?.auto_install === 'boolean' ? status.auto_install : null)
+    this.presence = flagOf(presence, 'required') ?? (typeof status?.install_presence_required === 'boolean' ? status.install_presence_required : null)
+    this.policyLoaded = true
+  }
+
+  get autoText (): string {
+    return this.autoInstall ? AUTO_ON_TEXT : AUTO_OFF_TEXT
+  }
+
+  /** Send the owner's choice; the printer keeps what it accepts and refuses the rest. */
+  async setFlag (which: 'auto' | 'presence', value: boolean) {
+    if (this.saving) return
+    this.saving = which
+    this.policyNote = ''
+    const url = which === 'auto' ? AUTO_INSTALL_PATH : PRESENCE_PATH
+    const body = which === 'auto' ? { enabled: value } : { required: value }
+    try {
+      const r = await this.$httpClient.post(url, body, { validateStatus: () => true })
+      if (r.status === 202 || needsKnob(r.data)) {
+        this.policyNote = `${KNOB_TEXT}. The setting changes when you do.`
+      } else if (r.status >= 200 && r.status < 300) {
+        const kept = flagOf(r.data, which === 'auto' ? 'enabled' : 'required') ?? value
+        if (which === 'auto') this.autoInstall = kept
+        else this.presence = kept
+      } else if (isPanelOnlyRefusal({ response: r })) {
+        this.policyNote = panelOnlyMessage('change how it updates')
+      } else {
+        this.policyNote = "The printer didn't take that change. Try again."
+      }
+    } catch {
+      this.policyNote = "The printer didn't answer. Try again."
+    } finally {
+      this.saving = ''
+    }
+  }
+
+  /** Staged, checked, and the printer installs it on its next restart. */
+  get restartReady (): boolean {
+    return !!this.autoInstall && this.available && stagedReady(this.status)
+  }
+
+  get stagedText (): string {
+    return STAGED_TEXT
+  }
+
+  get hot (): boolean {
+    return anyHot((this.$store.getters['printer/getHeaters'] as Heater[]) ?? [])
+  }
+
+  get restartWhy (): string {
+    return restartBlocked({
+      status: this.status,
+      canControl: this.commandControlAvailable,
+      klippyConnected: this.klippyConnected,
+      printerState: this.printerState,
+      hot: this.hot,
+      active: this.active
+    })
+  }
+
+  async restartToUpdate () {
+    this.installRefusal = this.restartWhy
+    if (!this.restartReady || this.restartWhy) return
+    const target = this.commandTarget
+    const component = this.otaKey
+    const fromVersion = this.status?.current_version ?? null
+    const toVersion = this.status?.target_version ?? null
+    const ok = await this.$confirm(
+      `${this.printerName} restarts into the new version now, which takes a few minutes. Don't turn it off until it is back.`,
+      { title: 'Restart now to update?', buttonTrueText: 'Restart', buttonFalseText: 'Not now' }
+    )
+    if (!ok) return
+    if (target !== this.commandTarget) this.installRefusal = 'Not sent. The selected printer or account changed. Try again.'
+    else if (component !== this.otaKey) this.installRefusal = 'Not sent. The update component changed. Check again.'
+    else if (toVersion !== (this.status?.target_version ?? null)) this.installRefusal = 'Not sent. The staged update changed. Check again.'
+    else if (!this.restartReady || this.restartWhy) this.installRefusal = `Not sent. ${this.restartWhy || 'The update is no longer staged.'}`
+    if (this.installRefusal) return
+    // The printer's own install route: it activates the staged slot and
+    // restarts, and keeps its presence gate (a knob press) when that is on.
+    SocketActions.machineUpdateClient(component)
+    installStarted(fromVersion, toVersion)
+    if (this.presence) this.installRefusal = `${KNOB_TEXT}. The printer restarts when you do.`
+    this.$router.push(this.updatingTo).catch(() => undefined)
   }
 
   get printerName (): string {
@@ -265,6 +450,7 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
     if (phase === 'rebooting') return { text: 'Restarting', tone: 'busy' }
     if (phase === 'verifying' || commitPending(this.status as never)) return { text: 'Checking the update', tone: 'busy' }
     // Staged on the spare slot and waiting for a person: a quiet badge, never "checking".
+    if (this.restartReady) return { text: STAGED_TEXT, tone: 'warn' }
     if (isStaged(this.status as never)) return { text: 'Update ready to install', tone: 'warn' }
     if (this.available) return { text: 'Update ready', tone: 'warn' }
     return { text: 'Up to date', tone: 'ok' }
