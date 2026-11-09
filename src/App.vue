@@ -143,6 +143,7 @@ import { bannerVisible, offlineScreen } from '@/services/updates/model'
 import { printerNameParts } from '@/util/printer-name'
 import { connectionView, type ConnectionView } from '@/services/connection/view'
 import { cloudState } from '@/services/muon-cloud/state'
+import { accountQuickKey } from '@/services/console/settings'
 import { bluetoothCarrying } from '@/services/muon-ble/link'
 import { activationState } from '@/services/muon-cloud/activate'
 import { consolePresence } from '@/services/muon-cloud/presence'
@@ -240,6 +241,16 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   @Watch('theme.isDark', { immediate: true })
   onThemeDark (isDark: boolean) {
     rememberTheme(isDark)
+  }
+
+  /** Whose Look and Ask before apply: the signed-in account's, else anyone's here. */
+  get personalKey (): string | null {
+    return accountQuickKey(cloudState)
+  }
+
+  @Watch('personalKey', { immediate: true })
+  onPersonalKey (key: string | null) {
+    this.$store.dispatch('config/applyPersonal', key)
   }
 
   get theme (): ThemeConfig {
@@ -621,6 +632,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     window.addEventListener('drop', this.handleDrop)
     window.addEventListener('keydown', this.handleKeyDown, false)
     document.addEventListener('visibilitychange', this.onVisibilitySave)
+    this.darkQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null
+    this.darkQuery?.addEventListener?.('change', this.onSystemDark)
 
     // this.onLoadLocale(this.$i18n.locale)
     EventBus.bus.$on('flashMessage', (payload: FlashMessage) => {
@@ -655,6 +668,13 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     window.removeEventListener('drop', this.handleDrop)
     window.removeEventListener('keydown', this.handleKeyDown)
     document.removeEventListener('visibilitychange', this.onVisibilitySave)
+    this.darkQuery?.removeEventListener?.('change', this.onSystemDark)
+  }
+
+  darkQuery: MediaQueryList | null = null
+
+  onSystemDark (event: MediaQueryListEvent) {
+    this.$store.dispatch('config/applySystemDark', event.matches)
   }
 
   handleDragOver (event: DragEvent) {
