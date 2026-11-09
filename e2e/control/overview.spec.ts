@@ -7,6 +7,18 @@
 import type { Locator, Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
 
+/**
+ * The photoreal M1 in software WebGL (SwiftShader) costs seconds a frame and
+ * stalls the page, so clicks never see a stable element. On Windows the
+ * browser draws on the real GPU; elsewhere (Linux CI, no GPU) the stage uses
+ * the simple model, as in overview-parts.spec.ts.
+ */
+const GPU = process.platform === 'win32'
+test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
+test.beforeEach(async ({ page }) => {
+  if (!GPU) await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
+})
+
 const cell = (page: Page, id: string) => page.locator(`[data-cell="${id}"]`)
 const ids = async (page: Page) => page.locator('[data-cell]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.cell))
 const box = async (l: Locator) => {
@@ -140,7 +152,10 @@ test('the phone layout: one column, small widgets two to a row, the Add widget s
   await page.getByTestId('widget-sheet-open').click()
   const sheet = await box(page.getByTestId('widget-sheet').locator('.overview__sheet-card'))
   const viewport = page.viewportSize()!
-  expect(sheet.y + sheet.height).toBeGreaterThan(viewport.height - 2)
+  // Anchored to the bottom, and clear of the tab bar so its buttons can be pressed.
+  const tabs = await box(page.getByRole('navigation', { name: 'Pages' }))
+  expect(sheet.y + sheet.height).toBeLessThanOrEqual(tabs.y + 1)
+  expect(sheet.y + sheet.height).toBeGreaterThan(tabs.y - 40)
   expect(sheet.width).toBeGreaterThan(viewport.width * 0.95)
   await page.getByTestId('widget-add-care').click()
   await expect(cell(page, 'care')).toBeVisible()
