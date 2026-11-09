@@ -194,50 +194,6 @@
       </template>
     </template>
 
-    <template
-      v-if="inLayout"
-      #extension
-    >
-      <app-btn
-        small
-        class="layout-action mx-2"
-        color="primary"
-        @click.stop="handleExitLayout"
-      >
-        {{ $t('app.general.btn.exit_layout') }}
-      </app-btn>
-      <app-btn
-        small
-        class="layout-action mx-2"
-        color="primary"
-        @click.stop="handleResetLayout"
-      >
-        {{ $t('app.general.btn.reset_layout') }}
-      </app-btn>
-      <template v-if="isDashboard">
-        <v-divider
-          vertical
-          class="mx-2"
-        />
-        <app-btn
-          small
-          class="layout-action mx-2"
-          color="primary"
-          @click.stop="handleSetDefaultLayout"
-        >
-          {{ $t('app.general.btn.set_default_layout') }}
-        </app-btn>
-        <app-btn
-          small
-          class="mx-2"
-          color="primary"
-          @click.stop="handleResetDefaultLayout"
-        >
-          {{ $t('app.general.btn.reset_default_layout') }}
-        </app-btn>
-      </template>
-    </template>
-
     <input
       ref="uploadInput"
       type="file"
@@ -266,7 +222,6 @@ import AppSaveConfigAndRestartBtn from './AppSaveConfigAndRestartBtn.vue'
 import AppUploadAndPrintBtn from './AppUploadAndPrintBtn.vue'
 import PrinterSwitchButton from './PrinterSwitchButton.vue'
 import QuickActionsMenu from './QuickActionsMenu.vue'
-import { defaultState } from '@/store/layout/state'
 import FrameMixin from '@/mixins/frame'
 import ServicesMixin from '@/mixins/services'
 import FilesMixin from '@/mixins/files'
@@ -275,7 +230,6 @@ import { SocketActions } from '@/api/socketActions'
 import { EventBus } from '@/eventBus'
 import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
-import { pageOfRoute } from '@/router/printerPagePaths'
 
 /**
  * The header answers three questions in order: where am I (Muon3D, the
@@ -405,10 +359,6 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     return this.$store.getters['server/componentSupport']('power')
   }
 
-  get inLayout (): boolean {
-    return (this.$store.state.config.layoutMode)
-  }
-
   get showSaveConfigAndRestart (): boolean {
     return this.$store.state.config.uiSettings.general.showSaveConfigAndRestart as boolean
   }
@@ -487,56 +437,10 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     return this.$store.state.config.uiSettings.general.enableKeyboardShortcuts
   }
 
-  handleExitLayout () {
-    this.$store.commit('config/setLayoutMode', false)
-  }
-
   /** What U's picker takes: the G-code root's own list, as the header's upload button uses. */
   get gcodeAccept (): string {
     const root = this.$store.getters['files/getRootProperties']('gcodes') as { accepts?: string[] } | undefined
     return (root?.accepts ?? []).join(',')
-  }
-
-  get isDashboard () {
-    return this.$route.name === 'Dashboard'
-  }
-
-  handleResetLayout () {
-    const pathLayouts: Record<string, string> = {
-      '/diagnostics': 'diagnostics'
-    }
-
-    const pathLayout = pathLayouts[pageOfRoute(this.$route)]
-    let layoutDefaultState
-    if (pathLayout) {
-      // reset to default init state
-      layoutDefaultState = defaultState().layouts[pathLayout]
-    } else {
-      // reset dashboard to default layout
-      layoutDefaultState = this.$store.getters['layout/getLayout']('dashboard')
-    }
-
-    const toReset = pathLayout ?? this.$store.getters['layout/getSpecificLayoutName']
-
-    this.$store.dispatch('layout/onLayoutChange', {
-      name: toReset,
-      value: layoutDefaultState
-    })
-  }
-
-  handleSetDefaultLayout () {
-    const currentLayoutName = this.$store.getters['layout/getSpecificLayoutName']
-    this.$store.dispatch('layout/onLayoutChange', {
-      name: 'dashboard',
-      value: this.$store.getters['layout/getLayout'](currentLayoutName)
-    })
-  }
-
-  handleResetDefaultLayout () {
-    this.$store.dispatch('layout/onLayoutChange', {
-      name: 'dashboard',
-      value: defaultState().layouts.dashboard
-    })
   }
 
   async handlePowerToggle () {
@@ -873,10 +777,6 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     height: 36px;
     padding: 0 12px;
     font-size: 12px;
-  }
-
-  .layout-action {
-    min-height: 32px !important;
   }
 
   // Narrower windows keep every control at full size: the printer switch
