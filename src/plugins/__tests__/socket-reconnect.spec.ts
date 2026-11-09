@@ -301,7 +301,7 @@ const socketUrls = () => (WebSocket as unknown as { mock: { calls: unknown[][] }
 
 // KAN-1461: a printer whose socket refused every try was "Connecting" for good.
 describe('WebSocketClient when the printer cannot be reached', () => {
-  it("says why after three failed tries in a row, and keeps trying", async () => {
+  it('says why after three failed tries in a row, and keeps trying', async () => {
     const { client, store } = lanClient()
     await client.connect()
     sockets[0].emit('close', { code: 1006, reason: '', wasClean: false })
