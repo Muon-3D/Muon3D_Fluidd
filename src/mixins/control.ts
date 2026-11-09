@@ -9,6 +9,7 @@ import {
   fanCommand,
   fanPercent,
   fileFilament,
+  filamentSensed,
   lightsOutput,
   loadedChoice,
   materialChoices,
@@ -22,12 +23,14 @@ import {
   savedMaterialColour,
   savedMaterialName,
   type Material,
+  hotendLimitReason,
   type MaterialChoice
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
 import { handMoveSettling, headStatus, lockHandMove, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
 import { EventBus } from '@/eventBus'
+import type { LoadedFilament } from '@/services/jobs/model'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
 
@@ -168,6 +171,27 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   }
 
   /**
+   * Whether filament is in the printer, from a trustworthy filament sensor
+   * (a switch sensor, switched on; see filamentSensed): null when none
+   * reports, where only what someone said is loaded can tell.
+   */
+  get filamentSensed (): boolean | null {
+    return filamentSensed(this.$store.state.printer.printer)
+  }
+
+  /**
+   * Whether the printer has a material loaded, and which: the filament sensor
+   * says whether there is any, the recorded material says which. With no
+   * sensor reporting, a recorded material is what there is to go on. A
+   * material chosen as a preset (the heater targets) says nothing about this.
+   */
+  get loadedFilament (): LoadedFilament {
+    const name = this.loadedMaterial?.name ?? null
+    const sensed = this.filamentSensed
+    return { loaded: sensed ?? !!name, name }
+  }
+
+  /**
    * While a print runs and nobody has said what's loaded: what its file was
    * sliced for, which is what is feeding now. Shown as that, never saved as
    * the loaded record (14 Oct: Walnut printing showed "Not set").
@@ -207,9 +231,24 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     }
   }
 
+  /** The extruder's hard limit, from printer.cfg, or null when the printer didn't say. */
+  get extruderMaxTemp (): number | null {
+    const max = Number(this.$store.state.printer?.printer?.configfile?.settings?.extruder?.max_temp)
+    return Number.isFinite(max) && max > 0 ? max : null
+  }
+
+  /** Tells the person why nothing was sent, when the material is hotter than the hotend can go. True if it is. */
+  refuseTooHot (name: string | undefined, nozzle: number | null | undefined): boolean {
+    const reason = hotendLimitReason(name, nozzle, this.extruderMaxTemp)
+    if (!reason) return false
+    EventBus.$emit(reason, { type: 'error', timeout: 8000 })
+    return true
+  }
+
   /** Heats for a material: as its preset says when it has one, else to its temperatures. */
   heatFor (choice: MaterialChoice) {
     if (!this.controlReady) return
+    if (this.refuseTooHot(choice.name, choice.nozzle)) return
     const preset = choice.presetId === null ? undefined : this.presets.find(p => p.id === choice.presetId)
     if (preset) {
       presetCommands(preset).forEach(g => this.sendGcode(g))
@@ -227,6 +266,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
 
   applyMaterial (material: Material) {
     if (!this.controlReady) return
+    if (this.refuseTooHot(material.name, material.nozzle)) return
     const preset = this.presets.find(p => p.id === material.id)
     if (preset) presetCommands(preset).forEach(g => this.sendGcode(g))
   }

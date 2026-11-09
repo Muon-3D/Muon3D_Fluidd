@@ -52,14 +52,18 @@
 
         <app-btn
           v-if="printerSupportsForceMove"
-          :disabled="!klippyReady || printerPrinting"
+          :disabled="!klippyReady || printerPrinting || devOnlyLocked"
           small
           class="ms-1 my-1"
-          :color="forceMove ? 'error' : undefined"
+          :color="forceMove && !devOnlyLocked ? 'error' : undefined"
           @click="toggleForceMove"
         >
           FORCE_MOVE
         </app-btn>
+        <dev-only-note
+          v-if="printerSupportsForceMove && devOnlyLocked"
+          class="ms-1 my-1"
+        />
 
         <app-btn
           v-if="hasSteppersEnabled"
@@ -152,6 +156,8 @@
 <script lang="ts">
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
+import DevGuardMixin from '@/mixins/dev-guard'
+import DevOnlyNote from './DevOnlyNote.vue'
 import ToolheadMixin from '@/mixins/toolhead'
 import Toolhead from './Toolhead.vue'
 import type { Macro } from '@/store/macros/types'
@@ -166,10 +172,11 @@ type Tool = {
 
 @Component({
   components: {
+    DevOnlyNote,
     Toolhead
   }
 })
-export default class ToolheadCard extends Mixins(StateMixin, ToolheadMixin) {
+export default class ToolheadCard extends Mixins(StateMixin, ToolheadMixin, DevGuardMixin) {
   manualProbeDialogOpen = false
   bedScrewsAdjustDialogOpen = false
   screwsTiltAdjustDialogOpen = false
@@ -434,6 +441,7 @@ export default class ToolheadCard extends Mixins(StateMixin, ToolheadMixin) {
   }
 
   async toggleForceMove () {
+    if (this.devOnlyLocked) return
     const result = (
       this.forceMove ||
       !this.$store.state.config.uiSettings.general.forceMoveToggleWarning ||

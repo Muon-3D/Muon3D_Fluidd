@@ -1,10 +1,17 @@
 <template>
   <printer-stage
     class="m1-live"
-    :class="{ 'm1-live--on': shown }"
+    :class="{ 'm1-live--on': shown, 'm1-live--still': !viewerSettings.animate }"
     :state="state"
     data-tid="m1-live"
     :data-live="shown ? 'on' : 'off'"
+    :data-state-source="accessories ? accessories.source : undefined"
+    :data-fan-fault="fanFacts.fault ? 'yes' : 'no'"
+    :data-part-fan="Math.round(fanFacts.partSpeed * 100)"
+    :data-show-model="showModel ? 'on' : 'off'"
+    :data-detail="viewerSettings.detail"
+    :data-glass="viewerSettings.glass"
+    :data-animations="viewerSettings.animate ? 'on' : 'off'"
   >
     <div
       v-if="live"
@@ -13,6 +20,13 @@
       :title="shown ? 'Drag to turn it; double-click to put it back' : undefined"
       aria-hidden="true"
     />
+    <m1-parts
+      v-if="parts && shown"
+      :viewer="viewer"
+      :canvas="canvas"
+      :stage-state="state"
+      @select="$emit('select-part', $event)"
+    />
   </printer-stage>
 </template>
 
@@ -20,24 +34,30 @@
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import MaintenanceMixin from '@/mixins/maintenance'
 import PrinterStage from '@/components/printers/PrinterStage.vue'
+import M1Parts from './M1Parts.vue'
 import { Waits } from '@/globals'
 import { claimLiveView } from '@/services/m1-3d/live-slot'
-import { built, canDrawWebgl, loadViewer, newCanvas, park, prebuild, takeParked } from '@/services/m1-3d/parked'
+import { built, canDrawWebgl, loadViewer, newCanvas, park, prebuild, takeParked, viewerKey } from '@/services/m1-3d/parked'
 import { liveSyncFor, type LiveSync } from '@/services/m1-3d/live-sync'
-import { liveAccessories, sameAccessories, type Accessories } from '@/services/m1-3d/accessories'
+import { fansFrom, liveAccessories, sameAccessories, type Accessories, type FanFacts } from '@/services/m1-3d/accessories'
 import { plateTaps, screenFrom, type LedStrip, type PlateTap, type ScreenState } from '@/services/m1-3d/live-state'
 import { motionPathFrom, type MotionPath } from '@/services/m1-3d/motion'
 import { modelPose, samePose, type ModelPose } from '@/services/m1-3d/pose'
 import { partColour, segmentsDone, toolpathFrom, toolpathFromGcode, type Toolpath } from '@/services/m1-3d/toolpath'
-import type { M1Viewer } from '@/services/m1-3d/viewer'
+import type { DrawnState, M1Viewer } from '@/services/m1-3d/viewer'
+import { modelAnimates, modelDetail, modelGlass, type ModelDetail, type ModelGlass } from '@/services/m1-3d/render-options'
+import { modelSettings } from '@/services/m1-3d/device-settings'
 import type { ThumbState } from '@/components/ui/PrinterThumb.vue'
 import type { Move } from '@/store/gcodePreview/types'
 import { httpClientActions } from '@/api/httpClientActions'
 import { cloudState } from '@/services/muon-cloud/state'
 import { activeSlug } from '@/services/printer-pages'
-import { ACTIVE_PHASES } from '@/services/updates/model'
+import { bannerVisible } from '@/services/updates/model'
 import { updateWatch } from '@/services/updates/watch'
 import { afterFirstPaint } from '@/services/startup/idle'
+
+/** Per view: the clip each part is playing (M1Live.markDrawn). */
+const playingByView = new WeakMap<object, Record<string, string>>()
 
 /** The biggest file the stage loads into the G-code preview by itself (the preview keeps every move as an object). */
 const AUTO_LOAD_BYTES = 16 * 1024 * 1024
@@ -73,7 +93,7 @@ const PART_STATES = ['printing', 'paused', 'complete', 'cancelled', 'error']
  * can't draw it, when another live M1 is on screen, or while this one is
  * scrolled away.
  */
-@Component({ components: { PrinterStage } })
+@Component({ components: { PrinterStage, M1Parts } })
 export default class M1Live extends Mixins(MaintenanceMixin) {
   @Prop({ type: String, default: 'idle' })
   readonly state!: ThumbState
@@ -81,6 +101,10 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   /** Moves the machine left by this share of the stage, to clear a card on the right. */
   @Prop({ type: Number, default: 0 })
   readonly shift!: number
+
+  /** Lets a person point at the plate, toolhead, filament and screen (M1Parts); the Overview turns it on. */
+  @Prop({ type: Boolean, default: false })
+  readonly parts!: boolean
 
   /** Whether this view holds the live M1 and has a canvas for it. */
   live = false
@@ -96,6 +120,10 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   reducedMotionQuery: MediaQueryList | null = null
   reducedMotionListener: ((event: MediaQueryListEvent) => void) | null = null
   lastAccessories: Accessories | null = null
+  /** The system's prefers-reduced-motion, the animations' default. */
+  reducedMotion = false
+  /** What the viewer on the stage was built with (see viewerKey). */
+  heldKey = ''
 
   /** The print drawn, built from the preview once per file; frozen, so Vue leaves it alone. */
   printPath: Readonly<Toolpath> | null = null
@@ -124,6 +152,41 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     return liveSyncFor(activeSlug() ?? (this.$store.state.config.apiUrl as string) ?? '')
   }
 
+  /** Settings › G-code preview and 3D › Show the 3D printer; off, the stage shows its picture. */
+  get showModel (): boolean {
+    return modelSettings.show
+  }
+
+  get viewerSettings (): { detail: ModelDetail, glass: ModelGlass, animate: boolean } {
+    return {
+      detail: modelDetail(modelSettings.detail),
+      glass: modelGlass(modelSettings.glass),
+      animate: modelAnimates(modelSettings.animations, this.reducedMotion)
+    }
+  }
+
+  /** The print so far on the model's plate, unless Settings turned that off. */
+  get shownPrintPath (): Readonly<Toolpath> | null {
+    return modelSettings.printGrowing ? this.printPath : null
+  }
+
+  @Watch('shownPrintPath')
+  onShownPrintPath () {
+    this.viewer?.setPrint(this.shownPrintPath, this.partColour)
+  }
+
+  @Watch('viewerSettings')
+  onViewerSettings (settings: { animate: boolean }) {
+    this.sync().accessories.reducedMotion = !settings.animate
+    this.viewer?.wake()
+  }
+
+  @Watch('showModel')
+  onShowModel (show: boolean) {
+    if (show) this.wake()
+    else this.stop()
+  }
+
   get pose (): ModelPose {
     return modelPose({
       position: this.position,
@@ -137,7 +200,21 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     return (this.$store.state.printer.printer.print_stats?.state as string | undefined) ?? ''
   }
 
-  /** Null until the printer's first status has arrived (see liveAccessories). */
+  /**
+   * The fans as the printer reports them. The accurate model has no fan to
+   * turn (the deck fan is part of the base's one mesh, and there is no part
+   * fan), so they are only marked on the stage's element.
+   */
+  get fanFacts (): FanFacts {
+    return fansFrom(this.$store.state.printer.printer)
+  }
+
+  /**
+   * The plate, toolhead, Z column and filament the model shows: from Harry's
+   * printer-state machine (Klipper's m1_machine) when the printer runs it,
+   * else from each sensor (accessories.ts). Null until the printer's first
+   * status has arrived (see liveAccessories).
+   */
   get accessories (): Accessories | null {
     return liveAccessories(
       this.$store.state.printer.printer,
@@ -149,9 +226,10 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   mounted () {
     this.sync().setPose(this.pose)
     this.reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null
-    this.sync().accessories.reducedMotion = this.reducedMotionQuery?.matches ?? false
+    this.reducedMotion = this.reducedMotionQuery?.matches ?? false
+    this.sync().accessories.reducedMotion = !this.viewerSettings.animate
     this.reducedMotionListener = event => {
-      this.sync().accessories.reducedMotion = event.matches
+      this.reducedMotion = event.matches
       this.viewer?.wake()
     }
     if (this.reducedMotionQuery?.addEventListener) {
@@ -207,13 +285,13 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   /** Starts the live M1 when it can show (on screen, the printer there), and draws only while it shows. */
   wake () {
     if (!this.armed) return
-    const showing = this.visible && this.state !== 'offline' && !document.hidden
+    const showing = this.visible && this.showModel && this.state !== 'offline' && !document.hidden
     this.viewer?.setActive(showing)
     if (showing && !this.live) this.start()
   }
 
   async start () {
-    if (!this.armed) return
+    if (!this.armed || !this.showModel) return
     this.live = true
     this.giveBack = claimLiveView(() => this.stop())
     try {
@@ -225,7 +303,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
         if (!this.live || !this.$refs.slot) return
         const canvas = newCanvas()
         ;(this.$refs.slot as HTMLElement).appendChild(canvas)
-        held = { viewer: createViewer(canvas), canvas }
+        held = { viewer: createViewer(canvas), canvas, key: viewerKey() }
       } else {
         await this.$nextTick()
         const slot = this.$refs.slot as HTMLElement | undefined
@@ -237,6 +315,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
       }
       const { viewer, canvas } = held
       this.canvas = canvas
+      this.heldKey = held.key
       viewer.setActive(true)
       viewer.restyle()
       viewer.onFrame = () => {
@@ -244,6 +323,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
         viewer.onFrame = null
       }
       viewer.setShift(this.shift)
+      viewer.onDraw = drawn => this.markDrawn(drawn)
       this.viewer = viewer
       this.sync().setPose(this.pose)
       this.lastReport = ''
@@ -263,13 +343,53 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   stop () {
     const viewer = this.viewer
     const canvas = this.canvas
+    if (viewer) viewer.onDraw = null
     this.viewer = null
     this.canvas = null
     this.live = false
     this.shown = false
     this.giveBack?.()
     this.giveBack = null
-    if (viewer && canvas) park({ viewer, canvas })
+    if (viewer && canvas) park({ viewer, canvas, key: this.heldKey })
+  }
+
+  /**
+   * Marks what the model drew on the stage's element (data-model,
+   * data-plate, data-toolhead, data-column, data-filament): the state once a
+   * clip ends, the clip's name while it plays. data-played lists the last
+   * clips started ("part:clip", newest last), so a test can see a clip ran
+   * even when a slow renderer draws none of its frames. Written straight to
+   * the element, not through Vue, since it runs every frame.
+   */
+  markDrawn ({ model, accessories: a }: DrawnState) {
+    const el = this.$el as HTMLElement | undefined
+    if (!el?.dataset) return
+    const marks: Record<string, string> = { model }
+    if (a) {
+      marks.plate = a.plate.clip ?? (a.plate.on ? 'on' : 'off')
+      marks.toolhead = a.tube.clip ?? (a.tube.attached ? (a.tube.unlocking ? 'unlocking' : 'connected') : 'disconnected')
+      marks.column = a.column.clip ?? a.column.state
+      marks.filament = a.filament.clip ?? (a.filament.loaded ? 'loaded' : 'empty')
+    }
+    const clips = a ? { plate: a.plate.clip, toolhead: a.tube.clip, column: a.column.clip, filament: a.filament.clip } : {}
+    for (const [part, clip] of Object.entries(clips)) {
+      if (!clip || this.playing[part] === clip) continue
+      this.playing[part] = clip
+      const played = (el.dataset.played ?? '').split(' ').filter(Boolean)
+      played.push(`${part}:${clip}`)
+      el.dataset.played = played.slice(-24).join(' ')
+    }
+    for (const [part, clip] of Object.entries(clips)) if (!clip) delete this.playing[part]
+    for (const [key, value] of Object.entries(marks)) {
+      if (el.dataset[key] !== value) el.dataset[key] = value
+    }
+  }
+
+  /** The clip each part is playing now, so a clip is listed in data-played once per start. Kept out of Vue. */
+  get playing (): Record<string, string> {
+    let p = playingByView.get(this)
+    if (!p) playingByView.set(this, p = {})
+    return p
   }
 
   // -- where the head and the bed are ----------------------------------------
@@ -286,7 +406,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
   onAccessories (a: Accessories | null) {
     if (!a || sameAccessories(this.lastAccessories, a)) return
     this.lastAccessories = a
-    this.sync().accessories.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    this.sync().accessories.reducedMotion = !this.viewerSettings.animate
     this.sync().setAccessories(a, performance.now(), !!this.printPath)
     this.viewer?.wake()
   }
@@ -435,7 +555,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     // A finished print is followed no longer: all of it is on the plate.
     this.sync().setPath(this.printState === 'complete' ? null : this.motionPath)
     this.onFilePosition()
-    this.viewer?.setPrint(this.printPath, this.partColour)
+    this.viewer?.setPrint(this.shownPrintPath, this.partColour)
   }
 
   @Watch('filePosition')
@@ -462,7 +582,7 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     const remembered = updateWatch.remembered
     return screenFrom({
       printState: this.printState,
-      updating: !!remembered && ACTIVE_PHASES.includes(remembered.phase),
+      updating: bannerVisible(remembered, updateWatch.now, !!updateWatch.answered),
       homing: this.hasWait([Waits.onHomeAll, Waits.onHomeXY, Waits.onHomeX, Waits.onHomeY, Waits.onHomeZ]) || phase === 'homing',
       probing: this.measuring || phase === 'measuring',
       progress: this.$store.getters['printer/getPrintProgress'] as number,
@@ -553,6 +673,10 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     &:active {
       cursor: grabbing;
     }
+  }
+
+  .m1-live--still :deep(.m1-live__canvas) {
+    transition: none;
   }
 
   .m1-live--on {

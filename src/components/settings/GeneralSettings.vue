@@ -258,19 +258,6 @@
           </div>
           <div class="m3-set__row">
             <div class="m3-set__label">
-              <b>Camera switch on Overview</b>
-              <span>Shows a 3D view / Camera switch on the main view when a camera is set up. Turn it off to always show the 3D view.</span>
-            </div>
-            <div class="m3-set__control">
-              <toggle-switch
-                :value="overviewCameraToggle"
-                label="Camera switch on Overview"
-                @input="overviewCameraToggle = $event"
-              />
-            </div>
-          </div>
-          <div class="m3-set__row">
-            <div class="m3-set__label">
               <b>Diagnostics</b>
               <span>Records how busy each board is, for Charts. Uses a little more of the printer.</span>
             </div>
@@ -620,18 +607,6 @@ export default class GeneralSettings extends Mixins(StateMixin) {
   set printEtaCalculation (value: PrintEtaCalculation[]) {
     this.$store.dispatch('config/saveByPath', {
       path: 'uiSettings.general.printEtaCalculation',
-      value,
-      server: true
-    })
-  }
-
-  get overviewCameraToggle (): boolean {
-    return this.$store.state.config.uiSettings.general.overviewCameraToggle !== false
-  }
-
-  set overviewCameraToggle (value: boolean) {
-    this.$store.dispatch('config/saveByPath', {
-      path: 'uiSettings.general.overviewCameraToggle',
       value,
       server: true
     })

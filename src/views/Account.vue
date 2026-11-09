@@ -8,6 +8,7 @@
       v-if="returnToLibrary"
       :href="returnToLibrary"
       class="acct-back"
+      :class="{ 'acct-back--saved': profileSaved }"
       data-tid="account-library-return"
     >
       <frame-icon
@@ -16,46 +17,52 @@
       />
       Back to Library
     </a>
+    <router-link
+      v-else-if="printerBack"
+      :to="printerBack.to"
+      class="acct-back acct-back--chip"
+      data-tid="account-printer-return"
+    >
+      <frame-icon
+        name="chevronLeft"
+        small
+      />
+      Back to {{ printerBack.name }}
+    </router-link>
     <nav
       v-if="showList"
       class="acct-nav"
       aria-label="Account sections"
     >
       <span class="lib-caps">Account</span>
-      <router-link
-        v-for="section in mainSections"
-        :key="section.id"
-        :to="linkTo(section.id)"
-        class="acct-nav__item"
-        :class="{ 'acct-nav__item--on': !isMobileViewport && section.id === current.id }"
-        :aria-current="section.id === current.id ? 'page' : undefined"
-        :data-tid="`account-nav-${section.id}`"
-      >
-        <frame-icon
-          :name="section.icon"
-          small
-        />
-        <span class="acct-nav__label">{{ section.label }}</span>
-        <frame-icon
-          v-if="isMobileViewport"
-          name="chevronRight"
-          small
-        />
-      </router-link>
+      <template v-for="entry in nav">
+        <span
+          :key="`group-${entry.group}`"
+          class="acct-nav__group"
+          :data-tid="`account-nav-group-${entry.group}`"
+        >{{ entry.group }}</span>
+        <router-link
+          v-for="section in entry.sections"
+          :key="section.id"
+          :to="linkTo(section.id)"
+          class="acct-nav__item"
+          :class="{ 'acct-nav__item--on': !isMobileViewport && section.id === navId }"
+          :aria-current="section.id === navId ? 'page' : undefined"
+          :data-tid="`account-nav-${section.id}`"
+        >
+          <frame-icon
+            :name="section.icon"
+            small
+          />
+          <span class="acct-nav__label">{{ section.label }}</span>
+          <frame-icon
+            v-if="isMobileViewport"
+            name="chevronRight"
+            small
+          />
+        </router-link>
+      </template>
       <div class="acct-nav__rule" />
-      <router-link
-        v-if="deleteSection"
-        :to="linkTo('delete')"
-        class="acct-nav__item acct-nav__item--danger"
-        :class="{ 'acct-nav__item--on': !isMobileViewport && current.id === 'delete' }"
-        data-tid="account-nav-delete"
-      >
-        <frame-icon
-          name="trash"
-          small
-        />
-        <span class="acct-nav__label">Delete account</span>
-      </router-link>
       <button
         v-if="signedIn"
         type="button"
@@ -154,7 +161,11 @@
           v-if="current.id === 'overview'"
           :link-to="linkTo"
         />
-        <account-profile v-else-if="current.id === 'profile'" />
+        <account-profile
+          v-else-if="current.id === 'profile'"
+          :link-to="linkTo"
+          @saved="profileSaved = true"
+        />
         <account-security
           v-else-if="current.id === 'security'"
           :link-to="linkTo"
@@ -167,18 +178,35 @@
           v-else-if="current.id === 'printers'"
           :link-to="linkTo"
         />
-        <account-tokens v-else-if="current.id === 'tokens'" />
-        <account-connected-apps
-          v-else-if="current.id === 'apps'"
-          :link-to="linkTo"
-        />
+        <template v-else-if="current.id === 'apps'">
+          <!-- Apps and agents: connected apps and access tokens, on one page (J12). -->
+          <account-connected-apps :link-to="linkTo" />
+          <account-tokens />
+        </template>
         <account-notifications v-else-if="current.id === 'notifications'" />
         <library-settings v-else-if="current.id === 'library'" />
         <account-plan v-else-if="current.id === 'plan'" />
-        <account-privacy
-          v-else-if="current.id === 'privacy'"
-          :link-to="linkTo"
-        />
+        <template v-else-if="current.id === 'privacy'">
+          <!-- Your data: privacy, then Delete account (settings/MAP.md). -->
+          <account-privacy :link-to="linkTo" />
+          <router-link
+            v-if="deleteSection"
+            :to="linkTo('delete')"
+            class="lib-surface acct-card acct-data-delete"
+            data-tid="account-data-delete"
+          >
+            <span class="acct-row">
+              <span class="acct-row__label">
+                <b class="acct-data-delete__title">Delete account</b>
+                <span>Your account, your Library and your access to every printer</span>
+              </span>
+              <frame-icon
+                name="chevronRight"
+                small
+              />
+            </span>
+          </router-link>
+        </template>
         <account-delete
           v-else-if="current.id === 'delete'"
           :link-to="linkTo"
@@ -201,8 +229,10 @@ import { deletionState } from '@/services/muon-cloud/deletion'
 import { cloudBaseUrl } from '@/services/muon-cloud/api'
 import { centralLoginEnabled } from '@/services/muon-cloud/centralLogin'
 import { activeSlug } from '@/services/printer-pages'
+import { printerNameParts } from '@/util/printer-name'
+import { accountCameFrom, backTarget } from '@/services/account/came-from'
 import { scopedPath } from '@/router/printerPagePaths'
-import { accountSectionFor, accountSections, libraryReturnUrl, type AccountSection, type AccountSectionId } from '@/services/account/model'
+import { accountNav, accountNavId, accountSectionFor, accountSections, libraryReturnUrl, type AccountNavGroup, type AccountSection, type AccountSectionId } from '@/services/account/model'
 import { accountState, loadMe } from '@/services/account/state'
 import AccountOverview from '@/components/account/AccountOverview.vue'
 import AccountProfile from '@/components/account/AccountProfile.vue'
@@ -214,9 +244,9 @@ import '@/scss/muon3d-account.scss'
 
 /**
  * Your account (`/account`, KAN-532): its sections on the left, the one
- * chosen on the right, by the address (`/account/profile`). With a printer
- * open the same pages sit under it (`/boxwood-367a/account`), beside its
- * rail. On a phone the list is a page and a section opens over it.
+ * chosen on the right, by the address (`/account/profile`). Always top-level,
+ * never inside a printer's view: `/boxwood-367a/account` opens `/account`,
+ * and with a printer open there's a way back to it. On a phone the list is a page and a section opens over it.
  *
  * Only where the console serves Fluidd: on a printer's own page the account's
  * settings open on the console's page instead, where passkeys work and the
@@ -242,6 +272,17 @@ import '@/scss/muon3d-account.scss'
 })
 export default class Account extends Mixins(BrowserMixin) {
   accountDialog = false
+  /** Profile saved: the way back to the Library is emphasised. */
+  profileSaved = false
+
+  /** Account is its own page (Jack, 6 Nov); with a printer open, a way back to it. */
+  get printerBack (): { to: string, name: string } | null {
+    const slug = activeSlug()
+    if (!slug) return null
+    const name = printerNameParts((this.$store.getters['config/getDisplayName'] as string) || '').name
+    // The page you came from on that printer, else its home.
+    return { to: backTarget(accountCameFrom.path, slug), name: name || 'the printer' }
+  }
 
   get returnToLibrary (): string | null {
     return libraryReturnUrl(this.$route.query.return)
@@ -290,8 +331,14 @@ export default class Account extends Mixins(BrowserMixin) {
     return this.deleting ? all.filter(section => section.id === 'privacy' || section.id === 'delete') : all
   }
 
-  get mainSections (): AccountSection[] {
-    return this.sections.filter(section => section.id !== 'delete')
+  /** The nav, in its three groups. */
+  get nav (): Array<{ group: AccountNavGroup, sections: AccountSection[] }> {
+    return accountNav(this.sections)
+  }
+
+  /** The nav item lit for this page: Delete account is inside Your data. */
+  get navId (): AccountSectionId {
+    return accountNavId(this.current.id)
   }
 
   get deleteSection (): AccountSection | undefined {

@@ -8,6 +8,8 @@ export interface DiagnosticsCardConfig extends LayoutConfig {
   icon: string
   title: string
   height: number
+  /** Columns of twelve the chart's tile takes on the Charts page; unset, the layout's. */
+  span?: number
 
   axes: ChartAxis[]
 }
