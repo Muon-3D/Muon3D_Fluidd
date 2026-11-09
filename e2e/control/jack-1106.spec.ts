@@ -107,7 +107,7 @@ test.describe('quick actions icon', () => {
     expect(Math.abs((bolt.y + bolt.height / 2) - (box.y + box.height / 2))).toBeLessThanOrEqual(1)
 
     // Level with the notifications bell beside it.
-    const bell = (await page.getByRole('button', { name: 'Notifications' }).boundingBox())!
+    const bell = (await page.getByTestId('notices-bell').boundingBox())!
     expect(Math.abs(box.y - bell.y)).toBeLessThanOrEqual(1)
     expect(Math.abs(box.height - bell.height)).toBeLessThanOrEqual(1)
   })
