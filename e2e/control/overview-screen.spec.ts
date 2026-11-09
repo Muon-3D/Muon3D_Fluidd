@@ -22,7 +22,7 @@ const STUB = `<!doctype html><html><body><script>
   window.addEventListener('message', e => {
     if (e.source !== window.parent || !e.data || e.data.type !== 'muon-panel-port') return
     const port = e.ports[0]
-    port.onmessage = m => { window.results.push(m.data) }
+    port.onmessage = m => { window.results.push(m.data); window.parent.postMessage({ type: 'stub-results', results: window.results }, '*') }
     port.postMessage({ id: 1, kind: 'rpc', method: 'printer.info' })
     port.postMessage({ id: 2, kind: 'rpc', method: 'printer.gcode.script', params: { script: 'G1 X100 Y10 Z0' } })
     port.postMessage({ id: 3, kind: 'aux', method: 'POST', path: '/wifi/ap/down', body: {} })
@@ -32,7 +32,19 @@ const STUB = `<!doctype html><html><body><script>
   window.parent.postMessage({ type: 'muon-panel-hello', version: 1 }, '*')
 </script></body></html>`
 
+type StubResult = { id: number, ok: boolean, error?: { message: string } }
+
+/** What the stub got back, as it tells Control's page (no reaching into the sandboxed frame). */
+async function stubResults (page: Page): Promise<StubResult[]> {
+  return await page.evaluate(() => (window as unknown as { stubResults?: StubResult[] }).stubResults ?? [])
+}
+
 async function servePanel (page: Page) {
+  await page.addInitScript(() => {
+    window.addEventListener('message', e => {
+      if (e.data?.type === 'stub-results') (window as unknown as { stubResults: unknown }).stubResults = e.data.results
+    })
+  })
   await page.route('**/panel/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: STUB }))
 }
 
@@ -59,10 +71,9 @@ test('the screen opens the printer\'s own screen; only allowed calls reach the p
   await clickScreen(page)
   await expect(page.getByTestId('m1-screen')).toHaveAttribute('data-phase', 'open')
 
-  const frame = page.frameLocator('[data-tid="m1-screen-frame"]')
-  await expect.poll(() => frame.locator('body').evaluate(() => (window as unknown as { results: unknown[] }).results.length)).toBe(5)
+  await expect.poll(() => stubResults(page).then(rs => rs.map(r => r.id).sort())).toEqual([1, 2, 3, 4, 5])
   await refusedSaid
-  const results = await frame.locator('body').evaluate(() => (window as unknown as { results: Array<{ id: number, ok: boolean, error?: { message: string } }> }).results)
+  const results = await stubResults(page)
   const byId = Object.fromEntries(results.map(r => [r.id, r]))
   expect(byId[1].ok).toBe(true)
   expect(byId[2]).toMatchObject({ ok: false, error: { message: 'Do this on the printer itself' } })
