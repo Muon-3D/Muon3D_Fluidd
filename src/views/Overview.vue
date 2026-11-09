@@ -69,6 +69,7 @@
         :class="[`overview__cell--${tile.id}`, { 'overview__cell--moving': drag && drag.kind === 'move' && drag.id === tile.id, 'overview__cell--over': drag && drag.over === tile.id }]"
         :style="cellStyle(tile)"
         :data-cell="tile.id"
+        :data-size="tile.sizeKey"
       >
         <!-- While editing, the tile is only a picture: nothing in it can be pressed or focused. -->
         <div
@@ -89,6 +90,7 @@
           <component
             :is="tile.component"
             v-bind="tile.props"
+            :size="tile.sizeKey"
           />
         </div>
         <template v-if="editing">
@@ -262,18 +264,21 @@ import { Component, Vue, Watch } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
 import { overviewTiles, type OverviewTileDef } from '@/components/widgets/overview/registry'
 import {
-  addTile, defaultLayout, moveBy, moveTile, nudgeSize, removeTile, resizeTile, serverLayoutKey,
+  addTile, defaultLayout, moveBy, moveTile, nudgeSize, removeTile, resizeTile, serverLayoutKey, sizeKeyOf,
   type OverviewLayout, type PlacedTile
 } from '@/services/overview/layout'
-import { isMuonPrinter, searchWidgets, widgetCategories, widgetsFor, type WidgetCategory } from '@/services/overview/widgets'
+import { reducedMotion, springCurve, springKeyframes } from '@/services/overview/spring'
+import { searchWidgets, treatAsMuon, widgetCategories, widgetsFor, type WidgetCategory } from '@/services/overview/widgets'
 import { loadLayout, saveLayout, type LayoutContext } from '@/services/overview/layout-store'
 
 /** A tile as drawn: what the registry says it is, at the size the layout gives it. */
-type DrawnTile = OverviewTileDef & PlacedTile
+type DrawnTile = OverviewTileDef & PlacedTile & { sizeKey: string }
 
 interface Drag { kind: 'move'; id: string; over: string | null; x: number; y: number }
 
 const GRID_GAP = 16
+/** The id of every spring this page starts, so a test (or devtools) can tell them from other animations. */
+const SPRING = 'overview-spring'
 
 /**
  * The printer's own page: the live 3D view, the print job, the filament,
@@ -304,7 +309,7 @@ export default class Overview extends Vue {
 
   /** The widgets this printer has: a Muon printer never has Z offset. */
   get defs (): OverviewTileDef[] {
-    return widgetsFor(overviewTiles, isMuonPrinter(this.$store.state.server?.info?.components))
+    return widgetsFor(overviewTiles, treatAsMuon(this.$store.getters['server/isMuonPrinter']))
   }
 
   get editing (): boolean { return this.draft !== null }
@@ -328,7 +333,7 @@ export default class Overview extends Vue {
   get tiles (): DrawnTile[] {
     return this.current.tiles.flatMap(p => {
       const def = this.defs.find(d => d.id === p.id)
-      return def ? [{ ...def, ...p }] : []
+      return def ? [{ ...def, ...p, sizeKey: sizeKeyOf(def, p) ?? def.size }] : []
     })
   }
 
@@ -342,30 +347,45 @@ export default class Overview extends Vue {
 
   openSheet () { this.query = ''; this.category = null; this.picked = {}; this.sheet = true }
 
-  /** Glide each tile from where it was to where it is: moved, resized, added or put away. */
+  /**
+   * Springs each tile from where it was to where it is: moved, resized, added
+   * or put away, and the others making room while one is dragged. Only
+   * transforms are animated; each tile is measured once before and once after.
+   */
   @Watch('current')
   glide () {
-    const before = this.rects
+    // Only what someone does in Edit moves with a spring; the page loading or a saved layout arriving just draws.
+    if (reducedMotion() || !this.editing) return
+    // User watchers run before the re-render, so this is still the old layout (mid-spring if one is running).
+    const before = new Map<string, DOMRect>()
+    for (const t of this.current.tiles) {
+      const el = this.cellEl(t.id)
+      if (el) before.set(t.id, el.getBoundingClientRect())
+    }
+    for (const [id, rect] of this.rects) if (!before.has(id)) before.set(id, rect)
     this.$nextTick(() => {
-      const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      const after = new Map<string, DOMRect>()
+      const curve = springCurve()
+      const dragged = this.drag?.kind === 'move' ? this.drag.id : null
+      const moves: Array<[HTMLElement, Keyframe[]]> = []
       for (const t of this.current.tiles) {
-        const el = (this.$refs[`cell-${t.id}`] as HTMLElement[] | undefined)?.[0]
-        if (!el) continue
-        const now = el.getBoundingClientRect()
-        after.set(t.id, now)
+        const el = this.cellEl(t.id)
         const was = before.get(t.id)
-        if (!was || reduce || typeof el.animate !== 'function' || !now.width || !now.height) continue
-        const dx = was.left - now.left
-        const dy = was.top - now.top
-        const sx = was.width / now.width
-        const sy = was.height / now.height
-        if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.01 && Math.abs(sy - 1) < 0.01) continue
-        // A little overshoot on the way in, so it settles rather than stops.
-        el.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, transformOrigin: 'top left' }, { transform: 'none', transformOrigin: 'top left' }], { duration: 380, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.15)' })
+        if (!el || !was || t.id === dragged || typeof el.animate !== 'function') continue
+        el.getAnimations?.().forEach(a => a.cancel())
+        const now = el.getBoundingClientRect()
+        if (!now.width || !now.height) continue
+        const from = { dx: was.left - now.left, dy: was.top - now.top, sx: was.width / now.width, sy: was.height / now.height }
+        if (Math.abs(from.dx) < 1 && Math.abs(from.dy) < 1 && Math.abs(from.sx - 1) < 0.01 && Math.abs(from.sy - 1) < 0.01) continue
+        moves.push([el, springKeyframes(from, curve)])
       }
-      this.rects = after
+      // Measure everything first, then start every spring, so the browser lays out once.
+      for (const [el, frames] of moves) el.animate(frames, { id: SPRING, duration: curve.duration, easing: 'linear' })
+      this.rects = before
     })
+  }
+
+  private cellEl (id: string): HTMLElement | undefined {
+    return (this.$refs[`cell-${id}`] as HTMLElement[] | undefined)?.[0]
   }
 
   @Watch('contextKey')
@@ -490,9 +510,18 @@ export default class Overview extends Vue {
   }
 
   /** The tile under the pointer, if it is one on the page. */
+  /** The tile whose slot is under the point. Slots, not drawn boxes: a tile still springing is where it is going. */
   private cellAt (x: number, y: number): string | null {
-    const found = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(x, y) : null
-    return found?.closest<HTMLElement>('[data-cell]')?.dataset.cell ?? null
+    for (const t of this.current.tiles) {
+      const el = this.cellEl(t.id)
+      const parent = el?.offsetParent as HTMLElement | null | undefined
+      if (!el || !parent) continue
+      const p = parent.getBoundingClientRect()
+      const left = p.left + parent.clientLeft + el.offsetLeft
+      const top = p.top + parent.clientTop + el.offsetTop
+      if (x >= left && x < left + el.offsetWidth && y >= top && y < top + el.offsetHeight) return t.id
+    }
+    return null
   }
 
   /** Follows the pointer until it lifts, calling back with each move and the final position. */
@@ -518,22 +547,48 @@ export default class Overview extends Vue {
     else if (y > window.innerHeight - 70) window.scrollBy(0, 18)
   }
 
+  /**
+   * Picks a tile up: it follows the pointer, and the others move out of the
+   * way as it passes over them. On release it springs into the gap it made.
+   */
   startMove (e: PointerEvent, id: string) {
-    if (!this.draft || (e.pointerType === 'mouse' && e.button !== 0)) return
+    const el = this.cellEl(id)
+    if (!this.draft || !el || (e.pointerType === 'mouse' && e.button !== 0)) return
     e.preventDefault()
     ;(e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId)
+    const start = this.draft
+    const from = { x: e.clientX, y: e.clientY + window.scrollY, left: el.offsetLeft, top: el.offsetTop }
+    let last: string | null = null
+    let shift = { x: 0, y: 0 }
+    // Where the tile is drawn: under the pointer, wherever its slot now is (offsets ignore transforms).
+    const follow = (x: number, y: number) => {
+      shift = { x: x - from.x - (el.offsetLeft - from.left), y: y + window.scrollY - from.y - (el.offsetTop - from.top) }
+      el.style.transform = `translate(${shift.x}px, ${shift.y}px)`
+    }
     this.drag = { kind: 'move', id, over: null, x: e.clientX, y: e.clientY }
     this.track(e, ev => {
       this.edgeScroll(ev.clientY)
       const over = this.cellAt(ev.clientX, ev.clientY)
       this.drag = { kind: 'move', id, over: over === id ? null : over, x: ev.clientX, y: ev.clientY }
-    }, (ev, cancelled) => {
-      const over = cancelled ? null : this.cellAt(ev.clientX, ev.clientY)
-      if (this.draft && over && over !== id) {
+      // A tile still springing past the pointer is the one just passed: ignore it until the pointer finds another.
+      if (this.draft && over && over !== id && over !== last) {
         const to = this.draft.tiles.findIndex(t => t.id === over)
-        if (to >= 0) { this.draft = moveTile(this.draft, id, to); this.status = `${this.titleOf(id)} moved to place ${to + 1} of ${this.draft.tiles.length}.` }
+        if (to >= 0) this.draft = moveTile(this.draft, id, to)
+        last = over
       }
+      follow(ev.clientX, ev.clientY)
+      this.$nextTick(() => { if (this.drag?.kind === 'move' && this.drag.id === id) follow(ev.clientX, ev.clientY) })
+    }, (_ev, cancelled) => {
+      if (cancelled) this.draft = start
+      const at = this.draft?.tiles.findIndex(t => t.id === id) ?? -1
+      if (!cancelled && this.draft && at !== start.tiles.findIndex(t => t.id === id)) this.status = `${this.titleOf(id)} moved to place ${at + 1} of ${this.draft.tiles.length}.`
       this.drag = null
+      this.$nextTick(() => {
+        const now = shift
+        el.style.transform = ''
+        if (reducedMotion() || typeof el.animate !== 'function' || (Math.abs(now.x) < 1 && Math.abs(now.y) < 1)) return
+        el.animate(springKeyframes({ dx: now.x, dy: now.y, sx: 1, sy: 1 }), { id: SPRING, duration: springCurve().duration, easing: 'linear' })
+      })
     })
   }
 
@@ -547,7 +602,7 @@ export default class Overview extends Vue {
     ;(e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId)
     const base = this.draft
     const column = (grid.getBoundingClientRect().width + GRID_GAP) / 12
-    const row = (cell.getBoundingClientRect().height + GRID_GAP) / from.rows
+    const row = (cell.offsetHeight + GRID_GAP) / from.rows
     this.track(e, ev => {
       if (!column || !row) return
       this.edgeScroll(ev.clientY)
@@ -598,7 +653,8 @@ export default class Overview extends Vue {
 .overview__none { grid-column: 1 / -1; color: var(--m3d-text-muted); text-align: center; }
 @media (max-width: 599px) {
   .overview__sheet { place-items: end center; padding: 0; }
-  .overview__sheet-card { width: 100%; border-radius: 26px 26px 0 0; }
+  /* Clear of the tab bar along the bottom, which draws over the page's own layers. */
+  .overview__sheet-card { width: 100%; border-radius: 26px 26px 0 0; padding-bottom: calc(18px + 72px + env(safe-area-inset-bottom)); }
   .overview__cards { grid-template-columns: minmax(0, 1fr); }
 }
 
@@ -620,7 +676,7 @@ export default class Overview extends Vue {
   content: ''; position: absolute; inset: 0; z-index: 4; border-radius: 22px; pointer-events: none;
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--m3d-accent) 55%, transparent);
 }
-.overview__cell--moving { opacity: 0.55; }
+.overview__cell--moving { z-index: 6; pointer-events: none; filter: drop-shadow(0 14px 28px rgb(0 0 0 / 22%)); }
 .overview__cell--over::after { box-shadow: inset 0 0 0 3px var(--m3d-accent) !important; background: color-mix(in srgb, var(--m3d-accent) 10%, transparent); }
 .overview__grip {
   position: absolute; top: 14px; left: 12px; z-index: 5; display: grid; grid-template-columns: repeat(2, 4px); gap: 3px; padding: 6px 5px; border-radius: 8px;
