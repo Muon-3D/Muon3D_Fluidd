@@ -6,6 +6,7 @@
  */
 import type { Locator, Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
+import { usePrinter, PRESETS } from './printer'
 
 /**
  * The photoreal M1 in software WebGL (SwiftShader) costs seconds a frame and
@@ -16,6 +17,9 @@ import { test, expect } from '../fixtures'
 const GPU = process.platform === 'win32'
 test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
 test.beforeEach(async ({ page }) => {
+  // An idle printer: the mid-print mock keeps the stage drawing a live toolpath every frame, which on a CI runner
+  // without a GPU leaves the page too busy to take a click (the layout is the same either way).
+  await usePrinter(page, PRESETS.idleHomed())
   if (!GPU) await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
 })
 
