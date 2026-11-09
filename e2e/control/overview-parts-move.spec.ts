@@ -2,8 +2,8 @@
  * Overview: moving the M1 from its 3D model (Jack, 6 Nov).
  *
  * Selecting the toolhead looks straight down with X and Y marked; dragging
- * shows a target and a live line, and letting go sends one move through
- * moveTo and the no-go planner. The plate goes up and down by its buttons
+ * shows a target and a live line, and the head follows through moveTo and
+ * the no-go planner (overview-parts-live.spec.ts has the live steps). The plate goes up and down by its buttons
  * and by a drag. Esc mid-drag, an unhomed printer and a printing one send
  * nothing. Every script the page sends is answered by usePrinter, so nothing
  * reaches the shared mock.
@@ -65,7 +65,7 @@ test('the pad moves the head as Control does: right is X+', async ({ page, open 
   await expect.poll(() => moveLines(printer.gcode)).toEqual(['G1 X10 F7800'])
 })
 
-test('dragging the head shows a target and sends one planned move on release', async ({ page, open }) => {
+test('dragging the head shows a target and sends planned moves (the printer has not reported landing: one)', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed({ position: [100, 100, 10] }))
   await open(HOME)
   await ready(page)
@@ -78,7 +78,6 @@ test('dragging the head shows a target and sends one planned move on release', a
   await page.mouse.move(at.x + 60, at.y + 8, { steps: 4 })
   const target = page.getByTestId('m1-drag-target')
   await expect(target).toHaveAttribute('data-target', /^X \d+\.\d {2}Y \d+\.\d$/)
-  expect(printer.gcode).toEqual([])
   await page.mouse.up()
 
   await expect(target).toHaveCount(0)
