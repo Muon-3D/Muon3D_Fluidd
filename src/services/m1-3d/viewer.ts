@@ -906,7 +906,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       // Against each part's coarse stand-in, not its full mesh, so a hover is answered on the next frame.
       const targets = PART_IDS.flatMap(id => meshesOf(id)).filter(m => shown(m)).map(proxyOf)
       const hit = raycaster.intersectObjects(targets, false)[0]
-      return hit ? partOf(hit.object.userData.pickOf as THREE.Object3D) : null
+      return hit ? partOf((hit.object.userData.pickOf ?? hit.object) as THREE.Object3D) : null
     },
     setFocus (part, mode, leanIn) {
       const same = focus?.part === part && focus?.mode === mode && focus?.lean === leanIn
