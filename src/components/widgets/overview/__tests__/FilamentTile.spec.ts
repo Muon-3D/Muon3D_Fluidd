@@ -59,4 +59,22 @@ describe('FilamentTile', () => {
     expect(store.commit).toHaveBeenCalledWith('spoolman/setDialogState', { show: true })
     w.destroy()
   })
+
+  it('opens the material panel itself from ⋯ Set material and Load or unload, with no dialog of its own', async () => {
+    const w = mountIt(tileStore())
+    const picker = w.findComponent({ name: 'MaterialPicker' }).exists()
+      ? w.findComponent({ name: 'MaterialPicker' })
+      : w.find('material-picker-stub')
+    expect(picker.exists()).toBe(true)
+    expect(w.find('[data-tid="tile-dialog"]').exists()).toBe(false)
+    for (const id of ['material', 'load']) {
+      const vm = w.vm as unknown as { $refs: { picker: { open: boolean } } }
+      w.vm.$refs.picker = { open: false } as never
+      await w.find('[data-tid="tile-more"]').trigger('click')
+      await w.find(`[data-menu="${id}"]`).trigger('click')
+      await w.vm.$nextTick()
+      expect(vm.$refs.picker.open).toBe(true)
+    }
+    w.destroy()
+  })
 })
