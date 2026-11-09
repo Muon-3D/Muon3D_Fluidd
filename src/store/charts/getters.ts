@@ -5,6 +5,7 @@ import type { ChartState } from './types'
 import type { RootState } from '../types'
 import { Globals } from '@/globals'
 import type { EChartsOption } from 'echarts'
+import { chartInk } from '@/services/charts/theme'
 
 export const getters: GetterTree<ChartState, RootState> = {
   /**
@@ -39,7 +40,7 @@ export const getters: GetterTree<ChartState, RootState> = {
     const isDark = rootState.config.uiSettings.theme.isDark
     const isMobile = vuetify.framework.breakpoint.mobile
 
-    const fontColor = (isDark) ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.45)'
+    const fontColor = chartInk(isDark).label
     const fontSize = (isMobile) ? 13 : 14
 
     const lineStyle = {

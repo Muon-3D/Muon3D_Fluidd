@@ -23,6 +23,7 @@ import type { ECharts, EChartsOption, GraphicComponentOption } from 'echarts'
 import { merge, cloneDeepWith } from 'lodash-es'
 import BrowserMixin from '@/mixins/browser'
 import type { BedSize } from '@/store/printer/types'
+import { chartInk } from '@/services/charts/theme'
 
 @Component({})
 export default class BedMeshChart extends Mixins(BrowserMixin) {
@@ -72,7 +73,7 @@ export default class BedMeshChart extends Mixins(BrowserMixin) {
     // the given series in our initial options.
     const darkMode = this.$store.state.config.uiSettings.theme.isDark
 
-    const fontColor = (darkMode) ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.45)'
+    const fontColor = chartInk(darkMode).label
     const fontSize = (this.isMobileViewport) ? 14 : 16
     const labelBackground = (darkMode) ? 'rgba(10,10,10,0.90)' : 'rgba(255,255,255,0.90)'
     const opacity = 0.10
@@ -110,7 +111,10 @@ export default class BedMeshChart extends Mixins(BrowserMixin) {
           width: 2
         }
       },
+      // echarts-gl reads the label colour from axisLabel itself; without it
+      // the labels were drawn white, invisible on the light theme.
       axisLabel: {
+        color: fontColor,
         textStyle: {
           color: fontColor,
           fontSize
