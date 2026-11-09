@@ -138,7 +138,9 @@ test.describe('springs', () => {
     await expect(cell(page, 'hotend')).toHaveAttribute('style', /--span: 6/)
     // The resized one and the ones it pushed along.
     await expect.poll(async () => (await started(page)) - was).toBeGreaterThan(1)
-    await expect.poll(() => animating(page), { timeout: 3000 }).toBe(0)
+    // Each one finishes (waited for, not timed: a busy runner may not draw a frame for seconds).
+    await page.evaluate(() => Promise.all(document.getAnimations().filter(a => a.id === 'overview-spring').map(a => a.finished)))
+    expect(await animating(page)).toBe(0)
   })
 
   test('with reduced motion nothing animates', async ({ page, open, isMobile }) => {
@@ -187,10 +189,11 @@ test('the temperature graph draws the CPU once', async ({ page, open }) => {
   await usePrinter(page, status)
   await open('/')
   const graph = cell(page, 'graph').getByTestId('thermal-graph')
-  // The graph only reads the printer while it is on screen.
-  await graph.scrollIntoViewIfNeeded()
-  await expect(graph).toBeVisible()
-  await expect(graph.locator('[data-legend]').first()).toBeVisible()
+  // The graph only reads the printer while it is on screen, and the tiles above it can still be growing.
+  await expect(async () => {
+    await graph.scrollIntoViewIfNeeded()
+    await expect(graph.locator('[data-legend]').first()).toBeVisible({ timeout: 2000 })
+  }).toPass()
   const more = graph.getByTestId('legend-more')
   if (await more.count()) await more.click()
   await expect(graph.locator('[data-legend="temperature_fan CPU"]')).toHaveCount(1)
