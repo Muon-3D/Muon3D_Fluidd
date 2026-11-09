@@ -870,13 +870,17 @@ body {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .v-application *,
-  .v-application *::before,
-  .v-application *::after {
+// Animations Off (or Like this device under reduce motion), set on the root
+// by followMotionSetting: nothing moves or springs, sheets and pages only
+// fade, and rings and bars jump to their new value. Nothing is hidden.
+// The :not(#m3d-motion) lifts it over the glass theme's own !important transitions.
+.m3d-reduced-motion {
+  .v-application *:not(#m3d-motion),
+  .v-application *:not(#m3d-motion)::before,
+  .v-application *:not(#m3d-motion)::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
-    transition-duration: 0.001ms !important;
+    transition-property: opacity !important;
   }
 }
