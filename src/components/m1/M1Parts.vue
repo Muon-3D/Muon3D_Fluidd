@@ -1040,8 +1040,9 @@ export default class M1Parts extends Mixins(ControlMixin) {
     height: 32px;
     padding: 0 12px;
     border-radius: 999px;
-    background: rgb(44 44 48 / 70%);
-    backdrop-filter: blur(20px);
+    /* No backdrop blur: over the live WebGL canvas it makes the browser read the canvas back and re-blur it every
+       frame (it halves the frame rate without a GPU, which starved clicks in CI), so the chip is a little more opaque. */
+    background: rgb(44 44 48 / 86%);
     color: #d8d8dc;
     font-size: 13px;
     font-weight: 600;
