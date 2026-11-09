@@ -60,12 +60,22 @@ export interface BleCapableEndpoint {
    * on). Absent on an older muon-link-web, where the radio stays a standby.
    */
   pinBluetooth? (printerId: string, pinned: boolean): void;
+  /**
+   * Chooses the route to `printerId` (Jack's path rule, KAN-1913): `ble`,
+   * `lan` or `cloud` is the only route the session uses, on the page and on
+   * the printer; `auto` ranks Wi-Fi/LAN, then Muon3D, then Bluetooth.
+   * muon-link-web from muon-link#135 on; `pinBluetooth` before it.
+   */
+  chooseRoute? (printerId: string, route: 'auto' | 'ble' | 'lan' | 'cloud'): void;
+  /** True once the chosen route had no path when iroh last selected one (muon-link#135 on). */
+  routeUnavailable? (printerId: string): boolean;
 }
 
 /** Pins or unpins `id` on `endpoint`, where its muon-link-web can. Never throws. */
 function pinOn (endpoint: BleCapableEndpoint | undefined, id: string, pinned: boolean) {
   try {
-    endpoint?.pinBluetooth?.(id, pinned)
+    if (endpoint?.chooseRoute) endpoint.chooseRoute(id, pinned ? 'ble' : 'auto')
+    else endpoint?.pinBluetooth?.(id, pinned)
   } catch { /* an older or closed endpoint: the default path ranking stays */ }
 }
 
@@ -373,7 +383,8 @@ const routeState = Vue.observable({
   up: {} as Record<string, boolean>,
   carrying: {} as Record<string, boolean>,
   opening: {} as Record<string, boolean>,
-  fellBack: {} as Record<string, string>
+  fellBack: {} as Record<string, string>,
+  dropped: {} as Record<string, string>
 })
 
 function forgetRouteState (id: string) {
@@ -381,6 +392,7 @@ function forgetRouteState (id: string) {
   Vue.delete(routeState.carrying, id)
   Vue.delete(routeState.opening, id)
   Vue.delete(routeState.fellBack, id)
+  Vue.delete(routeState.dropped, id)
 }
 
 /**
@@ -430,6 +442,30 @@ export function noteBluetoothFellBack (printerId: string, reason: string) {
   if (!routes.has(id)) return
   Vue.set(routeState.fellBack, id, reason)
   Vue.set(routeState.up, id, false)
+}
+
+/**
+ * Why the chosen Bluetooth route dropped during the session, or null. The
+ * session does not move to another route on its own (KAN-1913): the person
+ * reconnects or chooses another.
+ */
+export function bluetoothDropped (printerId: string): string | null {
+  return routeState.dropped[printerId.toLowerCase()] ?? null
+}
+
+/** The chosen Bluetooth route dropped: say so, and let the person choose (KAN-1913). */
+export function noteBluetoothDropped (printerId: string, reason: string) {
+  const id = printerId.toLowerCase()
+  if (!routes.has(id)) return
+  Vue.set(routeState.dropped, id, reason)
+}
+
+function routeUnavailableOn (endpoint: BleCapableEndpoint | undefined, id: string): boolean {
+  try {
+    return endpoint?.routeUnavailable?.(id) === true
+  } catch {
+    return false
+  }
 }
 
 export function useBluetoothFor (printerId: string, device: BleDevice) {
@@ -501,12 +537,16 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
   }
   Vue.set(routeState.up, id, true)
   Vue.delete(routeState.fellBack, id)
+  Vue.delete(routeState.dropped, id)
   // The handshake just crossed the radio; from here on, carrying is whatever the bytes say.
   Vue.set(routeState.carrying, id, true)
   const tick = setInterval(() => {
     if (routes.get(id)?.link !== link) return
     const carrying = link.isOpen() && Date.now() - link.lastTrafficAt() < CARRYING_WINDOW_MS
     if (routeState.carrying[id] !== carrying) Vue.set(routeState.carrying, id, carrying)
+    if (!routeState.dropped[id] && routeUnavailableOn(routes.get(id)?.pinnedOn, id)) {
+      noteBluetoothDropped(id, 'Bluetooth has no path to the printer.')
+    }
   }, CARRYING_TICK_MS)
   // The printer or the radio ending the link ends the claim, whoever hung up.
   link.closed.then(() => {
@@ -514,6 +554,7 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
     if (routes.get(id)?.link === link) {
       Vue.set(routeState.up, id, false)
       Vue.set(routeState.carrying, id, false)
+      noteBluetoothDropped(id, 'The Bluetooth link dropped.')
     }
   })
   return link
