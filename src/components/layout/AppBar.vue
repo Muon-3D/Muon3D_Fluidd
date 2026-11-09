@@ -25,7 +25,6 @@
       </router-link>
 
       <div class="app-header__actions">
-        <app-status-alerts v-if="!sectionContext.foreign && authenticated" />
         <!-- On a printer, Quick actions take the search icon's place; with none chosen, search stays. -->
         <quick-actions-menu v-if="showQuickActions" />
         <button
@@ -38,7 +37,7 @@
         >
           <frame-icon name="search" />
         </button>
-        <app-notification-menu v-if="!sectionContext.foreign && authenticated && socketConnected" />
+        <notices-bell :printer="printerNotices" />
         <router-link
           v-if="!printerFrame && !onLibrary"
           to="/library"
@@ -48,7 +47,6 @@
         >
           <frame-icon name="library" />
         </router-link>
-        <notices-bell v-if="!printerFrame" />
         <cloud-account-menu v-if="!printerFrame" />
       </div>
 
@@ -128,8 +126,6 @@
           @click="saveConfigAndRestart"
         />
 
-        <app-status-alerts v-if="!sectionContext.foreign && authenticated" />
-
         <app-upload-and-print-btn
           v-if="printerFrame && !sectionContext.foreign && authenticated && socketConnected && showUploadAndPrint"
           :tooltip="uploadTooltip"
@@ -161,9 +157,8 @@
           <span>{{ $t(`app.general.label.turn_device_${topNavPowerDeviceOn ? 'off' : 'on'}`, { device: topNavPowerToggle.name }) }}</span>
         </v-tooltip>
 
-        <app-notification-menu v-if="!sectionContext.foreign && authenticated && socketConnected" />
+        <notices-bell :printer="printerNotices" />
 
-        <notices-bell />
         <cloud-account-menu />
       </div>
 
@@ -321,6 +316,11 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
 
   get estopReady (): boolean {
     return this.authenticated && this.socketConnected && this.klippyReady
+  }
+
+  /** The one notification icon carries this printer's warnings and notifications too. */
+  get printerNotices (): boolean {
+    return !this.sectionContext.foreign && this.authenticated && this.socketConnected
   }
 
   /** Quick actions are on every printer's bar; each says why it cannot run when it cannot. */

@@ -1,7 +1,7 @@
 import Vue from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { CHALLENGE, FakePrinter, OWNER, WAIVER } from '@/services/dev-mode/__tests__/fakePrinter'
+import { CHALLENGE, FakePrinter, OWNER } from '@/services/dev-mode/__tests__/fakePrinter'
 
 // The Aux API's own client is only for reading the state, backing up and
 // starting again from the defaults now. A change never goes through it.
@@ -93,7 +93,8 @@ describe('developer mode in Settings', () => {
     expect(devModeState.enabled).toBe(false)
   })
 
-  it('shows the switch to the owner, and to nobody else on a linked printer', async () => {
+  it('shows the way out to the owner, and to nobody else on a linked printer', async () => {
+    printer.devMode = true
     const owner = mounted()
     await settle()
     expect(owner.find('[data-tid="developer-mode-switch"]').exists()).toBe(true)
@@ -115,7 +116,36 @@ describe('developer mode in Settings', () => {
     open.destroy()
   })
 
+  it('off: says to go to the printer\'s screen, offers no switch and asks the printer nothing (KAN-1763)', async () => {
+    for (const asOwner of [true, false]) {
+      printer.asOwner = asOwner
+      printer.devMode = false
+      const w = mounted()
+      await settle()
+      const go = w.find('[data-tid="developer-mode-go-to-printer"]')
+      expect(go.exists()).toBe(true)
+      expect(go.text()).toContain("Go to the printer's screen to turn on developer mode")
+      expect(go.text()).toContain('System, then Protection, then Developer mode')
+      expect(w.find('[data-tid="developer-mode-switch"]').exists()).toBe(false)
+      expect(w.find('[data-tid="developer-enable"]').exists()).toBe(false)
+      expect(w.find('[data-tid="developer-enable-dialog"]').exists()).toBe(false)
+      w.destroy()
+    }
+    expect(printer.opened).toEqual([])
+    expect(printer.post).not.toHaveBeenCalled()
+  })
+
+  it('on: no go-to-the-printer message, the way out stays', async () => {
+    printer.devMode = true
+    const w = mounted()
+    await settle()
+    expect(w.find('[data-tid="developer-mode-go-to-printer"]').exists()).toBe(false)
+    expect(w.find('[data-tid="developer-mode-switch"]').exists()).toBe(true)
+    w.destroy()
+  })
+
   it('shows no switch where the printer has no request route, and says why', async () => {
+    printer.devMode = true
     printer.routeMissing = true
     const w = mounted()
     await settle()
@@ -129,46 +159,14 @@ describe('developer mode in Settings', () => {
     const vm = component()
     printer.post.mockRejectedValueOnce({ response: { status: responseStatus } })
 
-    await vm.ask(true)
+    await vm.ask(false)
 
     expect(vm.awaiting).toBe(false)
     expect(vm.errorMessage).toBe('This printer software does not support owner confirmation yet. Developer mode was not changed.')
     expect(api.setDevModeDevModePost).not.toHaveBeenCalled()
   })
 
-  it('turns on with the printer\'s own waiver, then the printer\'s screen, then the change', async () => {
-    await refreshDevMode()
-    const vm = component()
-    await vm.refreshAsking()
-    await vm.toggle()
-    expect(vm.enableDialog).toBe(true)
-    expect(vm.waiverText).toBe(WAIVER.text)
-    // Showing the waiver asks nothing of the printer's screen.
-    expect(printer.opened).toEqual([])
-
-    vm.accepted = true
-    await vm.confirmEnable()
-    expect(printer.opened).toEqual([{ enabled: true }])
-    expect(vm.awaiting).toBe(true)
-
-    await vm.pollConsent()
-    expect(printer.polled).toEqual([CHALLENGE])
-    expect(printer.completed).toEqual([])
-
-    printer.confirm()
-    await vm.pollConsent()
-    expect(printer.completed).toEqual([{
-      enabled: true, challenge_id: CHALLENGE, waiver_acknowledged: true, waiver_version: WAIVER.version
-    }])
-    expect(printer.devMode).toBe(true)
-    expect(vm.enableDialog).toBe(false)
-    expect(devModeState.enabled).toBe(true)
-    // Never straight to the Aux API, whose generic routes carry no owner.
-    expect(api.setDevModeDevModePost).not.toHaveBeenCalled()
-    expect(api.openDevModeConsentDevModeConsentPost).not.toHaveBeenCalled()
-  })
-
-  it('turns off only once the printer\'s screen is answered, too', async () => {
+  it('turns off only once the printer\'s screen is answered', async () => {
     printer.devMode = true
     await refreshDevMode()
     const vm = component()
@@ -215,12 +213,12 @@ describe('developer mode in Settings', () => {
   })
 
   it('stops waiting when it is turned down at the printer, and says so when the printer stops answering', async () => {
+    printer.devMode = true
     await refreshDevMode()
     const vm = component()
     await vm.refreshAsking()
     await vm.toggle()
-    vm.accepted = true
-    await vm.confirmEnable()
+    await vm.confirmDisable()
 
     const answer = printer.get.getMockImplementation()!
     printer.get.mockImplementation(async () => { throw new Error('Network Error') })
@@ -255,33 +253,39 @@ describe('developer mode in Settings', () => {
   })
 
   it('catches up when the printer is already in the state asked for', async () => {
+    printer.devMode = true
     await refreshDevMode()
     const vm = component()
     await vm.refreshAsking()
     await vm.toggle()
-    printer.devMode = true // changed at the printer meanwhile
-    vm.accepted = true
-    await vm.confirmEnable()
-    expect(vm.errorMessage).toBe('Developer mode is already on.')
-    expect(vm.enableDialog).toBe(false)
-    expect(devModeState.enabled).toBe(true)
+    printer.devMode = false // changed at the printer meanwhile
+    await vm.confirmDisable()
+    expect(vm.errorMessage).toBe('Developer mode is already off.')
+    expect(vm.disableDialog).toBe(false)
+    expect(devModeState.enabled).toBe(false)
   })
 
-  it('shows the new waiver when the terms changed while it was being read', async () => {
+  it('a printer that only takes the change at its own screen is said so, and nothing waits', async () => {
+    printer.devMode = true
     await refreshDevMode()
     const vm = component()
     await vm.refreshAsking()
     await vm.toggle()
-    vm.accepted = true
-    await vm.confirmEnable()
-    printer.currentWaiver = 'w-2'
-    printer.waiver = { version: 'w-2', text: 'New terms' }
-    printer.confirm()
-    await vm.pollConsent()
-    expect(printer.devMode).toBe(false)
-    expect(vm.accepted).toBe(false)
-    expect(vm.waiverText).toBe('New terms')
-    expect(vm.waiverVersion).toBe('w-2')
-    vm.stopWaiting()
+    printer.panelOnly = true
+    await vm.confirmDisable()
+    expect(vm.errorMessage).toBe('The printer only takes this at its own screen. Go there: System, then Protection, then Developer mode.')
+    expect(vm.awaiting).toBe(false)
+    expect(printer.opened).toEqual([])
+    expect(printer.completed).toEqual([])
+  })
+
+  it('turning on is no longer started from here', async () => {
+    await refreshDevMode()
+    const vm = component()
+    await vm.refreshAsking()
+    await vm.toggle()
+    expect(vm.disableDialog).toBe(false)
+    expect(printer.opened).toEqual([])
+    expect(typeof vm.confirmEnable).toBe('undefined')
   })
 })
