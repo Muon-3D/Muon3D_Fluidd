@@ -382,13 +382,33 @@ test.describe('signed in', () => {
 
   test('New group adds a group and names it, and the name is saved', async ({ page }) => {
     const saved = await withAccountPrinters(page, [cloudPrinter('p-elm', 'Elm', true)])
-    // The saved layout loads once the page is up: a group made before then is overwritten by it.
+    // The saved layout comes after the printers: New group waits for it rather than being overwritten by it.
+    await page.route(`${CONSOLE}/v1/fleet/layout`, async route => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ layout: { groups: [] } }) })
+    })
     const loaded = page.waitForResponse(r => r.url().endsWith('/v1/fleet/layout') && r.request().method() === 'GET')
     await openPrinters(page)
-    await loaded
     await page.getByTestId('new-group').click()
     const name = page.getByRole('textbox', { name: 'Group name' })
     await name.fill('Lab')
+    await name.press('Enter')
+    await loaded
+    await expect(page.getByRole('heading', { name: 'Lab' })).toBeVisible()
+    await expect.poll(() => saved.at(-1)?.groups.map(g => g.name)).toEqual(['Lab'])
+  })
+
+  test('the name being typed stays when a printer updates meanwhile', async ({ page }) => {
+    const printer = await usePrinter(page, { print_stats: { state: 'printing', filename: 'Lid.gcode' }, virtual_sdcard: { progress: 0.42, is_active: true } })
+    const saved = await withAccountPrinters(page, [cloudPrinter('p-elm', 'Elm', true)])
+    await openPrinters(page)
+    await page.getByTestId('new-group').click()
+    const name = page.getByRole('textbox', { name: 'Group name' })
+    await name.fill('Lab')
+    printer.report({ virtual_sdcard: { progress: 0.61, is_active: true } })
+    await expect(page.getByText('61%').first()).toBeVisible()
+    await expect(name).toHaveValue('Lab')
     await name.press('Enter')
     await expect(page.getByRole('heading', { name: 'Lab' })).toBeVisible()
     await expect.poll(() => saved.at(-1)?.groups.map(g => g.name)).toEqual(['Lab'])

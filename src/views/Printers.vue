@@ -133,12 +133,12 @@
           <input
             v-if="renaming === g.id"
             ref="rename"
+            v-model="renameText"
             class="printers__rename"
-            :value="g.name"
             aria-label="Group name"
-            @keydown.enter="finishRename(g.id, $event)"
+            @keydown.enter="finishRename(g.id)"
             @keydown.esc="renaming = null"
-            @blur="finishRename(g.id, $event)"
+            @blur="finishRename(g.id)"
           >
           <h2
             v-else
@@ -481,6 +481,8 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
   dragging: string | null = null
   dropTarget: string | null = null
   renaming: string | null = null
+  /** What is typed in the name box: a redraw meanwhile must not put the old name back. */
+  renameText = ''
   timer: (() => void) | null = null
   /** Set on destroy, so a sweep still waiting for the first paint doesn't start. */
   gone = false
@@ -795,8 +797,9 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
 
   // -- groups (the account's, U6) --------------------------------------------
 
+  /** Not before the saved groups are in: a group made sooner would be replaced by them. */
   get canGroup (): boolean {
-    return !!this.account && !this.deletionPending
+    return !!this.account && !this.deletionPending && cloudState.layoutLoaded
   }
 
   persistGroups (groups: Array<{ id: string, name: string, printers: string[] }>) {
@@ -811,6 +814,7 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
   }
 
   startRename (id: string) {
+    this.renameText = cloudState.layout.groups.find(g => g.id === id)?.name ?? ''
     this.renaming = id
     this.$nextTick(() => {
       const input = (this.$refs.rename as HTMLInputElement[] | undefined)?.[0]
@@ -819,10 +823,10 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
     })
   }
 
-  finishRename (id: string, event: Event) {
+  finishRename (id: string) {
     if (this.renaming !== id) return
     this.renaming = null
-    const name = (event.target as HTMLInputElement).value.trim()
+    const name = this.renameText.trim()
     if (!name) return
     this.persistGroups(cloudState.layout.groups.map(g => (g.id === id ? { ...g, name } : g)))
   }

@@ -62,6 +62,8 @@ interface CloudState {
   status: Record<string, PrinterStatus>;
   activePrinterId: string | null;
   layout: FleetLayout;
+  /** The account's saved layout has been read: until then an edit would be overwritten by it. */
+  layoutLoaded: boolean;
   error: string | null;
   endpointId: string | null;
 }
@@ -74,6 +76,7 @@ export const cloudState = Vue.observable<CloudState>({
   status: {},
   activePrinterId: readActive(),
   layout: { ...DEFAULT_FLEET_LAYOUT },
+  layoutLoaded: false,
   error: null,
   endpointId: null
 })
@@ -443,6 +446,7 @@ async function dropSession () {
 
 async function adoptSession (token: string, account: CloudAccount) {
   storeToken(token)
+  cloudState.layoutLoaded = false
   cloudState.account = account
   cloudState.error = null
   await refreshPrinters()
@@ -450,6 +454,7 @@ async function adoptSession (token: string, account: CloudAccount) {
     const { layout } = await cloudApi.getLayout()
     cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
   } catch { /* keep the default */ }
+  cloudState.layoutLoaded = true
   startPolling()
 }
 
