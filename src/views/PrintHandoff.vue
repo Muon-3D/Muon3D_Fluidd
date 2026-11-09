@@ -1,78 +1,112 @@
 <template>
   <div
-    class="library"
+    class="handoff-page"
     data-tid="print-handoff"
   >
-    <header class="library__head">
-      <div class="library__titles">
-        <h1>Print from Library</h1><p>Check the file and printer before sending it.</p>
-      </div>
-    </header>
-    <section
+    <landing-card
       v-if="!signedIn"
-      class="lib-empty lib-surface"
+      icon="library"
+      title="Sign in to continue"
+      sub="Your Library and printers belong to your Muon3D account."
     >
-      <h2>Sign in to continue</h2><p>Your Library and printers belong to your Muon3D account.</p>
-      <button
-        class="lib-btn lib-btn--pri"
-        @click="accountDialog = true"
-      >
-        Sign in
-      </button>
-    </section>
-    <section
+      <template #foot>
+        <button
+          type="button"
+          class="lib-btn lib-btn--pri"
+          data-tid="handoff-sign-in"
+          @click="accountDialog = true"
+        >
+          Sign in
+        </button>
+      </template>
+    </landing-card>
+    <landing-card
       v-else-if="error"
-      class="lib-empty lib-surface"
+      icon="alert"
+      tone="danger"
+      title="That print couldn't be opened"
     >
-      <h2>That print couldn't be opened</h2><p role="alert">
+      <p
+        role="alert"
+        data-tid="handoff-error"
+      >
         {{ error }}
       </p>
-    </section>
-    <section
+      <template #foot>
+        <router-link
+          to="/"
+          class="lib-btn"
+        >
+          Back to printers
+        </router-link>
+      </template>
+    </landing-card>
+    <landing-card
       v-else-if="!item"
-      class="lib-empty lib-surface"
-    >
-      <p>Reading the print and its version…</p>
-    </section>
-    <section
+      icon="library"
+      title="Print from Library"
+      sub="Reading the print and its version…"
+    />
+    <landing-card
       v-else-if="!setup"
-      class="lib-empty lib-surface"
+      icon="alert"
+      tone="warn"
+      :title="`Print ${item.name}`"
+      sub="This print needs slicing first."
       data-tid="handoff-needs-slicing"
     >
-      <h2>This print needs slicing first</h2>
-      <a
-        class="lib-btn lib-btn--pri"
-        :href="sliceUrl"
-      >Open in Slice</a>
-    </section>
-    <section
+      <template #foot>
+        <a
+          class="lib-btn lib-btn--pri"
+          :href="sliceUrl"
+        >Open in Slice</a>
+      </template>
+    </landing-card>
+    <landing-card
       v-else
-      class="lib-surface handoff"
+      icon="library"
+      :title="`Print ${item.name}`"
+      :sub="[fileName, facts].filter(Boolean).join(' · ')"
+      class="handoff"
     >
-      <h2>{{ fileName }}</h2>
-      <p v-if="facts">
-        {{ facts }}
-      </p>
-      <label class="handoff__label">
-        <span>Printer</span>
-        <span class="lib-field">
-          <select
+      <div
+        id="handoff-printers-label"
+        class="handoff__label"
+      >
+        Choose a printer
+      </div>
+      <div
+        class="handoff__list"
+        role="radiogroup"
+        aria-labelledby="handoff-printers-label"
+        data-tid="handoff-printer"
+      >
+        <label
+          v-for="row in rows"
+          :key="row.id"
+          class="handoff__row"
+          :class="{ 'is-on': row.id === chosen, 'is-dim': row.tone === 'off' || row.tone === 'wait' || row.action !== 'print' }"
+          :data-tid="`handoff-printer-${row.id}`"
+        >
+          <input
             v-model="chosen"
+            type="radio"
+            name="handoff-printer"
+            :value="row.id"
             :disabled="busy"
-            data-tid="handoff-printer"
           >
-            <option
-              value=""
-              disabled
-            >Choose a printer</option>
-            <option
-              v-for="row in rows"
-              :key="row.id"
-              :value="row.id"
-            >{{ row.name }} — {{ row.status || row.detail }}</option>
-          </select>
-        </span>
-      </label>
+          <span class="handoff__rad" />
+          <span class="handoff__name">{{ row.name }}</span>
+          <span class="handoff__status">{{ row.status || row.detail }}</span>
+        </label>
+        <p
+          v-if="!rows.length"
+          class="handoff__empty"
+          data-tid="handoff-no-printers"
+        >
+          No printers in your account yet.
+        </p>
+      </div>
       <p
         v-for="warning in warnings"
         :key="warning"
@@ -85,32 +119,18 @@
         role="status"
       >
         {{ step }}
-      </p><p
+      </p>
+      <p
         v-if="actionError"
         role="alert"
         class="m3-dlg__error"
       >
         {{ actionError }}
       </p>
-      <button
-        v-if="selected && !selected.active"
-        class="lib-btn lib-btn--pri"
-        data-tid="handoff-open-printer"
-        :disabled="busy"
-        @click="openSelected"
-      >
-        Open {{ selected.name }}
-      </button>
-      <button
-        v-else-if="!uploadedPath"
-        class="lib-btn lib-btn--pri"
-        :disabled="!canUpload || busy"
-        @click="upload"
-      >
-        Confirm and upload
-      </button>
-      <template v-else>
-        <p>{{ fileName }} is on {{ selected && selected.name }}. It has not started.</p>
+      <template v-if="uploadedPath">
+        <p data-tid="handoff-uploaded">
+          {{ fileName }} is on {{ selected && selected.name }}. It has not started.
+        </p>
         <p
           v-if="selected && !selected.active"
           class="library__warn"
@@ -118,7 +138,31 @@
         >
           This page is on another printer. Open {{ selected.name }} to start the print there.
         </p>
+      </template>
+      <template #foot>
         <button
+          v-if="selected && !selected.active"
+          type="button"
+          class="lib-btn lib-btn--pri"
+          data-tid="handoff-open-printer"
+          :disabled="busy"
+          @click="openSelected"
+        >
+          Open {{ selected.name }}
+        </button>
+        <button
+          v-else-if="!uploadedPath"
+          type="button"
+          class="lib-btn lib-btn--pri"
+          data-tid="handoff-upload"
+          :disabled="!canUpload || busy"
+          @click="upload"
+        >
+          {{ selected ? `Upload to ${selected.name}` : 'Choose a printer' }}
+        </button>
+        <button
+          v-else
+          type="button"
           class="lib-btn lib-btn--pri"
           :disabled="busy || !canStart"
           data-tid="handoff-start"
@@ -127,7 +171,7 @@
           Start print
         </button>
       </template>
-    </section>
+    </landing-card>
     <cloud-account-dialog
       v-if="accountDialog"
       v-model="accountDialog"
@@ -139,6 +183,7 @@
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import PrinterRowsMixin from '@/mixins/printer-rows'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
+import LandingCard from '@/components/ui/LandingCard.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { describeLibraryError, type ItemSetup, type LibraryItem } from '@/services/library/api'
 import { libraryClient } from '@/services/library/store'
@@ -150,7 +195,7 @@ import { rememberLibraryFile } from '@/services/library/runs'
 import { printerPath } from '@/services/printer-pages'
 import '@/scss/muon3d-library.scss'
 
-@Component({ components: { CloudAccountDialog } })
+@Component({ components: { CloudAccountDialog, LandingCard } })
 export default class PrintHandoff extends Mixins(PrinterRowsMixin) {
   item: Pick<LibraryItem, 'id' | 'name' | 'setups' | 'version'> | null = null
   setup: ItemSetup | null = null
@@ -278,95 +323,91 @@ export default class PrintHandoff extends Mixins(PrinterRowsMixin) {
 </script>
 
 <style lang="scss" scoped>
-  .library {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 6px 12px 40px;
-    color: var(--m3d-text);
+  .handoff-page p {
+    margin: 0;
+    color: var(--m3d-text-muted);
+    overflow-wrap: anywhere;
   }
 
-  .library__head {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px 16px;
+  .handoff-page .library__warn {
+    color: var(--m3d-warning);
   }
 
-  .library__titles {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-
-    h1 {
-      margin: 0;
-      font-family: var(--m3d-font-display);
-      font-size: 30px;
-      font-weight: 400;
-      letter-spacing: 0.01em;
-      line-height: 1.1;
-    }
-
-    p {
-      margin: 0;
-      color: var(--m3d-text-muted);
-      font-size: 14px;
-    }
-  }
-
-  .handoff {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 24px;
-
-    h2,
-    p {
-      margin: 0;
-    }
-
-    h2 {
-      font-size: 20px;
-      overflow-wrap: anywhere;
-    }
-
-    p {
-      font-size: 14px;
-      color: var(--m3d-text-muted);
-    }
-
-    .library__warn {
-      color: var(--m3d-warning);
-    }
-
-    .m3-dlg__error {
-      color: var(--m3d-danger);
-    }
+  .handoff-page .m3-dlg__error {
+    color: var(--m3d-danger);
   }
 
   .handoff__label {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    width: 100%;
     font-size: 13px;
     color: var(--m3d-text-muted);
+  }
 
-    .lib-field {
-      color: var(--m3d-text);
+  .handoff__list {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 14px;
+    background: var(--m3d-fill-2);
+  }
+
+  .handoff__row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    min-height: 46px;
+    padding: 10px 14px;
+    cursor: pointer;
+
+    & + & {
+      border-top: 1px solid var(--m3d-border);
     }
 
-    select {
-      width: 100%;
-      min-width: 0;
-      color: var(--m3d-text);
-      text-overflow: ellipsis;
+    input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
     }
 
-    option {
-      color: initial;
+    &:focus-within {
+      outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent));
+      outline-offset: -2px;
     }
+  }
+
+  .handoff__row.is-on {
+    background: var(--m3d-accent-soft);
+  }
+
+  .handoff__row.is-dim {
+    opacity: 0.55;
+  }
+
+  .handoff__rad {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1.5px var(--m3d-text-subtle);
+
+    .is-on & {
+      box-shadow: inset 0 0 0 6px var(--m3d-accent);
+    }
+  }
+
+  .handoff__name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .handoff__status {
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+    text-align: right;
+  }
+
+  .handoff__empty {
+    padding: 14px;
   }
 </style>
