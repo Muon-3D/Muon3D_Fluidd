@@ -62,6 +62,8 @@ async function ready (page: Page) {
 
 test('the screen opens the printer\'s own screen; only allowed calls reach the printer', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
+  // Answered here, not by the shared mock, which can fall behind on a loaded CI runner.
+  printer.state.answers['printer.info'] = { state: 'ready', state_message: 'Printer is ready', hostname: 'm1' }
   await servePanel(page)
   await open('/')
   await ready(page)
