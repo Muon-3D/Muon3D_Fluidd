@@ -652,9 +652,9 @@ export default class Overview extends Vue {
 }
 .overview__none { grid-column: 1 / -1; color: var(--m3d-text-muted); text-align: center; }
 @media (max-width: 599px) {
-  .overview__sheet { place-items: end center; padding: 0; }
-  /* Clear of the tab bar along the bottom, which draws over the page's own layers. */
-  .overview__sheet-card { width: 100%; border-radius: 26px 26px 0 0; padding-bottom: calc(18px + 72px + env(safe-area-inset-bottom)); }
+  /* The tab bar sits above the page's layer, so the sheet stops above it rather than under it. */
+  .overview__sheet { place-items: end center; padding: 0 0 calc(76px + env(safe-area-inset-bottom)); }
+  .overview__sheet-card { width: 100%; max-height: calc(86vh - 76px); border-radius: 26px; }
   .overview__cards { grid-template-columns: minmax(0, 1fr); }
 }
 
