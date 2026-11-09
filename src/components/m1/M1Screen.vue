@@ -1,8 +1,11 @@
 <template>
   <div
     class="m1-screen"
+    :class="`m1-screen--${phase}`"
     data-tid="m1-screen"
-    @click.self="$emit('close')"
+    :data-phase="phase"
+    :style="flight"
+    @click.self="close"
   >
     <div class="m1-screen__strip">
       <span class="m1-screen__live"><span class="m1-screen__dot" />Live</span>
@@ -12,13 +15,21 @@
         type="button"
         class="m1-screen__done"
         data-tid="m1-screen-done"
-        @click="$emit('close')"
+        @click="close"
       >
         Done
       </button>
     </div>
     <div class="m1-screen__bezel">
+      <p
+        v-if="served === false"
+        class="m1-screen__empty"
+        data-tid="m1-screen-empty"
+      >
+        The printer's screen isn't available here yet
+      </p>
       <iframe
+        v-else-if="served"
         ref="frame"
         class="m1-screen__frame"
         src="/panel/"
@@ -40,7 +51,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
+import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import ControlMixin from '@/mixins/control'
 import { findFilamentMacro } from '@/services/quick-actions/model'
 import type { Macro } from '@/store/macros/types'
@@ -48,6 +59,22 @@ import type { Verb } from '@/services/panel-embed/protocol'
 import { PanelBridge } from '@/services/panel-embed/bridge'
 import { httpClientActions } from '@/api/httpClientActions'
 import { NOTIFY_ACTIONS } from '@/services/panel-embed/allow'
+
+/** The zoom in from the model's screen, and back out to it, ms. */
+const FLY_MS = 380
+/** The bezel's drawn size, and the room the top strip takes, px. */
+const BEZEL_PX = 340
+const STRIP_PX = 64
+
+/** Whether this Control serves the printer screen's embed build at /panel/. */
+async function panelServed (): Promise<boolean> {
+  try {
+    const r = await fetch('/panel/index.html', { method: 'HEAD', cache: 'no-store' })
+    return r.ok && (r.headers.get('content-type') ?? '').includes('text/html')
+  } catch {
+    return false
+  }
+}
 
 /** Each view's bridge, kept out of Vue's reach: Vue must not walk it or its port. */
 const bridges = new WeakMap<object, PanelBridge>()
@@ -59,9 +86,26 @@ const bridges = new WeakMap<object, PanelBridge>()
  * Control's connection, after the allowlist; anything meant to be done on the
  * printer itself is refused there and tagged "Confirm on the printer" in the
  * screen. The knob is the mouse wheel and a click, inside the frame.
+ *
+ * It opens by zooming in from where the screen is on the model, and Esc,
+ * Done or a click outside fly it back out there. Without a /panel/ build it
+ * says so, and nothing is framed or bridged.
  */
 @Component
 export default class M1Screen extends Mixins(ControlMixin) {
+  /** Where the model's screen is on the stage, to fly in from and back out to. */
+  @Prop({ type: Object, default: null })
+  readonly from!: { x: number, y: number } | null
+
+  @Prop({ type: Boolean, default: false })
+  readonly reducedMotion!: boolean
+
+  /** 'in' before the zoom starts, 'open', then 'out' while it flies back. */
+  phase: 'in' | 'open' | 'out' = 'in'
+  /** /panel/ is served here: null until known. */
+  served: boolean | null = null
+  flyTimer = 0
+  flight: Record<string, string> = {}
   stopActions: (() => void) | null = null
   refusedLast = false
   refusedTimer = 0
@@ -70,8 +114,44 @@ export default class M1Screen extends Mixins(ControlMixin) {
     return (this.$store.getters['config/getDisplayName'] as string | undefined) || 'the printer'
   }
 
-  mounted () {
-    const frame = this.$refs.frame as HTMLIFrameElement
+  /** The zoom's start (and end): the screen on the model, small, as an offset from the stage's middle. */
+  flyFrom (): Record<string, string> {
+    const el = this.$el as HTMLElement
+    const ms = `${this.reducedMotion ? 0 : FLY_MS}ms`
+    // Small stages (a phone) draw the bezel smaller, clear of the strip with Done.
+    const fit = Math.min(1, (el.clientHeight - 2 * STRIP_PX) / BEZEL_PX, (el.clientWidth - 24) / BEZEL_PX)
+    const style: Record<string, string> = { '--fly-ms': ms, '--fit': `${Math.max(0.4, fit).toFixed(3)}` }
+    if (!this.from) return style
+    const dx = Math.round(this.from.x - el.clientWidth / 2)
+    const dy = Math.round(this.from.y - el.clientHeight / 2)
+    return { ...style, '--fly-x': `${dx}px`, '--fly-y': `${dy}px` }
+  }
+
+  async mounted () {
+    document.addEventListener('keydown', this.onKey)
+    this.flight = this.flyFrom()
+    // The next frame, so the zoom starts from the screen on the model.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (this.phase === 'in') this.phase = 'open'
+    }))
+    const served = await panelServed()
+    if (this.phase === 'out' || (this as unknown as { _isDestroyed?: boolean })._isDestroyed) return
+    this.served = served
+    if (served) this.$nextTick(() => this.connect())
+  }
+
+  /** Esc, Done or a click outside: fly back out to the model, then close. */
+  close () {
+    if (this.phase === 'out') return
+    this.phase = 'out'
+    clearTimeout(this.flyTimer)
+    this.flyTimer = window.setTimeout(() => this.$emit('close'), this.reducedMotion ? 0 : FLY_MS)
+  }
+
+  /** The bridge to the framed screen, on Control's connection, after the allowlist. */
+  connect () {
+    const frame = this.$refs.frame as HTMLIFrameElement | undefined
+    if (!frame) return
     bridges.set(this, new PanelBridge(frame, {
       rpc: async (method, params) => {
         const result = await this.$socket.emit(method, { params })
@@ -100,10 +180,10 @@ export default class M1Screen extends Mixins(ControlMixin) {
         bridge.notify(NOTIFY_ACTIONS[action.type], [action.payload])
       }
     })
-    document.addEventListener('keydown', this.onKey)
   }
 
   beforeDestroy () {
+    clearTimeout(this.flyTimer)
     document.removeEventListener('keydown', this.onKey)
     this.stopActions?.()
     bridges.get(this)?.dispose()
@@ -164,7 +244,7 @@ export default class M1Screen extends Mixins(ControlMixin) {
   }
 
   onKey (e: KeyboardEvent) {
-    if (e.key === 'Escape') this.$emit('close')
+    if (e.key === 'Escape') this.close()
   }
 }
 </script>
@@ -179,6 +259,38 @@ export default class M1Screen extends Mixins(ControlMixin) {
     background: rgb(0 0 0 / 55%);
     backdrop-filter: blur(6px);
     pointer-events: auto;
+    transition: background var(--fly-ms, 380ms) ease, backdrop-filter var(--fly-ms, 380ms) ease;
+  }
+
+  /* Zooming in from the model's screen, and back out to it. */
+  .m1-screen__bezel,
+  .m1-screen__strip {
+    transition: transform var(--fly-ms, 380ms) cubic-bezier(0.2, 0.8, 0.2, 1), opacity var(--fly-ms, 380ms) ease;
+  }
+
+  .m1-screen--in,
+  .m1-screen--out {
+    background: rgb(0 0 0 / 0%);
+    backdrop-filter: blur(0);
+
+    .m1-screen__bezel {
+      transform: translate(var(--fly-x, 0), var(--fly-y, 0)) scale(calc(0.14 * var(--fit, 1)));
+      opacity: 0.4;
+    }
+
+    .m1-screen__strip {
+      transform: translateY(-8px);
+      opacity: 0;
+    }
+  }
+
+  .m1-screen__empty {
+    max-width: 220px;
+    margin: 0;
+    text-align: center;
+    color: #3a3a3c;
+    font-size: 14px;
+    font-weight: 600;
   }
 
   .m1-screen__strip {
@@ -189,6 +301,7 @@ export default class M1Screen extends Mixins(ControlMixin) {
     display: flex;
     align-items: center;
     gap: 10px;
+    z-index: 1;
     padding: 8px 10px 8px 14px;
     border-radius: 14px;
     background: rgb(36 36 40 / 82%);
@@ -239,6 +352,7 @@ export default class M1Screen extends Mixins(ControlMixin) {
     display: grid;
     place-items: center;
     box-shadow: 0 30px 60px rgb(0 0 0 / 60%);
+    transform: scale(var(--fit, 1));
   }
 
   .m1-screen__frame {

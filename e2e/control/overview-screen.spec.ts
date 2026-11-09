@@ -36,6 +36,13 @@ async function servePanel (page: Page) {
   await page.route('**/panel/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: STUB }))
 }
 
+/** Click the screen: its chip (hidden on a desktop until focused), as on the simple model the screen itself is small. */
+async function clickScreen (page: Page) {
+  const chip = page.getByTestId('m1-part-screen')
+  await chip.focus()
+  await chip.press('Enter')
+}
+
 async function ready (page: Page) {
   await expect(page.getByTestId('m1-live')).toHaveAttribute('data-live', 'on', { timeout: 60_000 })
   await expect(page.getByTestId('m1-parts')).toBeAttached()
@@ -46,12 +53,15 @@ test('the screen opens the printer\'s own screen; only allowed calls reach the p
   await servePanel(page)
   await open('/')
   await ready(page)
-  await page.getByTestId('m1-part-screen').focus()
-  await page.getByTestId('m1-use-screen').click()
-  await expect(page.getByTestId('m1-screen')).toBeVisible()
+  // The refusals are said: a few seconds' note in the strip, watched for from the start.
+  const refusedSaid = page.getByTestId('m1-screen-refused').waitFor({ timeout: 60_000 })
+  // A click on the screen goes into it.
+  await clickScreen(page)
+  await expect(page.getByTestId('m1-screen')).toHaveAttribute('data-phase', 'open')
 
   const frame = page.frameLocator('[data-tid="m1-screen-frame"]')
   await expect.poll(() => frame.locator('body').evaluate(() => (window as unknown as { results: unknown[] }).results.length)).toBe(5)
+  await refusedSaid
   const results = await frame.locator('body').evaluate(() => (window as unknown as { results: Array<{ id: number, ok: boolean, error?: { message: string } }> }).results)
   const byId = Object.fromEntries(results.map(r => [r.id, r]))
   expect(byId[1].ok).toBe(true)
@@ -68,21 +78,52 @@ test('the screen opens the printer\'s own screen; only allowed calls reach the p
   expect(lines.some(l => /SAVE_CONFIG|G1 Z0/.test(l))).toBe(false)
   // Sandboxed: the frame has no way to Control's storage or window.
   await expect(page.getByTestId('m1-screen-frame')).toHaveAttribute('sandbox', 'allow-scripts')
-  await expect(page.getByTestId('m1-screen-refused')).toBeVisible()
 
+  // Esc flies back out to the model; the screen stays selected there.
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('m1-screen')).toHaveCount(0)
+  await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'screen')
 })
 
-test('without a /panel/ build the screen offers nothing to open', async ({ page, open }) => {
-  await usePrinter(page, PRESETS.idleHomed())
+test('it zooms in from the screen on the model, and Done or a click outside fly back out', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await servePanel(page)
+  await open('/')
+  await ready(page)
+  const screen = page.getByTestId('m1-screen')
+
+  await clickScreen(page)
+  // Starts small, at the model's screen, then opens.
+  await expect(screen).toHaveAttribute('data-phase', 'open')
+  // The camera flies in to the model's screen; the panel zooms out of it.
+  await expect(page.getByTestId('m1-parts')).toHaveAttribute('data-view', 'screen')
+  const fly = await screen.evaluate(el => [el.style.getPropertyValue('--fly-x'), el.style.getPropertyValue('--fly-y')])
+  expect(fly.every(v => /^-?\d+px$/.test(v))).toBe(true)
+  await page.getByTestId('m1-screen-done').click()
+  await expect(screen).toHaveCount(0)
+  await expect(page.getByTestId('m1-parts')).toHaveAttribute('data-view', 'free')
+
+  // The part's own button goes in too.
+  await page.getByTestId('m1-use-screen').click()
+  await expect(screen).toHaveAttribute('data-phase', 'open')
+  const box = (await screen.boundingBox())!
+  await page.mouse.click(box.x + 20, box.y + box.height - 20)
+  await expect(screen).toHaveCount(0)
+  // The stub's own jog went out by name, through moveBy; flying in and out sent nothing.
+  expect(printer.moves().every(l => l === 'G1 X10 F7800')).toBe(true)
+})
+
+test('without a /panel/ build the screen says so, and frames nothing', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
   await page.route('**/panel/**', route => route.fulfill({ status: 404, body: '' }))
   await open('/')
   await ready(page)
-  await page.getByTestId('m1-part-screen').focus()
-  await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'screen')
-  await page.waitForTimeout(800)
-  await expect(page.getByTestId('m1-use-screen')).toHaveCount(0)
+  await clickScreen(page)
+  await expect(page.getByTestId('m1-screen-empty')).toHaveText("The printer's screen isn't available here yet")
+  await expect(page.getByTestId('m1-screen-frame')).toHaveCount(0)
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('m1-screen')).toHaveCount(0)
+  expect(printer.gcode).toEqual([])
 })
 
 test('while it prints the screen cannot be opened', async ({ page, open }) => {
@@ -90,7 +131,8 @@ test('while it prints the screen cannot be opened', async ({ page, open }) => {
   await servePanel(page)
   await open('/')
   await ready(page)
-  await page.getByTestId('m1-part-screen').focus()
+  await clickScreen(page)
   await page.waitForTimeout(800)
   await expect(page.getByTestId('m1-use-screen')).toHaveCount(0)
+  await expect(page.getByTestId('m1-screen')).toHaveCount(0)
 })
