@@ -21,6 +21,8 @@ test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '-
 test.beforeEach(async ({ page }) => {
   if (!GPU) await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
 })
+// Software WebGL under the whole default Overview (Movement included) takes seconds a step on a CI runner.
+test.slow(!GPU, 'software WebGL')
 
 /** The live M1 has drawn and its parts layer is up. */
 async function partsReady (page: Page): Promise<Locator> {
