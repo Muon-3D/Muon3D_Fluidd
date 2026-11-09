@@ -55,6 +55,7 @@ import { retireProStorage } from './services/retired-storage'
 import Blur from '@/directives/blur'
 import { restoreUiStyle } from '@/util/ui-style'
 import { applyGlassIcons } from '@/util/glass-icons'
+import { followMotionSetting } from '@/services/m1-3d/device-settings'
 
 // The entry is evaluated: the loader's next mark (KAN-525).
 retireProStorage()
@@ -112,6 +113,8 @@ preferSavedPrinterFor(window.location.pathname, Globals.LOCAL_INSTANCES_STORAGE_
 const restoredUiStyle = restoreUiStyle()
 store.commit('config/setRestoredUiStyle', restoredUiStyle)
 applyGlassIcons(vuetify.framework.icons.values as unknown as Record<string, unknown>, restoredUiStyle === 'glass')
+
+followMotionSetting()
 
 const mountApp = () => {
   Vue.config.productionTip = false
