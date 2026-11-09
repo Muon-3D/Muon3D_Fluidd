@@ -149,6 +149,8 @@ export const defaultState = (): ConfigState => {
         autoFollowOnFileLoad: true,
         hideSinglePartBoundingBox: false,
         autoZoom: false,
+        showMoves: true,
+        showRetractions: true,
         flip: {
           horizontal: false,
           vertical: true
