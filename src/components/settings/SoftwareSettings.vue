@@ -297,9 +297,14 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
   }
 
   async loadPolicy () {
-    const get = (url: string) => this.$httpClient.get(url, { validateStatus: () => true })
-      .then(r => (r.status >= 200 && r.status < 300 ? r.data : null))
-      .catch(() => null)
+    const get = async (url: string) => {
+      try {
+        const r = await this.$httpClient.get(url, { validateStatus: () => true })
+        return r.status >= 200 && r.status < 300 ? r.data : null
+      } catch {
+        return null
+      }
+    }
     const [auto, presence] = await Promise.all([get(AUTO_INSTALL_PATH), get(PRESENCE_PATH)])
     const status = this.status as PolicyStatus | null
     this.autoInstall = flagOf(auto, 'enabled') ?? (typeof status?.auto_install === 'boolean' ? status.auto_install : null)
