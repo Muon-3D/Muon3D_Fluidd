@@ -38,12 +38,13 @@ it.each([false, true])('offers fine jog steps down to 0.1 mm on phone=%s', phone
   s.wrapper.destroy()
 })
 
-it('types an exact place, shows the limits and speeds, and goes there through moveTo', async () => {
+it('Go to turns the readout into fields and goes there through moveTo', async () => {
   const s = show({ bedMesh: null })
-  expect(s.wrapper.text()).toContain('0 to 200'); expect(s.wrapper.text()).toContain('130 mm/s')
+  await s.wrapper.find('[data-tid="move-goto"]').trigger('click')
   const x = s.wrapper.find('input[aria-label="X to go to"]')
   await x.setValue('120'); await x.trigger('keydown.enter')
-  await s.wrapper.find('[data-tid="move-go"]').trigger('click')
+  await s.wrapper.find('[data-tid="move-go-form"]').trigger('submit')
+  // Only the changed axis is sent, at the head's speed.
   expect(sent()).toEqual(['SAVE_GCODE_STATE NAME=_ui_movement\nG90\nG1 X120 F7800\nRESTORE_GCODE_STATE NAME=_ui_movement'])
   s.wrapper.destroy()
 })
@@ -78,7 +79,7 @@ describe('the trackpad', () => {
     s.wrapper.destroy()
   })
 
-  it('dragging moves the pick and sends nothing', async () => {
+  it('a drag streams the pick through moveTo: one move in flight, the rest wait for it to land', async () => {
     const s = show()
     const pad = s.wrapper.findComponent(ControlTrackpad)
     const el = pad.element as HTMLElement
@@ -86,7 +87,8 @@ describe('the trackpad', () => {
     await pad.trigger('pointerdown', { pointerId: 1, button: 0, pointerType: 'touch', clientX: 100, clientY: 100 })
     for (let x = 110; x < 300; x += 20) await pad.trigger('pointermove', { pointerId: 1, clientX: x, clientY: 150 })
     await pad.trigger('pointerup', { pointerId: 1 })
-    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    // The press only picked; the first move past the slop went at once, the rest wait for it to land.
+    expect(moves()).toHaveLength(1)
     expect(s.vm.target.x).toBeCloseTo(290 / 400 * 200, 0)
     s.wrapper.destroy()
   })
@@ -244,20 +246,23 @@ it('a diagonal that would end in the notch low down is refused through the plann
   across.wrapper.destroy()
 })
 
-it('Motors off sends M84 at once, and sits apart from the homing row', async () => {
+it('Motors off sends M84 at once, and is only in the menu', async () => {
   const s = show()
   const motors = s.wrapper.find('[data-tid="motors-off"]')
-  expect(motors.element.closest('.move__actions')).toBeNull()
-  expect(s.wrapper.find('.move__actions [data-tid="home-z"]').exists()).toBe(true)
+  expect(motors.attributes('role')).toBe('menuitem')
+  expect(motors.element.closest('.move__bar')).toBeNull()
+  expect(s.wrapper.find('.move__homes [data-tid="home-z"]').exists()).toBe(true)
   await motors.trigger('click')
   expect(sent()).toEqual(['M84'])
   expect(s.confirm).not.toHaveBeenCalled()
   s.wrapper.destroy()
 })
 
-it('has no Home Z between Z+ and Z−; Home Z is in the action row only', () => {
+it('has no Home Z between Z+ and Z−: the live Z readout is there; Home Z is in the homing bar', () => {
   const s = show()
-  expect(s.wrapper.findAll('[aria-label="Home Z"]').length).toBe(0)
+  expect(s.wrapper.findAll('.move__zcol button').length).toBe(2)
+  expect(s.wrapper.find('.move__zcol [data-tid="pos-z"]').exists()).toBe(true)
   expect(s.wrapper.findAll('[data-tid="home-z"]').length).toBe(1)
+  expect(s.wrapper.find('[data-tid="home-z"]').element.closest('.move__homes')).not.toBeNull()
   s.wrapper.destroy()
 })
