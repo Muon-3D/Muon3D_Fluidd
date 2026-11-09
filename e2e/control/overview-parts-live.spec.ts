@@ -9,7 +9,7 @@
  */
 import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
-import { usePrinter, PRESETS, type PrinterHandle } from './printer'
+import { overlay, usePrinter, PRESETS, type PrinterHandle } from './printer'
 
 /** As overview-parts-move.spec.ts: drags redraw every frame, so they run where the GPU draws. */
 const GPU = process.platform === 'win32' && !process.env.E2E_NO_GPU
@@ -61,10 +61,18 @@ async function bedToPage (page: Page): Promise<(x: number, y: number) => { x: nu
   return (x, y) => ({ x: scales.left + fx(x), y: scales.top + fy(y) })
 }
 
+/**
+ * The printer reports `status` on top of what it reported before. (report alone
+ * replaces the overlay, so the shared mock's mid-print state would show through.)
+ */
+function report (printer: PrinterHandle, status: Record<string, unknown>) {
+  printer.report(overlay(printer.state.status, status))
+}
+
 /** The printer reports the head (or plate) at the last move's place: it has landed. */
 function land (printer: PrinterHandle, at: [number, number, number]) {
   const p = [...at, 0]
-  printer.report({ toolhead: { position: p }, gcode_move: { position: p, gcode_position: p }, motion_report: { live_position: p } })
+  report(printer, { toolhead: { position: p }, gcode_move: { position: p, gcode_position: p }, motion_report: { live_position: p } })
 }
 
 /** Where the head is after the moves so far, from the last of each axis. */
@@ -124,10 +132,11 @@ test('the view stays straight down while the printer is busy running the move', 
   await page.mouse.move(at.x, at.y)
   await page.mouse.down()
   const a = toPage(140, 100)
-  await page.mouse.move(a.x, a.y, { steps: 6 })
+  // One pointer move, one target: a slow frame rate can't outlast the hand-move settle and let a second through.
+  await page.mouse.move(a.x, a.y)
   await expect.poll(() => moveLines(printer.gcode).length).toBe(1)
   // Klipper runs the move: idle_timeout says Printing with no print.
-  printer.report({ idle_timeout: { state: 'Printing' } })
+  report(printer, { idle_timeout: { state: 'Printing' } })
   await page.waitForTimeout(400)
   await expect(page.getByTestId('m1-parts')).toHaveAttribute('data-view', 'top')
   await expect(page.getByTestId('m1-drag-target')).toBeAttached()
@@ -137,7 +146,7 @@ test('the view stays straight down while the printer is busy running the move', 
   await page.mouse.move(b.x, b.y, { steps: 4 })
   await page.waitForTimeout(500)
   expect(moveLines(printer.gcode)).toHaveLength(1)
-  printer.report({ idle_timeout: { state: 'Ready' } })
+  report(printer, { idle_timeout: { state: 'Ready' } })
   await expect.poll(() => moveLines(printer.gcode).length).toBe(2)
   await page.mouse.up()
 })
@@ -161,8 +170,8 @@ for (const how of ['Esc', 'a second pointer', 'the window losing focus', 'homing
     else if (how === 'a second pointer') {
       await page.locator('.m1-live__canvas').dispatchEvent('pointerdown', { pointerId: 99, isPrimary: false, button: 0, clientX: a.x + 40, clientY: a.y })
     } else if (how === 'the window losing focus') await page.evaluate(() => window.dispatchEvent(new Event('blur')))
-    else if (how === 'homing lost') printer.report({ toolhead: { homed_axes: '' } })
-    else printer.report({ print_stats: { state: 'printing' }, idle_timeout: { state: 'Printing' } })
+    else if (how === 'homing lost') report(printer, { toolhead: { homed_axes: '' } })
+    else report(printer, { print_stats: { state: 'printing' }, idle_timeout: { state: 'Printing' } })
     await expect(page.getByTestId('m1-drag-target')).toHaveCount(0)
 
     land(printer, headAfter(printer, start))
@@ -261,7 +270,8 @@ test('the plate follows a drag up, live, no more than 50 mm in one drag', async 
   const at = await partPoint(page)
   await page.mouse.move(at.x, at.y)
   await page.mouse.down()
-  await page.mouse.move(at.x, at.y - 30, { steps: 5 })
+  // One pointer move, one target (as the busy test above).
+  await page.mouse.move(at.x, at.y - 30)
   await expect.poll(() => moveLines(printer.gcode).length).toBe(1)
   land(printer, headAfter(printer, start))
   await page.mouse.move(at.x, at.y - 400, { steps: 8 })

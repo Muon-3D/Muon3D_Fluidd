@@ -283,9 +283,14 @@ export default class M1Parts extends Mixins(ControlMixin) {
   /** Why the last drag's move was refused, said in the label until the next drag. */
   refused = ''
 
-  /** Parts offer their options only on an idle printer this person can control. */
+  /**
+   * Parts offer their options only on an idle printer this person can control.
+   * Klipper running a move with no print counts as idle here (the stage calls
+   * any busy printer 'printing'), so the selection and the view hold through it.
+   */
   get interactive (): boolean {
-    return this.stageState === 'idle' && this.controlReady && !this.printerPrinting && !this.printerPaused
+    const idle = this.stageState === 'idle' || (this.stageState === 'printing' && this.moving)
+    return idle && this.controlReady && !this.printerPrinting && !this.printerPaused
   }
 
   /**
@@ -577,6 +582,11 @@ export default class M1Parts extends Mixins(ControlMixin) {
     if (pointer !== null) this.bound?.releasePointerCapture?.(pointer)
   }
 
+  /** A plate drag that hasn't left the Z it started at: nothing to send. */
+  atStart (drag: PartDrag): boolean {
+    return 'Z' in drag.target && drag.target.Z === drag.startZ
+  }
+
   /** The drag's place in G-code millimetres, what moveTo takes. */
   placeFor (target: { X: number, Y: number } | { Z: number }) {
     return releasePlace(target, this.gcodeOffset ?? [0, 0, 0], this.axisMin, this.axisMax)
@@ -603,15 +613,17 @@ export default class M1Parts extends Mixins(ControlMixin) {
       const hit = viewer.onUpright(x, y, through)
       if (!hit) return
       if (!this.drag) {
+        // Read from the press, not from where the pointer passed the tap slop, so the plate goes as far as the pointer did.
+        const from = this.down ? viewer.onUpright(this.down.x, this.down.y, through) : null
         this.refused = ''
-        this.drag = { part, printer: this.panelTarget, target: { Z: z0 }, startZ: z0, startY: hit.y }
+        this.drag = { part, printer: this.panelTarget, target: { Z: z0 }, startZ: z0, startY: (from ?? hit).y }
       }
       const by = zForPlateTop(hit.y) - zForPlateTop(this.drag.startY ?? hit.y)
       this.drag = { ...this.drag, target: { Z: plateDragZ(z0, by, this.axisMin[2], this.axisMax[2]) } }
     }
-    // The part follows as the pointer moves, to the printer the drag began on.
+    // The part follows as the pointer moves, to the printer the drag began on, once it has somewhere to go.
     const follower = this.follower
-    if (follower && this.drag.printer === this.panelTarget) {
+    if (follower && this.drag.printer === this.panelTarget && (follower.following || !this.atStart(this.drag))) {
       const place = this.placeFor(this.drag.target)
       if (follower.following) follower.update(place)
       else {
@@ -635,7 +647,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.dragPx = null
     const follower = this.follower
     // Only to the printer the drag began on, and only while that part can still be moved.
-    if (!drag || !follower || this.movable !== drag.part || drag.printer !== this.panelTarget) {
+    if (!drag || !follower || this.movable !== drag.part || drag.printer !== this.panelTarget || (!follower.following && this.atStart(drag))) {
       follower?.cancel()
       return
     }
