@@ -272,6 +272,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
   motionQuery: MediaQueryList | null = null
 
   drag: PartDrag | null = null
+  /** The printer the follower's current drag began on (panelTarget); null before any. */
+  followPrinter: string | null = null
   /** The pointer a drag may come from: one that went down on the selected part with the main button. Null for anything else. */
   dragPointer: number | null = null
   dragPx: { from: { x: number, y: number }, to: { x: number, y: number } } | null = null
@@ -389,7 +391,15 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   created () {
     const control = controlDragHost(this)
-    const host: DragFollowHost = { ...control, waiting: () => control.waiting() || this.moving }
+    // A follower belongs to the printer it started on: anything it still owes (a release waiting for the
+    // last move to land) is refused, never sent, once Control is on another printer (Opus review of #340, B1).
+    const samePrinter = () => this.followPrinter === null || this.followPrinter === this.panelTarget
+    const host: DragFollowHost = {
+      ...control,
+      refusal: target => samePrinter() ? control.refusal(target) : 'The printer changed; that move was not sent.',
+      send: target => samePrinter() && control.send(target),
+      waiting: () => control.waiting() || this.moving
+    }
     followers.set(this, new DragFollow(host, { onRefused: reason => this.onFollowRefused(reason) }))
     window.addEventListener('blur', this.onBlur)
     document.addEventListener('visibilitychange', this.onHidden)
@@ -548,6 +558,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   /** The window lost focus: a drag ends, sending nothing more. */
   onBlur () {
+    this.follower?.cancel()
     if (this.drag || this.dragPointer !== null) this.onCancel()
   }
 
@@ -603,7 +614,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
     if (follower && this.drag.printer === this.panelTarget) {
       const place = this.placeFor(this.drag.target)
       if (follower.following) follower.update(place)
-      else follower.start(place)
+      else {
+        this.followPrinter = this.panelTarget
+        follower.start(place)
+      }
     }
     this.follow()
   }
@@ -627,7 +641,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
     }
     const place = this.placeFor(drag.target)
     if (follower.following) follower.update(place)
-    else follower.start(place)
+    else {
+      this.followPrinter = this.panelTarget
+      follower.start(place)
+    }
     follower.release()
   }
 
@@ -685,6 +702,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   /** Another printer: a drag on this one ends, sending nothing. */
   @Watch('panelTarget')
   onPrinterChange () {
+    this.follower?.cancel()
     if (this.drag || this.dragPointer !== null) this.onCancel()
   }
 
@@ -692,6 +710,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   @Watch('movable')
   onMovable (part: 'toolhead' | 'plate' | null) {
     if (this.bound) this.bound.style.touchAction = part ? 'none' : ''
+    if (!part) this.follower?.cancel()
     if (!part && (this.drag || this.dragPointer !== null)) this.onCancel()
   }
 
@@ -726,7 +745,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
     // Not while typing somewhere or inside a dialog: that Esc is theirs.
     const t = e.target as HTMLElement | null
     if (t && t !== document.body && !this.$el.contains(t) && (t.closest('input, textarea, select, [contenteditable], .v-dialog, [role="dialog"]'))) return
-    // Esc mid-drag drops the drag and sends nothing; otherwise it lets the part go.
+    // Esc drops the drag, and any release still waiting to send; otherwise it lets the part go.
+    this.follower?.cancel()
     if (this.drag || this.dragPointer !== null) {
       this.onCancel()
       return
