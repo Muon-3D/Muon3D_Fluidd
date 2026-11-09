@@ -22,7 +22,7 @@ it.each([false, true])('renders each printer action once across the Control page
       tabs: () => [],
       subtitle: () => ''
     },
-    stubs: { ...panelStubs, CameraTabs: true, OverviewActions: true, PrinterPageMenu: true, MaintenanceDue: true, CameraActions: true, TonePill: true }
+    stubs: { ...panelStubs, OverviewActions: true, PrinterPageMenu: true, MaintenanceDue: true, CameraActions: true, TonePill: true }
   })
 
   for (const action of printerActions) {
@@ -39,7 +39,7 @@ it.each([false, true])('keeps all six task panels with either legacy setting on 
   for (const pro of [false, true]) {
     localStorage.setItem('muon3d.pro', pro ? '1' : '0')
     const wrapper = mount(Control, { mocks: { $store: store, $waits: waits, $route: { params: { printer: 'mock' } } }, computed: { isMobileViewport: () => phone }, stubs: { ...panelStubs, MaterialPicker: true } })
-    for (const name of ['heat', 'move', 'filament', 'speed', 'fans', 'macros']) expect(wrapper.findAll(`[data-tid="control-${name}"]`).length).toBe(1)
+    for (const name of ['heat', 'move', 'filament', 'printmode', 'fans', 'quick']) expect(wrapper.findAll(`[data-tid="control-${name}"]`).length).toBe(1)
     expect(wrapper.find('[data-tid="control-shaper"]').exists()).toBe(false)
     expect(wrapper.find('[data-tid="control-endstops"]').exists()).toBe(false)
     expect(wrapper.findAll('[data-tid="control-retraction"]').length).toBe(0)
@@ -50,9 +50,9 @@ it.each([false, true])('keeps all six task panels with either legacy setting on 
 
 it('drops the previous printer’s macro form when the selected connection changes', async () => {
   const store = panelStore()
-  store.state.printer.printer.configfile.settings['gcode_macro UNLOAD_FILAMENT'] = { gcode: '{params.TEMP | default(210)}' }
+  store.state.printer.printer.configfile.settings['gcode_macro PARK_HEAD'] = { gcode: '{params.SPEED | default(100)}' }
   const wrapper = mount(Control, { mocks: { $store: store, $waits: waits, $route: { params: { printer: 'mock' } } }, computed: { isMobileViewport: () => false }, stubs: { ...panelStubs, MaterialPicker: true } })
-  await wrapper.find('[data-tid="macro-UNLOAD_FILAMENT"]').trigger('click')
+  await wrapper.find('[data-tid="qc-PARK_HEAD"]').trigger('click')
   expect(wrapper.find('[data-tid="macro-send"]').exists()).toBe(true)
   store.state.config.apiUrl = 'http://other.local'; await wrapper.vm.$nextTick()
   expect(wrapper.find('[data-tid="macro-send"]').exists()).toBe(false)
@@ -65,13 +65,14 @@ it('lays the page out as D3 tiles, and Edit layout hides, reorders and saves per
   const mocks = { $store: store, $waits: waits, $route: { params: { printer: 'mock' } } }
   const wrapper = mount(Control, { mocks, computed: { isMobileViewport: () => false }, stubs: { ...panelStubs, MaterialPicker: true } })
   const order = () => wrapper.findAll('[data-cell]').wrappers.map(w => w.attributes('data-cell'))
-  expect(order()).toEqual(['move', 'heat', 'speed', 'fans', 'filament', 'zoffset', 'macros'])
-  expect(wrapper.find('[data-tid="control-zoffset"]').exists()).toBe(true)
+  // v4: Movement, Heaters, Print mode, Fans, Filament, Quick commands. No Z offset tile.
+  expect(order()).toEqual(['move', 'heat', 'speed', 'fans', 'filament', 'macros'])
+  expect(wrapper.find('[data-tid="control-zoffset"]').exists()).toBe(false)
 
   await wrapper.find('[data-tid="edit-open"]').trigger('click')
-  await wrapper.find('[aria-label="Hide Macros"]').trigger('click')
+  await wrapper.find('[aria-label="Hide Quick commands"]').trigger('click')
   await wrapper.find('[aria-label="Move Heaters later"]').trigger('click')
-  expect(order()).toEqual(['move', 'speed', 'heat', 'fans', 'filament', 'zoffset'])
+  expect(order()).toEqual(['move', 'speed', 'heat', 'fans', 'filament'])
   expect(wrapper.find('[data-tid="add-macros"]').exists()).toBe(true)
   await wrapper.find('[data-tid="edit-done"]').trigger('click')
 

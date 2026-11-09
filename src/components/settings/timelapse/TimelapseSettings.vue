@@ -9,6 +9,34 @@
       class="mb-4"
     >
       <app-setting
+        title="Take a timelapse"
+        :sub-title="subtitleIfBlocked(enabledBlocked)"
+      >
+        <v-switch
+          v-model="enabled"
+          hide-details
+          :disabled="enabledBlocked"
+          data-tid="timelapse-setting-enabled"
+          @click.native.stop
+        />
+      </app-setting>
+      <v-divider />
+
+      <app-setting
+        title="Render when the print ends"
+        :sub-title="subtitleIfBlocked(autorenderBlocked)"
+      >
+        <v-switch
+          v-model="autorender"
+          hide-details
+          :disabled="autorenderBlocked"
+          data-tid="timelapse-setting-autorender"
+          @click.native.stop
+        />
+      </app-setting>
+      <v-divider />
+
+      <app-setting
         :title="$tc('app.general.title.camera', 1)"
         :sub-title="subtitleIfBlocked(cameraBlocked)"
       >
@@ -162,6 +190,30 @@ export default class TimelapseSettings extends Mixins(StateMixin) {
         value: camera.uid,
         disabled: !camera.enabled
       }))
+  }
+
+  get enabledBlocked (): boolean {
+    return this.$store.getters['timelapse/isBlockedSetting']('enabled')
+  }
+
+  get enabled (): boolean {
+    return !!this.settings?.enabled
+  }
+
+  set enabled (value: boolean) {
+    SocketActions.machineTimelapseSetSettings({ enabled: value })
+  }
+
+  get autorenderBlocked (): boolean {
+    return this.$store.getters['timelapse/isBlockedSetting']('autorender')
+  }
+
+  get autorender (): boolean {
+    return !!this.settings?.autorender
+  }
+
+  set autorender (value: boolean) {
+    SocketActions.machineTimelapseSetSettings({ autorender: value })
   }
 
   get cameraBlocked (): boolean {

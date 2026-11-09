@@ -132,7 +132,10 @@ export interface PrinterShare {
   ends_at: number | null;
   created_at: number;
   accepted?: boolean;
+  /** Their profile name, when the console knows it. */
   name?: string;
+  /** Their public photo (`/v1/public/avatars/:id`); 404s while their profile isn't visible. */
+  avatar_url?: string | null;
 }
 
 export interface PrinterInvite {
@@ -165,7 +168,7 @@ export interface JoinApproval {
   link_id: string;
   role: string;
   state: 'pending' | 'allowed' | 'refused' | 'expired';
-  requester?: { name?: string, email: string };
+  requester?: { name?: string, email: string, avatar_url?: string | null };
   created_at: number;
   expires_at: number;
 }

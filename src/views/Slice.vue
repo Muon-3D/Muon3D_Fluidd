@@ -3,39 +3,104 @@
   <div
     v-else
     class="slice-view"
-    :class="{ 'slice-view--part': partOfPage }"
+    :class="{ 'slice-view--part': partOfPage, 'slice-view--phone': isMobileViewport }"
     data-test="slice-view"
   >
-    <iframe
-      v-if="url && present === 'present'"
-      ref="frame"
-      class="slice-view__frame"
-      :class="{ 'slice-view__frame--waiting': !ready }"
-      title="Muon3D Slicer"
-      allow="clipboard-write; fullscreen"
-      referrerpolicy="no-referrer"
-      :sandbox="sandbox"
-      @load="onFrameLoad"
-    />
-    <v-alert
-      v-else-if="!url || present === 'absent'"
-      type="warning"
-      text
+    <header class="slice-head">
+      <h1
+        class="slice-head__title"
+        data-tid="page-title"
+      >
+        Slice
+      </h1>
+      <p class="slice-head__line">
+        {{ headerLine }}
+      </p>
+      <div
+        class="slice-head__sum"
+        data-tid="slice-summary"
+      >
+        <span data-tid="slice-printer">{{ printerChip }}</span>
+        <span
+          v-if="materialChip"
+          data-tid="slice-material"
+        >
+          <i
+            v-if="materialChip.colour"
+            :style="{ background: materialChip.colour }"
+          />
+          {{ materialChip.name }}
+        </span>
+      </div>
+    </header>
+
+    <section
+      class="slice-tile"
+      data-tid="slice-tile"
     >
-      {{ $t('app.slicer.msg.no_slicer') }}
-    </v-alert>
-    <div
-      v-if="url && present !== 'absent' && !ready"
-      class="slice-view__opening"
-      role="status"
-      data-tid="slice-opening"
-    >
-      <span
-        class="slice-view__spinner"
-        aria-hidden="true"
-      />
-      Opening the slicer…
-    </div>
+      <div class="slice-tile__head">
+        <frame-icon
+          name="slice"
+          small
+        />
+        <b>Slicer</b>
+        <span
+          class="slice-tile__pill"
+          :class="`slice-tile__pill--${statusTone}`"
+          data-tid="slice-status"
+        >{{ statusText }}</span>
+      </div>
+      <div class="slice-tile__body">
+        <iframe
+          v-if="url && present === 'present'"
+          ref="frame"
+          class="slice-view__frame"
+          :class="{ 'slice-view__frame--waiting': !ready }"
+          title="Muon3D Slicer"
+          allow="clipboard-write; fullscreen"
+          referrerpolicy="no-referrer"
+          :sandbox="sandbox"
+          @load="onFrameLoad"
+        />
+        <div
+          v-else-if="!url || present === 'absent'"
+          class="slice-view__missing"
+          data-tid="slice-missing"
+        >
+          <span class="slice-view__icon">
+            <frame-icon name="slice" />
+          </span>
+          <b>The slicer isn't here</b>
+          <span>{{ $t('app.slicer.msg.no_slicer') }}</span>
+          <button
+            v-if="url"
+            type="button"
+            class="cbtn"
+            data-tid="slice-retry"
+            @click="retryProbe"
+          >
+            <frame-icon
+              name="refresh"
+              small
+            />
+            Look again
+          </button>
+        </div>
+
+        <div
+          v-if="url && present !== 'absent' && !ready"
+          class="slice-view__opening"
+          role="status"
+          data-tid="slice-opening"
+        >
+          <span
+            class="slice-view__spinner"
+            aria-hidden="true"
+          />
+          Opening the slicer…
+        </div>
+      </div>
+    </section>
 
     <print-confirm-dialog
       :request="dialogRequest"
@@ -58,7 +123,7 @@ import type { HostSetup, PrinterMaterial } from '@/services/slicer-bridge/vendor
 import PrintConfirmDialog, { type LoadedMaterial, type PrintConfirmRequest } from '@/components/slicer/PrintConfirmDialog.vue'
 import { startSlicerHost, type SlicerHost } from '@/services/slicer-bridge/host'
 import { readFluiddSelection } from '@/services/slicer-bridge/fluidd'
-import { configuredSlicerUrl, probeSlicer, slicerPresence, type SlicerPresence } from '@/services/slicer-bridge/slicerUrl'
+import { configuredSlicerUrl, probeSlicer, resetSlicerProbe, slicerPresence, type SlicerPresence } from '@/services/slicer-bridge/slicerUrl'
 import { isBoundToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
 import type { ConfirmAnswer, ConfirmRequest } from '@/services/slicer-bridge/vendor/printer-client/bridge/host'
 import { printerError } from '@/services/slicer-bridge/vendor/printer-client/errors/kinds'
@@ -66,6 +131,7 @@ import { createFluiddLibrary } from '@/services/slicer-bridge/library'
 import { libraryStatus, refreshLibrary, watchLibraryAccount } from '@/services/library/store'
 import { EventBus } from '@/eventBus'
 import { isForeignSlug } from '@/services/printer-pages'
+import { printerNameParts } from '@/util/printer-name'
 import ForeignPrinterSlice from '@/components/foreign/ForeignPrinterSlice.vue'
 
 interface OpenDialog {
@@ -145,6 +211,53 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
 
   get present (): SlicerPresence {
     return slicerPresence.state
+  }
+
+  /** On /slice with no printer, the slicer exports; it sends to none. */
+  get printerName (): string | null {
+    if (this.$route?.name === 'Slice (no printer)' || !this.$route?.params.printer) return null
+    const shown = this.$store.getters['config/getDisplayName'] as string | undefined
+    return shown ? printerNameParts(shown).name : null
+  }
+
+  get headerLine (): string {
+    return this.printerName
+      ? `Muon3D Slicer · slices for ${this.printerName} and sends the print to it`
+      : 'Muon3D Slicer · no printer open, so it saves the sliced file instead of sending it'
+  }
+
+  get printerChip (): string {
+    if (!this.printerName) return 'No printer'
+    return this.socketConnected ? this.printerName : `${this.printerName} · offline`
+  }
+
+  /** What the printer has loaded, as the slicer is told it; nothing when it's unknown. */
+  get materialChip (): { name: string, colour: string | null } | null {
+    if (!this.printerName) return null
+    try {
+      const loaded = this.loadedMaterial
+      return loaded ? { name: loaded.name, colour: this.loadedColour ?? loaded.colour ?? null } : null
+    } catch {
+      return null
+    }
+  }
+
+  get statusText (): string {
+    if (!this.url || this.present === 'absent') return 'Not found'
+    return this.ready ? 'Ready' : 'Opening'
+  }
+
+  get statusTone (): 'ok' | 'wait' | 'err' {
+    if (!this.url || this.present === 'absent') return 'err'
+    return this.ready ? 'ok' : 'wait'
+  }
+
+  /** Looks for the slicer again, as a fresh page would, and opens it if it's there now. */
+  async retryProbe () {
+    resetSlicerProbe()
+    if (!await probeSlicer(this.url)) return
+    await this.$nextTick()
+    this.startHost()
   }
 
   get sandbox (): string | undefined {
@@ -397,9 +510,114 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
 <style lang="scss" scoped>
   .slice-view {
     position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
     height: calc(100vh - 56px - 32px);
     height: calc(100dvh - 56px - 32px);
-    min-height: 360px;
+    min-height: 480px;
+  }
+
+  .slice-head {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px 4px 0;
+  }
+
+  .slice-head__title {
+    margin: 0;
+    color: var(--m3d-text);
+    font-family: var(--m3d-font-title, var(--m3d-font-sans));
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+  }
+
+  .slice-head__line {
+    margin: 0;
+    color: var(--m3d-text-muted);
+    font-size: 14px;
+  }
+
+  .slice-head__sum {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+
+    span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: var(--m3d-surface);
+      color: var(--m3d-text);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    i {
+      width: 10px;
+      height: 10px;
+      border: 1px solid var(--m3d-border);
+      border-radius: 50%;
+    }
+  }
+
+  .slice-tile {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 22px;
+    background: var(--m3d-surface);
+  }
+
+  .slice-tile__head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 18px;
+    font-size: 15px;
+
+    .frame-icon {
+      color: var(--m3d-text-muted);
+    }
+  }
+
+  .slice-tile__pill {
+    margin-left: auto;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--m3d-fill);
+    color: var(--m3d-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .slice-tile__pill--ok {
+    background: var(--m3d-accent-soft);
+    color: var(--m3d-accent);
+  }
+
+  .slice-tile__pill--err {
+    color: var(--m3d-danger);
+  }
+
+  .slice-tile__body {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 6px 6px;
+    overflow: hidden;
+    border-radius: 16px;
+    background: var(--v-background-base, var(--m3d-bg));
   }
 
   .slice-view__frame {
@@ -407,19 +625,82 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
     width: 100%;
     height: 100%;
     border: 0;
-    border-radius: 12px;
     background: var(--v-background-base, transparent);
   }
 
-  // A slicer drawn as a part of the page: no card of its own, the page's own ground.
+  // A slicer drawn as a part of the page: the tile's own ground shows through.
   .slice-view--part .slice-view__frame {
-    border-radius: 0;
     background: transparent;
   }
 
   // Hidden, not removed: the slicer loads and says hello behind the page's own "Opening".
   .slice-view__frame--waiting {
     visibility: hidden;
+  }
+
+  .slice-view__missing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 100%;
+    padding: 24px;
+    text-align: center;
+
+    span:not(.slice-view__icon) {
+      max-width: 420px;
+      color: var(--m3d-text-muted);
+    }
+  }
+
+  .slice-view__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: var(--m3d-fill);
+    color: var(--m3d-text-muted);
+  }
+
+  .slice-view--phone {
+    gap: 10px;
+    height: calc(100vh - 56px - 16px);
+    height: calc(100dvh - 56px - 16px);
+    min-height: 420px;
+
+    .slice-head__title {
+      font-size: 24px;
+    }
+
+    .slice-head__line {
+      display: none;
+    }
+
+    .slice-head__sum {
+      flex-wrap: nowrap;
+      margin-top: 2px;
+      overflow-x: auto;
+      scrollbar-width: none;
+
+      span {
+        flex: none;
+      }
+    }
+
+    .slice-tile {
+      border-radius: 18px;
+    }
+
+    .slice-tile__head {
+      padding: 10px 14px;
+    }
+
+    .slice-tile__body {
+      margin: 0 4px 4px;
+    }
   }
 
   .slice-view__opening {

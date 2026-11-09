@@ -10,6 +10,7 @@ import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { FileFilterType } from '../files/types'
 import consola from 'consola'
 import { DEFAULT_UI_STYLE } from '@/util/ui-style'
+import { migrateLegacyAnimations } from '@/services/m1-3d/device-settings'
 
 export const mutations: MutationTree<ConfigState> = {
   /**
@@ -47,12 +48,12 @@ export const mutations: MutationTree<ConfigState> = {
           payload.theme.logo.src = logoSrc.substring(1)
         }
 
-        // A theme saved before styles existed has none, and is the default
-        // style; the style this browser restored for sign-in must not stick.
-        if (payload.theme.style == null) {
-          payload.theme.style = DEFAULT_UI_STYLE
-        }
+        // Glass is the only style. A theme saved before styles existed has
+        // none, and one saved as 'flat' (retired) reads as glass too.
+        payload.theme.style = DEFAULT_UI_STYLE
       }
+
+      migrateLegacyAnimations(payload.gcodePreview?.showAnimations)
 
       const mergedSettings = mergeWith(
         cloneDeep(state.uiSettings),
@@ -200,7 +201,8 @@ export const mutations: MutationTree<ConfigState> = {
    */
   setRemovePreset (state, payload) {
     const i = state.uiSettings.dashboard.tempPresets.findIndex(preset => preset.id === payload.id)
-    state.uiSettings.dashboard.tempPresets.splice(i, 1)
+    // splice(-1, 1) would remove the last preset: a preset that is not there removes nothing.
+    if (i >= 0) state.uiSettings.dashboard.tempPresets.splice(i, 1)
   },
 
   setFileSystemActiveFilters (state, payload: { root: string, value: FileFilterType[] }) {

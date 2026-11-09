@@ -51,8 +51,9 @@ test('an ordinary jog away from the notch is one move, as before', async ({ page
 test('while printing, the move controls are locked and send nothing', async ({ page, open }) => {
   const printer = await usePrinter(page) // the mock as it is: mid-print
   await open('/control')
-  await expect(page.getByTestId('control-move').getByText(/Not while printing/).first()).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Head right (X+)' })).toBeDisabled()
+  // v4: while printing the tile shows the live position only; there is nothing to press.
+  await expect(page.getByTestId('control-move').getByText('Locked while printing')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Head right (X+)' })).toHaveCount(0)
   expect(printer.gcode).toEqual([])
 })
 
@@ -85,10 +86,10 @@ test('once the printer reports the head there, the next move goes', async ({ pag
   await expect.poll(() => printer.gcode.length).toBe(1)
   // The printer reports the head at X160.
   printer.report(PRESETS.idleHomed({ position: [160, 100, 10] }))
-  await expect(page.getByTestId('control-move')).toBeVisible()
-  await expect.poll(async () => {
-    await page.getByRole('button', { name: 'Head right (X+)' }).click()
-    return printer.gcode.length
-  }, { timeout: 3_000 }).toBeGreaterThanOrEqual(2) // well under the 8 s expiry: this must be the arrival
+  // The page has the report (its X readout shows 160), so the wait on the head is over because it ARRIVED,
+  // not because the 8 s expiry ran out: that is what this test is about.
+  await expect(page.getByTestId('pos-x').first()).toHaveText(/^X160(\.0+)?\s*$/)
+  await page.getByRole('button', { name: 'Head right (X+)' }).click()
+  await expect.poll(() => printer.gcode.length).toBe(2)
   expect(printer.gcode[1]).toContain('G1 X10 F7800')
 })

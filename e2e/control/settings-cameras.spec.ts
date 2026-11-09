@@ -313,14 +313,14 @@ test('an HTTP page needs its aspect ratio as width:height', async ({ page, open 
   expect(printer.called('server.webcams.post_item')[0]).toMatchObject({ uid: 'uid-web', service: 'iframe', aspect_ratio: '21:9' })
 })
 
-test('the saved order is the default camera on the Camera page and on Overview', async ({ page, open, isMobile }) => {
+test('the saved order is the default camera on the Camera page and on Overview', async ({ page, open }) => {
   // Alphabetical would open Chamber; the saved order puts Toolhead first.
   await withCameras(page, [CHAMBER, TOOLHEAD], ['uid-toolhead', 'uid-chamber'])
   await open('/camera')
   // A stream that never answers leaves the stage empty, so it is attached, not necessarily visible.
   await expect(page.getByTestId('camera-stage')).toBeAttached()
   await expect(page.getByTestId('camera-stage').locator('.camera-name')).toHaveText('Toolhead')
-  if (!isMobile) await expect(page.getByTestId('camera-tabs').getByRole('link').first()).toHaveText('Toolhead')
+  await expect(page.getByTestId('camera-chips').getByRole('link').first()).toHaveText('Toolhead')
 
   await open('/')
   await page.getByTestId('view-toggle').getByRole('button', { name: 'Camera' }).click()

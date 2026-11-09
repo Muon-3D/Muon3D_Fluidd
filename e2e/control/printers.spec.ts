@@ -424,18 +424,29 @@ test.describe('signed in', () => {
     const group = page.getByTestId('group-g1')
     const elm = group.getByTestId('printer-tile-cloud:p-elm')
     const cedar = group.getByTestId('printer-tile-cloud:p-cedar')
+    // Both tiles are drawn before anything is measured.
     await expect(elm).toBeVisible()
-    const grid = [await elm.boundingBox(), await cedar.boundingBox()]
-    expect(Math.abs(grid[0]!.y - grid[1]!.y)).toBeLessThan(4)
-    expect(grid[1]!.x).toBeGreaterThan(grid[0]!.x + grid[0]!.width - 4)
+    await expect(cedar).toBeVisible()
+    // Both boxes are read in one go, in the same frame. Read one after the other, a section above them
+    // (Printing now, with its picture) that settles in between moves the page and the two no longer compare.
+    const boxes = () => page.evaluate(() => ['p-elm', 'p-cedar'].map(id => {
+      const r = document.querySelector(`[data-tid="group-g1"] [data-tid="printer-tile-cloud:${id}"]`)!.getBoundingClientRect()
+      return { x: r.x, y: r.y, width: r.width, height: r.height }
+    }))
+    const grid = await boxes()
+    expect(Math.abs(grid[0].y - grid[1].y)).toBeLessThan(4)
+    expect(grid[1].x).toBeGreaterThan(grid[0].x + grid[0].width - 4)
     await page.getByTestId('view-list').click()
-    const rows = [await elm.boundingBox(), await cedar.boundingBox()]
-    expect(Math.abs(rows[0]!.x - rows[1]!.x)).toBeLessThan(4)
-    expect(rows[1]!.y).toBeGreaterThan(rows[0]!.y + rows[0]!.height - 4)
-    expect(rows[0]!.height).toBeLessThan(grid[0]!.height)
+    await expect(page.getByTestId('view-list')).toHaveAttribute('aria-pressed', 'true')
+    const rows = await boxes()
+    expect(Math.abs(rows[0].x - rows[1].x)).toBeLessThan(4)
+    expect(rows[1].y).toBeGreaterThan(rows[0].y + rows[0].height - 4)
+    expect(rows[0].height).toBeLessThan(grid[0].height)
     await page.getByTestId('view-grid').click()
-    const back = await cedar.boundingBox()
-    expect(Math.abs(back!.y - grid[0]!.y)).toBeLessThan(8)
+    await expect(page.getByTestId('view-grid')).toHaveAttribute('aria-pressed', 'true')
+    const back = await boxes()
+    expect(Math.abs(back[1].y - back[0].y)).toBeLessThan(4)
+    expect(back[1].x).toBeGreaterThan(back[0].x + back[0].width - 4)
   })
 
   test('a printer is dragged into a group and back out, and each move is saved', async ({ page, isMobile }) => {

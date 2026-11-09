@@ -187,6 +187,31 @@ describe("a printer's identity, answered after Fluidd moved to another printer",
   })
 })
 
+describe('a page that lands on the address made before the printer said who it is', () => {
+  it('is corrected to the real slug as it lands, even after the identity has already come', async () => {
+    store.state.config.apiUrl = 'http://192.168.9.9'
+    const before = activeSlug()!
+    const walnutIdentity = { name: 'walnut', suffix: '8987', derived_name: 'walnut', endpoint_id: 'a'.repeat(64) }
+    vi.spyOn(httpClientActions, 'get').mockResolvedValue({ data: { result: walnutIdentity } } as never)
+    await learnActiveIdentity()
+    expect(before).not.toBe('walnut-8987')
+
+    // The bare /slice redirected to the old address while the identity was in flight.
+    let landed: (to: unknown) => void = () => {}
+    const replace = vi.fn(() => Promise.resolve())
+    const router = {
+      afterEach: (hook: (to: unknown) => void) => { landed = hook },
+      currentRoute: { params: { printer: before }, fullPath: `/${before}/slice`, path: `/${before}/slice` },
+      replace
+    } as unknown as VueRouter
+    installPrinterPages(router, { activateLocalPrinter: vi.fn(async () => true), activateCloudPrinter: vi.fn(async () => {}) })
+    landed({ params: { printer: before } })
+    expect(replace).toHaveBeenCalledWith(expect.stringContaining('/walnut-8987/slice'))
+    store.state.config.apiUrl = ''
+    vi.restoreAllMocks()
+  })
+})
+
 describe("another account printer's address", () => {
   it('is never kept as another name for the printer Fluidd is on', () => {
     cloudState.printers = [{ id: 'f1f6920f', name: 'Boxwood · 367A' } as never]
