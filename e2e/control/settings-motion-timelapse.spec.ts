@@ -3,7 +3,7 @@
  * storyboards settings/motion.md and settings/timelapse.md). On a Muon
  * printer anything that could damage it is a locked row under Developer
  * mode until developer mode is on; any other printer gets plain fields,
- * capped at its own config's limits. Reverse Z is gone for every printer.
+ * capped at its own config's limits. Reverse Z is for a printer that isn't a Muon one only.
  * What the page sends is recorded by usePrinter and the settings database by
  * useDatabase, so nothing reaches the shared mock.
  */
@@ -97,13 +97,13 @@ test('Muon, developer mode on: the locked rows are real controls', async ({ page
   await expect(page.getByTestId('moving-reverse-z')).toHaveCount(0)
 })
 
-test('another printer: plain fields capped at its own limits, Reverse X and Y ask first, no locks, no Reverse Z', async ({ page, open }) => {
+test('another printer: plain fields capped at its own limits, Reverse X, Y and Z ask first, no locks', async ({ page, open }) => {
   const { printer } = await setUp(page, { muon: false })
   await open('/settings#toolhead')
   await expect(page.getByTestId('moving-reverse-x')).toBeVisible()
   await expect(page.getByTestId('moving-muon-callout')).toHaveCount(0)
   await expect(moving(page).getByTestId('locked-row')).toHaveCount(0)
-  await expect(page.getByTestId('moving-reverse-z')).toHaveCount(0)
+  await expect(page.getByTestId('moving-reverse-z')).toBeVisible()
   await expect(moving(page)).toContainText("Up to 500 mm/s, this printer's max_velocity.")
   await expect(moving(page)).toContainText('Up to 20 mm/s.')
   await typeInto(page, 'Head speed', '900')
@@ -117,6 +117,11 @@ test('another printer: plain fields capped at its own limits, Reverse X and Y as
   await dialog.getByRole('button', { name: 'Reverse X' }).click()
   await expect.poll(() => saves(printer, 'uiSettings.general.axis.x.inverted')).toEqual([true])
   await expect(page.getByTestId('moving-reverse-x')).toBeChecked()
+
+  await page.getByTestId('moving-reverse-z').check()
+  await expect(dialog).toContainText('Reverse Z?')
+  await dialog.getByRole('button', { name: 'Reverse Z' }).click()
+  await expect.poll(() => saves(printer, 'uiSettings.general.axis.z.inverted')).toEqual([true])
 })
 
 test('step sizes added with + are saved to the printer and still there after a reload', async ({ page, open }) => {

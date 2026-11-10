@@ -91,7 +91,7 @@ describe('Settings › Moving and extruding', () => {
     expect(s.wrapper.find('[data-tid="moving-force-move"]').exists()).toBe(true)
   })
 
-  it('on another printer: plain fields capped at its own limits, Reverse X and Y only, no callout or locks', () => {
+  it('on another printer: plain fields capped at its own limits, Reverse X, Y and Z, no callout or locks', () => {
     const s = track(show({ muon: false, settings: { 'printer.max_velocity': 500, 'printer.max_z_velocity': 20 } }))
     expect(s.wrapper.find('[data-tid="moving-muon-callout"]').exists()).toBe(false)
     expect(s.wrapper.find('[data-tid="moving-developer"]').exists()).toBe(false)
@@ -99,7 +99,7 @@ describe('Settings › Moving and extruding', () => {
     expect(s.field('Head speed')?.props('max')).toBe(500)
     expect(s.field('Plate speed')?.props('max')).toBe(20)
     expect(s.field('Length per press')?.props('max')).toBe(200)
-    expect(s.wrapper.findAll('[data-tid^="moving-reverse-"]').wrappers.map(w => w.attributes('data-tid'))).toEqual(['moving-reverse-x', 'moving-reverse-y'])
+    expect(s.wrapper.findAll('[data-tid^="moving-reverse-"]').wrappers.map(w => w.attributes('data-tid'))).toEqual(['moving-reverse-x', 'moving-reverse-y', 'moving-reverse-z'])
     expect(s.wrapper.find('[data-tid="moving-force-move"]').exists()).toBe(true)
   })
 
