@@ -1,6 +1,6 @@
 <template>
   <control-card
-    title="Movement"
+    :title="trackpadOnly ? 'Trackpad' : 'Movement'"
     icon="control"
     :pill="pill"
     :pill-tone="pillTone"
@@ -42,16 +42,6 @@
             class="acct-menu__item"
             role="menuitem"
             :disabled="!ready || busy"
-            data-tid="menu-home-xy"
-            @click="home()"
-          >
-            Home all<span class="acct-menu__key">G28</span>
-          </button>
-          <button
-            type="button"
-            class="acct-menu__item"
-            role="menuitem"
-            :disabled="!ready || busy"
             data-tid="menu-home-z"
             @click="home('Z')"
           >
@@ -84,20 +74,14 @@
       </v-menu>
     </template>
 
-    <!-- Printing: locked, the live position only. -->
-    <template v-if="ready && busy">
+    <template v-if="ready">
       <p
+        v-if="busy"
         class="move__note"
         data-tid="move-printing"
       >
         {{ printingNote }}
       </p>
-      <div class="move__bar move__bar--bare">
-        <control-position-readout />
-      </div>
-    </template>
-
-    <template v-else-if="ready">
       <div
         v-if="!isHomed('XYZ')"
         class="move__callout"
@@ -107,16 +91,7 @@
           name="home"
           small
         />
-        <span>Home before moving. The trackpad and jog need to know where the head is.</span>
-        <button
-          type="button"
-          class="cbtn cbtn--primary"
-          data-tid="callout-home-all"
-          :disabled="busy"
-          @click="home()"
-        >
-          Home all
-        </button>
+        <span>Home before moving. The trackpad needs to know where the head is.</span>
       </div>
 
       <div
@@ -156,23 +131,6 @@
               type="button"
               class="cbtn cbtn--ghost"
               :disabled="busy"
-              aria-label="Home all"
-              data-tid="home-xy"
-              title="G28"
-              @click="home()"
-            >
-              <v-progress-circular
-                v-if="homing()"
-                indeterminate
-                size="14"
-                width="2"
-              />
-              Home all
-            </button>
-            <button
-              type="button"
-              class="cbtn cbtn--ghost"
-              :disabled="busy"
               aria-label="Home Z"
               data-tid="home-z"
               title="G28 Z"
@@ -194,7 +152,7 @@
             :target="target"
             :target-bad="!!targetProblem || !!dragRefusal"
             :no-go="noGo"
-            :disabled="!canMoveXY"
+            :disabled="!canMoveXY || moving"
             :step="step"
             @pick="pick"
             @drag-start="dragStart"
@@ -243,7 +201,10 @@
           </div>
         </div>
 
-        <div class="move__zone">
+        <div
+          v-if="!trackpadOnly"
+          class="move__zone"
+        >
           <div class="move__sub">
             Fine jog
           </div>
@@ -320,6 +281,7 @@
       </div>
 
       <div
+        v-if="!trackpadOnly"
         class="move__bar"
         data-tid="move-position"
       >
@@ -481,6 +443,10 @@ export default class ControlMove extends Mixins(ControlMixin) {
   @Prop({ type: Boolean })
   readonly phone?: boolean
 
+  /** Only the trackpad and Home all: Jog and Position are their own Overview widgets (KAN-2038). */
+  @Prop({ type: Boolean })
+  readonly trackpadOnly?: boolean
+
   step = 10
   menu = false
   showZOffset = false
@@ -553,6 +519,14 @@ export default class ControlMove extends Mixins(ControlMixin) {
     }
   }
 
+  @Watch('moving')
+  onMoving (moving: boolean) {
+    if (moving) {
+      this.stopDrag()
+      this.target = null
+    }
+  }
+
   get ready (): boolean {
     return this.controlReady
   }
@@ -588,6 +562,11 @@ export default class ControlMove extends Mixins(ControlMixin) {
 
   get xyHomedHere (): boolean {
     return this.isHomed('XY')
+  }
+
+  /** The printer is moving on its own account (a print, or homing): the trackpad greys out and waits (KAN-2039). Existing state only. */
+  get moving (): boolean {
+    return this.busy || this.homing() || this.homing('Z')
   }
 
   get canMoveXY (): boolean {

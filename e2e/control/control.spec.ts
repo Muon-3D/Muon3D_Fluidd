@@ -276,30 +276,30 @@ test.describe('Movement', () => {
     await page.mouse.click(box.x + 8, box.y + 8)
     await expect(page.getByTestId('trackpad-target')).toHaveCount(0)
     expect(printer.gcode).toEqual([])
-    await page.getByTestId('callout-home-all').click()
+    await page.getByTestId('home-all').click()
     await expect.poll(() => printer.gcode).toEqual(['G28'])
   })
 
-  test('Home sends a full G28 (never G28 X Y), from the pad button and the ··· menu', async ({ page, open }) => {
+  test('there is one Home all, and it sends a full G28 (never G28 X Y)', async ({ page, open }) => {
     const printer = await usePrinter(page, idle([150, 100, 10]))
     await open('/control')
-    await page.getByTestId('home-xy').click()
+    await expect(page.getByTestId('control-move').getByRole('button', { name: 'Home all' })).toHaveCount(1)
+    await page.getByTestId('home-all').click()
     await expect.poll(() => printer.gcode).toEqual(['G28'])
     await page.getByTestId('move-more').click()
-    await page.getByTestId('menu-home-xy').click()
-    await expect.poll(() => printer.gcode).toEqual(['G28', 'G28'])
+    await expect(page.getByTestId('menu-home-xy')).toHaveCount(0)
     await expect(page.getByText('Home X and Y')).toHaveCount(0)
   })
 
-  test('printing: locked, the live position only, nothing to press', async ({ page, open }) => {
+  test('printing: locked, the trackpad and jog stay but are greyed out and disabled', async ({ page, open }) => {
     const printer = await usePrinter(page) // the mock as it is: mid-print
     await open('/control')
     const move = page.getByTestId('control-move')
     await expect(move.getByText('Locked while printing')).toBeVisible()
     await expect(page.getByTestId('move-printing')).toBeVisible()
-    await expect(move.getByTestId('pos-x')).toBeVisible()
-    await expect(page.getByTestId('move-trackpad')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Head right (X+)' })).toHaveCount(0)
+    await expect(page.getByTestId('move-trackpad')).toHaveAttribute('aria-disabled', 'true')
+    await expect(page.getByRole('button', { name: 'Head right (X+)' })).toBeDisabled()
+    await expect(page.getByTestId('home-all')).toBeDisabled()
     expect(printer.moves()).toEqual([])
   })
 
