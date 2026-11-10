@@ -36,6 +36,7 @@
       @share="openShare('new')"
       @print-back="printBack"
       @open-search="openSearch"
+      @sign-in="accountDialog = true"
       @print="onLibraryPrint"
       @print-item="printOn($event, activePrinter ? activePrinter.id : null)"
       @print-run="onPrintRun"
@@ -390,6 +391,7 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     delete rest.q
     delete rest.collection
     delete rest.print
+    delete rest.category
     const view = YOURS_GRIDS.includes(grid as YoursGridSource) ? 'mine' : 'discover'
     const query = grid ? { ...rest, view, shelf: grid, ...(grid === 'search' ? { q: q ?? this.searchQuery } : {}) } : rest
     if (this.grid && grid) {

@@ -418,11 +418,11 @@ export function createLibraryClient (options: LibraryClientOptions) {
     shares: () => request<unknown>('GET', '/v1/community/shares'),
     saved: () => request<CommunitySavesPage>('GET', '/v1/community/saves'),
     /** Save a public print (the Library's heart): the save, new or the one already there. */
-    save: (publicationId: string) => request<CommunitySave>('PUT', '/v1/community/saves', { kind: 'publication', id: publicationId }),
+    save: (id: string, kind: 'publication' | 'catalogue' = 'publication') => request<CommunitySave>('PUT', '/v1/community/saves', { kind, id }),
     unsave: (saveId: string) => request<null>('DELETE', `/v1/community/saves/${encodeURIComponent(saveId)}`),
     /** Which of these public prints are saved, and as which save. */
-    savesOf: (publicationIds: string[]) => request<{ saves: Array<{ target: { kind: string, id: string }, save_id: string }> }>(
-      'GET', `/v1/community/saves/lookup?targets=${encodeURIComponent(JSON.stringify(publicationIds.map(id => ({ kind: 'publication', id }))))}`),
+    savesOf: (ids: string[], kind: 'publication' | 'catalogue' = 'publication') => request<{ saves: Array<{ target: { kind: string, id: string }, save_id: string }> }>(
+      'GET', `/v1/community/saves/lookup?targets=${encodeURIComponent(JSON.stringify(ids.map(id => ({ kind, id }))))}`),
     collections: () => request<{ collections: CommunityCollection[] }>('GET', '/v1/community/collections'),
     collection: (id: string) => request<CommunityCollectionDetail>('GET', `/v1/community/collections/${encodeURIComponent(id)}`),
     createCollection: (name: string) => request<CommunityCollection>('POST', '/v1/community/collections', { name, visibility: 'private' }),

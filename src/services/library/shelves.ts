@@ -40,6 +40,7 @@ export interface ShelfCard {
   colour?: string | null;
   /** "2 h 5 min · 98 g · PLA", when known. */
   facts: string;
+  size?: number[] | null;
   /** Made for M1: tagged m1-ready, or a catalogue print Muon3D tested on one. */
   m1: boolean;
   tags: string[];
@@ -67,6 +68,7 @@ export interface PublicationSummary {
   colours?: string[];
   material?: string | null;
   size_mm?: number[] | null;
+  print_profile?: { material?: string, estimated_seconds?: number, estimated?: boolean } | null;
   remix_of?: { id: string, slug: string, title: string } | null;
   make_of?: { id: string, slug: string, title: string } | null;
   thumbnail_url?: string | null;
@@ -111,9 +113,10 @@ export function summaryCard (item: PublicationSummary): ShelfCard {
     saves: item.save_count ?? 0,
     category: text(item.category) ? item.category : null,
     colours: colourList(item.colours),
-    material: text(item.material) ? item.material : null,
+    material: text(item.material) ? item.material : text(item.print_profile?.material) ? item.print_profile!.material! : null,
     colour: colourList(item.colours)[0] ?? null,
-    facts: '',
+    facts: item.print_profile?.estimated_seconds ? `${minutesText(item.print_profile.estimated_seconds)} estimated` : '',
+    size: item.size_mm ?? null,
     m1: tags.includes('m1-ready'),
     tags,
     remixOf: item.remix_of ?? null,
@@ -158,13 +161,14 @@ export function unique (cards: ShelfCard[]): ShelfCard[] {
 }
 
 export async function loadPublications (
-  query: { sort?: 'new' | 'popular' | 'trending', tag?: string, cursor?: string | null, limit?: number },
+  query: { sort?: 'new' | 'popular' | 'trending', tag?: string, category?: string, cursor?: string | null, limit?: number },
   fetcher: typeof fetch = fetch,
   signal?: AbortSignal
 ): Promise<PublicationsPage> {
   const params = new URLSearchParams()
   params.set('sort', query.sort ?? 'new')
   if (query.tag) params.set('tag', query.tag)
+  if (query.category) params.set('category', query.category)
   if (query.cursor) params.set('cursor', query.cursor)
   params.set('limit', String(query.limit ?? 12))
   const response = await fetcher(`${MODELS_URL}/v1/public/publications?${params}`, { method: 'GET', credentials: 'omit', signal })
@@ -177,6 +181,7 @@ export async function loadPublications (
 export interface DiscoverShelves {
   popular: ShelfCard[];
   m1: ShelfCard[];
+  catalogue?: { hero: { headline: string, card: ShelfCard } | null, shelves: Array<{ id: string, title: string, sub: string, cards: ShelfCard[] }>, week: ShelfCard[] };
   /** Why a shelf couldn't be read, when neither of its sources answered (v3: the shelf says so, the rest work). */
   errors: { popular?: string, m1?: string };
   /** No source could be reached at all: fetch itself failed (any browser's network error is a TypeError). */
@@ -197,12 +202,29 @@ const reason = (result: PromiseSettledResult<unknown>): string =>
  * answered for carries its reason in `errors`.
  */
 export async function loadShelves (fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<DiscoverShelves> {
-  const [trending, tagged, discover] = await Promise.allSettled([
-    loadPublications({ sort: 'trending', limit: 12 }, fetcher, signal),
-    loadPublications({ sort: 'trending', tag: 'm1-ready', limit: 12 }, fetcher, signal),
-    loadDiscover(fetcher, signal)
-  ])
+  const [discover] = await Promise.allSettled([loadDiscover(fetcher, signal)])
   const feed = discover.status === 'fulfilled' ? discover.value : null
+  if (feed && Array.isArray(feed.shelves) && feed.new_this_week?.window_seconds === 604800 && Array.isArray(feed.made_for_m1?.items)) {
+    const cards = (items: unknown[]) => unique(items.filter(isSummary).map(summaryCard))
+    const hero = feed.hero?.target_kind === 'publication' && isSummary(feed.hero.target)
+      ? { headline: feed.hero.headline, card: summaryCard(feed.hero.target) }
+      : null
+    return {
+      popular: cards(feed.trending),
+      m1: cards(feed.made_for_m1.items),
+      errors: {},
+      unreachable: false,
+      catalogue: {
+        hero,
+        shelves: feed.shelves.filter(s => !!s && Array.isArray(s.items)).map(s => ({ id: `editorial-${s.slug}`, title: s.title, sub: s.description, cards: cards(s.items.filter(v => v.target_kind === 'publication').map(v => v.target)) })).filter(s => s.cards.length > 0),
+        week: cards(Array.isArray(feed.new_this_week.items) ? feed.new_this_week.items : [])
+      }
+    }
+  }
+  const [trending, tagged] = await Promise.allSettled([
+    loadPublications({ sort: 'trending', limit: 12 }, fetcher, signal),
+    loadPublications({ sort: 'trending', tag: 'm1-ready', limit: 12 }, fetcher, signal)
+  ])
   const errors: DiscoverShelves['errors'] = {}
   if (trending.status === 'rejected' && !feed) errors.popular = reason(trending)
   if (tagged.status === 'rejected' && !feed) errors.m1 = reason(tagged)
