@@ -51,9 +51,11 @@ describe('drag-map', () => {
 })
 
 describe('plateDragZ', () => {
-  it('caps one drag at 50 mm either way', () => {
-    expect(plateDragZ(20, 400, 0, 160)).toBe(70)
-    expect(plateDragZ(100, -400, 0, 160)).toBe(50)
+  it('has no cap per drag: the plate goes as far as the pointer, to the axis or the floor', () => {
+    expect(plateDragZ(20, 100, 0, 160)).toBe(120)
+    expect(plateDragZ(20, 400, 0, 160)).toBe(160)
+    expect(plateDragZ(150, -120, 0, 160)).toBe(30)
+    expect(plateDragZ(150, -400, 0, 160)).toBe(2)
   })
   it('stops 2 mm off the nozzle, or where the plate already is if lower', () => {
     expect(plateDragZ(10, -30, 0, 160)).toBe(2)
