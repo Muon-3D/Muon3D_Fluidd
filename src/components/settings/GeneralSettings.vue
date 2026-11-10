@@ -400,21 +400,6 @@
       <div class="gs__row">
         <div class="gs__grow">
           <div class="gs__t">
-            Save and restart in the top bar
-          </div>
-          <div class="gs__s">
-            A button that appears when a calibration has results to keep.
-          </div>
-        </div>
-        <toggle-switch
-          :value="showSaveConfigAndRestart"
-          label="Save and restart in the top bar"
-          @input="showSaveConfigAndRestart = $event"
-        />
-      </div>
-      <div class="gs__row">
-        <div class="gs__grow">
-          <div class="gs__t">
             Charts page
           </div>
           <div class="gs__s">
@@ -777,14 +762,6 @@ export default class GeneralSettings extends Mixins(StateMixin) {
       ...deviceEntries,
       ...pinEntries
     ]
-  }
-
-  get showSaveConfigAndRestart (): boolean {
-    return this.general.showSaveConfigAndRestart
-  }
-
-  set showSaveConfigAndRestart (value: boolean) {
-    this.saveGeneral('showSaveConfigAndRestart', value)
   }
 
   get sectionsToIgnorePendingConfigurationChanges (): string[] {
