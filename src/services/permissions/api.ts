@@ -10,11 +10,9 @@
  *   POST /server/aux/permissions { id, value }
  *     -> 200 { knob }                         applied
  *     -> 202 { consent_required: true, ... }  waits for a knob press
- *     -> 403 { error: { message } }           refused (only at the printer)
+ *     -> 403 { error: { message } }           refused, in the printer's words
  * `value` is one of anyone | owner | owner_at_printer.
  */
-import { PANEL_ONLY_NOTE } from '@/services/wifi/panel-only'
-
 export const PERMISSIONS_PATH = '/server/aux/permissions'
 
 export type PermissionValue = 'anyone' | 'owner' | 'owner_at_printer'
@@ -31,11 +29,14 @@ export interface PermissionKnob {
   id: string;
   label: string;
   description: string;
-  value: PermissionValue;
+  /** One of PERMISSION_VALUES, or a value this Control doesn't know yet. */
+  value: string;
   /** The values this printer accepts for it, in order. */
   values: PermissionValue[];
   /** Shown, never changed from here (developer mode is entered at the panel). */
   readOnly: boolean;
+  /** Its value is one Control doesn't know: shown as the printer reports it, never offered as a choice. */
+  generic: boolean;
 }
 
 /** Control's words for the settings it knows; anything else shows as the printer names it. */
@@ -52,22 +53,34 @@ export const KNOWN_KNOBS: Record<string, { label: string, description: string }>
 
 const isValue = (v: unknown): v is PermissionValue => typeof v === 'string' && (PERMISSION_VALUES as string[]).includes(v)
 
+/** Changed only at the printer's screen, whatever the printer reports for `read_only`. */
+const PANEL_ONLY_KNOBS = new Set(['dev_mode'])
+
+/** A value in words: Control's for the ones it knows, the printer's id made readable for the rest. */
+export function valueLabel (value: string): string {
+  if (isValue(value)) return VALUE_LABELS[value]
+  const words = value.replace(/[_-]+/g, ' ').trim()
+  return words ? words[0].toUpperCase() + words.slice(1) : value
+}
+
 const unwrap = (data: unknown): unknown => (data && typeof data === 'object' && 'result' in data ? (data as { result: unknown }).result : data)
 
 /** One reported setting, or null when it isn't usable. */
 export function parseKnob (raw: unknown): PermissionKnob | null {
   if (!raw || typeof raw !== 'object') return null
   const k = raw as Record<string, unknown>
-  if (typeof k.id !== 'string' || !k.id || !isValue(k.value)) return null
+  if (typeof k.id !== 'string' || !k.id || typeof k.value !== 'string' || !k.value) return null
   const known = KNOWN_KNOBS[k.id]
   const values = Array.isArray(k.values) ? k.values.filter(isValue) : []
+  const generic = !isValue(k.value)
   return {
     id: k.id,
     label: (typeof k.label === 'string' && k.label) || known?.label || k.id,
     description: (typeof k.description === 'string' && k.description) || known?.description || '',
     value: k.value,
     values: values.length ? values : PERMISSION_VALUES,
-    readOnly: k.read_only === true
+    readOnly: k.read_only === true || PANEL_ONLY_KNOBS.has(k.id) || generic,
+    generic
   }
 }
 
@@ -82,26 +95,22 @@ export function parseKnobs (data: unknown): PermissionKnob[] | null {
 export type ChangeOutcome =
   | { kind: 'applied', knob: PermissionKnob | null }
   | { kind: 'knob' }
-  | { kind: 'panel' }
   | { kind: 'refused', message: string }
 
 export const KNOB_NOTE = 'Press the knob on the printer to confirm'
 
-/** What the printer's answer to a change means. */
+/** What the printer's answer to a change means. A 2xx without the knob is `applied` with `knob: null`: read it again. */
 export function changeOutcome (status: number, data: unknown): ChangeOutcome {
   const body = unwrap(data) as Record<string, unknown> | null | undefined
   if (status === 202 || body?.consent_required === true) return { kind: 'knob' }
   if (status >= 200 && status < 300) return { kind: 'applied', knob: parseKnob(body?.knob ?? body) }
   const message = (body?.error as { message?: unknown } | undefined)?.message
-  // A 403 that isn't network protection is the printer keeping this to its own screen, as Wi-Fi does.
-  if (status === 403 && !(typeof message === 'string' && /protected/i.test(message))) return { kind: 'panel' }
   return { kind: 'refused', message: typeof message === 'string' && message ? message : "The printer didn't take that change." }
 }
 
 /** What a row says after its change. */
 export function outcomeNote (o: ChangeOutcome): string {
   if (o.kind === 'knob') return `${KNOB_NOTE}. The setting changes when you do.`
-  if (o.kind === 'panel') return `${PANEL_ONLY_NOTE}: this printer only lets its own screen change this.`
   if (o.kind === 'refused') return o.message
   return ''
 }

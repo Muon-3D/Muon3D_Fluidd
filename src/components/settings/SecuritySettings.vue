@@ -47,14 +47,14 @@
             :key="v"
             :value="v"
           >
-            {{ labels[v] }}
+            {{ valueLabel(v) }}
           </option>
         </select>
       </can-manage-access>
       <locked-row
         v-if="k.readOnly || canManageAccess !== true"
         lock="muon"
-        :label="labels[k.value]"
+        :label="valueLabel(k.value)"
         :reason-text="reasonFor(k)"
       />
       <p
@@ -75,8 +75,8 @@ import CanManageAccess from '@/components/settings/gates/CanManageAccess.vue'
 import LockedRow from '@/components/settings/gates/LockedRow.vue'
 import { printerNameParts } from '@/util/printer-name'
 import {
-  PERMISSIONS_PATH, VALUE_LABELS, changeOutcome, outcomeNote, parseKnobs,
-  type PermissionKnob, type PermissionValue
+  PERMISSIONS_PATH, changeOutcome, outcomeNote, parseKnobs, valueLabel,
+  type PermissionKnob
 } from '@/services/permissions/api'
 
 /**
@@ -91,7 +91,7 @@ export default class SecuritySettings extends Mixins(MuonGatesMixin) {
   loaded = false
   saving = ''
   notes: Record<string, string> = {}
-  readonly labels = VALUE_LABELS
+  readonly valueLabel = valueLabel
 
   mounted () {
     if (this.isMuonPrinter === true) this.load()
@@ -118,25 +118,29 @@ export default class SecuritySettings extends Mixins(MuonGatesMixin) {
   }
 
   reasonFor (k: PermissionKnob): string {
+    if (k.generic) return 'Shown as the printer reports it. Change it at the printer.'
     if (k.readOnly) return "Changed only at the printer's screen."
     if (this.canManageAccess === false) return "Only the printer's owner can change this."
     return 'Checking whether you can change this…'
   }
 
   onSelect (k: PermissionKnob, e: Event) {
-    this.change(k, (e.target as HTMLSelectElement).value as PermissionValue)
+    this.change(k, (e.target as HTMLSelectElement).value)
   }
 
-  async change (k: PermissionKnob, value: PermissionValue) {
+  async change (k: PermissionKnob, value: string) {
     if (this.saving || value === k.value) return
     this.saving = k.id
     this.$set(this.notes, k.id, '')
     try {
       const r = await this.$httpClient.post(PERMISSIONS_PATH, { id: k.id, value }, { validateStatus: () => true })
       const o = changeOutcome(r.status, r.data)
-      if (o.kind === 'applied') {
-        const kept = o.knob?.id === k.id ? o.knob : { ...k, value }
+      if (o.kind === 'applied' && o.knob?.id === k.id) {
+        const kept = o.knob
         this.knobs = (this.knobs ?? []).map(x => (x.id === k.id ? kept : x))
+      } else if (o.kind === 'applied') {
+        // Taken, but the answer doesn't say what it is now: the printer's list is the truth.
+        await this.load()
       } else {
         this.$set(this.notes, k.id, outcomeNote(o))
       }
