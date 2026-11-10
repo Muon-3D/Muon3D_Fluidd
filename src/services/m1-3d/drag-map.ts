@@ -70,15 +70,16 @@ export function ticks (lo: number, hi: number, step = 50): number[] {
   return out
 }
 
-/** The furthest one drag can take the plate, either way, so a flick at a grazing angle can't send it to the end of its travel. */
-export const PLATE_DRAG_MM = 50
 /** A drag stops the plate this far from the nozzle (Z 0 is the tip touching it), or where it already is if lower. */
 export const PLATE_DRAG_FLOOR_MM = 2
 
-/** The plate's Z for a drag that has moved `by` mm from `z0`: capped per drag, kept off the nozzle, inside the axis. */
+/**
+ * The plate's Z for a drag that has moved `by` mm from `z0`: kept off the
+ * nozzle, inside the axis. No cap per drag (Jack, #340): the plate follows
+ * the pointer, in short steps the follower sends.
+ */
 export function plateDragZ (z0: number, by: number, zMin: number, zMax: number): number {
-  const step = Math.max(-PLATE_DRAG_MM, Math.min(PLATE_DRAG_MM, by))
-  return clampMm(z0 + step, Math.max(zMin, Math.min(z0, PLATE_DRAG_FLOOR_MM)), zMax)
+  return clampMm(z0 + by, Math.max(zMin, Math.min(z0, PLATE_DRAG_FLOOR_MM)), zMax)
 }
 
 /**

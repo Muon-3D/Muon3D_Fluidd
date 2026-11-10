@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DragFollow, controlDragHost, type DragTarget } from '../drag-follow'
+import { DragFollow, controlDragHost, dragStepMm, stepToward, type DragTarget } from '../drag-follow'
 
 /** A host whose move lands when the test says so, refusing what the test says. */
 function host () {
@@ -143,5 +143,57 @@ describe('DragFollow', () => {
     expect(api.waiting()).toBe(true)
     expect(api.send({ Z: 3 })).toBe(true)
     expect(vm.moveTo).toHaveBeenCalledWith({ Z: 3 })
+  })
+
+  it('sends short steps: each at most maxStep from the last, the first from where the part is', () => {
+    const { h, api } = host()
+    const f = new DragFollow({ ...api, from: () => ({ Z: 10 }) }, { maxStep: () => 3 })
+    f.start({ Z: 30 })
+    expect(h.sent).toEqual([{ Z: 13 }])
+    for (let i = 0; i < 6; i++) { h.land(); vi.advanceTimersByTime(200) }
+    expect(h.sent.map(t => (t as { Z: number }).Z)).toEqual([13, 16, 19, 22, 25, 28, 30])
+  })
+
+  it('a reversal drops the target the other way: the next step after the one in flight goes back', () => {
+    const { h, api } = host()
+    const f = new DragFollow({ ...api, from: () => ({ Z: 10 }) }, { maxStep: () => 2 })
+    f.start({ Z: 40 })
+    f.update({ Z: 50 })
+    f.update({ Z: 0 })
+    h.land()
+    vi.advanceTimersByTime(200)
+    expect(h.sent).toEqual([{ Z: 12 }, { Z: 10 }])
+  })
+
+  it('on release goes on in short steps to the final target, then stops', () => {
+    const { h, api } = host()
+    const f = new DragFollow({ ...api, from: () => ({ X: 0, Y: 0 }) }, { maxStep: () => 3 })
+    f.start({ X: 6, Y: 8 })
+    f.release()
+    for (let i = 0; i < 6; i++) { h.land(); vi.advanceTimersByTime(200) }
+    expect(h.sent).toEqual([{ X: 1.8, Y: 2.4 }, { X: 3.6, Y: 4.8 }, { X: 5.4, Y: 7.2 }, { X: 6, Y: 8 }])
+    expect(f.following).toBe(false)
+  })
+
+  it('a step is checked by the planner before it is sent, and a refusal stops the drag', () => {
+    const { h, api } = host()
+    h.refuse = t => 'Z' in t && t.Z < 9 ? 'Too low over the notch' : ''
+    const reasons: string[] = []
+    const f = new DragFollow({ ...api, from: () => ({ Z: 10 }) }, { maxStep: () => 1, onRefused: r => reasons.push(r) })
+    f.start({ Z: 0 })
+    h.land()
+    vi.advanceTimersByTime(200)
+    expect(h.sent).toEqual([{ Z: 9 }])
+    expect(reasons).toEqual(['Too low over the notch'])
+    expect(f.following).toBe(false)
+  })
+
+  it('step size: about 150 ms of travel, between 0.5 and 3 mm', () => {
+    expect(dragStepMm(10)).toBe(1.5)
+    expect(dragStepMm(100)).toBe(3)
+    expect(dragStepMm(1)).toBe(0.5)
+    expect(dragStepMm(NaN)).toBe(0.5)
+    expect(stepToward({ Z: 5 }, { Z: 4 }, 3)).toEqual({ Z: 4 })
+    expect(stepToward(null, { Z: 40 }, 3)).toEqual({ Z: 40 })
   })
 })

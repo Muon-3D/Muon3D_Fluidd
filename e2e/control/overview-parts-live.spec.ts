@@ -1,15 +1,18 @@
 /**
  * Overview: the M1 follows a drag on its 3D model, live (Jack, 9 Nov).
  *
- * The head and the plate move while the pointer moves, through DragFollow:
- * one planned move (moveTo and the no-go planner) in flight at a time, the
- * next only once the printer reports the last one landed. Esc, a second
+ * The head and the plate move while the pointer moves. On a printer with
+ * Klipper's muon_jog the drag streams MUON_JOG targets (the printer holds
+ * the limits and turns round within a few mm). Without it, DragFollow: one
+ * planned move (moveTo and the no-go planner) in flight at a time, each a
+ * short step (at most 3 mm), the next only once the printer reports the last
+ * one landed. Esc, a second
  * pointer, the window losing focus and a refusal stop it; the view stays
  * straight down throughout. Every script is answered by usePrinter.
  */
 import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
-import { overlay, usePrinter, PRESETS, type PrinterHandle } from './printer'
+import { overlay, usePrinter, PRESETS, M1_NO_GO, type PrinterHandle } from './printer'
 
 /** As overview-parts-move.spec.ts: drags redraw every frame, so they run where the GPU draws. */
 const GPU = process.platform === 'win32' && !process.env.E2E_NO_GPU
@@ -18,6 +21,12 @@ test.skip(({ isMobile }) => isMobile, 'pointer drags are the desktop path; the p
 test.skip(!GPU, 'drags need the GPU; software WebGL stalls on the accurate model')
 
 const moveLines = (gcode: string[]) => gcode.flatMap(s => s.split('\n')).filter(l => /^G1 /.test(l))
+const jogLines = (gcode: string[]) => gcode.flatMap(s => s.split('\n')).filter(l => /^MUON_JOG /.test(l))
+/** The printer has Klipper's [muon_jog]: drags stream. */
+const streaming = (position: [number, number, number]) => overlay(PRESETS.idleHomed({ position }), {
+  configfile: { settings: { bed_mesh: M1_NO_GO, muon_jog: { max_ahead_xy: 15, max_ahead_z: 4 } } },
+  muon_jog: { active: false, reason: '', sessions: 0, position: null }
+})
 const num = (line: string, axis: string) => Number(new RegExp(`${axis}(-?[\\d.]+)`).exec(line)?.[1])
 
 async function ready (page: Page) {
@@ -84,7 +93,7 @@ function headAfter (printer: PrinterHandle, from: [number, number, number]): [nu
   return at
 }
 
-test('the head follows a drag: several moves, each only after the last has landed', async ({ page, open }) => {
+test('the head follows a drag in short steps, each only after the last has landed', async ({ page, open }) => {
   const start: [number, number, number] = [60, 100, 10]
   const printer = await usePrinter(page, PRESETS.idleHomed({ position: start }))
   await open('/')
@@ -112,7 +121,8 @@ test('the head follows a drag: several moves, each only after the last has lande
   // The Y moves kept going the way the pointer went, all while the button was down.
   const xs = moveLines(printer.gcode).map(l => num(l, 'X'))
   expect(xs).toEqual([...xs].sort((p, q) => p - q))
-  expect(xs[xs.length - 1]).toBeGreaterThan(130)
+  // Each step short (a step in flight can't be taken back), the first from where the head was.
+  ;[60, ...xs].slice(1).forEach((x, i) => expect(x - [60, ...xs][i]).toBeLessThanOrEqual(3.001))
   expect(moveLines(printer.gcode).every(l => /^G1 X[\d.]+ Y[\d.]+ F\d+$/.test(l))).toBe(true)
   await expect(page.getByTestId('m1-parts')).toHaveAttribute('data-view', 'top')
   land(printer, headAfter(printer, start))
@@ -215,8 +225,8 @@ for (const how of ['Esc', 'the window losing focus'] as const) {
   })
 }
 
-test('a step across the bed notch low down lifts over it, through the planner', async ({ page, open }) => {
-  const start: [number, number, number] = [40, 20, 1]
+test('a drag across the bed notch low down stops at it: no step ends inside, the label says why', async ({ page, open }) => {
+  const start: [number, number, number] = [70, 20, 1]
   const printer = await usePrinter(page, PRESETS.idleHomed({ position: start }))
   await open('/')
   await ready(page)
@@ -226,13 +236,15 @@ test('a step across the bed notch low down lifts over it, through the planner', 
   const at = await partPoint(page)
   await page.mouse.move(at.x, at.y)
   await page.mouse.down()
-  // One jump to the far side of the notch: a single step that crosses it.
   const far = toPage(160, 20)
   await page.mouse.move(far.x, far.y)
-  await expect.poll(() => moveLines(printer.gcode).length).toBeGreaterThanOrEqual(3)
-  const [lift] = moveLines(printer.gcode)
-  expect(num(lift, 'Z')).toBeGreaterThanOrEqual(6)
-  await page.keyboard.press('Escape')
+  for (let i = 0; i < 6; i++) {
+    await page.waitForTimeout(300)
+    land(printer, headAfter(printer, start))
+  }
+  await expect(page.getByTestId('m1-drag-refused')).toContainText(/notch/i)
+  const xs = moveLines(printer.gcode).filter(l => !l.includes(' Z')).map(l => num(l, 'X'))
+  expect(xs.every(x => x <= 75 || x >= 125)).toBe(true)
   await page.mouse.up()
 })
 
@@ -259,7 +271,7 @@ test('a step that would end over the notch low down is refused: following stops 
   await expect(page.getByTestId('m1-parts')).toHaveAttribute('data-view', 'top')
 })
 
-test('the plate follows a drag up, live, no more than 50 mm in one drag', async ({ page, open }) => {
+test('the plate follows a drag up, live, in short steps, with no cap per drag', async ({ page, open }) => {
   const start: [number, number, number] = [100, 100, 10]
   const printer = await usePrinter(page, PRESETS.idleHomed({ position: start }))
   await open('/')
@@ -270,16 +282,91 @@ test('the plate follows a drag up, live, no more than 50 mm in one drag', async 
   const at = await partPoint(page)
   await page.mouse.move(at.x, at.y)
   await page.mouse.down()
-  // One pointer move, one target (as the busy test above).
   await page.mouse.move(at.x, at.y - 30)
   await expect.poll(() => moveLines(printer.gcode).length).toBe(1)
-  land(printer, headAfter(printer, start))
   await page.mouse.move(at.x, at.y - 400, { steps: 8 })
-  await expect.poll(() => moveLines(printer.gcode).length).toBeGreaterThanOrEqual(2)
-  land(printer, headAfter(printer, start))
+  for (let i = 0; i < 4; i++) {
+    land(printer, headAfter(printer, start))
+    await page.waitForTimeout(300)
+  }
   await page.mouse.up()
-  await page.waitForTimeout(500)
   const zs = moveLines(printer.gcode).map(l => num(l, 'Z'))
-  expect(zs.every(z => z > 10 && z <= 60)).toBe(true)
+  expect(zs.length).toBeGreaterThanOrEqual(3)
+  ;[10, ...zs].slice(1).forEach((z, i) => expect(Math.abs(z - [10, ...zs][i])).toBeLessThanOrEqual(3.001))
   expect(moveLines(printer.gcode).every(l => /^G1 Z[\d.]+ F\d+$/.test(l))).toBe(true)
+})
+
+test('with muon_jog the plate streams and turns round at once: up, then down, no waiting to land; FINAL on release', async ({ page, open }) => {
+  const printer = await usePrinter(page, streaming([100, 100, 40]))
+  await open('/')
+  await ready(page)
+  await page.getByTestId('m1-part-plate').focus()
+  await expect(page.getByTestId('m1-plate-handle')).toBeVisible()
+  await page.waitForTimeout(1200)
+  const at = await partPoint(page)
+  await page.mouse.move(at.x, at.y)
+  await page.mouse.down()
+  await page.mouse.move(at.x, at.y - 120, { steps: 6 })
+  await expect.poll(() => jogLines(printer.gcode).length).toBeGreaterThanOrEqual(1)
+  const up = jogLines(printer.gcode).length
+  // Straight back down, and the printer never says anything landed.
+  await page.mouse.move(at.x, at.y + 120, { steps: 6 })
+  await expect.poll(() => jogLines(printer.gcode).length).toBeGreaterThan(up)
+  const zs = jogLines(printer.gcode).map(l => num(l, 'Z='))
+  const top = Math.max(...zs)
+  expect(top).toBeGreaterThan(40)
+  expect(zs[zs.length - 1]).toBeLessThan(top)
+  expect(moveLines(printer.gcode)).toEqual([])
+  await page.mouse.up()
+  await expect.poll(() => jogLines(printer.gcode).at(-1) ?? '').toMatch(/^MUON_JOG Z=[\d.]+ SPEED=[\d.]+ FINAL=1$/)
+})
+
+test('the drag line starts at the head itself, where the printer says it is now', async ({ page, open }) => {
+  const printer = await usePrinter(page, streaming([60, 100, 10]))
+  await open('/')
+  await ready(page)
+  await lookDown(page)
+  const toPage = await bedToPage(page)
+  const at = await partPoint(page)
+  await page.mouse.move(at.x, at.y)
+  await page.mouse.down()
+  const far = toPage(150, 100)
+  await page.mouse.move(far.x, far.y, { steps: 6 })
+  await expect.poll(() => jogLines(printer.gcode).length).toBeGreaterThanOrEqual(1)
+  report(printer, { muon_jog: { active: true, reason: '', sessions: 1, position: [80, 100, 10] } })
+  const head = toPage(80, 100)
+  await expect.poll(async () => {
+    const p = await page.getByTestId('m1-parts').evaluate(el => {
+      const line = el.querySelector('[data-tid="m1-drag-target"] line')
+      const stage = el.getBoundingClientRect()
+      return line ? { x: stage.left + Number(line.getAttribute('x1')), y: stage.top + Number(line.getAttribute('y1')) } : null
+    })
+    return p ? Math.hypot(p.x - head.x, p.y - head.y) : Infinity
+  }).toBeLessThan(4)
+  await page.keyboard.press('Escape')
+  await page.mouse.up()
+  expect(jogLines(printer.gcode).at(-1)).toBe('MUON_JOG STOP=1')
+})
+
+test('the printer ending the jog (the contact guard) stops the drag and the label says why', async ({ page, open }) => {
+  const printer = await usePrinter(page, streaming([60, 100, 10]))
+  await open('/')
+  await ready(page)
+  await lookDown(page)
+  const toPage = await bedToPage(page)
+  const at = await partPoint(page)
+  await page.mouse.move(at.x, at.y)
+  await page.mouse.down()
+  const a = toPage(100, 100)
+  await page.mouse.move(a.x, a.y, { steps: 6 })
+  await expect.poll(() => jogLines(printer.gcode).length).toBeGreaterThanOrEqual(1)
+  report(printer, { muon_jog: { active: false, reason: 'refused: Nozzle is touching the plate: lift Z before moving X or Y', sessions: 1, position: null } })
+  await expect(page.getByTestId('m1-drag-refused')).toContainText('Nozzle is touching the plate')
+  await expect(page.getByTestId('m1-drag-target')).toHaveCount(0)
+  const sent = jogLines(printer.gcode).length
+  const b = toPage(150, 120)
+  await page.mouse.move(b.x, b.y, { steps: 6 })
+  await page.mouse.up()
+  await page.waitForTimeout(600)
+  expect(jogLines(printer.gcode)).toHaveLength(sent)
 })
