@@ -14,7 +14,7 @@
  * probe check) goes through `planMove`, which reads the regions the printer
  * declares (never a hard-coded copy) and either lifts to the traverse height
  * before crossing, or refuses. (Upstream Fluidd's toolhead widgets, which
- * send moves directly, are only used by the unrouted views/Dashboard.vue.)
+ * send moves directly, are no longer mounted by any page.)
  */
 
 export interface NoGoRegion {
@@ -115,7 +115,20 @@ export const handMoveLock: { target: number[] | null, until: number, printer: st
  * while the head moves `idle_timeout` reads Printing, so ControlMixin's
  * `busy` refuses every hand move anyway.
  */
-const SETTLE_MS = 8000
+export const SETTLE_MS = 8000
+
+/** Added to a move's own travel time before its lock expires, ms. */
+export const SETTLE_MARGIN_MS = 3000
+
+/**
+ * How long a hand move's lock lasts: SETTLE_MS, or the move's travel time
+ * (distance ÷ speed, `travelMs`) plus SETTLE_MARGIN_MS when that is longer,
+ * so a slow jog or a lift across the notch isn't treated as landed while
+ * the head is still on its way.
+ */
+export function settleMs (travelMs = 0): number {
+  return Number.isFinite(travelMs) && travelMs > 0 ? Math.max(SETTLE_MS, Math.ceil(travelMs) + SETTLE_MARGIN_MS) : SETTLE_MS
+}
 
 /**
  * G-code scripts sent and not yet answered. Klipper runs scripts in order,
@@ -147,9 +160,9 @@ export const headStatus = { fresh: false }
  * passing (a move Klipper refuses never arrives; there is no per-script error
  * to hook), control being lost (`releaseHandMove`), or another printer.
  */
-export function lockHandMove (gcodeTarget: number[], printer: string, now = Date.now()) {
+export function lockHandMove (gcodeTarget: number[], printer: string, now = Date.now(), travelMs = 0) {
   handMoveLock.target = gcodeTarget.slice(0, 3)
-  handMoveLock.until = now + SETTLE_MS
+  handMoveLock.until = now + settleMs(travelMs)
   handMoveLock.printer = printer
 }
 

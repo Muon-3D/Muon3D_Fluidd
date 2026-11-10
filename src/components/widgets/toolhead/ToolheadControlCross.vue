@@ -67,11 +67,11 @@
       >
         <app-btn-toolhead-move
           :color="(!xyHomed) ? 'primary' : undefined"
-          :loading="hasWait($waits.onHomeXY)"
+          :loading="hasWait($waits.onHomeAll)"
           :disabled="!klippyReady || printerPrinting"
           :tooltip="$t('app.tool.tooltip.home_xy')"
           icon="$home"
-          @click="sendGcode('G28 X Y', $waits.onHomeXY)"
+          @click="homeAll"
         />
       </v-col>
       <v-col

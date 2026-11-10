@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LEGACY_ANIMATIONS_KEY, MODEL_SETTINGS_DEFAULTS, MODEL_SETTINGS_KEY, liveRenderOptions, migrateLegacyAnimations, modelSettings, parseModelSettings, setModelSetting } from '../device-settings'
+import Vue from 'vue'
+import { LEGACY_ANIMATIONS_KEY, MODEL_SETTINGS_DEFAULTS, MODEL_SETTINGS_KEY, REDUCED_MOTION_CLASS, followMotionSetting, liveRenderOptions, migrateLegacyAnimations, modelSettings, parseModelSettings, setModelSetting } from '../device-settings'
 import { glassChoice } from '../render-options'
 
 describe('parseModelSettings', () => {
@@ -105,5 +106,55 @@ describe('migrateLegacyAnimations: the old per-printer Animations choice', () =>
     setModelSetting('animations', null)
     migrateLegacyAnimations(false)
     expect(modelSettings.animations).toBeNull()
+  })
+})
+
+describe('followMotionSetting: one Animations switch for the whole app', () => {
+  type Listener = () => void
+  const device = (reduce: boolean) => {
+    const listeners: Listener[] = []
+    const query = {
+      matches: reduce,
+      addEventListener: (_: string, l: Listener) => listeners.push(l),
+      removeEventListener: (_: string, l: Listener) => listeners.splice(listeners.indexOf(l), 1)
+    }
+    vi.stubGlobal('matchMedia', () => query)
+    return { change: (v: boolean) => { query.matches = v; listeners.forEach(l => l()) }, listeners }
+  }
+  let stop: () => void = () => {}
+  afterEach(() => {
+    stop()
+    vi.unstubAllGlobals()
+    setModelSetting('animations', null)
+  })
+  const still = (root: HTMLElement) => root.classList.contains(REDUCED_MOTION_CLASS)
+
+  it('Like this device follows reduce motion, as it changes', () => {
+    const d = device(true)
+    const root = document.createElement('div')
+    stop = followMotionSetting(root)
+    expect(still(root)).toBe(true)
+    d.change(false)
+    expect(still(root)).toBe(false)
+  })
+
+  it('On moves even under reduce motion; Off is still with full motion', async () => {
+    device(true)
+    const root = document.createElement('div')
+    stop = followMotionSetting(root)
+    setModelSetting('animations', true)
+    await Vue.nextTick()
+    expect(still(root)).toBe(false)
+    setModelSetting('animations', false)
+    await Vue.nextTick()
+    expect(still(root)).toBe(true)
+  })
+
+  it('stops listening when stopped', () => {
+    const d = device(false)
+    stop = followMotionSetting(document.createElement('div'))
+    stop()
+    stop = () => {}
+    expect(d.listeners).toHaveLength(0)
   })
 })
