@@ -87,7 +87,7 @@ test('the header links to Timelapse settings, where turning timelapse off is sen
   await expect(page).toHaveURL(/\/settings#timelapse$/)
   const enabled = page.getByTestId('timelapse-setting-enabled')
   await expect(enabled).toBeVisible()
-  await enabled.locator('xpath=..').click()
+  await enabled.click()
   await expect.poll(() => printer.called('machine.timelapse.post_settings').at(-1)).toMatchObject({ enabled: false })
 })
 
