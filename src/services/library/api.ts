@@ -12,9 +12,8 @@
  * service's own route and `needs_auth` says to send the assertion.
  */
 
-/** The model service, and the audience its assertions name (the same string). */
-export const MODELS_URL: string = (import.meta.env.VITE_MODELS_URL || 'https://models.muon3d.com').replace(/\/+$/, '')
-export const MODELS_AUDIENCE = MODELS_URL
+import { MODELS_URL, modelsResourceUrl } from './transport'
+export { MODELS_URL, MODELS_AUDIENCE } from './transport'
 
 export interface Transfer {
   method: string;
@@ -357,7 +356,7 @@ export interface LibraryClientOptions {
 export type LibraryClient = ReturnType<typeof createLibraryClient>
 
 export function createLibraryClient (options: LibraryClientOptions) {
-  const base = (options.baseUrl ?? MODELS_URL).replace(/\/+$/, '')
+  const base = () => (options.baseUrl ?? MODELS_URL).replace(/\/+$/, '')
   const http: typeof fetch = options.fetch ?? ((input, init) => fetch(input, init))
   const send = options.send ?? xhrSend
 
@@ -383,7 +382,7 @@ export function createLibraryClient (options: LibraryClientOptions) {
       init.headers = { 'content-type': 'application/json' }
       init.body = JSON.stringify(body)
     }
-    const response = await authorised(`${base}${path}`, init)
+    const response = await authorised(`${base()}${path}`, init)
     const text = await response.text()
     let data: unknown = null
     try {
@@ -398,7 +397,7 @@ export function createLibraryClient (options: LibraryClientOptions) {
   const item = (id: string) => `/v1/items/${encodeURIComponent(id)}`
 
   return {
-    base,
+    get base () { return base() },
     info: () => request<LibraryInfo>('GET', '/v1/library'),
     consent: (promiseVersion: string) => request<LibraryAccount>('PUT', '/v1/library/consent', { promise_version: promiseVersion }),
     withdraw: () => request<{ enabled: boolean, account: LibraryAccount | null }>('DELETE', '/v1/library/consent'),
@@ -447,7 +446,7 @@ export function createLibraryClient (options: LibraryClientOptions) {
     publicPublication: (id: string) => request<PublicPublication>('GET', `/v1/public/publications/${encodeURIComponent(id)}`),
     /** The raw bytes of a shared file: `POST /v1/shares/:id/files/:file` takes `{key?}` and answers the bytes, or a JSON refusal. */
     async shareFile (id: string, fileId: string, key?: string): Promise<Uint8Array> {
-      const response = await authorised(`${base}/v1/shares/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, {
+      const response = await authorised(`${base()}/v1/shares/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(key === undefined ? {} : { key })
@@ -475,7 +474,7 @@ export function createLibraryClient (options: LibraryClientOptions) {
         if (transfer.needs_auth) headers.authorization = `Bearer ${await options.assertion.get()}`
         let status: number
         try {
-          status = await send({ url: transfer.url, body: bytes, headers, onProgress })
+          status = await send({ url: modelsResourceUrl(transfer.url, base(), options.baseUrl), body: bytes, headers, onProgress })
         } catch (error) {
           if (error instanceof LibraryError) throw error
           throw new LibraryError('offline', 'The upload failed on the network.')
@@ -493,10 +492,10 @@ export function createLibraryClient (options: LibraryClientOptions) {
     async get (transfer: Transfer): Promise<Uint8Array> {
       let response: Response
       if (transfer.needs_auth) {
-        response = await authorised(transfer.url, { method: 'GET' })
+        response = await authorised(modelsResourceUrl(transfer.url, base(), options.baseUrl), { method: 'GET' })
       } else {
         try {
-          response = await http(transfer.url, { method: 'GET' })
+          response = await http(modelsResourceUrl(transfer.url, base(), options.baseUrl), { method: 'GET' })
         } catch {
           throw new LibraryError('offline', 'The file could not be fetched.')
         }

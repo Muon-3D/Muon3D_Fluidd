@@ -264,15 +264,16 @@ const json = (route: Route, body: unknown, status = 200) =>
 
 /** Serve `state` as models.muon3d.com for this page. */
 export async function serveModels (page: Page, state: ModelServiceState) {
-  await page.route(`${MODELS}/**`, async route => {
+  await page.route(url => url.origin === MODELS || url.pathname.startsWith('/models/'), async route => {
     const request = route.request()
     const url = new URL(request.url())
-    const path = url.pathname
+    const proxied = url.pathname.startsWith('/models/')
+    const path = proxied ? url.pathname.slice('/models'.length) : url.pathname
     const method = request.method()
     state.seen.push(`${method} ${path}${url.search}`)
     const origin = request.headers().origin
     // Playwright's fulfill skips the browser's CORS check, so a refused origin is the TypeError fetch would give.
-    if (state.corsOrigins && origin && !state.corsOrigins.includes(origin)) return route.abort('accessdenied')
+    if (!proxied && state.corsOrigins && origin && !state.corsOrigins.includes(origin)) return route.abort('accessdenied')
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
     if (state.delayMs) await new Promise(resolve => setTimeout(resolve, state.delayMs))
     const failure = state.failWith ?? state.failOn(`${method} ${path}${url.search}`)

@@ -82,6 +82,18 @@ describe('a fresh index', () => {
 })
 
 describe('sw.ts', () => {
+  it('never caches models proxy images as static assets or answers their navigations with the shell', () => {
+    const source = swSource.match(/^const SERVER_API_PATHS = \/(.+)\/$/m)
+    expect(source).not.toBeNull()
+    const excluded = new RegExp(source![1])
+    for (const path of ['/models', '/models/v1/library', '/models/v1/public/publications/a/images/b']) {
+      expect(excluded.test(path)).toBe(true)
+      expect(isDeniedNavigation(path)).toBe(true)
+    }
+    expect(excluded.test('/models-gallery')).toBe(false)
+    expect(swSource).toContain('!SERVER_API_PATHS.test(url.pathname)')
+  })
+
   it('routes navigations network first, with the precached index.html as the offline answer', () => {
     expect(swSource).toMatch(/new NavigationRoute\(networkFirstNavigation\(\(request\) => fetch\(request\), createHandlerBoundToURL\('index\.html'\)\)/)
     // The precached page is no longer the first answer to any navigation.

@@ -63,14 +63,14 @@ registerRoute(configPathname, configStrategy, 'GET')
 // Monaco worker, an icon stays a week past its first fetch instead of
 // downloading with every install. Never Moonraker or the API: those are the
 // printer's answers, not files to reuse.
-const MOONRAKER_PATHS = /^\/(?:server|printer|machine|access|websocket|api)(?:\/|$)/
+const SERVER_API_PATHS = /^\/(?:server|printer|machine|access|websocket|api|models)(?:\/|$)/
 const ASSET_DESTINATIONS = new Set(['script', 'style', 'font', 'image', 'worker'])
 
 registerRoute(
   ({ url, request }) => (
     url.origin === self.location.origin &&
     url.pathname !== configPathname &&
-    !MOONRAKER_PATHS.test(url.pathname) &&
+    !SERVER_API_PATHS.test(url.pathname) &&
     (ASSET_DESTINATIONS.has(request.destination) ||
       url.pathname.startsWith('/assets/') ||
       url.pathname.startsWith('/monacoeditorwork/'))

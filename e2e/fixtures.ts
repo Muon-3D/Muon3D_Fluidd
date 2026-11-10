@@ -19,6 +19,7 @@ export const PRINTER = '/boxwood-367a'
 
 interface Options {
   signedIn: boolean;
+  printerHosted: boolean;
 }
 
 interface Fixtures {
@@ -30,6 +31,7 @@ interface Fixtures {
 
 export const test = base.extend<Options & Fixtures>({
   signedIn: [false, { option: true }],
+  printerHosted: [false, { option: true }],
   models: [async ({ page }, use) => {
     const state = modelService()
     await serveModels(page, state)
@@ -38,12 +40,14 @@ export const test = base.extend<Options & Fixtures>({
   // Control finds its printer from config.json: point it at this run's mock
   // only (localhost blacklisted, so it doesn't also probe :7125, where another
   // run's mock may be).
-  printerAddress: [async ({ page }, use) => {
+  printerAddress: [async ({ page, printerHosted }, use) => {
     await page.route('**/config.json', async route => {
       const response = await route.fetch()
       const config = await response.json()
       config.blacklist = [...(config.blacklist ?? []), 'localhost', '127.0.0.1']
       config.endpoints = [`http://localhost:${MOCK_PORT}`]
+      config.hosted = !printerHosted
+      if (printerHosted) config.blacklist = config.blacklist.filter((host: string) => host !== 'localhost')
       await route.fulfill({ response, json: config })
     })
     await use()
