@@ -8,7 +8,7 @@
     :menu="menu"
     :open="open"
     :locked="locked"
-    :class="{ ht: true, 'ht--disconnected': disconnected }"
+    :class="{ ht: true, [`ht--${size}`]: true, 'ht--disconnected': disconnected }"
     @toggle="toggle"
   >
     <span
@@ -19,6 +19,33 @@
       v-if="heater && !disconnected"
       class="ot__bar"
     ><i :style="{ width: `${Math.round(barFraction * 100)}%` }" /></span>
+    <span
+      v-if="size === 'M' && heater && !disconnected"
+      class="hp__presets ht__inline"
+      role="group"
+      :aria-label="`${name} presets`"
+      data-tid="heater-inline-presets"
+    >
+      <button
+        v-for="m in presetChoices"
+        :key="m.name"
+        type="button"
+        class="hp__preset"
+        :class="{ 'hp__preset--on': Math.round(heater.target) === m.temp }"
+        :disabled="!controlReady"
+        @click.stop="setHeater(heater, m.temp)"
+      >
+        {{ m.name }} {{ m.temp }}
+      </button>
+      <button
+        type="button"
+        class="hp__preset"
+        :disabled="!controlReady"
+        @click.stop="setHeater(heater, 0)"
+      >
+        Off
+      </button>
+    </span>
 
     <template #popover>
       <div
@@ -242,6 +269,7 @@ export default class HeaterTile extends Mixins(OverviewMixin) {
 .hp__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .hp__now { font-family: var(--m3d-font-rounded); font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .hp__now small { margin-left: 6px; color: var(--m3d-text-muted); font-size: 12px; font-weight: 500; }
+.ht__inline { margin-top: 8px; }
 .hp__presets { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px; border-radius: 16px; background: var(--m3d-surface-2); }
 .hp__preset { flex: 1 1 auto; min-height: 32px; padding: 0 10px; border-radius: 12px; color: var(--m3d-text-muted); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
 .hp__preset:disabled { opacity: 0.45; cursor: default; }
