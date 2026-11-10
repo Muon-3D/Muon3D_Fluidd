@@ -1,5 +1,5 @@
 import Vue from 'vue'
-import { modelRenderOptions, type ModelDetail, type ModelGlass, type ModelRenderOptions } from './render-options'
+import { modelAnimates, modelRenderOptions, type ModelDetail, type ModelGlass, type ModelRenderOptions } from './render-options'
 
 /**
  * Settings › G-code preview and 3D: the 3D printer and animation choices.
@@ -104,4 +104,30 @@ export function liveRenderOptions (width: number): ModelRenderOptions {
     devicePixelRatio: window.devicePixelRatio || 1,
     width
   })
+}
+
+/** On the root element while the whole app moves without motion (Animations Off, or Like this device under reduce motion). */
+export const REDUCED_MOTION_CLASS = 'm3d-reduced-motion'
+
+/**
+ * Keeps the root element's reduced-motion class in step with the Animations
+ * setting and the device's reduce-motion choice, so one switch covers the
+ * model, the G-code preview, tile springs, sheets and page transitions.
+ * Returns a function that stops watching.
+ */
+export function followMotionSetting (root: HTMLElement = document.documentElement): () => void {
+  let query: MediaQueryList | null = null
+  try {
+    query = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null
+  } catch {}
+  const apply = () => {
+    root.classList.toggle(REDUCED_MOTION_CLASS, !modelAnimates(modelSettings.animations, query?.matches ?? false))
+  }
+  apply()
+  const stopWatch = new Vue().$watch(() => modelSettings.animations, apply)
+  query?.addEventListener?.('change', apply)
+  return () => {
+    stopWatch()
+    query?.removeEventListener?.('change', apply)
+  }
 }

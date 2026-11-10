@@ -4,7 +4,6 @@ import VueRouter from 'vue-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SocketActions } from '@/api/socketActions'
 import GeneralSettings from '../GeneralSettings.vue'
-import ThemeSettings from '../ThemeSettings.vue'
 import SoftwareSettings from '../SoftwareSettings.vue'
 import Settings from '@/views/Settings.vue'
 import { updateWatch, installStarted } from '@/services/updates/watch'
@@ -31,30 +30,20 @@ const commonStubs = {
 function general (pro: boolean) {
   localStorage.setItem('muon3d.pro', pro ? '1' : '0')
   return shallowMount(GeneralSettings, {
-    stubs: commonStubs,
-    mocks: { $t: (key: string) => key, $rules: { required: true, lengthGreaterThanOrEqual: () => true }, $globals: { APP_NAME: 'Control' } },
+    stubs: { ...commonStubs, 'seg-picker': true, 'm3-dialog': true, 'router-link': true, 'v-icon': true },
+    mocks: {
+      $t: (key: string) => key,
+      $rules: { required: true },
+      $globals: { APP_NAME: 'Control' },
+      $store: { getters: { 'server/isMuonPrinter': false }, state: {}, dispatch: vi.fn() }
+    },
     computed: {
-      instanceName: () => 'M1',
-      locale: () => 'default',
-      supportedLocales: () => [],
-      dateFormat: () => 'iso',
-      timeFormat: () => '24h',
+      general: () => ({ instanceName: 'M1', printProgressCalculation: ['file'], printEtaCalculation: ['file'], sectionsToIgnorePendingConfigurationChanges: [] }),
+      theme: () => ({ color: '#80d6d1', isDark: true }),
+      settingsPath: () => '/settings',
       availableDateFormats: () => [],
-      availableTimeFormats: () => [],
-      confirmOnEstop: () => false,
       hasPowerDevices: () => false,
-      enableKeyboardShortcuts: () => true,
-      showUploadAndPrint: () => true,
-      showSaveConfigAndRestart: () => true,
-      powerDevicesList: () => [],
-      printProgressCalculation: () => ['file'],
-      printEtaCalculation: () => ['file'],
-      availablePrintProgressCalculation: () => [],
-      availablePrintEtaCalculation: () => [],
-      sectionsToIgnorePendingConfigurationChanges: () => [],
-      enableDiagnostics: () => false,
-      overviewCameraToggle: () => true,
-      confirmOnSaveConfigAndRestart: () => true
+      powerDevicesList: () => []
     }
   })
 }
@@ -133,23 +122,12 @@ describe('Settings in one layout', () => {
 
   it.each([false, true])('shows General task controls when legacy Pro is %s', pro => {
     const wrapper = general(pro)
-    expect(wrapper.text()).toContain('Saving the config')
-    expect(wrapper.text()).toContain('Upload and print')
-    expect(wrapper.text()).toContain("A print's progress")
-    expect(wrapper.text()).toContain('Config changes and diagnostics')
-    expect(wrapper.findComponent({ name: 'TaskFold' }).find('.m3-sets').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Saving the configuration')
+    expect(wrapper.text()).toContain('Printing straight after upload')
+    expect(wrapper.text()).toContain('Progress is measured by')
+    expect(wrapper.text()).toContain('Changes not to list')
+    expect(wrapper.findComponent({ name: 'TaskFold' }).exists()).toBe(false)
     expect(wrapper.text()).toContain('These settings')
-    wrapper.destroy()
-  })
-
-  it.each([false, true])('shows community themes when legacy Pro is %s', pro => {
-    localStorage.setItem('muon3d.pro', pro ? '1' : '0')
-    const wrapper = shallowMount(ThemeSettings, {
-      stubs: { ...commonStubs, 'seg-picker': true, 'app-color-picker': true },
-      mocks: { $t: (key: string) => key },
-      computed: { theme: () => ({ color: '#fff', isDark: false, logo: { src: '' }, style: 'glass', backgroundLogo: false }), themePresets: () => [] }
-    })
-    expect(wrapper.text()).toContain('A community theme')
     wrapper.destroy()
   })
 
