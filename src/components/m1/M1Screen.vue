@@ -39,14 +39,17 @@
         referrerpolicy="same-origin"
       />
     </div>
-    <p
+    <button
       v-if="refusedLast"
+      type="button"
       class="m1-screen__note"
       role="status"
+      title="Dismiss"
       data-tid="m1-screen-refused"
+      @click="refusedLast = false"
     >
       {{ refusedText }}
-    </p>
+    </button>
   </div>
 </template>
 
@@ -109,7 +112,6 @@ export default class M1Screen extends Mixins(ControlMixin) {
   stopActions: (() => void) | null = null
   refusedLast = false
   refusedText = ''
-  refusedTimer = 0
 
   get printerName (): string {
     return (this.$store.getters['config/getDisplayName'] as string | undefined) || 'the printer'
@@ -155,12 +157,10 @@ export default class M1Screen extends Mixins(ControlMixin) {
     this.flyTimer = window.setTimeout(() => this.$emit('close'), this.reducedMotion ? 0 : FLY_MS)
   }
 
-  /** A few seconds' note in the strip: what was refused, and why. */
+  /** The note in the strip: what was refused, and why. It stays until it is clicked away or the screen is left, so it can be read. */
   say (text: string) {
     this.refusedText = text
     this.refusedLast = true
-    clearTimeout(this.refusedTimer)
-    this.refusedTimer = window.setTimeout(() => { this.refusedLast = false }, 4000)
   }
 
   /** The bridge to the framed screen, on Control's connection, after the allowlist. */
@@ -205,7 +205,6 @@ export default class M1Screen extends Mixins(ControlMixin) {
     this.stopActions?.()
     bridges.get(this)?.dispose()
     bridges.delete(this)
-    clearTimeout(this.refusedTimer)
   }
 
   /** Another printer, or Klippy gone: the screen was this printer's, so it closes. */
@@ -442,6 +441,8 @@ export default class M1Screen extends Mixins(ControlMixin) {
     bottom: 16px;
     margin: 0;
     padding: 6px 12px;
+    border: 0;
+    cursor: pointer;
     border-radius: 999px;
     background: rgb(36 36 40 / 86%);
     color: #ffc48a;
