@@ -5,8 +5,8 @@
       v-if="screen === 'S1'"
       :eyebrow="eyebrow"
       :flat="overBluetooth"
-      :title="`Set up ${display}`"
-      sub="About three minutes. Keep this page open until it says you're done."
+      :title="resumed ? `Carry on setting up ${display}` : `Set up ${display}`"
+      :sub="resumed ? `${display} kept what is already done.` : 'About three minutes. Keep this page open until it says you\'re done.'"
     >
       <p
         v-if="overBluetooth"
@@ -16,10 +16,14 @@
         Bluetooth until {{ name }} is on Wi-Fi too.
       </p>
       <ol class="muon-setup-steps__plan">
-        <li>Wi-Fi</li>
-        <li>Name and updates</li>
-        <li>Your account, if you want remote access</li>
-        <li>Last steps at the printer</li>
+        <li
+          v-for="part in parts"
+          :key="part.label"
+          :class="{ 'muon-setup-steps__plan-done': part.done }"
+          :data-tid="part.done ? 'setup-part-done' : 'setup-part'"
+        >
+          {{ part.label }}
+        </li>
       </ol>
       <p
         v-if="writeError"
@@ -34,7 +38,7 @@
           data-tid="setup-start"
           @click="start"
         >
-          Start
+          {{ resumed ? 'Carry on' : 'Start' }}
         </app-btn>
       </template>
     </setup-step-card>
@@ -696,7 +700,7 @@ import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import { SetupHttpError, type SetupClient } from '@/services/muon-setup/client'
 import { pageLanguageFor } from '@/services/muon-setup/language'
 import { screenFor, type ScreenId } from '@/services/muon-setup/screen'
-import { frameSteps, previousStep } from '@/services/muon-setup/steps'
+import { frameSteps, previousStep, resumedSetup, startParts } from '@/services/muon-setup/steps'
 import { setLocal, setupState } from '@/services/muon-setup/state'
 import type { LinkState, SetupNetwork, SetupResult, SetupState, StepId } from '@/services/muon-setup/types'
 import { joinErrorCopy, validPsk, writeErrorCopy } from '@/services/muon-setup/wifiCopy'
@@ -754,6 +758,15 @@ export default class SetupWifiSteps extends Vue {
 
   get name (): string {
     return this.state?.printer.name ?? 'The printer'
+  }
+
+  /** S1 after a restart mid-setup: carry on, with what is done ticked. */
+  get resumed (): boolean {
+    return resumedSetup(this.state)
+  }
+
+  get parts () {
+    return startParts(this.state)
   }
 
   get display (): string {
@@ -1142,6 +1155,14 @@ export default class SetupWifiSteps extends Vue {
 
     li {
       margin-bottom: 4px;
+    }
+  }
+
+  &__plan-done {
+    color: var(--m3d-text-muted, var(--m3d-text));
+
+    &::marker {
+      content: '✓  ';
     }
   }
 

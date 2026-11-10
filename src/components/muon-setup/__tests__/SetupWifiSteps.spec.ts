@@ -72,6 +72,31 @@ describe('S1 Start', () => {
     expect(posts[0][1]).toEqual({ code: expect.any(String) })
     expect(setupState.local.droveSetup).toBe(true)
   })
+
+  it('a new printer says Set up and Start, with nothing ticked', async () => {
+    setupState.state = copy(newState)
+    const wrapper = mount(fakeClient().client)
+    await flush(wrapper)
+    expect(wrapper.text()).toContain('Set up ')
+    expect(tid(wrapper, 'setup-start').text()).toBe('Start')
+    expect(wrapper.findAll('[data-tid="setup-part-done"]').length).toBe(0)
+  })
+
+  it('after a restart mid-setup it says Carry on, ticks what is done and does not post the language again', async () => {
+    const state = copy(newState)
+    state.steps.language.status = 'done'
+    state.steps.network.status = 'done'
+    setupState.state = state
+    const { client, order } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    expect(wrapper.text()).toContain('Carry on setting up ')
+    expect(wrapper.text()).toContain('kept what is already done.')
+    expect(tid(wrapper, 'setup-start').text()).toBe('Carry on')
+    expect(wrapper.findAll('[data-tid="setup-part-done"]').length).toBe(1)
+    await (wrapper.vm as any).start()
+    expect(order).toEqual(['clock', 'driver'])
+  })
 })
 
 describe('S3 Wi-Fi', () => {

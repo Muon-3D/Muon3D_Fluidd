@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { currentStep, frameSteps, previousStep } from '../steps'
+import { currentStep, frameSteps, previousStep, resumedSetup, startParts } from '../steps'
 import type { SetupState } from '../types'
 import newState from './fixtures/state.01-new.json'
 import networkPhone from './fixtures/state.02-network-phone-driver.json'
@@ -45,5 +45,26 @@ describe('Back', () => {
   it('has nowhere to go from Wi-Fi, or once setup is complete', () => {
     expect(previousStep(copy(networkPhone))).toBeNull()
     expect(previousStep(copy(completeWithSkips))).toBeNull()
+  })
+})
+
+describe('S1 after a restart mid-setup', () => {
+  it('a new printer has not begun, and nothing is ticked', () => {
+    expect(resumedSetup(copy(newState))).toBe(false)
+    expect(startParts(copy(newState)).map(p => p.done)).toEqual([false, false, false, false])
+  })
+
+  it('with the language and Wi-Fi done it has begun, and Wi-Fi is ticked', () => {
+    const state = copy(newState)
+    state.steps.language.status = 'done'
+    state.steps.network.status = 'done'
+    expect(resumedSetup(state)).toBe(true)
+    expect(startParts(state).map(p => p.done)).toEqual([true, false, false, false])
+  })
+
+  it('a skipped step counts as settled', () => {
+    const state = copy(newState)
+    state.steps.remote.status = 'skipped'
+    expect(startParts(state)[2].done).toBe(true)
   })
 })

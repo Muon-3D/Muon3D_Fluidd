@@ -69,6 +69,25 @@ test('a new printer goes from Welcome to Finish, one step card at a time', async
   expect(printer.posts.some(p => p.path.includes('wifi'))).toBe(false)
 })
 
+test('after a restart mid-setup the page says Carry on, and what is done stays done', async ({ page }, info) => {
+  const printer = await startSetup(page)
+  await joinHome(page, 'correct horse battery staple')
+  await page.getByTestId('join-continue').click()
+  // The printer restarts: the driver claim is gone and rev starts again; done steps stay done.
+  printer.state.driver = null
+  printer.state.rev = 1
+  printer.posts.length = 0
+  await page.reload()
+  await ready(page)
+  await expect(title(page)).toHaveText('Carry on setting up Walnut · 8987')
+  await expect(card(page)).toContainText('kept what is already done.')
+  await expect(page.getByTestId('setup-part-done')).toHaveCount(1)
+  await page.screenshot({ path: info.outputPath(`setup-carry-on-${info.project.name}.png`) })
+  await page.getByTestId('setup-start').click()
+  await expect(title(page)).not.toHaveText(/Carry on setting up/)
+  expect(printer.posts.map(p => p.path)).toEqual(['clock', 'driver'])
+})
+
 test('a wrong password says so, and Try again reopens the same network', async ({ page }) => {
   await startSetup(page)
   await joinHome(page, WRONG_PASSWORD)

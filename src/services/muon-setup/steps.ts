@@ -70,3 +70,21 @@ export const previousStep = (state: SetupState | null): StepId | null => {
   }
   return null
 }
+
+/**
+ * Setup had begun before this page came back: Start sets the language first,
+ * so a done language means the printer restarted, or this page lost the
+ * driver, mid-setup. What is done stays done, so S1 says to carry on.
+ */
+export const resumedSetup = (state: SetupState | null): boolean => state?.steps.language.status === 'done'
+
+/** S1's plan, each part with whether the printer already has it done or skipped. */
+export const startParts = (state: SetupState | null): Array<{ label: string; done: boolean }> => {
+  const settled = (step: StepId) => ['done', 'skipped'].includes(state?.steps[step]?.status ?? '')
+  return [
+    { label: 'Wi-Fi', done: settled('network') },
+    { label: 'Name and updates', done: settled('name') && settled('update') },
+    { label: 'Your account, if you want remote access', done: settled('remote') },
+    { label: 'Last steps at the printer', done: settled('ready') }
+  ]
+}
