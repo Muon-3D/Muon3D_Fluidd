@@ -39,13 +39,27 @@ async function stubResults (page: Page): Promise<StubResult[]> {
   return await page.evaluate(() => (window as unknown as { stubResults?: StubResult[] }).stubResults ?? [])
 }
 
-async function servePanel (page: Page) {
+// A panel screen with a physical-presence confirmation: the embed shows it as a disabled "Confirm on the printer" tag,
+// and any attempt to answer it from here (consent, dev mode, knob press) is a call Control must refuse and never send.
+const STUB_CONFIRM = `<!doctype html><html><body><button disabled data-tid="stub-confirm-tag">Confirm on the printer</button><script>
+  window.results = []
+  window.addEventListener('message', e => {
+    if (e.source !== window.parent || !e.data || e.data.type !== 'muon-panel-port') return
+    const port = e.ports[0]
+    port.onmessage = m => { window.results.push(m.data); window.parent.postMessage({ type: 'stub-results', results: window.results }, '*') }
+    port.postMessage({ id: 10, kind: 'aux', method: 'POST', path: '/consent/accept', body: {} })
+    port.postMessage({ id: 11, kind: 'aux', method: 'POST', path: '/dev_mode/enter', body: { confirm: true } })
+  })
+  window.parent.postMessage({ type: 'muon-panel-hello', version: 1 }, '*')
+</script></body></html>`
+
+async function servePanel (page: Page, body = STUB) {
   await page.addInitScript(() => {
     window.addEventListener('message', e => {
       if (e.data?.type === 'stub-results') (window as unknown as { stubResults: unknown }).stubResults = e.data.results
     })
   })
-  await page.route('**/panel/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: STUB }))
+  await page.route('**/panel/**', route => route.fulfill({ status: 200, contentType: 'text/html', body }))
 }
 
 /** Click the screen: its chip (hidden on a desktop until focused), as on the simple model the screen itself is small. */
@@ -122,7 +136,7 @@ test('it zooms in from the screen on the model, and Done or a click outside fly 
   await page.getByTestId('m1-use-screen').click()
   await expect(screen).toHaveAttribute('data-phase', 'open')
   const box = (await screen.boundingBox())!
-  await page.mouse.click(box.x + 20, box.y + box.height - 20)
+  await page.mouse.click(box.x + 12, box.y + box.height * 0.6)
   await expect(screen).toHaveCount(0)
   // The stub's own jog went out by name, through moveBy; flying in and out sent nothing.
   expect(printer.moves().every(l => l === 'G1 X10 F7800')).toBe(true)
@@ -134,7 +148,7 @@ test('without a /panel/ build the screen says so, and frames nothing', async ({ 
   await open('/')
   await ready(page)
   await clickScreen(page)
-  await expect(page.getByTestId('m1-screen-empty')).toHaveText("The printer's screen isn't available here yet")
+  await expect(page.getByTestId('m1-screen-empty')).toHaveText('Your printer needs an update to show its screen here')
   await expect(page.getByTestId('m1-screen-frame')).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('m1-screen')).toHaveCount(0)
@@ -150,4 +164,23 @@ test('while it prints the screen cannot be opened', async ({ page, open }) => {
   await page.waitForTimeout(800)
   await expect(page.getByTestId('m1-use-screen')).toHaveCount(0)
   await expect(page.getByTestId('m1-screen')).toHaveCount(0)
+})
+
+test('a confirmation that must be done on the printer stays blocked: tagged, and Control sends nothing', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await servePanel(page, STUB_CONFIRM)
+  await open('/')
+  await ready(page)
+  await clickScreen(page)
+  await expect(page.getByTestId('m1-screen')).toHaveAttribute('data-phase', 'open')
+  // Consent and dev-mode answers are refused and never sent; Control says why, in the tag's words.
+  await expect.poll(() => stubResults(page).then(rs => rs.filter(r => r.id === 10 || r.id === 11).length)).toBe(2)
+  const results = await stubResults(page)
+  for (const id of [10, 11]) {
+    expect(results.find(r => r.id === id)).toMatchObject({ ok: false, error: { message: 'Do this on the printer itself' } })
+  }
+  await expect(page.getByTestId('m1-screen-refused')).toContainText('Confirm on the printer')
+  const sent = JSON.stringify([printer.calls, printer.gcode])
+  expect(sent).not.toMatch(/consent|dev_mode/)
+  expect(printer.gcode).toEqual([])
 })
