@@ -186,6 +186,7 @@ test('Jog and Position at size L have no Home all of their own (KAN-1955 / KAN-2
     await page.getByTestId('widget-sheet-open').click()
     await page.getByTestId(`widget-size-${id}-L`).click()
     await page.getByTestId(`widget-add-${id}`).click()
+    await page.getByTestId('widget-sheet-close').click()
     await expect(cell(page, id)).toBeVisible()
   }
   await page.getByTestId('edit-done').click()
