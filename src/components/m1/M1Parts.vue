@@ -132,6 +132,8 @@ import M1PartOptions from './M1PartOptions.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
 import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
+import { modelAnimates } from '@/services/m1-3d/render-options'
+import { modelSettings } from '@/services/m1-3d/device-settings'
 
 /** A drag on the toolhead (X and Y) or the plate (Z), in the printer's toolhead millimetres. */
 const round = (p: { x: number, y: number }) => ({ x: Math.round(p.x), y: Math.round(p.y) })
@@ -581,7 +583,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   @Watch('viewer')
   show () {
     const part = this.shownPart
-    this.viewer?.setFocus(part, this.interactive ? 'active' : 'info', this.interactive && !this.reducedMotion)
+    this.viewer?.setFocus(part, this.interactive ? 'active' : 'info', this.interactive && modelAnimates(modelSettings.animations, this.reducedMotion))
     if (this.bound && !part) this.bound.style.cursor = ''
     this.follow()
   }
@@ -819,8 +821,9 @@ export default class M1Parts extends Mixins(ControlMixin) {
     height: 32px;
     padding: 0 12px;
     border-radius: 999px;
-    background: rgb(44 44 48 / 70%);
-    backdrop-filter: blur(20px);
+    /* No backdrop blur: over the live WebGL canvas it makes the browser read the canvas back and re-blur it every
+       frame (it halves the frame rate without a GPU, which starved clicks in CI), so the chip is a little more opaque. */
+    background: rgb(44 44 48 / 86%);
     color: #d8d8dc;
     font-size: 13px;
     font-weight: 600;
@@ -842,7 +845,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     to { opacity: 1; }
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  :root.m3d-reduced-motion {
     .m1-parts__label {
       animation: none;
     }
