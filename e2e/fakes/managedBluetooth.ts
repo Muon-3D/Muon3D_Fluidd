@@ -1,5 +1,6 @@
 import Vue from 'vue'
 import store from '../../src/store'
+import { appInit } from '../../src/init'
 import { IrohPrinter, dialPrinter } from '../../src/services/muon-cloud/iroh'
 import { useBluetoothFor, remoteRouteLabel, bluetoothDropped } from '../../src/services/muon-ble/link'
 import { MUON_BLE_INFO, MUON_BLE_TX } from '../../src/services/muon-ble/webBluetooth'
@@ -13,7 +14,8 @@ export const ID = '3fa9c0de'.repeat(8)
 
 /** Fake only the radio and WASM boundary; use Control's real driver and transport. */
 export async function managedBluetooth (origin: string) {
-  const counts = { dials: 0, closes: 0, identities: 0, aux: 0, sockets: 0, policyRefusals: 0 }
+  const counts = { dials: 0, closes: 0, identities: 0, aux: 0, sockets: 0, policyRefusals: 0, rpc: [] as string[], refusedMethods: [] as string[] }
+  const policyMessage = 'muon-link policy refused this request: not on the remote allowlist; unlisted endpoints are Owner-only by default'
   const device: any = new EventTarget()
   device.id = 'e2e-printer'
   const tx: any = new EventTarget()
@@ -60,9 +62,12 @@ export async function managedBluetooth (origin: string) {
         fetch: async (method: string, path: string, headers: string[], body: Uint8Array) => {
           if (path.startsWith('/server/muon/identity')) {
             counts.identities++
-            return { status: 403, headers: ['content-type', 'application/json'], body: new TextEncoder().encode(JSON.stringify({ error: 'muon-link policy refused this request: not on the remote allowlist' })) }
+            return { status: 403, headers: ['content-type', 'application/json'], body: new TextEncoder().encode(JSON.stringify({ error: policyMessage })) }
           }
           if (path.startsWith('/server/aux/update/status')) counts.aux++
+          if (path.startsWith('/server/config') || path.startsWith('/machine/update/status')) {
+            return { status: 403, headers: ['content-type', 'application/json'], body: new TextEncoder().encode(JSON.stringify({ error: policyMessage })) }
+          }
           const response = await fetch(`${origin}${path}`, { method, body: method === 'GET' ? undefined : body, headers: Object.fromEntries(Array.from({ length: headers.length / 2 }, (_, i) => [headers[i * 2], headers[i * 2 + 1]])) })
           return { status: response.status, headers: ['content-type', response.headers.get('content-type') ?? 'application/json'], body: new Uint8Array(await response.arrayBuffer()) }
         },
@@ -78,9 +83,11 @@ export async function managedBluetooth (origin: string) {
           return {
             send: async (text: string) => {
               const request = JSON.parse(text)
-              if (request.method === 'printer.gcode.script') {
+              counts.rpc.push(request.method)
+              if (['server.config', 'machine.update.status', 'printer.gcode.script'].includes(request.method)) {
                 counts.policyRefusals++
-                queue.push(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: 403, message: 'muon-link policy refused this request' } }))
+                counts.refusedMethods.push(request.method)
+                queue.push(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: 403, message: policyMessage } }))
                 wake?.()
               } else wire.send(text)
             },
@@ -102,13 +109,14 @@ export async function managedBluetooth (origin: string) {
   await transport.fetch('/server/info')
   Vue.$socket.releaseTransportSocket(true)
   bindHttpClientToPrinterTransport(Vue.$httpClient, transport)
+  cloudState.printers = [{ id: ID, name: 'Boxwood · 367A', model: 'M1', version: '1', linked_at: 1, last_seen: Date.now() / 1000, online: true }]
   cloudState.activePrinterId = ID
-  store.commit('config/setInitApiConfig', { apiUrl: MANAGED_API_URL, socketUrl: MANAGED_SOCKET_URL, name: 'Boxwood · 367A' })
+  await appInit({ apiUrl: MANAGED_API_URL, socketUrl: MANAGED_SOCKET_URL, name: 'Boxwood · 367A' }, store.state.config.hostConfig)
   Vue.$socket.adoptTransportSocket(await transport.openWebSocket('/websocket'), () => transport.openWebSocket('/websocket'))
   return {
     counts,
     refuseIdentity: connectedEndpointId,
-    refuseRpc: () => Vue.$socket.emit('printer.gcode.script', { params: { script: 'G28' } }),
+    refuseRpc: () => Vue.$socket.emit('machine.update.status'),
     query: () => transport.fetch('/server/info'),
     label: () => remoteRouteLabel(ID),
     dropped: () => bluetoothDropped(ID),
