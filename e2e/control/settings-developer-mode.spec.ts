@@ -72,7 +72,7 @@ test('every unlock links to the page where its row lives', async ({ page, open }
   await expect(pane(page).getByTestId('developer-unlock-updates')).toHaveAttribute('href', /\/settings#versions$/)
   await pane(page).getByTestId('developer-unlock-macros').click()
   await expect(page).toHaveURL(/\/settings#macros$/)
-  await expect(page.getByTestId('page-title')).toHaveText('Macros')
+  await expect(page.getByTestId('page-title')).toHaveText('Quick commands')
 })
 
 test('off the first time: says to do it at the printer, offers no switch and sends nothing', async ({ page, open }) => {

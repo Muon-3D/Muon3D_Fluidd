@@ -261,7 +261,7 @@ test.describe('Wi-Fi and network', () => {
     return changes
   }
 
-  test('shows the network it is on as a tile, the others as a list, the hotspot and the cable', async ({ page, open }) => {
+  test('shows the network it is on as a tile, the others as a list, and the hotspot', async ({ page, open }) => {
     const printer = await usePrinter(page)
     printer.state.results['machine.system_info'] = SYSTEM_INFO
     await open('/wifi')
@@ -283,7 +283,25 @@ test.describe('Wi-Fi and network', () => {
     await expect(hotspot).toContainText('Turning it on drops the current connection')
     await expect(page.getByTestId('hotspot-state')).toHaveText('Off')
 
-    await expect(page.getByTestId('wifi-ethernet')).toContainText('No cable')
+    await expect(page.getByTestId('wifi-ethernet')).toHaveCount(0)
+  })
+
+  test('has no Ethernet entry, and the Wi-Fi and Hotspot rows are one height (KAN-2044)', async ({ page, open }, testInfo) => {
+    const printer = await usePrinter(page)
+    printer.state.results['machine.system_info'] = SYSTEM_INFO
+    await open('/wifi')
+    await expect(page.getByTestId('wifi-page')).toBeVisible()
+    await expect(page.getByTestId('hotspot-card')).toBeVisible()
+    await expect(page.getByTestId('wifi-connected')).toBeVisible()
+    await expect(page.getByTestId('wifi-page').getByText('Ethernet')).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: /ethernet/i })).toHaveCount(0)
+
+    const wifi = await page.getByTestId('wifi-connected').boundingBox()
+    const hotspot = await page.getByTestId('hotspot-card').boundingBox()
+    expect(wifi && hotspot).toBeTruthy()
+    expect(Math.abs(wifi!.height - hotspot!.height)).toBeLessThanOrEqual(1)
+
+    await page.getByTestId('wifi-page').screenshot({ path: `e2e/control/screenshots/wifi-tidy-${testInfo.project.name}.png` })
   })
 
   test('joining a network asks first and sends nothing until Proceed', async ({ page, open }) => {

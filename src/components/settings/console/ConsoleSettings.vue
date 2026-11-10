@@ -76,6 +76,10 @@
       <div class="m3-set__row">
         <div class="m3-set__label">
           <b>Times on each line</b>
+          <span
+            class="cset__mono cset__preview"
+            data-tid="console-preview-timestamps"
+          >{{ timestampPreview(config.timestamps) }}</span>
         </div>
         <div class="m3-set__control">
           <toggle-switch
@@ -135,6 +139,39 @@
             :options="[{ value: 'sm', label: 'S', title: 'Small' }, { value: 'md', label: 'M', title: 'Medium' }, { value: 'lg', label: 'L', title: 'Large' }]"
             label="Text size"
             @input="setConfig('textSize', $event)"
+          />
+        </div>
+      </div>
+      <div class="m3-set__row">
+        <div class="m3-set__label">
+          <b>Wrap long lines</b>
+          <span
+            class="cset__mono cset__preview"
+            :class="{ 'cset__preview--cut': !config.wrap }"
+            data-tid="console-preview-wrap"
+          >{{ longLine }}</span>
+        </div>
+        <div class="m3-set__control">
+          <toggle-switch
+            :value="config.wrap"
+            label="Wrap long lines"
+            @input="setConfig('wrap', $event)"
+          />
+        </div>
+      </div>
+      <div class="m3-set__row">
+        <div class="m3-set__label">
+          <b>Start empty after a reconnect</b>
+          <span
+            class="cset__mono cset__preview"
+            data-tid="console-preview-reconnect"
+          >{{ reconnectPreview(config.clearOnReconnect) }}</span>
+        </div>
+        <div class="m3-set__control">
+          <toggle-switch
+            :value="config.clearOnReconnect"
+            label="Start empty after a reconnect"
+            @input="setConfig('clearOnReconnect', $event)"
           />
         </div>
       </div>
@@ -283,7 +320,7 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import {
-  HISTORY_COUNTS, LINES_KEPT, chipText, consoleConfig, describeFilter, moveQuickCommand, quickCommandsFor, accountQuickKey, saveQuickCommand,
+  HISTORY_COUNTS, LINES_KEPT, PREVIEW_LONG_LINE, chipText, reconnectPreview, timestampPreview, consoleConfig, describeFilter, moveQuickCommand, quickCommandsFor, accountQuickKey, saveQuickCommand,
   type ConsoleConfig, type QuickCommand
 } from '@/services/console/settings'
 import { SocketActions } from '@/api/socketActions'
@@ -301,6 +338,9 @@ export default class ConsoleSettings extends Mixins(StateMixin) {
   filterEditing: ConsoleFilter | null = null
 
   readonly chipText = chipText
+  readonly timestampPreview = timestampPreview
+  readonly reconnectPreview = reconnectPreview
+  readonly longLine = PREVIEW_LONG_LINE
   readonly describe = describeFilter
   readonly linesKept = LINES_KEPT.map(n => ({ value: n, label: n.toLocaleString('en') }))
   readonly historyCounts = HISTORY_COUNTS.map(n => ({ value: n, label: String(n) }))
@@ -552,5 +592,21 @@ export default class ConsoleSettings extends Mixins(StateMixin) {
     .cset__link {
       flex-wrap: wrap;
     }
+  }
+  .cset__preview {
+    display: block;
+    max-width: 100%;
+    margin-top: 4px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: var(--m3d-surface-2);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+
+  .cset__preview--cut {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>
