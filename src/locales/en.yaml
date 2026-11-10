@@ -834,7 +834,7 @@ app:
     tooltip:
       absolute_positioning: Absolute Positioning
       extruder_disabled: extruder disabled, below min_extrude_temp (%{min}<small>°C</small>)
-      home_xy: Home XY
+      home_xy: Home all
       home_z: Home Z
       manual_probe: Manual Probe
       motors_off: Motors Off

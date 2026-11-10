@@ -43,9 +43,9 @@
             role="menuitem"
             :disabled="!ready || busy"
             data-tid="menu-home-xy"
-            @click="home('XY')"
+            @click="home()"
           >
-            Home X and Y<span class="acct-menu__key">G28 X Y</span>
+            Home all<span class="acct-menu__key">G28</span>
           </button>
           <button
             type="button"
@@ -345,18 +345,18 @@
             type="button"
             class="cbtn cbtn--ghost"
             :disabled="busy"
-            aria-label="Home X and Y"
+            aria-label="Home all"
             data-tid="home-xy"
-            title="G28 X Y"
-            @click="home('XY')"
+            title="G28"
+            @click="home()"
           >
             <v-progress-circular
-              v-if="homing('XY')"
+              v-if="homing()"
               indeterminate
               size="14"
               width="2"
             />
-            XY
+            Home all
           </button>
           <button
             type="button"
@@ -608,7 +608,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
   // -- trackpad --------------------------------------------------------------
 
   get pickHint (): string {
-    if (!this.xyHomedHere) return 'Home X and Y, then tap the bed to pick a spot.'
+    if (!this.xyHomedHere) return 'Home all, then tap the bed to pick a spot.'
     if (this.noGo === 'invalid') return 'The no-go regions could not be read, so only raising the head is allowed.'
     return 'Tap the bed to pick a spot, then press Move here. Or drag, and the head follows.'
   }
