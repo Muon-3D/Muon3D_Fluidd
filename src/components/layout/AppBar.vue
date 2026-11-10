@@ -517,7 +517,8 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
   }
 
   saveConfigAndRestart (force = false) {
-    if (!force) {
+    // Save and restart: Always (Settings › Files and editor) restarts without the list.
+    if (!force && this.$store.state.config.uiSettings.editor.saveAndRestart !== 'always') {
       const confirmOnSaveConfigAndRestart = this.$store.state.config.uiSettings.general.confirmOnSaveConfigAndRestart
 
       if (confirmOnSaveConfigAndRestart) {
