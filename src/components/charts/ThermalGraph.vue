@@ -15,28 +15,36 @@
       role="group"
       aria-label="Temperature series"
     >
-      <button
-        v-for="s in chips"
-        :key="s.key"
-        type="button"
-        class="tg__chip"
-        :class="{ off: !isOn(s) }"
-        :data-legend="s.key"
-        :aria-pressed="isOn(s) ? 'true' : 'false'"
-        :title="`${s.group}: ${isOn(s) ? 'click to hide' : 'click to show'}`"
-        @click="toggle(s)"
+      <div
+        v-for="g in groups"
+        :key="g.name"
+        class="tg__group"
+        :data-group="g.name"
       >
-        <i
-          class="tg__swatch"
-          :class="{ dotted: s.kind !== 'temp' }"
-          :style="{ '--tg-color': s.color }"
-        />
-        <span class="tg__name">{{ s.label }}</span>
-        <span
-          class="tg__val"
-          :data-val="s.key"
-        />
-      </button>
+        <span class="tg__group-name">{{ g.name }}</span>
+        <button
+          v-for="s in g.chips"
+          :key="s.key"
+          type="button"
+          class="tg__chip"
+          :class="{ off: !isOn(s) }"
+          :data-legend="s.key"
+          :aria-pressed="isOn(s) ? 'true' : 'false'"
+          :title="`${s.group}: ${isOn(s) ? 'click to hide' : 'click to show'}`"
+          @click="toggle(s)"
+        >
+          <i
+            class="tg__swatch"
+            :class="{ dotted: s.kind !== 'temp' }"
+            :style="{ '--tg-color': s.color }"
+          />
+          <span class="tg__name">{{ s.label }}</span>
+          <span
+            class="tg__val"
+            :data-val="s.key"
+          />
+        </button>
+      </div>
       <button
         v-if="extra > 0 || expanded"
         type="button"
@@ -71,10 +79,8 @@ import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import { createGraph, type GraphHandle } from '@/services/charts/engine'
 import { buildGraphOption, type GraphLine } from '@/services/charts/graph-option'
 import { SeriesRing } from '@/services/charts/ring'
-import { discoverSeries, isSeriesOn, type SeriesDef, type SeriesSelection } from '@/services/charts/series'
+import { discoverSeries, GROUP_ORDER, isSeriesOn, type SeriesDef, type SeriesSelection } from '@/services/charts/series'
 
-/** Chips shown before "N more"; a series that is on always shows. */
-const CHIP_LIMIT = 10
 /** The graph redraws and the legend refreshes this often, however fast Klipper reports. */
 const TICK_MS = 1000
 
@@ -116,9 +122,17 @@ export default class ThermalGraph extends Vue {
   get selected (): SeriesSelection { return (this.$store.getters['charts/getSelectedLegends'] ?? {}) as SeriesSelection }
   get dark (): boolean { return !!this.$store.state.config?.uiSettings?.theme?.isDark }
 
+  /** The lines on, until "N more" is opened: then every line the printer has. */
   get chips (): SeriesDef[] {
     if (this.expanded) return this.defs
-    return this.defs.filter((d, i) => i < CHIP_LIMIT || isSeriesOn(d, this.selected))
+    return this.defs.filter(d => isSeriesOn(d, this.selected))
+  }
+
+  /** The legend by part of the printer, in the graph's own order. */
+  get groups (): Array<{ name: string, chips: SeriesDef[] }> {
+    return GROUP_ORDER
+      .map(name => ({ name, chips: this.chips.filter(d => d.group === name) }))
+      .filter(g => g.chips.length)
   }
 
   get extra (): number { return this.defs.length - this.chips.length }
@@ -272,8 +286,23 @@ export default class ThermalGraph extends Vue {
   .tg__legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 2px 14px;
+    gap: 4px 18px;
     margin-top: 6px;
+  }
+
+  .tg__group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 14px;
+  }
+
+  .tg__group-name {
+    color: var(--m3d-text-subtle);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
 
   .tg__chip,

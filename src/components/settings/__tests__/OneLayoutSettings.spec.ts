@@ -107,7 +107,7 @@ describe('Settings in one layout', () => {
       stubs: { 'router-link': true, 'router-view': true },
       mocks: {
         $store: {
-          getters: { 'server/componentSupport': () => false, 'config/getDisplayName': 'M1', 'webcams/getWebcams': [], 'config/getTempPresets': [], 'macros/getMacros': [], 'version/hasUpdate': () => false },
+          getters: { 'server/isMuonPrinter': true, 'server/componentSupport': () => false, 'config/getDisplayName': 'M1', 'webcams/getWebcams': [], 'config/getTempPresets': [], 'macros/getMacros': [], 'version/hasUpdate': () => false },
           state: { version: { version_info: {} } }
         }
       },
