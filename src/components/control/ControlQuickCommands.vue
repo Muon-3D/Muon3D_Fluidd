@@ -14,7 +14,7 @@
         data-tid="quick-all"
         @click="all = !all"
       >
-        {{ all ? 'Fewer' : `All ${commands.length}` }}
+        {{ all ? 'Fewer' : 'All commands' }}
       </button>
       <a
         class="qc__arrange"
