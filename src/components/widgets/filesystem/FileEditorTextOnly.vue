@@ -7,6 +7,7 @@
       [$vuetify.theme.dark ? 'theme--dark': 'theme--light']: true,
     }"
     :readonly="readonly"
+    :style="{ fontSize: `${fontSize}px` }"
     spellcheck="false"
   />
 </template>
@@ -21,6 +22,10 @@ export default class FileEditorText extends Vue {
 
   @Prop({ type: Boolean })
   readonly readonly?: boolean
+
+  /** The text size, in px: Settings › Files and editor › Text size. */
+  @Prop({ type: Number, default: 16 })
+  readonly fontSize!: number
 
   /** A line to open at, 1-based. */
   @Prop({ type: Number, default: 0 })
@@ -49,7 +54,6 @@ export default class FileEditorText extends Vue {
 <style lang="scss" scoped>
   :deep() {
     font-family: monospace;
-    font-size: 1rem;
     font-weight: 100 !important;
     min-width: 100%;
     height: calc(100% - 48px) !important;
