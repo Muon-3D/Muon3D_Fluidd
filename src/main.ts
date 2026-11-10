@@ -33,6 +33,7 @@ import {
   isPrintersOwnPage,
   learnActiveIdentity,
   openPrinterAt,
+  ownPageHome,
   preferSavedPrinterFor
 } from './services/printer-pages'
 import type { InitConfig } from './store/config/types'
@@ -55,6 +56,7 @@ import { retireProStorage } from './services/retired-storage'
 import Blur from '@/directives/blur'
 import { restoreUiStyle } from '@/util/ui-style'
 import { applyGlassIcons } from '@/util/glass-icons'
+import { followMotionSetting } from '@/services/m1-3d/device-settings'
 
 // The entry is evaluated: the loader's next mark (KAN-525).
 retireProStorage()
@@ -112,6 +114,8 @@ preferSavedPrinterFor(window.location.pathname, Globals.LOCAL_INSTANCES_STORAGE_
 const restoredUiStyle = restoreUiStyle()
 store.commit('config/setRestoredUiStyle', restoredUiStyle)
 applyGlassIcons(vuetify.framework.icons.values as unknown as Record<string, unknown>, restoredUiStyle === 'glass')
+
+followMotionSetting()
 
 const mountApp = () => {
   Vue.config.productionTip = false
@@ -177,6 +181,13 @@ if (/^\/(?:setup|sign-in)(?:\/|$)/.test(window.location.pathname)) {
 
       // The address names the printer Fluidd shows (/boxwood-367a/jobs).
       installPrinterPages(router, { activateLocalPrinter, activateCloudPrinter })
+
+      // A printer's own address opens that printer's page from the first frame:
+      // the list of every printer must never draw while the account restores.
+      if (config.apiConnected && config.apiAuthenticated) {
+        const home = ownPageHome(window.location.pathname, store.state.config.apiUrl, activeSlug())
+        if (home) window.history.replaceState(window.history.state, '', home + window.location.search + window.location.hash)
+      }
 
       mountApp()
 

@@ -247,6 +247,35 @@
             data-tid="preview-show-menu"
           >
             <viewer-toggles />
+            <div
+              class="crow"
+              data-tid="preview-hide-box"
+            >
+              <span class="crow__name">Hide the bounding box<span class="crow__sub"> · one object, from the next file opened</span></span>
+              <toggle-switch
+                :value="hideSinglePartBoundingBox"
+                label="Hide the bounding box"
+                @input="hideSinglePartBoundingBox = $event"
+              />
+            </div>
+            <label
+              class="crow"
+              data-tid="preview-min-layer"
+            >
+              <span class="crow__name">Minimum layer height</span>
+              <span class="prev__num">
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.05"
+                  :value="minLayerHeight"
+                  aria-label="Minimum layer height"
+                  data-tid="preview-min-layer-input"
+                  @change="onMinLayerHeight"
+                >
+                mm
+              </span>
+            </label>
             <preview-open-menu @pick="load">
               <template #activator="{ on, attrs }">
                 <button
@@ -542,6 +571,25 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
     this.load(file)
   }
 
+  get hideSinglePartBoundingBox (): boolean {
+    return !!this.$store.state.config.uiSettings.gcodePreview.hideSinglePartBoundingBox
+  }
+
+  set hideSinglePartBoundingBox (value: boolean) {
+    this.$store.dispatch('config/saveByPath', { path: 'uiSettings.gcodePreview.hideSinglePartBoundingBox', value, server: true })
+  }
+
+  get minLayerHeight (): number {
+    return this.$store.state.config.uiSettings.gcodePreview.minLayerHeight
+  }
+
+  /** Heights closer than this count as one layer; anything under 0.1 mm is ignored. */
+  onMinLayerHeight (event: Event) {
+    const value = Number((event.target as HTMLInputElement).value)
+    if (!Number.isFinite(value) || value < 0.1) return
+    this.$store.dispatch('config/saveByPath', { path: 'uiSettings.gcodePreview.minLayerHeight', value, server: true })
+  }
+
   option (key: ShowOption): boolean {
     return !!this.$store.getters['gcodePreview/getViewerOption'](key)
   }
@@ -804,6 +852,24 @@ export default class GcodePreviewPage extends Mixins(JobsMixin, BrowserMixin) {
     padding: 14px;
     border-radius: 14px;
     background: var(--m3d-surface);
+  }
+
+  .prev__num {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+
+    input {
+      width: 64px;
+      height: 30px;
+      padding: 0 8px;
+      border-radius: 8px;
+      box-shadow: inset 0 0 0 1px var(--m3d-border-strong);
+      color: var(--m3d-text);
+      font: inherit;
+    }
   }
 
   .prev__legend {

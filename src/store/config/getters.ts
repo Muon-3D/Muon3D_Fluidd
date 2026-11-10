@@ -1,3 +1,4 @@
+import { withDefaultMaterials } from './default-materials'
 import type { GetterTree } from 'vuex'
 import type { ConfigState, TemperaturePreset, UiStyle } from './types'
 import type { RootState } from '../types'
@@ -62,7 +63,7 @@ export const getters: GetterTree<ConfigState, RootState> = {
    * after a preset has been saved.
    */
   getTempPresets: (state, getters, rootState, rootGetters) => {
-    const originalPresets: TemperaturePreset[] = state.uiSettings.dashboard.tempPresets
+    const originalPresets: TemperaturePreset[] = withDefaultMaterials(state.uiSettings.dashboard.tempPresets ?? [])
     const presets: TemperaturePreset[] = []
     const heaters = rootGetters['printer/getHeaters']
     const fans = rootGetters['printer/getOutputs'](['temperature_fan'])

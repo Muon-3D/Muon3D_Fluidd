@@ -4,7 +4,7 @@
     title="Jog"
     icon="control"
     :menu="menu"
-    class="jg"
+    :class="['jg', `jg--${size}`]"
   >
     <div class="jg__body">
       <div class="jg__pad">
@@ -24,17 +24,17 @@
           aria-label="Head left"
           data-jog="x-"
           :disabled="!canMoveXY"
-          @click="moveBy('X', -step)"
+          @click="moveBy('X', -X_RIGHT * step)"
         >
           <frame-icon name="chevronLeft" />
         </button>
         <button
           type="button"
           class="jg__b jg__c"
-          aria-label="Home X and Y"
+          aria-label="Home all"
           data-jog="home"
           :disabled="!controlReady || busy"
-          @click="home('XY')"
+          @click="home()"
         >
           <frame-icon name="home" />
         </button>
@@ -44,7 +44,7 @@
           aria-label="Head right"
           data-jog="x+"
           :disabled="!canMoveXY"
-          @click="moveBy('X', step)"
+          @click="moveBy('X', X_RIGHT * step)"
         >
           <frame-icon name="chevronRight" />
         </button>
@@ -59,7 +59,10 @@
           <frame-icon name="chevronDown" />
         </button>
       </div>
-      <div class="jg__z">
+      <div
+        v-if="size !== 'S'"
+        class="jg__z"
+      >
         <button
           type="button"
           class="jg__b"
@@ -89,7 +92,20 @@
     >
       {{ lock }}
     </p>
+    <span
+      v-if="size === 'L'"
+      class="jg__homes"
+      data-tid="jog-homes"
+    >
+      <button
+        type="button"
+        class="cbtn"
+        :disabled="!controlReady || busy"
+        @click="home()"
+      >Home all</button>
+    </span>
     <seg-picker
+      v-if="size !== 'S'"
       class="jg__step"
       :options="steps"
       :value="step"
@@ -105,7 +121,7 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
-import { Y_BACK } from '@/services/machine/orientation'
+import { X_RIGHT, Y_BACK } from '@/services/machine/orientation'
 import type { TileMenuItem } from '@/services/overview/tiles'
 import TileShell from './TileShell.vue'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
@@ -118,6 +134,8 @@ import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
 @Component({ components: { TileShell, SegPicker } })
 export default class JogTile extends Mixins(OverviewMixin) {
   readonly Y_BACK = Y_BACK
+  /** Right on the pad is the right of the machine, as the trackpad draws it (M1_VIEW). */
+  readonly X_RIGHT = X_RIGHT
   step = 1
   readonly steps: SegOption[] = [0.1, 1, 10, 100].map(v => ({ value: v, label: String(v) }))
 
@@ -127,7 +145,7 @@ export default class JogTile extends Mixins(OverviewMixin) {
   get lock (): string {
     if (!this.controlReady) return this.controlLock
     if (this.busy) return 'Not while printing.'
-    if (!this.isHomed('XY')) return 'Home X and Y to move the head.'
+    if (!this.isHomed('XY')) return 'Home all to move the head.'
     return ''
   }
 
@@ -154,6 +172,7 @@ export default class JogTile extends Mixins(OverviewMixin) {
 </script>
 
 <style lang="scss">
+.jg__homes { display: flex; gap: 8px; margin-top: 8px; }
 .jg { gap: 10px; }
 .jg__body { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 6px 0 2px; }
 .jg__pad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 6px; }
