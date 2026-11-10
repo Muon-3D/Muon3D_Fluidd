@@ -39,9 +39,9 @@ export const widgetMeta: WidgetMeta[] = [
   // The row of four under them.
   { id: 'hotend', title: 'Hotend', category: 'Temperature', blurb: 'Hotend temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: true },
   { id: 'bed', title: 'Bed', category: 'Temperature', blurb: 'Bed temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: true },
-  { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(), M(6)], size: 'S', defaultOn: true, legacy: ['speed'] },
+  { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(), M(6)], size: 'M', defaultOn: true, legacy: ['speed'] },
   // The fourth tile: part cooling is the fan people reach for most, and it is on every printer.
-  { id: 'fans', title: 'Fans', category: 'Tools', blurb: 'Part cooling and the other fans.', sizes: [S(), M(4), L(6, 2)], size: 'S', defaultOn: true },
+  { id: 'fans', title: 'Fans', category: 'Tools', blurb: 'Part cooling and the other fans.', sizes: [S(), M(4), L(6, 2)], size: 'S', defaultOn: false },
   // Movement (the trackpad, live drag), then Jog and Position as separate widgets.
   { id: 'trackpad', title: 'Movement', category: 'Motion', blurb: 'The trackpad: drag to move the head, with the no-go zones.', sizes: [S(2), M(8, 2), L(12, 2)], size: 'M', defaultOn: true },
   { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Buttons to move the head and home it.', sizes: [S(2), M(4, 2), L(6, 2)], size: 'M', defaultOn: true },

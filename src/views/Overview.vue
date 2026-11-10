@@ -200,11 +200,26 @@
             <div class="overview__card-top">
               <b>{{ w.title }}</b>
               <span class="overview__card-cat">{{ w.category }}</span>
-              <span
+              <button
                 v-if="isOn(w.id)"
-                class="overview__card-on"
-                :data-tid="`widget-on-${w.id}`"
-              >On</span>
+                type="button"
+                class="overview__pm"
+                :aria-label="`Remove ${w.title} from Overview`"
+                :data-tid="`widget-remove-${w.id}`"
+                @click="remove(w.id)"
+              >
+                −
+              </button>
+              <button
+                v-else
+                type="button"
+                class="overview__pm"
+                :aria-label="`Add ${w.title} to Overview`"
+                :data-tid="`widget-add-${w.id}`"
+                @click="addWidget(w.id)"
+              >
+                +
+              </button>
             </div>
             <p>{{ w.blurb }}</p>
             <div
@@ -228,14 +243,6 @@
                   @click="pick(w.id, z.key)"
                 >{{ z.key }}</button>
               </span>
-              <button
-                type="button"
-                class="overview__btn overview__btn--primary"
-                :data-tid="`widget-add-${w.id}`"
-                @click="addWidget(w.id)"
-              >
-                Add to Overview
-              </button>
             </div>
           </li>
           <li
@@ -487,7 +494,6 @@ export default class Overview extends Vue {
     const def = this.defs.find(d => d.id === id)
     if (!def) return
     this.add(id, undefined, this.sizeFor(def))
-    this.sheet = false
   }
 
   gripLabel (tile: DrawnTile): string {
@@ -648,7 +654,9 @@ export default class Overview extends Vue {
 .overview__card p { margin: 0; color: var(--m3d-text-muted); font-size: 12.5px; }
 .overview__card-top { display: flex; align-items: baseline; gap: 8px; b { font-size: 15px; font-weight: 600; } }
 .overview__card-cat { color: var(--m3d-text-subtle); font-size: 12px; }
-.overview__card-on { margin-left: auto; padding: 2px 9px; border-radius: 999px; background: var(--m3d-accent-soft, var(--m3d-fill-2)); color: var(--m3d-accent); font-size: 11.5px; font-weight: 600; }
+.overview__pm { display: grid; place-items: center; width: 32px; height: 32px; margin-left: auto; padding: 0; border: 0; border-radius: 999px; background: var(--m3d-fill-2); color: var(--m3d-text-muted); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+.overview__pm:hover { color: var(--m3d-text); }
+.overview__pm:focus-visible { outline: 2px solid var(--m3d-accent); outline-offset: 2px; }
 .overview__card-act { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
 .overview__sizes { display: inline-flex; gap: 4px; }
 .overview__size {
