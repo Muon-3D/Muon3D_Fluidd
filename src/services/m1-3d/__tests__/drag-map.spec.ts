@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ACCURATE_RIG, placeAccurate } from '../accurate/klipper-map'
-import { clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '../drag-map'
+import { M1_VIEW } from '@/services/machine/orientation'
+import { clampMm, headMapFor, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '../drag-map'
 
 describe('drag-map', () => {
   it('reads back the Klipper X and Y it drew', () => {
@@ -50,9 +51,11 @@ describe('drag-map', () => {
 })
 
 describe('plateDragZ', () => {
-  it('caps one drag at 50 mm either way', () => {
-    expect(plateDragZ(20, 400, 0, 160)).toBe(70)
-    expect(plateDragZ(100, -400, 0, 160)).toBe(50)
+  it('has no cap per drag: the plate goes as far as the pointer, to the axis or the floor', () => {
+    expect(plateDragZ(20, 100, 0, 160)).toBe(120)
+    expect(plateDragZ(20, 400, 0, 160)).toBe(160)
+    expect(plateDragZ(150, -120, 0, 160)).toBe(30)
+    expect(plateDragZ(150, -400, 0, 160)).toBe(2)
   })
   it('stops 2 mm off the nozzle, or where the plate already is if lower', () => {
     expect(plateDragZ(10, -30, 0, 160)).toBe(2)
@@ -78,5 +81,22 @@ describe('releasePlace', () => {
   it('never sends a toolhead target as Z or the other way round', () => {
     expect(Object.keys(releasePlace({ Z: 5 }, [0, 0, 0], min, max))).toEqual(['Z'])
     expect(Object.keys(releasePlace({ X: 5, Y: 5 }, [0, 0, 0], min, max)).sort()).toEqual(['X', 'Y'])
+  })
+})
+
+describe('the head map follows M1_VIEW', () => {
+  const views = (['back', 'front'] as const).flatMap(yZeroAt => (['left', 'right'] as const).map(xZeroAt => ({ yZeroAt, xZeroAt, zPlus: 'up' as const })))
+  it.each(views)('round-trips Klipper X and Y with %o', view => {
+    const map = headMapFor(view)
+    for (const [x, y] of [[0, 0], [37.5, 120], [200, 180]]) {
+      expect(map.worldToHead(map.headToWorld(x, y))).toEqual({ X: expect.closeTo(x, 9), Y: expect.closeTo(y, 9) })
+    }
+    // X grows toward the side away from X 0, in world X.
+    const dx = map.headToWorld(10, 0).x - map.headToWorld(0, 0).x
+    expect(Math.sign(dx)).toBe(view.xZeroAt === 'left' ? 1 : -1)
+  })
+
+  it('is M1_VIEW as exported', () => {
+    expect(headMapFor(M1_VIEW).headToWorld(12, 34)).toEqual(headToWorld(12, 34))
   })
 })

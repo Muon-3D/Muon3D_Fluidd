@@ -16,6 +16,7 @@ import { placeAccurate } from './accurate/klipper-map'
 import type { AccurateRig } from './accurate/rig'
 import { LEAN_LIMIT, NO_LEAN, PART_IDS, leanToward, partMeshes, partOf, type Lean, type PartId } from './parts'
 import { PartLight, type LightMode } from './part-light'
+import { buildPickProxy, placePickProxy, wantsPickProxy } from './pick-proxy'
 
 /** Frees a model's GPU resources: geometries, materials, their textures, and a rigged mesh's bone texture. */
 function disposeTree (root: THREE.Object3D) {
@@ -589,9 +590,32 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     if (focus?.centred && lean.closer > 0) target.lerp(focusPoint, 0.12 * lean.closer)
   }
 
+  /** Each part's meshes in the model shown, found once per model rather than by name on every pick and frame. */
+  let partsOf: Map<PartId, THREE.Mesh[]> = new Map()
+  function meshesOf (part: PartId): THREE.Mesh[] {
+    let meshes = partsOf.get(part)
+    if (!meshes) {
+      meshes = partMeshes(rig.root, part)
+      partsOf.set(part, meshes)
+    }
+    return meshes
+  }
+  /** The coarse stand-ins a pick tests (pick-proxy.ts), made on the first pick of a model. */
+  let proxies: Map<THREE.Mesh, THREE.Mesh> = new Map()
+  function proxyOf (mesh: THREE.Mesh): THREE.Mesh {
+    if (!wantsPickProxy(mesh)) return mesh
+    let proxy = proxies.get(mesh)
+    if (!proxy) {
+      proxy = buildPickProxy(mesh)
+      proxies.set(mesh, proxy)
+    }
+    placePickProxy(proxy, mesh)
+    return proxy
+  }
+
   /** A part's middle in the scene, or null if this model hasn't it. */
   function partCentre (part: PartId, into: THREE.Vector3): THREE.Vector3 | null {
-    const meshes = partMeshes(rig.root, part)
+    const meshes = meshesOf(part)
     if (!meshes.length) return null
     const b = new THREE.Box3()
     for (const m of meshes) b.expandByObject(m)
@@ -879,16 +903,17 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       raycaster.setFromCamera(ndc, camera)
       // Only what is drawn: the plate hidden for the top-down view must not catch the ray.
       const shown = (o: THREE.Object3D | null): boolean => !o || (o.visible && shown(o.parent))
-      const targets = PART_IDS.flatMap(id => partMeshes(rig.root, id)).filter(m => shown(m))
+      // Against each part's coarse stand-in, not its full mesh, so a hover is answered on the next frame.
+      const targets = PART_IDS.flatMap(id => meshesOf(id)).filter(m => shown(m)).map(proxyOf)
       const hit = raycaster.intersectObjects(targets, false)[0]
-      return hit ? partOf(hit.object) : null
+      return hit ? partOf((hit.object.userData.pickOf ?? hit.object) as THREE.Object3D) : null
     },
     setFocus (part, mode, leanIn) {
       const same = focus?.part === part && focus?.mode === mode && focus?.lean === leanIn
       if (same) return
       const moved = focus?.part !== part
       focus = part ? { part, mode, lean: leanIn, centred: moved ? !!partCentre(part, focusPoint) : !!focus?.centred } : null
-      if (part) light.light(partMeshes(rig.root, part), mode)
+      if (part) light.light(meshesOf(part), mode)
       else light.clear()
       aimLean()
       invalidate()
@@ -993,6 +1018,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       view.goalPhi = freeView.phi
     }
     rig = next
+    partsOf = new Map()
+    proxies = new Map()
     if (next.root.parent !== scene) scene.add(next.root)
     for (const o of plated) {
       o.matrix.copy(next.printFrame)

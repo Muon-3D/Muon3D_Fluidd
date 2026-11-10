@@ -1,4 +1,4 @@
-import { Y_TOWARD_FRONT } from '@/services/machine/orientation'
+import { M1_VIEW, axesFor, type M1View } from '@/services/machine/orientation'
 import { ACCURATE_RIG } from './accurate/klipper-map'
 
 /**
@@ -6,10 +6,12 @@ import { ACCURATE_RIG } from './accurate/klipper-map'
  * toolhead and the plate on the Overview stage. The same mapping the model is
  * posed with (klipper-map.ts placeAccurate), so a target drawn at a point is
  * the place the printer is sent to:
- * - the nozzle's world X is Klipper's X less half the plate (X 0 is the
- *   plate's left edge);
- * - its world Z is Klipper's Y from the plate's back edge, toward the front
- *   on the M1 (orientation.ts);
+ * - the nozzle's world X is Klipper's X from the plate's X 0 edge (the left
+ *   one on the M1), less half the plate;
+ * - its world Z is Klipper's Y from the plate's Y 0 edge (the back one on
+ *   the M1);
+ * - which edges those are is M1_VIEW (orientation.ts), the one constant the
+ *   trackpad, the jog keys and the model all read;
  * - the head never moves in world Y; the nozzle tip is at `tipY`;
  * - Z is the gap from the tip to the plate's underside, so the plate's top is
  *   at tipY + Z + the glass's thickness.
@@ -19,15 +21,29 @@ export interface WorldPoint { x: number, y: number, z: number }
 
 const r = ACCURATE_RIG
 
-/** The world point of the nozzle tip at Klipper (X, Y). */
-export function headToWorld (x: number, y: number): WorldPoint {
-  return { x: x - r.plateHalfX, y: r.tipY, z: Y_TOWARD_FRONT ? y - r.plateHalfZ : r.plateHalfZ - y }
+/** Klipper (X, Y) to the nozzle's world point and back, for a view of the M1. Tests flip the view. */
+export function headMapFor (view: M1View) {
+  const { X_TOWARD_RIGHT: right, Y_TOWARD_FRONT: front } = axesFor(view)
+  return {
+    headToWorld: (x: number, y: number): WorldPoint => ({
+      x: right ? x - r.plateHalfX : r.plateHalfX - x,
+      y: r.tipY,
+      z: front ? y - r.plateHalfZ : r.plateHalfZ - y
+    }),
+    worldToHead: (p: { x: number, z: number }): { X: number, Y: number } => ({
+      X: right ? p.x + r.plateHalfX : r.plateHalfX - p.x,
+      Y: front ? p.z + r.plateHalfZ : r.plateHalfZ - p.z
+    })
+  }
 }
 
+const HEAD_MAP = headMapFor(M1_VIEW)
+
+/** The world point of the nozzle tip at Klipper (X, Y). */
+export const headToWorld = HEAD_MAP.headToWorld
+
 /** Klipper (X, Y) for a world point on the nozzle's plane. */
-export function worldToHead (p: { x: number, z: number }): { X: number, Y: number } {
-  return { X: p.x + r.plateHalfX, Y: Y_TOWARD_FRONT ? p.z + r.plateHalfZ : r.plateHalfZ - p.z }
-}
+export const worldToHead = HEAD_MAP.worldToHead
 
 /** The world Y of the nozzle's plane, where a toolhead drag is read. */
 export const HEAD_PLANE_Y = r.tipY
@@ -54,15 +70,16 @@ export function ticks (lo: number, hi: number, step = 50): number[] {
   return out
 }
 
-/** The furthest one drag can take the plate, either way, so a flick at a grazing angle can't send it to the end of its travel. */
-export const PLATE_DRAG_MM = 50
 /** A drag stops the plate this far from the nozzle (Z 0 is the tip touching it), or where it already is if lower. */
 export const PLATE_DRAG_FLOOR_MM = 2
 
-/** The plate's Z for a drag that has moved `by` mm from `z0`: capped per drag, kept off the nozzle, inside the axis. */
+/**
+ * The plate's Z for a drag that has moved `by` mm from `z0`: kept off the
+ * nozzle, inside the axis. No cap per drag (Jack, #340): the plate follows
+ * the pointer, in short steps the follower sends.
+ */
 export function plateDragZ (z0: number, by: number, zMin: number, zMax: number): number {
-  const step = Math.max(-PLATE_DRAG_MM, Math.min(PLATE_DRAG_MM, by))
-  return clampMm(z0 + step, Math.max(zMin, Math.min(z0, PLATE_DRAG_FLOOR_MM)), zMax)
+  return clampMm(z0 + by, Math.max(zMin, Math.min(z0, PLATE_DRAG_FLOOR_MM)), zMax)
 }
 
 /**
