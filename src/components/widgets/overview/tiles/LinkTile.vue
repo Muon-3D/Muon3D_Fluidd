@@ -5,7 +5,10 @@
     :icon="icon"
     class="lt"
   >
-    <span class="ot__sub">{{ note }}</span>
+    <span
+      v-if="size !== 'S'"
+      class="ot__sub"
+    >{{ note }}</span>
     <router-link
       class="lt__go"
       :to="target"
