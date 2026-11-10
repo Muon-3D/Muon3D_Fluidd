@@ -168,3 +168,10 @@ test('the phone layout: one column, small widgets two to a row, the Add widget s
   await page.getByTestId('widget-add-care').click()
   await expect(cell(page, 'care')).toBeVisible()
 })
+
+test('the Overview jog Home button sends a full G28, never G28 X Y', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await open('/')
+  await page.locator('[data-tile="jog"] [data-jog="home"]').click()
+  await expect.poll(() => printer.gcode).toEqual(['G28'])
+})

@@ -280,6 +280,17 @@ test.describe('Movement', () => {
     await expect.poll(() => printer.gcode).toEqual(['G28'])
   })
 
+  test('Home sends a full G28 (never G28 X Y), from the pad button and the ··· menu', async ({ page, open }) => {
+    const printer = await usePrinter(page, idle([150, 100, 10]))
+    await open('/control')
+    await page.getByTestId('home-xy').click()
+    await expect.poll(() => printer.gcode).toEqual(['G28'])
+    await page.getByTestId('move-more').click()
+    await page.getByTestId('menu-home-xy').click()
+    await expect.poll(() => printer.gcode).toEqual(['G28', 'G28'])
+    await expect(page.getByText('Home X and Y')).toHaveCount(0)
+  })
+
   test('printing: locked, the live position only, nothing to press', async ({ page, open }) => {
     const printer = await usePrinter(page) // the mock as it is: mid-print
     await open('/control')

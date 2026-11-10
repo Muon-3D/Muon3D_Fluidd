@@ -32,9 +32,9 @@
             class="cbtn"
             :disabled="!canHome"
             data-tid="home-xy"
-            @click="home('XY')"
+            @click="home()"
           >
-            Home X Y
+            Home all
           </button>
           <button
             type="button"
