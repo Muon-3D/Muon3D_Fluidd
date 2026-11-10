@@ -167,6 +167,11 @@ export const getters: GetterTree<PrinterState, RootState> = {
           case 'filament':
             return getters.getFilamentPrintProgress
 
+          case 'layers':
+            return getters.getPrintLayers > 0
+              ? Math.min(1, Math.max(0, getters.getPrintLayer / getters.getPrintLayers))
+              : 0
+
           default:
             return 0
         }

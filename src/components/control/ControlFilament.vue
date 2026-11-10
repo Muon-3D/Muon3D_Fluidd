@@ -17,10 +17,7 @@
         />
         {{ spoolLoaded.text }}
       </span>
-      <material-picker
-        ref="picker"
-        chip
-      />
+      <material-picker ref="picker" />
     </template>
     <div
       class="filament__buttons"
