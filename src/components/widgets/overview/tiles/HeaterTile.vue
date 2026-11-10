@@ -19,6 +19,12 @@
       v-if="heater && !disconnected"
       class="ot__bar"
     ><i :style="{ width: `${Math.round(barFraction * 100)}%` }" /></span>
+    <heater-sparkline
+      v-if="size !== 'S' && heater && !disconnected"
+      class="ht__spark"
+      :series="seriesKey"
+      fill
+    />
     <span
       v-if="size === 'M' && heater && !disconnected"
       class="hp__presets ht__inline"
@@ -176,6 +182,7 @@ import type { Heater } from '@/store/printer/types'
 import TileShell from './TileShell.vue'
 import NumberField from '@/components/control/NumberField.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
+import HeaterSparkline from '@/components/control/HeaterSparkline.vue'
 
 type Kind = 'hotend' | 'bed'
 
@@ -184,7 +191,7 @@ type Kind = 'hotend' | 'bed'
  * a bar, and how close it is in words. Tapping it opens the full controls:
  * an exact target, the materials, show on graph, PID, and cool down.
  */
-@Component({ components: { TileShell, NumberField, ToggleSwitch } })
+@Component({ components: { TileShell, NumberField, ToggleSwitch, HeaterSparkline } })
 export default class HeaterTile extends Mixins(OverviewMixin) {
   @Prop({ type: String, default: 'hotend' }) readonly kind!: Kind
 
@@ -264,6 +271,8 @@ export default class HeaterTile extends Mixins(OverviewMixin) {
 
 <style lang="scss">
 .ht .ot__state { margin-right: 0; }
+.ht .ot__value { color: var(--m3d-text); font-weight: 700; }
+.ht__spark { display: block; margin-top: 6px; }
 @media (max-width: 599px) { .ht .ot__state { display: none; } }
 .ht--disconnected { outline: 1px solid var(--m3d-danger); outline-offset: -1px; }
 .hp__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

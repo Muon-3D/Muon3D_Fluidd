@@ -47,7 +47,7 @@
     <component
       :is="query ? 'div' : 'control-task-fold'"
       fold-key="macros.all"
-      :title="`All ${arrangedMacros.length} macros`"
+      title="All commands"
       summary="By what they are for"
     >
       <template v-for="group in shownGroups">
