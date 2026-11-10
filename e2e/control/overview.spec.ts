@@ -42,9 +42,9 @@ async function edit (page: Page) {
 test('the default layout: the printer left and wider, job and filament stacked on the right, then four tiles', async ({ page, open, isMobile }) => {
   await open('/')
   await expect(page.getByTestId('overview-page')).toBeVisible()
-  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'trackpad', 'jog', 'position', 'macros', 'graph'])
+  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros'])
   // Off by default, found in Add widget.
-  for (const id of ['zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library']) await expect(cell(page, id)).toHaveCount(0)
+  for (const id of ['hotend', 'bed', 'fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library']) await expect(cell(page, id)).toHaveCount(0)
   if (isMobile) return
   const stage = await box(cell(page, 'stage'))
   const job = await box(cell(page, 'job'))
@@ -53,7 +53,7 @@ test('the default layout: the printer left and wider, job and filament stacked o
   expect(stage.width).toBeGreaterThan(job.width * 1.5)
   expect(Math.abs(job.x - filament.x)).toBeLessThan(2)
   expect(filament.y).toBeGreaterThan(job.y)
-  const row = await Promise.all(['hotend', 'bed', 'mode'].map(id => box(cell(page, id))))
+  const row = await Promise.all(['mode', 'position'].map(id => box(cell(page, id))))
   for (const b of row) expect(Math.abs(b.y - row[0].y)).toBeLessThan(2)
   expect(row[0].y).toBeGreaterThan(stage.y + stage.height - 2)
   // The Movement trackpad, then Jog and Position as their own widgets.
@@ -92,42 +92,42 @@ test('Add widget lists the catalogue by category with the sizes each offers, and
 test('a widget can be removed, and comes back from Add widget', async ({ page, open }) => {
   await open('/')
   await edit(page)
-  await cell(page, 'bed').getByTestId('tile-remove').click()
-  await expect(cell(page, 'bed')).toHaveCount(0)
+  await cell(page, 'position').getByTestId('tile-remove').click()
+  await expect(cell(page, 'position')).toHaveCount(0)
   await page.getByTestId('widget-sheet-open').click()
-  await expect(page.getByTestId('widget-add-bed')).toBeVisible()
-  await page.getByTestId('widget-add-bed').click()
-  await expect(cell(page, 'bed')).toBeVisible()
+  await expect(page.getByTestId('widget-add-position')).toBeVisible()
+  await page.getByTestId('widget-add-position').click()
+  await expect(cell(page, 'position')).toBeVisible()
   // And − in the sheet takes it off again.
-  await page.getByTestId('widget-remove-bed').click()
-  await expect(cell(page, 'bed')).toHaveCount(0)
-  await expect(page.getByTestId('widget-add-bed')).toBeVisible()
+  await page.getByTestId('widget-remove-position').click()
+  await expect(cell(page, 'position')).toHaveCount(0)
+  await expect(page.getByTestId('widget-add-position')).toBeVisible()
 })
 
 test('a size that does not exist snaps to the nearest one the widget offers', async ({ page, open, isMobile }) => {
   test.skip(isMobile, 'Tiles cannot be resized below 1100 px; the sheet picks the size there.')
   await open('/')
   await edit(page)
-  const grip = cell(page, 'hotend').getByTestId('tile-grip')
-  const span = async () => (await cell(page, 'hotend').getAttribute('style'))?.match(/--span: (\d+)/)?.[1]
-  expect(await span()).toBe('3')
-  // The arrows step through S and M only.
+  const grip = cell(page, 'position').getByTestId('tile-grip')
+  const span = async () => (await cell(page, 'position').getAttribute('style'))?.match(/--span: (\d+)/)?.[1]
+  expect(await span()).toBe('6')
+  // The arrows step through S, M and L only.
   await grip.focus()
   await grip.press('Shift+ArrowRight')
-  expect(await span()).toBe('6')
+  expect(await span()).toBe('8')
   await grip.press('Shift+ArrowRight')
-  expect(await span()).toBe('6')
-  // Dragging the corner to about 4 columns lands on S (3), not on 4. Measured once the tile has sprung to its size.
+  expect(await span()).toBe('8')
+  // Dragging the corner to about 6.5 columns lands on M (6), not on 6.5. Measured once the tile has sprung to its size.
   await glided(page)
-  await cell(page, 'hotend').evaluate(e => e.scrollIntoView({ block: 'center' }))
-  const handle = cell(page, 'hotend').getByTestId('tile-resize')
+  await cell(page, 'position').evaluate(e => e.scrollIntoView({ block: 'center' }))
+  const handle = cell(page, 'position').getByTestId('tile-resize')
   const hb = await box(handle)
   const column = (await box(page.getByTestId('overview-grid'))).width / 12
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
   await page.mouse.down()
-  await page.mouse.move(hb.x + hb.width / 2 - column * 2, hb.y + hb.height / 2, { steps: 6 })
+  await page.mouse.move(hb.x + hb.width / 2 - column * 1.5, hb.y + hb.height / 2, { steps: 6 })
   await page.mouse.up()
-  expect(await span()).toBe('3')
+  expect(await span()).toBe('6')
   // The printer view has no small size: asking for one gives its M.
   const stageGrip = cell(page, 'stage').getByTestId('tile-grip')
   await stageGrip.focus()
@@ -154,18 +154,13 @@ test('the layout persists after a reload, and Reset brings the default back', as
   await edit(page)
   await page.getByTestId('edit-reset').click()
   await page.getByTestId('edit-done').click()
-  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'trackpad', 'jog', 'position', 'macros', 'graph'])
+  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros'])
 })
 
 test('the phone layout: one column, small widgets two to a row, the Add widget sheet from the bottom', async ({ page, open, isMobile }) => {
   test.skip(!isMobile, 'Phone only.')
   await open('/')
   const stage = await box(cell(page, 'stage'))
-  const hotend = await box(cell(page, 'hotend'))
-  const bed = await box(cell(page, 'bed'))
-  expect(Math.abs(hotend.y - bed.y)).toBeLessThan(2)
-  expect(hotend.width).toBeLessThan(stage.width * 0.6)
-  expect(bed.x).toBeGreaterThan(hotend.x)
   const job = await box(cell(page, 'job'))
   expect(job.width).toBeGreaterThan(stage.width * 0.9)
   await edit(page)
@@ -182,15 +177,7 @@ test('the phone layout: one column, small widgets two to a row, the Add widget s
   await expect(cell(page, 'care')).toBeVisible()
 })
 
-test('the Overview jog Home button sends a full G28, never G28 X Y', async ({ page, open }) => {
-  const printer = await usePrinter(page, PRESETS.idleHomed())
-  await open('/')
-  await page.locator('[data-tile="jog"] [data-jog="home"]').click()
-  await expect.poll(() => printer.gcode).toEqual(['G28'])
-})
-
-test('Home on the size-L Jog and Position tiles sends a full G28 too (KAN-1963)', async ({ page, open }) => {
-  const printer = await usePrinter(page, PRESETS.idleHomed())
+test('Jog and Position at size L have no Home all of their own (KAN-1955 / KAN-2023); Position keeps Home Z', async ({ page, open }) => {
   await open('/')
   await edit(page)
   // Put both back at size L through Add widget (works on the desktop grid and on a phone alike).
@@ -202,13 +189,7 @@ test('Home on the size-L Jog and Position tiles sends a full G28 too (KAN-1963)'
     await expect(cell(page, id)).toBeVisible()
   }
   await page.getByTestId('edit-done').click()
-  const jog = page.locator('[data-tile="jog"]')
-  const pos = page.locator('[data-tile="position"]')
-  await expect(jog.getByTestId('jog-homes')).toBeVisible()
-  await expect(pos.getByTestId('position-homes')).toBeVisible()
+  await expect(page.locator('[data-tile="jog"]').getByRole('button', { name: /Home all/i })).toHaveCount(0)
+  await expect(page.locator('[data-tile="position"]').getByTestId('position-homes').getByRole('button', { name: 'Home Z' })).toBeVisible()
   await expect(page.getByRole('button', { name: /Home X ?Y/i })).toHaveCount(0)
-  await jog.getByTestId('jog-homes').getByRole('button', { name: 'Home all' }).click()
-  await expect.poll(() => printer.gcode).toEqual(['G28'])
-  await pos.getByTestId('position-homes').getByRole('button', { name: 'Home all' }).click()
-  await expect.poll(() => printer.gcode).toEqual(['G28', 'G28'])
 })

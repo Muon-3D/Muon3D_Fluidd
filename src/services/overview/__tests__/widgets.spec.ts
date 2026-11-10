@@ -19,25 +19,28 @@ describe('the default layout', () => {
     expect(at('stage').span).toBeGreaterThan(at('job').span)
   })
 
-  it('has a row under them: hotend, bed and print mode (no Fans, KAN-1951)', () => {
-    expect(ids.slice(3, 6)).toEqual(['hotend', 'bed', 'mode'])
-    for (const id of ['hotend', 'bed']) expect(at(id)).toMatchObject({ span: 3, rows: 1 })
+  it("has Jack's rows under them (KAN-2029): Print mode and Position side by side, Temperatures across, no Fans (KAN-1951)", () => {
+    expect(ids.slice(3, 6)).toEqual(['mode', 'position', 'graph'])
     expect(at('mode')).toMatchObject({ span: 6, rows: 1 })
+    expect(at('position')).toMatchObject({ span: 6, rows: 1 })
+    expect(at('graph')).toMatchObject({ span: 12, rows: 1 })
   })
 
-  it('has the Movement trackpad, then jog and position, quick commands and the temperatures', () => {
-    expect(ids.slice(6)).toEqual(['trackpad', 'jog', 'position', 'macros', 'graph'])
-    expect(at('trackpad')).toMatchObject({ span: 8, rows: 2 })
+  it('has the Trackpad, then Jog on its right with Quick commands directly under it', () => {
+    expect(ids.slice(6)).toEqual(['trackpad', 'jog', 'macros'])
+    expect(at('trackpad')).toMatchObject({ span: 8, rows: 3 })
     expect(at('jog')).toMatchObject({ span: 4, rows: 2 })
+    expect(at('macros')).toMatchObject({ span: at('jog').span, rows: 1 })
+    expect(at('trackpad').span + at('jog').span).toBe(12)
   })
 
   it('puts everything else away until it is added', () => {
-    expect(layout.hidden).toEqual(['fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(layout.hidden).toEqual(['hotend', 'bed', 'fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
     expect(ids.length + layout.hidden.length).toBe(overviewTiles.length)
   })
 
-  it('has the first four rows no wider than the 12 columns', () => {
-    expect(at('hotend').span + at('bed').span + at('mode').span).toBe(12)
+  it('has the first rows no wider than the 12 columns', () => {
+    expect(at('mode').span + at('position').span).toBe(12)
     expect(at('stage').span + at('job').span).toBe(12)
   })
 })
@@ -139,12 +142,12 @@ describe('sizes in the layout', () => {
   })
 
   it('steps through the sizes with the arrows, and stops at the ends', () => {
-    const up = nudgeSize(layout, 'hotend', 1, 0, defs)
-    expect(up.tiles.find(t => t.id === 'hotend')).toMatchObject({ span: 6, rows: 1 })
-    const same = nudgeSize(up, 'hotend', 1, 0, defs)
-    expect(same.tiles.find(t => t.id === 'hotend')).toMatchObject({ span: 6, rows: 1 })
-    const down = nudgeSize(up, 'hotend', -1, 0, defs)
-    expect(down.tiles.find(t => t.id === 'hotend')).toMatchObject({ span: 3, rows: 1 })
+    const up = nudgeSize(layout, 'position', 1, 0, defs)
+    expect(up.tiles.find(t => t.id === 'position')).toMatchObject({ span: 8, rows: 1 })
+    const same = nudgeSize(up, 'position', 1, 0, defs)
+    expect(same.tiles.find(t => t.id === 'position')).toMatchObject({ span: 8, rows: 1 })
+    const down = nudgeSize(up, 'position', -1, 0, defs)
+    expect(down.tiles.find(t => t.id === 'position')).toMatchObject({ span: 6, rows: 1 })
     const tall = nudgeSize(layout, 'job', 0, 1, defs)
     expect(tall.tiles.find(t => t.id === 'job')).toMatchObject({ span: 4, rows: 2 })
   })

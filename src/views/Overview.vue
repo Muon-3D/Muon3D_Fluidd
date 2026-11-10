@@ -680,7 +680,7 @@ export default class Overview extends Vue {
   .overview__cards { grid-template-columns: minmax(0, 1fr); }
 }
 
-.overview__grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 16px; align-items: stretch; }
+.overview__grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
 .overview__cell { position: relative; display: flex; grid-column: span var(--span); grid-row: span var(--rows); min-width: 0; }
 /* Normally the wrapper takes no part in layout: the tile is the cell's only child, as it always was. */
 .overview__body { display: contents; }
@@ -698,7 +698,8 @@ export default class Overview extends Vue {
   content: ''; position: absolute; inset: 0; z-index: 4; border-radius: 22px; pointer-events: none;
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--m3d-accent) 55%, transparent);
 }
-.overview__cell--moving { z-index: 6; pointer-events: none; filter: drop-shadow(0 14px 28px rgb(0 0 0 / 22%)); }
+/* A box shadow, not a filter: a filter re-draws the whole tile (the 3D view too) on every pointer move. */
+.overview__cell--moving { z-index: 6; pointer-events: none; border-radius: 22px; box-shadow: 0 14px 28px rgb(0 0 0 / 22%); will-change: transform; }
 .overview__cell--over::after { box-shadow: inset 0 0 0 3px var(--m3d-accent) !important; background: color-mix(in srgb, var(--m3d-accent) 10%, transparent); }
 .overview__grip {
   position: absolute; top: 14px; left: 12px; z-index: 5; display: grid; grid-template-columns: repeat(2, 4px); gap: 3px; padding: 6px 5px; border-radius: 8px;
