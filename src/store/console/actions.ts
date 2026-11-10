@@ -6,6 +6,11 @@ import { SocketActions } from '@/api/socketActions'
 import DOMPurify from 'dompurify'
 import { takeRightWhile } from 'lodash-es'
 
+/** The console history was loaded once in this tab: the next load is a reconnect. */
+let consoleLoaded = false
+
+export const resetConsoleLoaded = () => { consoleLoaded = false }
+
 export const actions: ActionTree<ConsoleState, RootState> = {
   /**
    * Reset our store
@@ -62,7 +67,7 @@ export const actions: ActionTree<ConsoleState, RootState> = {
   /**
    * On a fresh load of the UI, we load prior gcode / console history
    */
-  async onGcodeStore ({ commit, dispatch }, payload: { gcode_store?: ConsoleEntry[] }) {
+  async onGcodeStore ({ commit, dispatch, rootState }, payload: { gcode_store?: ConsoleEntry[] }) {
     if (payload && payload.gcode_store) {
       const entries = payload.gcode_store
         .map((entry, index: number) => {
@@ -83,6 +88,10 @@ export const actions: ActionTree<ConsoleState, RootState> = {
         })
 
       commit('setAllEntries', entries)
+
+      // Settings › Console › Start empty after a reconnect: this tab's view only; the log keeps the lines.
+      if (consoleLoaded && rootState.config?.uiSettings?.console?.clearOnReconnect === true) commit('setLastCleared')
+      consoleLoaded = true
 
       const dialogEntries = entries
         .filter(entry => (

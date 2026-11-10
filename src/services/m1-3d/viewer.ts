@@ -93,6 +93,9 @@ export interface M1Viewer {
 export interface DrawnState {
   model: 'pending' | 'accurate' | 'simple';
   accessories: AccessoryFrame | null;
+  /** Whether the spool on the back is drawn, and whether the power socket has its plug (or jack). */
+  spool: boolean;
+  plug: boolean;
 }
 
 /** Seen from the mast side and a little above, as the s1_1 product shot is. */
@@ -140,6 +143,8 @@ interface Rig {
   setColour: (colour: number) => void;
   /** Swaps the transmissive glass for a plain one, if this model has any. */
   useCheapGlass: () => void;
+  /** Whether the spool is drawn now, and whether the power socket is filled. */
+  fittings: () => { spool: boolean, plug: boolean };
 }
 
 /** ?m1glass=cheap or real forces the glass plate's kind, for measuring; otherwise the device decides. */
@@ -358,7 +363,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   performance.mark('m1:create')
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'default' })
   renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = 1.06
+  renderer.toneMappingExposure = 0.85
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFShadowMap
@@ -366,8 +371,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   const scene = new THREE.Scene()
   const env = studioEnv(renderer)
   scene.environment = env
+  // The studio's reflections held down, so the white shell keeps its shading rather than washing out.
+  scene.environmentIntensity = 0.6
 
-  const key = new THREE.DirectionalLight(0xffffff, 2.55)
+  const key = new THREE.DirectionalLight(0xffffff, 1.85)
   key.position.set(-520, 780, 640)
   // Settings › G-code preview and 3D › Detail: Low draws without the shadow.
   const detail = liveRenderOptions(canvas.clientWidth)
@@ -378,13 +385,13 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   key.shadow.normalBias = 1.35
   key.shadow.radius = 5
   scene.add(key)
-  const fill = new THREE.DirectionalLight(0xf6f4f1, 0.52)
+  const fill = new THREE.DirectionalLight(0xf6f4f1, 0.5)
   fill.position.set(700, 380, 300)
   scene.add(fill)
-  const rim = new THREE.DirectionalLight(0xffffff, 0.60)
+  const rim = new THREE.DirectionalLight(0xffffff, 0.5)
   rim.position.set(180, 460, -840)
   scene.add(rim)
-  scene.add(new THREE.HemisphereLight(0xfffdf9, 0xa8a6a3, 0.20))
+  scene.add(new THREE.HemisphereLight(0xfffdf9, 0xa8a6a3, 0.14))
 
   // Only the shadow is drawn on the floor; the backdrop is the floor.
   const shadowMaterial = new THREE.ShadowMaterial({ opacity: 0.16 })
@@ -427,6 +434,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       partMaterial.opacity = opacity
       tapMaterial.opacity = opacity
     })
+    const spool = model.userData.spool as THREE.Object3D | undefined
+    const powerPort = model.getObjectByName('powerPort')
     return {
       kind: 'simple',
       root: model,
@@ -447,7 +456,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       plateOff: parts.plateOff,
       plateOffBox: parts.plateOffBox,
       setColour: parts.setColour,
-      useCheapGlass () { /* the simple model's glass is already flat */ }
+      useCheapGlass () { /* the simple model's glass is already flat */ },
+      fittings: () => ({ spool: !!spool?.visible, plug: !!powerPort })
     }
   }
 
@@ -470,14 +480,15 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         a.place(placement)
         a.lights.setLed(led)
       },
-      setSpool () { /* no spool in the exterior model */ },
+      setSpool: shown => a.spool.setShown(shown),
       setScreen: screen => a.lights.setScreen(screen),
       setLeds: (left, right) => a.lights.setLeds(left, right),
       apply: a.apply,
       plateOff: a.plateOff,
       plateOffBox: a.plateOffBox,
-      setColour () { /* the print's own material carries it */ },
-      useCheapGlass () { a.useCheapGlass() }
+      setColour: colour => a.spool.setColour(colour),
+      useCheapGlass () { a.useCheapGlass() },
+      fittings: () => ({ spool: a.spool.shown(), plug: !!a.plug })
     }
   }
 
@@ -496,7 +507,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     plateOff: () => 0,
     plateOffBox: new THREE.Box3(),
     setColour () { /* nothing yet */ },
-    useCheapGlass () { /* nothing yet */ }
+    useCheapGlass () { /* nothing yet */ },
+    fittings: () => ({ spool: false, plug: false })
   }
   scene.add(rig.root)
 
@@ -783,7 +795,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       if (watch.slow) cheapenGlass('slow')
     }
     viewer.onFrame?.()
-    viewer.onDraw?.({ model: rig.kind, accessories: drawnAccessories })
+    viewer.onDraw?.({ model: rig.kind, accessories: drawnAccessories, ...rig.fittings() })
     const turning = Math.abs(view.goalTheta - view.theta) > 1e-3 || Math.abs(view.goalPhi - view.phi) > 1e-3 ||
       Math.abs(leanGoal.theta - lean.theta) > 1e-4 || Math.abs(leanGoal.phi - lean.phi) > 1e-4 || Math.abs(leanGoal.closer - lean.closer) > 1e-3
     if (moving || pulsing || turning) invalidate()
