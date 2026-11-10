@@ -4,7 +4,7 @@
  * or links to a page of its own (Wi-Fi, System).
  */
 export type SettingsSectionId =
-  'general' | 'network' | 'access' | 'updates' | 'cameras' | 'materials' | 'macros' |
+  'general' | 'network' | 'access' | 'security' | 'updates' | 'cameras' | 'materials' | 'macros' |
   'timelapse' | 'spoolman' | 'console' | 'files' | 'toolhead' | 'gcodePreview' | 'developer' | 'system'
 
 /** The Moonraker components a settings section can depend on. */
@@ -45,6 +45,15 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     blurb: 'Who can use this printer, and how they sign in',
     keywords: ['people', 'login', 'password', 'users', 'owner', 'api key', 'protection'],
     shows: c => ['muon_access', 'muon_protection', 'authorization'].some(name => c.components.includes(name))
+  },
+  {
+    id: 'security',
+    label: 'Security',
+    anchors: ['security'],
+    icon: 'lock',
+    blurb: 'Who can change the hotspot, updates and Lockdown',
+    keywords: ['permissions', 'lockdown', 'hotspot', 'owner', 'devices'],
+    shows: c => ['muon_access', 'muon_protection'].some(name => c.components.includes(name))
   },
   { id: 'updates', label: 'Updates', anchors: ['versions'], icon: 'download', blurb: "The printer's software and when it updates", keywords: ['update', 'version', 'upgrade', 'software'], shows: has('update_manager') },
   { id: 'cameras', label: 'Cameras', anchors: ['camera'], icon: 'camera', blurb: "The printer's cameras and how they stream", keywords: ['webcam', 'stream', 'video'] },
