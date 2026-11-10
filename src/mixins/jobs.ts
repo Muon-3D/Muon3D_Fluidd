@@ -4,6 +4,7 @@ import { SocketActions } from '@/api/socketActions'
 import type { AppFileWithMeta, FileBrowserEntry } from '@/store/files/types'
 import { cloudState } from '@/services/muon-cloud/state'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 import { jobThumbnailPath, remoteJobThumbnail, thumbnailKey } from '@/services/jobs/thumbnail'
 import { jobFacts, jobTitle, isGcodeFile, printedBefore } from '@/services/jobs/model'
 
@@ -98,7 +99,10 @@ export default class JobsMixin extends Mixins(OverviewMixin) {
     const path = jobThumbnailPath(f, f.path)
     if (!path) return ''
     const apiUrl = this.$store.state.config.apiUrl as string
-    if (!isManagedApiUrl(apiUrl)) return `${apiUrl}${path}?date=${f.modified || Date.now()}`
+    if (!printerTransportBinding.remote) {
+      // A cloud printer not yet reached has no address to link.
+      return isManagedApiUrl(apiUrl) ? '' : `${apiUrl}${path}?date=${f.modified || Date.now()}`
+    }
     return remoteJobThumbnail(
       this.remotePrinterKey,
       path,
@@ -110,7 +114,7 @@ export default class JobsMixin extends Mixins(OverviewMixin) {
   /** The remote read's key for a file's picture, or '' when it has none or is read by address. */
   jobPictureKey (f: AppFileWithMeta): string {
     const path = jobThumbnailPath(f, f.path)
-    if (!path || !isManagedApiUrl(this.$store.state.config.apiUrl as string)) return ''
+    if (!path || !printerTransportBinding.remote) return ''
     return thumbnailKey(this.remotePrinterKey, path, f.modified)
   }
 

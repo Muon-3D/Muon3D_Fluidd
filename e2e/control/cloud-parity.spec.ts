@@ -41,9 +41,22 @@ async function expectRoute (page: Page, cloud: CloudRoute | null) {
 
 function webcam (uid: string, name: string, streamUrl: string, snapshotUrl: string) {
   return {
-    uid, name, location: 'printer', service: 'mjpegstreamer', enabled: true, icon: 'mdiWebcam',
-    target_fps: 15, target_fps_idle: 5, stream_url: streamUrl, snapshot_url: snapshotUrl,
-    flip_horizontal: false, flip_vertical: false, rotation: 0, aspect_ratio: '16:9', source: 'database', extra_data: {}
+    uid,
+    name,
+    location: 'printer',
+    service: 'mjpegstreamer',
+    enabled: true,
+    icon: 'mdiWebcam',
+    target_fps: 15,
+    target_fps_idle: 5,
+    stream_url: streamUrl,
+    snapshot_url: snapshotUrl,
+    flip_horizontal: false,
+    flip_vertical: false,
+    rotation: 0,
+    aspect_ratio: '16:9',
+    source: 'database',
+    extra_data: {}
   }
 }
 
@@ -210,6 +223,82 @@ for (const route of ROUTES) {
         const opened = page.context().waitForEvent('request', r => r.url().includes(`/server/files/timelapse/${video}.mp4`))
         await page.getByTestId('timelapse-download').click()
         expect((await opened).url()).toMatch(new RegExp(`:${MOCK_PORT}/server/files/timelapse/${video}\\.mp4\\?date=\\d+(&token=[^&]+)?$`))
+      }
+    })
+
+    test('timelapse: a video opens in the player, read whole each time and let go when it closes', async ({ page, open, account }) => {
+      const cloud = await useRoute(page, account, route)
+      const printer = await usePrinter(page, PRESETS.idleHomed(), {
+        components: ['database', 'file_manager', 'klippy_apis', 'machine', 'data_store', 'webcam', 'history', 'authorization', 'timelapse']
+      })
+      const video = 'timelapse_player_20261110_0900'
+      printer.state.answers['machine.timelapse.get_settings'] = { enabled: true, autorender: true, camera: '', mode: 'layermacro', blockedsettings: [], stream_delay_compensation: 0.05 }
+      printer.state.answers['machine.timelapse.lastframeinfo'] = { count: 0, lastframefile: '' }
+      printer.state.answers['server.files.get_directory'] = (params: Record<string, unknown>) => ({
+        dirs: [],
+        files: String(params.path ?? '').startsWith('timelapse')
+          ? [{ filename: `${video}.mp4`, size: 6_000_000, modified: NOW, permissions: 'rw' }, { filename: `${video}.jpg`, size: 2000, modified: NOW, permissions: 'rw' }]
+          : [],
+        disk_usage: { total: 29_000_000_000, used: 6_100_000_000, free: 22_900_000_000 },
+        root_info: { name: String(params.path ?? 'gcodes').split('/')[0], permissions: 'rw' }
+      })
+      const mp4 = Buffer.alloc(6_000_000, 1)
+      await page.route(new RegExp(`:${MOCK_PORT}/server/files/timelapse/`), r => r.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: r.request().url().includes('.mp4') ? 'video/mp4' : 'image/png',
+        body: r.request().url().includes('.mp4') ? mp4 : PNG
+      }))
+      await open('/timelapse')
+      await expectRoute(page, cloud)
+      const card = page.locator(`[data-file="${video}.mp4"]`)
+      const reads = () => cloud?.requests.filter(r => r === `GET /server/files/timelapse/${video}.mp4`).length ?? 0
+      const player = page.getByTestId('timelapse-player').locator('video')
+
+      await card.locator('.tl__picture').click()
+      await expect(player).toHaveAttribute('src', cloud ? /^blob:/ : new RegExp(`:${MOCK_PORT}/server/files/timelapse/${video}\\.mp4\\?date=\\d+`))
+      const src = await player.getAttribute('src') ?? ''
+      if (!cloud) return
+      expect(reads()).toBe(1)
+      expect(await page.evaluate(async u => (await (await fetch(u)).blob()).size, src)).toBe(6_000_000)
+
+      await page.keyboard.press('Escape')
+      await expect(page.getByTestId('timelapse-player')).toHaveCount(0)
+      // Closed: the whole video isn't kept in this tab.
+      await expect.poll(() => page.evaluate(async u => { try { await fetch(u); return 'kept' } catch { return 'let go' } }, src)).toBe('let go')
+
+      // Not from the picture cache: opened again, it's read again.
+      await card.locator('.tl__picture').click()
+      await expect(player).toHaveAttribute('src', /^blob:/)
+      expect(reads()).toBe(2)
+    })
+
+    test('jobs: a large file downloads whole, under its own name', async ({ page, open, account }) => {
+      const cloud = await useRoute(page, account, route)
+      const printer = await usePrinter(page, PRESETS.idleHomed())
+      await takeUploads(page, printer)
+      const name = 'benchy_0.16mm_PETG.gcode'
+      await page.route(new RegExp(`:${MOCK_PORT}/server/files/gcodes/${name.replace(/\./g, '\\.')}`), r => r.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'text/x-gcode',
+        body: Buffer.alloc(7_200_000, 'G1 X1\n')
+      }))
+      await open('/jobs')
+      await expectRoute(page, cloud)
+      await page.getByTestId('jobs-row').filter({ hasText: 'benchy' }).getByTestId('jobs-row-check').check()
+      if (cloud) {
+        const download = page.waitForEvent('download')
+        await page.getByTestId('jobs-sel-download').click()
+        const saved = await download
+        expect(saved.suggestedFilename()).toBe(name)
+        const fs = await import('node:fs/promises')
+        expect((await fs.stat(await saved.path())).size).toBe(7_200_000)
+        expect(cloud.requests.filter(r => r === `GET /server/files/gcodes/${name}`)).toHaveLength(1)
+      } else {
+        const opened = page.context().waitForEvent('request', r => r.url().includes(`/server/files/gcodes/${name}`))
+        await page.getByTestId('jobs-sel-download').click()
+        expect((await opened).url()).toMatch(new RegExp(`:${MOCK_PORT}/server/files/gcodes/benchy_0\\.16mm_PETG\\.gcode\\?date=\\d+`))
       }
     })
 

@@ -192,6 +192,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
 
   dragState = false
   customBackgroundImageStyle: Record<string, string> = {}
+  customStylesheetUrl = ''
+  customBackgroundUrl = ''
   goKeys = new GoKeys()
 
   flashMessageState: FlashMessage = {
@@ -569,6 +571,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     }
 
     const url = await this.createFileUrlWithToken(value, 'config')
+    this.releaseFileUrl(this.customStylesheetUrl)
+    this.customStylesheetUrl = url
 
     const oldCustomStylesheet = document.getElementById('customStylesheet')
 
@@ -598,6 +602,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     }
 
     const url = await this.createFileUrlWithToken(value, 'config')
+    this.releaseFileUrl(this.customBackgroundUrl)
+    this.customBackgroundUrl = url
 
     this.customBackgroundImageStyle = {
       backgroundImage: `url(${url})`,
@@ -649,6 +655,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   }
 
   beforeDestroy () {
+    this.releaseFileUrl(this.customStylesheetUrl)
+    this.releaseFileUrl(this.customBackgroundUrl)
     window.removeEventListener('dragover', this.handleDragOver)
     window.removeEventListener('dragenter', this.handleDragOver)
     window.removeEventListener('dragleave', this.handleDragLeave)
