@@ -204,7 +204,7 @@ test('phone: the default layout has Movement, the print mode and the filament bo
   test.skip(!isMobile, 'Phone only.')
   await usePrinter(page, PRESETS.idleHomed())
   await open('/')
-  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'trackpad', 'jog', 'position', 'macros', 'graph'])
+  await expect.poll(() => ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'trackpad', 'jog', 'position', 'macros', 'graph'])
   await expect(page.locator('[data-tile="trackpad"]')).toBeVisible()
   await expect(page.getByTestId('mode-unavailable')).toBeVisible()
   await expect(page.getByTestId('overview-load-filament')).toBeVisible()
