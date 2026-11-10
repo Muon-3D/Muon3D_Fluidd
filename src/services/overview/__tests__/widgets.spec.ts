@@ -19,24 +19,25 @@ describe('the default layout', () => {
     expect(at('stage').span).toBeGreaterThan(at('job').span)
   })
 
-  it('has a row of four under them: hotend, bed, print mode and fans', () => {
-    expect(ids.slice(3, 7)).toEqual(['hotend', 'bed', 'mode', 'fans'])
-    for (const id of ids.slice(3, 7)) expect(at(id)).toMatchObject({ span: 3, rows: 1 })
+  it('has a row under them: hotend, bed and print mode (no Fans, KAN-1951)', () => {
+    expect(ids.slice(3, 6)).toEqual(['hotend', 'bed', 'mode'])
+    for (const id of ['hotend', 'bed']) expect(at(id)).toMatchObject({ span: 3, rows: 1 })
+    expect(at('mode')).toMatchObject({ span: 6, rows: 1 })
   })
 
   it('has the Movement trackpad, then jog and position, quick commands and the temperatures', () => {
-    expect(ids.slice(7)).toEqual(['trackpad', 'jog', 'position', 'macros', 'graph'])
+    expect(ids.slice(6)).toEqual(['trackpad', 'jog', 'position', 'macros', 'graph'])
     expect(at('trackpad')).toMatchObject({ span: 8, rows: 2 })
     expect(at('jog')).toMatchObject({ span: 4, rows: 2 })
   })
 
   it('puts everything else away until it is added', () => {
-    expect(layout.hidden).toEqual(['zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(layout.hidden).toEqual(['fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
     expect(ids.length + layout.hidden.length).toBe(overviewTiles.length)
   })
 
   it('has the first four rows no wider than the 12 columns', () => {
-    expect(at('hotend').span + at('bed').span + at('mode').span + at('fans').span).toBe(12)
+    expect(at('hotend').span + at('bed').span + at('mode').span).toBe(12)
     expect(at('stage').span + at('job').span).toBe(12)
   })
 })
@@ -178,7 +179,7 @@ describe('migrating a saved layout', () => {
   it('maps the old Speed / flow tile to Print mode, in the same place', () => {
     const out = readLayout(saved([{ id: 'job', span: 5, rows: 1 }, { id: 'speed', span: 3, rows: 1 }, { id: 'graph', span: 12, rows: 1 }]), defs)!
     expect(out.tiles.map(t => t.id)).toEqual(['job', 'mode', 'graph'])
-    expect(out.tiles[1]).toEqual({ id: 'mode', span: 3, rows: 1 })
+    expect(out.tiles[1]).toEqual({ id: 'mode', span: 6, rows: 1 })
     expect(out.hidden).not.toContain('speed')
     expect(out.hidden).not.toContain('mode')
   })

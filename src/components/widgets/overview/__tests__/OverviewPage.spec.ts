@@ -26,7 +26,7 @@ describe('Overview page', () => {
     const store = tileStore({ printing: true })
     const w = mount(Overview, tileMount(store, { stubs: { ...tileMount(store).stubs, ...heavy } }))
     expect(w.findAll('[data-cell]').wrappers.map(c => c.attributes('data-cell'))).toEqual(overviewTiles.filter(t => t.defaultOn).map(t => t.id))
-    for (const id of ['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'trackpad', 'jog', 'position', 'macros', 'graph']) {
+    for (const id of ['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'trackpad', 'jog', 'position', 'macros', 'graph']) {
       expect(w.findAll(`[data-tile="${id}"]`)).toHaveLength(1)
     }
     expect(w.find('[data-tid="overview-customise"]').exists()).toBe(false)

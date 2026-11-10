@@ -1,6 +1,6 @@
 <template>
   <control-card
-    :title="modes ? 'Print mode' : 'Speed and flow'"
+    title="Print mode"
     icon="pulse"
     :locked="controlLock"
     data-tid="control-printmode"
@@ -31,11 +31,17 @@
         <span v-if="card.blurb">{{ card.blurb }}</span>
       </button>
     </div>
+    <p
+      v-else
+      class="pmode__none"
+      data-tid="printmode-none"
+    >
+      Quiet, Normal and Turbo need [fan_modes] in the printer config.
+    </p>
 
     <button
       type="button"
       class="pmode__disc"
-      :class="{ 'pmode__disc--bare': !modes }"
       :aria-expanded="advanced ? 'true' : 'false'"
       aria-controls="pmode-advanced"
       data-tid="advanced-toggle"
@@ -319,11 +325,7 @@ export default class ControlPrintMode extends ControlSpeed {
     text-align: left;
   }
 
-  .pmode__disc--bare {
-    margin-top: 0;
-    padding-top: 0;
-    border-top: 0;
-  }
+  .pmode__none { margin: 0 0 8px; color: var(--m3d-text-muted); font-size: 13px; }
 
   .pmode__disc-text {
     display: flex;

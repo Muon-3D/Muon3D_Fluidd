@@ -81,7 +81,7 @@ test.describe('Movement', () => {
   test('the page is the v4 tiles, and the bed and notch are drawn to scale from the config', async ({ page, open }) => {
     await usePrinter(page, idle([150, 100, 10]))
     await open('/control')
-    for (const tid of ['control-move', 'control-heat', 'control-printmode', 'control-fans', 'control-filament', 'control-quick']) {
+    for (const tid of ['control-move', 'control-heat', 'control-printmode', 'control-filament', 'control-quick']) {
       await expect(page.getByTestId(tid)).toBeVisible()
     }
     await expect(page.getByTestId('control-move').getByText('Homed', { exact: true })).toBeVisible()
@@ -385,12 +385,14 @@ test.describe('Print mode', () => {
     await expect(page.locator('.printer-switch__status-text').first()).toHaveText(/· Quiet$/)
   })
 
-  test('is hidden on a printer without fan_modes; Advanced stays', async ({ page, open }) => {
+  test('says what it needs on a printer without fan_modes, with no speed-and-flow stand-in; Advanced stays', async ({ page, open }) => {
     await usePrinter(page, idle([150, 100, 10]))
     await open('/control')
     const tile = page.getByTestId('control-printmode')
     await expect(tile.getByRole('radiogroup', { name: 'Print mode' })).toHaveCount(0)
-    await expect(tile.getByText('Speed and flow')).toBeVisible()
+    await expect(tile).toContainText('Print mode')
+    await expect(tile.getByText('Speed and flow')).toHaveCount(0)
+    await expect(tile.getByTestId('printmode-none')).toContainText('Quiet, Normal and Turbo need [fan_modes]')
     await expect(page.getByTestId('advanced-toggle')).toBeVisible()
   })
 
