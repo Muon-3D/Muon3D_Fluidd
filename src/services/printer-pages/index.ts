@@ -396,6 +396,24 @@ export function isPrintersOwnPage (apiUrl: string, location: Pick<Location, 'ori
   }
 }
 
+/**
+ * Where `/` goes on a printer's own page, known before the first frame: the
+ * printer's page, so the list of every printer never draws first (KAN-2008).
+ * It used to wait for the account to restore (a call to the console) and for
+ * the printer's identity, and the page showed every saved, found and account
+ * printer by name for that long, then jumped to this one. Null when `/` is
+ * right: not the root, not the printer's own page, or no printer slug yet.
+ */
+export function ownPageHome (
+  pathname: string,
+  apiUrl: string,
+  slug: string | null,
+  location: Pick<Location, 'origin' | 'hostname'> = window.location
+): string | null {
+  if (pathname !== '/' || !slug || !isPrintersOwnPage(apiUrl, location)) return null
+  return printerPath(slug)
+}
+
 /** The page of the printer Fluidd is on, or Printers with none. */
 export function printerHomePath (): string {
   const slug = activeSlug()
