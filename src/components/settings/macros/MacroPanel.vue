@@ -341,7 +341,7 @@
     </div>
 
     <p class="mpanel__foot">
-      Shown macros appear in Control's Macros tile and in Quick actions, in this order. Sections are saved on the printer, for everyone.
+      Shown macros appear in Quick commands and in Quick actions, in this order. Sections are saved on the printer, for everyone.
     </p>
 
     <p

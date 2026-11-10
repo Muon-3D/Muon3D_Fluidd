@@ -399,6 +399,7 @@ import ControlPositionReadout from './ControlPositionReadout.vue'
 import ControlZOffset from './ControlZOffset.vue'
 import SegPicker, { type SegOption } from './SegPicker.vue'
 import NumberField from './NumberField.vue'
+import { normaliseSteps } from '@/services/settings/motion-limits'
 
 type Axis = 'X' | 'Y' | 'Z'
 
@@ -570,8 +571,16 @@ export default class ControlMove extends Mixins(ControlMixin) {
     return `${what} Moving comes back when it ends. Print mode and Advanced stay live, to change speed and flow mid-print.`
   }
 
+  /** Settings › Moving and extruding's step sizes for the head and the plate, one picker for both. */
+  get moveSteps (): number[] {
+    const general = this.$store.state.config?.uiSettings?.general
+    const steps = normaliseSteps([...(general?.toolheadXYMoveDistances ?? []), ...(general?.toolheadZMoveDistances ?? [])])
+    return steps.length ? steps : MOVE_STEPS
+  }
+
   get stepOptions (): SegOption[] {
-    return MOVE_STEPS.map((s, i) => ({ value: s, label: i === MOVE_STEPS.length - 1 ? `${s} mm` : String(s) }))
+    const steps = this.moveSteps
+    return steps.map((s, i) => ({ value: s, label: i === steps.length - 1 ? `${s} mm` : String(s) }))
   }
 
   get xyHomedHere (): boolean {

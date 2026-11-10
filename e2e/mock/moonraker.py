@@ -308,6 +308,18 @@ NETWORKS = [
 ]
 
 
+PERMISSIONS = [
+    {'id': 'hotspot_toggle', 'value': 'anyone'},
+    {'id': 'hotspot_change', 'value': 'owner'},
+    {'id': 'wifi_change', 'value': 'owner'},
+    {'id': 'update_install', 'value': 'anyone'},
+    {'id': 'new_device_requests', 'value': 'owner'},
+    {'id': 'hotspot_password_on_screen', 'value': 'anyone'},
+    {'id': 'lockdown', 'value': 'owner_at_printer'},
+    {'id': 'dev_mode', 'value': 'owner_at_printer', 'values': ['owner_at_printer'], 'read_only': True},
+]
+
+
 async def http_aux(request):
     tail = request.path[len('/server/aux'):]
     reason = refused(request.path)
@@ -329,6 +341,13 @@ async def http_aux(request):
         return web.json_response(0)
     if tail.startswith('/dev_mode'):
         return web.json_response({'enabled': False, 'guard_armed': False})
+    # Who may do each security-sensitive thing (KAN-1926, assumed shape). The
+    # shared mock never keeps a change: a test that changes one answers it itself.
+    if tail == '/permissions':
+        if request.method == 'POST':
+            body = await request.json()
+            return web.json_response({'knob': {**next((k for k in PERMISSIONS if k['id'] == body.get('id')), {}), 'value': body.get('value')}})
+        return web.json_response({'knobs': PERMISSIONS})
     if tail == '/update/status':
         return web.json_response({'state': 'idle', 'auto_install': True, 'install_presence_required': False})
     # A fresh printer's update choices (KAN-1925, MuonOS #492). The shared

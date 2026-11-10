@@ -3,7 +3,7 @@
     tile="filament"
     title="Filament"
     :menu="menu"
-    class="ft"
+    :class="['ft', `ft--${size}`]"
   >
     <material-picker ref="picker">
       <template #activator="{ on, attrs, disabled }">
@@ -42,12 +42,54 @@
         </button>
       </template>
     </material-picker>
+    <div
+      v-if="size !== 'S'"
+      class="ft__buttons"
+    >
+      <button
+        type="button"
+        class="cbtn cbtn--primary cbtn--grow"
+        :disabled="!!controlLock || changePlan.kind === 'none'"
+        :title="changePlan.kind === 'none' ? changePlan.reason : ''"
+        data-tid="overview-change-filament"
+        @click="changeFilament"
+      >
+        Change
+      </button>
+      <button
+        type="button"
+        class="cbtn cbtn--grow"
+        :disabled="!!controlLock || loadPlan.kind === 'none'"
+        :title="loadPlan.kind === 'none' ? loadPlan.reason : ''"
+        data-tid="overview-load-filament"
+        @click="runFilamentPlan('load')"
+      >
+        Load
+      </button>
+      <button
+        type="button"
+        class="cbtn cbtn--grow"
+        :disabled="!!controlLock || unloadPlan.kind === 'none'"
+        :title="unloadPlan.kind === 'none' ? unloadPlan.reason : ''"
+        data-tid="overview-unload-filament"
+        @click="runFilamentPlan('unload')"
+      >
+        Unload
+      </button>
+    </div>
+    <p
+      v-if="size === 'L'"
+      class="ot__sub ft__note"
+    >
+      {{ changeMacro ? 'Change is guided: it heats the nozzle, tells you when to pull and push, then purges.' : 'Load and unload heat the nozzle for you first.' }}
+    </p>
   </tile-shell>
 </template>
 
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
+import FilamentActionsMixin from '@/mixins/filament-actions'
 import { filamentView, inkFor, type FilamentView, type TileMenuItem } from '@/services/overview/tiles'
 import TileShell from './TileShell.vue'
 import MaterialPicker from '@/components/overview/MaterialPicker.vue'
@@ -61,7 +103,7 @@ import MaterialPicker from '@/components/overview/MaterialPicker.vue'
  * material panel (MaterialPicker) directly, as Control's do.
  */
 @Component({ components: { TileShell, MaterialPicker } })
-export default class FilamentTile extends Mixins(OverviewMixin) {
+export default class FilamentTile extends Mixins(OverviewMixin, FilamentActionsMixin) {
   get view (): FilamentView {
     const spool = this.$store.getters['spoolman/getActiveSpool']
     const loaded = this.loadedMaterial ? { name: this.loadedMaterial.name, colour: this.loadedColour } : null
@@ -90,6 +132,15 @@ export default class FilamentTile extends Mixins(OverviewMixin) {
     return items
   }
 
+  /** As Control's: mid-print it is M600 after its confirm; idle it opens the material panel and sends nothing (KAN-1700). */
+  async changeFilament () {
+    if (this.changePlan.kind === 'panel') {
+      this.openPanel()
+      return
+    }
+    await this.runFilamentPlan('change')
+  }
+
   openPanel () {
     const picker = this.$refs.picker as unknown as { open: boolean } | undefined
     if (picker) this.$nextTick(() => { picker.open = true })
@@ -99,6 +150,9 @@ export default class FilamentTile extends Mixins(OverviewMixin) {
 
 <style lang="scss">
 .ft__row { display: flex; align-items: center; gap: 14px; width: 100%; padding: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ft__buttons { display: flex; gap: 6px; margin-top: 10px; }
+.ft__note { margin-top: 8px; }
+.ft--S .ft__spool { width: 36px; height: 36px; }
 .ft__row:disabled { cursor: default; }
 .ft__spool { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 46px; height: 46px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 45%); }
 .ft__spool--none { background: var(--m3d-surface-2); color: var(--m3d-text-subtle); }
