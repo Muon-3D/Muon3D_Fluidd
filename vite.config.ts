@@ -215,7 +215,22 @@ export default defineConfig(async ({ command, mode }) => {
   build: {
     // Only the printer release job needs this inventory. Hosted builds must not
     // expose source paths through a publicly served .vite/manifest.json.
-    manifest: process.env.PRINTER_ZIP_VERIFY === '1'
+    manifest: process.env.PRINTER_ZIP_VERIFY === '1',
+    rollupOptions: {
+      output: {
+        // The framework every page needs, in chunks of their own (KAN-2013):
+        // they change far less often than the app, so a new build mostly
+        // reuses them from the cache, and the browser compiles them in
+        // parallel with the entry. Only packages the first screen already
+        // loads: anything else here would be fetched up front.
+        manualChunks (id) {
+          if (!id.includes('/node_modules/')) return undefined
+          if (/\/node_modules\/vuetify\//.test(id)) return 'vendor-vuetify'
+          if (/\/node_modules\/(?:vue|vuex|vue-router|vue-i18n|vue-class-component|vue-property-decorator|vue-meta)\//.test(id)) return 'vendor-vue'
+          return undefined
+        }
+      }
+    }
   },
 
   server: {
