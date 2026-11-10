@@ -279,37 +279,6 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin, FilamentActi
     return this.checks.find(c => c.id === 'bedMesh')
   }
 
-<<<<<<< HEAD
-=======
-  get macroList (): Macro[] {
-    return ((this.$store.getters['macros/getMacros'] as Macro[]) ?? []).filter(m => typeof m.name === 'string')
-  }
-
-  /** Load and unload by any of their usual names, as Control's Filament card finds them. */
-  get loadMacro (): FilamentMacro | null {
-    return findFilamentMacro(this.macroList, 'load_filament', 'filament_load')
-  }
-
-  get unloadMacro (): FilamentMacro | null {
-    return findFilamentMacro(this.macroList, 'unload_filament', 'filament_unload')
-  }
-
-  hasMacro (name: string): boolean {
-    return name === 'LOAD_FILAMENT' ? !!this.loadMacro : !!this.unloadMacro
-  }
-
-  /**
-   * As Control's Filament card runs them (ControlFilament.run): idle only,
-   * and a macro that takes a TEMP is told the material's nozzle temperature.
-   */
-  runFilament (name: 'LOAD_FILAMENT' | 'UNLOAD_FILAMENT') {
-    const macro = name === 'LOAD_FILAMENT' ? this.loadMacro : this.unloadMacro
-    if (!macro || !this.controlReady || this.busy) return
-    const temp = this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
-    this.sendGcode(macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name)
-  }
-
->>>>>>> 3ce7feb7 (feat(overview): use the printer's own screen from the 3D view (bridge; dark until /panel/ is served))
   /** On the toolhead a chip heats the nozzle only, to the material's temperature; the bed is the plate's. */
   heatNozzle (m: MaterialChoice) {
     if (this.busy || m.nozzle === null) return
