@@ -821,3 +821,13 @@ button.mlib-link { padding: 0; border: 0; background: none; font: inherit; font-
 .mpage__profile > div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--m3d-border); }
 .mpage__profile dt { min-width: 0; color: var(--m3d-text-muted); overflow-wrap: anywhere; }
 .mpage__profile dd { min-width: 0; margin: 0; font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+.mpage__primary-actions { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
+.mpage__print .mpage__go { display: inline-flex; flex: 1; width: auto; min-width: 0; min-height: 44px; margin: 0; padding: 10px 16px; white-space: normal; text-align: center; border-radius: var(--m3d-radius-pill); font-weight: 600; }
+.mpage__primary-actions .mpage__heart { flex-shrink: 0; width: 44px; height: 44px; }
+.mpage__heart svg { fill: none; stroke: currentColor; stroke-width: 1.7; }
+.mpage__heart--on svg { fill: currentColor; }
+.mpage__version-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 18px 0 18px 20px; border-left: 2px solid var(--m3d-border); border-bottom: 1px solid var(--m3d-border); }
+.mpage__version-row time { margin-right: auto; }
+.mpage__runs li { align-items: center; }
+.mpage__runs time { margin-left: auto; }
+.mpage__footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 24px; padding: 24px 0; border-top: 1px solid var(--m3d-border); }

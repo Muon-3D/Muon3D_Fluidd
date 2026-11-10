@@ -93,7 +93,7 @@ export interface ModelContext {
   owner: boolean;
   state: string;
   pinned_version: number;
-  versions: Array<{ number: number, origin?: string }>;
+versions: Array<{ number: number, origin?: string, created_at?: string }>;
   runs: Array<{ id: string, printer_name: string, started_at: string, outcome: string, duration_s?: number | null, filament_mm?: number | null }>;
 }
 
@@ -116,6 +116,7 @@ export interface PublicPublication {
   size_mm?: number[] | null;
   print_profile?: { material?: string, estimated_seconds?: number, filament_g?: number, layer_height_mm?: number, supports?: boolean, plate?: string } | null;
   created_at?: string;
+  version_created_at?: string;
   /** "CC-BY-4.0". */
   licence?: string | null;
 }

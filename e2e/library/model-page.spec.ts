@@ -1,6 +1,21 @@
 import { test, expect } from '../fixtures'
 import { serveCatalogue } from './catalogue-fixture'
 
+test('project-only models have a primary Slice and print handoff', async ({ page, models, open }) => {
+  const p = models.publications[10]
+  p.gcode = false
+  await open(`/library?view=discover&print=${p.id}`)
+  const slice = page.getByTestId('library-print-slice')
+  await expect(slice).toBeVisible()
+  await expect(slice).toHaveAttribute('href', /https:\/\/slicer\.muon3d\.com\/\?publication=/)
+  await page.context().route('https://slicer.muon3d.com/**', route => route.fulfill({ contentType: 'text/html', body: '<h1>Slice handoff</h1>' }))
+  const popup = page.waitForEvent('popup')
+  await slice.click()
+  const target = await popup
+  await expect(target.getByRole('heading', { name: 'Slice handoff' })).toBeVisible()
+  await target.close()
+})
+
 test.describe('model page', () => {
   test.use({ signedIn: true })
 
@@ -9,14 +24,14 @@ test.describe('model page', () => {
     const p = models.publications[10]
     await page.route('**/v1/library/publications/*/context', route => {
       expect(route.request().headers().authorization).toBeTruthy()
-      return route.fulfill({ json: { owner: true, state: 'approved', pinned_version: 1, versions: [{ number: 2, origin: 'save' }, { number: 1, origin: 'save' }], runs: [{ id: 'own-run', printer_name: 'My private printer', started_at: '2026-11-10T12:00:00Z', outcome: 'completed' }] } })
+      return route.fulfill({ json: { owner: true, state: 'approved', pinned_version: 1, versions: [{ number: 2, origin: 'save', created_at: '2026-11-09T12:00:00Z' }, { number: 1, origin: 'save' }], runs: [{ id: 'own-run', printer_name: 'My private printer', started_at: '2026-11-10T12:00:00Z', outcome: 'completed' }] } })
     })
     await open(`/library?view=discover&print=${p.id}`)
     await expect(page.getByTestId('library-print-profile')).toContainText('Layer height')
     await expect(page.getByTestId('library-print-profile')).toContainText('Estimated filament')
     await expect(page.getByTestId('library-print-profile')).toContainText('Not provided')
     await expect(page.getByTestId('library-print-versions')).toContainText('Version 1')
-    await page.getByText('Your version history', { exact: true }).click()
+    await expect(page.getByTestId('library-print-versions')).toContainText('Saved, not published')
     await expect(page.getByTestId('library-print-versions')).toContainText('Version 2')
     await expect(page.getByTestId('library-print-history')).toContainText('My private printer')
     await expect(page.getByTestId('library-shelf-similar').getByRole('button', { name: /Quick look at/ }).first()).toBeVisible()
@@ -25,7 +40,10 @@ test.describe('model page', () => {
     await expect(page.getByTestId('library-quick-look')).toBeVisible()
     await page.keyboard.press('Escape')
     await page.getByTestId('library-print-heart').click()
-    await expect(page.getByTestId('library-print-heart')).toHaveText('Saved')
+    await expect(page.getByTestId('library-print-heart')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('library-print-panel-heart')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByTestId('library-print-history')).toContainText('10 Nov 2026')
+    await expect(page.getByTestId('library-print-history')).toContainText('Completed')
     await page.getByTestId('library-print-print').click()
     await expect(page.getByTestId('print-on')).toBeVisible()
     await page.keyboard.press('Escape')

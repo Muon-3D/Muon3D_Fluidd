@@ -37,16 +37,12 @@
           data-tid="library-print-heart"
           @click="toggleSave"
         >
-          {{ saveId ? 'Saved' : 'Save' }}
-        </button>
-        <button
-          v-if="slug"
-          type="button"
-          class="mlib-btn"
-          data-tid="library-print-share"
-          @click="share"
-        >
-          Share
+          <svg
+            class="mlib-i"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            focusable="false"
+          ><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" /></svg>
         </button>
         <a
           v-if="slug"
@@ -155,6 +151,51 @@
               class="mlib-badge"
             >Check print size</span>
           </header>
+          <div
+            v-if="publication"
+            class="mpage__primary-actions"
+          >
+            <a
+              v-if="!print"
+              :href="sliceLink"
+              target="_blank"
+              rel="noopener"
+              class="mlib-btn mlib-btn--primary mpage__go"
+              data-tid="library-print-slice"
+            >Slice and print</a>
+            <button
+              v-if="print"
+              type="button"
+              class="mlib-btn mlib-btn--primary mpage__go"
+              :disabled="printing === card.key"
+              data-tid="library-print-print"
+              @click="go"
+            >
+              <frame-icon
+                name="printer"
+                small
+              />
+              {{ printing === card.key ? 'Opening…' : printerName ? `Print on ${printerName}` : 'Print' }}
+            </button>
+            <button
+              v-if="signedIn && publication"
+              type="button"
+              class="mlib-btn mlib-btn--icon mpage__heart"
+              :class="{ 'mpage__heart--on': !!saveId }"
+              :aria-pressed="saveId ? 'true' : 'false'"
+              :aria-label="saveId ? 'Saved' : 'Save'"
+              :disabled="saving"
+              data-tid="library-print-panel-heart"
+              @click="toggleSave"
+            >
+              <svg
+                class="mlib-i"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              ><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" /></svg>
+            </button>
+          </div>
           <dl
             v-if="specs.length"
             class="mlook__specs"
@@ -183,7 +224,7 @@
             class="mlib-muted"
             data-tid="library-print-nogcode"
           >
-            This print has no G-code yet. Remix it to slice it for your printer.
+            This print has no G-code yet. Slice it for your printer.
           </p>
           <div
             v-if="colours.length || loadedLine"
@@ -205,20 +246,6 @@
               class="mlib-muted mlook__loaded"
             >{{ loadedLine }}</span>
           </div>
-          <button
-            v-if="print"
-            type="button"
-            class="mlib-btn mlib-btn--primary mpage__go"
-            :disabled="printing === card.key"
-            data-tid="library-print-print"
-            @click="go"
-          >
-            <frame-icon
-              name="printer"
-              small
-            />
-            {{ printing === card.key ? 'Opening…' : printerName ? `Print on ${printerName}` : 'Print' }}
-          </button>
           <div class="mlook__secondary">
             <label
               v-if="signedIn"
@@ -370,28 +397,32 @@
         data-tid="library-print-versions"
       >
         <h2>Versions</h2>
-        <p>Version {{ publication.version }} <span class="mlib-muted">Reviewed public version</span></p>
-        <details v-if="context && context.owner">
-          <summary>Your version history</summary>
+        <div class="mpage__version-row">
+          <strong>Version {{ publication.version }}</strong>
+          <time
+            class="mlib-muted"
+            :datetime="publication.version_created_at"
+          >{{ dateText(publication.version_created_at) }}</time>
+          <span class="mlib-badge mlib-badge--ok">Reviewed public version</span>
+        </div>
+        <template v-if="context && context.owner">
+          <h3>Your version history</h3>
           <p class="mlib-muted">
             Only you can see versions that have not been published.
           </p>
-          <ul>
-            <li
-              v-for="v in context.versions"
-              :key="v.number"
-            >
-              Version {{ v.number }} <span class="mlib-muted">{{ v.origin }}</span>
-            </li>
-          </ul>
-        </details>
-        <a
-          :href="`${pageHref}#report`"
-          target="_blank"
-          rel="noopener"
-          class="mlib-link"
-          data-tid="library-print-report"
-        >Report this model</a>
+          <div
+            v-for="v in otherVersions"
+            :key="v.number"
+            class="mpage__version-row"
+          >
+            <strong>Version {{ v.number }}</strong>
+            <time
+              class="mlib-muted"
+              :datetime="v.created_at"
+            >{{ dateText(v.created_at) }}</time>
+            <span class="mlib-badge">{{ versionLabel(v.origin) }}</span>
+          </div>
+        </template>
       </section>
       <section
         v-if="publication && signedIn"
@@ -433,7 +464,15 @@
             v-for="run in context.runs"
             :key="run.id"
           >
-            <strong>{{ run.printer_name }}</strong><span>{{ new Date(run.started_at).toLocaleDateString() }} · {{ run.outcome }}</span>
+            <strong>{{ run.printer_name }}</strong>
+            <time
+              class="mlib-muted"
+              :datetime="run.started_at"
+            >{{ dateText(run.started_at) }}</time>
+            <span
+              class="mlib-badge"
+              :class="{ 'mlib-badge--ok': ['finished', 'completed'].includes(run.outcome) }"
+            >{{ outcomeLabel(run.outcome) }}</span>
           </li>
         </ul>
         <p
@@ -496,6 +535,26 @@
         @print="$emit('print-card', $event)"
         @open="$emit('open', $event)"
       />
+      <footer
+        v-if="publication"
+        class="mpage__footer"
+      >
+        <button
+          type="button"
+          class="mlib-link"
+          data-tid="library-print-share"
+          @click="share"
+        >
+          Share
+        </button>
+        <a
+          :href="`${pageHref}#report`"
+          target="_blank"
+          rel="noopener"
+          class="mlib-link"
+          data-tid="library-print-report"
+        >Report this model</a>
+      </footer>
     </template>
   </section>
 </template>
@@ -654,6 +713,29 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
 
   get pageHref (): string {
     return `${LIBRARY_URL}/p/${encodeURIComponent(this.slug)}`
+  }
+
+  dateText (value?: string): string {
+    const date = new Date(value || '')
+    return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(date) : ''
+  }
+
+  versionLabel (origin?: string): string {
+    const label = ({ slice: 'Sliced', upload: 'Uploaded', import: 'Imported', restore: 'Restored', design: 'Designed' } as Record<string, string>)[origin || ''] || 'Saved'
+    return `${label}, not published`
+  }
+
+  outcomeLabel (outcome: string): string {
+    return ({ finished: 'Completed', completed: 'Completed', running: 'Printing', failed: 'Failed', cancelled: 'Cancelled' } as Record<string, string>)[outcome] || 'Unknown'
+  }
+
+  get otherVersions () {
+    return this.context?.versions.filter(v => v.number !== this.publication?.version) || []
+  }
+
+  get sliceLink (): string {
+    const file = this.publication?.files.find(f => f.role === 'project' || ['3mf', 'stl'].includes(f.format))
+    return `https://slicer.muon3d.com/?publication=${encodeURIComponent(this.publication?.id || this.card.id)}&version=${this.publication?.version || 1}${file ? `&file=${encodeURIComponent(file.id)}` : ''}`
   }
 
   get remixLink (): string {
