@@ -1,7 +1,7 @@
 <template>
   <tile-shell
     tile="macros"
-    title="Macros"
+    title="Quick commands"
     icon="pulse"
     :menu="menu"
     class="mt"
@@ -29,14 +29,14 @@
         data-tid="macros-all"
         @click="dialog = true"
       >
-        All macros ({{ arrangedMacros.length }})
+        {{ size === 'S' ? 'All' : 'All commands' }} ({{ arrangedMacros.length }})
       </button>
     </div>
     <p
       v-else
       class="ot__note"
     >
-      No macros on this printer.
+      No quick commands on this printer.
     </p>
     <p
       v-if="!controlReady && chips.length"
@@ -93,7 +93,7 @@
 
     <tile-dialog
       :value="dialog"
-      title="All macros"
+      title="All quick commands"
       max-width="860"
       @close="dialog = false"
     >
@@ -120,11 +120,12 @@ import TileDialog from './TileDialog.vue'
 export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
   dialog = false
 
-  get chips (): ShownMacro[] { return this.topMacroList(7) }
+  /** Small shows the two most pressed, medium four, large seven. */
+  get chips (): ShownMacro[] { return this.topMacroList(this.size === 'S' ? 2 : this.size === 'M' ? 4 : 7) }
 
   get menu (): TileMenuItem[] {
     return [
-      { id: 'manage', label: 'Manage macros…', to: `${this.pagePath('/settings')}#macros` },
+      { id: 'manage', label: 'Manage quick commands…', to: `${this.pagePath('/settings')}#macros` },
       { id: 'console', label: 'Open the console…', to: this.pagePath('/console') }
     ]
   }

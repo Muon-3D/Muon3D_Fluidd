@@ -1,6 +1,6 @@
 <template>
   <control-card
-    title="Macros"
+    title="Quick commands"
     icon="macro"
     :locked="controlLock"
     :note="klippyReady ? note : ''"
