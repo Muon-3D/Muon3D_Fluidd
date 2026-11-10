@@ -31,6 +31,9 @@ const box = async (l: Locator) => {
   return b
 }
 
+/** The tiles' glide to a new size has finished: a box read before that is where the tile was passing, not where it is. */
+const glided = async (page: Page) => page.evaluate(() => Promise.all([...document.querySelectorAll('[data-cell]')].flatMap(e => e.getAnimations()).map(a => a.finished)))
+
 async function edit (page: Page) {
   await page.getByTestId('edit-open').click()
   await expect(page.getByTestId('edit-done')).toBeVisible()
@@ -104,6 +107,7 @@ test('a size that does not exist snaps to the nearest one the widget offers', as
   await grip.press('Shift+ArrowRight')
   expect(await span()).toBe('6')
   // Dragging the corner to about 4 columns lands on S (3), not on 4.
+  await glided(page)
   const handle = cell(page, 'hotend').getByTestId('tile-resize')
   const hb = await box(handle)
   const column = (await box(page.getByTestId('overview-grid'))).width / 12
