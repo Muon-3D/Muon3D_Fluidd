@@ -1,6 +1,6 @@
 import Vue from 'vue'
 import type { MutationTree } from 'vuex'
-import type { ConfigState, UiSettings, SaveByPath, InstanceConfig, InitConfig, UiStyle } from './types'
+import type { ConfigState, UiSettings, SaveByPath, InstanceConfig, InitConfig, UiStyle, PersonalSettings } from './types'
 import { defaultState } from './state'
 import { Globals } from '@/globals'
 import { cloneDeep, mergeWith, set } from 'lodash-es'
@@ -62,7 +62,23 @@ export const mutations: MutationTree<ConfigState> = {
       )
 
       Vue.set(state, 'uiSettings', mergedSettings)
+      // The printer-wide values are read again from what just loaded.
+      state.sharedPersonal = null
     }
+  },
+
+  setPersonalKey (state, payload: string | null) {
+    state.personalKey = payload
+  },
+
+  setSharedPersonal (state, payload: PersonalSettings | null) {
+    state.sharedPersonal = payload
+  },
+
+  /** The personal settings in effect: someone's own over the printer's. */
+  setPersonalValues (state, payload: Required<PersonalSettings>) {
+    Object.assign(state.uiSettings.theme, payload.theme)
+    Object.assign(state.uiSettings.general, payload.general)
   },
 
   /**
