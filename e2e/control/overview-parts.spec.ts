@@ -155,7 +155,8 @@ test.describe('desktop pointer', () => {
       const label = page.getByTestId('m1-parts-label')
       // On the simple model (no GPU) the spool and the screen sit behind the plate from most of the
       // stage, and sweeping for them in software WebGL outlasts the test: their chips select them.
-      if (GPU || part === 'plate' || part === 'toolhead') {
+      // A click on the screen zooms into it (its own test below): the screen is selected by its chip here.
+      if (part !== 'screen' && (GPU || part === 'plate' || part === 'toolhead')) {
         const at = await pointOn(page, part)
         await page.mouse.click(at.x, at.y)
       } else {
@@ -234,6 +235,71 @@ test.describe('desktop pointer', () => {
     expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeLessThan(2)
     expect(printer.gcode).toEqual([])
   })
+})
+
+/** Click the screen by its chip (hidden on a desktop until focused): on the simple model the screen itself is small. */
+async function clickScreen (page: Page) {
+  const chip = page.getByTestId('m1-part-screen')
+  await chip.focus()
+  await chip.press('Enter')
+}
+
+test('a click on the screen flies the camera in to it and shows its empty state; Esc flies back', async ({ page, open }) => {
+  test.slow()
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await open('/')
+  const parts = await partsReady(page)
+  const screen = page.getByTestId('m1-screen')
+
+  await clickScreen(page)
+  await expect(screen).toHaveAttribute('data-phase', 'open')
+  await expect(parts).toHaveAttribute('data-view', 'screen')
+  await expect(page.getByTestId('m1-screen-empty')).toHaveText("The printer's screen isn't available here yet")
+  // It zooms out of where the screen is on the model.
+  const fly = await screen.evaluate(el => [el.style.getPropertyValue('--fly-x'), el.style.getPropertyValue('--fly-y')])
+  expect(fly.every(v => /^-?\d+px$/.test(v))).toBe(true)
+
+  // Esc flies back out to the model; the screen stays selected there.
+  await page.keyboard.press('Escape')
+  await expect(screen).toHaveCount(0)
+  await expect(parts).toHaveAttribute('data-view', 'free')
+  await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'screen')
+  expect(printer.gcode).toEqual([])
+})
+
+test('Done or a click outside the screen fly back out too', async ({ page, open }) => {
+  test.slow()
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await open('/')
+  const parts = await partsReady(page)
+  const screen = page.getByTestId('m1-screen')
+
+  await clickScreen(page)
+  await expect(screen).toHaveAttribute('data-phase', 'open')
+  await page.getByTestId('m1-screen-done').click()
+  await expect(screen).toHaveCount(0)
+  await expect(parts).toHaveAttribute('data-view', 'free')
+
+  await clickScreen(page)
+  await expect(screen).toHaveAttribute('data-phase', 'open')
+  const box = (await screen.boundingBox())!
+  await page.mouse.click(box.x + 20, box.y + box.height - 20)
+  await expect(screen).toHaveCount(0)
+  await expect(parts).toHaveAttribute('data-view', 'free')
+  expect(printer.gcode).toEqual([])
+})
+
+test('while it prints, a click on the screen does not zoom into it', async ({ page, open }) => {
+  const printer = await usePrinter(page) // the shared mock as it is: mid-print
+  await open('/')
+  const parts = await partsReady(page)
+  await expect(parts).toHaveAttribute('data-interactive', 'off')
+  await clickScreen(page)
+  await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'screen')
+  await page.waitForTimeout(800)
+  await expect(page.getByTestId('m1-screen')).toHaveCount(0)
+  await expect(parts).not.toHaveAttribute('data-view', 'screen')
+  expect(printer.gcode).toEqual([])
 })
 
 test('the keyboard reaches every part: arrows and 1–4 move, Esc clears', async ({ page, open, isMobile }) => {

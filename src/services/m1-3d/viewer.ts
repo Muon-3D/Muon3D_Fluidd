@@ -74,9 +74,10 @@ export interface M1Viewer {
   /**
    * 'top' looks straight down, the front of the printer at the bottom and X
    * to the right (as the jog buttons are seen from above), with the plate
-   * hidden so the head shows; 'free' goes back to where the person had it.
+   * hidden so the head shows; 'screen' flies in square-on to the printer's
+   * screen, close; 'free' goes back to where the person had it.
    */
-  setView: (mode: 'free' | 'top') => void;
+  setView: (mode: 'free' | 'top' | 'screen') => void;
   /** Whether a mouse drag turns the model (off while a drag moves a part instead). */
   setOrbit: (on: boolean) => void;
   /** Whether this is the accurate model, the one whose millimetres a drag can be read in. */
@@ -111,6 +112,10 @@ const MAX_TAPS = 256
 const FILL = 0.86
 /** Straight down, nearly: exactly 0 has no "up" to look along. */
 const TOP_PHI = 0.0015
+/** Flying in to the screen, it fills this share of the stage's height; each frame closes this share of the gap. */
+const SCREEN_FILL = 0.62
+/** The flight in to the screen and back, ms: timed, not eased per frame, so slow frames don't stretch it (as M1Screen's FLY_MS). */
+const FLIGHT_MS = 380
 /** Each frame the lean closes this share of the gap: about 450 ms to settle at 30 frames a second, easing out. */
 const LEAN_EASE = 0.16
 
@@ -549,7 +554,14 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** The part pointed at; its middle is measured once, when it is pointed at (the hose's bounds cost too much to measure each frame). */
   let focus: { part: PartId, mode: LightMode, lean: boolean, centred: boolean } | null = null
   const light = new PartLight()
-  let viewMode: 'free' | 'top' = 'free'
+  let viewMode: 'free' | 'top' | 'screen' = 'free'
+  /** How far the camera has flown in to the screen (0 out, 1 in), where it is going, and what it flies to. */
+  let zoom = 0
+  let zoomGoal = 0
+  const zoomPoint = new THREE.Vector3()
+  let zoomDistance = 0
+  /** The flight under way into or out of the screen view: from where, and since when. */
+  let flight: { at: number, theta: number, phi: number, zoom: number } | null = null
   /** The person's own view, kept while the camera looks straight down. */
   let freeView = { theta: VIEW.theta, phi: VIEW.phi }
   let orbit = true
@@ -562,7 +574,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   const direction = () => {
     const theta = view.theta + lean.theta
-    const phi = viewMode === 'top' ? view.phi : Math.min(PHI_RANGE[1], Math.max(PHI_RANGE[0], view.phi + lean.phi))
+    const phi = viewMode !== 'free' ? view.phi : Math.min(PHI_RANGE[1], Math.max(PHI_RANGE[0], view.phi + lean.phi))
     return new THREE.Vector3(Math.sin(phi) * Math.sin(theta), Math.cos(phi), Math.sin(phi) * Math.cos(theta))
   }
 
@@ -588,6 +600,12 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     centre = f.centre
     // Leaning, the camera also looks a little toward the part.
     if (focus?.centred && lean.closer > 0) target.lerp(focusPoint, 0.12 * lean.closer)
+    // Flying in to the screen: closer, looking at its middle.
+    if (zoom > 1e-4) {
+      distance += (zoomDistance - distance) * zoom
+      target.lerp(zoomPoint, zoom)
+      centre = [centre[0] * (1 - zoom), centre[1] * (1 - zoom)]
+    }
   }
 
   /** Each part's meshes in the model shown, found once per model rather than by name on every pick and frame. */
@@ -639,9 +657,32 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     return raycaster.ray
   }
 
+  /**
+   * Points the camera square-on at the screen, from the side of the machine
+   * it is on, close enough for it to fill SCREEN_FILL of the stage. False if
+   * this model hasn't a screen.
+   */
+  function aimAtScreen (): boolean {
+    const meshes = partMeshes(rig.root, 'screen')
+    if (!meshes.length) return false
+    const b = new THREE.Box3()
+    for (const m of meshes) b.expandByObject(m)
+    b.getCenter(zoomPoint)
+    const out = zoomPoint.clone().sub(box.getCenter(new THREE.Vector3()))
+    const size = b.getSize(new THREE.Vector3())
+    const halfFov = THREE.MathUtils.degToRad(camera.fov) / 2
+    zoomDistance = Math.max(size.x, size.y, size.z) / 2 / SCREEN_FILL / Math.tan(halfFov)
+    // Turned the short way round to face it, and level with it.
+    const theta = Math.atan2(out.x, out.z)
+    const turn = Math.atan2(Math.sin(theta - view.goalTheta), Math.cos(theta - view.goalTheta))
+    view.goalTheta += turn
+    view.goalPhi = Math.min(PHI_RANGE[1], Math.max(PHI_RANGE[0], Math.PI / 2))
+    return true
+  }
+
   /** The lean the focus asks for now, from where the person has the camera. */
   function aimLean () {
-    if (!focus?.lean || viewMode === 'top') {
+    if (!focus?.lean || viewMode !== 'free') {
       leanGoal = { ...NO_LEAN }
       return
     }
@@ -793,6 +834,16 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     lean.theta += (leanGoal.theta - lean.theta) * LEAN_EASE
     lean.phi += (leanGoal.phi - lean.phi) * LEAN_EASE
     lean.closer += (leanGoal.closer - lean.closer) * LEAN_EASE
+    if (flight) {
+      const t = Math.min(1, (now - flight.at) / FLIGHT_MS)
+      const e = 1 - (1 - t) ** 3
+      view.theta = flight.theta + (view.goalTheta - flight.theta) * e
+      view.phi = flight.phi + (view.goalPhi - flight.phi) * e
+      zoom = flight.zoom + (zoomGoal - flight.zoom) * e
+      if (t === 1) flight = null
+    } else {
+      zoom = zoomGoal
+    }
     const moving = follow(now)
     const pulsing = pulseTaps(now)
     // Fitted afresh each frame, so the machine keeps filling the stage as it turns.
@@ -809,7 +860,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     viewer.onFrame?.()
     viewer.onDraw?.({ model: rig.kind, accessories: drawnAccessories })
     const turning = Math.abs(view.goalTheta - view.theta) > 1e-3 || Math.abs(view.goalPhi - view.phi) > 1e-3 ||
-      Math.abs(leanGoal.theta - lean.theta) > 1e-4 || Math.abs(leanGoal.phi - lean.phi) > 1e-4 || Math.abs(leanGoal.closer - lean.closer) > 1e-3
+      Math.abs(leanGoal.theta - lean.theta) > 1e-4 || Math.abs(leanGoal.phi - lean.phi) > 1e-4 || Math.abs(leanGoal.closer - lean.closer) > 1e-3 ||
+      !!flight
     if (moving || pulsing || turning) invalidate()
   }
 
@@ -923,14 +975,18 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     },
     setView (mode) {
       if (mode === viewMode) return
+      const from = { at: performance.now(), theta: view.theta, phi: view.phi, zoom }
+      if (mode === 'screen' && !aimAtScreen()) return
+      if (viewMode === 'free') freeView = { theta: view.goalTheta, phi: view.goalPhi }
       if (mode === 'top') {
-        freeView = { theta: view.goalTheta, phi: view.goalPhi }
         view.goalTheta = 0
         view.goalPhi = TOP_PHI
-      } else {
+      } else if (mode === 'free') {
         view.goalTheta = freeView.theta
         view.goalPhi = freeView.phi
       }
+      zoomGoal = mode === 'screen' ? 1 : 0
+      if (mode === 'screen' || viewMode === 'screen') flight = from
       viewMode = mode
       showPlate(mode !== 'top')
       aimLean()

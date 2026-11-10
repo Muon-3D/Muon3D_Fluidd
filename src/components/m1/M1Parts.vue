@@ -5,7 +5,7 @@
     data-tid="m1-parts"
     :data-interactive="interactive ? 'on' : 'off'"
     :data-hovered="hovered || ''"
-    :data-view="topView ? 'top' : 'free'"
+    :data-view="zoomedIn ? 'screen' : topView ? 'top' : 'free'"
   >
     <div
       class="m1-parts__chips"
@@ -135,6 +135,12 @@
         :part="selected"
       />
     </div>
+    <m1-screen
+      v-if="screenOpen && interactive"
+      :from="screenFrom"
+      :reduced-motion="!animates"
+      @close="screenOpen = false"
+    />
   </div>
 </template>
 
@@ -142,6 +148,7 @@
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import ControlMixin from '@/mixins/control'
 import M1PartOptions from './M1PartOptions.vue'
+import M1Screen from './M1Screen.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
 import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
@@ -195,7 +202,7 @@ const LABEL_INSET = 16
  * touch screen, and for the keyboard and screen readers everywhere (hidden
  * on a desktop until focused).
  */
-@Component({ components: { M1PartOptions } })
+@Component({ components: { M1PartOptions, M1Screen } })
 export default class M1Parts extends Mixins(ControlMixin) {
   /** The live viewer, once it draws. */
   @Prop({ type: Object, default: null })
@@ -223,6 +230,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
   focusIndex = 0
   touch = false
   reducedMotion = false
+  /** The printer's own screen, zoomed into over the stage. */
+  screenOpen = false
+  /** Where the screen was on the stage when it opened: the zoom flies in from there and back out to it. */
+  screenFrom: { x: number, y: number } | null = null
 
   leaveTimer = 0
   pickFrame = 0
@@ -570,9 +581,31 @@ export default class M1Parts extends Mixins(ControlMixin) {
     }
   }
 
+  /** Whether the model moves: the 3D Animations setting, else the system's reduced-motion preference. */
+  get animates (): boolean {
+    return modelAnimates(modelSettings.animations, this.reducedMotion)
+  }
+
+  /** The screen open: the camera flies in square-on to it (without animations the screen just opens). */
+  get zoomedIn (): boolean {
+    return this.screenOpen && this.interactive && this.animates
+  }
+
+  @Watch('zoomedIn')
+  onZoomedIn () {
+    this.onTopView(this.topView)
+  }
+
+  /** The screen closes when it is no longer the part selected, or the printer can't be used from here. */
+  @Watch('selected')
+  @Watch('interactive')
+  closeScreen () {
+    if (this.selected !== 'screen' || !this.interactive) this.screenOpen = false
+  }
+
   @Watch('topView')
   onTopView (top: boolean) {
-    this.viewer?.setView(top ? 'top' : 'free')
+    this.viewer?.setView(this.zoomedIn ? 'screen' : top ? 'top' : 'free')
     this.viewer?.setOrbit(!this.cameraLocked)
     this.follow()
   }
@@ -592,6 +625,11 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   select (part: PartId) {
     this.selected = part
+    // A click on the screen goes into it, flown in from where it is on the model.
+    if (part === 'screen' && this.interactive) {
+      this.screenFrom = this.viewer?.anchor('screen') ?? null
+      this.screenOpen = true
+    }
     this.focusIndex = PART_IDS.indexOf(part)
     this.$emit('select', part)
   }
@@ -618,6 +656,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   onEscape (e: KeyboardEvent) {
     if (e.key !== 'Escape') return
+    // With the screen open, Esc flies back out of it (M1Screen), and nothing else.
+    if (this.screenOpen) return
     // Not while typing somewhere or inside a dialog: that Esc is theirs.
     const t = e.target as HTMLElement | null
     if (t && t !== document.body && !this.$el.contains(t) && (t.closest('input, textarea, select, [contenteditable], .v-dialog, [role="dialog"]'))) return
@@ -636,7 +676,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   @Watch('viewer')
   show () {
     const part = this.shownPart
-    this.viewer?.setFocus(part, this.interactive ? 'active' : 'info', this.interactive && modelAnimates(modelSettings.animations, this.reducedMotion))
+    this.viewer?.setFocus(part, this.interactive ? 'active' : 'info', this.interactive && this.animates)
     this.follow()
   }
 
