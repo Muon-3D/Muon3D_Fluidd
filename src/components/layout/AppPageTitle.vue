@@ -93,9 +93,10 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import FrameMixin from '@/mixins/frame'
 import { remoteRouteLabel } from '@/services/muon-ble/link'
+import { clearHostOff, hostPower } from '@/services/system/restart'
 import BrowserMixin from '@/mixins/browser'
 import { pageMatches, type SectionPage } from '@/router/printerSections'
 import { SECTION_COMPONENTS, openSettingsSection, type SettingsSection } from '@/services/settings/sections'
@@ -260,9 +261,15 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     return tones[this.statusTone] ?? 'off'
   }
 
+  @Watch('socketConnected')
+  onSocketConnected (connected: boolean) {
+    if (connected) clearHostOff()
+  }
+
   get pillText (): string {
     if (this.foreignStatus) return FOREIGN_STATE_LABELS[this.foreignStatus.state]
-    if (!this.socketConnected) return 'Offline'
+    // Shut down from System: it is off, not lost.
+    if (!this.socketConnected) return hostPower.offAt ? 'Off' : 'Offline'
     if (!this.klippyReady) return 'Not ready'
     return this.$filters.prettyCase(this.printerState || 'ready')
   }
