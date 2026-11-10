@@ -91,6 +91,34 @@ describe('planXYMove', () => {
   })
 })
 
+describe('the notch rule (Klipper\'s: toolhead Z below no_go_traverse_z)', () => {
+  it('is the notch itself: a low path through the old tolerance band is one straight move', () => {
+    expect(planXYMove({ x: 130, y: 30, z: 1 }, { x: 130, y: 20 }, m1, LIMITS))
+      .toEqual({ ok: true, steps: [{ X: 130, Y: 20 }], lifted: false })
+    expect(planXYMove({ x: 10, y: 40, z: 1 }, { x: 190, y: 40 }, m1, LIMITS))
+      .toEqual({ ok: true, steps: [{ X: 190, Y: 40 }], lifted: false })
+  })
+
+  it('refuses a move into the notch within notch height, and allows it with the plate lower', () => {
+    expect(planXYMove({ x: 70, y: 7, z: 5.9 }, { x: 100, y: 7 }, m1, LIMITS).ok).toBe(false)
+    expect(planXYMove({ x: 70, y: 7, z: 6 }, { x: 100, y: 7 }, m1, LIMITS))
+      .toEqual({ ok: true, steps: [{ X: 100, Y: 7 }], lifted: false })
+  })
+
+  it('counts an unknown plate height (Z not homed) as within notch height', () => {
+    expect(planXYMove({ x: 70, y: 7, z: 20 }, { x: 100, y: 7 }, m1, LIMITS, false))
+      .toEqual({ ok: false, reason: expect.stringMatching(/Home Z first/) })
+    expect(planXYMove({ x: 60, y: 20, z: 20 }, { x: 160, y: 20 }, m1, LIMITS, false).ok).toBe(false)
+    expect(planXYMove({ x: 60, y: 60, z: 20 }, { x: 160, y: 60 }, m1, LIMITS, false))
+      .toEqual({ ok: true, steps: [{ X: 160, Y: 60 }], lifted: false })
+  })
+
+  it('has no notch when the printer declares none', () => {
+    expect(readNoGo({ mesh_min: [10, 10] })).toBeNull()
+    expect(planXYMove({ x: 70, y: 7, z: 1 }, { x: 100, y: 7 }, null, LIMITS, false).ok).toBe(true)
+  })
+})
+
 describe('planMove (with Z)', () => {
   it('refuses lowering Z into the notch while the head is over it', () => {
     expect(planMove({ x: 100, y: 10, z: 8 }, { x: 100, y: 10, z: 2 }, m1, LIMITS).ok).toBe(false)

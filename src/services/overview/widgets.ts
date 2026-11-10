@@ -48,7 +48,7 @@ export const widgetMeta: WidgetMeta[] = [
   { id: 'macros', title: 'Quick actions', category: 'Tools', blurb: 'The commands you press most.', sizes: [S(), M(6), L(8)], size: 'L', defaultOn: true },
   { id: 'graph', title: 'Temperatures', category: 'Temperature', blurb: 'The temperature graph. Hotend, bed and chamber show to begin with.', sizes: [S(), M(6), L(12)], size: 'L', defaultOn: true },
   // Off until added.
-  { id: 'trackpad', title: 'Movement', category: 'Motion', blurb: 'The trackpad: drag to move the head, with the no-go zones.', sizes: [S(2), M(6, 2), L(8, 2)], size: 'M', defaultOn: false },
+  { id: 'trackpad', title: 'Movement', category: 'Motion', blurb: 'The trackpad: drag to move the head, with the bed notch.', sizes: [S(2), M(6, 2), L(8, 2)], size: 'M', defaultOn: false },
   // Never on a Muon printer (see muonHidden); in Add widget on the others.
   { id: 'zoffset', title: 'Z offset', category: 'Print', blurb: 'The live Z offset, to nudge the first layer.', sizes: [S(), M(4)], size: 'S', defaultOn: false },
   { id: 'camera', title: 'Camera', category: 'Printer', blurb: 'The webcam.', sizes: [S(), M(6, 2), L(12, 2)], size: 'M', defaultOn: false },
