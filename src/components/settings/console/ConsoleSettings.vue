@@ -205,7 +205,7 @@
       <div class="m3-set__row">
         <div class="m3-set__label">
           <b>Suggest commands as you type</b>
-          <span>From the printer's own command list and macros, with their help text.</span>
+          <span>From the printer's own command list and quick commands, with their help text.</span>
         </div>
         <div class="m3-set__control">
           <toggle-switch

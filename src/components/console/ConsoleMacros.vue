@@ -4,7 +4,7 @@
     data-tid="console-macros"
   >
     <header class="cmac__head">
-      <h2><frame-icon name="console" /> Macros</h2>
+      <h2><frame-icon name="console" /> Quick commands</h2>
       <a
         class="cmac__all"
         :href="allLink"

@@ -158,7 +158,7 @@ const LABELS: Record<string, string> = {
   'uiSettings.general.showSaveConfigAndRestart': 'Save and restart in the top bar',
   'uiSettings.general.sectionsToIgnorePendingConfigurationChanges': 'Changes not to list',
   'uiSettings.general.enableDiagnostics': 'Charts page',
-  'uiSettings.dashboard.overviewMacros': 'Macros on Overview',
+  'uiSettings.dashboard.overviewMacros': 'Quick commands on Overview',
   'uiSettings.console.hideLines': 'Console filters',
   'uiSettings.console.filters': 'Console filters'
 }
@@ -176,7 +176,7 @@ const SECTIONS: Record<string, string> = {
   'uiSettings.spoolman': 'Materials',
   'uiSettings.tableHeaders': 'Tables',
   'uiSettings.personal': 'Look and Ask before',
-  macros: 'Macros',
+  macros: 'Quick commands',
   layout: 'Page layout',
   console: 'Console history',
   charts: 'Charts',
