@@ -10,7 +10,7 @@
         <p>{{ stateLine }}</p>
       </div>
       <toggle-switch
-        v-if="mayAsk"
+        v-if="mayAsk && state.enabled"
         :value="!!state.enabled"
         label="Developer mode"
         :disabled="state.enabled === null || busy"
@@ -23,8 +23,23 @@
       Lets you change this printer's own configuration and macros. The Muon3D defaults stay as they are beside your copy, and turning it off goes back to them (your copy is kept for next time).
     </p>
 
+    <div
+      v-if="state.enabled === false"
+      class="devm__goto"
+      data-tid="developer-mode-go-to-printer"
+    >
+      <frame-icon
+        name="gear"
+        small
+      />
+      <div>
+        <b>Go to the printer's screen to turn on developer mode</b>
+        <span>On the printer: System, then Protection, then Developer mode. It is read and confirmed there, because turning it on ends the warranty.</span>
+      </div>
+    </div>
+
     <p
-      v-if="notAsking"
+      v-if="notAsking && state.enabled"
       class="devm__note"
       data-tid="developer-mode-who"
     >
@@ -76,83 +91,6 @@
         </button>
       </div>
     </template>
-
-    <v-dialog
-      v-model="enableDialog"
-      max-width="560"
-      :persistent="awaiting"
-    >
-      <div
-        class="devm__dialog"
-        data-tid="developer-enable-dialog"
-      >
-        <h3>Turn on developer mode</h3>
-        <p>{{ $t('app.general.dev_mode.modal-1') }}</p>
-        <template v-if="waiverText">
-          <b>{{ $t('app.general.dev_mode.modal-warranty-liability') }}</b>
-          <p class="devm__waiver">
-            {{ waiverText }}
-          </p>
-          <label class="devm__accept">
-            <input
-              v-model="accepted"
-              type="checkbox"
-              :disabled="awaiting"
-            >
-            {{ $t('app.general.dev_mode.modal-checkbox-message') }}
-          </label>
-        </template>
-        <p
-          v-else-if="waiverError"
-          class="devm__error"
-        >
-          {{ $t('app.general.dev_mode.waiver-unavailable') }} {{ waiverError }}
-        </p>
-        <p
-          v-else
-          class="devm__text"
-        >
-          Reading the printer's terms…
-        </p>
-        <div
-          v-if="awaiting"
-          class="devm__press"
-          data-tid="developer-press-knob"
-        >
-          <span class="devm__pulse" />
-          <div>
-            <b>Confirm on the printer's screen</b>
-            <span v-if="consentInstruction">{{ consentInstruction }}</span>
-            <span>{{ $t('app.general.dev_mode.consent-expires', { seconds: secondsRemaining }) }}</span>
-          </div>
-        </div>
-        <p
-          v-if="errorMessage"
-          class="devm__error"
-        >
-          {{ errorMessage }}
-        </p>
-        <div class="devm__buttons">
-          <button
-            type="button"
-            class="cbtn cbtn--ghost"
-            :disabled="loading"
-            @click="closeDialogs"
-          >
-            {{ $t('app.general.btn.cancel') }}
-          </button>
-          <button
-            type="button"
-            class="cbtn cbtn--primary"
-            :disabled="!accepted || !waiverText || loading || awaiting"
-            data-tid="developer-enable"
-            @click="confirmEnable"
-          >
-            Turn on
-          </button>
-        </div>
-      </div>
-    </v-dialog>
 
     <v-dialog
       v-model="disableDialog"
@@ -230,16 +168,17 @@ import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 const CONSENT_POLL_MS = 1500
 
 /**
- * Settings › Developer mode: whether it's on, a switch to change it, and
- * whether turning it on marks the printer for good (the OTP fuse, which the
- * development fleet ships disarmed). With it on: edit macros, open the
- * config, back it up, or start again from the defaults.
+ * Settings › Developer mode: whether it's on, a way out, and whether turning
+ * it on marks the printer for good (the OTP fuse, which the development
+ * fleet ships disarmed). With it on: edit macros, open the config, back it
+ * up, or start again from the defaults.
  *
- * Every change, on and off, is asked for here and confirmed on the printer's
- * screen (KAN-547), through Moonraker's request route
- * (services/dev-mode/request), the same from the LAN and from away. Turning
- * on also takes the printer's own waiver. On a linked printer the switch is
- * the owner's alone, so nobody else is shown it.
+ * Turning it ON is not done from here (KAN-1739, KAN-1763): the printer
+ * takes it only at its own screen, where the warranty release is read and
+ * confirmed, so this page says to go there. Turning it OFF is still asked
+ * for here and confirmed on the printer's screen (KAN-547), through
+ * Moonraker's request route (services/dev-mode/request). On a linked printer
+ * the switch is the owner's alone, so nobody else is shown it.
  */
 @Component({ components: { ToggleSwitch } })
 export default class DeveloperModeSettings extends Vue {
@@ -249,13 +188,8 @@ export default class DeveloperModeSettings extends Vue {
   /** Who may ask, as the printer said; null until it has. */
   asking: DevModeAsking | null = null
   askingError = ''
-  enableDialog = false
   disableDialog = false
-  accepted = false
   loading = false
-  waiverText = ''
-  waiverVersion: string | null = null
-  waiverError = ''
   /** The change waiting on the printer's screen. */
   pending: { challengeId: string, enabled: boolean } | null = null
   consentInstruction = ''
@@ -349,35 +283,14 @@ export default class DeveloperModeSettings extends Vue {
     }
   }
 
-  async toggle () {
-    if (!this.mayAsk || this.busy) return
+  toggle () {
+    if (!this.mayAsk || this.busy || !this.state.enabled) return
     this.errorMessage = ''
-    if (this.state.enabled) {
-      this.disableDialog = true
-    } else {
-      this.accepted = false
-      this.enableDialog = true
-      await this.loadWaiver()
-    }
-  }
-
-  /** DEV-2: the waiver shown is the one the printer serves now, never a copy. */
-  async loadWaiver () {
-    this.waiverText = ''
-    this.waiverError = ''
-    await this.refreshAsking()
-    const waiver = this.asking?.waiver
-    if (waiver) {
-      this.waiverText = waiver.text
-      this.waiverVersion = waiver.version
-    } else {
-      this.waiverError = this.askingError || 'the printer returned no waiver'
-    }
+    this.disableDialog = true
   }
 
   closeDialogs () {
     this.stopWaiting()
-    this.enableDialog = false
     this.disableDialog = false
     this.errorMessage = ''
   }
@@ -391,16 +304,13 @@ export default class DeveloperModeSettings extends Vue {
     this.pending = null
   }
 
-  confirmEnable () {
-    return this.ask(true)
-  }
-
   confirmDisable () {
     return this.ask(false)
   }
 
   /**
-   * Puts the question on the printer's screen, then waits for its answer.
+   * Puts the question (turn it off) on the printer's screen, then waits for
+   * its answer.
    * Nothing changes until the person there confirms it and this browser
    * completes it; a request nobody answers just expires.
    */
@@ -463,10 +373,8 @@ export default class DeveloperModeSettings extends Vue {
     try {
       await completeChange({
         enabled: pending.enabled,
-        challengeId: pending.challengeId,
-        waiverVersion: pending.enabled ? this.waiverVersion ?? undefined : undefined
+        challengeId: pending.challengeId
       })
-      this.enableDialog = false
       this.disableDialog = false
     } catch (err) {
       await this.refused(err)
@@ -482,14 +390,12 @@ export default class DeveloperModeSettings extends Vue {
     if (!(err instanceof DevModeRefused)) return
     if (err.code === 'no_change') {
       await refreshDevMode()
-      this.enableDialog = false
       this.disableDialog = false
     } else if (err.code === 'owner_required' || err.code === 'owner_unknown') {
       await this.refreshAsking()
-    } else if (err.code === 'waiver_out_of_date') {
-      // The terms changed after they were shown here: show the new ones.
-      this.accepted = false
-      await this.loadWaiver()
+    } else if (err.code === 'panel_only') {
+      // The printer wants this change made at its own screen (KAN-1739).
+      this.errorMessage = 'The printer only takes this at its own screen. Go there: System, then Protection, then Developer mode.'
     }
   }
 
@@ -589,6 +495,26 @@ export default class DeveloperModeSettings extends Vue {
     color: var(--m3d-text-muted);
   }
 
+  .devm__goto {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 12px;
+    background: var(--m3d-surface-2);
+
+    div {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    span {
+      color: var(--m3d-text-muted);
+      font-size: 13px;
+    }
+  }
+
   .devm__actions {
     display: flex;
     flex-wrap: wrap;
@@ -613,27 +539,6 @@ export default class DeveloperModeSettings extends Vue {
       margin: 0;
       color: var(--m3d-text-muted);
       font-size: 14px;
-    }
-  }
-
-  .devm__waiver {
-    max-height: 220px;
-    overflow: auto;
-    padding: 10px 12px;
-    border-radius: 12px;
-    background: var(--m3d-surface-2);
-    white-space: pre-wrap;
-  }
-
-  .devm__accept {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    font-size: 14px;
-    cursor: pointer;
-
-    input {
-      margin-top: 3px;
     }
   }
 
