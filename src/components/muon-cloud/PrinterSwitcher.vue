@@ -289,7 +289,6 @@ import { startNearby, stopNearby } from '@/services/muon-ble/nearby'
 import PrinterCard from './PrinterCard.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { switcherGroups, switcherSectionShown, type SwitcherGroup } from '@/services/muon-cloud/switcher-groups'
-import BluetoothSetupDialog from '@/components/muon-ble/BluetoothSetupDialog.vue'
 
 /** How often the printers already known are asked again while the switcher is open. */
 const HEALTH_EVERY_MS = 15_000
@@ -309,7 +308,7 @@ const HEALTH_EVERY_MS = 15_000
     LinkPrinterDialog: () => import('./LinkPrinterDialog.vue'),
     AccessRequestDialog: () => import('@/components/muon-access/AccessRequestDialog.vue'),
     PrinterCard,
-    BluetoothSetupDialog,
+    BluetoothSetupDialog: () => import('@/components/muon-ble/BluetoothSetupDialog.vue'),
     DeletionNotice: () => import('@/components/account/DeletionNotice.vue')
   }
 })
