@@ -247,7 +247,7 @@ export function extrudeLengths (max: number): number[] {
 /** Why the extruder can't move filament now, in words, or null when it can. */
 export function extrudeBlocked (temperature: number, minTemp: number, canExtrude?: boolean): string | null {
   if (canExtrude || temperature >= minTemp) return null
-  return `Heat the nozzle first · it's at ${Math.round(temperature)}°, it needs ${Math.round(minTemp)}°`
+  return `The nozzle is at ${Math.round(temperature)}°; extruding needs ${Math.round(minTemp)}°. Press Heat.`
 }
 
 // -- Tuning and outputs -------------------------------------------------------
