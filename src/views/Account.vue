@@ -1,7 +1,7 @@
 <template>
   <div
     class="acct-page"
-    :class="{ 'acct-page--phone': isMobileViewport }"
+    :class="[{ 'acct-page--phone': isMobileViewport }, `acct-page--bar-${barSide}`]"
     data-tid="account-page"
   >
     <a
@@ -29,54 +29,14 @@
       />
       Back to {{ printerBack.name }}
     </router-link>
-    <nav
+    <account-side
       v-if="showList"
-      class="acct-nav"
-      aria-label="Account sections"
-    >
-      <span class="lib-caps">Account</span>
-      <template v-for="entry in nav">
-        <span
-          :key="`group-${entry.group}`"
-          class="acct-nav__group"
-          :data-tid="`account-nav-group-${entry.group}`"
-        >{{ entry.group }}</span>
-        <router-link
-          v-for="section in entry.sections"
-          :key="section.id"
-          :to="linkTo(section.id)"
-          class="acct-nav__item"
-          :class="{ 'acct-nav__item--on': !isMobileViewport && section.id === navId }"
-          :aria-current="section.id === navId ? 'page' : undefined"
-          :data-tid="`account-nav-${section.id}`"
-        >
-          <frame-icon
-            :name="section.icon"
-            small
-          />
-          <span class="acct-nav__label">{{ section.label }}</span>
-          <frame-icon
-            v-if="isMobileViewport"
-            name="chevronRight"
-            small
-          />
-        </router-link>
-      </template>
-      <div class="acct-nav__rule" />
-      <button
-        v-if="signedIn"
-        type="button"
-        class="acct-nav__item"
-        data-tid="account-sign-out"
-        @click="signOut"
-      >
-        <frame-icon
-          name="logout"
-          small
-        />
-        <span class="acct-nav__label">Sign out</span>
-      </button>
-    </nav>
+      :nav="nav"
+      :nav-id="navId"
+      :link-to="linkTo"
+      :phone="isMobileViewport"
+      @sign-out="signOut"
+    />
 
     <div
       v-if="showPane"
@@ -237,14 +197,17 @@ import { accountState, loadMe } from '@/services/account/state'
 import AccountOverview from '@/components/account/AccountOverview.vue'
 import AccountProfile from '@/components/account/AccountProfile.vue'
 import AccountPlan from '@/components/account/AccountPlan.vue'
+import AccountSide from '@/components/account/AccountSide.vue'
+import { ACCOUNT_BAR_SIDE } from '@/services/account/layout'
 import { beginSignOut } from '@/services/account/sign-out'
 import LibrarySettings from '@/components/settings/LibrarySettings.vue'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
 import '@/scss/muon3d-account.scss'
 
 /**
- * Your account (`/account`, KAN-532): its sections on the left, the one
- * chosen on the right, by the address (`/account/profile`). Always top-level,
+ * Your account (`/account`, KAN-532): the chosen section, with the account
+ * bar (AccountSide: you, the sections, Sign out) beside it on the side
+ * ACCOUNT_BAR_SIDE names, by the address (`/account/profile`). Always top-level,
  * never inside a printer's view: `/boxwood-367a/account` opens `/account`,
  * and with a printer open there's a way back to it. On a phone the list is a page and a section opens over it.
  *
@@ -266,12 +229,14 @@ import '@/scss/muon3d-account.scss'
     AccountPrivacy: () => import('@/components/account/AccountPrivacy.vue'),
     AccountDelete: () => import('@/components/account/AccountDelete.vue'),
     AccountPlan,
+    AccountSide,
     LibrarySettings,
     CloudAccountDialog
   }
 })
 export default class Account extends Mixins(BrowserMixin) {
   accountDialog = false
+  readonly barSide = ACCOUNT_BAR_SIDE
   /** Profile saved: the way back to the Library is emphasised. */
   profileSaved = false
 

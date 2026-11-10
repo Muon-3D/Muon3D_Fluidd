@@ -5,39 +5,71 @@
   >
     <div class="acct-head">
       <h1>Sign-in and security</h1>
+      <p>How you sign in, and what protects your account and your printers</p>
     </div>
 
-    <div
+    <!-- 1 · How protected you are, with the one thing to do next. -->
+    <section
       v-if="me"
-      class="acct-note"
-      :class="health.level === 'good' ? 'acct-note--good' : health.level === 'weak' ? 'acct-note--bad' : 'acct-note--warn'"
+      class="lib-surface sec__summary"
+      :class="`sec__summary--${health.level}`"
       role="status"
+      aria-label="How protected your account is"
       data-tid="security-health"
     >
-      <frame-icon
+      <span class="acct-icon-box sec__summary-icon"><frame-icon
         name="shield"
         small
-      />
-      <span><b>{{ health.title }}.</b> {{ health.line }}</span>
-    </div>
+      /></span>
+      <span class="sec__summary-text">
+        <b>{{ health.title }}</b>
+        <span>{{ health.line }}<template v-if="next"> Next: <span data-tid="security-next">{{ next.todo.charAt(0).toLowerCase() + next.todo.slice(1) }}</span>.</template></span>
+      </span>
+      <span
+        class="sec__bar"
+        role="meter"
+        aria-label="Protection"
+        aria-valuemin="0"
+        :aria-valuemax="steps.length"
+        :aria-valuenow="stepsDone"
+        data-tid="security-meter"
+      >
+        <span
+          v-for="step in steps"
+          :key="step.id"
+          class="sec__bar-step"
+          :class="{ 'sec__bar-step--done': step.done }"
+        />
+      </span>
+    </section>
 
-    <section
-      class="lib-surface acct-card"
-      aria-label="Email"
+    <!-- 2 · Every way to sign in, in one list. -->
+    <div class="acct-gt">
+      Signing in
+    </div>
+    <div
+      class="acct-glist"
+      role="group"
+      aria-label="Signing in"
+      data-tid="security-signing-in"
     >
-      <div class="acct-row">
-        <div class="acct-row__label">
+      <div class="acct-grow sec__row">
+        <span class="acct-icon-box"><frame-icon
+          name="mail"
+          small
+        /></span>
+        <span class="acct-grow__text">
           <b>Email</b>
           <span>
-            {{ email }}<template v-if="details && details.email_verified === true"><span class="sec__ok"> · confirmed</span></template><template v-else-if="details && details.email_verified === false"><span class="sec__warn"> · not confirmed</span></template>
+            {{ email }}<template v-if="details && details.email_verified === true"> · confirmed</template><template v-else-if="details && details.email_verified === false"><span class="sec__warn"> · not confirmed</span></template>
           </span>
           <span
             v-if="pending"
             class="sec__warn"
             data-tid="security-email-pending"
           >Link sent to {{ pending.address }}</span>
-        </div>
-        <div class="acct-row__control">
+        </span>
+        <span class="sec__actions">
           <button
             v-if="details && details.email_verified === false"
             type="button"
@@ -62,98 +94,72 @@
             data-tid="security-change-email"
             @click="open('email')"
           >
-            Change email
+            Change…
           </button>
-        </div>
+        </span>
       </div>
-    </section>
 
-    <section
-      class="lib-surface acct-card"
-      aria-label="Ways to sign in"
-    >
-      <div class="acct-card__title">
-        <h2>Ways to sign in</h2>
-        <acct-more
-          label="Why more than one"
-          end
-        >
-          Keep at least two, so losing a phone doesn't lock you out.
-        </acct-more>
-      </div>
-      <div
-        v-if="me && !passkeys.length && !twoStep && canAddPasskey"
-        class="acct-empty sec__empty"
-        data-tid="security-empty"
-      >
-        <span class="acct-empty__icon"><frame-icon
+      <div class="acct-grow sec__row">
+        <span class="acct-icon-box"><frame-icon
           name="key"
-          large
+          small
         /></span>
-        <h3>No passkeys yet</h3>
-        <p>Sign in with your face, fingerprint or screen lock.</p>
-        <div class="acct-actions acct-actions--center">
-          <button
-            type="button"
-            class="lib-btn lib-btn--pri"
-            :disabled="busy"
-            @click="addPasskey"
-          >
-            Add a passkey
-          </button>
-          <button
-            type="button"
-            class="lib-btn"
-            :disabled="busy"
-            @click="startTwoStep"
-          >
-            Turn on two-step
-          </button>
-        </div>
-      </div>
-      <div class="acct-list">
-        <div class="sec__method">
-          <span class="acct-icon-box"><frame-icon
-            name="key"
-            small
-          /></span>
-          <div class="acct-row__label">
-            <b>Passkeys <span class="acct-subtle">{{ passkeys.length || '' }}</span></b>
-            <span>Face, fingerprint or screen lock</span>
-          </div>
+        <span class="acct-grow__text">
+          <b>Passkeys<template v-if="passkeys.length"> · {{ passkeys.length }}</template></b>
+          <span data-tid="security-passkeys-line">{{ passkeysLine }}</span>
+        </span>
+        <span class="sec__actions">
           <button
             v-if="canAddPasskey"
             type="button"
-            class="lib-btn lib-btn--sm lib-btn--pri"
+            class="lib-btn lib-btn--sm"
             :disabled="busy"
             data-tid="security-add-passkey"
             @click="addPasskey"
           >
-            <frame-icon
-              name="plus"
-              small
-            />Add a passkey
+            Add
           </button>
           <span
             v-else
             class="acct-soon"
           >Not in this browser</span>
-        </div>
+          <button
+            v-if="passkeys.length"
+            type="button"
+            class="lib-btn lib-btn--sm lib-btn--ghost sec__more"
+            :aria-expanded="showKeys ? 'true' : 'false'"
+            aria-label="Your passkeys"
+            data-tid="security-passkeys-open"
+            @click="showKeys = !showKeys"
+          >
+            <frame-icon
+              :name="showKeys ? 'chevronUp' : 'chevronRight'"
+              small
+            />
+          </button>
+        </span>
+      </div>
+      <template v-if="showKeys">
         <div
           v-for="key in passkeys"
           :key="key.id"
-          class="sec__sub"
+          class="acct-grow sec__sub"
           data-tid="security-passkey"
         >
           <span class="acct-icon-box sec__sub-icon"><frame-icon
             :name="keyIcon(key.name)"
             small
           /></span>
-          <div class="acct-row__label">
-            <span class="sec__name">{{ key.name }}</span>
-            <span class="acct-subtle">Added {{ day(key.created_at) }} · {{ key.last_used_at ? `used ${ago(key.last_used_at)}` : 'not used yet' }}</span>
-          </div>
-          <div class="acct-row__control">
+          <span class="acct-grow__text">
+            <b class="sec__name">{{ key.name }}</b>
+            <span>Added {{ day(key.created_at) }} · {{ key.last_used_at ? `used ${ago(key.last_used_at)}` : 'not used yet' }}</span>
+            <span
+              v-if="lastWay"
+              class="acct-subtle"
+              data-tid="security-last-way"
+            >Your only way to sign in, so it can't be removed.</span>
+          </span>
+          <span class="sec__actions">
             <span
               v-if="renameMissing"
               class="acct-soon"
@@ -169,133 +175,186 @@
             <button
               type="button"
               class="lib-btn lib-btn--sm lib-btn--ghost"
-              :disabled="busy"
+              :disabled="busy || lastWay"
+              :title="lastWay ? 'Your only way to sign in' : undefined"
+              data-tid="security-remove-passkey"
               @click="removePasskey(key)"
             >
               Remove
             </button>
-          </div>
+          </span>
         </div>
-        <div class="sec__method">
-          <span class="acct-icon-box"><frame-icon
-            name="lock"
-            small
-          /></span>
-          <div class="acct-row__label">
-            <b>Password</b>
-            <span>{{ passwordLine }}</span>
-          </div>
+      </template>
+
+      <div class="acct-grow sec__row">
+        <span class="acct-icon-box"><frame-icon
+          name="lock"
+          small
+        /></span>
+        <span class="acct-grow__text">
+          <b>Password</b>
+          <span data-tid="security-password-line">{{ passwordLine }}</span>
+        </span>
+        <span class="sec__actions">
           <button
             type="button"
             class="lib-btn lib-btn--sm"
             data-tid="security-change-password"
             @click="open('password')"
           >
-            {{ hasPassword ? 'Change password' : 'Set a password' }}
+            {{ hasPassword ? 'Change…' : 'Set…' }}
           </button>
-        </div>
-        <div
-          v-for="provider in providers"
-          :key="provider.id"
-          class="sec__method"
-        >
-          <span class="acct-icon-box sec__letter">{{ provider.letter }}</span>
-          <div class="acct-row__label">
-            <b>{{ provider.name }}</b>
-            <span>{{ provider.line }}</span>
-          </div>
+        </span>
+      </div>
+
+      <!-- Only linked providers, until linking ships (storyboard answer). -->
+      <div
+        v-for="provider in linkedProviders"
+        :key="provider.id"
+        class="acct-grow sec__row"
+        :data-tid="`security-provider-${provider.id}`"
+      >
+        <span class="acct-icon-box sec__letter">{{ provider.letter }}</span>
+        <span class="acct-grow__text">
+          <b>{{ provider.name }}</b>
+          <span>{{ provider.line }}</span>
+          <span
+            v-if="lastWay"
+            class="acct-subtle"
+            data-tid="security-last-way"
+          >Your only way to sign in, so it can't be unlinked.</span>
+        </span>
+        <span class="sec__actions">
           <button
-            v-if="provider.linked"
             type="button"
-            class="lib-btn lib-btn--sm lib-btn--ghost"
-            :disabled="busy"
+            class="lib-btn lib-btn--sm"
+            :disabled="busy || lastWay"
+            :title="lastWay ? 'Your only way to sign in' : undefined"
+            :data-tid="`security-unlink-${provider.id}`"
             @click="unlink(provider.id)"
           >
             Unlink
           </button>
-          <span
-            v-else
-            class="acct-soon"
-          >Linking comes soon</span>
-        </div>
+        </span>
       </div>
-    </section>
+    </div>
 
-    <section
-      class="lib-surface acct-card"
-      aria-label="Two-step sign-in"
+    <!-- 3 · 2-step: where it's asked, with the recovery codes beside it. -->
+    <div class="acct-gt">
+      2-step
+    </div>
+    <div
+      class="acct-glist"
+      role="group"
+      aria-label="2-step"
     >
-      <div class="acct-card__title">
-        <h2>Two-step sign-in</h2>
-        <span
-          class="lib-pill"
-          :class="twoStep ? 'lib-pill--ok' : ''"
-        >{{ twoStep ? 'On' : 'Off' }}</span>
+      <div class="acct-grow">
+        <span class="acct-grow__text">
+          <b>Code from an authenticator app</b>
+          <span>Asked when you make a token that changes things, request your data, or confirm from away.</span>
+        </span>
+        <toggle-switch
+          :value="twoStep"
+          label="Code from an authenticator app"
+          :disabled="busy"
+          data-tid="security-two-step"
+          @input="twoStep ? open('twoStepOff') : startTwoStep()"
+        />
       </div>
-      <div class="acct-list">
-        <div class="acct-row">
-          <div class="acct-row__label">
-            <b>Authenticator app</b>
-            <span>{{ twoStep ? 'A code after your password' : 'Adds a code after your password' }}</span>
-          </div>
-          <button
-            type="button"
-            class="lib-btn lib-btn--sm"
-            :class="twoStep ? 'lib-btn--ghost' : 'lib-btn--pri'"
-            :disabled="busy"
-            data-tid="security-two-step"
-            @click="twoStep ? open('twoStepOff') : startTwoStep()"
-          >
-            {{ twoStep ? 'Turn off' : 'Turn on' }}
-          </button>
+      <div
+        v-if="twoStep"
+        class="acct-grow"
+      >
+        <span class="acct-grow__text">
+          <b>Recovery codes</b>
+          <span data-tid="security-codes-line"><template v-if="recoveryLeft !== null"><span class="sec__num">{{ recoveryLeft }} of 10</span> left. </template>Each works once if you lose your phone.</span>
+        </span>
+        <span
+          v-if="recoveryMissing"
+          class="acct-soon"
+        >Coming soon</span>
+        <button
+          v-else
+          type="button"
+          class="lib-btn lib-btn--sm"
+          :disabled="busy"
+          data-tid="security-new-codes"
+          @click="newCodes"
+        >
+          Make new codes…
+        </button>
+      </div>
+    </div>
+
+    <div class="acct-gt">
+      Alerts
+    </div>
+    <div
+      class="acct-glist"
+      role="group"
+      aria-label="Alerts"
+    >
+      <div class="acct-grow">
+        <span class="acct-grow__text">
+          <b>Security emails</b>
+          <span>New sign-ins, password and email changes, data requests. Always on.</span>
+        </span>
+        <span
+          class="acct-grow__value"
+          data-tid="security-emails"
+        >Always</span>
+      </div>
+      <button
+        type="button"
+        class="acct-grow sec__open"
+        :aria-expanded="showActivity ? 'true' : 'false'"
+        data-tid="security-activity-open"
+        @click="showActivity = !showActivity"
+      >
+        <span class="acct-grow__text"><b>Recent activity</b></span>
+        <frame-icon
+          :name="showActivity ? 'chevronUp' : 'chevronRight'"
+          small
+        />
+      </button>
+      <template v-if="showActivity">
+        <div
+          v-for="(line, i) in activity"
+          :key="i"
+          class="acct-grow sec__event"
+          data-tid="security-activity"
+        >
+          <frame-icon
+            :name="line.icon"
+            small
+          />
+          <span class="acct-grow__text">
+            <b>{{ line.text }}</b>
+            <span>{{ line.when }}</span>
+          </span>
         </div>
         <div
-          v-if="twoStep"
-          class="acct-row"
+          v-if="!activity.length"
+          class="acct-grow"
+          data-tid="security-activity-empty"
         >
-          <div class="acct-row__label">
-            <b>Recovery codes</b>
-            <span><template v-if="recoveryLeft !== null"><span class="sec__num">{{ recoveryLeft }} of 10</span> left </template><acct-more label="About recovery codes">
-              Each works once, if you lose your authenticator. New codes cancel the old ones.
-            </acct-more></span>
-          </div>
-          <span
-            v-if="recoveryMissing"
-            class="acct-soon"
-          >Coming soon</span>
-          <button
-            v-else
-            type="button"
-            class="lib-btn lib-btn--sm"
-            :disabled="busy"
-            data-tid="security-new-codes"
-            @click="newCodes"
-          >
-            Make new codes
-          </button>
+          <span class="acct-grow__text"><span>{{ eventsRead ? 'Nothing yet.' : 'Reading your activity…' }}</span></span>
         </div>
-      </div>
-    </section>
+      </template>
+    </div>
 
-    <section
-      class="lib-surface acct-card"
-      aria-label="Security emails"
+    <router-link
+      :to="linkTo('sessions')"
+      class="acct-xl"
+      data-tid="security-devices-link"
     >
-      <div class="acct-row">
-        <div class="acct-row__label">
-          <b>Security emails</b>
-          <span>Always on <acct-more label="What they cover">
-            New-device sign-ins, and changes to your password, email, passkeys or two-step sign-in.
-          </acct-more></span>
-        </div>
-        <router-link
-          :to="linkTo('sessions')"
-          class="lib-btn lib-btn--sm lib-btn--ghost"
-        >
-          See activity
-        </router-link>
-      </div>
-    </section>
+      <frame-icon
+        name="devices"
+        small
+      />
+      <span><b>Signed-in browsers and phones</b>, and signing out everywhere, are in Your devices.</span>
+      <span class="acct-xl__go">Your devices ›</span>
+    </router-link>
 
     <p
       v-if="message"
@@ -453,16 +512,13 @@
     <!-- Two-step: set up, then the recovery codes -->
     <m3-dialog
       :value="dialog === 'twoStep'"
-      :title="codes.length ? 'Keep these recovery codes' : 'Turn on two-step sign-in'"
+      :title="codes.length ? 'Keep these recovery codes' : 'Scan with your authenticator app'"
       :persistent="busy || codes.length > 0"
       :closable="!codes.length"
       max-width="480"
       @close="close"
     >
       <template v-if="!codes.length">
-        <p class="m3-dlg__text">
-          Scan with an authenticator app, then type its code.
-        </p>
         <div class="sec__qr">
           <app-qr-code
             v-if="setup"
@@ -474,6 +530,9 @@
             <span class="sec__mono">{{ setupKey }}</span>
           </div>
         </div>
+        <p class="m3-dlg__text">
+          Then type the 6-digit code it shows.
+        </p>
         <label class="m3-field">
           <span class="m3-field__label">Code from the app</span>
           <span class="m3-field__box m3-field__box--mono"><input
@@ -488,7 +547,7 @@
       </template>
       <template v-else>
         <p class="m3-dlg__text">
-          Each works once. Save them now: we won't show them again.
+          Each works once. Copy or save them now: they're shown only this once.
         </p>
         <div
           class="sec__codes"
@@ -528,9 +587,18 @@
           <button
             type="button"
             class="cbtn"
+            data-tid="recovery-codes-copy"
             @click="copyCodes"
           >
             {{ copied ? 'Copied' : 'Copy' }}
+          </button>
+          <button
+            type="button"
+            class="cbtn"
+            data-tid="recovery-codes-save"
+            @click="saveCodes"
+          >
+            Save
           </button>
           <button
             type="button"
@@ -601,6 +669,7 @@
 import { Component, Mixins, Prop } from 'vue-property-decorator'
 import AccountReauthMixin from '@/mixins/account-reauth'
 import M3Dialog from '@/components/ui/M3Dialog.vue'
+import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import AppQrCode from '@/components/ui/AppQrCode.vue'
 import ReauthDialog from './ReauthDialog.vue'
 import AcctMore from './AcctMore.vue'
@@ -608,18 +677,20 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { accountApi, type AccountDetails, type Identity, type Me, type Passkey } from '@/services/account/api'
 import { isMissing } from '@/services/account/client'
 import { accountState, describe, loadConfig, loadEvents, loadMe } from '@/services/account/state'
-import { agoText, dayText, providerName, securityHealth, type AccountSectionId, type SecurityHealth } from '@/services/account/model'
+import { agoText, dayText, eventLine, nextProtectionStep, protectionSteps, providerName, securityHealth, signInWays, whenText, type AccountSectionId, type ProtectionStep, type SecurityHealth } from '@/services/account/model'
 import { cancelledPasskey, createPasskey, deviceLabel, passkeysSupported } from '@/services/account/webauthn'
 
 type Dialog = '' | 'email' | 'password' | 'rename' | 'twoStep' | 'twoStepOff'
 
 /**
- * Sign-in and security (the canvas's "Account · Sign-in and security"): the
- * address, passkeys, the password, Apple and Google, two-step sign-in and
- * its recovery codes. Each change asks "Confirm it's you" when the console
- * wants it. What the console can't do yet says so ("Renaming soon").
+ * Sign-in and security (settings/account-security, 6 Nov): a protection
+ * summary with the one thing to do next; every way to sign in in one list
+ * (email, passkeys, password, then Google and Apple once linked); 2-step and
+ * its recovery codes; security emails and the recent activity. Each change
+ * asks "Confirm it's you" when the console wants it. The last way to sign
+ * in can't be removed, and its button says why.
  */
-@Component({ components: { M3Dialog, AppQrCode, ReauthDialog, AcctMore } })
+@Component({ components: { M3Dialog, AppQrCode, ReauthDialog, AcctMore, ToggleSwitch } })
 export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   @Prop({ type: Function, required: true })
   readonly linkTo!: (id: AccountSectionId) => string
@@ -638,6 +709,8 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   message = ''
   renameMissing = false
   recoveryMissing = false
+  showKeys = false
+  showActivity = false
 
   created () {
     this.refresh()
@@ -684,6 +757,40 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     return typeof left === 'number' ? left : null
   }
 
+  get steps (): ProtectionStep[] {
+    return this.me ? protectionSteps(this.me) : []
+  }
+
+  get stepsDone (): number {
+    return this.steps.filter(step => step.done).length
+  }
+
+  get next (): ProtectionStep | null {
+    return this.me ? nextProtectionStep(this.me) : null
+  }
+
+  /** One way in left: it can't be removed (account-security, rule 1). */
+  get lastWay (): boolean {
+    const ways = this.me?.sign_in ? signInWays(this.me) : (this.hasPassword ? 1 : 0) + this.passkeys.length + this.identities.length
+    return ways <= 1
+  }
+
+  get passkeysLine (): string {
+    if (!this.passkeys.length) return 'Face, fingerprint or screen lock'
+    return this.passkeys.map(key => key.name).join(', ')
+  }
+
+  get eventsRead (): boolean {
+    return accountState.events !== null
+  }
+
+  get activity (): Array<{ icon: string, text: string, when: string }> {
+    return (accountState.events ?? []).slice(0, 12).map(e => {
+      const line = eventLine(e)
+      return { text: line.text, icon: line.icon === 'signOut' ? 'logout' : line.icon, when: whenText(e.at) }
+    })
+  }
+
   get canAddPasskey (): boolean {
     return passkeysSupported()
   }
@@ -691,11 +798,15 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   get passwordLine (): string {
     if (!this.hasPassword) return 'Not set'
     const changed = (accountState.events ?? []).find(e => e.kind === 'password_changed' || e.kind === 'password_reset')
-    return changed ? `Changed ${dayText(changed.at)}` : 'Set'
+    return changed ? `Set · changed ${dayText(changed.at)}` : 'Set'
+  }
+
+  get linkedProviders () {
+    return this.providers.filter(provider => provider.linked)
   }
 
   get providers () {
-    return (['apple', 'google'] as const).map(id => {
+    return (['google', 'apple'] as const).map(id => {
       const linked = this.identities.find(i => i.provider === id)
       return {
         id,
@@ -840,6 +951,7 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   }
 
   async removePasskey (key: Passkey) {
+    if (this.lastWay) return
     const sure = await this.$confirm(`"${key.name}" won't sign in to your account any more. The passkey stays on the device until you delete it there.`, {
       title: 'Remove this passkey?',
       buttonTrueText: 'Remove',
@@ -851,7 +963,8 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   }
 
   async unlink (provider: string) {
-    const sure = await this.$confirm(`You won't be able to sign in with ${providerName(provider)} any more.`, {
+    if (this.lastWay) return
+    const sure = await this.$confirm(`You'll sign in with ${this.othersLine(provider)}.`, {
       title: `Unlink ${providerName(provider)}?`,
       buttonTrueText: 'Unlink',
       danger: true
@@ -859,6 +972,15 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     if (!sure) return
     await this.run(() => this.withReauth(r => accountApi.unlinkIdentity(provider, r), { action: 'Unlink', danger: true }))
     this.refresh()
+  }
+
+  /** What's left once a provider goes: "a passkey or your password". */
+  othersLine (provider: string): string {
+    const rest: string[] = []
+    if (this.passkeys.length || (this.me?.sign_in?.passkeys ?? 0) > 0) rest.push('a passkey')
+    if (this.hasPassword) rest.push('your password')
+    for (const p of this.linkedProviders) if (p.id !== provider) rest.push(p.name)
+    return rest.join(' or ') || 'another way in'
   }
 
   get setupKey (): string {
@@ -919,6 +1041,17 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     loadMe().catch(() => {})
   }
 
+  /** Saved as a file on this device: never sent anywhere, never in an address bar. */
+  saveCodes () {
+    const blob = new Blob([`Muon3D recovery codes\nEach works once.\n\n${this.codes.join('\n')}\n`], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'muon3d-recovery-codes.txt'
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+
   async copyCodes () {
     try {
       await navigator.clipboard.writeText(this.codes.join('\n'))
@@ -931,6 +1064,92 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
 </script>
 
 <style lang="scss" scoped>
+  .sec__summary {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+    padding: 16px 18px;
+  }
+
+  .sec__summary-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+
+    b {
+      color: var(--m3d-text);
+      font-size: 15px;
+      font-weight: 600;
+    }
+  }
+
+  .sec__summary--good .sec__summary-icon {
+    color: var(--m3d-success, #10b981);
+  }
+
+  .sec__summary--weak .sec__summary-icon {
+    color: var(--m3d-warning, #f59e0b);
+  }
+
+  .sec__bar {
+    display: flex;
+    grid-column: 1 / -1;
+    gap: 4px;
+  }
+
+  .sec__bar-step {
+    flex: 1 1 0;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--m3d-surface-2);
+  }
+
+  .sec__bar-step--done {
+    background: var(--m3d-success, #10b981);
+  }
+
+  .sec__row {
+    flex-wrap: wrap;
+  }
+
+  .sec__actions {
+    display: inline-flex;
+    flex: none;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    margin-left: auto;
+  }
+
+  .sec__more {
+    padding: 0 6px !important;
+  }
+
+  .sec__open {
+    width: 100%;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .sec__event {
+    min-height: 44px;
+    padding-left: 24px;
+  }
+
+  @media (max-width: 760px) {
+    .sec__actions {
+      margin-left: 54px;
+    }
+  }
+
   .sec__method {
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr) auto;

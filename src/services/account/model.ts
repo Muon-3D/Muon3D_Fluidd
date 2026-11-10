@@ -355,3 +355,39 @@ export function accountNav (sections: AccountSection[] = accountSections()): Arr
     .map(group => ({ group, sections: sections.filter(section => section.group === group) }))
     .filter(entry => entry.sections.length)
 }
+
+/** How many ways in the account has: the password, each passkey and each linked provider. */
+export function signInWays (me: Me | null | undefined): number {
+  if (!me) return 0
+  const s = me.sign_in ?? { password: !!me.account.has_password, passkeys: 0, identities: [], two_step: false }
+  return (s.password ? 1 : 0) + s.passkeys + s.identities.length
+}
+
+export interface ProtectionStep {
+  id: 'second-way' | 'passkey' | 'two-step' | 'codes';
+  /** What to do, when it isn't done: "Add a passkey". */
+  todo: string;
+  done: boolean;
+}
+
+/**
+ * The protection summary's bar (account-security frame 1): four steps, in
+ * the order they're worth doing. The first one not done is "the one thing
+ * to do next". Recovery codes count once two-step is on and more than half
+ * are left (an unknown count counts as kept).
+ */
+export function protectionSteps (me: Me): ProtectionStep[] {
+  const s = me.sign_in ?? { password: !!me.account.has_password, passkeys: 0, identities: [], two_step: !!me.account.two_step }
+  const left = s.recovery_left
+  return [
+    { id: 'second-way', todo: 'Add a second way to sign in', done: signInWays(me) >= 2 },
+    { id: 'passkey', todo: 'Add a passkey', done: s.passkeys > 0 },
+    { id: 'two-step', todo: 'Turn on 2-step', done: !!s.two_step },
+    { id: 'codes', todo: 'Make new recovery codes', done: !!s.two_step && (typeof left !== 'number' || left > 5) }
+  ]
+}
+
+/** The next protection step, or null when all four are done. */
+export function nextProtectionStep (me: Me): ProtectionStep | null {
+  return protectionSteps(me).find(step => !step.done) ?? null
+}

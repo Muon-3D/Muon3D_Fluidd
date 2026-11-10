@@ -18,7 +18,10 @@ import {
   listText,
   methodsLine,
   monthText,
+  nextProtectionStep,
+  protectionSteps,
   securityHealth,
+  signInWays,
   shortKey,
   whenText
 } from '../model'
@@ -224,5 +227,24 @@ describe('the retention statement, as the Privacy page shows it', () => {
 
   it('has the Library window beside the console ones', () => {
     expect(LIBRARY_RETENTION[0].label).toBe('Library files')
+  })
+})
+
+describe('the protection summary', () => {
+  it('counts the password, each passkey and each linked provider as a way in', () => {
+    expect(signInWays(me())).toBe(1)
+    expect(signInWays(me({ passkeys: 2, identities: ['google'] }))).toBe(4)
+    expect(signInWays(null)).toBe(0)
+  })
+
+  it('names the first step not done as the one to do next', () => {
+    expect(nextProtectionStep(me())?.todo).toBe('Add a second way to sign in')
+    expect(nextProtectionStep(me({ passkeys: 1 }))?.todo).toBe('Turn on 2-step')
+    expect(nextProtectionStep(me({ passkeys: 1, two_step: true, recovery_left: 3 }))?.todo).toBe('Make new recovery codes')
+    expect(nextProtectionStep(me({ passkeys: 1, two_step: true, recovery_left: 8 }))).toBeNull()
+  })
+
+  it('fills the bar one step at a time, in order', () => {
+    expect(protectionSteps(me({ passkeys: 1 })).map(step => step.done)).toEqual([true, true, false, false])
   })
 })

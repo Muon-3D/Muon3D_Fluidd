@@ -38,10 +38,54 @@ export interface ConsoleState {
   approvals: unknown[];
   /** The community identity (`/v1/me/community-identity`), when a test needs it; otherwise the fake answers {}. */
   identity?: { declared_age: number | null, declared_at: number | null, can_community: boolean, can_public: boolean, identity_public: boolean, revision: number, projection_pending: boolean };
+  /** Sign-in and security, when a test needs it: the ways in, 2-step and its codes. */
+  security?: ConsoleSecurity;
   /** Answer matching requests with a status ("PATCH /v1/me"): the console failing. */
   failOn?: (request: string) => number | null;
   /** Every request that changes something (not a GET), with its body: `DELETE /v1/printers/p1/shares/s1`. */
   changes: Array<{ call: string, body: unknown }>;
+}
+
+export interface ConsoleSecurity {
+  password: boolean;
+  passkeys: Array<{ id: string, name: string, created_at: number, last_used_at: number | null }>;
+  identities: Array<{ provider: string, email: string | null, created_at: number }>;
+  twoStep: boolean;
+  recoveryLeft: number | null;
+}
+
+export function consoleSecurity (over: Partial<ConsoleSecurity> = {}): ConsoleSecurity {
+  return { password: true, passkeys: [], identities: [], twoStep: false, recoveryLeft: null, ...over }
+}
+
+/** The fake's recovery codes: made up, never real. */
+export const FAKE_RECOVERY_CODES = Array.from({ length: 10 }, (_, i) => `e2e0-code-${String(i).padStart(2, '0')}`)
+
+function answerSecurity (route: Route, state: ConsoleState, sec: ConsoleSecurity, method: string, path: string): Promise<void> | null {
+  if (method === 'GET' && path === '/v1/me/passkeys') return json(route, { passkeys: sec.passkeys })
+  if (method === 'GET' && path === '/v1/me/identities') return json(route, { identities: sec.identities })
+  if (method === 'GET' && path === '/v1/me/events') return json(route, { events: [] })
+  const identity = path.match(/^\/v1\/me\/identities\/([^/]+)$/)
+  if (method === 'DELETE' && identity) {
+    sec.identities = sec.identities.filter(i => i.provider !== decodeURIComponent(identity[1]))
+    return json(route, { ok: true })
+  }
+  const passkey = path.match(/^\/v1\/me\/passkeys\/([^/]+)$/)
+  if (method === 'DELETE' && passkey) {
+    sec.passkeys = sec.passkeys.filter(k => k.id !== decodeURIComponent(passkey[1]))
+    return json(route, { ok: true })
+  }
+  if (method === 'POST' && path === '/v1/me/totp') return json(route, { secret: 'E2EFAKESECRET', otpauth_url: 'otpauth://totp/Muon3D:e2e?secret=E2EFAKESECRET' })
+  if (method === 'POST' && path === '/v1/me/totp/confirm') {
+    sec.twoStep = true
+    sec.recoveryLeft = FAKE_RECOVERY_CODES.length
+    return json(route, { ok: true, recovery_codes: FAKE_RECOVERY_CODES })
+  }
+  if (method === 'GET' && path === '/v1/me') {
+    const signIn = { password: sec.password, passkeys: sec.passkeys.length, identities: sec.identities.map(i => i.provider), two_step: sec.twoStep, ...(sec.recoveryLeft === null ? {} : { recovery_left: sec.recoveryLeft }) }
+    return json(route, { account: { ...state.account, display_name: state.account.name, has_password: sec.password, two_step: sec.twoStep, email_verified: true }, endpoint_id: null, sign_in: signIn })
+  }
+  return null
 }
 
 export function consoleState (over: Partial<ConsoleState> = {}): ConsoleState {
@@ -101,6 +145,10 @@ export async function answerConsole (route: Route, state: ConsoleState) {
   if (list && request.method() === 'GET') {
     const [, id, kind] = list
     return json(route, { [kind]: state[kind as 'shares' | 'invites' | 'links'][decodeURIComponent(id)] ?? [] })
+  }
+  if (state.security) {
+    const answered = answerSecurity(route, state, state.security, request.method(), url.pathname)
+    if (answered) return answered
   }
   if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
   switch (url.pathname) {
