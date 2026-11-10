@@ -156,7 +156,7 @@
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import TonePill from '@/components/printers/TonePill.vue'
-import { updateHeadline, updateSteps, versionLabel, type SessionPhase, type UpdateStep } from '@/services/updates/model'
+import { updateHeadline, updateSteps, verifyStale, versionLabel, type SessionPhase, type UpdateStep } from '@/services/updates/model'
 import { currentOutcome, forgetInstall, updateWatch } from '@/services/updates/watch'
 
 type Stage = SessionPhase | 'offline' | 'late'
@@ -221,7 +221,7 @@ export default class UpdatingScreen extends Vue {
   }
 
   get headline () {
-    return updateHeadline(this.stage, this.percent, this.remembered?.to ?? null)
+    return updateHeadline(this.stage, this.percent, this.remembered?.to ?? null, verifyStale(this.remembered, updateWatch.now))
   }
 
   get steps (): UpdateStep[] {

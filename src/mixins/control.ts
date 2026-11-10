@@ -309,7 +309,13 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     return axes.toUpperCase().split('').every(a => this.homedAxes.includes(a))
   }
 
+  /**
+   * On a Muon printer (or one not known yet) a Z saved reversed moves the
+   * normal way: reversing the M1's plate only crashed it. Another printer may
+   * need any axis reversed.
+   */
   inverted (axis: Axis): boolean {
+    if (axis.toLowerCase() === 'z' && this.$store.getters['server/isMuonPrinter'] !== false) return false
     return !!this.$store.state.config.uiSettings.general.axis?.[axis.toLowerCase()]?.inverted
   }
 

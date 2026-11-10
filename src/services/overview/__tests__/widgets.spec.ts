@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { overviewTiles } from '@/components/widgets/overview/registry'
 import { addTile, defaultLayout, nudgeSize, readLayout, removeTile, resizeTile, sizeKeyOf, snapSize, type TileDefault } from '../layout'
-import { isMuonPrinter, muonHidden, searchWidgets, widgetCategories, widgetMeta, widgetsFor } from '../widgets'
+import { muonHidden, treatAsMuon, searchWidgets, widgetCategories, widgetMeta, widgetsFor } from '../widgets'
 
 const defs: TileDefault[] = overviewTiles
 const byId = (id: string) => overviewTiles.find(t => t.id === id)!
@@ -24,13 +24,14 @@ describe('the default layout', () => {
     for (const id of ids.slice(3, 7)) expect(at(id)).toMatchObject({ span: 3, rows: 1 })
   })
 
-  it('shows only jog and position of the movement widgets, with quick actions and the temperatures', () => {
-    expect(ids.slice(7)).toEqual(['jog', 'position', 'macros', 'graph'])
-    expect(ids).not.toContain('trackpad')
+  it('has the Movement trackpad, then jog and position, quick commands and the temperatures', () => {
+    expect(ids.slice(7)).toEqual(['trackpad', 'jog', 'position', 'macros', 'graph'])
+    expect(at('trackpad')).toMatchObject({ span: 8, rows: 2 })
+    expect(at('jog')).toMatchObject({ span: 4, rows: 2 })
   })
 
   it('puts everything else away until it is added', () => {
-    expect(layout.hidden).toEqual(['trackpad', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(layout.hidden).toEqual(['zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
     expect(ids.length + layout.hidden.length).toBe(overviewTiles.length)
   })
 
@@ -65,7 +66,8 @@ describe('the catalogue', () => {
 
   it('has Movement, Jog and Position as three separate widgets', () => {
     expect(['trackpad', 'jog', 'position'].every(id => overviewTiles.some(t => t.id === id))).toBe(true)
-    expect(byId('trackpad').defaultOn).toBe(false)
+    expect(byId('trackpad').defaultOn).toBe(true)
+    expect(byId('macros').title).toBe('Quick commands')
   })
 
   it('draws every widget with a component, and defaults to the size it declares', () => {
@@ -225,12 +227,11 @@ describe('Muon printers', () => {
   const muonDefs = widgetsFor(defs as Array<TileDefault & { id: string }>, true)
 
   it('knows a Muon printer by its components, and treats an unknown list as Muon', () => {
-    expect(isMuonPrinter(['file_manager', 'muon_access'])).toBe(true)
-    expect(isMuonPrinter(['file_manager', 'muon_protection'])).toBe(true)
-    expect(isMuonPrinter(['file_manager', 'history'])).toBe(false)
-    expect(isMuonPrinter([])).toBe(true)
-    expect(isMuonPrinter(undefined)).toBe(true)
-    expect(isMuonPrinter(null)).toBe(true)
+    expect(treatAsMuon(true)).toBe(true)
+    expect(treatAsMuon(false)).toBe(false)
+    // Not known yet: counts as Muon, so Z offset never flashes up on one.
+    expect(treatAsMuon(null)).toBe(true)
+    expect(treatAsMuon(undefined)).toBe(true)
   })
 
   it('never offers Z offset on a Muon printer, and keeps it elsewhere', () => {
