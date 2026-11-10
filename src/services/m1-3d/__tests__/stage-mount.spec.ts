@@ -7,7 +7,7 @@ describe('liveStageMayMount', () => {
     vi.resetModules()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] })
   })
-  afterEach(() => vi.useRealTimers())
+  afterEach(() => { vi.useRealTimers() })
 
   const settled = (p: Promise<void>) => {
     let done = false
