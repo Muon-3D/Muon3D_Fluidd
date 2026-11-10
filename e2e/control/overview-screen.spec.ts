@@ -8,7 +8,7 @@
  */
 import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
-import { usePrinter, PRESETS } from './printer'
+import { usePrinter, PRESETS, M1_NO_GO } from './printer'
 
 const GPU = process.platform === 'win32'
 test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
@@ -52,6 +52,32 @@ const STUB_CONFIRM = `<!doctype html><html><body><button disabled data-tid="stub
   })
   window.parent.postMessage({ type: 'muon-panel-hello', version: 1 }, '*')
 </script></body></html>`
+
+// A panel that asks for heat targets either side of each heater's limit.
+const STUB_HEAT = `<!doctype html><html><body><script>
+  window.results = []
+  window.addEventListener('message', e => {
+    if (e.source !== window.parent || !e.data || e.data.type !== 'muon-panel-port') return
+    const port = e.ports[0]
+    port.onmessage = m => { window.results.push(m.data); window.parent.postMessage({ type: 'stub-results', results: window.results }, '*') }
+    port.postMessage({ id: 20, kind: 'verb', verb: 'heat', heater: 'extruder', target: 301 })
+    port.postMessage({ id: 21, kind: 'verb', verb: 'heat', heater: 'extruder', target: 250 })
+    port.postMessage({ id: 22, kind: 'verb', verb: 'heat', heater: 'heater_bed', target: 111 })
+    port.postMessage({ id: 23, kind: 'verb', verb: 'heat', heater: 'heater_bed', target: 110 })
+  })
+  window.parent.postMessage({ type: 'muon-panel-hello', version: 1 }, '*')
+</script></body></html>`
+
+/** An idle, homed M1 with both heaters; the limits are the printer's own config (not a number: not known). */
+function heated (limits: Record<string, unknown>) {
+  return {
+    ...PRESETS.idleHomed(),
+    heaters: { available_heaters: ['extruder', 'heater_bed'] },
+    extruder: { temperature: 25, target: 0, power: 0 },
+    heater_bed: { temperature: 25, target: 0, power: 0 },
+    configfile: { settings: { bed_mesh: M1_NO_GO, ...limits } }
+  }
+}
 
 async function servePanel (page: Page, body = STUB) {
   await page.addInitScript(() => {
@@ -183,4 +209,38 @@ test('a confirmation that must be done on the printer stays blocked: tagged, and
   const sent = JSON.stringify([printer.calls, printer.gcode])
   expect(sent).not.toMatch(/consent|dev_mode/)
   expect(printer.gcode).toEqual([])
+})
+
+test('a heat target above the max_temp in the printer config is refused and never sent', async ({ page, open }) => {
+  const printer = await usePrinter(page, heated({ extruder: { max_temp: 300 }, heater_bed: { max_temp: 110 } }))
+  await servePanel(page, STUB_HEAT)
+  await open('/')
+  await ready(page)
+  await clickScreen(page)
+  await expect(page.getByTestId('m1-screen')).toHaveAttribute('data-phase', 'open')
+  await expect.poll(() => stubResults(page).then(rs => rs.length)).toBe(4)
+  const byId = Object.fromEntries((await stubResults(page)).map(r => [r.id, r]))
+  expect(byId[20]).toMatchObject({ ok: false, error: { message: 'That is hotter than this heater goes.' } })
+  expect(byId[21].ok).toBe(true)
+  expect(byId[22]).toMatchObject({ ok: false, error: { message: 'That is hotter than this heater goes.' } })
+  expect(byId[23].ok).toBe(true)
+  await expect(page.getByTestId('m1-screen-refused')).toContainText('hotter than this heater goes')
+  // At or below the limit went out, as Control's own heater command; above it, nothing.
+  expect(printer.gcode.filter(l => l.includes('SET_HEATER_TEMPERATURE')).sort()).toEqual([
+    'SET_HEATER_TEMPERATURE HEATER=extruder TARGET=250',
+    'SET_HEATER_TEMPERATURE HEATER=heater_bed TARGET=110'
+  ])
+})
+
+test('with no max_temp known for a heater, the screen cannot heat it', async ({ page, open }) => {
+  const printer = await usePrinter(page, heated({ extruder: { max_temp: 'unknown' }, heater_bed: { max_temp: 'unknown' } }))
+  await servePanel(page, STUB_HEAT)
+  await open('/')
+  await ready(page)
+  await clickScreen(page)
+  await expect(page.getByTestId('m1-screen')).toHaveAttribute('data-phase', 'open')
+  await expect.poll(() => stubResults(page).then(rs => rs.length)).toBe(4)
+  const results = await stubResults(page)
+  for (const r of results) expect(r).toMatchObject({ ok: false, error: { message: 'This printer has not said how hot that heater may go.' } })
+  expect(printer.gcode.some(l => l.includes('SET_HEATER_TEMPERATURE'))).toBe(false)
 })
