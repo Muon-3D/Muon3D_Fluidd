@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { AccountError } from '../client'
 import {
+  MCP_ADDRESS,
+  agentSetupText,
+  printersShort,
+  scopePills,
   BYPASS_SOON,
   SCOPE_GROUPS,
   SOON_SCOPES,
@@ -159,5 +163,31 @@ describe('wording that must stay true', () => {
     const change = SCOPE_GROUPS.find(g => g.id === 'change')!
     expect(change.blurb).toMatch(/outside a print/i)
     expect(change.blurb).not.toMatch(/^.*stop a print\. Can't heat/)
+  })
+})
+
+describe('the list and the agent text (6 Nov storyboard)', () => {
+  it('draws scopes as Look and Change pills', () => {
+    expect(scopePills(['printers:read', 'library:read'])).toEqual([{ text: 'Look', changes: false }])
+    expect(scopePills(['printers:read', 'printers:files', 'printers:queue', 'printers:camera'])).toEqual([
+      { text: 'Look', changes: false },
+      { text: 'Change: files, queue, camera', changes: true }
+    ])
+    expect(scopePills(['x:new'])).toEqual([{ text: 'Change: x:new', changes: true }])
+  })
+
+  it('names one or two printers with "only"', () => {
+    const name = (id: string) => ({ p1: 'Boxwood', p2: 'Oak' }[id] ?? id)
+    expect(printersShort({ printer_ids: ['p1'] }, name)).toBe('Boxwood only')
+    expect(printersShort({ printer_ids: ['p1', 'p2'] }, name)).toBe('Boxwood and Oak only')
+    expect(printersShort({ printer_ids: null }, name)).toBe('All your printers')
+    expect(printersShort({ printer_ids: ['a', 'b', 'c'] }, name)).toBe('3 printers')
+  })
+
+  it('gives the agent the MCP address and the bearer header', () => {
+    const text = agentSetupText({ name: 'Claude agent', token: 'mpat_test' })
+    expect(text).toContain(`Address: ${MCP_ADDRESS}`)
+    expect(text).toContain('Authorization: Bearer mpat_test')
+    expect(MCP_ADDRESS).toBe('https://mcp.muon3d.com/mcp')
   })
 })
