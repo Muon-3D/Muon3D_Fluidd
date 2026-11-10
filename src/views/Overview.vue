@@ -271,8 +271,8 @@ import { Component, Vue, Watch } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
 import { overviewTiles, type OverviewTileDef } from '@/components/widgets/overview/registry'
 import {
-  addTile, defaultLayout, moveBy, moveTile, nudgeSize, removeTile, resizeTile, serverLayoutKey, sizeKeyOf,
-  type OverviewLayout, type PlacedTile
+  addTile, defaultLayout, dropIndex, moveBy, moveTile, nudgeSize, removeTile, resizeTile, serverLayoutKey, sizeKeyOf,
+  type OverviewLayout, type PlacedTile, type Slot
 } from '@/services/overview/layout'
 import { reducedMotion, springCurve, springKeyframes } from '@/services/overview/spring'
 import { searchWidgets, treatAsMuon, widgetCategories, widgetsFor, type WidgetCategory } from '@/services/overview/widgets'
@@ -520,19 +520,22 @@ export default class Overview extends Vue {
     this.$nextTick(() => (this.$refs[`cell-${id}`] as HTMLElement[] | undefined)?.[0]?.querySelector<HTMLElement>('[data-tid="tile-grip"]')?.focus())
   }
 
-  /** The tile under the pointer, if it is one on the page. */
-  /** The tile whose slot is under the point. Slots, not drawn boxes: a tile still springing is where it is going. */
-  private cellAt (x: number, y: number): string | null {
+  /** Each tile's slot on screen, in layout order. Slots, not drawn boxes: a tile still springing is where it is going. */
+  private slots (): Slot[] {
+    const out: Slot[] = []
     for (const t of this.current.tiles) {
       const el = this.cellEl(t.id)
       const parent = el?.offsetParent as HTMLElement | null | undefined
       if (!el || !parent) continue
       const p = parent.getBoundingClientRect()
-      const left = p.left + parent.clientLeft + el.offsetLeft
-      const top = p.top + parent.clientTop + el.offsetTop
-      if (x >= left && x < left + el.offsetWidth && y >= top && y < top + el.offsetHeight) return t.id
+      out.push({ id: t.id, left: p.left + parent.clientLeft + el.offsetLeft, top: p.top + parent.clientTop + el.offsetTop, width: el.offsetWidth, height: el.offsetHeight })
     }
-    return null
+    return out
+  }
+
+  /** The tile whose slot is under the point. */
+  private cellAt (x: number, y: number): string | null {
+    return this.slots().find(s => x >= s.left && x < s.left + s.width && y >= s.top && y < s.top + s.height)?.id ?? null
   }
 
   /** Follows the pointer until it lifts, calling back with each move and the final position. */
@@ -586,6 +589,12 @@ export default class Overview extends Vue {
         const to = this.draft.tiles.findIndex(t => t.id === over)
         if (to >= 0) this.draft = moveTile(this.draft, id, to)
         last = over
+      } else if (this.draft && !over) {
+        // On no tile: the empty end of a row, or past the last one. Any row takes it (KAN-1958).
+        const to = dropIndex(this.slots(), id, ev.clientX, ev.clientY)
+        const key = to === null ? null : `gap:${to}`
+        if (to !== null && key !== last && to !== this.draft.tiles.findIndex(t => t.id === id)) this.draft = moveTile(this.draft, id, to)
+        if (key) last = key
       }
       follow(ev.clientX, ev.clientY)
       this.$nextTick(() => { if (this.drag?.kind === 'move' && this.drag.id === id) follow(ev.clientX, ev.clientY) })
