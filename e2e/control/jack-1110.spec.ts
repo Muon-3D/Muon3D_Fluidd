@@ -332,6 +332,14 @@ test.describe('KAN-2029: the default layout', () => {
       mode: { S: [3, 1], M: [6, 1] },
       macros: { S: [3, 1], M: [4, 1], L: [8, 1] }
     }
+    // This test is about where tiles go, not the 3D view: with no WebGL the stage draws its fallback at the same size,
+    // and a tall page does not stall on software GL.
+    await page.addInitScript(() => {
+      const getContext = HTMLCanvasElement.prototype.getContext as (this: HTMLCanvasElement, type: string, ...rest: unknown[]) => unknown
+      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+        return /webgl/i.test(type) ? null : getContext.call(this, type, ...rest)
+      } as typeof HTMLCanvasElement.prototype.getContext
+    })
     // The whole grid on screen, so a drag never has to scroll.
     await page.setViewportSize({ width: 1440, height: 2800 })
     await usePrinter(page, PRESETS.idleHomed(), { database: true })
