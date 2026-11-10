@@ -412,7 +412,7 @@ test.describe('Print mode', () => {
     status.gcode_move = { ...status.gcode_move, speed_factor: 1, extrude_factor: 1 }
     const printer = await usePrinter(page, status)
     await open('/control')
-    await expect(page.getByTestId('advanced-summary')).toHaveText('Speed 100% · Flow 100% · Pressure advance 0.040')
+    await expect(page.getByTestId('advanced-summary')).toHaveText('Speed 100% · Flow 100% · Fan 80% · Pressure advance 0.040')
     await page.getByTestId('advanced-toggle').click()
     const set = async (tid: string, value: number) => page.getByTestId(tid).evaluate((el, v) => {
       const input = el as HTMLInputElement
