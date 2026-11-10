@@ -1142,34 +1142,6 @@ $glass: "html[data-m3d-style='glass']";
     font-size: 0.875rem !important;
   }
 
-  /* ------------------------------------------------------------ alerts -- */
-
-  // The toolbar's warning icon: orange for warnings, red when Klipper is not
-  // ready. Its popover is an ordinary glass menu.
-  .toolbar-alerts--warning .v-icon {
-    color: var(--m3d-sys-orange) !important;
-  }
-
-  .toolbar-alerts--error .v-icon {
-    color: var(--m3d-sys-red) !important;
-  }
-
-  .app-status-alerts {
-    background: transparent !important;
-    box-shadow: none !important;
-    color: var(--m3d-text);
-
-    &__title {
-      font-size: 0.875rem;
-    }
-
-    &__text,
-    &__list,
-    &__help {
-      color: var(--m3d-text-muted);
-    }
-  }
-
   /* ------------------------------------------------------- link dialog -- */
 
   .muon-cloud-dialog__label {
@@ -1300,7 +1272,7 @@ $glass: "html[data-m3d-style='glass']";
     background-color: var(--m3d-estop) !important;
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  &.m3d-reduced-motion {
     .v-btn:not(.v-btn--disabled):active {
       transform: none;
     }
