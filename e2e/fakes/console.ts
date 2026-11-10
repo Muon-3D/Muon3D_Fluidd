@@ -23,7 +23,9 @@ export interface ConsolePrinter {
 }
 
 export interface ConsoleState {
-  account: { id: string, email: string, name: string, created_at?: number };
+  account: { id: string, email: string, name: string, created_at?: number, deletion?: { requested_at: number, delete_after: number } | null };
+  /** `/v1/me/exports`, when a test needs it: the data requests. A POST files a queued one. */
+  exports?: Array<Record<string, unknown> & { id: string }>;
   printers: ConsolePrinter[];
   /** `/v1/me/preferences`, kept across reloads; null answers 404, as a console from before it. */
   preferences: Record<string, boolean> | null;
@@ -85,6 +87,24 @@ export async function answerConsole (route: Route, state: ConsoleState) {
     const body = request.postDataJSON() as { name?: string }
     if (typeof body.name === 'string') state.account.name = body.name
     return json(route, { account: { ...state.account, display_name: state.account.name } })
+  }
+  if (state.exports && url.pathname === '/v1/me/exports') {
+    if (request.method() === 'GET') return json(route, { exports: state.exports })
+    if (request.method() === 'POST') {
+      const made = { id: `exp-${state.exports.length + 1}`, status: 'queued', requested_at: Math.floor(Date.now() / 1000) }
+      state.exports = [made, ...state.exports]
+      return json(route, made, 202)
+    }
+  }
+  if (request.method() === 'DELETE' && url.pathname === '/v1/me' && state.account.deletion !== undefined) {
+    const now = Math.floor(Date.now() / 1000)
+    state.account.deletion = { requested_at: now, delete_after: now + 14 * 86_400 }
+    return json(route, { ok: true, delete_after: state.account.deletion.delete_after })
+  }
+  const owned = url.pathname.match(/^\/v1\/printers\/([^/]+)$/)
+  if (owned && request.method() === 'DELETE') {
+    state.printers = state.printers.filter(p => p.id !== decodeURIComponent(owned[1]))
+    return json(route, { ok: true })
   }
   if (state.identity && url.pathname === '/v1/me/community-identity') {
     if (request.method() === 'PATCH') {
