@@ -16,6 +16,16 @@ const cell = (page: Page, id: string) => page.locator(`[data-cell="${id}"]`)
 const ids = async (page: Page) => page.locator('[data-cell]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.cell))
 const FAN_MODES = { mode: 'normal', modes: ['normal', 'quiet', 'turbo'] }
 
+/** Hotend and Bed are off by default (the Temperatures graph shows both); put one on the page through Add widget. */
+async function addWidget (page: Page, id: string) {
+  await edit(page)
+  await page.getByTestId('widget-sheet-open').click()
+  await page.getByTestId(`widget-add-${id}`).click()
+  await page.getByTestId('widget-sheet-close').click()
+  await page.getByTestId('edit-done').click()
+  await expect(page.getByTestId('edit-open')).toBeVisible()
+}
+
 async function edit (page: Page) {
   await page.getByTestId('edit-open').click()
   await expect(page.getByTestId('edit-done')).toBeVisible()
@@ -87,6 +97,7 @@ test('S, M and L draw different things, not the same thing scaled', async ({ pag
   test.skip(isMobile, 'Sizes are changed on the desktop grid.')
   await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await open('/')
+  await addWidget(page, 'hotend')
   const hotend = cell(page, 'hotend')
   await expect(hotend).toHaveAttribute('data-size', 'S')
   await expect(hotend.getByTestId('heater-inline-presets')).toHaveCount(0)
@@ -131,11 +142,11 @@ test.describe('springs', () => {
     await usePrinter(page, PRESETS.idleHomed(), { database: true })
     await open('/')
     await edit(page)
-    const grip = cell(page, 'hotend').getByTestId('tile-grip')
+    const grip = cell(page, 'position').getByTestId('tile-grip')
     await grip.focus()
     const was = await started(page)
     await grip.press('Shift+ArrowRight')
-    await expect(cell(page, 'hotend')).toHaveAttribute('style', /--span: 6/)
+    await expect(cell(page, 'position')).toHaveAttribute('style', /--span: 8/)
     // The resized one and the ones it pushed along.
     await expect.poll(async () => (await started(page)) - was).toBeGreaterThan(1)
     // Each one finishes (waited for, not timed: a busy runner may not draw a frame for seconds).
@@ -149,10 +160,10 @@ test.describe('springs', () => {
     await usePrinter(page, PRESETS.idleHomed(), { database: true })
     await open('/')
     await edit(page)
-    const grip = cell(page, 'hotend').getByTestId('tile-grip')
+    const grip = cell(page, 'position').getByTestId('tile-grip')
     await grip.focus()
     await grip.press('Shift+ArrowRight')
-    await expect(cell(page, 'hotend')).toHaveAttribute('style', /--span: 6/)
+    await expect(cell(page, 'position')).toHaveAttribute('style', /--span: 8/)
     await page.waitForTimeout(100)
     expect(await started(page)).toBe(0)
     expect(await animating(page)).toBe(0)
@@ -166,17 +177,17 @@ test.describe('springs', () => {
     // Clear of the top and bottom edges, where a held tile scrolls the page.
     await cell(page, 'mode').evaluate(e => e.scrollIntoView({ block: 'center' }))
     const from = await cell(page, 'mode').getByTestId('tile-grip').boundingBox()
-    const to = await cell(page, 'hotend').boundingBox()
+    const to = await cell(page, 'graph').boundingBox()
     if (!from || !to) throw new Error('not on screen')
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
     await page.mouse.down()
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 })
     // Still held: the order has already changed.
-    await expect.poll(async () => (await ids(page)).indexOf('mode')).toBe(before.indexOf('hotend'))
+    await expect.poll(async () => (await ids(page)).indexOf('mode')).toBe(before.indexOf('graph'))
     expect(await cell(page, 'mode').evaluate(e => (e as HTMLElement).style.transform)).toMatch(/translate/)
     await page.mouse.up()
     await expect(cell(page, 'mode')).not.toHaveAttribute('style', /transform: translate/)
-    expect((await ids(page)).indexOf('mode')).toBe(before.indexOf('hotend'))
+    expect((await ids(page)).indexOf('mode')).toBe(before.indexOf('graph'))
   })
 })
 
@@ -204,7 +215,7 @@ test('phone: the default layout has Movement, the print mode and the filament bo
   test.skip(!isMobile, 'Phone only.')
   await usePrinter(page, PRESETS.idleHomed())
   await open('/')
-  await expect.poll(() => ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'trackpad', 'jog', 'position', 'macros', 'graph'])
+  await expect.poll(() => ids(page)).toEqual(['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros'])
   await expect(page.locator('[data-tile="trackpad"]')).toBeVisible()
   await expect(page.getByTestId('mode-unavailable')).toBeVisible()
   await expect(page.getByTestId('overview-load-filament')).toBeVisible()

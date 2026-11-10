@@ -13,7 +13,7 @@ describe('the tile list', () => {
   it('has unique ids, a width on every screen, and the order the brief gives', () => {
     const ids = overviewTiles.map(t => t.id)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(ids).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'trackpad', 'jog', 'position', 'macros', 'graph', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(ids).toEqual(['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros', 'hotend', 'bed', 'fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
     for (const t of overviewTiles) {
       expect(t.span).toBeGreaterThan(0); expect(t.span).toBeLessThanOrEqual(12)
       expect([6, 12]).toContain(t.tablet); expect([1, 2]).toContain(t.phone)
@@ -26,7 +26,7 @@ describe('Overview page', () => {
     const store = tileStore({ printing: true })
     const w = mount(Overview, tileMount(store, { stubs: { ...tileMount(store).stubs, ...heavy } }))
     expect(w.findAll('[data-cell]').wrappers.map(c => c.attributes('data-cell'))).toEqual(overviewTiles.filter(t => t.defaultOn).map(t => t.id))
-    for (const id of ['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'trackpad', 'jog', 'position', 'macros', 'graph']) {
+    for (const id of ['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros']) {
       expect(w.findAll(`[data-tile="${id}"]`)).toHaveLength(1)
     }
     expect(w.find('[data-tid="overview-customise"]').exists()).toBe(false)
@@ -44,8 +44,8 @@ describe('Overview page', () => {
   it('gives each cell its widths for the three screen sizes', () => {
     const store = tileStore()
     const w = mount(Overview, tileMount(store, { stubs: { ...tileMount(store).stubs, ...heavy } }))
-    const style = w.find('[data-cell="hotend"]').attributes('style')
-    expect(style).toContain('--span: 3'); expect(style).toContain('--tablet: 6'); expect(style).toContain('--phone: 1')
+    const style = w.find('[data-cell="mode"]').attributes('style')
+    expect(style).toContain('--span: 6'); expect(style).toContain('--tablet: 6'); expect(style).toContain('--phone: 2')
     w.destroy()
   })
 })
