@@ -214,10 +214,12 @@
         </label>
       </div>
       <div
-        v-if="loadedMaterial"
+        v-if="loadedMaterial || loadMacro || unloadMacro"
         class="matp__actions"
+        data-tid="material-actions"
       >
         <button
+          v-if="loadedMaterial"
           type="button"
           class="cbtn cbtn--primary"
           :disabled="!klippyReady || busy"
@@ -230,44 +232,44 @@
           />
           Heat for {{ loadedMaterial.name }}
         </button>
-      </div>
-      <div
-        v-if="loadMacro || unloadMacro"
-        class="matp__filament"
-        data-tid="material-load-unload"
-      >
-        <button
-          v-if="loadMacro"
-          type="button"
-          class="cbtn matp__icon-btn"
-          :disabled="!klippyReady || loadPlan.kind === 'none'"
-          :title="loadPlan.kind === 'none' ? loadPlan.reason : 'Load filament'"
-          aria-label="Load filament"
-          data-tid="material-load"
-          @click="runOnce('load')"
+        <div
+          v-if="loadMacro || unloadMacro"
+          class="matp__filament"
+          data-tid="material-load-unload"
         >
-          <frame-icon
-            name="down"
-            small
-          />
-          Load
-        </button>
-        <button
-          v-if="unloadMacro"
-          type="button"
-          class="cbtn matp__icon-btn"
-          :disabled="!klippyReady || unloadPlan.kind === 'none'"
-          :title="unloadPlan.kind === 'none' ? unloadPlan.reason : 'Unload filament'"
-          aria-label="Unload filament"
-          data-tid="material-unload"
-          @click="runOnce('unload')"
-        >
-          <frame-icon
-            name="up"
-            small
-          />
-          Unload
-        </button>
+          <button
+            v-if="loadMacro"
+            type="button"
+            class="cbtn"
+            :disabled="!klippyReady || loadPlan.kind === 'none'"
+            :title="loadPlan.kind === 'none' ? loadPlan.reason : 'Load filament'"
+            aria-label="Load filament"
+            data-tid="material-load"
+            @click="runOnce('load')"
+          >
+            <frame-icon
+              name="down"
+              small
+            />
+            Load
+          </button>
+          <button
+            v-if="unloadMacro"
+            type="button"
+            class="cbtn"
+            :disabled="!klippyReady || unloadPlan.kind === 'none'"
+            :title="unloadPlan.kind === 'none' ? unloadPlan.reason : 'Unload filament'"
+            aria-label="Unload filament"
+            data-tid="material-unload"
+            @click="runOnce('unload')"
+          >
+            <frame-icon
+              name="up"
+              small
+            />
+            Unload
+          </button>
+        </div>
       </div>
       <router-link
         :to="presetsTo"
@@ -480,20 +482,24 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
   }
 
   .matp__actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
     border-top: 1px solid var(--m3d-border);
 
-    > :first-child {
-      grid-column: 1 / -1;
+    .cbtn {
+      width: 100%;
+      min-height: 40px;
       justify-content: center;
     }
+  }
 
-    > * {
-      justify-content: center;
-    }
+  .matp__filament {
+    display: grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
+    gap: 8px;
   }
 
   .matp__more {
