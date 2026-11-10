@@ -371,12 +371,9 @@ import { ACCOUNT_SECTIONS, initialsOf, type AccountSectionId } from '@/services/
 import { accountState, loadApprovals } from '@/services/account/state'
 import { EventBus } from '@/eventBus'
 import { Globals } from '@/globals'
-import CloudAccountDialog from './CloudAccountDialog.vue'
-import LinkPrinterDialog from './LinkPrinterDialog.vue'
 import PhotoFace from '@/components/account/profile/PhotoFace.vue'
 import { forgetOwnAvatar, loadOwnAvatar, ownAvatar } from '@/services/account/avatar'
 import AppUserMenu from '@/components/layout/AppUserMenu.vue'
-import UserPasswordDialog from '@/components/settings/auth/UserPasswordDialog.vue'
 
 /** A trusted client or an API key has no name to show, password or log out. */
 const NAMELESS_USERS = ['_TRUSTED_USER_', '_API__API_KEY_USER_USER_']
@@ -392,7 +389,16 @@ const NAMELESS_USERS = ['_TRUSTED_USER_', '_API__API_KEY_USER_USER_']
  * printer's login is "This printer": who can use it, its password, and
  * locking it in this browser.
  */
-@Component({ components: { CloudAccountDialog, LinkPrinterDialog, AppUserMenu, UserPasswordDialog, PhotoFace } })
+@Component({
+  components: {
+    // The dialogs (v-if) load when first opened (KAN-2013).
+    CloudAccountDialog: () => import('./CloudAccountDialog.vue'),
+    LinkPrinterDialog: () => import('./LinkPrinterDialog.vue'),
+    UserPasswordDialog: () => import('@/components/settings/auth/UserPasswordDialog.vue'),
+    AppUserMenu,
+    PhotoFace
+  }
+})
 export default class CloudAccountMenu extends Vue {
   dialog = false
   linkDialog = false
