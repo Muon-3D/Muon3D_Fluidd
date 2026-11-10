@@ -55,7 +55,7 @@
 
       <div
         class="cons__log"
-        :class="`cons__log--${prefs.textSize}`"
+        :class="[`cons__log--${prefs.textSize}`, { 'cons__log--nowrap': !prefs.wrap }]"
         data-tid="console-log"
         aria-live="polite"
       >
@@ -731,6 +731,12 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
   }
 
   // Settings › Console › Text size.
+  .cons__log--nowrap .cons__msg {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .cons__log--sm .cons__line { font-size: 11px; }
   .cons__log--lg .cons__line { font-size: 14.5px; }
 
