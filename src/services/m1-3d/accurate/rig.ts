@@ -8,6 +8,9 @@ import { ACCURATE_RIG } from './klipper-map'
 import { buildAccurateAccessories } from './accessories'
 import { buildAccurateLights, type AccurateLights } from './lights'
 import type { AccessoryFrame } from '../accessory-motion'
+import { m1 } from '../load'
+import { buildAccurateSpool, type AccurateSpool } from './spool'
+import { buildPlateDecal, buildPowerPlug } from './fittings'
 
 /**
  * The loaded accurate M1 as the viewer drives it: the head and the bed
@@ -19,7 +22,8 @@ import type { AccessoryFrame } from '../accessory-motion'
  * (`M1_Knob`) stay at rest, and the belts are frozen at the rest pose in the
  * asset itself. The hose is skinned and follows the head on its own. The
  * plate coming off, the hose's end out of the head and the Z column lifted
- * out are accessories.ts; the spool and the filament have no geometry here.
+ * out are accessories.ts. The GLB has no spool, filament, power plug or plate
+ * print; spool.ts and fittings.ts add them.
  */
 export interface AccurateRig {
   root: THREE.Object3D;
@@ -40,10 +44,23 @@ export interface AccurateRig {
   lights: AccurateLights;
   /** Swaps the transmissive glass for a plain transparent one. Returns whether anything changed. */
   useCheapGlass: () => boolean;
+  /** The spool on the back and the filament off it (spool.ts). */
+  spool: AccurateSpool;
+  /** The plug in the power socket (fittings.ts), or null without the base. */
+  plug: THREE.Object3D | null;
 }
 
 /** How much of the scene shows through the plate when it is plain transparent. */
 const CHEAP_GLASS_OPACITY = 0.2
+
+/** The simple model's plate print, if its code is loaded (it is, with the viewer). */
+function plateDecalCanvas (): HTMLCanvasElement | null {
+  try {
+    return m1()?.glassDecal?.(1024) ?? null
+  } catch {
+    return null
+  }
+}
 
 export function buildAccurateRig (scene: THREE.Group): AccurateRig {
   const bindings = bindNodes(scene, ACCURATE_M1)
@@ -66,6 +83,9 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
     if (material.name !== FROSTED_PLATE.name) continue
     material.roughness = FROSTED_PLATE.roughness
     material.transmission = FROSTED_PLATE.transmission
+    material.color.setHex(FROSTED_PLATE.tint)
+    material.specularIntensity = FROSTED_PLATE.specular
+    material.envMapIntensity = FROSTED_PLATE.reflection
   }
 
   const front = Y_TOWARD_FRONT
@@ -83,6 +103,11 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
   // once, at rest, so neither may be culled.
   for (const name of ['M1_Hose', 'M1_Belt']) scene.getObjectByName(name)?.traverse(o => { o.frustumCulled = false })
 
+  // Built at the rest pose, before the plate moves into its carrier: each is attached to the node it rides with.
+  buildPlateDecal(scene, plateDecalCanvas())
+  const plug = buildPowerPlug(scene)
+  const spool = buildAccurateSpool(scene)
+
   // Moves the cargo into the plate's carrier, under the bed: it rides with the bed, the plate and the column.
   const accessories = buildAccurateAccessories(scene, cargo)
   if (accessories.missing.length) console.warn(`[m1] the accurate M1 lacks ${accessories.missing.join(', ')}; those parts stay still`)
@@ -99,7 +124,12 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
     place (p) {
       bindings.apply({ headX: p.headX, headZ: p.headZ, z: p.z })
     },
-    apply: accessories.apply,
+    spool,
+    plug,
+    apply (frame, partGone) {
+      accessories.apply(frame, partGone)
+      spool.apply(frame)
+    },
     plateOff: accessories.plateOff,
     plateOffBox: accessories.offBox,
     useCheapGlass () {
@@ -110,6 +140,7 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
         material.thickness = 0
         material.transparent = true
         material.opacity = material.name === FROSTED_PLATE.name ? FROSTED_PLATE.cheapOpacity : CHEAP_GLASS_OPACITY
+        if (material.name === FROSTED_PLATE.name) material.color.setHex(FROSTED_PLATE.cheapTint)
         material.depthWrite = false
         material.needsUpdate = true
         mesh.renderOrder = GLASS_ORDER

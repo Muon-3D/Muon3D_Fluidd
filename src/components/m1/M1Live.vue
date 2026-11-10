@@ -355,16 +355,16 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
 
   /**
    * Marks what the model drew on the stage's element (data-model,
-   * data-plate, data-toolhead, data-column, data-filament): the state once a
-   * clip ends, the clip's name while it plays. data-played lists the last
+   * data-plate, data-toolhead, data-column, data-filament, and data-spool and
+   * data-plug, on or off): the state once a clip ends, the clip's name while it plays. data-played lists the last
    * clips started ("part:clip", newest last), so a test can see a clip ran
    * even when a slow renderer draws none of its frames. Written straight to
    * the element, not through Vue, since it runs every frame.
    */
-  markDrawn ({ model, accessories: a }: DrawnState) {
+  markDrawn ({ model, accessories: a, spool, plug }: DrawnState) {
     const el = this.$el as HTMLElement | undefined
     if (!el?.dataset) return
-    const marks: Record<string, string> = { model }
+    const marks: Record<string, string> = { model, spool: spool ? 'on' : 'off', plug: plug ? 'on' : 'off' }
     if (a) {
       marks.plate = a.plate.clip ?? (a.plate.on ? 'on' : 'off')
       marks.toolhead = a.tube.clip ?? (a.tube.attached ? (a.tube.unlocking ? 'unlocking' : 'connected') : 'disconnected')
