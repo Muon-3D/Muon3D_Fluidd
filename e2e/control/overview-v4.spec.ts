@@ -204,6 +204,8 @@ test('phone: the default layout has Movement, the print mode and the filament bo
   test.skip(!isMobile, 'Phone only.')
   await usePrinter(page, PRESETS.idleHomed())
   await open('/')
+  // Read the cells only once the layout has mounted: a one-shot read straight after open() can see none yet on a slow runner.
+  await expect(page.locator('[data-cell]')).toHaveCount(12)
   expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'trackpad', 'jog', 'position', 'macros', 'graph'])
   await expect(page.locator('[data-tile="trackpad"]')).toBeVisible()
   await expect(page.getByTestId('mode-unavailable')).toBeVisible()
