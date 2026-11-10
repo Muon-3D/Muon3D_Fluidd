@@ -38,6 +38,10 @@ export default class FileEditor extends Mixins(BrowserMixin) {
   @Prop({ type: Boolean, default: true })
   readonly codeLens?: boolean
 
+  /** The text size, in px: Settings › Files and editor › Text size. */
+  @Prop({ type: Number, default: 16 })
+  readonly fontSize!: number
+
   @Prop({ type: String, required: true })
   readonly path!: string
 
@@ -95,7 +99,7 @@ export default class FileEditor extends Mixins(BrowserMixin) {
       readOnly: this.readonly,
       codeLens: this.codeLens,
       automaticLayout: true,
-      fontSize: 16,
+      fontSize: this.fontSize,
       scrollbar: {
         useShadows: false
       },
@@ -168,6 +172,11 @@ export default class FileEditor extends Mixins(BrowserMixin) {
   }
 
   // The text set from outside (Undo changes): the editor takes it.
+  @Watch('fontSize')
+  onFontSize (value: number) {
+    this.editor?.updateOptions({ fontSize: value })
+  }
+
   @Watch('value')
   onValue (value: string) {
     if (this.editor && value !== this.editor.getValue()) this.editor.setValue(value)
