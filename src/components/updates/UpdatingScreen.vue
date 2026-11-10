@@ -443,7 +443,7 @@ export default class UpdatingScreen extends Vue {
     font-size: 13px;
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  :root.m3d-reduced-motion {
     .upd__bar--wait i,
     .upd__dot {
       animation: none;
