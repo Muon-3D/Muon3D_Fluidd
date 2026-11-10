@@ -100,6 +100,9 @@ const ICONS: Record<string, Shape[]> = {
   // The Library: books on a shelf, one leaning.
   library: [{ d: 'm16 6 4 14M12 6v14M8 8v12M4 4v16' }],
   copy: [{ r: [8, 8, 14, 14, 2] }, { d: 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2' }],
+  // Materials: pinned to the filament picker, and the handle to drag one into order.
+  pin: [{ d: 'M12 17v5' }, { d: 'M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.8l-1.8-.9a2 2 0 0 1-1.1-1.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z' }],
+  grip: [{ c: [9, 6, 1.2] }, { c: [9, 12, 1.2] }, { c: [9, 18, 1.2] }, { c: [15, 6, 1.2] }, { c: [15, 12, 1.2] }, { c: [15, 18, 1.2] }],
   // The account's (KAN-532).
   shield: [{ d: 'M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z' }, { d: 'm9 12 2 2 4-4' }],
   idCard: [{ r: [3, 4, 18, 16, 2.5] }, { c: [9, 11, 2.5] }, { d: 'M5.5 17a3.5 3.5 0 0 1 7 0M15 10h3M15 14h3' }],

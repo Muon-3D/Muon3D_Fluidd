@@ -258,6 +258,17 @@ export interface TemperaturePreset {
   name: string;
   values: TemperaturePresetValues;
   gcode?: string;
+  /** default: one of the four every printer has; library: copied from the library; own: made or changed here. */
+  origin?: 'default' | 'library' | 'own';
+  libraryId?: string;
+  /** Where the numbers came from, e.g. "Polymaker PolyLite PLA". */
+  source?: string;
+  type?: string;
+  colour?: string;
+  /** Part-cooling fan, 0-100 %. */
+  partFan?: number;
+  /** The maker's published [min, max] ranges, in °C. */
+  maker?: { nozzle?: [number, number], bed?: [number, number] };
 }
 
 export interface TemperaturePresetValues {
