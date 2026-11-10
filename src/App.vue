@@ -113,12 +113,9 @@ import StateMixin from '@/mixins/state'
 import FilesMixin from '@/mixins/files'
 import BrowserMixin from '@/mixins/browser'
 import type { LinkPropertyHref, MetaPropertyName } from 'vue-meta'
-import FileSystemDownloadDialog from '@/components/widgets/filesystem/FileSystemDownloadDialog.vue'
-import SpoolSelectionDialog from '@/components/widgets/spoolman/SpoolSelectionDialog.vue'
 import type { FlashMessage } from '@/types'
 import { getFilesFromDataTransfer, hasFilesInDataTransfer } from './util/file-system-entry'
 import type { ThemeConfig } from '@/store/config/types'
-import ActionCommandPromptDialog from './components/common/ActionCommandPromptDialog.vue'
 import KeyboardShortcutsDialog from './components/common/KeyboardShortcutsDialog.vue'
 import { eventTargetIsContentEditable, keyboardEventToKeyboardShortcut } from './util/event-helpers'
 import { isManagedConsolePath } from '@/router/managedPath'
@@ -176,9 +173,10 @@ import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletio
     PrinterOpening,
     BluetoothPairDialog: () => import('@/components/muon-ble/BluetoothPairDialog.vue'),
     JobReadyDialog,
-    SpoolSelectionDialog,
-    FileSystemDownloadDialog,
-    ActionCommandPromptDialog,
+    // Opened from store state, so they can load after the first screen (KAN-2013).
+    SpoolSelectionDialog: () => import('@/components/widgets/spoolman/SpoolSelectionDialog.vue'),
+    FileSystemDownloadDialog: () => import('@/components/widgets/filesystem/FileSystemDownloadDialog.vue'),
+    ActionCommandPromptDialog: () => import('./components/common/ActionCommandPromptDialog.vue'),
     KeyboardShortcutsDialog
   }
 })

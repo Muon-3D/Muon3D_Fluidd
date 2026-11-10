@@ -4,10 +4,17 @@
     data-tid="overview-stage"
   >
     <m1-live
+      v-if="liveReady"
       class="ov-stage__m1"
       :state="stageState"
       :shift="busy && jobThumbnail ? 0.12 : 0"
       parts
+    />
+    <printer-stage
+      v-else
+      class="ov-stage__m1"
+      :state="stageState"
+      data-tid="m1-placeholder"
     />
     <span
       v-if="badge"
@@ -45,15 +52,40 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
-import M1Live from '@/components/m1/M1Live.vue'
+import PrinterStage from '@/components/printers/PrinterStage.vue'
+import { liveStageMayMount, loadLiveStage } from '@/services/m1-3d/stage-mount'
 
 /**
  * The whole M1, live on the light stage, with what can be seen at a glance:
  * printing, the layer and the part's picture; idle, the material and
  * whether it is homed.
+ *
+ * The stage's picture (PrinterStage, which the live M1 draws over) shows
+ * first, at the same size; the live M1 mounts in its place once the
+ * Overview is up and the page is quiet (services/m1-3d/stage-mount).
  */
-@Component({ components: { M1Live } })
+@Component({ components: { PrinterStage } })
 export default class OverviewStage extends Mixins(OverviewMixin) {
+  /** The live M1's component has loaded and may mount; until then the picture shows. */
+  liveReady = false
+  gone = false
+
+  created () {
+    liveStageMayMount()
+      .then(loadLiveStage)
+      .then(m => {
+        if (this.gone) return
+        // Registered once loaded, so the first render with it has it (an async component would draw nothing for a tick).
+        this.$options.components = { ...this.$options.components, M1Live: m.default }
+        this.liveReady = true
+      })
+      .catch(e => console.warn('[m1] the live M1 could not load; showing its picture', e))
+  }
+
+  beforeDestroy () {
+    this.gone = true
+  }
+
   /** Offline while the printer isn't there, so the live M1 lets go and the picture shows. */
   get stageState (): 'offline' | 'printing' | 'idle' {
     if (!this.socketConnected || !this.klippyReady) return 'offline'
