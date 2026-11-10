@@ -14,7 +14,7 @@
  * probe check) goes through `planMove`, which reads the regions the printer
  * declares (never a hard-coded copy) and either lifts to the traverse height
  * before crossing, or refuses. (Upstream Fluidd's toolhead widgets, which
- * send moves directly, are only used by the unrouted views/Dashboard.vue.)
+ * send moves directly, are no longer mounted by any page.)
  */
 
 export interface NoGoRegion {
