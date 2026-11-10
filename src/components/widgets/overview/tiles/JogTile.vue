@@ -101,12 +101,6 @@
         type="button"
         class="cbtn"
         :disabled="!controlReady || busy"
-        @click="home('XY')"
-      >Home X Y</button>
-      <button
-        type="button"
-        class="cbtn"
-        :disabled="!controlReady || busy"
         @click="home()"
       >Home all</button>
     </span>

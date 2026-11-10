@@ -33,6 +33,7 @@ import {
   isPrintersOwnPage,
   learnActiveIdentity,
   openPrinterAt,
+  ownPageHome,
   preferSavedPrinterFor
 } from './services/printer-pages'
 import type { InitConfig } from './store/config/types'
@@ -180,6 +181,13 @@ if (/^\/(?:setup|sign-in)(?:\/|$)/.test(window.location.pathname)) {
 
       // The address names the printer Fluidd shows (/boxwood-367a/jobs).
       installPrinterPages(router, { activateLocalPrinter, activateCloudPrinter })
+
+      // A printer's own address opens that printer's page from the first frame:
+      // the list of every printer must never draw while the account restores.
+      if (config.apiConnected && config.apiAuthenticated) {
+        const home = ownPageHome(window.location.pathname, store.state.config.apiUrl, activeSlug())
+        if (home) window.history.replaceState(window.history.state, '', home + window.location.search + window.location.hash)
+      }
 
       mountApp()
 
