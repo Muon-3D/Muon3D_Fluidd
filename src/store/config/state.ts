@@ -94,7 +94,9 @@ export const defaultState = (): ConfigState => {
         confirmDirtyEditorClose: true,
         autoEditExtensions: ['.cfg', '.conf', '.ini', '.log', '.sh', '.txt'],
         restoreViewState: 'session',
-        codeLens: true
+        codeLens: true,
+        saveAndRestart: 'ask',
+        textSize: 'normal'
       },
       dashboard: {
         tempPresets: defaultMaterials()
