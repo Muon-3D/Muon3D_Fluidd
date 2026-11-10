@@ -17,7 +17,7 @@
         data-tid="m1-screen-done"
         @click="close"
       >
-        Done
+        Exit
       </button>
     </div>
     <div class="m1-screen__bezel">
@@ -26,7 +26,7 @@
         class="m1-screen__empty"
         data-tid="m1-screen-empty"
       >
-        The printer's screen isn't available here yet
+        Your printer needs an update to show its screen here
       </p>
       <iframe
         v-else-if="served"
@@ -45,7 +45,7 @@
       role="status"
       data-tid="m1-screen-refused"
     >
-      That one is done on the printer itself.
+      Confirm on the printer. Control can't do that one for you.
     </p>
   </div>
 </template>
