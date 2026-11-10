@@ -207,8 +207,10 @@ export default class FilamentSection extends Mixins(FilamentActionsMixin) {
 .fsec__text b { font-size: 16px; font-weight: 600; }
 .fsec__warn { margin-right: 6px; color: var(--m3d-warning) !important; }
 .fsec__text span { overflow: hidden; color: var(--m3d-text-muted); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
-.fsec__buttons { display: flex; flex-wrap: wrap; gap: 6px; }
-.fsec__buttons .cbtn--primary { flex-grow: 2; }
+/* Change filament across the top; Load and Unload side by side, the same width, inside the box (FM-02/03). */
+.fsec__buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.fsec__buttons .cbtn { width: 100%; }
+.fsec__buttons .cbtn--primary { grid-column: 1 / -1; }
 .fsec--phone .fsec__buttons .cbtn { height: 48px; }
 .fsec__loader { margin: 0; font-size: 13px; color: var(--m3d-text-muted); }
 .fsec__sensors { align-self: flex-start; color: var(--m3d-text-muted) !important; font-size: 13px; font-weight: 600; text-decoration: none; }
