@@ -14,6 +14,10 @@ export interface ConfigState {
   lanInstances: InstanceConfig[];
   uiSettings: UiSettings;
   hostConfig: HostConfig;
+  /** Whose personal settings apply (quickCommandsKey of the signed-in account), once known. */
+  personalKey: string | null;
+  /** The printer-wide values of the personal settings, as loaded, under anyone's own. */
+  sharedPersonal: PersonalSettings | null;
 }
 
 export interface UiSettings {
@@ -31,6 +35,8 @@ export interface UiSettings {
   console: ConsoleConfig;
   /** Each person's Control layout on this printer, the same shape as Overview's. */
   control: OverviewConfig;
+  /** Each person's own Look and Ask before on this printer, by quickCommandsKey(account). */
+  personal: Record<string, PersonalSettings>;
 }
 
 /** Each person's Overview layout on this printer, by key (see services/overview/layout), as saved by Edit mode. */
@@ -145,7 +151,7 @@ export type PrintInProgressLayout = 'default' | 'compact'
 
 export type ColorPickerValueRange = 'absolute' | 'percentage'
 
-export type PrintProgressCalculation = 'file' | 'fileAbsolute' | 'slicer' | 'filament'
+export type PrintProgressCalculation = 'file' | 'fileAbsolute' | 'slicer' | 'filament' | 'layers'
 
 export type PrintEtaCalculation = 'file' | 'slicer'
 
@@ -155,12 +161,24 @@ export type PrintEtaCalculation = 'file' | 'slicer'
 export type UiStyle = 'glass'
 
 // Config stored in moonraker db
+/** Dark, Light, or Auto (follows the device's prefers-color-scheme). */
+export type ThemeMode = 'dark' | 'light' | 'auto'
+
 export interface ThemeConfig {
   color: string;
+  /** What is showing now; with mode 'auto', the device's choice. */
   isDark: boolean;
+  /** Missing on a theme saved before Auto: isDark says which. */
+  mode?: ThemeMode;
   logo: ThemeLogo;
   backgroundLogo: boolean;
   style: UiStyle;
+}
+
+/** The Look and Ask before settings someone changed for themselves on this printer. */
+export interface PersonalSettings {
+  theme?: Partial<Pick<ThemeConfig, 'color' | 'isDark' | 'mode'>>;
+  general?: Partial<Pick<GeneralConfig, 'confirmOnEstop' | 'confirmOnSaveConfigAndRestart' | 'confirmOnPowerDeviceChange' | 'showUploadAndPrint'>>;
 }
 
 // Config defined in host
@@ -240,6 +258,17 @@ export interface TemperaturePreset {
   name: string;
   values: TemperaturePresetValues;
   gcode?: string;
+  /** default: one of the four every printer has; library: copied from the library; own: made or changed here. */
+  origin?: 'default' | 'library' | 'own';
+  libraryId?: string;
+  /** Where the numbers came from, e.g. "Polymaker PolyLite PLA". */
+  source?: string;
+  type?: string;
+  colour?: string;
+  /** Part-cooling fan, 0-100 %. */
+  partFan?: number;
+  /** The maker's published [min, max] ranges, in °C. */
+  maker?: { nozzle?: [number, number], bed?: [number, number] };
 }
 
 export interface TemperaturePresetValues {

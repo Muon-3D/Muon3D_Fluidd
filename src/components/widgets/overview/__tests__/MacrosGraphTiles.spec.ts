@@ -21,8 +21,8 @@ describe('MacrosTile', () => {
 
   it('renders with no data: says there are none', () => {
     const w = mountMacros(tileStore({ empty: true }))
-    expect(w.text()).toContain('Macros')
-    expect(w.text()).toContain('No macros')
+    expect(w.text()).toContain('Quick commands')
+    expect(w.text()).toContain('No quick commands')
     w.destroy()
   })
 
@@ -54,7 +54,7 @@ describe('MacrosTile', () => {
     withMacros(store, macroList)
     const w = mountMacros(store)
     await w.find('[data-tid="macros-all"]').trigger('click')
-    expect(w.find('[data-stub="dialog"] h2').text()).toBe('All macros')
+    expect(w.find('[data-stub="dialog"] h2').text()).toBe('All quick commands')
     await w.find('[data-tid="tile-more"]').trigger('click')
     expect(w.find('[data-menu="console"]').attributes('href')).toBe('/boxwood-367a/console')
     expect(w.find('[data-menu="manage"]').attributes('href')).toBe('/boxwood-367a/settings#macros')
@@ -63,7 +63,7 @@ describe('MacrosTile', () => {
 })
 
 describe('GraphTile', () => {
-  const mountGraph = (store: ReturnType<typeof tileStore>) => mount(GraphTile, tileMount(store, { stubs: { ...tileMount(store).stubs, 'thermal-graph': { props: ['windowSeconds', 'events', 'phone'], template: '<div data-stub="graph" :data-window="windowSeconds" />' } } }))
+  const mountGraph = (store: ReturnType<typeof tileStore>) => mount(GraphTile, tileMount(store, { propsData: { size: 'L' }, stubs: { ...tileMount(store).stubs, 'thermal-graph': { props: ['windowSeconds', 'events', 'phone'], template: '<div data-stub="graph" :data-window="windowSeconds" />' } } }))
 
   it('renders with no data: the graph still draws, with a range to pick', () => {
     const w = mountGraph(tileStore({ empty: true }))

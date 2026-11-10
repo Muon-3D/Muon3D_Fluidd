@@ -335,7 +335,7 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin, FilamentActi
     return [
       { id: 'n', icon: 'chevronUp', label: 'Head back', run: () => this.moveBy('Y', back * step()) },
       { id: 'w', icon: 'chevronLeft', label: 'Head left (X−)', run: () => this.moveBy('X', -step()) },
-      { id: 'home', icon: 'home', label: 'Home X and Y', run: () => this.home('XY') },
+      { id: 'home', icon: 'home', label: 'Home all', run: () => this.home() },
       { id: 'e', icon: 'chevronRight', label: 'Head right (X+)', run: () => this.moveBy('X', step()) },
       { id: 's', icon: 'chevronDown', label: 'Head forward', run: () => this.moveBy('Y', -back * step()) }
     ]
