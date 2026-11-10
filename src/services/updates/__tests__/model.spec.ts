@@ -302,3 +302,18 @@ describe('a fast failure with the printer clock behind, or a job id Fluidd has n
     expect(outcome(base, failed('old', '2026-11-02T12:00:00Z'))).toBeNull()
   })
 })
+
+describe('a verifying that never ends (bugs 2 and 10)', () => {
+  it('remembers when verifying began and calls it stale after 10 minutes', async () => {
+    const { remember, verifyStale, VERIFY_STALE_MS, updateHeadline } = await import('../model')
+    const status = { state: 'idle', requires_commit: true, current_version: '0.9.4' }
+    const first = remember(null, status, 1000)
+    expect(first?.verifyingSince).toBe(1000)
+    const later = remember(first, status, 1000 + VERIFY_STALE_MS + 1)
+    expect(later?.verifyingSince).toBe(1000)
+    expect(verifyStale(first, 2000)).toBe(false)
+    expect(verifyStale(later, 1000 + VERIFY_STALE_MS + 1)).toBe(true)
+    expect(updateHeadline('verifying', null, '0.9.4', true).title).toBe("Couldn't confirm the update")
+    expect(updateHeadline('verifying', null, '0.9.4').title).toBe('Verifying update')
+  })
+})
