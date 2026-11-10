@@ -3,10 +3,10 @@
 # service and the console are faked per test. See e2e/README.md.
 name: E2E
 
+# Manual only (Jack, 10 Nov 2026): no runs on paid GitHub runners for every PR.
+# Run the suite locally (npm run test:e2e) and paste the result in the PR.
 on:
-  pull_request:
-  push:
-    branches: [develop]
+  workflow_dispatch:
 
 permissions:
   contents: read
