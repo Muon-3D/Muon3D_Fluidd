@@ -72,8 +72,6 @@
 
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
-import WifiManagerCard from '@/components/widgets/wifi/WifiManagerCard.vue'
-import HotspotManagerCard from '@/components/widgets/wifi/HotspotManagerCard.vue'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
 
@@ -86,7 +84,12 @@ import { activeSlug } from '@/services/printer-pages'
  * dialogs: only a click outside both it and them, Esc, or a page change
  * closes it.
  */
-@Component({ components: { WifiManagerCard, HotspotManagerCard } })
+@Component({
+  components: {
+    WifiManagerCard: () => import('@/components/widgets/wifi/WifiManagerCard.vue'),
+    HotspotManagerCard: () => import('@/components/widgets/wifi/HotspotManagerCard.vue')
+  }
+})
 export default class NetworkQuickMenu extends Vue {
   @Prop({ type: String, required: true })
   readonly title!: string

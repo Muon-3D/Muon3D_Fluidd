@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { discoverSeries, sameChip } from '../series'
 
+const HOST = 'host:/sys/class/thermal/thermal_zone0/temp'
+
 const m1 = {
   configfile: {
     settings: {
@@ -22,8 +24,8 @@ const m1 = {
 
 describe('one line per chip', () => {
   it('knows which sections read the same chip', () => {
-    expect(sameChip(m1, 'temperature_fan CPU')).toBe('host:')
-    expect(sameChip(m1, 'temperature_sensor cm4')).toBe('host:')
+    expect(sameChip(m1, 'temperature_fan CPU')).toBe(HOST)
+    expect(sameChip(m1, 'temperature_sensor cm4')).toBe(HOST)
     expect(sameChip(m1, 'temperature_sensor mcu')).toBe('mcu:mcu')
     expect(sameChip(m1, 'temperature_sensor toolhead_mcu')).toBe('mcu:toolhead')
     expect(sameChip(m1, 'temperature_sensor chamber')).toBeNull()
@@ -33,7 +35,7 @@ describe('one line per chip', () => {
     const keys = discoverSeries(m1).filter(d => d.kind === 'temp').map(d => d.key)
     expect(keys).toContain('temperature_fan CPU')
     expect(keys).not.toContain('temperature_sensor cm4')
-    expect(keys.filter(k => sameChip(m1, k) === 'host:')).toHaveLength(1)
+    expect(keys.filter(k => sameChip(m1, k) === HOST)).toHaveLength(1)
   })
 
   it('keeps different MCUs and ordinary sensors', () => {
