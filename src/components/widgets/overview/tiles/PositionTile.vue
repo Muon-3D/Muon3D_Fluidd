@@ -29,12 +29,6 @@
         type="button"
         class="cbtn"
         :disabled="!canHome"
-        @click="home('XY')"
-      >Home X Y</button>
-      <button
-        type="button"
-        class="cbtn"
-        :disabled="!canHome"
         @click="home('Z')"
       >Home Z</button>
       <button
