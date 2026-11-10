@@ -86,7 +86,6 @@ import { activeSlug } from '@/services/printer-pages'
  */
 @Component({
   components: {
-    // Shown once the menu opens, so they load then (KAN-2013).
     WifiManagerCard: () => import('@/components/widgets/wifi/WifiManagerCard.vue'),
     HotspotManagerCard: () => import('@/components/widgets/wifi/HotspotManagerCard.vue')
   }

@@ -10,7 +10,8 @@ import { test, expect } from '../fixtures'
 import { usePrinter, PRESETS } from './printer'
 
 const GPU = process.platform === 'win32'
-test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
+// A service worker would answer the chunk without the route seeing it.
+test.use({ serviceWorkers: 'block', launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
 test.beforeEach(async ({ page }) => {
   await usePrinter(page, PRESETS.idleHomed())
   if (!GPU) await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
@@ -20,7 +21,7 @@ test('the Overview takes clicks with the stage\'s picture up, then the live M1 t
   const held: Route[] = []
   let release = false
   // The dev server's M1Live.vue and the production build's M1Live-<hash>.js.
-  await page.route(/\/M1Live[.-][^/]*$/, route => (release ? route.continue() : held.push(route)))
+  await page.context().route(/\/M1Live[.-][^/]*$/, route => (release ? route.continue() : held.push(route)))
 
   await open('/')
   const stage = page.locator('[data-cell="stage"]')
