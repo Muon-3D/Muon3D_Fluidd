@@ -1,0 +1,2084 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "generic-pla",
+      "brand": "Generic",
+      "name": "PLA",
+      "type": "PLA",
+      "colour": "#F2F2EE",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 240,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 70,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": true
+    },
+    {
+      "id": "generic-petg",
+      "brand": "Generic",
+      "name": "PETG",
+      "type": "PETG",
+      "colour": "#5FB0D8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 220,
+        "max": 260,
+        "default": 240
+      },
+      "bed": {
+        "min": 70,
+        "max": 90,
+        "default": 80
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": true
+    },
+    {
+      "id": "generic-abs",
+      "brand": "Generic",
+      "name": "ABS",
+      "type": "ABS",
+      "colour": "#E0C060",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 270,
+        "default": 250
+      },
+      "bed": {
+        "min": 90,
+        "max": 110,
+        "default": 100
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": true
+    },
+    {
+      "id": "generic-tpu",
+      "brand": "Generic",
+      "name": "TPU",
+      "type": "TPU",
+      "colour": "#D86A6A",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 210,
+        "max": 240,
+        "default": 225
+      },
+      "bed": {
+        "min": 40,
+        "max": 60,
+        "default": 50
+      },
+      "fan": 50,
+      "abrasive": false,
+      "testedOnM1": true
+    },
+    {
+      "id": "generic-asa",
+      "brand": "Generic",
+      "name": "ASA",
+      "type": "ASA",
+      "colour": "#9A9A9E",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 270,
+        "default": 255
+      },
+      "bed": {
+        "min": 90,
+        "max": 110,
+        "default": 100
+      },
+      "fan": 10,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "generic-pla-plus",
+      "brand": "Generic",
+      "name": "PLA+",
+      "type": "PLA",
+      "colour": "#ECECEC",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 70,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "generic-silk-pla",
+      "brand": "Generic",
+      "name": "Silk PLA",
+      "type": "PLA",
+      "colour": "#C9A84C",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "generic-matte-pla",
+      "brand": "Generic",
+      "name": "Matte PLA",
+      "type": "PLA",
+      "colour": "#E8E2D8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "generic-hips",
+      "brand": "Generic",
+      "name": "HIPS",
+      "type": "HIPS",
+      "colour": "#F0F0E8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 220,
+        "max": 250,
+        "default": 235
+      },
+      "bed": {
+        "min": 90,
+        "max": 110,
+        "default": 100
+      },
+      "fan": 20,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "generic-pc",
+      "brand": "Generic",
+      "name": "PC",
+      "type": "PC",
+      "colour": "#D8DCE0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 260,
+        "max": 300,
+        "default": 280
+      },
+      "bed": {
+        "min": 90,
+        "max": 110,
+        "default": 100
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "generic-pa-nylon",
+      "brand": "Generic",
+      "name": "PA (nylon)",
+      "type": "PA",
+      "colour": "#EDE8DC",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 280,
+        "default": 260
+      },
+      "bed": {
+        "min": 60,
+        "max": 90,
+        "default": 75
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "generic-pla-cf",
+      "brand": "Generic",
+      "name": "PLA-CF",
+      "type": "PLA-CF",
+      "colour": "#2A2A2C",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "generic-petg-cf",
+      "brand": "Generic",
+      "name": "PETG-CF",
+      "type": "PETG-CF",
+      "colour": "#262628",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 260,
+        "default": 245
+      },
+      "bed": {
+        "min": 70,
+        "max": 85,
+        "default": 80
+      },
+      "fan": 30,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "generic-pa-cf",
+      "brand": "Generic",
+      "name": "PA-CF",
+      "type": "PA-CF",
+      "colour": "#222224",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 260,
+        "max": 300,
+        "default": 280
+      },
+      "bed": {
+        "min": 70,
+        "max": 100,
+        "default": 85
+      },
+      "fan": 0,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-pla-basic",
+      "brand": "Bambu Lab",
+      "name": "PLA Basic",
+      "type": "PLA",
+      "colour": "#F5F5F5",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 230,
+        "default": 210
+      },
+      "bed": {
+        "min": 45,
+        "max": 65,
+        "default": 55
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-pla-matte",
+      "brand": "Bambu Lab",
+      "name": "PLA Matte",
+      "type": "PLA",
+      "colour": "#ECE6DA",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 230,
+        "default": 210
+      },
+      "bed": {
+        "min": 45,
+        "max": 65,
+        "default": 55
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-pla-silk",
+      "brand": "Bambu Lab",
+      "name": "PLA Silk",
+      "type": "PLA",
+      "colour": "#D4AF37",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 45,
+        "max": 65,
+        "default": 55
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-pla-tough",
+      "brand": "Bambu Lab",
+      "name": "PLA Tough",
+      "type": "PLA",
+      "colour": "#E8E8E0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 45,
+        "max": 65,
+        "default": 55
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-pla-cf",
+      "brand": "Bambu Lab",
+      "name": "PLA-CF",
+      "type": "PLA-CF",
+      "colour": "#2B2B2D",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 210,
+        "max": 240,
+        "default": 225
+      },
+      "bed": {
+        "min": 45,
+        "max": 65,
+        "default": 55
+      },
+      "fan": 100,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-petg-hf",
+      "brand": "Bambu Lab",
+      "name": "PETG HF",
+      "type": "PETG",
+      "colour": "#4A90C8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 260,
+        "default": 245
+      },
+      "bed": {
+        "min": 65,
+        "max": 75,
+        "default": 70
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-petg-translucent",
+      "brand": "Bambu Lab",
+      "name": "PETG Translucent",
+      "type": "PETG",
+      "colour": "#B8D8E8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 260,
+        "default": 245
+      },
+      "bed": {
+        "min": 65,
+        "max": 75,
+        "default": 70
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-petg-cf",
+      "brand": "Bambu Lab",
+      "name": "PETG-CF",
+      "type": "PETG-CF",
+      "colour": "#222222",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 270,
+        "default": 255
+      },
+      "bed": {
+        "min": 65,
+        "max": 75,
+        "default": 70
+      },
+      "fan": 30,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-abs",
+      "brand": "Bambu Lab",
+      "name": "ABS",
+      "type": "ABS",
+      "colour": "#E2E2E2",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 270,
+        "default": 255
+      },
+      "bed": {
+        "min": 90,
+        "max": 100,
+        "default": 95
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-asa",
+      "brand": "Bambu Lab",
+      "name": "ASA",
+      "type": "ASA",
+      "colour": "#9A9EA2",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 270,
+        "default": 255
+      },
+      "bed": {
+        "min": 90,
+        "max": 100,
+        "default": 95
+      },
+      "fan": 10,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-tpu-95a-hf",
+      "brand": "Bambu Lab",
+      "name": "TPU 95A HF",
+      "type": "TPU",
+      "colour": "#E05050",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 210,
+        "max": 240,
+        "default": 225
+      },
+      "bed": {
+        "min": 30,
+        "max": 50,
+        "default": 40
+      },
+      "fan": 50,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-pc",
+      "brand": "Bambu Lab",
+      "name": "PC",
+      "type": "PC",
+      "colour": "#DADDE0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 260,
+        "max": 280,
+        "default": 270
+      },
+      "bed": {
+        "min": 100,
+        "max": 110,
+        "default": 105
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-paht-cf",
+      "brand": "Bambu Lab",
+      "name": "PAHT-CF",
+      "type": "PA-CF",
+      "colour": "#262628",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 260,
+        "max": 290,
+        "default": 275
+      },
+      "bed": {
+        "min": 80,
+        "max": 100,
+        "default": 90
+      },
+      "fan": 0,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "bambu-lab-pet-cf",
+      "brand": "Bambu Lab",
+      "name": "PET-CF",
+      "type": "PET-CF",
+      "colour": "#202022",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 260,
+        "max": 290,
+        "default": 275
+      },
+      "bed": {
+        "min": 70,
+        "max": 90,
+        "default": 80
+      },
+      "fan": 0,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polylite-pla",
+      "brand": "Polymaker",
+      "name": "PolyLite PLA",
+      "type": "PLA",
+      "colour": "#2E6BD8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 230,
+        "default": 210
+      },
+      "bed": {
+        "min": 50,
+        "max": 70,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polyterra-pla",
+      "brand": "Polymaker",
+      "name": "PolyTerra PLA",
+      "type": "PLA",
+      "colour": "#D9D4CC",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 230,
+        "default": 210
+      },
+      "bed": {
+        "min": 50,
+        "max": 60,
+        "default": 55
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polylite-pla-pro",
+      "brand": "Polymaker",
+      "name": "PolyLite PLA Pro",
+      "type": "PLA",
+      "colour": "#F2F2EE",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 70,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polysonic-pla",
+      "brand": "Polymaker",
+      "name": "PolySonic PLA",
+      "type": "PLA",
+      "colour": "#E87A3A",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 240,
+        "default": 220
+      },
+      "bed": {
+        "min": 50,
+        "max": 70,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polylite-silk-pla",
+      "brand": "Polymaker",
+      "name": "PolyLite Silk PLA",
+      "type": "PLA",
+      "colour": "#C0A060",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 70,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polylite-petg",
+      "brand": "Polymaker",
+      "name": "PolyLite PETG",
+      "type": "PETG",
+      "colour": "#3A6FB0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 250,
+        "default": 240
+      },
+      "bed": {
+        "min": 70,
+        "max": 80,
+        "default": 75
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polymax-petg",
+      "brand": "Polymaker",
+      "name": "PolyMax PETG",
+      "type": "PETG",
+      "colour": "#D0D0D0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 260,
+        "default": 250
+      },
+      "bed": {
+        "min": 70,
+        "max": 80,
+        "default": 75
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polylite-petg-cf",
+      "brand": "Polymaker",
+      "name": "PolyLite PETG-CF",
+      "type": "PETG-CF",
+      "colour": "#222222",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 270,
+        "default": 255
+      },
+      "bed": {
+        "min": 70,
+        "max": 80,
+        "default": 75
+      },
+      "fan": 30,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polylite-abs",
+      "brand": "Polymaker",
+      "name": "PolyLite ABS",
+      "type": "ABS",
+      "colour": "#E8E8E8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 245,
+        "max": 265,
+        "default": 255
+      },
+      "bed": {
+        "min": 90,
+        "max": 105,
+        "default": 100
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polylite-asa",
+      "brand": "Polymaker",
+      "name": "PolyLite ASA",
+      "type": "ASA",
+      "colour": "#A0A0A0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 260,
+        "default": 250
+      },
+      "bed": {
+        "min": 75,
+        "max": 95,
+        "default": 85
+      },
+      "fan": 10,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polyflex-tpu95",
+      "brand": "Polymaker",
+      "name": "PolyFlex TPU95",
+      "type": "TPU",
+      "colour": "#E06A6A",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 210,
+        "max": 230,
+        "default": 220
+      },
+      "bed": {
+        "min": 25,
+        "max": 60,
+        "default": 40
+      },
+      "fan": 50,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polymax-pc",
+      "brand": "Polymaker",
+      "name": "PolyMax PC",
+      "type": "PC",
+      "colour": "#D8DCE0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 250,
+        "max": 270,
+        "default": 260
+      },
+      "bed": {
+        "min": 90,
+        "max": 105,
+        "default": 100
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polylite-pc",
+      "brand": "Polymaker",
+      "name": "PolyLite PC",
+      "type": "PC",
+      "colour": "#E0E4E8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 250,
+        "max": 270,
+        "default": 260
+      },
+      "bed": {
+        "min": 90,
+        "max": 105,
+        "default": 100
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-fiberon-pa6-cf20",
+      "brand": "Polymaker",
+      "name": "Fiberon PA6-CF20",
+      "type": "PA-CF",
+      "colour": "#262628",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 280,
+        "max": 300,
+        "default": 290
+      },
+      "bed": {
+        "min": 25,
+        "max": 50,
+        "default": 40
+      },
+      "fan": 0,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-fiberon-pa12-cf10",
+      "brand": "Polymaker",
+      "name": "Fiberon PA12-CF10",
+      "type": "PA-CF",
+      "colour": "#2A2A2C",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 260,
+        "max": 300,
+        "default": 280
+      },
+      "bed": {
+        "min": 25,
+        "max": 50,
+        "default": 40
+      },
+      "fan": 0,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "polymaker-polymide-copa",
+      "brand": "Polymaker",
+      "name": "PolyMide CoPA",
+      "type": "PA",
+      "colour": "#EDE8DC",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 250,
+        "max": 270,
+        "default": 260
+      },
+      "bed": {
+        "min": 25,
+        "max": 50,
+        "default": 40
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-pla-plus",
+      "brand": "eSun",
+      "name": "PLA+",
+      "type": "PLA",
+      "colour": "#F0F0F0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 205,
+        "max": 225,
+        "default": 215
+      },
+      "bed": {
+        "min": 60,
+        "max": 80,
+        "default": 70
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-pla-plus-matte",
+      "brand": "eSun",
+      "name": "PLA+ Matte",
+      "type": "PLA",
+      "colour": "#C9C9C9",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 205,
+        "max": 225,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 70,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-pla-silk",
+      "brand": "eSun",
+      "name": "PLA Silk",
+      "type": "PLA",
+      "colour": "#D4B04C",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 230,
+        "default": 210
+      },
+      "bed": {
+        "min": 45,
+        "max": 65,
+        "default": 55
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-epla-cf",
+      "brand": "eSun",
+      "name": "ePLA-CF",
+      "type": "PLA-CF",
+      "colour": "#2A2A2A",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 210,
+        "max": 240,
+        "default": 225
+      },
+      "bed": {
+        "min": 45,
+        "max": 60,
+        "default": 50
+      },
+      "fan": 100,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-petg",
+      "brand": "eSun",
+      "name": "PETG",
+      "type": "PETG",
+      "colour": "#4AA0D0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 250,
+        "default": 240
+      },
+      "bed": {
+        "min": 75,
+        "max": 85,
+        "default": 80
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-epetg-cf",
+      "brand": "eSun",
+      "name": "ePETG-CF",
+      "type": "PETG-CF",
+      "colour": "#242424",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 260,
+        "default": 245
+      },
+      "bed": {
+        "min": 70,
+        "max": 85,
+        "default": 80
+      },
+      "fan": 30,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-abs-plus",
+      "brand": "eSun",
+      "name": "ABS+",
+      "type": "ABS",
+      "colour": "#E8E8E8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 270,
+        "default": 250
+      },
+      "bed": {
+        "min": 95,
+        "max": 110,
+        "default": 100
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-asa",
+      "brand": "eSun",
+      "name": "ASA",
+      "type": "ASA",
+      "colour": "#9EA2A6",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 260,
+        "default": 250
+      },
+      "bed": {
+        "min": 80,
+        "max": 100,
+        "default": 90
+      },
+      "fan": 10,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-etpu-95a",
+      "brand": "eSun",
+      "name": "eTPU-95A",
+      "type": "TPU",
+      "colour": "#D86060",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 220,
+        "default": 210
+      },
+      "bed": {
+        "min": 30,
+        "max": 60,
+        "default": 45
+      },
+      "fan": 50,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-epc",
+      "brand": "eSun",
+      "name": "ePC",
+      "type": "PC",
+      "colour": "#D8DCE0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 250,
+        "max": 270,
+        "default": 260
+      },
+      "bed": {
+        "min": 90,
+        "max": 110,
+        "default": 100
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-epa-cf",
+      "brand": "eSun",
+      "name": "ePA-CF",
+      "type": "PA-CF",
+      "colour": "#222224",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 250,
+        "max": 270,
+        "default": 260
+      },
+      "bed": {
+        "min": 40,
+        "max": 60,
+        "default": 50
+      },
+      "fan": 0,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "esun-easa-cf",
+      "brand": "eSun",
+      "name": "eASA-CF",
+      "type": "ASA-CF",
+      "colour": "#262628",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 250,
+        "max": 270,
+        "default": 260
+      },
+      "bed": {
+        "min": 80,
+        "max": 100,
+        "default": 90
+      },
+      "fan": 10,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "prusament-pla",
+      "brand": "Prusament",
+      "name": "PLA",
+      "type": "PLA",
+      "colour": "#F07B22",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 205,
+        "max": 225,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "prusament-pla-blend",
+      "brand": "Prusament",
+      "name": "PLA Blend",
+      "type": "PLA",
+      "colour": "#E8E8E0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 205,
+        "max": 225,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "prusament-rpla",
+      "brand": "Prusament",
+      "name": "rPLA",
+      "type": "PLA",
+      "colour": "#8B8F94",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 205,
+        "max": 225,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "prusament-petg",
+      "brand": "Prusament",
+      "name": "PETG",
+      "type": "PETG",
+      "colour": "#F08030",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 250,
+        "default": 240
+      },
+      "bed": {
+        "min": 70,
+        "max": 90,
+        "default": 80
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "prusament-petg-carbon-fiber",
+      "brand": "Prusament",
+      "name": "PETG Carbon Fiber",
+      "type": "PETG-CF",
+      "colour": "#2A2A2C",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 250,
+        "max": 270,
+        "default": 260
+      },
+      "bed": {
+        "min": 80,
+        "max": 90,
+        "default": 85
+      },
+      "fan": 30,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "prusament-asa",
+      "brand": "Prusament",
+      "name": "ASA",
+      "type": "ASA",
+      "colour": "#A0A4A8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 250,
+        "max": 270,
+        "default": 260
+      },
+      "bed": {
+        "min": 100,
+        "max": 110,
+        "default": 105
+      },
+      "fan": 10,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "prusament-pc-blend",
+      "brand": "Prusament",
+      "name": "PC Blend",
+      "type": "PC",
+      "colour": "#D8DCE0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 265,
+        "max": 285,
+        "default": 275
+      },
+      "bed": {
+        "min": 100,
+        "max": 115,
+        "default": 110
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "prusament-pc-blend-carbon-fiber",
+      "brand": "Prusament",
+      "name": "PC Blend Carbon Fiber",
+      "type": "PC-CF",
+      "colour": "#262628",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 275,
+        "max": 285,
+        "default": 280
+      },
+      "bed": {
+        "min": 100,
+        "max": 115,
+        "default": 110
+      },
+      "fan": 0,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "prusament-pa11-carbon-fiber",
+      "brand": "Prusament",
+      "name": "PA11 Carbon Fiber",
+      "type": "PA-CF",
+      "colour": "#222224",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 275,
+        "max": 295,
+        "default": 285
+      },
+      "bed": {
+        "min": 100,
+        "max": 110,
+        "default": 105
+      },
+      "fan": 0,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "prusament-rpetg",
+      "brand": "Prusament",
+      "name": "rPETG",
+      "type": "PETG",
+      "colour": "#6A9AC0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 250,
+        "default": 240
+      },
+      "bed": {
+        "min": 70,
+        "max": 90,
+        "default": 80
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-pla",
+      "brand": "Elegoo",
+      "name": "PLA",
+      "type": "PLA",
+      "colour": "#F2F2EE",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 220,
+        "default": 205
+      },
+      "bed": {
+        "min": 45,
+        "max": 60,
+        "default": 50
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-pla-plus",
+      "brand": "Elegoo",
+      "name": "PLA+",
+      "type": "PLA",
+      "colour": "#E8E8E8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 205,
+        "max": 230,
+        "default": 220
+      },
+      "bed": {
+        "min": 55,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-matte-pla",
+      "brand": "Elegoo",
+      "name": "Matte PLA",
+      "type": "PLA",
+      "colour": "#E8E2D8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 230,
+        "default": 210
+      },
+      "bed": {
+        "min": 45,
+        "max": 60,
+        "default": 50
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-silk-pla",
+      "brand": "Elegoo",
+      "name": "Silk PLA",
+      "type": "PLA",
+      "colour": "#C8A850",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 230,
+        "default": 210
+      },
+      "bed": {
+        "min": 45,
+        "max": 60,
+        "default": 50
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-rapid-pla-plus",
+      "brand": "Elegoo",
+      "name": "Rapid PLA+",
+      "type": "PLA",
+      "colour": "#3A9F4F",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 240,
+        "default": 220
+      },
+      "bed": {
+        "min": 45,
+        "max": 65,
+        "default": 55
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-pla-cf",
+      "brand": "Elegoo",
+      "name": "PLA-CF",
+      "type": "PLA-CF",
+      "colour": "#2A2A2C",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 45,
+        "max": 65,
+        "default": 55
+      },
+      "fan": 100,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-petg",
+      "brand": "Elegoo",
+      "name": "PETG",
+      "type": "PETG",
+      "colour": "#5A8AD0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 250,
+        "default": 240
+      },
+      "bed": {
+        "min": 70,
+        "max": 80,
+        "default": 75
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-rapid-petg",
+      "brand": "Elegoo",
+      "name": "Rapid PETG",
+      "type": "PETG",
+      "colour": "#4A80C0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 260,
+        "default": 245
+      },
+      "bed": {
+        "min": 70,
+        "max": 85,
+        "default": 80
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-abs",
+      "brand": "Elegoo",
+      "name": "ABS",
+      "type": "ABS",
+      "colour": "#E0E0E0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 260,
+        "default": 250
+      },
+      "bed": {
+        "min": 90,
+        "max": 100,
+        "default": 95
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-asa",
+      "brand": "Elegoo",
+      "name": "ASA",
+      "type": "ASA",
+      "colour": "#9A9EA2",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 260,
+        "default": 250
+      },
+      "bed": {
+        "min": 90,
+        "max": 100,
+        "default": 95
+      },
+      "fan": 10,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "elegoo-tpu-95a",
+      "brand": "Elegoo",
+      "name": "TPU 95A",
+      "type": "TPU",
+      "colour": "#D86A6A",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 210,
+        "max": 230,
+        "default": 220
+      },
+      "bed": {
+        "min": 40,
+        "max": 60,
+        "default": 50
+      },
+      "fan": 50,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-pla",
+      "brand": "Sunlu",
+      "name": "PLA",
+      "type": "PLA",
+      "colour": "#F2F2EE",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-pla-plus",
+      "brand": "Sunlu",
+      "name": "PLA+",
+      "type": "PLA",
+      "colour": "#E8E8E8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 205,
+        "max": 225,
+        "default": 215
+      },
+      "bed": {
+        "min": 55,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-pla-matte",
+      "brand": "Sunlu",
+      "name": "PLA Matte",
+      "type": "PLA",
+      "colour": "#E0DAD0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-silk-pla-plus",
+      "brand": "Sunlu",
+      "name": "Silk PLA+",
+      "type": "PLA",
+      "colour": "#D4B04C",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 205,
+        "max": 225,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-high-speed-pla",
+      "brand": "Sunlu",
+      "name": "High Speed PLA",
+      "type": "PLA",
+      "colour": "#F4C430",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 240,
+        "default": 220
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-petg",
+      "brand": "Sunlu",
+      "name": "PETG",
+      "type": "PETG",
+      "colour": "#5FA0D0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 250,
+        "default": 240
+      },
+      "bed": {
+        "min": 70,
+        "max": 80,
+        "default": 75
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-abs",
+      "brand": "Sunlu",
+      "name": "ABS",
+      "type": "ABS",
+      "colour": "#E4E4E4",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 260,
+        "default": 250
+      },
+      "bed": {
+        "min": 95,
+        "max": 105,
+        "default": 100
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-asa",
+      "brand": "Sunlu",
+      "name": "ASA",
+      "type": "ASA",
+      "colour": "#A0A0A0",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 260,
+        "default": 250
+      },
+      "bed": {
+        "min": 90,
+        "max": 100,
+        "default": 95
+      },
+      "fan": 10,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-tpu",
+      "brand": "Sunlu",
+      "name": "TPU",
+      "type": "TPU",
+      "colour": "#D86A6A",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 40,
+        "max": 60,
+        "default": 50
+      },
+      "fan": 50,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-pla-cf",
+      "brand": "Sunlu",
+      "name": "PLA-CF",
+      "type": "PLA-CF",
+      "colour": "#2A2A2C",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "sunlu-petg-cf",
+      "brand": "Sunlu",
+      "name": "PETG-CF",
+      "type": "PETG-CF",
+      "colour": "#242426",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 260,
+        "default": 245
+      },
+      "bed": {
+        "min": 70,
+        "max": 85,
+        "default": 80
+      },
+      "fan": 30,
+      "abrasive": true,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-pla",
+      "brand": "Overture",
+      "name": "PLA",
+      "type": "PLA",
+      "colour": "#F2F2EE",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 220,
+        "default": 205
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-pla-professional",
+      "brand": "Overture",
+      "name": "PLA Professional",
+      "type": "PLA",
+      "colour": "#E8E8E8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-matte-pla",
+      "brand": "Overture",
+      "name": "Matte PLA",
+      "type": "PLA",
+      "colour": "#E4DED4",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 230,
+        "default": 210
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-silk-pla",
+      "brand": "Overture",
+      "name": "Silk PLA",
+      "type": "PLA",
+      "colour": "#C8A858",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-rock-pla",
+      "brand": "Overture",
+      "name": "Rock PLA",
+      "type": "PLA",
+      "colour": "#8B8F94",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 190,
+        "max": 230,
+        "default": 210
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-petg",
+      "brand": "Overture",
+      "name": "PETG",
+      "type": "PETG",
+      "colour": "#4A8AC8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 230,
+        "max": 250,
+        "default": 240
+      },
+      "bed": {
+        "min": 70,
+        "max": 85,
+        "default": 80
+      },
+      "fan": 40,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-abs",
+      "brand": "Overture",
+      "name": "ABS",
+      "type": "ABS",
+      "colour": "#E4E4E4",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 260,
+        "default": 250
+      },
+      "bed": {
+        "min": 95,
+        "max": 110,
+        "default": 100
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-asa",
+      "brand": "Overture",
+      "name": "ASA",
+      "type": "ASA",
+      "colour": "#A0A4A8",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 260,
+        "default": 250
+      },
+      "bed": {
+        "min": 90,
+        "max": 110,
+        "default": 100
+      },
+      "fan": 10,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-tpu",
+      "brand": "Overture",
+      "name": "TPU",
+      "type": "TPU",
+      "colour": "#D86A6A",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 210,
+        "max": 230,
+        "default": 220
+      },
+      "bed": {
+        "min": 25,
+        "max": 60,
+        "default": 40
+      },
+      "fan": 50,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-nylon",
+      "brand": "Overture",
+      "name": "Nylon",
+      "type": "PA",
+      "colour": "#EDE8DC",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 240,
+        "max": 270,
+        "default": 255
+      },
+      "bed": {
+        "min": 60,
+        "max": 80,
+        "default": 70
+      },
+      "fan": 0,
+      "abrasive": false,
+      "testedOnM1": false
+    },
+    {
+      "id": "overture-pla-cf",
+      "brand": "Overture",
+      "name": "PLA-CF",
+      "type": "PLA-CF",
+      "colour": "#2A2A2C",
+      "diameter": 1.75,
+      "nozzle": {
+        "min": 200,
+        "max": 230,
+        "default": 215
+      },
+      "bed": {
+        "min": 50,
+        "max": 65,
+        "default": 60
+      },
+      "fan": 100,
+      "abrasive": true,
+      "testedOnM1": false
+    }
+  ]
+}

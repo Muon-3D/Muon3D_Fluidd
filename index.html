@@ -19,6 +19,17 @@
             html.classList.add('muon-font')
           })
         }
+        /* config.json is asked for here, as the HTML is parsed, not once the
+           1.6 MB entry script has been compiled and run: on a slow phone or
+           laptop that took seconds before the first request went out (KAN-2011).
+           init.ts takes the answer; if this failed it asks again itself. */
+        try {
+          if (!/^\/(?:setup|sign-in)(?:\/|$)/.test(window.location.pathname)) {
+            window.__muonHostConfig = fetch('%BASE_URL%config.json')
+              .then(function (r) { return r.ok ? r.json() : null })
+              .catch(function () { return null })
+          }
+        } catch (e) {}
         /* A head start to the printer and the console. Never on /setup or
            /sign-in: the setup page may reach only the printer (05 §7). */
         try {

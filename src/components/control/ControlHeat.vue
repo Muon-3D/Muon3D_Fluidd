@@ -14,12 +14,27 @@
         >
           More
         </summary>
-        <a
-          class="heat__edit"
-          :href="materialsLink"
-          @click.prevent="$router.push(materialsLink)"
-        >Edit materials</a>
+        <div class="heat__menu">
+          <button
+            type="button"
+            class="heat__edit"
+            data-tid="heat-add-material"
+            @click="addMaterial"
+          >
+            Add a material
+          </button>
+          <a
+            class="heat__edit"
+            :href="materialsLink"
+            data-tid="heat-see-materials"
+            @click.prevent="$router.push(materialsLink)"
+          >See materials</a>
+        </div>
       </details>
+      <add-material-dialog
+        v-if="adding"
+        v-model="adding"
+      />
     </template>
 
     <div
@@ -43,7 +58,7 @@
         v-if="!materials.length"
         class="heat__none"
       >
-        No materials yet. Add them in Settings › Thermal presets.
+        No materials yet. Add them in Settings › Materials.
       </p>
     </div>
     <div
@@ -139,6 +154,7 @@ import type { Heater, Sensor } from '@/store/printer/types'
 import ControlTaskFold from './ControlTaskFold.vue'
 import ControlCard from './ControlCard.vue'
 import NumberField from './NumberField.vue'
+const AddMaterialDialog = () => import('@/components/settings/presets/AddMaterialDialog.vue')
 
 interface Stepper {
   heater: Heater;
@@ -149,10 +165,17 @@ interface Stepper {
 /**
  * Materials, nudges and exact targets share one panel at every width.
  */
-@Component({ components: { ControlCard, NumberField, ControlTaskFold } })
+@Component({ components: { ControlCard, NumberField, ControlTaskFold, AddMaterialDialog } })
 export default class ControlHeat extends Mixins(ControlMixin) {
   @Prop({ type: Boolean })
   readonly phone?: boolean
+
+  adding = false
+
+  addMaterial (event: Event) {
+    (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')
+    this.adding = true
+  }
 
   get ready (): boolean {
     return this.controlReady
@@ -193,7 +216,7 @@ export default class ControlHeat extends Mixins(ControlMixin) {
 
 <style lang="scss" scoped>
   .heat__more { position: relative; }
-  .heat__more .heat__edit { position: absolute; right: 0; top: 100%; z-index: 10; min-width: 140px; padding: 12px; border: 1px solid var(--m3d-border); border-radius: 12px; background: var(--m3d-surface); }
+  .heat__more .heat__menu { display: flex; flex-direction: column; gap: 10px; position: absolute; right: 0; top: 100%; z-index: 10; min-width: 140px; padding: 12px; border: 1px solid var(--m3d-border); border-radius: 12px; background: var(--m3d-surface); }
   .heat__edit {
     color: var(--m3d-text-muted) !important;
     font-size: 13px;
