@@ -266,3 +266,10 @@ it('has no Home Z between Z+ and Z−: the live Z readout is there; Home Z is in
   expect(s.wrapper.find('[data-tid="home-z"]').element.closest('.move__homes')).not.toBeNull()
   s.wrapper.destroy()
 })
+
+it('offers the step sizes set in Settings › Moving and extruding, for the head and the plate', () => {
+  const s = show({})
+  s.store.state.config.uiSettings = { general: { toolheadXYMoveDistances: [5, 25], toolheadZMoveDistances: [0.2, 5] } }
+  expect(s.vm.stepOptions.map((o: { value: number }) => o.value)).toEqual([0.2, 5, 25])
+  s.wrapper.destroy()
+})

@@ -41,20 +41,19 @@ test.describe('KAN-1951: print mode only', () => {
 })
 
 test.describe('KAN-1953 / KAN-1954: the filament box', () => {
-  test('Load and Unload are inside the box, side by side, sharing its full width', async ({ page, open }) => {
+  test('Load and Unload sit in the panel header, and Heat is a full-width bottom button', async ({ page, open }) => {
     await usePrinter(page, idle())
     await open('/control')
     await page.getByTestId('chip-filament').click()
     const panel = page.getByTestId('material-picker')
     await expect(panel.getByTestId('material-load')).toBeVisible()
-    const box = await panel.getByTestId('material-load-unload').boundingBox()
+    await expect(panel.getByTestId('material-unload')).toBeVisible()
+    const box = await panel.boundingBox()
     const load = await panel.getByTestId('material-load').boundingBox()
     const unload = await panel.getByTestId('material-unload').boundingBox()
     if (!box || !load || !unload) throw new Error('not on screen')
-    expect(Math.abs(load.width - unload.width)).toBeLessThan(2)
+    expect(load.y).toBeLessThan(box.y + 60)
     expect(Math.abs(load.y - unload.y)).toBeLessThan(2)
-    expect(load.width + unload.width).toBeGreaterThan(box.width - 16)
-    expect(Math.abs(load.x - box.x)).toBeLessThan(2)
   })
 
   test('the mock printer loads, and the box and panel update live', async ({ page, open }) => {

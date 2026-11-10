@@ -1,246 +1,54 @@
 <template>
-  <v-menu
-    v-model="open"
-    :close-on-content-click="false"
-    offset-y
-    :nudge-bottom="6"
-    min-width="280"
-    max-width="320"
-    content-class="matp"
-  >
-    <template #activator="{ on, attrs }">
-      <slot
-        name="activator"
-        v-bind="{ on, attrs, disabled: !klippyReady }"
-      >
-        <button
-          type="button"
-          class="matp__chip"
-          :disabled="!klippyReady"
-          aria-haspopup="listbox"
-          :aria-expanded="open ? 'true' : 'false'"
-          data-tid="chip-filament"
-          v-bind="attrs"
-          v-on="on"
-        >
-          <span
-            class="matp__swatch"
-            :style="{ background: shown && shown.colour ? shown.colour : 'transparent' }"
-          />
-          {{ chipText }}
-          <frame-icon
-            name="chevronDown"
-            small
-          />
-        </button>
-      </slot>
-    </template>
-
-    <div
-      class="matp__panel"
-      data-tid="material-picker"
+  <span class="matp__root">
+    <v-menu
+      v-model="open"
+      :close-on-content-click="false"
+      offset-y
+      :nudge-bottom="6"
+      min-width="280"
+      max-width="320"
+      content-class="matp"
     >
-      <p class="matp__title">
-        What's loaded?
-      </p>
-      <div
-        role="listbox"
-        aria-label="Material"
-        class="matp__list"
-        data-tid="material-shortlist"
-      >
-        <button
-          v-for="m in pinnedChoices"
-          :key="m.name"
-          type="button"
-          role="option"
-          class="matp__row"
-          :class="{ 'matp__row--on': loadedMaterial && loadedMaterial.name === m.name }"
-          :aria-selected="loadedMaterial && loadedMaterial.name === m.name ? 'true' : 'false'"
-          :disabled="busy"
-          :data-tid="`material-${m.name}`"
-          @click="choose(m)"
+      <template #activator="{ on, attrs }">
+        <slot
+          name="activator"
+          v-bind="{ on, attrs, disabled: !klippyReady }"
         >
-          <span
-            class="matp__swatch"
-            :style="{ background: m.colour }"
-          />
-          <b>{{ m.name }}</b>
-          <span class="matp__temps">{{ temps(m) }}</span>
-          <frame-icon
-            v-if="loadedMaterial && loadedMaterial.name === m.name"
-            name="check"
-            small
-          />
-        </button>
-      </div>
-      <p
-        v-if="!pinnedChoices.length"
-        class="matp__note"
-      >
-        Pin materials from See all to build your shortlist.
-      </p>
-      <button
-        type="button"
-        class="matp__browse"
-        data-tid="material-see-all"
-        @click="showAll = true"
-      >
-        See all materials
-      </button>
-      <v-dialog
-        v-model="showAll"
-        max-width="420"
-        aria-label="All materials"
-      >
-        <div class="matp__panel">
-          <h3>All materials</h3>
-          <input
-            v-model="search"
-            type="search"
-            class="matp__search"
-            aria-label="Search materials"
-            placeholder="Search materials"
-          >
-          <div data-tid="material-catalog">
-            <ul class="matp__list matp__catalog">
-              <li
-                v-for="m in filteredMaterials"
-                :key="m.name"
-                class="matp__catalog-row"
-              >
-                <button
-                  type="button"
-                  class="matp__row"
-                  :class="{ 'matp__row--on': loadedMaterial && loadedMaterial.name === m.name }"
-                  :aria-pressed="loadedMaterial && loadedMaterial.name === m.name ? 'true' : 'false'"
-                  :disabled="busy"
-                  :data-tid="`catalog-material-${m.name}`"
-                  @click="choose(m)"
-                >
-                  <span
-                    class="matp__swatch"
-                    :style="{ background: m.colour }"
-                  />
-                  <b>{{ m.name }}</b>
-                  <span class="matp__temps">{{ temps(m) }}</span>
-                </button>
-                <button
-                  type="button"
-                  class="matp__pin"
-                  :aria-label="`${isPinned(m) ? 'Unpin' : 'Pin'} ${m.name}`"
-                  :aria-pressed="isPinned(m) ? 'true' : 'false'"
-                  @click="togglePin(m)"
-                >
-                  {{ isPinned(m) ? 'Unpin' : 'Pin' }}
-                </button>
-              </li>
-            </ul>
-            <p
-              v-if="!filteredMaterials.length"
-              class="matp__note"
-              role="status"
-            >
-              No materials found.
-            </p>
-          </div>
-          <p
-            v-if="busy"
-            class="matp__note"
-          >
-            Material selection is locked while printing or paused.
-          </p>
           <button
             type="button"
-            class="matp__browse"
-            data-tid="material-catalog-done"
-            @click="showAll = false"
+            class="matp__chip"
+            :disabled="!klippyReady"
+            aria-haspopup="listbox"
+            :aria-expanded="open ? 'true' : 'false'"
+            data-tid="chip-filament"
+            v-bind="attrs"
+            v-on="on"
           >
-            Done
+            <span
+              class="matp__swatch"
+              :style="{ background: shown && shown.colour ? shown.colour : 'transparent' }"
+            />
+            {{ chipText }}
+            <frame-icon
+              name="chevronDown"
+              small
+            />
           </button>
-        </div>
-      </v-dialog>
-      <p
-        v-if="busy"
-        class="matp__note"
-      >
-        Not while printing: the print was sliced for what's loaded.
-      </p>
-      <p class="matp__title">
-        Its colour<span
-          v-if="loadedColour"
-          class="matp__colour-name"
-        > · {{ loadedColourName }}</span>
-      </p>
+        </slot>
+      </template>
+
       <div
-        role="listbox"
-        aria-label="Colour"
-        class="matp__colours"
-        data-tid="material-colours"
+        class="matp__panel"
+        data-tid="material-picker"
       >
-        <button
-          v-for="c in colours"
-          :key="c.colour"
-          type="button"
-          role="option"
-          class="matp__colour"
-          :class="{ 'matp__colour--on': loadedColour === c.colour }"
-          :style="{ background: c.colour }"
-          :title="c.name"
-          :aria-label="c.name"
-          :aria-selected="loadedColour === c.colour ? 'true' : 'false'"
-          :data-tid="`colour-${c.name}`"
-          @click="chooseColour(c.colour)"
-        />
-        <label
-          class="matp__colour matp__colour--other"
-          :class="{ 'matp__colour--on': loadedColour && !isListed(loadedColour) }"
-          :style="loadedColour && !isListed(loadedColour) ? { background: loadedColour } : undefined"
-          title="Another colour"
-        >
-          <frame-icon
-            v-if="!loadedColour || isListed(loadedColour)"
-            name="plus"
-            small
-          />
-          <input
-            type="color"
-            class="matp__colour-input"
-            aria-label="Another colour"
-            :value="loadedColour || '#888888'"
-            data-tid="colour-other"
-            @change="onOtherColour"
-          >
-        </label>
-      </div>
-      <div
-        v-if="loadedMaterial || loadMacro || unloadMacro"
-        class="matp__actions"
-        data-tid="material-actions"
-      >
-        <button
-          v-if="loadedMaterial"
-          type="button"
-          class="cbtn cbtn--primary"
-          :disabled="!klippyReady || busy"
-          data-tid="material-heat"
-          @click="heat"
-        >
-          <frame-icon
-            name="flame"
-            small
-          />
-          Heat for {{ loadedMaterial.name }}
-        </button>
-        <div
-          v-if="loadMacro || unloadMacro"
-          class="matp__filament"
-          data-tid="material-load-unload"
-        >
+        <div class="matp__header">
+          <p class="matp__title">
+            What's loaded?
+          </p>
           <button
             v-if="loadMacro"
             type="button"
-            class="cbtn"
+            class="matp__icon-btn"
             :disabled="!klippyReady || loadPlan.kind === 'none'"
             :title="loadPlan.kind === 'none' ? loadPlan.reason : 'Load filament'"
             aria-label="Load filament"
@@ -251,12 +59,11 @@
               name="down"
               small
             />
-            Load
           </button>
           <button
             v-if="unloadMacro"
             type="button"
-            class="cbtn"
+            class="matp__icon-btn"
             :disabled="!klippyReady || unloadPlan.kind === 'none'"
             :title="unloadPlan.kind === 'none' ? unloadPlan.reason : 'Unload filament'"
             aria-label="Unload filament"
@@ -267,19 +74,137 @@
               name="up"
               small
             />
-            Unload
           </button>
         </div>
+        <div
+          role="listbox"
+          aria-label="Material"
+          class="matp__list"
+          data-tid="material-shortlist"
+        >
+          <button
+            v-for="m in pinnedChoices"
+            :key="m.name"
+            type="button"
+            role="option"
+            class="matp__row"
+            :class="{ 'matp__row--on': loadedMaterial && loadedMaterial.name === m.name }"
+            :aria-selected="loadedMaterial && loadedMaterial.name === m.name ? 'true' : 'false'"
+            :disabled="busy"
+            :data-tid="`material-${m.name}`"
+            @click="choose(m)"
+          >
+            <span
+              class="matp__swatch"
+              :style="{ background: m.colour }"
+            />
+            <b>{{ m.name }}</b>
+            <span class="matp__temps">{{ temps(m) }}</span>
+            <frame-icon
+              v-if="loadedMaterial && loadedMaterial.name === m.name"
+              name="check"
+              small
+            />
+          </button>
+          <button
+            type="button"
+            class="matp__row matp__add"
+            data-tid="material-picker-add"
+            @click="startAdding"
+          >
+            <frame-icon
+              name="plus"
+              small
+            />
+            <b>Add</b>
+          </button>
+        </div>
+        <p
+          v-if="busy"
+          class="matp__note"
+        >
+          Not while printing: the print was sliced for what's loaded.
+        </p>
+        <p class="matp__title">
+          Its colour<span
+            v-if="loadedColour"
+            class="matp__colour-name"
+          > · {{ loadedColourName }}</span>
+        </p>
+        <div
+          role="listbox"
+          aria-label="Colour"
+          class="matp__colours"
+          data-tid="material-colours"
+        >
+          <button
+            v-for="c in colours"
+            :key="c.colour"
+            type="button"
+            role="option"
+            class="matp__colour"
+            :class="{ 'matp__colour--on': loadedColour === c.colour }"
+            :style="{ background: c.colour }"
+            :title="c.name"
+            :aria-label="c.name"
+            :aria-selected="loadedColour === c.colour ? 'true' : 'false'"
+            :data-tid="`colour-${c.name}`"
+            @click="chooseColour(c.colour)"
+          />
+          <label
+            class="matp__colour matp__colour--other"
+            :class="{ 'matp__colour--on': loadedColour && !isListed(loadedColour) }"
+            :style="loadedColour && !isListed(loadedColour) ? { background: loadedColour } : undefined"
+            title="Another colour"
+          >
+            <frame-icon
+              v-if="!loadedColour || isListed(loadedColour)"
+              name="plus"
+              small
+            />
+            <input
+              type="color"
+              class="matp__colour-input"
+              aria-label="Another colour"
+              :value="loadedColour || '#888888'"
+              data-tid="colour-other"
+              @change="onOtherColour"
+            >
+          </label>
+        </div>
+        <div
+          v-if="loadedMaterial"
+          class="matp__actions"
+        >
+          <button
+            type="button"
+            class="cbtn cbtn--primary"
+            :disabled="!klippyReady || busy"
+            data-tid="material-heat"
+            @click="heat"
+          >
+            <frame-icon
+              name="flame"
+              small
+            />
+            Heat for {{ loadedMaterial.name }}
+          </button>
+        </div>
+        <router-link
+          :to="presetsTo"
+          class="matp__more"
+          data-tid="material-see-materials"
+          @click.native="open = false"
+        >
+          See materials ›
+        </router-link>
       </div>
-      <router-link
-        :to="presetsTo"
-        class="matp__more"
-        @click.native="open = false"
-      >
-        Change the materials' temperatures
-      </router-link>
-    </div>
-  </v-menu>
+    </v-menu>
+    <add-material-dialog
+      v-if="adding"
+      v-model="adding"
+    />
+  </span>
 </template>
 
 <script lang="ts">
@@ -288,25 +213,26 @@ import FilamentActionsMixin from '@/mixins/filament-actions'
 import { FILAMENT_COLOURS, colourName, normaliseColour, type MaterialChoice } from '@/services/control/model'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
+import { pinnedNames } from '@/services/materials/pins'
+const AddMaterialDialog = () => import('@/components/settings/presets/AddMaterialDialog.vue')
 
 /**
- * What's loaded, for everyone, on Overview (a tile) and Control (`chip`):
+ * What's loaded, for everyone, on Overview and Control:
  * the material and its colour, and a press to change either. The printer
  * remembers both (save_variables muon_material, as the panel does, and
  * muon_material_colour beside it), so the panel, these pages, the slicer
  * and the live M1 agree. From here: heat for it, and load or unload with
  * the printer's own macros.
  */
-@Component({})
+@Component({ components: { AddMaterialDialog } })
 export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
   open = false
-  showAll = false
-  search = ''
+  adding = false
 
   colours = FILAMENT_COLOURS
 
   get pinnedMaterialNames (): string[] {
-    return this.$store.state.config.uiSettings.general.pinnedMaterials ?? ['PLA', 'PETG', 'ABS', 'ASA', 'TPU']
+    return pinnedNames(this.$store.state.config.uiSettings.general.pinnedMaterials)
   }
 
   get pinnedChoices (): MaterialChoice[] {
@@ -315,34 +241,16 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
       .filter((m): m is MaterialChoice => m !== undefined)
   }
 
-  get filteredMaterials (): MaterialChoice[] {
-    const query = this.search.trim().toLowerCase()
-    return this.materialChoices.filter(m => m.name.toLowerCase().includes(query))
-  }
-
-  isPinned (m: MaterialChoice): boolean {
-    return this.pinnedMaterialNames.some(name => name.trim().toLowerCase() === m.name.trim().toLowerCase())
-  }
-
-  togglePin (m: MaterialChoice) {
-    const names = this.isPinned(m)
-      ? this.pinnedMaterialNames.filter(name => name.trim().toLowerCase() !== m.name.trim().toLowerCase())
-      : [...this.pinnedMaterialNames, m.name]
-    this.$store.dispatch('config/saveByPath', {
-      path: 'uiSettings.general.pinnedMaterials', value: names, server: true
-    })
-  }
-
-  @Watch('showAll')
-  resetSearch (showAll: boolean) {
-    if (!showAll) this.search = ''
+  /** The library popup, the same one Settings › Materials and Heat open. */
+  startAdding () {
+    this.open = false
+    this.adding = true
   }
 
   @Watch('panelTarget')
   resetPicker () {
     this.open = false
-    this.showAll = false
-    this.search = ''
+    this.adding = false
   }
 
   /** What the tile names: what's loaded, else what the print running was sliced for. */
@@ -390,7 +298,6 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
   choose (m: MaterialChoice) {
     if (this.busy) return
     this.setLoadedMaterial(m)
-    this.showAll = false
   }
 
   heat () {
@@ -495,13 +402,6 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
     }
   }
 
-  .matp__filament {
-    display: grid;
-    grid-auto-columns: 1fr;
-    grid-auto-flow: column;
-    gap: 8px;
-  }
-
   .matp__more {
     margin: 2px 4px 0;
     color: var(--m3d-accent) !important;
@@ -591,47 +491,25 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
       opacity: 0.6;
     }
   }
-.matp__browse {
-  min-height: 36px;
-  padding: 8px;
-  border: 1px solid var(--m3d-border);
-  border-radius: 10px;
-  color: var(--m3d-text);
-  &:hover { background: var(--m3d-hover); }
+.matp__root {
+  display: contents;
 }
-.matp__search {
-  width: 100%;
-  min-height: 40px;
-  padding: 8px 12px;
-  border: 1px solid var(--m3d-border);
-  border-radius: 10px;
-  background: var(--m3d-surface-2);
-  color: var(--m3d-text);
-}
-.matp__catalog {
-  max-height: 320px;
-  overflow-y: auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.matp__catalog-row {
+.matp__header {
   display: flex;
   align-items: center;
   gap: 4px;
-  .matp__row {
-    flex: 1 1 auto;
-    min-width: 0;
-    b { overflow-wrap: anywhere; }
-  }
+  .matp__title { flex: 1 1 auto; }
 }
-.matp__pin {
-  flex: 0 0 auto;
+.matp__icon-btn {
+  display: inline-flex;
   padding: 8px;
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--m3d-text);
-  &[aria-pressed="true"] { background: var(--m3d-surface-2); }
-  &:hover { background: var(--m3d-hover); }
+  &:hover:not(:disabled) { background: var(--m3d-hover); }
+  &:disabled { opacity: 0.4; }
+}
+.matp__add {
+  color: var(--m3d-accent);
 }
 </style>
 

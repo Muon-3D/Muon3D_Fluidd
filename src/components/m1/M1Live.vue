@@ -560,8 +560,8 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
 
   @Watch('filePosition')
   onFilePosition () {
-    this.sync().setFileDone(this.printPath ? segmentsDone(this.printPath, this.filePosition) : 0)
-    this.viewer?.wake()
+    // Only a changed count changes the picture: a status update that leaves it alone asks for no frame (a frame costs seconds on a CPU-only GL).
+    if (this.sync().setFileDone(this.printPath ? segmentsDone(this.printPath, this.filePosition) : 0)) this.viewer?.wake()
   }
 
   /** A new print clears what the last one left on the plate; a resume doesn't. */

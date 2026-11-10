@@ -8,6 +8,7 @@ export interface Material {
   name: string;
   nozzle: number | null;
   bed: number | null;
+  colour?: string;
 }
 
 function heaterTarget (preset: TemperaturePreset, heater: string): number | null {
@@ -18,7 +19,7 @@ function heaterTarget (preset: TemperaturePreset, heater: string): number | null
 /** The presets that set the nozzle, as materials. */
 export function materialsFrom (presets: TemperaturePreset[], extruder = 'extruder', bed = 'heater_bed'): Material[] {
   return presets
-    .map(p => ({ id: p.id, name: p.name, nozzle: heaterTarget(p, extruder), bed: heaterTarget(p, bed) }))
+    .map(p => ({ id: p.id, name: p.name, nozzle: heaterTarget(p, extruder), bed: heaterTarget(p, bed), ...(p.colour ? { colour: p.colour } : {}) }))
     .filter(m => m.nozzle !== null)
 }
 
@@ -56,7 +57,7 @@ export function materialChoices (materials: Material[]): MaterialChoice[] {
     name: m.name,
     nozzle: m.nozzle,
     bed: m.bed,
-    colour: PANEL_MATERIALS.find(p => sameName(p.name, m.name))?.colour ?? '#8a9597',
+    colour: m.colour ?? PANEL_MATERIALS.find(p => sameName(p.name, m.name))?.colour ?? '#8a9597',
     presetId: m.id
   }))
   const extra = PANEL_MATERIALS

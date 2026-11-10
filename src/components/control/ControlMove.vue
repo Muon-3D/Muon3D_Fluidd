@@ -43,9 +43,9 @@
             role="menuitem"
             :disabled="!ready || busy"
             data-tid="menu-home-xy"
-            @click="home('XY')"
+            @click="home()"
           >
-            Home X and Y<span class="acct-menu__key">G28 X Y</span>
+            Home all<span class="acct-menu__key">G28</span>
           </button>
           <button
             type="button"
@@ -156,18 +156,18 @@
               type="button"
               class="cbtn cbtn--ghost"
               :disabled="busy"
-              aria-label="Home X and Y"
+              aria-label="Home all"
               data-tid="home-xy"
-              title="G28 X Y"
-              @click="home('XY')"
+              title="G28"
+              @click="home()"
             >
               <v-progress-circular
-                v-if="homing('XY')"
+                v-if="homing()"
                 indeterminate
                 size="14"
                 width="2"
               />
-              XY
+              Home all
             </button>
             <button
               type="button"
@@ -402,6 +402,7 @@ import ControlPositionReadout from './ControlPositionReadout.vue'
 import ControlZOffset from './ControlZOffset.vue'
 import SegPicker, { type SegOption } from './SegPicker.vue'
 import NumberField from './NumberField.vue'
+import { normaliseSteps } from '@/services/settings/motion-limits'
 
 type Axis = 'X' | 'Y' | 'Z'
 
@@ -573,8 +574,16 @@ export default class ControlMove extends Mixins(ControlMixin) {
     return `${what} Moving comes back when it ends. Print mode and Advanced stay live, to change speed and flow mid-print.`
   }
 
+  /** Settings › Moving and extruding's step sizes for the head and the plate, one picker for both. */
+  get moveSteps (): number[] {
+    const general = this.$store.state.config?.uiSettings?.general
+    const steps = normaliseSteps([...(general?.toolheadXYMoveDistances ?? []), ...(general?.toolheadZMoveDistances ?? [])])
+    return steps.length ? steps : MOVE_STEPS
+  }
+
   get stepOptions (): SegOption[] {
-    return MOVE_STEPS.map((s, i) => ({ value: s, label: i === MOVE_STEPS.length - 1 ? `${s} mm` : String(s) }))
+    const steps = this.moveSteps
+    return steps.map((s, i) => ({ value: s, label: i === steps.length - 1 ? `${s} mm` : String(s) }))
   }
 
   get xyHomedHere (): boolean {
@@ -611,7 +620,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
   // -- trackpad --------------------------------------------------------------
 
   get pickHint (): string {
-    if (!this.xyHomedHere) return 'Home X and Y, then tap the bed to pick a spot.'
+    if (!this.xyHomedHere) return 'Home all, then tap the bed to pick a spot.'
     if (this.noGo === 'invalid') return 'The no-go regions could not be read, so only raising the head is allowed.'
     return 'Tap the bed to pick a spot, then press Move here. Or drag, and the head follows.'
   }
