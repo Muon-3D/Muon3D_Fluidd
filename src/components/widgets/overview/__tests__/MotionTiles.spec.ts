@@ -36,7 +36,7 @@ describe('PositionTile', () => {
     await w.find('[data-tid="home-xy"]').trigger('click')
     await w.find('[data-tid="home-z"]').trigger('click')
     await w.find('[data-tid="home-all"]').trigger('click')
-    expect(sent()).toEqual(['G28 X Y', 'G28 Z', 'G28'])
+    expect(sent()).toEqual(['G28', 'G28 Z', 'G28'])
     w.destroy()
     resetSocket()
     const busy = m(PositionTile, tileStore({ printing: true }))
@@ -138,10 +138,10 @@ describe('JogTile', () => {
     w.destroy()
   })
 
-  it('homes X and Y from the middle button', async () => {
+  it('homes all axes from the middle button', async () => {
     const w = m(JogTile, tileStore())
     await w.find('[data-jog="home"]').trigger('click')
-    expect(sent()).toEqual(['G28 X Y'])
+    expect(sent()).toEqual(['G28'])
     w.destroy()
   })
 

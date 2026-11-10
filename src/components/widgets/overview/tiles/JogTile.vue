@@ -31,10 +31,10 @@
         <button
           type="button"
           class="jg__b jg__c"
-          aria-label="Home X and Y"
+          aria-label="Home all"
           data-jog="home"
           :disabled="!controlReady || busy"
-          @click="home('XY')"
+          @click="home()"
         >
           <frame-icon name="home" />
         </button>
@@ -129,7 +129,7 @@ export default class JogTile extends Mixins(OverviewMixin) {
   get lock (): string {
     if (!this.controlReady) return this.controlLock
     if (this.busy) return 'Not while printing.'
-    if (!this.isHomed('XY')) return 'Home X and Y to move the head.'
+    if (!this.isHomed('XY')) return 'Home all to move the head.'
     return ''
   }
 

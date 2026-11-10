@@ -69,7 +69,7 @@ describe('the jog pad and the trackpad agree on every direction', () => {
     const s = show()
     expect(s.wrapper.find('[data-tid="jog-centre"]').element.tagName).toBe('SPAN')
     expect(s.wrapper.findAll('.move__xy button')).toHaveLength(8)
-    expect(s.wrapper.find('[aria-label="Home X and Y"].move__b').exists()).toBe(false)
+    expect(s.wrapper.find('[aria-label="Home all"].move__b').exists()).toBe(false)
     s.wrapper.destroy()
   })
 })
