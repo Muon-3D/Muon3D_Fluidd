@@ -29,7 +29,7 @@
         data-tid="macros-all"
         @click="dialog = true"
       >
-        {{ size === 'S' ? 'All' : 'All commands' }} ({{ arrangedMacros.length }})
+        {{ size === 'S' ? 'All' : 'All commands' }}
       </button>
     </div>
     <p

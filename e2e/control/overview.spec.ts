@@ -188,3 +188,27 @@ test('the Overview jog Home button sends a full G28, never G28 X Y', async ({ pa
   await page.locator('[data-tile="jog"] [data-jog="home"]').click()
   await expect.poll(() => printer.gcode).toEqual(['G28'])
 })
+
+test('Home on the size-L Jog and Position tiles sends a full G28 too (KAN-1963)', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await open('/')
+  await edit(page)
+  // Put both back at size L through Add widget (works on the desktop grid and on a phone alike).
+  for (const id of ['jog', 'position']) {
+    await cell(page, id).getByTestId('tile-remove').click()
+    await page.getByTestId('widget-sheet-open').click()
+    await page.getByTestId(`widget-size-${id}-L`).click()
+    await page.getByTestId(`widget-add-${id}`).click()
+    await expect(cell(page, id)).toBeVisible()
+  }
+  await page.getByTestId('edit-done').click()
+  const jog = page.locator('[data-tile="jog"]')
+  const pos = page.locator('[data-tile="position"]')
+  await expect(jog.getByTestId('jog-homes')).toBeVisible()
+  await expect(pos.getByTestId('position-homes')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Home X ?Y/i })).toHaveCount(0)
+  await jog.getByTestId('jog-homes').getByRole('button', { name: 'Home all' }).click()
+  await expect.poll(() => printer.gcode).toEqual(['G28'])
+  await pos.getByTestId('position-homes').getByRole('button', { name: 'Home all' }).click()
+  await expect.poll(() => printer.gcode).toEqual(['G28', 'G28'])
+})
