@@ -181,6 +181,12 @@ export interface ModelServiceState {
   noSearch: boolean;
   /** Requests seen, for assertions ("method path"). */
   seen: string[];
+  /**
+   * The origins let in, exactly, as MODELS_CORS_ORIGINS does on the real
+   * service; any other origin gets no CORS headers, so the browser refuses
+   * the answer. null lets every origin in.
+   */
+  corsOrigins: string[] | null;
 }
 
 export function modelService (over: Partial<ModelServiceState> = {}): ModelServiceState {
@@ -198,6 +204,7 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     avatar: null,
     communityWrites: [],
     avatarInvalid: false,
+    corsOrigins: null,
     published: [],
     failWith: null,
     failOn: () => null,
@@ -263,6 +270,9 @@ export async function serveModels (page: Page, state: ModelServiceState) {
     const path = url.pathname
     const method = request.method()
     state.seen.push(`${method} ${path}${url.search}`)
+    const origin = request.headers().origin
+    // Playwright's fulfill skips the browser's CORS check, so a refused origin is the TypeError fetch would give.
+    if (state.corsOrigins && origin && !state.corsOrigins.includes(origin)) return route.abort('accessdenied')
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
     if (state.delayMs) await new Promise(resolve => setTimeout(resolve, state.delayMs))
     const failure = state.failWith ?? state.failOn(`${method} ${path}${url.search}`)
