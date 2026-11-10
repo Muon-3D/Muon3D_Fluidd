@@ -127,6 +127,66 @@
           <div class="move__sub">
             Trackpad<span>Tap to pick a spot, or drag and the head follows</span>
           </div>
+          <div
+            class="move__homes"
+            data-tid="move-homes"
+          >
+            <button
+              type="button"
+              class="cbtn"
+              :disabled="busy"
+              data-tid="home-all"
+              title="G28"
+              @click="home()"
+            >
+              <v-progress-circular
+                v-if="homing()"
+                indeterminate
+                size="14"
+                width="2"
+              />
+              <frame-icon
+                v-else
+                name="home"
+                small
+              />
+              Home all
+            </button>
+            <button
+              type="button"
+              class="cbtn cbtn--ghost"
+              :disabled="busy"
+              aria-label="Home X and Y"
+              data-tid="home-xy"
+              title="G28 X Y"
+              @click="home('XY')"
+            >
+              <v-progress-circular
+                v-if="homing('XY')"
+                indeterminate
+                size="14"
+                width="2"
+              />
+              XY
+            </button>
+            <button
+              type="button"
+              class="cbtn cbtn--ghost"
+              :disabled="busy"
+              aria-label="Home Z"
+              data-tid="home-z"
+              title="G28 Z"
+              @click="home('Z')"
+            >
+              <v-progress-circular
+                v-if="homing('Z')"
+                indeterminate
+                size="14"
+                width="2"
+              />
+              Z
+            </button>
+          </div>
           <control-trackpad
             v-if="plate"
             :bed="plate"
@@ -319,63 +379,6 @@
             Go
           </button>
         </form>
-        <div class="move__homes">
-          <button
-            type="button"
-            class="cbtn"
-            :disabled="busy"
-            data-tid="home-all"
-            title="G28"
-            @click="home()"
-          >
-            <v-progress-circular
-              v-if="homing()"
-              indeterminate
-              size="14"
-              width="2"
-            />
-            <frame-icon
-              v-else
-              name="home"
-              small
-            />
-            Home all
-          </button>
-          <button
-            type="button"
-            class="cbtn cbtn--ghost"
-            :disabled="busy"
-            aria-label="Home X and Y"
-            data-tid="home-xy"
-            title="G28 X Y"
-            @click="home('XY')"
-          >
-            <v-progress-circular
-              v-if="homing('XY')"
-              indeterminate
-              size="14"
-              width="2"
-            />
-            XY
-          </button>
-          <button
-            type="button"
-            class="cbtn cbtn--ghost"
-            :disabled="busy"
-            aria-label="Home Z"
-            data-tid="home-z"
-            title="G28 Z"
-            @click="home('Z')"
-          >
-            <v-progress-circular
-              v-if="homing('Z')"
-              indeterminate
-              size="14"
-              width="2"
-            />
-            Z
-          </button>
-        </div>
       </div>
     </template>
 
@@ -1030,15 +1033,9 @@ export default class ControlMove extends Mixins(ControlMixin) {
   .move__homes {
     display: flex;
     gap: 8px;
-    margin-left: 12px;
   }
 
-  .move__body--phone ~ .move__bar .move__homes {
-    width: 100%;
-    margin-left: 0;
-
-    .cbtn { flex: 1; justify-content: center; }
-  }
+  .move__body--phone .move__homes .cbtn { flex: 1; justify-content: center; }
 
   .move__zoffset {
     margin-top: 16px;
