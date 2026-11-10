@@ -45,7 +45,7 @@
       role="status"
       data-tid="m1-screen-refused"
     >
-      Confirm on the printer. Control can't do that one for you.
+      {{ refusedText }}
     </p>
   </div>
 </template>
@@ -108,6 +108,7 @@ export default class M1Screen extends Mixins(ControlMixin) {
   flight: Record<string, string> = {}
   stopActions: (() => void) | null = null
   refusedLast = false
+  refusedText = ''
   refusedTimer = 0
 
   get printerName (): string {
@@ -154,12 +155,22 @@ export default class M1Screen extends Mixins(ControlMixin) {
     this.flyTimer = window.setTimeout(() => this.$emit('close'), this.reducedMotion ? 0 : FLY_MS)
   }
 
+  /** A few seconds' note in the strip: what was refused, and why. */
+  say (text: string) {
+    this.refusedText = text
+    this.refusedLast = true
+    clearTimeout(this.refusedTimer)
+    this.refusedTimer = window.setTimeout(() => { this.refusedLast = false }, 4000)
+  }
+
   /** The bridge to the framed screen, on Control's connection, after the allowlist. */
   connect () {
     const frame = this.$refs.frame as HTMLIFrameElement | undefined
     if (!frame) return
     bridges.set(this, new PanelBridge(frame, {
       rpc: async (method, params) => {
+        const why = this.rpcRefusal(method)
+        if (why) { this.say(why); throw new Error(why) }
         const result = await this.$socket.emit(method, { params })
         if (result === undefined) throw new Error('The printer refused that.')
         return result
@@ -167,13 +178,13 @@ export default class M1Screen extends Mixins(ControlMixin) {
       auxGet: async path => (await httpClientActions.get(`/server/aux${path}`)).data,
       status: () => this.$store.state.printer.printer as Record<string, unknown>,
       connectionId: () => (this.$store.state.socket.connectionId as number | null) ?? null,
-      verb: v => this.runVerb(v)
-    }, {
-      onRefused: () => {
-        this.refusedLast = true
-        clearTimeout(this.refusedTimer)
-        this.refusedTimer = window.setTimeout(() => { this.refusedLast = false }, 4000)
+      verb: v => {
+        const why = this.runVerb(v)
+        if (why) this.say(why)
+        return why
       }
+    }, {
+      onRefused: () => this.say("Confirm on the printer. Control can't do that one for you.")
     }))
     // Moonraker's notifications, as Control's socket passes them to the store, passed on.
     this.stopActions = this.$store.subscribeAction(action => {
@@ -232,7 +243,8 @@ export default class M1Screen extends Mixins(ControlMixin) {
       case 'heat': {
         const heater = v.heater === 'extruder' ? this.nozzle : this.bed
         if (!heater) return 'That heater is not on this printer.'
-        if (v.target > (heater.maxTemp ?? 300)) return 'That is hotter than this heater goes.'
+        const why = this.heatRefusal(heater.name, v.target)
+        if (why) return why
         this.setHeater(heater, v.target)
         return ''
       }
@@ -247,6 +259,47 @@ export default class M1Screen extends Mixins(ControlMixin) {
         return ''
       }
     }
+  }
+
+  /**
+   * Why a forwarded print call isn't sent, '' when it is: the same gates as
+   * Control's own buttons, as runVerb applies them. E-stop mirrors Control's
+   * E-STOP button (AppBar estopReady): signed in, connected, Klipper ready.
+   * Reads pass.
+   */
+  rpcRefusal (method: string): string {
+    switch (method) {
+      case 'printer.emergency_stop':
+        return this.authenticated && this.socketConnected && this.klippyReady ? '' : this.controlLock || this.notReadyReason
+      case 'printer.print.start':
+        if (!this.controlReady) return this.controlLock
+        return this.busy ? 'Not while the printer is busy.' : ''
+      case 'printer.print.pause':
+        if (!this.controlReady) return this.controlLock
+        return this.printerPrinting ? '' : 'The printer is not printing.'
+      case 'printer.print.resume':
+        if (!this.controlReady) return this.controlLock
+        return this.printerPaused ? '' : 'The print is not paused.'
+      case 'printer.print.cancel':
+        if (!this.controlReady) return this.controlLock
+        return this.printerPrinting || this.printerPaused ? '' : 'There is no print to cancel.'
+      default:
+        return ''
+    }
+  }
+
+  /**
+   * A heat target from the screen: refused (never clamped) above the heater's
+   * max_temp, which is read live from the printer's config, and refused when
+   * that is not known. '' when it may go.
+   */
+  heatRefusal (heater: string, target: number): string {
+    const settings = (this.$store.state.printer.printer.configfile?.settings ?? {}) as Record<string, { max_temp?: unknown } | undefined>
+    const max = Number(settings[heater]?.max_temp)
+    if (!Number.isFinite(max) || max <= 0) return 'This printer has not said how hot that heater may go.'
+    if (!Number.isFinite(target) || target < 0) return 'That is not a temperature this heater can be set to.'
+    if (target > max) return 'That is hotter than this heater goes.'
+    return ''
   }
 
   onKey (e: KeyboardEvent) {

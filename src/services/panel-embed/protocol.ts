@@ -7,11 +7,17 @@
  * Control implements the other end. Everything here is plain structured-clone
  * data; nothing is JSON-encoded twice.
  *
- * Handshake (window.postMessage, both directions pinned to `location.origin`):
- *   1. embed  -> parent  `PanelHello`, targetOrigin = the embed's own origin.
+ * Handshake (window.postMessage):
+ *   1. embed  -> parent  `PanelHello`.
  *   2. parent -> embed   `PanelPort`, with one MessagePort in `event.ports[0]`.
- *      The embed takes exactly one, and only when
- *      `event.origin === location.origin && event.source === window.parent`.
+ *      Control frames the page with `sandbox="allow-scripts"` (no
+ *      allow-same-origin), so the embed's origin is opaque ('null'): the embed
+ *      cannot pin `event.origin` to its own origin, so it must accept the port
+ *      by `event.source === window.parent` (and take exactly one). Control's
+ *      side: it answers only its own frame's window (`event.source`), only
+ *      for a hello whose origin is 'null', and posts to that window alone. An
+ *      opaque origin can't be named as a target, so targetOrigin is '*' and the
+ *      window is the binding.
  *      Every other window message is ignored.
  *
  * After the handshake every message goes over that MessagePort:
