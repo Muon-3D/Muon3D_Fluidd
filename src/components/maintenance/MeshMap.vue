@@ -330,7 +330,7 @@ export default class MeshMap extends Mixins(MaintenanceMixin) {
     to { transform: translateX(340%); }
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  :root.m3d-reduced-motion {
     .mmap__cell--new,
     .mmap__dot,
     .mmap__fill--unknown {

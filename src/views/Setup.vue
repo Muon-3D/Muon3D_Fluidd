@@ -274,7 +274,7 @@ export default class Setup extends Vue {
   margin-bottom: 16px;
 }
 
-@media (prefers-reduced-motion: reduce) {
+:root.m3d-reduced-motion {
   .muon-setup__spinner ::v-deep svg {
     animation: none;
   }

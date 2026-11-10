@@ -349,7 +349,13 @@ async def http_aux(request):
             return web.json_response({'knob': {**next((k for k in PERMISSIONS if k['id'] == body.get('id')), {}), 'value': body.get('value')}})
         return web.json_response({'knobs': PERMISSIONS})
     if tail == '/update/status':
-        return web.json_response({'state': 'idle'})
+        return web.json_response({'state': 'idle', 'auto_install': True, 'install_presence_required': False})
+    # A fresh printer's update choices (KAN-1925, MuonOS #492). The shared
+    # mock never keeps a change: a test that changes them answers them itself.
+    if tail == '/update/auto_install':
+        return web.json_response({'enabled': True})
+    if tail == '/update/presence':
+        return web.json_response({'required': False})
     print('unhandled aux', request.method, tail, flush=True)
     return web.json_response({}, status=404)
 

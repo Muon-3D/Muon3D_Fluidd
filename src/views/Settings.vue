@@ -116,7 +116,6 @@
         <router-view v-else-if="authenticated && socketConnected" />
         <template v-if="!inChild && !ownPage && current">
           <general-settings v-if="shows('general')" />
-          <theme-settings v-if="shows('theme')" />
           <p
             v-if="shows('access') && cards.loading"
             class="settings-loading"
@@ -160,7 +159,6 @@ import GeneralSettings from '@/components/settings/GeneralSettings.vue'
 import PresetSettings from '@/components/settings/presets/PresetSettings.vue'
 import CameraSettings from '@/components/settings/cameras/CameraSettings.vue'
 import ToolheadSettings from '@/components/settings/ToolheadSettings.vue'
-import ThemeSettings from '@/components/settings/ThemeSettings.vue'
 import SoftwareSettings from '@/components/settings/SoftwareSettings.vue'
 import SecuritySettings from '@/components/settings/SecuritySettings.vue'
 import { updateWatch } from '@/services/updates/watch'
@@ -201,7 +199,6 @@ const countOrNone = (count: number) => count ? String(count) : 'none'
     PresetSettings,
     CameraSettings,
     ToolheadSettings,
-    ThemeSettings,
     SoftwareSettings,
     SecuritySettings,
     GcodePreviewSettings,
