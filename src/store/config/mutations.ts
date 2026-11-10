@@ -208,6 +208,9 @@ export const mutations: MutationTree<ConfigState> = {
       const i = state.uiSettings.dashboard.tempPresets.findIndex(preset => preset.id === payload.id)
       if (i >= 0) {
         Vue.set(state.uiSettings.dashboard.tempPresets, i, payload)
+      } else {
+        // A default the store added back is written the first time it changes.
+        state.uiSettings.dashboard.tempPresets.push(payload)
       }
     }
   },
