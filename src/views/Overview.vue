@@ -699,7 +699,7 @@ export default class Overview extends Vue {
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--m3d-accent) 55%, transparent);
 }
 /* A box shadow, not a filter: a filter re-draws the whole tile (the 3D view too) on every pointer move. */
-.overview__cell--moving { z-index: 6; pointer-events: none; border-radius: 22px; box-shadow: 0 14px 28px rgb(0 0 0 / 22%); will-change: transform; }
+.overview__cell--moving { z-index: 6; pointer-events: none; border-radius: 22px; box-shadow: 0 14px 28px rgb(0 0 0 / 22%); }
 .overview__cell--over::after { box-shadow: inset 0 0 0 3px var(--m3d-accent) !important; background: color-mix(in srgb, var(--m3d-accent) 10%, transparent); }
 .overview__grip {
   position: absolute; top: 14px; left: 12px; z-index: 5; display: grid; grid-template-columns: repeat(2, 4px); gap: 3px; padding: 6px 5px; border-radius: 8px;
