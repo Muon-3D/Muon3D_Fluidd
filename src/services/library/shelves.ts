@@ -316,7 +316,7 @@ export function publicationFacts (publication: PublicPublication): string {
 /** One publication, as `GET /v1/public/publications/:id` answers it (no account needed). */
 export async function loadPublication (id: string, fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<PublicPublication> {
   const response = await fetcher(`${MODELS_URL}/v1/public/publications/${encodeURIComponent(id)}`, { method: 'GET', credentials: 'omit', signal })
-  if (!response.ok) throw new Error(response.status === 404 ? 'That print is no longer public.' : 'The Library didn\'t answer. Try again.')
+  if (!response.ok) throw Object.assign(new Error(response.status === 404 ? 'That print is no longer public.' : 'The Library didn\'t answer. Try again.'), { status: response.status })
   const body = await response.json().catch(() => null) as PublicPublication | null
   if (!body || typeof body.title !== 'string' || typeof body.version !== 'number' || !Array.isArray(body.files)) {
     throw new Error('The Library sent an answer this version of Control can\'t read.')

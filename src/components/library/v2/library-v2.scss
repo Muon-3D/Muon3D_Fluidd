@@ -814,3 +814,10 @@ button.mlib-link { padding: 0; border: 0; background: none; font: inherit; font-
 }
 .mlook__colours { flex-wrap: wrap; }
 .mlook__loaded { margin-left: auto; font-size: var(--m3d-text-xs); }
+
+.mpage__runs { list-style: none; padding: 0; }
+.mpage__runs li { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 14px 0; border-bottom: 1px solid var(--m3d-border); }
+.mpage__profile { display: block; margin: 0; }
+.mpage__profile > div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--m3d-border); }
+.mpage__profile dt { min-width: 0; color: var(--m3d-text-muted); overflow-wrap: anywhere; }
+.mpage__profile dd { min-width: 0; margin: 0; font-weight: 500; text-align: right; overflow-wrap: anywhere; }
