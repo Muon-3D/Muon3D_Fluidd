@@ -1,3 +1,4 @@
+import { requestRefused } from './refusal'
 import type {
   AuthorizedManagedRelaySession,
   ManagedIrohEndpoint,
@@ -76,6 +77,10 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       // Cancelling an upload or file read must not disconnect every other
       // caller of a shared relay, including the dashboard socket.
       if (init?.signal?.aborted) throw error
+      if (requestRefused(error)) {
+        this.updateStatus('connected', 'IdleStatus')
+        throw error
+      }
       this.dropRelay(relay)
       this.markUnavailableUnlessClosed()
       throw error
@@ -102,6 +107,10 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       })
       return socket
     } catch (error) {
+      if (requestRefused(error)) {
+        this.updateStatus('connected', 'IdleStatus')
+        throw error
+      }
       this.dropRelay(relay)
       this.markUnavailableUnlessClosed()
       throw error

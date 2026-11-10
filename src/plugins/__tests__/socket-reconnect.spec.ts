@@ -93,6 +93,16 @@ async function opened (client: WebSocketClient) {
 }
 
 describe('WebSocketClient reconnecting', () => {
+  it('policy refusals prove liveness and never reconnect a socket', async () => {
+    const { client } = lanClient()
+    const socket = await opened(client)
+    for (let i = 0; i < 120; i++) {
+      await vi.advanceTimersByTimeAsync(1000)
+      socket.emit('message', { data: JSON.stringify({ jsonrpc: '2.0', id: i, error: { code: 403, message: 'muon-link policy refused this request' } }) })
+    }
+    expect(socket.closedByClient).toBe(false)
+    expect(sockets).toHaveLength(1)
+  })
   it('purges unanswered requests and waits when reconnecting', async () => {
     const { client, store } = lanClient()
     const socket = await opened(client)

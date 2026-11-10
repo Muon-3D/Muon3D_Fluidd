@@ -27,6 +27,7 @@ import { deletionState } from './deletion'
 import { forgetOwnAvatar } from '@/services/account/avatar'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
+import { requestRefused } from '@/services/managed-transport/refusal'
 
 const ACTIVE_KEY = 'muon.cloud.active'
 
@@ -331,6 +332,7 @@ async function pollOne (printer: CloudPrinter) {
       connection.fetch(STATUS_QUERY),
       new Promise<never>((_resolve, reject) => { silence = setTimeout(() => reject(new StatusSilence()), STATUS_TIMEOUT_MS) })
     ]).finally(() => clearTimeout(silence))
+    if (requestRefused({ status: response.status })) return
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const s = (await response.json()).result.status
     if (signal.aborted) return
@@ -346,6 +348,7 @@ async function pollOne (printer: CloudPrinter) {
       updatedAt: Date.now()
     } as PrinterStatus)
   } catch (error) {
+    if (requestRefused(error)) return
     if (overBluetooth && !signal.aborted) noteBluetoothFailure(printer.id, error)
     const failed = (pollFailures.get(printer.id) ?? 0) + 1
     pollFailures.set(printer.id, failed)

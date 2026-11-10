@@ -15,7 +15,7 @@ describe('the Bluetooth fallback banner (KAN-1396)', () => {
     cloudState.activePrinterId = EID
     useBluetoothFor(EID, fakePrinter().device)
     noteBluetoothFellBack(EID, 'The Bluetooth handshake timed out')
-    const text = mount(BluetoothFallbackBanner).text()
+    const text = mount(BluetoothFallbackBanner, { stubs: { RouterLink: true } }).text()
     expect(text).toContain("Bluetooth didn't connect, using Muon3D instead")
     expect(text).toContain('The Bluetooth handshake timed out')
   })
@@ -33,7 +33,7 @@ describe('the Bluetooth fallback banner (KAN-1396)', () => {
     cloudState.activePrinterId = EID
     useBluetoothFor(EID, fakePrinter().device)
     noteBluetoothDropped(EID, 'The Bluetooth link dropped.')
-    const text = mount(BluetoothFallbackBanner).text()
+    const text = mount(BluetoothFallbackBanner, { stubs: { RouterLink: true } }).text()
     expect(text).toContain('Bluetooth dropped')
     expect(text).toContain('choose how to connect')
     expect(text).not.toContain('using Muon3D instead')

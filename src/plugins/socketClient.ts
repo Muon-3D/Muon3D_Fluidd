@@ -316,6 +316,8 @@ export class WebSocketClient {
       this.store.commit('wait/setRemoveWait', request.wait)
     }
 
+    this.pong()
+
     if (d.error) {
       if (request) {
         Object.defineProperty(d.error, '__request__', { enumerable: false, value: request })
@@ -325,8 +327,6 @@ export class WebSocketClient {
       request?.resolve?.(undefined)
       return
     }
-
-    this.pong()
 
     if (request) {
       let result = (d.result) ? d.result : d.params

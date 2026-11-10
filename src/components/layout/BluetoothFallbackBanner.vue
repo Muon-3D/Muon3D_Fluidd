@@ -20,13 +20,28 @@
         <span>{{ reason }}</span>
       </template>
     </div>
+    <button
+      v-if="dropped"
+      type="button"
+      @click="reconnect"
+    >
+      Reconnect
+    </button>
+    <router-link
+      v-if="dropped"
+      to="/"
+    >
+      Choose how to connect
+    </router-link>
   </div>
 </template>
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
-import { cloudState } from '@/services/muon-cloud/state'
-import { bluetoothDropped, bluetoothFellBack } from '@/services/muon-ble/link'
+import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
+import { activateCloudPrinter } from '@/services/muon-cloud/activate'
+import { bluetoothDropped, bluetoothFellBack, reconnectBluetooth } from '@/services/muon-ble/link'
+import { retryBluetooth } from '@/services/muon-ble/retry'
 
 /**
  * Over the page when a printer opened through Muon3D though Bluetooth was
@@ -35,6 +50,17 @@ import { bluetoothDropped, bluetoothFellBack } from '@/services/muon-ble/link'
  */
 @Component({})
 export default class BluetoothFallbackBanner extends Vue {
+  async reconnect () {
+    const id = cloudState.activePrinterId
+    if (!id) return
+    retryBluetooth(id)
+    reconnectBluetooth(id)
+    dropCloudConnection(id)
+    try {
+      await activateCloudPrinter(id)
+    } catch { /* activationState shows the failed open */ }
+  }
+
   get reason (): string | null {
     const id = cloudState.activePrinterId
     return id ? bluetoothFellBack(id) : null

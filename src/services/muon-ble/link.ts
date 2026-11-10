@@ -395,16 +395,6 @@ function forgetRouteState (id: string) {
   Vue.delete(routeState.dropped, id)
 }
 
-/**
- * How recently bytes must have crossed the radio for Bluetooth to count as
- * carrying the session. A link that is up is not enough: muon-link's
- * BlePathSelector (ADR 0032 D3) moves the connection onto the relay as soon as
- * iroh finds it, and the radio then sits idle (btmon on Boxwood, 5 Nov 2026:
- * an LE link up, 0 ACL packets in 20 s, while the label said Bluetooth).
- * Over Bluetooth a page sees status at least every few seconds and QUIC's
- * keep-alive every 5 s.
- */
-export const CARRYING_WINDOW_MS = 8_000
 const CARRYING_TICK_MS = 1_000
 
 /** True while the session to `printerId` really travels over Bluetooth: the one truth for every label. */
@@ -428,7 +418,7 @@ export function bluetoothLinkUp (printerId: string): boolean {
  * screen, menus), from the same truth as the Bluetooth badge (KAN-1566).
  */
 export function remoteRouteLabel (printerId: string | null | undefined): 'Via Bluetooth' | 'Through Muon3D' {
-  return printerId && bluetoothCarrying(printerId) ? 'Via Bluetooth' : 'Through Muon3D'
+  return printerId && (bluetoothCarrying(printerId) || !!bluetoothDropped(printerId)) ? 'Via Bluetooth' : 'Through Muon3D'
 }
 
 /** Why the open went on through Muon3D though Bluetooth was chosen, or null. */
@@ -451,6 +441,11 @@ export function noteBluetoothFellBack (printerId: string, reason: string) {
  */
 export function bluetoothDropped (printerId: string): string | null {
   return routeState.dropped[printerId.toLowerCase()] ?? null
+}
+
+/** Only a deliberate retry clears the held route's drop. */
+export function reconnectBluetooth (printerId: string) {
+  Vue.delete(routeState.dropped, printerId.toLowerCase())
 }
 
 /** The chosen Bluetooth route dropped: say so, and let the person choose (KAN-1913). */
@@ -538,11 +533,10 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
   Vue.set(routeState.up, id, true)
   Vue.delete(routeState.fellBack, id)
   Vue.delete(routeState.dropped, id)
-  // The handshake just crossed the radio; from here on, carrying is whatever the bytes say.
   Vue.set(routeState.carrying, id, true)
   const tick = setInterval(() => {
     if (routes.get(id)?.link !== link) return
-    const carrying = link.isOpen() && Date.now() - link.lastTrafficAt() < CARRYING_WINDOW_MS
+    const carrying = link.isOpen()
     if (routeState.carrying[id] !== carrying) Vue.set(routeState.carrying, id, carrying)
     if (!routeState.dropped[id] && routeUnavailableOn(routes.get(id)?.pinnedOn, id)) {
       noteBluetoothDropped(id, 'Bluetooth has no path to the printer.')

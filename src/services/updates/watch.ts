@@ -56,6 +56,7 @@ function load (printer: string): Remembered | null {
 let timer: ReturnType<typeof setTimeout> | null = null
 let ticker: ReturnType<typeof setInterval> | null = null
 let get: Get | null = null
+let generation = 0
 /**
  * The session was refused the route (401/403: over a cloud session, policy
  * doesn't let every role read it). Asking again changes nothing, so the
@@ -114,8 +115,10 @@ function schedule (delay?: number) {
 /** Reads the printer's update status now. A refusal (network protection, over Iroh) shows nothing and stops the polling. */
 export async function poll (): Promise<void> {
   if (!get) return
+  const mine = generation
   try {
     const answer = await get('/server/aux/update/status')
+    if (mine !== generation) return
     const denied = answer.status === 401 || answer.status === 403
     if (denied && retryDenied) {
       retryDenied = false
@@ -141,12 +144,21 @@ export async function poll (): Promise<void> {
       save()
     }
   } catch { /* the next poll tries again */ }
+  if (mine !== generation) return
   updateWatch.now = Date.now()
   schedule()
 }
 
 /** Starts watching `printer`, with Fluidd's own HTTP client. */
-export function watchUpdates (printer: string, http: Get) {
+export function watchUpdates (printer: string, http: Get, managed = false) {
+  stopWatching()
+  if (managed) {
+    updateWatch.printer = printer
+    updateWatch.status = null
+    updateWatch.answered = false
+    updateWatch.remembered = null
+    return
+  }
   get = http
   refused = false
   retryDenied = true
@@ -204,6 +216,8 @@ export function forgetInstall () {
 }
 
 export function stopWatching () {
+  ++generation
+  get = null
   if (timer) clearTimeout(timer)
   if (ticker) clearInterval(ticker)
   timer = null

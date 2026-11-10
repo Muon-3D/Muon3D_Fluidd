@@ -9,6 +9,7 @@ import {
   activateCloudPrinter,
   activateLocalPrinter,
   activationState,
+  SwitchSuperseded,
   MANAGED_API_URL
 } from '@/services/muon-cloud/activate'
 import {
@@ -33,9 +34,10 @@ import { scopedPath } from '@/router/printerPagePaths'
 import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
-import { bluetoothCarrying, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
+import { bluetoothCarrying, reconnectBluetooth, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
+import { requestRefused } from '@/services/managed-transport/refusal'
 
 /**
  * The longest a row stays busy with one open. The slowest open is bounded
@@ -48,6 +50,28 @@ class RunTimeout extends Error {}
 
 /** Counts runs, so one taken over by a chosen route does not clear the row of the one that took over. */
 let runCounter = 0
+
+async function openManagedRoute (e: DirectoryEntry, route?: 'relay' | BleDevice): Promise<boolean> {
+  if (!e.cloud) return false
+  const id = e.cloud.id
+  if (!route || route === 'relay') stopUsingBluetoothFor(id)
+  else {
+    useBluetoothFor(id, route)
+    reconnectBluetooth(id)
+  }
+  dropCloudConnection(id)
+  try {
+    await activateCloudPrinter(id)
+  } catch (error) {
+    if (route || error instanceof SwitchSuperseded || requestRefused(error)) throw error
+    const nearby = e.nearby ?? await permittedPrinterFor(id)
+    if (!nearby) throw error
+    useBluetoothFor(id, nearby.device)
+    dropCloudConnection(id)
+    await activateCloudPrinter(id)
+  }
+  return true
+}
 
 /**
  * Every printer this browser knows of, and what can be done with each:
@@ -369,8 +393,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       this.afterOpen()
       return
     }
-    // The service lost it, and it answers here: the local way in is the one that works.
-    if (!e.cloud?.online && e.host) return this.connectLocal(e)
+    if (e.lan || (!e.cloud?.online && e.host)) return this.connectLocal(e, true)
     return this.connectCloud(e)
   }
 
@@ -384,18 +407,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    */
   connectCloud (e: DirectoryEntry, route?: 'relay' | BleDevice) {
     if (!e.cloud) return
-    const id = e.cloud.id
-    return this.run(e.key, async () => {
-      if (route === 'relay') {
-        stopUsingBluetoothFor(id)
-        dropCloudConnection(id)
-      } else if (route) {
-        useBluetoothFor(id, route)
-        dropCloudConnection(id)
-      }
-      await activateCloudPrinter(id)
-      return true
-    }, !!route)
+    return this.run(e.key, () => openManagedRoute(e, route), !!route)
   }
 
   /** The saved address it answers on, else its address on this network. */
@@ -409,7 +421,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return e.saved[0] ?? null
   }
 
-  connectLocal (e: DirectoryEntry) {
+  connectLocal (e: DirectoryEntry, auto = false) {
     const instance = this.localInstance(e)
     if (!instance) {
       // The service found it beside this browser but gave no address to use
@@ -418,7 +430,14 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         'Search again, or add it by the IP address its screen shows under System.'
       return
     }
-    return this.run(e.key, () => activateLocalPrinter(instance))
+    return this.run(e.key, async () => {
+      if (e.endpointId) {
+        stopUsingBluetoothFor(e.endpointId)
+        dropCloudConnection(e.endpointId)
+      }
+      if (await activateLocalPrinter(instance)) return true
+      return auto ? openManagedRoute(e) : false
+    }, true)
   }
 
   openLocalEntry (e: DirectoryEntry) {

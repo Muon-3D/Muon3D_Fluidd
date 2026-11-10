@@ -351,7 +351,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   }
 
   watchPrinterUpdates () {
-    watchUpdates(activeSlug() ?? String(this.$store.state.config.apiUrl ?? ''), url => this.$httpClient.get(url, { validateStatus: () => true }))
+    watchUpdates(activeSlug() ?? String(this.$store.state.config.apiUrl ?? ''), url => this.$httpClient.get(url, { validateStatus: () => true }), !!this.cloudPrinter)
   }
 
   get displayName (): string {
