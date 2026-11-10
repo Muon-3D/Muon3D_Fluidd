@@ -115,7 +115,7 @@
           data-tid="moving-reverse"
         >
           <div class="m3-set__label">
-            <b>Reverse X or Y</b>
+            <b>Reverse an axis</b>
             <span>Only for a printer whose motors run the other way.</span>
           </div>
           <div class="m3-set__control">
@@ -465,9 +465,12 @@ export default class ToolHeadSettings extends Mixins(MuonGatesMixin) {
     return !!this.setting('force_move.enable_force_move')
   }
 
-  readonly reversibleAxes: Array<'x' | 'y'> = ['x', 'y']
+  /** An M1's Z is fixed (developer mode can still reverse X or Y); another printer may need any axis reversed. */
+  get reversibleAxes (): Array<'x' | 'y' | 'z'> {
+    return this.muon ? ['x', 'y'] : ['x', 'y', 'z']
+  }
 
-  inverted (axis: 'x' | 'y'): boolean {
+  inverted (axis: 'x' | 'y' | 'z'): boolean {
     return !!this.general.axis?.[axis]?.inverted
   }
 
@@ -480,7 +483,7 @@ export default class ToolHeadSettings extends Mixins(MuonGatesMixin) {
   }
 
   /** Reversing an axis asks first; putting it back doesn't. */
-  async onInvert (axis: 'x' | 'y', event: Event) {
+  async onInvert (axis: 'x' | 'y' | 'z', event: Event) {
     const box = event.target as HTMLInputElement
     const checked = box.checked
     if (checked) {
