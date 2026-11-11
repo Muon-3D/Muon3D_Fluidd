@@ -40,29 +40,50 @@ async function drop (page: Page) {
   })
 }
 
-const toast = (page: Page) => page.getByTestId('flash-message')
+/**
+ * Every toast's text, in order. The page has one toast slot, and its own
+ * "saved on this device" notice can take it, so the slot is watched rather
+ * than read once.
+ */
+async function toasts (page: Page) {
+  await page.addInitScript(() => {
+    const seen: string[] = []
+    ;(window as any).__toasts = seen
+    new MutationObserver(() => {
+      for (const el of document.querySelectorAll('[data-tid="flash-message"]')) {
+        const text = (el.textContent ?? '').trim()
+        if (text && seen[seen.length - 1] !== text) seen.push(text)
+      }
+    }).observe(document, { subtree: true, childList: true, characterData: true })
+  })
+  return () => page.evaluate(() => ((window as any).__toasts as string[]).join('
+'))
+}
 
 for (const [how, act] of [['the Upload button', pick], ['drag and drop', drop]] as const) {
   test(`${how}: a file the printer accepts says it uploaded`, async ({ page, open }) => {
     const seen = await uploads(page, 'ok')
+    const said = await toasts(page)
     await open('/jobs')
     await act(page)
     await expect.poll(() => seen.length).toBe(1)
     expect(seen[0]).toContain('filename="cube.gcode"')
-    await expect(toast(page)).toContainText('Uploaded cube.gcode')
+    await expect.poll(said).toContain('Uploaded cube.gcode')
   })
 
   test(`${how}: a refused upload says why, in muon-link's words`, async ({ page, open }) => {
     await uploads(page, 'refused')
+    const said = await toasts(page)
     await open('/jobs')
     await act(page)
-    await expect(toast(page)).toContainText(`Upload of cube.gcode failed: ${REFUSAL} (HTTP 403)`)
+    await expect.poll(said).toContain(`Upload of cube.gcode failed: ${REFUSAL} (HTTP 403)`)
   })
 
   test(`${how}: a cut connection says the upload failed`, async ({ page, open }) => {
     await uploads(page, 'cut')
+    const said = await toasts(page)
     await open('/jobs')
     await act(page)
-    await expect(toast(page)).toContainText('Upload of cube.gcode failed:')
+    await expect.poll(said).toContain('Upload of cube.gcode failed:')
   })
 }
