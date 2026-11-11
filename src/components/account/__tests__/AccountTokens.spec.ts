@@ -25,13 +25,15 @@ function token (extra: Partial<PersonalToken> = {}): PersonalToken {
   return { id: 't1', name: 'Laptop scripts', prefix: 'mpat_Ab3', scopes: ['printers:read'], printer_ids: null, ask_mode: 'ask', expires_at: NOW + 86400 * 30, created_at: NOW - 60, last_used_at: null, status: 'active', ...extra }
 }
 
+const dialog = { props: ['value', 'title'], template: '<div v-if="value" class="dialog"><h2>{{ title }}</h2><slot/><slot name="actions"/></div>' }
+
 const settle = () => new Promise(resolve => setTimeout(resolve))
 
 function open (confirm = true) {
   const $confirm = vi.fn(async () => confirm)
   const w = mount(AccountTokens, {
     mocks: { $confirm },
-    stubs: { 'frame-icon': true, 'router-link': { template: '<a><slot /></a>' }, 'reauth-dialog': true }
+    stubs: { 'frame-icon': true, 'router-link': { template: '<a><slot /></a>' }, 'reauth-dialog': true, 'm3-dialog': dialog, M3Dialog: dialog }
   })
   return { w, $confirm }
 }
@@ -79,12 +81,12 @@ describe('Access tokens', () => {
     const text = w.find('[data-tid="tokens-list"]').text()
     expect(text).toContain('Laptop scripts')
     expect(text).toContain('mpat_Ab3')
-    expect(text).toContain('Boxwood')
-    expect(text).toContain('Asks first')
-    expect(text).toContain('Used 10 minutes ago')
+    expect(w.find('[data-tid="tokens-row-line"]').text()).toBe('Ends in 30 days · used 10 minutes ago · Boxwood only')
+    expect(text).toContain('Look')
+    expect(text).not.toContain('Asks first')
     await w.find('[data-tid="tokens-revoke"]').trigger('click')
     await settle()
-    expect($confirm).toHaveBeenCalled()
+    expect($confirm).toHaveBeenCalledWith(expect.stringContaining('every printer'), expect.objectContaining({ title: 'Revoke Laptop scripts everywhere?', danger: true }))
     expect(revokeToken).toHaveBeenCalledWith('t1')
   })
 
@@ -198,16 +200,36 @@ describe('Access tokens', () => {
     expect(w.find('[data-tid="tokens-form-error"]').text()).toContain('signed-in browser')
   })
 
-  it('shows Bypass and Heat/move as Coming soon, disabled, with no promise nobody keeps', async () => {
+  it('hides Bypass while it is Coming soon, says the four always ask, and shows Heat/move as Coming soon', async () => {
     const { w } = open()
     await startForm(w)
-    expect(w.find('[data-tid="tokens-soon-bypass"]').text()).toBe('Coming soon')
-    expect(w.find('[data-tid="tokens-mode-bypass"]').attributes('disabled')).toBeTruthy()
+    expect(w.find('[data-tid="tokens-mode-bypass"]').exists()).toBe(false)
+    expect(w.find('[data-tid="tokens-form"]').text()).not.toContain('Bypass')
+    expect(w.find('[data-tid="tokens-always-ask"]').text()).toBe('Starting a print, heating, moving and publishing always ask you first, whatever it can do.')
     expect(w.find('[data-tid="tokens-soon-printers:control"]').text()).toBe('Coming soon')
     expect(w.find('[data-tid="tokens-scope-printers:control"]').attributes('disabled')).toBeTruthy()
-    const text = w.find('[data-tid="tokens-form"]').text()
-    expect(text).toContain('not enforced yet')
-    expect(text).not.toMatch(/still needs your OK|Temperature limits|You get a prompt/)
+    expect(w.find('[data-tid="tokens-form"]').text()).not.toMatch(/still needs your OK|Temperature limits|You get a prompt/)
+  })
+
+  it('copies setup instructions for an AI agent: the MCP address and the token, to the clipboard only', async () => {
+    createToken.mockResolvedValue({ ...token({ name: 'Claude agent' }), token: SECRET } as CreatedToken)
+    const writeText = vi.fn<[string], Promise<void>>(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const log = vi.spyOn(console, 'log')
+    const { w } = open()
+    await startForm(w, 'Claude agent')
+    await w.find('[data-tid="tokens-create"]').trigger('click')
+    await settle()
+    expect(w.find('[data-tid="tokens-fresh"]').text()).toContain('Treat it like a password.')
+    expect((w.find('[data-tid="tokens-secret"]').element as HTMLInputElement).type).toBe('password')
+    await w.find('[data-tid="tokens-copy-setup"]').trigger('click')
+    await settle()
+    const text = writeText.mock.calls[0][0]
+    expect(text).toContain('https://mcp.muon3d.com/mcp')
+    expect(text).toContain(`Authorization: Bearer ${SECRET}`)
+    expect(w.find('[data-tid="tokens-copy-setup"]').text()).toBe('setup instructions copied')
+    expect(log.mock.calls.some(call => call.join(' ').includes(SECRET))).toBe(false)
+    log.mockRestore()
   })
 
   it('files Emergency stop under Make changes, not Look only', async () => {

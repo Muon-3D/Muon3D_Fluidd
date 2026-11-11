@@ -28,77 +28,89 @@
       </button>
     </div>
 
-    <!-- The new token: shown once, then gone. -->
-    <section
-      v-if="fresh"
-      class="lib-surface acct-card acct-card--pad tok__fresh"
+    <!-- The new token: shown once, then gone. Only Done closes it. -->
+    <m3-dialog
+      :value="!!fresh"
+      title="Copy your token now"
+      max-width="480"
+      persistent
+      :closable="false"
       aria-label="Your new token"
       data-tid="tokens-fresh"
     >
-      <div class="acct-card__title tok__title">
-        <h2>Copy your token now</h2>
-      </div>
-      <div class="acct-note acct-note--warn">
-        <frame-icon
-          name="alert"
-          small
-        />
-        <span>You won't see it again. Lost it? Revoke it and make another.</span>
-      </div>
-      <div class="tok__secret">
-        <input
-          ref="secret"
-          class="tok__secret-input"
-          type="text"
-          readonly
-          spellcheck="false"
-          autocomplete="off"
-          aria-label="Your new token"
-          :value="fresh.token"
-          data-tid="tokens-secret"
-          @focus="selectSecret"
-        >
-        <button
-          type="button"
-          class="lib-btn lib-btn--pri"
-          data-tid="tokens-copy"
-          @click="copySecret"
+      <template v-if="fresh">
+        <p class="m3-dlg__text">
+          You won't see it again. Treat it like a password.
+        </p>
+        <div class="tok__secret">
+          <input
+            ref="secret"
+            class="tok__secret-input"
+            :type="copyFailed ? 'text' : 'password'"
+            readonly
+            spellcheck="false"
+            autocomplete="off"
+            aria-label="Your new token"
+            :value="fresh.token"
+            data-tid="tokens-secret"
+            @focus="selectSecret"
+          >
+          <button
+            type="button"
+            class="lib-btn lib-btn--sm"
+            data-tid="tokens-copy"
+            @click="copySecret"
+          >
+            <frame-icon
+              :name="copied ? 'check' : 'copy'"
+              small
+            />{{ copied ? 'Copied' : 'Copy' }}
+          </button>
+        </div>
+        <span
+          v-if="copyFailed"
+          class="acct-field__note"
+          role="status"
+        >Couldn't copy. Select it and copy it by hand.</span>
+        <div
+          class="tok__agent"
+          data-tid="tokens-agent"
         >
           <frame-icon
-            :name="copied ? 'check' : 'copy'"
+            name="chip"
             small
-          />{{ copied ? 'Copied' : 'Copy' }}
-        </button>
-      </div>
-      <span
-        v-if="copyFailed"
-        class="acct-field__note"
-        role="status"
-      >Couldn't copy. Select it and copy it by hand.</span>
-      <span class="acct-field__note">Send it as <code>Authorization: Bearer &lt;token&gt;</code>. Keep it out of shared code and chats.</span>
-      <div class="acct-actions">
+          />
+          <span>For an AI agent: <button
+            type="button"
+            class="acct-link tok__link-btn"
+            data-tid="tokens-copy-setup"
+            @click="copySetup"
+          >{{ setupCopied ? 'setup instructions copied' : 'copy setup instructions' }}</button> (the MCP address and this token).</span>
+        </div>
+        <span class="acct-field__note">For a script, send it as <code>Authorization: Bearer &lt;token&gt;</code>. Keep it out of shared code and chats.</span>
+      </template>
+      <template #actions>
         <button
           type="button"
-          class="lib-btn"
+          class="lib-btn lib-btn--pri tok__wide"
           data-tid="tokens-done"
           @click="dismissFresh"
         >
-          I've saved it
+          Done
         </button>
-      </div>
-    </section>
+      </template>
+    </m3-dialog>
 
-    <!-- Make one -->
-    <section
-      v-if="making && !fresh"
-      class="lib-surface acct-card acct-card--pad"
+    <!-- Make one: a sheet over the page. -->
+    <m3-dialog
+      :value="making && !fresh"
+      title="Make a token"
+      max-width="520"
+      :persistent="busy"
       aria-label="Make a token"
       data-tid="tokens-form"
+      @close="closeForm"
     >
-      <div class="acct-card__title tok__title">
-        <h2>Make a token</h2>
-      </div>
-
       <label class="acct-field">
         <span class="acct-field__label">Name</span>
         <span class="lib-field">
@@ -250,7 +262,17 @@
         <span class="acct-field__note">Every token ends. Make a new one when it does.</span>
       </fieldset>
 
-      <fieldset class="tok__fieldset">
+      <p
+        v-if="bypassSoon"
+        class="acct-field__note"
+        data-tid="tokens-always-ask"
+      >
+        Starting a print, heating, moving and publishing always ask you first, whatever it can do.
+      </p>
+      <fieldset
+        v-else
+        class="tok__fieldset"
+      >
         <legend class="acct-field__label">
           Before it starts a print, heats or moves a printer
         </legend>
@@ -281,15 +303,10 @@
             class="acct-radio"
             name="tok-mode"
             :value="true"
-            :disabled="bypassSoon"
             data-tid="tokens-mode-bypass"
           >
           <span>
-            <b>Bypass: don't ask <span
-              v-if="bypassSoon"
-              class="lib-pill"
-              data-tid="tokens-soon-bypass"
-            >Coming soon</span></b>
+            <b>Bypass: don't ask</b>
             <span class="acct-field__note tok__block">The token does those without asking. Off unless you choose it.</span>
           </span>
         </label>
@@ -357,10 +374,10 @@
         {{ formError }}
       </p>
 
-      <div class="acct-actions">
+      <template #actions>
         <button
           type="button"
-          class="lib-btn lib-btn--ghost"
+          class="lib-btn"
           :disabled="busy"
           data-tid="tokens-cancel"
           @click="closeForm"
@@ -369,15 +386,15 @@
         </button>
         <button
           type="button"
-          class="lib-btn lib-btn--pri"
+          class="lib-btn lib-btn--pri tok__wide"
           :disabled="!canMake || busy"
           data-tid="tokens-create"
           @click="create"
         >
           {{ busy ? 'Making it…' : 'Make token' }}
         </button>
-      </div>
-    </section>
+      </template>
+    </m3-dialog>
 
     <!-- The list -->
     <section
@@ -409,23 +426,19 @@
               <span
                 v-else-if="token.ask_mode === 'bypass'"
                 class="lib-pill lib-pill--err"
+                :title="modeLine(token)"
               >Bypass</span>
-              <span
-                v-else
-                class="lib-pill lib-pill--ok"
-              >Asks first</span>
             </span>
+            <span data-tid="tokens-row-line">{{ endsLine(token) }} · {{ usedLine(token) }} · {{ printersLine(token) }}</span>
             <span class="tok__chips">
               <span
-                v-for="scope in token.scopes"
-                :key="scope"
+                v-for="pill in pillsOf(token)"
+                :key="pill.text"
                 class="tok__chip"
-                :class="{ 'tok__chip--power': isSensitive(scope) }"
-                :title="scopeLabel(scope)"
-              >{{ scope }}</span>
+                :class="{ 'tok__chip--power': pill.changes }"
+                :title="token.scopes.map(scopeLabel).join(', ')"
+              >{{ pill.text }}</span>
             </span>
-            <span>{{ printersLine(token) }}<template v-if="token.ask_mode === 'bypass'"> · {{ modeLine(token) }}</template></span>
-            <span>{{ endsLine(token) }} · {{ usedLine(token) }}</span>
           </div>
           <button
             v-if="token.status === 'active'"
@@ -436,7 +449,7 @@
             data-tid="tokens-revoke"
             @click="revoke(token)"
           >
-            Revoke
+            Revoke…
           </button>
         </div>
       </div>
@@ -496,6 +509,25 @@
       <span>A token can't change access, make tokens or edit your account. See one you don't know? Revoke it.</span>
     </div>
 
+    <div
+      class="acct-note acct-note--info tok__printer-note"
+      data-tid="tokens-printer-note"
+    >
+      <frame-icon
+        name="printer"
+        small
+      />
+      <span>To see which apps can reach <b>one printer</b>, including other people's, open that printer's People and access. Its owner can cut a token off that printer there; only the token's maker revokes it everywhere, here.</span>
+      <router-link
+        v-if="peopleLink"
+        :to="peopleLink.to"
+        class="acct-link tok__printer-link"
+        data-tid="tokens-printer-link"
+      >
+        {{ peopleLink.name }} ›
+      </router-link>
+    </div>
+
     <p
       v-if="message"
       class="acct-note acct-note--info"
@@ -529,6 +561,8 @@ import { Component, Mixins, Prop } from 'vue-property-decorator'
 import AccountReauthMixin from '@/mixins/account-reauth'
 import ReauthDialog from './ReauthDialog.vue'
 import AcctMore from './AcctMore.vue'
+import M3Dialog from '@/components/ui/M3Dialog.vue'
+import { knownPrinters, printerPath } from '@/services/printer-pages'
 import { cloudState } from '@/services/muon-cloud/state'
 import type { CloudPrinter } from '@/services/muon-cloud/api'
 import { accountApi } from '@/services/account/api'
@@ -544,14 +578,16 @@ import {
   BYPASS_SOON,
   SENSITIVE_SCOPES,
   SOON_SCOPES,
+  agentSetupText,
   createBody,
   endsText,
   modeText,
   changesThings,
   needsTwoStep,
   orderTokens,
-  printersText,
+  printersShort,
   scopeLabel,
+  scopePills,
   tokenFailure,
   usedText,
   type CreatedToken,
@@ -565,7 +601,7 @@ import {
  * in `fresh` only until the person says they've saved it, or leaves: never in
  * the shared account state, storage or the console.
  */
-@Component({ components: { ReauthDialog, AcctMore } })
+@Component({ components: { ReauthDialog, AcctMore, M3Dialog } })
 export default class AccountTokens extends Mixins(AccountReauthMixin) {
   @Prop({ type: Function, default: (id: AccountSectionId) => `/account/${id}` })
   readonly linkTo!: (id: AccountSectionId) => string
@@ -579,6 +615,7 @@ export default class AccountTokens extends Mixins(AccountReauthMixin) {
   fresh: CreatedToken | null = null
   copied = false
   copyFailed = false
+  setupCopied = false
   error = ''
   formError = ''
   message = ''
@@ -677,7 +714,7 @@ export default class AccountTokens extends Mixins(AccountReauthMixin) {
   }
 
   printersLine (token: PersonalToken): string {
-    return printersText(token, id => this.printerName(id))
+    return printersShort(token, id => this.printerName(id))
   }
 
   modeLine (token: PersonalToken): string {
@@ -689,7 +726,21 @@ export default class AccountTokens extends Mixins(AccountReauthMixin) {
   }
 
   usedLine (token: PersonalToken): string {
-    return usedText(token)
+    const text = usedText(token)
+    return text.charAt(0).toLowerCase() + text.slice(1)
+  }
+
+  pillsOf (token: PersonalToken) {
+    return scopePills(token.scopes)
+  }
+
+  /** The first owned printer this browser knows, for "open that printer's People and access". */
+  get peopleLink (): { to: string, name: string } | null {
+    for (const printer of this.ownedPrinters) {
+      const slug = knownPrinters().find(t => t.kind === 'cloud' && t.printerId === printer.id)?.slug
+      if (slug) return { to: `${printerPath(slug, 'settings')}#access`, name: printer.name }
+    }
+    return null
   }
 
   openForm () {
@@ -728,6 +779,7 @@ export default class AccountTokens extends Mixins(AccountReauthMixin) {
       this.fresh = made
       this.copied = false
       this.copyFailed = false
+      this.setupCopied = false
       this.making = false
       this.form = this.blankForm()
       this.message = ''
@@ -771,18 +823,32 @@ export default class AccountTokens extends Mixins(AccountReauthMixin) {
     }
   }
 
+  /** The MCP address and the token, for an AI agent: to the clipboard only. */
+  async copySetup () {
+    if (!this.fresh) return
+    try {
+      await navigator.clipboard.writeText(agentSetupText(this.fresh))
+      this.setupCopied = true
+    } catch {
+      this.setupCopied = false
+      this.copyFailed = true
+    }
+  }
+
   dismissFresh () {
     const name = this.fresh?.name
     this.fresh = null
     this.copied = false
     this.copyFailed = false
+    this.setupCopied = false
     if (name) this.message = `${name} is ready. It works until it ends or you revoke it.`
   }
 
   async revoke (token: PersonalToken) {
-    const sure = await this.$confirm(`${token.name} stops working on its next request. Anything using it will be refused. You can't undo this, but you can make another token.`, {
-      title: `Revoke ${token.name}?`,
-      buttonTrueText: 'Revoke it'
+    const sure = await this.$confirm(`${token.name} stops working on every printer on its next request. Anything using it will be refused. You can't undo this, but you can make another token.`, {
+      title: `Revoke ${token.name} everywhere?`,
+      buttonTrueText: 'Revoke it',
+      danger: true
     })
     if (!sure) return
     this.busy = true
@@ -953,13 +1019,45 @@ export default class AccountTokens extends Mixins(AccountReauthMixin) {
     border: 1px solid var(--m3d-border);
     border-radius: 99px;
     color: var(--m3d-text-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 11px;
   }
 
   .tok__chip--power {
     border-color: color-mix(in srgb, var(--m3d-warn, #d49a2a) 60%, var(--m3d-border));
-    color: var(--m3d-text);
+    background: color-mix(in srgb, var(--m3d-warn, #d49a2a) 14%, transparent);
+    color: var(--m3d-warn, #d49a2a);
+  }
+
+  .tok__agent {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin: 12px 0 8px;
+    padding: 12px 14px;
+    border: 1px solid var(--m3d-border);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+
+  .tok__link-btn {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .tok__wide {
+    flex: 1 1 auto;
+  }
+
+  .tok__printer-note {
+    align-items: center;
+
+    .tok__printer-link {
+      margin-left: auto;
+      white-space: nowrap;
+    }
   }
 
   .tok__reading {

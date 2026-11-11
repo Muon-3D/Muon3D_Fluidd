@@ -10,7 +10,7 @@
  */
 import { AccountError } from './client'
 import { agoText, dayText } from './model'
-import type { AskMode, CreateTokenBody, PersonalToken } from './tokenTypes'
+import type { AskMode, CreatedToken, CreateTokenBody, PersonalToken } from './tokenTypes'
 
 export type { TokenStatus, AskMode, PersonalToken, CreatedToken, CreateTokenBody } from './tokenTypes'
 
@@ -228,4 +228,53 @@ export function tokenFailure (error: unknown): { text: string, kind: 'interactiv
     return { text: 'You have 25 working tokens, the most one account can hold. Revoke one you don\'t use, then try again.', kind: 'limit' }
   }
   return { text: error.message, kind: 'other' }
+}
+
+/** The hosted MCP server (remote-access RAC-62): a token goes to it as a bearer token. */
+export const MCP_ADDRESS = 'https://mcp.muon3d.com/mcp'
+
+const SHORT: Record<string, string> = {
+  'printers:files': 'files',
+  'printers:queue': 'queue',
+  'printers:estop': 'E-stop',
+  'printers:camera': 'camera',
+  'printers:control': 'heat and move',
+  'library:write': 'Library',
+  'library:publish': 'publish',
+  'design:write': 'designs',
+  'design:export': 'export',
+  'slicer:run': 'slicing'
+}
+
+/**
+ * A token's scopes as the list draws them: "Look" when it can see things,
+ * then "Change: files, queue, camera" (amber) for what it can change.
+ */
+export function scopePills (scopes: string[]): Array<{ text: string, changes: boolean }> {
+  const pills: Array<{ text: string, changes: boolean }> = []
+  if (scopes.some(s => READ_ONLY_SCOPES.includes(s))) pills.push({ text: 'Look', changes: false })
+  const change = scopes.filter(s => !READ_ONLY_SCOPES.includes(s)).map(s => SHORT[s] ?? s)
+  if (change.length) pills.push({ text: `Change: ${change.join(', ')}`, changes: true })
+  return pills
+}
+
+/** "Boxwood only", "Boxwood and Oak only", "3 printers", "All your printers". */
+export function printersShort (token: Pick<PersonalToken, 'printer_ids'>, name: (id: string) => string): string {
+  const ids = token.printer_ids
+  if (ids && ids.length && ids.length <= 2) return `${ids.map(name).join(' and ')} only`
+  return printersText(token, name)
+}
+
+/**
+ * What an AI agent needs to use the token: the MCP address and the header.
+ * Built for the clipboard only, never stored or sent anywhere.
+ */
+export function agentSetupText (token: Pick<CreatedToken, 'name' | 'token'>): string {
+  return [
+    `Muon3D MCP server (${token.name})`,
+    `Address: ${MCP_ADDRESS}`,
+    `Header: Authorization: Bearer ${token.token}`,
+    '',
+    'Treat the token like a password. Starting a print, heating, moving and publishing always ask the account first.'
+  ].join('\n')
 }
