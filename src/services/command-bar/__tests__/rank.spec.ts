@@ -34,7 +34,7 @@ describe('the command bar', () => {
   })
 
   it('keeps each group short', () => {
-    const many: Command[] = Array.from({ length: 9 }, (_, i) => ({ id: `m${i}`, group: 'Macros', label: `MACRO_${i}`, run }))
+    const many: Command[] = Array.from({ length: 9 }, (_, i) => ({ id: `m${i}`, group: 'Quick commands', label: `MACRO_${i}`, run }))
     expect(rankCommands(many, 'macro', 4)).toHaveLength(4)
   })
 
