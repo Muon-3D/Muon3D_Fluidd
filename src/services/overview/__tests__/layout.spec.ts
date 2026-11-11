@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  dropIndex,
   addTile, defaultLayout, layoutKey, moveBy, moveTile, nudgeSize, readLayout, removeTile, resizeTile, serverLayoutKey,
   MAX_ROWS, MAX_SPAN, MIN_ROWS, MIN_SPAN, type TileDefault
 } from '../layout'
@@ -35,6 +36,35 @@ describe('moving tiles', () => {
     const before = JSON.stringify(l)
     moveTile(l, 'graph', 0)
     expect(JSON.stringify(l)).toBe(before)
+  })
+})
+
+describe('dropping a held tile on no tile (KAN-1958)', () => {
+  // Two rows: a b c on top (c ends at 600), d e below (e ends at 400).
+  const slots = [
+    { id: 'a', left: 0, top: 0, width: 200, height: 100 },
+    { id: 'b', left: 200, top: 0, width: 200, height: 100 },
+    { id: 'c', left: 400, top: 0, width: 200, height: 100 },
+    { id: 'd', left: 0, top: 120, width: 200, height: 100 },
+    { id: 'e', left: 200, top: 120, width: 200, height: 100 }
+  ]
+  it('goes to the empty end of the row it is in', () => {
+    expect(dropIndex(slots, 'a', 700, 150)).toBe(4)
+    expect(dropIndex(slots, 'e', 700, 50)).toBe(3)
+  })
+  it('goes before the first tile of a row when left of it, after the ones left of the pointer', () => {
+    expect(dropIndex(slots, 'e', -10, 50)).toBe(0)
+    expect(dropIndex(slots, 'a', 350, 150)).toBe(4)
+  })
+  it('goes first above every tile, last below them, and nowhere in a gap between rows', () => {
+    expect(dropIndex(slots, 'c', 10, -20)).toBe(0)
+    expect(dropIndex(slots, 'a', 10, 400)).toBe(4)
+    expect(dropIndex(slots, 'a', 10, 110)).toBeNull()
+  })
+  it('a tile moved with dropIndex is never lost or repeated', () => {
+    const layout = { tiles: slots.map(s => ({ id: s.id, span: 3, rows: 1 })), hidden: [] }
+    const out = moveTile(layout, 'a', dropIndex(slots, 'a', 700, 150)!)
+    expect(out.tiles.map(t => t.id)).toEqual(['b', 'c', 'd', 'e', 'a'])
   })
 })
 

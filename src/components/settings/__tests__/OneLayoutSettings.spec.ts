@@ -107,7 +107,7 @@ describe('Settings in one layout', () => {
       stubs: { 'router-link': true, 'router-view': true },
       mocks: {
         $store: {
-          getters: { 'server/componentSupport': () => false, 'config/getDisplayName': 'M1', 'webcams/getWebcams': [], 'config/getTempPresets': [], 'macros/getMacros': [], 'version/hasUpdate': () => false },
+          getters: { 'server/isMuonPrinter': true, 'server/componentSupport': () => false, 'config/getDisplayName': 'M1', 'webcams/getWebcams': [], 'config/getTempPresets': [], 'macros/getMacros': [], 'version/hasUpdate': () => false },
           state: { version: { version_info: {} } }
         }
       },
@@ -131,12 +131,33 @@ describe('Settings in one layout', () => {
     wrapper.destroy()
   })
 
+  it.each([[false, true], [true, false]])('on a Muon printer, Other software is a locked row unless developer mode is on (dev mode %s)', async (dev, locked) => {
+    const wrapper = shallowMount(SoftwareSettings, {
+      stubs: { 'toggle-switch': true, 'router-link': true },
+      mocks: { $store: { dispatch: vi.fn(), getters: {}, state: { version: { busy: false } } } },
+      computed: {
+        printerName: () => 'M1',
+        isMuonPrinter: () => true,
+        otherUpdateBlocked: () => '',
+        devModeEnabled: () => dev,
+        status: () => null,
+        unavailableText: () => '',
+        enableNotifications: () => true,
+        others: () => [{ key: 'moonraker', title: 'moonraker', text: 'Up to date', update: true }]
+      }
+    })
+    expect(wrapper.findComponent({ name: 'LockedRow' }).exists()).toBe(locked)
+    expect(wrapper.findComponent({ name: 'TaskFold' }).exists()).toBe(!locked)
+    wrapper.destroy()
+  })
+
   it.each([false, true])('puts Other software in a closed task fold when legacy Pro is %s', async pro => {
     localStorage.setItem('muon3d.pro', pro ? '1' : '0')
     const wrapper = shallowMount(SoftwareSettings, {
       stubs: { 'toggle-switch': true, 'router-link': true },
       computed: {
         printerName: () => 'M1',
+        isMuonPrinter: () => false,
         status: () => null,
         unavailableText: () => 'Asking the printer…',
         enableNotifications: () => true,
@@ -161,7 +182,19 @@ describe('Settings in one layout', () => {
     const wrapper = shallowMount(SoftwareSettings, {
       stubs: { 'toggle-switch': true, 'router-link': true },
       mocks: { $confirm: confirm, $store: { dispatch: vi.fn(), state: { version: { busy: false } } } },
-      computed: { printerName: () => 'M1', status: () => null, unavailableText: () => '', others: () => [], enableNotifications: () => true, commandControlAvailable: () => control, klippyConnected: () => connected, printerPrinting: () => printing, printerPaused: () => false, printerState: () => printing ? 'printing' : 'standby' }
+      computed: {
+        printerName: () => 'M1',
+        isMuonPrinter: () => false,
+        status: () => null,
+        unavailableText: () => '',
+        others: () => [],
+        enableNotifications: () => true,
+        commandControlAvailable: () => control,
+        klippyConnected: () => connected,
+        printerPrinting: () => printing,
+        printerPaused: () => false,
+        printerState: () => printing ? 'printing' : 'standby'
+      }
     })
     await (wrapper.vm as any).updateOther('moonraker')
     expect(confirm).not.toHaveBeenCalled()
@@ -176,7 +209,20 @@ describe('Settings in one layout', () => {
     const wrapper = shallowMount(SoftwareSettings, {
       stubs: { 'toggle-switch': true, 'router-link': true },
       mocks: { $confirm: confirm, $store: { dispatch, state: { version: { busy: false } } } },
-      computed: { printerName: () => 'M1', status: () => null, unavailableText: () => '', others: () => [], enableNotifications: () => true, commandTarget: () => 'same', commandControlAvailable: () => true, klippyConnected: () => true, printerPrinting: () => false, printerPaused: () => false, printerState: () => 'standby' }
+      computed: {
+        printerName: () => 'M1',
+        isMuonPrinter: () => false,
+        status: () => null,
+        unavailableText: () => '',
+        others: () => [],
+        enableNotifications: () => true,
+        commandTarget: () => 'same',
+        commandControlAvailable: () => true,
+        klippyConnected: () => true,
+        printerPrinting: () => false,
+        printerPaused: () => false,
+        printerState: () => 'standby'
+      }
     })
     await (wrapper.vm as any).updateOther('moonraker')
     expect(confirm).toHaveBeenCalledOnce()
@@ -199,6 +245,7 @@ describe('Settings in one layout', () => {
       mocks: { $confirm: confirm, $store: { dispatch, state: { version: { busy: false } } } },
       computed: {
         printerName: () => 'M1',
+        isMuonPrinter: () => false,
         status: () => null,
         unavailableText: () => '',
         others: () => [],

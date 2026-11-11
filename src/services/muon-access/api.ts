@@ -153,7 +153,7 @@ export const CAPABILITY_ROWS: Array<{ action: string, label: string }> = [
   { action: 'read', label: 'See status and the camera' },
   { action: 'print', label: 'Print, pause and cancel' },
   { action: 'files', label: 'Upload and delete own files' },
-  { action: 'motion', label: 'Move and run macros' },
+  { action: 'motion', label: 'Move and run quick commands' },
   { action: 'heat', label: 'Heat the nozzle and bed' },
   { action: 'files_others', label: "Delete or reprint others' files" },
   { action: 'console', label: 'Use the console' },
@@ -166,7 +166,7 @@ export const CAPABILITY_ROWS: Array<{ action: string, label: string }> = [
 ]
 
 /** Motion's words on a printer whose Moonraker has no `heat` row, where motion covers heating too. */
-const MOTION_WITH_HEAT = 'Move, heat and run macros'
+const MOTION_WITH_HEAT = 'Move, heat and run quick commands'
 
 /**
  * The rows this printer reports, in order, with what this browser may do.

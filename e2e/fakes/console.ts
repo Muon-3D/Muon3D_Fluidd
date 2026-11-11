@@ -40,6 +40,8 @@ export interface ConsoleState {
   approvals: unknown[];
   /** The community identity (`/v1/me/community-identity`), when a test needs it; otherwise the fake answers {}. */
   identity?: { declared_age: number | null, declared_at: number | null, can_community: boolean, can_public: boolean, identity_public: boolean, revision: number, projection_pending: boolean };
+  /** The account's sessions (`/v1/me/sessions`), when a test needs them: the console's own shape. */
+  sessions?: Array<Record<string, unknown> & { id: string, current: boolean }>;
   /** Answer matching requests with a status ("PATCH /v1/me"): the console failing. */
   failOn?: (request: string) => number | null;
   /** Every request that changes something (not a GET), with its body: `DELETE /v1/printers/p1/shares/s1`. */
@@ -121,6 +123,14 @@ export async function answerConsole (route: Route, state: ConsoleState) {
   if (list && request.method() === 'GET') {
     const [, id, kind] = list
     return json(route, { [kind]: state[kind as 'shares' | 'invites' | 'links'][decodeURIComponent(id)] ?? [] })
+  }
+  if (state.sessions && url.pathname === '/v1/me/sessions') {
+    if (request.method() === 'GET') return json(route, { sessions: state.sessions })
+    if (request.method() === 'DELETE' && url.searchParams.get('scope') === 'others') {
+      const ended = state.sessions.filter(s => !s.current).length
+      state.sessions = state.sessions.filter(s => s.current)
+      return json(route, { ok: true, ended })
+    }
   }
   if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
   switch (url.pathname) {

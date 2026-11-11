@@ -29,20 +29,8 @@
         type="button"
         class="cbtn"
         :disabled="!canHome"
-        @click="home('XY')"
-      >Home X Y</button>
-      <button
-        type="button"
-        class="cbtn"
-        :disabled="!canHome"
         @click="home('Z')"
       >Home Z</button>
-      <button
-        type="button"
-        class="cbtn"
-        :disabled="!canHome"
-        @click="home()"
-      >Home all</button>
     </span>
 
     <template #popover>
@@ -55,28 +43,10 @@
             type="button"
             class="cbtn"
             :disabled="!canHome"
-            data-tid="home-xy"
-            @click="home()"
-          >
-            Home all
-          </button>
-          <button
-            type="button"
-            class="cbtn"
-            :disabled="!canHome"
             data-tid="home-z"
             @click="home('Z')"
           >
             Home Z
-          </button>
-          <button
-            type="button"
-            class="cbtn"
-            :disabled="!canHome"
-            data-tid="home-all"
-            @click="home()"
-          >
-            Home all
           </button>
         </div>
         <div class="po__go">
@@ -186,6 +156,7 @@ export default class PositionTile extends Mixins(OverviewMixin) {
 
 <style lang="scss">
 .po__xyz { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.po__axis { min-width: 0; }
 .po__axis { display: flex; flex-direction: column; padding: 8px 12px; border-radius: 14px; background: var(--m3d-surface-2); }
 .po__axis span { color: var(--m3d-accent); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; }
 .po__axis b { font-family: var(--m3d-font-mono); font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -193,7 +164,6 @@ export default class PositionTile extends Mixins(OverviewMixin) {
 .po__pop { display: flex; flex-direction: column; gap: 12px; }
 .po__homes { display: flex; flex-wrap: wrap; gap: 8px; }
 .po__homes--inline { margin-top: 10px; }
-.po--S .po__xyz { flex-direction: column; gap: 0; }
 .po__go { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .po__field { display: flex; flex-direction: column; gap: 4px; color: var(--m3d-text-muted); font-size: 11.5px; }
 </style>

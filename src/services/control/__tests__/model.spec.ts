@@ -147,7 +147,7 @@ describe('outputs', () => {
 
 describe('the extruder', () => {
   it('says why it can\'t move filament', () => {
-    expect(extrudeBlocked(26, 170)).toBe("Heat the nozzle first · it's at 26°, it needs 170°")
+    expect(extrudeBlocked(26, 170)).toBe('The nozzle is at 26°; extruding needs 170°. Press Heat.')
     expect(extrudeBlocked(200, 170)).toBeNull()
     expect(extrudeBlocked(26, 170, true)).toBeNull()
   })

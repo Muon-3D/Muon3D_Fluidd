@@ -6,8 +6,8 @@
  * nothing reaches the shared mock.
  */
 import type { Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
-import { usePrinter, useDatabase, PRESETS } from './printer'
+import { test, expect } from '../../fixtures'
+import { usePrinter, useDatabase, PRESETS } from '../printer'
 
 const QUICK_KEY = 'uiSettings.console.quickCommands.anonymous'
 
@@ -266,5 +266,47 @@ test.describe('signed in to a Muon3D account', () => {
     await expect(settings(page).getByRole('heading', { name: 'Quick commands · 6' })).toBeVisible()
     await expect(settings(page).getByTestId('console-settings-add-quick')).toBeEnabled()
     expect(db.posts().filter(p => String(p.key).startsWith('uiSettings.console.quickCommands'))).toEqual([])
+  })
+})
+
+test.describe('the Showing options (KAN-1971)', () => {
+  const LONG = 'Probe at 112.0,108.5 is z=1.842, bed mesh "default" loaded with 25 points across the whole bed, ready to print'
+
+  test('each new option has a preview line that follows it', async ({ page, open }) => {
+    const { db } = await setUp(page)
+    await open('/settings#console')
+    await expect(settings(page).getByTestId('console-preview-timestamps')).toHaveText(/^\d\d:\d\d:\d\d\s+ok T:/)
+    await toggle(page, 'Times on each line')
+    await expect(settings(page).getByTestId('console-preview-timestamps')).toHaveText(/^ok T:/)
+
+    const wrap = settings(page).getByTestId('console-preview-wrap')
+    await expect(wrap).not.toHaveClass(/cset__preview--cut/)
+    await toggle(page, 'Wrap long lines')
+    await expect(wrap).toHaveClass(/cset__preview--cut/)
+    await expect.poll(() => db.posts().find(p => p.key === 'uiSettings.console.wrap')?.value).toBe(false)
+
+    const reconnect = settings(page).getByTestId('console-preview-reconnect')
+    await expect(reconnect).toContainText('earlier lines stay')
+    await toggle(page, 'Start empty after a reconnect')
+    await expect(reconnect).toContainText('starts empty')
+    await expect.poll(() => db.posts().find(p => p.key === 'uiSettings.console.clearOnReconnect')?.value).toBe(true)
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow).toBeLessThanOrEqual(1)
+  })
+
+  test('"Wrap long lines" off keeps a long line on one line in the Console', async ({ page, open }) => {
+    await setUp(page, [{ message: LONG }])
+    await open('/console')
+    const line = page.getByTestId('console-log').getByText(LONG)
+    await expect(line).toBeVisible()
+    const wrapped = (await line.boundingBox())!.height
+
+    await open('/settings#console')
+    await toggle(page, 'Wrap long lines')
+    await open('/console')
+    await expect(page.getByTestId('console-log')).toHaveClass(/cons__log--nowrap/)
+    const one = (await page.getByTestId('console-log').getByText(LONG).boundingBox())!.height
+    expect(one).toBeLessThanOrEqual(wrapped)
+    expect(one).toBeLessThan(30)
   })
 })

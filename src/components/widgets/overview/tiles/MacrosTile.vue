@@ -29,7 +29,7 @@
         data-tid="macros-all"
         @click="dialog = true"
       >
-        {{ size === 'S' ? 'All' : 'All commands' }} ({{ arrangedMacros.length }})
+        {{ size === 'S' ? 'All' : 'All commands' }}
       </button>
     </div>
     <p
@@ -49,7 +49,7 @@
       v-if="selected"
       class="macros__values mt__form"
       data-tid="macro-send"
-      aria-label="Macro values"
+      aria-label="Quick command values"
       @submit.prevent="submitMacro"
     >
       <h3>{{ selected.title }}</h3>
@@ -62,7 +62,7 @@
         <textarea
           v-model="values[field.name]"
           rows="1"
-          :aria-label="`Macro ${field.name}`"
+          :aria-label="`Value ${field.name}`"
           autocomplete="off"
         />
       </label>

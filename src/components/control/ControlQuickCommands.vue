@@ -14,12 +14,12 @@
         data-tid="quick-all"
         @click="all = !all"
       >
-        {{ all ? 'Fewer' : `All ${commands.length}` }}
+        {{ all ? 'Fewer' : 'All commands' }}
       </button>
       <a
         class="qc__arrange"
         :href="arrangeLink"
-        title="Hide, show and group macros in Settings › Macros"
+        title="Hide, show and group quick commands in Settings › Quick commands"
         @click.prevent="$router.push(arrangeLink)"
       >Arrange</a>
     </template>
@@ -98,7 +98,7 @@
       v-if="selected"
       class="macros__values"
       data-tid="macro-send"
-      aria-label="Macro values"
+      aria-label="Quick command values"
       @submit.prevent="submitMacro"
     >
       <h3>{{ selected.title }}</h3>
@@ -108,11 +108,11 @@
         :key="field.name"
         class="macros__field"
       >
-        <span>{{ field.name }} · {{ field.optional ? `optional${field.defaultValue ? ` · default ${field.defaultValue}` : ' · uses the macro’s own value'}` : 'required' }}</span>
+        <span>{{ field.name }} · {{ field.optional ? `optional${field.defaultValue ? ` · default ${field.defaultValue}` : ' · uses the command’s own value'}` : 'required' }}</span>
         <textarea
           v-model="values[field.name]"
           rows="1"
-          :aria-label="`Macro ${field.name}`"
+          :aria-label="`Value ${field.name}`"
           autocomplete="off"
         />
       </label>

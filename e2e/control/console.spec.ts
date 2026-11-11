@@ -131,3 +131,49 @@ test('desktop has the Macros and Now tiles beside the output; a phone keeps only
     await expect(page.getByTestId('console-now').getByText('Bed')).toBeVisible()
   }
 })
+
+test('Shift+Enter adds a line, Enter sends both lines as one script, and history recalls it whole', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await open('/console')
+  const input = page.getByTestId('console-input')
+  await input.click()
+  await input.pressSequentially('M105')
+  await input.press('Shift+Enter')
+  await input.pressSequentially('M114')
+  await expect(input).toHaveValue('M105\nM114')
+  expect(printer.gcode).toEqual([])
+  await input.press('Enter')
+  await expect.poll(() => printer.gcode).toEqual(['M105\nM114'])
+  await expect(input).toHaveValue('')
+  // Up on an empty line recalls the whole two-line command.
+  await input.press('ArrowUp')
+  await expect(input).toHaveValue('M105\nM114')
+})
+
+test('with several lines, Up moves the caret between lines and only the first line recalls history', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await open('/console')
+  const input = page.getByTestId('console-input')
+  await input.fill('G4 P1')
+  await input.press('Enter')
+  await expect.poll(() => printer.gcode).toEqual(['G4 P1'])
+  await input.fill('M105\nM114')
+  await input.press('Escape') // close the suggestions, so the arrows are not theirs
+  await input.press('ArrowUp') // caret is on the last line: moves to the first, no recall
+  await expect(input).toHaveValue('M105\nM114')
+  await input.press('ArrowUp') // now on the first line: recalls
+  await expect(input).toHaveValue('G4 P1')
+})
+
+test('a single line still sends on Enter as before, and a long paste scrolls after a few lines', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  await open('/console')
+  const input = page.getByTestId('console-input')
+  await input.fill('M105')
+  await input.press('Enter')
+  await expect.poll(() => printer.gcode).toEqual(['M105'])
+  await input.fill(Array.from({ length: 12 }, (_, i) => `G4 P${i}`).join('\n'))
+  const box = await input.boundingBox()
+  expect(box!.height).toBeLessThan(12 * 18)
+  expect(await input.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true)
+})
