@@ -28,7 +28,8 @@ export const PART_NAMES: Record<PartId, string> = {
 export const PART_NODES: Record<PartId, readonly string[]> = {
   plate: ['M1_BuildPlate_Glass', 'glassPlate'],
   toolhead: ['M1_X_Carriage', 'headAssembly'],
-  filament: ['M1_Hose', 'conduit', 'spool'],
+  // The accurate model's spool and strand (accurate/spool.ts) are the filament too: pointing at the reel lights it.
+  filament: ['M1_Hose', 'conduit', 'spool', 'M1_Spool', 'M1_Filament'],
   screen: ['M1_Panel_Screen', 'M1_Knob', 'display', 'scrollWheel']
 }
 
