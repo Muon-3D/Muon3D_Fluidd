@@ -5,7 +5,7 @@
  */
 import type { Page } from '@playwright/test'
 import { expect, ready, test } from '../fixtures'
-import { setupPrinter, WRONG_PASSWORD } from './setup-printer'
+import { JOIN_FAILS, setupPrinter, WRONG_PASSWORD } from './setup-printer'
 
 const card = (page: Page) => page.locator('.setup-step')
 const title = (page: Page) => card(page).locator('h1')
@@ -77,6 +77,24 @@ test('a wrong password says so, and Try again reopens the same network', async (
   await page.getByTestId('join-retry').click()
   await expect(title(page)).toHaveText('Choose Wi-Fi')
   await expect(page.getByTestId('wifi-password')).toHaveValue('')
+})
+
+const JOIN_COPY: Record<string, string> = {
+  ssid_not_found: "Walnut can't see HomeWiFi from here.",
+  timeout: 'Joining HomeWiFi took too long.',
+  no_address: "Walnut joined HomeWiFi, but the router didn't give it an address. Restarting the router often fixes this."
+}
+
+test('a join that is not seen, times out or gets no address says which, and Try again goes back', async ({ page }) => {
+  await startSetup(page)
+  for (const [psk, { code }] of Object.entries(JOIN_FAILS)) {
+    if (!(code in JOIN_COPY)) continue
+    await joinHome(page, psk)
+    await expect(title(page)).toHaveText("Wi-Fi didn't connect")
+    await expect(page.getByTestId('join-error')).toHaveText(JOIN_COPY[code])
+    await page.getByTestId('join-retry').click()
+    await expect(title(page)).toHaveText('Choose Wi-Fi')
+  }
 })
 
 test('a short password is refused before anything is sent', async ({ page }) => {
