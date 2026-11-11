@@ -55,7 +55,7 @@
 
       <div
         class="cons__log"
-        :class="`cons__log--${prefs.textSize}`"
+        :class="[`cons__log--${prefs.textSize}`, { 'cons__log--nowrap': !prefs.wrap }]"
         data-tid="console-log"
         aria-live="polite"
       >
@@ -191,30 +191,15 @@
             @submit.prevent="send"
           >
             <span aria-hidden="true">›</span>
-            <input
-              v-if="prefs.enterSends"
-              ref="input"
-              v-model="command"
-              type="text"
-              spellcheck="false"
-              autocomplete="off"
-              :disabled="!klippyConnected"
-              placeholder="G-code, or a macro name…"
-              aria-label="Send G-code"
-              data-tid="console-input"
-              @input="open = true; picked = -1"
-              @keydown="onKey"
-              @blur="open = false"
-            >
             <textarea
-              v-else
               ref="input"
               v-model="command"
-              rows="2"
+              rows="1"
+              class="cons__line"
               spellcheck="false"
               autocomplete="off"
               :disabled="!klippyConnected"
-              placeholder="G-code, or a macro name… (Ctrl Enter sends)"
+              placeholder="G-code, or a command name…"
               aria-label="Send G-code"
               data-tid="console-input"
               @input="open = true; picked = -1"
@@ -281,6 +266,7 @@ import { commandHelp, entryKind, explain, filterEntries, suggestions, type LogFi
 import TonePill from '@/components/printers/TonePill.vue'
 import ConsoleMacros from '@/components/console/ConsoleMacros.vue'
 import { consoleView } from '@/services/console/view'
+import { arrowIsHistory, enterAction, MAX_LINE_ROWS } from '@/services/console/keys'
 import type { ShownMacro } from '@/mixins/macros'
 import { chipText, consoleConfig, quickCommandsFor, accountQuickKey, type ConsoleConfig, type QuickCommand } from '@/services/console/settings'
 import { cloudState } from '@/services/muon-cloud/state'
@@ -320,6 +306,10 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
 
   find = ''
   command = ''
+
+  @Watch('command')
+  onCommandChange () { this.fit() }
+
   open = false
   picked = -1
   /** Where ↑ has got to in the history; -1 is the line being typed. */
@@ -453,21 +443,19 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
         this.take(this.list[Math.max(0, this.picked)])
         break
       case 'ArrowDown':
-        if (!listing && this.command.includes('\n')) return
+        if (!listing && !this.caretOnEdge('down')) return
         if (listing) this.picked = Math.min(this.list.length - 1, this.picked + 1)
         else this.recall(-1)
         break
       case 'ArrowUp':
-        if (!listing && this.command.includes('\n')) return
+        if (!listing && !this.caretOnEdge('up')) return
         if (listing && this.picked > 0) this.picked--
         else if (listing && this.picked === 0) this.picked = -1
         else this.recall(1)
         break
       case 'Enter':
-        if (listing && this.picked >= 0) this.take(this.list[this.picked])
-        else if (this.prefs.enterSends) return
-        // Enter sends off: Enter adds a line, Ctrl Enter sends.
-        else if (event.ctrlKey || event.metaKey) this.send()
+        if (listing && this.picked >= 0 && !event.shiftKey) this.take(this.list[this.picked])
+        else if (enterAction(event, this.prefs.enterSends) === 'send') this.send()
         else return
         break
       case 'Escape':
@@ -478,6 +466,24 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
         return
     }
     event.preventDefault()
+  }
+
+  /** ↑ and ↓ recall history only from the first or last line of what is typed. */
+  caretOnEdge (direction: 'up' | 'down'): boolean {
+    const el = this.$refs.input as HTMLTextAreaElement | undefined
+    if (!el) return true
+    return arrowIsHistory(direction, this.command, el.selectionStart, el.selectionEnd)
+  }
+
+  /** Grows the line to fit what is typed, up to MAX_LINE_ROWS, then it scrolls. */
+  fit () {
+    this.$nextTick(() => {
+      const el = this.$refs.input as HTMLTextAreaElement | undefined
+      if (!el) return
+      el.style.height = 'auto'
+      const line = parseFloat(getComputedStyle(el).lineHeight) || 21
+      el.style.height = `${Math.min(el.scrollHeight, line * MAX_LINE_ROWS)}px`
+    })
   }
 
   /** ↑ goes back through what was sent, ↓ forward again, to an empty line. */
@@ -510,7 +516,7 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
   }
 
   get keysLine (): string {
-    return [this.prefs.suggest ? 'Tab completes' : '', '↑ history', this.prefs.enterSends ? 'Enter sends' : 'Enter adds a line · Ctrl Enter sends'].filter(Boolean).join(' · ')
+    return [this.prefs.suggest ? 'Tab completes' : '', '↑ history', this.prefs.enterSends ? 'Enter sends · Shift Enter adds a line' : 'Enter adds a line · Ctrl Enter sends'].filter(Boolean).join(' · ')
   }
 
   /** A chip set to "Put it in the input" fills the line to be edited; the rest send. */
@@ -725,6 +731,12 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
   }
 
   // Settings › Console › Text size.
+  .cons__log--nowrap .cons__msg {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .cons__log--sm .cons__line { font-size: 11px; }
   .cons__log--lg .cons__line { font-size: 14.5px; }
 
@@ -880,7 +892,8 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
       font: inherit;
       font-size: 14px;
       line-height: 1.5;
-      resize: vertical;
+      resize: none;
+      overflow-y: auto;
     }
 
     input {

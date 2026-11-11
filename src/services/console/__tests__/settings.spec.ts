@@ -80,3 +80,21 @@ describe('hide-lines filters', () => {
     expect(describeFilter({ type: 'contains', value: 'x' })).toBe('contains "x"')
   })
 })
+
+describe('the Showing options added for KAN-1971', () => {
+  it('wrap long lines by default and keep the lines after a reconnect, unless saved otherwise', async () => {
+    const { consoleConfig } = await import('../settings')
+    expect(consoleConfig(null)).toMatchObject({ wrap: true, clearOnReconnect: false })
+    expect(consoleConfig({ wrap: false, clearOnReconnect: true })).toMatchObject({ wrap: false, clearOnReconnect: true })
+    expect(consoleConfig({ wrap: 'no' as never, clearOnReconnect: 1 as never })).toMatchObject({ wrap: true, clearOnReconnect: false })
+  })
+
+  it('each has a preview line that says what it does', async () => {
+    const { reconnectPreview, timestampPreview, PREVIEW_LONG_LINE } = await import('../settings')
+    expect(timestampPreview(true)).toMatch(/^\d\d:\d\d:\d\d {2}ok T:/)
+    expect(timestampPreview(false)).toMatch(/^ok T:/)
+    expect(reconnectPreview(true)).toContain('starts empty')
+    expect(reconnectPreview(false)).toContain('stay')
+    expect(PREVIEW_LONG_LINE.length).toBeGreaterThan(60)
+  })
+})

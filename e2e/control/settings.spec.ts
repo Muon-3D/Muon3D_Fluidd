@@ -6,7 +6,7 @@
 import { test, expect } from '../fixtures'
 import { usePrinter } from './printer'
 
-const SECTIONS = ['General', 'Wi-Fi and network', 'Cameras', 'Materials', 'Macros', 'Console', 'Files and editor', 'Moving and extruding', 'G-code preview and 3D', 'System']
+const SECTIONS = ['General', 'Wi-Fi and network', 'Cameras', 'Materials', 'Quick commands', 'Console', 'Files and editor', 'Moving and extruding', 'G-code preview and 3D', 'System']
 
 test('the page has a title, a line saying what it is for and a search', async ({ page, open, isMobile }) => {
   await open('/settings')
@@ -63,7 +63,7 @@ test('a section opens under its own title and line; on a phone there is a way ba
 })
 
 test('search narrows the list to what matches and hides the rest, and says when nothing does', async ({ page, open }) => {
-  await usePrinter(page, {}, { components: ['authorization', 'update_manager'] })
+  await usePrinter(page, {}, { components: ['authorization', 'update_manager', 'muon_protection'] })
   await open('/settings')
   const search = page.getByRole('searchbox', { name: 'Search settings' })
   const list = page.getByRole('navigation', { name: 'Settings sections' })
@@ -134,16 +134,22 @@ test('an anchor for a section the printer lacks is not titled as that section', 
 })
 
 const PARTS = {
-  'no optional parts': [],
   'every optional part': ['authorization', 'update_manager', 'muon_access', 'muon_protection', 'timelapse', 'spoolman']
 }
 for (const [name, components] of Object.entries(PARTS)) {
-  test(`Developer mode shows, as it did before, on a printer with ${name}`, async ({ page, open }) => {
+  test(`Developer mode shows on a printer with ${name}`, async ({ page, open }) => {
     await usePrinter(page, {}, { components })
     await open('/settings')
     await expect(page.getByRole('navigation', { name: 'Developer mode' }).getByRole('link', { name: /Developer mode/ })).toBeVisible()
   })
 }
+
+test('a printer that is not a Muon has no Developer mode in the list', async ({ page, open }) => {
+  await usePrinter(page, {}, { components: [] })
+  await open('/settings')
+  await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: /^General/ })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Developer mode' })).toHaveCount(0)
+})
 
 test('Wi-Fi and System keep their own addresses and open with the list beside them', async ({ page, open, isMobile }) => {
   await open('/wifi')
@@ -177,5 +183,5 @@ test('developer mode on: the message goes and the way out stays', async ({ page,
   const pane = page.getByTestId('settings-pane')
   await expect(pane.getByText('On: the printer runs your copy of its configuration')).toBeVisible()
   await expect(pane.getByTestId('developer-mode-go-to-printer')).toHaveCount(0)
-  await expect(pane.getByRole('link', { name: 'Edit macros' })).toBeVisible()
+  await expect(pane.getByRole('link', { name: /Edit what macros do/ })).toBeVisible()
 })
