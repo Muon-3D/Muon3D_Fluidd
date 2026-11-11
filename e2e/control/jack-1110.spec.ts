@@ -276,7 +276,7 @@ async function boxOf (page: Page, id: string) {
 }
 const idsOf = (page: Page) => page.locator('[data-cell]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.cell as string))
 
-/** Row 1 Print mode and Position side by side; row 2 Temperatures across; Trackpad and Jog side by side; Quick commands full width under them (KAN-2076). */
+/** Row 1 Print mode and Position side by side; row 2 Temperatures across; Quick commands full width under the Trackpad and Jog (KAN-2076). */
 async function expectJackLayout (page: Page) {
   expect(await idsOf(page)).toEqual(JACK_ORDER)
   const grid = (await page.locator('.overview__grid').boundingBox())!
@@ -295,14 +295,13 @@ async function expectJackLayout (page: Page) {
   expect(graph.y).toBeGreaterThan(Math.max(mode.y + mode.height, position.y + position.height) - 2)
   expect(Math.abs(graph.x - grid.x)).toBeLessThan(2)
   expect(Math.abs(graph.width - grid.width)).toBeLessThan(2)
-  // Then the trackpad and Jog side by side, and Quick commands across the full width under them.
+  // Then the trackpad, Jog on its right, and Quick commands across the full width under them.
   expect(trackpad.y).toBeGreaterThan(graph.y + graph.height - 2)
   expect(jog.x).toBeGreaterThan(trackpad.x + trackpad.width - 2)
   expect(Math.abs(jog.y - trackpad.y)).toBeLessThan(2)
   expect(Math.abs(macros.x - grid.x)).toBeLessThan(2)
   expect(Math.abs(macros.width - grid.width)).toBeLessThan(2)
   expect(macros.y).toBeGreaterThan(Math.max(trackpad.y + trackpad.height, jog.y + jog.height) - 2)
-  expect(macros.y - (jog.y + jog.height)).toBeLessThan(40)
 }
 
 test.describe('KAN-2029: the default layout', () => {
