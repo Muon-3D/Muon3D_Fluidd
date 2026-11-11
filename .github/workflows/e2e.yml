@@ -59,7 +59,16 @@ jobs:
             playwright-${{ runner.os }}-
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        # The runner's apt mirror (azure.archive.ubuntu.com) sometimes fails to resolve; refresh the
+        # package lists and retry with a growing wait instead of failing the whole shard.
+        run: |
+          for attempt in 1 2 3 4; do
+            sudo apt-get update -o Acquire::Retries=3 || true
+            if npx playwright install --with-deps chromium; then exit 0; fi
+            echo "Chromium install attempt $attempt failed; retrying in $((attempt * 20))s"
+            sleep $((attempt * 20))
+          done
+          exit 1
 
       - name: Run e2e (shard ${{ matrix.shard }}/4)
         run: npx playwright test -c e2e/playwright.config.ts --shard=${{ matrix.shard }}/4 --reporter=blob,github
