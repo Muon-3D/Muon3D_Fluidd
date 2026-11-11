@@ -27,10 +27,16 @@ async function pick (page: Page) {
 
 async function drop (page: Page) {
   await page.evaluate(() => {
-    const data = new DataTransfer()
-    data.items.add(new File(['G28\nG1 X10\n'], 'cube.gcode', { type: 'text/x-gcode' }))
-    window.dispatchEvent(new DragEvent('dragenter', { dataTransfer: data, bubbles: true, cancelable: true }))
-    window.dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }))
+    // A page cannot make a DataTransfer whose items have file-system entries
+    // (webkitGetAsEntry is null for a synthetic one), so the drop carries its
+    // file in `files`, the path a browser takes when there are no items.
+    const file = new File(['G28\nG1 X10\n'], 'cube.gcode', { type: 'text/x-gcode' })
+    const data = { items: [], files: [file], types: ['Files'], dropEffect: 'none' }
+    for (const type of ['dragenter', 'drop']) {
+      const event = new DragEvent(type, { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'dataTransfer', { value: data })
+      window.dispatchEvent(event)
+    }
   })
 }
 
