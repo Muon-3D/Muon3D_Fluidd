@@ -7,8 +7,8 @@
  * whole app, not just the model.
  */
 import type { Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
-import { PRESETS, usePrinter, type PrinterHandle } from './printer'
+import { test, expect } from '../../fixtures'
+import { PRESETS, usePrinter, type PrinterHandle } from '../printer'
 
 const GCODE = [
   ';FLAVOR:Klipper',

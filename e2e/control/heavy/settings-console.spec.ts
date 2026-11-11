@@ -6,8 +6,8 @@
  * nothing reaches the shared mock.
  */
 import type { Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
-import { usePrinter, useDatabase, PRESETS } from './printer'
+import { test, expect } from '../../fixtures'
+import { usePrinter, useDatabase, PRESETS } from '../printer'
 
 const QUICK_KEY = 'uiSettings.console.quickCommands.anonymous'
 
