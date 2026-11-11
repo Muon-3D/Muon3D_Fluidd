@@ -1,5 +1,5 @@
 /** The command bar's groups, in the order they show. */
-export const GROUPS = ['Do', 'Jobs', 'Macros', 'Go to', 'Printers'] as const
+export const GROUPS = ['Do', 'Jobs', 'Quick commands', 'Go to', 'Printers'] as const
 
 export type CommandGroup = typeof GROUPS[number]
 

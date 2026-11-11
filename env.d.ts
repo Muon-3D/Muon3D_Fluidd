@@ -32,3 +32,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+interface Window {
+  /** index.html starts the config.json request while parsing (KAN-2011); init.ts takes it. */
+  __muonHostConfig?: Promise<import("@/store/config/types").HostConfig | null>
+}

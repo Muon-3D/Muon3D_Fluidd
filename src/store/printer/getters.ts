@@ -946,7 +946,7 @@ export const getters: GetterTree<PrinterState, RootState> = {
     }
 
     if (config && !('gcode_macro CANCEL_PRINT' in config)) {
-      warnings.push({ message: 'CANCEL_PRINT macro not found in configuration.' })
+      warnings.push({ message: 'CANCEL_PRINT command not found in configuration.' })
     }
     return warnings
   },

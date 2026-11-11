@@ -10,14 +10,14 @@
       v-if="percent !== null"
       class="upbar__bar"
     ><i :style="{ width: `${percent}%` }" /></span>
-    <span class="upbar__go">See progress</span>
+    <span class="upbar__go">{{ stale ? 'Details' : 'See progress' }}</span>
   </router-link>
 </template>
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
 import { updateWatch } from '@/services/updates/watch'
-import { versionLabel } from '@/services/updates/model'
+import { verifyStale, versionLabel } from '@/services/updates/model'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
 
@@ -29,8 +29,13 @@ export default class UpdateBanner extends Vue {
     return typeof p === 'number' ? Math.round(Math.max(0, Math.min(100, p))) : null
   }
 
+  get stale (): boolean {
+    return verifyStale(updateWatch.remembered, updateWatch.now)
+  }
+
   get text (): string {
     const r = updateWatch.remembered
+    if (this.stale) return "Couldn't confirm the update"
     const to = r?.to ? ` (${versionLabel(r.to).text.split(' · ')[0]})` : ''
     if (r?.phase === 'verifying') return 'Verifying update'
     if (r?.phase === 'rebooting') return 'Restarting'

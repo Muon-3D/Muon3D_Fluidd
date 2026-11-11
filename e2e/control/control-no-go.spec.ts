@@ -51,9 +51,10 @@ test('an ordinary jog away from the notch is one move, as before', async ({ page
 test('while printing, the move controls are locked and send nothing', async ({ page, open }) => {
   const printer = await usePrinter(page) // the mock as it is: mid-print
   await open('/control')
-  // v4: while printing the tile shows the live position only; there is nothing to press.
+  // While printing the trackpad and jog stay on the page, greyed out and disabled (KAN-2039).
   await expect(page.getByTestId('control-move').getByText('Locked while printing')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Head right (X+)' })).toHaveCount(0)
+  await expect(page.getByTestId('move-trackpad')).toHaveAttribute('aria-disabled', 'true')
+  await expect(page.getByRole('button', { name: 'Head right (X+)' })).toBeDisabled()
   expect(printer.gcode).toEqual([])
 })
 

@@ -454,7 +454,7 @@ export default class CommandBar extends Mixins(FrameMixin, BrowserMixin, TypedCo
     const macros = visibleMacros(this.$store.getters['macros/getVisibleMacros'] as MacroGroup[])
     return macros.map(m => ({
       id: `macro-${m.name}`,
-      group: 'Macros' as const,
+      group: 'Quick commands' as const,
       label: m.name.toUpperCase(),
       hint: m.config?.description && m.config.description !== 'G-Code macro' ? m.config.description : undefined,
       words: 'macro run',

@@ -110,7 +110,7 @@ describe('restoring a copy', () => {
     expect(restoreChanges(current, copy)).toEqual([
       { label: 'Ask before an emergency stop', value: 'Off → On' },
       { label: 'Accent colour', value: 'Teal → Blue' },
-      { label: 'Macros on Overview', value: '1 added' },
+      { label: 'Quick commands on Overview', value: '1 added' },
       { label: 'Files and editor', value: '2 changed' }
     ])
   })
