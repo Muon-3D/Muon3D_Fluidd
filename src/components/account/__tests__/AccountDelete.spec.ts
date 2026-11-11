@@ -6,6 +6,7 @@ import type { Me } from '@/services/account/api'
 import { confirmAccount } from '@/services/account/confirmation'
 import { TOKEN_KEY } from '@/services/muon-cloud/api'
 import { deletionState } from '@/services/muon-cloud/deletion'
+import { cloudState } from '@/services/muon-cloud/state'
 
 vi.mock('@/services/account/confirmation', () => ({ confirmAccount: vi.fn() }))
 
@@ -22,6 +23,13 @@ vi.mock('@/services/library/store', () => ({
   refreshLibrary: async () => {},
   watchLibraryAccount: () => {}
 }))
+const unlinkPrinter = vi.hoisted(() => vi.fn<[string], Promise<{ ok: boolean }>>(async () => ({ ok: true })))
+vi.mock('@/services/muon-cloud/api', async (actual) => {
+  const real = await actual() as { cloudApi: object }
+  return { ...real, cloudApi: { ...real.cloudApi, unlinkPrinter } }
+})
+vi.mock('@/services/muon-cloud/state', async (actual) => ({ ...(await actual() as object), refreshPrinters: vi.fn(async () => {}) }))
+const $confirm = vi.hoisted(() => vi.fn(async () => true))
 const signOutNow = vi.hoisted(() => vi.fn())
 vi.mock('@/services/account/sign-out', () => ({ signOutNow }))
 
@@ -44,6 +52,7 @@ function open (who: Me) {
       'router-link': { template: '<a><slot /></a>' },
       'frame-icon': true
     },
+    mocks: { $confirm },
     attachTo: document.body
   })
 }
@@ -52,7 +61,7 @@ const tid = (w: ReturnType<typeof open>, id: string) => w.find(`[data-tid="${id}
 
 async function throughToStep2 (w: ReturnType<typeof open>) {
   await tid(w, 'delete-open').trigger('click')
-  await tid(w, 'delete-continue').trigger('click')
+  await tid(w, 'delete-type').setValue('DELETE'); await tid(w, 'delete-continue').trigger('click')
   await tid(w, 'delete-password').setValue('correct horse')
 }
 
@@ -64,7 +73,7 @@ describe('Delete account', () => {
     who.sign_in!.passkeys = 1
     const w = open(who)
     await tid(w, 'delete-open').trigger('click')
-    await tid(w, 'delete-continue').trigger('click')
+    await tid(w, 'delete-type').setValue('DELETE'); await tid(w, 'delete-continue').trigger('click')
     expect(tid(w, 'delete-confirm').exists()).toBe(true)
     await tid(w, 'delete-confirm').trigger('click')
     await new Promise(resolve => setTimeout(resolve))
@@ -89,7 +98,7 @@ describe('Delete account', () => {
     who.sign_in!.two_step = true
     const w = open(who)
     await tid(w, 'delete-open').trigger('click')
-    await tid(w, 'delete-continue').trigger('click')
+    await tid(w, 'delete-type').setValue('DELETE'); await tid(w, 'delete-continue').trigger('click')
     expect(tid(w, 'delete-passkey').exists()).toBe(true)
     deleteAccount.mockResolvedValueOnce({ ok: true, delete_after: 1_800_000_000 + 14 * DAY })
     await tid(w, 'delete-passkey').trigger('click')
@@ -108,7 +117,7 @@ describe('Delete account', () => {
     who.sign_in!.passkeys = 1
     const w = open(who)
     await tid(w, 'delete-open').trigger('click')
-    await tid(w, 'delete-continue').trigger('click')
+    await tid(w, 'delete-type').setValue('DELETE'); await tid(w, 'delete-continue').trigger('click')
     await tid(w, 'delete-passkey').trigger('click')
     await new Promise(resolve => setTimeout(resolve))
     expect(deleteAccount).not.toHaveBeenCalled()
@@ -128,7 +137,7 @@ describe('Delete account', () => {
     const who = me(); who.sign_in!.passkeys = 1
     const w = open(who)
     await tid(w, 'delete-open').trigger('click')
-    await tid(w, 'delete-continue').trigger('click')
+    await tid(w, 'delete-type').setValue('DELETE'); await tid(w, 'delete-continue').trigger('click')
     await tid(w, 'delete-passkey').trigger('click')
     await new Promise(resolve => setTimeout(resolve))
     expect(w.find('[role="alert"]').text()).toContain(message)
@@ -144,7 +153,7 @@ describe('Delete account', () => {
     who.sign_in!.passkeys = 1
     const w = open(who)
     await tid(w, 'delete-open').trigger('click')
-    await tid(w, 'delete-continue').trigger('click')
+    await tid(w, 'delete-type').setValue('DELETE'); await tid(w, 'delete-continue').trigger('click')
     await tid(w, 'delete-passkey').trigger('click')
     if (reason === 'destroyed') w.destroy()
     else localStorage.setItem(TOKEN_KEY, 'other-fixture-session')
@@ -228,5 +237,49 @@ describe('Delete account', () => {
     await tid(w, 'delete-confirm').trigger('click')
     await new Promise(resolve => setTimeout(resolve))
     expect(deleteAccount).toHaveBeenCalledWith({ password: 'correct horse', code: '123456' })
+  })
+})
+
+describe('Delete account: unlink first, then type DELETE (settings/account-data, frame 5)', () => {
+  afterEach(() => { cloudState.printers = []; vi.clearAllMocks() })
+  const printer = (id: string, name: string, shared = false) => ({ id, name, shared }) as never
+
+  it('blocks deletion until the printers you own are unlinked, each one asked first', async () => {
+    cloudState.printers = [printer('p1', 'Boxwood'), printer('p2', 'Walnut'), printer('p3', 'Friend', true)]
+    unlinkPrinter.mockImplementation(async (id: string) => { cloudState.printers = cloudState.printers.filter((p: { id: string }) => p.id !== id); return { ok: true } })
+    const w = open(me(null))
+    await tid(w, 'delete-open').trigger('click')
+    expect(w.find('.dialog h2').text()).toBe('You own 2 printers')
+    expect(tid(w, 'delete-owned').text()).toContain('Boxwood')
+    expect(tid(w, 'delete-owned').text()).not.toContain('Friend')
+    expect(tid(w, 'delete-next').attributes('disabled')).toBeDefined()
+    $confirm.mockResolvedValueOnce(false)
+    await tid(w, 'delete-unlink-p1').trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
+    expect(unlinkPrinter).not.toHaveBeenCalled()
+    await tid(w, 'delete-unlink-p1').trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
+    await tid(w, 'delete-unlink-p2').trigger('click')
+    await new Promise(resolve => setTimeout(resolve))
+    expect($confirm).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ title: 'Unlink Boxwood?', danger: true }))
+    expect(unlinkPrinter.mock.calls.map(c => (c as unknown[])[0])).toEqual(['p1', 'p2'])
+    expect(tid(w, 'delete-next').attributes('disabled')).toBeUndefined()
+    await tid(w, 'delete-next').trigger('click')
+    expect(tid(w, 'delete-type').exists()).toBe(true)
+    expect(deleteAccount).not.toHaveBeenCalled()
+    w.destroy()
+  })
+
+  it('needs DELETE typed exactly before it goes on', async () => {
+    const w = open(me(null))
+    await tid(w, 'delete-open').trigger('click')
+    expect(tid(w, 'delete-continue').text()).toBe('Delete account')
+    expect(tid(w, 'delete-continue').attributes('disabled')).toBeDefined()
+    await tid(w, 'delete-type').setValue('delete')
+    expect(tid(w, 'delete-continue').attributes('disabled')).toBeDefined()
+    await tid(w, 'delete-type').setValue('DELETE')
+    expect(tid(w, 'delete-continue').attributes('disabled')).toBeUndefined()
+    expect(w.text()).toContain('14 days')
+    w.destroy()
   })
 })
