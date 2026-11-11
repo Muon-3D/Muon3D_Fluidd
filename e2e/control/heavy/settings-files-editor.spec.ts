@@ -6,8 +6,8 @@
  * The printer and its settings database are usePrinter / useDatabase's.
  */
 import type { Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
-import { usePrinter, useDatabase, PRESETS, type PrinterHandle } from './printer'
+import { test, expect } from '../../fixtures'
+import { usePrinter, useDatabase, PRESETS, type PrinterHandle } from '../printer'
 
 const NOW = Date.now() / 1000
 const file = (filename: string) => ({ filename, modified: NOW - 3600, size: 2048, permissions: 'rw' })

@@ -6,8 +6,8 @@
  * browser, not in Moonraker, and the Overview follows them.
  */
 import type { Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
-import { PRESETS, usePrinter, type PrinterHandle } from './printer'
+import { test, expect } from '../../fixtures'
+import { PRESETS, usePrinter, type PrinterHandle } from '../printer'
 
 const KEY = 'muon3d.model3d'
 const CAMERA = {
