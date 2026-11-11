@@ -95,7 +95,7 @@
           />
 
           <div
-            v-if="streamError"
+            v-if="streamError && !outOfReach"
             class="camera-stage__error"
             role="alert"
             data-tid="camera-error"
@@ -120,7 +120,7 @@
           </div>
 
           <div
-            v-else
+            v-else-if="!outOfReach"
             class="camera-stage__live"
             data-tid="camera-live"
           >
@@ -149,7 +149,7 @@
           </div>
 
           <div
-            v-if="!streamError"
+            v-if="!streamError && !outOfReach"
             class="camera-stage__glass"
           >
             <button
@@ -249,6 +249,8 @@ import { scopedPath } from '@/router/printerPagePaths'
 import { cameraFor, liveFacts, snapshotName, snapshotPlan } from '@/services/camera/model'
 import { cameraPage } from '@/services/camera/page-state'
 import type { WebcamConfig } from '@/store/webcams/types'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import { cameraOutOfReach } from '@/services/camera/route'
 
 /**
  * Camera (`/boxwood-367a/camera/front`), v3: the picture full-bleed in a
@@ -263,6 +265,11 @@ export default class Camera extends Mixins(OverviewMixin, BrowserMixin) {
   /** The stream's picture failed to load; Retry draws it again. */
   streamError = false
   attempt = 0
+
+  /** Through Muon3D, a camera the gateway doesn't carry: no Live line, nothing to snapshot. */
+  get outOfReach (): boolean {
+    return !!this.camera && cameraOutOfReach(this.camera, printerTransportBinding.remote, window.location.protocol)
+  }
 
   get cameras (): WebcamConfig[] {
     return this.$store.getters['webcams/getEnabledWebcams'] as WebcamConfig[]
@@ -433,6 +440,10 @@ export default class Camera extends Mixins(OverviewMixin, BrowserMixin) {
   async snapshot () {
     const camera = this.camera
     if (!camera) return
+    if (this.outOfReach) {
+      EventBus.$emit(`${camera.name || 'This camera'} shows on the printer's network only: Muon3D doesn't carry camera pictures yet.`, { type: 'warning', timeout: 5000 })
+      return
+    }
     const item = this.$refs.item as (CameraItem & { componentInstance?: { streamingElement?: Element } }) | undefined
     const element = item?.componentInstance?.streamingElement
     const name = snapshotName(this.printerName, camera.name ?? 'camera', new Date())

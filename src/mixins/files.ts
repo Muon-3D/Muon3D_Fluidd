@@ -5,6 +5,13 @@ import type { AxiosRequestConfig, AxiosProgressEvent } from 'axios'
 import { httpClientActions } from '@/api/httpClientActions'
 import type { FileWithPath } from '@/types'
 import consola from 'consola'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { cloudState } from '@/services/muon-cloud/state'
+import { remoteJobThumbnail } from '@/services/jobs/thumbnail'
+
+/** What the small picture cache may hold over Muon3D: thumbnails and timelapse frames, never a whole job or video. */
+const PICTURE = /\.(png|jpe?g|gif|webp|bmp)$/i
 
 type UploadResponse = ReturnType<typeof httpClientActions.serverFilesUploadPost>
 
@@ -148,6 +155,7 @@ export default class FilesMixin extends Vue {
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      setTimeout(() => this.releaseFileUrl(url), 60_000)
     } catch {
       // Likely a 401.
     }
@@ -163,15 +171,53 @@ export default class FilesMixin extends Vue {
   createFileUrl (filename: string, path: string, date?: number) {
     const filepath = (path) ? `${path}/${filename}` : `${filename}`
 
+    // Through Muon3D the printer has no address the browser can load. A
+    // picture is read through the gateway into the small cache, '' until it
+    // arrives (reactively, so an src updates). Anything else has no address
+    // here: open it with createFileUrlWithToken, or downloadFile.
+    if (this.throughMuon3d) {
+      if (!PICTURE.test(filename)) return ''
+      return remoteJobThumbnail(
+        `${cloudState.account?.id ?? ''}|${cloudState.activePrinterId ?? ''}`,
+        `/server/files/${encodeURI(filepath)}`,
+        date ?? 0,
+        async p => (await this.$httpClient.get(p, { responseType: 'blob' })).data as Blob
+      )
+    }
+
+    // A cloud printer not yet reached has no address either.
+    if (isManagedApiUrl(this.apiUrl)) return ''
+
     return `${this.apiUrl}/server/files/${encodeURI(filepath)}?date=${date || Date.now()}`
   }
 
+  /** The printer is reached through Muon3D, not by its address: the same test the camera uses. */
+  get throughMuon3d (): boolean {
+    return printerTransportBinding.remote
+  }
+
+  /**
+   * A URL that opens the file now. Through Muon3D the file is read once
+   * through the gateway (not into the picture cache) and the URL is a blob
+   * the caller owns: give it to releaseFileUrl when it's done with it.
+   */
   async createFileUrlWithToken (filename: string, path: string, date?: number) {
+    if (this.throughMuon3d) {
+      const filepath = (path) ? `${path}/${filename}` : `${filename}`
+      const response = await this.$httpClient.get(`/server/files/${encodeURI(filepath)}`, { responseType: 'blob' })
+      return URL.createObjectURL(response.data as Blob)
+    }
+
     const url = this.createFileUrl(filename, path, date)
 
     return this.isTrustedUser
       ? url
       : `${url}&token=${(await httpClientActions.accessOneshotTokenGet()).data.result}`
+  }
+
+  /** Lets go of a URL from createFileUrlWithToken: a blob is revoked, an address needs nothing. */
+  releaseFileUrl (url: string | null | undefined) {
+    if (url?.startsWith('blob:')) URL.revokeObjectURL(url)
   }
 
   /**
