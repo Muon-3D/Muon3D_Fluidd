@@ -8,6 +8,51 @@
     data-tid="control-move"
   >
     <template #aside>
+      <span
+        v-if="trackpadOnly"
+        class="move__hhomes"
+        data-tid="move-homes"
+      >
+        <button
+          type="button"
+          class="move__hbtn"
+          :disabled="busy"
+          aria-label="Home all"
+          title="Home all (G28)"
+          data-tid="home-all"
+          @click="home()"
+        >
+          <v-progress-circular
+            v-if="homing()"
+            indeterminate
+            size="14"
+            width="2"
+          />
+          <frame-icon
+            v-else
+            name="home"
+          />
+        </button>
+        <button
+          type="button"
+          class="move__hbtn move__hbtn--z"
+          :disabled="busy"
+          aria-label="Home Z"
+          title="Home Z (G28 Z)"
+          data-tid="home-z"
+          @click="home('Z')"
+        >
+          <v-progress-circular
+            v-if="homing('Z')"
+            indeterminate
+            size="14"
+            width="2"
+          />
+          <template v-else>
+            Z
+          </template>
+        </button>
+      </span>
       <v-menu
         v-model="menu"
         bottom
@@ -109,6 +154,7 @@
             Trackpad<span>Tap to pick a spot, or drag and the head follows</span>
           </div>
           <div
+            v-if="!trackpadOnly"
             class="move__homes"
             data-tid="move-homes"
           >
@@ -151,23 +197,81 @@
               Z
             </button>
           </div>
-          <control-trackpad
-            v-if="plate"
-            class="move__pad"
-            :bed="plate"
-            :show-head="xyHomedHere"
-            :target="target"
-            :target-bad="!!targetProblem || !!dragRefusal"
-            :no-go="noGo"
-            :disabled="!canMoveXY || moving"
-            :step="step"
-            @pick="pick"
-            @drag-start="dragStart"
-            @drag="dragTo"
-            @drag-end="dragEnd"
-            @drag-cancel="dragCancel"
-          />
           <div
+            class="move__padwrap"
+            :class="{ 'move__padwrap--bare': !trackpadOnly }"
+          >
+            <control-trackpad
+              v-if="plate"
+              class="move__pad"
+              :bed="plate"
+              :show-head="xyHomedHere"
+              :target="target"
+              :target-bad="!!targetProblem || !!dragRefusal"
+              :no-go="noGo"
+              :disabled="!canMoveXY || moving"
+              :on-release="releaseOnly"
+              :step="step"
+              @pick="pick"
+              @drag-start="dragStart"
+              @drag="dragTo"
+              @drag-end="dragEnd"
+              @drag-cancel="dragCancel"
+              @release="release"
+            />
+            <template v-if="trackpadOnly && plate">
+              <span
+                v-if="target"
+                class="move__glass move__readout"
+                data-tid="trackpad-readout"
+              >X {{ fmt(target.x) }} · Y {{ fmt(target.y) }}</span>
+              <span
+                class="move__glass move__mode"
+                role="radiogroup"
+                aria-label="How the trackpad moves"
+                data-tid="trackpad-mode"
+              >
+                <span
+                  class="move__modewrap"
+                  :title="liveReason"
+                  data-tid="trackpad-live-wrap"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    :aria-checked="liveMoving ? 'true' : 'false'"
+                    :disabled="!liveAvailable"
+                    :title="liveReason"
+                    :aria-description="liveAvailable ? undefined : liveReason"
+                    data-tid="trackpad-live"
+                    @click="setMode('live')"
+                  >Live</button>
+                </span>
+                <button
+                  type="button"
+                  role="radio"
+                  :aria-checked="liveMoving ? 'false' : 'true'"
+                  :class="{ on: !liveMoving }"
+                  data-tid="trackpad-release"
+                  @click="setMode('release')"
+                >On release</button>
+              </span>
+            </template>
+          </div>
+          <div
+            v-if="trackpadOnly"
+            class="move__pick move__pick--line"
+            data-tid="trackpad-pick"
+            aria-live="polite"
+          >
+            <span
+              class="move__pick-note"
+              :class="{ 'move__pick-note--bad': !!dragRefusal || !!targetProblem }"
+              data-tid="trackpad-note"
+            >{{ target ? pickNote : tileHint }}</span>
+          </div>
+          <div
+            v-else
             class="move__pick"
             data-tid="trackpad-pick"
             aria-live="polite"
@@ -364,6 +468,7 @@ import ControlMixin from '@/mixins/control'
 import { M1_VIEW, X_RIGHT, Y_BACK } from '@/services/machine/orientation'
 import { bedFrom, type Bed, type Point } from '@/services/control/trackpad'
 import { DragFollow, controlDragHost } from '@/services/control/drag-follow'
+import { TRACKPAD_LIVE_AVAILABLE, TRACKPAD_LIVE_REASON, readTrackpadMode, writeTrackpadMode, type TrackpadMode } from '@/services/control/trackpad-mode'
 import type { MovePlan } from '@/services/control/safe-move'
 import ControlCard from './ControlCard.vue'
 import ControlTrackpad from './ControlTrackpad.vue'
@@ -470,6 +575,27 @@ export default class ControlMove extends Mixins(ControlMixin) {
   /** Why the last drag stopped, or ''. */
   dragRefusal = ''
   following = false
+
+  /** The Overview's Trackpad: how a drag moves the head (services/control/trackpad-mode). */
+  mode: TrackpadMode = readTrackpadMode()
+  readonly liveAvailable = TRACKPAD_LIVE_AVAILABLE
+  readonly liveReason = TRACKPAD_LIVE_AVAILABLE ? '' : TRACKPAD_LIVE_REASON
+
+  /** Live moving: only ever on the Overview's Trackpad, and only once the printer can stream it. */
+  get liveMoving (): boolean { return !!this.trackpadOnly && this.liveAvailable && this.mode === 'live' }
+
+  /** The Overview's Trackpad sends one move, when the pointer lifts; nothing while it is down. */
+  get releaseOnly (): boolean { return !!this.trackpadOnly && !this.liveMoving }
+
+  setMode (mode: TrackpadMode) {
+    this.mode = writeTrackpadMode(mode)
+  }
+
+  get tileHint (): string {
+    if (!this.xyHomedHere) return 'Home all first, then tap or drag the bed.'
+    if (this.noGo === 'invalid') return 'The no-go regions could not be read, so only raising the head is allowed.'
+    return this.releaseOnly ? 'Tap or drag, then let go: the head moves once.' : 'Drag, and the head follows.'
+  }
 
   /** Ticks while a pick is shown, so "is the head still moving?" is read again (that state is not reactive). */
   tick = 0
@@ -649,6 +775,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
   /** A drag began: the head follows it, one planned move at a time (drag-follow). */
   dragStart (p: Point) {
     if (!this.canMoveXY || !this.follower) return
+    if (this.releaseOnly) { this.pick(p); return }
     this.target = { x: p.x, y: p.y }
     this.targetFor = this.panelTarget
     this.dragTarget = true
@@ -659,6 +786,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
   }
 
   dragTo (p: Point) {
+    if (this.releaseOnly) { this.pick(p); return }
     if (!this.follower?.following || !this.canMoveXY) return
     this.target = { x: p.x, y: p.y }
     this.follower.update(this.placeOf(p))
@@ -668,9 +796,22 @@ export default class ControlMove extends Mixins(ControlMixin) {
     this.follower?.release()
   }
 
+  /**
+   * The pointer lifted (or Enter was pressed) on the Overview's Trackpad: the
+   * one move, through moveTo and its planner (so the notch rule holds). Nothing
+   * was sent while the pointer was down. Not when the move is refused: the pick
+   * stays and says why.
+   */
+  release () {
+    if (!this.releaseOnly) return
+    this.confirmMove()
+  }
+
   /** Pointer cancelled, focus or capture lost: stop at once, send nothing more. The pick stays, for Move here. */
   dragCancel () {
     this.stopDrag()
+    // On release nothing was sent, so a cancelled press leaves no pick behind.
+    if (this.releaseOnly) this.target = null
   }
 
   stopDrag () {
@@ -871,30 +1012,101 @@ export default class ControlMove extends Mixins(ControlMixin) {
   }
 
   /*
-   * The Overview's Trackpad (KAN-2077): the pad on the left at a fixed size
-   * and everything else, Home all and the picked spot, in a column beside it,
-   * so the tile is as tall as the pad and no taller.
+   * The Overview's Trackpad (KAN-2077): the pad fills the tile, Home all and
+   * Home Z are icon buttons in the header, the picked spot and the Live / On
+   * release choice sit on the pad's lower corners, and one line under it says
+   * what a press will do. No button sends the move: lifting the pointer does.
    */
   .move__zone--compact {
-    display: grid;
-    grid-template-areas: "pad homes" "pad pick";
-    grid-template-columns: 232px minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    column-gap: 16px;
-    row-gap: 8px;
-
-    .move__pad { grid-area: pad; width: 232px; align-self: start; }
-    .move__homes { grid-area: homes; }
-    .move__pick { grid-area: pick; align-content: flex-end; align-self: stretch; }
+    gap: 8px;
   }
 
-  .move__body--phone .move__zone--compact {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 128px);
-    column-gap: 12px;
+  .move__padwrap {
+    position: relative;
+    width: 100%;
+    max-width: 360px;
+    margin: 0 auto;
+  }
 
-    .move__pad { width: 100%; }
-    .move__homes { flex-direction: column; }
-    .move__pick { align-self: end; }
+  .move__padwrap--bare {
+    max-width: none;
+    margin: 0;
+  }
+
+  .move__glass {
+    position: absolute;
+    bottom: 8px;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--m3d-surface) 84%, transparent);
+    box-shadow: inset 0 0 0 1px var(--m3d-border-strong);
+    font-size: 12px;
+    pointer-events: none;
+  }
+
+  .move__readout {
+    left: 8px;
+    font-family: var(--m3d-font-mono);
+    font-weight: 600;
+  }
+
+  .move__mode {
+    right: 8px;
+    gap: 2px;
+    padding: 3px;
+    pointer-events: auto;
+
+    button {
+      height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      color: var(--m3d-text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+
+      &.on {
+        background: var(--m3d-accent);
+        color: var(--m3d-on-accent, #00201e);
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+    }
+  }
+
+  .move__modewrap {
+    display: inline-flex;
+  }
+
+  .move__pick--line {
+    min-height: 20px;
+  }
+
+  .move__hhomes {
+    display: inline-flex;
+    gap: 6px;
+  }
+
+  .move__hbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text);
+    font-family: var(--m3d-font-mono);
+    font-size: 13px;
+    font-weight: 600;
+
+    &:hover:not(:disabled) { filter: brightness(1.15); }
+    &:disabled { opacity: 0.45; cursor: default; }
   }
 
   .move__pick {

@@ -15,17 +15,17 @@ const M1_BED_MESH = { no_go_region_1_min: [75, 0], no_go_region_1_max: [125, 34]
 const sent = () => socket.printerGcodeScript.mock.calls.map(c => c[0] as string)
 const moves = () => sent().flatMap(s => s.split('\n')).filter(l => l.startsWith('G1'))
 
-function show ({ head = [150, 100, 10] as [number, number, number], phone = false, bedMesh = M1_BED_MESH as unknown, confirm = vi.fn().mockResolvedValue(true) } = {}) {
+function show ({ head = [150, 100, 10] as [number, number, number], phone = false, trackpadOnly = false, bedMesh = M1_BED_MESH as unknown, confirm = vi.fn().mockResolvedValue(true) } = {}) {
   const store = panelStore()
   const p = store.state.printer.printer
   p.toolhead.position = [...head, 0]
   p.gcode_move.gcode_position = [...head, 0]
   p.configfile.settings = bedMesh ? { printer: {}, bed_mesh: bedMesh } : { printer: {} }
-  const wrapper = mount(ControlMove, { propsData: { phone }, mocks: { $store: store, $waits: waits, $route: { params: { printer: 'mock' } }, $confirm: confirm }, stubs: panelStubs })
+  const wrapper = mount(ControlMove, { propsData: { phone, trackpadOnly }, mocks: { $store: store, $waits: waits, $route: { params: { printer: 'mock' } }, $confirm: confirm }, stubs: panelStubs })
   return { store, wrapper, vm: wrapper.vm as any, confirm }
 }
 
-beforeEach(() => { headStatus.fresh = true; scriptsInFlight.count = 0 })
+beforeEach(() => { headStatus.fresh = true; scriptsInFlight.count = 0; localStorage.clear() })
 afterEach(() => { socket.printerGcodeScript.mockClear(); bus.$emit.mockClear(); handMoveLock.target = null })
 
 it.each([false, true])('offers fine jog steps down to 0.1 mm on phone=%s', phone => {
@@ -272,4 +272,90 @@ it('offers the step sizes set in Settings › Moving and extruding, for the head
   s.store.state.config.uiSettings = { general: { toolheadXYMoveDistances: [5, 25], toolheadZMoveDistances: [0.2, 5] } }
   expect(s.vm.stepOptions.map((o: { value: number }) => o.value)).toEqual([0.2, 5, 25])
   s.wrapper.destroy()
+})
+
+describe('the Overview Trackpad: one move, when the pointer lifts', () => {
+  const padOf = (s: ReturnType<typeof show>) => {
+    const pad = s.wrapper.findComponent(ControlTrackpad)
+    ;(pad.element as HTMLElement).getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 368, right: 400, bottom: 368, x: 0, y: 0, toJSON: () => ({}) })
+    return pad
+  }
+
+  it('has no Move here button', () => {
+    const s = show({ trackpadOnly: true })
+    expect(s.wrapper.find('[data-tid="trackpad-move"]').exists()).toBe(false)
+    expect(s.wrapper.text()).not.toContain('Move here')
+    s.wrapper.destroy()
+  })
+
+  it('sends nothing while the pointer is down or dragging, and exactly one move when it lifts', async () => {
+    const s = show({ trackpadOnly: true })
+    const pad = padOf(s)
+    await pad.trigger('pointerdown', { pointerId: 1, button: 0, pointerType: 'touch', clientX: 100, clientY: 100 })
+    for (let x = 110; x < 300; x += 20) await pad.trigger('pointermove', { pointerId: 1, clientX: x, clientY: 150 })
+    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    await pad.trigger('pointerup', { pointerId: 1 })
+    expect(moves()).toHaveLength(1)
+    expect(moves()[0]).toMatch(/^G1 X14\d(\.\d+)? Y\d+(\.\d+)? F7800$/)
+    s.wrapper.destroy()
+  })
+
+  it('a tap is one move, on release', async () => {
+    const s = show({ trackpadOnly: true })
+    const pad = padOf(s)
+    await pad.trigger('pointerdown', { pointerId: 1, button: 0, pointerType: 'mouse', clientX: 200, clientY: 184 })
+    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    await pad.trigger('pointerup', { pointerId: 1 })
+    expect(moves()).toHaveLength(1)
+    s.wrapper.destroy()
+  })
+
+  it('a cancelled press sends nothing and leaves no pick', async () => {
+    const s = show({ trackpadOnly: true })
+    const pad = padOf(s)
+    await pad.trigger('pointerdown', { pointerId: 1, button: 0, pointerType: 'touch', clientX: 100, clientY: 100 })
+    await pad.trigger('pointermove', { pointerId: 1, clientX: 200, clientY: 160 })
+    await pad.trigger('pointercancel', { pointerId: 1 })
+    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    expect(s.vm.target).toBeNull()
+    s.wrapper.destroy()
+  })
+
+  it('the move on release still lifts across the notch (the planner, not a raw G1)', async () => {
+    const s = show({ trackpadOnly: true, head: [60, 20, 1] })
+    s.vm.pick({ x: 140, y: 20 })
+    s.vm.release()
+    expect(moves()).toEqual(['G1 Z6 F600', 'G1 X140 Y20 F7800', 'G1 Z1 F600'])
+    s.wrapper.destroy()
+  })
+
+  it('refuses a spot inside the notch at low Z on release, and sends nothing', async () => {
+    const s = show({ trackpadOnly: true, head: [60, 100, 1] })
+    s.vm.pick({ x: 100, y: 10 })
+    s.vm.release()
+    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    s.wrapper.destroy()
+  })
+
+  it('Enter on the pad moves to the keyboard pick, once', async () => {
+    const s = show({ trackpadOnly: true })
+    const pad = padOf(s)
+    await pad.trigger('keydown', { key: 'ArrowRight' })
+    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    await pad.trigger('keydown', { key: 'Enter' })
+    expect(moves()).toHaveLength(1)
+    s.wrapper.destroy()
+  })
+
+  it('Live is shown but disabled, with the reason; On release is the one chosen, and a remembered live is ignored', async () => {
+    localStorage.setItem('m3d.trackpad.mode', 'live')
+    const s = show({ trackpadOnly: true })
+    const live = s.wrapper.find('[data-tid="trackpad-live"]')
+    expect(live.attributes('disabled')).toBeDefined()
+    expect(live.attributes('title')).toBe('Live moving arrives with a printer update')
+    expect(s.wrapper.find('[data-tid="trackpad-release"]').attributes('aria-checked')).toBe('true')
+    await live.trigger('click')
+    expect(s.vm.mode).toBe('release')
+    s.wrapper.destroy()
+  })
 })

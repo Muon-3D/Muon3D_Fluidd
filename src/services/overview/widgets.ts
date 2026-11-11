@@ -41,9 +41,9 @@ export const widgetMeta: WidgetMeta[] = [
   { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(), M(6)], size: 'M', defaultOn: true, legacy: ['speed'] },
   { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(6), L(8)], size: 'M', defaultOn: true },
   { id: 'graph', title: 'Temperatures', category: 'Temperature', blurb: 'The temperature graph. Hotend, bed and chamber show to begin with.', sizes: [S(), M(6), L(12)], size: 'L', defaultOn: true },
-  // The trackpad is the tall left block; Jog is on its right with Quick commands directly under it.
-  { id: 'trackpad', title: 'Trackpad', category: 'Motion', blurb: 'Drag to move the head, with the no-go zones.', sizes: [S(2), M(8, 3), L(12, 3)], size: 'M', defaultOn: true },
-  { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Buttons to move the head and home it.', sizes: [S(2), M(4, 2), L(6, 2)], size: 'M', defaultOn: true },
+  // The Trackpad is a narrow block on the left (4 columns) and Jog beside it (8); Quick commands is a full row under them.
+  { id: 'trackpad', title: 'Trackpad', category: 'Motion', blurb: 'Drag to move the head, with the no-go zones.', sizes: [S(2), M(4, 3), L(6, 3)], size: 'M', defaultOn: true },
+  { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Buttons to move the head and home it.', sizes: [S(2), M(8, 3), L(12, 3)], size: 'M', defaultOn: true },
   { id: 'macros', title: 'Quick commands', category: 'Tools', blurb: 'The commands you press most.', sizes: [S(), M(6), L(12)], size: 'L', defaultOn: true },
   // Off until added (the Temperatures graph already shows both).
   { id: 'hotend', title: 'Hotend', category: 'Temperature', blurb: 'Hotend temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: false },
