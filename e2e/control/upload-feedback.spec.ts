@@ -56,8 +56,7 @@ async function toasts (page: Page) {
       }
     }).observe(document, { subtree: true, childList: true, characterData: true })
   })
-  return () => page.evaluate(() => ((window as any).__toasts as string[]).join('
-'))
+  return () => page.evaluate(() => ((window as any).__toasts as string[]).join(' | '))
 }
 
 for (const [how, act] of [['the Upload button', pick], ['drag and drop', drop]] as const) {
