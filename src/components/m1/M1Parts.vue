@@ -571,7 +571,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
       else (this.$refs.screen as { close?: () => void } | undefined)?.close?.()
       return
     }
-    // A click or a tap: select what is under it, or clear on empty stage.
+    // A click or a tap: the knob, if it is under it, is pressed in for a moment; then select what is under it, or clear on empty stage.
+    if (this.viewer?.knobAt(e.clientX, e.clientY)) this.viewer.pressKnob()
     const part = this.viewer?.pick(e.clientX, e.clientY) ?? null
     if (part) this.select(part)
     else this.selected = null
