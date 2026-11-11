@@ -18,22 +18,13 @@ const open = async (C: any, size: string) => {
   return w
 }
 
-// KAN-1963: every toolhead Home is a full G28, so the M1 contact guard re-zeros. Never G28 X Y.
+// KAN-1955 / KAN-2023: Home all is the Trackpad's alone (ControlMove, G28 in the e2e); Jog and Position carry none, at any size.
 describe.each(SIZES)('Home on the Overview tiles, size %s', size => {
-  it.each([['JogTile', JogTile], ['PositionTile', PositionTile]] as const)('%s: every Home all button sends exactly G28', async (_name, C) => {
-    const probe = await open(C, size)
-    const count = probe.findAll('button').wrappers.filter(isHomeAll).length
-    expect(count).toBeGreaterThan(0)
-    // There is no X-Y-only home on any tile, at any size.
-    expect(probe.findAll('button').wrappers.some(b => /Home X ?Y/i.test(b.text()))).toBe(false)
-    probe.destroy()
-    // A fresh tile per button: a homing in flight locks the others until it lands.
-    for (let i = 0; i < count; i++) {
-      resetSocket()
-      const w = await open(C, size)
-      await w.findAll('button').wrappers.filter(isHomeAll)[i].trigger('click')
-      expect(sent()).toEqual(['G28'])
-      w.destroy()
-    }
+  it.each([['JogTile', JogTile], ['PositionTile', PositionTile]] as const)('%s: has no Home all, and no X-Y-only home', async (_name, C) => {
+    const w = await open(C, size)
+    expect(w.findAll('button').wrappers.filter(isHomeAll)).toHaveLength(0)
+    expect(w.findAll('button').wrappers.some(b => /Home X ?Y/i.test(b.text()))).toBe(false)
+    expect(sent()).toEqual([])
+    w.destroy()
   })
 })

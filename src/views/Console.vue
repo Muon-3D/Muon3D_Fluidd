@@ -199,7 +199,7 @@
               spellcheck="false"
               autocomplete="off"
               :disabled="!klippyConnected"
-              placeholder="G-code, or a macro name…"
+              placeholder="G-code, or a command name…"
               aria-label="Send G-code"
               data-tid="console-input"
               @input="open = true; picked = -1"

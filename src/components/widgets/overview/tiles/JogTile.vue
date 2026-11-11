@@ -28,16 +28,11 @@
         >
           <frame-icon name="chevronLeft" />
         </button>
-        <button
-          type="button"
+        <span
           class="jg__b jg__c"
-          aria-label="Home all"
-          data-jog="home"
-          :disabled="!controlReady || busy"
-          @click="home()"
-        >
-          <frame-icon name="home" />
-        </button>
+          aria-hidden="true"
+          data-jog="centre"
+        />
         <button
           type="button"
           class="jg__b jg__e"
@@ -92,18 +87,6 @@
     >
       {{ lock }}
     </p>
-    <span
-      v-if="size === 'L'"
-      class="jg__homes"
-      data-tid="jog-homes"
-    >
-      <button
-        type="button"
-        class="cbtn"
-        :disabled="!controlReady || busy"
-        @click="home()"
-      >Home all</button>
-    </span>
     <seg-picker
       v-if="size !== 'S'"
       class="jg__step"
@@ -127,8 +110,8 @@ import TileShell from './TileShell.vue'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
 
 /**
- * The jog pad: the head over the plate with arrows, Z beside it, home in the
- * middle. It is Control move, from the one ControlMixin, so it refuses to
+ * The jog pad: the head over the plate with arrows and Z beside it. Homing
+ * is the Trackpad's one Home all. It is Control move, from the one ControlMixin, so it refuses to
  * move while printing, before homing, or when the printer is not ready.
  */
 @Component({ components: { TileShell, SegPicker } })
@@ -145,7 +128,7 @@ export default class JogTile extends Mixins(OverviewMixin) {
   get lock (): string {
     if (!this.controlReady) return this.controlLock
     if (this.busy) return 'Not while printing.'
-    if (!this.isHomed('XY')) return 'Home all to move the head.'
+    if (!this.isHomed('XY')) return 'Home all (on the Trackpad) to move the head.'
     return ''
   }
 
@@ -172,7 +155,6 @@ export default class JogTile extends Mixins(OverviewMixin) {
 </script>
 
 <style lang="scss">
-.jg__homes { display: flex; gap: 8px; margin-top: 8px; }
 .jg { gap: 10px; }
 .jg__body { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 6px 0 2px; }
 .jg__pad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 6px; }
@@ -180,8 +162,7 @@ export default class JogTile extends Mixins(OverviewMixin) {
 .jg__b .frame-icon { color: var(--m3d-text); }
 .jg__b:hover:not(:disabled) { filter: brightness(1.15); }
 .jg__b:disabled { opacity: 0.4; cursor: default; }
-.jg__n { grid-area: 1 / 2; } .jg__w { grid-area: 2 / 1; } .jg__c { grid-area: 2 / 2; background: var(--m3d-accent-soft); }
-.jg__c .frame-icon { color: var(--m3d-accent); }
+.jg__n { grid-area: 1 / 2; } .jg__w { grid-area: 2 / 1; } .jg__c { grid-area: 2 / 2; background: var(--m3d-surface-2); opacity: 0.45; cursor: default; }
 .jg__e { grid-area: 2 / 3; } .jg__s { grid-area: 3 / 2; }
 .jg__z { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 6px; height: 166px; }
 .jg__zl { color: var(--m3d-text-muted); font-family: var(--m3d-font-mono); font-size: 12px; font-weight: 600; }

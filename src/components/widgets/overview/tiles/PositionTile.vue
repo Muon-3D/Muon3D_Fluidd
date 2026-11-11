@@ -31,12 +31,6 @@
         :disabled="!canHome"
         @click="home('Z')"
       >Home Z</button>
-      <button
-        type="button"
-        class="cbtn"
-        :disabled="!canHome"
-        @click="home()"
-      >Home all</button>
     </span>
 
     <template #popover>
@@ -49,28 +43,10 @@
             type="button"
             class="cbtn"
             :disabled="!canHome"
-            data-tid="home-xy"
-            @click="home()"
-          >
-            Home all
-          </button>
-          <button
-            type="button"
-            class="cbtn"
-            :disabled="!canHome"
             data-tid="home-z"
             @click="home('Z')"
           >
             Home Z
-          </button>
-          <button
-            type="button"
-            class="cbtn"
-            :disabled="!canHome"
-            data-tid="home-all"
-            @click="home()"
-          >
-            Home all
           </button>
         </div>
         <div class="po__go">
