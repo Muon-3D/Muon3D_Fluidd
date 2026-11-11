@@ -83,7 +83,7 @@
         {{ printingNote }}
       </p>
       <div
-        v-if="!isHomed('XYZ')"
+        v-if="!isHomed('XYZ') && !trackpadOnly"
         class="move__callout"
         data-tid="move-not-homed"
       >
@@ -96,10 +96,16 @@
 
       <div
         class="move__body"
-        :class="{ 'move__body--phone': phone, 'move__body--dim': !isHomed('XY') && !isHomed('Z') }"
+        :class="{ 'move__body--phone': phone, 'move__body--solo': trackpadOnly, 'move__body--dim': !isHomed('XY') && !isHomed('Z') }"
       >
-        <div class="move__zone">
-          <div class="move__sub">
+        <div
+          class="move__zone"
+          :class="{ 'move__zone--compact': trackpadOnly }"
+        >
+          <div
+            v-if="!trackpadOnly"
+            class="move__sub"
+          >
             Trackpad<span>Tap to pick a spot, or drag and the head follows</span>
           </div>
           <div
@@ -147,6 +153,7 @@
           </div>
           <control-trackpad
             v-if="plate"
+            class="move__pad"
             :bed="plate"
             :show-head="xyHomedHere"
             :target="target"
@@ -833,7 +840,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
   }
 
   @media (min-width: 1100px) {
-    .move__body:not(.move__body--phone) {
+    .move__body:not(.move__body--phone):not(.move__body--solo) {
       grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
       align-items: start;
     }
@@ -861,6 +868,33 @@ export default class ControlMove extends Mixins(ControlMixin) {
       letter-spacing: 0;
       text-transform: none;
     }
+  }
+
+  /*
+   * The Overview's Trackpad (KAN-2077): the pad on the left at a fixed size
+   * and everything else, Home all and the picked spot, in a column beside it,
+   * so the tile is as tall as the pad and no taller.
+   */
+  .move__zone--compact {
+    display: grid;
+    grid-template-areas: "pad homes" "pad pick";
+    grid-template-columns: 232px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 16px;
+    row-gap: 8px;
+
+    .move__pad { grid-area: pad; width: 232px; align-self: start; }
+    .move__homes { grid-area: homes; }
+    .move__pick { grid-area: pick; align-content: flex-end; align-self: stretch; }
+  }
+
+  .move__body--phone .move__zone--compact {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 128px);
+    column-gap: 12px;
+
+    .move__pad { width: 100%; }
+    .move__homes { flex-direction: column; }
+    .move__pick { align-self: end; }
   }
 
   .move__pick {

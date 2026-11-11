@@ -4,6 +4,8 @@
     title="Jog"
     icon="control"
     :menu="menu"
+    :state="lockShort"
+    tone="warm"
     :class="['jg', `jg--${size}`]"
   >
     <div class="jg__body">
@@ -80,24 +82,23 @@
           <frame-icon name="chevronDown" />
         </button>
       </div>
+      <seg-picker
+        v-if="size !== 'S'"
+        class="jg__step"
+        :options="steps"
+        :value="step"
+        label="Step"
+        accent
+        fill
+        :disabled="!controlReady"
+        @input="step = $event"
+      />
     </div>
-    <p
+    <span
       v-if="lock"
-      class="ot__lock"
-    >
-      {{ lock }}
-    </p>
-    <seg-picker
-      v-if="size !== 'S'"
-      class="jg__step"
-      :options="steps"
-      :value="step"
-      label="Step"
-      accent
-      fill
-      :disabled="!controlReady"
-      @input="step = $event"
-    />
+      class="jg__sr"
+      role="status"
+    >{{ lock }}</span>
   </tile-shell>
 </template>
 
@@ -124,6 +125,14 @@ export default class JogTile extends Mixins(OverviewMixin) {
 
   get canMoveXY (): boolean { return this.controlReady && !this.busy && this.isHomed('XY') }
   get canMoveZ (): boolean { return this.controlReady && !this.busy && this.isHomed('Z') }
+
+  /** The lock as a word or two for the tile's header; the whole sentence is `lock`, for a screen reader. */
+  get lockShort (): string {
+    if (!this.controlReady) return 'Not ready'
+    if (this.busy) return 'Printing'
+    if (!this.isHomed('XY')) return 'Home first'
+    return ''
+  }
 
   get lock (): string {
     if (!this.controlReady) return this.controlLock
@@ -155,21 +164,30 @@ export default class JogTile extends Mixins(OverviewMixin) {
 </script>
 
 <style lang="scss">
+/* KAN-2078: the pad, the Z keys and the step side by side, so the tile is as tall as the pad and nothing is left blank under it. */
 .jg { gap: 10px; }
-.jg__body { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 6px 0 2px; }
-.jg__pad { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 52px); gap: 6px; }
-.jg__b { display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 16px; background: var(--m3d-surface-2); cursor: pointer; }
+.jg > .ot__door { flex: 1 1 auto; }
+.jg__body { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) 64px 64px; gap: 14px; min-height: 232px; }
+.jg--M .jg__body, .jg--L .jg__body { grid-template-columns: minmax(0, 1fr) 64px 64px; }
+.jg--S .jg__body { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.jg__pad { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 8px; width: 100%; max-width: 288px; justify-self: center; }
+.jg--S .jg__pad { grid-template-rows: repeat(3, 52px); max-width: 180px; }
+.jg__b { display: inline-flex; align-items: center; justify-content: center; min-width: 0; border-radius: 16px; background: var(--m3d-surface-2); cursor: pointer; }
 .jg__b .frame-icon { color: var(--m3d-text); }
 .jg__b:hover:not(:disabled) { filter: brightness(1.15); }
 .jg__b:disabled { opacity: 0.4; cursor: default; }
 .jg__n { grid-area: 1 / 2; } .jg__w { grid-area: 2 / 1; } .jg__c { grid-area: 2 / 2; background: var(--m3d-surface-2); opacity: 0.45; cursor: default; }
 .jg__e { grid-area: 2 / 3; } .jg__s { grid-area: 3 / 2; }
-.jg__z { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 6px; height: 166px; }
-.jg__zl { color: var(--m3d-text-muted); font-family: var(--m3d-font-mono); font-size: 12px; font-weight: 600; }
-.jg__step { margin-top: auto; }
+.jg__z { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.jg__z .jg__b { flex: 1 1 0; }
+.jg__zl { color: var(--m3d-text-muted); font-family: var(--m3d-font-mono); font-size: 12px; font-weight: 600; text-align: center; }
+.jg .jg__step.seg { flex-direction: column; align-self: stretch; gap: 6px; padding: 0; background: transparent; }
+.jg .jg__step.seg button { flex: 1 1 0; height: auto; min-width: 0; padding: 0; border-radius: 12px; background: var(--m3d-surface-2); }
+.jg .jg__step.seg button.on { background: var(--m3d-accent); color: var(--m3d-on-accent, #00201e); }
+.jg__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 599px) {
-  .jg__pad { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); }
-  .jg__b { width: 56px; height: 56px; }
-  .jg__z { height: 180px; }
+  .jg__body { grid-template-columns: minmax(0, 1fr) 52px 52px; gap: 10px; min-height: 216px; }
+  .jg--M .jg__body, .jg--L .jg__body { grid-template-columns: minmax(0, 1fr) 52px 52px; }
+  .jg--S .jg__body { grid-template-columns: minmax(0, 1fr); min-height: 0; }
 }
 </style>

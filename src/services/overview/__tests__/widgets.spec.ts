@@ -26,11 +26,11 @@ describe('the default layout', () => {
     expect(at('graph')).toMatchObject({ span: 12, rows: 1 })
   })
 
-  it('has the Trackpad, then Jog on its right with Quick commands directly under it', () => {
+  it('has the Trackpad and Jog side by side, half a row each, with Quick commands full width under them (KAN-2076/2077/2078)', () => {
     expect(ids.slice(6)).toEqual(['trackpad', 'jog', 'macros'])
-    expect(at('trackpad')).toMatchObject({ span: 8, rows: 3 })
-    expect(at('jog')).toMatchObject({ span: 4, rows: 2 })
-    expect(at('macros')).toMatchObject({ span: at('jog').span, rows: 1 })
+    expect(at('trackpad')).toMatchObject({ span: 6, rows: 2 })
+    expect(at('jog')).toMatchObject({ span: 6, rows: 2 })
+    expect(at('macros')).toMatchObject({ span: 12, rows: 1 })
     expect(at('trackpad').span + at('jog').span).toBe(12)
   })
 
@@ -213,7 +213,8 @@ describe('migrating a saved layout', () => {
 
   it('snaps the sizes of an old layout to ones the widgets offer', () => {
     const out = readLayout(saved([{ id: 'stage', span: 7, rows: 2 }, { id: 'job', span: 5, rows: 1 }, { id: 'jog', span: 4, rows: 2 }]), defs)!
-    expect(out.tiles).toEqual([{ id: 'stage', span: 8, rows: 2 }, { id: 'job', span: 4, rows: 1 }, { id: 'jog', span: 4, rows: 2 }])
+    // Jog is now S (3 wide) or M (6 wide), so an old 4-wide one snaps to the nearer, S.
+    expect(out.tiles).toEqual([{ id: 'stage', span: 8, rows: 2 }, { id: 'job', span: 4, rows: 1 }, { id: 'jog', span: 3, rows: 2 }])
   })
 
   it('refuses a layout with nothing usable in it, so the default is used', () => {
