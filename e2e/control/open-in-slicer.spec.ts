@@ -17,8 +17,11 @@ import { usePrinter, PRESETS } from './printer'
 
 const MODEL = 'solid bracket\nfacet normal 0 0 1\nendsolid bracket\n'
 
-/** A slicer that says hello (with `features`) until it is welcomed, and lists each models.open file it hears. */
-function stubSlicer (features: string[]): string {
+/**
+ * A slicer that says hello (with `features`) until it is welcomed, and lists
+ * each models.open file it hears. `null`: one that never says hello.
+ */
+function stubSlicer (features: string[] | null): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="muon3d-embed-hosts" content="'self'"><title>Muon3D Slicer</title></head>
 <body style="margin:0;background:#123;color:#fff"><p id="state">waiting</p><p id="received"></p>
 <script>
@@ -39,13 +42,14 @@ function stubSlicer (features: string[]): string {
       document.getElementById('received').textContent = received.join(' | ')
     }
   })
-  const hello = () => { if (!welcomed) parent.postMessage({ protocol: 'printer-bridge', type: 'hello', versions: [1], app: 'stub-slicer', appVersion: '1', nonce, features: ${JSON.stringify(features)} }, location.origin) }
+  const features = ${JSON.stringify(features)}
+  const hello = () => { if (!welcomed && features) parent.postMessage({ protocol: 'printer-bridge', type: 'hello', versions: [1], app: 'stub-slicer', appVersion: '1', nonce, features }, location.origin) }
   hello()
   const timer = setInterval(() => { welcomed ? clearInterval(timer) : hello() }, 200)
 </script></body></html>`
 }
 
-async function serveSlicer (page: Page, features: string[]) {
+async function serveSlicer (page: Page, features: string[] | null) {
   await page.route('**/slicer/embed.html*', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'text/html', body: stubSlicer(features) }))
 }
@@ -60,18 +64,18 @@ async function uploads (page: Page) {
   return seen
 }
 
-async function drop (page: Page) {
-  await page.evaluate((text) => {
+async function drop (page: Page, name = 'bracket.stl') {
+  await page.evaluate(([text, name]) => {
     // A synthetic DataTransfer has no file-system entries, so the drop carries
     // its file in `files`, as a browser does when there are no items.
-    const file = new File([text], 'bracket.stl', { type: 'model/stl' })
+    const file = new File([text], name, { type: 'model/stl' })
     const data = { items: [], files: [file], types: ['Files'], dropEffect: 'none' }
     for (const type of ['dragenter', 'drop']) {
       const event = new DragEvent(type, { bubbles: true, cancelable: true })
       Object.defineProperty(event, 'dataTransfer', { value: data })
       window.dispatchEvent(event)
     }
-  }, MODEL)
+  }, [MODEL, name])
 }
 
 async function pick (page: Page) {
@@ -115,4 +119,38 @@ test('an older slicer (no models.open) is sent nothing, and the page says to add
   await expect(slicer(page).locator('#state')).toHaveText('welcomed', { timeout: 20_000 })
   await expect(page.getByTestId('flash-message')).toContainText('add bracket.stl with Add model', { timeout: 20_000 })
   await expect(slicer(page).locator('#received')).toHaveText('')
+})
+
+test('a slicer that never says hello: the models are let go with the Add model message, and a later visit adds nothing', async ({ page, open }) => {
+  let features: string[] | null = null
+  await page.route('**/slicer/embed.html*', (route: Route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: stubSlicer(features) }))
+  await usePrinter(page, PRESETS.idleHomed())
+  await open('/jobs')
+  await drop(page)
+  await page.getByTestId('job-ready').getByTestId('job-ready-open-slice').click()
+  await expect(page).toHaveURL(/\/slice$/)
+  await expect(page.getByTestId('flash-message')).toContainText('add bracket.stl with Add model', { timeout: 45_000 })
+  await expect(slicer(page).locator('#state')).toHaveText('waiting')
+
+  // Back to Jobs and to Slice again, in this page, now with a slicer that would take models: none are held any more.
+  features = ['models.open']
+  await page.goBack()
+  await expect(page).toHaveURL(/\/jobs$/)
+  await page.goForward()
+  await expect(slicer(page).locator('#state')).toHaveText('welcomed', { timeout: 20_000 })
+  await page.waitForTimeout(1000)
+  await expect(slicer(page).locator('#received')).toHaveText('')
+})
+
+test('a STEP model is not promised to Slice: the card says to export STL, OBJ or 3MF, with no Open Slice, and nothing is uploaded', async ({ page, open }) => {
+  await serveSlicer(page, ['models.open'])
+  const seen = await uploads(page)
+  await usePrinter(page, PRESETS.idleHomed())
+  await open('/jobs')
+  await drop(page, 'bracket.step')
+  const card = page.getByTestId('job-ready')
+  await expect(card.getByTestId('job-ready-unsliceable')).toContainText('Slice can\'t open bracket.step: it takes STL, OBJ and 3MF')
+  await expect(card.getByTestId('job-ready-open-slice')).toHaveCount(0)
+  expect(seen).toHaveLength(0)
 })

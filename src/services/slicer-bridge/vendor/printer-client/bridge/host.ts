@@ -254,6 +254,7 @@ export interface BridgeHost {
   /**
    * The person chose to open model files in the client (0.5.0): models.open, read first. Sent only to a client whose
    * hello listed `models.open`; true when it was sent, false when there is no such client or the files are not ones.
+   * Sent, the files' ArrayBuffers are transferred to the frame (detached here): read nothing from them afterwards.
    */
   modelsOpen(open: ModelsOpen): boolean;
   /** Whether a frame has been welcomed (and not closed since). */
@@ -408,14 +409,16 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
   let session: Session | null = null;
   let closed = false;
 
-  const post = (s: Session, message: unknown) => {
+  const post = (s: Session, message: unknown, transfer: Transferable[] = []) => {
     try {
-      s.port.postMessage(message);
+      if (transfer.length) s.port.postMessage(message, transfer);
+      else s.port.postMessage(message);
     } catch {
       // The frame has gone; its session ends with the next hello or close().
     }
   };
-  const event = (s: Session, name: string, printer: string | null, data: unknown) => post(s, { v: 1, event: name, printer, data });
+  const event = (s: Session, name: string, printer: string | null, data: unknown, transfer: Transferable[] = []) =>
+    post(s, { v: 1, event: name, printer, data }, transfer);
 
   /** printer.setup of the selected printer, when the session was granted it and the host has one. */
   const sendSetup = (s: Session) => {
@@ -908,7 +911,9 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
         log({ kind: 'ignored', why: 'a models.open that is not one' });
         return false;
       }
-      event(s, 'models.open', null, value);
+      // Moved, not copied (up to 512 MiB): the caller's buffers are detached once sent and must not be read again.
+      // The same buffer twice in one transfer list is an error, so each goes once.
+      event(s, 'models.open', null, value, [...new Set(value.files.map((f) => f.bytes))]);
       return true;
     },
     get connected() {

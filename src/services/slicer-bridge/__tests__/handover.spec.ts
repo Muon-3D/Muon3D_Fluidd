@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { dropHeldModels, handOverModels, heldModels, holdModels, MODEL_ACCEPT, type ModelsBridge } from '../handover'
+import { addModelText, dropHeldModels, handOverModels, heldModels, holdModels, isSlicerModel, MODEL_ACCEPT, SLICER_MODEL_EXTENSIONS, type ModelsBridge } from '../handover'
 import type { ModelsOpen } from '../vendor/printer-client/bridge/protocol'
 import { isModelFile } from '@/services/jobs/model'
 
@@ -9,6 +9,14 @@ const TEXT = 'solid bracket\nendsolid bracket\n'
 const stl = () => {
   const file = new File([TEXT], 'bracket.stl')
   Object.defineProperty(file, 'arrayBuffer', { value: async () => new TextEncoder().encode(TEXT).buffer })
+  return file
+}
+
+/** A file of `size` bytes whose bytes must never be read: the limits are checked before reading. */
+const unread = (size = 1) => {
+  const file = new File(['x'], 'part.stl')
+  Object.defineProperty(file, 'size', { value: size })
+  Object.defineProperty(file, 'arrayBuffer', { value: () => { throw new Error('read before the limits were checked') } })
   return file
 }
 
@@ -55,9 +63,38 @@ describe('handing models to the slicer (KAN-2191)', () => {
     expect(await handOverModels(b)).toBe('not-taken')
   })
 
-  it('holds at most 16 files, and Upload\'s picker takes every model kind Slice opens', () => {
-    holdModels(Array.from({ length: 20 }, stl))
+  it('more than 16 files: nothing is held, nothing is read, and the problem is the count', () => {
+    const files = Array.from({ length: 17 }, unread)
+    const problem = holdModels(files)
+    expect(problem).toMatch(/at most 16 models at once, and these are 17/)
+    expect(heldModels()).toHaveLength(0)
+    expect(holdModels(Array.from({ length: 16 }, unread))).toBeNull()
     expect(heldModels()).toHaveLength(16)
-    for (const ext of MODEL_ACCEPT) expect(isModelFile(`part${ext}`)).toBe(true)
+  })
+
+  it('more than 512 MiB in all: nothing is held, nothing is read, and the problem is the size', () => {
+    const big = (mib: number) => unread(mib * 1024 * 1024)
+    expect(holdModels([big(300), big(300)])).toMatch(/600 MiB together; Slice takes 512 MiB/)
+    expect(heldModels()).toHaveLength(0)
+    expect(holdModels([big(256), big(256)])).toBeNull()
+  })
+
+  it('giving up (no slicer, or none welcomed in time) lets them go as not-taken', async () => {
+    holdModels([stl()])
+    expect(await handOverModels(null, true)).toBe('not-taken')
+    expect(heldModels()).toHaveLength(0)
+    holdModels([stl()])
+    expect(await handOverModels(bridge(['models.open'], false).b, true)).toBe('not-taken')
+    expect(heldModels()).toHaveLength(0)
+    expect(addModelText(['a.stl', 'b.3mf'])).toBe('This slicer can\'t take a model from here yet: add a.stl, b.3mf with Add model.')
+  })
+
+  it('only what the slicer opens (its MODEL_EXTENSIONS: stl, obj, 3mf) is promised to it; STEP is not', () => {
+    expect([...SLICER_MODEL_EXTENSIONS].sort()).toEqual(['3mf', 'obj', 'stl'])
+    expect(MODEL_ACCEPT).toEqual(['.stl', '.obj', '.3mf'])
+    for (const name of ['a.stl', 'B.STL', 'c.obj', 'd.3mf']) expect(isSlicerModel(name)).toBe(true)
+    for (const name of ['e.step', 'f.stp', 'g.gcode', 'h.stl.zip']) expect(isSlicerModel(name)).toBe(false)
+    // Every one is still a model (a drop of one is never uploaded to the printer).
+    for (const name of ['a.stl', 'c.obj', 'd.3mf', 'e.step']) expect(isModelFile(name)).toBe(true)
   })
 })

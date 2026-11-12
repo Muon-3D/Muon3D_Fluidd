@@ -90,15 +90,25 @@
             <frame-icon name="x" />
           </button>
         </div>
-        <p class="job-ready__about">
+        <p
+          v-if="sliceable.length"
+          class="job-ready__about"
+        >
           A model has to be sliced before it can print. Open Slice and
-          {{ models.length === 1 ? 'it opens' : 'they open' }} there, ready to slice for {{ printerName }}.
+          {{ sliceable.length === 1 ? 'it opens' : 'they open' }} there, ready to slice for {{ printerName }}.
+        </p>
+        <p
+          v-if="unsliceable.length"
+          class="job-ready__about"
+          data-tid="job-ready-unsliceable"
+        >
+          Slice can't open {{ unsliceable.join(', ') }}: it takes STL, OBJ and 3MF. Export {{ unsliceable.length === 1 ? 'it' : 'them' }} as one of those from your CAD program first.
         </p>
         <p class="job-ready__about job-ready__about--dim">
           Nothing is sent to the printer until you slice and print.
         </p>
         <button
-          v-if="slicer"
+          v-if="slicer && sliceable.length"
           type="button"
           class="cbtn cbtn--primary cbtn--wide"
           data-tid="job-ready-open-slice"
@@ -107,7 +117,7 @@
           Open Slice
         </button>
         <p
-          v-else
+          v-else-if="sliceable.length"
           class="job-ready__about"
         >
           This printer doesn't serve Slice yet. slicer.muon3d.com slices the same way.
@@ -130,7 +140,7 @@ import JobsMixin, { type JobFile } from '@/mixins/jobs'
 import { EventBus } from '@/eventBus'
 import { jobTitle, readyChecks, type ReadyCheck } from '@/services/jobs/model'
 import { slicerPresence } from '@/services/slicer-bridge/slicerUrl'
-import { holdModels } from '@/services/slicer-bridge/handover'
+import { holdModels, isSlicerModel } from '@/services/slicer-bridge/handover'
 
 /**
  * After a file arrives, by drop or Upload. G-code: what it is, what to
@@ -172,9 +182,26 @@ export default class JobReadyDialog extends Mixins(JobsMixin) {
     this.open = true
   }
 
-  /** Open Slice: the models go with it (KAN-2191), and /slice hands them to the slicer once it is welcomed. */
+  /** The models the slicer opens (STL, OBJ, 3MF), and the ones it can't (STEP). */
+  get sliceable (): string[] {
+    return this.models.filter(isSlicerModel)
+  }
+
+  get unsliceable (): string[] {
+    return this.models.filter(name => !isSlicerModel(name))
+  }
+
+  /**
+   * Open Slice: the models it opens go with it (KAN-2191), and /slice hands
+   * them to the slicer once it is welcomed. Too many or too large to hand
+   * over: the person is told which, and stays here.
+   */
   openInSlice () {
-    holdModels(this.modelFiles)
+    const problem = holdModels(this.modelFiles.filter(f => isSlicerModel(f.name)))
+    if (problem) {
+      EventBus.$emit(problem, { type: 'warning', timeout: 10000 })
+      return
+    }
     this.modelFiles = []
     this.close()
     this.$router.push(this.slicePath).catch(() => {})
