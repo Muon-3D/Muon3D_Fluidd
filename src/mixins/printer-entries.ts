@@ -34,7 +34,8 @@ import { scopedPath } from '@/router/printerPagePaths'
 import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
-import { bluetoothCarrying, reconnectBluetooth, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
+import { bluetoothCarrying, reconnectBluetooth, releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
+import { chooseRouteMode } from '@/services/muon-cloud/route-choice'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
 import { requestRefused } from '@/services/managed-transport/refusal'
@@ -57,6 +58,9 @@ async function openManagedRoute (e: DirectoryEntry, route?: 'relay' | BleDevice)
   if (!route || route === 'relay') stopUsingBluetoothFor(id)
   else {
     useBluetoothFor(id, route)
+    // Another try gets a fresh link: the old one can look open while it
+    // carries nothing (KAN-2080), and reusing it dead-ended "Try again".
+    await releaseBluetoothLink(id)
     reconnectBluetooth(id)
   }
   dropCloudConnection(id)
@@ -393,6 +397,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       this.afterOpen()
       return
     }
+    if (e.cloud) chooseRouteMode(e.cloud.id, 'auto')
     if (e.lan || (!e.cloud?.online && e.host)) return this.connectLocal(e, true)
     return this.connectCloud(e)
   }
@@ -407,6 +412,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    */
   connectCloud (e: DirectoryEntry, route?: 'relay' | BleDevice) {
     if (!e.cloud) return
+    if (route) chooseRouteMode(e.cloud.id, route === 'relay' ? 'cloud' : 'ble')
     return this.run(e.key, () => openManagedRoute(e, route), !!route)
   }
 
@@ -430,6 +436,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         'Search again, or add it by the IP address its screen shows under System.'
       return
     }
+    const id = e.cloud?.id ?? e.endpointId
+    if (id && !auto) chooseRouteMode(id, 'lan')
     return this.run(e.key, async () => {
       if (e.endpointId) {
         stopUsingBluetoothFor(e.endpointId)

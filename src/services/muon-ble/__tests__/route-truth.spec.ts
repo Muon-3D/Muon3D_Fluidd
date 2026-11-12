@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  SILENT_DROP_MS,
   bluetoothCarrying,
+  bluetoothDeviceFor,
   bluetoothDropped,
+  bluetoothDroppedAt,
+  droppedBluetoothPrinters,
+  reconnectBluetooth,
   bluetoothFellBack,
   bluetoothLinkUp,
   bluetoothOpening,
@@ -102,7 +107,12 @@ describe('one label for the route, from the link that is up (KAN-1566)', () => {
       useBluetoothFor(EID, printer.device)
       await bluetoothRouteFor(endpoint, EID)
       expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
-      await vi.advanceTimersByTimeAsync(60_000)
+      // Idle, but alive: QUIC's keep-alive crosses the radio every 5 s.
+      for (let i = 0; i < 12; i++) {
+        printer.notify(new Uint8Array([1]))
+        await vi.advanceTimersByTimeAsync(5_000)
+      }
+      expect(bluetoothDropped(EID)).toBeNull()
       expect(bluetoothLinkUp(EID)).toBe(true)
       expect(bluetoothCarrying(EID)).toBe(true)
       expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
@@ -239,6 +249,52 @@ describe('the chosen route is the only route, and a drop is said, not hidden (KA
       unavailable = true
       vi.advanceTimersByTime(1_500)
       expect(bluetoothDropped(EID)).not.toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('counts an open link that carries nothing as dropped, and hangs it up (KAN-2080: the radio can stay up)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const { endpoint } = fakeEndpoint()
+      useBluetoothFor(EID, printer.device)
+      const link = await bluetoothRouteFor(endpoint, EID)
+      await vi.advanceTimersByTimeAsync(SILENT_DROP_MS - 2_000)
+      expect(bluetoothDropped(EID)).toBeNull()
+      expect(bluetoothCarrying(EID)).toBe(true)
+      await vi.advanceTimersByTimeAsync(4_000)
+      expect(bluetoothDropped(EID)).toMatch(/Nothing came over Bluetooth/)
+      expect(bluetoothCarrying(EID)).toBe(false)
+      expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+      await vi.advanceTimersByTimeAsync(3_000)
+      expect(link!.isOpen()).toBe(false)
+      // The reason stays the one that was seen, not "the link dropped".
+      expect(bluetoothDropped(EID)).toMatch(/Nothing came over Bluetooth/)
+      expect(droppedBluetoothPrinters()).toEqual([EID.toLowerCase()])
+      expect(bluetoothDroppedAt(EID)).toBeGreaterThan(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a fresh try after a silent drop opens a new link, not the stale one', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const { endpoint } = fakeEndpoint()
+      useBluetoothFor(EID, printer.device)
+      const first = await bluetoothRouteFor(endpoint, EID)
+      await vi.advanceTimersByTimeAsync(SILENT_DROP_MS + 5_000)
+      expect(bluetoothDropped(EID)).not.toBeNull()
+      await releaseBluetoothLink(EID)
+      reconnectBluetooth(EID)
+      const second = await bluetoothRouteFor(endpoint, EID)
+      expect(second).not.toBe(first)
+      expect(second!.isOpen()).toBe(true)
+      expect(bluetoothDropped(EID)).toBeNull()
+      expect(bluetoothDeviceFor(EID)).toBe(printer.device)
     } finally {
       vi.useRealTimers()
     }

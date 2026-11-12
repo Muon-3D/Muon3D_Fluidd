@@ -4,5 +4,5 @@ export function requestRefused (error: unknown): boolean {
   if (!e) return false
   const status = e.response?.status ?? e.status ?? e.code
   return status === 401 || status === 403 || e.kind === 'refused' ||
-    /policy refused|denied for every role|not on the remote allowlist/i.test(e.message ?? String(error))
+    /policy refused|denied for every role|not on the remote allowlist|permission_restricted/i.test(e.message ?? String(error))
 }
