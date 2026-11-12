@@ -39,7 +39,7 @@ function fields (wrapper: Wrapper<Vue>): number {
 
 function link (wrapper: Wrapper<Vue>): string | undefined {
   const button = wrapper.find('[data-tid="open-in-control-button"]')
-  return button.exists() ? button.attributes('href') : undefined
+  return button.exists() ? button.attributes('href') || undefined : undefined
 }
 
 const router = () => ({ replace: vi.fn(() => Promise.resolve()), push: vi.fn(() => Promise.resolve()) })
