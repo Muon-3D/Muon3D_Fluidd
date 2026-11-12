@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cloudApi, REFRESH_KEY, storeToken, storedToken, TOKEN_KEY } from '../api'
 import { checkCentralSession } from '../centralLogin'
-import { cloudState, initCloud, saveLayout, signOut } from '../state'
+import { cloudState, initCloud, saveLayout, signIn, signOut } from '../state'
 
 vi.mock('../iroh', () => ({ browserEndpoint: vi.fn(), forgetBrowserKey: vi.fn(), IrohPrinter: class {} }))
 
@@ -115,6 +115,45 @@ describe('KAN-2249: the printer groups belong to one account', () => {
     a.resolve({ layout: { groups: [group('A lab')] } })
     await initA
     expect(names()).toEqual(['B bench'])
+  })
+
+  it('signing in as someone else without signing out first clears the groups, even when their layout fails to load', async () => {
+    storeToken('a')
+    vi.spyOn(cloudApi, 'me').mockResolvedValue(account('a'))
+    vi.spyOn(cloudApi, 'getLayout').mockResolvedValue({ layout: { groups: [group('A lab')] } })
+    await initCloud()
+    expect(names()).toEqual(['A lab'])
+    vi.spyOn(cloudApi, 'signIn').mockResolvedValue({ token: 'b', ...account('b') } as never)
+    vi.spyOn(cloudApi, 'getLayout').mockRejectedValue(new Error('console down'))
+    await signIn('b@example.test', 'password')
+    expect(cloudState.account?.id).toBe('b')
+    expect(names()).toEqual([])
+  })
+
+  it('a group saved for one account is never sent again with the next account’s token', async () => {
+    storeToken('a')
+    vi.spyOn(cloudApi, 'me').mockResolvedValue(account('a'))
+    vi.spyOn(cloudApi, 'getLayout').mockResolvedValue({ layout: { groups: [] } })
+    await initCloud()
+    vi.mocked(cloudApi.putLayout).mockRestore()
+    const puts: string[] = []
+    const first = pending<Response>()
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/v1/fleet/layout') && init?.method === 'PUT') {
+        puts.push(String((init.headers as Record<string, string>).authorization))
+        if (puts.length === 1) return first.promise
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+    const save = saveLayout({ ...cloudState.layout, groups: [group('A lab')] })
+    await vi.waitFor(() => expect(puts).toHaveLength(1))
+    await signOut()
+    storeToken('b')
+    vi.spyOn(cloudApi, 'me').mockResolvedValue(account('b'))
+    await initCloud()
+    first.resolve(new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } }))
+    await save
+    expect(puts).toEqual(['Bearer a'])
   })
 
   it('a group made while the printers are still loading is kept, not overwritten by the saved layout', async () => {

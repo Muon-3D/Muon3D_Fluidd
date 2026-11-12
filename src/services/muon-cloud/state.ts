@@ -455,6 +455,11 @@ function defaultLayout (): FleetLayout {
 
 async function adoptSession (token: string, account: CloudAccount) {
   storeToken(token)
+  // Signed in as someone else without a sign-out first (signIn while signed in): the groups on screen are not theirs.
+  if (cloudState.account?.id !== account.id) {
+    cloudState.layout = defaultLayout()
+    layoutEdits++
+  }
   cloudState.account = account
   cloudState.error = null
   // Read before the printers fetch: a group made while either answer is on its way is newer than the saved layout.
@@ -581,8 +586,10 @@ export async function signOut (): Promise<boolean> {
 export async function saveLayout (layout: FleetLayout) {
   layoutEdits++
   cloudState.layout = layout
+  // A 401 is retried only for the account that made the change, never with the next one's token.
+  const owner = cloudState.account?.id
   try {
-    await cloudApi.putLayout(layout)
+    await cloudApi.putLayout(layout, () => owner !== undefined && cloudState.account?.id === owner)
   } catch (error) {
     cloudState.error = (error as Error).message
   }
