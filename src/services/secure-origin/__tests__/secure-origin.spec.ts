@@ -44,7 +44,7 @@ const description = (over: Record<string, unknown> = {}) =>
 const NOW = 1_800_000_000_000
 
 beforeEach(() => localStorage.clear())
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.unstubAllGlobals() })
 
 describe('which pages look for a secure address', () => {
   it('only a plain-HTTP page that is not loopback and not the hotspot', () => {
