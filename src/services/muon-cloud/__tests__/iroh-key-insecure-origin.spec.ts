@@ -38,3 +38,15 @@ it('refuses to make an endpoint: no key is created, read or written', async () =
   expect(binding.create).not.toHaveBeenCalled()
   expect(localStorage.getItem('muon.cloud.key')).toBe(OLD_KEY)
 })
+
+it('removes a key that a tab running an older build writes back', async () => {
+  vi.resetModules()
+  await import('../iroh')
+  localStorage.setItem('muon.cloud.key', OLD_KEY)
+  window.dispatchEvent(new StorageEvent('storage', { key: 'muon.cloud.key', newValue: OLD_KEY }))
+  expect(localStorage.getItem('muon.cloud.key')).toBeNull()
+  // Another key changing is not its business.
+  localStorage.setItem('muon.cloud.active', 'printer-1')
+  window.dispatchEvent(new StorageEvent('storage', { key: 'muon.cloud.active', newValue: 'printer-1' }))
+  expect(localStorage.getItem('muon.cloud.active')).toBe('printer-1')
+})

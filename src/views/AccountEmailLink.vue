@@ -14,8 +14,14 @@
 
     <main class="acct-solo__main">
       <div class="acct-solo__box lib-surface eml">
+        <!-- The printer's plain-HTTP address: the link is finished on the console (KAN-2192). -->
+        <template v-if="!sessionAllowed">
+          <h1>Finish this at Muon Control</h1>
+          <open-in-muon-control :route="consoleRoute" />
+        </template>
+
         <!-- Confirming an address, or finishing a change of it. -->
-        <template v-if="kind === 'verify'">
+        <template v-else-if="kind === 'verify'">
           <h1>{{ verifyTitle }}</h1>
           <p
             v-if="state === 'working'"
@@ -147,6 +153,8 @@ import { centralLoginEnabled, startCentralSignIn } from '@/services/muon-cloud/c
 import { describe } from '@/services/account/state'
 import { resetPassword, verifyEmail } from '@/services/account/sign-in'
 import '@/scss/muon3d-account.scss'
+import { cloudSessionAllowed } from '@/services/muon-cloud/api'
+import OpenInMuonControl from '@/components/muon-cloud/OpenInMuonControl.vue'
 
 type Step = 'working' | 'ready' | 'done' | 'failed'
 
@@ -156,8 +164,13 @@ type Step = 'working' | 'ready' | 'done' | 'failed'
  * confirming an address, and choosing a new password. The token is used
  * once, and leaves the address as soon as the page has it.
  */
-@Component({})
+@Component({ components: { OpenInMuonControl } })
 export default class AccountEmailLink extends Vue {
+  /** False on the printer's plain-HTTP address: no form and no token use, one link to the console (KAN-2192). */
+  sessionAllowed = cloudSessionAllowed()
+  /** This page on the console, token included: where the link is finished instead. */
+  consoleRoute = '/'
+
   token = ''
   state: Step = 'ready'
   error = ''
@@ -187,6 +200,13 @@ export default class AccountEmailLink extends Vue {
 
   created () {
     const token = this.$route.query.token
+    if (!this.sessionAllowed) {
+      // Keep the whole link for the console, take it out of this address,
+      // and use the token for nothing here.
+      this.consoleRoute = this.$route.fullPath
+      if (typeof token === 'string' && token) this.$router.replace({ path: this.$route.path }).catch(() => {})
+      return
+    }
     this.token = typeof token === 'string' ? token : ''
     // Out of the address, the history and any screenshot.
     if (this.token) this.$router.replace({ path: this.$route.path }).catch(() => {})

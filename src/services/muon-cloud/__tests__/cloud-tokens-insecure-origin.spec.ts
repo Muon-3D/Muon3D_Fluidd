@@ -175,3 +175,46 @@ describe('a plain-HTTP printer page sends no credential', () => {
     noCloudSecretStored()
   })
 })
+
+describe('a plain-HTTP printer page makes only the calls that need no account', () => {
+  it('refuses every other console route, with or without a token, before any request leaves', async () => {
+    const calls = stubConsole()
+    const api = await load()
+    // The link, invite and assertion routes carry a code or act for the account.
+    await expect(api.cloudApi.join('INVITE-CODE')).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.claim('12345678')).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.assertion('https://models.muon3d.com')).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.me()).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.printers()).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.signOut()).rejects.toMatchObject({ code: 'insecure_origin' })
+    expect(calls).toHaveLength(0)
+  })
+
+  it('still asks the console to start a link on this network, with no bearer', async () => {
+    const calls = stubConsole()
+    const api = await load()
+    await api.cloudApi.startLink('printer-1')
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toMatch(/\/v1\/links\/start$/)
+    expect(bearerOf(calls[0])).toBeUndefined()
+  })
+
+  it('sign-out sends nothing', async () => {
+    const calls = stubConsole()
+    await load()
+    const state = await import('../state')
+    await state.signOut()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('ignores a console address saved in this origin\'s storage', async () => {
+    // Anything on the network can write this page's storage.
+    localStorage.setItem('muon.cloud.url', 'https://hostile.example')
+    const calls = stubConsole()
+    const api = await load()
+    expect(api.cloudBaseUrl()).not.toContain('hostile.example')
+    await api.cloudApi.nearby()
+    expect(calls[0].url).not.toContain('hostile.example')
+    expect(api.controlUrl('/account')).not.toContain('hostile.example')
+  })
+})

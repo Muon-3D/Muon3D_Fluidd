@@ -166,7 +166,10 @@ export function sameConsole (a: string, b: string): boolean {
 }
 
 export function cloudBaseUrl (): string {
-  const saved = readStorage(URL_KEY)
+  // A saved console address is honoured only where the page's storage can be
+  // trusted. On a plain-HTTP page anything on the network can write it, and
+  // would choose where the page's calls and "open" links go (KAN-2192).
+  const saved = cloudTokensPersist() ? readStorage(URL_KEY) : null
   if (saved) return saved.replace(/\/$/, '')
   // A page the console serves talks to the console under the name it was
   // opened by, whichever name the build was made for: its sign-in, its cookie
@@ -221,8 +224,10 @@ function refuseOnInsecureOrigin (): never {
   throw new CloudError(INSECURE_ORIGIN_MESSAGE, 0, 'insecure_origin')
 }
 
-// Requests that carry a password, a sign-in code or a session-opening code.
-const CREDENTIAL_PATHS: readonly string[] = ['/v1/auth/sign-in', '/v1/auth/sign-up', '/v1/auth/mfa', '/v1/handoff', '/token']
+// The only console calls a plain-HTTP page makes: the three that need no
+// account and carry nothing of the person's. An allow-list, so a route added
+// later is refused there until somebody decides it is safe.
+const INSECURE_ORIGIN_CALLS: readonly string[] = ['GET /v1/config', 'GET /v1/links/nearby', 'POST /v1/links/start']
 
 function readTokenStorage (key: string): string | null {
   if (cloudSessionAllowed()) return readStorage(key)
@@ -500,7 +505,7 @@ export async function refreshSession (): Promise<boolean> {
 
 async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true): Promise<T> {
   // KAN-2192: no bearer and no password leaves a plain-HTTP page, whoever asks.
-  if (!cloudSessionAllowed() && (token || CREDENTIAL_PATHS.includes(path.split('?')[0]))) refuseOnInsecureOrigin()
+  if (!cloudSessionAllowed() && (token || !INSECURE_ORIGIN_CALLS.includes(`${method} ${path}`))) refuseOnInsecureOrigin()
   const startedAt = deletionRevision()
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`

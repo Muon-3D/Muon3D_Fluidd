@@ -25,9 +25,19 @@ const ALLOW_CONSOLE_CLIENT_FALLBACK = true
 // an older build left. WebCrypto, which could hold it unreadable (KAN-1872),
 // does not exist on such a page.
 try {
-  if (!cloudSessionAllowed()) localStorage.removeItem(KEY_STORAGE)
+  if (!cloudSessionAllowed()) {
+    localStorage.removeItem(KEY_STORAGE)
+    // A tab still running an older build can write the key back. Remove it
+    // whenever it appears.
+    window.addEventListener('storage', (event) => {
+      if (event.key !== KEY_STORAGE || event.newValue === null) return
+      try {
+        localStorage.removeItem(KEY_STORAGE)
+      } catch { /* no storage */ }
+    })
+  }
 } catch {
-  // No storage: nothing to clear.
+  // No storage or no window: nothing to clear.
 }
 
 interface WasmSocket {
