@@ -754,6 +754,12 @@ $glass: "html[data-m3d-style='glass']";
         transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy) !important;
     }
 
+    // A segment's press lands in an instant too; the release springs back.
+    > .v-btn.v-btn:not(.v-btn--disabled):active {
+      transition-duration: var(--m3d-motion-fast), var(--m3d-motion-fast), var(--m3d-motion-instant) !important;
+      transition-timing-function: var(--m3d-ease-standard) !important;
+    }
+
     > .v-btn.v-btn + .v-btn {
       border-left: 0 !important;
     }
