@@ -4,7 +4,7 @@ import Vue from 'vue'
 import LibraryCollectionPage, { droppedOn, moved, saveIdOf } from '../v2/LibraryCollectionPage.vue'
 import { setLibraryClient } from '@/services/library/store'
 
-const card = (id: string) => ({ title: `Print ${id}`, thumbnail_url: `https://models.muon3d.com/x/${id}.png`, creator: 'Okoro', url: `/p/print-${id}`, availability: 'available' })
+const card = (id: string) => ({ title: `Print ${id}`, thumbnail_url: `https://library.muon3d.com/models/x/${id}.png`, creator: 'Okoro', url: `/p/print-${id}`, availability: 'available' })
 const item = (id: string) => ({ save_id: `s-${id}`, target: { kind: 'publication', id }, card: card(id) })
 
 function client (over: Record<string, unknown> = {}) {
