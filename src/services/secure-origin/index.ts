@@ -24,9 +24,13 @@
  * when decision D-115 picks a separate domain (the console refuses a zone
  * under muon3d.com until then). Only ever a domain registered to Muon3D.
  */
-export const PRINTER_NAME_ZONES: readonly string[] = [
-  String(import.meta.env.VITE_PRINTER_NAME_ZONE || 'lan.muon3d.com').trim().toLowerCase()
-]
+export const PRINTER_NAME_ZONES: readonly string[] = [printerNameZone(import.meta.env.VITE_PRINTER_NAME_ZONE)]
+
+/** The build setting as a zone: DNS labels ending in letters, else the default. */
+export function printerNameZone (setting: unknown): string {
+  const zone = String(setting ?? '').trim().toLowerCase()
+  return /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(zone) ? zone : 'lan.muon3d.com'
+}
 
 /** What the printer's probe location answers, and nothing else. */
 export const PROBE_MARKER = 'muon3d-secure-origin-1'

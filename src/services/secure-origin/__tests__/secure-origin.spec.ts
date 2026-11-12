@@ -14,6 +14,7 @@ import {
   declinedSwitch,
   findSecureOrigin,
   printerName,
+  printerNameZone,
   probe,
   secureUrl,
   setSwitchesAutomatically,
@@ -68,6 +69,15 @@ describe('which pages look for a secure address', () => {
     expect(await findSecureOrigin({ protocol: 'https:', hostname: 'control.muon3d.com' }, NOW)).toBeNull()
     expect(await findSecureOrigin({ protocol: 'http:', hostname: '10.42.0.1' }, NOW)).toBeNull()
     expect(asked).toEqual([])
+  })
+})
+
+describe('the zone setting', () => {
+  it('takes a DNS zone and falls back to the default for anything else', () => {
+    expect(printerNameZone('Lan.Example.NET ')).toBe('lan.example.net')
+    for (const bad of [undefined, '', '   ', 'com', 'a..b.com', 'evil.com/x', 'x.c0m', '*.example.com']) {
+      expect(printerNameZone(bad)).toBe('lan.muon3d.com')
+    }
   })
 })
 
