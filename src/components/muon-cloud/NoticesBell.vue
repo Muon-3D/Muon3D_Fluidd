@@ -56,9 +56,9 @@
           data-tid="notice-klippy"
         >
           <b>Klipper: {{ klippyState }}</b>
-          <span
+          <error-code-notice
             class="muon-notices__desc"
-            v-html="klippyStateMessage"
+            :message="klippyStateMessage"
           />
         </section>
         <section
@@ -89,7 +89,20 @@
           data-tid="printer-notice"
         >
           <span class="muon-notices__dot" />
-          <span class="muon-notices__text">
+          <span
+            v-if="codedError(n)"
+            class="muon-notices__text"
+          >
+            <error-code-notice
+              :code="n.code || ''"
+              :message="n.description || n.title"
+            />
+            <span class="muon-notices__when">{{ $filters.formatRelativeTimeToNow(n.timestamp * 1000) }}</span>
+          </span>
+          <span
+            v-else
+            class="muon-notices__text"
+          >
             <b v-html="n.title" />
             <span
               v-if="n.description"
@@ -199,6 +212,8 @@ import type { AppNotification } from '@/store/notifications/types'
 import isSetAppBadgeSupported from '@/util/is-set-app-badge-supported'
 import linkExternalUrls from '@/util/link-external-urls'
 import { Globals } from '@/globals'
+import ErrorCodeNotice from '@/components/common/ErrorCodeNotice.vue'
+import { resolveError } from '@/services/error-codes'
 
 interface WarningGroup {
   title: string
@@ -213,7 +228,7 @@ interface WarningGroup {
  * announcements, update and version notices, throttling). Signed in, it
  * lists the console's sharing notices; opening one marks it read.
  */
-@Component({})
+@Component({ components: { ErrorCodeNotice } })
 export default class NoticesBell extends Mixins(StateMixin) {
   @Prop({ type: Boolean, default: false })
   readonly printer!: boolean
@@ -235,6 +250,12 @@ export default class NoticesBell extends Mixins(StateMixin) {
 
   get printerNotifications (): AppNotification[] {
     return this.printer ? this.$store.getters['notifications/getNotifications'] : []
+  }
+
+  /** An error notification the book knows (by its code, or its wording) shows as code + short line. */
+  codedError (n: AppNotification): boolean {
+    if (n.type !== 'error') return false
+    return resolveError({ code: n.code, message: n.description || n.title }).entry !== null
   }
 
   get clearable (): AppNotification[] {

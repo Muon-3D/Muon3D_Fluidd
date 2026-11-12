@@ -51,6 +51,7 @@ declare module 'vue' {
     CommandBar: typeof import('./src/components/layout/CommandBar.vue')['default']
     ConnectingScreen: typeof import('./src/components/layout/ConnectingScreen.vue')['default']
     ConnectionBanner: typeof import('./src/components/layout/ConnectionBanner.vue')['default']
+    ErrorCodeNotice: typeof import('./src/components/common/ErrorCodeNotice.vue')['default']
     FlashMessage: typeof import('./src/components/common/FlashMessage.vue')['default']
     FrameIcon: typeof import('./src/components/ui/FrameIcon.vue')['default']
     KeyboardShortcutsDialog: typeof import('./src/components/common/KeyboardShortcutsDialog.vue')['default']

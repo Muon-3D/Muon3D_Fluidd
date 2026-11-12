@@ -1,0 +1,89 @@
+{
+  "version": "seed-0",
+  "entries": [
+    {
+      "code": "MU-HOMING-0001",
+      "area": "homing",
+      "severity": "error",
+      "short_line": "Homing could not settle on one position.",
+      "cause": "The repeated touches on one axis did not agree closely enough.",
+      "what_to_do": [
+        "Check that nothing is on or under the nozzle.",
+        "Wipe the nozzle and the plate, then home again."
+      ],
+      "escalate": "If it keeps happening after a clean plate and a second try, contact support with this code.",
+      "affects": ["printer", "control"],
+      "introduced": "2026-11",
+      "status": "draft",
+      "public": false,
+      "dev_detail_hint": "Per-tap readings and the tolerance are in the message.",
+      "related": ["MU-HOMING-0002"]
+    },
+    {
+      "code": "MU-HOMING-0002",
+      "area": "homing",
+      "severity": "error",
+      "short_line": "The printer did not find the plate.",
+      "cause": "The probe did not trigger before the end of its travel.",
+      "what_to_do": [
+        "Check the plate is in place and clean.",
+        "Try homing again."
+      ],
+      "escalate": "If it repeats with the plate in place, contact support with this code.",
+      "affects": ["printer", "control"],
+      "introduced": "2026-11",
+      "status": "draft",
+      "public": false,
+      "related": ["MU-HOMING-0001"]
+    },
+    {
+      "code": "MU-MOTION-0001",
+      "area": "motion",
+      "severity": "warning",
+      "short_line": "Lift the nozzle first, then move sideways.",
+      "cause": "The printer refused a sideways move because the nozzle is touching the plate.",
+      "what_to_do": [
+        "Raise the nozzle with the Z controls.",
+        "Then move again."
+      ],
+      "escalate": "If it still refuses with the nozzle lifted, contact support with this code.",
+      "affects": ["printer", "control"],
+      "introduced": "2026-11",
+      "status": "draft",
+      "public": false
+    },
+    {
+      "code": "MU-NETWORK-0001",
+      "area": "network",
+      "severity": "error",
+      "short_line": "The upload stopped before it finished.",
+      "cause": "The connection to the printer closed while the file was being sent.",
+      "what_to_do": [
+        "Check the printer is still online.",
+        "Send the file again."
+      ],
+      "escalate": "If large files keep failing over the same route, contact support with this code.",
+      "affects": ["control", "cloud"],
+      "introduced": "2026-11",
+      "status": "draft",
+      "public": false
+    },
+    {
+      "code": "MU-HEAT-0001",
+      "area": "heat",
+      "severity": "critical",
+      "short_line": "A heater stopped warming as expected, so the printer shut down to be safe.",
+      "cause": "The safety check saw a heater not following its target.",
+      "what_to_do": [
+        "Let the printer cool down.",
+        "Restart the printer from the notice, then try again."
+      ],
+      "escalate": "If it happens twice, do not keep trying: contact support with this code.",
+      "affects": ["printer", "control"],
+      "introduced": "2026-11",
+      "status": "draft",
+      "public": true,
+      "dev_detail_hint": "The heater name and temperatures are in the message."
+    }
+  ]
+}

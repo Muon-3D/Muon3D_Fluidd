@@ -16,6 +16,7 @@ export interface AppNotification {
   clear: boolean; // user can clear the notification.
   merge: boolean; // try to merge into an existing notification.
   noCount?: boolean; // if true, don't increment the count.
+  code?: string; // error code book code (KAN-2085), when the emitter sent one.
 }
 
 export interface AppPushNotification {
@@ -33,6 +34,7 @@ export interface AppPushNotification {
   clear?: boolean;
   merge?: boolean;
   noCount?: boolean;
+  code?: string;
 }
 
 export type AppNotificationType = 'success' | 'info' | 'warning' | 'error' | 'announcement'
