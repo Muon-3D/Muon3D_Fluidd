@@ -61,12 +61,22 @@ test.describe('model page', () => {
     await report.close()
   })
 
+  test('history with the Library off says to turn it on, links to the settings, and has no Try again', async ({ page, models, open }) => {
+    await page.route('**/v1/library/publications/*/context', route => route.fulfill({ status: 403, json: { error: { code: 'consent_required', message: 'Turn on your Library.' } } }))
+    await open(`/library?view=discover&print=${models.publications[10].id}`)
+    const history = page.getByTestId('library-print-history')
+    await expect(history).toContainText('Turn on Library saving to keep a private history of your prints of this model.')
+    await expect(history.getByRole('button', { name: 'Try again' })).toHaveCount(0)
+    await history.getByRole('link', { name: 'Library settings' }).click()
+    await expect(page).toHaveURL(/\/account\/library/)
+  })
+
   test('history failure retries, empty history is distinct and others see only the pinned version', async ({ page, models, open }) => {
     let failing = true
     await page.route('**/v1/library/publications/*/context', route => route.fulfill({ status: failing ? 503 : 200, json: failing ? {} : { owner: false, state: 'approved', pinned_version: 1, versions: [{ number: 1 }], runs: [] } }))
     await open(`/library?view=discover&print=${models.publications[10].id}`)
     const history = page.getByTestId('library-print-history')
-    await expect(history).toContainText('Your history could not be loaded.')
+    await expect(history).toContainText('Your print history could not be loaded just now.')
     failing = false
     await history.getByRole('button', { name: 'Try again' }).click()
     await expect(history).toContainText('No prints recorded for this model yet.')

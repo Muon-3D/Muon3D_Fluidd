@@ -64,7 +64,11 @@
           height="160"
           alt=""
         >
-        <span><strong>{{ c.name }}</strong><small>{{ c.count === null ? 'Explore' : `${c.count} ${c.count === 1 ? 'model' : 'models'}` }}</small></span>
+        <span><strong>{{ c.name }}</strong><small
+          v-if="c.description"
+          class="mc-category__about"
+          :data-tid="`library-category-${c.slug}-about`"
+        >{{ c.description }}</small><small>{{ c.count === null ? 'Explore' : `${c.count} ${c.count === 1 ? 'model' : 'models'}` }}</small></span>
       </button>
     </div>
     <library-state
@@ -310,8 +314,14 @@ export default class LibraryBrowsePage extends Vue {
   categoryPicture (slug: string): string | null { return this.pictures.find(c => c.category === slug && c.picture)?.picture ?? null }
   openSummary (item: PublicationSummary) { this.$emit('open', summaryCard(item)) }
   async readCategories () { this.categoryError = ''; this.categoryBusy = true; try { this.categories = await categories(this.categoryController.signal) } catch (e) { if (!this.categoryController.signal.aborted) this.categoryError = e instanceof Error ? e.message : String(e) } finally { if (!this.categoryController.signal.aborted) this.categoryBusy = false } }
-  mounted () { this.focusHeading() }
-  @Watch('category') focusHeading () { this.$nextTick(() => (this.$refs.heading as HTMLElement | undefined)?.focus()) }
+  mounted () { this.focusHeading(); window.addEventListener('online', this.onOnline) }
+  /** Back online after something did not load: read it again, nobody needs to tap. */
+  onOnline () {
+    if (this.categoryError) this.readCategories()
+    if (this.error) this.load(true)
+  }
+
+  @Watch('category') focusHeading () { this.$nextTick(() => (this.$refs.heading as HTMLElement | undefined)?.focus({ preventScroll: true })) }
   @Watch('volume') volumeChanged () { if (this.fits) this.load(true) }
   @Watch('category', { immediate: true })
   @Watch('query')
@@ -335,7 +345,7 @@ export default class LibraryBrowsePage extends Vue {
     } catch (e) { if (!controller.signal.aborted) this.error = e instanceof Error ? e.message : String(e) } finally { if (!controller.signal.aborted) this.busy = false }
   }
 
-  beforeDestroy () { this.controller?.abort(); this.categoryController.abort() }
+  beforeDestroy () { window.removeEventListener('online', this.onOnline); this.controller?.abort(); this.categoryController.abort() }
 }
 </script>
 

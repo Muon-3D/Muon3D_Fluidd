@@ -58,6 +58,7 @@
         >{{ busy ? 'Opening…' : 'Print' }}</span>
       </button>
       <button
+        v-if="canSave"
         type="button"
         class="mlib-btn mlib-btn--sm mlib-btn--icon"
         :aria-label="saved ? `Unsave ${card.title}` : `Save ${card.title}`"
@@ -126,6 +127,8 @@ export default class LibraryModelCard extends Vue {
   @Prop({ type: Object, required: true }) readonly card!: ShelfCard
   @Prop({ type: String, default: null }) readonly printerName!: string | null
   @Prop({ type: Boolean, default: false }) readonly busy!: boolean
+  /** Draw the save heart. Off where a signed-out visitor would only be sent to sign in. */
+  @Prop({ type: Boolean, default: true }) readonly canSave!: boolean
   @Inject({ default: null }) readonly libraryCardContext!: (() => { volume: { x: number, y: number, z: number } | null, printerName: string | null, signedIn: boolean, signIn: () => void }) | null
   signedOutNote = ''
   get signedIn (): boolean { return !!this.libraryCardContext?.().signedIn }
