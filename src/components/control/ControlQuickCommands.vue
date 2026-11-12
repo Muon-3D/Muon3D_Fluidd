@@ -152,6 +152,7 @@ import { restartReason } from '@/services/quick-actions/model'
 import {
   RESTART_COMMANDS, coveredElsewhere, quickCommandIcon, quickCommandLabel, quickCommandReason
 } from '@/services/control/quick-commands'
+import { quickCommandEligible } from '@/services/control/quick-command-picks'
 import ControlCard from './ControlCard.vue'
 
 interface QuickCommand {
@@ -181,7 +182,8 @@ export default class ControlQuickCommands extends Mixins(MacroRunMixin) {
   get commands (): QuickCommand[] {
     const byScore = (a: ShownMacro, b: ShownMacro) => b.score - a.score || a.name.localeCompare(b.name)
     return this.arrangedMacros
-      .filter(m => m.group !== 'printer' && !coveredElsewhere(m.name) && !RESTART_COMMANDS.some(r => r.name === m.name.toUpperCase()))
+      // One rule with the Overview tile and the Macros page's tick list: never the print controls (quick-command-picks).
+      .filter(m => quickCommandEligible(m) && !coveredElsewhere(m.name) && !RESTART_COMMANDS.some(r => r.name === m.name.toUpperCase()))
       .sort((a, b) => Number(!!b.userGroup) - Number(!!a.userGroup) || byScore(a, b))
       .map(m => ({
         name: m.name,

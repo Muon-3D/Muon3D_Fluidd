@@ -148,5 +148,10 @@ test.describe('OV-30: Manage is the Macros page, which picks the Quick commands'
     await page.evaluate(to => (document.querySelector('#app') as any).__vue__.$router.push(to).then(() => true, () => true), `${PRINTER}/`)
     await tile(page).scrollIntoViewIfNeeded()
     await expect.poll(() => chipNames(page)).toEqual(['CLEAN_NOZZLE'])
+    // Control's card follows the same rule: no Cancel print, Pause or Print start there either.
+    await page.evaluate(to => (document.querySelector('#app') as any).__vue__.$router.push(to).then(() => true, () => true), `${PRINTER}/control`)
+    await expect(page.getByTestId('qc-CLEAN_NOZZLE')).toBeVisible()
+    await page.getByTestId('quick-all').click()
+    for (const name of ['CANCEL_PRINT', 'PAUSE', 'RESUME', 'PRINT_START']) await expect(page.getByTestId(`qc-${name}`)).toHaveCount(0)
   })
 })
