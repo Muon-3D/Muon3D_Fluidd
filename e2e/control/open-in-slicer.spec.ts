@@ -82,6 +82,25 @@ async function pick (page: Page) {
   await page.getByTestId('jobs-upload-input').setInputFiles({ name: 'bracket.stl', mimeType: 'model/stl', buffer: Buffer.from(MODEL) })
 }
 
+/**
+ * Every toast's text, in order. The page has one toast slot, and its own
+ * "saved on this device" notice can take it, so the slot is watched rather
+ * than read once.
+ */
+async function toasts (page: Page) {
+  await page.addInitScript(() => {
+    const seen: string[] = []
+    ;(window as any).__toasts = seen
+    new MutationObserver(() => {
+      for (const el of document.querySelectorAll('[data-tid="flash-message"]')) {
+        const text = (el.textContent ?? '').trim()
+        if (text && seen[seen.length - 1] !== text) seen.push(text)
+      }
+    }).observe(document, { subtree: true, childList: true, characterData: true })
+  })
+  return () => page.evaluate(() => ((window as any).__toasts as string[]).join(' | '))
+}
+
 const slicer = (page: Page) => page.frameLocator('iframe[title="Muon3D Slicer"]')
 const RECEIVED = `bracket.stl · ${Buffer.byteLength(MODEL)} bytes · solid bracket`
 
@@ -112,35 +131,51 @@ for (const [how, act] of [['drag and drop', drop], ['the Upload button', pick]] 
 
 test('an older slicer (no models.open) is sent nothing, and the page says to add the model with Add model', async ({ page, open }) => {
   await serveSlicer(page, ['ui.mode'])
+  const said = await toasts(page)
   await usePrinter(page, PRESETS.idleHomed())
   await open('/jobs')
   await drop(page)
   await page.getByTestId('job-ready').getByTestId('job-ready-open-slice').click()
   await expect(slicer(page).locator('#state')).toHaveText('welcomed', { timeout: 20_000 })
-  await expect(page.getByTestId('flash-message')).toContainText('add bracket.stl with Add model', { timeout: 20_000 })
+  await expect.poll(said, { timeout: 20_000 }).toContain('add bracket.stl with Add model')
   await expect(slicer(page).locator('#received')).toHaveText('')
 })
 
-test('a slicer that never says hello: the models are let go with the Add model message, and a later visit adds nothing', async ({ page, open }) => {
+test('leaving Slice before the slicer says hello: the models are let go with the Add model message, and a later visit adds nothing', async ({ page, open }) => {
   let features: string[] | null = null
   await page.route('**/slicer/embed.html*', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'text/html', body: stubSlicer(features) }))
+  const said = await toasts(page)
   await usePrinter(page, PRESETS.idleHomed())
   await open('/jobs')
   await drop(page)
   await page.getByTestId('job-ready').getByTestId('job-ready-open-slice').click()
   await expect(page).toHaveURL(/\/slice$/)
-  await expect(page.getByTestId('flash-message')).toContainText('add bracket.stl with Add model', { timeout: 45_000 })
   await expect(slicer(page).locator('#state')).toHaveText('waiting')
 
-  // Back to Jobs and to Slice again, in this page, now with a slicer that would take models: none are held any more.
-  features = ['models.open']
+  // Back to Jobs before any hello: the models are let go, and said so, at once.
   await page.goBack()
   await expect(page).toHaveURL(/\/jobs$/)
+  await expect.poll(said).toContain('add bracket.stl with Add model')
+
+  // Slice again, in this page, now with a slicer that would take models: none are held any more.
+  features = ['models.open']
   await page.goForward()
   await expect(slicer(page).locator('#state')).toHaveText('welcomed', { timeout: 20_000 })
   await page.waitForTimeout(1000)
   await expect(slicer(page).locator('#received')).toHaveText('')
+})
+
+test('a slicer that never says hello: the models are let go with the Add model message', async ({ page, open }) => {
+  await serveSlicer(page, null)
+  const said = await toasts(page)
+  await usePrinter(page, PRESETS.idleHomed())
+  await open('/jobs')
+  await drop(page)
+  await page.getByTestId('job-ready').getByTestId('job-ready-open-slice').click()
+  await expect(page).toHaveURL(/\/slice$/)
+  await expect.poll(said, { timeout: 45_000 }).toContain('add bracket.stl with Add model')
+  await expect(slicer(page).locator('#state')).toHaveText('waiting')
 })
 
 test('a STEP model is not promised to Slice: the card says to export STL, OBJ or 3MF, with no Open Slice, and nothing is uploaded', async ({ page, open }) => {
