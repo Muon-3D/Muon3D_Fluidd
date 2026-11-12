@@ -1,5 +1,5 @@
 /**
- * A fake model service (models.muon3d.com) for e2e tests: the public Library
+ * A fake model service (library.muon3d.com/models) for e2e tests: the public Library
  * (publications, discover, a print's page and pictures) and the signed-in
  * one (your Library feed, saves, collections), held in memory per test.
  * Shapes follow muon3d-model-service src/public_v2.rs, src/saves.rs and the
@@ -14,7 +14,7 @@ export const GCODE_TEXT = '; e2e print\nG28\nG1 X10 Y10 E1\n'
 const GCODE_STORED = gzipSync(Buffer.from(GCODE_TEXT))
 const GCODE_SHA256 = createHash('sha256').update(GCODE_STORED).digest('hex')
 
-export const MODELS = 'https://models.muon3d.com'
+export const MODELS = 'https://library.muon3d.com/models'
 
 /** A one-pixel PNG: the photo the fake serves back. */
 export const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
@@ -262,13 +262,15 @@ function detail (p: FakePublication, all: FakePublication[]) {
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) })
 
-/** Serve `state` as models.muon3d.com for this page. */
+/** Serve `state` as the model service for this page. */
 export async function serveModels (page: Page, state: ModelServiceState) {
-  await page.route(url => url.origin === MODELS || url.pathname.startsWith('/models/'), async route => {
+  // The service's own address (the Library site's origin, under /models) and a
+  // printer's same-origin proxy have the same shape: <origin>/models/<path>.
+  await page.route(url => url.pathname.startsWith('/models/'), async route => {
     const request = route.request()
     const url = new URL(request.url())
-    const proxied = url.pathname.startsWith('/models/')
-    const path = proxied ? url.pathname.slice('/models'.length) : url.pathname
+    const proxied = url.origin !== new URL(MODELS).origin
+    const path = url.pathname.slice('/models'.length)
     const method = request.method()
     state.seen.push(`${method} ${path}${url.search}`)
     const origin = request.headers().origin

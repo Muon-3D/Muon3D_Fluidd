@@ -4,7 +4,7 @@ import Vue from 'vue'
 import LibraryPrintPage from '../v2/LibraryPrintPage.vue'
 import { loadRelated, type ShelfCard } from '@/services/library/shelves'
 
-const MODELS = 'https://models.muon3d.com'
+const MODELS = 'https://library.muon3d.com/models'
 
 const card = (over: Partial<ShelfCard> = {}): ShelfCard => ({
   key: 'pub:p1',

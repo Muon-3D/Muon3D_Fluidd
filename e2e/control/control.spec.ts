@@ -81,7 +81,7 @@ test.describe('Movement', () => {
   test('the page is the v4 tiles, and the bed and notch are drawn to scale from the config', async ({ page, open }) => {
     await usePrinter(page, idle([150, 100, 10]))
     await open('/control')
-    for (const tid of ['control-move', 'control-heat', 'control-printmode', 'control-fans', 'control-filament', 'control-quick']) {
+    for (const tid of ['control-move', 'control-heat', 'control-printmode', 'control-filament', 'control-quick']) {
       await expect(page.getByTestId(tid)).toBeVisible()
     }
     await expect(page.getByTestId('control-move').getByText('Homed', { exact: true })).toBeVisible()
@@ -276,30 +276,30 @@ test.describe('Movement', () => {
     await page.mouse.click(box.x + 8, box.y + 8)
     await expect(page.getByTestId('trackpad-target')).toHaveCount(0)
     expect(printer.gcode).toEqual([])
-    await page.getByTestId('callout-home-all').click()
+    await page.getByTestId('home-all').click()
     await expect.poll(() => printer.gcode).toEqual(['G28'])
   })
 
-  test('Home sends a full G28 (never G28 X Y), from the pad button and the ��� menu', async ({ page, open }) => {
+  test('there is one Home all, and it sends a full G28 (never G28 X Y)', async ({ page, open }) => {
     const printer = await usePrinter(page, idle([150, 100, 10]))
     await open('/control')
-    await page.getByTestId('home-xy').click()
+    await expect(page.getByTestId('control-move').getByRole('button', { name: 'Home all' })).toHaveCount(1)
+    await page.getByTestId('home-all').click()
     await expect.poll(() => printer.gcode).toEqual(['G28'])
     await page.getByTestId('move-more').click()
-    await page.getByTestId('menu-home-xy').click()
-    await expect.poll(() => printer.gcode).toEqual(['G28', 'G28'])
+    await expect(page.getByTestId('menu-home-xy')).toHaveCount(0)
     await expect(page.getByText('Home X and Y')).toHaveCount(0)
   })
 
-  test('printing: locked, the live position only, nothing to press', async ({ page, open }) => {
+  test('printing: locked, the trackpad and jog stay but are greyed out and disabled', async ({ page, open }) => {
     const printer = await usePrinter(page) // the mock as it is: mid-print
     await open('/control')
     const move = page.getByTestId('control-move')
     await expect(move.getByText('Locked while printing')).toBeVisible()
     await expect(page.getByTestId('move-printing')).toBeVisible()
-    await expect(move.getByTestId('pos-x')).toBeVisible()
-    await expect(page.getByTestId('move-trackpad')).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Head right (X+)' })).toHaveCount(0)
+    await expect(page.getByTestId('move-trackpad')).toHaveAttribute('aria-disabled', 'true')
+    await expect(page.getByRole('button', { name: 'Head right (X+)' })).toBeDisabled()
+    await expect(page.getByTestId('home-all')).toBeDisabled()
     expect(printer.moves()).toEqual([])
   })
 
@@ -396,12 +396,14 @@ test.describe('Print mode', () => {
     await expect(page.locator('.printer-switch__status-text').first()).toHaveText(/· Quiet$/)
   })
 
-  test('is hidden on a printer without fan_modes; Advanced stays', async ({ page, open }) => {
+  test('says what it needs on a printer without fan_modes, with no speed-and-flow stand-in; Advanced stays', async ({ page, open }) => {
     await usePrinter(page, idle([150, 100, 10]))
     await open('/control')
     const tile = page.getByTestId('control-printmode')
     await expect(tile.getByRole('radiogroup', { name: 'Print mode' })).toHaveCount(0)
-    await expect(tile.getByText('Speed and flow')).toBeVisible()
+    await expect(tile).toContainText('Print mode')
+    await expect(tile.getByText('Speed and flow')).toHaveCount(0)
+    await expect(tile.getByTestId('printmode-none')).toContainText('Quiet, Normal and Turbo need [fan_modes]')
     await expect(page.getByTestId('advanced-toggle')).toBeVisible()
   })
 
@@ -412,7 +414,7 @@ test.describe('Print mode', () => {
     status.gcode_move = { ...status.gcode_move, speed_factor: 1, extrude_factor: 1 }
     const printer = await usePrinter(page, status)
     await open('/control')
-    await expect(page.getByTestId('advanced-summary')).toHaveText('Speed 100% · Flow 100% · Pressure advance 0.040')
+    await expect(page.getByTestId('advanced-summary')).toHaveText('Speed 100% · Flow 100% · Fan 80% · Pressure advance 0.040')
     await page.getByTestId('advanced-toggle').click()
     const set = async (tid: string, value: number) => page.getByTestId(tid).evaluate((el, v) => {
       const input = el as HTMLInputElement
