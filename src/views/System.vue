@@ -523,6 +523,16 @@
       </section>
     </div>
 
+    <router-link
+      :to="updatesTo"
+      class="sys__updates-link"
+      data-tid="system-updates-link"
+    >
+      <frame-icon name="download" />
+      <span>Software versions and installing updates: <b>Updates</b>.</span>
+      <span class="sys__updates-go">Updates ›</span>
+    </router-link>
+
     <peripherals-dialog
       v-if="devicesOpen"
       v-model="devicesOpen"
@@ -656,6 +666,10 @@ export default class System extends Mixins(OverviewMixin, ServicesMixin, Browser
 
   get restartRows (): RestartRow[] {
     return RESTART_ROWS.filter(row => this.canControlHost || row.id === 'klipper' || row.id === 'boards')
+  }
+
+  get updatesTo (): string {
+    return `${scopedPath('/settings', activeSlug())}#versions`
   }
 
   get consoleTo (): string {
@@ -1041,6 +1055,24 @@ export default class System extends Mixins(OverviewMixin, ServicesMixin, Browser
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 10px;
+  }
+
+  .sys__updates-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: 18px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text);
+    font-size: 14px;
+    text-decoration: none;
+
+    .sys__updates-go {
+      margin-left: auto;
+      color: var(--m3d-accent, #7fd6cf);
+      white-space: nowrap;
+    }
   }
 
   .sys__tile {
