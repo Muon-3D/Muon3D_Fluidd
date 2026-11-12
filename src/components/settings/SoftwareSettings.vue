@@ -324,6 +324,19 @@
       </task-fold>
     </template>
 
+    <router-link
+      :to="accessTo"
+      class="soft__link"
+      data-tid="software-access-link"
+    >
+      <frame-icon
+        name="user"
+        small
+      />
+      <span><b>Who may install updates</b>, and from where, is in People and access.</span>
+      <span class="soft__link-go">People and access ›</span>
+    </router-link>
+
     <v-dialog
       v-model="installDialog"
       max-width="460"
@@ -679,6 +692,10 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin, MuonGat
     this.$router.push(this.updatingTo).catch(() => undefined)
   }
 
+  get accessTo (): string {
+    return `${scopedPath('/settings', activeSlug())}#access`
+  }
+
   get printerName (): string {
     return printerNameParts(this.$store.getters['config/getDisplayName'] as string).name
   }
@@ -867,6 +884,24 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin, MuonGat
 </script>
 
 <style lang="scss" scoped>
+  .soft__link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: 18px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text);
+    font-size: 14px;
+    text-decoration: none;
+
+    .soft__link-go {
+      margin-left: auto;
+      color: var(--m3d-accent, #7fd6cf);
+      white-space: nowrap;
+    }
+  }
+
   .soft {
     display: flex;
     flex-direction: column;

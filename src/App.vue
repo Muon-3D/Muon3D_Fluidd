@@ -50,6 +50,8 @@
 
         <bluetooth-fallback-banner />
 
+        <secure-address-banner />
+
         <update-banner v-if="showUpdateBanner" />
 
         <deletion-notice v-if="deletionCloudView" />
@@ -170,6 +172,7 @@ import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletio
   components: {
     DeletionBanner: () => import('@/components/account/DeletionBanner.vue'),
     BluetoothFallbackBanner: () => import('@/components/layout/BluetoothFallbackBanner.vue'),
+    SecureAddressBanner: () => import('@/components/layout/SecureAddressBanner.vue'),
     DeletionNotice: () => import('@/components/account/DeletionNotice.vue'),
     ConnectionBanner,
     ConnectingScreen,
