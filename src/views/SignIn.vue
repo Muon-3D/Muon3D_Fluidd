@@ -1,214 +1,222 @@
-<!--
-  The console's sign-in page (WEB-12, muon-link-cloud#15).
-
-  `/authorize` sends a browser with no console session here, with `continue`
-  set to the `/authorize?...` it came from. This page signs the person in,
-  turns that into the console's browser session with a handoff
-  (`POST /v1/handoff`, then `GET /handoff?code=&next=`), and the console
-  carries on to `continue`, which now finds a session and returns to the
-  surface that asked.
-
-  `continue` is followed only if it begins `/authorize?` (`safeContinue`).
-  Anything else, or none, still signs in, and then asks `/authorize` itself
-  for this page, so the person lands signed in to Fluidd.
-
-  A passkey, a password (with the two-step code when the account has one),
-  or a new account. The session made here exists only for the handoff, and
-  is ended as soon as the handoff is in hand (KAN-532), so it never shows in
-  the person's devices.
--->
 <template>
-  <div class="muon-sign-in">
-    <v-card
-      max-width="420"
-      class="mx-auto pa-2"
+  <auth-card
+    class="muon-sign-in"
+    wordmark
+    fill
+    :title="title"
+    :sub="subtitle"
+  >
+    <v-alert
+      v-if="notice"
+      type="info"
+      dense
+      text
+      data-tid="sign-in-notice"
     >
-      <v-card-title class="pb-1">
-        {{ title }}
-      </v-card-title>
-      <v-card-subtitle class="pt-1">
-        {{ subtitle }}
-      </v-card-subtitle>
+      {{ notice }}
+    </v-alert>
 
-      <v-card-text>
-        <v-alert
-          v-if="notice"
-          type="info"
+    <div
+      v-if="mode === 'sign-in' || mode === 'sign-up'"
+      class="muon-sign-in__seg"
+      role="tablist"
+      aria-label="Sign in or create an account"
+    >
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="mode === 'sign-in' ? 'true' : 'false'"
+        :class="{ 'is-on': mode === 'sign-in' }"
+        data-tid="sign-in-tab"
+        @click="setMode('sign-in')"
+      >
+        Sign in
+      </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="mode === 'sign-up' ? 'true' : 'false'"
+        :class="{ 'is-on': mode === 'sign-up' }"
+        data-tid="sign-up-tab"
+        @click="setMode('sign-up')"
+      >
+        Create account
+      </button>
+    </div>
+
+    <template v-if="mode === 'sign-in' && passkeys">
+      <app-btn
+        outlined
+        block
+        large
+        class="muon-sign-in__passkey"
+        :loading="busy && passkeyBusy"
+        :disabled="busy"
+        data-tid="sign-in-passkey"
+        @click="passkey"
+      >
+        <v-icon
+          left
+          small
+        >
+          $key
+        </v-icon>
+        Sign in with a passkey
+      </app-btn>
+      <div class="muon-sign-in__or">
+        or
+      </div>
+    </template>
+
+    <v-form
+      v-if="mode !== 'sent'"
+      ref="form"
+      class="muon-sign-in__form"
+      @submit.prevent="submit"
+    >
+      <template v-if="mode === 'code'">
+        <v-text-field
+          v-model="code"
+          label="Code"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          hint="Six digits from your authenticator app, or a recovery code."
+          persistent-hint
+          outlined
           dense
-          text
-          data-tid="sign-in-notice"
+          autofocus
+          data-tid="sign-in-code"
+          class="mb-3"
+        />
+      </template>
+      <template v-else>
+        <v-text-field
+          v-if="mode === 'sign-up'"
+          v-model="name"
+          label="Name"
+          autocomplete="name"
+          autofocus
+          outlined
+          dense
+        />
+        <v-text-field
+          v-if="mode === 'sign-up'"
+          v-model="age"
+          label="Your age"
+          type="text"
+          inputmode="numeric"
+          hint="Private. Confirm once; accounts require age 13 or over."
+          persistent-hint
+          outlined
+          dense
+          data-tid="sign-up-age"
+          :aria-describedby="ageError ? 'sign-up-age-error' : undefined"
+          :aria-invalid="ageError ? 'true' : undefined"
+        />
+        <p
+          v-if="ageError"
+          id="sign-up-age-error"
+          class="error--text text-caption"
+          data-tid="sign-up-age-error"
+          role="alert"
         >
-          {{ notice }}
-        </v-alert>
-
-        <template v-if="mode === 'sign-in' && passkeys">
-          <app-btn
-            color="primary"
-            block
-            :loading="busy && passkeyBusy"
-            :disabled="busy"
-            data-tid="sign-in-passkey"
-            @click="passkey"
-          >
-            Sign in with a passkey
-          </app-btn>
-          <div class="muon-sign-in__or">
-            or
-          </div>
-        </template>
-
-        <v-form
-          v-if="mode !== 'sent'"
-          ref="form"
-          @submit.prevent="submit"
+          {{ ageError }}
+        </p>
+        <v-text-field
+          v-model="email"
+          label="Email"
+          type="email"
+          autocomplete="email webauthn"
+          outlined
+          dense
+          :autofocus="mode !== 'sign-up' && !passkeys"
+          data-tid="sign-in-email"
+        />
+        <v-text-field
+          v-if="mode !== 'forgot'"
+          v-model="password"
+          label="Password"
+          :type="showPassword ? 'text' : 'password'"
+          :autocomplete="mode === 'sign-in' ? 'current-password' : 'new-password'"
+          :hint="mode === 'sign-up' ? 'At least 8 characters' : ''"
+          outlined
+          dense
+          data-tid="sign-in-password"
         >
-          <template v-if="mode === 'code'">
-            <v-text-field
-              v-model="code"
-              label="Code"
-              inputmode="numeric"
-              autocomplete="one-time-code"
-              hint="Six digits from your authenticator app, or a recovery code."
-              persistent-hint
-              outlined
-              dense
-              autofocus
-              data-tid="sign-in-code"
-              class="mb-3"
-            />
-          </template>
-          <template v-else>
-            <v-text-field
-              v-if="mode === 'sign-up'"
-              v-model="name"
-              label="Name"
-              autocomplete="name"
-              autofocus
-              outlined
-              dense
-            />
-            <v-text-field
-              v-if="mode === 'sign-up'"
-              v-model="age"
-              label="Your age"
-              type="text"
-              inputmode="numeric"
-              hint="Private. Confirm once; accounts require age 13 or over."
-              persistent-hint
-              outlined
-              dense
-              data-tid="sign-up-age"
-              :aria-describedby="ageError ? 'sign-up-age-error' : undefined"
-              :aria-invalid="ageError ? 'true' : undefined"
-            />
-            <p
-              v-if="ageError"
-              id="sign-up-age-error"
-              class="error--text text-caption"
-              data-tid="sign-up-age-error"
-              role="alert"
-            >
-              {{ ageError }}
-            </p>
-            <v-text-field
-              v-model="email"
-              label="Email"
-              type="email"
-              autocomplete="email webauthn"
-              outlined
-              dense
-              :autofocus="mode !== 'sign-up' && !passkeys"
-              data-tid="sign-in-email"
-            />
-            <v-text-field
-              v-if="mode !== 'forgot'"
-              v-model="password"
-              label="Password"
-              :type="showPassword ? 'text' : 'password'"
-              :autocomplete="mode === 'sign-in' ? 'current-password' : 'new-password'"
-              :hint="mode === 'sign-up' ? 'At least 8 characters' : ''"
-              outlined
-              dense
-              data-tid="sign-in-password"
-            />
-          </template>
-          <v-alert
-            v-if="error"
-            type="error"
-            dense
-            text
-            class="mb-3"
-            data-tid="sign-in-error"
-            role="alert"
-            aria-live="assertive"
-          >
-            {{ error }}
-          </v-alert>
-          <app-btn
-            type="submit"
-            :color="mode === 'sign-in' && passkeys ? undefined : 'primary'"
-            block
-            :loading="busy && !passkeyBusy"
-            :disabled="busy"
-            data-tid="sign-in-submit"
-          >
-            {{ submitText }}
-          </app-btn>
-          <div
+          <template
             v-if="mode === 'sign-in'"
-            class="text-center mt-2"
+            #append
           >
-            <v-btn
-              text
-              small
+            <button
+              type="button"
+              class="muon-sign-in__forgot"
               data-tid="sign-in-forgot"
               @click="setMode('forgot')"
             >
-              Forgot your password?
-            </v-btn>
-          </div>
-        </v-form>
+              Forgot?
+            </button>
+          </template>
+        </v-text-field>
+      </template>
+      <v-alert
+        v-if="error"
+        type="error"
+        dense
+        text
+        class="mb-3"
+        data-tid="sign-in-error"
+        role="alert"
+        aria-live="assertive"
+      >
+        {{ error }}
+      </v-alert>
+      <app-btn
+        type="submit"
+        color="primary"
+        block
+        large
+        class="muon-sign-in__submit"
+        :loading="busy && !passkeyBusy"
+        :disabled="busy"
+        data-tid="sign-in-submit"
+      >
+        {{ submitText }}
+      </app-btn>
+    </v-form>
 
-        <p
-          v-else
-          class="mb-0"
-          data-tid="sign-in-sent"
-        >
-          If there's an account for {{ email }}, we've sent it a link to choose a new password. It works once, for an hour.
-        </p>
-      </v-card-text>
+    <p
+      v-else
+      class="mb-0"
+      data-tid="sign-in-sent"
+    >
+      If there's an account for {{ email }}, we've sent it a link to choose a new password. It works once, for an hour.
+    </p>
 
-      <v-card-actions class="justify-center pb-4">
-        <template v-if="mode === 'sign-in' || mode === 'sign-up'">
-          <span class="text-body-2 text--secondary">
-            {{ mode === 'sign-in' ? 'New to Muon3D?' : 'Already have an account?' }}
-          </span>
-          <v-btn
-            text
-            small
-            color="primary"
-            @click="setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in')"
-          >
-            {{ mode === 'sign-in' ? 'Create an account' : 'Sign in' }}
-          </v-btn>
-        </template>
-        <v-btn
-          v-else
-          text
-          small
-          color="primary"
-          data-tid="sign-in-back"
-          @click="setMode('sign-in')"
+    <template #alt>
+      <template v-if="mode === 'sign-in'">
+        Printing on this network only?
+        <router-link
+          to="/login"
+          data-tid="sign-in-printer"
         >
-          Back to sign in
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </div>
+          Sign in to a printer instead
+        </router-link>
+      </template>
+      <a
+        v-else-if="mode !== 'sign-up'"
+        href="#"
+        data-tid="sign-in-back"
+        @click.prevent="setMode('sign-in')"
+      >
+        Back to sign in
+      </a>
+    </template>
+  </auth-card>
 </template>
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
+import AuthCard from '@/components/account/AuthCard.vue'
 import { safeContinue } from '@/services/muon-cloud/centralLogin'
 import { AccountError } from '@/services/account/client'
 import { codeSignIn, finishSignIn, forgotPassword, passkeySignIn, passwordSignIn, signUp } from '@/services/account/sign-in'
@@ -216,7 +224,7 @@ import { cancelledPasskey, passkeysSupported } from '@/services/account/webauthn
 
 type Mode = 'sign-in' | 'sign-up' | 'code' | 'forgot' | 'sent'
 
-@Component({})
+@Component({ components: { AuthCard } })
 export default class SignIn extends Vue {
   mode: Mode = 'sign-in'
   age = ''
@@ -269,7 +277,7 @@ export default class SignIn extends Vue {
       case 'sign-up': return 'Create account'
       case 'code': return 'Continue'
       case 'forgot': return 'Send the link'
-      default: return 'Sign in'
+      default: return 'Continue'
     }
   }
 
@@ -351,17 +359,58 @@ function validateAge (age: string): string {
 </script>
 
 <style lang="scss" scoped>
-.muon-sign-in {
-  min-height: 100vh;
+.muon-sign-in__seg {
   display: flex;
-  align-items: center;
-  padding: 16px;
+  gap: 2px;
+  margin-bottom: 18px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--m3d-fill-2);
+
+  button {
+    flex: 1;
+    padding: 6px 12px;
+    border-radius: 8px;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  button.is-on {
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text);
+    box-shadow: 0 2px 6px rgb(0 0 0 / 30%);
+  }
 }
 
 .muon-sign-in__or {
-  padding: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
   color: var(--m3d-text-subtle);
   font-size: 12px;
-  text-align: center;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid var(--m3d-border);
+  }
+}
+
+.muon-sign-in__forgot {
+  color: var(--m3d-text-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--m3d-accent);
+  }
+}
+
+.muon-sign-in__submit {
+  margin-top: 8px;
 }
 </style>
