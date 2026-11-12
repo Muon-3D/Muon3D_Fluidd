@@ -68,8 +68,9 @@ describe('which names are printer names', () => {
   it('a 20-character label directly under a known zone, and nothing else', () => {
     expect(printerName(NAME)).toBe(NAME)
     expect(printerName(NAME.toUpperCase())).toBe(NAME)
-    expect(printerName(`${LABEL}.muonlan.net`)).toBe(`${LABEL}.muonlan.net`)
     for (const bad of [
+      // Not registered to Muon3D: never a printer name until it is.
+      `${LABEL}.muonlan.net`,
       'control.muon3d.com',
       `${LABEL}.lan.muon3d.com.attacker.example`,
       `attacker.example/${NAME}`,

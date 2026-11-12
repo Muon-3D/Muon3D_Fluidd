@@ -15,8 +15,13 @@
  * it is. A printer is never harder to reach because of this.
  */
 
-/** The DNS zones printer names live under. A name anywhere else is ignored. */
-export const PRINTER_NAME_ZONES: readonly string[] = ['lan.muon3d.com', 'muonlan.net']
+/**
+ * The DNS zones printer names live under. A name anywhere else is ignored.
+ * Only zones Muon3D controls: a zone anyone else could register would let a
+ * spoofed HTTP page send people to a site with a valid certificate. A future
+ * separate printer domain is added here only once it is registered to us.
+ */
+export const PRINTER_NAME_ZONES: readonly string[] = ['lan.muon3d.com']
 
 /** What the printer's probe location answers, and nothing else. */
 export const PROBE_MARKER = 'muon3d-secure-origin-1'
