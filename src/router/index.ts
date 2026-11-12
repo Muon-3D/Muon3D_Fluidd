@@ -70,7 +70,7 @@ const defaultRouteConfig: Partial<RouteConfig> = {
 }
 
 function foreignPageRedirect (to: Route): string | null {
-  return foreignSlugNow(to.params.printer) && !['Dashboard', 'Jobs', 'Slice', 'Camera'].includes(String(to.name))
+  return foreignSlugNow(to.params.printer) && !['Overview', 'Jobs', 'Slice', 'Camera'].includes(String(to.name))
     ? `/${to.params.printer}`
     : null
 }
@@ -87,7 +87,7 @@ const printerRoutes: Array<RouteConfig> = [
   },
   {
     path: P,
-    name: 'Dashboard',
+    name: 'Overview',
     component: Overview,
     ...defaultRouteConfig
   },

@@ -30,3 +30,23 @@ for (const [what, components, enabled, shown] of [
     await expect(page).toHaveURL(/#developer$/)
   })
 }
+
+test('Files and editor rows are in the storyboard\'s words, and Sort names and Reopen where I left off keep their choice', async ({ page, open }) => {
+  const printer = await usePrinter(page, {}, { components: [...NOT_MUON], database: true })
+  await open('/settings#browser')
+  const lists = page.getByTestId('files-lists')
+  await expect(lists.getByRole('heading', { name: 'Lists of files' })).toBeVisible()
+  await expect(lists).toContainText('Numbers in order means "part 2" comes before "part 10".')
+  await expect(lists.getByRole('radio')).toHaveText(['A–Z', 'Numbers in order', 'Versions'])
+  await lists.getByRole('radio', { name: 'Numbers in order' }).click()
+  await expect(lists.getByRole('radio', { name: 'Numbers in order' })).toHaveAttribute('aria-checked', 'true')
+  await expect.poll(() => printer.called('server.database.post_item').filter(p => p.key === 'uiSettings.general.textSortOrder').map(p => p.value)).toEqual(['numeric-prefix'])
+
+  const editor = page.getByTestId('editor-settings')
+  for (const label of ['Save and restart', 'Text size', 'Open these as text', 'Ask before closing with unsaved changes', 'Reopen where I left off', 'Hints above sections']) {
+    await expect(editor.getByText(label, { exact: true }).first(), label).toBeVisible()
+  }
+  await expect(editor).toContainText('Links to the Klipper docs above each [section].')
+  await editor.getByTestId('editor-restore-view').getByRole('radio', { name: 'Always' }).click()
+  await expect.poll(() => printer.called('server.database.post_item').filter(p => p.key === 'uiSettings.editor.restoreViewState').map(p => p.value)).toEqual(['local'])
+})
