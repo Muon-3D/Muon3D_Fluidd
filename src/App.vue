@@ -33,9 +33,12 @@
         fluid
         :class="{
           'fill-height': $route.meta?.fillHeight ?? false,
+          'constrained-width pa-2 pa-sm-4': !fullPage,
+          'muon-content--full': fullPage,
           [['single', 'double', 'triple', 'quad'][columnCount - 1]]: true
         }"
-        class="constrained-width muon-content pa-2 pa-sm-4"
+        :style="fullPage ? { '--muon-header-height': `${headerHeight}px` } : undefined"
+        class="muon-content"
       >
         <deletion-banner v-if="deletionPending" />
         <app-page-title
@@ -94,7 +97,8 @@
       </template>
     </v-main>
 
-    <app-footer v-if="!managedConsoleRoute && !foreignPrinterRoute" />
+    <!-- Not under a full page (Slice): the app reaches the bottom edge; every other page keeps the licences. -->
+    <app-footer v-if="!managedConsoleRoute && !foreignPrinterRoute && !fullPage" />
 
     <app-drag-overlay
       v-if="!managedConsoleRoute"
@@ -446,6 +450,16 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
 
   get sliceRoute (): boolean {
     return this.$route.name === 'Slice' || this.$route.name === 'Slice (no printer)'
+  }
+
+  /** A framed app that is the page (route meta fullPage: Slice): no padding or width limit, the height under the bar. */
+  get fullPage (): boolean {
+    return !this.managedConsoleRoute && this.$route.meta?.fullPage === true
+  }
+
+  /** The bar's height (AppBar.vue), which a full page fills the rest under. */
+  get headerHeight (): number {
+    return this.isMobileViewport ? this.$globals.HEADER_HEIGHT_PHONE : this.$globals.HEADER_HEIGHT
   }
 
   // Each printer page is named above its content, with its section's pages
@@ -902,6 +916,16 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   .muon-content {
     position: relative;
     z-index: 1;
+  }
+
+  // A framed app that is the page (Slice): the height under the bar, banners above it, the app taking the rest.
+  .muon-content--full {
+    display: flex;
+    flex-direction: column;
+    max-width: none;
+    height: calc(100vh - var(--muon-header-height, 64px));
+    height: calc(100dvh - var(--muon-header-height, 64px));
+    padding: 0;
   }
 
   // A page from before the connection dropped: its numbers are out of date
