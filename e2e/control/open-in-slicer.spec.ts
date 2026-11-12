@@ -19,7 +19,7 @@ const MODEL = 'solid bracket\nfacet normal 0 0 1\nendsolid bracket\n'
 
 /** A slicer that says hello (with `features`) until it is welcomed, and lists each models.open file it hears. */
 function stubSlicer (features: string[]): string {
-  return `<!doctype html><html><head><meta name="muon3d-embed-hosts" content="'self'"><title>Muon3D Slicer</title></head>
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="muon3d-embed-hosts" content="'self'"><title>Muon3D Slicer</title></head>
 <body style="margin:0;background:#123;color:#fff"><p id="state">waiting</p><p id="received"></p>
 <script>
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
