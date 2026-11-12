@@ -7,7 +7,7 @@
   >
     <template #aside>
       <button
-        v-if="commands.length > TOP"
+        v-if="commands.length > shownDefault.length"
         type="button"
         class="qc__all"
         :aria-expanded="all ? 'true' : 'false'"
@@ -19,9 +19,10 @@
       <a
         class="qc__arrange"
         :href="arrangeLink"
-        title="Hide, show and group quick commands in Settings › Quick commands"
+        title="Choose which quick commands show here and on Overview, on the Macros page"
+        data-tid="quick-manage"
         @click.prevent="$router.push(arrangeLink)"
-      >Arrange</a>
+      >Manage in Macros</a>
     </template>
 
     <div
@@ -193,8 +194,19 @@ export default class ControlQuickCommands extends Mixins(MacroRunMixin) {
       }))
   }
 
+  /**
+   * What shows before All commands: the ones ticked on the Macros page's Quick
+   * commands section (KAN-2122), in that order, else the first few.
+   */
+  get shownDefault (): QuickCommand[] {
+    const picks = this.quickCommandPicks
+    if (picks === null) return this.commands.slice(0, this.TOP)
+    const byName = new Map(this.commands.map(c => [c.name.toUpperCase(), c]))
+    return picks.map(p => byName.get(p)).filter((c): c is QuickCommand => !!c)
+  }
+
   get shown (): QuickCommand[] {
-    return this.all ? this.commands : this.commands.slice(0, this.TOP)
+    return this.all ? this.commands : this.shownDefault
   }
 
   get restarts () {

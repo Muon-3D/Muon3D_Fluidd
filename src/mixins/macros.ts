@@ -10,6 +10,10 @@ import {
   type MacroGroupId,
   type MacroSource
 } from '@/services/macros/arrange'
+import { normalisePicks, pickedMacros, togglePick, type QuickCommandPicks } from '@/services/control/quick-command-picks'
+
+/** The most the Quick commands tile shows (its largest size), and the automatic pick the Macros page starts from. */
+export const QUICK_COMMANDS_MAX = 11
 
 /** A macro as the redesign shows it: arranged, with what Settings › Macros says about it. */
 export interface ShownMacro extends ArrangedMacro {
@@ -90,6 +94,27 @@ export default class MacrosMixin extends Vue {
   /** The few to put first, a couple from each group. */
   topMacroList (count: number): ShownMacro[] {
     return topMacros(this.arrangedMacros, count) as ShownMacro[]
+  }
+
+  /** What the person chose on the Macros page's Quick commands section (KAN-2122), or null for the automatic pick. */
+  get quickCommandPicks (): QuickCommandPicks {
+    return normalisePicks(this.$store.state.config?.uiSettings?.general?.quickCommands)
+  }
+
+  /** The names the automatic pick shows at the tile's largest. */
+  get autoQuickCommandNames (): string[] {
+    return this.topMacroList(QUICK_COMMANDS_MAX).map(m => m.name)
+  }
+
+  /** The Quick commands to show, at most `count`: the person's picks in their order, else the automatic pick. */
+  quickCommandList (count: number): ShownMacro[] {
+    return pickedMacros(this.arrangedMacros, this.quickCommandPicks, n => this.topMacroList(n), count)
+  }
+
+  /** Tick or untick a command for Overview and Control; kept in the printer's settings. */
+  setQuickCommand (name: string, on: boolean) {
+    const value = togglePick(this.quickCommandPicks, name, on, this.autoQuickCommandNames)
+    this.$store.dispatch('config/saveByPath', { path: 'uiSettings.general.quickCommands', value, server: true })
   }
 
   macroGroupLabel (id: MacroGroupId): string {
