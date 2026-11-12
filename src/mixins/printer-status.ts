@@ -4,6 +4,7 @@ import { pageOfRoute } from '@/router/printerPagePaths'
 import { printerStatusWord } from '@/util/printer-status-word'
 import { startup } from '@/services/startup/heard'
 import { Globals } from '@/globals'
+import { printerNameParts } from '@/util/printer-name'
 
 export type PrinterStatusTone = 'ok' | 'active' | 'warn' | 'fault' | 'off'
 
@@ -63,6 +64,22 @@ export default class PrinterStatusMixin extends Mixins(StateMixin) {
   get nameKnown (): boolean {
     const name = this.displayName.trim()
     return !!name && name !== Globals.PRODUCT_NAME
+  }
+
+  /** Still waiting to hear the name: draw a placeholder for it. */
+  get nameWaiting (): boolean {
+    return !this.nameKnown && !startup.heard
+  }
+
+  /**
+   * The name to show: the printer's own, as people say it (Boxwood, not
+   * muon-boxwood-367a). A printer that never answered is named from its
+   * address in Control (/boxwood-367a/ is Boxwood), which came from its name.
+   */
+  get shownName (): string {
+    if (this.nameKnown) return printerNameParts(this.displayName).name
+    const slug = this.$route?.params?.printer
+    return slug ? printerNameParts(slug).name : this.displayName
   }
 
   get statusText (): string {

@@ -171,12 +171,12 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
 
   /** Overview is titled with the printer's name: a placeholder until it is known (KAN-2257). */
   get titlePending (): boolean {
-    return this.overviewHome && !this.foreignRecord && !this.nameKnown
+    return this.overviewHome && !this.foreignRecord && this.nameWaiting
   }
 
   get title (): string {
     if (this.chartsHome) return 'Charts'
-    if (this.overviewHome) return this.foreignRecord?.name ?? printerNameParts(this.displayName).name
+    if (this.overviewHome) return this.foreignRecord?.name ?? this.shownName
     if (this.previewPage) return this.previewFile?.filename.replace(/\.g(code)?$/i, '') || 'G-code preview'
     if (this.timelapseHome) return 'Timelapse'
     // Settings lists its own sections; Wi-Fi and System are named for themselves.

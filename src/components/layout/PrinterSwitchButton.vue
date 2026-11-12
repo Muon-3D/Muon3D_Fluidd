@@ -132,7 +132,6 @@ import { printModeLabel } from '@/services/control/print-mode'
 import PrinterSwitcher from '@/components/muon-cloud/PrinterSwitcher.vue'
 import type { ThumbState } from '@/components/ui/PrinterThumb.vue'
 import type { TimeEstimates } from '@/store/printer/types'
-import { printerNameParts } from '@/util/printer-name'
 import { shortDuration } from '@/util/short-duration'
 import { foreignRecordForSlug, isForeignSlug } from '@/services/printer-pages'
 import { liveForeign } from '@/services/foreign-printers/live'
@@ -165,7 +164,7 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
   }
 
   get name (): string {
-    return this.foreignRecord?.name ?? printerNameParts(this.displayName).name
+    return this.foreignRecord?.name ?? this.shownName
   }
 
   /**
@@ -173,7 +172,7 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
    * its place instead of the product name standing in for it (KAN-2257).
    */
   get namePending (): boolean {
-    return !this.foreignRecord && !this.nameKnown
+    return !this.foreignRecord && this.nameWaiting
   }
 
   get switcherTone (): PrinterStatusTone {

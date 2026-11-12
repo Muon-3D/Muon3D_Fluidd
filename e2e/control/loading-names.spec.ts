@@ -82,3 +82,15 @@ test('the tab title uses the page names people see', async ({ page, open }) => {
   await open('/settings')
   await expect.poll(() => page.title()).toMatch(/Boxwood \| Settings$/)
 })
+
+test('a printer that never answers is named from its address and said to be offline, not left connecting', async ({ page }) => {
+  const printer = new RegExp(`//(localhost|127[.]0[.]0[.]1):${MOCK_PORT}/`)
+  await page.route(printer, route => route.abort())
+  await page.routeWebSocket(printer, ws => { ws.close() })
+  await page.goto('/boxwood-367a/', { waitUntil: 'commit' })
+  const name = page.locator('.printer-switch__name:visible').first()
+  // After at most the quiet time (8 s), the silence is the answer.
+  await expect(name).toHaveText(/Boxwood/, { timeout: 20_000 })
+  await expect(page.locator('[data-tid="printer-name-pending"]:visible')).toHaveCount(0)
+  await expect(page.locator('.printer-switch__status-text:visible').first()).toHaveText(/Offline/)
+})
