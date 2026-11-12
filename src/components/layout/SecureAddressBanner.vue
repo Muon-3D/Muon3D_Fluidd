@@ -38,6 +38,8 @@
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
 import {
+  AUTO_SWITCH_WITHIN_MS,
+  asksToStay,
   couldHaveSecureAddress,
   declinedSwitch,
   findSecureOrigin,
@@ -49,23 +51,36 @@ import {
 /**
  * On the printer's plain-HTTP page, once this browser has proved that the
  * printer's secure address answers (KAN-2198): one calm line offering to move
- * there. A browser that has switched before moves by itself. Nothing shows,
- * and nothing is asked of the network, on any other page.
+ * there. A browser that has switched before moves by itself, but only when
+ * the proof came soon after load, and never once `?secure=off` was used.
+ * Nothing shows, and nothing is asked of the network, on any other page.
  */
 @Component({})
 export default class SecureAddressBanner extends Vue {
   origin: string | null = null
   dismissed = false
+  gone = false
 
   async created () {
-    if (!couldHaveSecureAddress() || declinedSwitch()) return
+    if (!couldHaveSecureAddress()) return
+    if (asksToStay()) {
+      setSwitchesAutomatically(false)
+      return
+    }
+    if (declinedSwitch()) return
+    const started = Date.now()
     const origin = await findSecureOrigin()
-    if (!origin) return
-    if (switchesAutomatically()) {
+    // The app may have replaced this banner while the probes ran.
+    if (!origin || this.gone) return
+    if (switchesAutomatically() && Date.now() - started <= AUTO_SWITCH_WITHIN_MS) {
       window.location.replace(secureUrl(origin))
       return
     }
     this.origin = origin
+  }
+
+  beforeDestroy () {
+    this.gone = true
   }
 
   go () {

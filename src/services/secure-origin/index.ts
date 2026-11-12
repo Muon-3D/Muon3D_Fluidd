@@ -29,6 +29,8 @@ export const PROBE_MARKER = 'muon3d-secure-origin-1'
 const DESCRIPTION_PATH = '/muon/secure-origin.json'
 const PROBE_PATH = '/muon/secure-probe.txt'
 const PROBE_TIMEOUT_MS = 1500
+/** A remembered switch happens by itself only if the proof came this soon after load. */
+export const AUTO_SWITCH_WITHIN_MS = 3000
 const AUTO_KEY = 'muon.secureOrigin.auto'
 const LABEL = '[a-z2-7]{20}'
 
@@ -66,11 +68,28 @@ export function candidateOrigins (name: string, pageHost: string): string[] {
   return out
 }
 
-async function fetchWithTimeout (url: string, ms: number): Promise<Response> {
+/**
+ * The status and body of `url`, or a throw if either takes longer than `ms`.
+ * The limit covers the body as well: a server that sends headers and then
+ * stalls must not hold the page.
+ */
+async function fetchText (url: string, ms: number): Promise<{ ok: boolean, text: string }> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), ms)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      reject(new Error('timed out'))
+    }, ms)
+  })
   try {
-    return await fetch(url, { cache: 'no-store', credentials: 'omit', redirect: 'error', signal: controller.signal })
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(url, { cache: 'no-store', credentials: 'omit', redirect: 'error', signal: controller.signal })
+        return { ok: response.ok, text: await response.text() }
+      })(),
+      late
+    ])
   } finally {
     clearTimeout(timer)
   }
@@ -79,9 +98,9 @@ async function fetchWithTimeout (url: string, ms: number): Promise<Response> {
 /** Whether `origin` answers as a Muon printer's secure address, from this browser, now. */
 export async function probe (origin: string): Promise<boolean> {
   try {
-    const response = await fetchWithTimeout(`${origin}${PROBE_PATH}`, PROBE_TIMEOUT_MS)
+    const response = await fetchText(`${origin}${PROBE_PATH}`, PROBE_TIMEOUT_MS)
     if (!response.ok) return false
-    return (await response.text()).trim() === PROBE_MARKER
+    return response.text.trim() === PROBE_MARKER
   } catch {
     // No such name here, no route, a certificate the browser refuses, or too slow.
     return false
@@ -96,9 +115,9 @@ export async function findSecureOrigin (location: Pick<Location, 'protocol' | 'h
   if (!couldHaveSecureAddress(location)) return null
   let description: { version?: unknown, name?: unknown, not_after?: unknown }
   try {
-    const response = await fetchWithTimeout(DESCRIPTION_PATH, PROBE_TIMEOUT_MS)
+    const response = await fetchText(DESCRIPTION_PATH, PROBE_TIMEOUT_MS)
     if (!response.ok) return null
-    description = await response.json()
+    description = JSON.parse(response.text)
   } catch {
     return null
   }
@@ -134,6 +153,17 @@ export function setSwitchesAutomatically (on: boolean) {
     if (on) localStorage.setItem(AUTO_KEY, '1')
     else localStorage.setItem(AUTO_KEY, '0')
   } catch { /* no storage: ask each time */ }
+}
+
+/**
+ * Whether this address asks to stay on plain HTTP: `secure=off` in the query
+ * or in the hash route's query. The way back for anyone the automatic switch
+ * would otherwise take to a secure address that does not work for them.
+ */
+export function asksToStay (location: Pick<Location, 'search' | 'hash'> = globalThis.location): boolean {
+  const query = (text: string) => new URLSearchParams(text.slice(text.indexOf('?') + 1))
+  const has = (text: string) => text.includes('?') && query(text).get('secure') === 'off'
+  return has(location.search) || has(location.hash)
 }
 
 /** True once a person has said "stay here" on this browser: do not offer again this visit or later. */

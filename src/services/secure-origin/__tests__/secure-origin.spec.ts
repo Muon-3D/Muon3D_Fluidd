@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   PROBE_MARKER,
+  asksToStay,
   candidateOrigins,
   couldHaveSecureAddress,
   declinedSwitch,
@@ -23,17 +24,23 @@ const LABEL = 'abcdefghijklmnopqrst'
 const NAME = `${LABEL}.lan.muon3d.com`
 const PAGE = { protocol: 'http:', hostname: '192.168.1.50' }
 
-type Answer = { status?: number, body?: string, fail?: boolean }
+type Answer = { status?: number, body?: string, fail?: boolean, stall?: boolean }
+
+const inits: RequestInit[] = []
 
 /** A network where each URL answers as told, and everything else fails. Records what was asked. */
 function network (answers: Record<string, Answer>): string[] {
   const asked: string[] = []
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+  inits.length = 0
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     asked.push(String(url))
+    inits.push(init ?? {})
     const answer = answers[String(url)]
     if (!answer || answer.fail) throw new TypeError('Failed to fetch')
     const status = answer.status ?? 200
-    return { ok: status >= 200 && status < 300, status, text: async () => answer.body ?? '', json: async () => JSON.parse(answer.body ?? '') } as Response
+    // A stalled body: headers arrive, the text never does.
+    const text = answer.stall ? () => new Promise<string>(() => undefined) : async () => answer.body ?? ''
+    return { ok: status >= 200 && status < 300, status, text, json: async () => JSON.parse(answer.body ?? '') } as Response
   }))
   return asked
 }
@@ -168,14 +175,53 @@ describe('the proof', () => {
   it('stays put on a description it cannot read', async () => {
     network({ '/muon/secure-origin.json': { body: '<html>not json</html>' } })
     expect(await findSecureOrigin(PAGE, NOW)).toBeNull()
-    network({ '/muon/secure-origin.json': { body: description({ version: 2 }) } })
+    const asked = network({
+      '/muon/secure-origin.json': { body: description({ version: 2 }) },
+      [`https://${NAME}/muon/secure-probe.txt`]: { body: PROBE_MARKER }
+    })
     expect(await findSecureOrigin(PAGE, NOW)).toBeNull()
+    expect(asked).toEqual(['/muon/secure-origin.json'])
+  })
+
+  it('sends no credentials and follows no redirect', async () => {
+    network({
+      '/muon/secure-origin.json': { body: description() },
+      [`https://${NAME}/muon/secure-probe.txt`]: { body: PROBE_MARKER }
+    })
+    expect(await findSecureOrigin(PAGE, NOW)).toBe(`https://${NAME}`)
+    expect(inits).toHaveLength(2)
+    for (const init of inits) {
+      expect(init).toMatchObject({ credentials: 'omit', redirect: 'error', cache: 'no-store' })
+    }
+  })
+
+  it('gives up on a probe whose body stalls, and tries the next address', async () => {
+    vi.useFakeTimers()
+    try {
+      network({
+        '/muon/secure-origin.json': { body: description() },
+        [`https://${NAME}/muon/secure-probe.txt`]: { stall: true },
+        [`https://192-168-1-50.${NAME}/muon/secure-probe.txt`]: { body: PROBE_MARKER }
+      })
+      const found = findSecureOrigin(PAGE, NOW)
+      await vi.advanceTimersByTimeAsync(1600)
+      expect(await found).toBe(`https://192-168-1-50.${NAME}`)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
 describe('the switch', () => {
   it('keeps the route, the query and the hash', () => {
     expect(secureUrl(`https://${NAME}`, { pathname: '/', search: '?x=1', hash: '#/settings' })).toBe(`https://${NAME}/?x=1#/settings`)
+  })
+
+  it('an address with secure=off asks to stay, in the query or in the hash route', () => {
+    expect(asksToStay({ search: '?secure=off', hash: '' })).toBe(true)
+    expect(asksToStay({ search: '', hash: '#/settings?secure=off' })).toBe(true)
+    expect(asksToStay({ search: '?secure=on', hash: '#/settings' })).toBe(false)
+    expect(asksToStay({ search: '', hash: '#/secure=off' })).toBe(false)
   })
 
   it('asks the first time, remembers a yes, and remembers a no', () => {
