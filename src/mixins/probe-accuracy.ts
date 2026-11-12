@@ -70,7 +70,7 @@ export default class ProbeAccuracyMixin extends Mixins(MaintenanceMixin) {
     const settings = this.$store.state.printer.printer.configfile?.settings
     const noGo = settings && Object.keys(settings).length ? readNoGo(settings.bed_mesh) : 'invalid'
     if (noGo === 'invalid') {
-      EventBus.$emit('The printer’s no-go regions could not be read, so the probe check will not move the head. Check [bed_mesh] in printer.cfg.', { type: 'warning' })
+      EventBus.$emit('The printer’s notch could not be read, so the probe check will not move the head. Check [bed_mesh] in printer.cfg.', { type: 'warning' })
       return
     }
     let lift: number | undefined
