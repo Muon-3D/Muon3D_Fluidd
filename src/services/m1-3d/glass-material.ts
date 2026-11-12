@@ -12,7 +12,7 @@ export const GLASS_ORDER = 2
 /**
  * The accurate M1's build plate is clear glass with only a hint of frost: it was too cloudy
  * (Jack, 11 Nov; first asked for light frost on 6 Nov), and is subtly smoky, not mirror-like
- * (Jack, 9 Nov). Its transmissive glass blurs what's behind it
+ * (Jack, 9 Nov), and the bed more see-through (Jack, 11 Nov). Its transmissive glass blurs what's behind it
  * by `roughness`, lets `transmission` of it through, tinted `tint` (a light grey), and keeps
  * its reflections down: `specular` of the usual glancing highlight and `reflection` of the
  * studio's. The cheap plain plate (a phone's) gets the same look as `cheapOpacity` of
@@ -30,7 +30,7 @@ export const FROSTED_PLATE = {
 } as const
 
 /** How much of the scene shows through the plate's faces. */
-const GLASS_OPACITY = 0.1
+export const GLASS_OPACITY = 0.1
 const EDGE_OPACITY = 0.55
 
 /**
