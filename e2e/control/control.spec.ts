@@ -87,7 +87,7 @@ test.describe('Movement', () => {
     await expect(page.getByTestId('control-move').getByText('Homed', { exact: true })).toBeVisible()
     const box = await padBox(page)
     expect(Math.abs(box.width / box.height - 1)).toBeLessThan(0.02)
-    const notch = await page.getByTestId('trackpad-nogo').boundingBox()
+    const notch = await page.getByTestId('trackpad-notch').boundingBox()
     if (!notch) throw new Error('no notch drawn')
     // x 75–125 on the Y=0 edge, which is the top (the back) as the jog keys say: Y− is up.
     expect(Math.abs((notch.x - box.x) / box.width * BED - 75)).toBeLessThan(1)
