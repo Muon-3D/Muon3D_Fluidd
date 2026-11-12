@@ -47,6 +47,8 @@ export interface M1Namespace {
   build: (mats: Record<string, THREE.Material>) => M1Root;
   /** The model's dimensions: travelX and travelZ are the head's half travel, bedTravel the bed's whole. */
   DIM: Record<string, number>;
+  /** The plate's print (the wordmark, the warning, the small print) on a canvas `px` wide (02-materials.js). */
+  glassDecal: (px: number) => HTMLCanvasElement;
 }
 
 export { THREE }

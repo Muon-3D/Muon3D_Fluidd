@@ -2,13 +2,14 @@
   <tile-shell
     tile="macros"
     title="Quick commands"
-    icon="pulse"
+    icon="bolt"
     :menu="menu"
-    class="mt"
+    :class="['mt', `mt--${size}`]"
   >
     <div
       v-if="chips.length"
       class="mt__chips"
+      data-tid="macro-chips"
     >
       <button
         v-for="m in chips"
@@ -21,7 +22,8 @@
         data-tid="macro-chip"
         @click="run(m)"
       >
-        {{ m.title }}
+        <frame-icon :name="iconOf(m)" />
+        <span class="mt__label">{{ m.title }}</span>
       </button>
       <button
         type="button"
@@ -29,7 +31,8 @@
         data-tid="macros-all"
         @click="dialog = true"
       >
-        {{ size === 'S' ? 'All' : 'All commands' }} ({{ arrangedMacros.length }})
+        <frame-icon name="list" />
+        <span class="mt__label">{{ size === 'S' ? 'All' : 'All commands' }}</span>
       </button>
     </div>
     <p
@@ -49,7 +52,7 @@
       v-if="selected"
       class="macros__values mt__form"
       data-tid="macro-send"
-      aria-label="Macro values"
+      aria-label="Quick command values"
       @submit.prevent="submitMacro"
     >
       <h3>{{ selected.title }}</h3>
@@ -62,7 +65,7 @@
         <textarea
           v-model="values[field.name]"
           rows="1"
-          :aria-label="`Macro ${field.name}`"
+          :aria-label="`Value ${field.name}`"
           autocomplete="off"
         />
       </label>
@@ -108,20 +111,25 @@ import MacroRunMixin from '@/mixins/macro-run'
 import OverviewMixin from '@/mixins/overview'
 import type { ShownMacro } from '@/mixins/macros'
 import type { TileMenuItem } from '@/services/overview/tiles'
+import { macroIcon } from '@/services/macros/icon'
 import TileShell from './TileShell.vue'
 import TileDialog from './TileDialog.vue'
 
 /**
- * The macros people press most, as chips. One that needs a value asks for
- * it here. All of them, grouped, are in a dialog; managing which show, and
+ * The macros people press most, as the buttons of the top bar's Quick
+ * actions: a line icon over the name (KAN-2076). The tile is a full row
+ * across the page. One that needs a value asks for it here. All of them, grouped, are in a dialog; managing which show, and
  * the console, are behind the three dots.
  */
 @Component({ components: { TileShell, TileDialog, ControlMacros: () => import('@/components/control/ControlMacros.vue') } })
 export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
   dialog = false
 
-  /** Small shows the two most pressed, medium four, large seven. */
-  get chips (): ShownMacro[] { return this.topMacroList(this.size === 'S' ? 2 : this.size === 'M' ? 4 : 7) }
+  /** Small shows the two most pressed, medium five, large seven (a full row with All commands). */
+  get chips (): ShownMacro[] { return this.topMacroList(this.size === 'S' ? 2 : this.size === 'M' ? 5 : 7) }
+
+  /** The icon for a macro: by what its name says it does, else the bolt. */
+  iconOf (m: ShownMacro): string { return macroIcon(m.name) }
 
   get menu (): TileMenuItem[] {
     return [
@@ -133,11 +141,24 @@ export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
 </script>
 
 <style lang="scss">
-.mt__chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.mt__chip { display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 999px; background: var(--m3d-surface-2); color: var(--m3d-text); font-size: 13.5px; font-weight: 600; cursor: pointer; }
-.mt__chip:hover:not(:disabled) { filter: brightness(1.12); }
+.mt__chips { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 10px; }
+.mt--L .mt__chips { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+.mt--M .mt__chips { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mt--S .mt__chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mt__chip { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 76px; padding: 10px 6px; border-radius: 14px; background: var(--m3d-surface-2); color: var(--m3d-text); text-align: center; cursor: pointer; }
+.mt__chip .frame-icon { width: 22px; height: 22px; color: var(--m3d-text-muted); }
+.mt__chip:hover:not(:disabled) { background: color-mix(in srgb, var(--m3d-surface-2) 82%, #fff); }
+.mt__chip:hover:not(:disabled) .frame-icon { color: var(--m3d-text); }
+.mt__chip:focus-visible { outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent)); outline-offset: 2px; }
 .mt__chip:disabled { opacity: 0.45; cursor: default; }
-.mt__chip--more { background: transparent; box-shadow: inset 0 0 0 1px var(--m3d-border-strong); color: var(--m3d-text-muted); }
+.mt__label { display: -webkit-box; max-width: 100%; overflow: hidden; font-size: 12.5px; font-weight: 600; line-height: 1.2; text-overflow: ellipsis; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mt__chip--more { background: transparent; box-shadow: inset 0 0 0 1px var(--m3d-border-strong); }
+.mt__chip--more .mt__label { color: var(--m3d-text-muted); }
+@media (max-width: 599px) {
+  .mt--L .mt__chips, .mt--M .mt__chips { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .mt__chip { min-height: 70px; padding: 8px 4px; }
+  .mt__label { font-size: 11.5px; }
+}
 .mt__form { padding-top: 12px; border-top: 1px solid var(--m3d-border); }
 .mt__form h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
 .mt__form-actions { display: flex; justify-content: flex-end; gap: 8px; }

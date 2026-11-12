@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { browse, categories, dimensionFit, suggestions } from '../catalogue'
 import { loadShelves } from '../shelves'
 
-const item = { id: 'one', slug: 'one', title: 'Original spacer', category: 'tools', creator: { handle: 'muon3d', display_name: 'Muon3D' }, tags: [], size_mm: [25, 15, 3], created_at: '2026-11-10T10:00:00Z', thumbnail_url: 'https://models.muon3d.com/one.png' }
+const item = { id: 'one', slug: 'one', title: 'Original spacer', category: 'tools', creator: { handle: 'muon3d', display_name: 'Muon3D' }, tags: [], size_mm: [25, 15, 3], created_at: '2026-11-10T10:00:00Z', thumbnail_url: 'https://library.muon3d.com/models/one.png' }
 const fetcher = (body: unknown, status = 200) => vi.fn(async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch
 
 describe('M3 catalogue', () => {

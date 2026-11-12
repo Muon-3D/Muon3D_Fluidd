@@ -26,6 +26,8 @@ export interface ControlTileDef {
   tablet: 6 | 12
   /** Whether the tile takes the `phone` prop (its own phone layout). */
   phoneProp?: boolean
+  /** False: not on the page to begin with; Edit layout can add it. */
+  defaultOn?: boolean
 }
 
 /** In reading order, which is also the phone order. */
@@ -37,7 +39,7 @@ export const controlTiles: ControlTileDef[] = [
   { id: 'move', title: 'Movement', component: ControlMove, span: 8, rows: 2, tablet: 12, phoneProp: true },
   { id: 'heat', title: 'Heaters', component: ControlHeat, span: 4, tablet: 12, phoneProp: true },
   { id: 'speed', title: 'Print mode', component: ControlPrintMode, span: 4, tablet: 12 },
-  { id: 'fans', title: 'Fans and lights', component: ControlFans, span: 4, tablet: 6, phoneProp: true },
+  { id: 'fans', title: 'Fans and lights', component: ControlFans, span: 4, tablet: 6, phoneProp: true, defaultOn: false },
   { id: 'filament', title: 'Filament', component: ControlFilament, span: 4, tablet: 6, phoneProp: true },
   { id: 'macros', title: 'Quick commands', component: ControlQuickCommands, span: 4, tablet: 12 }
 ]

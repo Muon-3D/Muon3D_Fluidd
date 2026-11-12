@@ -1,3 +1,4 @@
+import type { EditorTextSize, SaveAndRestart } from '@/services/settings/editor'
 import type { ConsoleConfig } from '@/services/console/settings'
 import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { FileFilterType } from '../files/types'
@@ -202,6 +203,10 @@ export interface EditorConfig {
   autoEditExtensions: string[];
   restoreViewState: RestoreViewState,
   codeLens: boolean;
+  /** What Save and restart does in the editor (KAN-1994). */
+  saveAndRestart: SaveAndRestart;
+  /** The editor's text size (KAN-1995). */
+  textSize: EditorTextSize;
 }
 
 export interface Axis {

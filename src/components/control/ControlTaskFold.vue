@@ -2,6 +2,7 @@
   <div>
     <personal-task-fold
       v-if="printerId"
+      ref="personal"
       :key="connection"
       :printer-id="printerId"
       :fold-key="foldKey"
@@ -55,6 +56,8 @@ export default class ControlTaskFold extends Vue {
   @Prop({ type: String, required: true }) readonly summary!: string
   @Prop({ type: Boolean }) readonly choice?: boolean
   @Prop({ type: Boolean, default: true }) readonly showUnsavedNote!: boolean
+  /** Open it now (a link that asks for this fold, ?sensors=open). */
+  @Prop({ type: Boolean }) readonly expand?: boolean
   open = false
   choose (value: boolean) { this.open = value }
 
@@ -65,7 +68,14 @@ export default class ControlTaskFold extends Vue {
   get connection (): string { return `${this.$store.state.config.apiUrl}|${this.printerId}|${cloudState.account?.id ?? ''}` }
 
   @Watch('connection')
-  reset () { this.open = false }
+  reset () { this.open = false; this.onExpand(!!this.expand) }
+
+  @Watch('expand', { immediate: true })
+  onExpand (expand: boolean) {
+    if (!expand) return
+    this.open = true
+    this.$nextTick(() => (this.$refs.personal as unknown as { choose?: (open: boolean) => unknown } | undefined)?.choose?.(true))
+  }
 }
 </script>
 

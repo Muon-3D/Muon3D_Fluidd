@@ -58,8 +58,22 @@ jobs:
           restore-keys: |
             playwright-${{ runner.os }}-
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        # GitHub's ubuntu-latest image already has Chrome's system libraries, so install only the
+        # browser (no apt). On 11 Nov the runner's apt mirror stopped resolving and the old
+        # --with-deps step hung every shard. Fall back to --with-deps, time-boxed, only if the
+        # browser then fails to start.
+        run: |
+          npx playwright install chromium
+          if ! node -e "require('@playwright/test').chromium.launch().then(b => b.close()).catch(e => { console.error(e); process.exit(1) })"; then
+            timeout 300 npx playwright install --with-deps chromium
+          fi
 
       - name: Run e2e (shard ${{ matrix.shard }}/4)
         run: npx playwright test -c e2e/playwright.config.ts --shard=${{ matrix.shard }}/4 --reporter=blob,github

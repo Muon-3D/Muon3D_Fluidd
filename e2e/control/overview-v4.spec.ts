@@ -16,6 +16,16 @@ const cell = (page: Page, id: string) => page.locator(`[data-cell="${id}"]`)
 const ids = async (page: Page) => page.locator('[data-cell]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.cell))
 const FAN_MODES = { mode: 'normal', modes: ['normal', 'quiet', 'turbo'] }
 
+/** Hotend and Bed are off by default (the Temperatures graph shows both); put one on the page through Add widget. */
+async function addWidget (page: Page, id: string) {
+  await edit(page)
+  await page.getByTestId('widget-sheet-open').click()
+  await page.getByTestId(`widget-add-${id}`).click()
+  await page.getByTestId('widget-sheet-close').click()
+  await page.getByTestId('edit-done').click()
+  await expect(page.getByTestId('edit-open')).toBeVisible()
+}
+
 async function edit (page: Page) {
   await page.getByTestId('edit-open').click()
   await expect(page.getByTestId('edit-done')).toBeVisible()
@@ -87,6 +97,7 @@ test('S, M and L draw different things, not the same thing scaled', async ({ pag
   test.skip(isMobile, 'Sizes are changed on the desktop grid.')
   await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await open('/')
+  await addWidget(page, 'hotend')
   const hotend = cell(page, 'hotend')
   await expect(hotend).toHaveAttribute('data-size', 'S')
   await expect(hotend.getByTestId('heater-inline-presets')).toHaveCount(0)
@@ -131,11 +142,11 @@ test.describe('springs', () => {
     await usePrinter(page, PRESETS.idleHomed(), { database: true })
     await open('/')
     await edit(page)
-    const grip = cell(page, 'hotend').getByTestId('tile-grip')
+    const grip = cell(page, 'position').getByTestId('tile-grip')
     await grip.focus()
     const was = await started(page)
     await grip.press('Shift+ArrowRight')
-    await expect(cell(page, 'hotend')).toHaveAttribute('style', /--span: 6/)
+    await expect(cell(page, 'position')).toHaveAttribute('style', /--span: 8/)
     // The resized one and the ones it pushed along.
     await expect.poll(async () => (await started(page)) - was).toBeGreaterThan(1)
     // Each one finishes (waited for, not timed: a busy runner may not draw a frame for seconds).
@@ -149,10 +160,10 @@ test.describe('springs', () => {
     await usePrinter(page, PRESETS.idleHomed(), { database: true })
     await open('/')
     await edit(page)
-    const grip = cell(page, 'hotend').getByTestId('tile-grip')
+    const grip = cell(page, 'position').getByTestId('tile-grip')
     await grip.focus()
     await grip.press('Shift+ArrowRight')
-    await expect(cell(page, 'hotend')).toHaveAttribute('style', /--span: 6/)
+    await expect(cell(page, 'position')).toHaveAttribute('style', /--span: 8/)
     await page.waitForTimeout(100)
     expect(await started(page)).toBe(0)
     expect(await animating(page)).toBe(0)
@@ -164,19 +175,19 @@ test.describe('springs', () => {
     await edit(page)
     const before = await ids(page)
     // Clear of the top and bottom edges, where a held tile scrolls the page.
-    await cell(page, 'fans').evaluate(e => e.scrollIntoView({ block: 'center' }))
-    const from = await cell(page, 'fans').getByTestId('tile-grip').boundingBox()
-    const to = await cell(page, 'hotend').boundingBox()
+    await cell(page, 'mode').evaluate(e => e.scrollIntoView({ block: 'center' }))
+    const from = await cell(page, 'mode').getByTestId('tile-grip').boundingBox()
+    const to = await cell(page, 'graph').boundingBox()
     if (!from || !to) throw new Error('not on screen')
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
     await page.mouse.down()
     await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 })
     // Still held: the order has already changed.
-    await expect.poll(async () => (await ids(page)).indexOf('fans')).toBe(before.indexOf('hotend'))
-    expect(await cell(page, 'fans').evaluate(e => (e as HTMLElement).style.transform)).toMatch(/translate/)
+    await expect.poll(async () => (await ids(page)).indexOf('mode')).toBe(before.indexOf('graph'))
+    expect(await cell(page, 'mode').evaluate(e => (e as HTMLElement).style.transform)).toMatch(/translate/)
     await page.mouse.up()
-    await expect(cell(page, 'fans')).not.toHaveAttribute('style', /transform: translate/)
-    expect((await ids(page)).indexOf('fans')).toBe(before.indexOf('hotend'))
+    await expect(cell(page, 'mode')).not.toHaveAttribute('style', /transform: translate/)
+    expect((await ids(page)).indexOf('mode')).toBe(before.indexOf('graph'))
   })
 })
 
@@ -204,9 +215,104 @@ test('phone: the default layout has Movement, the print mode and the filament bo
   test.skip(!isMobile, 'Phone only.')
   await usePrinter(page, PRESETS.idleHomed())
   await open('/')
-  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'mode', 'fans', 'trackpad', 'jog', 'position', 'macros', 'graph'])
+  await expect.poll(() => ids(page)).toEqual(['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros'])
   await expect(page.locator('[data-tile="trackpad"]')).toBeVisible()
   await expect(page.getByTestId('mode-unavailable')).toBeVisible()
   await expect(page.getByTestId('overview-load-filament')).toBeVisible()
   await expect(cell(page, 'zoffset')).toHaveCount(0)
+})
+
+// Boxwood's real sensors come from the shared mock (e2e/mock/moonraker.py): the CPU is both a
+// `temperature_fan CPU` and a bare `temperature_host CPU`, and there are toolhead and driver sensors.
+async function graphOf (page: Page) {
+  const graph = cell(page, 'graph').getByTestId('thermal-graph')
+  await expect(async () => {
+    await graph.scrollIntoViewIfNeeded()
+    await expect(graph.locator('[data-legend]').first()).toBeVisible({ timeout: 2000 })
+  }).toPass()
+  return graph
+}
+
+test('Boxwood sensors: one CPU, and only the nozzle and bed drawn by default', async ({ page, open }) => {
+  await usePrinter(page, PRESETS.idleHomed())
+  await open('/')
+  const graph = await graphOf(page)
+  // Essentials only: the nozzle, the bed and (the shared mock also has one) a chamber. No CPU, drivers or toolhead sensors.
+  const shown = await graph.locator('[data-legend]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.legend))
+  expect(shown.slice(0, 2)).toEqual(['extruder', 'heater_bed'])
+  expect(shown.filter(k => !['extruder', 'heater_bed', 'temperature_sensor chamber'].includes(k ?? ''))).toEqual([])
+  await graph.getByTestId('legend-more').click()
+  const labels = await graph.locator('[data-legend] .tg__name').allTextContents()
+  expect(labels.filter(l => l.trim().toUpperCase() === 'CPU')).toHaveLength(1)
+  await expect(graph.locator('[data-legend="temperature_host CPU"]')).toHaveCount(0)
+  await expect(graph.locator('[data-legend="temperature_fan CPU"]')).toHaveCount(1)
+})
+
+test('the graph legend is grouped by part: toolhead, bed, then chamber and system', async ({ page, open }) => {
+  await usePrinter(page, PRESETS.idleHomed())
+  await open('/')
+  const graph = await graphOf(page)
+  await graph.getByTestId('legend-more').click()
+  const groups = await graph.locator('[data-group]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.group))
+  expect(groups.slice(0, 3)).toEqual(['Toolhead', 'Bed', 'Chamber and system'])
+  const toolhead = await graph.locator('[data-group="Toolhead"] [data-legend]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.legend))
+  expect(toolhead.slice(0, 2)).toEqual(['extruder', 'extruderPower'])
+  expect(toolhead).toEqual(expect.arrayContaining(['temperature_sensor toolhead_fan_air', 'temperature_fan toolhead_heatsink', 'heater_fan hotend_fanSpeed']))
+  expect(await graph.locator('[data-group="Bed"] [data-legend]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.legend))).toEqual(['heater_bed', 'heater_bedPower'])
+  // Visible order on the page is the same as the data order.
+  const tops = await graph.locator('[data-group]').evaluateAll(els => els.map(e => e.getBoundingClientRect().top * 10000 + e.getBoundingClientRect().left))
+  expect(tops).toEqual([...tops].sort((a, b) => a - b))
+})
+
+type Box = { x: number, y: number, width: number, height: number }
+function apart (boxes: Box[], gap = 4) {
+  expect(boxes.length).toBeGreaterThanOrEqual(3)
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i]; const b = boxes[j]
+      const dx = Math.max(a.x - (b.x + b.width), b.x - (a.x + a.width))
+      const dy = Math.max(a.y - (b.y + b.height), b.y - (a.y + a.height))
+      expect(Math.max(dx, dy), `bubbles ${i} and ${j} are at least ${gap}px apart`).toBeGreaterThanOrEqual(gap)
+    }
+  }
+}
+const boxesOf = (page: Page, selector: string) => page.locator(selector).evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } }))
+
+test('Position X, Y and Z bubbles do not touch, at S, M and L', async ({ page, open, isMobile }) => {
+  await usePrinter(page, PRESETS.idleHomed(), { database: true })
+  await open('/')
+  const tile = cell(page, 'position')
+  await tile.scrollIntoViewIfNeeded()
+  const seen = new Set<string>()
+  const measure = async () => {
+    seen.add((await tile.getAttribute('data-size')) ?? '')
+    await expect(tile.locator('[data-tid="axis"]')).toHaveCount(3)
+    apart(await boxesOf(page, '[data-cell="position"] [data-tid="axis"]'))
+  }
+  await measure()
+  if (!isMobile) {
+    await edit(page)
+    const grip = tile.getByTestId('tile-grip')
+    await grip.focus()
+    // Down to S first, then back up through M to L.
+    await grip.press('Shift+ArrowLeft')
+    await grip.press('Shift+ArrowLeft')
+    await expect(tile).toHaveAttribute('data-size', 'S')
+    await measure()
+    for (let i = 0; i < 2; i++) {
+      await grip.press('Shift+ArrowRight')
+      await page.waitForTimeout(400)
+      await measure()
+    }
+    await page.getByTestId('edit-done').click()
+    expect([...seen].sort()).toEqual(['L', 'M', 'S'])
+  }
+})
+
+test('Control: the X, Y and Z readout bubbles do not touch', async ({ page, open }) => {
+  await usePrinter(page, PRESETS.idleHomed())
+  await open('/control')
+  const readout = page.getByTestId("move-position")
+  await expect(readout).toBeVisible()
+  apart(await boxesOf(page, '[data-tid="move-position"] [data-tid^="pos-"]'))
 })
