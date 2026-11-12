@@ -574,7 +574,8 @@ import { SocketActions } from '@/api/socketActions'
 import { EventBus } from '@/eventBus'
 import type { QueuedJob } from '@/store/jobQueue/types'
 import type { AppDirectory, AppFileWithMeta, FileBrowserEntry } from '@/store/files/types'
-import { fileSize, isGcodeFile, jobTitle, parentFolder, queueLabel, readyChecks } from '@/services/jobs/model'
+import { fileSize, isGcodeFile, isModelFile, jobTitle, parentFolder, queueLabel, readyChecks } from '@/services/jobs/model'
+import { MODEL_ACCEPT } from '@/services/slicer-bridge/handover'
 import { NO_SELECTION, allSelected, clearSelection, clickRow, keepShown, moveCursor, selectAll, someSelected, toggleRow, type Selection } from '@/services/jobs/selection'
 import { JOBS_COLUMNS, lastPrinted, layerCountOf, listDuration, materialOf, nextColumnSort, sortDirection, sortListRows, type JobsSort } from '@/services/jobs/list'
 import { jobsPage, resetJobsPage, setJobsSort } from '@/services/jobs/page-state'
@@ -1225,9 +1226,10 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     this.pickUpload()
   }
 
+  /** The root's own list, and on the G-code root the models Slice opens (KAN-2191). */
   get gcodeAccept (): string {
     const root = this.$store.getters['files/getRootProperties'](this.root) as { accepts?: string[] } | undefined
-    return (root?.accepts ?? []).join(',')
+    return [...(root?.accepts ?? []), ...(this.root === 'gcodes' ? MODEL_ACCEPT : [])].join(',')
   }
 
   pickUpload () {
@@ -1238,9 +1240,14 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   /** Uploads go into the folder that's open; one G-code file on its own is offered to print. */
   async onPicked (event: Event) {
     const input = event.target as HTMLInputElement
-    const files = [...(input.files ?? [])]
+    const picked = [...(input.files ?? [])]
     input.value = ''
-    if (!this.controlReady || !files.length) return
+    if (!this.controlReady || !picked.length) return
+    // A model is Slice's to open, not a file for the printer, as a dropped one is.
+    const models = this.root === 'gcodes' ? picked.filter(f => isModelFile(f.name)) : []
+    if (models.length) EventBus.bus.$emit('model-dropped', models)
+    const files = picked.filter(f => !models.includes(f))
+    if (!files.length) return
     const target = this.commandTarget
     const path = this.path
     const stillCurrent = () => target === this.commandTarget && this.controlReady

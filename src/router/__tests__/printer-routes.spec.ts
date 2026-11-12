@@ -28,7 +28,7 @@ describe("a printer's pages", () => {
   })
 
   test.each([
-    ['/boxwood-367a', 'Dashboard'],
+    ['/boxwood-367a', 'Overview'],
     ['/boxwood-367a/jobs', 'Jobs'],
     ['/boxwood-367a/console', 'Console'],
     ['/boxwood-367a/settings', 'Settings'],

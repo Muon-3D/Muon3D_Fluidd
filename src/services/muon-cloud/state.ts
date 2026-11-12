@@ -576,7 +576,7 @@ export async function signOut (): Promise<boolean> {
   }
   try {
     await cloudApi.signOut()
-  } catch { /* the session ends here either way */ }
+  } catch { /* the session ends here either way; on plain HTTP there is none and the call is refused unsent */ }
   await dropSession()
   forgetBrowserKey()
   setActiveCloudPrinter(null)

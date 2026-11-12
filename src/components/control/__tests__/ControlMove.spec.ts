@@ -203,7 +203,7 @@ describe('the trackpad', () => {
     s.store.state.printer.printer.gcode_move.gcode_position = [60, 20, 0.8, 0]
     s.vm.pick({ x: 140, y: 20 })
     await s.wrapper.vm.$nextTick()
-    expect(s.vm.targetNote).toBe('Lifts to Z 6 first, to cross the no-go region')
+    expect(s.vm.targetNote).toBe('Lifts to Z 6 first, to cross the notch')
     s.vm.confirmMove()
     expect(moves()).toEqual(['G1 Z5.8 F600', 'G1 X140 Y20 F7800', 'G1 Z0.8 F600'])
     s.wrapper.destroy()
@@ -237,12 +237,12 @@ it('a diagonal that would end in the notch low down is refused through the plann
   expect(socket.printerGcodeScript).not.toHaveBeenCalled()
   expect(bus.$emit).toHaveBeenCalledWith(expect.stringContaining('bed notch'), { type: 'warning' })
   into.wrapper.destroy()
-  const across = show({ head: [70, 40, 1] })
-  across.vm.step = 50
-  across.vm.jogButtons.find((b: { id: string }) => b.id === 'se').run()
-  // Forward is Y+ on the M1: 70,40 → 120,90 clips the notch's tolerance band low down.
+  const across = show({ head: [60, 20, 1] })
+  across.vm.step = 100
+  across.vm.jogButtons.find((b: { id: string }) => b.id === 'e').run()
+  // 60,20 → 160,20 runs through the notch low down.
   expect(moves()[0]).toMatch(/^G1 Z6(\.\d+)? F600$/)
-  expect(moves().slice(1)).toEqual(['G1 X120 Y90 F7800', 'G1 Z1 F600'])
+  expect(moves().slice(1)).toEqual(['G1 X160 Y20 F7800', 'G1 Z1 F600'])
   across.wrapper.destroy()
 })
 

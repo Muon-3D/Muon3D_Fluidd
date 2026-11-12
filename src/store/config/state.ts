@@ -10,7 +10,6 @@ export const defaultState = (): ConfigState => {
     socketUrl: '',
     authKey: '',
     discovered: false,
-    layoutMode: false,
     containerColumnCount: 2,
     personalKey: null,
     sharedPersonal: null,
