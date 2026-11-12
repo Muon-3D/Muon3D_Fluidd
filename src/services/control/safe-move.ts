@@ -59,19 +59,36 @@ const pair = (value: unknown): [number, number] | null => {
 }
 
 /**
+ * Extra room kept around every notch region, mm, for the crossing, end and
+ * Z-nudge checks. Control is the ONLY guard on these hand moves today: the
+ * Klipper-side notch check (muon_guard, Klipper PR #117, KAN-1731) is not
+ * merged. This stays until that is merged and checked on a real M1; the
+ * printer's no_go_boundary_tolerance (10 mm on the M1) is bed_mesh's
+ * probe-snapping distance, not a guard, and is not used here.
+ */
+export const NOTCH_MARGIN_MM = 2
+
+/**
  * The no-go regions from `configfile.settings.bed_mesh`, or null when the
- * printer declares none. A region that does not parse makes the whole config
- * unusable rather than silently dropped: `planXYMove` then refuses low moves.
+ * printer declares none. Every `no_go_region_N_min/max` pair present is read,
+ * whatever its numbering. A region that does not parse (or has only one
+ * corner) makes the whole config unusable rather than silently dropped:
+ * moves then only raise the head. When regions exist but `no_go_traverse_z`
+ * is missing or not above 0, the notch height is unknown, so every height
+ * counts as within it (traverseZ is Infinity: nothing crosses or ends low
+ * over a region).
  */
 export function readNoGo (bedMesh: Record<string, unknown> | undefined | null): NoGoConfig | null | 'invalid' {
   if (!bedMesh) return null
+  const numbers = new Set<number>()
+  for (const key of Object.keys(bedMesh)) {
+    const m = /^no_go_region_(\d+)_(min|max)$/.exec(key)
+    if (m && bedMesh[key] !== undefined) numbers.add(Number(m[1]))
+  }
   const regions: NoGoRegion[] = []
-  for (let n = 1; n < 100; n++) {
-    const rawMin = bedMesh[`no_go_region_${n}_min`]
-    const rawMax = bedMesh[`no_go_region_${n}_max`]
-    if (rawMin === undefined && rawMax === undefined) break
-    const min = pair(rawMin)
-    const max = pair(rawMax)
+  for (const n of [...numbers].sort((a, b) => a - b)) {
+    const min = pair(bedMesh[`no_go_region_${n}_min`])
+    const max = pair(bedMesh[`no_go_region_${n}_max`])
     if (!min || !max) return 'invalid'
     regions.push({
       min: [Math.min(min[0], max[0]), Math.min(min[1], max[1])],
@@ -80,11 +97,12 @@ export function readNoGo (bedMesh: Record<string, unknown> | undefined | null): 
   }
   if (!regions.length) return null
   const tolerance = Number(bedMesh.no_go_boundary_tolerance ?? 0)
-  const traverseZ = Number(bedMesh.no_go_traverse_z)
-  if (!Number.isFinite(tolerance) || tolerance < 0 || !Number.isFinite(traverseZ)) return 'invalid'
+  const rawZ = bedMesh.no_go_traverse_z
+  const z = rawZ === null || rawZ === undefined || (typeof rawZ === 'string' && rawZ.trim() === '') ? NaN : Number(rawZ)
+  const traverseZ = Number.isFinite(z) && z > 0 ? z : Infinity
+  if (!Number.isFinite(tolerance) || tolerance < 0) return 'invalid'
   return { regions, tolerance, traverseZ }
 }
-
 const inside = (x: number, y: number, r: NoGoRegion, pad: number) =>
   x >= r.min[0] - pad && x <= r.max[0] + pad && y >= r.min[1] - pad && y <= r.max[1] + pad
 
@@ -215,7 +233,8 @@ export function planMove (
   noGo: NoGoConfig | null | 'invalid',
   limits: Limits,
   margin = 0,
-  zHomed = true
+  zHomed = true,
+  xyHomed = true
 ): MovePlan {
   const known = (vs: number[]) => vs.every(Number.isFinite)
   if (!known([to.x, to.y, to.z])) return { ok: false, reason: 'The head position is not known.' }
@@ -234,23 +253,28 @@ export function planMove (
     return { ok: false, reason: 'The printer’s notch could not be read, so Control will only raise the head. Check [bed_mesh] in printer.cfg.' }
   }
 
+  // X or Y not homed: the head's place is unknown, so it may be over the notch and low. Only raising Z (above) goes.
+  if (!xyHomed) return { ok: false, reason: 'Home X and Y first: until the head’s place is known, Control keeps it off the notch.' }
+
+  const pad = NOTCH_MARGIN_MM
   if (!zHomed) {
-    const touches = noGo.regions.some(r => inside(to.x, to.y, r, 0) || (movesXY && segmentHits([from.x, from.y], [to.x, to.y], r, 0)))
+    const touches = noGo.regions.some(r => inside(to.x, to.y, r, pad) || (movesXY && segmentHits([from.x, from.y], [to.x, to.y], r, pad)))
     return touches ? { ok: false, reason: 'Home Z first: until the plate height is known, the head stays off the notch.' } : direct
   }
 
   const clear = noGo.traverseZ + margin
-  if (to.z < clear && noGo.regions.some(r => inside(to.x, to.y, r, 0))) {
-    return { ok: false, reason: `That spot is over the bed notch. Raise Z to ${round(clear)} mm first.` }
+  if (to.z < clear && noGo.regions.some(r => inside(to.x, to.y, r, pad))) {
+    return { ok: false, reason: Number.isFinite(clear) ? `That spot is over the bed notch. Raise Z to ${round(clear)} mm first.` : 'That spot is over the bed notch, and the printer doesn’t say the notch height (no_go_traverse_z), so the head stays off it.' }
   }
   if (!movesXY) return direct
 
   // A combined move changes Z along the way, so judge it at its lowest point.
   const lowest = Math.min(from.z, to.z)
-  const crosses = noGo.regions.some(r => segmentHits([from.x, from.y], [to.x, to.y], r, 0))
+  const crosses = noGo.regions.some(r => segmentHits([from.x, from.y], [to.x, to.y], r, pad))
   if (lowest >= clear || !crosses) return direct
 
   const over = Math.max(clear, to.z)
+  if (!Number.isFinite(over)) return { ok: false, reason: 'That path crosses the bed notch, and the printer doesn’t say the notch height (no_go_traverse_z), so the head goes around it.' }
   if (over > limits.max[2]) return { ok: false, reason: 'The safe crossing height is above the Z limit.' }
   const steps: Place[] = [{ Z: round(over) }, { X: round(to.x), Y: round(to.y) }]
   if (to.z < over) steps.push({ Z: round(to.z) })
@@ -270,9 +294,10 @@ export function planXYMove (
   to: { x: number, y: number },
   noGo: NoGoConfig | null | 'invalid',
   limits: Limits,
-  zHomed = true
+  zHomed = true,
+  xyHomed = true
 ): MovePlan {
-  const plan = planMove(from, { x: to.x, y: to.y, z: from.z }, noGo, limits, 0, zHomed)
+  const plan = planMove(from, { x: to.x, y: to.y, z: from.z }, noGo, limits, 0, zHomed, xyHomed)
   if (plan.ok && !plan.lifted) return { ok: true, steps: [{ X: plan.steps[0].X, Y: plan.steps[0].Y }], lifted: false }
   return plan
 }
@@ -294,7 +319,7 @@ export function zNudgeRefusal (
   if (noGo === 'invalid') return 'The printer’s notch could not be read, so the nozzle will only be raised. Check [bed_mesh] in printer.cfg.'
   if (![head.x, head.y, head.z, margin].every(Number.isFinite)) return 'The head position is not known.'
   const clear = noGo.traverseZ + margin
-  const over = noGo.regions.some(r => inside(head.x, head.y, r, 0))
-  if (over && head.z + by < clear) return `The head is over the bed notch. Move it away, or raise Z to ${round(clear)} mm, before lowering the nozzle.`
+  const over = noGo.regions.some(r => inside(head.x, head.y, r, NOTCH_MARGIN_MM))
+  if (over && head.z + by < clear) return Number.isFinite(clear) ? `The head is over the bed notch. Move it away, or raise Z to ${round(clear)} mm, before lowering the nozzle.` : 'The head is over the bed notch. Move it away before lowering the nozzle.'
   return ''
 }

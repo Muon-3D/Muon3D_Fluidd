@@ -387,7 +387,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     if (noGo === null) return planMove(from, to, null, limits)
     const offset = this.gcodeOffset
     if (!offset) return { ok: false, reason: 'The head position is not known.' }
-    const plan = planMove(from, to, noGo, limits, meshSpan(this.$store.state.printer.printer.bed_mesh), this.isHomed('Z'))
+    const plan = planMove(from, to, noGo, limits, meshSpan(this.$store.state.printer.printer.bed_mesh), this.isHomed('Z'), this.isHomed('XY'))
     if (!plan.ok) return plan
     const toGcode = (p: Place): Place => {
       const out: Place = {}

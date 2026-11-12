@@ -125,6 +125,30 @@ test('a printer that declares no notch has none: nothing drawn, and a low jog th
   await expect.poll(() => printer.gcode).toEqual(['SAVE_GCODE_STATE NAME=_ui_movement\nG91\nG1 X50 F7800\nRESTORE_GCODE_STATE NAME=_ui_movement'])
 })
 
+test('Y not homed (head pushed by hand after motors off): the head keys stay off and the arrow keys send nothing', async ({ page, open }) => {
+  // Home X and Home Z only; the reported Y (100) is stale, the head may really be at Y 10, in line with the notch.
+  // The planner refuses this too ("Home X and Y first", safe-move.spec); here, the page never offers it.
+  const printer = await usePrinter(page, PRESETS.idleHomed({ position: [60, 100, 2], homed: 'xz' }))
+  await open('/control')
+  await expect(page.getByRole('button', { name: 'Head right (X+)' })).toBeDisabled()
+  await page.getByTestId('move-pad').focus()
+  await page.keyboard.press('ArrowRight')
+  await page.waitForTimeout(300)
+  expect(printer.gcode).toEqual([])
+})
+
+test('a low move that passes 1 mm beside the notch lifts over it (Control keeps 2 mm of margin)', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed({ position: [60, 35, 1] }))
+  await open('/control')
+  await page.getByTestId('move-goto').click()
+  const form = page.getByTestId('move-go-form')
+  await form.getByLabel('X to go to').fill('160')
+  await form.getByLabel('X to go to').press('Tab')
+  await page.getByTestId('move-go').click()
+  await expect.poll(() => printer.moves().length).toBe(3)
+  expect(printer.moves()[0]).toMatch(/^G1 Z6(\.\d+)? F600$/)
+  expect(printer.moves()[1]).toBe('G1 X160 Y35 F7800')
+})
 test('an ordinary jog away from the notch is one move, as before', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed({ position: [100, 100, 10] }))
   await open('/control')
