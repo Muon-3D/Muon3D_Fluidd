@@ -498,7 +498,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
 
     // The printer's name as people know it (Boxwood, not muon-boxwood-367a),
     // and only once the printer has said it; the page's own name as the rail
-    // shows it (Overview, not the route's "Dashboard"); never "null"
+    // shows it (Overview, not the route's internal name); never "null"
     // (KAN-2257).
     const displayName = this.$store.getters['config/getDisplayName'] as string
     const instanceName = this.foreignPrinterRoute
