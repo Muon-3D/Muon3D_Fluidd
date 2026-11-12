@@ -115,8 +115,13 @@ export default class M3Confirm extends Vue {
 
   open = true
   plateClear = false
-  filmOn = !!this.film?.on
+  filmOn = false
   answered = false
+
+  /** Class fields run before props are set, so the printer's timelapse setting is read here. */
+  created () {
+    this.filmOn = !!this.film?.on
+  }
 
   get okText (): string {
     return this.buttonTrueText || 'Continue'

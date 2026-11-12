@@ -122,6 +122,7 @@ describe('M3Confirm', () => {
 
     const untouched = vi.fn()
     const again = ask({ film: { on: true, line: 'Each layer', set: untouched } })
+    expect(tid(again, 'confirm-film-switch').attributes('aria-checked')).toBe('true')
     await tid(again, 'confirm-ok').trigger('click')
     vi.advanceTimersByTime(CLOSE_MS)
     expect(untouched).not.toHaveBeenCalled()

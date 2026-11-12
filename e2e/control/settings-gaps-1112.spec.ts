@@ -4,8 +4,20 @@
  * row, Cameras' header "Add a camera", Timelapse's header Videos button and the
  * print sheet's "Film it". All on the mock printer: nothing here moves or heats it.
  */
+import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
 import { usePrinter, PRESETS } from './printer'
+
+/** The print sheet from History: the row's ··· menu on a desktop, a tap on the row then Print again on a phone. */
+async function openPrintSheet (page: Page, isMobile: boolean) {
+  if (isMobile) {
+    await page.getByTestId('history-row').first().click()
+    await page.getByTestId('history-detail').getByTestId('history-detail-print-again').click()
+    return
+  }
+  await page.getByRole('button', { name: /More for cable clip/i }).click()
+  await page.getByRole('menuitem', { name: 'Print again' }).click()
+}
 
 const OTHER = ['database', 'file_manager', 'klippy_apis', 'machine', 'history', 'authorization', 'webcam']
 
@@ -70,13 +82,12 @@ test('Timelapse: the header has Videos, which opens the videos', async ({ page, 
   await expect(page).toHaveURL(/\/timelapse$/)
 })
 
-test('the print sheet has Film it: it starts as the printer\'s setting, and changing it sets the timelapse before the print starts', async ({ page, open }) => {
+test('the print sheet has Film it: it starts as the printer\'s setting, and changing it sets the timelapse before the print starts', async ({ page, open, isMobile }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed(), { components: [...OTHER, 'timelapse'] })
   printer.state.answers['machine.timelapse.get_settings'] = { enabled: false, mode: 'layermacro', blockedsettings: [] }
   printer.state.answer['server.history.list'] = { count: 1, jobs: [{ job_id: '000001', filename: 'cable_clip.gcode', status: 'completed', start_time: Date.now() / 1000 - 90000, end_time: Date.now() / 1000 - 85000, print_duration: 5000, total_duration: 5200, filament_used: 900, exists: true, metadata: {} }] }
   await open('/history')
-  await page.getByRole('button', { name: /More for cable clip/i }).click()
-  await page.getByRole('menuitem', { name: 'Print again' }).click()
+  await openPrintSheet(page, isMobile)
   const film = page.getByTestId('confirm-film')
   await expect(film).toContainText('Film it')
   await expect(film).toContainText('Each layer')
@@ -89,13 +100,37 @@ test('the print sheet has Film it: it starts as the printer\'s setting, and chan
   await expect.poll(() => printer.calls.filter(c => c.method === 'printer.print.start').length).toBe(1)
 })
 
-test('the print sheet has no Film it on a printer without timelapse', async ({ page, open }, testInfo) => {
-  test.skip(testInfo.project.name === 'phone', 'the history row menu is the desktop layout')
+test('Film it left alone sends nothing: no timelapse setting is posted, and the print still starts', async ({ page, open, isMobile }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed(), { components: [...OTHER, 'timelapse'] })
+  printer.state.answers['machine.timelapse.get_settings'] = { enabled: true, mode: 'layermacro', blockedsettings: [] }
+  printer.state.answer['server.history.list'] = { count: 1, jobs: [{ job_id: '000001', filename: 'cable_clip.gcode', status: 'completed', start_time: Date.now() / 1000 - 90000, end_time: Date.now() / 1000 - 85000, print_duration: 5000, total_duration: 5200, filament_used: 900, exists: true, metadata: {} }] }
+  await open('/history')
+  await openPrintSheet(page, isMobile)
+  await expect(page.getByTestId('confirm-film-switch')).toHaveAttribute('aria-checked', 'true')
+  await page.getByTestId('confirm-plate').check()
+  await page.getByRole('button', { name: 'Print now' }).click()
+  await expect.poll(() => printer.calls.filter(c => c.method === 'printer.print.start').length).toBe(1)
+  expect(printer.called('machine.timelapse.post_settings')).toEqual([])
+})
+
+test('Film it changed and then cancelled sends nothing', async ({ page, open, isMobile }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed(), { components: [...OTHER, 'timelapse'] })
+  printer.state.answers['machine.timelapse.get_settings'] = { enabled: false, mode: 'layermacro', blockedsettings: [] }
+  printer.state.answer['server.history.list'] = { count: 1, jobs: [{ job_id: '000001', filename: 'cable_clip.gcode', status: 'completed', start_time: Date.now() / 1000 - 90000, end_time: Date.now() / 1000 - 85000, print_duration: 5000, total_duration: 5200, filament_used: 900, exists: true, metadata: {} }] }
+  await open('/history')
+  await openPrintSheet(page, isMobile)
+  await page.getByTestId('confirm-film-switch').click()
+  await page.getByTestId('confirm-cancel').click()
+  await expect(page.getByTestId('confirm-film')).toHaveCount(0)
+  expect(printer.called('machine.timelapse.post_settings')).toEqual([])
+  expect(printer.calls.filter(c => c.method === 'printer.print.start')).toEqual([])
+})
+
+test('the print sheet has no Film it on a printer without timelapse', async ({ page, open, isMobile }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
   printer.state.answer['server.history.list'] = { count: 1, jobs: [{ job_id: '000001', filename: 'cable_clip.gcode', status: 'completed', start_time: Date.now() / 1000 - 90000, end_time: Date.now() / 1000 - 85000, print_duration: 5000, total_duration: 5200, filament_used: 900, exists: true, metadata: {} }] }
   await open('/history')
-  await page.getByRole('button', { name: /More for cable clip/i }).click()
-  await page.getByRole('menuitem', { name: 'Print again' }).click()
+  await openPrintSheet(page, isMobile)
   await expect(page.getByTestId('confirm-plate')).toBeVisible()
   await expect(page.getByTestId('confirm-film')).toHaveCount(0)
 })
