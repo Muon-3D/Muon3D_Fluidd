@@ -591,7 +591,8 @@ export async function saveLayout (layout: FleetLayout) {
   try {
     await cloudApi.putLayout(layout, () => owner !== undefined && cloudState.account?.id === owner)
   } catch (error) {
-    cloudState.error = (error as Error).message
+    // A save refused for an account that has since left is not the signed-in account's error.
+    if (cloudState.account?.id === owner) cloudState.error = (error as Error).message
   }
 }
 

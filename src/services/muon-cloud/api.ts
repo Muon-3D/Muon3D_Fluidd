@@ -500,7 +500,8 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
     }
     if (currentToken) {
       const outcome = await refreshOutcome()
-      if (outcome === 'ok') return request<T>(method, path, body, storedToken(), false)
+      // Asked again: the account can change while the refresh is on its way.
+      if (outcome === 'ok' && (!stillMine || stillMine())) return request<T>(method, path, body, storedToken(), false)
       // The console did not answer: that is not a sign-out, so do not look like one.
       if (outcome === 'unreachable') throw new CloudError('The Muon3D service could not be reached.', 0)
     }

@@ -154,6 +154,30 @@ describe('KAN-2249: the printer groups belong to one account', () => {
     first.resolve(new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } }))
     await save
     expect(puts).toEqual(['Bearer a'])
+    expect(cloudState.account?.id).toBe('b')
+    expect(cloudState.error).toBeNull()
+  })
+
+  it('a save for the same account is still retried with a token another request rotated meanwhile', async () => {
+    storeToken('a')
+    vi.spyOn(cloudApi, 'me').mockResolvedValue(account('a'))
+    vi.spyOn(cloudApi, 'getLayout').mockResolvedValue({ layout: { groups: [] } })
+    await initCloud()
+    vi.mocked(cloudApi.putLayout).mockRestore()
+    const puts: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/v1/fleet/layout') && init?.method === 'PUT') {
+        puts.push(String((init.headers as Record<string, string>).authorization))
+        if (puts.length === 1) {
+          storeToken('a-rotated')
+          return new Response('{}', { status: 401, headers: { 'content-type': 'application/json' } })
+        }
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    }))
+    await saveLayout({ ...cloudState.layout, groups: [group('A lab')] })
+    expect(puts).toEqual(['Bearer a', 'Bearer a-rotated'])
+    expect(cloudState.account?.id).toBe('a')
   })
 
   it('a group made while the printers are still loading is kept, not overwritten by the saved layout', async () => {
