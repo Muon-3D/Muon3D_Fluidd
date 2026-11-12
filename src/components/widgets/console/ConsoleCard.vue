@@ -136,7 +136,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue, Prop, Watch, Ref } from 'vue-property-decorator'
+import { Component, Vue, Prop, Ref } from 'vue-property-decorator'
 import Console from './Console.vue'
 import type { ConsoleEntry, ConsoleFilter } from '@/store/console/types'
 
@@ -188,10 +188,6 @@ export default class ConsoleCard extends Vue {
     return this.$store.getters['console/getConsoleEntries']
   }
 
-  get inLayout (): boolean {
-    return (this.$store.state.config.layoutMode)
-  }
-
   get autoScroll () {
     return this.$store.state.console.autoScroll
   }
@@ -200,13 +196,6 @@ export default class ConsoleCard extends Vue {
     this.$store.dispatch('console/onUpdateAutoScroll', value)
     if (value) {
       this.consoleElement.scrollToLatest(true)
-    }
-  }
-
-  @Watch('inLayout')
-  inLayoutChange (inLayout: boolean) {
-    if (!inLayout) {
-      this.consoleElement.scrollToLatest()
     }
   }
 
