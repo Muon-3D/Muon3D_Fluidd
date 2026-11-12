@@ -546,18 +546,64 @@ $glass: "html[data-m3d-style='glass']";
     font-weight: 600;
     letter-spacing: 0;
     text-transform: none;
+    // Motion gallery, "Press, hover, focus" (KAN-2257): the press lands in an
+    // instant, the release springs back with no overshoot, hover is a quiet
+    // tone change, and the focus ring grows out of the button.
     transition:
-      background-color var(--m3d-duration-fast) var(--m3d-ease),
-      color var(--m3d-duration-fast) var(--m3d-ease),
-      box-shadow var(--m3d-duration-fast) var(--m3d-ease),
-      transform var(--m3d-duration-base) var(--m3d-spring) !important;
+      background-color var(--m3d-motion-fast) var(--m3d-ease-standard),
+      color var(--m3d-motion-fast) var(--m3d-ease-standard),
+      box-shadow var(--m3d-motion-fast) var(--m3d-ease-standard),
+      transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy) !important;
 
     &::before {
       background-color: var(--m3d-text);
+      transition: opacity var(--m3d-motion-fast) var(--m3d-ease-standard);
     }
 
     &:hover::before {
       opacity: 0.06;
+    }
+
+    &:focus-visible {
+      outline: none;
+    }
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: inherit;
+      border: 2px solid var(--m3d-focus-ring);
+      opacity: 0;
+      transform: scale(0.94);
+      pointer-events: none;
+      transition:
+        opacity var(--m3d-motion-fast) var(--m3d-ease-standard),
+        transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy);
+    }
+
+    &:focus-visible::after {
+      opacity: 1;
+      transform: none;
+    }
+
+    &:not(.v-btn--disabled):active {
+      transition-duration:
+        var(--m3d-motion-fast),
+        var(--m3d-motion-fast),
+        var(--m3d-motion-fast),
+        var(--m3d-motion-instant) !important;
+      transition-timing-function:
+        var(--m3d-ease-standard),
+        var(--m3d-ease-standard),
+        var(--m3d-ease-standard),
+        var(--m3d-ease-standard) !important;
+    }
+
+    // Stopping a print is never eased: its press shows on the frame it happens.
+    &.error:not(.v-btn--disabled):active,
+    &.error--text:not(.v-btn--disabled):active {
+      transform: none;
     }
 
     &:not(.v-btn--disabled):active {
@@ -646,9 +692,9 @@ $glass: "html[data-m3d-style='glass']";
       font-weight: 500;
       opacity: 1;
       transition:
-        background-color var(--m3d-duration-base) var(--m3d-spring),
-        box-shadow var(--m3d-duration-base) var(--m3d-ease),
-        transform var(--m3d-duration-base) var(--m3d-spring) !important;
+        background-color var(--m3d-motion-fast) var(--m3d-ease-standard),
+        box-shadow var(--m3d-motion-fast) var(--m3d-ease-standard),
+        transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy) !important;
     }
 
     > .v-btn.v-btn + .v-btn {
@@ -894,7 +940,7 @@ $glass: "html[data-m3d-style='glass']";
       opacity: 1;
       background-color: var(--m3d-switch-off) !important;
       color: transparent !important;
-      transition: background-color var(--m3d-duration-base) var(--m3d-ease);
+      transition: background-color var(--m3d-motion-base) var(--m3d-ease-standard);
     }
 
     .v-input--switch__thumb {
@@ -905,7 +951,7 @@ $glass: "html[data-m3d-style='glass']";
       background-color: #fff !important;
       color: #fff !important;
       box-shadow: 0 3px 8px rgb(0 0 0 / 15%), 0 1px 1px rgb(0 0 0 / 16%), 0 0 0 0.5px rgb(0 0 0 / 4%) !important;
-      transition: transform var(--m3d-duration-base) var(--m3d-spring);
+      transition: transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy);
     }
 
     .v-input--selection-controls__ripple::before {
@@ -965,7 +1011,7 @@ $glass: "html[data-m3d-style='glass']";
     background-color: #fff !important;
     border-color: #fff !important;
     box-shadow: 0 3px 8px rgb(0 0 0 / 15%), 0 1px 1px rgb(0 0 0 / 16%), 0 0 0 0.5px rgb(0 0 0 / 6%) !important;
-    transition: transform var(--m3d-duration-base) var(--m3d-spring);
+    transition: transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy);
 
     &::before {
       display: none;
