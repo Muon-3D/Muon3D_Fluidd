@@ -28,7 +28,7 @@ import {
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
-import { handMoveSettling, headStatus, lockHandMove, noteOwnMotion, ownMotionActive, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
+import { endOwnMotion, handMoveSettling, headStatus, lockHandMove, noteOwnMotion, ownMotionActive, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
 import Vue from 'vue'
 import { EventBus } from '@/eventBus'
 import type { LoadedFilament } from '@/services/jobs/model'
@@ -137,6 +137,15 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
    */
   get busy (): boolean {
     return this.printLocked || (this.printerState === 'busy' && !this.busyWithOwnMove)
+  }
+
+  /** The printer stopped being busy: the own-move window ends, so the next busy (a macro from anywhere) locks moving. */
+  @Watch('printerState')
+  onPrinterStateForOwnMove (now: string, before: string) {
+    if (before === 'busy' && now !== 'busy') {
+      endOwnMotion()
+      motionClock.epoch++
+    }
   }
 
   /** Why moving is locked, in words: "printing" only for a real print. '' when it isn't. */
@@ -449,10 +458,13 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     const now = Date.now()
     const travel = this.travelMs(realTo)
     lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000), this.panelTarget, now, travel)
-    const ms = noteOwnMotion(this.panelTarget, now, travel)
+    // Only a move sent while the printer wasn't busy opens the own-move window; one sent mid-move never extends it.
+    const ms = noteOwnMotion(this.panelTarget, now, travel, this.printerState !== 'busy')
     motionClock.epoch++
-    if (motionTimer !== null) clearTimeout(motionTimer)
-    motionTimer = setTimeout(() => { motionTimer = null; motionClock.epoch++ }, ms + 20)
+    if (ms > 0) {
+      if (motionTimer !== null) clearTimeout(motionTimer)
+      motionTimer = setTimeout(() => { motionTimer = null; motionClock.epoch++ }, ms + 20)
+    }
   }
 
   /**

@@ -14,7 +14,13 @@
  */
 import type { Locator, Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
-import { overlay, usePrinter, PRESETS, type PrinterHandle } from './printer'
+import { overlay, usePrinter, useDatabase, PRESETS, type PrinterHandle } from './printer'
+
+/** Slow hand moves (5 mm/s across, 5 mm/s for the plate), so a move is still in flight while the test acts, however slow the machine. */
+async function slowMoves (page: Page, printer: PrinterHandle) {
+  const db = await useDatabase(page, printer)
+  db.saved.uiSettings = { general: { defaultToolheadXYSpeed: 5, defaultToolheadZSpeed: 5 } }
+}
 
 const trackpadTile = (page: Page) => page.locator('[data-tile="trackpad"]')
 
@@ -126,6 +132,7 @@ test.describe('OV-28 / KAN-2120: your own moves never lock the panel', () => {
 
   test('mid-move: no "printing", nothing greyed out, and a second drag goes as soon as the first lands', async ({ page, open }) => {
     const printer = await usePrinter(page, PRESETS.idleHomed({ position: [100, 100, 10] }))
+    await slowMoves(page, printer)
     await open('/')
     const tile = trackpadTile(page)
     const pad = tile.getByTestId('move-trackpad')
@@ -165,12 +172,13 @@ test.describe('OV-28 / KAN-2120: your own moves never lock the panel', () => {
 
   test('the same on Control: a jog in flight never says "Locked while printing"', async ({ page, open }) => {
     const printer = await usePrinter(page, PRESETS.idleHomed({ position: [100, 100, 10] }))
+    await slowMoves(page, printer)
     await open('/control')
     const move = page.getByTestId('control-move')
-    await move.getByRole('radiogroup', { name: 'Step' }).getByRole('radio', { name: '10' }).click()
+    await move.getByRole('radiogroup', { name: 'Step' }).getByRole('radio', { name: '50 mm' }).click()
     await page.getByRole('button', { name: 'Head right (X+)' }).click()
     await expect.poll(() => printer.gcode.length).toBe(1)
-    moving(printer, [110, 100])
+    moving(printer, [150, 100])
     await page.waitForTimeout(500)
     await expect(move.getByText(/printing/i)).toHaveCount(0)
     await expect(move.getByTestId('move-trackpad')).not.toHaveAttribute('aria-disabled', 'true')
@@ -179,6 +187,35 @@ test.describe('OV-28 / KAN-2120: your own moves never lock the panel', () => {
     await expect.poll(() => printer.gcode.length).toBe(2)
   })
 
+  test('a macro started elsewhere after your move has finished locks it again, and nothing is sent', async ({ page, open }) => {
+    const printer = await usePrinter(page, PRESETS.idleHomed({ position: [100, 100, 10] }))
+    await slowMoves(page, printer)
+    await open('/')
+    const tile = trackpadTile(page)
+    const pad = tile.getByTestId('move-trackpad')
+    await dragOnPad(page, pad, [0.3, 0.8], [0.25, 0.75])
+    await page.mouse.up()
+    await expect.poll(() => printer.moves().length).toBe(1)
+    const first = xyOf(printer.moves()[0])
+    // Your move runs, then the printer goes idle: the move is over.
+    moving(printer, first)
+    await expect(pad).not.toHaveAttribute('aria-disabled', 'true')
+    printer.report(PRESETS.idleHomed({ position: [first[0], first[1], 10] }))
+    await page.waitForTimeout(500)
+    // A macro starts elsewhere (the panel, the console, another client), well inside the old move's travel time.
+    printer.report(overlay(PRESETS.idleHomed({ position: [first[0], first[1], 10] }), { idle_timeout: { state: 'Printing' } }))
+    await expect(pad).toHaveAttribute('aria-disabled', 'true')
+    await expect(tile.getByTestId('tile-pill')).toHaveText('Busy')
+    const jogRight = page.locator('[data-tile="jog"]').getByRole('button', { name: 'Head right' })
+    await expect(jogRight).toBeDisabled()
+    const sent = printer.gcode.length
+    await jogRight.click({ force: true })
+    const b = (await pad.boundingBox())!
+    await page.mouse.move(b.x + b.width * 0.6, b.y + b.height * 0.7); await page.mouse.down(); await page.mouse.move(b.x + b.width * 0.7, b.y + b.height * 0.6, { steps: 4 }); await page.mouse.up()
+    await page.waitForTimeout(500)
+    expect(printer.gcode.length).toBe(sent)
+    await noPrintingWords(page)
+  })
   test('a real print still locks it, and says so', async ({ page, open }) => {
     const printer = await usePrinter(page, PRESETS.idleHomed())
     await open('/')

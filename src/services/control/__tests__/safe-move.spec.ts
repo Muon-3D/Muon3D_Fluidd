@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { meshSpan, readNoGo, planMove, planXYMove, segmentHits, type NoGoConfig, type Limits } from '../safe-move'
+import { endOwnMotion, meshSpan, noteOwnMotion, ownMotion, ownMotionActive, OWN_MOTION_MARGIN_MS, readNoGo, planMove, planXYMove, segmentHits, type NoGoConfig, type Limits } from '../safe-move'
 
 // The M1's [bed_mesh], as the printer reports it in configfile.settings.
 const M1_BED_MESH = {
@@ -133,5 +133,33 @@ describe('the mesh margin', () => {
     expect(planMove({ x: 60, y: 10, z: 6.2 }, { x: 140, y: 10, z: 6.2 }, m1, LIMITS, 0.5))
       .toEqual({ ok: true, steps: [{ Z: 6.5 }, { X: 140, Y: 10 }, { Z: 6.2 }], lifted: true })
     expect(planMove({ x: 60, y: 10, z: 6.6 }, { x: 140, y: 10, z: 6.6 }, m1, LIMITS, 0.5)).toEqual({ ok: true, steps: [{ X: 140, Y: 10, Z: 6.6 }], lifted: false })
+  })
+})
+
+/* KAN-2120 (Opus review): the own-move window is as narrow as it can be. */
+describe('the own-move window', () => {
+  it('lasts the move\'s travel time plus a small margin, with no fixed minimum', () => {
+    expect(noteOwnMotion('p', 1000, 500)).toBe(500 + OWN_MOTION_MARGIN_MS)
+    expect(ownMotionActive('p', 1000 + 500 + OWN_MOTION_MARGIN_MS - 1)).toBe(true)
+    expect(ownMotionActive('p', 1000 + 500 + OWN_MOTION_MARGIN_MS + 1)).toBe(false)
+    endOwnMotion()
+  })
+
+  it('never starts or extends for a move sent while the printer was already busy', () => {
+    noteOwnMotion('p', 1000, 100)
+    const until = ownMotion.until
+    expect(noteOwnMotion('p', 2000, 60_000, false)).toBe(0)
+    expect(ownMotion.until).toBe(until)
+    endOwnMotion()
+    expect(noteOwnMotion('p', 3000, 100, false)).toBe(0)
+    expect(ownMotionActive('p', 3001)).toBe(false)
+  })
+
+  it('ends when the printer stops being busy, and is only for its own printer', () => {
+    noteOwnMotion('p', Date.now(), 60_000)
+    expect(ownMotionActive('other')).toBe(false)
+    expect(ownMotionActive('p')).toBe(true)
+    endOwnMotion()
+    expect(ownMotionActive('p')).toBe(false)
   })
 })

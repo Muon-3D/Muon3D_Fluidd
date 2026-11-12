@@ -175,27 +175,40 @@ export function releaseHandMove () {
  * KAN-2120: the window in which the printer's "busy" is this page's own hand
  * move. Klipper's idle_timeout reads Printing while ANY G-code runs, a jog
  * included, so "busy" alone cannot tell a hand move from a print or a macro.
- * A hand move sets this for its travel time plus the settle margin (the same
- * `settleMs` as the lock above); unlike the lock it is not cleared when the
- * commanded position arrives, because the head is still physically moving
- * then and idle_timeout still says Printing. Only a real print
- * (print_stats printing or paused) locks the move controls; a busy printer
- * outside this window (homing, a macro, another client) still refuses moves.
+ *
+ * Kept as narrow as it can be, so a macro started elsewhere (the panel,
+ * another client, the console, the printer itself) is never mistaken for it:
+ * - it only starts when the printer was NOT busy as the move was sent (a move
+ *   sent while it is busy never starts or extends it);
+ * - it lasts the move's own travel time plus OWN_MOTION_MARGIN_MS, no more;
+ * - it ends at the first busy -> not busy change after the move
+ *   (`endOwnMotion`, from ControlMixin), so a later busy is never "ours".
+ * Only a real print (print_stats printing or paused) says "printing"; a busy
+ * printer outside this window still refuses every hand move.
  */
 export const ownMotion: { printer: string, until: number } = { printer: '', until: 0 }
 
-export function noteOwnMotion (printer: string, now = Date.now(), travelMs = 0): number {
-  const ms = settleMs(travelMs)
+/** Slack on top of a hand move's travel time for the printer to report it finished, ms. */
+export const OWN_MOTION_MARGIN_MS = 2000
+
+/** Start the window for a hand move just sent. Returns its length, ms (0 when it didn't start). */
+export function noteOwnMotion (printer: string, now = Date.now(), travelMs = 0, printerWasIdle = true): number {
+  if (!printerWasIdle) return 0
+  const ms = (Number.isFinite(travelMs) && travelMs > 0 ? Math.ceil(travelMs) : 0) + OWN_MOTION_MARGIN_MS
   ownMotion.printer = printer
   ownMotion.until = now + ms
   return ms
+}
+
+/** The printer stopped being busy: whatever it does next is not this page's move. */
+export function endOwnMotion () {
+  ownMotion.until = 0
 }
 
 /** Is the printer's current busy this page's own hand move on `printer`? */
 export function ownMotionActive (printer: string, now = Date.now()): boolean {
   return ownMotion.printer === printer && now < ownMotion.until
 }
-
 /** Is the last hand move on `printer` still on its way? Clears itself on arrival, after SETTLE_MS, or for another printer. */
 export function handMoveSettling (gcodePosition: number[] | undefined, printer: string, now = Date.now()): boolean {
   const target = handMoveLock.target
