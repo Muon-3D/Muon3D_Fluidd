@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { EASE, MOTION, SPRINGS, spring } from '../motion'
+import { EASE, MOTION, SPRINGS, animate, reducedMotion, spring } from '../motion'
 
 // The stylesheet and the script must say the same thing, or CSS transitions
 // and Web Animations in one view drift apart. Read the stylesheet as text.
@@ -27,6 +27,27 @@ describe('motion tokens', () => {
       expect(token(`spring-${name}`)).toBe(s.css)
       expect(token(`spring-${name}-duration`)).toBe(`${s.ms}ms`)
     }
+  })
+
+  it('reads reduced motion from the class the Animations setting puts on the root', () => {
+    const source = readFileSync(`${process.cwd()}/src/services/m1-3d/device-settings.ts`, 'utf8')
+    expect(source).toMatch(/REDUCED_MOTION_CLASS = 'm3d-reduced-motion'/)
+    document.documentElement.classList.remove('m3d-reduced-motion')
+    expect(reducedMotion()).toBe(false)
+    document.documentElement.classList.add('m3d-reduced-motion')
+    expect(reducedMotion()).toBe(true)
+    document.documentElement.classList.remove('m3d-reduced-motion')
+  })
+
+  it('under reduced motion keeps only a short fade, whatever the caller asked for', () => {
+    const calls: [Keyframe[], KeyframeAnimationOptions][] = []
+    const el = { animate: (f: Keyframe[], o: KeyframeAnimationOptions) => { calls.push([f, o]); return null } } as unknown as Element
+    document.documentElement.classList.add('m3d-reduced-motion')
+    animate(el, [{ opacity: 0, transform: 'scale(0.9)' }, { opacity: 1, transform: 'none' }], 500, EASE.enter, { duration: 900, iterations: Infinity, delay: 300 })
+    document.documentElement.classList.remove('m3d-reduced-motion')
+    const [frames, options] = calls[0]
+    expect(frames).toEqual([{ opacity: 0 }, { opacity: 1 }])
+    expect(options).toMatchObject({ duration: 120, easing: 'linear', iterations: 1, delay: 0 })
   })
 
   it('makes snappy settle without overshoot, gentle overshoot a little and bouncy about 13 %', () => {

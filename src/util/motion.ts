@@ -74,10 +74,12 @@ export function reducedMotion (): boolean {
 export function animate (el: Element, frames: Keyframe[], ms: number, easing: string = EASE.standard, options: KeyframeAnimationOptions = {}): Animation | null {
   if (typeof el.animate !== 'function') return null
   if (reducedMotion()) {
-    frames = frames.map(f => ({ opacity: f.opacity ?? 1 }))
-    ms = Math.min(ms, 120)
-    easing = 'linear'
-    options = { ...options, delay: 0 }
+    // The clamps come last, so no caller option (a duration, a loop, a delay)
+    // can undo them.
+    return el.animate(
+      frames.map(f => ({ opacity: f.opacity ?? 1 })),
+      { fill: 'both', ...options, duration: Math.min(Number(options.duration ?? ms) || 0, 120), easing: 'linear', iterations: 1, endDelay: 0, delay: 0 }
+    )
   }
   return el.animate(frames, { duration: ms, easing, fill: 'both', ...options })
 }
