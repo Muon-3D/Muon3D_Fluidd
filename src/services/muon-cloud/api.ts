@@ -194,18 +194,45 @@ export function cloudTokensPersist (location: Pick<Location, 'protocol' | 'hostn
   return location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
 }
 
-// On an insecure origin the pair lives here only: a reload signs out.
-const memoryTokens = new Map<string, string>()
+/**
+ * Whether this page may hold a Muon3D account session at all (KAN-2192, the
+ * whole of H2/B9: "no credential may ever be stored or used on an http://
+ * origin"). The plain-HTTP printer address has to stay for the hotspot, setup
+ * with no internet and `muon3d.local`, and anyone on the network can answer
+ * for it or change the page. So there the page takes no password, holds no
+ * token even in memory, and never makes or reads the browser's Iroh key:
+ * account features are one link to the console (`controlUrl`). HTTPS and
+ * loopback keep the session.
+ */
+export function cloudSessionAllowed (location: Pick<Location, 'protocol' | 'hostname'> | undefined = globalThis.location): boolean {
+  return cloudTokensPersist(location)
+}
+
+/** The console page that does what this page may not: `route` is a hash route such as `/account`. */
+export function controlUrl (route = '/'): string {
+  const base = (import.meta.env.VUE_MUON_CLOUD_URL as string | undefined)?.replace(/\/$/, '') || CONSOLE_ORIGINS[0]
+  return `${base}/#${route.startsWith('/') ? route : `/${route}`}`
+}
+
+/** What every refused account call on a plain-HTTP page says. */
+export const INSECURE_ORIGIN_MESSAGE = 'This page is not encrypted, so it cannot sign in to Muon3D. Open Muon Control to use your account.'
+
+function refuseOnInsecureOrigin (): never {
+  throw new CloudError(INSECURE_ORIGIN_MESSAGE, 0, 'insecure_origin')
+}
+
+// Requests that carry a password, a sign-in code or a session-opening code.
+const CREDENTIAL_PATHS: readonly string[] = ['/v1/auth/sign-in', '/v1/auth/sign-up', '/v1/auth/mfa', '/v1/handoff', '/token']
 
 function readTokenStorage (key: string): string | null {
-  if (cloudTokensPersist()) return readStorage(key)
-  return memoryTokens.get(key) ?? null
+  if (cloudSessionAllowed()) return readStorage(key)
+  return null
 }
 
 function writeTokenStorage (key: string, value: string | null) {
-  if (cloudTokensPersist()) return writeStorage(key, value)
-  if (value === null) memoryTokens.delete(key)
-  else memoryTokens.set(key, value)
+  // Not allowed: the token is dropped, not kept in memory. Nothing to read
+  // means nothing for injected script to take.
+  if (cloudSessionAllowed()) writeStorage(key, value)
 }
 
 // Migration: an older build stored the pair in localStorage on this origin.
@@ -244,6 +271,8 @@ export function storeRefreshToken (token: string | null) {
  * `{error, error_description}`, not the API's sentence shape.
  */
 async function tokenRequest (form: Record<string, string>, signal?: AbortSignal): Promise<TokenSession> {
+  // KAN-2192: a code or a refresh token is a credential; none leaves a plain-HTTP page.
+  if (!cloudSessionAllowed()) refuseOnInsecureOrigin()
   let response: Response
   try {
     response = await fetch(`${cloudBaseUrl()}/token`, {
@@ -470,6 +499,8 @@ export async function refreshSession (): Promise<boolean> {
 }
 
 async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true): Promise<T> {
+  // KAN-2192: no bearer and no password leaves a plain-HTTP page, whoever asks.
+  if (!cloudSessionAllowed() && (token || CREDENTIAL_PATHS.includes(path.split('?')[0]))) refuseOnInsecureOrigin()
   const startedAt = deletionRevision()
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
