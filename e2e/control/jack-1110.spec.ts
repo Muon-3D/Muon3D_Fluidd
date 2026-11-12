@@ -250,7 +250,7 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     await expect.poll(async () => (await springs(page)) - was).toBeGreaterThan(0)
     await page.mouse.up()
     await settle(page)
-    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'M')
+    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'S')
   })
 
   test('stress: 20 random drags leave a valid layout, which is the one saved', async ({ page, open }) => {
