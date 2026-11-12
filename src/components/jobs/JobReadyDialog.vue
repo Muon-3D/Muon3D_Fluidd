@@ -91,21 +91,21 @@
           </button>
         </div>
         <p class="job-ready__about">
-          A model has to be sliced before it can print. Slice runs in this browser, served by
-          {{ printerName }}, so it works with no internet: open it, and add {{ models.length === 1 ? 'the model' : 'the models' }} with its Add model button.
+          A model has to be sliced before it can print. Open Slice and
+          {{ models.length === 1 ? 'it opens' : 'they open' }} there, ready to slice for {{ printerName }}.
         </p>
         <p class="job-ready__about job-ready__about--dim">
-          Slice doesn't take a dropped model from here yet, so it stays on this computer for you to add.
+          Nothing is sent to the printer until you slice and print.
         </p>
-        <router-link
+        <button
           v-if="slicer"
+          type="button"
           class="cbtn cbtn--primary cbtn--wide"
-          :to="slicePath"
           data-tid="job-ready-open-slice"
-          @click.native="close"
+          @click="openInSlice"
         >
           Open Slice
-        </router-link>
+        </button>
         <p
           v-else
           class="job-ready__about"
@@ -130,12 +130,13 @@ import JobsMixin, { type JobFile } from '@/mixins/jobs'
 import { EventBus } from '@/eventBus'
 import { jobTitle, readyChecks, type ReadyCheck } from '@/services/jobs/model'
 import { slicerPresence } from '@/services/slicer-bridge/slicerUrl'
+import { holdModels } from '@/services/slicer-bridge/handover'
 
 /**
  * After a file arrives, by drop or Upload. G-code: what it is, what to
  * know before it prints (what it was sliced for, its material, whether
- * the printer is free), and Print now or Add to queue. A model: it opens
- * in Slice, which this printer serves.
+ * the printer is free), and Print now or Add to queue. A model: Open Slice
+ * opens it in the slicer (services/slicer-bridge/handover.ts).
  */
 @Component({})
 export default class JobReadyDialog extends Mixins(JobsMixin) {
@@ -161,10 +162,24 @@ export default class JobReadyDialog extends Mixins(JobsMixin) {
     this.loadFiles()
   }
 
-  showModels (names: string[]) {
+  /** The model files dropped or picked: kept (not reactive) until Open Slice or the next drop. */
+  modelFiles: readonly File[] = []
+
+  showModels (files: File[]) {
     this.mode = 'model'
-    this.models = names
+    this.modelFiles = Object.freeze([...files])
+    this.models = files.map(f => f.name)
     this.open = true
+  }
+
+  /** Open Slice: the models go with it (KAN-2191), and /slice hands them to the slicer once it is welcomed. */
+  openInSlice () {
+    holdModels(this.modelFiles)
+    this.modelFiles = []
+    this.close()
+    this.$router.push(this.slicePath).catch(() => {})
+    // Already on /slice: the open page takes them now.
+    EventBus.bus.$emit('models-held')
   }
 
   close () {

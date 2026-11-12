@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Vendored from @muon3d/printer-client 0.4.0 (src/bridge/protocol.ts), Copyright 2026 Muon 3D
+// Vendored from @muon3d/printer-client 0.5.0 (src/bridge/protocol.ts), Copyright 2026 Muon 3D
 // Technologies Limited, under the Apache License 2.0 (vendor/printer-client/LICENSE and NOTICE). Changed for
 // Fluidd by tools/vendor-printer-client.cjs: relative imports without ".ts"; Object.hasOwn as hasOwnProperty.call.
 // printer-bridge/1: how a page that frames a printer client (the host: Fluidd, a reference host in the tests) and the
@@ -66,6 +66,12 @@
 // null makes a new print, an item's id a new version of it. A host's own failures are `not-signed-in`, `quota` (its
 // message says how much is used of what) and `console`. An old host never grants it, so a client never asks one; an
 // old client never asks, and the host's Library is as before.
+//
+// Models handed over (0.5.0, optional the same way): a client that lists `models.open` in its features hears the host's
+// event models.open, the model files the person dropped or picked in the host and chose to open in the client (each its
+// name and raw bytes). The client adds them as a drop on its own page would. It names no printer (null). A host sends
+// it only to a client whose hello listed the feature, so an old client is never sent bytes it would drop; an old host
+// never sends it, and the person adds the models with the client's own Add as before.
 import { CHECKSUM_RE } from '../multipart/build';
 import { unsafeNameReason } from '../multipart/names';
 import { cleanText, type ErrorKind, type PrinterError } from '../errors/kinds';
@@ -123,8 +129,13 @@ export const HOST_EVENTS = {
   'printer.setup': 'printer.setup',
   'library.status': 'library',
   'library.open': 'library',
+  // Granted by no capability: the host sends it only where the client's hello listed MODELS_OPEN_FEATURE.
+  'models.open': null,
 } as const;
 export type HostEventName = keyof typeof HOST_EVENTS;
+
+/** The feature a client lists in its hello to be sent models.open (0.5.0). */
+export const MODELS_OPEN_FEATURE = 'models.open';
 
 /** The events a client sends. */
 export const CLIENT_EVENTS = ['slicer.state', 'printer.material'] as const;
@@ -539,6 +550,17 @@ export interface LibraryProject {
 export interface LibraryOpen {
   item: string;
   version: number | null;
+}
+
+/** One model file of a models.open: its name (as the person's computer had it) and its bytes. */
+export interface ModelFile {
+  name: string;
+  bytes: ArrayBuffer;
+}
+
+/** models.open's data: the model files the person chose to open in the client (0.5.0). */
+export interface ModelsOpen {
+  files: ModelFile[];
 }
 
 // ---------------------------------------------------------------------------
@@ -1031,6 +1053,27 @@ export function parseLibraryOpen(value: unknown): LibraryOpen | null {
   const version = r.version === null || r.version === undefined ? null : r.version;
   if (version !== null && !isVersion(version)) return null;
   return { item: r.item, version };
+}
+
+/**
+ * models.open's data, or null: 1 to LIMITS.paths files, each a name (display text, at most LIMITS.printName, with no
+ * folder in it) and 1 or more bytes, all of them together at most LIMITS.uploadBytes.
+ */
+export function parseModelsOpen(value: unknown): ModelsOpen | null {
+  const r = record(value);
+  if (!r || !Array.isArray(r.files) || r.files.length < 1 || r.files.length > LIMITS.paths) return null;
+  const files: ModelFile[] = [];
+  let total = 0;
+  for (const entry of r.files) {
+    const f = record(entry);
+    if (!f || typeof f.name !== 'string' || /[\\/]/.test(f.name)) return null;
+    const name = displayText(f.name, LIMITS.printName);
+    if (!name || !(f.bytes instanceof ArrayBuffer) || f.bytes.byteLength < 1) return null;
+    total += f.bytes.byteLength;
+    if (total > LIMITS.uploadBytes) return null;
+    files.push({ name, bytes: f.bytes });
+  }
+  return { files };
 }
 
 /** A number of a save that may be unknown: null, or a finite number from 0. */

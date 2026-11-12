@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Vendored from @muon3d/printer-client 0.4.0 (src/bridge/host.ts), Copyright 2026 Muon 3D
+// Vendored from @muon3d/printer-client 0.5.0 (src/bridge/host.ts), Copyright 2026 Muon 3D
 // Technologies Limited, under the Apache License 2.0 (vendor/printer-client/LICENSE and NOTICE). Changed for
 // Fluidd by tools/vendor-printer-client.cjs: relative imports without ".ts"; Object.hasOwn as hasOwnProperty.call.
 // The host's side of printer-bridge/1 (protocol.ts), without a framework: the page that frames a printer client (Fluidd's
@@ -53,6 +53,9 @@
 //   frame as a failure, never as an answer the client must refuse. libraryStatus() and libraryOpen() send the events.
 //   A handler's PrinterError (`not-signed-in`, `quota`, `console` with the service's words) reaches the frame as it is;
 //   any other error as `console`, "The host could not do it".
+// - Models handed over (0.5.0): modelsOpen() sends the person's model files as models.open, read first, only to a
+//   client whose hello listed `models.open`, and says whether it did, so a host can tell the person to add them by
+//   hand in an older client.
 //
 // An adapter's error reaches the frame as it is only when it is a PrinterError (errors/kinds.ts), so a host that maps
 // its printer's answers with errors/parse.ts passes the printer's own words through. Any other error (a fetch's, a
@@ -70,6 +73,7 @@ import {
   CAPABILITIES_V1,
   commonVersion,
   LIMITS,
+  MODELS_OPEN_FEATURE,
   OPS,
   parseClientEvent,
   parseHello,
@@ -77,6 +81,7 @@ import {
   parseLibraryProject,
   parseLibrarySaved,
   parseLibraryStatus,
+  parseModelsOpen,
   parseRequest,
   type BridgeError,
   type BridgeObjects,
@@ -90,6 +95,7 @@ import {
   type LibrarySave,
   type LibrarySaved,
   type LibraryStatus,
+  type ModelsOpen,
   type OpRequest,
   type PlateClearAsk,
   type PrintDecision,
@@ -245,6 +251,11 @@ export interface BridgeHost {
   libraryStatus(status: LibraryStatus): void;
   /** The person chose "Open in Slice" for a print: library.open. Sent only where `library` was granted. */
   libraryOpen(open: LibraryOpen): void;
+  /**
+   * The person chose to open model files in the client (0.5.0): models.open, read first. Sent only to a client whose
+   * hello listed `models.open`; true when it was sent, false when there is no such client or the files are not ones.
+   */
+  modelsOpen(open: ModelsOpen): boolean;
   /** Whether a frame has been welcomed (and not closed since). */
   readonly connected: boolean;
   /** The features the welcomed client's hello listed; [] before a welcome and from a client that lists none. */
@@ -889,6 +900,17 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     },
     libraryStatus: (status) => libraryEvent('library.status', status, parseLibraryStatus),
     libraryOpen: (open) => libraryEvent('library.open', open, parseLibraryOpen),
+    modelsOpen(open) {
+      const s = session;
+      if (!s || closed || !s.features.includes(MODELS_OPEN_FEATURE)) return false;
+      const value = parseModelsOpen(open);
+      if (!value) {
+        log({ kind: 'ignored', why: 'a models.open that is not one' });
+        return false;
+      }
+      event(s, 'models.open', null, value);
+      return true;
+    },
     get connected() {
       return session !== null && !closed;
     },

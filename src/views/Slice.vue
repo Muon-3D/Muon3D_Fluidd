@@ -128,6 +128,7 @@ import { isBoundToPrinterTransport } from '@/services/managed-session/httpTransp
 import type { ConfirmAnswer, ConfirmRequest } from '@/services/slicer-bridge/vendor/printer-client/bridge/host'
 import { printerError } from '@/services/slicer-bridge/vendor/printer-client/errors/kinds'
 import { createFluiddLibrary } from '@/services/slicer-bridge/library'
+import { dropHeldModels, handOverModels, heldModels } from '@/services/slicer-bridge/handover'
 import { libraryStatus, refreshLibrary, watchLibraryAccount } from '@/services/library/store'
 import { EventBus } from '@/eventBus'
 import { isForeignSlug } from '@/services/printer-pages'
@@ -318,6 +319,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
   async mounted () {
     if (this.foreignPrinter) return
     window.addEventListener('beforeunload', this.handleBeforeUnload)
+    EventBus.bus.$on('models-held', this.openHeldModels)
     watchLibraryAccount()
     refreshLibrary().catch(() => {})
     if (!await probeSlicer(this.url)) return
@@ -414,12 +416,36 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
     if (material.colour && material.colour.toUpperCase() !== this.loadedColour) this.setLoadedColour(material.colour)
   }
 
+  /**
+   * Open Slice on a dropped or picked model (KAN-2191): once the slicer is
+   * welcomed, the held files go to it (models.open) and are let go, so a
+   * reload doesn't add them again. A slicer that predates models.open, or
+   * none that said hello, is sent nothing, and the person is told to use its
+   * Add model.
+   */
+  async openHeldModels () {
+    const names = heldModels().map(f => f.name)
+    if (!names.length || this.closed || !this.ready) return
+    let result = await handOverModels(this.host?.bridge)
+    if (result === 'none' && this.featuresSettled) {
+      dropHeldModels()
+      result = 'not-taken'
+    }
+    if (result === 'not-taken') {
+      EventBus.$emit(`This slicer can't take a model from here yet: add ${names.join(', ')} with Add model.`, { type: 'warning', timeout: 10000 })
+    }
+  }
+
+  /** The slicer's hello was welcomed, or it never will be: no models.open is coming. */
+  featuresSettled = false
+
   /** Once the slicer's hello is welcomed, whether it draws itself as a part of the page; then it shows. */
   watchFeatures (tries = 120) {
     if (this.closed || !this.host) return
     const features = this.host.bridge.clientFeatures
     if (features.length || tries <= 0) {
       this.partOfPage = features.includes('ui.look')
+      this.featuresSettled = true
       this.showWhenPainted()
       return
     }
@@ -431,6 +457,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
     requestAnimationFrame(() => requestAnimationFrame(() => {
       this.ready = true
       this.openFromLibrary()
+      this.openHeldModels()
     }))
   }
 
@@ -444,6 +471,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
     this.closed = true
     window.clearTimeout(this.readyTimer)
     window.removeEventListener('beforeunload', this.handleBeforeUnload)
+    EventBus.bus.$off('models-held', this.openHeldModels)
     this.stopWatching?.()
     this.styleObserver?.disconnect()
     cancelAnimationFrame(this.setupFrame)
