@@ -197,8 +197,8 @@
           >
             <span class="acct-row">
               <span class="acct-row__label">
-                <b class="acct-data-delete__title">Delete account</b>
-                <span>Your account, your Library and your access to every printer</span>
+                <b class="acct-data-delete__title">Delete account…</b>
+                <span>You'll be asked to unlink the printers you own first. Takes effect after 14 days; sign in to undo.</span>
               </span>
               <frame-icon
                 name="chevronRight"
@@ -206,6 +206,16 @@
               />
             </span>
           </router-link>
+          <p
+            class="acct-note acct-note--good"
+            data-tid="account-data-printer-note"
+          >
+            <frame-icon
+              name="printer"
+              small
+            />
+            <span><b>Data on a printer</b> stays on the printer. Each printer's own files and logs are under its Settings › System.</span>
+          </p>
         </template>
         <account-delete
           v-else-if="current.id === 'delete'"

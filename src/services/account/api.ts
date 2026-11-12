@@ -244,7 +244,8 @@ export const accountApi = {
   /** The plan, credits left and when they renew (the console's proxy of the model service). */
   plan: () => json<PlanSummary>('GET', '/v1/me/plan'),
   /** Asks for the data export to be built and emailed. Takes the same confirmation as deleting the account. 202; 409 one is open; 429 once a day. */
-  requestExport: (reauth: Reauth = {}) => json<ExportRequest>('POST', '/v1/me/exports', { ...reauth }),
+  requestExport: (reauth: Reauth = {}, choice: { parts?: string[], format?: string } = {}) =>
+    json<ExportRequest>('POST', '/v1/me/exports', { ...choice, ...reauth }),
   /** The last few export requests: a list, or `{exports: []}`. */
   exports: () => json<ExportRequest[] | { exports: ExportRequest[] }>('GET', '/v1/me/exports'),
 

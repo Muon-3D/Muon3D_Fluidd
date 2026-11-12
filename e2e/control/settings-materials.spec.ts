@@ -53,7 +53,7 @@ async function openSheet (page: Page, name: string) {
 /** The filament picker on Control, open. */
 async function openPicker (page: Page, open: (path: string) => Promise<void>) {
   await open(`${PRINTER}/control`)
-  await page.getByTestId('chip-filament').first().click()
+  await page.getByTestId('control-filament').getByTestId('filament-row').click()
   const picker = page.getByTestId('material-picker')
   await expect(picker).toBeVisible()
   return picker

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { buildGraphOption, type GraphLine } from '../graph-option'
 import type { SeriesDef } from '../series'
 
-const def = (over: Partial<SeriesDef>): SeriesDef => ({ key: 'extruder', object: 'extruder', field: 'temperature', label: 'Nozzle', group: 'Heaters', kind: 'temp', axis: 0, scale: 1, unit: '°C', color: '#ff8c42', defaultOn: true, ...over })
+const def = (over: Partial<SeriesDef>): SeriesDef => ({ key: 'extruder', object: 'extruder', field: 'temperature', label: 'Nozzle', group: 'Toolhead', kind: 'temp', axis: 0, scale: 1, unit: '°C', color: '#ff8c42', defaultOn: true, ...over })
 const base = { from: 0, to: 60000, dark: false, markers: [] as Array<{ at: number, label: string }> }
 
 describe('buildGraphOption', () => {

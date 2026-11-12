@@ -75,6 +75,27 @@ export function moveTile (layout: OverviewLayout, id: string, toIndex: number): 
   return { ...layout, tiles }
 }
 
+export interface Slot { id: string; left: number; top: number; width: number; height: number }
+
+/**
+ * Where a held tile goes when the pointer is over the grid but on no tile: the
+ * empty end of a row, the start of one, or above or below every tile. Returns
+ * the place among the other tiles (what `moveTile` takes), or null in a gap
+ * between rows. Slots are in layout order.
+ */
+export function dropIndex (slots: Slot[], id: string, x: number, y: number): number | null {
+  const others = slots.filter(s => s.id !== id)
+  if (!others.length) return null
+  const row = others.filter(s => y >= s.top && y < s.top + s.height)
+  if (row.length) {
+    const before = row.filter(s => s.left + s.width / 2 <= x)
+    return before.length ? others.indexOf(before[before.length - 1]) + 1 : others.indexOf(row[0])
+  }
+  if (y < Math.min(...others.map(s => s.top))) return 0
+  if (y >= Math.max(...others.map(s => s.top + s.height))) return others.length
+  return null
+}
+
 export function moveBy (layout: OverviewLayout, id: string, by: number): OverviewLayout {
   const from = layout.tiles.findIndex(t => t.id === id)
   return from < 0 ? layout : moveTile(layout, id, from + by)

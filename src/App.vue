@@ -138,7 +138,9 @@ import ConnectionBanner from './components/layout/ConnectionBanner.vue'
 import ConnectingScreen from './components/layout/ConnectingScreen.vue'
 import UpdatingScreen from './components/updates/UpdatingScreen.vue'
 import UpdateBanner from './components/updates/UpdateBanner.vue'
-import { printerLost, updateWatch, watchUpdates } from '@/services/updates/watch'
+import { installStarted, printerLost, updateWatch, watchUpdates } from '@/services/updates/watch'
+import { afterPrint, afterPrintDue, cancelAfterPrint, loadAfterPrint, otaComponent } from '@/services/updates/after-print'
+import { SocketActions } from '@/api/socketActions'
 import { bannerVisible, offlineScreen } from '@/services/updates/model'
 import { printerNameParts } from '@/util/printer-name'
 import { connectionView, type ConnectionView } from '@/services/connection/view'
@@ -352,6 +354,24 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
 
   watchPrinterUpdates () {
     watchUpdates(activeSlug() ?? String(this.$store.state.config.apiUrl ?? ''), url => this.$httpClient.get(url, { validateStatus: () => true }))
+  }
+
+  /** "Install after this print": what it waits on. */
+  get afterPrintKey (): string {
+    return [updateWatch.printer, this.printerState, updateWatch.status?.target_version ?? '', afterPrint.printer, afterPrint.queued?.at ?? ''].join('|')
+  }
+
+  @Watch('afterPrintKey')
+  onAfterPrint () {
+    if (!updateWatch.printer || !updateWatch.answered) return
+    const queued = loadAfterPrint(updateWatch.printer)
+    if (!queued) return
+    const due = afterPrintDue(queued, this.printerState, updateWatch.status, Date.now())
+    if (due === 'drop') cancelAfterPrint()
+    if (due !== 'install' || !this.socketConnected || !this.klippyConnected) return
+    cancelAfterPrint()
+    SocketActions.machineUpdateClient(otaComponent(this.$store.state.version.version_info))
+    installStarted(queued.from, queued.to)
   }
 
   get displayName (): string {
@@ -738,11 +758,13 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
 
           this.$store.dispatch('wait/addWait', wait)
 
-          await this.uploadFiles(rest, path, root, false)
+          const uploaded = await this.uploadFiles(rest, path, root, false)
 
           this.$store.dispatch('wait/removeWait', wait)
 
-          const gcodes = rest.filter(f => isGcodeFile(f.file.name) && !f.path)
+          // Only a file that really uploaded is offered to print.
+          const gcodes = rest.filter(f => isGcodeFile(f.file.name) && !f.path &&
+            uploaded !== false && uploaded.includes(path ? `${path}/${f.file.name}` : f.file.name))
           if (root === 'gcodes' && gcodes.length === 1) {
             EventBus.bus.$emit('job-ready', path ? `${path}/${gcodes[0].file.name}` : gcodes[0].file.name)
           }

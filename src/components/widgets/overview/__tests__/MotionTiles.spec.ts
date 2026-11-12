@@ -30,18 +30,18 @@ describe('PositionTile', () => {
     w.destroy()
   })
 
-  it('homes from the popover, and refuses while printing', async () => {
+  it('homes Z only from the popover (Home all is on the Trackpad), and refuses while printing', async () => {
     const w = m(PositionTile, tileStore())
     await w.find('[data-tid="tile-door"]').trigger('click')
-    await w.find('[data-tid="home-xy"]').trigger('click')
+    expect(w.find('[data-tid="home-xy"]').exists()).toBe(false)
+    expect(w.find('[data-tid="home-all"]').exists()).toBe(false)
     await w.find('[data-tid="home-z"]').trigger('click')
-    await w.find('[data-tid="home-all"]').trigger('click')
-    expect(sent()).toEqual(['G28', 'G28 Z', 'G28'])
+    expect(sent()).toEqual(['G28 Z'])
     w.destroy()
     resetSocket()
     const busy = m(PositionTile, tileStore({ printing: true }))
     await busy.find('[data-tid="tile-door"]').trigger('click')
-    expect(busy.find('[data-tid="home-xy"]').attributes('disabled')).toBeDefined()
+    expect(busy.find('[data-tid="home-z"]').attributes('disabled')).toBeDefined()
     busy.destroy()
   })
 
@@ -138,10 +138,11 @@ describe('JogTile', () => {
     w.destroy()
   })
 
-  it('homes all axes from the middle button', async () => {
+  it('has no Home all: the middle is an inert spot (Home all is on the Trackpad)', async () => {
     const w = m(JogTile, tileStore())
-    await w.find('[data-jog="home"]').trigger('click')
-    expect(sent()).toEqual(['G28'])
+    expect(w.find('button[data-jog="home"]').exists()).toBe(false)
+    await w.find('[data-jog="centre"]').trigger('click')
+    expect(sent()).toEqual([])
     w.destroy()
   })
 

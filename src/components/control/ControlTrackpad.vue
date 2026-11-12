@@ -253,8 +253,11 @@ export default class ControlTrackpad extends Mixins(PredictedHeadMixin) {
     }
   }
 
+  /* Disabled (a print or homing is moving the printer, or it is not homed): greyed out, still there. */
   .tpad--off {
     cursor: default;
+    opacity: 0.45;
+    filter: grayscale(1);
   }
 
   .tpad__watermark {
