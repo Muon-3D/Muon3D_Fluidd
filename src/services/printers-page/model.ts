@@ -39,6 +39,8 @@ export interface PrinterTile {
   job: TileJob | null;
   /** The group it is in, for the printing cards. */
   groupName: string | null;
+  /** Who shared it with you, on a printer shared with you (never an address). */
+  sharedBy?: string | null;
 }
 
 export interface TileGroup {
@@ -195,7 +197,9 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
   } else {
     detail = e.detail
   }
+  const sharedBy = e.cloud?.shared ? e.cloud.sharer?.display_name ?? e.cloud.shared_by ?? 'someone' : null
   return {
+    sharedBy,
     key: e.key,
     entry: e,
     name: parts.name,
@@ -266,12 +270,20 @@ export function printersPage (src: PageSources): PrintersPage {
     members.forEach(e => grouped.add(e.key))
     groups.push(group(g.id, g.name, place(members.map(e => tileFor(e, src, g.name)), true), true))
   }
+  // Shared with you (KAN-2257, control-ctx): a printer someone shared with
+  // you and you haven't put in one of your groups has its own place, each
+  // tagged with who shared it.
+  const shared = cloud.filter(e => !grouped.has(e.key) && !!e.cloud?.shared)
+  shared.forEach(e => grouped.add(e.key))
   const ungrouped = cloud.filter(e => !grouped.has(e.key))
   // Kept, even empty, while groups hold printers: it is where a printer is
   // dragged to take it out of its group.
-  if (ungrouped.length || (src.groups.length && cloud.length)) {
+  if (ungrouped.length || (src.groups.length && cloud.length > shared.length)) {
     const name = src.groups.length ? 'Not in a group' : 'Your printers'
     groups.push(group('ungrouped', name, place(ungrouped.map(e => tileFor(e, src, null))), false))
+  }
+  if (shared.length) {
+    groups.push(group('shared', 'Shared with you', place(shared.map(e => tileFor(e, src, null)), true), false))
   }
   if (src.directory.local.length) {
     groups.push(group('saved', 'Saved in this browser', place(src.directory.local.map(e => tileFor(e, src, null))), false))

@@ -79,7 +79,7 @@
 
       <!-- Printing now leads: a printer shows in one place, so groups say which of theirs print above. -->
       <printers-section
-        v-if="printingNow.length"
+        v-if="printingNow.length && view !== 'bench'"
         title="Printing now"
         :count="printingNow.length"
         :note="nextToFinish || ''"
@@ -118,170 +118,323 @@
       </printers-section>
 
       <!-- Your groups, then the printers saved in this browser. -->
-      <printers-section
-        v-for="g in shownGroups"
-        :key="g.id"
-        :count="filtered(g.tiles).length"
-        :note="groupNote(g)"
-        :class="{ 'printers__section--drop': dropTarget === g.id }"
-        :data-tid="`group-${g.id}`"
-        @dragover.native.prevent="onDragOver(g)"
-        @dragleave.native="dropTarget = null"
-        @drop.native.prevent="onDrop(g)"
-      >
-        <template #title>
-          <input
-            v-if="renaming === g.id"
-            ref="rename"
-            class="printers__rename"
-            :value="g.name"
-            aria-label="Group name"
-            @keydown.enter="finishRename(g.id, $event)"
-            @keydown.esc="renaming = null"
-            @blur="finishRename(g.id, $event)"
-          >
-          <h2
-            v-else
-            class="printers__group-name"
-          >
-            {{ g.name }}
-          </h2>
-        </template>
-        <template #actions>
-          <v-menu
-            v-if="g.editable"
-            left
-            offset-y
-          >
-            <template #activator="{ on, attrs }">
-              <button
-                type="button"
-                class="icon-btn"
-                aria-label="Group options"
-                v-bind="attrs"
-                v-on="on"
-              >
-                <frame-icon name="more" />
-              </button>
-            </template>
-            <v-list dense>
-              <v-list-item @click="startRename(g.id)">
-                <v-list-item-title>Rename</v-list-item-title>
-              </v-list-item>
-              <v-list-item @click="removeGroup(g.id)">
-                <v-list-item-title class="error--text">
-                  Remove group
-                </v-list-item-title>
-              </v-list-item>
-            </v-list>
-          </v-menu>
-        </template>
-
-        <div :class="gridClass">
-          <printer-tile-card
+      <!-- The Bench (KAN-2257, control-ctx): each group is a bench, the printers drawn standing on it. -->
+      <template v-if="view === 'bench'">
+        <printer-bench
+          v-for="g in shownGroups"
+          :key="g.id"
+          :bench-id="g.id"
+          :kind="g.id === 'shared' ? 'shelf' : 'bench'"
+          :title="g.name"
+          :tiles="filtered(g.tiles)"
+          :over="dropTarget === g.id"
+          :data-tid="`group-${g.id}`"
+          @dragover.native.prevent="onDragOver(g)"
+          @dragleave.native="dropTarget = null"
+          @drop.native.prevent="onDrop(g)"
+        >
+          <template #title>
+            <input
+              v-if="renaming === g.id"
+              ref="rename"
+              class="printers__rename"
+              :value="g.name"
+              aria-label="Bench name"
+              @keydown.enter="finishRename(g.id, $event)"
+              @keydown.esc="renaming = null"
+              @blur="finishRename(g.id, $event)"
+            >
+            <h2
+              v-else
+              class="printers__bench-name"
+            >
+              {{ g.name }}
+            </h2>
+          </template>
+          <template #actions>
+            <v-menu
+              v-if="g.editable"
+              left
+              offset-y
+            >
+              <template #activator="{ on, attrs }">
+                <button
+                  type="button"
+                  class="icon-btn"
+                  aria-label="Bench options"
+                  v-bind="attrs"
+                  v-on="on"
+                >
+                  <frame-icon name="more" />
+                </button>
+              </template>
+              <v-list dense>
+                <v-list-item @click="startRename(g.id)">
+                  <v-list-item-title>Rename</v-list-item-title>
+                </v-list-item>
+                <v-list-item @click="removeGroup(g.id)">
+                  <v-list-item-title class="error--text">
+                    Remove bench
+                  </v-list-item-title>
+                </v-list-item>
+              </v-list>
+            </v-menu>
+          </template>
+          <bench-printer
             v-for="tile in filtered(g.tiles)"
             :key="tile.key"
             :tile="tile"
-            :variant="tileVariant"
-            :stage-height="150"
-            :actions="actionsFor(tile.entry)"
-            :busy="busyKey === tile.key"
+            :actions="benchActions(tile)"
             :draggable="canGroup && !!tile.entry.cloud"
+            :draw-on="drawOn"
             @open="openEntry(tile.entry)"
-            @action="onAction(tile.entry, $event)"
+            @action="onBenchAction(tile, $event)"
             @dragstart="onDragStart(tile)"
             @dragend="onDragEnd"
           />
-          <div
-            v-if="(g.editable || g.id === 'ungrouped') && (dragging || !g.tiles.length)"
-            class="drop-hint"
-          >
-            <frame-icon name="plus" />
-            <span>{{ dropHint(g) }}</span>
-          </div>
+        </printer-bench>
+        <div
+          v-if="canGroup && !query"
+          class="printers__new-bench"
+          :class="{ 'printers__new-bench--over': dropTarget === newBench }"
+          data-tid="new-bench"
+          @dragenter.prevent="onDragOverNew"
+          @dragover.prevent="onDragOverNew"
+          @dragleave="dropTarget = null"
+          @drop.prevent="onDropNew"
+          @click="addGroup"
+        >
+          <svg
+            viewBox="0 0 300 40"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          ><path d="M6 12H294M22 12V38M278 12V38" /></svg>
+          <span>+ New bench</span>
+          <small>Drop a printer here to start one</small>
         </div>
-      </printers-section>
-
-      <!-- Nothing matches: say so, and how to get back. -->
-      <div
-        v-if="!deletionPending && query && !anyShown"
-        class="printers__none"
-        data-tid="printers-none"
-      >
-        <span class="printers__none-icon"><frame-icon name="search" /></span>
-        <b>No printer matches "{{ query }}"</b>
-        <span>Search looks at a printer's name, state and group.</span>
-        <button
-          type="button"
-          class="btn btn--sm"
-          @click="query = ''"
-        >
-          Clear search
-        </button>
-      </div>
-
-      <!-- Found on this network: hidden when nothing is found. -->
-      <printers-section
-        v-if="foundShown.length"
-        title="Found on this network"
-        :count="foundShown.length"
-        data-tid="found"
-      >
-        <template #actions>
-          <span
-            v-if="searching"
-            class="printers__looking"
-          >
-            <v-progress-circular
-              indeterminate
-              size="11"
-              width="2"
-            />
-            Looking{{ scanNetwork ? ` on ${scanNetwork}` : '' }}…
-          </span>
-        </template>
-        <found-list
+        <printer-bench
+          v-if="foundShown.length"
+          bench-id="found"
+          kind="door"
+          title="Found nearby · not yours yet"
+          caption="They wait here until you add them. Nothing is sent to them."
           :tiles="foundShown"
-          :actions-for="foundActionsFor"
-          :busy-key="busyKey"
-          @action="onFoundRow"
-        />
-      </printers-section>
-
-      <printers-section
-        v-if="otherShown.length"
-        title="Other brands"
-        :count="otherShown.length"
-        note="Not M1s, saved in this browser only. They never go through Muon3D's servers."
-        data-tid="other-printers"
-      >
-        <p
-          v-if="mixedContentBlocked"
-          class="foreign-warning"
+          data-tid="found"
         >
-          Firefox and Safari block this page (https) from talking to a printer on plain http — that's mixed content. Chrome can reach printers on your network: open Control in Chrome.
-        </p>
-        <other-printers
+          <bench-printer
+            v-for="tile in foundShown"
+            :key="tile.key"
+            :tile="tile"
+            :actions="foundOne(tile)"
+            found
+            :draw-on="drawOn"
+            @action="onFoundRow(tile, $event)"
+          />
+        </printer-bench>
+        <printer-bench
+          v-if="otherShown.length"
+          bench-id="other"
+          kind="shelf"
+          title="Other brands"
           :tiles="otherShown"
-          @open="openForeign"
-          @forget="forgetForeignPrinter"
-        />
-      </printers-section>
-
-      <!-- Offline is last and dimmed, with its reason. -->
-      <printers-section
-        v-if="offlineShown.length"
-        title="Offline"
-        :count="offlineShown.length"
-        muted
-        data-tid="offline"
-      >
-        <offline-list
+          data-tid="other-printers"
+        >
+          <bench-printer
+            v-for="tile in otherShown"
+            :key="tile.key"
+            :tile="tile"
+            :actions="[{ id: 'open', label: 'Open' }]"
+            :draw-on="drawOn"
+            @open="openForeign(tile)"
+            @action="openForeign(tile)"
+          />
+        </printer-bench>
+        <printer-bench
+          v-if="offlineShown.length"
+          bench-id="offline"
+          kind="shelf"
+          title="Offline"
           :tiles="offlineShown"
-          :actions-for="offlineActionsFor"
-          @action="onOfflineRow"
-        />
-      </printers-section>
+          data-tid="offline"
+        >
+          <bench-printer
+            v-for="tile in offlineShown"
+            :key="tile.key"
+            :tile="tile"
+            :actions="benchActions(tile)"
+            :draw-on="drawOn"
+            @open="openEntry(tile.entry)"
+            @action="onBenchAction(tile, $event)"
+          />
+        </printer-bench>
+      </template>
+
+      <template v-else>
+        <printers-section
+          v-for="g in shownGroups"
+          :key="g.id"
+          :count="filtered(g.tiles).length"
+          :note="groupNote(g)"
+          :class="{ 'printers__section--drop': dropTarget === g.id }"
+          :data-tid="`group-${g.id}`"
+          @dragover.native.prevent="onDragOver(g)"
+          @dragleave.native="dropTarget = null"
+          @drop.native.prevent="onDrop(g)"
+        >
+          <template #title>
+            <input
+              v-if="renaming === g.id"
+              ref="rename"
+              class="printers__rename"
+              :value="g.name"
+              aria-label="Group name"
+              @keydown.enter="finishRename(g.id, $event)"
+              @keydown.esc="renaming = null"
+              @blur="finishRename(g.id, $event)"
+            >
+            <h2
+              v-else
+              class="printers__group-name"
+            >
+              {{ g.name }}
+            </h2>
+          </template>
+          <template #actions>
+            <v-menu
+              v-if="g.editable"
+              left
+              offset-y
+            >
+              <template #activator="{ on, attrs }">
+                <button
+                  type="button"
+                  class="icon-btn"
+                  aria-label="Group options"
+                  v-bind="attrs"
+                  v-on="on"
+                >
+                  <frame-icon name="more" />
+                </button>
+              </template>
+              <v-list dense>
+                <v-list-item @click="startRename(g.id)">
+                  <v-list-item-title>Rename</v-list-item-title>
+                </v-list-item>
+                <v-list-item @click="removeGroup(g.id)">
+                  <v-list-item-title class="error--text">
+                    Remove group
+                  </v-list-item-title>
+                </v-list-item>
+              </v-list>
+            </v-menu>
+          </template>
+
+          <div :class="gridClass">
+            <printer-tile-card
+              v-for="tile in filtered(g.tiles)"
+              :key="tile.key"
+              :tile="tile"
+              :variant="tileVariant"
+              :stage-height="150"
+              :actions="actionsFor(tile.entry)"
+              :busy="busyKey === tile.key"
+              :draggable="canGroup && !!tile.entry.cloud"
+              @open="openEntry(tile.entry)"
+              @action="onAction(tile.entry, $event)"
+              @dragstart="onDragStart(tile)"
+              @dragend="onDragEnd"
+            />
+            <div
+              v-if="(g.editable || g.id === 'ungrouped') && (dragging || !g.tiles.length)"
+              class="drop-hint"
+            >
+              <frame-icon name="plus" />
+              <span>{{ dropHint(g) }}</span>
+            </div>
+          </div>
+        </printers-section>
+
+        <!-- Nothing matches: say so, and how to get back. -->
+        <div
+          v-if="!deletionPending && query && !anyShown"
+          class="printers__none"
+          data-tid="printers-none"
+        >
+          <span class="printers__none-icon"><frame-icon name="search" /></span>
+          <b>No printer matches "{{ query }}"</b>
+          <span>Search looks at a printer's name, state and group.</span>
+          <button
+            type="button"
+            class="btn btn--sm"
+            @click="query = ''"
+          >
+            Clear search
+          </button>
+        </div>
+
+        <!-- Found nearby, not yours yet: hidden when nothing is found. -->
+        <printers-section
+          v-if="foundShown.length"
+          title="Found nearby · not yours yet"
+          :count="foundShown.length"
+          data-tid="found"
+        >
+          <template #actions>
+            <span
+              v-if="searching"
+              class="printers__looking"
+            >
+              <v-progress-circular
+                indeterminate
+                size="11"
+                width="2"
+              />
+              Looking{{ scanNetwork ? ` on ${scanNetwork}` : '' }}…
+            </span>
+          </template>
+          <found-list
+            :tiles="foundShown"
+            :actions-for="foundActionsFor"
+            :busy-key="busyKey"
+            @action="onFoundRow"
+          />
+        </printers-section>
+
+        <printers-section
+          v-if="otherShown.length"
+          title="Other brands"
+          :count="otherShown.length"
+          note="Not M1s, saved in this browser only. They never go through Muon3D's servers."
+          data-tid="other-printers"
+        >
+          <p
+            v-if="mixedContentBlocked"
+            class="foreign-warning"
+          >
+            Firefox and Safari block this page (https) from talking to a printer on plain http — that's mixed content. Chrome can reach printers on your network: open Control in Chrome.
+          </p>
+          <other-printers
+            :tiles="otherShown"
+            @open="openForeign"
+            @forget="forgetForeignPrinter"
+          />
+        </printers-section>
+
+        <!-- Offline is last and dimmed, with its reason. -->
+        <printers-section
+          v-if="offlineShown.length"
+          title="Offline"
+          :count="offlineShown.length"
+          muted
+          data-tid="offline"
+        >
+          <offline-list
+            :tiles="offlineShown"
+            :actions-for="offlineActionsFor"
+            @action="onOfflineRow"
+          />
+        </printers-section>
+      </template>
 
       <div
         v-if="!account"
@@ -419,6 +572,8 @@ import BluetoothSetupDialog from '@/components/muon-ble/BluetoothSetupDialog.vue
 import AccessRequestDialog from '@/components/muon-access/AccessRequestDialog.vue'
 import PrintersHeader from '@/components/printers/PrintersHeader.vue'
 import PrintersSection from '@/components/printers/PrintersSection.vue'
+import PrinterBench from '@/components/printers/PrinterBench.vue'
+import BenchPrinter, { type BenchAction } from '@/components/printers/BenchPrinter.vue'
 import PrintersWelcome from '@/components/printers/PrintersWelcome.vue'
 import AddPrinterSheet from '@/components/printers/AddPrinterSheet.vue'
 import FoundList from '@/components/printers/FoundList.vue'
@@ -431,7 +586,7 @@ import { liveForeign, loadForeign, connectAll, forget as forgetForeign } from '@
 import { blocksForeignHttp } from '@/util/browser-family'
 import { pageBlocksPrinter } from '@/util/page-blocks-printer'
 
-type View = 'cards' | 'list'
+type View = 'cards' | 'list' | 'bench'
 
 /** How often the printers already known are asked again while the page is open. */
 const HEALTH_EVERY_MS = 15_000
@@ -441,7 +596,8 @@ const VIEW_KEY = 'muon3d.printers.view'
 
 function readView (): View {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'cards'
+    const v = localStorage.getItem(VIEW_KEY)
+    return v === 'list' || v === 'bench' ? v : 'cards'
   } catch {
     return 'cards'
   }
@@ -463,6 +619,8 @@ function readView (): View {
     AccessRequestDialog,
     PrintersHeader,
     PrintersSection,
+    PrinterBench,
+    BenchPrinter,
     PrintersWelcome,
     AddPrinterSheet,
     FoundList,
@@ -477,6 +635,9 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
   /** A print control was just used: the next one waits a moment (a double click is one). */
   controlBusy = false
   view: View = readView()
+  /** The Bench's drawings draw themselves on the first arrival only, not on every refresh. */
+  drawOn = true
+  readonly newBench = 'new-bench'
   addSheetOpen = false
   dragging: string | null = null
   dropTarget: string | null = null
@@ -487,6 +648,8 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
   statusTimer: (() => void) | null = null
 
   created () {
+    // The drawings draw themselves as the page arrives, then stay drawn.
+    window.setTimeout(() => { this.drawOn = false }, 1500)
     loadForeign().then(() => connectAll()).catch(() => {})
     if (new URLSearchParams(location.search).get('addPrinter') === '1') this.instanceDialogOpen = true
     // The console's list of printers on this network is one request, and its
@@ -844,6 +1007,55 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
     if (this.dragging && (g.editable || g.id === 'ungrouped')) this.dropTarget = g.id
   }
 
+  // -- the Bench --------------------------------------------------------------
+
+  /** On hover: Open, and what the printer most likely wants next, where Control can do it. */
+  benchActions (tile: PrinterTile): BenchAction[] {
+    const actions: BenchAction[] = [{ id: 'open', label: 'Open' }]
+    if (tile.entry.active && tile.state === 'printing') actions.push({ id: 'pause', label: 'Pause', disabled: this.controlBusy })
+    else if (tile.entry.active && tile.state === 'paused') actions.push({ id: 'resume', label: 'Resume', disabled: this.controlBusy })
+    return actions
+  }
+
+  onBenchAction (tile: PrinterTile, id: string) {
+    if (id === 'open') return this.openEntry(tile.entry)
+    if (id === 'pause') return this.control(this.pausePrint)
+    if (id === 'resume') return this.control(this.resumePrint)
+  }
+
+  /**
+   * A printer found nearby that isn't yours has exactly one thing to do with
+   * it: Set up a new one, Add one that is set up and linked to no one, or ask
+   * the owner of one in another account.
+   */
+  foundOne (tile: PrinterTile): BenchAction[] {
+    const e = tile.entry
+    if (e.row?.action === 'set-up') return [{ id: 'set-up', label: 'Set up' }]
+    const actions = this.foundActions(e)
+    const ask = actions.find(a => a.id === 'ask')
+    if (ask) return [{ id: 'ask', label: 'Ask its owner', disabled: ask.disabled }]
+    const link = actions.find(a => a.id === 'link')
+    if (link) return [{ id: 'link', label: 'Add', disabled: link.disabled }]
+    const connect = actions.find(a => a.id === 'connect')
+    if (connect) return [{ id: 'connect', label: 'Add', disabled: connect.disabled }]
+    return []
+  }
+
+  onDragOverNew () {
+    if (this.dragging) this.dropTarget = this.newBench
+  }
+
+  /** Dropped on "New bench": a new bench with this printer on it, named for renaming. */
+  onDropNew () {
+    const id = this.dragging
+    this.onDragEnd()
+    if (!id) return
+    const groupId = `g${Date.now().toString(36)}`
+    const groups = cloudState.layout.groups.map(x => ({ ...x, printers: x.printers.filter(p => p !== id) }))
+    this.persistGroups([...groups, { id: groupId, name: `Bench ${groups.length + 1}`, printers: [id] }])
+    this.startRename(groupId)
+  }
+
   /** Into one of your groups, or out of them all onto Not in a group. */
   onDrop (g: TileGroup) {
     const id = this.dragging
@@ -943,6 +1155,66 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
 
   .printers--phone .printers__group-name {
     font-size: 17px;
+  }
+
+  .printers__bench-name {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  // "New bench": a faint dashed bench with no box, which takes a dropped printer.
+  .printers__new-bench {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    margin-bottom: 14px;
+    padding: 12px 20px 14px;
+    color: var(--m3d-text-muted);
+    cursor: copy;
+    transition:
+      color var(--m3d-motion-base) var(--m3d-ease-standard),
+      transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy);
+
+    svg {
+      width: 100%;
+      height: 40px;
+      fill: none;
+      stroke: var(--m3d-border);
+      stroke-width: 2;
+      stroke-dasharray: 7 6;
+      stroke-linecap: round;
+      transition: stroke var(--m3d-motion-base) var(--m3d-ease-standard);
+
+      path { vector-effect: non-scaling-stroke; }
+    }
+
+    span {
+      margin-top: -34px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: var(--m3d-bg);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    small {
+      color: var(--m3d-text-subtle);
+      font-size: 11.5px;
+    }
+
+    &:hover,
+    &.printers__new-bench--over {
+      color: var(--m3d-accent);
+
+      svg { stroke: var(--m3d-accent); }
+    }
+
+    &.printers__new-bench--over { transform: scale(1.01); }
+
+    // Only the bench itself takes the drag: moving over its words or line
+    // would fire a dragleave and drop the highlight.
+    > * { pointer-events: none; }
   }
 
   .printers__rename {

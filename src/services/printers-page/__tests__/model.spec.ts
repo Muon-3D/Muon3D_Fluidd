@@ -267,6 +267,28 @@ describe('the Printers page', () => {
     expect(page.groups.map(g => [g.name, g.tiles.length])).toEqual([['Workshop', 1], ['Not in a group', 0]])
   })
 
+  it('puts printers shared with you in their own group, each tagged with who shared it', () => {
+    const shared = (id: string, name: string, by: string) => cloudEntry(id, name, { cloud: { ...cloudPrinter(id, name), shared: true, role: 'operator', sharer: { account_id: `a-${by}`, display_name: by } } })
+    const page = printersPage(sources({
+      signedIn: true,
+      directory: { cloud: [cloudEntry('b', 'Boxwood'), shared('e', 'Elder', 'Mara'), shared('j', 'Juniper', 'Tom')], local: [], found: [] },
+      groups: [{ id: 'g1', name: 'Workshop', printers: ['b'] }]
+    }))
+    expect(page.groups.map(g => [g.name, names(g.tiles)])).toEqual([['Workshop', ['Boxwood']], ['Not in a group', []], ['Shared with you', ['Elder', 'Juniper']]])
+    expect(page.groups[2].tiles.map(t => t.sharedBy)).toEqual(['Mara', 'Tom'])
+    expect(page.groups[0].tiles[0].sharedBy).toBeNull()
+  })
+
+  it('keeps a shared printer you put in one of your groups there, still tagged', () => {
+    const page = printersPage(sources({
+      signedIn: true,
+      directory: { cloud: [cloudEntry('e', 'Elder', { cloud: { ...cloudPrinter('e', 'Elder'), shared: true, shared_by: 'Mara' } })], local: [], found: [] },
+      groups: [{ id: 'g1', name: 'Workshop', printers: ['e'] }]
+    }))
+    expect(page.groups.map(g => g.name)).toEqual(['Workshop', 'Not in a group'])
+    expect(page.groups[0].tiles[0].sharedBy).toBe('Mara')
+  })
+
   it('still counts a printer that answered with a fault', () => {
     const page = printersPage(sources({
       signedIn: true,
