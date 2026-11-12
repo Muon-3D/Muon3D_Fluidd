@@ -9,6 +9,7 @@
  * network name. Until the name is known, a drawn placeholder holds its place.
  */
 import { test, expect } from '../fixtures'
+import { MOCK_PORT } from '../ports'
 import type { Page } from '@playwright/test'
 
 interface Seen { at: number; where: string; text: string }
@@ -33,13 +34,28 @@ async function watchNames (page: Page) {
   })
 }
 
+// A printer that is slow to answer (Boxwood, Jack: "it takes a while to
+// stabilise"): Control's shell draws before the printer has said anything.
+async function slowPrinter (page: Page, ms = 2500) {
+  const printer = new RegExp(`//(localhost|127\.0\.0\.1):${MOCK_PORT}/`)
+  await page.route(printer, async route => {
+    await new Promise(resolve => setTimeout(resolve, ms))
+    await route.fallback()
+  })
+  await page.routeWebSocket(printer, async ws => {
+    await new Promise(resolve => setTimeout(resolve, ms))
+    ws.connectToServer()
+  })
+}
+
 const seen = (page: Page) => page.evaluate(() => (window as unknown as { __seen: Seen[] }).__seen)
 
 test('loading names the printer only with its name, and never says offline while connecting', async ({ page, open }) => {
   await watchNames(page)
+  await slowPrinter(page)
   await open('/')
   await expect(page.locator('.printer-switch__name').first()).toHaveText(/Boxwood/)
-  await expect.poll(() => page.title()).toMatch(/Boxwood \| Overview$/)
+  await expect(page.locator('.printer-switch__status-text').first()).toHaveText(/Printing/)
   const all = await seen(page)
   const names = all.filter(s => s.where === 'name').map(s => s.text)
   const statuses = all.filter(s => s.where === 'status').map(s => s.text)
@@ -54,6 +70,7 @@ test('loading names the printer only with its name, and never says offline while
   for (const t of titles) {
     expect(t).not.toMatch(/null|Dashboard|muon-boxwood-367a/)
   }
+  await expect.poll(() => page.title()).toMatch(/Boxwood \| Overview$/)
 })
 
 test('the tab title uses the page names people see', async ({ page, open }) => {
