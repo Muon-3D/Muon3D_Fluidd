@@ -28,7 +28,16 @@
             class="app-page-header__title"
             data-tid="page-title"
           >
-            {{ title }}
+            <span
+              v-if="titlePending"
+              class="app-page-header__pending"
+              role="img"
+              aria-label="Finding the printer's name"
+              data-tid="page-title-pending"
+            />
+            <template v-else>
+              {{ title }}
+            </template>
           </h1>
           <tone-pill
             v-if="overviewHome"
@@ -158,6 +167,11 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
   /** Charts, under Overview: the shared time range and Add chart sit in its header. */
   get chartsHome (): boolean {
     return this.currentPage === '/diagnostics' && !this.foreignRecord
+  }
+
+  /** Overview is titled with the printer's name: a placeholder until it is known (KAN-2257). */
+  get titlePending (): boolean {
+    return this.overviewHome && !this.foreignRecord && !this.nameKnown
   }
 
   get title (): string {
@@ -346,6 +360,33 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
 </script>
 
 <style lang="scss" scoped>
+  // The printer's name, while it isn't known: a drawn line the height of the
+  // title, with the loading sheen (transform only).
+  .app-page-header__pending {
+    position: relative;
+    display: inline-block;
+    width: 7em;
+    max-width: 60vw;
+    height: 0.62em;
+    border-radius: 0.31em;
+    overflow: hidden;
+    vertical-align: middle;
+    background: var(--m3d-fill, rgb(128 128 128 / 20%));
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 20%, rgb(255 255 255 / 14%) 50%, transparent 80%);
+      animation: app-page-header-sheen 1.4s var(--m3d-ease-standard, ease) infinite;
+    }
+  }
+
+  @keyframes app-page-header-sheen {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
+
   .app-page-header__back {
     display: inline-flex;
     flex: none;

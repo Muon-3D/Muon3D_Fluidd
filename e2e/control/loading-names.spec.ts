@@ -28,6 +28,7 @@ async function watchNames (page: Page) {
       document.querySelectorAll('.printer-switch__name').forEach(e => add('name', (e.textContent || '').trim()))
       document.querySelectorAll('.printer-switch__status-text').forEach(e => add('status', (e.textContent || '').trim()))
       if (document.querySelector('[data-tid="printer-name-pending"]')) add('name', '(placeholder)')
+      document.querySelectorAll('[data-tid="page-title"]').forEach(e => add('heading', e.querySelector('[data-tid="page-title-pending"]') ? '(placeholder)' : (e.textContent || '').trim()))
     }
     new MutationObserver(look).observe(document, { subtree: true, childList: true, characterData: true, attributes: true })
     ;(window as unknown as { __seen: Seen[] }).__seen = seen
@@ -37,7 +38,7 @@ async function watchNames (page: Page) {
 // A printer that is slow to answer (Boxwood, Jack: "it takes a while to
 // stabilise"): Control's shell draws before the printer has said anything.
 async function slowPrinter (page: Page, ms = 2500) {
-  const printer = new RegExp(`//(localhost|127\.0\.0\.1):${MOCK_PORT}/`)
+  const printer = new RegExp(`//(localhost|127[.]0[.]0[.]1):${MOCK_PORT}/`)
   await page.route(printer, async route => {
     await new Promise(resolve => setTimeout(resolve, ms))
     await route.fallback()
@@ -64,6 +65,8 @@ test('loading names the printer only with its name, and never says offline while
 
   // The name: a placeholder, then the real one, and nothing else.
   for (const n of names) expect(['(placeholder)', 'Boxwood']).toContain(n)
+  // Overview's heading is the printer's name: the same rule.
+  for (const h of all.filter(s => s.where === 'heading').map(s => s.text)) expect(['(placeholder)', 'Boxwood']).toContain(h)
   // The state: never a false "Offline" or "Klipper offline" while connecting.
   for (const s of statuses) expect(s).not.toMatch(/^Offline$|Klipper offline/)
   // The tab: no "null", no route-internal names, no network name.
