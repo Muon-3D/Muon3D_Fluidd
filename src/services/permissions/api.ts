@@ -81,8 +81,13 @@ export const KNOWN_KNOBS: Record<string, { label: string, description: string }>
 
 const isValue = (v: unknown): v is PermissionValue => typeof v === 'string' && (PERMISSION_VALUES as string[]).includes(v)
 
-/** Before the contract the printer never said which of its settings are fixed: developer mode was entered only at its screen. */
-const LEGACY_PRINTER_ONLY = new Set(['dev_mode'])
+/**
+ * Printer only, whatever `fixed` says (a malformed flag must never give them a control): the first
+ * developer-mode entry. `dev_mode` itself is an ordinary setting only when the list also has
+ * `dev_mode_first_entry`; without it the printer is older than the contract (or sends no `fixed`),
+ * and developer mode stays at the printer's screen.
+ */
+const ALWAYS_PRINTER_ONLY = new Set(['dev_mode_first_entry'])
 
 /** Settings that are not a "who may" choice and so have no default shown. */
 const NO_DEFAULT = new Set(['lockdown', 'dev_mode'])
@@ -97,13 +102,13 @@ export function valueLabel (value: string): string {
 const unwrap = (data: unknown): unknown => (data && typeof data === 'object' && 'result' in data ? (data as { result: unknown }).result : data)
 
 /** One reported setting, or null when it isn't usable. `claimed` says which default a known setting has. */
-export function parseKnob (raw: unknown, claimed: boolean | null = null, legacy = false): PermissionKnob | null {
+export function parseKnob (raw: unknown, claimed: boolean | null = null, devModeLocked = false): PermissionKnob | null {
   if (!raw || typeof raw !== 'object') return null
   const k = raw as Record<string, unknown>
   if (typeof k.id !== 'string' || !k.id || typeof k.value !== 'string' || !k.value) return null
   const known = KNOWN_KNOBS[k.id]
   const generic = !isValue(k.value)
-  const fixed = k.fixed === true || (legacy && LEGACY_PRINTER_ONLY.has(k.id))
+  const fixed = k.fixed === true || ALWAYS_PRINTER_ONLY.has(k.id) || (devModeLocked && k.id === 'dev_mode')
   const listed = Array.isArray(k.values) ? k.values.filter((v): v is string => typeof v === 'string' && !!v) : []
   const fallback = known && !fixed && !NO_DEFAULT.has(k.id) ? (claimed ? 'owner_and_shared' : 'anyone') : ''
   return {
@@ -141,11 +146,11 @@ export function parsePermissions (data: unknown): PermissionList | null {
   const list = Array.isArray(body) ? body : object?.knobs
   if (!Array.isArray(list)) return null
   const claimed = typeof object?.claimed === 'boolean' ? object.claimed : null
-  const legacy = claimed === null && !Array.isArray(object?.switches)
+  const devModeLocked = !list.some(k => (k as { id?: unknown } | null)?.id === 'dev_mode_first_entry')
   const switches = Array.isArray(object?.switches) ? object.switches.map(parseSwitch).filter((x): x is PermissionSwitch => x !== null) : []
   return {
     claimed,
-    knobs: list.map(k => parseKnob(k, claimed, legacy)).filter((k): k is PermissionKnob => k !== null),
+    knobs: list.map(k => parseKnob(k, claimed, devModeLocked)).filter((k): k is PermissionKnob => k !== null),
     switches
   }
 }

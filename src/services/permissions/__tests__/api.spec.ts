@@ -63,6 +63,20 @@ describe('security permissions', () => {
     expect(list?.knobs.map(k => [k.id, k.fixed, k.readOnly])).toEqual([['dev_mode', true, true], ['wifi_change', false, false]])
   })
 
+  it('keeps dev_mode printer only unless the list also has dev_mode_first_entry, even when claimed is sent', () => {
+    const without = parsePermissions({ claimed: true, knobs: [{ id: 'dev_mode', value: 'owner' }], switches: [] })
+    expect(without?.knobs[0]).toMatchObject({ id: 'dev_mode', fixed: true, readOnly: true })
+    const withFirst = parsePermissions({ claimed: true, knobs: [{ id: 'dev_mode', value: 'owner' }, { id: 'dev_mode_first_entry', value: 'owner_at_printer', fixed: true }], switches: [] })
+    expect(withFirst?.knobs[0]).toMatchObject({ id: 'dev_mode', fixed: false, readOnly: false })
+  })
+
+  it('always shows dev_mode_first_entry as printer only, whatever fixed or read_only say', () => {
+    for (const fixed of [true, 'true', 1, false, undefined, null]) {
+      const list = parsePermissions({ claimed: false, knobs: [{ id: 'dev_mode_first_entry', value: 'anyone', fixed, read_only: false }], switches: [] })
+      expect(list?.knobs[0], String(fixed)).toMatchObject({ fixed: true, readOnly: true })
+    }
+  })
+
   it('uses /muon-link on a managed session and /server/aux on the LAN', () => {
     expect(permissionsPath(false)).toBe('/server/aux/permissions')
     expect(permissionsPath(true)).toBe('/muon-link/permissions')
