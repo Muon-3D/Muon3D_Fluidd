@@ -98,6 +98,25 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
     expect(openRelay).toHaveBeenCalledTimes(1)
     expect(log).toEqual(['shared:fetch', 'shared:fetch'])
   })
+  it('keeps the connection when the printer stops one upload stream (STOP_SENDING)', async () => {
+    // Harry, 11 Nov: an upload over the cloud route failed with "sending
+    // stopped by peer: error 0", and dropping the relay then failed the
+    // developer-mode read and the next upload with "closed".
+    const log: string[] = []
+    const shared = relay('shared', log)
+    const originalFetch = shared.fetch
+    shared.fetch = async (path, init) => {
+      if (path === '/server/files/upload') throw new Error('sending stopped by peer: error 0')
+      return originalFetch(path, init)
+    }
+    const openRelay = vi.fn(async () => shared)
+    const transport = new ManagedIrohPrinterTransport({ authorizedSession: session('grant'), createEndpoint: async () => ({ openRelay, close () {} }) })
+    await transport.fetch('/server/info')
+    await expect(transport.fetch('/server/files/upload', { method: 'POST', body: 'x' })).rejects.toThrow('sending stopped by peer: error 0')
+    await transport.fetch('/server/muon/dev_mode')
+    expect(openRelay).toHaveBeenCalledTimes(1)
+    expect(log).toEqual(['shared:fetch', 'shared:fetch'])
+  })
   it('drops a relay that failed a request, and dials a new one for the next', async () => {
     // Before this, a dead connection was kept for the life of the selection
     // and every request failed until the page was reloaded.

@@ -1,5 +1,6 @@
 import Vue from 'vue'
 import { ACTIVE_PHASES, DEFAULT_BUDGET_MS, expired, lost, outcome, remember, type AuxUpdateStatus, type Remembered } from './model'
+import { recordOutcome, type HistoryOutcome } from './history'
 
 /**
  * Fluidd's eye on the printer's own update: its Aux /update/status, read
@@ -140,7 +141,12 @@ export async function poll (): Promise<void> {
     if (answer.status === 200 && status && typeof status === 'object') {
       updateWatch.answered = true
       updateWatch.status = status
-      updateWatch.remembered = remember(updateWatch.remembered, status, Date.now())
+      const before = updateWatch.remembered
+      updateWatch.remembered = remember(before, status, Date.now())
+      const ended = updateWatch.remembered?.phase
+      if (before && ACTIVE_PHASES.includes(before.phase) && (ended === 'updated' || ended === 'rolled_back' || ended === 'failed')) {
+        recordOutcome(updateWatch.printer, { version: updateWatch.remembered?.to ?? null, outcome: ended as HistoryOutcome, at: Date.now() })
+      }
       save()
     }
   } catch { /* the next poll tries again */ }

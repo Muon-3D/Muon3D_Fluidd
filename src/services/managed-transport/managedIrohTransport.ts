@@ -77,10 +77,15 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       // Cancelling an upload or file read must not disconnect every other
       // caller of a shared relay, including the dashboard socket.
       if (init?.signal?.aborted) throw error
+      // A permission refusal is an answer, not a dead path: the relay stays.
       if (requestRefused(error)) {
         this.updateStatus('connected', 'IdleStatus')
         throw error
       }
+      // The printer ended this one request's stream (QUIC STOP_SENDING or
+      // RESET_STREAM): the connection is still up, and dropping it would fail
+      // every other request in flight on it with "closed".
+      if (isStreamLevelError(error)) throw error
       this.dropRelay(relay)
       this.markUnavailableUnlessClosed()
       throw error
@@ -205,4 +210,14 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
     }
     this.options.onStatusChange?.(this.status)
   }
+}
+
+/**
+ * Whether an error ended one request's QUIC stream rather than the
+ * connection: quinn's "sending stopped by peer: error N" (STOP_SENDING) and
+ * "stream reset by peer: error N" (RESET_STREAM), as muon_link_web reports them.
+ */
+export function isStreamLevelError (error: unknown): boolean {
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  return /\b(sending stopped|stream reset) by peer\b/.test(message)
 }

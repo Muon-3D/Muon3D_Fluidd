@@ -53,7 +53,7 @@ it('requires missing values and refuses separators, quoting and stale printer co
 it('keeps the full groups one step away and reveals search results without opening a global mode', async () => {
   const { wrapper } = show()
   expect(wrapper.find('[data-tid="macro-group-moving"]').isVisible()).toBe(false)
-  await wrapper.find('input[aria-label="Find a macro"]').setValue('MOVE_CUSTOM')
+  await wrapper.find('input[aria-label="Find a quick command"]').setValue('MOVE_CUSTOM')
   expect(wrapper.find('[data-tid="macro-group-moving"]').isVisible()).toBe(true)
   wrapper.destroy()
 })

@@ -30,7 +30,7 @@ export interface RoleRow {
 export const ROLE_TABLE: readonly RoleRow[] = [
   { id: 'watch', label: 'Watch the camera and status', owner: true, operator: true, viewer: true },
   { id: 'print', label: 'Print, pause and cancel; upload files', owner: true, operator: true, viewer: false },
-  { id: 'control', label: 'Heat, move, macros and console', owner: true, operator: true, viewer: false },
+  { id: 'control', label: 'Heat, move, quick commands and console', owner: true, operator: true, viewer: false },
   { id: 'printer', label: 'Wi-Fi, hotspot, updates, rename', owner: true, operator: false, viewer: false },
   { id: 'people', label: 'People, devices and developer mode', owner: true, operator: false, viewer: false }
 ]

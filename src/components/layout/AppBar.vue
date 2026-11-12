@@ -224,7 +224,8 @@ import PrinterSwitchButton from './PrinterSwitchButton.vue'
 import QuickActionsMenu from './QuickActionsMenu.vue'
 import FrameMixin from '@/mixins/frame'
 import ServicesMixin from '@/mixins/services'
-import FilesMixin from '@/mixins/files'
+import FilesMixin, { uploadErrorText } from '@/mixins/files'
+import consola from 'consola'
 import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
 import { EventBus } from '@/eventBus'
@@ -497,6 +498,15 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
   }
 
   async handleUploadAndPrint (file: File) {
+    try {
+      await this.uploadAndHandOn(file)
+    } catch (error: unknown) {
+      consola.error('[FileUpload] file', error)
+      EventBus.$emit(`Upload of ${file.name} failed: ${uploadErrorText(error)}`, { type: 'error', timeout: -1 })
+    }
+  }
+
+  async uploadAndHandOn (file: File) {
     if (this.uploadPrintsNow) {
       // Never Moonraker's print-on-upload: that started the print with no
       // plate check, on a printer that prints upside down onto its plate.
@@ -517,7 +527,8 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
   }
 
   saveConfigAndRestart (force = false) {
-    if (!force) {
+    // Save and restart: Always (Settings › Files and editor) restarts without the list.
+    if (!force && this.$store.state.config.uiSettings.editor.saveAndRestart !== 'always') {
       const confirmOnSaveConfigAndRestart = this.$store.state.config.uiSettings.general.confirmOnSaveConfigAndRestart
 
       if (confirmOnSaveConfigAndRestart) {
