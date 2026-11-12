@@ -21,8 +21,9 @@
           class="zo__round"
           aria-label="Lower the nozzle"
           data-tid="zoffset-down"
-          :disabled="!canStep"
-          @click="adjustZ(-step)"
+          :disabled="!canStep || !!refusal(-step)"
+          :title="refusal(-step) || undefined"
+          @click="nudge(-step)"
         >
           <frame-icon
             name="minus"
@@ -35,7 +36,7 @@
           aria-label="Raise the nozzle"
           data-tid="zoffset-up"
           :disabled="!canStep"
-          @click="adjustZ(step)"
+          @click="nudge(step)"
         >
           <frame-icon
             name="plus"
@@ -75,6 +76,7 @@ import OverviewMixin from '@/mixins/overview'
 import { signed, type TileMenuItem } from '@/services/overview/tiles'
 import TileShell from './TileShell.vue'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
+import { meshSpan, zNudgeRefusal } from '@/services/control/safe-move'
 
 /**
  * The live Z offset, with minus and plus to babystep the nozzle (Control
@@ -96,6 +98,22 @@ export default class ZOffsetTile extends Mixins(OverviewMixin) {
   get valueText (): string { return signed(this.origin ?? 0) }
   get sub (): string { return `Not saved until you save it · steps of ${this.step}` }
   get canStep (): boolean { return this.controlReady && this.isHomed('Z') }
+
+  /**
+   * The same notch rule as Control's Z offset card (ControlZOffset): a nudge moves the head (MOVE=1), so while idle
+   * one that would take the nozzle low over the notch, or lower it with X/Y unhomed, is refused. Live babysteps
+   * during a print follow the print's own path and go.
+   */
+  refusal (by: number): string {
+    if (this.printerPrinting || this.printerPaused) return ''
+    const p = this.position
+    return zNudgeRefusal({ x: Number(p[0]), y: Number(p[1]), z: Number(p[2]) }, by, this.noGo, meshSpan(this.$store.state.printer.printer.bed_mesh), this.isHomed('XY'))
+  }
+
+  nudge (by: number) {
+    if (!this.canStep || this.refusal(by)) return
+    this.adjustZ(by)
+  }
 
   get commands (): Record<string, unknown> {
     return (this.$store.getters['printer/getAvailableCommands'] as Record<string, unknown>) ?? {}
