@@ -469,12 +469,69 @@ $glass: "html[data-m3d-style='glass']";
     }
   }
 
+  // Motion gallery, "Dialogs, menus, toasts" (KAN-2257): things that float
+  // arrive from where they were called and leave faster than they came (exits
+  // at three quarters of the entry, on the exit curve). A menu is one object:
+  // its rows don't stagger in.
+  .v-menu-transition-enter-active,
+  .slide-y-transition-enter-active {
+    transition:
+      opacity var(--m3d-motion-fast) var(--m3d-ease-enter),
+      transform var(--m3d-motion-fast) var(--m3d-ease-enter) !important;
+  }
+
+  .v-menu-transition-leave-active,
+  .slide-y-transition-leave-active {
+    transition:
+      opacity calc(var(--m3d-motion-fast) * 0.75) var(--m3d-ease-exit),
+      transform calc(var(--m3d-motion-fast) * 0.75) var(--m3d-ease-exit) !important;
+  }
+
+  // Vuetify sets the menu's transform-origin to where it opens from, so it
+  // grows out of its button.
+  .v-menu-transition-enter,
+  .v-menu-transition-leave-to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+
+  .slide-y-transition-enter,
+  .slide-y-transition-leave-to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  .v-menu-transition-enter-to .v-list-item {
+    transition-delay: 0s;
+  }
+
+  // The scrim behind a dialog fades on the base step.
+  .v-overlay {
+    transition:
+      opacity var(--m3d-motion-base) var(--m3d-ease-standard),
+      z-index 1ms !important;
+  }
+
+  // Phone sheets rise on the gentle spring and drop away faster.
+  .bottom-sheet-transition-leave-active,
+  .dialog-bottom-transition-leave-active {
+    transition: transform calc(var(--m3d-motion-slow) * 0.75) var(--m3d-ease-exit) !important;
+  }
+
   .v-dialog:not(.v-dialog--fullscreen) {
     border-radius: var(--m3d-radius-lg) !important;
     box-shadow: var(--m3d-glass-edge), var(--m3d-shadow-float) !important;
+    // A dialog arrives from 92 % on the gentle spring (about 1.5 % over) and
+    // leaves in three quarters of a fast step.
     transition:
-      transform var(--m3d-duration-base) var(--m3d-spring),
-      opacity var(--m3d-duration-fast) var(--m3d-ease);
+      transform var(--m3d-spring-gentle-duration) var(--m3d-spring-gentle),
+      opacity var(--m3d-motion-fast) var(--m3d-ease-standard);
+
+    &.dialog-transition-leave-active {
+      transition:
+        transform calc(var(--m3d-motion-fast) * 0.75) var(--m3d-ease-exit),
+        opacity calc(var(--m3d-motion-fast) * 0.75) var(--m3d-ease-exit);
+    }
 
     > .v-card {
       border-radius: inherit !important;
