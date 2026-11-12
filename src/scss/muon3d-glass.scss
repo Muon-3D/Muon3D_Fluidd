@@ -512,7 +512,14 @@ $glass: "html[data-m3d-style='glass']";
       z-index 1ms !important;
   }
 
-  // Phone sheets rise on the gentle spring and drop away faster.
+  // Phone sheets rise from the bottom edge on the enter curve (no spring: an
+  // overshoot would lift the sheet off the edge and show a gap under it) and
+  // drop away faster.
+  .bottom-sheet-transition-enter-active,
+  .dialog-bottom-transition-enter-active {
+    transition: transform var(--m3d-motion-slow) var(--m3d-ease-enter) !important;
+  }
+
   .bottom-sheet-transition-leave-active,
   .dialog-bottom-transition-leave-active {
     transition: transform calc(var(--m3d-motion-slow) * 0.75) var(--m3d-ease-exit) !important;
