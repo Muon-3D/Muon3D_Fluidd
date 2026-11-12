@@ -432,6 +432,11 @@ async def http_generic(request):
         return web.json_response({'phase': 'unsupported'})
     if path == '/server/info':
         return web.json_response({'result': server_info()})
+    # The status poll a cloud printer card makes (muon-cloud/state.ts STATUS_QUERY).
+    if path == '/printer/objects/query':
+        current = status()
+        names = [key.split('=')[0] for key in request.query.keys()]
+        return web.json_response({'result': {'eventtime': time.time(), 'status': {n: current.get(n, {}) for n in names}}})
     if path == '/server/muon/protection':
         return web.json_response({'result': protection()})
     if path == '/access/oneshot_token':

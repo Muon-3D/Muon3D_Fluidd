@@ -35,18 +35,18 @@ const control = (page: Page, what: 'silence' | 'radio' | 'cloud', on: boolean) =
   page.evaluate(([what, on]) => (window as any).__e2eRoute[what](on), [what, on] as const)
 
 /** All printers, then the printer's own menu: the way a person picks a route. */
-async function choose (page: Page, action: 'connect-bluetooth' | 'connect-cloud') {
+async function choose (page: Page, action: 'Connect over Bluetooth' | 'Connect through Muon3D') {
   await page.goto('/')
   await ready(page)
   await page.getByRole('button', { name: `Options for ${ROUTE_PRINTER.name}` }).first().click()
-  await page.locator(`[data-action="${action}"]`).click()
+  await page.getByText(action, { exact: true }).click()
 }
 
 /** Connect over Bluetooth, and wait until the session really runs over it. */
 async function onBluetooth (page: Page) {
-  await choose(page, 'connect-bluetooth')
+  await choose(page, 'Connect over Bluetooth')
   await expect.poll(() => lastRoute(page)).toBe('ble')
-  await expect.poll(async () => (await where(page)).socketOpen).toBe(true)
+  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
   await expect(sheet(page)).toHaveCount(0)
 }
 
@@ -79,7 +79,7 @@ test('Bluetooth that goes quiet with the radio up says "Bluetooth dropped", move
   await expect(sheet(page)).toHaveCount(0)
   await expect.poll(() => lastRoute(page)).toBe('ble')
   expect((await routeCounts(page)).dials).toBe(before.dials + 1)
-  await expect.poll(async () => (await where(page)).socketOpen).toBe(true)
+  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
   expect((await where(page)).mode).toBe('ble')
 })
 
@@ -105,7 +105,7 @@ test('Connect via cloud from the sheet moves the session to the relay, because t
   await page.getByTestId('bluetooth-dropped-cloud').click()
   await expect(sheet(page)).toHaveCount(0)
   await expect.poll(() => lastRoute(page)).toBe('cloud')
-  await expect.poll(async () => (await where(page)).socketOpen).toBe(true)
+  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
   expect((await where(page)).mode).toBe('cloud')
   if (!isMobile) await expect(page.getByText('Through Muon3D', { exact: true }).first()).toBeVisible()
 })
@@ -136,7 +136,7 @@ test('Bluetooth coming back tries again by itself', async ({ page }) => {
   await expect(sheet(page)).toHaveCount(0)
   await expect.poll(() => routeCounts(page).then(c => c.dials)).toBe(before.dials + 1)
   expect(await lastRoute(page)).toBe('ble')
-  await expect.poll(async () => (await where(page)).socketOpen).toBe(true)
+  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
 })
 
 test('a permission refusal never moves the chosen route', async ({ page, isMobile }) => {
@@ -168,14 +168,14 @@ test('plain Connect goes cloud before Bluetooth, fails over to Bluetooth, and re
   // Plain Connect: not on this network, so the cloud.
   await page.getByRole('link', { name: new RegExp(ROUTE_PRINTER.name) }).or(page.getByText(ROUTE_PRINTER.name, { exact: true })).first().click()
   await expect.poll(() => lastRoute(page)).toBe('cloud')
-  await expect.poll(async () => (await where(page)).socketOpen).toBe(true)
+  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
   expect((await where(page)).mode).toBe('auto')
 
   // The relay goes away: auto mode fails over to Bluetooth, without a sheet.
   account.printers[0].online = false
   await control(page, 'cloud', false)
   await expect.poll(() => lastRoute(page), { timeout: 30_000 }).toBe('ble')
-  await expect.poll(async () => (await where(page)).socketOpen).toBe(true)
+  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
   await expect(sheet(page)).toHaveCount(0)
   expect((await where(page)).mode).toBe('auto')
 
@@ -183,7 +183,7 @@ test('plain Connect goes cloud before Bluetooth, fails over to Bluetooth, and re
   account.printers[0].online = true
   await control(page, 'cloud', true)
   await expect.poll(() => lastRoute(page), { timeout: 30_000 }).toBe('cloud')
-  await expect.poll(async () => (await where(page)).socketOpen).toBe(true)
+  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
 
   // The printer answers on this network: auto moves to it.
   await reachOnLan(page)

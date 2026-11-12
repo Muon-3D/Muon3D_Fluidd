@@ -9,6 +9,7 @@ import store from '../../src/store'
 import { cloudState } from '../../src/services/muon-cloud/state'
 import { lookNearby } from '../../src/services/muon-ble/nearby'
 import { routeMode } from '../../src/services/muon-cloud/route-choice'
+import { activationState } from '../../src/services/muon-cloud/activate'
 
 /** A request the printer refuses for this session, over HTTP and over the socket. */
 export async function refusedRequests () {
@@ -33,6 +34,8 @@ export function where () {
     apiUrl: store.state.config.apiUrl as string,
     activeCloud: cloudState.activePrinterId,
     mode: routeMode(cloudState.activePrinterId ?? '3fa9c0de'.repeat(8)),
-    socketOpen: !!store.state.socket.open
+    socketOpen: !!store.state.socket.open,
+    error: activationState.error,
+    switching: activationState.switching
   }
 }
