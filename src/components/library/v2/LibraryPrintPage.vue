@@ -615,7 +615,7 @@ interface Related { cards: ShelfCard[], loading: boolean, error: string }
 
 /** Why the history could not be read: the Library is off for this account (the service refuses without consent), the browser is offline, or anything else. */
 function historyProblem (error: unknown): 'off' | 'offline' | 'failed' {
-  if (error instanceof LibraryError && (error.code === 'consent_required' || error.status === 403)) return 'off'
+  if (error instanceof LibraryError && error.code === 'consent_required') return 'off'
   if ((error instanceof LibraryError && error.code === 'offline') || (typeof navigator !== 'undefined' && navigator.onLine === false)) return 'offline'
   return 'failed'
 }

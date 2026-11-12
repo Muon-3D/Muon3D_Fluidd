@@ -221,9 +221,10 @@ describe('A model page: print history says why it is missing', () => {
     expect(tid(w, 'library-print-history').text()).not.toContain('Try again')
   })
 
-  it('any other refusal with status 403 is also Library off', async () => {
+  it('another 403 is not Library off: it keeps Try again', async () => {
     const w = await printPage({}, async () => { throw new LibraryError('forbidden', 'No.', 403) })
-    expect(tid(w, 'library-print-history-off').exists()).toBe(true)
+    expect(tid(w, 'library-print-history-off').exists()).toBe(false)
+    expect(tid(w, 'library-print-history').text()).toContain('Try again')
   })
 
   it('anything else: could not be loaded just now, with Try again that reads it again', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { latestRecent, readRecents, recordRecent } from '../recents'
+import { forgetOwnRecents, latestRecent, readRecents, recordRecent } from '../recents'
 
 // The literal key and cap are the contract with what is already stored on a device: asserted here as literals, not imported.
 const KEY = 'm3d.control.library.recents.v1'
@@ -10,6 +10,14 @@ beforeEach(() => { localStorage.clear() })
 afterEach(() => { vi.restoreAllMocks() })
 
 describe('recents: what this device opened', () => {
+  it('forgetting your own prints keeps the public models', () => {
+    recordRecent({ id: 'mine', kind: 'own', title: 'Hex planter' }, 1000)
+    recordRecent({ id: 'pub', kind: 'publication', title: 'Pocket robot' }, 2000)
+    recordRecent({ id: 'mine2', kind: 'own', title: 'Cable clip' }, 3000)
+    forgetOwnRecents()
+    expect(readRecents().map(entry => [entry.kind, entry.id])).toEqual([['publication', 'pub']])
+  })
+
   it('is empty when nothing was opened', () => {
     expect(readRecents()).toEqual([])
     expect(latestRecent()).toBeNull()

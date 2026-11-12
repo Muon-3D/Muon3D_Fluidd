@@ -532,6 +532,20 @@ describe('Library: Continue is what this device opened', () => {
     Object.assign(libraryState, { account: 'fixture' })
   })
 
+  it('a print of yours is not offered until this account has read its list and it is there', () => {
+    // Another account opened it on this browser; this one has Library saving off, or is still loading.
+    libraryState.synced = false
+    libraryState.items = {}
+    open([{ ...own, opened_at: 5000 }, { ...pub, opened_at: 1000 }])
+    const w = renderLibrary()
+    try {
+      expect(props(w).continueRecent?.id).toBe('p1')
+      expect(props(w).continueItem).toBeNull()
+    } finally {
+      w.destroy()
+    }
+  })
+
   it('with nothing opened here there is nothing to Continue, even when the account has a recent print', () => {
     synced(['a'])
     const w = renderLibrary()

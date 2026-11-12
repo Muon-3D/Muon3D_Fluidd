@@ -87,6 +87,22 @@ export function readRecents (): RecentEntry[] {
   }
 }
 
+/**
+ * Forgets the prints of yours this device opened, keeping public models.
+ * Called when the signed-in account changes: your own prints are the
+ * account's, not the browser's. Never throws.
+ */
+export function forgetOwnRecents (): void {
+  try {
+    const kept = readRecents().filter(entry => entry.kind !== 'own')
+    if (kept.length) storage()?.setItem(RECENTS_KEY, JSON.stringify(kept))
+    else storage()?.removeItem(RECENTS_KEY)
+  } catch {
+    // Nothing to forget.
+  }
+  changes.rev++
+}
+
 /** The one to Continue with, or null when nothing was opened here. */
 export function latestRecent (): RecentEntry | null {
   return readRecents()[0] ?? null

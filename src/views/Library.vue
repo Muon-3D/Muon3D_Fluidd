@@ -504,7 +504,9 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
    */
   get continueRecent (): RecentEntry | null {
     return readRecents().find(entry => entry.kind === 'publication' ||
-      (this.signedIn && (!this.state.synced || !!this.everything.find(item => item.id === entry.id)))) ?? null
+      // A print of yours shows only once this account's list is read and holds it:
+      // never while it loads, after a failed read, or with Library saving off.
+      (this.signedIn && this.state.synced && !!this.everything.find(item => item.id === entry.id))) ?? null
   }
 
   /** The print behind Continue when it is one of yours, for Print again. */
