@@ -111,9 +111,9 @@ export const handMoveLock: { target: number[] | null, until: number, printer: st
 /**
  * How long a hand move's wait lasts at most. Expiring while the head is
  * still physically moving is fine: the lock is about the COMMANDED position
- * (toolhead.position moves to the target when Klipper queues the move), and
- * while the head moves `idle_timeout` reads Printing, so ControlMixin's
- * `busy` refuses every hand move anyway.
+ * (toolhead.position moves to the target when Klipper queues the move), so a
+ * move sent after it is planned from the commanded end position and Klipper
+ * queues it behind the one still running (see `ownMotion` below, KAN-2120).
  */
 export const SETTLE_MS = 8000
 
@@ -168,6 +168,32 @@ export function lockHandMove (gcodeTarget: number[], printer: string, now = Date
 
 export function releaseHandMove () {
   handMoveLock.target = null
+  ownMotion.until = 0
+}
+
+/**
+ * KAN-2120: the window in which the printer's "busy" is this page's own hand
+ * move. Klipper's idle_timeout reads Printing while ANY G-code runs, a jog
+ * included, so "busy" alone cannot tell a hand move from a print or a macro.
+ * A hand move sets this for its travel time plus the settle margin (the same
+ * `settleMs` as the lock above); unlike the lock it is not cleared when the
+ * commanded position arrives, because the head is still physically moving
+ * then and idle_timeout still says Printing. Only a real print
+ * (print_stats printing or paused) locks the move controls; a busy printer
+ * outside this window (homing, a macro, another client) still refuses moves.
+ */
+export const ownMotion: { printer: string, until: number } = { printer: '', until: 0 }
+
+export function noteOwnMotion (printer: string, now = Date.now(), travelMs = 0): number {
+  const ms = settleMs(travelMs)
+  ownMotion.printer = printer
+  ownMotion.until = now + ms
+  return ms
+}
+
+/** Is the printer's current busy this page's own hand move on `printer`? */
+export function ownMotionActive (printer: string, now = Date.now()): boolean {
+  return ownMotion.printer === printer && now < ownMotion.until
 }
 
 /** Is the last hand move on `printer` still on its way? Clears itself on arrival, after SETTLE_MS, or for another printer. */
