@@ -10,9 +10,9 @@
  *   so nothing reaches the shared mock and a test can assert exactly what
  *   Control asked the printer to do;
  * - can make any one method fail (`failOn`);
- * - with `{ ticks: false }`, drops the shared mock's status ticks, so the page
- *   holds still at the status it subscribed to (plus `report`s): for a test of
- *   something else that a busy page would only slow down;
+ * - with `{ ticks: false }`, empties the shared mock's status ticks, so the
+ *   page holds still at the status it subscribed to (plus `report`s): for a
+ *   test of something else that a busy page would only slow down;
  * - with `{ database: true }`, keeps this page's Moonraker database writes
  *   (server.database.post_item, over the websocket or HTTP) to itself and
  *   lays them over what the shared mock reads back, so a setting survives a
@@ -232,10 +232,10 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
       if (isObject(msg.result) && isObject(msg.result.status)) {
         msg.result.status = leaveOut(overlay(msg.result.status, over))
       } else if (msg.method === 'notify_status_update' && Array.isArray(msg.params) && isObject(msg.params[0])) {
-        // `{ ticks: false }`: the shared mock's own ticks (a hot, mid-print M1, several a second) never reach the page;
-        // it keeps the status it subscribed to, and what the test reports.
-        if (options.ticks === false) return
-        msg.params[0] = leaveOut(overlayUpdate(msg.params[0], over))
+        // `{ ticks: false }`: the shared mock's ticks (a hot, mid-print M1, several a second) reach the page empty, so it
+        // keeps the status it subscribed to, and what the test reports. Still sent: a socket that hears nothing for 10 s
+        // is taken for a dead one.
+        msg.params[0] = options.ticks === false ? {} : leaveOut(overlayUpdate(msg.params[0], over))
       }
       ws.send(JSON.stringify(msg))
     })
