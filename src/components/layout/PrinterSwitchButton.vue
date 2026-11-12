@@ -35,7 +35,16 @@
             :state="thumbState"
           />
           <span class="printer-switch__text">
-            <span class="printer-switch__name">{{ name }}</span>
+            <span class="printer-switch__name">
+              <span
+                v-if="namePending"
+                class="printer-switch__pending"
+                role="img"
+                aria-label="Finding the printer's name"
+                data-tid="printer-name-pending"
+              />
+              <template v-else>{{ name }}</template>
+            </span>
             <span
               class="printer-switch__status"
               :class="`printer-switch__status--${switcherTone}`"
@@ -77,7 +86,14 @@
         />
         <span class="printer-switch__text">
           <span class="printer-switch__name">
-            {{ name }}
+            <span
+              v-if="namePending"
+              class="printer-switch__pending"
+              role="img"
+              aria-label="Finding the printer's name"
+              data-tid="printer-name-pending"
+            />
+            <template v-else>{{ name }}</template>
             <frame-icon
               name="chevronDown"
               small
@@ -152,6 +168,14 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
     return this.foreignRecord?.name ?? printerNameParts(this.displayName).name
   }
 
+  /**
+   * The name isn't known until the printer says it: a drawn placeholder holds
+   * its place instead of the product name standing in for it (KAN-2257).
+   */
+  get namePending (): boolean {
+    return !this.foreignRecord && !this.nameKnown
+  }
+
   get switcherTone (): PrinterStatusTone {
     if (!this.foreignStatus) return this.statusTone
     const tone = FOREIGN_STATE_TONES[this.foreignStatus.state]
@@ -220,6 +244,32 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
     &:hover {
       box-shadow: inset 0 0 0 1px var(--m3d-border-strong);
     }
+  }
+
+  // The name's place while the printer hasn't said it: the width of a short
+  // name, with the loading sheen of the motion gallery (transform only).
+  .printer-switch__pending {
+    position: relative;
+    display: inline-block;
+    width: 84px;
+    height: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    vertical-align: middle;
+    background: var(--m3d-fill, rgb(128 128 128 / 20%));
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 20%, rgb(255 255 255 / 14%) 50%, transparent 80%);
+      animation: printer-switch-sheen 1.4s var(--m3d-ease-standard, ease) infinite;
+    }
+  }
+
+  @keyframes printer-switch-sheen {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
   }
 
   .printer-switch__button--open {
@@ -298,6 +348,10 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
 </style>
 
 <style lang="scss">
+  .m3d-reduced-motion .printer-switch__pending::after {
+    animation: none !important;
+  }
+
   .printer-switch__menu {
     overflow-y: auto;
     border-radius: 22px !important;

@@ -2,6 +2,8 @@ import { Component, Mixins } from 'vue-property-decorator'
 import StateMixin from './state'
 import { pageOfRoute } from '@/router/printerPagePaths'
 import { printerStatusWord } from '@/util/printer-status-word'
+import { startup } from '@/services/startup/heard'
+import { Globals } from '@/globals'
 
 export type PrinterStatusTone = 'ok' | 'active' | 'warn' | 'fault' | 'off'
 
@@ -34,6 +36,7 @@ export default class PrinterStatusMixin extends Mixins(StateMixin) {
   get statusTone (): PrinterStatusTone {
     if (!this.socketConnected) return 'off'
     if (!this.klippyReady) {
+      if (!this.klippyState) return 'off'
       return ['error', 'shutdown'].includes(this.klippyState) ? 'fault' : 'warn'
     }
 
@@ -51,9 +54,22 @@ export default class PrinterStatusMixin extends Mixins(StateMixin) {
     }
   }
 
+  /**
+   * Whether the printer's own name is known yet. Until the printer has said
+   * (its saved name, or its network name), getDisplayName falls back to the
+   * product name, which names no printer: the name is drawn as a placeholder
+   * instead (KAN-2257).
+   */
+  get nameKnown (): boolean {
+    const name = this.displayName.trim()
+    return !!name && name !== Globals.PRODUCT_NAME
+  }
+
   get statusText (): string {
-    if (!this.socketConnected) return 'Offline'
-    if (!this.klippyReady) return `Klipper ${this.klippyState || 'offline'}`
+    // Before the first answer the printer is being reached, not offline; and
+    // an empty Klipper state means not yet reported, not "offline".
+    if (!this.socketConnected) return startup.heard ? 'Offline' : 'Connecting…'
+    if (!this.klippyReady) return this.klippyState ? `Klipper ${this.klippyState}` : 'Connecting…'
 
     const state = printerStatusWord(this.printerState)
 
