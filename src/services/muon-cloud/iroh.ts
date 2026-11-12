@@ -12,12 +12,33 @@ import type {
   PrinterSocket
 } from '@/services/managed-transport'
 import { bluetoothRouteFor, noteBluetoothFellBack, type WasmBleLink } from '@/services/muon-ble/link'
-import { cloudBaseUrl } from './api'
+import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed } from './api'
 import bundledWasmUrl from './vendor/muon-link-web/1d6706d/muon_link_web_bg.wasm?url'
 
 const KEY_STORAGE = 'muon.cloud.key'
 // Remove after one release. Normal loads never depend on the console's files.
 const ALLOW_CONSOLE_CLIENT_FALLBACK = true
+
+// KAN-2192 (H2/B9): the key is this browser's identity to every printer the
+// account reaches. On a plain-HTTP page anything on the network can read
+// localStorage, so the page never makes, reads or keeps one, and removes a key
+// an older build left. WebCrypto, which could hold it unreadable (KAN-1872),
+// does not exist on such a page.
+try {
+  if (!cloudSessionAllowed()) {
+    localStorage.removeItem(KEY_STORAGE)
+    // A tab still running an older build can write the key back. Remove it
+    // whenever it appears.
+    window.addEventListener('storage', (event) => {
+      if (event.key !== KEY_STORAGE || event.newValue === null) return
+      try {
+        localStorage.removeItem(KEY_STORAGE)
+      } catch { /* no storage */ }
+    })
+  }
+} catch {
+  // No storage or no window: nothing to clear.
+}
 
 interface WasmSocket {
   send (text: string): Promise<void>;
@@ -86,6 +107,7 @@ function bytesToHex (bytes: Uint8Array): string {
 
 /** The tab's endpoint, bound to `relayUrl`. */
 export function browserEndpoint (relayUrl: string): Promise<WasmEndpoint> {
+  if (!cloudSessionAllowed()) return Promise.reject(new CloudError(INSECURE_ORIGIN_MESSAGE, 0, 'insecure_origin'))
   if (!endpointPromise || endpointRelay !== relayUrl) {
     endpointRelay = relayUrl
     endpointPromise = (async () => {
