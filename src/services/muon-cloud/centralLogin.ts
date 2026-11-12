@@ -21,12 +21,15 @@
  * The console's own sign-in page, which `/authorize` sends a browser to with
  * `continue`, is `views/SignIn.vue`; `safeContinue` below is its guard.
  */
-import { CLIENT_ID, cloudApi, cloudBaseUrl, cloudSessionAllowed, sameConsole, setSessionRecovery, storedRefreshToken, storedToken, storeRefreshToken, storeToken } from './api'
+import { clientId, cloudApi, cloudBaseUrl, cloudSessionAllowed, sameConsole, setSessionRecovery, storedRefreshToken, storedToken, storeRefreshToken, storeToken } from './api'
 import { challengeFor, newState, newVerifier } from './pkce'
 import { refreshServiceWorker } from '@/util/service-worker-update'
+import { isPrinterSecureOrigin } from '@/services/secure-origin'
 
 const PENDING_KEY = 'muon.cloud.authorize'
 const SILENT_KEY = 'muon.cloud.silent'
+/** When this tab last came back from `/authorize` with a code: a number, nothing of the account. */
+const RETURNED_KEY = 'muon.cloud.returned'
 // Explicit sign-in/out supersedes any asynchronous silent check in flight.
 let signInRevision = 0
 
@@ -56,6 +59,9 @@ function session (): Storage | null {
 
 /** Whether this page signs in through the central login: the console serves it. */
 export function centralLoginEnabled (location: Pick<Location, 'origin' | 'protocol' | 'hostname'> = window.location): boolean {
+  // A printer's own secure address signs in through the console as the
+  // `printer-local` client (KAN-2198); its redirect URI is that address.
+  if (isPrinterSecureOrigin(location)) return true
   if (cloudBaseUrl() !== location.origin) return false
   return cloudSessionAllowed(location)
 }
@@ -68,7 +74,7 @@ export function redirectUri (origin: string = window.location.origin): string {
 export function authorizeUrl (base: string, params: { redirectUri: string, challenge: string, state: string, silent: boolean }): string {
   const query = new URLSearchParams({
     response_type: 'code',
-    client_id: CLIENT_ID,
+    client_id: clientId(),
     redirect_uri: params.redirectUri,
     code_challenge: params.challenge,
     code_challenge_method: 'S256',
@@ -144,6 +150,9 @@ export function isAuthCallback (search: string): boolean {
 /** Whether to try a background `prompt=none` check on this load. */
 export function shouldTrySilentSignIn (location: Pick<Location, 'origin' | 'protocol' | 'hostname' | 'search' | 'pathname'> = window.location): boolean {
   if (!centralLoginEnabled(location)) return false
+  // The silent check is a same-origin fetch of the console's `/authorize`; a
+  // printer's address is another origin, so it signs in with a top-level trip.
+  if (isPrinterSecureOrigin(location)) return false
   if (storedToken()) return false
   if (session()?.getItem(SILENT_KEY)) return false
   // A page's own code too (/join?code=): that page signs in for itself.
@@ -232,7 +241,7 @@ let lastRecovery = 0
  * serves this page.
  */
 export async function recoverCentralSession (failedRefresh: string, now: number = Date.now()): Promise<boolean> {
-  if (!centralLoginEnabled()) return false
+  if (!centralLoginEnabled() || isPrinterSecureOrigin()) return false
   if (lastRecovery && now - lastRecovery < RECOVERY_GAP_MS) return false
   lastRecovery = now
   return silentSignIn(failedRefresh)
@@ -277,12 +286,37 @@ export function takeCallback (location: Pick<Location, 'search'> = window.locati
   }
 
   const error = query.get('error')
+  if (error === 'access_denied' && isPrinterSecureOrigin()) return { outcome: 'error', message: ACCESS_DENIED_MESSAGE, returnTo }
   if (error === 'login_required' && pending.silent) return { outcome: 'signed_out', returnTo }
   if (error) return { outcome: 'error', message: query.get('error_description') || `Sign-in failed (${error}).`, returnTo }
 
   const code = query.get('code') ?? ''
   if (!code) return { outcome: 'error', message: 'Sign-in failed.', returnTo }
+  try {
+    store?.setItem(RETURNED_KEY, String(Date.now()))
+  } catch { /* no storage */ }
   return { outcome: 'code', code, verifier: pending.verifier, returnTo }
+}
+
+/** What a printer's address says when the console refuses the account for that printer. */
+export const ACCESS_DENIED_MESSAGE = 'This account cannot use this printer. Sign in with the printer\'s owner account, or open Muon Control.'
+
+/** Least time between a return from sign-in and the next automatic trip. */
+export const RESIGNIN_GAP_MS = 60000
+
+/**
+ * A printer's address holds no refresh token, so when its 15-minute access
+ * token runs out or is refused the page signs in again with a top-level trip.
+ * Not if a trip came back within the last minute: that token was refused as
+ * soon as it was issued, and another trip would only loop. The page then
+ * shows the signed-out state. True when a trip was started.
+ */
+export async function signInAgainOnPrinterOrigin (now: number = Date.now(), go?: (url: string) => void): Promise<boolean> {
+  if (!isPrinterSecureOrigin() || !centralLoginEnabled()) return false
+  const returned = Number(session()?.getItem(RETURNED_KEY) ?? 0)
+  if (returned && now - returned < RESIGNIN_GAP_MS) return false
+  await startCentralSignIn({ silent: false }, go)
+  return true
 }
 
 /**
@@ -326,7 +360,7 @@ export function signOutCentral (doc: Document = document): void {
   form.method = 'POST'
   form.action = `${cloudBaseUrl()}/logout`
   form.style.display = 'none'
-  for (const [name, value] of Object.entries({ client_id: CLIENT_ID, post_logout_redirect_uri: redirectUri() })) {
+  for (const [name, value] of Object.entries({ client_id: clientId(), post_logout_redirect_uri: redirectUri() })) {
     const input = doc.createElement('input')
     input.type = 'hidden'
     input.name = name
