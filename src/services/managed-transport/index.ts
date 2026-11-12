@@ -18,5 +18,6 @@ export type {
   ManagedTransportUsage,
   PrinterSocket,
   PrinterTransport,
-  PrinterTransportSelection
+  PrinterTransportSelection,
+  TransportRequestInit
 } from './types'

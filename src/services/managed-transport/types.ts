@@ -8,8 +8,18 @@ export interface PrinterSocket {
 
 export const PRINTER_SOCKET_OPEN = 1
 
+/**
+ * A request's init, plus a way to hear how much of its body has reached the
+ * printer. A transport that sends the body in one piece (the relay) reports
+ * 0 when it starts and the whole body when the printer has taken it; one that
+ * streams reports in between. Others ignore it.
+ */
+export type TransportRequestInit = RequestInit & {
+  onBodyProgress?: (sent: number, total: number) => void;
+}
+
 export interface PrinterTransport {
-  fetch(path: string, init?: RequestInit): Promise<Response>;
+  fetch(path: string, init?: TransportRequestInit): Promise<Response>;
   openWebSocket(path: string): Promise<PrinterSocket>;
   close(): void;
 }
@@ -67,7 +77,7 @@ export interface AuthorizedManagedRelaySession {
 }
 
 export interface ManagedIrohRelay {
-  fetch(path: string, init?: RequestInit): Promise<Response>;
+  fetch(path: string, init?: TransportRequestInit): Promise<Response>;
   openWebSocket(path: string): Promise<PrinterSocket>;
   close(): void;
 }

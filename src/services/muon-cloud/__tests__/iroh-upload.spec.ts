@@ -265,6 +265,34 @@ describe('IrohPrinter.fetch, uploading a FormData', () => {
   })
 })
 
+describe('upload progress over the relay', () => {
+  it('says none is sent when the request starts and all of it once the printer has answered', async () => {
+    const { relay: irohRelay, sent } = relay()
+    const seen: Array<[number, number]> = []
+
+    await irohRelay.fetch('/server/files/upload', {
+      method: 'POST',
+      headers: UPLOAD_HEADERS,
+      body: uploadForm(),
+      onBodyProgress: (done, total) => seen.push([done, total])
+    })
+
+    const total = sent[0].body.length
+    expect(total).toBeGreaterThan(GCODE.length)
+    expect(seen).toEqual([[0, total], [total, total]])
+  })
+
+  it('does not report a whole body for a request that failed', async () => {
+    const irohRelay = new IrohPrinter({ printerId: () => 'p', fetch: vi.fn(async () => { throw new Error('sending stopped by peer: error 0') }), openWebSocket: vi.fn(), close: vi.fn() } as any)
+    const seen: number[] = []
+
+    await expect(irohRelay.fetch('/server/files/upload', { method: 'POST', headers: UPLOAD_HEADERS, body: uploadForm(), onBodyProgress: done => seen.push(done) }))
+      .rejects.toThrow('sending stopped by peer')
+
+    expect(seen).toEqual([0])
+  })
+})
+
 describe('the gateway\'s parser in this spec', () => {
   const headers = ['content-type', 'multipart/form-data; boundary=b0']
   const file = '--b0\r\nContent-Disposition: form-data; name="file"; filename="a.gcode"\r\n\r\nG28\r\n'

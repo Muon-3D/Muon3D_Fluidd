@@ -76,6 +76,7 @@
 import { Component, Prop, Mixins } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import type { FilesUpload } from '@/store/files/types'
+import { uploadDialogs } from '@/components/layout/uploadProgressState'
 
 @Component({})
 export default class FileSystemUploadDialog extends Mixins(StateMixin) {
@@ -84,6 +85,10 @@ export default class FileSystemUploadDialog extends Mixins(StateMixin) {
 
   @Prop({ type: Array<FilesUpload>, required: true })
   readonly files!: FilesUpload[]
+
+  created () { uploadDialogs.open++ }
+
+  beforeDestroy () { uploadDialogs.open-- }
 }
 </script>
 

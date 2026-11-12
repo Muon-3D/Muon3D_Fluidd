@@ -9,7 +9,8 @@ import type {
   AuthorizedManagedRelaySession,
   ManagedIrohEndpoint,
   ManagedIrohRelay,
-  PrinterSocket
+  PrinterSocket,
+  TransportRequestInit
 } from '@/services/managed-transport'
 import { bluetoothRouteFor, noteBluetoothFellBack, type WasmBleLink } from '@/services/muon-ble/link'
 import { cloudBaseUrl } from './api'
@@ -239,7 +240,7 @@ export class IrohPrinter implements ManagedIrohRelay {
     this.printer = printer
   }
 
-  async fetch (path: string, init?: RequestInit): Promise<Response> {
+  async fetch (path: string, init?: TransportRequestInit): Promise<Response> {
     const signal = init?.signal
     if (signal?.aborted) throw abortError(signal)
     const method = (init?.method ?? 'GET').toUpperCase()
@@ -274,7 +275,14 @@ export class IrohPrinter implements ManagedIrohRelay {
     }
     // Aborted while the body was read: nothing is sent.
     if (signal?.aborted) throw abortError(signal)
+    // The relay takes the body in one piece, so progress is coarse: none sent
+    // when it starts, all of it once the printer has answered.
+    const reportProgress = (sent: number) => {
+      try { init?.onBodyProgress?.(sent, body.length) } catch { /* a listener's fault is not the upload's */ }
+    }
+    reportProgress(0)
     const answer = await untilAborted(this.printer.fetch(method, path, headers, body), signal)
+    reportProgress(body.length)
     const responseHeaders = new Headers()
     for (let i = 0; i + 1 < answer.headers.length; i += 2) {
       try {

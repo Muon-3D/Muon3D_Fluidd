@@ -22,6 +22,8 @@
       :timeout="flashMessageState.timeout"
     />
 
+    <upload-progress v-if="!managedConsoleRoute" />
+
     <app-tab-bar v-if="showTabBar" />
 
     <v-main
@@ -169,6 +171,7 @@ import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletio
   },
   components: {
     DeletionBanner: () => import('@/components/account/DeletionBanner.vue'),
+    UploadProgress: () => import('@/components/layout/UploadProgress.vue'),
     BluetoothFallbackBanner: () => import('@/components/layout/BluetoothFallbackBanner.vue'),
     DeletionNotice: () => import('@/components/account/DeletionNotice.vue'),
     ConnectionBanner,

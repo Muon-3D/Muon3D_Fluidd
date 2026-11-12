@@ -72,6 +72,33 @@ describe('the Iroh HTTP binding', () => {
     expect(error.code).toBe(AxiosError.ECONNABORTED)
   })
 
+  it('hands the upload progress axios is asked for to the transport, as axios progress events', async () => {
+    const client = axios.create({ baseURL: 'https://muon-cloud.invalid' })
+    release = bindHttpClientToPrinterTransport(client, transportAnswering(async (_path, init) => {
+      init?.onBodyProgress?.(0, 8)
+      init?.onBodyProgress?.(8, 8)
+      return new Response('{}', { status: 201 })
+    }))
+    const events: Array<{ loaded: number, total?: number, progress?: number, upload?: boolean }> = []
+
+    await client.post('/server/files/upload', 'x', { onUploadProgress: event => events.push(event) })
+
+    expect(events).toEqual([
+      { loaded: 0, total: 8, progress: 0, bytes: 0, upload: true },
+      { loaded: 8, total: 8, progress: 1, bytes: 8, upload: true }
+    ])
+  })
+
+  it('offers the transport no progress hook when nobody asked for upload progress', async () => {
+    const client = axios.create({ baseURL: 'https://muon-cloud.invalid' })
+    const fetch = vi.fn(answer(200))
+    release = bindHttpClientToPrinterTransport(client, transportAnswering(fetch))
+
+    await client.get('/server/info')
+
+    expect(fetch.mock.calls[0][1]?.onBodyProgress).toBeUndefined()
+  })
+
   it('says whether the client is on a printer transport, and forgets it on release', () => {
     const client = axios.create()
     expect(isBoundToPrinterTransport(client)).toBe(false)

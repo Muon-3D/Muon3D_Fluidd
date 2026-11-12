@@ -4,9 +4,10 @@ import type {
   AxiosAdapter,
   AxiosInstance,
   AxiosResponse,
+  AxiosProgressEvent,
   InternalAxiosRequestConfig
 } from 'axios'
-import type { PrinterTransport } from '@/services/managed-transport'
+import type { PrinterTransport, TransportRequestInit } from '@/services/managed-transport'
 
 /**
  * Whether Fluidd's requests go through a printer transport now. Both callers
@@ -106,9 +107,20 @@ function requestPath (
   return `${url.pathname}${url.search}`
 }
 
-function requestInit (config: InternalAxiosRequestConfig): RequestInit {
+function requestInit (config: InternalAxiosRequestConfig): TransportRequestInit {
   const method = (config.method ?? 'get').toUpperCase()
+  const onUploadProgress = config.onUploadProgress
   return {
+    // axios leaves upload progress to the adapter, as it does status and timeout.
+    onBodyProgress: onUploadProgress
+      ? (loaded, total) => onUploadProgress({
+          loaded,
+          total,
+          progress: total ? loaded / total : undefined,
+          bytes: loaded,
+          upload: true
+        } as AxiosProgressEvent)
+      : undefined,
     method,
     headers: config.headers.toJSON() as HeadersInit,
     body: method === 'GET' || method === 'HEAD'
