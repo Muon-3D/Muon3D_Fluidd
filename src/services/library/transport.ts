@@ -65,15 +65,45 @@ export function modelsResourceUrl (value: string, base = MODELS_URL, service?: s
   const bases = (service === undefined ? SERVICE_BASES : Array.isArray(service) ? service : [service]).map(trim)
   // A path of the service's own (`/v1/...`). Not resolved against a base: the
   // service's address has a path of its own, which `new URL('/v1', base)` drops.
-  if (/^\/(?!\/)/.test(value)) return `${trim(base)}${value}`
+  if (/^\/(?!\/)/.test(value)) return underBase(`${trim(base)}${value}`, base)
   const url = new URL(value)
   // Longest base first, so https://host/models wins over a bare https://host.
   for (const candidate of [...bases].sort((a, b) => b.length - a.length)) {
     const source = new URL(candidate)
     const prefix = trim(source.pathname)
     if (url.origin === source.origin && (url.pathname === prefix || url.pathname.startsWith(`${prefix}/`))) {
-      return `${trim(base)}${url.pathname.slice(prefix.length)}${url.search}${url.hash}`
+      return underBase(`${trim(base)}${url.pathname.slice(prefix.length)}${url.search}${url.hash}`, base)
     }
   }
   return url.href
+}
+
+/**
+ * True when `url` is the service at `base` (the page's transport): same
+ * origin, and a path at or below the base's. What the assertion may be sent to.
+ */
+export function isUnderBase (url: string, base = MODELS_URL): boolean {
+  let target: URL, root: URL
+  try { target = new URL(url); root = new URL(trim(base)) } catch { return false }
+  const prefix = trim(root.pathname)
+  return target.origin === root.origin && !target.username && !target.password &&
+    (target.pathname === prefix || target.pathname.startsWith(`${prefix}/`))
+}
+
+/**
+ * A rewritten service link, refused if it no longer lands under `base` once
+ * the browser has resolved it. On a printer the base is `<origin>/models` and
+ * the rest of that origin is Moonraker, so `/../printer/...` (or `%2e%2e`,
+ * which URL parsing also resolves) must not leave `/models` with an
+ * assertion. A dot segment bounded by an encoded slash or a backslash is
+ * refused too (`..%2f`): the printer's nginx decodes those before it picks a
+ * location. An encoded slash inside an id (`a%2Fb`) is fine.
+ */
+function underBase (candidate: string, base: string): string {
+  const resolved = new URL(candidate)
+  const rest = resolved.pathname.slice(trim(new URL(trim(base)).pathname).length)
+  if (!isUnderBase(resolved.href, base) || /(^|\/|%2f|%5c|\x5c)(\.|%2e){1,2}(%2f|%5c|\x5c|\/|$)/i.test(rest)) {
+    throw new TypeError('The Library sent a link outside its own address.')
+  }
+  return resolved.href
 }
