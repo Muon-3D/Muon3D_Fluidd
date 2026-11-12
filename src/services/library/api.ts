@@ -12,7 +12,7 @@
  * service's own route and `needs_auth` says to send the assertion.
  */
 
-import { MODELS_URL, modelsResourceUrl } from './transport'
+import { MODELS_URL, isUnderBase, modelsResourceUrl } from './transport'
 export { MODELS_URL, MODELS_AUDIENCE } from './transport'
 
 export interface Transfer {
@@ -370,6 +370,25 @@ export function createLibraryClient (options: LibraryClientOptions) {
   const http: typeof fetch = options.fetch ?? ((input, init) => fetch(input, init))
   const send = options.send ?? xhrSend
 
+  /**
+   * Where a Transfer goes. The assertion is only ever sent to the service at
+   * this page's transport: a Transfer that asks for it anywhere else (another
+   * host, or a path that leaves the service's own) is refused before anything
+   * is sent. A presigned bucket URL without `needs_auth` goes as it came.
+   */
+  function resolve (transfer: Transfer): string {
+    let url: string
+    try {
+      url = modelsResourceUrl(transfer.url, base(), options.baseUrl)
+    } catch {
+      throw new LibraryError('protocol', 'The Library sent a file address this page will not use.')
+    }
+    if (transfer.needs_auth && !isUnderBase(url, base())) {
+      throw new LibraryError('protocol', 'The Library sent a file address this page will not use.')
+    }
+    return url
+  }
+
   /** A request with the assertion; a 401 asks once more with a new one. */
   async function authorised (url: string, init: RequestInit, retried = false): Promise<Response> {
     const token = await options.assertion.get()
@@ -486,10 +505,11 @@ export function createLibraryClient (options: LibraryClientOptions) {
     async put (transfer: Transfer, bytes: Uint8Array, onProgress?: (sent: number) => void): Promise<void> {
       const attempt = async (retried: boolean): Promise<void> => {
         const headers: Record<string, string> = {}
+        const url = resolve(transfer)
         if (transfer.needs_auth) headers.authorization = `Bearer ${await options.assertion.get()}`
         let status: number
         try {
-          status = await send({ url: modelsResourceUrl(transfer.url, base(), options.baseUrl), body: bytes, headers, onProgress })
+          status = await send({ url, body: bytes, headers, onProgress })
         } catch (error) {
           if (error instanceof LibraryError) throw error
           throw new LibraryError('offline', 'The upload failed on the network.')
@@ -506,11 +526,12 @@ export function createLibraryClient (options: LibraryClientOptions) {
     /** GETs a file where the Transfer says, with the assertion only when the URL is the service's own. */
     async get (transfer: Transfer): Promise<Uint8Array> {
       let response: Response
+      const url = resolve(transfer)
       if (transfer.needs_auth) {
-        response = await authorised(modelsResourceUrl(transfer.url, base(), options.baseUrl), { method: 'GET' })
+        response = await authorised(url, { method: 'GET' })
       } else {
         try {
-          response = await http(modelsResourceUrl(transfer.url, base(), options.baseUrl), { method: 'GET' })
+          response = await http(url, { method: 'GET' })
         } catch {
           throw new LibraryError('offline', 'The file could not be fetched.')
         }
