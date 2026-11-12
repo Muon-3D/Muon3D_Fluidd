@@ -4,7 +4,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { cloudApi, REFRESH_KEY, storeToken, storedToken, TOKEN_KEY } from '../api'
 import { checkCentralSession } from '../centralLogin'
-import { initCloud, signOut } from '../state'
+import { cloudState, initCloud, saveLayout, signOut } from '../state'
 
 vi.mock('../iroh', () => ({ browserEndpoint: vi.fn(), forgetBrowserKey: vi.fn(), IrohPrinter: class {} }))
 
@@ -51,4 +51,19 @@ it('writes the access and refresh keys on sign-in and clears both on sign-out', 
   expect(localStorage.getItem(TOKEN_KEY)).toBeNull()
   expect(localStorage.getItem(REFRESH_KEY)).toBeNull()
   document.querySelector('form')?.remove()
+})
+
+it('a group made while the saved layout is still loading is kept, not overwritten by the late answer', async () => {
+  storeToken('token')
+  vi.spyOn(cloudApi, 'me').mockResolvedValue({ account: { id: 'account', name: 'Jack', email: 'jack@example.test', created_at: 1 }, endpoint_id: null })
+  vi.spyOn(cloudApi, 'printers').mockResolvedValue({ printers: [] })
+  vi.spyOn(cloudApi, 'putLayout').mockResolvedValue({ ok: true })
+  let answer!: (v: { layout: unknown }) => void
+  vi.spyOn(cloudApi, 'getLayout').mockReturnValue(new Promise(resolve => { answer = resolve }))
+  const init = initCloud()
+  await vi.waitFor(() => expect(cloudApi.getLayout).toHaveBeenCalled())
+  await saveLayout({ ...cloudState.layout, groups: [{ id: 'g1', name: 'Lab', printers: [] }] })
+  answer({ layout: { groups: [] } })
+  await init
+  expect(cloudState.layout.groups.map(g => g.name)).toEqual(['Lab'])
 })

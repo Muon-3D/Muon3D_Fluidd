@@ -21,7 +21,7 @@
  * The console's own sign-in page, which `/authorize` sends a browser to with
  * `continue`, is `views/SignIn.vue`; `safeContinue` below is its guard.
  */
-import { CLIENT_ID, cloudApi, cloudBaseUrl, sameConsole, setSessionRecovery, storedRefreshToken, storedToken, storeToken, storeRefreshToken } from './api'
+import { CLIENT_ID, cloudApi, cloudBaseUrl, cloudSessionAllowed, sameConsole, setSessionRecovery, storedRefreshToken, storedToken, storeRefreshToken, storeToken } from './api'
 import { challengeFor, newState, newVerifier } from './pkce'
 import { refreshServiceWorker } from '@/util/service-worker-update'
 
@@ -57,7 +57,7 @@ function session (): Storage | null {
 /** Whether this page signs in through the central login: the console serves it. */
 export function centralLoginEnabled (location: Pick<Location, 'origin' | 'protocol' | 'hostname'> = window.location): boolean {
   if (cloudBaseUrl() !== location.origin) return false
-  return location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
+  return cloudSessionAllowed(location)
 }
 
 /** The registered redirect URI: the console's root, where Fluidd is served. */

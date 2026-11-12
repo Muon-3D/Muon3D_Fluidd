@@ -30,7 +30,11 @@
         {{ subtitle }}
       </v-card-subtitle>
 
-      <v-card-text>
+      <v-card-text v-if="!sessionAllowed">
+        <open-in-muon-control route="/sign-in" />
+      </v-card-text>
+
+      <v-card-text v-if="sessionAllowed">
         <v-alert
           v-if="notice"
           type="info"
@@ -178,7 +182,10 @@
         </p>
       </v-card-text>
 
-      <v-card-actions class="justify-center pb-4">
+      <v-card-actions
+        v-if="sessionAllowed"
+        class="justify-center pb-4"
+      >
         <template v-if="mode === 'sign-in' || mode === 'sign-up'">
           <span class="text-body-2 text--secondary">
             {{ mode === 'sign-in' ? 'New to Muon3D?' : 'Already have an account?' }}
@@ -213,11 +220,16 @@ import { safeContinue } from '@/services/muon-cloud/centralLogin'
 import { AccountError } from '@/services/account/client'
 import { codeSignIn, finishSignIn, forgotPassword, passkeySignIn, passwordSignIn, signUp } from '@/services/account/sign-in'
 import { cancelledPasskey, passkeysSupported } from '@/services/account/webauthn'
+import { cloudSessionAllowed } from '@/services/muon-cloud/api'
+import OpenInMuonControl from '@/components/muon-cloud/OpenInMuonControl.vue'
 
 type Mode = 'sign-in' | 'sign-up' | 'code' | 'forgot' | 'sent'
 
-@Component({})
+@Component({ components: { OpenInMuonControl } })
 export default class SignIn extends Vue {
+  /** False on the printer's plain-HTTP address: no form, one link to the console (KAN-2192). */
+  sessionAllowed = cloudSessionAllowed()
+
   mode: Mode = 'sign-in'
   age = ''
   name = ''
