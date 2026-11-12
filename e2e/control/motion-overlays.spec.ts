@@ -2,31 +2,17 @@
  * Motion, dialogs / menus / sheets (KAN-2257, motion gallery "Dialogs, menus,
  * toasts").
  *
- * What a person sees: a menu grows out of the button that opened it, quickly,
- * and is gone faster than it came; a dialog arrives from just under full size
- * on a gentle spring, not from half size; a phone sheet rises from the bottom
- * edge. With reduced motion, nothing moves.
+ * What a person sees: a menu grows from its own corner, quickly, and is gone
+ * faster than it came; a dialog arrives from just under full size on a gentle
+ * spring, not from half size; a phone sheet rises from the bottom edge; the
+ * scrim behind a dialog fades in and out. A select's menu is left to Vuetify.
+ * With reduced motion, nothing moves.
+ *
+ * The enter and leave transitions are read by a MutationObserver installed
+ * before the action (see watchClass), so a slow frame cannot skip them.
  */
 import { test, expect } from '../fixtures'
-import type { Page } from '@playwright/test'
-import { frameTimes, sampleMotion, type MotionSample } from './motion'
-
-/** The transition an overlay has while it carries `cls` (an enter or leave class), read in the page. */
-function transitionWhile (page: Page, selector: string, cls: string) {
-  return page.evaluate(([sel, c]) => new Promise<{ duration: string, easing: string } | null>(resolve => {
-    const start = performance.now()
-    const tick = () => {
-      const el = Array.from(document.querySelectorAll(sel)).find(e => e.classList.contains(c))
-      if (el) {
-        const s = getComputedStyle(el)
-        return resolve({ duration: s.transitionDuration, easing: s.transitionTimingFunction })
-      }
-      if (performance.now() - start > 4000) return resolve(null)
-      requestAnimationFrame(tick)
-    }
-    requestAnimationFrame(tick)
-  }), [selector, cls] as const)
-}
+import { frameTimes, sampleMotion, watchClass, type MotionSample } from './motion'
 
 const smallest = (s: MotionSample[]) => Math.min(...s.map(x => x.scale))
 const settledBy = (s: MotionSample[]) => s.find(x => x.opacity === 1 && Math.abs(x.scale - 1) < 0.002 && Math.abs(x.y) < 0.5)?.t ?? Infinity
@@ -34,16 +20,16 @@ const settledBy = (s: MotionSample[]) => s.find(x => x.opacity === 1 && Math.abs
 test.describe('on a computer', () => {
   test.skip(({ isMobile }) => !!isMobile, 'the printer menu is a sheet on a phone')
 
-  test('the printer menu grows out of its button in about 160 ms and leaves faster', async ({ page, open }, info) => {
+  test('the printer menu grows in about 160 ms and leaves faster', async ({ page, open }, info) => {
     await open('/')
     const button = page.getByTestId('printer-switch').first()
     await expect(button).toBeVisible()
     const opening = sampleMotion(page, '.printer-switch__menu', 600)
-    const entering = transitionWhile(page, '.printer-switch__menu', 'v-menu-transition-enter-active')
+    const entering = await watchClass(page, '.printer-switch__menu', 'v-menu-transition-enter-active')
     const times = frameTimes(page, 600)
     await button.click()
     // 160 ms on the enter curve.
-    const enter = await entering
+    const enter = await entering()
     expect(enter?.duration).toMatch(/^0\.16s(, 0\.16s)*$/)
     expect(enter?.easing).toContain('cubic-bezier(0.16, 1, 0.3, 1)')
     const s = await opening
@@ -56,30 +42,16 @@ test.describe('on a computer', () => {
     const t = await times
     console.log(`[frame-times] menu ${info.project.name}: ${JSON.stringify(t)}`)
 
-    // A click outside: it is gone within three quarters of the entry (120 ms),
-    // plus a frame or two, timed in the page from the click.
-    // The menu, as it starts to leave: what its leaving transition is, read
-    // from the page (a busy machine can skip frames, so timing it is unreliable).
-    const leaving = page.evaluate(sel => new Promise<{ duration: string, easing: string } | null>(resolve => {
-      const start = performance.now()
-      const tick = () => {
-        const el = document.querySelector(sel) as HTMLElement | null
-        if (el && el.classList.contains('v-menu-transition-leave-active')) {
-          const s = getComputedStyle(el)
-          return resolve({ duration: s.transitionDuration, easing: s.transitionTimingFunction })
-        }
-        if (performance.now() - start > 3000) return resolve(null)
-        requestAnimationFrame(tick)
-      }
-      requestAnimationFrame(tick)
-    }), '.printer-switch__menu')
+    // A click outside: the menu leaves in three quarters of the entry (120 ms)
+    // on the exit curve, read from the page by an observer at the moment the
+    // class lands (timing it from outside is unreliable on a busy machine).
+    const leaving = await watchClass(page, '.printer-switch__menu', 'v-menu-transition-leave-active')
     // Outside the menu: the bottom-right corner of the page, well clear of it
     // and of anything that does something when clicked.
     const view = page.viewportSize()!
     await page.mouse.click(view.width - 260, view.height - 6)
-    const leave = await leaving
+    const leave = await leaving()
     console.log(`[menu-close] ${info.project.name}: ${JSON.stringify(leave)}`)
-    // Three quarters of the entry (120 ms), on the exit curve.
     expect(leave?.duration).toMatch(/^0\.12s(, 0\.12s)*$/)
     expect(leave?.easing).toContain('cubic-bezier(0.4, 0, 1, 1)')
     await expect(page.locator('.printer-switch__menu:visible')).toHaveCount(0, { timeout: 5000 })
@@ -90,12 +62,14 @@ test.describe('on a computer', () => {
     const search = page.getByText('Search or run a command').first()
     await expect(search).toBeVisible()
     const opening = sampleMotion(page, '.command-bar__dialog', 900)
-    const entering = transitionWhile(page, '.command-bar__dialog', 'dialog-transition-enter-active')
+    const entering = await watchClass(page, '.command-bar__dialog', 'dialog-transition-enter-active')
     await search.click()
-    // The gentle spring for its size, a fast fade for its opacity.
-    const enter = await entering
+    // A fast fade for its opacity (listed first, so reduced motion keeps it),
+    // the gentle spring for its size.
+    const enter = await entering()
+    expect(enter?.property).toMatch(/^opacity/)
     expect(enter?.duration).toMatch(/0\.536s/)
-    expect(enter?.easing).toMatch(/^linear\(/)
+    expect(enter?.easing).toMatch(/linear\(/)
     const s = await opening
     info.annotations.push({ type: 'dialog open samples', description: JSON.stringify(s.slice(0, 20)) })
     // Vuetify's own dialog grows from 50 %; ours from 92 %, fading in.
@@ -104,6 +78,50 @@ test.describe('on a computer', () => {
     // The gentle spring passes 1 by a little before it settles.
     expect(Math.max(...s.map(x => x.scale))).toBeLessThan(1.03)
     console.log(`[dialog-open] ${info.project.name}: settled by ${settledBy(s)} ms`)
+  })
+
+  test('the scrim fades in over 240 ms and out in 160 ms on the exit curve', async ({ page, open }) => {
+    await open('/')
+    const search = page.getByText('Search or run a command').first()
+    await expect(search).toBeVisible()
+    const opening = await watchClass(page, '.v-overlay', 'v-overlay--active')
+    await search.click()
+    // Open: the base step on the standard ease (opacity is the first entry).
+    const shown = await opening()
+    expect(shown?.property).toMatch(/^opacity/)
+    expect(shown?.duration).toMatch(/^0\.24s/)
+    expect(shown?.easing).toMatch(/^cubic-bezier\(0\.2, 0, 0, 1\)/)
+    await expect(page.locator('.command-bar__dialog')).toBeVisible()
+    // Closing: no .v-overlay--active, so the exit rule applies; a fast step on the exit curve.
+    const closing = await watchClass(page, '.v-overlay', '!v-overlay--active')
+    await page.keyboard.press('Escape')
+    const gone = await closing()
+    expect(gone?.classes).not.toContain('v-overlay--active')
+    expect(gone?.property).toMatch(/^opacity/)
+    expect(gone?.duration).toMatch(/^0\.16s/)
+    expect(gone?.easing).toMatch(/^cubic-bezier\(0\.4, 0, 1, 1\)/)
+  })
+
+  test('a select\'s menu in Settings is left to Vuetify: no 94 % start, no 160 ms step', async ({ page, open }) => {
+    await open('/settings#general')
+    const general = page.getByTestId('general-settings')
+    await expect(general).toBeVisible()
+    // The Dates select has no data-tid; its aria-label is the most stable hook.
+    const dates = general.locator('.v-select', { has: page.getByLabel('Dates', { exact: true }) })
+    await expect(dates).toBeVisible()
+    // Vuetify gives select menus .v-menu__content--auto and turns their enter
+    // transition off (it animates the rows itself). Both values are read in
+    // the observer callback that sees -enter-active, while -enter is still on,
+    // so they are the start state and not a frame sampled mid-flight: the
+    // duration is not our 160 ms, and the transform is none, not scale(0.94).
+    const entering = await watchClass(page, '.v-menu__content--auto', 'v-menu-transition-enter-active')
+    await dates.locator('.v-input__slot').click()
+    const enter = await entering()
+    expect(enter, 'the select menu opened').not.toBeNull()
+    expect(enter!.classes).toContain('v-menu-transition-enter')
+    expect(enter!.duration).not.toMatch(/0\.16s/)
+    expect(enter!.scale).not.toBeCloseTo(0.94, 2)
+    expect(enter!.transform).toBe('none')
   })
 })
 
@@ -115,19 +133,26 @@ test.describe('on a phone', () => {
     const button = page.getByTestId('printer-switch').first()
     await expect(button).toBeVisible()
     const opening = sampleMotion(page, '.printer-switch__sheet', 900)
-    const entering = transitionWhile(page, '.printer-switch__sheet', 'bottom-sheet-transition-enter-active')
+    const entering = await watchClass(page, '.printer-switch__sheet', 'bottom-sheet-transition-enter-active')
     const times = frameTimes(page, 900)
     await button.click()
     // A slow step on the enter curve: no spring, so no overshoot.
-    const enter = await entering
+    const enter = await entering()
     expect(enter?.duration).toMatch(/^0\.34s/)
     expect(enter?.easing).toContain('cubic-bezier(0.16, 1, 0.3, 1)')
+    // It starts below the screen: translated down by at least its own height,
+    // read in the same callback, with the -enter class still on.
+    expect(enter?.classes).toContain('bottom-sheet-transition-enter')
+    expect(enter!.ty).toBeGreaterThanOrEqual(enter!.height - 1)
     const s = await opening
     info.annotations.push({ type: 'sheet open samples', description: JSON.stringify(s.slice(0, 20)) })
-    expect(Math.max(...s.map(x => x.y))).toBeGreaterThan(40)
     // No overshoot: the sheet never rises past its resting place, so no gap
     // opens under it.
     expect(Math.min(...s.map(x => x.y))).toBeGreaterThanOrEqual(-0.5)
+    // It ends fully on screen, its bottom at the bottom of the viewport.
+    const view = page.viewportSize()!
+    const bottom = () => page.evaluate(sel => document.querySelector(sel)!.getBoundingClientRect().bottom, '.printer-switch__sheet')
+    await expect.poll(async () => Math.abs((await bottom()) - view.height)).toBeLessThanOrEqual(2)
     console.log(`[sheet-open] ${info.project.name}: settled by ${settledBy(s)} ms`)
     const t = await times
     console.log(`[frame-times] sheet ${info.project.name}: ${JSON.stringify(t)}`)
@@ -149,5 +174,21 @@ test.describe('reduced motion', () => {
     expect(seen.length).toBeGreaterThan(0)
     expect(smallest(seen)).toBeGreaterThan(0.999)
     expect(Math.max(...seen.map(x => Math.abs(x.y)))).toBeLessThan(1)
+  })
+
+  test('a dialog fades in a fast step, not over the spring\'s length', async ({ page, open, isMobile }) => {
+    test.skip(isMobile, 'the command bar dialog is measured on a computer')
+    await open('/')
+    await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('m3d-reduced-motion'))).toBe(true)
+    const search = page.getByText('Search or run a command').first()
+    await expect(search).toBeVisible()
+    const entering = await watchClass(page, '.command-bar__dialog', 'dialog-transition-enter-active')
+    await search.click()
+    const enter = await entering()
+    // The reduced-motion rule keeps only the first property: it must be
+    // opacity, on the fast step (160 ms), not the spring's 536 ms.
+    expect(enter?.property).toBe('opacity')
+    expect(parseFloat(enter!.duration.split(',')[0])).toBeLessThanOrEqual(0.16)
+    expect(enter?.duration).not.toMatch(/^0\.536s/)
   })
 })

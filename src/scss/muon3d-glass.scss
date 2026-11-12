@@ -473,24 +473,27 @@ $glass: "html[data-m3d-style='glass']";
   // arrive from where they were called and leave faster than they came (exits
   // at three quarters of the entry, on the exit curve). A menu is one object:
   // its rows don't stagger in.
-  .v-menu-transition-enter-active,
+  // Vuetify's own select and autocomplete menus (.v-menu__content--auto)
+  // are left alone: it turns their transition off on purpose and animates
+  // their rows itself.
+  .v-menu-transition-enter-active:not(.v-menu__content--auto),
   .slide-y-transition-enter-active {
     transition:
       opacity var(--m3d-motion-fast) var(--m3d-ease-enter),
       transform var(--m3d-motion-fast) var(--m3d-ease-enter) !important;
   }
 
-  .v-menu-transition-leave-active,
+  .v-menu-transition-leave-active:not(.v-menu__content--auto),
   .slide-y-transition-leave-active {
     transition:
       opacity calc(var(--m3d-motion-fast) * 0.75) var(--m3d-ease-exit),
       transform calc(var(--m3d-motion-fast) * 0.75) var(--m3d-ease-exit) !important;
   }
 
-  // Vuetify sets the menu's transform-origin to where it opens from, so it
-  // grows out of its button.
-  .v-menu-transition-enter,
-  .v-menu-transition-leave-to {
+  // A menu grows from its own origin, which is top left unless a menu sets
+  // `origin` itself (VMenu's default), not necessarily out of its button.
+  .v-menu-transition-enter:not(.v-menu__content--auto),
+  .v-menu-transition-leave-to:not(.v-menu__content--auto) {
     opacity: 0;
     transform: scale(0.94);
   }
@@ -501,14 +504,21 @@ $glass: "html[data-m3d-style='glass']";
     transform: translateY(-6px);
   }
 
-  .v-menu-transition-enter-to .v-list-item {
+  .v-menu-transition-enter-to:not(.v-menu__content--auto) .v-list-item {
     transition-delay: 0s;
   }
 
-  // The scrim behind a dialog fades on the base step.
-  .v-overlay {
+  // The scrim behind a dialog fades in on the base step and out faster on the
+  // exit curve. A transition uses the rule of the state it is going to.
+  .v-overlay.v-overlay--active {
     transition:
       opacity var(--m3d-motion-base) var(--m3d-ease-standard),
+      z-index 1ms !important;
+  }
+
+  .v-overlay:not(.v-overlay--active) {
+    transition:
+      opacity var(--m3d-motion-fast) var(--m3d-ease-exit),
       z-index 1ms !important;
   }
 
@@ -529,15 +539,17 @@ $glass: "html[data-m3d-style='glass']";
     border-radius: var(--m3d-radius-lg) !important;
     box-shadow: var(--m3d-glass-edge), var(--m3d-shadow-float) !important;
     // A dialog arrives from 92 % on the gentle spring (about 1.5 % over) and
-    // leaves in three quarters of a fast step.
+    // leaves in three quarters of a fast step. Opacity is listed first: the
+    // reduced-motion rule keeps only the first property, so a dialog then
+    // fades in a fast step, not over the spring's length.
     transition:
-      transform var(--m3d-spring-gentle-duration) var(--m3d-spring-gentle),
-      opacity var(--m3d-motion-fast) var(--m3d-ease-standard);
+      opacity var(--m3d-motion-fast) var(--m3d-ease-standard),
+      transform var(--m3d-spring-gentle-duration) var(--m3d-spring-gentle);
 
     &.dialog-transition-leave-active {
       transition:
-        transform calc(var(--m3d-motion-fast) * 0.75) var(--m3d-ease-exit),
-        opacity calc(var(--m3d-motion-fast) * 0.75) var(--m3d-ease-exit);
+        opacity calc(var(--m3d-motion-fast) * 0.75) var(--m3d-ease-exit),
+        transform calc(var(--m3d-motion-fast) * 0.75) var(--m3d-ease-exit);
     }
 
     > .v-card {
