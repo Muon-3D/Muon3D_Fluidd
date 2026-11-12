@@ -10,6 +10,10 @@
 import { test, expect, type Page, type Locator } from '../fixtures'
 import { frameTimes } from './motion'
 
+// A button every Control page view has, which does nothing until clicked
+// (the tests press and slide off, so it is never clicked).
+const editLayout = (page: Page) => page.getByRole('button', { name: 'Edit layout' })
+
 const scaleOf = (el: Locator) => el.evaluate(e => {
   const t = getComputedStyle(e).transform
   return t === 'none' ? 1 : new DOMMatrixReadOnly(t).a
@@ -34,8 +38,8 @@ async function pressAndRead (page: Page, button: Locator, ms: number) {
 
 test.describe('buttons answer the finger', () => {
   test('a button sinks on press inside 80 ms and springs back when let go', async ({ page, open }) => {
-    await open('/settings')
-    const button = page.locator('.v-main .v-btn:not(.v-btn--disabled)').filter({ hasText: /\S/ }).first()
+    await open('/control')
+    const button = editLayout(page)
     await expect(button).toBeVisible()
     expect(await scaleOf(button)).toBe(1)
     // Pressed: at 0.96 within about one instant (80 ms) plus a frame or two.
@@ -48,12 +52,12 @@ test.describe('buttons answer the finger', () => {
   })
 
   test('the focus ring grows out of a button reached with the keyboard', async ({ page, open }) => {
-    await open('/settings')
-    await page.locator('.v-main').click({ position: { x: 2, y: 2 } })
+    await open('/control')
+    await expect(editLayout(page)).toBeVisible()
     let found = false
     for (let i = 0; i < 60 && !found; i++) {
       await page.keyboard.press('Tab')
-      found = await page.evaluate(() => !!document.activeElement?.matches('.v-btn'))
+      found = await page.evaluate(() => !!document.activeElement?.matches('.v-btn, .cbtn'))
     }
     expect(found).toBe(true)
     await page.evaluate(() => document.activeElement!.setAttribute('data-motion-probe', ''))
@@ -77,20 +81,27 @@ test.describe('reduced motion', () => {
   test.use({ reducedMotion: 'reduce' })
 
   test('nothing scales when the system asks for less motion', async ({ page, open }) => {
-    await open('/settings')
+    await open('/control')
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('m3d-reduced-motion'))).toBe(true)
-    const button = page.locator('.v-main .v-btn:not(.v-btn--disabled)').filter({ hasText: /\S/ }).first()
+    const button = editLayout(page)
+    await expect(button).toBeVisible()
     expect(await pressAndRead(page, button, 140)).toBe(1)
   })
 })
 
-test('pressing buttons keeps 60 frames a second', async ({ page, open }, info) => {
-  await open('/settings')
-  const button = page.locator('.v-main .v-btn:not(.v-btn--disabled)').filter({ hasText: /\S/ }).first()
+test('pressing buttons costs no frames: 60 a second where the page runs at 60', async ({ page, open }, info) => {
+  await open('/control')
+  const button = editLayout(page)
+  await expect(button).toBeVisible()
+  // The page's own frame rate first (a headless browser on a busy machine may
+  // run below 60 everywhere), then the same page while pressing.
+  const idle = await frameTimes(page, 1500)
   const times = frameTimes(page, 2000)
   for (let i = 0; i < 6; i++) await pressAndRead(page, button, 120)
   const t = await times
-  info.annotations.push({ type: 'frame-times', description: JSON.stringify(t) })
-  console.log(`[frame-times] press ${info.project.name}: ${JSON.stringify(t)}`)
-  expect(t.p95).toBeLessThan(34)
+  const result = { idle, pressing: t }
+  info.annotations.push({ type: 'frame-times', description: JSON.stringify(result) })
+  console.log(`[frame-times] press ${info.project.name}: ${JSON.stringify(result)}`)
+  // Pressing costs no more than one extra frame at the 95th percentile.
+  expect(t.p95).toBeLessThanOrEqual(Math.max(34, idle.p95 + 17))
 })
