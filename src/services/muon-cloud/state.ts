@@ -444,14 +444,20 @@ async function dropSession () {
   cloudState.endpointId = null
 }
 
+/** Bumped by every layout change made here, so a slower load knows it is stale. */
+let layoutEdits = 0
+
 async function adoptSession (token: string, account: CloudAccount) {
   storeToken(token)
   cloudState.account = account
   cloudState.error = null
   await refreshPrinters()
+  const editsBefore = layoutEdits
   try {
     const { layout } = await cloudApi.getLayout()
-    cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
+    // A group made or changed while the saved layout was on its way is newer
+    // than it, and was saved: the late answer must not overwrite it.
+    if (layoutEdits === editsBefore) cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
   } catch { /* keep the default */ }
   startPolling()
 }
@@ -558,7 +564,7 @@ export async function signOut (): Promise<boolean> {
   }
   try {
     await cloudApi.signOut()
-  } catch { /* the session ends here either way */ }
+  } catch { /* the session ends here either way; on plain HTTP there is none and the call is refused unsent */ }
   await dropSession()
   forgetBrowserKey()
   setActiveCloudPrinter(null)
@@ -566,6 +572,7 @@ export async function signOut (): Promise<boolean> {
 }
 
 export async function saveLayout (layout: FleetLayout) {
+  layoutEdits++
   cloudState.layout = layout
   try {
     await cloudApi.putLayout(layout)
