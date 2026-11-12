@@ -28,7 +28,25 @@ import { configureModelsTransport } from './services/library/transport'
  * 4. Resume Vue Init
  */
 
+/**
+ * The answer to the config.json request index.html starts while the page is
+ * still being parsed. Taken once; null when there was none or it failed, and
+ * the caller then asks for itself.
+ */
+export const takePreloadedHostConfig = async (): Promise<HostConfig | null> => {
+  const pending = window.__muonHostConfig
+  window.__muonHostConfig = undefined
+  if (!pending) return null
+  const config = await pending.catch(() => null)
+  return config && typeof config === 'object' && !Array.isArray(config) ? config : null
+}
+
 const getHostConfig = async () => {
+  const preloaded = await takePreloadedHostConfig()
+  if (preloaded) {
+    consola.debug('Loaded web host configuration', preloaded)
+    return preloaded
+  }
   const hostConfigResponse = await httpClientActions.get<HostConfig>(`${import.meta.env.BASE_URL}config.json`)
   if (hostConfigResponse && hostConfigResponse.data) {
     consola.debug('Loaded web host configuration', hostConfigResponse.data)
