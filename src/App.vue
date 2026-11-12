@@ -758,11 +758,13 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
 
           this.$store.dispatch('wait/addWait', wait)
 
-          await this.uploadFiles(rest, path, root, false)
+          const uploaded = await this.uploadFiles(rest, path, root, false)
 
           this.$store.dispatch('wait/removeWait', wait)
 
-          const gcodes = rest.filter(f => isGcodeFile(f.file.name) && !f.path)
+          // Only a file that really uploaded is offered to print.
+          const gcodes = rest.filter(f => isGcodeFile(f.file.name) && !f.path &&
+            uploaded !== false && uploaded.includes(path ? `${path}/${f.file.name}` : f.file.name))
           if (root === 'gcodes' && gcodes.length === 1) {
             EventBus.bus.$emit('job-ready', path ? `${path}/${gcodes[0].file.name}` : gcodes[0].file.name)
           }
