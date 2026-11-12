@@ -226,9 +226,9 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     const was = await springs(page)
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
     await page.mouse.down()
-    // Three and a bit columns narrower: 9 is not a size Quick commands offers, so it snaps (12 → 6).
+    // Three and a bit columns narrower: 4.6 is not a size Quick commands offers, so it snaps to the nearest (8 to 3).
     await page.mouse.move(handle.x + handle.width / 2 - column * 3.4, handle.y + handle.height / 2, { steps: 10 })
-    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('style', /--span: 6/)
+    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('style', /--span: 3;/)
     await expect.poll(async () => (await springs(page)) - was).toBeGreaterThan(0)
     await page.mouse.up()
     await settle(page)

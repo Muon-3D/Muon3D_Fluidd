@@ -24,8 +24,14 @@ async function slowMoves (page: Page, printer: PrinterHandle) {
 
 const trackpadTile = (page: Page) => page.locator('[data-tile="trackpad"]')
 
-/** A saved Overview layout for this page (only the tiles named), read wherever the page looks for one. */
-async function withLayout (page: Page, tiles: Array<{ id: string, span: number, rows: number }>) {
+/**
+ * A saved Overview layout for this page (only the tiles named), from this browser. The printer's own saved
+ * layouts (which win over the browser's) are blanked for this page, so another test's saved layout on the
+ * shared mock can't override it.
+ */
+async function withLayout (page: Page, printer: PrinterHandle, tiles: Array<{ id: string, span: number, rows: number }>) {
+  const db = await useDatabase(page, printer)
+  db.saved.uiSettings = { overview: { layouts: null } }
   await page.addInitScript((json: string) => {
     const get = Storage.prototype.getItem
     Storage.prototype.getItem = function (this: Storage, key: string) {
@@ -275,8 +281,8 @@ test.describe('CT-03: one Home control, a full G28', () => {
 test.describe('OV-27 / KAN-2119: Jog B at every size', () => {
   for (const [size, span, rows] of [['S', 3, 2], ['M', 4, 2], ['L', 8, 2]] as const) {
     test(`${size}: the cross pad, Plate up and Plate down, one step row, nothing blank under it`, async ({ page, open }) => {
-      await withLayout(page, [{ id: 'trackpad', span: 4, rows: 3 }, { id: 'jog', span, rows }])
       const printer = await usePrinter(page, PRESETS.idleHomed())
+      await withLayout(page, printer, [{ id: 'trackpad', span: 4, rows: 3 }, { id: 'jog', span, rows }])
       await open('/')
       const jog = page.locator('[data-tile="jog"]')
       await jog.scrollIntoViewIfNeeded()
