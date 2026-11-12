@@ -1,7 +1,7 @@
 /**
  * @vitest-environment-options { "url": "https://control.muon3d.com/" }
  */
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cloudApi, REFRESH_KEY, storeToken, storedToken, TOKEN_KEY } from '../api'
 import { checkCentralSession } from '../centralLogin'
 import { cloudState, initCloud, saveLayout, signOut } from '../state'
@@ -66,4 +66,68 @@ it('a group made while the saved layout is still loading is kept, not overwritte
   answer({ layout: { groups: [] } })
   await init
   expect(cloudState.layout.groups.map(g => g.name)).toEqual(['Lab'])
+})
+
+describe('KAN-2249: the printer groups belong to one account', () => {
+  const account = (id: string) => ({ account: { id, name: id, email: `${id}@example.test`, created_at: 1 }, endpoint_id: null })
+  const group = (name: string) => ({ id: name, name, printers: [] })
+  const names = () => cloudState.layout.groups.map(g => g.name)
+  const pending = <T, >() => { let settle!: (v: T) => void; const promise = new Promise<T>(resolve => { settle = resolve }); return { promise, resolve: settle } }
+  beforeEach(() => {
+    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {})
+    vi.spyOn(cloudApi, 'printers').mockResolvedValue({ printers: [] })
+    vi.spyOn(cloudApi, 'putLayout').mockResolvedValue({ ok: true })
+  })
+  afterEach(() => { document.querySelectorAll('form').forEach(f => f.remove()) })
+
+  it('signing out clears the groups, so the next account never sees (or saves) the first one\'s', async () => {
+    storeToken('a')
+    vi.spyOn(cloudApi, 'me').mockResolvedValue(account('a'))
+    vi.spyOn(cloudApi, 'getLayout').mockResolvedValue({ layout: { groups: [group('A lab')] } })
+    await initCloud()
+    expect(names()).toEqual(['A lab'])
+    await signOut()
+    expect(names()).toEqual([])
+    storeToken('b')
+    vi.spyOn(cloudApi, 'me').mockResolvedValue(account('b'))
+    const b = pending<{ layout: unknown }>()
+    vi.spyOn(cloudApi, 'getLayout').mockReturnValue(b.promise as never)
+    const init = initCloud()
+    await vi.waitFor(() => expect(cloudApi.getLayout).toHaveBeenCalled())
+    expect(names()).toEqual([])
+    b.resolve({ layout: { groups: [group('B bench')] } })
+    await init
+    expect(names()).toEqual(['B bench'])
+  })
+
+  it('a layout answer for an account that has signed out is dropped, even when it lands after the next one\'s', async () => {
+    storeToken('a')
+    vi.spyOn(cloudApi, 'me').mockResolvedValue(account('a'))
+    const a = pending<{ layout: unknown }>()
+    vi.spyOn(cloudApi, 'getLayout').mockReturnValue(a.promise as never)
+    const initA = initCloud()
+    await vi.waitFor(() => expect(cloudApi.getLayout).toHaveBeenCalled())
+    await signOut()
+    storeToken('b')
+    vi.spyOn(cloudApi, 'me').mockResolvedValue(account('b'))
+    vi.spyOn(cloudApi, 'getLayout').mockResolvedValue({ layout: { groups: [group('B bench')] } })
+    await initCloud()
+    a.resolve({ layout: { groups: [group('A lab')] } })
+    await initA
+    expect(names()).toEqual(['B bench'])
+  })
+
+  it('a group made while the printers are still loading is kept, not overwritten by the saved layout', async () => {
+    storeToken('a')
+    vi.spyOn(cloudApi, 'me').mockResolvedValue(account('a'))
+    const printers = pending<{ printers: never[] }>()
+    vi.spyOn(cloudApi, 'printers').mockReturnValue(printers.promise as never)
+    vi.spyOn(cloudApi, 'getLayout').mockResolvedValue({ layout: { groups: [] } })
+    const init = initCloud()
+    await vi.waitFor(() => expect(cloudApi.printers).toHaveBeenCalled())
+    await saveLayout({ ...cloudState.layout, groups: [group('Lab')] })
+    printers.resolve({ printers: [] })
+    await init
+    expect(names()).toEqual(['Lab'])
+  })
 })

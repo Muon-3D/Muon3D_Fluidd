@@ -439,22 +439,32 @@ async function dropSession () {
   cloudState.printers = []
   cloudState.status = {}
   cloudState.endpointId = null
+  // The groups belong to the account that left: the next one starts from the default (KAN-2249). The bump also
+  // makes any layout load still on its way for the old account stale.
+  cloudState.layout = defaultLayout()
+  layoutEdits++
 }
 
-/** Bumped by every layout change made here, so a slower load knows it is stale. */
+/** Bumped by every layout change made here, and by every sign-out, so a slower load knows it is stale. */
 let layoutEdits = 0
+
+/** A fresh copy of the default layout, sharing no nested object with DEFAULT_FLEET_LAYOUT. */
+function defaultLayout (): FleetLayout {
+  return { ...DEFAULT_FLEET_LAYOUT, groups: [], widgets: { ...DEFAULT_FLEET_LAYOUT.widgets } }
+}
 
 async function adoptSession (token: string, account: CloudAccount) {
   storeToken(token)
   cloudState.account = account
   cloudState.error = null
-  await refreshPrinters()
+  // Read before the printers fetch: a group made while either answer is on its way is newer than the saved layout.
   const editsBefore = layoutEdits
+  await refreshPrinters()
   try {
     const { layout } = await cloudApi.getLayout()
-    // A group made or changed while the saved layout was on its way is newer
-    // than it, and was saved: the late answer must not overwrite it.
-    if (layoutEdits === editsBefore) cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
+    // A late answer is dropped when the layout changed meanwhile (a group made here, which saveLayout sends on its
+    // own) or the account it was asked for is no longer the one signed in (a sign-out also bumps the counter).
+    if (layoutEdits === editsBefore && cloudState.account?.id === account.id) cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
   } catch { /* keep the default */ }
   startPolling()
 }
