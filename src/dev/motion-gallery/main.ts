@@ -580,7 +580,7 @@ plays.overview = async () => {
     const instant = which === 'error'
     for (const [name, g] of Object.entries(glyphs)) {
       const on = name === which
-      if (+getComputedStyle(g).opacity > 0.5 === on) continue
+      if ((+getComputedStyle(g).opacity > 0.5) === on) continue
       anim(g, on ? [{ opacity: 0, transform: 'scale(0.6)' }, { opacity: 1, transform: 'none' }] : [{}, { opacity: 0, transform: 'scale(0.8)' }],
         instant ? 0 : on ? (name === 'done' ? SPRINGS.bouncy.ms : SPRINGS.snappy.ms) : DUR.fast * 0.75, on ? (name === 'done' ? EASE.bouncy : EASE.snappy) : EASE.exit)
     }
@@ -700,7 +700,7 @@ plays.overview = async () => {
   let glide = true
   segment($('#follow'), i => { glide = !!i })
   const real = { x: 40, y: 40 }; const drawn = { x: 40, y: 40 }
-  let t0 = performance.now(); let then = t0
+  const t0 = performance.now(); let then = t0
   setInterval(() => {
     const t = (performance.now() - t0) / 1000
     real.x = 95 + Math.cos(t * 1.3) * 62
