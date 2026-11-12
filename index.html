@@ -48,7 +48,10 @@
             for (var i = 0; i < instances.length; i++) {
               if (instances[i] && instances[i].active) { preconnect(instances[i].apiUrl); break }
             }
-            if (localStorage.getItem('muon.cloud.token')) {
+            // Only where this page's storage can be trusted (KAN-2192): on
+            // plain HTTP anything on the network can write it.
+            var trusted = location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].indexOf(location.hostname) !== -1
+            if (trusted && localStorage.getItem('muon.cloud.token')) {
               preconnect(localStorage.getItem('muon.cloud.url'))
             }
           }
