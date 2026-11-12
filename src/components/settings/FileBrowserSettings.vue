@@ -1,6 +1,5 @@
 <template>
-  <div>
-    <span id="browser" />
+  <div id="browser">
     <div
       v-if="isMuonPrinter === true && !devModeEnabled"
       class="files-devmode"
