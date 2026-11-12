@@ -9,7 +9,7 @@
         <h3 id="qpick-title">
           Quick commands
         </h3>
-        <p>Tick the ones Overview and Control show. The last one you tick comes first.</p>
+        <p>Tick the ones Overview and Control show. The last one you tick comes first. Print controls (start, pause, resume, cancel) keep their own buttons on the print, so they are not offered here.</p>
       </div>
       <button
         v-if="quickCommandPicks !== null"
@@ -58,7 +58,7 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import MacrosMixin from '@/mixins/macros'
-import { isPicked } from '@/services/control/quick-command-picks'
+import { isPicked, quickCommandEligible } from '@/services/control/quick-command-picks'
 import { macroIcon } from '@/services/macros/icon'
 
 /**
@@ -74,7 +74,7 @@ export default class QuickCommandPicker extends Mixins(MacrosMixin) {
     const picks = this.quickCommandPicks
     const auto = this.autoQuickCommandNames
     return this.arrangedMacros
-      .filter(m => m.group !== 'printer')
+      .filter(quickCommandEligible)
       .map(m => ({ name: m.name, title: m.title, icon: macroIcon(m.name), on: isPicked(picks, m.name, auto) }))
       .sort((a, b) => Number(b.on) - Number(a.on) || a.title.localeCompare(b.title))
   }

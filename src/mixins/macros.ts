@@ -10,7 +10,7 @@ import {
   type MacroGroupId,
   type MacroSource
 } from '@/services/macros/arrange'
-import { normalisePicks, pickedMacros, togglePick, type QuickCommandPicks } from '@/services/control/quick-command-picks'
+import { normalisePicks, pickedMacros, quickCommandEligible, togglePick, type QuickCommandPicks } from '@/services/control/quick-command-picks'
 
 /** The most the Quick commands tile shows (its largest size), and the automatic pick the Macros page starts from. */
 export const QUICK_COMMANDS_MAX = 11
@@ -108,7 +108,7 @@ export default class MacrosMixin extends Vue {
 
   /** The Quick commands to show, at most `count`: the person's picks in their order, else the automatic pick. */
   quickCommandList (count: number): ShownMacro[] {
-    return pickedMacros(this.arrangedMacros, this.quickCommandPicks, n => this.topMacroList(n), count)
+    return pickedMacros(this.arrangedMacros.filter(quickCommandEligible), this.quickCommandPicks, n => this.topMacroList(n), count)
   }
 
   /** Tick or untick a command for Overview and Control; kept in the printer's settings. */

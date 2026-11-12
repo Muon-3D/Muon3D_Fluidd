@@ -51,3 +51,14 @@ export function pickedMacros<T extends { name: string }> (macros: T[], picks: Qu
   const byName = new Map(macros.map(m => [m.name.toUpperCase(), m]))
   return picks.map(p => byName.get(p)).filter((m): m is T => !!m).slice(0, count)
 }
+
+/**
+ * Whether a command may be a Quick command at all: never the ones the printer
+ * runs itself or the print controls (start, pause, resume, cancel), which keep
+ * their own buttons on the print. The same rule as the automatic pick and
+ * Control's card, so ticking can't put Cancel print on the Overview as a
+ * one-tap button.
+ */
+export function quickCommandEligible (m: { group: string }): boolean {
+  return m.group !== 'printer' && m.group !== 'printing'
+}

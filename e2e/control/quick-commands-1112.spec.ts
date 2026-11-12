@@ -135,4 +135,18 @@ test.describe('OV-30: Manage is the Macros page, which picks the Quick commands'
       await go('/settings#macros')
     }
   })
+
+  test('print controls are never offered, and a saved Cancel print does not become a one-tap button', async ({ page, open }) => {
+    const printer = await usePrinter(page, withCommands())
+    const db = await useDatabase(page, printer)
+    db.saved.uiSettings = { general: { quickCommands: ['CANCEL_PRINT', 'CLEAN_NOZZLE'] } }
+    await open('/settings#macros')
+    const picker = page.getByTestId('quick-command-picker')
+    await expect(picker.getByTestId('quick-pick-CLEAN_NOZZLE')).toBeVisible()
+    await expect(picker.getByTestId('quick-pick-CANCEL_PRINT')).toHaveCount(0)
+    await expect(picker.getByTestId('quick-pick-PAUSE')).toHaveCount(0)
+    await page.evaluate(to => (document.querySelector('#app') as any).__vue__.$router.push(to).then(() => true, () => true), `${PRINTER}/`)
+    await tile(page).scrollIntoViewIfNeeded()
+    await expect.poll(() => chipNames(page)).toEqual(['CLEAN_NOZZLE'])
+  })
 })

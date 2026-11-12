@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isPicked, normalisePicks, pickedMacros, togglePick } from '../quick-command-picks'
+import { isPicked, normalisePicks, pickedMacros, quickCommandEligible, togglePick } from '../quick-command-picks'
 
 const macros = ['PURGE_LINE', 'PARK_HEAD', 'LIGHTS_ON', 'CLEAN_NOZZLE'].map(name => ({ name }))
 const auto = (n: number) => macros.slice(0, n)
@@ -29,5 +29,15 @@ describe('quick command picks', () => {
     expect(togglePick(null, 'PURGE_LINE', false, ['PURGE_LINE', 'PARK_HEAD'])).toEqual(['PARK_HEAD'])
     expect(togglePick(['PARK_HEAD'], 'park_head', true, [])).toEqual(['PARK_HEAD'])
     expect(togglePick(['PARK_HEAD'], 'PARK_HEAD', false, [])).toEqual([])
+  })
+})
+
+describe('which commands can be Quick commands', () => {
+  it('never the print controls or what the printer runs itself, so a tick cannot make Cancel print a one-tap button', () => {
+    expect(quickCommandEligible({ group: 'printing' })).toBe(false)
+    expect(quickCommandEligible({ group: 'printer' })).toBe(false)
+    expect(quickCommandEligible({ group: 'nozzle' })).toBe(true)
+    const all = [{ name: 'CANCEL_PRINT', group: 'printing' }, { name: 'CLEAN_NOZZLE', group: 'nozzle' }]
+    expect(pickedMacros(all.filter(quickCommandEligible), ['CANCEL_PRINT', 'CLEAN_NOZZLE'], () => [], 5).map(m => m.name)).toEqual(['CLEAN_NOZZLE'])
   })
 })
