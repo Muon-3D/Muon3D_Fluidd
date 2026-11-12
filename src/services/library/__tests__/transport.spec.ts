@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { configureModelsTransport, MODELS_AUDIENCE, MODELS_SERVICE_URL, MODELS_URL, modelsResourceUrl, resolveModelsUrl } from '../transport'
+import { configureModelsTransport, isUnderBase, MODELS_AUDIENCE, MODELS_SERVICE_URL, MODELS_URL, modelsResourceUrl, resolveModelsUrl } from '../transport'
 import { createLibraryClient } from '../api'
 import { safePicture } from '../discover'
 
@@ -85,5 +85,55 @@ describe('Library transport', () => {
     expect(fetcher).toHaveBeenLastCalledWith('https://bucket.example/a?sig=1', { method: 'GET' })
     await client.put(bucket, new Uint8Array([1]))
     expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ url: 'https://bucket.example/a?sig=1', headers: {} }))
+  })
+
+  it('never lets a service link leave /models on a printer, where the rest of the origin is Moonraker', () => {
+    const base = 'http://boxwood.local/models'
+    for (const value of [
+      '/../printer/objects/query',
+      '/%2e%2e/server/files/list',
+      '/v1/../../machine/reboot',
+      '/..%2fprinter%2fobjects',
+      '/v1%5c..%5caccess',
+      `${SERVICE}/..%2fprinter%2fobjects`,
+      `${SERVICE}/v1/a/..%5Cprinter`
+    ]) {
+      expect(() => modelsResourceUrl(value, base), value).toThrow()
+    }
+    // Dots the URL parser resolves inside the service's own path stay there.
+    expect(modelsResourceUrl(`${AUDIENCE}/v1/%2e%2e/%2e%2e/printer`, base)).toBe(`${base}/printer`)
+    expect(modelsResourceUrl('/v1/files/a%2Fb/content', base)).toBe(`${base}/v1/files/a%2Fb/content`)
+    // What stays under /models is fine, encoded ids included.
+    expect(modelsResourceUrl('/v1/files/a%20b/content', base)).toBe(`${base}/v1/files/a%20b/content`)
+    expect(modelsResourceUrl('/v1/x/../files/a', base)).toBe(`${base}/v1/files/a`)
+  })
+
+  it('isUnderBase is the exact origin and a whole-segment path prefix', () => {
+    const base = 'http://boxwood.local/models'
+    expect(isUnderBase(`${base}/v1/a`, base)).toBe(true)
+    expect(isUnderBase(base, base)).toBe(true)
+    expect(isUnderBase('http://boxwood.local/modelsx/v1', base)).toBe(false)
+    expect(isUnderBase('http://boxwood.local/printer/objects', base)).toBe(false)
+    expect(isUnderBase('http://boxwood.local.evil.test/models/v1', base)).toBe(false)
+    expect(isUnderBase('http://user:pw@boxwood.local/models/v1', base)).toBe(false)
+    expect(isUnderBase('not a url', base)).toBe(false)
+  })
+
+  it('sends the assertion only to the service at the page transport, whatever needs_auth says', async () => {
+    configureModelsTransport(printer)
+    const proxy = `${window.location.origin}/models`
+    const fetcher = vi.fn().mockImplementation(async () => new Response('bytes'))
+    const send = vi.fn().mockResolvedValue(200)
+    const client = createLibraryClient({ assertion: { get: async () => 'assertion', drop: vi.fn() }, fetch: fetcher, send })
+    for (const url of ['https://library.muon3d.com.evil.test/models/v1/files/a', 'https://bucket.example/a?sig=1', '/../printer/objects/query']) {
+      const transfer = { method: 'GET', url, needs_auth: true, expires_at: '' }
+      await expect(client.get(transfer), url).rejects.toThrow()
+      await expect(client.put(transfer, new Uint8Array([1])), url).rejects.toThrow()
+    }
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+    // The service's own link still goes, to the proxy, with the assertion.
+    await client.get({ method: 'GET', url: `${SERVICE}/v1/files/a`, needs_auth: true, expires_at: '' })
+    expect(fetcher).toHaveBeenLastCalledWith(`${proxy}/v1/files/a`, expect.objectContaining({ headers: { authorization: 'Bearer assertion' } }))
   })
 })
