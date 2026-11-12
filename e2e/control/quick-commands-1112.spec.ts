@@ -8,7 +8,7 @@
  */
 import type { Page } from '@playwright/test'
 import { test, expect, PRINTER } from '../fixtures'
-import { overlay, usePrinter, useDatabase, PRESETS } from './printer'
+import { overlay, usePrinter, useDatabase, PRESETS, type PrinterHandle } from './printer'
 
 /** An M1 with a few more commands than the shared mock has, so there is something to choose. */
 const EXTRA = ['PURGE_LINE', 'PARK_HEAD', 'LIGHTS_ON', 'LIGHTS_OFF', 'CHECK_FANS', 'COOL_THE_CHAMBER', 'WIPE_NOZZLE', 'PRIME_NOZZLE', 'MEASURE_PLATE', 'TEST_SPEED', 'BEEP']
@@ -25,8 +25,10 @@ function withCommands () {
 const tile = (page: Page) => page.locator('[data-tile="macros"]')
 const chipNames = (page: Page) => tile(page).locator('[data-tid="macro-chip"]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.macro))
 
-/** A saved Overview layout for this page with only Quick commands, at `span` by `rows`. */
-async function onlyQuickCommands (page: Page, span: number, rows: number) {
+/** A saved Overview layout for this page with only Quick commands, at `span` by `rows` (the printer's own saved layouts blanked, so none from another test wins). */
+async function onlyQuickCommands (page: Page, printer: PrinterHandle, span: number, rows: number) {
+  const db = await useDatabase(page, printer)
+  db.saved.uiSettings = { overview: { layouts: null } }
   await page.addInitScript((json: string) => {
     const get = Storage.prototype.getItem
     Storage.prototype.getItem = function (this: Storage, key: string) {
@@ -38,8 +40,8 @@ async function onlyQuickCommands (page: Page, span: number, rows: number) {
 test.describe('OV-29: Quick commands grows with its size', () => {
   for (const [size, span, rows] of [['XS', 3, 1], ['S', 3, 2], ['M', 8, 1], ['L', 12, 1]] as const) {
     test(`${size}`, async ({ page, open, isMobile }) => {
-      await onlyQuickCommands(page, span, rows)
-      await usePrinter(page, withCommands())
+      const printer = await usePrinter(page, withCommands())
+      await onlyQuickCommands(page, printer, span, rows)
       await open('/')
       await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', size)
       const chips = tile(page).locator('[data-tid="macro-chip"]')
