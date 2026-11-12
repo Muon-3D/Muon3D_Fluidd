@@ -17,6 +17,22 @@
       </p>
     </header>
 
+    <div
+      v-if="printerPage"
+      class="sec__row"
+      data-tid="security-auto-switch"
+    >
+      <div class="sec__titles">
+        <h3>Switch to the secure address automatically</h3>
+        <p>On this browser. When this printer has a secure address that works here, Control opens it by itself.</p>
+      </div>
+      <toggle-switch
+        :value="autoSwitch"
+        label="Switch to the secure address automatically"
+        @input="onAutoSwitch"
+      />
+    </div>
+
     <p
       v-if="knobs === null"
       class="sec__note"
@@ -177,6 +193,7 @@ import LockedRow from '@/components/settings/gates/LockedRow.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import { printerNameParts } from '@/util/printer-name'
+import { couldHaveSecureAddress, isPrinterSecureOrigin, setSwitchesAutomatically, switchesAutomatically } from '@/services/secure-origin'
 import {
   changeOutcome, outcomeNote, parsePermissions, permissionsPath, switchOutcome, switchPath, valueLabel,
   type PermissionKnob, type PermissionSwitch
@@ -200,6 +217,14 @@ export default class SecuritySettings extends Mixins(MuonGatesMixin) {
   saving = ''
   notes: Record<string, string> = {}
   readonly valueLabel = valueLabel
+  /** This browser's choice, not the printer's: it means nothing on a page the console serves. */
+  printerPage = couldHaveSecureAddress() || isPrinterSecureOrigin()
+  autoSwitch = switchesAutomatically()
+
+  onAutoSwitch (on: boolean) {
+    setSwitchesAutomatically(on)
+    this.autoSwitch = switchesAutomatically()
+  }
 
   mounted () {
     if (this.isMuonPrinter === true) this.load()
