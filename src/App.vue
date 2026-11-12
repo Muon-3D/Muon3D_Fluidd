@@ -50,6 +50,8 @@
 
         <bluetooth-fallback-banner />
 
+        <secure-address-banner />
+
         <update-banner v-if="showUpdateBanner" />
 
         <deletion-notice v-if="deletionCloudView" />
@@ -170,6 +172,7 @@ import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletio
   components: {
     DeletionBanner: () => import('@/components/account/DeletionBanner.vue'),
     BluetoothFallbackBanner: () => import('@/components/layout/BluetoothFallbackBanner.vue'),
+    SecureAddressBanner: () => import('@/components/layout/SecureAddressBanner.vue'),
     DeletionNotice: () => import('@/components/account/DeletionNotice.vue'),
     ConnectionBanner,
     ConnectingScreen,
@@ -746,7 +749,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
           // keep; G-code goes in, and one file on its own is offered to print.
           const models = root === 'gcodes' ? files.filter(f => isModelFile(f.file.name)) : []
           const rest = files.filter(f => !models.includes(f))
-          if (models.length) EventBus.bus.$emit('model-dropped', models.map(f => f.file.name))
+          // The File objects go with it: Open Slice hands them to the slicer (KAN-2191).
+          if (models.length) EventBus.bus.$emit('model-dropped', models.map(f => f.file))
           if (!rest.length) return
 
           const pathWithRoot = this.$store.getters['files/getCurrentPathByRoot'](root) as string || ''

@@ -1,11 +1,13 @@
 /**
  * @vitest-environment-options { "url": "http://muon-m1.local/" }
  *
- * KAN-1800 (H2/B9): on the printer's own plain-HTTP address, anything on the
- * network can read or inject script into the origin, so the long-lived cloud
- * tokens live in this tab's memory only, never in localStorage.
+ * KAN-2192 (the whole of H2/B9, after KAN-1800): on the printer's own
+ * plain-HTTP address anything on the network can read or inject script into
+ * the origin. So the page holds no Muon3D account secret at all: no token in
+ * storage or in memory, no password or code sent, and no bearer on any
+ * request. Account features are a link to the console instead.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../iroh', () => ({ browserEndpoint: vi.fn(), forgetBrowserKey: vi.fn(), IrohPrinter: class {} }))
 
@@ -14,34 +16,83 @@ async function load () {
   return import('../api')
 }
 
+type Call = { url: string, init: RequestInit | undefined }
+
+/** A console that answers everything, and a record of what reached it. */
+function stubConsole (): Call[] {
+  const calls: Call[] = []
+  const account = { id: 'a1', email: 'a@example.test', name: 'A' }
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url: String(url), init })
+    const path = new URL(String(url), 'http://muon-m1.local').pathname
+    const body = path === '/v1/auth/sign-in' || path === '/v1/auth/sign-up' || path === '/v1/auth/mfa'
+      ? { token: 'access-signin', account }
+      : path === '/token'
+        ? { access_token: 'access-rotated', refresh_token: 'refresh-rotated' }
+        : path === '/v1/me' ? { account } : { printers: [], members: [], relay_url: 'https://relay.example.test' }
+    return { ok: true, status: 200, redirected: false, url: String(url), body: null, json: async () => body, text: async () => JSON.stringify(body) } as unknown as Response
+  }))
+  return calls
+}
+
+function noCloudSecretStored () {
+  for (const store of [localStorage, sessionStorage]) {
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i)!
+      expect(['muon.cloud.token', 'muon.cloud.refresh', 'muon.cloud.key'].includes(key), `${key} in storage`).toBe(false)
+      expect(store.getItem(key)).not.toMatch(/^(access|refresh)-/)
+    }
+  }
+}
+
+function bearerOf (call: Call): string | undefined {
+  const headers = (call.init?.headers ?? {}) as Record<string, string>
+  return headers.authorization ?? headers.Authorization
+}
+
 beforeEach(() => {
   localStorage.clear()
   sessionStorage.clear()
 })
 
-describe('cloud tokens on an insecure origin', () => {
-  it('treats http on a LAN name or address as insecure, and https or loopback as secure', async () => {
-    const { cloudTokensPersist } = await load()
-    expect(cloudTokensPersist({ protocol: 'http:', hostname: 'muon-m1.local' })).toBe(false)
-    expect(cloudTokensPersist({ protocol: 'http:', hostname: '10.42.0.1' })).toBe(false)
-    expect(cloudTokensPersist({ protocol: 'http:', hostname: '192.168.1.20' })).toBe(false)
-    expect(cloudTokensPersist({ protocol: 'https:', hostname: 'control.muon3d.com' })).toBe(true)
-    expect(cloudTokensPersist({ protocol: 'http:', hostname: 'localhost' })).toBe(true)
-    expect(cloudTokensPersist({ protocol: 'http:', hostname: '127.0.0.1' })).toBe(true)
-    expect(cloudTokensPersist({ protocol: 'http:', hostname: '[::1]' })).toBe(true)
-    expect(cloudTokensPersist({ protocol: 'http:', hostname: '[fe80::1]' })).toBe(false)
-    expect(cloudTokensPersist({ protocol: 'http:', hostname: 'localhost.example.com' })).toBe(false)
-    expect(cloudTokensPersist({ protocol: 'https:', hostname: 'muon-m1.local' })).toBe(true)
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('which pages may hold a Muon3D session', () => {
+  it('refuses http on a LAN name or address, and allows https and loopback', async () => {
+    const { cloudSessionAllowed, cloudTokensPersist } = await load()
+    for (const allowed of [cloudSessionAllowed, cloudTokensPersist]) {
+      expect(allowed({ protocol: 'http:', hostname: 'muon-m1.local' })).toBe(false)
+      expect(allowed({ protocol: 'http:', hostname: 'muon3d.local' })).toBe(false)
+      expect(allowed({ protocol: 'http:', hostname: '10.42.0.1' })).toBe(false)
+      expect(allowed({ protocol: 'http:', hostname: '192.168.1.20' })).toBe(false)
+      expect(allowed({ protocol: 'http:', hostname: '[fe80::1]' })).toBe(false)
+      expect(allowed({ protocol: 'http:', hostname: 'localhost.example.com' })).toBe(false)
+      expect(allowed({ protocol: 'https:', hostname: 'control.muon3d.com' })).toBe(true)
+      expect(allowed({ protocol: 'https:', hostname: 'muon-m1.local' })).toBe(true)
+      expect(allowed({ protocol: 'http:', hostname: 'localhost' })).toBe(true)
+      expect(allowed({ protocol: 'http:', hostname: '127.0.0.1' })).toBe(true)
+      expect(allowed({ protocol: 'http:', hostname: '[::1]' })).toBe(true)
+    }
   })
 
-  it('keeps the access and refresh tokens out of localStorage and sessionStorage', async () => {
+  it('links to the same route on the console', async () => {
+    const { controlUrl } = await load()
+    expect(controlUrl('/account')).toBe('https://control.muon3d.com/#/account')
+    expect(controlUrl('library')).toBe('https://control.muon3d.com/#/library')
+    expect(controlUrl()).toBe('https://control.muon3d.com/#/')
+  })
+})
+
+describe('a plain-HTTP printer page holds no token', () => {
+  it('drops a token it is handed: nothing in storage and nothing in memory', async () => {
     const api = await load()
     api.storeToken('access-1')
     api.storeRefreshToken('refresh-1')
-    expect(api.storedToken()).toBe('access-1')
-    expect(api.storedRefreshToken()).toBe('refresh-1')
-    expect(localStorage.getItem(api.TOKEN_KEY)).toBeNull()
-    expect(localStorage.getItem(api.REFRESH_KEY)).toBeNull()
+    expect(api.storedToken()).toBeNull()
+    expect(api.storedRefreshToken()).toBeNull()
+    noCloudSecretStored()
     expect(sessionStorage.length).toBe(0)
   })
 
@@ -57,97 +108,118 @@ describe('cloud tokens on an insecure origin', () => {
     // Only cloud tokens go: other settings stay.
     expect(localStorage.getItem('muon.cloud.url')).toBe('https://control.muon3d.com')
   })
-
-  it('forgets the session when the page reloads', async () => {
-    const first = await load()
-    first.storeToken('access-1')
-    first.storeRefreshToken('refresh-1')
-    const second = await load()
-    expect(second.storedToken()).toBeNull()
-    expect(second.storedRefreshToken()).toBeNull()
-  })
-
-  it('a refresh rotates the in-memory pair and still writes nothing to storage', async () => {
-    const api = await load()
-    api.storeToken('access-0')
-    api.storeRefreshToken('refresh-0')
-    vi.stubGlobal('navigator', {})
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ access_token: 'access-2', refresh_token: 'refresh-2' }), text: async () => '' } as Response)))
-    expect(await api.refreshSession()).toBe(true)
-    expect(api.storedToken()).toBe('access-2')
-    expect(api.storedRefreshToken()).toBe('refresh-2')
-    expect(localStorage.getItem(api.TOKEN_KEY)).toBeNull()
-    expect(localStorage.getItem(api.REFRESH_KEY)).toBeNull()
-    vi.unstubAllGlobals()
-  })
-
-  it('sign-out clears the in-memory pair', async () => {
-    const api = await load()
-    api.storeToken('access-1')
-    api.storeRefreshToken('refresh-1')
-    api.storeToken(null)
-    api.storeRefreshToken(null)
-    expect(api.storedToken()).toBeNull()
-    expect(api.storedRefreshToken()).toBeNull()
-  })
 })
 
-describe('every cloud token writer on an insecure origin', () => {
-  function noCloudTokenStored () {
-    for (const store of [localStorage, sessionStorage]) {
-      for (let i = 0; i < store.length; i++) {
-        const key = store.key(i)!
-        expect(key === 'muon.cloud.token' || key === 'muon.cloud.refresh', `${key} in storage`).toBe(false)
-        expect(store.getItem(key)).not.toMatch(/^(access|refresh)-/)
-      }
-    }
-  }
+describe('a plain-HTTP printer page sends no credential', () => {
+  it('refuses password sign-in, sign-up and the code step before any request leaves', async () => {
+    const calls = stubConsole()
+    await load()
+    const state = await import('../state')
+    await expect(state.signIn('a@example.test', 'pw')).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(state.signUp('a@example.test', 'pw', 'A', 30)).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(state.signInWithCode('mfa-token', '123456')).rejects.toMatchObject({ code: 'insecure_origin' })
+    expect(calls).toHaveLength(0)
+    expect(state.cloudState.account).toBeNull()
+    noCloudSecretStored()
+  })
 
-  it('sign-in, rekey, refresh, central-login checks and sign-out leave no muon.cloud token in storage', async () => {
-    vi.resetModules()
-    vi.stubGlobal('navigator', {})
-    const account = { id: 'a1', email: 'a@example.test', name: 'A' }
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      const path = new URL(String(url), 'http://muon-m1.local').pathname
-      const body = path === '/v1/auth/sign-in'
-        ? { token: 'access-signin', account }
-        : path === '/token'
-          ? { access_token: 'access-rotated', refresh_token: 'refresh-rotated' }
-          : path === '/v1/me' ? { account } : { printers: [], members: [] }
-      return { ok: true, status: 200, redirected: false, url: String(url), body: null, json: async () => body, text: async () => JSON.stringify(body) } as unknown as Response
-    }))
-    const api = await import('../api')
+  it('refuses the hand-off sign-in, the code exchange and a refresh', async () => {
+    const calls = stubConsole()
+    const api = await load()
+    await expect(api.cloudApi.signInFor('a@example.test', 'pw')).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.signUpFor('a@example.test', 'pw', 'A', 30)).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.handoff('access-1')).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.exchangeCode('code', 'http://muon-m1.local/', 'verifier')).rejects.toMatchObject({ code: 'insecure_origin' })
+    expect(await api.refreshSession()).toBe(false)
+    expect(calls).toHaveLength(0)
+    noCloudSecretStored()
+  })
+
+  it('never puts a bearer on a request, and still makes the calls that need no account', async () => {
+    const calls = stubConsole()
+    const api = await load()
+    // A token cannot be smuggled in through storage either.
+    localStorage.setItem('muon.cloud.token', 'access-planted')
+    expect(api.storedToken()).toBeNull()
+    await api.cloudApi.config()
+    await api.cloudApi.nearby()
+    expect(calls).toHaveLength(2)
+    for (const call of calls) expect(bearerOf(call)).toBeUndefined()
+  })
+
+  it('makes no account-client call: no password, token or reset request leaves the page', async () => {
+    const calls = stubConsole()
+    await load()
+    const client = await import('../../account/client')
+    const signIn = await import('../../account/sign-in')
+    await expect(signIn.passwordSignIn('a@example.test', 'pw')).rejects.toThrow(/not encrypted/)
+    await expect(signIn.forgotPassword('a@example.test')).rejects.toThrow(/not encrypted/)
+    client.adoptRekeyedSession({ session: { access_token: 'access-rekey', refresh_token: 'refresh-rekey' } })
+    expect(calls).toHaveLength(0)
+    noCloudSecretStored()
+  })
+
+  it('start-up, the central-login checks and sign-out leave nothing behind', async () => {
+    const calls = stubConsole()
+    const api = await load()
     const state = await import('../state')
     const central = await import('../centralLogin')
-    const client = await import('../../account/client')
-
-    // Password sign-in (the in-page path on the printer's address).
-    expect(await state.signIn('a@example.test', 'pw')).toBeNull()
-    expect(api.storedToken()).toBe('access-signin')
-    noCloudTokenStored()
-
-    // A credential change hands this tab a new pair.
-    client.adoptRekeyedSession({ session: { access_token: 'access-rekey', refresh_token: 'refresh-rekey' } })
-    expect(api.storedRefreshToken()).toBe('refresh-rekey')
-    noCloudTokenStored()
-
-    // Refresh rotation.
-    expect(await api.refreshSession()).toBe(true)
-    expect(api.storedToken()).toBe('access-rotated')
-    noCloudTokenStored()
-
-    // The central login's code exchange and silent check are off on this
-    // origin; running them must not write either.
     expect(central.centralLoginEnabled()).toBe(false)
     await central.checkCentralSession()
     await state.initCloud()
-    noCloudTokenStored()
-
-    // Sign-out.
+    expect(state.cloudState.ready).toBe(true)
+    expect(state.cloudState.account).toBeNull()
     await state.signOut()
     expect(api.storedToken()).toBeNull()
-    expect(api.storedRefreshToken()).toBeNull()
-    noCloudTokenStored()
-    vi.unstubAllGlobals()
+    for (const call of calls) expect(bearerOf(call)).toBeUndefined()
+    noCloudSecretStored()
+  })
+})
+
+describe('a plain-HTTP printer page makes only the calls that need no account', () => {
+  it('refuses every other console route, with or without a token, before any request leaves', async () => {
+    const calls = stubConsole()
+    const api = await load()
+    // The link, invite and assertion routes carry a code or act for the account.
+    await expect(api.cloudApi.join('INVITE-CODE')).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.claim('12345678')).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.assertion('https://models.muon3d.com')).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.me()).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.printers()).rejects.toMatchObject({ code: 'insecure_origin' })
+    await expect(api.cloudApi.signOut()).rejects.toMatchObject({ code: 'insecure_origin' })
+    expect(calls).toHaveLength(0)
+  })
+
+  it('does not ask the console to start a link: nothing on this page needs it', async () => {
+    const calls = stubConsole()
+    const api = await load()
+    await expect(api.cloudApi.startLink('printer-1')).rejects.toMatchObject({ code: 'insecure_origin' })
+    expect(calls).toHaveLength(0)
+  })
+
+  it('refuses when there is no page to judge', async () => {
+    const { cloudSessionAllowed } = await load()
+    // Not `undefined`: that takes the default parameter, this page's own
+    // location, and would pass on the protocol check alone. jsdom's
+    // `location` cannot be removed, so `null` stands in for "no page".
+    expect(cloudSessionAllowed(null as unknown as undefined)).toBe(false)
+  })
+
+  it('sign-out sends nothing', async () => {
+    const calls = stubConsole()
+    await load()
+    const state = await import('../state')
+    await state.signOut()
+    expect(calls).toHaveLength(0)
+  })
+
+  it('ignores a console address saved in this origin\'s storage', async () => {
+    // Anything on the network can write this page's storage.
+    localStorage.setItem('muon.cloud.url', 'https://hostile.example')
+    const calls = stubConsole()
+    const api = await load()
+    expect(api.cloudBaseUrl()).not.toContain('hostile.example')
+    await api.cloudApi.nearby()
+    expect(calls[0].url).not.toContain('hostile.example')
   })
 })

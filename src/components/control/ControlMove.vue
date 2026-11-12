@@ -600,7 +600,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
 
   get pickHint (): string {
     if (!this.xyHomedHere) return 'Home all, then tap the bed to pick a spot.'
-    if (this.noGo === 'invalid') return 'The no-go regions could not be read, so only raising the head is allowed.'
+    if (this.noGo === 'invalid') return 'The notch could not be read, so only raising the head is allowed.'
     return 'Tap the bed to pick a spot, then press Move here. Or drag, and the head follows.'
   }
 
@@ -693,7 +693,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
     if (plan.lifted) {
       // The plan's steps are in G-code coordinates; say the height in real Z, as the refusals do.
       const lift = Number(plan.steps[0].Z) + (this.gcodeOffset ?? [0, 0, 0])[2]
-      return `Lifts to Z ${Math.round(lift * 100) / 100} first, to cross the no-go region`
+      return `Lifts to Z ${Math.round(lift * 100) / 100} first, to cross the notch`
     }
     return there
   }

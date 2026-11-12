@@ -64,7 +64,7 @@ export default class PrinterStatusMixin extends Mixins(StateMixin) {
   get pageTitle (): string {
     const section = `/${pageOfRoute(this.$route).split('/')[1]}`
 
-    if (this.$route.name === 'Dashboard') return this.displayName
+    if (this.$route.name === 'Overview') return this.displayName
 
     const key = pageTitleKeys[section]
 
@@ -72,7 +72,7 @@ export default class PrinterStatusMixin extends Mixins(StateMixin) {
   }
 
   get pageSubtitle (): string {
-    return this.$route.name === 'Dashboard'
+    return this.$route.name === 'Overview'
       ? this.statusText
       : `${this.displayName} · ${this.statusText}`
   }

@@ -9,7 +9,6 @@ export interface ConfigState {
   socketUrl: string;
   authKey: string;
   discovered: boolean;
-  layoutMode: boolean;
   containerColumnCount: number;
   instances: InstanceConfig[];
   lanInstances: InstanceConfig[];
