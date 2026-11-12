@@ -221,3 +221,48 @@ describe('Library v3: one of your prints', () => {
     expect(c.runs).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('Library: opening one of your prints', () => {
+  const RECENTS = 'm3d.control.library.recents.v1'
+  beforeEach(() => localStorage.clear())
+
+  it('is what Continue shows next: kept on this device once the print has loaded, with its name and nothing more', async () => {
+    setLibraryClient(client() as never)
+    mountPage()
+    await flush()
+    const stored = JSON.parse(localStorage.getItem(RECENTS) ?? '[]')
+    expect(stored).toHaveLength(1)
+    expect(stored[0]).toMatchObject({ id: 'a', kind: 'own', title: 'Desk bracket', thumbnail: null, maker: null })
+    // A sync that brings the same print again is not opening it again.
+    const before = stored[0].opened_at
+    libraryState.items = { a: item({ printed_count: 5 }) }
+    await flush()
+    expect(JSON.parse(localStorage.getItem(RECENTS) ?? '[]')[0].opened_at).toBe(before)
+  })
+
+  it('a print that could not be read is not kept', async () => {
+    setLibraryClient(client({ item: vi.fn(async () => { throw new LibraryError('not_found', 'No such print.', 404) }) }) as never)
+    mountPage()
+    await flush()
+    expect(localStorage.getItem(RECENTS)).toBeNull()
+  })
+
+  it('opens with its heading focused', async () => {
+    setLibraryClient(client() as never)
+    const w = shallowMount(LibraryPrint, {
+      mocks: {
+        $route: { params: { item: 'a' }, query: {} },
+        $router: { push: vi.fn(() => Promise.resolve()) },
+        $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} },
+        $vuetify: { breakpoint: { mobile: false } }
+      },
+      stubs: ['router-link', 'frame-icon', 'v-menu', 'v-list', 'v-list-item', 'v-list-item-title', 'v-divider'],
+      attachTo: document.body
+    })
+    mounted.push(w)
+    await flush()
+    const heading = w.find('[data-tid="library-print-name"]')
+    expect(heading.attributes('tabindex')).toBe('-1')
+    expect(document.activeElement).toBe(heading.element)
+  })
+})

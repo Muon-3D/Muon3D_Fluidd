@@ -19,8 +19,10 @@
       :printer-name="activePrinter ? activePrinter.name : null"
       :printer-model="activePrinter && activePrinter.model ? activePrinter.model : 'M1'"
       :tab="view === 'mine' ? 'yours' : 'discover'"
-      :continue-item="signedIn && state.synced && prints.length ? prints[0] : null"
+      :continue-recent="continueRecent"
+      :continue-item="continueItem"
       :signed-in="signedIn"
+      :settings-to="settingsTo"
       :grid="grid"
       :search="searchQuery"
       :own-ready="state.checked && state.enabled"
@@ -41,6 +43,7 @@
       @print-item="printOn($event, activePrinter ? activePrinter.id : null)"
       @print-run="onPrintRun"
       @open-item="openItem"
+      @open-recent="openRecent"
       @slice-item="openInSlice"
       @go-slice="goSlice"
     >
@@ -184,6 +187,7 @@ import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
 import { describeLibraryError, type LibraryItem, type LibraryRun } from '@/services/library/api'
 import { libraryState, turnLibraryOn } from '@/services/library/store'
 import { YOURS_GRIDS, type YoursGridSource } from '@/components/library/v2/LibraryYoursGrid.vue'
+import { readRecents, type RecentEntry } from '@/services/library/recents'
 
 /** Automatic consent, by account: asked once per app session, whichever page instance asked (KAN-735). */
 export const autoConsent = Vue.observable({ asked: {} as Record<string, 'pending' | 'done' | 'failed'> })
@@ -491,6 +495,28 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   /** Printed's Print again: the print hand-off, for that version. */
   onPrintRun (run: LibraryRun) {
     if (this.canPrintAgain(run)) this.$router.push(this.printAgain(run)).catch(() => {})
+  }
+
+  /**
+   * Continue is what this device opened last (kept in this browser, not in the
+   * account). One of your own prints counts only signed in, and not once the
+   * synced Library no longer has it; a public model counts whoever is here.
+   */
+  get continueRecent (): RecentEntry | null {
+    return readRecents().find(entry => entry.kind === 'publication' ||
+      (this.signedIn && (!this.state.synced || !!this.everything.find(item => item.id === entry.id)))) ?? null
+  }
+
+  /** The print behind Continue when it is one of yours, for Print again. */
+  get continueItem (): LibraryItem | null {
+    const entry = this.continueRecent
+    return entry && entry.kind === 'own' ? this.prints.find(item => item.id === entry.id) ?? null : null
+  }
+
+  /** Continue's Open: one of yours goes to its own page, a public model to its page here. */
+  openRecent (entry: RecentEntry) {
+    if (entry.kind === 'own') this.$router.push(this.printTo({ id: entry.id } as LibraryItem)).catch(() => {})
+    else this.openPrint(entry.id)
   }
 
   /** A Yours card's picture or Continue's Open: the print's own page. */
