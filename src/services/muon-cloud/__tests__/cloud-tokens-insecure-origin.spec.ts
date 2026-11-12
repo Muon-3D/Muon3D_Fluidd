@@ -199,7 +199,10 @@ describe('a plain-HTTP printer page makes only the calls that need no account', 
 
   it('refuses when there is no page to judge', async () => {
     const { cloudSessionAllowed } = await load()
-    expect(cloudSessionAllowed(undefined)).toBe(false)
+    // Not `undefined`: that takes the default parameter, this page's own
+    // location, and would pass on the protocol check alone. jsdom's
+    // `location` cannot be removed, so `null` stands in for "no page".
+    expect(cloudSessionAllowed(null as unknown as undefined)).toBe(false)
   })
 
   it('sign-out sends nothing', async () => {
