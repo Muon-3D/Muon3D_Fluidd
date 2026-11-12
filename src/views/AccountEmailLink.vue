@@ -16,8 +16,14 @@
       <div class="acct-solo__box lib-surface eml">
         <!-- The printer's plain-HTTP address: the link is finished on the console (KAN-2192). -->
         <template v-if="!sessionAllowed">
-          <h1>Finish this at Muon Control</h1>
-          <open-in-muon-control :route="consoleRoute" />
+          <h1>Open the link from your email again</h1>
+          <p
+            class="acct-muted"
+            data-tid="email-link-insecure"
+          >
+            That link is for Muon Control. It was opened on the printer's own address, so it was not used here.
+          </p>
+          <open-in-muon-control route="/account" />
         </template>
 
         <!-- Confirming an address, or finishing a change of it. -->
@@ -168,9 +174,6 @@ type Step = 'working' | 'ready' | 'done' | 'failed'
 export default class AccountEmailLink extends Vue {
   /** False on the printer's plain-HTTP address: no form and no token use, one link to the console (KAN-2192). */
   sessionAllowed = cloudSessionAllowed()
-  /** This page on the console, token included: where the link is finished instead. */
-  consoleRoute = '/'
-
   token = ''
   state: Step = 'ready'
   error = ''
@@ -201,9 +204,8 @@ export default class AccountEmailLink extends Vue {
   created () {
     const token = this.$route.query.token
     if (!this.sessionAllowed) {
-      // Keep the whole link for the console, take it out of this address,
-      // and use the token for nothing here.
-      this.consoleRoute = this.$route.fullPath
+      // Take the token out of this address and keep it nowhere: not in this
+      // component and not in a link. It is used for nothing here.
       if (typeof token === 'string' && token) this.$router.replace({ path: this.$route.path }).catch(() => {})
       return
     }

@@ -208,6 +208,8 @@ export function cloudTokensPersist (location: Pick<Location, 'protocol' | 'hostn
  * loopback keep the session.
  */
 export function cloudSessionAllowed (location: Pick<Location, 'protocol' | 'hostname'> | undefined = globalThis.location): boolean {
+  // No page to judge: refuse. A gate does not pass what it cannot see.
+  if (!location) return false
   return cloudTokensPersist(location)
 }
 
@@ -224,10 +226,10 @@ function refuseOnInsecureOrigin (): never {
   throw new CloudError(INSECURE_ORIGIN_MESSAGE, 0, 'insecure_origin')
 }
 
-// The only console calls a plain-HTTP page makes: the three that need no
+// The only console calls a plain-HTTP page makes: the two that need no
 // account and carry nothing of the person's. An allow-list, so a route added
 // later is refused there until somebody decides it is safe.
-const INSECURE_ORIGIN_CALLS: readonly string[] = ['GET /v1/config', 'GET /v1/links/nearby', 'POST /v1/links/start']
+const INSECURE_ORIGIN_CALLS: readonly string[] = ['GET /v1/config', 'GET /v1/links/nearby']
 
 function readTokenStorage (key: string): string | null {
   if (cloudSessionAllowed()) return readStorage(key)

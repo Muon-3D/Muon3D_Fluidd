@@ -79,9 +79,9 @@ describe('which pages may hold a Muon3D session', () => {
 
   it('links to the same route on the console', async () => {
     const { controlUrl } = await load()
-    expect(controlUrl('/account')).toMatch(/^https:\/\/[a-z.]*muon3d\.com\/#\/account$/)
-    expect(controlUrl('library')).toMatch(/\/#\/library$/)
-    expect(controlUrl()).toMatch(/\/#\/$/)
+    expect(controlUrl('/account')).toBe('https://control.muon3d.com/#/account')
+    expect(controlUrl('library')).toBe('https://control.muon3d.com/#/library')
+    expect(controlUrl()).toBe('https://control.muon3d.com/#/')
   })
 })
 
@@ -190,13 +190,16 @@ describe('a plain-HTTP printer page makes only the calls that need no account', 
     expect(calls).toHaveLength(0)
   })
 
-  it('still asks the console to start a link on this network, with no bearer', async () => {
+  it('does not ask the console to start a link: nothing on this page needs it', async () => {
     const calls = stubConsole()
     const api = await load()
-    await api.cloudApi.startLink('printer-1')
-    expect(calls).toHaveLength(1)
-    expect(calls[0].url).toMatch(/\/v1\/links\/start$/)
-    expect(bearerOf(calls[0])).toBeUndefined()
+    await expect(api.cloudApi.startLink('printer-1')).rejects.toMatchObject({ code: 'insecure_origin' })
+    expect(calls).toHaveLength(0)
+  })
+
+  it('refuses when there is no page to judge', async () => {
+    const { cloudSessionAllowed } = await load()
+    expect(cloudSessionAllowed(undefined)).toBe(false)
   })
 
   it('sign-out sends nothing', async () => {
@@ -215,6 +218,5 @@ describe('a plain-HTTP printer page makes only the calls that need no account', 
     expect(api.cloudBaseUrl()).not.toContain('hostile.example')
     await api.cloudApi.nearby()
     expect(calls[0].url).not.toContain('hostile.example')
-    expect(api.controlUrl('/account')).not.toContain('hostile.example')
   })
 })
