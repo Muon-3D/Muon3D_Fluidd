@@ -70,10 +70,33 @@ test.describe('buttons answer the finger', () => {
 
   test('E-STOP shows its press at once, with nothing easing in', async ({ page, open }) => {
     await open('/')
-    const estop = page.getByRole('button', { name: /e-?stop|emergency stop/i }).first()
+    const estop = page.getByTestId('estop').locator('visible=true').first()
     await expect(estop).toBeVisible()
+    // Pressed: no transform eases in (it has none to ease), and nothing about
+    // it is delayed; it stays exactly where it is.
     const transition = await estop.evaluate(e => getComputedStyle(e).transitionProperty)
     expect(transition).not.toMatch(/transform|all/)
+    expect(await pressAndRead(page, estop, 60)).toBe(1)
+  })
+
+  test('a stop-coloured button does not sink: stopping is never eased', async ({ page, open }) => {
+    await open('/control')
+    await expect(editLayout(page)).toBeVisible()
+    // Any stop-coloured Control button on the page (Cancel, Stop print…), else a stand-in with the same class.
+    const danger = page.locator('.cbtn--danger:visible').first()
+    const target = await danger.count()
+      ? danger
+      : await (async () => {
+        await page.evaluate(() => {
+          const b = document.createElement('button')
+          b.className = 'cbtn cbtn--danger'
+          b.textContent = 'Stop'
+          b.setAttribute('data-motion-probe-stop', '')
+        document.querySelector('main')!.prepend(b)
+        })
+        return page.locator('[data-motion-probe-stop]')
+      })()
+    expect(await pressAndRead(page, target, 140)).toBe(1)
   })
 })
 
