@@ -20,3 +20,5 @@ Fluidd is built on VueJS, using TypeScript.
 This must contain your real name and a current email address.
 
 After cloning the repo and running `npm install`, we recommend running `npm run bootstrap` to install a couple of git hooks that will pre-validate all new commits.
+
+Also run `sh scripts/install-hooks.sh` once per clone: it installs a pre-push hook that refuses the purged M1 model blobs (KAN-2048).

@@ -64,7 +64,7 @@ export function quickActions (c: QuickActionContext): QuickAction[] {
       id: 'filament',
       label: 'Change filament',
       icon: 'spool',
-      reason: locked || (c.changeFilament ? '' : (c.changeFilamentReason ?? 'This printer has no filament change macro (M600).')),
+      reason: locked || (c.changeFilament ? '' : (c.changeFilamentReason ?? 'This printer has no filament change command (M600).')),
       // Mid-print M600 pauses the print, after its confirm; idle it sends nothing and opens the material panel (changeFilamentPlan).
       confirms: c.busy
     },

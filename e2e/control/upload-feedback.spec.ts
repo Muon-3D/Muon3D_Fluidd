@@ -1,0 +1,88 @@
+/**
+ * Upload feedback: the Upload button and a file dropped on the page both end
+ * in a toast that says the file uploaded, or why it did not, in the printer's
+ * (or muon-link's) own words. Harry, 11 Nov: an upload over the cloud route
+ * failed and the page said nothing.
+ */
+import type { Page } from '@playwright/test'
+import { test, expect } from '../fixtures'
+
+const REFUSAL = 'muon-link refused this upload: a remote session uploads to the gcodes root only'
+
+/** Answers every upload the page sends: accepted, refused by muon-link, or the stream cut. */
+async function uploads (page: Page, outcome: 'ok' | 'refused' | 'cut') {
+  const seen: string[] = []
+  await page.route('**/server/files/upload', route => {
+    seen.push(route.request().postData() ?? '')
+    if (outcome === 'ok') return route.fulfill({ json: { result: { item: { path: 'cube.gcode', root: 'gcodes' }, action: 'create_file' } } })
+    if (outcome === 'refused') return route.fulfill({ status: 403, contentType: 'text/plain', body: REFUSAL })
+    return route.abort('connectionreset')
+  })
+  return seen
+}
+
+async function pick (page: Page) {
+  await page.getByTestId('jobs-upload-input').setInputFiles({ name: 'cube.gcode', mimeType: 'text/x-gcode', buffer: Buffer.from('G28\nG1 X10\n') })
+}
+
+async function drop (page: Page) {
+  await page.evaluate(() => {
+    // A page cannot make a DataTransfer whose items have file-system entries
+    // (webkitGetAsEntry is null for a synthetic one), so the drop carries its
+    // file in `files`, the path a browser takes when there are no items.
+    const file = new File(['G28\nG1 X10\n'], 'cube.gcode', { type: 'text/x-gcode' })
+    const data = { items: [], files: [file], types: ['Files'], dropEffect: 'none' }
+    for (const type of ['dragenter', 'drop']) {
+      const event = new DragEvent(type, { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'dataTransfer', { value: data })
+      window.dispatchEvent(event)
+    }
+  })
+}
+
+/**
+ * Every toast's text, in order. The page has one toast slot, and its own
+ * "saved on this device" notice can take it, so the slot is watched rather
+ * than read once.
+ */
+async function toasts (page: Page) {
+  await page.addInitScript(() => {
+    const seen: string[] = []
+    ;(window as any).__toasts = seen
+    new MutationObserver(() => {
+      for (const el of document.querySelectorAll('[data-tid="flash-message"]')) {
+        const text = (el.textContent ?? '').trim()
+        if (text && seen[seen.length - 1] !== text) seen.push(text)
+      }
+    }).observe(document, { subtree: true, childList: true, characterData: true })
+  })
+  return () => page.evaluate(() => ((window as any).__toasts as string[]).join(' | '))
+}
+
+for (const [how, act] of [['the Upload button', pick], ['drag and drop', drop]] as const) {
+  test(`${how}: a file the printer accepts says it uploaded`, async ({ page, open }) => {
+    const seen = await uploads(page, 'ok')
+    const said = await toasts(page)
+    await open('/jobs')
+    await act(page)
+    await expect.poll(() => seen.length).toBe(1)
+    expect(seen[0]).toContain('filename="cube.gcode"')
+    await expect.poll(said).toContain('Uploaded cube.gcode')
+  })
+
+  test(`${how}: a refused upload says why, in muon-link's words`, async ({ page, open }) => {
+    await uploads(page, 'refused')
+    const said = await toasts(page)
+    await open('/jobs')
+    await act(page)
+    await expect.poll(said).toContain(`Upload of cube.gcode failed: ${REFUSAL} (HTTP 403)`)
+  })
+
+  test(`${how}: a cut connection says the upload failed`, async ({ page, open }) => {
+    await uploads(page, 'cut')
+    const said = await toasts(page)
+    await open('/jobs')
+    await act(page)
+    await expect.poll(said).toContain('Upload of cube.gcode failed:')
+  })
+}

@@ -9,8 +9,8 @@
   >
     <header class="mpanel__head">
       <div>
-        <h2>Macros</h2>
-        <p>Which macros Control shows, in which section, and what they're called</p>
+        <h2>Quick commands</h2>
+        <p>Which quick commands Control shows, in which section, and what they're called</p>
       </div>
       <div class="mpanel__tools">
         <label class="mpanel__find">
@@ -21,8 +21,8 @@
           <input
             v-model="query"
             type="search"
-            :placeholder="`Search ${allMacros.length} macros`"
-            aria-label="Find a macro"
+            :placeholder="`Search ${allMacros.length} quick commands`"
+            aria-label="Find a quick command"
           >
         </label>
         <button
@@ -54,7 +54,7 @@
       class="mpanel__note"
       data-tid="macro-panel-empty"
     >
-      {{ connected ? 'This printer has no macros yet. A [gcode_macro] in its config shows here.' : 'The printer isn\'t connected, so its macros can\'t be listed yet.' }}
+      {{ connected ? 'This printer has no quick commands yet. A [gcode_macro] in its config shows here.' : 'The printer isn\'t connected, so its quick commands can\'t be listed yet.' }}
     </p>
 
     <div
@@ -334,14 +334,14 @@
             v-if="!section.macros.length && !(section.id === '0' && hiddenMacros.length)"
             class="mpanel__empty"
           >
-            {{ query ? 'None found here.' : 'None yet. Drag a macro here, or use its Move to….' }}
+            {{ query ? 'None found here.' : 'None yet. Drag a command here, or use its Move to….' }}
           </p>
         </div>
       </section>
     </div>
 
     <p class="mpanel__foot">
-      Shown macros appear in Control's Macros tile and in Quick actions, in this order. Sections are saved on the printer, for everyone.
+      Shown commands appear in Quick commands and in Quick actions, in this order. Sections are saved on the printer, for everyone.
     </p>
 
     <p
@@ -349,7 +349,7 @@
       class="mpanel__note"
       data-tid="macro-edit-readonly"
     >
-      <b>Editing what a macro does</b> needs developer mode on a Muon printer. Non-Muon printers open the file straight away.
+      <b>Editing what a command does</b> needs developer mode on a Muon printer. Non-Muon printers open the file straight away.
       <router-link :to="developerTo">
         Developer mode ›
       </router-link>
@@ -372,7 +372,7 @@
     <app-dialog
       v-if="moveFor"
       :value="!!moveFor"
-      :title="moveFor.length === 1 ? `Move ${titleOfName(moveFor[0])} to` : `Move ${moveFor.length} macros to`"
+      :title="moveFor.length === 1 ? `Move ${titleOfName(moveFor[0])} to` : `Move ${moveFor.length} commands to`"
       max-width="360"
       no-actions
       @input="moveFor = $event ? moveFor : null"
@@ -520,7 +520,7 @@ export default class MacroPanel extends Mixins(StateMixin) {
     try {
       this.places = await macroPlacesOn(this.root)
     } catch {
-      this.error = 'The printer didn\'t list its config files, so where each macro is written isn\'t known yet.'
+      this.error = 'The printer didn\'t list its config files, so where each command is written isn\'t known yet.'
     }
   }
 

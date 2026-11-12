@@ -138,11 +138,14 @@ import ConnectionBanner from './components/layout/ConnectionBanner.vue'
 import ConnectingScreen from './components/layout/ConnectingScreen.vue'
 import UpdatingScreen from './components/updates/UpdatingScreen.vue'
 import UpdateBanner from './components/updates/UpdateBanner.vue'
-import { printerLost, updateWatch, watchUpdates } from '@/services/updates/watch'
+import { installStarted, printerLost, updateWatch, watchUpdates } from '@/services/updates/watch'
+import { afterPrint, afterPrintDue, cancelAfterPrint, loadAfterPrint, otaComponent } from '@/services/updates/after-print'
+import { SocketActions } from '@/api/socketActions'
 import { bannerVisible, offlineScreen } from '@/services/updates/model'
 import { printerNameParts } from '@/util/printer-name'
 import { connectionView, type ConnectionView } from '@/services/connection/view'
 import { cloudState } from '@/services/muon-cloud/state'
+import { accountQuickKey } from '@/services/console/settings'
 import { bluetoothCarrying } from '@/services/muon-ble/link'
 import { activationState } from '@/services/muon-cloud/activate'
 import { consolePresence } from '@/services/muon-cloud/presence'
@@ -242,6 +245,16 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     rememberTheme(isDark)
   }
 
+  /** Whose Look and Ask before apply: the signed-in account's, else anyone's here. */
+  get personalKey (): string | null {
+    return accountQuickKey(cloudState)
+  }
+
+  @Watch('personalKey', { immediate: true })
+  onPersonalKey (key: string | null) {
+    this.$store.dispatch('config/applyPersonal', key)
+  }
+
   get theme (): ThemeConfig {
     return this.$store.state.config.uiSettings.theme as ThemeConfig
   }
@@ -258,10 +271,6 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   // our translations are loading.
   get updating () {
     return this.$store.state.version.busy
-  }
-
-  get inLayout (): boolean {
-    return (this.$store.state.config.layoutMode)
   }
 
   /**
@@ -331,10 +340,38 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     if (connected) this.wasConnected = true
     // The printer's own update: watched while connected, and a drop mid-install is remembered.
     if (connected && this.printerFrame) {
-      watchUpdates(activeSlug() ?? String(this.$store.state.config.apiUrl ?? ''), url => this.$httpClient.get(url, { validateStatus: () => true }))
+      this.watchPrinterUpdates()
     } else if (!connected && this.wasConnected) {
       printerLost()
     }
+  }
+
+  /** A load straight onto a printer's page can connect before the route has its printer. */
+  @Watch('printerFrame')
+  onPrinterFrame (frame: boolean) {
+    if (frame && this.socketConnected) this.watchPrinterUpdates()
+  }
+
+  watchPrinterUpdates () {
+    watchUpdates(activeSlug() ?? String(this.$store.state.config.apiUrl ?? ''), url => this.$httpClient.get(url, { validateStatus: () => true }))
+  }
+
+  /** "Install after this print": what it waits on. */
+  get afterPrintKey (): string {
+    return [updateWatch.printer, this.printerState, updateWatch.status?.target_version ?? '', afterPrint.printer, afterPrint.queued?.at ?? ''].join('|')
+  }
+
+  @Watch('afterPrintKey')
+  onAfterPrint () {
+    if (!updateWatch.printer || !updateWatch.answered) return
+    const queued = loadAfterPrint(updateWatch.printer)
+    if (!queued) return
+    const due = afterPrintDue(queued, this.printerState, updateWatch.status, Date.now())
+    if (due === 'drop') cancelAfterPrint()
+    if (due !== 'install' || !this.socketConnected || !this.klippyConnected) return
+    cancelAfterPrint()
+    SocketActions.machineUpdateClient(otaComponent(this.$store.state.version.version_info))
+    installStarted(queued.from, queued.to)
   }
 
   get displayName (): string {
@@ -621,6 +658,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     window.addEventListener('drop', this.handleDrop)
     window.addEventListener('keydown', this.handleKeyDown, false)
     document.addEventListener('visibilitychange', this.onVisibilitySave)
+    this.darkQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null
+    this.darkQuery?.addEventListener?.('change', this.onSystemDark)
 
     // this.onLoadLocale(this.$i18n.locale)
     EventBus.bus.$on('flashMessage', (payload: FlashMessage) => {
@@ -655,6 +694,13 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     window.removeEventListener('drop', this.handleDrop)
     window.removeEventListener('keydown', this.handleKeyDown)
     document.removeEventListener('visibilitychange', this.onVisibilitySave)
+    this.darkQuery?.removeEventListener?.('change', this.onSystemDark)
+  }
+
+  darkQuery: MediaQueryList | null = null
+
+  onSystemDark (event: MediaQueryListEvent) {
+    this.$store.dispatch('config/applySystemDark', event.matches)
   }
 
   handleDragOver (event: DragEvent) {
@@ -712,11 +758,13 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
 
           this.$store.dispatch('wait/addWait', wait)
 
-          await this.uploadFiles(rest, path, root, false)
+          const uploaded = await this.uploadFiles(rest, path, root, false)
 
           this.$store.dispatch('wait/removeWait', wait)
 
-          const gcodes = rest.filter(f => isGcodeFile(f.file.name) && !f.path)
+          // Only a file that really uploaded is offered to print.
+          const gcodes = rest.filter(f => isGcodeFile(f.file.name) && !f.path &&
+            uploaded !== false && uploaded.includes(path ? `${path}/${f.file.name}` : f.file.name))
           if (root === 'gcodes' && gcodes.length === 1) {
             EventBus.bus.$emit('job-ready', path ? `${path}/${gcodes[0].file.name}` : gcodes[0].file.name)
           }

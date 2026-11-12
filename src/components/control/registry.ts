@@ -1,11 +1,10 @@
 import type { Component } from 'vue'
 import ControlMove from './ControlMove.vue'
 import ControlHeat from './ControlHeat.vue'
-import ControlSpeed from './ControlSpeed.vue'
+import ControlPrintMode from './ControlPrintMode.vue'
 import ControlFans from './ControlFans.vue'
 import ControlFilament from './ControlFilament.vue'
-import ControlZOffset from './ControlZOffset.vue'
-import ControlMacros from './ControlMacros.vue'
+import ControlQuickCommands from './ControlQuickCommands.vue'
 
 /**
  * One tile of the Control page, and where it sits by default (D3 tiles, the
@@ -27,15 +26,20 @@ export interface ControlTileDef {
   tablet: 6 | 12
   /** Whether the tile takes the `phone` prop (its own phone layout). */
   phoneProp?: boolean
+  /** False: not on the page to begin with; Edit layout can add it. */
+  defaultOn?: boolean
 }
 
 /** In reading order, which is also the phone order. */
 export const controlTiles: ControlTileDef[] = [
-  { id: 'move', title: 'Move', component: ControlMove, span: 7, rows: 2, tablet: 12, phoneProp: true },
-  { id: 'heat', title: 'Heaters', component: ControlHeat, span: 5, tablet: 12, phoneProp: true },
-  { id: 'speed', title: 'Speed and flow', component: ControlSpeed, span: 5, tablet: 12 },
-  { id: 'fans', title: 'Fans and lights', component: ControlFans, span: 4, tablet: 6, phoneProp: true },
+  // v4: Movement takes in the position, Go to and homing at 8 wide; Print
+  // mode replaces Speed and flow, Quick commands replace Macros (same ids, so
+  // saved layouts keep them). The Z offset tile is gone: on a printer that
+  // isn't a Muon, Z offset is in Movement's ··· menu.
+  { id: 'move', title: 'Movement', component: ControlMove, span: 8, rows: 2, tablet: 12, phoneProp: true },
+  { id: 'heat', title: 'Heaters', component: ControlHeat, span: 4, tablet: 12, phoneProp: true },
+  { id: 'speed', title: 'Print mode', component: ControlPrintMode, span: 4, tablet: 12 },
+  { id: 'fans', title: 'Fans and lights', component: ControlFans, span: 4, tablet: 6, phoneProp: true, defaultOn: false },
   { id: 'filament', title: 'Filament', component: ControlFilament, span: 4, tablet: 6, phoneProp: true },
-  { id: 'zoffset', title: 'Z offset', component: ControlZOffset, span: 4, tablet: 12 },
-  { id: 'macros', title: 'Macros', component: ControlMacros, span: 12, tablet: 12 }
+  { id: 'macros', title: 'Quick commands', component: ControlQuickCommands, span: 4, tablet: 12 }
 ]
