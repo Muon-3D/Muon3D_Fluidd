@@ -26,3 +26,13 @@ describe('a Z-offset nudge with the head idle', () => {
     expect(zNudgeRefusal({ x: 100, y: 10, z: 0.2 }, -0.05, null)).toBe('')
   })
 })
+
+describe('a Z-offset nudge with X or Y not homed (Opus review of #399)', () => {
+  const m1 = readNoGo({ no_go_region_1_min: '75, 0', no_go_region_1_max: '125, 34', no_go_traverse_z: 6 })
+  it('only raises: the reported X and Y may be stale, so the head may be over the notch', () => {
+    expect(zNudgeRefusal({ x: 100, y: 100, z: 2 }, -0.05, m1, 0, false)).toMatch(/^Home X and Y first/)
+    expect(zNudgeRefusal({ x: 100, y: 100, z: 2 }, 0.05, m1, 0, false)).toBe('')
+    expect(zNudgeRefusal({ x: 100, y: 100, z: 2 }, -0.05, m1, 0, true)).toBe('')
+    expect(zNudgeRefusal({ x: 100, y: 100, z: 2 }, -0.05, null, 0, false)).toBe('')
+  })
+})

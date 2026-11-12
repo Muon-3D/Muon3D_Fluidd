@@ -313,9 +313,12 @@ export function zNudgeRefusal (
   head: { x: number, y: number, z: number },
   by: number,
   noGo: NoGoConfig | null | 'invalid',
-  margin = 0
+  margin = 0,
+  xyHomed = true
 ): string {
   if (!(by < 0) || noGo === null) return ''
+  // X or Y not homed: the head may be over the notch, so only raising goes (as planMove).
+  if (noGo !== 'invalid' && !xyHomed) return 'Home X and Y first: until the head’s place is known, the nozzle will only be raised.'
   if (noGo === 'invalid') return 'The printer’s notch could not be read, so the nozzle will only be raised. Check [bed_mesh] in printer.cfg.'
   if (![head.x, head.y, head.z, margin].every(Number.isFinite)) return 'The head position is not known.'
   const clear = noGo.traverseZ + margin
