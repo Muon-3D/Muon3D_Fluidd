@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-m3d-style="glass">
   <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -67,28 +67,42 @@
         font-display: block;
         src: url('/fonts/krona-one-latin-400-normal.woff2') format('woff2');
       }
-      html, body { margin: 0; background: #13171a; }
-      html[data-muon-theme=light], html[data-muon-theme=light] body { background: #f1f3f4; }
+      /* The glass look from the first frame (KAN-2257): Control's own
+         background, text and system font, so nothing changes colour or
+         typeface when the app takes over. The values are the glass tokens in
+         src/scss/muon3d-glass.scss (--m3d-bg, --m3d-text, --m3d-font-sans). */
+      html, body { margin: 0; background: #000; }
+      html[data-muon-theme=light], html[data-muon-theme=light] body { background: #f2f2f7; }
 
       #muon-loader {
         position: fixed; inset: 0; z-index: 9999;
         display: flex; align-items: center; justify-content: center;
-        background: #13171a; color: #e8ecee;
+        background: #000; color: #f5f5f7;
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter Variable', 'Helvetica Neue', Arial, sans-serif;
         --muon-loader-progress: 0;
+        --muon-loader-accent: #80d6d1;
+        --muon-loader-line: rgb(84 84 88 / 48%);
+        --muon-loader-muted: #98989d;
       }
-      html[data-muon-theme=light] #muon-loader { background: #f1f3f4; color: #121719; }
-      #muon-loader.muon-loader--gone { opacity: 0; transition: opacity 120ms ease-out; pointer-events: none; }
+      html[data-muon-theme=light] #muon-loader { background: #f2f2f7; color: #1d1d1f; --muon-loader-accent: #2c8782; --muon-loader-line: rgb(60 60 67 / 13%); --muon-loader-muted: #6e6e73; }
+      /* Leaves in three quarters of a fast step, on the exit curve. */
+      #muon-loader.muon-loader--gone { opacity: 0; transition: opacity 120ms cubic-bezier(0.4, 0, 1, 1); pointer-events: none; }
 
-      .muon-loader__bar { position: absolute; top: 0; left: 0; right: 0; height: 2px; background: rgba(128, 214, 209, 0.15); }
+      /* The bar fills by transform, not width, so it never lays out a frame. */
+      .muon-loader__bar { position: absolute; top: 0; left: 0; right: 0; height: 2px; overflow: hidden; background: color-mix(in srgb, var(--muon-loader-accent) 15%, transparent); }
       .muon-loader__fill {
-        height: 100%; width: calc(var(--muon-loader-progress) * 100%);
-        background: linear-gradient(90deg, #80d6d1 0%, #b7ece9 50%, #80d6d1 100%);
-        background-size: 200% 100%;
-        transition: width 0.2s ease;
-        animation: muon-loader-shimmer 1.4s linear infinite;
+        position: relative; height: 100%; width: 100%; overflow: hidden;
+        background: var(--muon-loader-accent);
+        transform: scaleX(var(--muon-loader-progress)); transform-origin: 0 50%;
+        transition: transform 240ms cubic-bezier(0.2, 0, 0, 1);
       }
-      @keyframes muon-loader-shimmer { to { background-position: -200% 0; } }
-      @media (prefers-reduced-motion: reduce) { .muon-loader__fill { animation: none; } }
+      .muon-loader__fill::after {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(90deg, transparent 30%, rgb(255 255 255 / 55%) 50%, transparent 70%);
+        animation: muon-loader-sheen 1.4s linear infinite;
+      }
+      @keyframes muon-loader-sheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+      @media (prefers-reduced-motion: reduce) { .muon-loader__fill::after { animation: none; opacity: 0; } .muon-loader__fill { transition: none; } }
 
       /* The drawn wordmark shows until Krona One can; then the real type does. */
       .muon-loader__svg { width: 92px; height: 16px; }
@@ -98,33 +112,36 @@
       #muon-loader.muon-loader--cached .muon-loader__word { display: none; }
 
       .muon-loader__error { position: absolute; bottom: 24px; font: 14px sans-serif; color: inherit; opacity: 0.8; }
-      .muon-loader__error a { color: #80d6d1; }
+      .muon-loader__error a { color: var(--muon-loader-accent); }
 
       /* The last-known state, drawn in plain DOM while the socket connects. */
-      .muon-loader__cached { display: none; position: absolute; inset: 0; padding: 56px 20px 20px; overflow: auto; font-family: 'IBM Plex Sans', sans-serif; }
+      .muon-loader__cached { display: none; position: absolute; inset: 0; padding: 56px 20px 20px; overflow: auto; }
       #muon-loader.muon-loader--cached .muon-loader__cached { display: block; }
       .muon-loader__cached.muon-stale { filter: grayscale(0.5); opacity: 0.55; user-select: none; }
       .muon-loader__printers, .muon-loader__status, .muon-loader__connecting { max-width: 520px; margin-left: auto; margin-right: auto; }
-      .muon-loader__printer { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid #2c3337; font-size: 14px; }
-      html[data-muon-theme=light] .muon-loader__printer { border-color: #d4d9dc; }
+      .muon-loader__printer { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--muon-loader-line); font-size: 14px; }
       .muon-loader__printer-name { font-weight: 600; }
       .muon-loader__printer-detail { margin-left: auto; font-size: 12px; opacity: 0.7; }
-      .muon-loader__pill { padding: 1px 8px; border: 1px solid #3d464b; border-radius: 999px; font-size: 11px; opacity: 0.9; }
-      html[data-muon-theme=light] .muon-loader__pill { border-color: #c3cbce; }
-      .muon-loader__pill--printing { border-color: #80d6d1; color: #80d6d1; }
-      .muon-loader__pill--ready { border-color: #7bc87f; color: #7bc87f; }
-      .muon-loader__pill--paused, .muon-loader__pill--error { border-color: #d9a05b; color: #d9a05b; }
-      .muon-loader__pill--offline, .muon-loader__pill--unreachable { color: #8a9296; }
-      .muon-loader__status-file { font-family: 'IBM Plex Mono', monospace; font-size: 13px; margin: 16px 0 8px; opacity: 0.9; }
-      .muon-loader__progress { height: 3px; background: rgba(128, 214, 209, 0.15); margin: 8px 0; }
-      .muon-loader__progress-fill { height: 100%; background: #80d6d1; }
+      /* One colour per state, as everywhere else: printing teal, ready green,
+         paused amber, fault red, offline grey. */
+      .muon-loader__pill { padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--muon-loader-muted); background: color-mix(in srgb, currentColor 15%, transparent); }
+      .muon-loader__pill--printing { color: var(--muon-loader-accent); }
+      .muon-loader__pill--ready { color: rgb(48 209 88); }
+      .muon-loader__pill--paused { color: rgb(255 146 48); }
+      .muon-loader__pill--error { color: rgb(255 66 69); }
+      html[data-muon-theme=light] .muon-loader__pill--ready { color: rgb(0 137 50); }
+      html[data-muon-theme=light] .muon-loader__pill--paused { color: rgb(201 52 0); }
+      html[data-muon-theme=light] .muon-loader__pill--error { color: rgb(215 0 21); }
+      .muon-loader__status-file { font-size: 13px; margin: 16px 0 8px; opacity: 0.9; }
+      .muon-loader__progress { height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--muon-loader-accent) 15%, transparent); margin: 8px 0; }
+      .muon-loader__progress-fill { height: 100%; background: var(--muon-loader-accent); transform-origin: 0 50%; }
       .muon-loader__status-temps { font-size: 13px; opacity: 0.8; margin-top: 12px; }
       .muon-loader__status-when { font-size: 11px; opacity: 0.6; margin-top: 8px; }
       .muon-loader__connecting { display: flex; align-items: center; gap: 10px; margin-top: 18px; font-size: 12px; opacity: 0.8; }
-      .muon-loader__connecting-line { position: relative; flex: 1; height: 2px; background: rgba(128, 214, 209, 0.15); overflow: hidden; }
-      .muon-loader__connecting-line::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; background: #80d6d1; animation: muon-loader-indet 1.2s ease-in-out infinite; }
-      @keyframes muon-loader-indet { from { left: -40%; } to { left: 100%; } }
-      @media (prefers-reduced-motion: reduce) { .muon-loader__connecting-line::after { animation: none; left: 30%; } }
+      .muon-loader__connecting-line { position: relative; flex: 1; height: 2px; background: color-mix(in srgb, var(--muon-loader-accent) 15%, transparent); overflow: hidden; }
+      .muon-loader__connecting-line::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; background: var(--muon-loader-accent); animation: muon-loader-indet 1.2s cubic-bezier(0.2, 0, 0, 1) infinite; }
+      @keyframes muon-loader-indet { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+      @media (prefers-reduced-motion: reduce) { .muon-loader__connecting-line::after { animation: none; transform: translateX(75%); } }
     </style>
     <title>Muon3D</title>
     <meta name="description" content="The Klipper web interface for managing your 3d printer" />
