@@ -227,6 +227,11 @@ export default class M1Screen extends Mixins(ControlMixin) {
     })
   }
 
+  /** The model's knob was turned or pressed: the framed screen gets it as its own knob. */
+  knob (input: { turn: number } | { press: true }) {
+    bridges.get(this)?.knob(input)
+  }
+
   beforeDestroy () {
     clearTimeout(this.flyTimer)
     document.removeEventListener('keydown', this.onKey)

@@ -83,6 +83,21 @@
       />
     </svg>
 
+    <!-- The plate selected: its up-and-down handle, every time (Jack, 10 Nov: "sometimes shows, sometimes does not"); dimmed until it can move. -->
+    <svg
+      v-if="plateHandle"
+      class="m1-parts__handle"
+      :class="{ 'm1-parts__handle--off': movable !== 'plate' }"
+      data-tid="m1-plate-handle"
+      :data-movable="movable === 'plate' ? 'on' : 'off'"
+      aria-hidden="true"
+    >
+      <g :transform="`translate(${plateHandle.x} ${plateHandle.y})`">
+        <circle r="15" />
+        <path d="M0 -9l-4.5 5h9zM0 9l-4.5 -5h9z" />
+      </g>
+    </svg>
+
     <!-- While dragging: a target on the cursor, and a live line from where the part is to it. -->
     <svg
       v-if="drag && dragPx"
@@ -163,8 +178,8 @@
       :from="screenFrom"
       :reduced-motion="reducedMotion"
       :viewer="zoomedIn ? viewer : null"
-      @turn="viewer && viewer.turnKnob($event)"
-      @press="viewer && viewer.pressKnob()"
+      @turn="turnKnob($event)"
+      @press="pressKnob"
       @close="screenOpen = false"
     />
   </div>
@@ -328,6 +343,26 @@ export default class M1Parts extends Mixins(ControlMixin) {
     return ''
   }
 
+  /** Where the plate's handle is drawn: on the plate whenever it is selected on an idle printer, not mid-drag (the target shows then). */
+  get plateHandle (): { x: number, y: number } | null {
+    if (this.selected !== 'plate' || !this.interactive || this.drag || this.screenOpen) return null
+    return this.anchor
+  }
+
+  /** The pointer says what a press would do: up-and-down on a plate that can move, a grab on a head that can, a pointer on any other part. */
+  get cursor (): string {
+    if (this.drag) return this.drag.part === 'plate' ? 'ns-resize' : 'grabbing'
+    const part = this.hovered
+    if (!part || !this.interactive) return ''
+    if (part === this.movable) return part === 'plate' ? 'ns-resize' : 'grab'
+    return 'pointer'
+  }
+
+  @Watch('cursor')
+  setCursor () {
+    if (this.bound) this.bound.style.cursor = this.cursor
+  }
+
   get dragText (): string {
     const t = this.drag?.target
     if (!t) return ''
@@ -346,12 +381,15 @@ export default class M1Parts extends Mixins(ControlMixin) {
   get facts (): Record<PartId, string> {
     const printer = this.$store.state.printer.printer
     const deg = (t: unknown) => typeof t === 'number' ? `${Math.round(t)} °C` : '– °C'
-    const homed = ((printer.toolhead?.homed_axes as string | undefined) ?? '').length >= 3
+    const axes = (printer.toolhead?.homed_axes as string | undefined) ?? ''
     const mesh = (printer.bed_mesh?.profile_name as string | undefined) ?? ''
     const material = this.loadedMaterial
+    // Where the head and the plate are now, live, once homed (a position before homing means nothing).
+    const at = (i: number, digits = 0) => Number(this.position[i] ?? 0).toFixed(digits)
+    const xy = axes.includes('x') && axes.includes('y')
     return {
-      plate: `${deg(printer.heater_bed?.temperature)} · ${mesh ? 'mesh loaded' : 'no mesh'}`,
-      toolhead: `${deg(printer.extruder?.temperature)} · ${homed ? 'homed' : 'not homed'}`,
+      plate: `${deg(printer.heater_bed?.temperature)} · ${mesh ? 'mesh loaded' : 'no mesh'}${axes.includes('z') ? ` · Z ${at(2, 1)}` : ''}`,
+      toolhead: `${deg(printer.extruder?.temperature)} · ${xy ? `X ${at(0)} Y ${at(1)}` : 'not homed'}`,
       filament: material ? material.name : 'No material loaded',
       screen: "The printer's own screen"
     }
@@ -474,13 +512,13 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   /** The pointer is over this part (or none). */
   onPoint (part: PartId | null) {
-    if (this.bound) this.bound.style.cursor = part && this.interactive ? 'pointer' : ''
     if (part) {
       clearTimeout(this.leaveTimer)
       this.leaveTimer = 0
       clearTimeout(this.releaseTimer)
       this.releaseTimer = 0
       if (part !== this.hovered) this.hovered = part
+      this.setCursor()
       this.pointPick(part)
       return
     }
@@ -495,6 +533,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
       this.leaveTimer = window.setTimeout(() => {
         this.leaveTimer = 0
         this.hovered = null
+        this.setCursor()
       }, LEAVE_MS)
     }
   }
@@ -549,7 +588,19 @@ export default class M1Parts extends Mixins(ControlMixin) {
   onWheel (e: WheelEvent) {
     if (!this.screenOpen || !this.viewer) return
     e.preventDefault()
-    this.viewer.turnKnob(wheelDetents(e.deltaY, e.deltaMode))
+    this.turnKnob(wheelDetents(e.deltaY, e.deltaMode))
+  }
+
+  /** The model's knob turns, and the printer's screen (when it is open and framed) gets the turn as its knob. */
+  turnKnob (detents: number) {
+    this.viewer?.turnKnob(detents)
+    if (this.screenOpen) (this.$refs.screen as { knob?: (i: { turn: number }) => void } | undefined)?.knob?.({ turn: detents })
+  }
+
+  /** The model's knob presses in, and the open screen gets the press as its knob's click. */
+  pressKnob () {
+    this.viewer?.pressKnob()
+    if (this.screenOpen) (this.$refs.screen as { knob?: (i: { press: true }) => void } | undefined)?.knob?.({ press: true })
   }
 
   onUp (e: PointerEvent) {
@@ -567,7 +618,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     // The printer's screen open: a click on the model's screen or knob presses the knob (the knob sits under the live screen,
     // so the press is the picture's); a click anywhere else leaves the screen.
     if (this.screenOpen) {
-      if (this.viewer?.knobAt(e.clientX, e.clientY) || this.viewer?.pick(e.clientX, e.clientY) === 'screen') this.viewer.pressKnob()
+      if (this.viewer?.knobAt(e.clientX, e.clientY) || this.viewer?.pick(e.clientX, e.clientY) === 'screen') this.pressKnob()
       else (this.$refs.screen as { close?: () => void } | undefined)?.close?.()
       return
     }
@@ -775,6 +826,17 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.follow()
   }
 
+  /**
+   * A new selection is followed at once, even when the part shown doesn't
+   * change (hovered, then clicked: show() doesn't run). Without this the
+   * selected part had no anchor, so the plate's handle and the hairline
+   * sometimes didn't show (Jack, 10 Nov: "sometimes shows, sometimes does not").
+   */
+  @Watch('selected')
+  onSelected () {
+    this.follow()
+  }
+
   /** Puts the label in the top corner away from the part, and ends the line at its near edge. */
   placeLabel () {
     const a = this.anchor
@@ -897,6 +959,29 @@ export default class M1Parts extends Mixins(ControlMixin) {
     pointer-events: auto;
     white-space: normal;
     max-width: 260px;
+  }
+
+  /* The plate's handle: a small up-and-down disc on the plate, in the accent; quiet until the plate can move. */
+  .m1-parts__handle {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+
+    circle {
+      fill: rgb(36 36 40 / 62%);
+      stroke: #80d6d1;
+      stroke-width: 1.5;
+    }
+
+    path {
+      fill: #80d6d1;
+    }
+
+    &--off {
+      opacity: 0.45;
+    }
   }
 
   .m1-parts__drag {

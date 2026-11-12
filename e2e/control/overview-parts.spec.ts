@@ -117,7 +117,7 @@ test('the keyboard reaches every part: arrows and 1–4 move, Esc clears', async
   await page.keyboard.press('ArrowRight')
   await expect(page.getByTestId('m1-part-toolhead')).toBeFocused()
   await expect(label).toHaveAttribute('data-part', 'toolhead')
-  await expect(page.getByTestId('m1-part-toolhead')).toHaveAttribute('aria-label', /^Toolhead, \d+ °C · (homed|not homed)$/)
+  await expect(page.getByTestId('m1-part-toolhead')).toHaveAttribute('aria-label', /^Toolhead, \d+ °C · (X -?\d+ Y -?\d+|not homed)$/)
 
   await page.keyboard.press('4')
   await expect(page.getByTestId('m1-part-screen')).toBeFocused()

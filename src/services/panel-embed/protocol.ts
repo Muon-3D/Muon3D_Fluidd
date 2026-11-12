@@ -92,7 +92,26 @@ export interface BridgeNotify {
   params?: unknown
 }
 
-export type ParentMessage = BridgeResponse | BridgeNotify
+/**
+ * parent -> embed: the model's knob was turned or pressed on Control's 3D
+ * view (the printer's own knob, as a person works it on the model): `turn`
+ * by `detents` (positive clockwise), or `press`. Purely input to the screen's
+ * own UI, as the real knob is; it carries no printer action and changes no
+ * privilege. Additive in version 1: an embed that doesn't know `kind: 'input'`
+ * ignores it. MuonUI's embed handles it as its knob (needs the MuonUI half).
+ */
+export type BridgeInput =
+  | { kind: 'input', input: 'turn', detents: number }
+  | { kind: 'input', input: 'press' }
+
+export type ParentMessage = BridgeResponse | BridgeNotify | BridgeInput
+
+export function isBridgeInput (m: unknown): m is BridgeInput {
+  if (!m || typeof m !== 'object') return false
+  const r = m as Record<string, unknown>
+  if (r.kind !== 'input') return false
+  return r.input === 'press' || (r.input === 'turn' && typeof r.detents === 'number' && Number.isFinite(r.detents))
+}
 
 export function isBridgeResponse (m: unknown): m is BridgeResponse {
   if (!m || typeof m !== 'object') return false

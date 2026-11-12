@@ -155,6 +155,13 @@ export class PanelBridge {
     this.port.postMessage({ kind: 'notify', method, params })
   }
 
+  /** The model's knob turned or pressed: passed to the screen as its knob, once it has said hello. Nothing goes to the printer. */
+  knob (input: { turn: number } | { press: true }) {
+    if (!this.port) return
+    if ('press' in input) this.port.postMessage({ kind: 'input', input: 'press' })
+    else if (Number.isFinite(input.turn) && input.turn !== 0) this.port.postMessage({ kind: 'input', input: 'turn', detents: input.turn })
+  }
+
   dispose () {
     window.removeEventListener('message', this.onWindowMessage)
     this.port?.close()

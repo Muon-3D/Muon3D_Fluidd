@@ -9,7 +9,10 @@
         class="m1-opts__group"
         aria-label="Move"
       >
-        <span class="m1-opts__title">Move</span>
+        <span class="m1-opts__title"><frame-icon
+          name="control"
+          small
+        />Move</span>
         <div class="m1-opts__move">
           <div
             class="m1-opts__pad"
@@ -55,7 +58,10 @@
         class="m1-opts__group"
         aria-label="Heat the nozzle"
       >
-        <span class="m1-opts__title">Heat the nozzle</span>
+        <span class="m1-opts__title"><frame-icon
+          name="thermometer"
+          small
+        />Heat the nozzle</span>
         <div class="m1-opts__row">
           <button
             v-for="m in heatChoices"
@@ -89,7 +95,10 @@
         class="m1-opts__group"
         aria-label="Filament"
       >
-        <span class="m1-opts__title">Filament</span>
+        <span class="m1-opts__title"><frame-icon
+          name="spool"
+          small
+        />Filament</span>
         <div class="m1-opts__row">
           <button
             type="button"
@@ -129,7 +138,10 @@
         class="m1-opts__group"
         aria-label="Move"
       >
-        <span class="m1-opts__title">Move</span>
+        <span class="m1-opts__title"><frame-icon
+          name="control"
+          small
+        />Move</span>
         <div
           class="m1-opts__row"
           :title="zLock"
@@ -183,7 +195,10 @@
         class="m1-opts__group"
         aria-label="Set up"
       >
-        <span class="m1-opts__title">Set up</span>
+        <span class="m1-opts__title"><frame-icon
+          name="maintenance"
+          small
+        />Set up</span>
         <div class="m1-opts__row">
           <button
             type="button"
@@ -224,19 +239,40 @@
           data-tid="m1-use-screen"
           @click="$emit('use-screen')"
         >
+          <frame-icon
+            name="monitor"
+            small
+          />
           Use the printer's screen
         </button>
       </div>
     </template>
 
-    <!-- Filament: load, unload and what is loaded, as the filament panel does it. -->
+    <!-- Filament: change, load, unload and what is loaded, through the same plans as the Filament box. -->
     <template v-else-if="part === 'filament'">
       <section
         class="m1-opts__group"
-        aria-label="Load"
+        aria-label="Filament"
       >
-        <span class="m1-opts__title">Load</span>
+        <span class="m1-opts__title"><frame-icon
+          name="spool"
+          small
+        />Filament</span>
         <div class="m1-opts__row">
+          <button
+            type="button"
+            class="m1-opts__btn"
+            :disabled="changePlan.kind === 'none'"
+            :title="changePlan.kind === 'none' ? changePlan.reason : ''"
+            data-tid="m1-change"
+            @click="changeFilament"
+          >
+            <frame-icon
+              name="refresh"
+              small
+            />
+            Change
+          </button>
           <button
             type="button"
             class="m1-opts__btn"
@@ -271,9 +307,12 @@
         class="m1-opts__group"
         aria-label="Material"
       >
-        <span class="m1-opts__title">Material</span>
+        <span class="m1-opts__title"><frame-icon
+          name="bulb"
+          small
+        />Material</span>
         <div class="m1-opts__row">
-          <material-picker>
+          <material-picker ref="picker">
             <template #activator="{ on, attrs, disabled }">
               <button
                 type="button"
@@ -371,6 +410,19 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin, FilamentActi
     this.setHeater(this.nozzle, m.nozzle)
   }
 
+  /**
+   * As the Filament box does it: mid-print, M600 after its confirm (through
+   * runFilamentPlan); idle, the material panel opens and nothing is sent.
+   */
+  async changeFilament () {
+    if (this.changePlan.kind === 'panel') {
+      const picker = this.$refs.picker as unknown as { open: boolean } | undefined
+      if (picker) this.$nextTick(() => { picker.open = true })
+      return
+    }
+    await this.runFilamentPlan('change')
+  }
+
   nozzleOff () {
     if (this.busy) return
     this.setHeater(this.nozzle, 0)
@@ -397,6 +449,9 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin, FilamentActi
   }
 
   .m1-opts__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     color: #98989d;
     font-size: 11px;
     font-weight: 600;

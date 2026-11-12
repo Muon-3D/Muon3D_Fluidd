@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PanelBridge, type BridgeHost } from '../bridge'
 import { auxVerdict, readVerb, rpcVerdict, ON_PRINTER } from '../allow'
-import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION } from '../protocol'
+import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION, isBridgeInput } from '../protocol'
 
 describe('allowlist', () => {
   it('forwards reads and the print controls Control already has', () => {
@@ -153,6 +153,27 @@ describe('PanelBridge', () => {
       { id: 11, ok: false, error: { message: 'Not while the printer is busy.', status: 409 } },
       { id: 12, ok: false, error: { message: ON_PRINTER, code: -32601, status: 403 } }
     ])
+  })
+
+  it("passes the model's knob to the screen as its knob, and nothing to the printer", () => {
+    const { frame, host } = setup()
+    // Before the hello there is no port: nothing goes anywhere.
+    bridge!.knob({ press: true })
+    hello(frame)
+    const out = replies()
+    bridge!.knob({ turn: 3 })
+    bridge!.knob({ turn: -1 })
+    bridge!.knob({ press: true })
+    bridge!.knob({ turn: 0 })
+    bridge!.knob({ turn: Number.NaN })
+    expect(out).toEqual([
+      { kind: 'input', input: 'turn', detents: 3 },
+      { kind: 'input', input: 'turn', detents: -1 },
+      { kind: 'input', input: 'press' }
+    ])
+    expect(out.every(isBridgeInput)).toBe(true)
+    expect(host.rpc).not.toHaveBeenCalled()
+    expect(host.verb).not.toHaveBeenCalled()
   })
 
   it('sends nothing before the handshake', async () => {
