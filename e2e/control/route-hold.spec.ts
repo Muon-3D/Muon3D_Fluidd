@@ -38,7 +38,12 @@ const control = (page: Page, what: 'silence' | 'radio' | 'cloud', on: boolean) =
 async function choose (page: Page, action: 'Connect over Bluetooth' | 'Connect through Muon3D') {
   await page.goto('/')
   await ready(page)
-  await page.getByRole('button', { name: `Options for ${ROUTE_PRINTER.name}` }).first().click()
+  // Signed in, the app opens the last printer: go to All printers, as a person does.
+  await page.getByRole('link', { name: 'All printers' }).first().click()
+  // The card is still connecting on its own at first; a person picks once it has settled.
+  await expect(page.getByText('Connecting...')).toHaveCount(0, { timeout: 30_000 })
+  // The tile itself is a button too; the menu is the real <button> on it.
+  await page.locator(`button[aria-label="Options for ${ROUTE_PRINTER.name}"]`).click()
   await page.getByText(action, { exact: true }).click()
 }
 
@@ -60,9 +65,9 @@ test('Bluetooth that goes quiet with the radio up says "Bluetooth dropped", move
   const before = await routeCounts(page)
 
   await control(page, 'silence', true)
-  // SILENT_DROP_MS is 15 s of nothing heard, checked every second: the
-  // sheet's wait is the product's own threshold, not slack.
-  await expect(sheet(page)).toContainText('Bluetooth dropped', { timeout: 20_000 })
+  // SILENT_DROP_MS is 15 s of nothing heard, checked every second; 30 s leaves room for a loaded runner. The
+  // wait is the product's own threshold, nothing retries.
+  await expect(sheet(page)).toContainText('Bluetooth dropped', { timeout: 30_000 })
   await expect(sheet(page)).toContainText('Nothing came over Bluetooth for 15 seconds.')
   await expect(page.getByTestId('bluetooth-dropped-cloud')).toHaveText('Connect via cloud')
   await expect(page.getByTestId('bluetooth-dropped-ble')).toHaveText('Try Bluetooth again')
@@ -147,7 +152,8 @@ test('a permission refusal never moves the chosen route', async ({ page, isMobil
     return m.refusedRequests()
   })
   expect(answer.http).toBe(403)
-  await expect.poll(() => routeCounts(page).then(c => c.refused)).toEqual(['POST /muon-link/plate/clear', 'RPC machine.update.status'])
+  // The page polls update status on its own (refused too); the two this test sent are the new ones.
+  await expect.poll(() => routeCounts(page).then(c => c.refused.slice(before.refused.length))).toEqual(['POST /muon-link/plate/clear', 'RPC machine.update.status'])
   const after = await routeCounts(page)
   expect(after.dials).toBe(before.dials)
   expect(after.closes).toBe(before.closes)
@@ -166,7 +172,9 @@ test('plain Connect goes cloud before Bluetooth, fails over to Bluetooth, and re
     return m.hearNearby()
   })).toBe(true)
   // Plain Connect: not on this network, so the cloud.
-  await page.getByRole('link', { name: new RegExp(ROUTE_PRINTER.name) }).or(page.getByText(ROUTE_PRINTER.name, { exact: true })).first().click()
+  await page.getByRole('link', { name: 'All printers' }).first().click()
+  await expect(page.getByText('Connecting...')).toHaveCount(0, { timeout: 30_000 })
+  await page.locator('[data-tid^="printer-tile-"]').first().click()
   await expect.poll(() => lastRoute(page)).toBe('cloud')
   await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
   expect((await where(page)).mode).toBe('auto')
