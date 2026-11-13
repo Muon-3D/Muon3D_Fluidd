@@ -13,9 +13,25 @@
         class="sec__claimed"
         data-tid="security-claimed"
       >
-        {{ claimed ? 'A claimed printer: the owner and shared users by default. The owner can open or restrict each one.' : 'An open printer: anyone may do each of these by default. The owner can restrict each one.' }}
+        {{ claimedLine }}
       </p>
     </header>
+
+    <div
+      v-if="printerPage"
+      class="sec__row"
+      data-tid="security-auto-switch"
+    >
+      <div class="sec__titles">
+        <h3>Switch to the secure address automatically</h3>
+        <p>On this browser. When this printer has a secure address that works here, Control opens it by itself.</p>
+      </div>
+      <toggle-switch
+        :value="autoSwitch"
+        label="Switch to the secure address automatically"
+        @input="onAutoSwitch"
+      />
+    </div>
 
     <p
       v-if="knobs === null"
@@ -177,6 +193,7 @@ import LockedRow from '@/components/settings/gates/LockedRow.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import { printerNameParts } from '@/util/printer-name'
+import { couldHaveSecureAddress, setSwitchesAutomatically, switchesAutomatically } from '@/services/secure-origin'
 import {
   changeOutcome, outcomeNote, parsePermissions, permissionsPath, switchOutcome, switchPath, valueLabel,
   type PermissionKnob, type PermissionSwitch
@@ -200,6 +217,31 @@ export default class SecuritySettings extends Mixins(MuonGatesMixin) {
   saving = ''
   notes: Record<string, string> = {}
   readonly valueLabel = valueLabel
+  /** This browser's choice, not the printer's: it means nothing on a page the console serves. */
+  printerPage = couldHaveSecureAddress()
+  autoSwitch = switchesAutomatically()
+
+  onAutoSwitch (on: boolean) {
+    setSwitchesAutomatically(on)
+    this.autoSwitch = switchesAutomatically()
+  }
+
+  /**
+   * What the printer reports as its defaults, in a sentence: said only when
+   * the settings that report one agree (train 12 printers report
+   * owner_and_shared, train 13 anyone); mixed or missing says nothing.
+   */
+  get defaultsLine (): string {
+    // A setting that reports no default (one Control doesn't know) says nothing either way.
+    const defaults = this.rows.map(k => k.defaultValue).filter(d => !!d)
+    if (!defaults.length || new Set(defaults).size !== 1) return ''
+    return defaults[0] === 'anyone' ? 'Anyone may do each of these by default.' : `${valueLabel(defaults[0])} by default.`
+  }
+
+  get claimedLine (): string {
+    const head = this.claimed ? 'A claimed printer' : 'An open printer'
+    return `${this.defaultsLine ? `${head}: ${this.defaultsLine}` : `${head}.`} The owner can restrict each one.`
+  }
 
   mounted () {
     if (this.isMuonPrinter === true) this.load()

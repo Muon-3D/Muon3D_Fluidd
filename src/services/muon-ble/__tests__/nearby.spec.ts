@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isPrinter, lookNearby, nearbyState, startNearby, stopNearby } from '../nearby'
+import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, startNearby, stopNearby } from '../nearby'
+import { chooserOptions } from '../webBluetooth'
 import { advert, EID, fakeBluetooth, fakePrinter, OTHER_EID, removeBluetooth } from './fakes'
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0))
@@ -109,5 +110,32 @@ describe('the adapter', () => {
     await startNearby()
     expect(nearbyState.support).toBe('supported')
     expect(nearbyState.radio).toBe('unknown')
+  })
+})
+
+describe('Look nearby for one printer (KAN-2470)', () => {
+  it('passes the target to the chooser', async () => {
+    const { requests } = fakeBluetooth({ chosen: fakePrinter().device })
+    await lookNearby({ endpointId: EID })
+    expect(requests).toEqual([chooserOptions({ endpointId: EID })])
+  })
+
+  it('a dismissed targeted chooser shows nothing and no error', async () => {
+    const { requests } = fakeBluetooth()
+    expect(await lookNearby({ endpointId: EID })).toBeNull()
+    expect(requests).toHaveLength(1)
+    expect(nearbyState.error).toBeNull()
+  })
+
+  it('uses getDevices when the browser has it, and the chooser when it is undefined', async () => {
+    localStorage.setItem('muon.ble.printers', JSON.stringify({ 'dev-walnut': { endpointId: EID, localName: 'walnut-8987' } }))
+    const { bt } = fakeBluetooth({ remembered: [fakePrinter().device] })
+    expect((await permittedPrinterFor(EID))?.deviceId).toBe('dev-walnut')
+    expect(bt.requestDevice).not.toHaveBeenCalled()
+    removeBluetooth()
+    // Chrome 157 on desktop: getDevices is undefined.
+    const none = fakeBluetooth({})
+    expect(none.bt.getDevices).toBeUndefined()
+    expect(await permittedPrinterFor(EID)).toBeNull()
   })
 })

@@ -799,6 +799,11 @@ const EMAIL = {
     &::after { transform: translateX(16px); }
   }
 
+  // The switch's slide is decoration: off for anyone who asked for less motion.
+  @media (prefers-reduced-motion: reduce) {
+    .mshare__switch::after { transition: none; }
+  }
+
   .mshare__warn { margin: 0; color: var(--m3d-warning); font-size: 13px; }
   .mshare__error { margin: 0; color: var(--m3d-danger); }
 

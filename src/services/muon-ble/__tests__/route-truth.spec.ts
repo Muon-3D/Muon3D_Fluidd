@@ -10,6 +10,9 @@ import {
   bluetoothFellBack,
   bluetoothLinkUp,
   bluetoothOpening,
+  CARRYING_WINDOW_MS,
+  NOT_ON_BLUETOOTH_MS,
+  NOT_ON_BLUETOOTH_REASON,
   bluetoothRouteFor,
   releaseBluetoothLink,
   remoteRouteLabel,
@@ -18,9 +21,17 @@ import {
   wantsBluetoothFor
 } from '../link'
 import { dialPrinter } from '@/services/muon-cloud/iroh'
+import { notifyEndpointReplacing } from '@/services/muon-cloud/endpoint-hooks'
 import { EID, fakeEndpoint, fakePrinter } from './fakes'
 
 afterEach(() => stopUsingBluetoothFor(EID))
+
+/** The printer sends a packet over the radio, and the next one-second check sees it (KAN-2531: only that is Bluetooth carrying the session). */
+async function printerSpeaks (printer: ReturnType<typeof fakePrinter>) {
+  await vi.advanceTimersByTimeAsync(100)
+  printer.notify(new Uint8Array([7]))
+  await vi.advanceTimersByTimeAsync(1500)
+}
 
 describe('the real route is the link that is up, not the click (KAN-1396)', () => {
   it('asking for Bluetooth is not carrying over Bluetooth', () => {
@@ -29,13 +40,45 @@ describe('the real route is the link that is up, not the click (KAN-1396)', () =
     expect(bluetoothCarrying(EID)).toBe(false)
   })
 
-  it('is carrying once the link is up, and stops when it is hung up', async () => {
-    const { endpoint } = fakeEndpoint()
-    useBluetoothFor(EID, fakePrinter().device)
-    await bluetoothRouteFor(endpoint, EID)
-    expect(bluetoothCarrying(EID)).toBe(true)
-    await releaseBluetoothLink(EID)
-    expect(bluetoothCarrying(EID)).toBe(false)
+  it('is carrying once the printer speaks over the link, and stops when it is hung up', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const { endpoint } = fakeEndpoint()
+      useBluetoothFor(EID, printer.device)
+      await bluetoothRouteFor(endpoint, EID)
+      await printerSpeaks(printer)
+      expect(bluetoothCarrying(EID)).toBe(true)
+      await releaseBluetoothLink(EID)
+      expect(bluetoothCarrying(EID)).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a link that is up is not carrying until the printer speaks on it, and then says it is not on Bluetooth (KAN-2531)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const { endpoint } = fakeEndpoint()
+      useBluetoothFor(EID, printer.device)
+      await bluetoothRouteFor(endpoint, EID)
+      // The handshake crossed the radio, and nothing the printer sends since: the relay answered.
+      expect(bluetoothCarrying(EID)).toBe(false)
+      expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+      expect(bluetoothFellBack(EID)).toBeNull()
+      await vi.advanceTimersByTimeAsync(NOT_ON_BLUETOOTH_MS + 2000)
+      expect(bluetoothCarrying(EID)).toBe(false)
+      expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+      expect(bluetoothFellBack(EID)).toBe(NOT_ON_BLUETOOTH_REASON)
+      // The printer then speaks over the radio: it is on Bluetooth after all, and the note goes.
+      printer.notify(new Uint8Array([7]))
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+      expect(bluetoothFellBack(EID)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('stops when the printer drops the link', async () => {
@@ -89,14 +132,22 @@ describe('Bluetooth, when chosen, is pinned (D-080)', () => {
 
 describe('one label for the route, from the link that is up (KAN-1566)', () => {
   it('says Through Muon3D until the Bluetooth link is up, then Via Bluetooth, then Through Muon3D once it is gone', async () => {
-    const { endpoint } = fakeEndpoint()
-    useBluetoothFor(EID, fakePrinter().device)
-    expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
-    await bluetoothRouteFor(endpoint, EID)
-    expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
-    expect(remoteRouteLabel(EID.toUpperCase())).toBe('Via Bluetooth')
-    await releaseBluetoothLink(EID)
-    expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const { endpoint } = fakeEndpoint()
+      useBluetoothFor(EID, printer.device)
+      expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+      await bluetoothRouteFor(endpoint, EID)
+      expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+      await printerSpeaks(printer)
+      expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+      expect(remoteRouteLabel(EID.toUpperCase())).toBe('Via Bluetooth')
+      await releaseBluetoothLink(EID)
+      expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('an idle but alive Bluetooth route keeps its label', async () => {
@@ -106,6 +157,7 @@ describe('one label for the route, from the link that is up (KAN-1566)', () => {
       const { endpoint } = fakeEndpoint()
       useBluetoothFor(EID, printer.device)
       await bluetoothRouteFor(endpoint, EID)
+      await printerSpeaks(printer)
       expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
       // Idle, but alive: QUIC's keep-alive crosses the radio every 5 s.
       for (let i = 0; i < 12; i++) {
@@ -116,6 +168,30 @@ describe('one label for the route, from the link that is up (KAN-1566)', () => {
       expect(bluetoothLinkUp(EID)).toBe(true)
       expect(bluetoothCarrying(EID)).toBe(true)
       expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+      printer.notify(new Uint8Array([7]))
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('says Through Muon3D once the printer has been quiet on the radio past the window, until the silent drop is called (KAN-2531, KAN-1913)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const { endpoint } = fakeEndpoint()
+      useBluetoothFor(EID, printer.device)
+      await bluetoothRouteFor(endpoint, EID)
+      await printerSpeaks(printer)
+      expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+      // iroh moved the connection onto the relay: no segments cross the radio.
+      await vi.advanceTimersByTimeAsync(CARRYING_WINDOW_MS + 2000)
+      expect(bluetoothLinkUp(EID)).toBe(true)
+      expect(bluetoothCarrying(EID)).toBe(false)
+      expect(bluetoothDropped(EID)).toBeNull()
+      expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+      // The relay went; iroh moved back, and bytes cross the radio again.
       printer.notify(new Uint8Array([7]))
       await vi.advanceTimersByTimeAsync(1500)
       expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
@@ -176,10 +252,17 @@ describe('a Bluetooth link that fails is never swallowed (KAN-1396)', () => {
   })
 
   it('records nothing when the link comes up', async () => {
-    useBluetoothFor(EID, fakePrinter().device)
-    await dialPrinter(relayOnly(), EID)
-    expect(bluetoothCarrying(EID)).toBe(true)
-    expect(bluetoothFellBack(EID)).toBeNull()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      useBluetoothFor(EID, printer.device)
+      await dialPrinter(relayOnly(), EID)
+      await printerSpeaks(printer)
+      expect(bluetoothCarrying(EID)).toBe(true)
+      expect(bluetoothFellBack(EID)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('forgets the note when the choice is undone', async () => {
@@ -236,6 +319,23 @@ describe('the chosen route is the only route, and a drop is said, not hidden (KA
     expect(bluetoothDropped(EID)).toBeNull()
   })
 
+  it('does not call it a drop when the tab replaces its endpoint under a link (#421 rebind, #370)', async () => {
+    // An explicit Bluetooth connect for one printer closes the tab's endpoint,
+    // and every other printer's link with it. Those are not drops: no "Bluetooth
+    // dropped" sheet for a printer the person did nothing to.
+    const printer = fakePrinter()
+    const { endpoint } = fakeEndpoint()
+    useBluetoothFor(EID, printer.device)
+    const link = await bluetoothRouteFor(endpoint, EID)
+    notifyEndpointReplacing()
+    printer.drop()
+    await link!.closed
+    await Promise.resolve()
+    expect(bluetoothDropped(EID)).toBeNull()
+    expect(bluetoothLinkUp(EID)).toBe(false)
+    expect(bluetoothCarrying(EID)).toBe(false)
+  })
+
   it('says it dropped when muon-link reports the chosen route has no path', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
@@ -261,10 +361,12 @@ describe('the chosen route is the only route, and a drop is said, not hidden (KA
       const { endpoint } = fakeEndpoint()
       useBluetoothFor(EID, printer.device)
       const link = await bluetoothRouteFor(endpoint, EID)
-      await vi.advanceTimersByTimeAsync(SILENT_DROP_MS - 2_000)
-      expect(bluetoothDropped(EID)).toBeNull()
+      // The printer spoke over the radio (KAN-2531), then went quiet.
+      await printerSpeaks(printer)
       expect(bluetoothCarrying(EID)).toBe(true)
-      await vi.advanceTimersByTimeAsync(4_000)
+      await vi.advanceTimersByTimeAsync(SILENT_DROP_MS - 4_000)
+      expect(bluetoothDropped(EID)).toBeNull()
+      await vi.advanceTimersByTimeAsync(6_000)
       expect(bluetoothDropped(EID)).toMatch(/Nothing came over Bluetooth/)
       expect(bluetoothCarrying(EID)).toBe(false)
       expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')

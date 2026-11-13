@@ -56,6 +56,8 @@
       {{ narrow ? 'Drag the grip to move a widget, or the × to put it away. Add widget brings one back, at the size you pick.' : 'Drag the grip to move a widget and the corner to resize it; it snaps to a size the widget offers. Saved for you, on this printer.' }}
     </p>
 
+    <plate-clear-bar />
+
     <div
       ref="grid"
       class="overview__grid"
@@ -269,6 +271,7 @@
 <script lang="ts">
 import { Component, Vue, Watch } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
+import PlateClearBar from '@/components/ui/PlateClearBar.vue'
 import { overviewTiles, type OverviewTileDef } from '@/components/widgets/overview/registry'
 import {
   addTile, defaultLayout, dropIndex, moveBy, moveTile, nudgeSize, removeTile, resizeTile, serverLayoutKey, sizeKeyOf,
@@ -296,7 +299,7 @@ const SPRING = 'overview-spring'
  * sit and how big they are is this person's saved layout (services/overview),
  * changed with Edit. While editing the tiles are inert: nothing is sent to the printer.
  */
-@Component({})
+@Component({ components: { PlateClearBar } })
 export default class Overview extends Vue {
   layout: OverviewLayout = defaultLayout(overviewTiles)
   draft: OverviewLayout | null = null

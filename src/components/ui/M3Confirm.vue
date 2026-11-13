@@ -17,6 +17,12 @@
       {{ message }}
     </p>
 
+    <plate-clear-notice
+      v-if="plateNotice"
+      inline
+      :managed="plateNotice.managed"
+    />
+
     <plate-check
       v-if="plateCheck"
       v-model="plateClear"
@@ -66,6 +72,7 @@
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import M3Dialog from './M3Dialog.vue'
 import PlateCheck from './PlateCheck.vue'
+import PlateClearNotice from './PlateClearNotice.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 
 /** How long the dialog takes to close before its answer is given. */
@@ -77,7 +84,7 @@ export const CLOSE_MS = 220
  * The message is text, never HTML: it often holds a file's name. With
  * `plateCheck`, the button stays off until the plate check is ticked.
  */
-@Component({ components: { M3Dialog, PlateCheck, ToggleSwitch } })
+@Component({ components: { M3Dialog, PlateCheck, PlateClearNotice, ToggleSwitch } })
 export default class M3Confirm extends Vue {
   @Prop({ type: String, required: true })
   readonly message!: string
@@ -108,6 +115,10 @@ export default class M3Confirm extends Vue {
   /** A print starts: ask the plate check (PlateCheck) first. */
   @Prop({ type: Boolean })
   readonly plateCheck!: boolean
+
+  /** The printer wants the plate confirmed: the notice shows inline (CT-14). */
+  @Prop({ type: Object, default: null })
+  readonly plateNotice!: { managed: boolean } | null
 
   /** A print the printer can film: the "Film it" switch (see ConfirmOptions.film). */
   @Prop({ type: Object, default: null })

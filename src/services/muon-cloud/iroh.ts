@@ -12,8 +12,10 @@ import type {
   PrinterSocket
 } from '@/services/managed-transport'
 import { bluetoothDropped, bluetoothRouteFor, noteBluetoothDropped, wantsBluetoothFor, type WasmBleLink } from '@/services/muon-ble/link'
-import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed } from './api'
-import bundledWasmUrl from './vendor/muon-link-web/1d6706d/muon_link_web_bg.wasm?url'
+import { pinnedBluetoothError } from '@/services/muon-ble/refusal'
+import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, cloudTokensPersist } from './api'
+import { endpointBusy, notifyEndpointRebound, notifyEndpointReplacing } from './endpoint-hooks'
+import bundledWasmUrl from './vendor/muon-link-web/2273ba0/muon_link_web_bg.wasm?url'
 
 const KEY_STORAGE = 'muon.cloud.key'
 // Remove after one release. Normal loads never depend on the console's files.
@@ -25,7 +27,8 @@ const ALLOW_CONSOLE_CLIENT_FALLBACK = true
 // an older build left. WebCrypto, which could hold it unreadable (KAN-1872),
 // does not exist on such a page.
 try {
-  if (!cloudSessionAllowed()) {
+  // A printer's secure address (KAN-2198) keeps the key in memory only.
+  if (!cloudTokensPersist()) {
     localStorage.removeItem(KEY_STORAGE)
     // A tab still running an older build can write the key back. Remove it
     // whenever it appears.
@@ -64,6 +67,8 @@ interface WasmEndpoint {
   /** Keeps a printer's connection on Bluetooth while a link is up (D-080, muon-link#128 on). */
   pinBluetooth? (printerId: string, pinned: boolean): void;
   close (): Promise<void>;
+  /** Frees the binding's handle (wasm-bindgen). */
+  free? (): void;
 }
 
 interface WasmModule {
@@ -79,7 +84,7 @@ function loadWasm (): Promise<WasmModule> {
   if (!modulePromise) {
     modulePromise = (async () => {
       try {
-        const mod = await import('./vendor/muon-link-web/1d6706d/muon_link_web.js') as WasmModule
+        const mod = await import('./vendor/muon-link-web/2273ba0/muon_link_web.js') as WasmModule
         await mod.default({ module_or_path: bundledWasmUrl })
         return mod
       } catch (error) {
@@ -105,30 +110,120 @@ function bytesToHex (bytes: Uint8Array): string {
   return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
 }
 
+let memoryKey: Uint8Array | null = null
+
+/**
+ * The printers this tab's current endpoint has dialled, by any route. Iroh
+ * remembers a printer's relay path for as long as a connection to it is open
+ * and for 60 s after (KAN-2531), so a Bluetooth dial on an endpoint that holds
+ * that memory sends its first packets over the relay as well. A pinned dial
+ * that still lands on the relay leaves that memory behind, so a retry needs a
+ * new endpoint too: every dial is recorded, not only the network ones.
+ */
+const dialed = new Set<string>()
+
+export const REBIND_BUSY_MESSAGE = 'Finish or cancel adding a device or setting up a printer first, then connect over Bluetooth again.'
+
+function logLate (what: string, error: unknown) {
+  console.warn(`muon-link: ${what}: ${(error as Error)?.message ?? error}`)
+}
+
+async function createEndpoint (relayUrl: string): Promise<WasmEndpoint> {
+  const mod = await loadWasm()
+  let secret: Uint8Array | null = null
+  const persist = cloudTokensPersist()
+  try {
+    secret = persist ? hexToBytes(localStorage.getItem(KEY_STORAGE) ?? '') : memoryKey
+  } catch { /* no storage */ }
+  const endpoint = await mod.MuonEndpoint.create(relayUrl, secret)
+  if (persist) {
+    try {
+      localStorage.setItem(KEY_STORAGE, bytesToHex(endpoint.secretKey()))
+    } catch { /* no storage */ }
+  } else {
+    memoryKey = endpoint.secretKey()
+  }
+  return endpoint
+}
+
 /** The tab's endpoint, bound to `relayUrl`. */
 export function browserEndpoint (relayUrl: string): Promise<WasmEndpoint> {
   if (!cloudSessionAllowed()) return Promise.reject(new CloudError(INSECURE_ORIGIN_MESSAGE, 0, 'insecure_origin'))
   if (!endpointPromise || endpointRelay !== relayUrl) {
     endpointRelay = relayUrl
-    endpointPromise = (async () => {
-      const mod = await loadWasm()
-      let secret: Uint8Array | null = null
-      try {
-        secret = hexToBytes(localStorage.getItem(KEY_STORAGE) ?? '')
-      } catch { /* no storage */ }
-      const endpoint = await mod.MuonEndpoint.create(relayUrl, secret)
-      try {
-        localStorage.setItem(KEY_STORAGE, bytesToHex(endpoint.secretKey()))
-      } catch { /* no storage */ }
-      return endpoint
-    })()
+    dialed.clear()
+    endpointPromise = createEndpoint(relayUrl)
     endpointPromise.catch(() => { endpointPromise = null })
   }
   return endpointPromise
 }
 
+/**
+ * Closes the tab's endpoint and binds a new one with the same key and no
+ * memory of any printer's path (KAN-2531). Every session on the old endpoint
+ * ends, so the caller is one that has to; the old endpoint is closed (and its
+ * handle freed) before the new one binds, so the key is never live twice. A
+ * close that fails is logged and the old endpoint abandoned, never waited on
+ * again. Callers that ask meanwhile get the new endpoint.
+ */
+export function freshBrowserEndpoint (relayUrl: string): Promise<WasmEndpoint> {
+  if (!cloudSessionAllowed()) return Promise.reject(new CloudError(INSECURE_ORIGIN_MESSAGE, 0, 'insecure_origin'))
+  const old = endpointPromise
+  endpointRelay = relayUrl
+  dialed.clear()
+  // Every Bluetooth link on the old endpoint is about to close: that is not a drop (#370).
+  notifyEndpointReplacing()
+  const fresh = (async () => {
+    if (old) {
+      let previous: WasmEndpoint | null = null
+      try {
+        previous = await old
+      } catch { /* it never bound: nothing to close */ }
+      if (previous) {
+        try {
+          await previous.close()
+        } catch (error) {
+          logLate('closing the old endpoint failed, so it is abandoned', error)
+        }
+        try {
+          previous.free?.()
+        } catch (error) {
+          logLate('freeing the old endpoint failed', error)
+        }
+      }
+    }
+    return createEndpoint(relayUrl)
+  })()
+  endpointPromise = fresh
+  fresh.catch(() => { if (endpointPromise === fresh) endpointPromise = null })
+  return fresh
+}
+
+/**
+ * The endpoint to dial `printerId` on. An explicit Bluetooth choice for a
+ * printer this endpoint has already dialled, by any route, gets a fresh one,
+ * so its first packets have no relay path to race on (KAN-2531); anything else
+ * keeps the tab's endpoint, and other printers' sessions with it.
+ */
+export async function endpointForDial (relayUrl: string, printerId: string): Promise<WasmEndpoint> {
+  const id = printerId.toLowerCase()
+  if (wantsBluetoothFor(id) && dialed.has(id)) {
+    // Closing the endpoint would cut a pairing or a setup in progress: not now.
+    if (endpointBusy()) throw new Error(REBIND_BUSY_MESSAGE)
+    const fresh = await freshBrowserEndpoint(relayUrl)
+    dialed.add(id)
+    // Every other printer's transport died with the old endpoint: have each dial again on the new one.
+    notifyEndpointRebound(id)
+    return fresh
+  }
+  const endpoint = await browserEndpoint(relayUrl)
+  dialed.add(id)
+  return endpoint
+}
+
 /** Forgets this browser's key, so the next sign-in starts from a new one. */
 export function forgetBrowserKey () {
+  memoryKey = null
   try {
     localStorage.removeItem(KEY_STORAGE)
   } catch { /* no storage */ }
@@ -355,8 +450,12 @@ export async function dialPrinter (endpoint: WasmEndpoint, printerId: string): P
 export function managedEndpointFactory (): Promise<ManagedIrohEndpoint> {
   return Promise.resolve({
     async openRelay (session: AuthorizedManagedRelaySession) {
-      const endpoint = await browserEndpoint(session.relayUrl)
-      return new IrohPrinter(await dialPrinter(endpoint, session.printerId))
+      const endpoint = await endpointForDial(session.relayUrl, session.printerId)
+      try {
+        return new IrohPrinter(await dialPrinter(endpoint, session.printerId))
+      } catch (error) {
+        throw pinnedBluetoothError(error)
+      }
     },
     close () {}
   })

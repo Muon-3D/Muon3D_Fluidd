@@ -7,6 +7,7 @@
  */
 
 import { clearDeletion, deletionRevision, observeDeletion } from './deletion'
+import { isPrinterSecureOrigin } from '@/services/secure-origin'
 export { deletionState } from './deletion'
 
 export const TOKEN_KEY = 'muon.cloud.token'
@@ -16,6 +17,14 @@ const URL_KEY = 'muon.cloud.url'
 
 /** This surface's id in the console's client registry (`clients.json`). */
 export const CLIENT_ID = 'fluidd'
+
+/** The console client for a page on a printer's own secure address (KAN-2198): no refresh token, a short access token. */
+export const PRINTER_CLIENT_ID = 'printer-local'
+
+/** The `client_id` this page sends to the console: one choice, used by every call. */
+export function clientId (location: Pick<Location, 'protocol' | 'hostname'> | undefined = globalThis.location): string {
+  return location && isPrinterSecureOrigin(location) ? PRINTER_CLIENT_ID : CLIENT_ID
+}
 
 export interface CloudAccount {
   id: string;
@@ -50,6 +59,8 @@ export interface CloudPrinter {
   sharer?: Sharer | null;
   /** Who finds the printer in the nearby list. Only on a printer this account linked (#114). */
   discovery?: DiscoveryLevel | null;
+  /** The printer's own HTTPS name while its certificate lasts, else null (muon-link-cloud #133). */
+  secure_name?: string | null;
 }
 
 export interface Sharer {
@@ -194,6 +205,12 @@ export function setCloudBaseUrl (url: string | null) {
 export function cloudTokensPersist (location: Pick<Location, 'protocol' | 'hostname'> | undefined = globalThis.location): boolean {
   // No page (a worker or a test in node): nothing to judge, keep the old path.
   if (!location) return true
+  // A printer's own secure address holds the session in memory only (KAN-2198).
+  if (isPrinterSecureOrigin(location)) return false
+  return secureContext(location)
+}
+
+function secureContext (location: Pick<Location, 'protocol' | 'hostname'>): boolean {
   return location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
 }
 
@@ -210,7 +227,7 @@ export function cloudTokensPersist (location: Pick<Location, 'protocol' | 'hostn
 export function cloudSessionAllowed (location: Pick<Location, 'protocol' | 'hostname'> | undefined = globalThis.location): boolean {
   // No page to judge: refuse. A gate does not pass what it cannot see.
   if (!location) return false
-  return cloudTokensPersist(location)
+  return secureContext(location)
 }
 
 /** The console page that does what this page may not: `route` is a hash route such as `/account`. */
@@ -231,15 +248,26 @@ function refuseOnInsecureOrigin (): never {
 // later is refused there until somebody decides it is safe.
 const INSECURE_ORIGIN_CALLS: readonly string[] = ['GET /v1/config', 'GET /v1/links/nearby']
 
+// Tokens of a page that may hold a session but not persist it (a printer's
+// secure address, KAN-2198): they last as long as the page.
+const memoryTokens = new Map<string, string>()
+
 function readTokenStorage (key: string): string | null {
-  if (cloudSessionAllowed()) return readStorage(key)
-  return null
+  if (!cloudSessionAllowed()) return null
+  if (!cloudTokensPersist()) return memoryTokens.get(key) ?? null
+  return readStorage(key)
 }
 
 function writeTokenStorage (key: string, value: string | null) {
   // Not allowed: the token is dropped, not kept in memory. Nothing to read
   // means nothing for injected script to take.
-  if (cloudSessionAllowed()) writeStorage(key, value)
+  if (!cloudSessionAllowed()) return
+  if (!cloudTokensPersist()) {
+    if (value === null) memoryTokens.delete(key)
+    else memoryTokens.set(key, value)
+    return
+  }
+  writeStorage(key, value)
 }
 
 // Migration: an older build stored the pair in localStorage on this origin.
@@ -469,7 +497,7 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS)
       try {
-        const session = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: CLIENT_ID }, controller.signal)
+        const session = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId() }, controller.signal)
         storeToken(session.access_token)
         storeRefreshToken(session.refresh_token)
         resetRefreshBackoff()
@@ -607,7 +635,7 @@ export const cloudApi = {
   putLayout: (layout: unknown, stillMine?: () => boolean) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout }, storedToken(), true, stillMine),
   /** The central login's code exchange (`WEB-12`). */
   exchangeCode: (code: string, redirectUri: string, verifier: string, signal?: AbortSignal) =>
-    tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: CLIENT_ID, code_verifier: verifier }, signal),
+    tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: clientId(), code_verifier: verifier }, signal),
   /**
    * A single-use code that opens the console's browser session at
    * `/handoff`. Takes the token of a session that signed in here, which is

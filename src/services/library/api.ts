@@ -89,6 +89,14 @@ export interface Version {
   files: VersionFile[];
 }
 
+export interface ModelContext {
+  owner: boolean;
+  state: string;
+  pinned_version: number;
+  versions: Array<{ number: number, origin?: string, created_at?: string }>;
+  runs: Array<{ id: string, printer_name: string, started_at: string, outcome: string, duration_s?: number | null, filament_mm?: number | null }>;
+}
+
 /** The live, immutable version exposed by `GET /v1/public/publications/:id`. */
 export interface PublicPublication {
   title: string;
@@ -106,7 +114,9 @@ export interface PublicPublication {
   colours?: string[];
   material?: string | null;
   size_mm?: number[] | null;
+  print_profile?: { material?: string, estimated_seconds?: number, filament_g?: number, layer_height_mm?: number, supports?: boolean, plate?: string } | null;
   created_at?: string;
+  version_created_at?: string;
   /** "CC-BY-4.0". */
   licence?: string | null;
 }
@@ -437,11 +447,11 @@ export function createLibraryClient (options: LibraryClientOptions) {
     shares: () => request<unknown>('GET', '/v1/community/shares'),
     saved: () => request<CommunitySavesPage>('GET', '/v1/community/saves'),
     /** Save a public print (the Library's heart): the save, new or the one already there. */
-    save: (publicationId: string) => request<CommunitySave>('PUT', '/v1/community/saves', { kind: 'publication', id: publicationId }),
+    save: (id: string, kind: 'publication' | 'catalogue' = 'publication') => request<CommunitySave>('PUT', '/v1/community/saves', { kind, id }),
     unsave: (saveId: string) => request<null>('DELETE', `/v1/community/saves/${encodeURIComponent(saveId)}`),
     /** Which of these public prints are saved, and as which save. */
-    savesOf: (publicationIds: string[]) => request<{ saves: Array<{ target: { kind: string, id: string }, save_id: string }> }>(
-      'GET', `/v1/community/saves/lookup?targets=${encodeURIComponent(JSON.stringify(publicationIds.map(id => ({ kind: 'publication', id }))))}`),
+    savesOf: (ids: string[], kind: 'publication' | 'catalogue' = 'publication') => request<{ saves: Array<{ target: { kind: string, id: string }, save_id: string }> }>(
+      'GET', `/v1/community/saves/lookup?targets=${encodeURIComponent(JSON.stringify(ids.map(id => ({ kind, id }))))}`),
     collections: () => request<{ collections: CommunityCollection[] }>('GET', '/v1/community/collections'),
     collection: (id: string) => request<CommunityCollectionDetail>('GET', `/v1/community/collections/${encodeURIComponent(id)}`),
     createCollection: (name: string) => request<CommunityCollection>('POST', '/v1/community/collections', { name, visibility: 'private' }),
@@ -463,6 +473,11 @@ export function createLibraryClient (options: LibraryClientOptions) {
     item: (id: string) => request<LibraryItem>('GET', item(id)),
     versions: (id: string) => request<{ versions: Version[] }>('GET', `${item(id)}/versions`),
     publicPublication: (id: string) => request<PublicPublication>('GET', `/v1/public/publications/${encodeURIComponent(id)}`),
+    modelContext: async (id: string) => {
+      const context = await request<ModelContext>('GET', `/v1/library/publications/${encodeURIComponent(id)}/context`)
+      if (!context || typeof context.owner !== 'boolean' || !Array.isArray(context.versions) || !Array.isArray(context.runs)) throw new LibraryError('protocol', 'The Library sent an unreadable model history.')
+      return context
+    },
     /** The raw bytes of a shared file: `POST /v1/shares/:id/files/:file` takes `{key?}` and answers the bytes, or a JSON refusal. */
     async shareFile (id: string, fileId: string, key?: string): Promise<Uint8Array> {
       const response = await authorised(`${base()}/v1/shares/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, {
