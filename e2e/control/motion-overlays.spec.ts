@@ -32,6 +32,8 @@ test.describe('on a computer', () => {
     const enter = await entering()
     expect(enter?.duration).toMatch(/^0\.16s(, 0\.16s)*$/)
     expect(enter?.easing).toContain('cubic-bezier(0.16, 1, 0.3, 1)')
+    // Its size moves too (a fade alone would pop from 90 % to full size).
+    expect(enter?.property.split(', ')).toContain('transform')
     // It grows from 90 % (read with the -enter class still on).
     expect(enter?.classes).toContain('v-menu-transition-enter')
     expect(enter!.scale).toBeCloseTo(0.9, 2)
@@ -81,8 +83,8 @@ test.describe('on a computer', () => {
     // its own computed transform is not the thing to read), not 50 %.
     expect(enter?.classes).toContain('dialog-transition-enter')
     expect(enter!.declaredScale).toBeCloseTo(0.92, 2)
-    expect(enter?.property).toMatch(/^opacity/)
-    expect(enter?.duration).toMatch(/0\.536s/)
+    expect(enter?.property).toBe('opacity, transform')
+    expect(enter?.duration).toMatch(/^0\.16s, 0\.536s$/)
     expect(enter?.easing).toMatch(/linear\(/)
     const s = await opening
     info.annotations.push({ type: 'dialog open samples', description: JSON.stringify(s.slice(0, 20)) })
@@ -145,6 +147,7 @@ test.describe('on a phone', () => {
     await button.click()
     // A slow step on the enter curve: no spring, so no overshoot.
     const enter = await entering()
+    expect(enter?.property).toBe('transform')
     expect(enter?.duration).toMatch(/^0\.34s/)
     expect(enter?.easing).toContain('cubic-bezier(0.16, 1, 0.3, 1)')
     // It starts below the screen: the -enter rule, read with the class still

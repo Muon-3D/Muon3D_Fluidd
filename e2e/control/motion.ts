@@ -91,9 +91,12 @@ export interface ClassSeen {
   /** The y translation of that transform, px (0 when none). */
   ty: number;
   /**
-   * The x scale the element's classes declare, read from a probe element with
-   * the same classes and `transition: none` (so it is the end value of a
-   * -leave-to rule, not a point part-way along the transition).
+   * The x scale the element's classes declare, read from a freshly inserted
+   * probe with the same classes. A new element has no earlier style to
+   * transition from, so its computed value is the declared one (the end value
+   * of a -leave-to rule, not a point part-way along the element's own
+   * transition). The probe's inline `transition: none` does not do this: the
+   * copied -active classes' `!important` transitions beat it.
    */
   declaredScale: number;
   /** The y translation the element's classes declare, as a fraction of the element's own height (1 = fully below its place). */
@@ -126,8 +129,11 @@ export async function watchClass (page: Page, selector: string, cls: string, ms 
         if (!el.matches(sel) || el.classList.contains(name) === absent) return false
         const s = getComputedStyle(el)
         const m = s.transform === 'none' ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(s.transform)
-        // A probe with the same classes and no transition shows the value the
-        // element's rules declare, whatever point its own transition is at.
+        // A freshly inserted probe with the same classes shows the value the
+        // element's rules declare, whatever point the element's own transition
+        // is at: a new element has nothing to transition from. (Its inline
+        // transition:none is beaten by the -active classes' !important rules;
+        // it is not what makes this work.)
         // The probe is 100 px square so a percentage translate resolves to a
         // known length. When the element is not laid out yet at this instant
         // (a dialog or sheet is still being shown), its computed transform is
