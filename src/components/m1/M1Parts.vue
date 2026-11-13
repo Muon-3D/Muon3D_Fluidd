@@ -31,7 +31,7 @@
       </button>
     </div>
 
-    <!-- Looking straight down at the head: X along the bottom, Y up the left, in the printer's millimetres. -->
+    <!-- Looking straight down at the head: X and Y marked along the limits of its reach, in the printer's millimetres. -->
     <div
       v-if="topView && axisMarks"
       class="m1-parts__axes"
@@ -42,17 +42,45 @@
         v-for="m in axisMarks.x"
         :key="`x${m.v}`"
         class="m1-parts__tick m1-parts__tick--x"
-        :style="{ left: `${m.px}px` }"
+        :style="{ left: `${m.px}px`, top: `${m.at}px` }"
       >{{ m.v }}</span>
-      <span class="m1-parts__axis-name m1-parts__axis-name--x">X</span>
+      <span
+        v-if="axisMarks.x.length"
+        class="m1-parts__axis-name m1-parts__axis-name--x"
+        :style="{ left: `${axisMarks.x[axisMarks.x.length - 1].px}px`, top: `${axisMarks.x[axisMarks.x.length - 1].at}px` }"
+      >X</span>
       <span
         v-for="m in axisMarks.y"
         :key="`y${m.v}`"
         class="m1-parts__tick m1-parts__tick--y"
-        :style="{ top: `${m.px}px` }"
+        :style="{ top: `${m.px}px`, left: `${m.at}px` }"
       >{{ m.v }}</span>
-      <span class="m1-parts__axis-name m1-parts__axis-name--y">Y</span>
+      <span
+        v-if="axisMarks.y.length"
+        class="m1-parts__axis-name m1-parts__axis-name--y"
+        :style="{ top: `${axisMarks.y[axisMarks.y.length - 1].px}px`, left: `${axisMarks.y[axisMarks.y.length - 1].at}px` }"
+      >Y</span>
     </div>
+
+    <!-- Looking down: where the head can go (its corners), and the bed's notch, quietly. -->
+    <svg
+      v-if="topView && boundsPx"
+      class="m1-parts__bounds"
+      data-tid="m1-bounds"
+      aria-hidden="true"
+    >
+      <path
+        class="m1-parts__bounds-corners"
+        :d="boundsPx.corners"
+      />
+      <path
+        v-for="(d, i) in boundsPx.notch"
+        :key="`notch${i}`"
+        class="m1-parts__bounds-notch"
+        data-tid="m1-notch"
+        :d="d"
+      />
+    </svg>
 
     <!-- While dragging: a target on the cursor, and a live line from where the part is to it. -->
     <svg
@@ -139,6 +167,7 @@ import ControlMixin from '@/mixins/control'
 import M1PartOptions from './M1PartOptions.vue'
 import M1Screen from './M1Screen.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
+import { axisEdges, boundCorners } from '@/services/m1-3d/drag-bounds'
 import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
 import { modelAnimates } from '@/services/m1-3d/render-options'
@@ -159,10 +188,12 @@ interface PartDrag {
   startY?: number;
 }
 
-/** A pointer must rest on a part this long before it lights, so passing over doesn't. */
-const HOVER_INTENT_MS = 120
-/** After the pointer leaves the printer, the camera eases back after this long. */
-const LEAVE_MS = 600
+/**
+ * Off a part onto empty stage, the glow stays this long: enough to bridge a
+ * gap between a part's meshes without a flicker, short enough to read as
+ * instant. From one part straight to another it moves at once.
+ */
+const LEAVE_MS = 120
 /** A press that moves less than this is a click or a tap, not a drag. */
 const TAP_PX = 10
 /** The label follows the part while the camera eases, for this long after a change. */
@@ -216,9 +247,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
   touch = false
   reducedMotion = false
 
-  hoverTimer = 0
   leaveTimer = 0
   pickFrame = 0
+  /** The newest pointer position waiting for the next frame's pick. */
+  pickAt: { x: number, y: number } | null = null
   followFrame = 0
   followUntil = 0
   down: { x: number, y: number } | null = null
@@ -230,13 +262,29 @@ export default class M1Parts extends Mixins(ControlMixin) {
   /** The pointer a drag may come from: one that went down on the selected part with the main button. Null for anything else. */
   dragPointer: number | null = null
   dragPx: { from: { x: number, y: number }, to: { x: number, y: number } } | null = null
-  axisMarks: { x: Array<{ v: number, px: number }>, y: Array<{ v: number, px: number }> } | null = null
+  axisMarks: { x: Array<{ v: number, px: number, at: number }>, y: Array<{ v: number, px: number, at: number }> } | null = null
+  /** Looking down: the corners of where the head can go, and the bed's notch, as drawn now. */
+  boundsPx: { corners: string, notch: string[] } | null = null
   /** Why the last drag's move was refused, said in the label until the next drag. */
   refused = ''
   /** The printer's own screen, open over the stage. */
   screenOpen = false
   /** Where the screen was on the stage when it opened: the zoom flies in from there and back out to it. */
   screenFrom: { x: number, y: number } | null = null
+
+  /**
+   * The camera holds still while the toolhead or the plate is selected on an
+   * idle printer (Jack, 9 Nov): a drag there moves the part, never the view,
+   * and a drag on empty stage leaves the selection as it is.
+   */
+  get cameraLocked (): boolean {
+    return this.topView || (this.selected === 'plate' && this.interactive)
+  }
+
+  @Watch('cameraLocked')
+  onCameraLocked (locked: boolean) {
+    if (this.dragPointer === null) this.viewer?.setOrbit(!locked)
+  }
 
   /** Parts offer their options only on an idle printer this person can control. */
   get interactive (): boolean {
@@ -306,7 +354,6 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.bind(null)
     this.motionQuery?.removeEventListener?.('change', this.onMotionPref)
     document.removeEventListener('keydown', this.onEscape)
-    clearTimeout(this.hoverTimer)
     clearTimeout(this.leaveTimer)
     cancelAnimationFrame(this.pickFrame)
     cancelAnimationFrame(this.followFrame)
@@ -354,7 +401,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.drag = null
     this.dragPx = null
     this.dragPointer = null
-    this.viewer?.setOrbit(!this.topView)
+    this.viewer?.setOrbit(!this.cameraLocked)
   }
 
   onDown (e: PointerEvent) {
@@ -367,7 +414,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.dragged = false
     // A part moves only by a drag that starts on it, with the main button.
     const onPart = !!this.movable && e.button === 0 && e.isPrimary && this.viewer?.pick(e.clientX, e.clientY) === this.movable
-    this.viewer?.setOrbit(!onPart && !this.topView)
+    this.viewer?.setOrbit(!onPart && !this.cameraLocked)
     if (onPart) {
       this.dragPointer = e.pointerId
       this.bound?.setPointerCapture?.(e.pointerId)
@@ -387,16 +434,22 @@ export default class M1Parts extends Mixins(ControlMixin) {
       // Turning the model: hover is off until the button comes up.
       if (!this.dragged) {
         this.dragged = true
-        clearTimeout(this.hoverTimer)
         this.hovered = null
       }
       this.follow()
       return
     }
     if (e.pointerType === 'touch' || this.down) return
-    cancelAnimationFrame(this.pickFrame)
-    const { clientX, clientY } = e
-    this.pickFrame = requestAnimationFrame(() => this.onPoint(this.viewer?.pick(clientX, clientY) ?? null))
+    // One pick a frame, at the newest position. (Cancelling and asking again on every move starved it:
+    // moves come once a frame too, so while the pointer moved the pick never ran.)
+    this.pickAt = { x: e.clientX, y: e.clientY }
+    if (this.pickFrame) return
+    this.pickFrame = requestAnimationFrame(() => {
+      this.pickFrame = 0
+      const at = this.pickAt
+      this.pickAt = null
+      if (at) this.onPoint(this.viewer?.pick(at.x, at.y) ?? null)
+    })
   }
 
   /** The pointer is over this part (or none). */
@@ -404,14 +457,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
     if (this.bound) this.bound.style.cursor = part && this.interactive ? 'pointer' : ''
     if (part) {
       clearTimeout(this.leaveTimer)
-      if (part === this.hovered) return
-      clearTimeout(this.hoverTimer)
-      // Straight from one part to another re-aims at once; from nothing, after the intent delay.
-      if (this.hovered) this.hovered = part
-      else this.hoverTimer = window.setTimeout(() => { this.hovered = part }, HOVER_INTENT_MS)
+      this.leaveTimer = 0
+      if (part !== this.hovered) this.hovered = part
       return
     }
-    clearTimeout(this.hoverTimer)
     if (this.hovered && !this.leaveTimer) {
       this.leaveTimer = window.setTimeout(() => {
         this.leaveTimer = 0
@@ -422,6 +471,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   onLeave () {
     cancelAnimationFrame(this.pickFrame)
+    this.pickFrame = 0
+    this.pickAt = null
     this.onPoint(null)
   }
 
@@ -430,7 +481,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.down = null
     const dragPointer = this.dragPointer
     this.dragPointer = null
-    this.viewer?.setOrbit(!this.topView)
+    this.viewer?.setOrbit(!this.cameraLocked)
     if (this.drag) {
       if (e.pointerId === dragPointer && e.button === 0) this.release()
       else this.onCancel()
@@ -518,15 +569,31 @@ export default class M1Parts extends Mixins(ControlMixin) {
       if (!samePx(next, this.dragPx)) this.dragPx = next
     }
     if (this.topView) {
-      const [x0, y0] = [this.axisMin[0], this.axisMin[1]]
-      const [x1, y1] = [this.axisMax[0], this.axisMax[1]]
-      const xs = ticks(Math.max(0, x0), x1).map(v => ({ v, px: viewer.project(headToWorld(v, y1))?.x ?? NaN }))
-      const ys = ticks(Math.max(0, y0), y1).map(v => ({ v, px: viewer.project(headToWorld(x0, v))?.y ?? NaN }))
-      const next = { x: xs.filter(m => Number.isFinite(m.px)).map(m => ({ v: m.v, px: Math.round(m.px) })), y: ys.filter(m => Number.isFinite(m.px)).map(m => ({ v: m.v, px: Math.round(m.px) })) }
+      const lo = [this.axisMin[0], this.axisMin[1]] as [number, number]
+      const hi = [this.axisMax[0], this.axisMax[1]] as [number, number]
+      const screen = (x: number, y: number) => viewer.project(headToWorld(x, y))
+      // X marked along the limit nearest the bottom of the view, Y along the one nearest the left.
+      const edges = axisEdges(lo, hi, screen)
+      const mark = (v: number, p: { x: number, y: number } | null, axis: 'x' | 'y') =>
+        p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { v, px: Math.round(axis === 'x' ? p.x : p.y), at: Math.round(axis === 'x' ? p.y : p.x) } : null
+      const xs = ticks(Math.max(0, lo[0]), hi[0]).map(v => mark(v, screen(v, edges.y), 'x'))
+      const ys = ticks(Math.max(0, lo[1]), hi[1]).map(v => mark(v, screen(edges.x, v), 'y'))
+      const next = {
+        x: xs.filter((m): m is NonNullable<typeof m> => !!m),
+        y: ys.filter((m): m is NonNullable<typeof m> => !!m)
+      }
       // Written only when a mark moves, so an idle top-down view doesn't render every frame.
       if (JSON.stringify(next) !== JSON.stringify(this.axisMarks)) this.axisMarks = next
-    } else if (this.axisMarks) {
-      this.axisMarks = null
+      const noGo = this.noGo
+      const regions = noGo && noGo !== 'invalid' ? noGo.regions : []
+      const bounds = {
+        corners: boundCorners(lo, hi, screen),
+        notch: regions.map(r => boundCorners(r.min, r.max, screen, true)).filter(Boolean)
+      }
+      if (JSON.stringify(bounds) !== JSON.stringify(this.boundsPx)) this.boundsPx = bounds
+    } else {
+      if (this.axisMarks) this.axisMarks = null
+      if (this.boundsPx) this.boundsPx = null
     }
   }
 
@@ -543,7 +610,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   @Watch('topView')
   onTopView (top: boolean) {
     this.viewer?.setView(this.zoomedIn ? 'screen' : top ? 'top' : 'free')
-    this.viewer?.setOrbit(!top)
+    this.viewer?.setOrbit(!this.cameraLocked)
     this.follow()
   }
 
@@ -788,15 +855,13 @@ export default class M1Parts extends Mixins(ControlMixin) {
     position: absolute;
 
     &--x {
-      bottom: 58px;
-      transform: translateX(-50%);
+      transform: translate(-50%, 8px);
       border-left: 1px solid rgb(152 152 157 / 50%);
       padding-left: 3px;
     }
 
     &--y {
-      left: 12px;
-      transform: translateY(-50%);
+      transform: translate(calc(-100% - 8px), -50%);
       border-top: 1px solid rgb(152 152 157 / 50%);
       padding-top: 1px;
     }
@@ -808,14 +873,36 @@ export default class M1Parts extends Mixins(ControlMixin) {
     color: #d8d8dc;
 
     &--x {
-      right: 16px;
-      bottom: 58px;
+      transform: translate(18px, 8px);
     }
 
     &--y {
-      left: 12px;
-      top: 12px;
+      transform: translate(calc(-100% - 8px), calc(-100% - 10px));
     }
+  }
+
+  /* Where the head can go, and the notch it must not cross low: quiet, under everything else. */
+  .m1-parts__bounds {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .m1-parts__bounds-corners {
+    fill: none;
+    stroke: rgb(216 216 220 / 55%);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+
+  .m1-parts__bounds-notch {
+    fill: rgb(255 159 10 / 8%);
+    stroke: rgb(255 159 10 / 45%);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
   }
 
   .m1-parts__fact {
