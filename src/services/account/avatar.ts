@@ -7,7 +7,7 @@
  * visible: the image falls back to initials).
  */
 import Vue from 'vue'
-import { MODELS_URL } from '@/services/library/api'
+import { modelsResourceUrl } from '@/services/library/transport'
 import { communityApi } from './community'
 
 export const ownAvatar = Vue.observable({
@@ -82,7 +82,6 @@ export function forgetOwnAvatar (): void {
 /** Someone else's photo address (their public avatar_url), or null when there is none to use. */
 export function publicAvatarUrl (url: string | null | undefined): string | null {
   if (!url) return null
-  if (/^https?:\/\//i.test(url)) return url
-  if (url.startsWith('/')) return `${MODELS_URL}${url}`
+  if (/^https?:\/\//i.test(url) || url.startsWith('/')) return modelsResourceUrl(url)
   return null
 }
