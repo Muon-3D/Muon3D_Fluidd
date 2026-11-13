@@ -139,6 +139,8 @@ export interface GeneralConfig {
   loadedMaterialColour: string | null;
   /** Material picker favorites; null uses the common-material defaults, [] deliberately pins none. */
   pinnedMaterials: string[] | null;
+  /** The Quick commands shown on Overview and Control, chosen on the Macros page (KAN-2122); null is the automatic pick. */
+  quickCommands: string[] | null;
 }
 
 export type ToolheadControlStyle = 'cross' | 'bars' | 'circle'
