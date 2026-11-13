@@ -15,7 +15,7 @@ import { bluetoothRouteFor, noteBluetoothFellBack, wantsBluetoothFor, type WasmB
 import { pinnedBluetoothError } from '@/services/muon-ble/refusal'
 import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, cloudTokensPersist } from './api'
 import { endpointBusy, notifyEndpointRebound } from './endpoint-hooks'
-import bundledWasmUrl from './vendor/muon-link-web/2273ba0/muon_link_web_bg.wasm?url'
+import bundledWasmUrl from './vendor/muon-link-web/1608e20/muon_link_web_bg.wasm?url'
 
 const KEY_STORAGE = 'muon.cloud.key'
 // Remove after one release. Normal loads never depend on the console's files.
@@ -84,7 +84,7 @@ function loadWasm (): Promise<WasmModule> {
   if (!modulePromise) {
     modulePromise = (async () => {
       try {
-        const mod = await import('./vendor/muon-link-web/2273ba0/muon_link_web.js') as WasmModule
+        const mod = await import('./vendor/muon-link-web/1608e20/muon_link_web.js') as WasmModule
         await mod.default({ module_or_path: bundledWasmUrl })
         return mod
       } catch (error) {
