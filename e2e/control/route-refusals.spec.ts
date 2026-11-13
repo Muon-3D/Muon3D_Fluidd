@@ -5,11 +5,12 @@ test('explicit Bluetooth stays selected after identity policy refusal', async ({
   await open('/system')
   await expect(page.getByTestId('system-page')).toBeVisible()
   await page.evaluate(async port => {
-    const fixture = await import(/* @vite-ignore */ '/e2e/fakes/managedBluetooth.ts')
+    const fixture = await import(/* @vite-ignore */ '../../../../e2e/fakes/managedBluetooth.ts')
     ;(window as any).managedBle = await fixture.managedBluetooth(`http://localhost:${port}`)
   }, MOCK_PORT)
   await expect(page.getByTestId('system-page')).toBeVisible()
   if (!isMobile) await expect(page.getByText('Via Bluetooth', { exact: true }).first()).toBeVisible()
+  await expect.poll(() => page.evaluate(() => (window as any).managedBle.label())).toBe('Via Bluetooth')
   const answer = await page.evaluate(async () => {
     const ble = (window as any).managedBle
     const identity = await ble.refuseIdentity()

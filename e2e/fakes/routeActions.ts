@@ -10,6 +10,7 @@ import { cloudState } from '../../src/services/muon-cloud/state'
 import { lookNearby } from '../../src/services/muon-ble/nearby'
 import { routeMode } from '../../src/services/muon-cloud/route-choice'
 import { activationState } from '../../src/services/muon-cloud/activate'
+import { bluetoothCarrying } from '../../src/services/muon-ble/link'
 
 /** A request the printer refuses for this session, over HTTP and over the socket. */
 export async function refusedRequests () {
@@ -35,6 +36,7 @@ export function where () {
     activeCloud: cloudState.activePrinterId,
     mode: routeMode(cloudState.activePrinterId ?? '3fa9c0de'.repeat(8)),
     socketOpen: !!store.state.socket.open,
+    carrying: bluetoothCarrying(cloudState.activePrinterId ?? ''),
     error: activationState.error,
     switching: activationState.switching
   }

@@ -22,20 +22,34 @@ export async function managedBluetooth (origin: string) {
   tx.startNotifications = async () => {}
   tx.readValue = async () => new DataView(new ArrayBuffer(0))
   let radio = false
+  let speaker: ReturnType<typeof setInterval> | undefined
   device.gatt = {
     get connected () { return radio },
-    connect: async () => { radio = true; return device.gatt },
+    connect: async () => {
+      radio = true
+      // The printer speaks over the radio (QUIC keep-alive): only that makes "Via Bluetooth" true (KAN-2531).
+      speaker ??= setInterval(() => {
+        if (!radio) return
+        tx.value = new DataView(new Uint8Array([0x4b]).buffer)
+        tx.dispatchEvent(new Event('characteristicvaluechanged'))
+      }, 1000)
+      return device.gatt
+    },
     disconnect: () => { radio = false; device.dispatchEvent(new Event('gattserverdisconnected')) },
     getPrimaryService: async () => ({
       getCharacteristic: async (uuid: string) => {
         if (uuid === MUON_BLE_TX) return tx
-        if (uuid === MUON_BLE_INFO) return { readValue: async () => {
-          const bytes = new Uint8Array(38)
-          bytes[0] = 1
-          bytes[4] = 182
-          for (let i = 0; i < 32; i++) bytes[6 + i] = parseInt(ID.slice(i * 2, i * 2 + 2), 16)
-          return new DataView(bytes.buffer)
-        } }
+        if (uuid === MUON_BLE_INFO) {
+          return {
+            readValue: async () => {
+              const bytes = new Uint8Array(38)
+              bytes[0] = 1
+              bytes[4] = 182
+              for (let i = 0; i < 32; i++) bytes[6 + i] = parseInt(ID.slice(i * 2, i * 2 + 2), 16)
+              return new DataView(bytes.buffer)
+            }
+          }
+        }
         return { properties: { writeWithoutResponse: true }, readValue: async () => new DataView(new ArrayBuffer(0)), writeValueWithoutResponse: async () => {} }
       }
     })
@@ -49,7 +63,9 @@ export async function managedBluetooth (origin: string) {
       return {
         connected: async () => ID,
         nextSegment: async () => { if (!closed) await new Promise<void>(resolve => { wake = resolve }); return undefined },
-        onSegment () {}, retryHandshake: () => true, isClosed: () => closed,
+        onSegment () {},
+        retryHandshake: () => true,
+        isClosed: () => closed,
         onDisconnected: () => { closed = true; wake?.() },
         close: () => { closed = true; wake?.() }
       }

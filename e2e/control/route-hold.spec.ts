@@ -68,6 +68,8 @@ test.beforeEach(async ({ page, account }) => {
 test('Bluetooth that goes quiet with the radio up says "Bluetooth dropped", moves nowhere, and Try Bluetooth again reconnects', async ({ page, isMobile }) => {
   await onBluetooth(page)
   if (!isMobile) await expect(page.getByText('Via Bluetooth', { exact: true }).first()).toBeVisible()
+  // The printer has spoken over the radio (its keep-alive): only quiet after that is a dead path behind a live radio.
+  await expect.poll(() => where(page)).toMatchObject({ carrying: true })
   const before = await routeCounts(page)
 
   await control(page, 'silence', true)
