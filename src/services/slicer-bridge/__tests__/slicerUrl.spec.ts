@@ -79,4 +79,9 @@ describe('slicerLinkBase: where a link that leaves the page sends someone', () =
   it('is the origin of the configured slicer', () => {
     expect(slicerLinkBase('https://slicer.example.test/embed.html', PAGE)).toBe('https://slicer.example.test/')
   })
+  it('is never this page: the slicer a page frames from its own origin is not a page to send someone to', () => {
+    expect(slicerLinkBase('/slicer/embed.html', PAGE)).toBe('https://slicer.muon3d.com/')
+    expect(slicerLinkBase('http://walnut.local/slicer/embed.html', PAGE)).toBe('https://slicer.muon3d.com/')
+    expect(slicerLinkBase('/slicer/embed.html', 'https://control.muon3d.com/library')).toBe('https://slicer.muon3d.com/')
+  })
 })
