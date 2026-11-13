@@ -9,6 +9,7 @@ import Vue from 'vue'
 import {
   cloudApi,
   CloudError,
+  setSessionHooks,
   storedToken,
   storeRefreshToken,
   storeToken,
@@ -22,7 +23,7 @@ import { centralLoginEnabled, clearSilentAttempt, redirectUri, signInAgainOnPrin
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
 import { consolePresence } from './presence'
-import { announceAccount, identityOf, SIGNED_OUT } from './account-events'
+import { announceAccount, currentAccount, identityOf, SIGNED_OUT } from './account-events'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
 import { forgetOwnAvatar } from '@/services/account/avatar'
@@ -432,7 +433,7 @@ async function sessionRefused () {
 
 async function dropSession () {
   // Before anything of the session is cleared: whoever answers for the account hears that it left (account-events.ts).
-  announceAccount(SIGNED_OUT)
+  if (cloudState.account || currentAccount().signedIn) announceAccount(SIGNED_OUT)
   forgetOwnAvatar()
   stopPolling()
   sessionAbort.abort()
@@ -488,11 +489,58 @@ async function adoptSession (token: string, account: CloudAccount) {
 
 // Another tab signed out, or the console's front-channel logout page
 // (public/auth/logout.html) cleared the token: this tab is signed out too.
+// Another tab signed in, or as someone else, or only rotated the token: this tab asks the console whose session it now
+// is (reconcileStoredSession) instead of keeping the account it had.
 try {
   window.addEventListener('storage', (event) => {
-    if ((event.key === TOKEN_KEY || event.key === null) && !storedToken() && cloudState.account) dropSession()
+    if (event.key !== TOKEN_KEY && event.key !== null) return
+    if (!storedToken()) {
+      if (cloudState.account) dropSession()
+      return
+    }
+    reconcileStoredSession().catch(() => {})
   })
 } catch { /* no window */ }
+
+/**
+ * The stored token's account, asked of the console: the same account as on screen keeps the session as it is; another
+ * (or none yet) is adopted, which announces it before anything is replaced; a refusal ends the session. A console
+ * that cannot be reached changes nothing. An answer for a token that is no longer the stored one is dropped.
+ */
+async function reconcileStoredSession (): Promise<void> {
+  const token = storedToken()
+  if (!token) return
+  let me: Awaited<ReturnType<typeof cloudApi.me>>
+  try {
+    me = await cloudApi.me()
+  } catch (error) {
+    if (error instanceof CloudError && error.status === 401) await sessionRefused()
+    return
+  }
+  const now = storedToken()
+  if (!now) return
+  if (now !== token) return reconcileStoredSession()
+  if (cloudState.account?.id === me.account.id) return
+  await adoptSession(now, me.account)
+}
+
+// Where the console client changes the session on its own (api.ts): the account is announced first, and a recovered
+// pair is checked against the account on screen.
+setSessionHooks({
+  refused: () => { void dropSession() },
+  async recovered () {
+    try {
+      const me = await cloudApi.meWithoutRefresh()
+      const token = storedToken()
+      if (!token) return false
+      if (cloudState.account?.id !== me.account.id) void adoptSession(token, me.account)
+      return true
+    } catch {
+      await dropSession()
+      return false
+    }
+  }
+})
 
 /**
  * Finishes a return from the console's `/authorize` (`WEB-12`): exchanges the
@@ -536,7 +584,10 @@ export async function initCloud (sessionCheck?: Promise<void>): Promise<string |
     try {
       const me = await cloudApi.me()
       const currentToken = storedToken()
-      if (currentToken) await adoptSession(currentToken, me.account)
+      // The account /me named belongs to the token it was asked with. Another token now (another tab, a recovery)
+      // is asked about afresh, never paired with this answer.
+      if (currentToken === token) await adoptSession(currentToken, me.account)
+      else if (currentToken) await reconcileStoredSession()
     } catch (error) {
       if (error instanceof CloudError && error.status === 401) await sessionRefused()
     }

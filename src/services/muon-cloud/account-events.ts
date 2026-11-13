@@ -49,8 +49,17 @@ export const currentAccount = (): AccountIdentity => current
 
 export function announceAccount (next: AccountIdentity) {
   current = next
-  for (const listener of [...announcers]) listener(next)
-  for (const listener of [...forgetters]) listener(next)
+  // One listener's failure never stops the rest, and the cache is forgotten whatever the announcers did: a stale
+  // assertion is worse than a missed announcement.
+  try {
+    for (const listener of [...announcers]) {
+      try { listener(next) } catch { /* the next listener still hears */ }
+    }
+  } finally {
+    for (const listener of [...forgetters]) {
+      try { listener(next) } catch { /* the next one still forgets */ }
+    }
+  }
 }
 
 /** The identity a console account has: its name, or its e-mail address. */

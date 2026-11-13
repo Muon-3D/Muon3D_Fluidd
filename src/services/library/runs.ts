@@ -44,9 +44,15 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 async function request (path: string, method: string, body: object, key?: string, fetcher: typeof fetch = fetch): Promise<any | null> {
   if (consentStopped) return null
+  // Nothing is reported until /me has named the account (a token may be stored while that is still on its way, or
+  // after it failed): no assertion is asked for, and no attempts are spent on a refusal that only waiting would cure.
+  const owner = cloudState.account?.id
+  if (!owner) return null
   for (let attempt = 0; attempt <= RETRIES; attempt++) {
     try {
       const token = await modelsAssertion.get()
+      // A run belongs to the account that started it: never sent under the next account's assertion.
+      if (cloudState.account?.id !== owner) return null
       const response = await fetcher(`${MODELS_URL}${path}`, {
         method,
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(key ? { 'Idempotency-Key': key } : {}) },

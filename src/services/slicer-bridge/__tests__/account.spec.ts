@@ -193,6 +193,25 @@ describe('announcing the account', () => {
     expect(t.received.find(m => m.event === 'account.status').data).toEqual({ signedIn: true, id: 'acct-harry', name: 'harry@example.test' })
   })
 
+  it('posts no account.status after host.close, and leaves no listener behind', async () => {
+    announceAccount(JACK)
+    const { account } = wiring()
+    const subscribed = account.subscribe
+    let listeners = 0
+    account.subscribe = (listener) => {
+      listeners++
+      const stop = subscribed(listener)
+      return () => { listeners--; stop() }
+    }
+    const t = await frame(account)
+    expect(listeners).toBe(1)
+    t.host.close()
+    expect(listeners).toBe(0)
+    announceAccount(HARRY)
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(t.received.filter(m => m.event === 'account.status')).toEqual([])
+  })
+
   it('grants account only to a frame whose hello asks for it', async () => {
     announceAccount(JACK)
     const { account } = wiring()

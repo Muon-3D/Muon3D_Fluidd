@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Vue from 'vue'
 import Vuex from 'vuex'
+import { modelsAssertion } from '../assertion'
 import { createRun, observePrintRuns, rememberLibraryFile, resetRunReportingForTests } from '../runs'
 import { gzip, sha256Hex } from '../bytes'
 import { mutations } from '@/store/printer/mutations'
@@ -14,7 +15,9 @@ const reply = (status: number, body: unknown) => Promise.resolve(new Response(JS
 describe('Library run reporting', () => {
   beforeEach(() => {
     resetRunReportingForTests()
+    vi.mocked(modelsAssertion.get).mockClear()
     cloudState.activePrinterId = null
+    cloudState.account = { id: 'acct-1', name: 'Jack', email: 'jack@example.test', created_at: 1 }
     cloudState.printers.splice(0)
     vi.unstubAllGlobals()
   })
@@ -157,5 +160,26 @@ describe('Library run reporting', () => {
     expect(JSON.parse(fetcher.mock.calls[0][1].body as string).printer_id).toBe('p1')
     expect(fetcher.mock.calls.filter(([, init]) => init.method === 'PATCH')).toHaveLength(0)
     stop()
+  })
+
+  // A token may be stored while /me has not named the account (still on its way, or it failed): nothing is reported,
+  // and no assertion is asked for. Before, the stored token alone fetched an assertion and the run was reported.
+  it('reports nothing while the account is unset, and asks for no assertion', async () => {
+    cloudState.account = null
+    const fetcher = vi.fn().mockImplementation(() => reply(201, { id: 'run-1' }))
+    expect(await createRun({ printer_id: 'p1', printer_name: 'Pine', file_name: 'cube.gcode' }, fetcher)).toBeNull()
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(modelsAssertion.get).not.toHaveBeenCalled()
+  })
+
+  it('does not send a run under the next account when the account switches while the assertion is asked', async () => {
+    let release: (value: string) => void = () => {}
+    vi.mocked(modelsAssertion.get).mockImplementationOnce(() => new Promise<string>(resolve => { release = resolve }))
+    const fetcher = vi.fn().mockImplementation(() => reply(201, { id: 'run-1' }))
+    const pending = createRun({ printer_id: 'p1', printer_name: 'Pine', file_name: 'cube.gcode' }, fetcher)
+    cloudState.account = { id: 'acct-2', name: 'Harry', email: 'harry@example.test', created_at: 1 }
+    release('assertion-of-acct-1')
+    expect(await pending).toBeNull()
+    expect(fetcher).not.toHaveBeenCalled()
   })
 })
