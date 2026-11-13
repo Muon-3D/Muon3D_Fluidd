@@ -108,7 +108,10 @@ test('hovering the spool picks the filament and opens its panel; moving away let
   expect(printer.gcode).toEqual([])
 
   // To the panel and it stays, however long it takes to get there.
-  const label = (await page.getByTestId('m1-parts-label').boundingBox())!
+  // (The panel follows the part while the camera eases, so aim at where it has settled: a slow renderer takes longer.)
+  const labelBox = async () => (await page.getByTestId('m1-parts-label').boundingBox())!
+  let label = await labelBox()
+  await expect.poll(async () => { const b = await labelBox(); const same = b.x === label.x && b.y === label.y; label = b; return same }, { intervals: [300] }).toBe(true)
   await page.mouse.move(label.x + label.width / 2, label.y + label.height / 2, { steps: 5 })
   await page.waitForTimeout(1000)
   await expect(parts).toHaveAttribute('data-selected', 'filament')
