@@ -161,6 +161,7 @@ const LABELS: Record<string, string> = {
   'uiSettings.general.sectionsToIgnorePendingConfigurationChanges': 'Changes not to list',
   'uiSettings.general.enableDiagnostics': 'Charts page',
   'uiSettings.dashboard.overviewMacros': 'Quick commands on Overview',
+  'uiSettings.general.quickCommands': 'Quick commands on Overview and Control',
   'uiSettings.console.hideLines': 'Console filters',
   'uiSettings.console.filters': 'Console filters'
 }
@@ -178,7 +179,7 @@ const SECTIONS: Record<string, string> = {
   'uiSettings.spoolman': 'Materials',
   'uiSettings.tableHeaders': 'Tables',
   'uiSettings.personal': 'Look and Ask before',
-  macros: 'Quick commands',
+  macros: 'Macros',
   layout: 'Page layout',
   console: 'Console history',
   charts: 'Charts',
