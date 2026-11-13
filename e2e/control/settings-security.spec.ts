@@ -91,7 +91,7 @@ const row = (page: Page, id: string) => page.locator(`[data-tid="security-row"][
 test('an open printer: one row per setting in the printer\'s order, open by default, with all four values to choose from', async ({ page, open }) => {
   await printerWith(page)
   await open('/settings#security')
-  await expect(page.getByTestId('security-claimed')).toContainText('An open printer: anyone may do each of these by default.')
+  await expect(page.getByTestId('security-claimed')).toContainText('An open printer: Anyone may do each of these by default.')
   await expect(page.getByTestId('security-label')).toHaveText([
     'Turn the hotspot on or off', "Change the hotspot's name or password", 'Join or forget Wi-Fi networks', 'Install updates',
     'Confirm the plate is clear', 'Print from a USB stick', 'Print from Muon3D', 'Turn developer mode back on'
@@ -111,7 +111,7 @@ test('an open printer: one row per setting in the printer\'s order, open by defa
 test('a claimed printer shows Owner and shared users as the default, and the value is a real choice', async ({ page, open }) => {
   const { posts } = await printerWith(page, { claimed: true })
   await open('/settings#security')
-  await expect(page.getByTestId('security-claimed')).toContainText('A claimed printer: the owner and shared users by default.')
+  await expect(page.getByTestId('security-claimed')).toContainText('A claimed printer: Owner and shared users by default.')
   const select = row(page, 'wifi_change').getByRole('combobox')
   await expect(select).toHaveValue('owner_and_shared')
   await expect(row(page, 'wifi_change').getByTestId('security-default')).toHaveText('Default: Owner and shared users.')

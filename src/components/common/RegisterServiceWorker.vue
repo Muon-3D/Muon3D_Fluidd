@@ -26,6 +26,7 @@ import M3Toast from '@/components/ui/M3Toast.vue'
 import { activationState } from '@/services/muon-cloud/activate'
 import { applyUpdateWhenIdle } from '@/util/service-worker-update'
 import { watchForNewBuild } from '@/util/build-update'
+import { serviceWorkerAllowed, serviceWorkerMustGo, unregisterServiceWorkers } from '@/util/service-worker-policy'
 
 @Component({ components: { M3Toast } })
 export default class RegisterServiceWorker extends Vue {
@@ -86,6 +87,11 @@ export default class RegisterServiceWorker extends Vue {
   }
 
   async mounted () {
+    // KAN-2198: a printer serves this page itself; no worker caches it.
+    if (!serviceWorkerAllowed()) {
+      if (serviceWorkerMustGo()) await unregisterServiceWorkers().catch(() => {})
+      return
+    }
     try {
       const { registerSW } = await import('virtual:pwa-register')
 

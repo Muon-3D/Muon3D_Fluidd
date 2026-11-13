@@ -42,14 +42,19 @@ describe('security permissions', () => {
       switches: [{ id: 'hotspot_change_confirm', label: 'Confirm', value: false, default: false }, { id: 'bad' }]
     })
     expect(list?.claimed).toBe(true)
-    // Defaults: owner_and_shared on a claimed printer; a fixed row has none; read_only is the printer's word.
+    // Defaults: open (anyone) when the printer sends none, claimed or not; a fixed row has none; read_only is the printer's word.
     expect(list?.knobs.map(k => [k.id, k.defaultValue, k.fixed, k.readOnly])).toEqual([
-      ['wifi_change', 'owner_and_shared', false, false],
+      ['wifi_change', 'anyone', false, false],
       ['dev_mode', '', false, false],
       ['dev_mode_first_entry', '', true, true],
-      ['update_install', 'owner_and_shared', false, true]
+      ['update_install', 'anyone', false, true]
     ])
     expect(list?.switches).toEqual([{ id: 'hotspot_change_confirm', label: 'Confirm', description: '', value: false, defaultValue: false, readOnly: false }])
+  })
+
+  it('KAN-2457: a claimed printer with no default of its own is open too, and its own default wins', () => {
+    const list = parsePermissions({ claimed: true, knobs: [{ id: 'wifi_change', value: 'owner' }, { id: 'hotspot_toggle', value: 'owner', default: 'owner_and_shared' }], switches: [] })
+    expect(list?.knobs.map(k => k.defaultValue)).toEqual(['anyone', 'owner_and_shared'])
   })
 
   it('shows open as the default on an open printer, from the printer when it says so', () => {

@@ -13,6 +13,7 @@ import {
   couldHaveSecureAddress,
   declinedSwitch,
   findSecureOrigin,
+  isPrinterSecureOrigin,
   printerName,
   printerNameZone,
   probe,
@@ -243,5 +244,27 @@ describe('the switch', () => {
     setSwitchesAutomatically(false)
     expect(switchesAutomatically()).toBe(false)
     expect(declinedSwitch()).toBe(true)
+  })
+})
+
+describe('isPrinterSecureOrigin', () => {
+  const on = (hostname: string, protocol = 'https:') => isPrinterSecureOrigin({ protocol, hostname })
+
+  it('is true for the stable name and for the address written into it', () => {
+    expect(on('abcdefghijklmnopqrst.lan.muon3d.com')).toBe(true)
+    expect(on('ABCDEFGHIJKLMNOPQRST.lan.muon3d.com.')).toBe(true)
+    expect(on('192-168-1-50.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(true)
+    expect(on('0-0-0-255.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(true)
+  })
+
+  it('is false on plain HTTP, another zone, the console, a short label or extra labels', () => {
+    expect(on('abcdefghijklmnopqrst.lan.muon3d.com', 'http:')).toBe(false)
+    expect(on('abcdefghijklmnopqrst.lan.example.com')).toBe(false)
+    expect(on('control.muon3d.com')).toBe(false)
+    expect(on('abcdefghijklmnopqrs.lan.muon3d.com')).toBe(false)
+    expect(on('x.y.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(false)
+    expect(on('192-168-1-256.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(false)
+    expect(on('192-168-01-50.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(false)
+    expect(on('192-168-1.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(false)
   })
 })

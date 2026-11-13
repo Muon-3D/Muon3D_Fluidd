@@ -50,6 +50,26 @@
       @action="$emit('retry', id)"
     />
 
+    <!-- Nothing on it: one sentence and one way on (set by the host for a fixed shelf). -->
+    <div
+      v-else-if="empty && !cards.length"
+      class="myours__empty"
+      :data-tid="`library-shelf-${id}-empty`"
+    >
+      <p class="mlib-muted">
+        {{ empty }}
+      </p>
+      <button
+        v-if="emptyAction"
+        type="button"
+        class="mlib-btn mlib-btn--sm"
+        :data-tid="`library-shelf-${id}-empty-action`"
+        @click="$emit('empty-action', id)"
+      >
+        {{ emptyAction }}
+      </button>
+    </div>
+
     <div
       v-else
       class="mlib-shelf__row"
@@ -61,6 +81,7 @@
           :card="card"
           :printer-name="printerName"
           :busy="printing === card.key"
+          :can-save="canSave"
           @print="$emit('print', $event)"
           @open="$emit('open', $event)"
         />
@@ -92,5 +113,11 @@ export default class LibraryShelf extends Vue {
   @Prop({ type: Boolean, default: false }) readonly loading!: boolean
   @Prop({ type: String, default: '' }) readonly error!: string
   @Prop({ type: Boolean, default: true }) readonly seeAll!: boolean
+  /** Its cards draw the save heart (off for a signed-out visitor on a model's page). */
+  @Prop({ type: Boolean, default: true }) readonly canSave!: boolean
+  /** What to say when there are no cards (and nothing failed): one sentence. Empty: the row shows as it is. */
+  @Prop({ type: String, default: '' }) readonly empty!: string
+  /** The one way on from an empty shelf (a button), or none. */
+  @Prop({ type: String, default: '' }) readonly emptyAction!: string
 }
 </script>

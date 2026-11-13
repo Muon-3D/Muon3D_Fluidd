@@ -6,7 +6,7 @@ vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { ready: true, accou
 vi.mock('@/store', () => ({ default: {} }))
 const nearby = vi.hoisted(() => vi.fn())
 vi.mock('@/services/muon-cloud/api', () => ({ cloudApi: { nearby } }))
-vi.mock('@/services/muon-cloud/centralLogin', () => ({ centralLoginEnabled: () => false }))
+vi.mock('@/services/muon-cloud/centralLogin', () => ({ centralLoginEnabled: () => false, consoleServesPage: () => false }))
 vi.mock('@/services/account/state', () => ({ describe: (e: Error) => e.message }))
 vi.mock('@/services/account/sign-in', () => ({}))
 const settle = () => new Promise(resolve => setTimeout(resolve))

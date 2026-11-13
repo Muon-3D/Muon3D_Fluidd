@@ -379,6 +379,11 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
     a { color: var(--m3d-accent); }
   }
 
+  // The switch's slide and fade are decoration: off for anyone who asked for less motion.
+  @media (prefers-reduced-motion: reduce) {
+    .print-on__switch, .print-on__switch::after { transition: none; }
+  }
+
   // A phone stacks the buttons, the one that does it on top (M3Dialog), then Cancel, then Save to the printer only, then the fine print.
   @media (max-width: 480px) {
     .print-on__save { order: -1; padding: 8px 0; }

@@ -14,7 +14,11 @@
         >
           ‹ {{ backLabel }}
         </button>
-        <h1 data-tid="library-print-title">
+        <h1
+          ref="heading"
+          tabindex="-1"
+          data-tid="library-print-title"
+        >
           {{ title }}
         </h1>
         <p
@@ -408,7 +412,7 @@
         </template>
       </section>
       <section
-        v-if="publication && signedIn"
+        v-if="publication"
         class="mpage__tile"
         data-tid="library-print-history"
       >
@@ -416,18 +420,55 @@
         <p class="mlib-muted">
           Private to your account. Other people's prints are never shown here.
         </p>
+        <!-- Signed out: why it is empty, and the way in. -->
+        <template v-if="!signedIn">
+          <p
+            class="mlib-muted"
+            data-tid="library-print-history-signed-out"
+          >
+            Sign in to see your own prints of this model.
+          </p>
+          <button
+            class="mlib-btn"
+            type="button"
+            data-tid="library-print-history-sign-in"
+            @click="signIn"
+          >
+            Sign in
+          </button>
+        </template>
         <div
           v-if="contextBusy"
           class="mlib-skeleton"
           aria-label="Loading your print history"
           style="min-height: 80px"
         />
-        <template v-else-if="contextError">
-          <p role="status">
-            {{ contextError }}
+        <!-- Library off: that is the reason, and Try again would not change it. -->
+        <template v-else-if="contextProblem === 'off'">
+          <p
+            role="status"
+            data-tid="library-print-history-off"
+          >
+            Turn on Library saving to keep a private history of your prints of this model.
+          </p>
+          <router-link
+            :to="settingsTo"
+            class="mlib-btn"
+            data-tid="library-print-history-settings"
+          >
+            Library settings
+          </router-link>
+        </template>
+        <template v-else-if="contextProblem">
+          <p
+            role="status"
+            data-tid="library-print-history-error"
+          >
+            {{ contextProblem === 'offline' ? 'You are offline. Check your internet connection and try again.' : 'Your print history could not be loaded just now.' }}
           </p><button
             class="mlib-btn"
             type="button"
+            data-tid="library-print-history-retry"
             @click="readContext"
           >
             Try again
@@ -470,6 +511,7 @@
         :printer-name="printerName"
         :printing="printing"
         :see-all="false"
+        :can-save="signedIn"
         @retry="readSimilar"
         @print="$emit('print-card', $event)"
         @open="$emit('open', $event)"
@@ -550,9 +592,17 @@ import { browse, dimensionFit } from '@/services/library/catalogue'
 import { libraryClient } from '@/services/library/store'
 import { cloudState } from '@/services/muon-cloud/state'
 import { configuredSlicerLinkBase } from '@/services/slicer-bridge/slicerUrl'
-import { describeLibraryError, LibraryError, type ModelContext } from '@/services/library/api'
+import { LibraryError, type ModelContext } from '@/services/library/api'
+import { recordRecent } from '@/services/library/recents'
 
 interface Related { cards: ShelfCard[], loading: boolean, error: string }
+
+/** Why the history could not be read: the Library is off for this account (the service refuses without consent), the browser is offline, or anything else. */
+function historyProblem (error: unknown): 'off' | 'offline' | 'failed' {
+  if (error instanceof LibraryError && error.code === 'consent_required') return 'off'
+  if ((error instanceof LibraryError && error.code === 'offline') || (typeof navigator !== 'undefined' && navigator.onLine === false)) return 'offline'
+  return 'failed'
+}
 
 /**
  * A print's own page (Library v3, page 6): the gallery, a Print tile with
@@ -579,27 +629,38 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
   unavailable = false
   context: ModelContext | null = null
   contextBusy = false
-  contextError = ''
   similar: Related = { cards: [], loading: false, error: '' }
   private contextRead = 0
   private similarRead = 0
   libraryUrl = LIBRARY_URL
-  @Inject({ default: null }) readonly libraryCardContext!: (() => { volume: { x: number, y: number, z: number } | null }) | null
+  @Inject({ default: null }) readonly libraryCardContext!: (() => { volume: { x: number, y: number, z: number } | null, signIn?: () => void, settingsTo?: string }) | null
+  /** Why the history is not shown: the Library is off, the browser is offline, or it did not answer. */
+  contextProblem: '' | 'off' | 'offline' | 'failed' = ''
 
   get accountKey (): string { return this.signedIn ? cloudState.account?.id ?? '' : '' }
   @Watch('accountKey', { immediate: true })
   async readContext () {
     const read = ++this.contextRead
     this.context = null
-    this.contextError = ''
+    this.contextProblem = ''
     this.contextBusy = this.signedIn
     if (!this.signedIn) return
     try {
       const result = await libraryClient().modelContext(this.card.id)
       if (read === this.contextRead) this.context = result
     } catch (error) {
-      if (read === this.contextRead) this.contextError = error instanceof LibraryError && error.status === 403 && error.code === 'consent_required' ? 'Your history could not be loaded. Library must be enabled for your account.' : `Your history could not be loaded. ${describeLibraryError(error)}`
+      if (read === this.contextRead) this.contextProblem = historyProblem(error)
     } finally { if (read === this.contextRead) this.contextBusy = false }
+  }
+
+  /** Signed out: the same sign-in the cards use (the host opens it). */
+  signIn () {
+    this.libraryCardContext?.().signIn?.()
+  }
+
+  /** The Library's settings: the host says where they are (under the printer open here). */
+  get settingsTo (): string {
+    return this.libraryCardContext?.().settingsTo || '/account/library'
   }
 
   async read () {
@@ -637,7 +698,8 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
       { label: 'Layer height', value: p?.layer_height_mm ? `${p.layer_height_mm} mm` : 'Not provided' },
       { label: 'Supports', value: typeof p?.supports === 'boolean' ? p.supports ? 'Required' : 'Not required' : 'Not provided' },
       { label: 'Plate', value: p?.plate || 'Not provided' },
-      ...(p?.material && !this.print ? [{ label: 'Material', value: p.material }] : []),
+      // With a G-code, the Print tile's facts already name its material.
+      ...(this.print ? [] : [{ label: 'Material', value: p?.material || 'Not provided' }]),
       { label: 'Estimated time', value: seconds ? minutesText(seconds) : 'Not provided' },
       { label: 'Estimated filament', value: grams ? `${grams} g` : 'Not provided' }
     ]
@@ -656,8 +718,23 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
   mounted () {
     this.readRelated('makes')
     this.readRelated('remixes')
-    // A page opened from a shelf far down starts at its top.
+    // A page opened from a shelf far down starts at its top, and its heading is where focus is.
     ;(this.$el as HTMLElement).scrollIntoView?.({ block: 'start' })
+    this.$nextTick(() => (this.$refs.heading as HTMLElement | undefined)?.focus({ preventScroll: true }))
+  }
+
+  /** The model has loaded: this device opened it (Continue). */
+  @Watch('publication')
+  onPublication () {
+    const publication = this.publication
+    if (!publication) return
+    recordRecent({
+      id: this.card.id,
+      kind: 'publication',
+      title: publication.title || this.card.title,
+      thumbnail: this.pictures[0] ?? null,
+      maker: publication.creator?.display_name || publication.creator?.handle || this.card.creator || null
+    })
   }
 
   async readRelated (kind: 'makes' | 'remixes') {
