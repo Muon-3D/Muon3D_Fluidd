@@ -64,3 +64,24 @@ describe('the app-wide deletion banner', () => {
     w.destroy()
   })
 })
+
+describe('the Library wording in Your data', () => {
+  afterEach(() => { localStorage.clear(); deletionState.deleteAfter = null })
+
+  it('says the Library is being deleted, with the date and Keep my account', () => {
+    deletionState.deleteAfter = 1800000000
+    const w = mount(DeletionBanner, { propsData: { library: true }, stubs: { 'frame-icon': true } })
+    expect(w.text()).toContain('Your Library is being deleted.')
+    expect(w.text()).toContain('goes on 15 Jan')
+    expect(w.find('[data-tid="deletion-keep"]').text()).toBe('Keep my account')
+    w.destroy()
+  })
+
+  it('still reads when the console sends no date', () => {
+    deletionState.deleteAfter = null
+    const w = mount(DeletionBanner, { propsData: { library: true }, stubs: { 'frame-icon': true } })
+    expect(w.text()).toContain('Your Library is being deleted.')
+    expect(w.text()).not.toContain('goes on')
+    w.destroy()
+  })
+})
