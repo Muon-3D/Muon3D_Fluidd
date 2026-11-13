@@ -256,7 +256,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     }
     // Not on this account. If the account's printers have not loaded, it may be one of them.
     if (!cloudState.ready) {
-      this.notice = "Your printers are still loading. Try Connect over Bluetooth again in a moment."
+      this.notice = 'Your printers are still loading. Try Connect over Bluetooth again in a moment.'
       return
     }
     // The out-of-box path: a printer nobody has set up goes to its set-up (or its link), as from Look nearby.
@@ -526,7 +526,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    * choice, so it ends any held "through Muon3D" or Bluetooth choice and never
    * falls back to the relay by itself.
    */
-  async connectLocalFromHostedPage (e: DirectoryEntry, route: LocalRoute) {
+  async connectLocalFromHostedPage (e: DirectoryEntry, route: LocalRoute): Promise<boolean | undefined> {
     const id = e.cloud?.id
     if (route.kind === 'secure') {
       let reached = false
