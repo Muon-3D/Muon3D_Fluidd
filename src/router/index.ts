@@ -179,7 +179,9 @@ const printerRoutes: Array<RouteConfig> = [
       // The printer's page all the same: the rail and the E-STOP stay (KAN-511).
       frame: 'printer',
       // The slicer is framed with no Control layout mode (KAN-550).
-      noMode: true
+      noMode: true,
+      // The slicer fills the page under the bar, beside the rail.
+      fullPage: true
     }
   },
   {
@@ -427,7 +429,8 @@ const routes: Array<RouteConfig> = [
     meta: {
       printerIndependent: true,
       keepOnPrinterSwitch: true,
-      noMode: true
+      noMode: true,
+      fullPage: true
     }
   },
   {
@@ -524,6 +527,11 @@ declare module 'vue-router' {
      * Embedded Slice deliberately has no Control layout mode (KAN-550).
      */
     noMode?: boolean
+    /**
+     * Another app framed here fills the page: the whole width and height under the bar, beside the rail, with no
+     * page padding or width limit (App.vue). Slice: one slicer, the same as slicer.muon3d.com's, drawn as the page.
+     */
+    fullPage?: boolean
   }
 }
 

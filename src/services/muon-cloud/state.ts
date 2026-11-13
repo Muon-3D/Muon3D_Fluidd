@@ -18,7 +18,7 @@ import {
   type CloudPrinter,
   type AccessHandoff
 } from './api'
-import { centralLoginEnabled, clearSilentAttempt, redirectUri, signOutCentral, takeCallback } from './centralLogin'
+import { centralLoginEnabled, clearSilentAttempt, redirectUri, signInAgainOnPrinterOrigin, signOutCentral, takeCallback } from './centralLogin'
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
 import { consolePresence } from './presence'
@@ -406,7 +406,7 @@ export async function refreshPrinters () {
   try {
     cloudState.printers = (await cloudApi.printers()).printers
   } catch (error) {
-    if (error instanceof CloudError && error.status === 401) await dropSession()
+    if (error instanceof CloudError && error.status === 401) await sessionRefused()
   }
 }
 
@@ -422,6 +422,12 @@ function stopPolling () {
   stopPollTimer?.()
   stopPrintersTimer?.()
   stopPollTimer = stopPrintersTimer = null
+}
+
+/** The console refused the session's token: end it, and on a printer's own address sign in again (once a minute at most). */
+async function sessionRefused () {
+  await dropSession()
+  await signInAgainOnPrinterOrigin().catch(() => {})
 }
 
 async function dropSession () {
@@ -528,7 +534,7 @@ export async function initCloud (sessionCheck?: Promise<void>): Promise<string |
       const currentToken = storedToken()
       if (currentToken) await adoptSession(currentToken, me.account)
     } catch (error) {
-      if (error instanceof CloudError && error.status === 401) await dropSession()
+      if (error instanceof CloudError && error.status === 401) await sessionRefused()
     }
   }
   cloudState.ready = true

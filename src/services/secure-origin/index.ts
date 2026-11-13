@@ -64,6 +64,21 @@ export function printerName (name: unknown): string | null {
 }
 
 /**
+ * Whether this page is a printer's own secure address: HTTPS under
+ * `<name>` or `<a>-<b>-<c>-<d>.<name>`, where the name is a printer name.
+ */
+export function isPrinterSecureOrigin (location: Pick<Location, 'protocol' | 'hostname'> = globalThis.location): boolean {
+  if (!location || location.protocol !== 'https:') return false
+  const host = location.hostname.toLowerCase().replace(/\.$/, '')
+  if (printerName(host)) return true
+  const dot = host.indexOf('.')
+  if (dot < 0) return false
+  const octets = host.slice(0, dot).split('-')
+  if (octets.length !== 4 || !octets.every(part => /^(0|[1-9]\d{0,2})$/.test(part) && Number(part) <= 255)) return false
+  return printerName(host.slice(dot + 1)) !== null
+}
+
+/**
  * The secure origins worth trying, best first: the stable name, then the name
  * with this page's own address written into it, which needs no DNS record to
  * be current.

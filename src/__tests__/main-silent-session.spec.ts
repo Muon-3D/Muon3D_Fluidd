@@ -23,7 +23,7 @@ vi.mock('vue', () => ({
 vi.mock('@/init', () => ({ appInit: boot.appInit }))
 vi.mock('@/services/retired-storage', () => ({ retireProStorage: boot.retire }))
 vi.mock('@/services/muon-cloud/state', () => ({ initCloud: boot.initCloud }))
-vi.mock('@/services/muon-cloud/centralLogin', () => ({ shouldTrySilentSignIn: () => true, checkCentralSession: boot.check, startCentralSignIn: boot.navigate }))
+vi.mock('@/services/muon-cloud/centralLogin', () => ({ shouldTrySilentSignIn: () => true, checkCentralSession: boot.check, startCentralSignIn: boot.navigate, setPageBusyCheck: vi.fn() }))
 vi.mock('@/App.vue', () => ({ default: {} }))
 vi.mock('@/router', () => ({ default: { onReady: vi.fn() } }))
 vi.mock('@/store', () => ({ default: { commit: vi.fn() } }))

@@ -39,6 +39,16 @@ describe('M3Confirm', () => {
     wrapper.destroy()
   })
 
+  it('shows the plate-clear notice inline only when the caller passes it (CT-14)', () => {
+    const without = ask({ title: 'Print Benchy?', buttonTrueText: 'Print now' })
+    expect(tid(without, 'plate-clear-notice').exists()).toBe(false)
+    without.destroy()
+    const wrapper = ask({ title: 'Print Benchy?', buttonTrueText: 'Print now', plateNotice: { managed: false } })
+    expect(tid(wrapper, 'plate-clear-notice').text()).toContain('Clear the plate before the next print.')
+    expect(tid(wrapper, 'plate-clear-btn').text()).toBe('The plate is clear')
+    wrapper.destroy()
+  })
+
   it('says Continue and Cancel when a caller names no buttons, and its button is the accent one', () => {
     const wrapper = ask()
     expect(tid(wrapper, 'confirm-ok').text()).toBe('Continue')

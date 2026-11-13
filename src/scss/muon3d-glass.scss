@@ -280,14 +280,14 @@ $glass: "html[data-m3d-style='glass']";
 
   /* ------------------------------------------------------------ content -- */
 
-  .muon-content {
+  .muon-content:not(.muon-content--full) {
     padding: 20px 24px 32px !important;
   }
 
   // Phones keep the flat style's 8px sides: Fluidd's toolhead controls need
   // 380px and already overflow a 390px screen by a few pixels.
   @media (max-width: 599px) {
-    .muon-content {
+    .muon-content:not(.muon-content--full) {
       padding: 8px 8px 24px !important;
     }
   }

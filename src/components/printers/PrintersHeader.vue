@@ -40,6 +40,15 @@
       >
         <button
           type="button"
+          :class="{ on: view === 'bench' }"
+          :aria-pressed="view === 'bench' ? 'true' : 'false'"
+          data-tid="view-bench"
+          @click="$emit('update:view', 'bench')"
+        >
+          Bench
+        </button>
+        <button
+          type="button"
           :class="{ on: view === 'cards' }"
           :aria-pressed="view === 'cards' ? 'true' : 'false'"
           data-tid="view-grid"
@@ -90,7 +99,7 @@ export default class PrintersHeader extends Vue {
   readonly search!: string
 
   @Prop({ type: String, default: 'cards' })
-  readonly view!: 'cards' | 'list'
+  readonly view!: 'cards' | 'list' | 'bench'
 
   @Prop({ type: Boolean })
   readonly showSearch?: boolean
