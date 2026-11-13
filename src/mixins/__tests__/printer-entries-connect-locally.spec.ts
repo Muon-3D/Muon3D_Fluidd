@@ -5,7 +5,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PrinterEntriesMixin, { setNavigate, setOpenTab } from '../printer-entries'
-import { forgetSecureReach } from '@/services/secure-origin/hosted'
+import { chooseRelay, forgetSecureReach, relayChosen } from '@/services/secure-origin/hosted'
+import * as link from '@/services/muon-ble/link'
 import { discoveryState } from '@/services/muon-cloud/discovery'
 import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 
@@ -43,12 +44,12 @@ const action = (c: ReturnType<typeof component>, e: DirectoryEntry) =>
   (methods.cloudActions.call(c, e) as Array<{ id: string, disabled?: boolean, hint?: string }>).find(a => a.id === 'connect-local')!
 
 const nav = vi.fn()
-const tab = vi.fn()
+const tab = vi.fn(() => true)
 beforeEach(() => {
   forgetSecureReach()
   sessionStorage.clear()
   nav.mockReset()
-  tab.mockReset()
+  tab.mockReset().mockReturnValue(true)
   setNavigate(nav)
   setOpenTab(tab)
   discoveryState.cloud = []
@@ -88,6 +89,49 @@ describe('Connect locally on the hosted page (KAN-2529)', () => {
     await methods.connectLocal.call(c, e)
     expect(tab).toHaveBeenCalledWith('http://192.168.1.20/')
     expect(nav).not.toHaveBeenCalled()
+  })
+
+  it('the new-tab path leaves this page route alone: no Bluetooth drop, no held choice cleared', async () => {
+    const stop = vi.spyOn(link, 'stopUsingBluetoothFor')
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
+    chooseRelay('p1')
+    await methods.connectLocal.call(component(), entry(null))
+    expect(tab).toHaveBeenCalled()
+    expect(stop).not.toHaveBeenCalled()
+    expect(relayChosen('p1')).toBe(true)
+    stop.mockRestore()
+  })
+
+  it('a blocked popup shows the address as a link and does not say it opened', async () => {
+    tab.mockReturnValue(false)
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
+    const c = component() as ReturnType<typeof component> & { noticeLink: string | null }
+    await methods.connectLocal.call(c, entry(null))
+    expect(c.notice).not.toMatch(/^Opened/)
+    expect(c.notice).toMatch(/blocked the new tab/)
+    expect(c.noticeLink).toBe('http://192.168.1.20/')
+  })
+
+  it('a bad address from the console is never opened', async () => {
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['evil.example', 'a@evil'] }]
+    await methods.connectLocal.call(component(), entry(null))
+    expect(tab).not.toHaveBeenCalled()
+  })
+
+  it('a busy row keeps "Still opening" instead of the unreachable notice', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('blocked') }))
+    const c = { ...component(), busyKey: 'cloud:other' }
+    c.run = vi.fn(async () => { c.notice = 'Still opening a printer. Give it a moment.' })
+    await methods.connectLocal.call(c, entry(NAME))
+    expect(c.notice).toMatch(/^Still opening/)
+  })
+
+  it('a Nearby tile opens over Bluetooth, not through the relay', async () => {
+    const c = { ...component(), connectOverBluetooth: vi.fn() }
+    const e = { ...entry(null), health: 'nearby', nearby: { device: {} } } as unknown as DirectoryEntry
+    await methods.openCloudEntry.call(c, e)
+    expect(c.connectOverBluetooth).toHaveBeenCalledWith(e, e.nearby)
+    expect(c.connectCloud).not.toHaveBeenCalled()
   })
 
   it('with neither: greyed out with an honest reason', () => {

@@ -50,8 +50,26 @@ export interface LocalRouteInput {
  */
 export function openableAddr (nearby: CloudNearbyPrinter | undefined, pageHost = ''): string | null {
   if (!nearby) return null
-  if (isOwnHotspot(pageHost)) return nearby.localAddrs[0] ?? null
-  return nearbyHost(nearby.localAddrs)
+  const addrs = nearby.localAddrs.filter(a => isOpenableAddr(a))
+  if (isOwnHotspot(pageHost)) return addrs[0] ?? null
+  return nearbyHost(addrs)
+}
+
+/**
+ * Whether an address from the console is safe to build `http://<addr>/` from:
+ * a private IPv4 address (10/8, 172.16/12, 192.168/16), or a single-label or
+ * `.local` host name. Nothing with a userinfo, port, path or public address.
+ * The hotspot range is allowed here and left to the caller to skip.
+ */
+export function isOpenableAddr (addr: unknown): addr is string {
+  if (typeof addr !== 'string') return false
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(addr)
+  if (m) {
+    const o = m.slice(1).map(Number)
+    if (o.some(x => x > 255) || m.slice(1).some(x => x.length > 1 && x.startsWith('0'))) return false
+    return o[0] === 10 || (o[0] === 172 && o[1] >= 16 && o[1] <= 31) || (o[0] === 192 && o[1] === 168)
+  }
+  return /^[a-z0-9-]+(\.local)?$/i.test(addr) && !/^-|-$|-\.|\.-/.test(addr)
 }
 
 export function localRoute (i: LocalRouteInput): LocalRoute {

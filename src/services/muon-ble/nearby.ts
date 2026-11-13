@@ -104,7 +104,7 @@ function remember (deviceId: string, value: Remembered) {
 }
 
 /** Adds or refreshes a sighting, and returns it. */
-function upsert (device: BleDevice, fields: { localName?: string | null, endpointId?: string | null, advert?: BleAdvert | null }): NearbyPrinter {
+function upsert (device: BleDevice, fields: { localName?: string | null, endpointId?: string | null, advert?: BleAdvert | null, heard?: boolean }): NearbyPrinter {
   let p = nearbyState.printers.find(x => x.deviceId === device.id)
   if (!p) {
     p = {
@@ -128,10 +128,14 @@ function upsert (device: BleDevice, fields: { localName?: string | null, endpoin
     // A factory reset gives the printer a new key: the remembered id is stale.
     if (p.endpointId && !p.endpointId.startsWith(fields.advert.endpointPrefix)) p.endpointId = null
   }
-  // Adverts arrive many times a second; a second's resolution is plenty and spares re-renders.
-  const at = Date.now()
-  if (at - p.heardAt >= 1000) p.heardAt = at
-  ensureClock()
+  // Only a real sighting (an advert, or a chooser pick) says the printer is here now:
+  // a device merely remembered from before is not (KAN-2528).
+  if (fields.heard) {
+    // Adverts arrive many times a second; a second's resolution is plenty and spares re-renders.
+    const at = Date.now()
+    if (at - p.heardAt >= 1000) p.heardAt = at
+    ensureClock()
+  }
   return p
 }
 
@@ -146,7 +150,8 @@ function onAdvertisement (event: Event) {
     localName: e.name ?? e.device.name ?? known?.localName,
     // A remembered id, until an advertisement says otherwise (upsert checks it).
     endpointId: existing ? undefined : known?.endpointId ?? null,
-    advert
+    advert,
+    heard: true
   })
 }
 
@@ -212,7 +217,7 @@ export async function lookNearby (target?: ChooserTarget | null): Promise<Nearby
   try {
     const chosen = await choosePrinter(target)
     remember(chosen.device.id, { endpointId: chosen.info.endpointId, localName: chosen.name })
-    const printer = upsert(chosen.device, { localName: chosen.name, endpointId: chosen.info.endpointId })
+    const printer = upsert(chosen.device, { localName: chosen.name, endpointId: chosen.info.endpointId, heard: true })
     if (listening) watch(chosen.device, listening.signal)
     return printer
   } catch (error) {

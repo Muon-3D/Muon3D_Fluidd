@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { BLOCKED_BY_PAGE, localRoute, NOT_ON_NETWORK, openableAddr, type LocalRouteInput } from '../local-route'
+import { BLOCKED_BY_PAGE, isOpenableAddr, localRoute, NOT_ON_NETWORK, openableAddr, type LocalRouteInput } from '../local-route'
 
 vi.mock('@/store', () => ({ default: { state: { config: {} } } }))
 
@@ -46,5 +46,22 @@ describe('what Connect locally does (KAN-2529)', () => {
   it('says the page is the reason on an http page that cannot reach addresses', () => {
     expect(localRoute({ ...base, hosted: false, blockedByPage: true })).toEqual({ kind: 'none', reason: BLOCKED_BY_PAGE })
     expect(localRoute({ ...base, hosted: false })).toEqual({ kind: 'none', reason: NOT_ON_NETWORK })
+  })
+})
+
+describe('the address from the console is checked before it is opened (KAN-2529)', () => {
+  it.each(['evil.example', 'a@evil', '8.8.8.8', '192.168.1.5:80/x', '192.168.1.5/x', '172.32.0.1', '300.1.1.1', 'a b', ''])('rejects %s', addr => {
+    expect(isOpenableAddr(addr)).toBe(false)
+  })
+
+  it.each(['192.168.137.95', '10.0.0.7', '172.16.5.5', '172.31.5.5', 'muon-boxwood-367a.local', 'boxwood'])('accepts %s', addr => {
+    expect(isOpenableAddr(addr)).toBe(true)
+  })
+
+  it('never builds a route from a bad address, even alone', () => {
+    expect(openableAddr(cloud(['evil.example', 'a@evil', '8.8.8.8']), 'control.muon3d.com')).toBeNull()
+    expect(openableAddr(cloud(['10.42.0.1']), '10.42.0.1')).toBe('10.42.0.1')
+    expect(openableAddr(cloud(['10.42.0.1']), 'control.muon3d.com')).toBeNull()
+    expect(openableAddr(cloud(['8.8.8.8', '192.168.137.95']), 'control.muon3d.com')).toBe('192.168.137.95')
   })
 })

@@ -82,10 +82,16 @@ export function setNavigate (fn: (url: string) => void) {
   navigate = fn
 }
 
-let openTab = (url: string) => { window.open(url, '_blank', 'noopener') }
+/** Opens the page in a new tab; false when the browser blocked it (no `noopener` flag, which would hide that). */
+let openTab = (url: string): boolean => {
+  const w = window.open(url, '_blank')
+  if (!w) return false
+  try { w.opener = null } catch { /* cross-origin already */ }
+  return true
+}
 
 /** For tests: replaces how the printer's own page is opened in a new tab. */
-export function setOpenTab (fn: (url: string) => void) {
+export function setOpenTab (fn: (url: string) => boolean) {
   openTab = fn
 }
 
@@ -116,6 +122,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
   pendingOpen: DirectoryEntry | null = null
   busyKey: string | null = null
   notice: string | null = null
+  /** An address to show as a link under the notice, when a new tab was blocked. */
+  noticeLink: string | null = null
   setupDialog = false
   setupPrinter: NearbyPrinter | null = null
   /** "Ask for access" to a printer on this network (ACC-17). */
@@ -364,6 +372,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
 
   async onAction (e: DirectoryEntry, id: string) {
     this.notice = null
+    this.noticeLink = null
     switch (id) {
       case 'connect-local': return this.connectLocal(e)
       case 'connect-cloud': return this.connectCloud(e, 'relay')
@@ -463,6 +472,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       this.afterOpen()
       return
     }
+    // Heard over Bluetooth and out of every other reach: the cloud says it is offline, so Bluetooth is the way in.
+    if (e.health === 'nearby' && e.nearby && e.cloud) return this.connectOverBluetooth(e, e.nearby)
     // On the hosted page, the printer's own secure address is the way in on this network.
     const name = secureNameOf(e.cloud)
     if (e.cloud && name && mayTrySecureName() && !relayChosen(e.cloud.id) &&
@@ -530,6 +541,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     const id = e.cloud?.id
     if (route.kind === 'secure') {
       let reached = false
+      // Busy: run says "Still opening" itself, and that stays the answer.
+      const busy = !!this.busyKey
       await this.run(e.key, async () => {
         reached = await reachSecureName(route.name)
         if (reached) {
@@ -542,6 +555,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         return reached
       })
       if (reached) return true
+      if (busy) return
       const addr = openableAddr(discoveryState.cloud.find(c => c.printerId === (id ?? e.endpointId)), window.location.hostname)
       if (addr) return this.connectLocalFromHostedPage(e, { kind: 'tab', addr })
       this.notice = `Couldn't reach ${e.name} at its secure address from this browser. ` +
@@ -549,12 +563,14 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       return
     }
     if (route.kind === 'tab') {
-      if (id) {
-        clearRelayChoice(id)
-        stopUsingBluetoothFor(id)
+      // A new tab leaves this page, and its route, alone.
+      const url = `http://${route.addr}/`
+      if (openTab(url)) {
+        this.notice = `Opened ${e.name}'s own page in a new tab.`
+      } else {
+        this.notice = `This browser blocked the new tab. Open ${e.name}'s own page from the link below.`
+        this.noticeLink = url
       }
-      openTab(`http://${route.addr}/`)
-      this.notice = `Opened ${e.name}'s own page in a new tab.`
       return
     }
     if (route.kind === 'none') this.notice = route.reason

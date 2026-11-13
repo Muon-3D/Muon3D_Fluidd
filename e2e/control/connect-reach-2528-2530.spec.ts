@@ -141,7 +141,7 @@ test.describe('KAN-2530: the Bluetooth button', () => {
     await page.getByTestId('connect-bluetooth').click()
     // The set-up dialog for a new printer, or a notice: never nothing.
     const setup = page.getByRole('dialog')
-    const notice = page.locator('.note', { hasText: /Walnut|Bluetooth/ })
+    const notice = page.locator('.note', { hasText: /was found over Bluetooth|is saved in this browser|still loading|is nearby|Couldn.t tell which printer/ })
     await expect(setup.or(notice).first()).toBeVisible()
   })
 

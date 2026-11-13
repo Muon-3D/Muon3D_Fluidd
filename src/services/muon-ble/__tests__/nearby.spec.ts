@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, startNearby, stopNearby } from '../nearby'
+import { heardRecently } from '../heard'
 import { chooserOptions } from '../webBluetooth'
 import { advert, EID, fakeBluetooth, fakePrinter, OTHER_EID, removeBluetooth } from './fakes'
 
@@ -137,5 +138,18 @@ describe('Look nearby for one printer (KAN-2470)', () => {
     const none = fakeBluetooth({})
     expect(none.bt.getDevices).toBeUndefined()
     expect(await permittedPrinterFor(EID)).toBeNull()
+  })
+
+  it('a remembered device that was never heard is not heard recently (KAN-2528)', async () => {
+    localStorage.setItem('muon.ble.printers', JSON.stringify({ 'dev-walnut': { endpointId: EID, localName: 'walnut-8987' } }))
+    fakeBluetooth({ remembered: [fakePrinter().device] })
+    const p = await permittedPrinterFor(EID)
+    expect(p?.heardAt).toBe(0)
+    expect(heardRecently(p)).toBe(false)
+  })
+
+  it('a chooser pick is heard now', async () => {
+    fakeBluetooth({ chosen: fakePrinter().device })
+    expect(heardRecently(await lookNearby())).toBe(true)
   })
 })
