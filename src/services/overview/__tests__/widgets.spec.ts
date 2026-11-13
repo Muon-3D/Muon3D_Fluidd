@@ -26,12 +26,14 @@ describe('the default layout', () => {
     expect(at('graph')).toMatchObject({ span: 12, rows: 1 })
   })
 
-  it('has the Trackpad, then Jog on its right, with Quick commands full width under them (KAN-2076)', () => {
+  it('has the Trackpad, Jog on its right, and Quick commands under Jog down to the Trackpad floor (OV-19, OV-29)', () => {
     expect(ids.slice(6)).toEqual(['trackpad', 'jog', 'macros'])
-    expect(at('trackpad')).toMatchObject({ span: 8, rows: 3 })
-    expect(at('jog')).toMatchObject({ span: 4, rows: 2 })
-    expect(at('macros')).toMatchObject({ span: 12, rows: 1 })
+    expect(at('trackpad')).toMatchObject({ span: 4, rows: 3 })
+    expect(at('jog')).toMatchObject({ span: 8, rows: 2 })
+    expect(at('macros')).toMatchObject({ span: 8, rows: 1 })
     expect(at('trackpad').span + at('jog').span).toBe(12)
+    expect(at('macros').span).toBe(at('jog').span)
+    expect(at('jog').rows + at('macros').rows).toBe(at('trackpad').rows)
   })
 
   it('puts everything else away until it is added', () => {

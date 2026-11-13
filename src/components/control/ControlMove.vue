@@ -8,6 +8,55 @@
     data-tid="control-move"
   >
     <template #aside>
+      <span
+        v-if="ready"
+        class="move__hhomes"
+        data-tid="move-homes"
+      >
+        <button
+          type="button"
+          class="move__hbtn"
+          :class="{ 'move__hbtn--icon': trackpadOnly }"
+          :disabled="busy"
+          :aria-label="trackpadOnly ? 'Home all' : undefined"
+          title="Home all (G28)"
+          data-tid="home-all"
+          @click="home()"
+        >
+          <v-progress-circular
+            v-if="homing()"
+            indeterminate
+            size="14"
+            width="2"
+          />
+          <frame-icon
+            v-else
+            name="home"
+            small
+          />
+          <span v-if="!trackpadOnly">Home all</span>
+        </button>
+        <button
+          v-if="!trackpadOnly"
+          type="button"
+          class="move__hbtn move__hbtn--z"
+          :disabled="busy"
+          aria-label="Home Z"
+          title="Home Z (G28 Z)"
+          data-tid="home-z"
+          @click="home('Z')"
+        >
+          <v-progress-circular
+            v-if="homing('Z')"
+            indeterminate
+            size="14"
+            width="2"
+          />
+          <template v-else>
+            Z
+          </template>
+        </button>
+      </span>
       <v-menu
         v-model="menu"
         bottom
@@ -42,17 +91,6 @@
             class="acct-menu__item"
             role="menuitem"
             :disabled="!ready || busy"
-            data-tid="menu-home-z"
-            @click="home('Z')"
-          >
-            Home Z<span class="acct-menu__key">G28 Z</span>
-          </button>
-          <div class="acct-menu__rule" />
-          <button
-            type="button"
-            class="acct-menu__item"
-            role="menuitem"
-            :disabled="!ready || busy"
             data-tid="motors-off"
             @click="motorsOff"
           >
@@ -76,14 +114,21 @@
 
     <template v-if="ready">
       <p
-        v-if="busy"
+        v-if="printLocked"
         class="move__note"
         data-tid="move-printing"
       >
         {{ printingNote }}
       </p>
+      <p
+        v-else-if="busy"
+        class="move__note"
+        data-tid="move-busy"
+      >
+        The printer is busy (homing, or running a command). Moving comes back when it finishes.
+      </p>
       <div
-        v-if="!isHomed('XYZ')"
+        v-if="!isHomed('XYZ') && !trackpadOnly"
         class="move__callout"
         data-tid="move-not-homed"
       >
@@ -96,71 +141,96 @@
 
       <div
         class="move__body"
-        :class="{ 'move__body--phone': phone, 'move__body--dim': !isHomed('XY') && !isHomed('Z') }"
+        :class="{ 'move__body--phone': phone, 'move__body--solo': trackpadOnly, 'move__body--dim': !isHomed('XY') && !isHomed('Z') }"
       >
-        <div class="move__zone">
-          <div class="move__sub">
+        <div
+          class="move__zone"
+          :class="{ 'move__zone--compact': trackpadOnly }"
+        >
+          <div
+            v-if="!trackpadOnly"
+            class="move__sub"
+          >
             Trackpad<span>Tap to pick a spot, or drag and the head follows</span>
           </div>
           <div
-            class="move__homes"
-            data-tid="move-homes"
+            class="move__padwrap"
+            :class="{ 'move__padwrap--bare': !trackpadOnly }"
           >
-            <button
-              type="button"
-              class="cbtn"
-              :disabled="busy"
-              data-tid="home-all"
-              title="G28"
-              @click="home()"
+            <control-trackpad
+              v-if="plate"
+              class="move__pad"
+              :bed="plate"
+              :show-head="xyHomedHere"
+              :target="target"
+              :target-bad="!!targetProblem || !!dragRefusal"
+              :no-go="noGo"
+              :disabled="!canMoveXY || moving"
+              :on-release="releaseOnly"
+              :step="step"
+              @pick="pick"
+              @drag-start="dragStart"
+              @drag="dragTo"
+              @drag-end="dragEnd"
+              @drag-cancel="dragCancel"
+              @release="release"
             >
-              <v-progress-circular
-                v-if="homing()"
-                indeterminate
-                size="14"
-                width="2"
-              />
-              <frame-icon
-                v-else
-                name="home"
-                small
-              />
-              Home all
-            </button>
-            <button
-              type="button"
-              class="cbtn cbtn--ghost"
-              :disabled="busy"
-              aria-label="Home Z"
-              data-tid="home-z"
-              title="G28 Z"
-              @click="home('Z')"
-            >
-              <v-progress-circular
-                v-if="homing('Z')"
-                indeterminate
-                size="14"
-                width="2"
-              />
-              Z
-            </button>
+              <template v-if="trackpadOnly">
+                <span
+                  v-if="target"
+                  class="move__glass move__readout"
+                  data-tid="trackpad-readout"
+                >X {{ fmt(target.x) }} · Y {{ fmt(target.y) }}</span>
+                <span
+                  class="move__glass move__mode"
+                  role="radiogroup"
+                  aria-label="How the trackpad moves"
+                  data-tid="trackpad-mode"
+                  @pointerdown.stop
+                  @keydown.stop
+                >
+                  <span
+                    class="move__modewrap"
+                    :title="liveReason"
+                    data-tid="trackpad-live-wrap"
+                  >
+                    <button
+                      type="button"
+                      role="radio"
+                      :aria-checked="liveMoving ? 'true' : 'false'"
+                      :class="{ on: liveMoving }"
+                      :disabled="!liveAvailable"
+                      :aria-description="liveAvailable ? undefined : liveReason"
+                      data-tid="trackpad-live"
+                      @click="setMode('live')"
+                    >Live</button>
+                  </span>
+                  <button
+                    type="button"
+                    role="radio"
+                    :aria-checked="liveMoving ? 'false' : 'true'"
+                    :class="{ on: !liveMoving }"
+                    data-tid="trackpad-release"
+                    @click="setMode('release')"
+                  >On release</button>
+                </span>
+              </template>
+            </control-trackpad>
           </div>
-          <control-trackpad
-            v-if="plate"
-            :bed="plate"
-            :show-head="xyHomedHere"
-            :target="target"
-            :target-bad="!!targetProblem || !!dragRefusal"
-            :no-go="noGo"
-            :disabled="!canMoveXY || moving"
-            :step="step"
-            @pick="pick"
-            @drag-start="dragStart"
-            @drag="dragTo"
-            @drag-end="dragEnd"
-            @drag-cancel="dragCancel"
-          />
           <div
+            v-if="trackpadOnly"
+            class="move__pick move__pick--line"
+            data-tid="trackpad-pick"
+            aria-live="polite"
+          >
+            <span
+              class="move__pick-note"
+              :class="{ 'move__pick-note--bad': !!dragRefusal || !!targetProblem }"
+              data-tid="trackpad-note"
+            >{{ target ? pickNote : tileHint }}</span>
+          </div>
+          <div
+            v-else
             class="move__pick"
             data-tid="trackpad-pick"
             aria-live="polite"
@@ -354,9 +424,11 @@
 <script lang="ts">
 import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import ControlMixin from '@/mixins/control'
-import { M1_VIEW, X_RIGHT, Y_BACK } from '@/services/machine/orientation'
+import { X_RIGHT, Y_BACK } from '@/services/machine/orientation'
 import { bedFrom, type Bed, type Point } from '@/services/control/trackpad'
 import { DragFollow, controlDragHost } from '@/services/control/drag-follow'
+import { TRACKPAD_LIVE_AVAILABLE, TRACKPAD_LIVE_REASON, liveTrackpadStream, readTrackpadMode, writeTrackpadMode, type TrackpadMode } from '@/services/control/trackpad-mode'
+import { zKeyWords } from '@/services/control/z-keys'
 import type { MovePlan } from '@/services/control/safe-move'
 import ControlCard from './ControlCard.vue'
 import ControlTrackpad from './ControlTrackpad.vue'
@@ -402,25 +474,8 @@ export function jogLayout (yBack = Y_BACK, xRight = X_RIGHT) {
   ]
 }
 
-/**
- * The Z keys' words. On a Muon printer they say how the plate moves (the M1
- * prints upside down; M1_VIEW.zPlus says which way Z+ takes the plate), with
- * the axis in the tooltip. Other printers keep Z+ and Z−.
- */
-export function zKeyWords (muon: boolean, zPlus: 'up' | 'down' = M1_VIEW.zPlus) {
-  if (!muon) {
-    return {
-      up: { text: 'Z+', label: 'Z+', title: 'Z+' },
-      down: { text: 'Z−', label: 'Z−', title: 'Z−' }
-    }
-  }
-  const plus = zPlus === 'up' ? 'Plate up' : 'Plate down'
-  const minus = zPlus === 'up' ? 'Plate down' : 'Plate up'
-  return {
-    up: { text: plus, label: `${plus} (Z+)`, title: 'Z+' },
-    down: { text: minus, label: `${minus} (Z−)`, title: 'Z−' }
-  }
-}
+/** The Z keys' words: services/control/z-keys (shared with the Overview's Jog). */
+export { zKeyWords }
 
 /** Each tile's drag follower, kept off the component so Vue doesn't make it reactive. */
 const followers = new WeakMap<object, DragFollow>()
@@ -464,6 +519,37 @@ export default class ControlMove extends Mixins(ControlMixin) {
   dragRefusal = ''
   following = false
 
+  /** How a drag on the Trackpad moves the head (services/control/trackpad-mode): On release by default, remembered on this device. */
+  mode: TrackpadMode = readTrackpadMode()
+  readonly liveAvailable = TRACKPAD_LIVE_AVAILABLE
+  readonly liveReason = TRACKPAD_LIVE_AVAILABLE ? '' : TRACKPAD_LIVE_REASON
+
+  /**
+   * A release that came while this page's last move hadn't landed yet
+   * (KAN-2120): the new target is kept and sent, through moveTo, the moment
+   * the wait clears. A newer release replaces it. The Klipper half (turning
+   * the head mid-move) is the motion project's MUON_JOG.
+   */
+  queued = false
+
+  /** Live moving: only on the Overview's Trackpad, and only once the printer can stream it. Never a run of G1s. */
+  get liveMoving (): boolean {
+    return !!this.trackpadOnly && this.liveAvailable && this.mode === 'live' && !!liveTrackpadStream(this.$store.getters['printer/getAvailableCommands'])
+  }
+
+  /** The Overview's Trackpad sends one move, when the pointer lifts; nothing while it is down. */
+  get releaseOnly (): boolean { return !!this.trackpadOnly && !this.liveMoving }
+
+  setMode (mode: TrackpadMode) {
+    this.mode = writeTrackpadMode(mode)
+  }
+
+  get tileHint (): string {
+    if (!this.xyHomedHere) return 'Home first, then tap or drag the bed.'
+    if (this.noGo === 'invalid') return 'The notch could not be read, so only raising the head is allowed.'
+    return this.releaseOnly ? 'Tap or drag, then let go: the head moves there once.' : 'Drag, and the head follows.'
+  }
+
   /** Ticks while a pick is shown, so "is the head still moving?" is read again (that state is not reactive). */
   tick = 0
   private ticker: number | null = null
@@ -494,6 +580,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
 
   onTick () {
     this.tick++
+    if (this.queued) this.sendQueued()
     const following = !!this.follower?.following
     if (this.following && !following && !this.dragRefusal) {
       // The drag has sent its last move: the head is on its way, the pick is done.
@@ -516,6 +603,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
     if (!can) {
       this.stopDrag()
       this.target = null
+      this.queued = false
     }
   }
 
@@ -524,16 +612,25 @@ export default class ControlMove extends Mixins(ControlMixin) {
     if (moving) {
       this.stopDrag()
       this.target = null
+      this.queued = false
     }
+  }
+
+  /** A queued target goes as soon as the printer reports the last move landed. */
+  @Watch('$store.state.printer.printer.gcode_move.gcode_position')
+  onGcodePosition () {
+    if (this.queued) this.$nextTick(() => this.sendQueued())
   }
 
   get ready (): boolean {
     return this.controlReady
   }
 
+  /** "Locked while printing" only for a real print (print_stats); never for this page's own moves (KAN-2120). */
   get pill (): string {
     if (!this.ready) return ''
-    if (this.busy) return 'Locked while printing'
+    if (this.printLocked) return 'Locked while printing'
+    if (this.busy) return 'Busy'
     return this.isHomed('XYZ') ? 'Homed' : 'Not homed'
   }
 
@@ -607,6 +704,8 @@ export default class ControlMove extends Mixins(ControlMixin) {
   get pickNote (): string {
     if (this.dragRefusal) return `Stopped following. ${this.dragRefusal}`
     if (this.following) return 'Following the drag…'
+    if (this.queued && !this.targetProblem) return 'Goes there as soon as the current move lands.'
+    if (this.releaseOnly) return this.targetProblem || this.targetNote
     return this.targetProblem || this.pickWait || this.targetNote
   }
 
@@ -617,6 +716,30 @@ export default class ControlMove extends Mixins(ControlMixin) {
     this.targetFor = this.panelTarget
     this.dragTarget = false
     this.dragRefusal = ''
+  }
+
+  /**
+   * The pointer lifted (or Enter was pressed) on the Overview's Trackpad: the
+   * one move, through moveTo and its planner (so the notch rule holds).
+   * Nothing was sent while the pointer was down. If this page's last move
+   * hasn't landed yet, the target is queued and sent when it has (a later
+   * release replaces it); a refused target stays on the pad and says why.
+   */
+  release () {
+    if (!this.releaseOnly || !this.target || !this.canMoveXY || this.targetFor !== this.panelTarget) return
+    if (this.targetProblem) { this.queued = false; return }
+    if (this.handMoveWait()) { this.queued = true; return }
+    this.queued = false
+    this.confirmMove()
+  }
+
+  /** Send the queued target once nothing is in the way any more; drop it if it can no longer go. */
+  sendQueued () {
+    if (!this.queued) return
+    if (!this.target || !this.canMoveXY || this.targetFor !== this.panelTarget || this.targetProblem) { this.queued = false; return }
+    if (this.handMoveWait()) return
+    this.queued = false
+    this.confirmMove()
   }
 
   clearTarget () {
@@ -642,6 +765,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
   /** A drag began: the head follows it, one planned move at a time (drag-follow). */
   dragStart (p: Point) {
     if (!this.canMoveXY || !this.follower) return
+    if (this.releaseOnly) { this.pick(p); return }
     this.target = { x: p.x, y: p.y }
     this.targetFor = this.panelTarget
     this.dragTarget = true
@@ -652,6 +776,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
   }
 
   dragTo (p: Point) {
+    if (this.releaseOnly) { this.pick(p); return }
     if (!this.follower?.following || !this.canMoveXY) return
     this.target = { x: p.x, y: p.y }
     this.follower.update(this.placeOf(p))
@@ -664,6 +789,8 @@ export default class ControlMove extends Mixins(ControlMixin) {
   /** Pointer cancelled, focus or capture lost: stop at once, send nothing more. The pick stays, for Move here. */
   dragCancel () {
     this.stopDrag()
+    // On release nothing was sent, so a cancelled press leaves no pick (and no queued move) behind.
+    if (this.releaseOnly) { this.target = null; this.queued = false }
   }
 
   stopDrag () {
@@ -833,7 +960,7 @@ export default class ControlMove extends Mixins(ControlMixin) {
   }
 
   @media (min-width: 1100px) {
-    .move__body:not(.move__body--phone) {
+    .move__body:not(.move__body--phone):not(.move__body--solo) {
       grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
       align-items: start;
     }
@@ -1018,12 +1145,114 @@ export default class ControlMove extends Mixins(ControlMixin) {
     min-width: 0;
   }
 
-  .move__homes {
-    display: flex;
+  /*
+   * The Overview's Trackpad (Jack's pick B, KAN-2077): the pad fills the
+   * tile, the picked spot and the Live / On release choice sit on the pad's
+   * lower corners, and one line under it says what a press will do. No
+   * button sends the move: lifting the pointer does.
+   */
+  .move__zone--compact {
     gap: 8px;
   }
 
-  .move__body--phone .move__homes .cbtn { flex: 1; justify-content: center; }
+  .move__padwrap {
+    position: relative;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .move__padwrap--bare {
+    margin: 0;
+  }
+
+  .move__padwrap:not(.move__padwrap--bare) :deep(.tpad) {
+    margin: 0 auto;
+  }
+
+  .move__glass {
+    position: absolute;
+    bottom: 8px;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--m3d-surface) 84%, transparent);
+    box-shadow: inset 0 0 0 1px var(--m3d-border-strong);
+    font-size: 12px;
+    pointer-events: none;
+  }
+
+  .move__readout {
+    left: 8px;
+    font-family: var(--m3d-font-mono);
+    font-weight: 600;
+  }
+
+  .move__mode {
+    right: 8px;
+    gap: 2px;
+    padding: 3px;
+    pointer-events: auto;
+
+    button {
+      height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      color: var(--m3d-text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+
+      &.on {
+        background: var(--m3d-accent);
+        color: var(--m3d-on-accent, #00201e);
+      }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+    }
+  }
+
+  .move__modewrap {
+    display: inline-flex;
+  }
+
+  .move__pick--line {
+    min-height: 20px;
+  }
+
+  /* CT-03: the one Home control sits in the header, beside the title, on the Overview and on Control. */
+  .move__hhomes {
+    display: inline-flex;
+    gap: 6px;
+  }
+
+  .move__hbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 12px;
+    border-radius: 12px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+
+    &:hover:not(:disabled) { filter: brightness(1.15); }
+    &:disabled { opacity: 0.45; cursor: default; }
+  }
+
+  .move__hbtn--icon,
+  .move__hbtn--z {
+    width: 34px;
+    padding: 0;
+    font-family: var(--m3d-font-mono);
+  }
 
   .move__zoffset {
     margin-top: 16px;
