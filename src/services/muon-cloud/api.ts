@@ -531,7 +531,11 @@ export async function refreshSession (): Promise<boolean> {
   return (await refreshOutcome()) === 'ok'
 }
 
-async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true): Promise<T> {
+/**
+ * `stillMine`, when given, is asked before a 401 is retried with another token: a request made for one account must
+ * never be sent again with the next account's (KAN-2249: a layout PUT in flight across a sign-out).
+ */
+async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true, stillMine?: () => boolean): Promise<T> {
   // KAN-2192: no bearer and no password leaves a plain-HTTP page, whoever asks.
   if (!cloudSessionAllowed() && (token || !INSECURE_ORIGIN_CALLS.includes(`${method} ${path}`))) refuseOnInsecureOrigin()
   const startedAt = deletionRevision()
@@ -550,7 +554,7 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
   }
   // A central-login access token lasts 15 minutes. Refresh once and retry;
   // only for the stored session, never for a token passed in.
-  if (response.status === 401 && retry && token !== null) {
+  if (response.status === 401 && retry && token !== null && (!stillMine || stillMine())) {
     // Another request may already have rotated the pair while this one's
     // response was in flight. Reuse that pair rather than refusing the late
     // response or spending the new refresh token again.
@@ -560,7 +564,8 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
     }
     if (currentToken) {
       const outcome = await refreshOutcome()
-      if (outcome === 'ok') return request<T>(method, path, body, storedToken(), false)
+      // Asked again: the account can change while the refresh is on its way.
+      if (outcome === 'ok' && (!stillMine || stillMine())) return request<T>(method, path, body, storedToken(), false)
       // The console did not answer: that is not a sign-out, so do not look like one.
       if (outcome === 'unreachable') throw new CloudError('The Muon3D service could not be reached.', 0)
     }
@@ -625,7 +630,7 @@ export const cloudApi = {
     request<{ printers: Array<{ printer_id: string, name: string, model: string, linked: boolean, local_addrs?: string[] }> }>('GET', '/v1/links/nearby'),
   linkState: (id: string) => request<{ printer_id: string, state: LinkState }>('GET', `/v1/links/${id}`),
   getLayout: () => request<{ layout: any }>('GET', '/v1/fleet/layout'),
-  putLayout: (layout: unknown) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout }),
+  putLayout: (layout: unknown, stillMine?: () => boolean) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout }, storedToken(), true, stillMine),
   /** The central login's code exchange (`WEB-12`). */
   exchangeCode: (code: string, redirectUri: string, verifier: string, signal?: AbortSignal) =>
     tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: clientId(), code_verifier: verifier }, signal),
