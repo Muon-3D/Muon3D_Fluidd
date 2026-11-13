@@ -584,7 +584,7 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
   }
 
   get openLinks () {
-    return lanOpenLinks()
+    return lanOpenLinks(cloudState.printers)
   }
 
   get mixedContentBlocked (): boolean {
