@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   bluetoothAvailable,
+  advertMatch,
   bluetoothSupport,
   choosePrinter,
+  chooserOptions,
   chooserDismissed,
   decodeAdvert,
   decodeInfo,
@@ -11,7 +13,7 @@ import {
   MUON_BLE_SERVICE,
   rememberedDevices
 } from '../webBluetooth'
-import { advert, EID, fakeBluetooth, fakePrinter, info, removeBluetooth } from './fakes'
+import { advert, EID, fakeBluetooth, fakePrinter, info, OTHER_EID, removeBluetooth } from './fakes'
 
 afterEach(removeBluetooth)
 
@@ -136,5 +138,64 @@ describe('choosePrinter after the pairing prompt (KAN-1396)', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('chooserOptions (KAN-2470)', () => {
+  const only = (o: Record<string, any>) => { expect(o.filters).toHaveLength(1); return o.filters[0] }
+
+  it('with neither id nor name lists every Muon printer, as before', () => {
+    expect(chooserOptions()).toEqual({ filters: [{ services: [MUON_BLE_SERVICE] }], optionalManufacturerData: [MUON_BLE_COMPANY_ID] })
+    expect(chooserOptions({})).toEqual(chooserOptions())
+  })
+
+  it("with an EndpointId ANDs the service with that printer's manufacturer data, ignoring the flags", () => {
+    const f = only(chooserOptions({ endpointId: EID, name: 'walnut-8987' }))
+    expect(f.services).toEqual([MUON_BLE_SERVICE])
+    expect(f.name).toBeUndefined()
+    expect(f.manufacturerData).toHaveLength(1)
+    const m = f.manufacturerData[0]
+    expect(m.companyIdentifier).toBe(0xffff)
+    expect(Array.from(m.mask)).toEqual([0, 0, ...Array(8).fill(0xff)])
+    expect(m.dataPrefix).toHaveLength(10)
+  })
+
+  it('builds the prefix in the layout decodeAdvert reads (bytes 2 to 9)', () => {
+    const { dataPrefix, mask } = advertMatch(EID)!
+    const matches = (view: DataView) => {
+      const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength)
+      return bytes.every((b, i) => (b & mask[i]) === (dataPrefix[i] & mask[i]))
+    }
+    // A real advertisement matches under the mask whatever its flags.
+    for (const flags of [0, 1, 2, 3]) expect(matches(advert(flags))).toBe(true)
+    expect(decodeAdvert(advert(1))!.endpointPrefix).toBe(Array.from(dataPrefix.slice(2), b => b.toString(16).padStart(2, '0')).join(''))
+    // Another printer's advertisement does not.
+    expect(matches(advert(1, OTHER_EID))).toBe(false)
+  })
+
+  it('with only a name matches that name exactly', () => {
+    expect(only(chooserOptions({ name: 'walnut-8987' }))).toEqual({ services: [MUON_BLE_SERVICE], name: 'walnut-8987' })
+  })
+
+  it('falls back to the name, or to every printer, when the id is not usable', () => {
+    expect(only(chooserOptions({ endpointId: 'zz', name: 'walnut-8987' })).name).toBe('walnut-8987')
+    expect(only(chooserOptions({ endpointId: 'zz' }))).toEqual({ services: [MUON_BLE_SERVICE] })
+  })
+})
+
+describe('choosePrinter with a target', () => {
+  it('asks the browser for only that printer, and reads INFO from the pick', async () => {
+    const printer = fakePrinter()
+    const { requests } = fakeBluetooth({ chosen: printer.device })
+    const chosen = await choosePrinter({ endpointId: EID })
+    expect(requests).toEqual([chooserOptions({ endpointId: EID })])
+    expect(chosen.info.endpointId).toBe(EID)
+  })
+
+  it('asks for every Muon printer with no target', async () => {
+    const { requests } = fakeBluetooth({ chosen: fakePrinter().device })
+    await choosePrinter()
+    expect(requests).toEqual([chooserOptions()])
+    expect((requests[0] as any).filters[0].manufacturerData).toBeUndefined()
   })
 })

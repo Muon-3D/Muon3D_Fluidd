@@ -150,16 +150,18 @@ describe('Library v3 print page: review findings', () => {
 
   it('a history that failed for any other reason does not say the Library must be enabled', async () => {
     const offline = await signedIn(new LibraryError('offline', 'x'))
-    expect(text(offline, 'library-print-history')).toContain('Your history could not be loaded. Your Library can' + String.fromCharCode(39) + 't be reached.')
-    expect(text(offline, 'library-print-history')).not.toContain('Library must be enabled for your account.')
+    expect(text(offline, 'library-print-history')).toContain('You are offline. Check your internet connection and try again.')
+    expect(text(offline, 'library-print-history')).not.toContain('Turn on Library saving')
     const broken = await signedIn(new LibraryError('server_error', 'The Library is having a problem.', 500))
-    expect(text(broken, 'library-print-history')).toContain('Your history could not be loaded. The Library is having a problem.')
-    expect(text(broken, 'library-print-history')).not.toContain('Library must be enabled for your account.')
+    expect(text(broken, 'library-print-history')).toContain('Your print history could not be loaded just now.')
+    expect(text(broken, 'library-print-history')).not.toContain('Turn on Library saving')
+    const forbidden = await signedIn(new LibraryError('forbidden', 'x', 403))
+    expect(text(forbidden, 'library-print-history')).not.toContain('Turn on Library saving')
   })
 
-  it('keeps the enable-Library text for a 403 consent_required', async () => {
+  it('keeps the turn-on-Library text for a 403 consent_required', async () => {
     const off = await signedIn(new LibraryError('consent_required', 'x', 403))
-    expect(text(off, 'library-print-history')).toContain('Your history could not be loaded. Library must be enabled for your account.')
+    expect(text(off, 'library-print-history')).toContain('Turn on Library saving to keep a private history of your prints of this model.')
   })
 
   it('offers Share and Report only when the print has an address', async () => {

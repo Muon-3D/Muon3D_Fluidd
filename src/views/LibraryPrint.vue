@@ -15,6 +15,8 @@
         </router-link>
         <h1
           v-if="item && signedIn"
+          ref="heading"
+          tabindex="-1"
           data-tid="library-print-name"
         >
           {{ item.name }}
@@ -393,13 +395,14 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import BrowserMixin from '@/mixins/browser'
 import LibraryPrintMixin from '@/mixins/library-print'
 import PrinterFitList from '@/components/library/PrinterFitList.vue'
 import PrintOnDialog from '@/components/library/PrintOnDialog.vue'
 import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
+import { recordRecent } from '@/services/library/recents'
 
 /**
  * One of your prints (`/library/<id>`, Library v3 page 9): ‹ Yours, its
@@ -410,7 +413,29 @@ import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
  * why, with Retry. What it does is mixins/library-print.ts; only the look is here.
  */
 @Component({ components: { PrinterFitList, PrintOnDialog, FileNameDialog, CloudAccountDialog } })
-export default class LibraryPrint extends Mixins(LibraryPrintMixin, BrowserMixin) {}
+export default class LibraryPrint extends Mixins(LibraryPrintMixin, BrowserMixin) {
+  /** The print this page last opened for (its id and name), so a refresh of the list does not count as opening it again. */
+  private openedFor = ''
+
+  /**
+   * Once the print has loaded: it is what this device opened last (Continue),
+   * and the page's heading is where focus goes (without scrolling).
+   */
+  @Watch('item', { immediate: true })
+  @Watch('signedIn')
+  async onOpened () {
+    const item = this.item
+    if (!item || !this.signedIn) return
+    const key = `${item.id}:${item.name}`
+    if (key === this.openedFor) return
+    const first = !this.openedFor.startsWith(`${item.id}:`)
+    this.openedFor = key
+    recordRecent({ id: item.id, kind: 'own', title: item.name })
+    if (!first) return
+    await this.$nextTick()
+    ;(this.$refs.heading as HTMLElement | undefined)?.focus({ preventScroll: true })
+  }
+}
 </script>
 
 <style lang="scss" scoped>

@@ -18,6 +18,7 @@ type Methods = {
   cloudActions: (e: DirectoryEntry) => CardAction[]
   onAction: (this: unknown, e: DirectoryEntry, id: string) => Promise<unknown>
   connectOverBluetooth: unknown
+  onConnectOverBluetooth: (this: unknown) => Promise<unknown>
 }
 const methods = (PrinterEntriesMixin as unknown as { options: { methods: Methods } }).options.methods
 
@@ -106,5 +107,57 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
     const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, true), 'connect-bluetooth')
     expect(pairing.startPairing).not.toHaveBeenCalled()
+  })
+})
+
+describe('Connect over Bluetooth for one printer lists only that printer (KAN-2470)', () => {
+  it("asks the chooser for this printer's EndpointId", async () => {
+    nearby.lookNearby.mockResolvedValue(null)
+    const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
+    await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
+    expect(nearby.lookNearby).toHaveBeenCalledWith({ endpointId: 'walnut', name: undefined })
+  })
+
+  it('a pick that is not this printer is refused after connect, whatever the filter said', async () => {
+    nearby.lookNearby.mockResolvedValue({ device: {}, endpointId: 'impostor' })
+    const c = { connectCloud: vi.fn(), notice: null as string | null, connectOverBluetooth: methods.connectOverBluetooth }
+    await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
+    expect(c.connectCloud).not.toHaveBeenCalled()
+    expect(c.notice).toMatch(/isn't Walnut/)
+  })
+})
+
+describe('the Connect over Bluetooth button (KAN-2470)', () => {
+  const page = (printers: unknown[]) => ({
+    connectCloud: vi.fn(),
+    notice: null as string | null,
+    directory: { cloud: printers },
+    connectOverBluetooth: methods.connectOverBluetooth
+  })
+
+  it('opens a printer already on the account over the device just chosen, with no second chooser', async () => {
+    const device = { picked: true }
+    nearby.lookNearby.mockResolvedValue({ device, endpointId: 'walnut' })
+    const c = page([entry(true, false)])
+    await methods.onConnectOverBluetooth.call(c)
+    expect(nearby.lookNearby).toHaveBeenCalledOnce()
+    expect(nearby.lookNearby).toHaveBeenCalledWith()
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
+  })
+
+  it('leaves a new printer to the Bluetooth list: nothing is opened', async () => {
+    nearby.lookNearby.mockResolvedValue({ device: {}, endpointId: 'brand-new' })
+    const c = page([entry(true, false)])
+    await methods.onConnectOverBluetooth.call(c)
+    expect(c.connectCloud).not.toHaveBeenCalled()
+    expect(c.notice).toBeNull()
+  })
+
+  it('does nothing, and says nothing, when the chooser is dismissed', async () => {
+    nearby.lookNearby.mockResolvedValue(null)
+    const c = page([entry(true, false)])
+    await methods.onConnectOverBluetooth.call(c)
+    expect(c.connectCloud).not.toHaveBeenCalled()
+    expect(c.notice).toBeNull()
   })
 })

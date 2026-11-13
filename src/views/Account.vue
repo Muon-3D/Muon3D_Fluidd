@@ -237,7 +237,7 @@ import BrowserMixin from '@/mixins/browser'
 import { cloudState } from '@/services/muon-cloud/state'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import { cloudBaseUrl } from '@/services/muon-cloud/api'
-import { centralLoginEnabled } from '@/services/muon-cloud/centralLogin'
+import { consoleServesPage } from '@/services/muon-cloud/centralLogin'
 import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
 import { accountCameFrom, backTarget } from '@/services/account/came-from'
@@ -321,7 +321,7 @@ export default class Account extends Mixins(BrowserMixin) {
 
   /** The console serves this page: the account's own pages work here. */
   get consoleHere (): boolean {
-    return centralLoginEnabled()
+    return consoleServesPage()
   }
 
   get consoleHost (): string {

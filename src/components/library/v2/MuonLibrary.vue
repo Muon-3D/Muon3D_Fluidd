@@ -186,9 +186,9 @@
         </div>
       </header>
 
-      <!-- Continue: the print you last saved, one tap to print it again. -->
+      <!-- Continue: the print this device opened last (kept here, not in your account). -->
       <section
-        v-if="continueItem"
+        v-if="continueRecent"
         class="mlib-continue"
         aria-label="Continue"
         data-tid="library-continue"
@@ -205,11 +205,12 @@
         ><frame-icon name="library" /></span>
         <div class="mlib-continue__text">
           <span class="mlib-eyebrow">Continue</span>
-          <strong>{{ continueItem.name }}</strong>
+          <strong>{{ continueRecent.title }}</strong>
           <span class="mlib-muted">{{ continueFacts }}</span>
         </div>
         <div class="mlib-continue__acts">
           <button
+            v-if="continueItem"
             type="button"
             class="mlib-btn mlib-btn--primary"
             data-tid="library-continue-print"
@@ -224,8 +225,9 @@
           <button
             type="button"
             class="mlib-btn"
+            :class="{ 'mlib-btn--primary': !continueItem }"
             data-tid="library-continue-open"
-            @click="$emit('open-item', continueItem)"
+            @click="$emit('open-recent', continueRecent)"
           >
             Open
           </button>
@@ -288,11 +290,14 @@
             :error="shelf.error"
             :printer-name="printerName"
             :printing="printing"
-            :see-all="!shelf.id.startsWith('editorial-')"
+            :see-all="!shelf.id.startsWith('editorial-') && shelf.cards.length > 0"
+            :empty="FIXED_SHELVES.includes(shelf.id) ? 'Nothing here yet.' : ''"
+            empty-action="Browse categories"
             @print="print"
             @open="open"
             @retry="load"
             @see-all="seeAll"
+            @empty-action="openCategory('all')"
           />
 
           <library-state
@@ -461,11 +466,12 @@ import LibraryYoursGrid, { YOURS_GRIDS, type YoursGridSource } from './LibraryYo
 import LibraryCollectionPage, { saveIdOf } from './LibraryCollectionPage.vue'
 import LibraryPrintPage from './LibraryPrintPage.vue'
 import type { OwnCard } from '@/services/library/yours'
+import type { RecentEntry } from '@/services/library/recents'
 import { describeLibraryError, type CommunityCollection, type LibraryItem } from '@/services/library/api'
 import { LIBRARY_URL } from '@/services/library/discover'
 import { libraryClient } from '@/services/library/store'
 import { lastEvent, nozzleText, printFacts } from '@/services/library/format'
-import { thumbnailFor } from '@/services/library/thumbnails'
+import { loadThumbnail, thumbnailFor } from '@/services/library/thumbnails'
 import { ago, isNetworkError, loadFeedPage, loadPublication, loadShelves, publicationPrint, summaryCard, type DiscoverShelves, type FeedPost, type GridSource, type PublicationPrint, type PublicationSummary, type ShelfCard } from '@/services/library/shelves'
 import { dimensionFit } from '@/services/library/catalogue'
 import { cardSaves, clearCardSaves, readCardSave } from '@/services/library/card-saves'
@@ -482,6 +488,13 @@ export interface LibraryPrintRequest {
   print: PublicationPrint | null;
 }
 
+/** The shelves Discover always has: with nothing on one, it says so instead of vanishing. */
+const FIXED_SHELVES = ['popular', 'm1', 'new']
+
+/** Made for M1 is tested only when every print on it is one Muon3D test-printed (the catalogue's); publisher-tagged ones are candidates. */
+const M1_TESTED = 'Sliced and test-printed on the M1'
+const M1_TAGGED = 'Publisher-tagged M1 candidates. Check the profile before printing.'
+
 const PALETTE = ['#ff9f0a', '#ff453a', '#64d2ff', '#30d158', '#bf5af2', '#80d6d1', '#ffd60a']
 
 /**
@@ -494,7 +507,7 @@ const PALETTE = ['#ff9f0a', '#ff453a', '#64d2ff', '#30d158', '#bf5af2', '#80d6d1
  */
 @Component({
   components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState, LibraryGridPage, LibraryYoursGrid, LibraryCollectionPage, LibraryPrintPage, LibrarySearchBox, LibraryBrowsePage },
-  provide (this: MuonLibrary) { return { libraryCardContext: () => ({ volume: this.printerVolume, printerName: this.printerName, signedIn: this.signedIn, signIn: () => this.$emit('sign-in') }) } }
+  provide (this: MuonLibrary) { return { libraryCardContext: () => ({ volume: this.printerVolume, printerName: this.printerName, signedIn: this.signedIn, signIn: () => this.$emit('sign-in'), settingsTo: this.settingsTo }) } }
 })
 export default class MuonLibrary extends Vue {
   @Prop({ type: String, default: 'page' }) readonly context!: 'page' | 'control'
@@ -509,12 +522,16 @@ export default class MuonLibrary extends Vue {
   /** A See all page or search results instead of Discover's shelves; the host keeps it in the address. */
   @Prop({ type: String, default: null }) readonly grid!: GridSource | YoursGridSource | null
   @Prop({ type: String, default: '' }) readonly search!: string
-  /** The print to continue with (the last one saved), or none. */
+  /** The print this device opened last, or none: Continue is not drawn without it. */
+  @Prop({ type: Object, default: null }) readonly continueRecent!: RecentEntry | null
+  /** That print as your Library has it (one of yours), for Print again; null for a public model. */
   @Prop({ type: Object, default: null }) readonly continueItem!: LibraryItem | null
   /** A print's own page (its publication id), over everything else; the host keeps it in the address. */
   @Prop({ type: String, default: null }) readonly printId!: string | null
   /** A collection's page instead of Yours' shelves (its id); the host keeps it in the address. */
   @Prop({ type: String, default: null }) readonly collection!: string | null
+  /** Where the Library's settings are, for the links that say to turn it on (the host knows its printer's path). */
+  @Prop({ type: String, default: '/account/library' }) readonly settingsTo!: string
   /** Your Library is on and read: Yours' shelves can show (the host says what to do otherwise). */
   @Prop({ type: Boolean, default: true }) readonly ownReady!: boolean
 
@@ -547,6 +564,7 @@ export default class MuonLibrary extends Vue {
   /** The card whose print is being read, for Print. */
   printing = ''
   libraryUrl = LIBRARY_URL
+  FIXED_SHELVES = FIXED_SHELVES
   ago = ago
   tabs: Array<{ id: LibraryTab, label: string }> = [{ id: 'discover', label: 'Discover' }, { id: 'yours', label: 'Yours' }]
   controller: AbortController | null = null
@@ -723,25 +741,29 @@ export default class MuonLibrary extends Vue {
   /**
    * Popular this week, Made for M1, New (v3 L3). While Discover loads, all
    * three show skeletons; a shelf that failed shows its error with Retry;
-   * an empty one hides. Filtered to what fits, Popular is already all M1
+   * an empty one of the three says so (Nothing here yet.) unless a filter is
+   * on (then "nothing matches" says it once); the editorial shelves hide. Filtered to what fits, Popular is already all M1
    * prints, so Made for M1 would repeat it and hides.
    */
   get visibleShelves () {
     const popular = this.popular.filter(this.matches)
+    const m1Cards = this.m1.filter(this.matches)
     const shelves = [
       { id: 'popular', title: 'Popular this week', sub: 'Most made and saved in the last 7 days', cards: popular, error: this.popularError },
-      { id: 'm1', title: 'Made for M1', sub: 'Sliced and test-printed on the M1', cards: this.m1.filter(this.matches), error: this.m1Error },
+      // "Test-printed" is said only when every print here is one of Muon3D's tested catalogue; a publisher's m1-ready tag is a candidate.
+      { id: 'm1', title: 'Made for M1', sub: m1Cards.length && m1Cards.every(card => card.kind === 'catalogue') ? M1_TESTED : M1_TAGGED, cards: m1Cards, error: this.m1Error },
       { id: 'new', title: 'New', sub: 'Shared in the last few days', cards: this.newest.filter(this.matches), error: this.feedError }
     ]
     if (this.catalogue) {
       shelves.unshift(...this.catalogue.shelves.map(s => ({ ...s, cards: s.cards.filter(this.matches), error: '' })))
       const m1 = shelves.find(s => s.id === 'm1')
-      if (m1) m1.sub = 'Publisher-tagged M1 candidates. Check the profile before printing.'
+      if (m1) m1.sub = M1_TAGGED
       const week = shelves.find(s => s.id === 'new')
       if (week) { week.title = 'New this week'; week.sub = 'Fresh ideas shared in the last seven days' }
     }
     if (this.busy) return shelves
-    return shelves.filter(shelf => (shelf.error || shelf.cards.length > 0) && !(!this.catalogue && this.fits && shelf.id === 'm1' && popular.length > 0 && !shelf.error))
+    const sayEmpty = !this.filtered
+    return shelves.filter(shelf => (shelf.error || shelf.cards.length > 0 || (sayEmpty && FIXED_SHELVES.includes(shelf.id))) && !(!this.catalogue && this.fits && shelf.id === 'm1' && popular.length > 0 && !shelf.error))
   }
 
   get allFailed (): boolean {
@@ -821,14 +843,20 @@ export default class MuonLibrary extends Vue {
     return this.posts.filter(post => this.matches(post.card))
   }
 
-  get continuePicture (): string | null {
-    return this.continueItem ? thumbnailFor(this.continueItem) : null
+  /** One of yours to Continue with: its picture is asked for (it is not stored with the entry). */
+  @Watch('continueItem', { immediate: true })
+  onContinueItem (item: LibraryItem | null) {
+    if (item) loadThumbnail(item)
   }
 
-  /** "PLA · 0.4 mm · 3 h 5 min · 98 g · Printed on Walnut · 2 days ago". */
+  get continuePicture (): string | null {
+    return this.continueRecent?.thumbnail ?? (this.continueItem ? thumbnailFor(this.continueItem) : null)
+  }
+
+  /** "PLA · 0.4 mm · 3 h 5 min · 98 g · Printed on Walnut · 2 days ago" for one of yours, "By Wren Atelier" for a public model. */
   get continueFacts (): string {
     const item = this.continueItem
-    if (!item) return ''
+    if (!item) return this.continueRecent?.maker ? `By ${this.continueRecent.maker}` : 'Opened on this device'
     const setup = item.setups?.[0]
     return [setup?.material, setup ? `${nozzleText(setup.nozzle_mm)} mm` : '', printFacts(setup), lastEvent(item).text].filter(Boolean).join(' · ')
   }
