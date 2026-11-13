@@ -29,6 +29,16 @@ describe('motion tokens', () => {
     expect(token('ease')).toBe('var(--m3d-ease-standard)')
   })
 
+  it('points the aliases in the glass style at the approved tokens too', () => {
+    // The glass file declares them inside `#{$glass} .v-application { ... }`, not :root,
+    // so read the declaration wherever it sits in the file text.
+    const glass = readFileSync(`${process.cwd()}/src/scss/muon3d-glass.scss`, 'utf8')
+    const glassToken = (name: string) => glass.match(new RegExp(`--m3d-${name}:\\s*([^;]+);`))?.[1].trim()
+    expect(glassToken('duration-fast')).toBe('var(--m3d-motion-fast)')
+    expect(glassToken('duration-base')).toBe('var(--m3d-motion-base)')
+    expect(glassToken('ease')).toBe('var(--m3d-ease-standard)')
+  })
+
   it('has the three curves in both places', () => {
     expect(token('ease-standard')).toBe(EASE.standard)
     expect(token('ease-enter')).toBe(EASE.enter)

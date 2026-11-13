@@ -473,7 +473,7 @@ $glass: "html[data-m3d-style='glass']";
     border-radius: var(--m3d-radius-lg) !important;
     box-shadow: var(--m3d-glass-edge), var(--m3d-shadow-float) !important;
     transition:
-      transform var(--m3d-duration-base) var(--m3d-spring),
+      transform var(--m3d-motion-slow) var(--m3d-spring),
       opacity var(--m3d-duration-fast) var(--m3d-ease);
 
     > .v-card {
@@ -585,19 +585,6 @@ $glass: "html[data-m3d-style='glass']";
     &:focus-visible::after {
       opacity: 1;
       transform: none;
-    }
-
-    &:not(.v-btn--disabled):active {
-      transition-duration:
-        var(--m3d-motion-fast),
-        var(--m3d-motion-fast),
-        var(--m3d-motion-fast),
-        var(--m3d-motion-instant) !important;
-      transition-timing-function:
-        var(--m3d-ease-standard),
-        var(--m3d-ease-standard),
-        var(--m3d-ease-standard),
-        var(--m3d-ease-standard) !important;
     }
 
     // Stopping a print is never eased: its press shows on the frame it happens.
@@ -959,7 +946,7 @@ $glass: "html[data-m3d-style='glass']";
       background-color: #fff !important;
       color: #fff !important;
       box-shadow: 0 3px 8px rgb(0 0 0 / 15%), 0 1px 1px rgb(0 0 0 / 16%), 0 0 0 0.5px rgb(0 0 0 / 4%) !important;
-      transition: transform var(--m3d-motion-press-out) var(--m3d-spring-snappy);
+      transition: transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy);
     }
 
     .v-input--selection-controls__ripple::before {
@@ -1019,7 +1006,7 @@ $glass: "html[data-m3d-style='glass']";
     background-color: #fff !important;
     border-color: #fff !important;
     box-shadow: 0 3px 8px rgb(0 0 0 / 15%), 0 1px 1px rgb(0 0 0 / 16%), 0 0 0 0.5px rgb(0 0 0 / 6%) !important;
-    transition: transform var(--m3d-motion-press-out) var(--m3d-spring-snappy);
+    transition: transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy);
 
     &::before {
       display: none;
