@@ -94,6 +94,15 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
     expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
   })
 
+  it('an explicit choice uses a remembered device that no advert has been heard from (heardAt 0)', async () => {
+    const device = { remembered: true }
+    nearby.permittedPrinterFor.mockResolvedValue({ device, endpointId: 'walnut', heardAt: 0 })
+    const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
+    await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
+    expect(nearby.lookNearby).not.toHaveBeenCalled()
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
+  })
+
   it('goes straight into pairing when the printer refused this browser', async () => {
     nearby.lookNearby.mockResolvedValue({ device: {}, endpointId: 'walnut' })
     const c = {

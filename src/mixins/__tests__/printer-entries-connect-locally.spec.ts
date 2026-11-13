@@ -121,7 +121,7 @@ describe('Connect locally on the hosted page (KAN-2529)', () => {
   it('a busy row keeps "Still opening" instead of the unreachable notice', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('blocked') }))
     const c = { ...component(), busyKey: 'cloud:other' }
-    c.run = vi.fn(async () => { c.notice = 'Still opening a printer. Give it a moment.' })
+    c.run = vi.fn(async () => { c.notice = 'Still opening a printer. Give it a moment.' }) as unknown as typeof c.run
     await methods.connectLocal.call(c, entry(NAME))
     expect(c.notice).toMatch(/^Still opening/)
   })
