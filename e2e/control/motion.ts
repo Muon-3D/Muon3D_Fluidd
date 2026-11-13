@@ -90,6 +90,12 @@ export interface ClassSeen {
   scale: number;
   /** The y translation of that transform, px (0 when none). */
   ty: number;
+  /**
+   * The x scale the element's classes declare, read from a probe element with
+   * the same classes and `transition: none` (so it is the end value of a
+   * -leave-to rule, not a point part-way along the transition).
+   */
+  declaredScale: number;
   /** The element's height, px. */
   height: number;
   /** Every class the element had at that moment. */
@@ -103,10 +109,13 @@ export interface ClassSeen {
  * MutationObserver callback, before the browser has painted or a frame could
  * be skipped. The observer is installed when this resolves, so call it, act,
  * then call the function it returns for the first record (null after `ms`).
+ *
+ * `mark` sets `data-m3d-watch` on the element it found, so a later watch can
+ * follow that very element (`[data-m3d-watch="1"]`).
  */
-export async function watchClass (page: Page, selector: string, cls: string, ms = 8000): Promise<() => Promise<ClassSeen | null>> {
+export async function watchClass (page: Page, selector: string, cls: string, ms = 8000, mark?: string): Promise<() => Promise<ClassSeen | null>> {
   const key = `w${Math.random().toString(36).slice(2)}`
-  await page.evaluate(([sel, c, k, timeout]) => {
+  await page.evaluate(([sel, c, k, timeout, marker]) => {
     const absent = c.startsWith('!')
     const name = absent ? c.slice(1) : c
     const w = window as unknown as { __m3dWatch?: Record<string, Promise<ClassSeen | null>> }
@@ -115,6 +124,19 @@ export async function watchClass (page: Page, selector: string, cls: string, ms 
         if (!el.matches(sel) || el.classList.contains(name) === absent) return false
         const s = getComputedStyle(el)
         const m = s.transform === 'none' ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(s.transform)
+        // A probe with the same classes and no transition shows the value the
+        // element's rules declare, whatever point its own transition is at.
+        let declaredScale = m.a
+        if (el.parentElement) {
+          const probe = document.createElement('div')
+          probe.className = el.className
+          probe.style.transition = 'none'
+          el.parentElement.appendChild(probe)
+          const pt = getComputedStyle(probe).transform
+          declaredScale = pt === 'none' ? 1 : new DOMMatrixReadOnly(pt).a
+          probe.remove()
+        }
+        if (marker) (el as HTMLElement).dataset.m3dWatch = marker
         resolve({
           duration: s.transitionDuration,
           easing: s.transitionTimingFunction,
@@ -122,6 +144,7 @@ export async function watchClass (page: Page, selector: string, cls: string, ms 
           transform: s.transform,
           scale: +m.a.toFixed(3),
           ty: +m.f.toFixed(1),
+          declaredScale: +declaredScale.toFixed(3),
           height: el.getBoundingClientRect().height,
           classes: Array.from(el.classList)
         })
@@ -140,6 +163,6 @@ export async function watchClass (page: Page, selector: string, cls: string, ms 
       obs.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] })
       setTimeout(() => { obs.disconnect(); resolve(null) }, timeout)
     })
-  }, [selector, cls, key, ms] as const)
+  }, [selector, cls, key, ms, mark ?? ''] as const)
   return () => page.evaluate(k => (window as unknown as { __m3dWatch: Record<string, Promise<ClassSeen | null>> }).__m3dWatch[k], key)
 }

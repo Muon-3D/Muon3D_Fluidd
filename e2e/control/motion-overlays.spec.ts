@@ -32,12 +32,13 @@ test.describe('on a computer', () => {
     const enter = await entering()
     expect(enter?.duration).toMatch(/^0\.16s(, 0\.16s)*$/)
     expect(enter?.easing).toContain('cubic-bezier(0.16, 1, 0.3, 1)')
+    // It grows from 90 % (read with the -enter class still on).
+    expect(enter?.classes).toContain('v-menu-transition-enter')
+    expect(enter!.scale).toBeCloseTo(0.9, 2)
     const s = await opening
     info.annotations.push({ type: 'menu open samples', description: JSON.stringify(s.slice(0, 14)) })
-    // Its first frame on screen is see-through (it fades in, not pops), it
-    // never starts smaller than 94 %, and it settles.
+    // Its first frame on screen is see-through (it fades in, not pops).
     expect(s[0].opacity).toBeLessThan(1)
-    expect(smallest(s)).toBeGreaterThanOrEqual(0.93)
     console.log(`[menu-open] ${info.project.name}: settled by ${settledBy(s)} ms`)
     const t = await times
     console.log(`[frame-times] menu ${info.project.name}: ${JSON.stringify(t)}`)
@@ -46,6 +47,7 @@ test.describe('on a computer', () => {
     // on the exit curve, read from the page by an observer at the moment the
     // class lands (timing it from outside is unreliable on a busy machine).
     const leaving = await watchClass(page, '.printer-switch__menu', 'v-menu-transition-leave-active')
+    const leavingTo = await watchClass(page, '.printer-switch__menu', 'v-menu-transition-leave-to')
     // Outside the menu: the bottom-right corner of the page, well clear of it
     // and of anything that does something when clicked.
     const view = page.viewportSize()!
@@ -54,6 +56,13 @@ test.describe('on a computer', () => {
     console.log(`[menu-close] ${info.project.name}: ${JSON.stringify(leave)}`)
     expect(leave?.duration).toMatch(/^0\.12s(, 0\.12s)*$/)
     expect(leave?.easing).toContain('cubic-bezier(0.4, 0, 1, 1)')
+    // It leaves to 96 %, a smaller step than it arrived with. The -leave-to
+    // class lands a frame after -leave-active, so its computed transform is
+    // already part-way along; the probe in watchClass reads the value the
+    // -leave-to rule declares (same classes, transition off).
+    const leaveTo = await leavingTo()
+    expect(leaveTo?.classes).toContain('v-menu-transition-leave-to')
+    expect(leaveTo!.declaredScale).toBeCloseTo(0.96, 2)
     await expect(page.locator('.printer-switch__menu:visible')).toHaveCount(0, { timeout: 5000 })
   })
 
@@ -67,6 +76,9 @@ test.describe('on a computer', () => {
     // A fast fade for its opacity (listed first, so reduced motion keeps it),
     // the gentle spring for its size.
     const enter = await entering()
+    // It grows from 92 % (read with the -enter class still on), not 50 %.
+    expect(enter?.classes).toContain('dialog-transition-enter')
+    expect(enter!.scale).toBeCloseTo(0.92, 2)
     expect(enter?.property).toMatch(/^opacity/)
     expect(enter?.duration).toMatch(/0\.536s/)
     expect(enter?.easing).toMatch(/linear\(/)
@@ -78,13 +90,28 @@ test.describe('on a computer', () => {
     // The gentle spring passes 1 by a little before it settles.
     expect(Math.max(...s.map(x => x.scale))).toBeLessThan(1.03)
     console.log(`[dialog-open] ${info.project.name}: settled by ${settledBy(s)} ms`)
+
+    // Escape: it leaves in 120 ms on the exit curve, opacity first, to 97 %
+    // (declared value, read as for the menu).
+    const leaving = await watchClass(page, '.command-bar__dialog', 'dialog-transition-leave-active')
+    const leavingTo = await watchClass(page, '.command-bar__dialog', 'dialog-transition-leave-to')
+    await page.keyboard.press('Escape')
+    const leave = await leaving()
+    expect(leave?.property).toMatch(/^opacity/)
+    expect(leave?.duration).toMatch(/^0\.12s/)
+    expect(leave?.easing).toMatch(/^cubic-bezier\(0\.4, 0, 1, 1\)/)
+    const leaveTo = await leavingTo()
+    expect(leaveTo?.classes).toContain('dialog-transition-leave-to')
+    expect(leaveTo!.declaredScale).toBeCloseTo(0.97, 2)
   })
 
   test('the scrim fades in over 240 ms and out in 160 ms on the exit curve', async ({ page, open }) => {
     await open('/')
     const search = page.getByText('Search or run a command').first()
     await expect(search).toBeVisible()
-    const opening = await watchClass(page, '.v-overlay', 'v-overlay--active')
+    // Mark the overlay that becomes active for the dialog, so the closing
+    // watch follows that very scrim and no other overlay on the page.
+    const opening = await watchClass(page, '.v-overlay', 'v-overlay--active', 8000, '1')
     await search.click()
     // Open: the base step on the standard ease (opacity is the first entry).
     const shown = await opening()
@@ -93,10 +120,10 @@ test.describe('on a computer', () => {
     expect(shown?.easing).toMatch(/^cubic-bezier\(0\.2, 0, 0, 1\)/)
     await expect(page.locator('.command-bar__dialog')).toBeVisible()
     // Closing: no .v-overlay--active, so the exit rule applies; a fast step on the exit curve.
-    const closing = await watchClass(page, '.v-overlay', '!v-overlay--active')
+    const closing = await watchClass(page, '.v-overlay[data-m3d-watch="1"]', '!v-overlay--active')
     await page.keyboard.press('Escape')
     const gone = await closing()
-    expect(gone?.classes).not.toContain('v-overlay--active')
+    expect(gone).not.toBeNull()
     expect(gone?.property).toMatch(/^opacity/)
     expect(gone?.duration).toMatch(/^0\.16s/)
     expect(gone?.easing).toMatch(/^cubic-bezier\(0\.4, 0, 1, 1\)/)
@@ -121,6 +148,7 @@ test.describe('on a phone', () => {
     // It starts below the screen: translated down by at least its own height,
     // read in the same callback, with the -enter class still on.
     expect(enter?.classes).toContain('bottom-sheet-transition-enter')
+    expect(enter!.height).toBeGreaterThan(0)
     expect(enter!.ty).toBeGreaterThanOrEqual(enter!.height - 1)
     const s = await opening
     info.annotations.push({ type: 'sheet open samples', description: JSON.stringify(s.slice(0, 20)) })
@@ -132,6 +160,13 @@ test.describe('on a phone', () => {
     const bottom = () => page.evaluate(sel => document.querySelector(sel)!.getBoundingClientRect().bottom, '.printer-switch__sheet')
     await expect.poll(async () => Math.abs((await bottom()) - view.height)).toBeLessThanOrEqual(2)
     console.log(`[sheet-open] ${info.project.name}: settled by ${settledBy(s)} ms`)
+
+    // Escape: it drops away in three quarters of the entry (255 ms) on the exit curve.
+    const leaving = await watchClass(page, '.printer-switch__sheet', 'bottom-sheet-transition-leave-active')
+    await page.keyboard.press('Escape')
+    const leave = await leaving()
+    expect(leave?.duration).toMatch(/^0\.255s/)
+    expect(leave?.easing).toContain('cubic-bezier(0.4, 0, 1, 1)')
     const t = await times
     console.log(`[frame-times] sheet ${info.project.name}: ${JSON.stringify(t)}`)
   })

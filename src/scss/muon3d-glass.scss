@@ -492,10 +492,16 @@ $glass: "html[data-m3d-style='glass']";
 
   // A menu grows from its own origin, which is top left unless a menu sets
   // `origin` itself (VMenu's default), not necessarily out of its button.
-  .v-menu-transition-enter:not(.v-menu__content--auto),
+  // As in the gallery: in from 90 %, out to 96 % (it leaves with less travel
+  // than it arrived with). See-through at both ends.
+  .v-menu-transition-enter:not(.v-menu__content--auto) {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+
   .v-menu-transition-leave-to:not(.v-menu__content--auto) {
     opacity: 0;
-    transform: scale(0.94);
+    transform: scale(0.96);
   }
 
   .slide-y-transition-enter,
@@ -539,9 +545,11 @@ $glass: "html[data-m3d-style='glass']";
     border-radius: var(--m3d-radius-lg) !important;
     box-shadow: var(--m3d-glass-edge), var(--m3d-shadow-float) !important;
     // A dialog arrives from 92 % on the gentle spring (about 1.5 % over) and
-    // leaves in three quarters of a fast step. Opacity is listed first: the
-    // reduced-motion rule keeps only the first property, so a dialog then
-    // fades in a fast step, not over the spring's length.
+    // leaves in three quarters of a fast step. Opacity is listed first, and
+    // runs on the fast step: this is a deliberate departure from the gallery,
+    // which fades over the spring's length. The reduced-motion rule keeps only
+    // the first entry of a transition list, so with reduced motion on the
+    // dialog fades in a fast step, not over the spring's 536 ms.
     transition:
       opacity var(--m3d-motion-fast) var(--m3d-ease-standard),
       transform var(--m3d-spring-gentle-duration) var(--m3d-spring-gentle);
@@ -568,9 +576,16 @@ $glass: "html[data-m3d-style='glass']";
     }
   }
 
-  .dialog-transition-enter,
-  .dialog-transition-leave-to {
+  // In from 92 %, out to 97 % (gallery). Same specificity as, and after,
+  // Vuetify's own .dialog-transition-enter / -leave-to (scale 0.5), under the
+  // glass style's scope, so these win.
+  .dialog-transition-enter {
     transform: scale(0.92);
+    opacity: 0;
+  }
+
+  .dialog-transition-leave-to {
+    transform: scale(0.97);
     opacity: 0;
   }
 
