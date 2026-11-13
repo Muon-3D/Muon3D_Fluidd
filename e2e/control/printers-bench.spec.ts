@@ -13,6 +13,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect, ready } from '../fixtures'
 import { CONSOLE } from '../fakes/console'
+import { usePrinter } from './printer'
 
 const FOUND_HOST = '192.168.77.6'
 
@@ -47,12 +48,13 @@ async function withAccountPrinters (page: Page, printers: Array<ReturnType<typeo
   return saved
 }
 
-async function withFoundPrinter (page: Page) {
+/** `linked`: the found printer is already linked to another account, so its one action is to ask its owner. */
+async function withFoundPrinter (page: Page, { linked = false } = {}) {
   await page.route(`${CONSOLE}/v1/links/nearby`, route => route.fulfill({
     status: 200,
     contentType: 'application/json',
     headers: { 'access-control-allow-origin': '*' },
-    body: JSON.stringify({ printers: [{ printer_id: 'larch-41c2', name: 'muon-larch-41c2', model: 'M1', linked: false, local_addrs: [FOUND_HOST] }] })
+    body: JSON.stringify({ printers: [{ printer_id: 'larch-41c2', name: 'muon-larch-41c2', model: 'M1', linked, local_addrs: [FOUND_HOST] }] })
   }))
   await page.route(`http://${FOUND_HOST}/**`, route => {
     const url = new URL(route.request().url())
@@ -94,6 +96,24 @@ test('Bench is a third view: this browser\'s printer stands on its bench, drawn 
   await boxwood.hover()
   await expect(boxwood.getByTestId('bench-action-open')).toBeVisible()
   await expect(boxwood.getByTestId('bench-action-pause')).toBeVisible()
+})
+
+test('a printer still heating shows Heating and its temperature in amber, not the percent', async ({ page }) => {
+  await usePrinter(page, { extruder: { temperature: 180, target: 220, can_extrude: false } })
+  await openPrinters(page)
+  await toBench(page)
+  const boxwood = page.getByTestId('group-saved').locator('[data-tid^="printer-tile-"]').first()
+  const state = boxwood.locator('.bprint__state')
+  await expect(state).toHaveText('Heating · 180°')
+  const amber = await page.evaluate(() => {
+    const probe = document.createElement('i')
+    probe.style.color = 'var(--m3d-warning)'
+    document.body.appendChild(probe)
+    const colour = getComputedStyle(probe).color
+    probe.remove()
+    return colour
+  })
+  await expect.poll(() => state.evaluate(el => getComputedStyle(el).color)).toBe(amber)
 })
 
 test('the view is kept, and Grid and List are as they were', async ({ page }) => {
@@ -140,9 +160,14 @@ test.describe('signed in', () => {
     const shared = page.getByTestId('group-shared')
     await expect(shared.getByRole('heading', { name: 'Shared with you' })).toBeVisible()
     await expect(shared.getByTestId('printer-tile-cloud:p-elder').getByTestId('shared-by')).toHaveText('from Mara')
-    // The same groups and tag in Grid.
-    await page.getByTestId('view-grid').click()
-    await expect(page.getByTestId('group-shared')).toBeVisible()
+    // The same tag, from the same data, in Grid and in List, and only on the shared one.
+    for (const view of ['grid', 'list']) {
+      await page.getByTestId(`view-${view}`).click()
+      await expect(page.getByTestId(`view-${view}`)).toHaveAttribute('aria-pressed', 'true')
+      const elder = page.getByTestId('group-shared').getByTestId('printer-tile-cloud:p-elder')
+      await expect(elder.getByTestId('shared-by')).toHaveText('from Mara')
+      await expect(page.getByTestId('shared-by')).toHaveCount(1)
+    }
   })
 
   test('on a phone the second row of printers on a bench stands on the bench too', async ({ page }) => {
@@ -170,6 +195,14 @@ test.describe('signed in', () => {
     expect(Math.abs(tile - (third.y - first.y))).toBeLessThan(2)
     // And the bench top is as tall as its two rows, so the last row's line is inside it.
     expect(top.height).toBeGreaterThanOrEqual(2 * tile - 1)
+    // The first row's feet are on the bench line too: the drawing's bottom is where the line
+    // is drawn, 170px down the bench top (not floating above it, or sunk below).
+    const topBox = (await workshop.locator('.bench__top').boundingBox())!
+    const stand = (await workshop.getByTestId('printer-tile-cloud:p-elm').locator('.bprint__stand').boundingBox())!
+    expect(Math.abs(stand.y + stand.height - (topBox.y + 170))).toBeLessThanOrEqual(4)
+    // And Ash's, one row down.
+    const ashStand = (await workshop.getByTestId('printer-tile-cloud:p-ash').locator('.bprint__stand').boundingBox())!
+    expect(Math.abs(ashStand.y + ashStand.height - (topBox.y + tile + 170))).toBeLessThanOrEqual(4)
   })
 
   test('a printer dragged onto New bench starts a bench, and it is saved', async ({ page, isMobile }) => {
@@ -212,5 +245,48 @@ test.describe('signed in', () => {
     await expect(larch.locator('[data-tid^="bench-action-"]')).toHaveCount(1)
     await expect(larch.locator('[data-tid^="bench-action-"]')).toBeVisible()
     await expect(larch.locator('svg.pdraw')).toHaveClass(/pdraw--dim/)
+    // Not linked to anyone: Add, and it opens the link dialog for that printer.
+    await expect(larch.getByTestId('bench-action-link')).toHaveText('Add')
+    await larch.getByTestId('bench-action-link').click()
+    await expect(page.getByRole('dialog')).toContainText('Link a printer to your account')
+  })
+
+  test('a found printer linked to another account offers Ask its owner, and it opens the request dialog', async ({ page }) => {
+    await withAccountPrinters(page, [cloudPrinter('p-elm', 'Elm')])
+    await withFoundPrinter(page, { linked: true })
+    await openPrinters(page)
+    await toBench(page)
+    const larch = page.getByTestId('found').locator('[data-tid^="printer-tile-"]').first()
+    await expect(larch).toContainText('Larch', { timeout: 30_000 })
+    await expect(larch.locator('[data-tid^="bench-action-"]')).toHaveCount(1)
+    await expect(larch.getByTestId('bench-action-ask')).toHaveText('Ask its owner')
+    await larch.getByTestId('bench-action-ask').click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.getByTestId('access-code').or(page.getByTestId('access-outcome'))).toBeVisible()
+  })
+
+  test('nothing matching the search says so in Bench as in Grid and List, and Clear search brings the benches back', async ({ page }) => {
+    await withAccountPrinters(page, [cloudPrinter('p-elm', 'Elm'), cloudPrinter('p-cedar', 'Cedar')], [{ id: 'g1', name: 'Workshop bench', printers: ['p-elm', 'p-cedar'] }])
+    await openPrinters(page)
+    await toBench(page)
+    await expect(page.getByTestId('group-g1')).toBeVisible()
+    await page.getByTestId('printers-search').fill('zzz')
+    await expect(page.getByTestId('printers-none')).toContainText('No printer matches "zzz"')
+    await expect(page.locator('.bench')).toHaveCount(0)
+    await page.getByTestId('printers-none').getByRole('button', { name: 'Clear search' }).click()
+    await expect(page.getByTestId('printers-none')).toHaveCount(0)
+    await expect(page.getByTestId('group-g1')).toBeVisible()
+  })
+
+  test('New bench works from the keyboard: Enter makes a bench, named for renaming', async ({ page }) => {
+    await withAccountPrinters(page, [cloudPrinter('p-elm', 'Elm')], [{ id: 'g1', name: 'Workshop bench', printers: ['p-elm'] }])
+    await openPrinters(page)
+    await toBench(page)
+    const target = page.getByTestId('new-bench')
+    await expect(target).toHaveAttribute('role', 'button')
+    await expect(target).toHaveAccessibleName('New bench')
+    await target.focus()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('textbox', { name: 'Bench name' })).toBeFocused()
   })
 })
