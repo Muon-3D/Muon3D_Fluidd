@@ -79,6 +79,34 @@
         </button>
       </div>
     </template>
+    <div
+      v-else-if="!recentJobs.length"
+      class="jt__first"
+      data-tid="first-print"
+    >
+      <b class="jt__first-title">Print something</b>
+      <p class="jt__idle">
+        Start with a calibration print from the Library, or upload a file you've sliced. {{ printerName }} asks you to check the plate before it starts.
+      </p>
+      <div class="jt__actions">
+        <router-link
+          class="cbtn cbtn--grow cbtn--primary"
+          :to="pagePath('/library')"
+          data-tid="first-print-sample"
+        >
+          Print a sample
+        </router-link>
+        <button
+          type="button"
+          class="cbtn cbtn--grow"
+          :disabled="!socketConnected"
+          data-tid="first-print-upload"
+          @click="upload"
+        >
+          Upload a file
+        </button>
+      </div>
+    </div>
     <template v-else>
       <p class="jt__idle">
         Nothing is printing. Pick something to print again, or drop a file here.
@@ -155,6 +183,7 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
 import { SocketActions } from '@/api/socketActions'
+import { EventBus } from '@/eventBus'
 import { spanText, type TileMenuItem } from '@/services/overview/tiles'
 import type { HistoryItem } from '@/store/history/types'
 import TileShell from './TileShell.vue'
@@ -165,7 +194,8 @@ import FirstLayerNudges from '@/components/overview/FirstLayerNudges.vue'
 /**
  * The print running now, with nothing wasted under it: the part and its
  * facts, how far, the three times, and Pause and Stop. Idle, it offers the
- * last jobs to print again. Live numbers, the plate objects, the queue and
+ * last jobs to print again, or, with none yet, a sample from the Library or
+ * an upload. Live numbers, the plate objects, the queue and
  * history are behind the three dots.
  */
 @Component({ components: { TileShell, TileDialog, ObjectsList, FirstLayerNudges } })
@@ -227,6 +257,11 @@ export default class JobTile extends Mixins(OverviewMixin) {
     return facts
   }
 
+  /** The top bar's file picker: the file goes up and Ready to print opens, with its plate check. */
+  upload () {
+    EventBus.bus.$emit('upload-file')
+  }
+
   pauseCurrent () {
     if (this.controlReady && (this.printerPrinting || this.printerPaused)) this.printerPaused ? this.resumePrint() : this.pausePrint()
   }
@@ -268,6 +303,9 @@ export default class JobTile extends Mixins(OverviewMixin) {
 .jt__stats b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .jt__actions { display: flex; gap: 8px; margin-top: 6px; }
 .jt__actions .cbtn { min-height: 44px; }
+.jt__first { display: flex; flex-direction: column; gap: 8px; }
+.jt__first-title { font-size: 17px; font-weight: 600; }
+.jt__first .cbtn { justify-content: center; text-decoration: none; }
 .jt__idle { margin: 0; color: var(--m3d-text-muted); font-size: 13.5px; }
 .jt__recent { display: flex; flex-direction: column; }
 .jt__recent > * + * { border-top: 1px solid var(--m3d-border); }

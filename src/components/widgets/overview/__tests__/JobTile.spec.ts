@@ -2,6 +2,7 @@ import Vue from 'vue'
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import JobTile from '../tiles/JobTile.vue'
+import { EventBus } from '@/eventBus'
 import { resetSocket, socket, tileMount, tileStore } from './fixture'
 
 vi.mock('@/components/ui/M3Dialog.vue', async () => (await import('./fixture')).m3DialogModule)
@@ -16,8 +17,48 @@ describe('JobTile', () => {
     const store = tileStore({ empty: true })
     const w = mountJob(store)
     expect(w.text()).toContain('Print job')
-    expect(w.text()).toContain('Nothing is printing')
+    expect(w.text()).toContain('Print something')
     expect(w.find('[data-tid="job-pause"]').exists()).toBe(false)
+    w.destroy()
+  })
+
+  it('with nothing printed yet, offers Print something: a sample from the Library, or an upload', () => {
+    const store = tileStore()
+    const w = mountJob(store)
+    const first = w.find('[data-tid="first-print"]')
+    expect(first.exists()).toBe(true)
+    expect(first.text()).toContain('Print something')
+    expect(first.text()).toContain('check the plate before it starts')
+    expect(w.find('[data-tid="first-print-sample"]').text()).toBe('Print a sample')
+    expect(w.find('[data-tid="first-print-sample"]').attributes('href')).toMatch(/\/library$/)
+    expect(w.text()).not.toContain('Pick something to print again')
+    w.destroy()
+  })
+
+  it('Upload a file opens the top bar\'s picker, and prints nothing by itself', async () => {
+    const store = tileStore()
+    const w = mountJob(store)
+    const picked = vi.fn()
+    EventBus.bus.$on('upload-file', picked)
+    await w.find('[data-tid="first-print-upload"]').trigger('click')
+    EventBus.bus.$off('upload-file', picked)
+    expect(picked).toHaveBeenCalledTimes(1)
+    expect((w.vm as any).$confirm).not.toHaveBeenCalled()
+    w.destroy()
+  })
+
+  it('with jobs printed before, offers them again instead of Print something', () => {
+    const store = tileStore()
+    Vue.set(store.getters, 'history/getUniqueHistory', () => [{ filename: 'cube_PLA.gcode', start_time: Date.now() / 1000, status: 'completed', metadata: {} }])
+    const w = mountJob(store)
+    expect(w.find('[data-tid="first-print"]').exists()).toBe(false)
+    expect(w.find('[data-tid="print-again-0"]').exists()).toBe(true)
+    w.destroy()
+  })
+
+  it('while it prints, Print something is not offered', () => {
+    const w = mountJob(tileStore({ printing: true }))
+    expect(w.find('[data-tid="first-print"]').exists()).toBe(false)
     w.destroy()
   })
 
