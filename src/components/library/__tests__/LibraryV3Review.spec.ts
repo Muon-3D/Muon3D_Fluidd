@@ -11,8 +11,25 @@ import { cloudState } from '@/services/muon-cloud/state'
 import type { ShelfCard } from '@/services/library/shelves'
 
 const card = (id: string): ShelfCard => ({
-  key: `pub:${id}`, kind: 'publication', id, slug: id, title: `Print ${id}`, picture: null, creator: 'Okoro', handle: 'okoro',
-  makes: 1, remixes: 0, saves: 0, facts: '', m1: false, tags: [], remixOf: null, makeOf: null, createdAt: null, href: '', category: 'home'
+  key: `pub:${id}`,
+  kind: 'publication',
+  id,
+  slug: id,
+  title: `Print ${id}`,
+  picture: null,
+  creator: 'Okoro',
+  handle: 'okoro',
+  makes: 1,
+  remixes: 0,
+  saves: 0,
+  facts: '',
+  m1: false,
+  tags: [],
+  remixOf: null,
+  makeOf: null,
+  createdAt: null,
+  href: '',
+  category: 'home'
 })
 
 const settle = async () => { for (let i = 0; i < 4; i++) { await Vue.nextTick(); await new Promise(resolve => setTimeout(resolve, 0)) } }
