@@ -110,12 +110,12 @@ export interface ClassSeen {
  * change), and records its computed transition and transform inside the
  * MutationObserver callback, before the browser has painted or a frame could
  * be skipped. The observer is installed when this resolves, so call it, act,
- * then call the function it returns for the first record (null after `ms`).
+ * then call the function it returns for the first record (null after `ms`, counted from when it is installed, so it is generous: a busy machine can take seconds to deliver the action).
  *
  * `mark` sets `data-m3d-watch` on the element it found, so a later watch can
  * follow that very element (`[data-m3d-watch="1"]`).
  */
-export async function watchClass (page: Page, selector: string, cls: string, ms = 8000, mark?: string): Promise<() => Promise<ClassSeen | null>> {
+export async function watchClass (page: Page, selector: string, cls: string, ms = 20000, mark?: string): Promise<() => Promise<ClassSeen | null>> {
   const key = `w${Math.random().toString(36).slice(2)}`
   await page.evaluate(([sel, c, k, timeout, marker]) => {
     const absent = c.startsWith('!')
