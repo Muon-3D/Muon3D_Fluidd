@@ -193,7 +193,7 @@ import LockedRow from '@/components/settings/gates/LockedRow.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import { printerNameParts } from '@/util/printer-name'
-import { couldHaveSecureAddress, isPrinterSecureOrigin, setSwitchesAutomatically, switchesAutomatically } from '@/services/secure-origin'
+import { couldHaveSecureAddress, setSwitchesAutomatically, switchesAutomatically } from '@/services/secure-origin'
 import {
   changeOutcome, outcomeNote, parsePermissions, permissionsPath, switchOutcome, switchPath, valueLabel,
   type PermissionKnob, type PermissionSwitch
@@ -218,7 +218,7 @@ export default class SecuritySettings extends Mixins(MuonGatesMixin) {
   notes: Record<string, string> = {}
   readonly valueLabel = valueLabel
   /** This browser's choice, not the printer's: it means nothing on a page the console serves. */
-  printerPage = couldHaveSecureAddress() || isPrinterSecureOrigin()
+  printerPage = couldHaveSecureAddress()
   autoSwitch = switchesAutomatically()
 
   onAutoSwitch (on: boolean) {

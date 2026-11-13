@@ -30,6 +30,13 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+describe('the console behind the sign-in', () => {
+  it('is off on the printer origin when no console is configured', async () => {
+    const { login } = await load()
+    expect(login.centralLoginEnabled()).toBe(false)
+  })
+})
+
 describe('the sign-in client', () => {
   it('is printer-local here', async () => {
     const { api } = await load()

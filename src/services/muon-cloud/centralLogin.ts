@@ -21,7 +21,7 @@
  * The console's own sign-in page, which `/authorize` sends a browser to with
  * `continue`, is `views/SignIn.vue`; `safeContinue` below is its guard.
  */
-import { clientId, cloudApi, cloudBaseUrl, cloudSessionAllowed, sameConsole, setSessionRecovery, storedRefreshToken, storedToken, storeRefreshToken, storeToken } from './api'
+import { CONSOLE_ORIGINS, clientId, cloudApi, cloudBaseUrl, cloudSessionAllowed, sameConsole, setSessionRecovery, storedRefreshToken, storedToken, storeRefreshToken, storeToken } from './api'
 import { challengeFor, newState, newVerifier } from './pkce'
 import { refreshServiceWorker } from '@/util/service-worker-update'
 import { isPrinterSecureOrigin } from '@/services/secure-origin'
@@ -61,9 +61,15 @@ function session (): Storage | null {
 export function centralLoginEnabled (location: Pick<Location, 'origin' | 'protocol' | 'hostname'> = window.location): boolean {
   // A printer's own secure address signs in through the console as the
   // `printer-local` client (KAN-2198); its redirect URI is that address.
-  if (isPrinterSecureOrigin(location)) return true
+  // Only to a real console: with none configured the base URL is the printer itself.
+  if (isPrinterSecureOrigin(location)) return CONSOLE_ORIGINS.includes(cloudBaseUrl())
   if (cloudBaseUrl() !== location.origin) return false
   return cloudSessionAllowed(location)
+}
+
+/** Whether the console itself serves this page, for screens that only make sense there (not the printer origin). */
+export function consoleServesPage (location: Pick<Location, 'origin' | 'protocol' | 'hostname'> = window.location): boolean {
+  return !isPrinterSecureOrigin(location) && cloudBaseUrl() === location.origin && cloudSessionAllowed(location)
 }
 
 /** The registered redirect URI: the console's root, where Fluidd is served. */
