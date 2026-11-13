@@ -26,6 +26,7 @@ import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
 import { forgetOwnAvatar } from '@/services/account/avatar'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
 
 const ACTIVE_KEY = 'muon.cloud.active'
@@ -447,6 +448,7 @@ async function sessionRefused () {
 
 async function dropSession () {
   forgetOwnAvatar()
+  forgetSecureReach()
   stopPolling()
   sessionAbort.abort()
   sessionAbort = new AbortController()
