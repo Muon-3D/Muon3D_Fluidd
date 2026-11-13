@@ -186,6 +186,18 @@ describe('Connect over Bluetooth with the cloud saying the printer is offline (K
     await opensWithoutGrant()
   })
 
+  it('refuses when the console answers the ask itself with deletion pending (KAN-1396)', async () => {
+    cloudState.printers = [printer(true)]
+    cloud(() => new Response(JSON.stringify({ deletion_pending: true, delete_after: 1800000000 }), { status: 403 }))
+    useBluetoothFor(EID, fakePrinter().device)
+
+    const error = await borrowCloudPrinter(EID).catch(e => e)
+
+    expect(error).toBeInstanceOf(CloudError)
+    expect(error.deletionPending).toBe(true)
+    expect(ble.endpoint.addLink).not.toHaveBeenCalled()
+  })
+
   it('stays blocked while the account is waiting to be deleted', async () => {
     cloudState.printers = [printer(false)]
     const calls = cloud(unreachable)

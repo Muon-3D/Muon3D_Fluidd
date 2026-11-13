@@ -232,6 +232,10 @@ async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promis
     own.abort()
   }
   signal.throwIfAborted()
+  // The ask itself may have been the first to learn the account is waiting to
+  // be deleted (a 403 deletion_pending sets deletionState). That refusal stands.
+  const refusedNow = deletionRefusal()
+  if (refusedNow) throw refusedNow
   if (grant) return sessionFrom(grant)
   let relayUrl = cloudState.config?.relay_url
   if (!relayUrl) {
