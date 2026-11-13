@@ -11,6 +11,7 @@
  * publication summaries carry it from KAN-395 on.
  */
 import { MODELS_URL } from './api'
+import { modelsResourceUrl } from './transport'
 
 /** The standalone Library, where a public print has its page. */
 export const LIBRARY_URL: string = (import.meta.env.VITE_LIBRARY_URL || 'https://library.muon3d.com').replace(/\/+$/, '')
@@ -59,7 +60,7 @@ export interface DiscoverCard {
 export function safePicture (value: string | null | undefined): string | null {
   if (!value) return null
   try {
-    const url = new URL(value, MODELS_URL)
+    const url = new URL(modelsResourceUrl(value))
     return url.protocol === 'https:' || url.origin === new URL(MODELS_URL).origin ? url.href : null
   } catch {
     return null
