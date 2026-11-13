@@ -18,6 +18,7 @@
  */
 import Vue from 'vue'
 import { browserEndpoint } from '@/services/muon-cloud/iroh'
+import { BLUETOOTH_NOT_CONNECTED_MESSAGE, bluetoothUnavailable } from './refusal'
 import { activateCloudPrinter } from '@/services/muon-cloud/activate'
 import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
 import { bluetoothRouteFor, releaseBluetoothLink, wantsBluetoothFor } from './link'
@@ -51,6 +52,11 @@ interface PairingSession {
 
 interface PairingEndpoint {
   beginPairing? (printerId: string, label: string): Promise<PairingSession>;
+}
+
+/** True while a pairing runs on the tab's endpoint: replacing the endpoint would end it (KAN-2531). */
+export function pairingActive (): boolean {
+  return pairingState.phase === 'connecting' || pairingState.phase === 'code' || pairingState.phase === 'waiting'
 }
 
 let generation = 0
@@ -106,6 +112,7 @@ export function pairingMessage (error: unknown): string {
   const kind = kindOf(error)
   const text = textOf(error)
   if (error instanceof Closed) return error.message
+  if (bluetoothUnavailable(error)) return BLUETOOTH_NOT_CONNECTED_MESSAGE
   if (kind === 'code-burned') {
     return 'Three wrong codes. The printer has paused adding devices for 15 minutes, and nothing was added.'
   }

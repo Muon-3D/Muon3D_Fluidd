@@ -283,6 +283,15 @@ async function statusConnection (printerId: string): Promise<PrinterTransport> {
 }
 
 /**
+ * An explicit Bluetooth connect replaced the tab's endpoint (KAN-2531): every
+ * other printer's transport died with it. Drop them, so the next poll and open
+ * dial again on the new one.
+ */
+export function dropOtherCloudConnections (except: string) {
+  for (const id of [...statusConnections.keys()]) if (id.toLowerCase() !== except.toLowerCase()) dropCloudConnection(id)
+}
+
+/**
  * Drops the shared connection to a printer that stopped answering through it,
  * so the next open and the next status poll dial again instead of borrowing
  * the stalled one.

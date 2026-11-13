@@ -88,6 +88,12 @@ export function groupedCode (code: string): string {
   return plain.length === 6 ? `${plain.slice(0, 3)} ${plain.slice(3)}` : plain
 }
 
+/** Bluetooth setups open on the tab's endpoint: replacing it would end them (KAN-2531). */
+let openSetups = 0
+export function bluetoothSetupOpen (): boolean {
+  return openSetups > 0
+}
+
 export async function connectForSetup (printer: NearbyPrinter, options: ConnectForSetupOptions = {}): Promise<BleSetupResult> {
   const log = options.log ?? (() => {})
   const name = printer.display || printer.localName || 'The printer'
@@ -112,7 +118,12 @@ export async function connectForSetup (printer: NearbyPrinter, options: ConnectF
   }
 
   let session: SessionPrinter | null = null
+  openSetups++
+  let counted = true
+  // The radio going ends the setup whoever hung up.
+  link.closed.then(() => { if (counted) { counted = false; openSetups-- } })
   const hangUp = async () => {
+    if (counted) { counted = false; openSetups-- }
     try {
       session?.close()
     } catch { /* already closed */ }
