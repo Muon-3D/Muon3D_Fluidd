@@ -473,9 +473,9 @@ $glass: "html[data-m3d-style='glass']";
   // arrive from where they were called and leave faster than they came (exits
   // at three quarters of the entry, on the exit curve). A menu is one object:
   // its rows don't stagger in.
-  // Vuetify's own select and autocomplete menus (.v-menu__content--auto)
-  // are left alone: it turns their transition off on purpose and animates
-  // their rows itself.
+  // A select placed by Vuetify itself (menu-props "auto", .v-menu__content--auto)
+  // is left alone: Vuetify turns its transition off on purpose. Control has
+  // none today, and its selects open with no transition, as before.
   .v-menu-transition-enter-active:not(.v-menu__content--auto),
   .slide-y-transition-enter-active {
     transition:

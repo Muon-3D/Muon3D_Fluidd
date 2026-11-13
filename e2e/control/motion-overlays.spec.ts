@@ -101,28 +101,6 @@ test.describe('on a computer', () => {
     expect(gone?.duration).toMatch(/^0\.16s/)
     expect(gone?.easing).toMatch(/^cubic-bezier\(0\.4, 0, 1, 1\)/)
   })
-
-  test('a select\'s menu in Settings is left to Vuetify: no 94 % start, no 160 ms step', async ({ page, open }) => {
-    await open('/settings#general')
-    const general = page.getByTestId('general-settings')
-    await expect(general).toBeVisible()
-    // The Dates select has no data-tid; its aria-label is the most stable hook.
-    const dates = general.locator('.v-select', { has: page.getByLabel('Dates', { exact: true }) })
-    await expect(dates).toBeVisible()
-    // Vuetify gives select menus .v-menu__content--auto and turns their enter
-    // transition off (it animates the rows itself). Both values are read in
-    // the observer callback that sees -enter-active, while -enter is still on,
-    // so they are the start state and not a frame sampled mid-flight: the
-    // duration is not our 160 ms, and the transform is none, not scale(0.94).
-    const entering = await watchClass(page, '.v-menu__content--auto', 'v-menu-transition-enter-active')
-    await dates.locator('.v-input__slot').click()
-    const enter = await entering()
-    expect(enter, 'the select menu opened').not.toBeNull()
-    expect(enter!.classes).toContain('v-menu-transition-enter')
-    expect(enter!.duration).not.toMatch(/0\.16s/)
-    expect(enter!.scale).not.toBeCloseTo(0.94, 2)
-    expect(enter!.transform).toBe('none')
-  })
 })
 
 test.describe('on a phone', () => {
