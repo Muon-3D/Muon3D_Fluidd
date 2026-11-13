@@ -25,6 +25,27 @@ export function slicerUrl (configured: string | undefined, base: string): URL | 
 export const configuredSlicerUrl = (): URL | null =>
   slicerUrl(import.meta.env.VUE_MUON_SLICER_URL, window.location.href)
 
+/** Where the slicer is when a link has to leave this page (Library's Slice and print). */
+export const HOSTED_SLICER_URL = 'https://slicer.muon3d.com/'
+
+/**
+ * The slicer's address for a link that opens it in its own tab: the origin of
+ * VUE_MUON_SLICER_URL when a build points it at another site, else the hosted
+ * slicer. A slicer on this page's own origin (the default /slicer/embed.html,
+ * the copy Control and printers serve) is a frame, and this origin's root is
+ * Control, not the slicer, so a link never goes there.
+ */
+export function slicerLinkBase (configured: string | undefined, base: string): string {
+  if (!(configured ?? '').trim()) return HOSTED_SLICER_URL
+  const url = slicerUrl(configured, base)
+  if (!url || url.origin === new URL(base).origin) return HOSTED_SLICER_URL
+  return `${url.origin}/`
+}
+
+/** slicerLinkBase for this build, against this page. */
+export const configuredSlicerLinkBase = (): string =>
+  slicerLinkBase(import.meta.env.VUE_MUON_SLICER_URL, window.location.href)
+
 /**
  * A line only the slicer's embed.html carries (its frame-host list), never
  * Fluidd's index.html, which a server without the slicer answers for any

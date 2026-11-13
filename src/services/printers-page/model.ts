@@ -19,6 +19,9 @@ export interface TileJob {
   layers: number | null;
   nozzle: number | null;
   bed: number | null;
+  /** What the heaters are asked to reach (0 or null: off, or not said). */
+  nozzleTarget?: number | null;
+  bedTarget?: number | null;
   /** What the printer says is loaded, when anyone has said. */
   material?: { name: string | null, colour: string | null } | null;
 }
@@ -39,6 +42,8 @@ export interface PrinterTile {
   job: TileJob | null;
   /** The group it is in, for the printing cards. */
   groupName: string | null;
+  /** Who shared it with you, on a printer shared with you (never an address). */
+  sharedBy?: string | null;
 }
 
 export interface TileGroup {
@@ -113,6 +118,23 @@ const TONES: Record<TileState, TileTone> = {
   new: 'info'
 }
 
+/** A heater more than this many degrees below its target is still heating. */
+const HEATING_GAP = 3
+
+/**
+ * The temperature to show while a print is still heating up, or null when it is not:
+ * a heater with a target above 0 whose reported temperature is more than 3 degrees
+ * below it. The nozzle speaks first; the plate only when the nozzle is there.
+ */
+export function heatingTemp (job: TileJob | null | undefined): number | null {
+  if (!job) return null
+  const behind = (temp: number | null | undefined, target: number | null | undefined) =>
+    typeof temp === 'number' && typeof target === 'number' && target > 0 && target - temp > HEATING_GAP
+  if (behind(job.nozzle, job.nozzleTarget)) return job.nozzle
+  if (behind(job.bed, job.bedTarget)) return job.bed
+  return null
+}
+
 /** Paused and faulted printers want someone. */
 export function needsYou (state: TileState): boolean {
   return state === 'paused' || state === 'error'
@@ -134,6 +156,8 @@ function statusJob (s: PrinterStatus | undefined): TileJob | null {
     layers: s.totalLayers ?? null,
     nozzle: s.extruder ? Math.round(s.extruder.temperature) : null,
     bed: s.bed ? Math.round(s.bed.temperature) : null,
+    nozzleTarget: s.extruder ? s.extruder.target : null,
+    bedTarget: s.bed ? s.bed.target : null,
     material: s.material ?? null
   }
 }
@@ -195,7 +219,9 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
   } else {
     detail = e.detail
   }
+  const sharedBy = e.cloud?.shared ? e.cloud.sharer?.display_name ?? e.cloud.shared_by ?? 'someone' : null
   return {
+    sharedBy,
     key: e.key,
     entry: e,
     name: parts.name,
@@ -266,12 +292,20 @@ export function printersPage (src: PageSources): PrintersPage {
     members.forEach(e => grouped.add(e.key))
     groups.push(group(g.id, g.name, place(members.map(e => tileFor(e, src, g.name)), true), true))
   }
+  // Shared with you (KAN-2257, control-ctx): a printer someone shared with
+  // you and you haven't put in one of your groups has its own place, each
+  // tagged with who shared it.
+  const shared = cloud.filter(e => !grouped.has(e.key) && !!e.cloud?.shared)
+  shared.forEach(e => grouped.add(e.key))
   const ungrouped = cloud.filter(e => !grouped.has(e.key))
   // Kept, even empty, while groups hold printers: it is where a printer is
   // dragged to take it out of its group.
-  if (ungrouped.length || (src.groups.length && cloud.length)) {
+  if (ungrouped.length || (src.groups.length && cloud.length > shared.length)) {
     const name = src.groups.length ? 'Not in a group' : 'Your printers'
     groups.push(group('ungrouped', name, place(ungrouped.map(e => tileFor(e, src, null))), false))
+  }
+  if (shared.length) {
+    groups.push(group('shared', 'Shared with you', place(shared.map(e => tileFor(e, src, null)), true), false))
   }
   if (src.directory.local.length) {
     groups.push(group('saved', 'Saved in this browser', place(src.directory.local.map(e => tileFor(e, src, null))), false))
