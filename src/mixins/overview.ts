@@ -8,6 +8,7 @@ import type { HistoryItem } from '@/store/history/types'
 import type { QueuedJob } from '@/store/jobQueue/types'
 import { jobName } from '@/services/printers-page/model'
 import { plateCheckNeeded } from '@/services/jobs/plate'
+import { plateNoticeFor } from '@/services/plate/ask'
 import { filamentFact, heaterTile, longDuration, spoolFact, type HeaterTile } from '@/services/overview/model'
 import { activeSlug, printerHomePath } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
@@ -180,7 +181,8 @@ export default class OverviewMixin extends Mixins(ControlMixin, FilesMixin) {
     const ok = await this.$confirm(`${this.printerName} heats up, homes and starts printing.`, {
       title: `Print ${name} on ${this.printerName}?`,
       buttonTrueText: 'Print now',
-      plateCheck: plateCheckNeeded(this.$store.state.history?.jobs)
+      plateCheck: plateCheckNeeded(this.$store.state.history?.jobs),
+      plateNotice: plateNoticeFor(this.$store.state)
     })
     if (!ok || target !== this.panelTarget || !this.controlReady || this.busy) return
     const spoolman = this.$store.getters['spoolman/getAvailable'] && this.$store.state.config.uiSettings.spoolman.autoSpoolSelectionDialog

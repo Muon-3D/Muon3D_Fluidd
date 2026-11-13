@@ -20,6 +20,8 @@ export interface ConfirmOptions {
   width?: number;
   /** A print starts: the button stays off until the plate check is ticked. */
   plateCheck?: boolean;
+  /** A print starts and the printer says the plate needs confirming: shows the plate-clear notice inline (CT-14). */
+  plateNotice?: { managed: boolean } | null;
   color?: string;
   icon?: string;
 }
