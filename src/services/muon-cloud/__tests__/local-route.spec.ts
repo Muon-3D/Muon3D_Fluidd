@@ -50,7 +50,7 @@ describe('what Connect locally does (KAN-2529)', () => {
 })
 
 describe('the address from the console is checked before it is opened (KAN-2529)', () => {
-  it.each(['evil.example', 'a@evil', '8.8.8.8', '192.168.1.5:80/x', '192.168.1.5/x', '172.32.0.1', '300.1.1.1', 'a b', ''])('rejects %s', addr => {
+  it.each(['evil.example', 'a@evil', '8.8.8.8', '192.168.1.5:80/x', '192.168.1.5/x', '172.32.0.1', '300.1.1.1', 'a b', '', '134744072', '0x08080808', '0x7f000001', '3232235777'])('rejects %s', addr => {
     expect(isOpenableAddr(addr)).toBe(false)
   })
 
