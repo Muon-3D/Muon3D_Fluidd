@@ -5,13 +5,17 @@
   >
     <v-card class="muon-cloud-dialog">
       <v-card-title class="pb-1">
-        {{ mfaToken ? 'Enter your code' : mode === 'sign-in' ? 'Sign in to Muon3D' : 'Create your Muon3D account' }}
+        {{ !sessionAllowed ? 'Your Muon3D account' : mfaToken ? 'Enter your code' : mode === 'sign-in' ? 'Sign in to Muon3D' : 'Create your Muon3D account' }}
       </v-card-title>
       <v-card-subtitle class="pt-1">
         Reach your linked printers from anywhere. Printers on this network keep working without an account.
       </v-card-subtitle>
 
-      <v-card-text v-if="redirecting">
+      <v-card-text v-if="!sessionAllowed">
+        <open-in-muon-control :route="$route ? $route.fullPath : '/'" />
+      </v-card-text>
+
+      <v-card-text v-else-if="redirecting">
         Taking you to the Muon3D sign-in…
       </v-card-text>
 
@@ -111,7 +115,7 @@
       </v-card-text>
 
       <v-card-actions
-        v-if="mfaToken"
+        v-if="sessionAllowed && mfaToken"
         class="justify-center pb-4"
       >
         <v-btn
@@ -126,7 +130,7 @@
       </v-card-actions>
 
       <v-card-actions
-        v-else-if="!redirecting"
+        v-else-if="sessionAllowed && !redirecting"
         class="justify-center pb-4"
       >
         <span class="text-body-2 text--secondary">
@@ -149,8 +153,10 @@
 import { Component, Prop, VModel, Vue } from 'vue-property-decorator'
 import { signIn, signInWithCode, signUp } from '@/services/muon-cloud/state'
 import { centralLoginEnabled, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
+import { cloudSessionAllowed } from '@/services/muon-cloud/api'
+import OpenInMuonControl from './OpenInMuonControl.vue'
 
-@Component({})
+@Component({ components: { OpenInMuonControl } })
 export default class CloudAccountDialog extends Vue {
   @VModel({ type: Boolean })
     open?: boolean
@@ -173,6 +179,9 @@ export default class CloudAccountDialog extends Vue {
   icons = { eye: '$eye', eyeOff: '$eyeOff' }
 
   redirecting = false
+
+  /** False on the printer's plain-HTTP address: no form, one link to the console (KAN-2192). */
+  sessionAllowed = cloudSessionAllowed()
 
   created () {
     this.mode = this.initialMode

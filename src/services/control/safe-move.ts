@@ -12,9 +12,17 @@
  * bed_mesh honours it itself; a plain `G1 X.. Y..` from the UI does not. Every
  * hand move Control's mounted pages send (ControlMixin's moveBy / moveTo, the
  * probe check) goes through `planMove`, which reads the regions the printer
- * declares (never a hard-coded copy) and either lifts to the traverse height
- * before crossing, or refuses. (Upstream Fluidd's toolhead widgets, which
- * send moves directly, are no longer mounted by any page.)
+ * declares (never a hard-coded copy). No keys, no notch.
+ *
+ * The rule is Klipper's (bed_mesh._move_to_next_probe lifts when toolhead
+ * Z < no_go_traverse_z; muon_guard refuses a client move across the notch
+ * below it): the notch only matters while the plate is within notch height,
+ * toolhead Z below `no_go_traverse_z`. Then a move ending over the notch is
+ * refused and one crossing it lifts over; higher up, moves are free. The zone
+ * is the notch itself: `no_go_boundary_tolerance` is bed_mesh's probe-snapping
+ * distance, not part of it. While Z is not homed the plate height is unknown,
+ * so it counts as within notch height. (Upstream Fluidd's toolhead widgets,
+ * which send moves directly, are no longer mounted by any page.)
  */
 
 export interface NoGoRegion {
@@ -24,9 +32,9 @@ export interface NoGoRegion {
 
 export interface NoGoConfig {
   regions: NoGoRegion[]
-  /** Padding around every region, mm. */
+  /** bed_mesh's probe-snapping distance, mm. Not part of the notch. */
   tolerance: number
-  /** Below this Z the nozzle must not be inside a region. */
+  /** Notch height: below this toolhead Z the nozzle must not be inside a region. */
   traverseZ: number
 }
 
@@ -51,19 +59,36 @@ const pair = (value: unknown): [number, number] | null => {
 }
 
 /**
+ * Extra room kept around every notch region, mm, for the crossing, end and
+ * Z-nudge checks. Control is the ONLY guard on these hand moves today: the
+ * Klipper-side notch check (muon_guard, Klipper PR #117, KAN-1731) is not
+ * merged. This stays until that is merged and checked on a real M1; the
+ * printer's no_go_boundary_tolerance (10 mm on the M1) is bed_mesh's
+ * probe-snapping distance, not a guard, and is not used here.
+ */
+export const NOTCH_MARGIN_MM = 2
+
+/**
  * The no-go regions from `configfile.settings.bed_mesh`, or null when the
- * printer declares none. A region that does not parse makes the whole config
- * unusable rather than silently dropped: `planXYMove` then refuses low moves.
+ * printer declares none. Every `no_go_region_N_min/max` pair present is read,
+ * whatever its numbering. A region that does not parse (or has only one
+ * corner) makes the whole config unusable rather than silently dropped:
+ * moves then only raise the head. When regions exist but `no_go_traverse_z`
+ * is missing or not above 0, the notch height is unknown, so every height
+ * counts as within it (traverseZ is Infinity: nothing crosses or ends low
+ * over a region).
  */
 export function readNoGo (bedMesh: Record<string, unknown> | undefined | null): NoGoConfig | null | 'invalid' {
   if (!bedMesh) return null
+  const numbers = new Set<number>()
+  for (const key of Object.keys(bedMesh)) {
+    const m = /^no_go_region_(\d+)_(min|max)$/.exec(key)
+    if (m && bedMesh[key] !== undefined) numbers.add(Number(m[1]))
+  }
   const regions: NoGoRegion[] = []
-  for (let n = 1; n < 100; n++) {
-    const rawMin = bedMesh[`no_go_region_${n}_min`]
-    const rawMax = bedMesh[`no_go_region_${n}_max`]
-    if (rawMin === undefined && rawMax === undefined) break
-    const min = pair(rawMin)
-    const max = pair(rawMax)
+  for (const n of [...numbers].sort((a, b) => a - b)) {
+    const min = pair(bedMesh[`no_go_region_${n}_min`])
+    const max = pair(bedMesh[`no_go_region_${n}_max`])
     if (!min || !max) return 'invalid'
     regions.push({
       min: [Math.min(min[0], max[0]), Math.min(min[1], max[1])],
@@ -72,11 +97,12 @@ export function readNoGo (bedMesh: Record<string, unknown> | undefined | null): 
   }
   if (!regions.length) return null
   const tolerance = Number(bedMesh.no_go_boundary_tolerance ?? 0)
-  const traverseZ = Number(bedMesh.no_go_traverse_z)
-  if (!Number.isFinite(tolerance) || tolerance < 0 || !Number.isFinite(traverseZ)) return 'invalid'
+  const rawZ = bedMesh.no_go_traverse_z
+  const z = rawZ === null || rawZ === undefined || (typeof rawZ === 'string' && rawZ.trim() === '') ? NaN : Number(rawZ)
+  const traverseZ = Number.isFinite(z) && z > 0 ? z : Infinity
+  if (!Number.isFinite(tolerance) || tolerance < 0) return 'invalid'
   return { regions, tolerance, traverseZ }
 }
-
 const inside = (x: number, y: number, r: NoGoRegion, pad: number) =>
   x >= r.min[0] - pad && x <= r.max[0] + pad && y >= r.min[1] - pad && y <= r.max[1] + pad
 
@@ -195,16 +221,20 @@ const round = (v: number) => Math.round(v * 1000) / 1000
  * still clears the notch where the mesh is lower.
  *
  * A single straight move is returned whenever it is safe, so ordinary jogs
- * are unchanged. A low path through a region (or its tolerance band) becomes
- * up to the crossing height, across, then down to `to.z`. Raising Z alone is
- * always allowed, even when the regions cannot be read: it is the way out.
+ * are unchanged. A low path through the notch becomes up to the crossing
+ * height, across, then down to `to.z`. Raising Z alone is always allowed,
+ * even when the regions cannot be read: it is the way out. With `zHomed`
+ * false the plate height is unknown, so any path into or across the notch is
+ * refused (there is no height to lift to).
  */
 export function planMove (
   from: { x: number, y: number, z: number },
   to: { x: number, y: number, z: number },
   noGo: NoGoConfig | null | 'invalid',
   limits: Limits,
-  margin = 0
+  margin = 0,
+  zHomed = true,
+  xyHomed = true
 ): MovePlan {
   const known = (vs: number[]) => vs.every(Number.isFinite)
   if (!known([to.x, to.y, to.z])) return { ok: false, reason: 'The head position is not known.' }
@@ -220,23 +250,31 @@ export function planMove (
   if (!movesXY && to.z >= from.z) return direct
 
   if (noGo === 'invalid') {
-    return { ok: false, reason: 'The printer’s no-go regions could not be read, so Control will only raise the head. Check [bed_mesh] in printer.cfg.' }
+    return { ok: false, reason: 'The printer’s notch could not be read, so Control will only raise the head. Check [bed_mesh] in printer.cfg.' }
+  }
+
+  // X or Y not homed: the head's place is unknown, so it may be over the notch and low. Only raising Z (above) goes.
+  if (!xyHomed) return { ok: false, reason: 'Home X and Y first: until the head’s place is known, Control keeps it off the notch.' }
+
+  const pad = NOTCH_MARGIN_MM
+  if (!zHomed) {
+    const touches = noGo.regions.some(r => inside(to.x, to.y, r, pad) || (movesXY && segmentHits([from.x, from.y], [to.x, to.y], r, pad)))
+    return touches ? { ok: false, reason: 'Home Z first: until the plate height is known, the head stays off the notch.' } : direct
   }
 
   const clear = noGo.traverseZ + margin
-  // Ending low inside a region is refused outright; the tolerance band only
-  // makes the crossing check more cautious.
-  if (to.z < clear && noGo.regions.some(r => inside(to.x, to.y, r, 0))) {
-    return { ok: false, reason: `That spot is over the bed notch. Raise Z to ${round(clear)} mm first.` }
+  if (to.z < clear && noGo.regions.some(r => inside(to.x, to.y, r, pad))) {
+    return { ok: false, reason: Number.isFinite(clear) ? `That spot is over the bed notch. Raise Z to ${round(clear)} mm first.` : 'That spot is over the bed notch, and the printer doesn’t say the notch height (no_go_traverse_z), so the head stays off it.' }
   }
   if (!movesXY) return direct
 
   // A combined move changes Z along the way, so judge it at its lowest point.
   const lowest = Math.min(from.z, to.z)
-  const crosses = noGo.regions.some(r => segmentHits([from.x, from.y], [to.x, to.y], r, noGo.tolerance))
+  const crosses = noGo.regions.some(r => segmentHits([from.x, from.y], [to.x, to.y], r, pad))
   if (lowest >= clear || !crosses) return direct
 
   const over = Math.max(clear, to.z)
+  if (!Number.isFinite(over)) return { ok: false, reason: 'That path crosses the bed notch, and the printer doesn’t say the notch height (no_go_traverse_z), so the head goes around it.' }
   if (over > limits.max[2]) return { ok: false, reason: 'The safe crossing height is above the Z limit.' }
   const steps: Place[] = [{ Z: round(over) }, { X: round(to.x), Y: round(to.y) }]
   if (to.z < over) steps.push({ Z: round(to.z) })
@@ -255,9 +293,11 @@ export function planXYMove (
   from: { x: number, y: number, z: number },
   to: { x: number, y: number },
   noGo: NoGoConfig | null | 'invalid',
-  limits: Limits
+  limits: Limits,
+  zHomed = true,
+  xyHomed = true
 ): MovePlan {
-  const plan = planMove(from, { x: to.x, y: to.y, z: from.z }, noGo, limits)
+  const plan = planMove(from, { x: to.x, y: to.y, z: from.z }, noGo, limits, 0, zHomed, xyHomed)
   if (plan.ok && !plan.lifted) return { ok: true, steps: [{ X: plan.steps[0].X, Y: plan.steps[0].Y }], lifted: false }
   return plan
 }
@@ -266,20 +306,23 @@ export function planXYMove (
  * Why a Z-offset nudge of `by` mm (SET_GCODE_OFFSET … MOVE=1, which moves
  * the head) must not be sent with the head idle at `head`, or ''. Raising is
  * always allowed. Lowering is refused when the regions can't be read, and
- * when the head is over a region (or its tolerance band) and would end below
+ * when the head is over the notch and would end below
  * the crossing height. `margin` is the active mesh's spread, as in planMove.
  */
 export function zNudgeRefusal (
   head: { x: number, y: number, z: number },
   by: number,
   noGo: NoGoConfig | null | 'invalid',
-  margin = 0
+  margin = 0,
+  xyHomed = true
 ): string {
   if (!(by < 0) || noGo === null) return ''
-  if (noGo === 'invalid') return 'The printer’s no-go regions could not be read, so the nozzle will only be raised. Check [bed_mesh] in printer.cfg.'
+  // X or Y not homed: the head may be over the notch, so only raising goes (as planMove).
+  if (noGo !== 'invalid' && !xyHomed) return 'Home X and Y first: until the head’s place is known, the nozzle will only be raised.'
+  if (noGo === 'invalid') return 'The printer’s notch could not be read, so the nozzle will only be raised. Check [bed_mesh] in printer.cfg.'
   if (![head.x, head.y, head.z, margin].every(Number.isFinite)) return 'The head position is not known.'
   const clear = noGo.traverseZ + margin
-  const over = noGo.regions.some(r => inside(head.x, head.y, r, noGo.tolerance))
-  if (over && head.z + by < clear) return `The head is over the bed notch. Move it away, or raise Z to ${round(clear)} mm, before lowering the nozzle.`
+  const over = noGo.regions.some(r => inside(head.x, head.y, r, NOTCH_MARGIN_MM))
+  if (over && head.z + by < clear) return Number.isFinite(clear) ? `The head is over the bed notch. Move it away, or raise Z to ${round(clear)} mm, before lowering the nozzle.` : 'The head is over the bed notch. Move it away before lowering the nozzle.'
   return ''
 }

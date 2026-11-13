@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { meshSpan, readNoGo, planMove, planXYMove, segmentHits, type NoGoConfig, type Limits } from '../safe-move'
+import { meshSpan, NOTCH_MARGIN_MM, readNoGo, planMove, planXYMove, segmentHits, zNudgeRefusal, type NoGoConfig, type Limits } from '../safe-move'
 
 // The M1's [bed_mesh], as the printer reports it in configfile.settings.
 const M1_BED_MESH = {
@@ -28,7 +28,10 @@ describe('readNoGo', () => {
 
   it('is invalid, not empty, when a region does not parse', () => {
     expect(readNoGo({ no_go_region_1_min: 'x', no_go_region_1_max: [125, 34], no_go_traverse_z: 6 })).toBe('invalid')
-    expect(readNoGo({ no_go_region_1_min: [75, 0], no_go_region_1_max: [125, 34] })).toBe('invalid')
+  })
+
+  it('with no notch height, counts every height as within the notch (it blocks crossings, not raising)', () => {
+    expect((readNoGo({ no_go_region_1_min: [75, 0], no_go_region_1_max: [125, 34] }) as NoGoConfig).traverseZ).toBe(Infinity)
   })
 })
 
@@ -91,6 +94,34 @@ describe('planXYMove', () => {
   })
 })
 
+describe('the notch rule (Klipper\'s: toolhead Z below no_go_traverse_z)', () => {
+  it('is the notch itself: a low path through the old tolerance band is one straight move', () => {
+    expect(planXYMove({ x: 130, y: 30, z: 1 }, { x: 130, y: 20 }, m1, LIMITS))
+      .toEqual({ ok: true, steps: [{ X: 130, Y: 20 }], lifted: false })
+    expect(planXYMove({ x: 10, y: 40, z: 1 }, { x: 190, y: 40 }, m1, LIMITS))
+      .toEqual({ ok: true, steps: [{ X: 190, Y: 40 }], lifted: false })
+  })
+
+  it('refuses a move into the notch within notch height, and allows it with the plate lower', () => {
+    expect(planXYMove({ x: 70, y: 7, z: 5.9 }, { x: 100, y: 7 }, m1, LIMITS).ok).toBe(false)
+    expect(planXYMove({ x: 70, y: 7, z: 6 }, { x: 100, y: 7 }, m1, LIMITS))
+      .toEqual({ ok: true, steps: [{ X: 100, Y: 7 }], lifted: false })
+  })
+
+  it('counts an unknown plate height (Z not homed) as within notch height', () => {
+    expect(planXYMove({ x: 70, y: 7, z: 20 }, { x: 100, y: 7 }, m1, LIMITS, false))
+      .toEqual({ ok: false, reason: expect.stringMatching(/Home Z first/) })
+    expect(planXYMove({ x: 60, y: 20, z: 20 }, { x: 160, y: 20 }, m1, LIMITS, false).ok).toBe(false)
+    expect(planXYMove({ x: 60, y: 60, z: 20 }, { x: 160, y: 60 }, m1, LIMITS, false))
+      .toEqual({ ok: true, steps: [{ X: 160, Y: 60 }], lifted: false })
+  })
+
+  it('has no notch when the printer declares none', () => {
+    expect(readNoGo({ mesh_min: [10, 10] })).toBeNull()
+    expect(planXYMove({ x: 70, y: 7, z: 1 }, { x: 100, y: 7 }, null, LIMITS, false).ok).toBe(true)
+  })
+})
+
 describe('planMove (with Z)', () => {
   it('refuses lowering Z into the notch while the head is over it', () => {
     expect(planMove({ x: 100, y: 10, z: 8 }, { x: 100, y: 10, z: 2 }, m1, LIMITS).ok).toBe(false)
@@ -133,5 +164,43 @@ describe('the mesh margin', () => {
     expect(planMove({ x: 60, y: 10, z: 6.2 }, { x: 140, y: 10, z: 6.2 }, m1, LIMITS, 0.5))
       .toEqual({ ok: true, steps: [{ Z: 6.5 }, { X: 140, Y: 10 }, { Z: 6.2 }], lifted: true })
     expect(planMove({ x: 60, y: 10, z: 6.6 }, { x: 140, y: 10, z: 6.6 }, m1, LIMITS, 0.5)).toEqual({ ok: true, steps: [{ X: 140, Y: 10, Z: 6.6 }], lifted: false })
+  })
+})
+
+/* Opus review of the notch (12 Nov): Control is the only guard on these moves until Klipper #117. */
+describe('the notch guard, conservative while Control is the only guard', () => {
+  it('keeps a 2 mm margin around the notch: a low move ending 1 mm outside is refused, 3 mm outside goes', () => {
+    expect(NOTCH_MARGIN_MM).toBe(2)
+    expect(planMove({ x: 100, y: 60, z: 1 }, { x: 100, y: 35, z: 1 }, m1, LIMITS)).toMatchObject({ ok: false })
+    expect(planMove({ x: 100, y: 60, z: 1 }, { x: 100, y: 37, z: 1 }, m1, LIMITS)).toMatchObject({ ok: true, lifted: false })
+    // A low crossing that grazes the margin lifts over it.
+    expect(planMove({ x: 60, y: 35, z: 1 }, { x: 140, y: 35, z: 1 }, m1, LIMITS)).toMatchObject({ ok: true, lifted: true })
+    expect(zNudgeRefusal({ x: 100, y: 35, z: 6.5 }, -1, m1)).not.toBe('')
+  })
+
+  it('X or Y not homed: the head may be over the notch, so only raising Z goes', () => {
+    // M84, the head pushed by hand to Y 10, X and Z homed, then an X jog at Z 2 across x 75 to 125 (stale Y 100).
+    expect(planMove({ x: 60, y: 100, z: 2 }, { x: 140, y: 100, z: 2 }, m1, LIMITS, 0, true, false)).toEqual({ ok: false, reason: expect.stringMatching(/^Home X and Y first/) })
+    expect(planMove({ x: 60, y: 100, z: 2 }, { x: 60, y: 100, z: 1 }, m1, LIMITS, 0, true, false)).toMatchObject({ ok: false })
+    expect(planMove({ x: 60, y: 100, z: 2 }, { x: 60, y: 100, z: 20 }, m1, LIMITS, 0, true, false)).toMatchObject({ ok: true })
+    // No notch on the printer: nothing to guard.
+    expect(planMove({ x: 60, y: 100, z: 2 }, { x: 140, y: 100, z: 2 }, null, LIMITS, 0, true, false)).toMatchObject({ ok: true })
+  })
+
+  it('reads every region present, whatever its numbering', () => {
+    const only2 = readNoGo({ no_go_region_2_min: '75, 0', no_go_region_2_max: '125, 34', no_go_traverse_z: 6 }) as NoGoConfig
+    expect(only2.regions).toEqual([{ min: [75, 0], max: [125, 34] }])
+    expect(planMove({ x: 60, y: 10, z: 1 }, { x: 140, y: 10, z: 1 }, only2, LIMITS)).toMatchObject({ ok: true, lifted: true })
+    expect(readNoGo({ no_go_region_3_min: '1, 1' })).toBe('invalid')
+  })
+
+  it('a notch with no height (no_go_traverse_z missing, empty or 0) counts every Z as within it', () => {
+    for (const z of [null, '', 0, undefined]) {
+      const n = readNoGo({ no_go_region_1_min: '75, 0', no_go_region_1_max: '125, 34', no_go_traverse_z: z }) as NoGoConfig
+      expect(n.traverseZ).toBe(Infinity)
+      expect(planMove({ x: 60, y: 10, z: 150 }, { x: 140, y: 10, z: 150 }, n, LIMITS)).toMatchObject({ ok: false })
+      expect(planMove({ x: 100, y: 60, z: 150 }, { x: 100, y: 10, z: 150 }, n, LIMITS)).toMatchObject({ ok: false })
+      expect(planMove({ x: 60, y: 100, z: 150 }, { x: 140, y: 100, z: 150 }, n, LIMITS)).toMatchObject({ ok: true })
+    }
   })
 })
