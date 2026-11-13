@@ -12,7 +12,7 @@ const wasm = vi.hoisted(() => ({
   closeFails: false,
   create: null as any
 }))
-vi.mock('../vendor/muon-link-web/2273ba0/muon_link_web.js', () => ({
+vi.mock('../vendor/muon-link-web/1608e20/muon_link_web.js', () => ({
   default: async () => {},
   MuonEndpoint: { create: (...args: unknown[]) => wasm.create(...args) }
 }))
