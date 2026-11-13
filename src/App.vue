@@ -152,14 +152,15 @@ import { bluetoothCarrying } from '@/services/muon-ble/link'
 import { activationState } from '@/services/muon-cloud/activate'
 import { consolePresence } from '@/services/muon-cloud/presence'
 import FrameMixin from '@/mixins/frame'
-import { ACCOUNT_KEY, ALL_PRINTERS_KEY, LIBRARY_KEY, PAGE_KEYS, sectionForKey } from '@/router/printerSections'
-import { scopedPath } from '@/router/printerPagePaths'
+import { ACCOUNT_KEY, ALL_PRINTERS_KEY, LIBRARY_KEY, PAGE_KEYS, pageLabel, sectionForKey } from '@/router/printerSections'
+import { pageOfRoute, scopedPath } from '@/router/printerPagePaths'
 import { GoKeys } from '@/util/go-keys'
 import { isGcodeFile, isModelFile } from '@/services/jobs/model'
 import JobReadyDialog from './components/jobs/JobReadyDialog.vue'
 import { loaderCanGo, rememberTheme, removeLoader, startupState } from '@/services/startup/loader'
 import { saveSnapshotStatus } from '@/services/startup/snapshot'
 import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletion'
+import { Globals } from '@/globals'
 
 @Component<App>({
   metaInfo () {
@@ -495,16 +496,17 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
       return `Muon3D | ${this.$route.name ?? 'Managed preview'}`
     }
 
+    // The printer's name as people know it (Boxwood, not muon-boxwood-367a),
+    // and only once the printer has said it; the page's own name as the rail
+    // shows it (Overview, not the route's internal name); never "null"
+    // (KAN-2257).
+    const displayName = this.$store.getters['config/getDisplayName'] as string
     const instanceName = this.foreignPrinterRoute
       ? foreignRecordForSlug(this.$route.params.printer)?.name ?? 'Other printer'
-      : this.$store.getters['config/getDisplayName'] as string
-    const pageName = this.$route.name
+      : displayName && displayName !== Globals.PRODUCT_NAME ? printerNameParts(displayName).name : Globals.PRODUCT_NAME
+    const pageName = this.$route.params.printer ? pageLabel(pageOfRoute(this.$route)) ?? this.$route.name : this.$route.name
 
-    if (this.printerPrinting) {
-      return `[${this.progress}%] | ${instanceName} | ${pageName}`
-    } else {
-      return `${instanceName} | ${pageName}`
-    }
+    return [this.printerPrinting ? `[${this.progress}%]` : '', instanceName, pageName ?? ''].filter(Boolean).join(' | ')
   }
 
   get pageIcon (): LinkPropertyHref[] {

@@ -22,6 +22,12 @@ export interface ConfirmOptions {
   plateCheck?: boolean;
   /** A print starts and the printer says the plate needs confirming: shows the plate-clear notice inline (CT-14). */
   plateNotice?: { managed: boolean } | null;
+  /**
+   * A print starts and the printer can film it: a "Film it" switch under the
+   * message. `on` is what the printer's Timelapse settings say now; `set` is
+   * called with the switch's value, only when it changed, when the answer is yes.
+   */
+  film?: { on: boolean, line: string, set: (on: boolean) => unknown };
   color?: string;
   icon?: string;
 }

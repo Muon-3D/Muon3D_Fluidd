@@ -160,6 +160,7 @@ export const defaultState = (): ConfigState => {
         }
       },
       fileSystem: {
+        showHiddenFiles: false,
         activeFilters: {},
         sortBy: {},
         sortDesc: {}

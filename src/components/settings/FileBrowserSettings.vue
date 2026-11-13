@@ -38,6 +38,20 @@
           />
         </div>
       </div>
+      <div class="m3-set__row">
+        <div class="m3-set__label">
+          <b>Show hidden files</b>
+          <span>Names starting with a dot.</span>
+        </div>
+        <div class="m3-set__control">
+          <toggle-switch
+            :value="showHiddenFiles"
+            label="Show hidden files"
+            data-tid="files-show-hidden"
+            @input="showHiddenFiles = $event"
+          />
+        </div>
+      </div>
     </section>
   </div>
 </template>
@@ -46,12 +60,13 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import MuonGatesMixin from '@/mixins/muon-gates'
 import SegPicker from '@/components/control/SegPicker.vue'
+import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
 
 /** Settings › Files and editor (KAN-1960, files storyboard): says up front what Developer mode means for these files on a Muon printer. */
-@Component({ components: { SegPicker } })
+@Component({ components: { SegPicker, ToggleSwitch } })
 export default class FileBrowserSettings extends Mixins(MuonGatesMixin) {
   get printerName (): string {
     return printerNameParts(this.$store.getters['config/getDisplayName'] as string).name
@@ -71,6 +86,14 @@ export default class FileBrowserSettings extends Mixins(MuonGatesMixin) {
       value,
       server: true
     })
+  }
+
+  get showHiddenFiles (): boolean {
+    return !!this.$store.state.config.uiSettings.fileSystem.showHiddenFiles
+  }
+
+  set showHiddenFiles (value: boolean) {
+    this.$store.dispatch('config/saveByPath', { path: 'uiSettings.fileSystem.showHiddenFiles', value, server: true })
   }
 
   readonly sortOptions = [

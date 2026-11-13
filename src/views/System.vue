@@ -13,6 +13,21 @@
       </p>
     </div>
 
+    <div
+      class="sys__facts"
+      data-tid="system-facts"
+    >
+      <div
+        v-for="tile in factTiles"
+        :key="tile.key"
+        class="sys__fact"
+        :data-fact="tile.key"
+      >
+        <b>{{ tile.value }}</b>
+        <span>{{ tile.label }}<template v-if="tile.sub"> · {{ tile.sub }}</template></span>
+      </div>
+    </div>
+
     <div class="stiles">
       <section
         class="stile stile--12 sys__restart"
@@ -927,6 +942,23 @@ export default class System extends Mixins(OverviewMixin, ServicesMixin, Browser
     }, fileSize)
   }
 
+  /** The four facts at the top: the computer's load and heat, memory, storage, and how many boards answer. */
+  get factTiles (): Array<{ key: string, value: string, label: string, sub: string }> {
+    const bar = (key: string) => this.bars.find(b => b.key === key)
+    const cpu = bar('cpu')
+    const temp = bar('temperature')
+    const memory = bar('memory')
+    const disk = bar('disk')
+    const boards = this.boards
+    const answering = boards.filter(b => b.status === 'Ready').length
+    return [
+      { key: 'computer', value: cpu?.value ?? '—', label: 'Computer', sub: temp && temp.value !== '—' ? temp.value : '' },
+      { key: 'memory', value: memory?.value ?? '—', label: 'Memory', sub: memory?.sub ?? '' },
+      { key: 'storage', value: disk?.value ?? '—', label: 'Storage', sub: disk?.sub ?? '' },
+      { key: 'boards', value: String(boards.length), label: boards.length === 1 ? 'Board' : 'Boards', sub: !boards.length ? '' : answering === boards.length ? 'all answering' : `${answering} answering` }
+    ]
+  }
+
   get health () {
     return loadHealth(this.bars)
   }
@@ -1055,6 +1087,37 @@ export default class System extends Mixins(OverviewMixin, ServicesMixin, Browser
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 10px;
+  }
+
+  .sys__facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .sys__fact {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 14px 18px;
+    border-radius: 18px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text);
+
+    b {
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    span {
+      color: var(--m3d-text-muted);
+      font-size: 13px;
+    }
+  }
+
+  .sys--phone .sys__facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .sys__updates-link {
