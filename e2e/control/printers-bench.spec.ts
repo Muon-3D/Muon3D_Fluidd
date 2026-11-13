@@ -60,6 +60,10 @@ async function withFoundPrinter (page: Page, { linked = false } = {}) {
     const url = new URL(route.request().url())
     const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers })
+    // The printer itself says whose it is: linked to an account that is not the signed-in one.
+    if (linked && url.pathname === '/server/muon/link') {
+      return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ result: { phase: 'linked', account: 'someone.else@example.com' } }) })
+    }
     if (url.pathname === '/server/muon/identity') {
       return route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ name: 'muon-larch-41c2', display: 'muon-larch-41c2', endpoint_id: 'larch-41c2', derived_name: 'larch', suffix: '41c2' }) })
     }
@@ -265,7 +269,8 @@ test.describe('signed in', () => {
     await expect(page.getByTestId('access-code').or(page.getByTestId('access-outcome'))).toBeVisible()
   })
 
-  test('nothing matching the search says so in Bench as in Grid and List, and Clear search brings the benches back', async ({ page }) => {
+  test('nothing matching the search says so in Bench as in Grid and List, and Clear search brings the benches back', async ({ page }, info) => {
+    test.skip(info.project.name === 'phone', 'Search is not on the phone header')
     await withAccountPrinters(page, [cloudPrinter('p-elm', 'Elm'), cloudPrinter('p-cedar', 'Cedar')], [{ id: 'g1', name: 'Workshop bench', printers: ['p-elm', 'p-cedar'] }])
     await openPrinters(page)
     await toBench(page)
