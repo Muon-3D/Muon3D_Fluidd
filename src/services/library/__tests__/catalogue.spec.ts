@@ -28,7 +28,8 @@ describe('M3 catalogue', () => {
     const read = fetcher({ items: [], next_cursor: 'c:bound:24', ratings_available: false, empty_help: { message: 'Remove a filter', categories: [{ slug: 'home', name: 'Home', count: 3 }] } })
     const result = await browse('tools', '', { sort: 'trending', fits: '200,200,200', material: 'PLA', licence: 'CC0-1.0', min_size: '10', max_size: '50', min_seconds: '0', max_seconds: '3600' }, 'c:bound:12', undefined, read)
     const url = new URL(vi.mocked(read).mock.calls[0][0] as string)
-    expect(url.pathname).toBe('/v1/public/categories/tools')
+    // The service's address is the Library site's origin, under /models.
+    expect(url.origin + url.pathname).toBe('https://library.muon3d.com/models/v1/public/categories/tools')
     expect(Object.fromEntries(url.searchParams)).toMatchObject({ fits: '200,200,200', material: 'PLA', min_seconds: '0', max_seconds: '3600', min_size: '10', max_size: '50', licence: 'CC0-1.0', cursor: 'c:bound:12', sort: 'trending' })
     expect(result.help?.message).toBe('Remove a filter')
     expect(result.ratings).toBe(false)

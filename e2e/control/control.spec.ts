@@ -87,7 +87,7 @@ test.describe('Movement', () => {
     await expect(page.getByTestId('control-move').getByText('Homed', { exact: true })).toBeVisible()
     const box = await padBox(page)
     expect(Math.abs(box.width / box.height - 1)).toBeLessThan(0.02)
-    const notch = await page.getByTestId('trackpad-nogo').boundingBox()
+    const notch = await page.getByTestId('trackpad-notch').boundingBox()
     if (!notch) throw new Error('no notch drawn')
     // x 75–125 on the Y=0 edge, which is the top (the back) as the jog keys say: Y− is up.
     expect(Math.abs((notch.x - box.x) / box.width * BED - 75)).toBeLessThan(1)
@@ -357,8 +357,10 @@ test.describe('Movement', () => {
     await usePrinter(page, idle([150, 100, 10]))
     await open('/control')
     await expect(page.getByTestId('control-zoffset')).toHaveCount(0)
+    // Home Z sits beside Home all in the header now (CT-03), not in the menu.
+    await expect(page.getByTestId('control-move').getByTestId('home-z')).toBeVisible()
     await page.getByTestId('move-more').click()
-    await expect(page.getByTestId('menu-home-z')).toBeVisible()
+    await expect(page.getByTestId('motors-off')).toBeVisible()
     await expect(page.getByTestId('menu-zoffset')).toHaveCount(0)
     await expect(page.getByText('Z offset', { exact: true })).toHaveCount(0)
   })

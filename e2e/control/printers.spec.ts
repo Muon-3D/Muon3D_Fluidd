@@ -163,14 +163,14 @@ test('the sheet searches the network again: the console is asked again, and it s
 test('a printer found on this network is a row with Add, and the section is hidden when nothing is found', async ({ page }) => {
   await openPrinters(page)
   await expect(page.getByTestId('found')).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: 'Found on this network' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Found nearby · not yours yet' })).toHaveCount(0)
 })
 
 test('found on this network: one row with its address', async ({ page }) => {
   await withFoundPrinter(page)
   await openPrinters(page)
   const found = page.getByTestId('found')
-  await expect(found.getByRole('heading', { name: 'Found on this network' })).toBeVisible()
+  await expect(found.getByRole('heading', { name: 'Found nearby · not yours yet' })).toBeVisible()
   await expect(found).toContainText('Hazel')
   await expect(found).toContainText(FOUND_HOST)
   await expect(page.getByTestId('printers-summary')).toContainText('1 found on this network')

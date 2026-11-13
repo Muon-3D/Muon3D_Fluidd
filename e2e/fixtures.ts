@@ -46,8 +46,13 @@ export const test = base.extend<Options & Fixtures>({
       const config = await response.json()
       config.blacklist = [...(config.blacklist ?? []), 'localhost', '127.0.0.1']
       config.endpoints = [`http://localhost:${MOCK_PORT}`]
-      config.hosted = !printerHosted
-      if (printerHosted) config.blacklist = config.blacklist.filter((host: string) => host !== 'localhost')
+      // Only the printer-hosted Library tests change how Control is served;
+      // every other test keeps the served config (hosted: false, localhost
+      // blacklisted), which start-up depends on (src/init.ts).
+      if (printerHosted) {
+        config.hosted = false
+        config.blacklist = config.blacklist.filter((host: string) => host !== 'localhost')
+      }
       await route.fulfill({ response, json: config })
     })
     await use()

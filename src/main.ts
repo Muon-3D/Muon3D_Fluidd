@@ -55,6 +55,7 @@ import { retireProStorage } from './services/retired-storage'
 // Register global directives.
 import Blur from '@/directives/blur'
 import { restoreUiStyle } from '@/util/ui-style'
+import { followStartup } from '@/services/startup/heard'
 import { applyGlassIcons } from '@/util/glass-icons'
 import { followMotionSetting } from '@/services/m1-3d/device-settings'
 
@@ -116,6 +117,7 @@ store.commit('config/setRestoredUiStyle', restoredUiStyle)
 applyGlassIcons(vuetify.framework.icons.values as unknown as Record<string, unknown>, restoredUiStyle === 'glass')
 
 followMotionSetting()
+followStartup(store)
 
 const mountApp = () => {
   Vue.config.productionTip = false

@@ -78,7 +78,7 @@
       action="Discover"
       @action="$emit('back')"
     />
-    <template v-else>
+    <template v-else-if="category || query">
       <form
         class="mc-browse__filters"
         aria-label="Browse filters"
@@ -215,7 +215,7 @@
       >
         <library-state
           icon="search"
-          :title="query ? `Nothing found for “${query}”` : 'Make room for something new'"
+          :title="legacy && query ? 'No match among the newest models' : query ? `Nothing found for “${query}”` : 'Make room for something new'"
           :text="help ? help.message : 'Try fewer filters or explore another category.'"
           action="Reset filters"
           @action="clear"
@@ -282,7 +282,7 @@ import LibrarySearchBox from './LibrarySearchBox.vue'
 import LibraryModelCard from './LibraryModelCard.vue'
 import LibraryState from './LibraryState.vue'
 import { browse, categories, type Category, type CatalogueFilters, type BrowsePage } from '@/services/library/catalogue'
-import { summaryCard, type ShelfCard, type PublicationSummary } from '@/services/library/shelves'
+import { isNetworkError, summaryCard, type ShelfCard, type PublicationSummary } from '@/services/library/shelves'
 
 @Component({ components: { LibrarySearchBox, LibraryModelCard, LibraryState } })
 export default class LibraryBrowsePage extends Vue {
@@ -330,7 +330,7 @@ export default class LibraryBrowsePage extends Vue {
   clear () { this.filters = { sort: this.query ? 'relevance' : 'new' }; this.fits = false; this.minMinutes = this.maxMinutes = ''; this.load(true) }
   async load (fresh: boolean) {
     this.controller?.abort()
-    if (!this.category && !this.query) return
+    if (!this.category && !this.query) { this.cards = []; this.cursor = null; this.busy = false; return }
     if (this.query && this.query.trim().length < 2) { this.cards = []; this.cursor = null; this.busy = false; return }
     const controller = this.controller = new AbortController()
     if (fresh) { this.cards = []; this.cursor = null }
@@ -342,7 +342,7 @@ export default class LibraryBrowsePage extends Vue {
       if (controller.signal.aborted) return
       this.cards = [...this.cards, ...page.cards.filter(c => !this.cards.some(old => old.key === c.key))]
       this.cursor = page.cursor; this.help = page.help; this.ratings = page.ratings; this.legacy = page.legacy
-    } catch (e) { if (!controller.signal.aborted) this.error = e instanceof Error ? e.message : String(e) } finally { if (!controller.signal.aborted) this.busy = false }
+    } catch (e) { if (!controller.signal.aborted) this.error = isNetworkError(e) ? 'The Library couldn\'t be reached. Check the connection and try again.' : e instanceof Error ? e.message : String(e) } finally { if (!controller.signal.aborted) this.busy = false }
   }
 
   beforeDestroy () { window.removeEventListener('online', this.onOnline); this.controller?.abort(); this.categoryController.abort() }

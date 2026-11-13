@@ -19,7 +19,6 @@ export default async function globalSetup (config: FullConfig) {
     await page.route('**/config.json', async route => {
       const response = await route.fetch()
       const config = await response.json()
-      config.hosted = true
       config.blacklist = ['localhost', '127.0.0.1']
       config.endpoints = [`http://localhost:${MOCK_PORT}`]
       await route.fulfill({ response, json: config })

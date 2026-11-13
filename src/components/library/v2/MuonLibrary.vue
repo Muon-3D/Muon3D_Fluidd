@@ -474,7 +474,8 @@ import { lastEvent, nozzleText, printFacts } from '@/services/library/format'
 import { loadThumbnail, thumbnailFor } from '@/services/library/thumbnails'
 import { ago, isNetworkError, loadFeedPage, loadPublication, loadShelves, publicationPrint, summaryCard, type DiscoverShelves, type FeedPost, type GridSource, type PublicationPrint, type PublicationSummary, type ShelfCard } from '@/services/library/shelves'
 import { dimensionFit } from '@/services/library/catalogue'
-import { clearCardSaves, readCardSave } from '@/services/library/card-saves'
+import { cardSaves, clearCardSaves, readCardSave } from '@/services/library/card-saves'
+import { cloudState } from '@/services/muon-cloud/state'
 
 export type LibraryTab = 'discover' | 'yours'
 
@@ -891,10 +892,20 @@ export default class MuonLibrary extends Vue {
     }
   }
 
+  /** Another account's hearts must not show on this one's cards. */
+  get accountId (): string | null { return cloudState.account?.id ?? null }
+  @Watch('accountId') accountChanged () { clearCardSaves() }
+
   /** A heart or Add to… in the quick look: the counts and Yours' shelves read again. */
   onSaved () {
+    // Every heart a card has shown, publications and catalogue models alike.
+    const keys = Object.keys(cardSaves.ids)
     clearCardSaves()
-    for (const card of [...this.categoryPictures, ...(this.looking ? [this.looking] : [])]) if (card.kind === 'publication') readCardSave(card.id)
+    for (const key of keys) {
+      if (key.startsWith('catalogue:')) readCardSave(key.slice('catalogue:'.length), 'catalogue')
+      else readCardSave(key)
+    }
+    for (const card of [...this.categoryPictures, ...(this.looking ? [this.looking] : [])]) readCardSave(card.id, card.kind)
     this.readCollections()
     ;(this.$refs.yours as { refresh?: () => void } | undefined)?.refresh?.()
   }

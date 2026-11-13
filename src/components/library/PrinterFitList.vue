@@ -51,7 +51,7 @@
       <span
         v-else
         class="lib-pill"
-        :class="{ 'lib-pill--ok': row.action === 'print', 'lib-pill--run': row.action === 'queue' }"
+        :class="{ 'lib-pill--run': row.action === 'queue' }"
         data-tid="library-fit-status"
       >{{ row.status }}</span>
     </div>

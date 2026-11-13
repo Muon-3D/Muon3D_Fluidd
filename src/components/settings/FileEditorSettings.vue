@@ -64,12 +64,13 @@
 
     <div class="m3-set__row">
       <div class="m3-set__label">
-        <b>{{ $t('app.setting.label.confirm_dirty_editor_close') }}</b>
+        <b>Ask before closing with unsaved changes</b>
       </div>
       <div class="m3-set__control">
         <toggle-switch
           :value="confirmDirtyEditorClose"
-          :label="$t('app.setting.label.confirm_dirty_editor_close')"
+          label="Ask before closing with unsaved changes"
+          data-tid="editor-confirm-close"
           @input="confirmDirtyEditorClose = $event"
         />
       </div>
@@ -77,7 +78,8 @@
 
     <div class="m3-set__row">
       <div class="m3-set__label">
-        <b>{{ $t('app.setting.label.auto_edit_extensions') }}</b>
+        <b>Open these as text</b>
+        <span>Other files download instead.</span>
       </div>
       <div class="m3-set__control m3-set__control--wide">
         <v-combobox
@@ -90,35 +92,36 @@
           small-chips
           append-icon=""
           deletable-chips
-          :aria-label="$t('app.setting.label.auto_edit_extensions')"
+          aria-label="Open these as text"
         />
       </div>
     </div>
 
     <div class="m3-set__row">
       <div class="m3-set__label">
-        <b>{{ $t('app.setting.label.save_and_restore_view_state') }}</b>
+        <b>Reopen where I left off</b>
       </div>
-      <div class="m3-set__control m3-set__control--wide">
-        <v-select
-          v-model="restoreViewState"
-          outlined
-          dense
-          hide-details="auto"
-          :items="availableRestoreViewState"
-          :aria-label="$t('app.setting.label.save_and_restore_view_state')"
+      <div class="m3-set__control">
+        <seg-picker
+          :options="restoreOptions"
+          :value="restoreViewState"
+          label="Reopen where I left off"
+          data-tid="editor-restore-view"
+          @input="restoreViewState = $event"
         />
       </div>
     </div>
 
     <div class="m3-set__row">
       <div class="m3-set__label">
-        <b>{{ $t('app.setting.label.show_code_lens') }}</b>
+        <b>Hints above sections</b>
+        <span>Links to the Klipper docs above each [section].</span>
       </div>
       <div class="m3-set__control">
         <toggle-switch
           :value="codeLens"
-          :label="$t('app.setting.label.show_code_lens')"
+          label="Hints above sections"
+          data-tid="editor-hints"
           @input="codeLens = $event"
         />
       </div>
@@ -226,13 +229,11 @@ export default class FileEditorSettings extends Mixins(StateMixin) {
     this.save('uiSettings.editor.restoreViewState', value)
   }
 
-  get availableRestoreViewState (): { value: RestoreViewState, text: string }[] {
-    return [
-      { value: 'never', text: this.$tc('app.setting.label.never') },
-      { value: 'session', text: this.$tc('app.setting.label.to_browser_session_storage') },
-      { value: 'local', text: this.$tc('app.setting.label.to_browser_local_storage') }
-    ]
-  }
+  readonly restoreOptions = [
+    { value: 'never', label: 'Never' },
+    { value: 'session', label: 'This visit' },
+    { value: 'local', label: 'Always' }
+  ]
 
   get codeLens (): boolean {
     return this.$store.state.config.uiSettings.editor.codeLens
