@@ -23,6 +23,22 @@
       data-tid="confirm-plate"
     />
 
+    <div
+      v-if="film"
+      class="m3-confirm__film"
+      data-tid="confirm-film"
+    >
+      <span class="m3-confirm__film-text">
+        <b>Film it</b>
+        <span>{{ film.line }}</span>
+      </span>
+      <toggle-switch
+        v-model="filmOn"
+        label="Film it"
+        data-tid="confirm-film-switch"
+      />
+    </div>
+
     <template #actions>
       <button
         type="button"
@@ -50,6 +66,7 @@
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import M3Dialog from './M3Dialog.vue'
 import PlateCheck from './PlateCheck.vue'
+import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 
 /** How long the dialog takes to close before its answer is given. */
 export const CLOSE_MS = 220
@@ -60,7 +77,7 @@ export const CLOSE_MS = 220
  * The message is text, never HTML: it often holds a file's name. With
  * `plateCheck`, the button stays off until the plate check is ticked.
  */
-@Component({ components: { M3Dialog, PlateCheck } })
+@Component({ components: { M3Dialog, PlateCheck, ToggleSwitch } })
 export default class M3Confirm extends Vue {
   @Prop({ type: String, required: true })
   readonly message!: string
@@ -92,9 +109,19 @@ export default class M3Confirm extends Vue {
   @Prop({ type: Boolean })
   readonly plateCheck!: boolean
 
+  /** A print the printer can film: the "Film it" switch (see ConfirmOptions.film). */
+  @Prop({ type: Object, default: null })
+  readonly film!: { on: boolean, line: string, set: (on: boolean) => unknown } | null
+
   open = true
   plateClear = false
+  filmOn = false
   answered = false
+
+  /** Class fields run before props are set, so the printer's timelapse setting is read here. */
+  created () {
+    this.filmOn = !!this.film?.on
+  }
 
   get okText (): string {
     return this.buttonTrueText || 'Continue'
@@ -112,8 +139,33 @@ export default class M3Confirm extends Vue {
     if (this.answered) return
     if (value && this.plateCheck && !this.plateClear) return
     this.answered = true
+    if (value && this.film && this.filmOn !== !!this.film.on) this.film.set(this.filmOn)
     this.open = false
     window.setTimeout(() => this.$emit('result', value), CLOSE_MS)
   }
 }
 </script>
+
+<style lang="scss" scoped>
+  .m3-confirm__film {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--m3d-surface-2);
+  }
+
+  .m3-confirm__film-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    span {
+      color: var(--m3d-text-muted);
+      font-size: 13px;
+    }
+  }
+</style>

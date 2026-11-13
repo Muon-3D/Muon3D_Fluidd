@@ -101,7 +101,7 @@ describe('own avatar service', () => {
 
 describe('publicAvatarUrl', () => {
   it('turns the public route into an address, and nothing into nothing', () => {
-    expect(publicAvatarUrl('https://models.muon3d.com/v1/public/avatars/a')).toBe('https://models.muon3d.com/v1/public/avatars/a')
+    expect(publicAvatarUrl('https://library.muon3d.com/models/v1/public/avatars/a')).toBe('https://library.muon3d.com/models/v1/public/avatars/a')
     expect(publicAvatarUrl('/v1/public/avatars/a')).toMatch(/^https?:\/\/.+\/v1\/public\/avatars\/a$/)
     expect(publicAvatarUrl(null)).toBeNull()
     expect(publicAvatarUrl('')).toBeNull()

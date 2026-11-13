@@ -215,7 +215,9 @@ test.describe('OV-28 / KAN-2120: your own moves never lock the panel', () => {
     const jogRight = page.locator('[data-tile="jog"]').getByRole('button', { name: 'Head right' })
     await expect(jogRight).toBeDisabled()
     const sent = printer.gcode.length
-    await jogRight.click({ force: true })
+    // A click straight on the disabled button: on the phone the Jog tile can sit off screen, where a forced click
+    // waits for a scroll that never comes (CI, #392). The page must send nothing either way.
+    await jogRight.dispatchEvent('click')
     const b = (await pad.boundingBox())!
     await page.mouse.move(b.x + b.width * 0.6, b.y + b.height * 0.7); await page.mouse.down(); await page.mouse.move(b.x + b.width * 0.7, b.y + b.height * 0.6, { steps: 4 }); await page.mouse.up()
     await page.waitForTimeout(500)

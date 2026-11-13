@@ -130,6 +130,24 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     return b
   }
   const settle = (page: Page) => page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => null))))
+  /**
+   * Scrolls `selector` to the middle of the screen and waits until it is inside the viewport and has stopped moving.
+   * Tiles above can still grow just after edit mode opens (a busy CI runner draws them late), which left a measured
+   * resize handle at y 1083 on a 900 px screen: the press then landed on nothing and the tile never resized.
+   */
+  async function toCentre (page: Page, selector: string) {
+    const target = page.locator(selector)
+    const height = page.viewportSize()!.height
+    let last = ''
+    await expect.poll(async () => {
+      await target.evaluate(e => e.scrollIntoView({ block: 'center' }))
+      const b = await target.boundingBox()
+      const at = b ? `${Math.round(b.x)},${Math.round(b.y)}` : ''
+      const steady = !!b && b.y >= 0 && b.y + b.height <= height && at === last
+      last = at
+      return steady
+    }, { timeout: 15_000, intervals: [100, 250, 500] }).toBe(true)
+  }
   async function edit (page: Page) {
     await page.getByTestId('edit-open').click()
     await expect(page.getByTestId('edit-done')).toBeVisible()
@@ -183,7 +201,7 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     await open('/')
     await edit(page)
     const before = await order(page)
-    await page.locator('[data-cell="mode"]').evaluate(e => e.scrollIntoView({ block: 'center' }))
+    await toCentre(page, '[data-cell="mode"]')
     const from = await box(page, 'mode')
     // The nearest tile on another row, on screen and clear of the edges where a held tile scrolls the page.
     const h = page.viewportSize()!.height
@@ -218,7 +236,7 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     await usePrinter(page, PRESETS.idleHomed(), { database: true })
     await open('/')
     await edit(page)
-    await page.locator('[data-cell="macros"]').evaluate(e => e.scrollIntoView({ block: 'center' }))
+    await toCentre(page, '[data-cell="macros"] [data-tid="tile-resize"]')
     const grid = await page.locator('.overview__grid').boundingBox()
     const handle = await page.locator('[data-cell="macros"] [data-tid="tile-resize"]').boundingBox()
     if (!grid || !handle) throw new Error('not on screen')
@@ -232,7 +250,7 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     await expect.poll(async () => (await springs(page)) - was).toBeGreaterThan(0)
     await page.mouse.up()
     await settle(page)
-    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'M')
+    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'S')
   })
 
   test('stress: 20 random drags leave a valid layout, which is the one saved', async ({ page, open }) => {

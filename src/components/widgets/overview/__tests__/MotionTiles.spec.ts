@@ -99,6 +99,32 @@ describe('ZOffsetTile', () => {
     w2.destroy()
   })
 
+  it('refuses a nudge closer with the head idle low over the notch, as Control\'s card does; raising still goes', async () => {
+    headStatus.fresh = true
+    const notch = { no_go_region_1_min: [75, 0], no_go_region_1_max: [125, 34], no_go_boundary_tolerance: 10, no_go_traverse_z: 6 }
+    const over = tileStore()
+    const p = over.state.printer.printer
+    p.toolhead.position = [100, 10, 2, 0]
+    p.gcode_move.gcode_position = [100, 10, 2, 0]
+    p.configfile.settings = { ...p.configfile.settings, bed_mesh: notch }
+    const w = m(ZOffsetTile, over)
+    expect(w.find('[data-tid="zoffset-down"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-tid="zoffset-down"]').attributes('title')).toMatch(/over the bed notch/)
+    ;(w.vm as any).nudge(-0.005)
+    await w.find('[data-tid="zoffset-up"]').trigger('click')
+    expect(sent()).toEqual(['SET_GCODE_OFFSET Z_ADJUST=+0.005 MOVE=1'])
+    w.destroy()
+    const away = tileStore()
+    const a = away.state.printer.printer
+    a.toolhead.position = [160, 100, 2, 0]
+    a.gcode_move.gcode_position = [160, 100, 2, 0]
+    a.configfile.settings = { ...a.configfile.settings, bed_mesh: notch }
+    const w2 = m(ZOffsetTile, away)
+    await w2.find('[data-tid="zoffset-down"]').trigger('click')
+    expect(sent()).toEqual(['SET_GCODE_OFFSET Z_ADJUST=+0.005 MOVE=1', 'SET_GCODE_OFFSET Z_ADJUST=-0.005 MOVE=1'])
+    w2.destroy()
+  })
+
   it('saves to config and runs probe calibration from the three dots only when the printer can', async () => {
     const store = tileStore()
     Vue.set(store.getters, 'printer/getAvailableCommands', { Z_OFFSET_APPLY_PROBE: {}, PROBE_CALIBRATE: {} })

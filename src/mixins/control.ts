@@ -127,7 +127,8 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   get busyWithOwnMove (): boolean {
     // Read so this is worked out again when the move's window ends (the window itself isn't reactive).
     const seen = motionClock.epoch >= 0
-    return seen && !this.printLocked && this.printerState === 'busy' && ownMotionActive(this.panelTarget)
+    const commanded = this.$store.state.printer.printer.gcode_move?.gcode_position as number[] | undefined
+    return seen && !this.printLocked && this.printerState === 'busy' && ownMotionActive(this.panelTarget, Date.now(), commanded)
   }
 
   /**
@@ -437,7 +438,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     if (noGo === null) return planMove(from, to, null, limits)
     const offset = this.gcodeOffset
     if (!offset) return { ok: false, reason: 'The head position is not known.' }
-    const plan = planMove(from, to, noGo, limits, meshSpan(this.$store.state.printer.printer.bed_mesh))
+    const plan = planMove(from, to, noGo, limits, meshSpan(this.$store.state.printer.printer.bed_mesh), this.isHomed('Z'), this.isHomed('XY'))
     if (!plan.ok) return plan
     const toGcode = (p: Place): Place => {
       const out: Place = {}
@@ -457,9 +458,12 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     if (!offset) return
     const now = Date.now()
     const travel = this.travelMs(realTo)
-    lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000), this.panelTarget, now, travel)
-    // Only a move sent while the printer wasn't busy opens the own-move window; one sent mid-move never extends it.
-    const ms = noteOwnMotion(this.panelTarget, now, travel, this.printerState !== 'busy')
+    const target = realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000)
+    lockHandMove(target, this.panelTarget, now, travel)
+    // Only a move sent while the printer wasn't busy opens the own-move window; one sent mid-move never extends it
+    // (it only moves the window's target, so the printer heading there still counts as this page's move).
+    const from = (this.$store.state.printer.printer.gcode_move?.gcode_position as number[] | undefined)?.slice(0, 3)
+    const ms = noteOwnMotion(this.panelTarget, now, travel, this.printerState !== 'busy', target, from)
     motionClock.epoch++
     if (ms > 0) {
       if (motionTimer !== null) clearTimeout(motionTimer)
