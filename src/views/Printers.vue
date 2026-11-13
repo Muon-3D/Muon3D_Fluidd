@@ -138,11 +138,12 @@
               v-if="renaming === g.id"
               ref="rename"
               class="printers__rename"
-              :value="g.name"
+              :value="renameDraft"
               aria-label="Bench name"
-              @keydown.enter="finishRename(g.id, $event)"
+              @input="onRenameInput"
+              @keydown.enter="finishRename(g.id)"
               @keydown.esc="renaming = null"
-              @blur="finishRename(g.id, $event)"
+              @blur="finishRename(g.id)"
             >
             <h2
               v-else
@@ -286,11 +287,12 @@
               v-if="renaming === g.id"
               ref="rename"
               class="printers__rename"
-              :value="g.name"
+              :value="renameDraft"
               aria-label="Group name"
-              @keydown.enter="finishRename(g.id, $event)"
+              @input="onRenameInput"
+              @keydown.enter="finishRename(g.id)"
               @keydown.esc="renaming = null"
-              @blur="finishRename(g.id, $event)"
+              @blur="finishRename(g.id)"
             >
             <h2
               v-else
@@ -642,6 +644,11 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
   dragging: string | null = null
   dropTarget: string | null = null
   renaming: string | null = null
+  /**
+   * The name being typed, kept here rather than read back from the input: a re-render of the groups (a printer going
+   * offline, under load) can recreate the input, which then held the old name, and Enter saved that (#362's e2e).
+   */
+  renameDraft = ''
   timer: (() => void) | null = null
   /** Set on destroy, so a sweep still waiting for the first paint doesn't start. */
   gone = false
@@ -975,6 +982,7 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
 
   startRename (id: string) {
     this.renaming = id
+    this.renameDraft = cloudState.layout.groups.find(g => g.id === id)?.name ?? ''
     this.$nextTick(() => {
       const input = (this.$refs.rename as HTMLInputElement[] | undefined)?.[0]
       input?.focus()
@@ -982,10 +990,14 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
     })
   }
 
-  finishRename (id: string, event: Event) {
+  onRenameInput (event: Event) {
+    this.renameDraft = (event.target as HTMLInputElement).value
+  }
+
+  finishRename (id: string) {
     if (this.renaming !== id) return
     this.renaming = null
-    const name = (event.target as HTMLInputElement).value.trim()
+    const name = this.renameDraft.trim()
     if (!name) return
     this.persistGroups(cloudState.layout.groups.map(g => (g.id === id ? { ...g, name } : g)))
   }

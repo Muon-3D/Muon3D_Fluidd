@@ -21,20 +21,13 @@
     <template v-if="regions">
       <span
         v-for="(r, i) in regions"
-        :key="`band-${i}`"
-        class="tpad__band"
-        :style="r.band"
-        aria-hidden="true"
-      />
-      <span
-        v-for="(r, i) in regions"
-        :key="`nogo-${i}`"
-        class="tpad__nogo"
+        :key="`notch-${i}`"
+        class="tpad__notch"
         :style="r.rect"
-        data-tid="trackpad-nogo"
+        data-tid="trackpad-notch"
         aria-hidden="true"
       >
-        <span v-if="i === 0">No-go</span>
+        <span v-if="i === 0">notch</span>
       </span>
     </template>
     <svg
@@ -125,10 +118,7 @@ export default class ControlTrackpad extends Mixins(PredictedHeadMixin) {
   get regions () {
     const noGo = this.noGo
     if (!noGo || noGo === 'invalid') return null
-    return noGo.regions.map(r => ({
-      rect: pct(regionRect(r, this.bed, PERCENT)),
-      band: pct(regionRect(r, this.bed, PERCENT, noGo.tolerance))
-    }))
+    return noGo.regions.map(r => ({ rect: pct(regionRect(r, this.bed, PERCENT)) }))
   }
 
   /** Where the head is drawn: predicted between reports (services/control/position-predict). */
@@ -274,18 +264,9 @@ export default class ControlTrackpad extends Mixins(PredictedHeadMixin) {
     white-space: nowrap;
   }
 
-  .tpad__band,
-  .tpad__nogo {
+  .tpad__notch {
     position: absolute;
     pointer-events: none;
-  }
-
-  .tpad__band {
-    background: color-mix(in srgb, var(--m3d-warning) 8%, transparent);
-    outline: 1px dashed color-mix(in srgb, var(--m3d-warning) 40%, transparent);
-  }
-
-  .tpad__nogo {
     display: flex;
     align-items: center;
     justify-content: center;
