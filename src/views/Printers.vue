@@ -255,6 +255,7 @@
           v-if="offlineShown.length"
           bench-id="offline"
           kind="shelf"
+          icon="printer"
           title="Offline"
           :tiles="offlineShown"
           data-tid="offline"
@@ -458,8 +459,9 @@
         </button>
       </div>
 
+      <!-- The Bench has its own "+ New bench" drop target in place of this. -->
       <button
-        v-if="canGroup"
+        v-if="canGroup && view !== 'bench'"
         type="button"
         class="new-group"
         data-tid="new-group"
