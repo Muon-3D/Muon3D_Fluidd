@@ -39,9 +39,9 @@
   --m3d-radius-md: 6px;
   --m3d-radius-pill: 999px;
 
-  --m3d-duration-fast: 120ms;
-  --m3d-duration-base: 180ms;
-  --m3d-ease: cubic-bezier(0.2, 0, 0, 1);
+  --m3d-duration-fast: var(--m3d-motion-fast);
+  --m3d-duration-base: var(--m3d-motion-base);
+  --m3d-ease: var(--m3d-ease-standard);
 
   // Motion tokens (KAN-2257), the same in both styles and both themes. Small
   // things are quick, big surfaces take longer; exits run at three quarters of
@@ -55,6 +55,10 @@
   --m3d-motion-slower: 520ms;
   --m3d-motion-camera: 800ms;
   --m3d-motion-stagger: 40ms;
+  // A press: in at 80 ms to 0.95, out at 320 ms (literal, not the spring's own settle time).
+  --m3d-motion-press-scale: 0.95;
+  --m3d-motion-press-in: 80ms;
+  --m3d-motion-press-out: 320ms;
   --m3d-ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --m3d-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
   --m3d-ease-exit: cubic-bezier(0.4, 0, 1, 1);

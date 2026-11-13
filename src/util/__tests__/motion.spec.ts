@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { EASE, MOTION, SPRINGS, animate, reducedMotion, spring } from '../motion'
+import { EASE, MOTION, PRESS, SPRINGS, animate, reducedMotion, spring } from '../motion'
 
 // The stylesheet and the script must say the same thing, or CSS transitions
 // and Web Animations in one view drift apart. Read the stylesheet as text.
@@ -14,6 +14,29 @@ describe('motion tokens', () => {
   it('has the six durations and the stagger from the gallery, in the stylesheet and the script alike', () => {
     expect(MOTION).toEqual({ instant: 80, fast: 160, base: 240, slow: 340, slower: 520, camera: 800, stagger: 40 })
     for (const [name, ms] of Object.entries(MOTION)) expect(token(`motion-${name}`)).toBe(`${ms}ms`)
+  })
+
+  it('has the press scale and timings in both places', () => {
+    expect(PRESS).toEqual({ scale: 0.95, in: 80, out: 320 })
+    expect(token('motion-press-scale')).toBe(String(PRESS.scale))
+    expect(token('motion-press-in')).toBe(`${PRESS.in}ms`)
+    expect(token('motion-press-out')).toBe(`${PRESS.out}ms`)
+  })
+
+  it('points the older aliases at the approved tokens', () => {
+    expect(token('duration-fast')).toBe('var(--m3d-motion-fast)')
+    expect(token('duration-base')).toBe('var(--m3d-motion-base)')
+    expect(token('ease')).toBe('var(--m3d-ease-standard)')
+  })
+
+  it('points the aliases in the glass style at the approved tokens too', () => {
+    // The glass file declares them inside `#{$glass} .v-application { ... }`, not :root,
+    // so read the declaration wherever it sits in the file text.
+    const glass = readFileSync(`${process.cwd()}/src/scss/muon3d-glass.scss`, 'utf8')
+    const glassToken = (name: string) => glass.match(new RegExp(`--m3d-${name}:\\s*([^;]+);`))?.[1].trim()
+    expect(glassToken('duration-fast')).toBe('var(--m3d-motion-fast)')
+    expect(glassToken('duration-base')).toBe('var(--m3d-motion-base)')
+    expect(glassToken('ease')).toBe('var(--m3d-ease-standard)')
   })
 
   it('has the three curves in both places', () => {
