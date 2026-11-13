@@ -69,7 +69,14 @@ export function isOpenableAddr (addr: unknown): addr is string {
     if (o.some(x => x > 255) || m.slice(1).some(x => x.length > 1 && x.startsWith('0'))) return false
     return o[0] === 10 || (o[0] === 172 && o[1] >= 16 && o[1] <= 31) || (o[0] === 192 && o[1] === 168)
   }
-  return /^[a-z0-9-]+(\.local)?$/i.test(addr) && !/^-|-$|-\.|\.-/.test(addr)
+  if (!/^[a-z0-9-]+(\.local)?$/i.test(addr) || /^-|-$|-\.|\.-/.test(addr)) return false
+  // A name the URL parser reads as a number is an IPv4 address in disguise ('3232235777', '0x08080808'):
+  // only a name that comes back from the parser unchanged is a name.
+  try {
+    return new URL(`http://${addr}/`).hostname === addr.toLowerCase()
+  } catch {
+    return false
+  }
 }
 
 export function localRoute (i: LocalRouteInput): LocalRoute {
