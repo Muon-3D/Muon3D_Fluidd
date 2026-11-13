@@ -40,6 +40,7 @@ async function partsReady (page: Page): Promise<Locator> {
 
 test('the axes sit inside the screen, along the head\'s reach, not at the stage edge', async ({ page, open, isMobile }) => {
   test.skip(isMobile, 'the top-down view is the desktop pointer path')
+  test.skip(!GPU, 'the top-down view needs the accurate model (viewer.accurate), which software WebGL stalls on; the simple model stays in the free view')
   const printer = await usePrinter(page, PRESETS.idleHomed())
   await open('/')
   await partsReady(page)

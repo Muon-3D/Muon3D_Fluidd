@@ -35,11 +35,23 @@
       >
         {{ row.reslice }}
       </button>
-      <!-- What it can do there, as a pill: the page's one Print (or Print on…) does it. -->
+      <!-- A printer that can print this now: Print, here, on that printer
+           (KAN-2021, Jack: "your own print's page has a direct Print button"). -->
+      <button
+        v-else-if="row.action === 'print'"
+        type="button"
+        class="lib-btn lib-btn--sm lib-btn--pri"
+        data-tid="library-fit-print"
+        :aria-label="`Print on ${row.name}`"
+        @click="$emit('print', row)"
+      >
+        Print
+      </button>
+      <!-- Anything else it can do there, as a pill: the page's Print on… does it. -->
       <span
         v-else
         class="lib-pill"
-        :class="{ 'lib-pill--ok': row.action === 'print', 'lib-pill--run': row.action === 'queue' }"
+        :class="{ 'lib-pill--run': row.action === 'queue' }"
         data-tid="library-fit-status"
       >{{ row.status }}</span>
     </div>
@@ -53,8 +65,9 @@ import PrinterRowsMixin from '@/mixins/printer-rows'
 
 /**
  * A print's "Your printers": each account printer and whether the print
- * fits it now (printer-rows.ts), as a pill (Ready, Queue, Offline); the
- * page's one Print does it. Re-slice opens Slice on that printer.
+ * fits it now (printer-rows.ts). A printer that is ready has a Print button
+ * that prints there directly; Queue and Offline are pills (the page's
+ * Print on… handles those). Re-slice opens Slice on that printer.
  */
 @Component({ components: { PrinterThumb } })
 export default class PrinterFitList extends Mixins(PrinterRowsMixin) {}
