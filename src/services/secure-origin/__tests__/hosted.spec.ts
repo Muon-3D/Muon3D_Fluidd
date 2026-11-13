@@ -42,7 +42,7 @@ describe('mayTrySecureName', () => {
 describe('reachSecureName', () => {
   const answer = (body: string, ok = true) => vi.fn(async () => ({ ok, text: async () => body }))
   beforeEach(() => forgetSecureReach())
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => { vi.unstubAllGlobals() })
 
   it('remembers a success for five minutes', async () => {
     const f = answer(MARKER)

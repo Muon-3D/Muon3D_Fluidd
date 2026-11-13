@@ -88,7 +88,7 @@ describe('opening an account printer on the hosted page', () => {
     const f = marker()
     vi.stubGlobal('fetch', f)
     const e = entry()
-    await methods.connectCloud.call({ run }, e, 'relay').catch(() => {})
+    await Promise.resolve(methods.connectCloud.call({ run }, e, 'relay')).catch(() => {})
     expect(relayChosen(e.cloud!.id)).toBe(true)
     const c = component()
     await methods.openCloudEntry.call(c, e)
@@ -121,7 +121,7 @@ describe('opening an account printer on the hosted page', () => {
   it('"Through Muon3D" holds the choice', async () => {
     const e = entry()
     expect(relayChosen(e.cloud!.id)).toBe(false)
-    await methods.connectCloud.call({ run }, e, 'relay').catch(() => {})
+    await Promise.resolve(methods.connectCloud.call({ run }, e, 'relay')).catch(() => {})
     expect(relayChosen(e.cloud!.id)).toBe(true)
   })
 })
