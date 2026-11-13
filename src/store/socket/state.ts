@@ -10,7 +10,8 @@ export const defaultState = (): SocketState => {
     ready: false, //                  indicates the socket is ready (and has first dump of data...)
     acceptingNotifications: false, // indicates we're accepting notification data because we've finished subscribing to objects
     error: null, //                    if the socket has an error or not
-    connectionId: null //             connection id assigned to the socket
+    connectionId: null, //            connection id assigned to the socket
+    failure: null //                  why the socket hasn't opened lately, from the socket client
   }
 }
 

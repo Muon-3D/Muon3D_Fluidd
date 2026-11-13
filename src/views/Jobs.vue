@@ -793,6 +793,12 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
     this.selectedKey = first?.key ?? null
   }
 
+  /** Back after a drop: whatever changed meanwhile sent no notice this page heard. */
+  @Watch('socketConnected')
+  onSocketConnected (connected: boolean, was: boolean) {
+    if (connected && !was) SocketActions.serverFilesGetDirectory(this.root, this.dir)
+  }
+
   @Watch('isMobileViewport')
   onViewport () {
     this.keepSelection(this.rows)

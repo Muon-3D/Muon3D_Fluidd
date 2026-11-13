@@ -13,6 +13,20 @@ export const mutations: MutationTree<PrinterState> = {
     Object.assign(state, defaultState())
   },
 
+  /**
+   * Klipper isn't ready (starting, shut down, gone): what it last said of the
+   * print no longer stands, and nothing updates it until it is subscribed again.
+   */
+  setPrintUnknown (state) {
+    const fresh = defaultState().printer
+    for (const key of ['idle_timeout', 'print_stats', 'display_status', 'virtual_sdcard', 'current_file', 'webhooks'] as const) {
+      Vue.set(state.printer, key, fresh[key])
+    }
+    for (const key of ['pause_resume', 'exclude_object']) {
+      if (key in state.printer) Vue.delete(state.printer, key)
+    }
+  },
+
   setPrinterInfo (state, payload) {
     Vue.set(state.printer, 'info', payload)
   },

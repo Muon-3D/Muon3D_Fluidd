@@ -1,5 +1,5 @@
 import type { MutationTree } from 'vuex'
-import type { SocketState } from './types'
+import type { SocketFailure, SocketState } from './types'
 import { defaultState } from './state'
 
 export const mutations: MutationTree<SocketState> = {
@@ -17,6 +17,10 @@ export const mutations: MutationTree<SocketState> = {
 
   setSocketConnecting (state, payload) {
     if (state.connecting !== payload) state.connecting = payload
+  },
+
+  setSocketFailure (state, payload: SocketFailure | null) {
+    state.failure = payload
   },
 
   setSocketStalled (state, payload: boolean) {

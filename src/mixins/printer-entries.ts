@@ -36,6 +36,7 @@ import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
 import { bluetoothCarrying, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
+import type { SocketFailure } from '@/store/socket/types'
 
 /**
  * The longest a row stays busy with one open. The slowest open is bounded
@@ -137,6 +138,9 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     const apiUrl: string = this.$store.state.config.apiUrl
     if (!apiUrl || apiUrl === MANAGED_API_URL) return null
     let health: PrinterHealth
+    const failure = this.$store.state.socket.failure as SocketFailure | null
+    // Every try in a row failed (KAN-1461): it is not "Connecting…" for good.
+    if (!this.socketConnected && failure?.unreachable) return { apiUrl, health: 'offline', detail: `Can't reach it: ${failure.reason}` }
     if (!this.socketConnected) health = 'connecting'
     else if (!this.authenticated) health = 'locked'
     else if (!this.klippyReady) health = 'error'

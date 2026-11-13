@@ -8,8 +8,11 @@
         :size="72"
         :state="state === 'unreachable' ? 'offline' : 'idle'"
       />
-      <h1 class="conn-screen__title">
-        {{ state === 'unreachable' ? `Can't reach ${printerName}` : `Connecting to ${printerName}` }}
+      <h1
+        class="conn-screen__title"
+        aria-live="polite"
+      >
+        {{ title }}
       </h1>
       <p
         v-if="address"
@@ -32,6 +35,13 @@
         class="conn-screen__line"
       >
         No answer yet. Trying again in {{ retryText }}.
+      </p>
+      <p
+        v-else-if="state === 'unreachable' && retryInMs !== null"
+        class="conn-screen__line"
+        data-tid="connection-next-try"
+      >
+        Trying again by itself in {{ retryText }}.
       </p>
 
       <ul
@@ -91,6 +101,15 @@ const HELP_AFTER_MS = 8000
 export default class ConnectingScreen extends Mixins(ReconnectMixin) {
   @Prop({ type: String, required: true })
   readonly state!: 'connecting' | 'unreachable'
+
+  /** Why the last tries failed (the socket client's words), for "Can't reach Boxwood: …". */
+  @Prop({ type: String, default: null })
+  readonly reason!: string | null
+
+  get title (): string {
+    if (this.state === 'connecting') return `Connecting to ${this.printerName}`
+    return this.reason ? `Can't reach ${this.printerName}: ${this.reason}` : `Can't reach ${this.printerName}`
+  }
 
   shownAt = Date.now()
 
