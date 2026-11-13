@@ -23,3 +23,20 @@ export function pairableRefusal (error: unknown): PairableRefusal | null {
   if (e.code === CLOSE_REVOKED) return 'revoked'
   return null
 }
+
+/** What the person reads when they chose Bluetooth, the printer has no Bluetooth link and Muon3D was therefore not used. */
+export const BLUETOOTH_NOT_CONNECTED_MESSAGE =
+  "Bluetooth isn't connected to this printer, and you chose Bluetooth, so Muon3D wasn't used. Bring the printer in range and try again, or choose another way to connect."
+
+/** True for muon-link-web's error kind `"bluetooth"`: a pinned printer with no Bluetooth link is never dialled over the relay (muon-link#145). */
+export function bluetoothUnavailable (error: unknown): boolean {
+  return (error as { kind?: unknown } | null)?.kind === 'bluetooth'
+}
+
+/** An error `bluetoothUnavailable` matches, as an Error with a message the person can act on; any other error is returned as it came. */
+export function pinnedBluetoothError (error: unknown): unknown {
+  if (!bluetoothUnavailable(error)) return error
+  const mapped = new Error(BLUETOOTH_NOT_CONNECTED_MESSAGE) as Error & { kind: string }
+  mapped.kind = 'bluetooth'
+  return mapped
+}

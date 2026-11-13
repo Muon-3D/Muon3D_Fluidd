@@ -28,6 +28,7 @@ import { forgetOwnAvatar } from '@/services/account/avatar'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
+import { onEndpointRebound } from './endpoint-hooks'
 
 const ACTIVE_KEY = 'muon.cloud.active'
 
@@ -298,6 +299,16 @@ async function statusConnection (printerId: string): Promise<PrinterTransport> {
   }
   return existing
 }
+
+/**
+ * An explicit Bluetooth connect replaced the tab's endpoint (KAN-2531): every
+ * other printer's transport died with it. Drop them, so the next poll and open
+ * dial again on the new one.
+ */
+export function dropOtherCloudConnections (except: string) {
+  for (const id of [...statusConnections.keys()]) if (id.toLowerCase() !== except.toLowerCase()) dropCloudConnection(id)
+}
+onEndpointRebound(dropOtherCloudConnections)
 
 /**
  * Drops the shared connection to a printer that stopped answering through it,
