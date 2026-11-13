@@ -17,11 +17,8 @@ vi.mock('../vendor/muon-link-web/2273ba0/muon_link_web.js', () => ({
   MuonEndpoint: { create: (...args: unknown[]) => wasm.create(...args) }
 }))
 
-// What the dial reads lazily: whether a pairing or setup is running, and the status connections to drop.
-const others = vi.hoisted(() => ({ pairing: false, setup: false, dropped: [] as string[] }))
-vi.mock('@/services/muon-ble/pairing', () => ({ pairingActive: () => others.pairing }))
-vi.mock('@/services/muon-ble/setup', () => ({ bluetoothSetupOpen: () => others.setup }))
-vi.mock('../state', () => ({ dropOtherCloudConnections: (id: string) => { others.dropped.push(id) } }))
+// Stand-ins for what pairing, setup and state register in endpoint-hooks (iroh.ts imports none of them: KAN-2531 cycle check).
+const others = { pairing: false, setup: false, dropped: [] as string[] }
 
 const RELAY = 'https://relay.example.test'
 const session = (printerId: string) => ({ relayUrl: RELAY, printerId, tenantId: 't', expiresAt: '' }) as any
@@ -75,6 +72,11 @@ afterEach(() => {
 
 async function load () {
   ble = await import('@/services/muon-ble/link')
+  const hooks = await import('../endpoint-hooks')
+  hooks.resetEndpointHooks()
+  hooks.registerEndpointBusy(() => others.pairing)
+  hooks.registerEndpointBusy(() => others.setup)
+  hooks.onEndpointRebound(id => { others.dropped.push(id) })
   return await import('../iroh')
 }
 const useBluetoothFor = (id: string, device: any) => ble.useBluetoothFor(id, device)

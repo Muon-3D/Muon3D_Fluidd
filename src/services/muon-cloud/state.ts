@@ -28,6 +28,7 @@ import { forgetOwnAvatar } from '@/services/account/avatar'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
+import { onEndpointRebound } from './endpoint-hooks'
 
 const ACTIVE_KEY = 'muon.cloud.active'
 
@@ -307,6 +308,7 @@ async function statusConnection (printerId: string): Promise<PrinterTransport> {
 export function dropOtherCloudConnections (except: string) {
   for (const id of [...statusConnections.keys()]) if (id.toLowerCase() !== except.toLowerCase()) dropCloudConnection(id)
 }
+onEndpointRebound(dropOtherCloudConnections)
 
 /**
  * Drops the shared connection to a printer that stopped answering through it,

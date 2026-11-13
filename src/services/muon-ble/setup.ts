@@ -18,6 +18,7 @@
 import { cloudApi } from '@/services/muon-cloud/api'
 import { browserEndpoint, IrohPrinter } from '@/services/muon-cloud/iroh'
 import { cloudState } from '@/services/muon-cloud/state'
+import { registerEndpointBusy } from '@/services/muon-cloud/endpoint-hooks'
 import { SETUP_PATH, type SetupTransport } from '@/services/muon-setup/client'
 import type { SetupState } from '@/services/muon-setup/types'
 import { openBleLink, takesBleLinks, type BleCapableEndpoint, type BleLinkHandle } from './link'
@@ -93,6 +94,7 @@ let openSetups = 0
 export function bluetoothSetupOpen (): boolean {
   return openSetups > 0
 }
+registerEndpointBusy(bluetoothSetupOpen)
 
 export async function connectForSetup (printer: NearbyPrinter, options: ConnectForSetupOptions = {}): Promise<BleSetupResult> {
   const log = options.log ?? (() => {})

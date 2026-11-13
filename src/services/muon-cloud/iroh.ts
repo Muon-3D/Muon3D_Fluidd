@@ -14,6 +14,7 @@ import type {
 import { bluetoothRouteFor, noteBluetoothFellBack, wantsBluetoothFor, type WasmBleLink } from '@/services/muon-ble/link'
 import { pinnedBluetoothError } from '@/services/muon-ble/refusal'
 import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, cloudTokensPersist } from './api'
+import { endpointBusy, notifyEndpointRebound } from './endpoint-hooks'
 import bundledWasmUrl from './vendor/muon-link-web/2273ba0/muon_link_web_bg.wasm?url'
 
 const KEY_STORAGE = 'muon.cloud.key'
@@ -121,11 +122,6 @@ let memoryKey: Uint8Array | null = null
  */
 const dialed = new Set<string>()
 
-/** True while a pairing or a Bluetooth setup runs on the tab's endpoint. Read when needed: these modules import this one. */
-async function endpointBusy (): Promise<boolean> {
-  const [pairing, setup] = await Promise.all([import('@/services/muon-ble/pairing'), import('@/services/muon-ble/setup')])
-  return pairing.pairingActive() || setup.bluetoothSetupOpen()
-}
 
 export const REBIND_BUSY_MESSAGE = 'Finish or cancel adding a device or setting up a printer first, then connect over Bluetooth again.'
 
@@ -212,15 +208,11 @@ export async function endpointForDial (relayUrl: string, printerId: string): Pro
   const id = printerId.toLowerCase()
   if (wantsBluetoothFor(id) && dialed.has(id)) {
     // Closing the endpoint would cut a pairing or a setup in progress: not now.
-    if (await endpointBusy()) throw new Error(REBIND_BUSY_MESSAGE)
+    if (endpointBusy()) throw new Error(REBIND_BUSY_MESSAGE)
     const fresh = await freshBrowserEndpoint(relayUrl)
     dialed.add(id)
     // Every other printer's transport died with the old endpoint: have each dial again on the new one.
-    try {
-      (await import('./state')).dropOtherCloudConnections(id)
-    } catch (error) {
-      logLate('dropping the other connections failed', error)
-    }
+    notifyEndpointRebound(id)
     return fresh
   }
   const endpoint = await browserEndpoint(relayUrl)

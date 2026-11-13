@@ -40,7 +40,7 @@ async function cloudThenChooseBluetooth (page: Page) {
   await page.getByRole('link', { name: 'All printers' }).first().click()
   await expect(page.getByText('Connecting...')).toHaveCount(0, { timeout: 30_000 })
   await page.locator(`button[aria-label="Options for ${REBIND_PRINTER.name}"]`).click()
-  await page.getByText('Connect over Bluetooth', { exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Connect over Bluetooth' }).click()
 }
 
 test('Connect over Bluetooth after a cloud session binds a fresh endpoint, lands on Bluetooth, and says Via Bluetooth only then', async ({ page, isMobile }) => {

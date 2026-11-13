@@ -21,6 +21,7 @@ import { browserEndpoint } from '@/services/muon-cloud/iroh'
 import { BLUETOOTH_NOT_CONNECTED_MESSAGE, bluetoothUnavailable } from './refusal'
 import { activateCloudPrinter } from '@/services/muon-cloud/activate'
 import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
+import { registerEndpointBusy } from '@/services/muon-cloud/endpoint-hooks'
 import { bluetoothRouteFor, releaseBluetoothLink, wantsBluetoothFor } from './link'
 
 /** The printer closes its window after 120 s (muon-link `WINDOW_TTL`). */
@@ -58,6 +59,7 @@ interface PairingEndpoint {
 export function pairingActive (): boolean {
   return pairingState.phase === 'connecting' || pairingState.phase === 'code' || pairingState.phase === 'waiting'
 }
+registerEndpointBusy(pairingActive)
 
 let generation = 0
 let session: PairingSession | null = null
