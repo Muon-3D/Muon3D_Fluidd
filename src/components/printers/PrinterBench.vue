@@ -4,8 +4,18 @@
     :class="[`bench--${kind}`, { 'bench--over': over, 'bench--folded': folded }]"
   >
     <header class="bench__head">
+      <span
+        v-if="kind === 'shelf' && icon === 'printer'"
+        class="bench__fi"
+        aria-hidden="true"
+      >
+        <frame-icon
+          name="printer"
+          small
+        />
+      </span>
       <svg
-        v-if="kind === 'shelf'"
+        v-else-if="kind === 'shelf'"
         class="bench__icon"
         viewBox="0 0 20 14"
         aria-hidden="true"
@@ -29,11 +39,16 @@
         viewBox="0 0 20 14"
         aria-hidden="true"
       ><path d="M1 4h18M3 4v9M17 4v9M3 9h14" /></svg>
-      <slot name="title">
-        <h2 class="bench__name">
-          {{ title }}
-        </h2>
-      </slot>
+      <span class="bench__title">
+        <slot name="title">
+          <h2
+            class="bench__name"
+            :title="title"
+          >
+            {{ title }}
+          </h2>
+        </slot>
+      </span>
       <span
         v-if="kind !== 'door'"
         class="bench__sum"
@@ -115,6 +130,10 @@ export default class PrinterBench extends Vue {
   @Prop({ type: Boolean })
   readonly over!: boolean
 
+  /** A shelf's icon: the people it came from (default), or the printer frame. */
+  @Prop({ type: String, default: 'people' })
+  readonly icon!: 'people' | 'printer'
+
   @Prop({ type: String, default: '' })
   readonly caption!: string
 
@@ -194,10 +213,31 @@ export default class PrinterBench extends Vue {
     margin-bottom: 4px;
   }
 
+  // The title gives way first (an ellipsis); the actions never wrap off the row.
+  .bench__title {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+
+    :deep(h2),
+    :deep(input) { max-width: 100%; }
+
+    :deep(h2) {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
   .bench__name {
     margin: 0;
     font-size: 15px;
     font-weight: 700;
+  }
+
+  .bench__fi {
+    display: inline-grid;
+    color: var(--m3d-text-muted);
   }
 
   .bench__icon {
@@ -277,6 +317,7 @@ export default class PrinterBench extends Vue {
     background: none;
     color: var(--m3d-text-muted);
     cursor: pointer;
+    flex: none;
     transform: rotate(180deg);
     transition:
       transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy),
@@ -288,46 +329,47 @@ export default class PrinterBench extends Vue {
   .bench--folded .bench__fold { transform: none; }
 
   // The bench line, its legs and the lower shelf, drawn across the whole bench.
+  // Each printer is one row tall (--row) and the drawing repeats every row, so
+  // however many rows the printers wrap into, every row stands on its own line.
   .bench__top {
+    --row: 268px;
+
     position: relative;
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 12px;
-    min-height: 256px;
+    gap: 0 12px;
+    min-height: var(--row);
     padding: 0 18px;
   }
 
   .bench--bench .bench__top {
     background:
-      linear-gradient(var(--m3d-text-muted), var(--m3d-text-muted)) 8px 170px / calc(100% - 16px) 3px no-repeat,
-      linear-gradient(var(--m3d-border), var(--m3d-border)) 8px 250px / calc(100% - 16px) 1.5px no-repeat;
-
-    &::before,
-    &::after {
-      content: '';
-      position: absolute;
-      top: 171px;
-      width: 3px;
-      height: 82px;
-      border-radius: 0 0 2px 2px;
-      background: var(--m3d-text-muted);
-    }
-
-    &::before { left: 8px; }
-    &::after { right: 8px; }
+      linear-gradient(to bottom, transparent 170px, var(--m3d-text-muted) 170px 173px, transparent 173px) 8px 0 / calc(100% - 16px) var(--row) repeat-y,
+      linear-gradient(to bottom, transparent 262px, var(--m3d-border) 262px 263.5px, transparent 263.5px) 8px 0 / calc(100% - 16px) var(--row) repeat-y,
+      linear-gradient(to bottom, transparent 173px, var(--m3d-text-muted) 173px 262px, transparent 262px) 8px 0 / 3px var(--row) repeat-y,
+      linear-gradient(to bottom, transparent 173px, var(--m3d-text-muted) 173px 262px, transparent 262px) right 8px top 0 / 3px var(--row) repeat-y;
   }
 
   .bench--shelf .bench__top {
-    background: linear-gradient(var(--m3d-border), var(--m3d-border)) 8px 170px / calc(100% - 16px) 2px no-repeat;
+    background: linear-gradient(to bottom, transparent 170px, var(--m3d-border) 170px 172px, transparent 172px) 8px 0 / calc(100% - 16px) var(--row) repeat-y;
   }
 
-  .bench--door .bench__top {
-    min-height: 0;
-    background: repeating-linear-gradient(90deg, var(--m3d-text-subtle) 0 6px, transparent 6px 11px) 8px 170px / calc(100% - 16px) 2px no-repeat;
+  // A dashed line on every row: the dashes are masked down to one line per row.
+  .bench--door .bench__top::before {
+    content: '';
+    position: absolute;
+    inset: 0 8px;
+    pointer-events: none;
+    background: repeating-linear-gradient(90deg, var(--m3d-text-subtle) 0 6px, transparent 6px 11px);
+    -webkit-mask: linear-gradient(to bottom, transparent 170px, #000 170px 172px, transparent 172px) 0 0 / 100% var(--row) repeat-y;
+    mask: linear-gradient(to bottom, transparent 170px, #000 170px 172px, transparent 172px) 0 0 / 100% var(--row) repeat-y;
   }
 
   @media (max-width: 599px) {
     .bench { padding: 12px 12px 14px; }
     .bench__top { padding: 0 6px; justify-content: center; }
+
+    // The status summary may wrap under the title; the actions stay on the title row.
+    .bench__sum { order: 5; flex: 1 0 100%; }
   }
 </style>

@@ -145,6 +145,33 @@ test.describe('signed in', () => {
     await expect(page.getByTestId('group-shared')).toBeVisible()
   })
 
+  test('on a phone the second row of printers on a bench stands on the bench too', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await withAccountPrinters(page, [
+      cloudPrinter('p-elm', 'Elm'),
+      cloudPrinter('p-cedar', 'Cedar'),
+      cloudPrinter('p-ash', 'Ash')
+    ], [{ id: 'g1', name: 'Workshop bench', printers: ['p-elm', 'p-cedar', 'p-ash'] }])
+    await openPrinters(page)
+    await toBench(page)
+    const workshop = page.getByTestId('group-g1')
+    const first = (await workshop.getByTestId('printer-tile-cloud:p-elm').boundingBox())!
+    const third = (await workshop.getByTestId('printer-tile-cloud:p-ash').boundingBox())!
+    // Three don't fit one row at 390 px: Ash wraps onto a second row.
+    expect(third.y).toBeGreaterThan(first.y + first.height - 1)
+    // The bench top draws its line and legs again every row: the drawing repeats downwards,
+    // once per row, so Ash's feet are on a line like the first row's.
+    const top = await workshop.locator('.bench__top').evaluate(el => {
+      const cs = getComputedStyle(el)
+      return { repeat: cs.backgroundRepeat, size: cs.backgroundSize, height: el.getBoundingClientRect().height }
+    })
+    expect(top.repeat).toMatch(/^repeat-y(, repeat-y)*$/)
+    const tile = Number(top.size.split(',')[0].trim().split(' ').pop()!.replace('px', ''))
+    expect(Math.abs(tile - (third.y - first.y))).toBeLessThan(2)
+    // And the bench top is as tall as its two rows, so the last row's line is inside it.
+    expect(top.height).toBeGreaterThanOrEqual(2 * tile - 1)
+  })
+
   test('a printer dragged onto New bench starts a bench, and it is saved', async ({ page, isMobile }) => {
     test.skip(isMobile, 'Drag and drop is a mouse gesture')
     const saved = await withAccountPrinters(page, [cloudPrinter('p-elm', 'Elm'), cloudPrinter('p-cedar', 'Cedar')], [{ id: 'g1', name: 'Workshop bench', printers: ['p-elm', 'p-cedar'] }])

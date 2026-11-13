@@ -237,6 +237,7 @@
           bench-id="other"
           kind="shelf"
           title="Other brands"
+          icon="printer"
           :tiles="otherShown"
           data-tid="other-printers"
         >

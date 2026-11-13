@@ -66,20 +66,29 @@
         />
       </svg>
       <div class="bprint__text">
-        <b class="bprint__name">
-          {{ tile.name }}
-          <span
-            v-if="tile.sharedBy"
-            class="bprint__tag"
-            data-tid="shared-by"
-          >from {{ tile.sharedBy }}</span>
-          <span
-            v-else-if="foreign"
-            class="bprint__tag"
-          >Klipper</span>
-        </b>
+        <b
+          class="bprint__name"
+          :title="tile.name"
+        >{{ tile.name }}</b>
+        <span
+          v-if="tile.sharedBy"
+          class="bprint__tag"
+          data-tid="shared-by"
+          :title="`from ${tile.sharedBy}`"
+        >from {{ tile.sharedBy }}</span>
+        <span
+          v-else-if="foreign"
+          class="bprint__tag"
+        >Klipper</span>
         <span class="bprint__state"><i />{{ stateWords }}</span>
-        <small v-if="materialLine">{{ materialLine }}</small>
+        <small
+          v-if="fileLine"
+          :title="fileLine"
+        >{{ fileLine }}</small>
+        <small
+          v-if="materialLine"
+          :title="materialLine"
+        >{{ materialLine }}</small>
       </div>
     </div>
   </div>
@@ -137,8 +146,16 @@ export default class BenchPrinter extends Vue {
   get stateWords (): string {
     if (this.found) return this.tile.detail
     const label = this.tile.label
-    const detail = this.tile.state === 'printing' || this.tile.state === 'paused' ? this.tile.detail : ''
+    // The state word first, as in the lab: "Printing · 62%". Control has no separate
+    // "heating" state for these printers, so there is no "Heating · 60°" line.
+    if (this.tile.state === 'printing') return label === 'Printing' ? 'Printing' : `Printing · ${label}`
+    const detail = this.tile.state === 'paused' ? this.tile.detail : ''
     return detail && detail !== label ? `${label} · ${detail}` : label
+  }
+
+  /** The file being printed, on the line under the state. */
+  get fileLine (): string {
+    return !this.found && this.tile.state === 'printing' ? this.tile.detail : ''
   }
 
   /** What is loaded, when the printer has said. How much is left isn't known yet, so it isn't drawn as known. */
@@ -154,6 +171,8 @@ export default class BenchPrinter extends Vue {
 
     position: relative;
     width: 150px;
+    // One row tall, so a bench's line and shelf repeat under every row of printers.
+    height: 268px;
     flex: none;
     user-select: none;
   }
@@ -232,7 +251,6 @@ export default class BenchPrinter extends Vue {
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    min-height: 78px;
     padding: 10px 0 0 2px;
   }
 
@@ -246,27 +264,36 @@ export default class BenchPrinter extends Vue {
   .bprint__hub { fill: var(--m3d-surface); stroke: var(--m3d-border); }
 
   .bprint__text {
+    grid-template-columns: minmax(0, 1fr);
     display: grid;
     min-width: 0;
   }
 
+  // The name wraps to a second line before it is cut; the tag has its own line.
   .bprint__name {
+    display: -webkit-box;
+    overflow: hidden;
     font-size: 13.5px;
     line-height: 1.25;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
 
   .bprint__tag {
-    margin-left: 6px;
+    justify-self: start;
+    max-width: 100%;
+    margin: 2px 0 1px;
     padding: 1px 6px;
+    overflow: hidden;
     border-radius: 6px;
     background: var(--m3d-fill);
     color: var(--m3d-text-muted);
     font-size: 10px;
     font-weight: 600;
-    vertical-align: 1px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .bprint__state {
@@ -298,7 +325,9 @@ export default class BenchPrinter extends Vue {
 
   .bprint__text small {
     color: var(--m3d-text-muted);
+    overflow: hidden;
     font-size: 11px;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 </style>
