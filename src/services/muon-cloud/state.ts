@@ -9,6 +9,7 @@ import Vue from 'vue'
 import {
   cloudApi,
   CloudError,
+  setSessionEndedHandler,
   storedToken,
   storeRefreshToken,
   storeToken,
@@ -18,6 +19,7 @@ import {
   type CloudPrinter,
   type AccessHandoff
 } from './api'
+import { watchFocus } from './focus-check'
 import { centralLoginEnabled, clearSilentAttempt, redirectUri, signOutCentral, takeCallback } from './centralLogin'
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
@@ -481,6 +483,10 @@ try {
     if ((event.key === TOKEN_KEY || event.key === null) && !storedToken() && cloudState.account) dropSession()
   })
 } catch { /* no window */ }
+
+// KAN-1389: a call the console refused (any caller) ends the session here, and a tab that comes back checks it still stands.
+setSessionEndedHandler(() => { dropSession() })
+watchFocus(() => cloudState.account !== null, () => cloudApi.me())
 
 /**
  * Finishes a return from the console's `/authorize` (`WEB-12`): exchanges the

@@ -369,7 +369,7 @@
       @close="close"
     >
       <p class="m3-dlg__text">
-        Changing it signs you out everywhere else.
+        Every device is signed out; you may need to sign in again here.
       </p>
       <label class="m3-field">
         <span class="m3-field__label">New password</span>
@@ -606,7 +606,9 @@ import ReauthDialog from './ReauthDialog.vue'
 import AcctMore from './AcctMore.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { accountApi, type AccountDetails, type Identity, type Me, type Passkey } from '@/services/account/api'
-import { isMissing } from '@/services/account/client'
+import { endsSession, isMissing } from '@/services/account/client'
+import { signOutNow } from '@/services/account/sign-out'
+import type { SignedOutReason } from '@/services/account/signed-out-note'
 import { accountState, describe, loadConfig, loadEvents, loadMe } from '@/services/account/state'
 import { agoText, dayText, providerName, securityHealth, type AccountSectionId, type SecurityHealth } from '@/services/account/model'
 import { cancelledPasskey, createPasskey, deviceLabel, passkeysSupported } from '@/services/account/webauthn'
@@ -631,6 +633,8 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   renaming: Passkey | null = null
   setup: { secret: string, otpauth_url: string } | null = null
   codes: string[] = []
+  /** KAN-1389: the console ended this session with the change; signed out once the recovery codes are read. */
+  endsAfterCodes = false
   copied = false
   busy = false
   error = ''
@@ -733,6 +737,14 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     this.dialog = ''
     this.codes = []
     this.setup = null
+    if (this.endsAfterCodes) this.signOutAfter('two-step')
+  }
+
+  /** The console ended this session with the person's own change (KAN-1389): to the sign-in page, saying why. */
+  async signOutAfter (reason: SignedOutReason) {
+    this.endsAfterCodes = false
+    this.dialog = ''
+    await signOutNow('browser', { reason, router: this.$router })
   }
 
   async run (what: () => Promise<unknown>, inDialog = false): Promise<boolean> {
@@ -784,9 +796,16 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   async changePassword () {
     const next = this.form.next
     let changed = false
+    let ended = false
     await this.run(async () => {
-      changed = (await this.withReauth(r => accountApi.changePassword(next, r), { action: 'Change password' })) !== null
+      const answer = await this.withReauth(r => accountApi.changePassword(next, r), { action: 'Change password' })
+      changed = answer !== null
+      ended = answer !== null && endsSession(answer)
     }, true)
+    if (changed && ended) {
+      await this.signOutAfter('password')
+      return
+    }
     if (changed) {
       this.dialog = ''
       this.message = 'Your password is changed. Every other device is signed out.'
@@ -879,14 +898,23 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   async confirmTwoStep () {
     const code = this.form.code.replace(/\s+/g, '')
     await this.run(async () => {
-      const { recovery_codes: codes } = await accountApi.totpConfirm(code)
-      this.codes = codes
+      const answer = await accountApi.totpConfirm(code)
+      this.codes = answer.recovery_codes
+      // The codes are shown first: they are the only copy.
+      this.endsAfterCodes = endsSession(answer)
     }, true)
     loadMe().catch(() => {})
   }
 
   async twoStepOff () {
-    const done = await this.run(() => accountApi.totpOff(this.form.code.replace(/\s+/g, '')), true)
+    let ended = false
+    const done = await this.run(async () => {
+      ended = endsSession(await accountApi.totpOff(this.form.code.replace(/\s+/g, '')))
+    }, true)
+    if (done && ended) {
+      await this.signOutAfter('two-step')
+      return
+    }
     if (done) {
       this.dialog = ''
       this.message = 'Two-step sign-in is off.'
@@ -906,6 +934,7 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
         if (answer) {
           this.form.code = ''
           this.codes = answer.recovery_codes
+          this.endsAfterCodes = endsSession(answer)
           this.dialog = 'twoStep'
         }
       } catch (error) {

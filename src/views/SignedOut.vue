@@ -217,6 +217,9 @@ export default class SignedOut extends Vue {
   get line (): string {
     const who = this.note?.email || 'You'
     const is = this.note?.email ? 'is' : 'are'
+    if (this.note?.reason === 'password') return 'Your password was changed. Sign in again.'
+    if (this.note?.reason === 'email') return 'Your email address was changed. Sign in again.'
+    if (this.note?.reason === 'two-step') return 'Your two-step sign-in was changed. Sign in again.'
     switch (this.note?.scope) {
       case 'everywhere':
         return `${who} ${is} signed out everywhere: every browser, Slice and the Muon3D app.`

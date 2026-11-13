@@ -370,6 +370,30 @@ const CLAIM_SETTLE_MS = 50
  */
 let recoverSession: ((failedRefresh: string) => Promise<boolean>) | null = null
 
+/**
+ * KAN-1389: what to do when the console has ended the session (a refused call:
+ * the refresh and the silent sign-in both failed). `state.ts` registers
+ * `dropSession`, so a refusal seen by any caller (notices, account pages,
+ * printers) signs the user out, not only the printer poll.
+ */
+let onSessionEnded: (() => void) | null = null
+
+export function setSessionEndedHandler (handler: (() => void) | null) {
+  onSessionEnded = handler
+}
+
+/**
+ * The console refused the session that `sent` belongs to. Signs out only if that
+ * is still the session here: a refusal that lands after a sign-out and a new
+ * sign-in belongs to the previous account and must not end the new one (KAN-2249).
+ * Tokens already cleared by the refresh count as still ours.
+ */
+export function sessionRefused (sent: string) {
+  const now = storedToken()
+  if (now !== null && now !== sent) return
+  onSessionEnded?.()
+}
+
 export function setSessionRecovery (recover: ((failedRefresh: string) => Promise<boolean>) | null) {
   recoverSession = recover
 }
@@ -542,6 +566,8 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
       if (outcome === 'ok' && (!stillMine || stillMine())) return request<T>(method, path, body, storedToken(), false)
       // The console did not answer: that is not a sign-out, so do not look like one.
       if (outcome === 'unreachable') throw new CloudError('The Muon3D service could not be reached.', 0)
+      // The console ended the session (KAN-1389): whoever asked, the user is signed out, unless the account changed meanwhile.
+      if (outcome === 'refused' && (!stillMine || stillMine())) sessionRefused(currentToken)
     }
   }
   const text = await response.text()

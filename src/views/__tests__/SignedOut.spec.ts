@@ -48,3 +48,19 @@ describe('nearby printer state after signing out', () => {
     w.destroy()
   })
 })
+
+describe('the line after the person\'s own credential change (KAN-1389)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); sessionStorage.clear() })
+  it.each([
+    ['password', 'Your password was changed. Sign in again.'],
+    ['email', 'Your email address was changed. Sign in again.'],
+    ['two-step', 'Your two-step sign-in was changed. Sign in again.']
+  ] as const)('says so for a %s change', async (reason, text) => {
+    sessionStorage.setItem('muon.account.signedOut', JSON.stringify({ at: Date.now(), scope: 'browser', reason }))
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('blocked') }))
+    const w = open()
+    await settle()
+    expect(w.find('[data-tid="signed-out-line"]').text()).toBe(text)
+    w.destroy()
+  })
+})
