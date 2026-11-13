@@ -7,6 +7,18 @@ import { gzip, sha256Hex } from '../bytes'
 import { mutations } from '@/store/printer/mutations'
 import { defaultState } from '@/store/printer/state'
 import { cloudState } from '@/services/muon-cloud/state'
+import { storeToken } from '@/services/muon-cloud/api'
+import { announceAccount, confirmToken, identityOf } from '@/services/muon-cloud/account-events'
+
+const JACK = { id: 'acct-1', name: 'Jack', email: 'jack@example.test', created_at: 1 }
+const HARRY = { id: 'acct-2', name: 'Harry', email: 'harry@example.test', created_at: 1 }
+/** The account /me confirmed for the stored token. */
+function signedInAs (account: typeof JACK, token: string) {
+  storeToken(token)
+  announceAccount(identityOf(account))
+  confirmToken(token)
+  cloudState.account = account
+}
 
 vi.mock('../assertion', () => ({ modelsAssertion: { get: vi.fn().mockResolvedValue('assertion') } }))
 
@@ -17,7 +29,7 @@ describe('Library run reporting', () => {
     resetRunReportingForTests()
     vi.mocked(modelsAssertion.get).mockClear()
     cloudState.activePrinterId = null
-    cloudState.account = { id: 'acct-1', name: 'Jack', email: 'jack@example.test', created_at: 1 }
+    signedInAs(JACK, 'token-1')
     cloudState.printers.splice(0)
     vi.unstubAllGlobals()
   })
@@ -166,6 +178,7 @@ describe('Library run reporting', () => {
   // and no assertion is asked for. Before, the stored token alone fetched an assertion and the run was reported.
   it('reports nothing while the account is unset, and asks for no assertion', async () => {
     cloudState.account = null
+    confirmToken(null)
     const fetcher = vi.fn().mockImplementation(() => reply(201, { id: 'run-1' }))
     expect(await createRun({ printer_id: 'p1', printer_name: 'Pine', file_name: 'cube.gcode' }, fetcher)).toBeNull()
     expect(fetcher).not.toHaveBeenCalled()
@@ -177,9 +190,34 @@ describe('Library run reporting', () => {
     vi.mocked(modelsAssertion.get).mockImplementationOnce(() => new Promise<string>(resolve => { release = resolve }))
     const fetcher = vi.fn().mockImplementation(() => reply(201, { id: 'run-1' }))
     const pending = createRun({ printer_id: 'p1', printer_name: 'Pine', file_name: 'cube.gcode' }, fetcher)
-    cloudState.account = { id: 'acct-2', name: 'Harry', email: 'harry@example.test', created_at: 1 }
+    signedInAs(HARRY, 'token-2')
     release('assertion-of-acct-1')
     expect(await pending).toBeNull()
     expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('does not report a run while the stored token is not the one /me confirmed', async () => {
+    storeToken('token-other-tab')
+    const fetcher = vi.fn().mockImplementation(() => reply(201, { id: 'run-1' }))
+    expect(await createRun({ printer_id: 'p1', printer_name: 'Pine', file_name: 'cube.gcode' }, fetcher)).toBeNull()
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('does not report the end of a run for an account other than the one that started it', async () => {
+    Vue.use(Vuex)
+    cloudState.activePrinterId = 'p1'
+    const store = new Vuex.Store<any>({ modules: { printer: { namespaced: true, state: defaultState(), mutations } }, state: { config: { apiUrl: 'http://pine', instances: [] } } })
+    const fetcher = vi.fn(async (_url: string, init: RequestInit) => reply(init.method === 'POST' ? 201 : 200, init.method === 'POST' ? { id: 'run-1' } : {}))
+    vi.stubGlobal('fetch', fetcher)
+    const stop = observePrintRuns(store)
+    store.commit('printer/setSocketNotify', { key: 'print_stats', payload: { state: 'standby' } }); await Vue.nextTick()
+    store.commit('printer/setSocketNotify', { key: 'print_stats', payload: { state: 'printing', filename: 'pine.gcode' } })
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1))
+    await Vue.nextTick(); await Promise.resolve(); await Vue.nextTick()
+    signedInAs(HARRY, 'token-2')
+    store.commit('printer/setSocketNotify', { key: 'print_stats', payload: { state: 'complete' } })
+    await Vue.nextTick(); await new Promise(resolve => setTimeout(resolve, 30))
+    expect(fetcher.mock.calls.filter(([, init]) => init.method === 'PATCH')).toHaveLength(0)
+    stop()
   })
 })

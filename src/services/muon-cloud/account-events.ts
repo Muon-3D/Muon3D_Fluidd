@@ -67,3 +67,24 @@ export function identityOf (account: { id: string, name?: string, email?: string
   if (!account) return SIGNED_OUT
   return { signedIn: true, id: account.id, name: account.name || account.email || null }
 }
+
+/**
+ * The stored token that /me last confirmed belongs to the account on screen. While the stored token is another one (a
+ * reconcile after another tab's switch is pending or failed), the account and the token may not match: nothing is
+ * served from the account's assertion cache and nothing reported for it (`confirmedAccountId` answers null).
+ */
+let confirmedToken: string | null = null
+
+export function confirmToken (token: string | null) {
+  confirmedToken = token
+}
+
+/** This tab's own refresh rotated the token of the account it confirmed: the new one is as confirmed as the old. */
+export function rotateConfirmed (from: string | null, to: string) {
+  if (confirmedToken !== null && confirmedToken === from) confirmedToken = to
+}
+
+/** The account's id only while `token` (the stored one) is the token confirmed for it; else null. */
+export function confirmedAccountId (token: string | null): string | null {
+  return token !== null && token === confirmedToken ? current.id : null
+}

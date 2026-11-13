@@ -23,7 +23,7 @@ import { centralLoginEnabled, clearSilentAttempt, redirectUri, signInAgainOnPrin
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
 import { consolePresence } from './presence'
-import { announceAccount, currentAccount, identityOf, SIGNED_OUT } from './account-events'
+import { announceAccount, confirmedAccountId, confirmToken, currentAccount, identityOf, SIGNED_OUT } from './account-events'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
 import { forgetOwnAvatar } from '@/services/account/avatar'
@@ -434,6 +434,8 @@ async function sessionRefused () {
 async function dropSession () {
   // Before anything of the session is cleared: whoever answers for the account hears that it left (account-events.ts).
   if (cloudState.account || currentAccount().signedIn) announceAccount(SIGNED_OUT)
+  confirmToken(null)
+  stopReconcileRetry()
   forgetOwnAvatar()
   stopPolling()
   sessionAbort.abort()
@@ -468,6 +470,7 @@ async function adoptSession (token: string, account: CloudAccount) {
   // new session replaces the old one. The same account with a new token announces nothing: nobody changed.
   if (cloudState.account?.id !== account.id) announceAccount(identityOf(account))
   storeToken(token)
+  confirmToken(token)
   // Signed in as someone else without a sign-out first (signIn while signed in): the groups on screen are not theirs.
   if (cloudState.account?.id !== account.id) {
     cloudState.layout = defaultLayout()
@@ -503,41 +506,101 @@ try {
 } catch { /* no window */ }
 
 /**
- * The stored token's account, asked of the console: the same account as on screen keeps the session as it is; another
- * (or none yet) is adopted, which announces it before anything is replaced; a refusal ends the session. A console
- * that cannot be reached changes nothing. An answer for a token that is no longer the stored one is dropped.
+ * The stored token's account, asked of the console: the same account as on screen is confirmed for this token and
+ * kept as it is; another (or none yet) is adopted, which announces it before anything is replaced; a refusal ends the
+ * session. A console that cannot be reached (status 0, 5xx, 429) leaves the account unconfirmed for this token, which
+ * keeps assertions and run reports from being served under a mismatched account, and is retried on a backoff and when
+ * the browser comes back online until it answers. Never more than one is in flight.
  */
-async function reconcileStoredSession (): Promise<void> {
-  const token = storedToken()
-  if (!token) return
-  let me: Awaited<ReturnType<typeof cloudApi.me>>
-  try {
-    me = await cloudApi.me()
-  } catch (error) {
-    if (error instanceof CloudError && error.status === 401) await sessionRefused()
-    return
-  }
-  const now = storedToken()
-  if (!now) return
-  if (now !== token) return reconcileStoredSession()
-  if (cloudState.account?.id === me.account.id) return
-  await adoptSession(now, me.account)
+let reconciling: Promise<void> | null = null
+
+function reconcileStoredSession (): Promise<void> {
+  if (!reconciling) reconciling = reconcileOnce().finally(() => { reconciling = null })
+  return reconciling
 }
 
-// Where the console client changes the session on its own (api.ts): the account is announced first, and a recovered
-// pair is checked against the account on screen.
+async function reconcileOnce (): Promise<void> {
+  for (;;) {
+    const token = storedToken()
+    if (!token) return stopReconcileRetry()
+    let me: Awaited<ReturnType<typeof cloudApi.me>>
+    try {
+      me = await cloudApi.me()
+    } catch (error) {
+      if (error instanceof CloudError && error.status === 401) {
+        stopReconcileRetry()
+        await sessionRefused()
+      } else if (storedToken()) {
+        scheduleReconcileRetry()
+      }
+      return
+    }
+    const now = storedToken()
+    if (!now) return stopReconcileRetry()
+    // Another token since the question was asked: its account is asked afresh, never paired with this answer.
+    if (now !== token) continue
+    stopReconcileRetry()
+    if (cloudState.account?.id === me.account.id) confirmToken(now)
+    else await adoptSession(now, me.account)
+    return
+  }
+}
+
+/** Waits before the nth retry: 5 s, 15 s, 60 s, then every 5 minutes. */
+export const RECONCILE_RETRY_MS = [5_000, 15_000, 60_000, 300_000]
+let reconcileTimer: ReturnType<typeof setTimeout> | null = null
+let reconcileAttempts = 0
+
+function scheduleReconcileRetry () {
+  if (reconcileTimer !== null) return
+  const token = storedToken()
+  if (!token || confirmedAccountId(token)) return
+  const wait = RECONCILE_RETRY_MS[Math.min(reconcileAttempts, RECONCILE_RETRY_MS.length - 1)]
+  reconcileAttempts++
+  reconcileTimer = setTimeout(() => {
+    reconcileTimer = null
+    reconcileStoredSession().catch(() => {})
+  }, wait)
+}
+
+/** The one shared timer, cleared when the account is known, the token is gone, the console refused it, or on sign-out. */
+function stopReconcileRetry () {
+  if (reconcileTimer !== null) clearTimeout(reconcileTimer)
+  reconcileTimer = null
+  reconcileAttempts = 0
+}
+
+try {
+  window.addEventListener('online', () => {
+    const token = storedToken()
+    if (!token || confirmedAccountId(token)) return
+    if (reconcileTimer !== null) { clearTimeout(reconcileTimer); reconcileTimer = null }
+    reconcileStoredSession().catch(() => {})
+  })
+} catch { /* no window */ }
+
+// Where the console client changes the session on its own (api.ts): the account is announced first (sessionRefused
+// reaches dropSession, which announces before it clears anything, and api.ts clears the tokens after), then, on a
+// printer's own address, signs in again as for any refusal. A recovered pair is checked against the account on screen.
 setSessionHooks({
-  refused: () => { void dropSession() },
+  refused: () => { void sessionRefused() },
   async recovered () {
     try {
       const me = await cloudApi.meWithoutRefresh()
       const token = storedToken()
       if (!token) return false
-      if (cloudState.account?.id !== me.account.id) void adoptSession(token, me.account)
+      if (cloudState.account?.id === me.account.id) confirmToken(token)
+      else void adoptSession(token, me.account)
       return true
-    } catch {
-      await dropSession()
-      return false
+    } catch (error) {
+      // Only a refusal ends the session. A console that did not answer leaves the pair in place, unconfirmed, and the
+      // retry finishes the check.
+      if (error instanceof CloudError && error.status === 401) {
+        await dropSession()
+        return false
+      }
+      scheduleReconcileRetry()
+      return true
     }
   }
 })
@@ -590,6 +653,8 @@ export async function initCloud (sessionCheck?: Promise<void>): Promise<string |
       else if (currentToken) await reconcileStoredSession()
     } catch (error) {
       if (error instanceof CloudError && error.status === 401) await sessionRefused()
+      // The console could not be reached: no account yet, so nothing is served or reported; asked again on a backoff.
+      else scheduleReconcileRetry()
     }
   }
   cloudState.ready = true

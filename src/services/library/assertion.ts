@@ -7,7 +7,7 @@
  * (or a refreshed session token) asks again.
  */
 import { CloudError, cloudApi, storedToken } from '@/services/muon-cloud/api'
-import { currentAccount, onAccountCleared } from '@/services/muon-cloud/account-events'
+import { confirmedAccountId, onAccountCleared } from '@/services/muon-cloud/account-events'
 import { LibraryError, MODELS_AUDIENCE, notSignedIn, type AssertionProvider } from './api'
 
 /** How long before its expiry an assertion is replaced. */
@@ -125,7 +125,8 @@ export async function consoleAssertion (audience: string = MODELS_AUDIENCE): Pro
 export const modelsAssertion = createAssertionCache({
   fetch: () => consoleAssertion(),
   session: storedToken,
-  account: () => currentAccount().id
+  // Null while the stored token is not the one /me confirmed for the account on screen (account-events.ts).
+  account: () => confirmedAccountId(storedToken())
 })
 
 onAccountCleared(() => modelsAssertion.clear())

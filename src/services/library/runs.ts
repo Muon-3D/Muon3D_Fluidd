@@ -2,6 +2,8 @@ import type { Store } from 'vuex'
 import { modelsAssertion } from './assertion'
 import { MODELS_URL } from './api'
 import { cloudState } from '@/services/muon-cloud/state'
+import { confirmedAccountId } from '@/services/muon-cloud/account-events'
+import { storedToken } from '@/services/muon-cloud/api'
 import type { InstanceConfig } from '@/store/config/types'
 import { printerNameParts } from '@/util/printer-name'
 
@@ -42,17 +44,19 @@ export function rememberLibraryFile (path: string, start: Pick<RunStart, 'gcode_
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-async function request (path: string, method: string, body: object, key?: string, fetcher: typeof fetch = fetch): Promise<any | null> {
+/** The account a run is reported for: the one /me confirmed for the stored token, else nobody (account-events.ts). */
+const confirmedOwner = (): string | null => confirmedAccountId(storedToken())
+
+async function request (path: string, method: string, body: object, key?: string, fetcher: typeof fetch = fetch, owner: string | null = confirmedOwner()): Promise<any | null> {
   if (consentStopped) return null
-  // Nothing is reported until /me has named the account (a token may be stored while that is still on its way, or
-  // after it failed): no assertion is asked for, and no attempts are spent on a refusal that only waiting would cure.
-  const owner = cloudState.account?.id
-  if (!owner) return null
+  // Nothing is reported until /me has confirmed the account for the stored token (it may be on its way, or failed and
+  // retried later), and only for the account that owns the run: no assertion is asked for otherwise.
+  if (!owner || confirmedOwner() !== owner) return null
   for (let attempt = 0; attempt <= RETRIES; attempt++) {
     try {
       const token = await modelsAssertion.get()
       // A run belongs to the account that started it: never sent under the next account's assertion.
-      if (cloudState.account?.id !== owner) return null
+      if (confirmedOwner() !== owner) return null
       const response = await fetcher(`${MODELS_URL}${path}`, {
         method,
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(key ? { 'Idempotency-Key': key } : {}) },
@@ -68,7 +72,7 @@ async function request (path: string, method: string, body: object, key?: string
   return null
 }
 
-export async function createRun (start: RunStart, fetcher: typeof fetch = fetch): Promise<{ id: string } | null> {
+export async function createRun (start: RunStart, fetcher: typeof fetch = fetch, owner: string | null = confirmedOwner()): Promise<{ id: string } | null> {
   const { gcode_sha256 } = start
   if (!gcode_sha256 && !start.file_name) return null
   // Not de-duplicated across browsers: every Control tab watching this printer reports its own run.
@@ -81,7 +85,7 @@ export async function createRun (start: RunStart, fetcher: typeof fetch = fetch)
     reporter: 'control',
     ...(start.item_id && start.version !== undefined ? { item_id: start.item_id, version: start.version } : {}),
     ...(start.publication_id ? { publication_id: start.publication_id } : {})
-  }, key, fetcher)
+  }, key, fetcher, owner)
 }
 
 /**
@@ -89,7 +93,7 @@ export async function createRun (start: RunStart, fetcher: typeof fetch = fetch)
  * another printer first: a run left running by switching away mid-print is
  * never closed (a known limitation).
  */
-export function watchRunEnd (store: AnyStore, id: string, startedAt = Date.now(), fetcher: typeof fetch = fetch, expectedPrinterId = printerId(store)): () => void {
+export function watchRunEnd (store: AnyStore, id: string, startedAt = Date.now(), fetcher: typeof fetch = fetch, expectedPrinterId = printerId(store), owner: string | null = confirmedOwner()): () => void {
   const stop = store.watch(
     printSnapshot,
     ([state], [beforeState]) => {
@@ -104,7 +108,7 @@ export function watchRunEnd (store: AnyStore, id: string, startedAt = Date.now()
         outcome,
         ...(outcome === 'failed' && Number.isFinite(progress) ? { progress_pct: Math.round(progress * 100) } : {}),
         duration_s: Math.max(0, Math.round((Date.now() - startedAt) / 1000))
-      }, undefined, fetcher).catch(() => {})
+      }, undefined, fetcher, owner).catch(() => {})
     }
   )
   return stop
@@ -112,7 +116,9 @@ export function watchRunEnd (store: AnyStore, id: string, startedAt = Date.now()
 
 /** Fire-and-forget by design: model-service latency must never delay a print. */
 export function reportStartedRun (store: AnyStore, start: RunStart): void {
-  createRun(start).then(run => { if (run?.id && printerId(store) === start.printer_id) watchRunEnd(store, run.id, Date.now(), fetch, start.printer_id) }).catch(() => {})
+  // The run's owner is kept with it: its end is reported only while that account is still the confirmed one.
+  const owner = confirmedOwner()
+  createRun(start, fetch, owner).then(run => { if (run?.id && printerId(store) === start.printer_id) watchRunEnd(store, run.id, Date.now(), fetch, start.printer_id, owner) }).catch(() => {})
 }
 
 /**

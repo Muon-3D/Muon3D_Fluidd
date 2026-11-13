@@ -6,7 +6,7 @@
  * when the console serves Fluidd, or the URL saved in `muon.cloud.url`.
  */
 
-import { currentAccount } from './account-events'
+import { currentAccount, rotateConfirmed } from './account-events'
 import { clearDeletion, deletionRevision, observeDeletion } from './deletion'
 import { isPrinterSecureOrigin } from '@/services/secure-origin'
 export { deletionState } from './deletion'
@@ -516,7 +516,9 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
       const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS)
       try {
         const session = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId() }, controller.signal)
+        const before = storedToken()
         storeToken(session.access_token)
+        rotateConfirmed(before, session.access_token)
         storeRefreshToken(session.refresh_token)
         resetRefreshBackoff()
         return 'ok'
