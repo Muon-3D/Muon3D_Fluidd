@@ -18,7 +18,7 @@ describe('opening an account printer on a plain-HTTP page', () => {
       $store: { state: { socket: { open: false, ready: false } } },
       connectCloud: vi.fn(),
       connectLocal: vi.fn(),
-      run: vi.fn()
+      run: vi.fn(async (_key: string, work: () => Promise<boolean>) => { await work() })
     }
     const e = {
       key: 'cloud:h1',
