@@ -166,7 +166,10 @@ export function sameConsole (a: string, b: string): boolean {
 }
 
 export function cloudBaseUrl (): string {
-  const saved = readStorage(URL_KEY)
+  // A saved console address is honoured only where the page's storage can be
+  // trusted. On a plain-HTTP page anything on the network can write it, and
+  // would choose where the page's calls and "open" links go (KAN-2192).
+  const saved = cloudTokensPersist() ? readStorage(URL_KEY) : null
   if (saved) return saved.replace(/\/$/, '')
   // A page the console serves talks to the console under the name it was
   // opened by, whichever name the build was made for: its sign-in, its cookie
@@ -194,18 +197,49 @@ export function cloudTokensPersist (location: Pick<Location, 'protocol' | 'hostn
   return location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
 }
 
-// On an insecure origin the pair lives here only: a reload signs out.
-const memoryTokens = new Map<string, string>()
+/**
+ * Whether this page may hold a Muon3D account session at all (KAN-2192, the
+ * whole of H2/B9: "no credential may ever be stored or used on an http://
+ * origin"). The plain-HTTP printer address has to stay for the hotspot, setup
+ * with no internet and `muon3d.local`, and anyone on the network can answer
+ * for it or change the page. So there the page takes no password, holds no
+ * token even in memory, and never makes or reads the browser's Iroh key:
+ * account features are one link to the console (`controlUrl`). HTTPS and
+ * loopback keep the session.
+ */
+export function cloudSessionAllowed (location: Pick<Location, 'protocol' | 'hostname'> | undefined = globalThis.location): boolean {
+  // No page to judge: refuse. A gate does not pass what it cannot see.
+  if (!location) return false
+  return cloudTokensPersist(location)
+}
+
+/** The console page that does what this page may not: `route` is a hash route such as `/account`. */
+export function controlUrl (route = '/'): string {
+  const base = (import.meta.env.VUE_MUON_CLOUD_URL as string | undefined)?.replace(/\/$/, '') || CONSOLE_ORIGINS[0]
+  return `${base}/#${route.startsWith('/') ? route : `/${route}`}`
+}
+
+/** What every refused account call on a plain-HTTP page says. */
+export const INSECURE_ORIGIN_MESSAGE = 'This page is not encrypted, so it cannot sign in to Muon3D. Open Muon Control to use your account.'
+
+function refuseOnInsecureOrigin (): never {
+  throw new CloudError(INSECURE_ORIGIN_MESSAGE, 0, 'insecure_origin')
+}
+
+// The only console calls a plain-HTTP page makes: the two that need no
+// account and carry nothing of the person's. An allow-list, so a route added
+// later is refused there until somebody decides it is safe.
+const INSECURE_ORIGIN_CALLS: readonly string[] = ['GET /v1/config', 'GET /v1/links/nearby']
 
 function readTokenStorage (key: string): string | null {
-  if (cloudTokensPersist()) return readStorage(key)
-  return memoryTokens.get(key) ?? null
+  if (cloudSessionAllowed()) return readStorage(key)
+  return null
 }
 
 function writeTokenStorage (key: string, value: string | null) {
-  if (cloudTokensPersist()) return writeStorage(key, value)
-  if (value === null) memoryTokens.delete(key)
-  else memoryTokens.set(key, value)
+  // Not allowed: the token is dropped, not kept in memory. Nothing to read
+  // means nothing for injected script to take.
+  if (cloudSessionAllowed()) writeStorage(key, value)
 }
 
 // Migration: an older build stored the pair in localStorage on this origin.
@@ -244,6 +278,8 @@ export function storeRefreshToken (token: string | null) {
  * `{error, error_description}`, not the API's sentence shape.
  */
 async function tokenRequest (form: Record<string, string>, signal?: AbortSignal): Promise<TokenSession> {
+  // KAN-2192: a code or a refresh token is a credential; none leaves a plain-HTTP page.
+  if (!cloudSessionAllowed()) refuseOnInsecureOrigin()
   let response: Response
   try {
     response = await fetch(`${cloudBaseUrl()}/token`, {
@@ -469,7 +505,13 @@ export async function refreshSession (): Promise<boolean> {
   return (await refreshOutcome()) === 'ok'
 }
 
-async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true): Promise<T> {
+/**
+ * `stillMine`, when given, is asked before a 401 is retried with another token: a request made for one account must
+ * never be sent again with the next account's (KAN-2249: a layout PUT in flight across a sign-out).
+ */
+async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true, stillMine?: () => boolean): Promise<T> {
+  // KAN-2192: no bearer and no password leaves a plain-HTTP page, whoever asks.
+  if (!cloudSessionAllowed() && (token || !INSECURE_ORIGIN_CALLS.includes(`${method} ${path}`))) refuseOnInsecureOrigin()
   const startedAt = deletionRevision()
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
@@ -486,7 +528,7 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
   }
   // A central-login access token lasts 15 minutes. Refresh once and retry;
   // only for the stored session, never for a token passed in.
-  if (response.status === 401 && retry && token !== null) {
+  if (response.status === 401 && retry && token !== null && (!stillMine || stillMine())) {
     // Another request may already have rotated the pair while this one's
     // response was in flight. Reuse that pair rather than refusing the late
     // response or spending the new refresh token again.
@@ -496,7 +538,8 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
     }
     if (currentToken) {
       const outcome = await refreshOutcome()
-      if (outcome === 'ok') return request<T>(method, path, body, storedToken(), false)
+      // Asked again: the account can change while the refresh is on its way.
+      if (outcome === 'ok' && (!stillMine || stillMine())) return request<T>(method, path, body, storedToken(), false)
       // The console did not answer: that is not a sign-out, so do not look like one.
       if (outcome === 'unreachable') throw new CloudError('The Muon3D service could not be reached.', 0)
     }
@@ -561,7 +604,7 @@ export const cloudApi = {
     request<{ printers: Array<{ printer_id: string, name: string, model: string, linked: boolean, local_addrs?: string[] }> }>('GET', '/v1/links/nearby'),
   linkState: (id: string) => request<{ printer_id: string, state: LinkState }>('GET', `/v1/links/${id}`),
   getLayout: () => request<{ layout: any }>('GET', '/v1/fleet/layout'),
-  putLayout: (layout: unknown) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout }),
+  putLayout: (layout: unknown, stillMine?: () => boolean) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout }, storedToken(), true, stillMine),
   /** The central login's code exchange (`WEB-12`). */
   exchangeCode: (code: string, redirectUri: string, verifier: string, signal?: AbortSignal) =>
     tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: CLIENT_ID, code_verifier: verifier }, signal),

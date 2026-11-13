@@ -12,9 +12,8 @@
  * service's own route and `needs_auth` says to send the assertion.
  */
 
-/** The model service, and the audience its assertions name (the same string). */
-export const MODELS_URL: string = (import.meta.env.VITE_MODELS_URL || 'https://models.muon3d.com').replace(/\/+$/, '')
-export const MODELS_AUDIENCE = MODELS_URL
+import { MODELS_URL, isUnderBase, modelsResourceUrl } from './transport'
+export { MODELS_URL, MODELS_AUDIENCE } from './transport'
 
 export interface Transfer {
   method: string;
@@ -357,9 +356,28 @@ export interface LibraryClientOptions {
 export type LibraryClient = ReturnType<typeof createLibraryClient>
 
 export function createLibraryClient (options: LibraryClientOptions) {
-  const base = (options.baseUrl ?? MODELS_URL).replace(/\/+$/, '')
+  const base = () => (options.baseUrl ?? MODELS_URL).replace(/\/+$/, '')
   const http: typeof fetch = options.fetch ?? ((input, init) => fetch(input, init))
   const send = options.send ?? xhrSend
+
+  /**
+   * Where a Transfer goes. The assertion is only ever sent to the service at
+   * this page's transport: a Transfer that asks for it anywhere else (another
+   * host, or a path that leaves the service's own) is refused before anything
+   * is sent. A presigned bucket URL without `needs_auth` goes as it came.
+   */
+  function resolve (transfer: Transfer): string {
+    let url: string
+    try {
+      url = modelsResourceUrl(transfer.url, base(), options.baseUrl)
+    } catch {
+      throw new LibraryError('protocol', 'The Library sent a file address this page will not use.')
+    }
+    if (transfer.needs_auth && !isUnderBase(url, base())) {
+      throw new LibraryError('protocol', 'The Library sent a file address this page will not use.')
+    }
+    return url
+  }
 
   /** A request with the assertion; a 401 asks once more with a new one. */
   async function authorised (url: string, init: RequestInit, retried = false): Promise<Response> {
@@ -383,7 +401,7 @@ export function createLibraryClient (options: LibraryClientOptions) {
       init.headers = { 'content-type': 'application/json' }
       init.body = JSON.stringify(body)
     }
-    const response = await authorised(`${base}${path}`, init)
+    const response = await authorised(`${base()}${path}`, init)
     const text = await response.text()
     let data: unknown = null
     try {
@@ -398,7 +416,7 @@ export function createLibraryClient (options: LibraryClientOptions) {
   const item = (id: string) => `/v1/items/${encodeURIComponent(id)}`
 
   return {
-    base,
+    get base () { return base() },
     info: () => request<LibraryInfo>('GET', '/v1/library'),
     consent: (promiseVersion: string) => request<LibraryAccount>('PUT', '/v1/library/consent', { promise_version: promiseVersion }),
     withdraw: () => request<{ enabled: boolean, account: LibraryAccount | null }>('DELETE', '/v1/library/consent'),
@@ -419,11 +437,11 @@ export function createLibraryClient (options: LibraryClientOptions) {
     shares: () => request<unknown>('GET', '/v1/community/shares'),
     saved: () => request<CommunitySavesPage>('GET', '/v1/community/saves'),
     /** Save a public print (the Library's heart): the save, new or the one already there. */
-    save: (publicationId: string) => request<CommunitySave>('PUT', '/v1/community/saves', { kind: 'publication', id: publicationId }),
+    save: (id: string, kind: 'publication' | 'catalogue' = 'publication') => request<CommunitySave>('PUT', '/v1/community/saves', { kind, id }),
     unsave: (saveId: string) => request<null>('DELETE', `/v1/community/saves/${encodeURIComponent(saveId)}`),
     /** Which of these public prints are saved, and as which save. */
-    savesOf: (publicationIds: string[]) => request<{ saves: Array<{ target: { kind: string, id: string }, save_id: string }> }>(
-      'GET', `/v1/community/saves/lookup?targets=${encodeURIComponent(JSON.stringify(publicationIds.map(id => ({ kind: 'publication', id }))))}`),
+    savesOf: (ids: string[], kind: 'publication' | 'catalogue' = 'publication') => request<{ saves: Array<{ target: { kind: string, id: string }, save_id: string }> }>(
+      'GET', `/v1/community/saves/lookup?targets=${encodeURIComponent(JSON.stringify(ids.map(id => ({ kind, id }))))}`),
     collections: () => request<{ collections: CommunityCollection[] }>('GET', '/v1/community/collections'),
     collection: (id: string) => request<CommunityCollectionDetail>('GET', `/v1/community/collections/${encodeURIComponent(id)}`),
     createCollection: (name: string) => request<CommunityCollection>('POST', '/v1/community/collections', { name, visibility: 'private' }),
@@ -447,7 +465,7 @@ export function createLibraryClient (options: LibraryClientOptions) {
     publicPublication: (id: string) => request<PublicPublication>('GET', `/v1/public/publications/${encodeURIComponent(id)}`),
     /** The raw bytes of a shared file: `POST /v1/shares/:id/files/:file` takes `{key?}` and answers the bytes, or a JSON refusal. */
     async shareFile (id: string, fileId: string, key?: string): Promise<Uint8Array> {
-      const response = await authorised(`${base}/v1/shares/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, {
+      const response = await authorised(`${base()}/v1/shares/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(key === undefined ? {} : { key })
@@ -472,10 +490,11 @@ export function createLibraryClient (options: LibraryClientOptions) {
     async put (transfer: Transfer, bytes: Uint8Array, onProgress?: (sent: number) => void): Promise<void> {
       const attempt = async (retried: boolean): Promise<void> => {
         const headers: Record<string, string> = {}
+        const url = resolve(transfer)
         if (transfer.needs_auth) headers.authorization = `Bearer ${await options.assertion.get()}`
         let status: number
         try {
-          status = await send({ url: transfer.url, body: bytes, headers, onProgress })
+          status = await send({ url, body: bytes, headers, onProgress })
         } catch (error) {
           if (error instanceof LibraryError) throw error
           throw new LibraryError('offline', 'The upload failed on the network.')
@@ -492,11 +511,12 @@ export function createLibraryClient (options: LibraryClientOptions) {
     /** GETs a file where the Transfer says, with the assertion only when the URL is the service's own. */
     async get (transfer: Transfer): Promise<Uint8Array> {
       let response: Response
+      const url = resolve(transfer)
       if (transfer.needs_auth) {
-        response = await authorised(transfer.url, { method: 'GET' })
+        response = await authorised(url, { method: 'GET' })
       } else {
         try {
-          response = await http(transfer.url, { method: 'GET' })
+          response = await http(url, { method: 'GET' })
         } catch {
           throw new LibraryError('offline', 'The file could not be fetched.')
         }

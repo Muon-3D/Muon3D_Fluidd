@@ -88,7 +88,7 @@ export default class ControlZOffset extends Mixins(ControlMixin) {
   refusal (by: number): string {
     if (this.printerPrinting || this.printerPaused) return ''
     const p = this.position
-    return zNudgeRefusal({ x: Number(p[0]), y: Number(p[1]), z: Number(p[2]) }, by, this.noGo, meshSpan(this.$store.state.printer.printer.bed_mesh))
+    return zNudgeRefusal({ x: Number(p[0]), y: Number(p[1]), z: Number(p[2]) }, by, this.noGo, meshSpan(this.$store.state.printer.printer.bed_mesh), this.isHomed('XY'))
   }
 
   get lowerRefusal (): string {
