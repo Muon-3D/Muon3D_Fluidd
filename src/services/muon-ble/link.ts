@@ -486,8 +486,11 @@ export function bluetoothLinkUp (printerId: string): boolean {
  * one label for every place that names the route (title, rail, reconnect
  * screen, menus), from the same truth as the Bluetooth badge (KAN-1566).
  */
-export function remoteRouteLabel (printerId: string | null | undefined): 'Via Bluetooth' | 'Through Muon3D' {
-  return printerId && (bluetoothCarrying(printerId) || !!bluetoothDropped(printerId)) ? 'Via Bluetooth' : 'Through Muon3D'
+export function remoteRouteLabel (printerId: string | null | undefined): 'Via Bluetooth' | 'Through Muon3D' | 'Bluetooth dropped' {
+  if (!printerId) return 'Through Muon3D'
+  // Radio truth (KAN-2531): "Via Bluetooth" only while the printer is heard over the radio.
+  if (bluetoothCarrying(printerId)) return 'Via Bluetooth'
+  return bluetoothDropped(printerId) ? 'Bluetooth dropped' : 'Through Muon3D'
 }
 
 /** Why the open went on through Muon3D though Bluetooth was chosen, or null. */
@@ -523,6 +526,16 @@ export function noteBluetoothDropped (printerId: string, reason: string) {
   if (!routes.has(id)) return
   if (!routeState.dropped[id]) droppedAt.set(id, Date.now())
   Vue.set(routeState.dropped, id, reason)
+}
+
+/**
+ * Forgets that `printerId`'s Bluetooth route dropped (the person went to another printer, so its sheet
+ * and its automatic retries end). The choice of Bluetooth for it stays; only the drop is cleared.
+ */
+export function clearBluetoothDropped (printerId: string) {
+  const id = printerId.toLowerCase()
+  Vue.delete(routeState.dropped, id)
+  droppedAt.delete(id)
 }
 
 /** When the held Bluetooth route to `printerId` last dropped (ms since the epoch), or 0. */

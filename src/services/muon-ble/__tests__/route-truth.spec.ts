@@ -306,7 +306,7 @@ describe('the chosen route is the only route, and a drop is said, not hidden (KA
     await Promise.resolve()
     expect(bluetoothDropped(EID)).not.toBeNull()
     expect(wantsBluetoothFor(EID)).toBe(true)
-    expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+    expect(remoteRouteLabel(EID)).toBe('Bluetooth dropped')
   })
 
   it('does not call it a drop when the person hangs up', async () => {
@@ -369,7 +369,7 @@ describe('the chosen route is the only route, and a drop is said, not hidden (KA
       await vi.advanceTimersByTimeAsync(6_000)
       expect(bluetoothDropped(EID)).toMatch(/Nothing came over Bluetooth/)
       expect(bluetoothCarrying(EID)).toBe(false)
-      expect(remoteRouteLabel(EID)).toBe('Via Bluetooth')
+      expect(remoteRouteLabel(EID)).toBe('Bluetooth dropped')
       await vi.advanceTimersByTimeAsync(3_000)
       expect(link!.isOpen()).toBe(false)
       // The reason stays the one that was seen, not "the link dropped".

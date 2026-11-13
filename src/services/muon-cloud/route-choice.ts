@@ -1,4 +1,5 @@
 import Vue from 'vue'
+import { relayChosen } from '@/services/secure-origin/hosted'
 
 /**
  * The route the person chose to each printer (Jack, 9 Nov 2026, KAN-1913,
@@ -21,8 +22,39 @@ export type Route = 'lan' | 'cloud' | 'ble'
 /** Best first. */
 export const AUTO_ORDER: readonly Route[] = ['lan', 'cloud', 'ble']
 
+const MODES_KEY = 'muon.route.modes'
+const MODE_NAMES: readonly string[] = ['auto', 'lan', 'cloud', 'ble']
+let memoryModes: Record<string, RouteMode> = {}
+
+/**
+ * The held choices survive a reload of this tab, like the active printer and the
+ * "through Muon3D" choice do: after a reload a chosen route is still held, and
+ * auto mode does not move it (#370).
+ */
+function readModes (): Record<string, RouteMode> {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(MODES_KEY) ?? '{}')
+    const modes: Record<string, RouteMode> = {}
+    if (parsed && typeof parsed === 'object') {
+      for (const [id, mode] of Object.entries(parsed)) {
+        if (typeof mode === 'string' && MODE_NAMES.includes(mode)) modes[id] = mode as RouteMode
+      }
+    }
+    return modes
+  } catch {
+    return { ...memoryModes }
+  }
+}
+
+function writeModes (modes: Record<string, RouteMode>) {
+  memoryModes = { ...modes }
+  try {
+    sessionStorage.setItem(MODES_KEY, JSON.stringify(modes))
+  } catch { /* memory only */ }
+}
+
 const state = Vue.observable({
-  modes: {} as Record<string, RouteMode>,
+  modes: readModes(),
   /** When the relay last failed for each printer (ms). */
   relayLostAt: {} as Record<string, number>,
   /** The printer the person last asked to open (lower case), or a marker for one with no id. */
@@ -33,11 +65,17 @@ const key = (printerId: string) => printerId.toLowerCase()
 
 export function chooseRouteMode (printerId: string, mode: RouteMode) {
   Vue.set(state.modes, key(printerId), mode)
+  writeModes(state.modes)
 }
 
-/** What the person chose for `printerId`; `auto` when they never chose. */
+/**
+ * What the person chose for `printerId`; `auto` when they never chose. A
+ * "through Muon3D" choice made on the hosted page (kept for the tab) counts as
+ * `cloud` when no mode was recorded.
+ */
 export function routeMode (printerId: string | null | undefined): RouteMode {
-  return (printerId && state.modes[key(printerId)]) || 'auto'
+  if (!printerId) return 'auto'
+  return state.modes[key(printerId)] ?? (relayChosen(printerId) ? 'cloud' : 'auto')
 }
 
 export interface RouteAvailability {
@@ -91,6 +129,11 @@ export function relayLostAt (printerId: string | null | undefined): number | und
 export function relayTrusted (lostAt: number | undefined, listSentAt: number, now: number): boolean {
   if (lostAt === undefined) return true
   return listSentAt > lostAt && now - lostAt >= RELAY_HOLD_MS
+}
+
+/** How long a failed automatic Bluetooth retry waits before the next: 30 s, doubling, up to 10 min. */
+export function autoRetryDelay (failures: number): number {
+  return Math.min(10 * 60_000, 30_000 * 2 ** Math.max(0, failures - 1))
 }
 
 /** The person asked to open this printer (null: one with no id, such as a bare address). */

@@ -63,11 +63,17 @@ export function setNavigate (fn: (url: string) => void) {
 /** Counts runs, so one taken over by a chosen route does not clear the row of the one that took over. */
 let runCounter = 0
 
-async function openManagedRoute (e: DirectoryEntry, route?: 'relay' | BleDevice): Promise<boolean> {
+/**
+ * Opens `e` the way `route` says. `auto` is auto mode's own move (the banner's
+ * failover, or Connect locally's fall back to Muon3D): it opens the route but
+ * records no choice, so nothing becomes held and later plain Connects behave as
+ * before (#370).
+ */
+async function openManagedRoute (e: DirectoryEntry, route?: 'relay' | BleDevice, auto = false): Promise<boolean> {
   if (!e.cloud) return false
   const id = e.cloud.id
   if (!route || route === 'relay') {
-    if (route === 'relay') chooseRelay(id)
+    if (route === 'relay' && !auto) chooseRelay(id)
     stopUsingBluetoothFor(id)
   } else {
     useBluetoothFor(id, route)
@@ -403,7 +409,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    * link and the connect. A printer that refuses this browser as a stranger
    * goes straight into pairing, and the connect continues once paired.
    */
-  async connectOverBluetooth (e: DirectoryEntry, chosen?: NearbyPrinter) {
+  async connectOverBluetooth (e: DirectoryEntry, chosen?: NearbyPrinter, auto = false) {
     if (!e.cloud) return
     const id = e.cloud.id
     let heard = chosen ?? e.nearby ?? await permittedPrinterFor(id).catch(() => null)
@@ -417,7 +423,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       }
     }
     retryBluetooth(id)
-    await this.connectCloud(e, heard.device)
+    await this.connectCloud(e, heard.device, auto)
     if (activationState.pairing === id) await startPairing(id)
   }
 
@@ -459,10 +465,10 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    * Bluetooth choice no longer waits on the service for this printer, and a
    * connection already open is dropped so this dial uses the chosen route.
    */
-  connectCloud (e: DirectoryEntry, route?: 'relay' | BleDevice) {
+  connectCloud (e: DirectoryEntry, route?: 'relay' | BleDevice, auto = false) {
     if (!e.cloud) return
-    if (route) chooseRouteMode(e.cloud.id, route === 'relay' ? 'cloud' : 'ble')
-    return this.run(e.key, () => openManagedRoute(e, route), !!route)
+    if (route && !auto) chooseRouteMode(e.cloud.id, route === 'relay' ? 'cloud' : 'ble')
+    return this.run(e.key, () => openManagedRoute(e, route, auto), !!route)
   }
 
   /** The saved address it answers on, else its address on this network. */

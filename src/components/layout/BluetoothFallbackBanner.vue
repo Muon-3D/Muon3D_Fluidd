@@ -43,6 +43,7 @@
 </template>
 
 <script lang="ts">
+import Vue from 'vue'
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import PrinterEntriesMixin from '@/mixins/printer-entries'
 import { cloudState } from '@/services/muon-cloud/state'
@@ -55,13 +56,14 @@ import {
   bluetoothDropped,
   bluetoothDroppedAt,
   bluetoothFellBack,
+  clearBluetoothDropped,
   droppedBluetoothPrinters
 } from '@/services/muon-ble/link'
 import { nearbyState } from '@/services/muon-ble/nearby'
 import { webBluetooth } from '@/services/muon-ble/webBluetooth'
 import {
   autoMove,
-  chooseRouteMode,
+  autoRetryDelay,
   dropChoices,
   nextAutoSeen,
   noteRelayLost,
@@ -170,7 +172,7 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
     return this.tryBluetoothAgain(sheet.id)
   }
 
-  async tryBluetoothAgain (id: string) {
+  async tryBluetoothAgain (id: string, automatic = false) {
     const e = this.entryFor(id)
     const device = bluetoothDeviceFor(id) ?? e?.nearby?.device ?? null
     if (!e || this.retrying) return
@@ -180,7 +182,38 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
       else await this.connectOverBluetooth(e)
     } finally {
       this.retrying = false
+      if (automatic) this.noteAutoRetry(id, !!bluetoothDropped(id))
     }
+  }
+
+  /** Per printer: how many automatic tries failed in a row, and when the next may run. */
+  retryFailures: Record<string, number> = {}
+  retryNotBefore: Record<string, number> = {}
+
+  /** An automatic try ended: a failed one waits longer each time (30 s, 60 s, 120 s ... up to 10 min). */
+  noteAutoRetry (id: string, failed: boolean) {
+    const key = id.toLowerCase()
+    if (!failed) {
+      Vue.delete(this.retryFailures, key)
+      Vue.delete(this.retryNotBefore, key)
+      return
+    }
+    const failures = (this.retryFailures[key] ?? 0) + 1
+    Vue.set(this.retryFailures, key, failures)
+    Vue.set(this.retryNotBefore, key, Date.now() + autoRetryDelay(failures))
+  }
+
+  /**
+   * Whether Bluetooth coming back may retry `id` by itself: only for the printer
+   * that is open (or the one the person is opening), never for one they left,
+   * and not before its backoff has passed.
+   */
+  mayAutoRetry (id: string, now = Date.now()): boolean {
+    const lower = id.toLowerCase()
+    const open = cloudState.activePrinterId?.toLowerCase() ?? null
+    const target = userOpenTarget()
+    if (lower !== open && lower !== target) return false
+    return now >= (this.retryNotBefore[lower] ?? 0)
   }
 
   // -- Bluetooth coming back -------------------------------------------------
@@ -227,8 +260,22 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
     const sheet = this.droppedSheet
     if (!at || at <= this.lastReturn || !sheet) return
     if (!sheet.choices.some(c => c.id === 'ble')) return
+    if (!this.mayAutoRetry(sheet.id)) return
     this.lastReturn = at
-    this.tryBluetoothAgain(sheet.id)
+    this.tryBluetoothAgain(sheet.id, true)
+  }
+
+  /** The person opened a printer: every other printer's dropped route is forgotten, with its automatic tries. */
+  @Watch('userTarget')
+  onUserTarget (target: string | null) {
+    if (!target) return
+    for (const id of droppedBluetoothPrinters()) {
+      if (id.toLowerCase() !== target) clearBluetoothDropped(id)
+    }
+  }
+
+  get userTarget (): string | null {
+    return userOpenTarget()
   }
 
   // -- auto mode -------------------------------------------------------------
@@ -334,9 +381,8 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
 
   /** An auto-mode move: the same open as a chosen route, but the choice stays auto. */
   openAuto (e: DirectoryEntry, route: Parameters<PrinterEntriesMixin['connectCloud']>[1]) {
-    const result = this.connectCloud(e, route)
-    if (e.cloud) chooseRouteMode(e.cloud.id, 'auto')
-    return result
+    // `auto`: the open moves the session but records no choice (no held mode, no kept relay choice).
+    return this.connectCloud(e, route, true)
   }
 
   /** The switcher closes after an open; here there is nothing to close. */

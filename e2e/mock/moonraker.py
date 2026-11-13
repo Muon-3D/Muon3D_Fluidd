@@ -268,6 +268,20 @@ def rpc(method, params):
     return {}
 
 
+def loopbacks():
+    """127.0.0.1, and ::1 too where this machine has an IPv6 loopback to bind."""
+    import socket
+    try:
+        probe = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        try:
+            probe.bind(('::1', 0))
+        finally:
+            probe.close()
+        return ['127.0.0.1', '::1']
+    except OSError:
+        return ['127.0.0.1']
+
+
 async def ws_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
@@ -476,4 +490,4 @@ if __name__ == '__main__':
     # Both loopbacks: the page says `localhost`, which a browser tries as ::1 first. With only
     # 127.0.0.1 listening, every new connection waited out a refused ::1 try (0.2 s here, seconds
     # when the machine is busy), which slowed the route e2e's failovers past their windows.
-    web.run_app(app, host=['127.0.0.1', '::1'], port=PORT, print=lambda *_: print(f'mock moonraker on {PORT}', flush=True))
+    web.run_app(app, host=loopbacks(), port=PORT, print=lambda *_: print(f'mock moonraker on {PORT}', flush=True))

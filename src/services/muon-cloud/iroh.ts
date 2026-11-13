@@ -441,7 +441,16 @@ export async function dialPrinter (endpoint: WasmEndpoint, printerId: string): P
       printer.close?.()
       throw new Error('Bluetooth dropped while connecting. Reconnect, or choose how to connect.')
     }
-    link.closed.then(() => printer.close?.())
+    // Once: the link closing and an endpoint replace can both end this session.
+    let closedOnce = false
+    const closeOnce = () => {
+      if (closedOnce) return
+      closedOnce = true
+      try {
+        printer.close?.()
+      } catch { /* already closed */ }
+    }
+    link.closed.then(closeOnce, closeOnce)
   }
   return printer
 }

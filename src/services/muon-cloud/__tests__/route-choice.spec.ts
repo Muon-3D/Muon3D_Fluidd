@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   RELAY_HOLD_MS,
   autoMove,
@@ -115,5 +115,42 @@ describe('auto mode never dials a printer the person walked away from (#370)', (
   it('looks after the open printer in auto mode, and drops the memory when another is open', () => {
     expect(nextAutoSeen(null, { autoId: 'a', otherOpen: true, userTarget: 'a' })).toBe('a')
     expect(nextAutoSeen('a', { autoId: null, otherOpen: true, userTarget: 'a' })).toBeNull()
+  })
+})
+
+describe('a held route survives a reload of the tab (#370 review)', () => {
+  it('keeps a chosen mode in this tab, like the active printer and the relay choice', async () => {
+    sessionStorage.clear()
+    vi.resetModules()
+    const first = await import('../route-choice')
+    first.chooseRouteMode('Printer-A', 'lan')
+    first.chooseRouteMode('printer-b', 'ble')
+    // A reload: the module starts again, the tab's storage stays.
+    vi.resetModules()
+    const reloaded = await import('../route-choice')
+    expect(reloaded.routeMode('printer-a')).toBe('lan')
+    expect(reloaded.routeMode('PRINTER-B')).toBe('ble')
+    expect(reloaded.routeMode('someone-else')).toBe('auto')
+  })
+
+  it('counts a kept "through Muon3D" choice as the cloud route when no mode was recorded', async () => {
+    sessionStorage.clear()
+    vi.resetModules()
+    const hosted = await import('@/services/secure-origin/hosted')
+    hosted.chooseRelay('printer-c')
+    const routes = await import('../route-choice')
+    expect(routes.routeMode('printer-c')).toBe('cloud')
+    routes.chooseRouteMode('printer-c', 'auto')
+    expect(routes.routeMode('printer-c')).toBe('auto')
+    hosted.clearRelayChoice('printer-c')
+  })
+
+  it('ignores a stored mode it does not know', async () => {
+    sessionStorage.setItem('muon.route.modes', JSON.stringify({ x: 'sideways', y: 'cloud' }))
+    vi.resetModules()
+    const routes = await import('../route-choice')
+    expect(routes.routeMode('x')).toBe('auto')
+    expect(routes.routeMode('y')).toBe('cloud')
+    sessionStorage.clear()
   })
 })
