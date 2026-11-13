@@ -3,6 +3,7 @@
  * index.html: they belong to the server, not to Fluidd.
  */
 export const NAVIGATION_DENYLIST: RegExp[] = [
+  /^\/models(?:[/?]|$)/,
   /\/websocket/,
   /\/(printer|api|access|machine|server)\//,
   /\/webcam[2-4]?\//,

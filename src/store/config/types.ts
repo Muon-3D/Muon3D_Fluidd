@@ -313,6 +313,8 @@ export interface GcodePreviewConfig {
 }
 
 export interface FileSystemConfig {
+  /** Names starting with a dot show in file lists (Settings > Files and editor). Off by default. */
+  showHiddenFiles: boolean;
   activeFilters: Record<string, FileFilterType[]>;
   sortBy: Record<string, string | null>;
   sortDesc: Record<string, boolean | null>;

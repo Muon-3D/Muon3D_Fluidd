@@ -4,7 +4,7 @@ import { discoverShelves, loadDiscover, safePicture, type DiscoverFeed } from '.
 // Shaped as the model service's src/public_v2.rs `discover` answers.
 const cube = { id: 'p2', slug: 'calibration-cube', title: 'Calibration cube', category: 'education', creator: { handle: null, display_name: null }, created_at: '2026-10-28T00:00:00Z' }
 const feed: DiscoverFeed = {
-  m1_ready: [{ slug: 'calibration-cube', title: 'Calibration cube', author: 'Muon3D', thumbnail_url: 'https://models.muon3d.com/v1/public/files/a', print_time_s: 1500, filament_g: 7.6, material: 'PLA' }],
+  m1_ready: [{ slug: 'calibration-cube', title: 'Calibration cube', author: 'Muon3D', thumbnail_url: 'https://library.muon3d.com/models/v1/public/files/a', print_time_s: 1500, filament_g: 7.6, material: 'PLA' }],
   new: [
     { id: 'p1', slug: 'cable-clip', title: 'Cable clip', category: 'home', creator: { handle: 'muon3d', display_name: 'Muon3D' }, created_at: '2026-10-28T00:00:00Z', thumbnail_url: null },
     cube,
@@ -54,7 +54,7 @@ describe('Discover in Control', () => {
       .mockResolvedValueOnce(new Response('<html>captive portal</html>'))
       .mockResolvedValueOnce(new Response('', { status: 502 }))
     await expect(loadDiscover(fetcher)).resolves.toMatchObject({ m1_ready: feed.m1_ready })
-    expect(fetcher).toHaveBeenCalledWith('https://models.muon3d.com/v1/public/discover', expect.objectContaining({ method: 'GET', credentials: 'omit' }))
+    expect(fetcher).toHaveBeenCalledWith('https://library.muon3d.com/models/v1/public/discover', expect.objectContaining({ method: 'GET', credentials: 'omit' }))
     expect(fetcher.mock.calls[0][1].headers).toBeUndefined()
     await expect(loadDiscover(fetcher)).rejects.toThrow('Discover isn\'t open yet.')
     await expect(loadDiscover(fetcher)).rejects.toThrow('can\'t read')

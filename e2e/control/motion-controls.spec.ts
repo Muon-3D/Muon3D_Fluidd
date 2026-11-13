@@ -42,11 +42,11 @@ test.describe('buttons answer the finger', () => {
     const button = editLayout(page)
     await expect(button).toBeVisible()
     expect(await scaleOf(button)).toBe(1)
-    // Pressed: at 0.96 within about one instant (80 ms) plus a frame or two.
+    // Pressed: at 0.95 within the 80 ms press-in plus a frame or two.
     const pressed = await pressAndRead(page, button, 140)
-    expect(pressed).toBeLessThan(0.975)
-    expect(pressed).toBeGreaterThan(0.95)
-    // Let go: back at rest once the snappy spring (303 ms) has run.
+    expect(pressed).toBeLessThan(0.96)
+    expect(pressed).toBeGreaterThan(0.945)
+    // Let go: back at rest once the 320 ms release has run.
     await page.mouse.move(0, 0)
     await expect.poll(() => scaleOf(button), { timeout: 2000 }).toBe(1)
   })
