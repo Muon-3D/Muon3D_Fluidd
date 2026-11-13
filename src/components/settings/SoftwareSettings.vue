@@ -421,7 +421,7 @@ import {
   AUTO_INSTALL_PATH, AUTO_OFF_TEXT, AUTO_ON_TEXT, KNOB_TEXT, PRESENCE_PATH, STAGED_TEXT,
   anyHot, flagOf, needsKnob, restartBlocked, stagedReady, type PolicyStatus
 } from '@/services/updates/policy'
-import { isPanelOnlyRefusal, panelOnlyMessage } from '@/services/wifi/panel-only'
+import { classifyRefusal, isPanelOnlyRefusal, panelOnlyMessage, permissionMessage } from '@/services/wifi/panel-only'
 import type { Heater } from '@/store/printer/types'
 
 interface InstallSnapshot {
@@ -633,6 +633,8 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin, MuonGat
         else this.presence = kept
       } else if (isPanelOnlyRefusal({ response: r })) {
         this.policyNote = panelOnlyMessage('change how it updates')
+      } else if (classifyRefusal({ response: r }).kind === 'permission') {
+        this.policyNote = permissionMessage(classifyRefusal({ response: r }) as Extract<ReturnType<typeof classifyRefusal>, { kind: 'permission' }>, false)
       } else {
         this.policyNote = "The printer didn't take that change. Try again."
       }

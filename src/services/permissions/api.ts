@@ -101,8 +101,8 @@ export function valueLabel (value: string): string {
 
 const unwrap = (data: unknown): unknown => (data && typeof data === 'object' && 'result' in data ? (data as { result: unknown }).result : data)
 
-/** One reported setting, or null when it isn't usable. `claimed` says which default a known setting has. */
-export function parseKnob (raw: unknown, claimed: boolean | null = null, devModeLocked = false): PermissionKnob | null {
+/** One reported setting, or null when it isn't usable. A printer with no `default` is open whether or not it is claimed (train 13); its own `default` always wins. */
+export function parseKnob (raw: unknown, devModeLocked = false): PermissionKnob | null {
   if (!raw || typeof raw !== 'object') return null
   const k = raw as Record<string, unknown>
   if (typeof k.id !== 'string' || !k.id || typeof k.value !== 'string' || !k.value) return null
@@ -110,7 +110,7 @@ export function parseKnob (raw: unknown, claimed: boolean | null = null, devMode
   const generic = !isValue(k.value)
   const fixed = k.fixed === true || ALWAYS_PRINTER_ONLY.has(k.id) || (devModeLocked && k.id === 'dev_mode')
   const listed = Array.isArray(k.values) ? k.values.filter((v): v is string => typeof v === 'string' && !!v) : []
-  const fallback = known && !fixed && !NO_DEFAULT.has(k.id) ? (claimed ? 'owner_and_shared' : 'anyone') : ''
+  const fallback = known && !fixed && !NO_DEFAULT.has(k.id) ? 'anyone' : ''
   return {
     id: k.id,
     label: (typeof k.label === 'string' && k.label) || known?.label || k.id,
@@ -150,7 +150,7 @@ export function parsePermissions (data: unknown): PermissionList | null {
   const switches = Array.isArray(object?.switches) ? object.switches.map(parseSwitch).filter((x): x is PermissionSwitch => x !== null) : []
   return {
     claimed,
-    knobs: list.map(k => parseKnob(k, claimed, devModeLocked)).filter((k): k is PermissionKnob => k !== null),
+    knobs: list.map(k => parseKnob(k, devModeLocked)).filter((k): k is PermissionKnob => k !== null),
     switches
   }
 }
@@ -169,7 +169,7 @@ export type ChangeOutcome =
 export const KNOB_NOTE = 'Press the knob on the printer to confirm'
 
 /** The printer's words for a refusal: detail.message, else the older error.message. */
-function refusal (body: Record<string, unknown> | null | undefined): { message: string, code: string } {
+export function refusal (body: Record<string, unknown> | null | undefined): { message: string, code: string } {
   const detail = (body?.detail && typeof body.detail === 'object' ? body.detail : null) as Record<string, unknown> | null
   const error = (body?.error && typeof body.error === 'object' ? body.error : null) as Record<string, unknown> | null
   const message = [detail?.message, error?.message].find((m): m is string => typeof m === 'string' && !!m)
