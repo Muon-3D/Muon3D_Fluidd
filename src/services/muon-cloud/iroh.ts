@@ -122,7 +122,6 @@ let memoryKey: Uint8Array | null = null
  */
 const dialed = new Set<string>()
 
-
 export const REBIND_BUSY_MESSAGE = 'Finish or cancel adding a device or setting up a printer first, then connect over Bluetooth again.'
 
 function logLate (what: string, error: unknown) {
