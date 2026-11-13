@@ -547,7 +547,9 @@ async function reconcileOnce (): Promise<void> {
 }
 
 /** Only a console that did not answer, or answered "later" (0, 5xx, 429), is asked again; 403 and 404 are answers. */
-const isTransient = (error: unknown): boolean => error instanceof CloudError && (error.status === 0 || error.status === 429 || error.status >= 500)
+// A 2xx whose body would not parse (a captive portal's page) and a 408 are passing, too.
+const isTransient = (error: unknown): boolean => error instanceof CloudError &&
+  (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500 || (error.status >= 200 && error.status < 300))
 
 /** For tests: no timer, no count left from the last one. */
 export function resetReconcileForTests () {

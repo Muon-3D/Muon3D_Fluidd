@@ -58,3 +58,21 @@ describe('a password change', () => {
     expect((await modelsAssertion.getWithExpiry()).assertion).toBe('assertion-1')
   })
 })
+
+describe('an e-mailed verify link', () => {
+  it('does not carry this account\'s confirmation to the session it returns, which may be another account\'s', async () => {
+    const harry = { id: 'acct-harry', name: 'Harry', email: 'harry@example.test', created_at: 2 }
+    let answerMe: (value: { account: typeof harry, endpoint_id: null }) => void = () => {}
+    const me = vi.spyOn(cloudApi, 'me').mockImplementation(() => new Promise(resolve => (answerMe = resolve)))
+    expect((await modelsAssertion.getWithExpiry()).assertion).toBe('assertion-1')
+    vi.stubGlobal('fetch', vi.fn(async () => answer(200, { ok: true, email: 'harry@example.test', session: { access_token: 'token-harry', refresh_token: 'refresh-harry' } })))
+    await accountRequest('POST', '/v1/auth/email/verify', { token: 'link' }, { token: storedToken(), adopt: true })
+    expect(storedToken()).toBe('token-harry')
+    // Not confirmed for Jack: nothing is served until /me names the account.
+    await expect(modelsAssertion.getWithExpiry()).rejects.toMatchObject({ code: 'not-signed-in' })
+    expect(me).toHaveBeenCalled()
+    answerMe({ account: harry, endpoint_id: null })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(cloudState.account?.id).toBe('acct-harry')
+  })
+})
