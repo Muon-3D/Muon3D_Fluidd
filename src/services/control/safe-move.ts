@@ -195,6 +195,7 @@ export function lockHandMove (gcodeTarget: number[], printer: string, now = Date
 export function releaseHandMove () {
   handMoveLock.target = null
   ownMotion.until = 0
+  ownMotion.path = []
 }
 
 /**
@@ -212,28 +213,50 @@ export function releaseHandMove () {
  * Only a real print (print_stats printing or paused) says "printing"; a busy
  * printer outside this window still refuses every hand move.
  */
-export const ownMotion: { printer: string, until: number } = { printer: '', until: 0 }
+export const ownMotion: { printer: string, until: number, path: number[][] } = { printer: '', until: 0, path: [] }
 
 /** Slack on top of a hand move's travel time for the printer to report it finished, ms. */
 export const OWN_MOTION_MARGIN_MS = 2000
 
-/** Start the window for a hand move just sent. Returns its length, ms (0 when it didn't start). */
-export function noteOwnMotion (printer: string, now = Date.now(), travelMs = 0, printerWasIdle = true): number {
-  if (!printerWasIdle) return 0
+/**
+ * Start the window for a hand move just sent from `from` to `target` (both commanded, G-code coordinates, X Y Z).
+ * Returns its length, ms (0 when it didn't start). A move sent while the printer is busy never opens or extends the
+ * window, but when it is this page's re-target inside an open window its target joins the window's path.
+ */
+export function noteOwnMotion (printer: string, now = Date.now(), travelMs = 0, printerWasIdle = true, target?: number[], from?: number[]): number {
+  if (!printerWasIdle) {
+    if (target && ownMotion.printer === printer && now < ownMotion.until && ownMotion.path.length) ownMotion.path.push(target.slice(0, 3))
+    return 0
+  }
   const ms = (Number.isFinite(travelMs) && travelMs > 0 ? Math.ceil(travelMs) : 0) + OWN_MOTION_MARGIN_MS
   ownMotion.printer = printer
   ownMotion.until = now + ms
+  ownMotion.path = target ? [...(from ? [from.slice(0, 3)] : []), target.slice(0, 3)] : []
   return ms
 }
 
 /** The printer stopped being busy: whatever it does next is not this page's move. */
 export function endOwnMotion () {
   ownMotion.until = 0
+  ownMotion.path = []
 }
 
-/** Is the printer's current busy this page's own hand move on `printer`? */
-export function ownMotionActive (printer: string, now = Date.now()): boolean {
-  return ownMotion.printer === printer && now < ownMotion.until
+/** How close, mm, the printer's commanded position must be to this page's target to be its own move. */
+export const OWN_MOTION_TOLERANCE_MM = 0.01
+
+/**
+ * Is the printer's current busy this page's own hand move on `printer`? Inside the window that is only so while the
+ * printer's commanded position (`commanded`, G-code coordinates) is a point on this page's own path: where its first
+ * move started (until the printer reports the new commanded position) or one of its targets. A macro or another client
+ * that moves the head anywhere else inside the window (the panel's park, a G28, filament auto-load) is not ours
+ * (Opus review of #392 with #399). With a path recorded and no commanded position to check, it is not ours either.
+ */
+export function ownMotionActive (printer: string, now = Date.now(), commanded?: number[]): boolean {
+  if (ownMotion.printer !== printer || now >= ownMotion.until) return false
+  if (!ownMotion.path.length) return true
+  if (!commanded) return false
+  const at = (p: number[]) => p.every((v, i) => Number.isFinite(Number(commanded[i])) && Math.abs(v - Number(commanded[i])) < OWN_MOTION_TOLERANCE_MM)
+  return ownMotion.path.some(at)
 }
 /** Is the last hand move on `printer` still on its way? Clears itself on arrival, after SETTLE_MS, or for another printer. */
 export function handMoveSettling (gcodePosition: number[] | undefined, printer: string, now = Date.now()): boolean {

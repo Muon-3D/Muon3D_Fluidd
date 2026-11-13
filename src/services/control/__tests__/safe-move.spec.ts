@@ -186,6 +186,33 @@ describe('the own-move window', () => {
     expect(ownMotionActive('p', 3001)).toBe(false)
   })
 
+  it('is ours only while the commanded position is on this page’s own path: a macro moving the head inside the window is not', () => {
+    noteOwnMotion('p', 1000, 500, true, [100, 100, 10], [60, 100, 10])
+    // Just sent: the printer may still report the start as commanded, then the target.
+    expect(ownMotionActive('p', 1050, [60, 100, 10, 0])).toBe(true)
+    expect(ownMotionActive('p', 1100, [100, 100, 10, 0])).toBe(true)
+    // The panel's park macro starts lowering Z inside the window: the commanded position is no longer on our path.
+    expect(ownMotionActive('p', 1100, [100, 100, 4, 0])).toBe(false)
+    expect(ownMotionActive('p', 1100, [120, 100, 10, 0])).toBe(false)
+    // A path recorded but no commanded position to check: not ours.
+    expect(ownMotionActive('p', 1100)).toBe(false)
+    endOwnMotion()
+  })
+
+  it('a re-target inside the window joins its path without extending it', () => {
+    noteOwnMotion('p', 1000, 500, true, [100, 100, 10], [60, 100, 10])
+    const until = ownMotion.until
+    expect(noteOwnMotion('p', 1200, 60_000, false, [140, 80, 10])).toBe(0)
+    expect(ownMotion.until).toBe(until)
+    expect(ownMotionActive('p', 1300, [140, 80, 10, 0])).toBe(true)
+    expect(ownMotionActive('p', 1300, [100, 100, 10, 0])).toBe(true)
+    expect(ownMotionActive('p', 1300, [140, 80, 2, 0])).toBe(false)
+    endOwnMotion()
+    // Outside an open window a busy-time move adds nothing.
+    expect(noteOwnMotion('p', 5000, 100, false, [1, 2, 3])).toBe(0)
+    expect(ownMotion.path).toEqual([])
+  })
+
   it('ends when the printer stops being busy, and is only for its own printer', () => {
     noteOwnMotion('p', Date.now(), 60_000)
     expect(ownMotionActive('other')).toBe(false)
