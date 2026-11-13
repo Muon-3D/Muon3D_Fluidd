@@ -122,3 +122,25 @@ describe('after a two-step change', () => {
     w.destroy()
   })
 })
+
+describe('starting two-step sign-in (KAN-1389)', () => {
+  it('an answer with no secret that ends the session (replacing an unreadable secret) signs out and does not crash', async () => {
+    const w = mount()
+    const vm = w.vm as any
+    vi.spyOn(accountApi, 'totpBegin').mockResolvedValue({ ok: true, signed_out: true } as any)
+    await vm.startTwoStep()
+    expect(vm.setup).toBeNull()
+    expect(signOutNow).toHaveBeenCalledWith('browser', { reason: 'two-step', router })
+    w.destroy()
+  })
+
+  it('a normal answer with a secret and no session shows the secret and does not sign out', async () => {
+    const w = mount()
+    const vm = w.vm as any
+    vi.spyOn(accountApi, 'totpBegin').mockResolvedValue({ secret: 'ABCDEFGH', otpauth_url: 'otpauth://totp/x' } as any)
+    await vm.startTwoStep()
+    expect(vm.setup.secret).toBe('ABCDEFGH')
+    expect(signOutNow).not.toHaveBeenCalled()
+    w.destroy()
+  })
+})

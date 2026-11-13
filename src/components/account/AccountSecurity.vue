@@ -889,6 +889,11 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     await this.run(async () => {
       const setup = await this.withReauth(r => accountApi.totpBegin(r), { action: 'Continue' })
       if (setup) {
+        // Replacing an unreadable secret answers with no secret and ends the session (KAN-1389): nothing to scan.
+        if (!setup.secret) {
+          if (endsSession(setup)) await this.signOutAfter('two-step')
+          return
+        }
         this.open('twoStep')
         this.setup = setup
       }
