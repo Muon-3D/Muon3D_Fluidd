@@ -49,7 +49,7 @@ test('Public and Rename change it, and Yours shows the new name', async ({ page,
   expect(models.collections[0].visibility).toBe('public')
   await page.getByTestId('library-collection-rename').click()
   await page.getByTestId('library-collection-rename-input').fill('Garage')
-  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByTestId('library-collection-title')).toHaveText('Garage')
   expect(models.collections[0].name).toBe('Garage')
   await page.getByTestId('library-collection-back').click()

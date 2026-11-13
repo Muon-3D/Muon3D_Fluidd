@@ -171,3 +171,13 @@ it('names each confirmation for its row', async () => {
   expect(probe.confirm.mock.calls[0][1].title).toBe('Probe accuracy')
   probe.wrapper.destroy()
 })
+
+it('refuses Probe accuracy when the printer declares a notch but no notch height: never a low move to the middle', async () => {
+  const { wrapper, vm, store } = show(ProbeCard)
+  Vue.set(store.state.printer.printer, 'configfile', { settings: { bed_mesh: { no_go_region_1_min: '75, 0', no_go_region_1_max: '125, 34' } } })
+  Vue.set(store.state.printer.printer, 'toolhead', { ...store.state.printer.printer.toolhead, position: [100, 10, 1, 0], homed_axes: 'xyz' })
+  Vue.set(store.state.printer.printer, 'gcode_move', { ...store.state.printer.printer.gcode_move, gcode_position: [100, 10, 1, 0] })
+  await vm.checkAccuracy()
+  expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+  wrapper.destroy()
+})
