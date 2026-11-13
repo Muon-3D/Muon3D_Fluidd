@@ -20,7 +20,9 @@ import { test, expect, ready } from '../fixtures'
 import { MOCK_PORT } from '../ports'
 import { reachOnLan, routeCounts, ROUTE_PRINTER, useAllRoutes } from '../fakes/routes'
 
-test.use({ signedIn: true })
+// The page's service worker answers its fetches itself, past page.route: a reload could then
+// load the real muon-link-web in place of the fake (relay.e2e.test, "BLE peer sent an invalid endpoint id").
+test.use({ signedIn: true, serviceWorkers: 'block' })
 
 /** Where the done-1112 screenshots go, when a run asks for them. */
 const SHOTS = process.env.DONE_SHOTS
@@ -56,6 +58,9 @@ async function onBluetooth (page: Page) {
 }
 
 test.beforeEach(async ({ page, account }) => {
+  // Nothing here is about the 3D model: the photoreal M1 stalls software WebGL for tens of seconds
+  // on the printer page and starves the page, as in overview.spec.ts and jack-1110.spec.ts.
+  await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
   await useAllRoutes(page, account)
 })
 

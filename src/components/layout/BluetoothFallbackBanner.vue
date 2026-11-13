@@ -241,10 +241,22 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
   get autoId (): string | null {
     const active = cloudState.activePrinterId
     if (active) return routeMode(active) === 'auto' ? active : null
-    const local = this.allEntries.find(e => e.active === 'local')
-    const id = local?.cloud?.id ?? local?.endpointId ?? null
-    return id && routeMode(id) === 'auto' ? id : null
+    const id = this.localOpenId
+    if (id) return routeMode(id) === 'auto' ? id : null
+    // A route that died takes the open printer with it (a failed reopen clears
+    // it): the printer auto mode was looking after still needs a route.
+    const seen = this.autoSeen
+    return seen && routeMode(seen) === 'auto' && this.entryFor(seen) ? seen : null
   }
+
+  /** The printer open on the local network, if any. */
+  get localOpenId (): string | null {
+    const local = this.allEntries.find(e => e.active === 'local')
+    return local?.cloud?.id ?? local?.endpointId ?? null
+  }
+
+  /** The printer auto mode last looked after, so it is still looked after when its session is gone. */
+  autoSeen: string | null = null
 
   /** The route the open printer's session is on, or null when it is down. */
   currentRoute (id: string): Route | null {
@@ -260,6 +272,8 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
 
   autoTick () {
     const id = this.autoId
+    if (id) this.autoSeen = id
+    else if (cloudState.activePrinterId || this.localOpenId) this.autoSeen = null
     if (!id || this.busyKey || activationState.switching || this.retrying) {
       this.pendingMove = null
       return

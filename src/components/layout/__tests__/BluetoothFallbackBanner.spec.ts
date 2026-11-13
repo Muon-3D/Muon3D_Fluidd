@@ -3,6 +3,7 @@ import { mount as vueMount } from '@vue/test-utils'
 import BluetoothFallbackBanner from '../BluetoothFallbackBanner.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { noteBluetoothDropped, noteBluetoothFellBack, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
+import { chooseRouteMode } from '@/services/muon-cloud/route-choice'
 import { EID, fakePrinter } from '@/services/muon-ble/__tests__/fakes'
 
 const store = { state: { socket: { open: false }, config: { apiUrl: '' }, printer: { printer: {} } }, getters: new Proxy({}, { get: () => undefined }), dispatch: () => Promise.resolve() }
@@ -62,5 +63,25 @@ describe('the Bluetooth fallback banner (KAN-1396)', () => {
     const w = mount(BluetoothFallbackBanner)
     expect(w.text()).toContain('Bluetooth dropped')
     expect(w.find('[data-tid="bluetooth-dropped-ble"]').exists()).toBe(true)
+  })
+  it('keeps looking after a printer in auto mode when its dead session cleared the open printer (KAN-1913)', () => {
+    const w = mount(BluetoothFallbackBanner)
+    const vm = w.vm as any
+    vm.entryFor = () => ({ cloud: { id: EID, online: true } })
+    cloudState.activePrinterId = EID
+    expect(vm.autoId).toBe(EID)
+    vm.autoTick()
+    // The relay went away; the failed reopen cleared the open printer.
+    cloudState.activePrinterId = null
+    expect(vm.autoId).toBe(EID)
+    // A printer chosen explicitly is never taken over, and another open printer ends the watch.
+    chooseRouteMode(EID, 'cloud')
+    expect(vm.autoId).toBeNull()
+    chooseRouteMode(EID, 'auto')
+    chooseRouteMode('other', 'ble')
+    cloudState.activePrinterId = 'other'
+    vm.autoTick()
+    cloudState.activePrinterId = null
+    expect(vm.autoId).toBeNull()
   })
 })
