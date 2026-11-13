@@ -26,6 +26,7 @@ import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
 import { forgetOwnAvatar } from '@/services/account/avatar'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
 
 const ACTIVE_KEY = 'muon.cloud.active'
@@ -179,6 +180,9 @@ export function requestAccess (printerId: string): Promise<AccessHandoff> {
  */
 export const BLUETOOTH_GRANT_GRACE_MS = 4_000
 
+/** How long a Bluetooth open waits for the console's config (the relay URL) when none is cached. */
+export const BLUETOOTH_CONFIG_WAIT_MS = 4_000
+
 /**
  * The same wait for a printer the console calls online. Its key may rely on
  * a grant the console pushes, so the grant is worth waiting for. Bounded below
@@ -193,9 +197,11 @@ export const BLUETOOTH_ONLINE_GRANT_WAIT_MS = 20_000
  * it. But the radio must not wait on the console: a printer the console
  * calls offline (503 `device_unreachable`) may be sitting beside the laptop,
  * and a key it already holds (paired, or enrolled at setup) needs no grant.
- * So a 503, a timeout or no network ends the wait, and the session is
- * local and grantless (`grantless: true`). Any other refusal (401, 403, 404,
- * deletion pending) is the console's answer about this account and is raised.
+ * So any console failure ends the wait (503, 401, 403, 404, 500, a timeout, no
+ * network, a failed endpoint registration), and the session is local and
+ * grantless (`grantless: true`). The one exception is checked first: an
+ * account whose deletion is pending (`deletionRefusal()`) is the console's
+ * answer about this account and is raised (KAN-1396).
  *
  * The ask has its own abort, fired whenever the wait ends, so a 503 retry
  * loop never outlives the handoff and no entry is left in `grants`.
@@ -214,10 +220,9 @@ async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promis
     // I-133: the person chose Bluetooth, so the radio is the route. The console
     // is asked, but never waited on for more than the short grace.
     const wait = BLUETOOTH_GRANT_GRACE_MS
-    const asked = askConsole(printerId, own.signal).catch((error): null => {
-      if (error instanceof CloudError && error.status !== 503) throw error
-      return null // 503 (including offline presence), or the network
-    })
+    // Whatever goes wrong asking (any CloudError status, ensureEndpoint, an
+    // abort) means no grant, never a failed connect.
+    const asked = askConsole(printerId, own.signal).catch((): null => null)
     grant = await Promise.race([
       asked,
       new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), wait) })
@@ -228,12 +233,24 @@ async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promis
     own.abort()
   }
   signal.throwIfAborted()
+  // The ask itself may have been the first to learn the account is waiting to
+  // be deleted (a 403 deletion_pending sets deletionState). That refusal stands.
+  const refusedNow = deletionRefusal()
+  if (refusedNow) throw refusedNow
   if (grant) return sessionFrom(grant)
   let relayUrl = cloudState.config?.relay_url
   if (!relayUrl) {
+    // Bounded and swallowed: a stalled or failing console must not hold the radio.
+    let configTimer: ReturnType<typeof setTimeout> | undefined
     try {
-      relayUrl = (cloudState.config = await cloudApi.config()).relay_url
-    } catch { /* no console either: the error below says so */ }
+      const config = await Promise.race([
+        cloudApi.config(),
+        new Promise<null>(resolve => { configTimer = setTimeout(() => resolve(null), BLUETOOTH_CONFIG_WAIT_MS) })
+      ])
+      if (config) relayUrl = (cloudState.config = config).relay_url
+    } catch { /* no console either: the error below says so */ } finally {
+      clearTimeout(configTimer)
+    }
   }
   signal.throwIfAborted()
   if (!relayUrl) throw new Error('Muon3D could not be reached, and this page does not know its relay yet. Open Control once with a connection, then try Bluetooth again.')
@@ -440,6 +457,7 @@ async function sessionRefused () {
 
 async function dropSession () {
   forgetOwnAvatar()
+  forgetSecureReach()
   stopPolling()
   sessionAbort.abort()
   sessionAbort = new AbortController()
