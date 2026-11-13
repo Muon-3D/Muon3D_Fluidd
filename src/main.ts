@@ -24,7 +24,7 @@ import { InlineSvgPlugin } from 'vue-inline-svg'
 // Init.
 import { appInit } from './init'
 import { initCloud } from './services/muon-cloud/state'
-import { checkCentralSession } from './services/muon-cloud/centralLogin'
+import { checkCentralSession, setPageBusyCheck } from './services/muon-cloud/centralLogin'
 import { activateCloudPrinter, activateLocalPrinter, forgetManagedInstance } from './services/muon-cloud/activate'
 import {
   activeSlug,
@@ -57,6 +57,9 @@ import Blur from '@/directives/blur'
 import { restoreUiStyle } from '@/util/ui-style'
 import { applyGlassIcons } from '@/util/glass-icons'
 import { followMotionSetting } from '@/services/m1-3d/device-settings'
+
+// KAN-2198: no automatic sign-in trip away from a printer's page while a file is uploading to it.
+setPageBusyCheck(() => store.state.files.uploads.length > 0)
 
 // The entry is evaluated: the loader's next mark (KAN-525).
 retireProStorage()

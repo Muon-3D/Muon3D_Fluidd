@@ -131,19 +131,17 @@ describe('a refused token', () => {
     expect(go).not.toHaveBeenCalled()
   })
 
-  it('reads the uploads from the store by default', async () => {
+  it('asks the page whether it is busy by default', async () => {
     vi.stubEnv('VUE_MUON_CLOUD_URL', CONSOLE)
-    // The real store takes a minute to load here; its shape is all that counts.
-    const uploads: unknown[] = [{ filepath: 'cube.gcode', size: 10, loaded: 1, percent: 10, speed: 0, cancelled: false }]
-    vi.doMock('@/store', () => ({ default: { state: { files: { uploads } } } }))
+    const uploads: unknown[] = [{ filepath: 'cube.gcode' }]
     const { login } = await load()
+    login.setPageBusyCheck(() => uploads.length > 0)
     const go = vi.fn()
     await expect(login.signInAgainOnPrinterOrigin(Date.now(), go)).resolves.toBe(false)
     expect(go).not.toHaveBeenCalled()
     uploads.length = 0
     await expect(login.signInAgainOnPrinterOrigin(Date.now(), go)).resolves.toBe(true)
     expect(go).toHaveBeenCalledTimes(1)
-    vi.doUnmock('@/store')
   })
 
   it('does not loop when a sign-in came back within the last minute', async () => {

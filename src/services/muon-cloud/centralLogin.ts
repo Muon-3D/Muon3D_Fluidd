@@ -328,11 +328,20 @@ export async function signInAgainOnPrinterOrigin (now: number = Date.now(), go?:
   return true
 }
 
-/** Whether a file is uploading to the printer from this page. Imported late: the store is not this module's to load. */
+let pageBusy: () => boolean = () => false
+
+/**
+ * Tells this module how to ask whether the page is in the middle of something
+ * a top-level trip would cut off (a file uploading to the printer). The page
+ * sets it at start; this module does not import the store (it would be a cycle).
+ */
+export function setPageBusyCheck (check: () => boolean) {
+  pageBusy = check
+}
+
 async function uploadInProgress (): Promise<boolean> {
   try {
-    const { default: store } = await import('@/store')
-    return (store.state.files?.uploads?.length ?? 0) > 0
+    return pageBusy()
   } catch {
     return false
   }
