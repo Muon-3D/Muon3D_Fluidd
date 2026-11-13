@@ -13,7 +13,7 @@ const cloud = vi.hoisted(() => ({
 vi.mock('@/services/muon-cloud/state', () => cloud)
 
 const {
-  cancelPairing, pairingState, startPairing, submitPairingCode, PAIRING_WINDOW_MS, START_TIMEOUT_MS
+  cancelPairing, pairingMessage, pairingState, startPairing, submitPairingCode, PAIRING_WINDOW_MS, START_TIMEOUT_MS
 } = await import('../pairing')
 
 /** The wasm Error shape: a message and a `kind`. */
@@ -352,5 +352,13 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
 
     expect(pairingState.phase).toBe('error')
     expect(beginPairing).not.toHaveBeenCalled()
+  })
+})
+
+describe('the error kind "bluetooth" (KAN-2531)', () => {
+  it('reads as the plain not-on-Bluetooth message, as the open path does, not the raw text', () => {
+    const message = pairingMessage(wasmError('bluetooth', 'pinned printer has no bluetooth link'))
+    expect(message).toMatch(/Bluetooth isn't connected to this printer/)
+    expect(message).not.toMatch(/pinned printer/)
   })
 })

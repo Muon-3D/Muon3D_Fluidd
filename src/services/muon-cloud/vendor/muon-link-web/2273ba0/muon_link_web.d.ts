@@ -173,8 +173,11 @@ export class MuonEndpoint {
      * link to it is up (`pinned`), or lets it move to the relay as soon as
      * that is found (the default, ADR 0032 D3). For a person who chose
      * "Connect over Bluetooth" (D-080): uploads and the camera are then as
-     * slow as the radio, and the connection falls back to the relay only if
-     * the radio goes. Takes effect the next time iroh selects a path.
+     * slow as the radio. A pinned printer is dialled on its Bluetooth link
+     * alone, and while it has no link, `connect`, `connectAs` and
+     * `beginPairing` fail with kind `"bluetooth"` instead of using the relay:
+     * unpin it (`pinned = false`) to use the network. Takes effect on the next
+     * dial, and on the next path selection of an open connection.
      *
      * # Errors
      *
@@ -360,15 +363,15 @@ export interface InitOutput {
     readonly intounderlyingsource_cancel: (a: number) => void;
     readonly intounderlyingsource_pull: (a: number, b: number) => number;
     readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly __wasm_bindgen_func_elem_9833: (a: number, b: number, c: number, d: number) => void;
     readonly __wasm_bindgen_func_elem_9835: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4142: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2404: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4939: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4010: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4363: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4395: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_9731: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9837: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4144: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_2406: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4941: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4012: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4365: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4397: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9733: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;
