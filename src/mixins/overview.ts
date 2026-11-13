@@ -169,6 +169,18 @@ export default class OverviewMixin extends Mixins(ControlMixin, FilesMixin) {
     return `printed ${days} days ago`
   }
 
+  /** The "Film it" switch on the print sheet, when the printer can film (moonraker-timelapse): what its settings say now. */
+  get filmChoice () {
+    if (!this.$store.getters['server/componentSupport']('timelapse')) return undefined
+    const settings = (this.$store.getters['timelapse/getSettings'] ?? {}) as { enabled?: boolean, mode?: string }
+    if (typeof settings.enabled !== 'boolean') return undefined
+    return {
+      on: settings.enabled,
+      line: settings.mode === 'hyperlapse' ? 'Every few seconds' : 'Each layer',
+      set: (on: boolean) => SocketActions.machineTimelapseSetSettings({ enabled: on })
+    }
+  }
+
   pagePath (page: string): string {
     return scopedPath(page, activeSlug())
   }
@@ -180,7 +192,8 @@ export default class OverviewMixin extends Mixins(ControlMixin, FilesMixin) {
     const ok = await this.$confirm(`${this.printerName} heats up, homes and starts printing.`, {
       title: `Print ${name} on ${this.printerName}?`,
       buttonTrueText: 'Print now',
-      plateCheck: plateCheckNeeded(this.$store.state.history?.jobs)
+      plateCheck: plateCheckNeeded(this.$store.state.history?.jobs),
+      film: this.filmChoice
     })
     if (!ok || target !== this.panelTarget || !this.controlReady || this.busy) return
     const spoolman = this.$store.getters['spoolman/getAvailable'] && this.$store.state.config.uiSettings.spoolman.autoSpoolSelectionDialog

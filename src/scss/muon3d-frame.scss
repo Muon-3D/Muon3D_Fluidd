@@ -30,7 +30,7 @@
     filter var(--m3d-motion-fast) var(--m3d-ease-standard),
     background-color var(--m3d-motion-fast) var(--m3d-ease-standard),
     opacity var(--m3d-motion-fast) var(--m3d-ease-standard),
-    transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy);
+    transform var(--m3d-motion-press-out) var(--m3d-spring-snappy);
 
   .v-icon {
     color: inherit !important;
@@ -41,8 +41,8 @@
   }
 
   &:active:not(:disabled) {
-    transform: scale(0.96);
-    transition-duration: var(--m3d-motion-fast), var(--m3d-motion-fast), var(--m3d-motion-fast), var(--m3d-motion-instant);
+    transform: scale(var(--m3d-motion-press-scale, 0.95));
+    transition-duration: var(--m3d-motion-fast), var(--m3d-motion-fast), var(--m3d-motion-fast), var(--m3d-motion-press-in);
     transition-timing-function: var(--m3d-ease-standard);
   }
 
