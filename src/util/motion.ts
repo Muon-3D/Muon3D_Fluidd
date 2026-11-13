@@ -13,6 +13,10 @@ export const MOTION = {
   stagger: 40 // between items revealed together, six at most
 } as const
 
+// A press: down to 0.95 in 80 ms, back up over 320 ms (the release follows the
+// snappy spring as a linear() curve).
+export const PRESS = { scale: 0.95, in: 80, out: 320 } as const
+
 // Exits run at three quarters of the entry.
 export const EXIT_SCALE = 0.75
 

@@ -435,7 +435,12 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
   get files (): FileBrowserEntry[] {
     const files = this.getAllFiles()
 
+    const showHidden = !!this.$store.state.config.uiSettings.fileSystem.showHiddenFiles
     const filteredFiles = files.filter(file => {
+      if (!showHidden && file.name.match(/^\.(?!\.$)/)) {
+        return false
+      }
+
       if (this.currentRoot === 'timelapse' && file.type === 'file' && file.extension === 'jpg') {
         return false
       }

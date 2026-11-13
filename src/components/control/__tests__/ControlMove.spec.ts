@@ -251,19 +251,19 @@ it('Motors off sends M84 at once, and is only in the menu', async () => {
   const motors = s.wrapper.find('[data-tid="motors-off"]')
   expect(motors.attributes('role')).toBe('menuitem')
   expect(motors.element.closest('.move__bar')).toBeNull()
-  expect(s.wrapper.find('.move__homes [data-tid="home-z"]').exists()).toBe(true)
+  expect(s.wrapper.find('.move__hhomes [data-tid="home-z"]').exists()).toBe(true)
   await motors.trigger('click')
   expect(sent()).toEqual(['M84'])
   expect(s.confirm).not.toHaveBeenCalled()
   s.wrapper.destroy()
 })
 
-it('has no Home Z between Z+ and Z−: the live Z readout is there; Home Z is in the homing bar', () => {
+it('has no Home Z between Z+ and Z−: the live Z readout is there; Home Z is beside Home all in the header (CT-03)', () => {
   const s = show()
   expect(s.wrapper.findAll('.move__zcol button').length).toBe(2)
   expect(s.wrapper.find('.move__zcol [data-tid="pos-z"]').exists()).toBe(true)
   expect(s.wrapper.findAll('[data-tid="home-z"]').length).toBe(1)
-  expect(s.wrapper.find('[data-tid="home-z"]').element.closest('.move__homes')).not.toBeNull()
+  expect(s.wrapper.find('[data-tid="home-z"]').element.closest('.move__hhomes')).not.toBeNull()
   s.wrapper.destroy()
 })
 

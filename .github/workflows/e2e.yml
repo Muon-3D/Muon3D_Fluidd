@@ -19,7 +19,9 @@ jobs:
   e2e:
     name: Playwright shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 40, not 30 (Jack, 13 Nov, D-117): a shard of about 410 tests on 2 workers ran 26-30 min and was
+    # cancelled at 30 with no test failing, costing a rerun on most PRs. A green run costs no more.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
