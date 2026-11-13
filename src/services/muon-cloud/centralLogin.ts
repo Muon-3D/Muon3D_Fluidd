@@ -309,14 +309,27 @@ export const RESIGNIN_GAP_MS = 60000
  * token runs out or is refused the page signs in again with a top-level trip.
  * Not if a trip came back within the last minute: that token was refused as
  * soon as it was issued, and another trip would only loop. The page then
- * shows the signed-out state. True when a trip was started.
+ * shows the signed-out state. Not while a file is going up to the printer
+ * either: leaving the page would cut the upload off, so the page stays,
+ * signed out, and the account button signs in. True when a trip was started.
  */
-export async function signInAgainOnPrinterOrigin (now: number = Date.now(), go?: (url: string) => void): Promise<boolean> {
+export async function signInAgainOnPrinterOrigin (now: number = Date.now(), go?: (url: string) => void, busy: () => Promise<boolean> = uploadInProgress): Promise<boolean> {
   if (!isPrinterSecureOrigin() || !centralLoginEnabled()) return false
   const returned = Number(session()?.getItem(RETURNED_KEY) ?? 0)
   if (returned && now - returned < RESIGNIN_GAP_MS) return false
+  if (await busy()) return false
   await startCentralSignIn({ silent: false }, go)
   return true
+}
+
+/** Whether a file is uploading to the printer from this page. Imported late: the store is not this module's to load. */
+async function uploadInProgress (): Promise<boolean> {
+  try {
+    const { default: store } = await import('@/store')
+    return (store.state.files?.uploads?.length ?? 0) > 0
+  } catch {
+    return false
+  }
 }
 
 /**

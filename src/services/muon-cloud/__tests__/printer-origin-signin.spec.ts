@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../iroh', () => ({ browserEndpoint: vi.fn(), forgetBrowserKey: vi.fn(), IrohPrinter: class {} }))
 
 const CONSOLE = 'https://control.muon3d.com'
+/** No upload in progress. */
+const idle = async () => false
 
 async function load () {
   vi.resetModules()
@@ -109,9 +111,32 @@ describe('a refused token', () => {
     vi.stubEnv('VUE_MUON_CLOUD_URL', CONSOLE)
     const { login } = await load()
     const go = vi.fn()
-    await expect(login.signInAgainOnPrinterOrigin(Date.now(), go)).resolves.toBe(true)
+    await expect(login.signInAgainOnPrinterOrigin(Date.now(), go, idle)).resolves.toBe(true)
     expect(go).toHaveBeenCalledTimes(1)
     expect(new URL(go.mock.calls[0][0]).searchParams.get('client_id')).toBe('printer-local')
+  })
+
+  it('does not leave the page while a file is uploading to the printer', async () => {
+    vi.stubEnv('VUE_MUON_CLOUD_URL', CONSOLE)
+    const { login } = await load()
+    const go = vi.fn()
+    await expect(login.signInAgainOnPrinterOrigin(Date.now(), go, async () => true)).resolves.toBe(false)
+    expect(go).not.toHaveBeenCalled()
+  })
+
+  it('reads the uploads from the store by default', async () => {
+    vi.stubEnv('VUE_MUON_CLOUD_URL', CONSOLE)
+    // The real store takes a minute to load here; its shape is all that counts.
+    const uploads: unknown[] = [{ filepath: 'cube.gcode', size: 10, loaded: 1, percent: 10, speed: 0, cancelled: false }]
+    vi.doMock('@/store', () => ({ default: { state: { files: { uploads } } } }))
+    const { login } = await load()
+    const go = vi.fn()
+    await expect(login.signInAgainOnPrinterOrigin(Date.now(), go)).resolves.toBe(false)
+    expect(go).not.toHaveBeenCalled()
+    uploads.length = 0
+    await expect(login.signInAgainOnPrinterOrigin(Date.now(), go)).resolves.toBe(true)
+    expect(go).toHaveBeenCalledTimes(1)
+    vi.doUnmock('@/store')
   })
 
   it('does not loop when a sign-in came back within the last minute', async () => {
@@ -121,9 +146,9 @@ describe('a refused token', () => {
     const pending = JSON.parse(sessionStorage.getItem('muon.cloud.authorize')!)
     login.takeCallback({ search: `?code=c0de&state=${pending.state}&iss=${encodeURIComponent(CONSOLE)}` }, CONSOLE)
     const go = vi.fn()
-    await expect(login.signInAgainOnPrinterOrigin(Date.now() + 30_000, go)).resolves.toBe(false)
+    await expect(login.signInAgainOnPrinterOrigin(Date.now() + 30_000, go, idle)).resolves.toBe(false)
     expect(go).not.toHaveBeenCalled()
-    await expect(login.signInAgainOnPrinterOrigin(Date.now() + 61_000, go)).resolves.toBe(true)
+    await expect(login.signInAgainOnPrinterOrigin(Date.now() + 61_000, go, idle)).resolves.toBe(true)
     expect(go).toHaveBeenCalledTimes(1)
   })
 })
