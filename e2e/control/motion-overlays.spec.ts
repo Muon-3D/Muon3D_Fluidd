@@ -76,9 +76,11 @@ test.describe('on a computer', () => {
     // A fast fade for its opacity (listed first, so reduced motion keeps it),
     // the gentle spring for its size.
     const enter = await entering()
-    // It grows from 92 % (read with the -enter class still on), not 50 %.
+    // It grows from 92 % (the value the -enter rule declares, read with the
+    // -enter class still on; the dialog has no layout yet at that instant, so
+    // its own computed transform is not the thing to read), not 50 %.
     expect(enter?.classes).toContain('dialog-transition-enter')
-    expect(enter!.scale).toBeCloseTo(0.92, 2)
+    expect(enter!.declaredScale).toBeCloseTo(0.92, 2)
     expect(enter?.property).toMatch(/^opacity/)
     expect(enter?.duration).toMatch(/0\.536s/)
     expect(enter?.easing).toMatch(/linear\(/)
@@ -145,11 +147,11 @@ test.describe('on a phone', () => {
     const enter = await entering()
     expect(enter?.duration).toMatch(/^0\.34s/)
     expect(enter?.easing).toContain('cubic-bezier(0.16, 1, 0.3, 1)')
-    // It starts below the screen: translated down by at least its own height,
-    // read in the same callback, with the -enter class still on.
+    // It starts below the screen: the -enter rule, read with the class still
+    // on, translates it down by its own height (100 %). The sheet has no layout
+    // yet at that instant, so the rule is read from a probe of known size.
     expect(enter?.classes).toContain('bottom-sheet-transition-enter')
-    expect(enter!.height).toBeGreaterThan(0)
-    expect(enter!.ty).toBeGreaterThanOrEqual(enter!.height - 1)
+    expect(enter!.declaredTyFraction).toBeGreaterThanOrEqual(0.99)
     const s = await opening
     info.annotations.push({ type: 'sheet open samples', description: JSON.stringify(s.slice(0, 20)) })
     // No overshoot: the sheet never rises past its resting place, so no gap

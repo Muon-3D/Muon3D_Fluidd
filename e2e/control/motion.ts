@@ -96,6 +96,8 @@ export interface ClassSeen {
    * -leave-to rule, not a point part-way along the transition).
    */
   declaredScale: number;
+  /** The y translation the element's classes declare, as a fraction of the element's own height (1 = fully below its place). */
+  declaredTyFraction: number;
   /** The element's height, px. */
   height: number;
   /** Every class the element had at that moment. */
@@ -126,16 +128,27 @@ export async function watchClass (page: Page, selector: string, cls: string, ms 
         const m = s.transform === 'none' ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(s.transform)
         // A probe with the same classes and no transition shows the value the
         // element's rules declare, whatever point its own transition is at.
+        // The probe is 100 px square so a percentage translate resolves to a
+        // known length. When the element is not laid out yet at this instant
+        // (a dialog or sheet is still being shown), its computed transform is
+        // 'none' and so is a probe beside it; the probe then goes on the body,
+        // where it has a box and the same class rules apply.
         let declaredScale = m.a
-        if (el.parentElement) {
+        let declaredTyFraction = 0
+        const declare = (host: Element): boolean => {
           const probe = document.createElement('div')
           probe.className = el.className
-          probe.style.transition = 'none'
-          el.parentElement.appendChild(probe)
+          probe.style.cssText = 'transition:none;position:fixed;left:0;top:0;width:100px;height:100px;visibility:hidden;pointer-events:none'
+          host.appendChild(probe)
+          const laidOut = probe.getClientRects().length > 0
           const pt = getComputedStyle(probe).transform
-          declaredScale = pt === 'none' ? 1 : new DOMMatrixReadOnly(pt).a
+          const pm = pt === 'none' ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(pt)
+          declaredScale = pm.a
+          declaredTyFraction = pm.f / 100
           probe.remove()
+          return laidOut
         }
+        if (!el.parentElement || !declare(el.parentElement)) declare(document.body)
         if (marker) (el as HTMLElement).dataset.m3dWatch = marker
         resolve({
           duration: s.transitionDuration,
@@ -145,6 +158,7 @@ export async function watchClass (page: Page, selector: string, cls: string, ms 
           scale: +m.a.toFixed(3),
           ty: +m.f.toFixed(1),
           declaredScale: +declaredScale.toFixed(3),
+          declaredTyFraction: +declaredTyFraction.toFixed(3),
           height: el.getBoundingClientRect().height,
           classes: Array.from(el.classList)
         })
