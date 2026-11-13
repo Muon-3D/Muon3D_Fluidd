@@ -43,13 +43,13 @@ const granted = () => new Response(JSON.stringify({
 }), { status: 200 })
 
 /** Stubs the console. `access` may answer late. */
-function cloud (access: () => Response | Promise<Response>) {
+function cloud (access: () => Response | Promise<Response>, endpoint: () => Response = () => new Response(JSON.stringify({ endpoint_id: 'me' }), { status: 200 })) {
   const calls: string[] = []
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const path = new URL(url).pathname
     calls.push(`${init?.method ?? 'GET'} ${path}`)
     if (path === '/v1/config') return new Response(JSON.stringify({ relay_url: 'https://relay.example.test' }), { status: 200 })
-    if (path === '/v1/me/endpoint') return new Response(JSON.stringify({ endpoint_id: 'me' }), { status: 200 })
+    if (path === '/v1/me/endpoint') return endpoint()
     if (path === `/v1/printers/${EID}/access`) return access()
     return new Response('{}', { status: 404 })
   }))
@@ -148,29 +148,42 @@ describe('Connect over Bluetooth with the cloud saying the printer is offline (K
     expect(accessCalls(calls)).toBe(asked)
   }, 20_000)
 
-  it('does not go on without a grant when the console refuses the account (403)', async () => {
-    cloudState.printers = [printer(true)]
-    cloud(() => new Response(JSON.stringify({ error: 'forbidden' }), { status: 403 }))
+  const opensWithoutGrant = async () => {
     useBluetoothFor(EID, fakePrinter().device)
+    const transport = await borrowCloudPrinter(EID)
+    expect((await transport.fetch('/printer/info')).status).toBe(200)
+    expect(sessions[0].grantless).toBe(true)
+    expect(ble.endpoint.addLink).toHaveBeenCalledTimes(1)
+  }
 
-    const error = await borrowCloudPrinter(EID).catch(e => e)
-
-    expect(error).toBeInstanceOf(CloudError)
-    expect(error.status).toBe(403)
-    expect(ble.endpoint.addLink).not.toHaveBeenCalled()
-  })
-
-  it('does not go on without a grant when the console says it knows no such printer (404)', async () => {
+  it.each([
+    [401, 'a signed-out or expired session'],
+    [403, 'a refused account'],
+    [404, 'a printer the console knows nothing of'],
+    [500, 'a console error']
+  ])('still opens over Bluetooth, grantless, when the console answers %i (%s) (KAN-1396)', async (status) => {
     // Presence "offline" is a 503 of its own, so the list calls it online.
     cloudState.printers = [printer(true)]
-    cloud(() => new Response(JSON.stringify({ error: 'not_found' }), { status: 404 }))
-    useBluetoothFor(EID, fakePrinter().device)
+    cloud(() => new Response(JSON.stringify({ error: 'refused' }), { status }))
+    await opensWithoutGrant()
+  })
 
-    const error = await borrowCloudPrinter(EID).catch(e => e)
+  it('still opens over Bluetooth when registering the endpoint fails (KAN-1396)', async () => {
+    cloudState.printers = [printer(true)]
+    const calls = cloud(granted, () => new Response('{}', { status: 500 }))
+    await opensWithoutGrant()
+    expect(accessCalls(calls)).toBe(0)
+  })
 
-    expect(error).toBeInstanceOf(CloudError)
-    expect(error.status).toBe(404)
-    expect(ble.endpoint.addLink).not.toHaveBeenCalled()
+  it('still opens over Bluetooth when the network to the console is down (KAN-1396)', async () => {
+    cloudState.printers = [printer(true)]
+    cloud(granted)
+    const ok = (fetch as any).getMockImplementation()
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (new URL(url).pathname === `/v1/printers/${EID}/access`) throw new TypeError('Failed to fetch')
+      return ok(url, init)
+    }))
+    await opensWithoutGrant()
   })
 
   it('stays blocked while the account is waiting to be deleted', async () => {
