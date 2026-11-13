@@ -26,24 +26,6 @@
         </p>
       </div>
       <div class="mgrid__acts">
-        <button
-          v-if="signedIn && !unavailable"
-          type="button"
-          class="mlib-btn mlib-btn--icon mpage__heart"
-          :class="{ 'mpage__heart--on': !!saveId }"
-          :aria-pressed="saveId ? 'true' : 'false'"
-          :aria-label="saveId ? 'Saved' : 'Save'"
-          :disabled="saving || !publication"
-          data-tid="library-print-heart"
-          @click="toggleSave"
-        >
-          <svg
-            class="mlib-i"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            focusable="false"
-          ><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" /></svg>
-        </button>
         <a
           v-if="slug"
           class="mlib-btn mlib-btn--icon"
@@ -143,12 +125,13 @@
             <span
               v-if="fitLabel"
               class="mlib-badge"
-              :class="{ 'mlib-badge--ok': sizeFit !== false }"
+              :class="{ 'mlib-badge--ok': sizeFit === true }"
               data-tid="library-print-fits"
             >{{ fitLabel }}</span>
             <span
               v-else
               class="mlib-badge"
+              data-tid="library-print-fit-unknown"
             >Check print size</span>
           </header>
           <div
@@ -403,7 +386,7 @@
             class="mlib-muted"
             :datetime="publication.version_created_at"
           >{{ dateText(publication.version_created_at) }}</time>
-          <span class="mlib-badge mlib-badge--ok">Reviewed public version</span>
+          <span class="mlib-badge mlib-badge--ok">Public version</span>
         </div>
         <template v-if="context && context.owner">
           <h3>Your version history</h3>
@@ -433,14 +416,8 @@
         <p class="mlib-muted">
           Private to your account. Other people's prints are never shown here.
         </p>
-        <p
-          v-if="!signedIn"
-          class="mlib-muted"
-        >
-          Sign in to see your print history.
-        </p>
         <div
-          v-else-if="contextBusy"
+          v-if="contextBusy"
           class="mlib-skeleton"
           aria-label="Loading your print history"
           style="min-height: 80px"
@@ -536,7 +513,7 @@
         @open="$emit('open', $event)"
       />
       <footer
-        v-if="publication"
+        v-if="publication && slug"
         class="mpage__footer"
       >
         <button
@@ -572,7 +549,8 @@ import { loadPublication, loadRelated, minutesText, publicationPrint, type Shelf
 import { browse, dimensionFit } from '@/services/library/catalogue'
 import { libraryClient } from '@/services/library/store'
 import { cloudState } from '@/services/muon-cloud/state'
-import type { ModelContext } from '@/services/library/api'
+import { configuredSlicerLinkBase } from '@/services/slicer-bridge/slicerUrl'
+import { describeLibraryError, LibraryError, type ModelContext } from '@/services/library/api'
 
 interface Related { cards: ShelfCard[], loading: boolean, error: string }
 
@@ -619,8 +597,8 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
     try {
       const result = await libraryClient().modelContext(this.card.id)
       if (read === this.contextRead) this.context = result
-    } catch {
-      if (read === this.contextRead) this.contextError = 'Your history could not be loaded. Library must be enabled for your account.'
+    } catch (error) {
+      if (read === this.contextRead) this.contextError = error instanceof LibraryError && error.status === 403 && error.code === 'consent_required' ? 'Your history could not be loaded. Library must be enabled for your account.' : `Your history could not be loaded. ${describeLibraryError(error)}`
     } finally { if (read === this.contextRead) this.contextBusy = false }
   }
 
@@ -671,7 +649,7 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
 
   get fitLabel (): string {
     const fit = this.sizeFit
-    return fit === null ? this.madeForM1 && this.printerFits && this.printerName ? `Fits ${this.printerName}` : '' : fit ? `Fits ${this.printerName || 'this printer'} by size` : 'Does not fit as oriented'
+    return fit === null ? '' : fit ? `Fits ${this.printerName || 'this printer'} by size` : 'Does not fit as oriented'
   }
 
   // Each print is its own page: MuonLibrary keys it by id, so another print mounts afresh.
@@ -735,7 +713,7 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
 
   get sliceLink (): string {
     const file = this.publication?.files.find(f => f.role === 'project' || ['3mf', 'stl'].includes(f.format))
-    return `https://slicer.muon3d.com/?publication=${encodeURIComponent(this.publication?.id || this.card.id)}&version=${this.publication?.version || 1}${file ? `&file=${encodeURIComponent(file.id)}` : ''}`
+    return `${configuredSlicerLinkBase()}?library=${encodeURIComponent(this.publication?.id || this.card.id)}&version=${this.publication?.version || 1}${file ? `&file=${encodeURIComponent(file.id)}` : ''}`
   }
 
   get remixLink (): string {
