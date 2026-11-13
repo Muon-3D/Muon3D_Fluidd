@@ -256,9 +256,10 @@ describe('Slice', () => {
     expect(welcomes[0].capabilities).not.toContain('ui.mode')
     expect('mode' in welcomes[0]).toBe(false)
 
-    const setMode = vi.spyOn(vm.host.bridge, 'setMode')
+    // The host no longer has a way to send a mode at all (printer-client from muon3d-slicer d0b2f589).
+    expect('setMode' in vm.host.bridge).toBe(false)
     await vm.$nextTick()
-    expect(setMode).not.toHaveBeenCalled()
+    expect(welcomes).toHaveLength(1)
     wrapper.destroy()
   })
 
