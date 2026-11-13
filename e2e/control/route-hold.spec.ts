@@ -46,7 +46,8 @@ async function choose (page: Page, action: 'Connect over Bluetooth' | 'Connect t
   await expect(page.getByText('Connecting...')).toHaveCount(0, { timeout: 30_000 })
   // The tile itself is a button too; the menu is the real <button> on it.
   await page.locator(`button[aria-label="Options for ${ROUTE_PRINTER.name}"]`).click()
-  await page.getByText(action, { exact: true }).click()
+  // The card has its own "Connect over Bluetooth" button now: the menu's item is the one in the list.
+  await page.locator('.v-list-item').getByText(action, { exact: true }).click()
 }
 
 /** Connect over Bluetooth, and wait until the session really runs over it. */

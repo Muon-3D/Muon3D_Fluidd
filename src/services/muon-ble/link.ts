@@ -632,7 +632,9 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
   const tick = setInterval(() => {
     if (routes.get(id)?.link !== link) return
     const heard = link.lastHeardAt?.() ?? link.lastTrafficAt()
-    const silent = link.isOpen() && Date.now() - Math.max(heard, openedAt) > SILENT_DROP_MS
+    // Quiet after the printer spoke over the radio is a dead path behind a live radio. A printer that
+    // never spoke on it was never on Bluetooth: that is `fellBack` (watchRadioPath), said once, not a drop.
+    const silent = link.isOpen() && heard > openedAt && Date.now() - heard > SILENT_DROP_MS
     const carrying = link.isOpen() && !silent
     if (routeState.carrying[id] !== carrying) Vue.set(routeState.carrying, id, carrying)
     if (routeState.dropped[id]) return

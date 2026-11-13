@@ -381,6 +381,23 @@ describe('the chosen route is the only route, and a drop is said, not hidden (KA
     }
   })
 
+  it('a link the printer never spoke on is not a drop: the session is on the relay, and that is said once (KAN-2531 with #370)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const { endpoint } = fakeEndpoint()
+      useBluetoothFor(EID, printer.device)
+      const link = await bluetoothRouteFor(endpoint, EID)
+      await vi.advanceTimersByTimeAsync(SILENT_DROP_MS + 5_000)
+      expect(bluetoothDropped(EID)).toBeNull()
+      expect(link!.isOpen()).toBe(true)
+      expect(bluetoothFellBack(EID)).toBe(NOT_ON_BLUETOOTH_REASON)
+      expect(remoteRouteLabel(EID)).toBe('Through Muon3D')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('a fresh try after a silent drop opens a new link, not the stale one', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
@@ -388,6 +405,7 @@ describe('the chosen route is the only route, and a drop is said, not hidden (KA
       const { endpoint } = fakeEndpoint()
       useBluetoothFor(EID, printer.device)
       const first = await bluetoothRouteFor(endpoint, EID)
+      await printerSpeaks(printer)
       await vi.advanceTimersByTimeAsync(SILENT_DROP_MS + 5_000)
       expect(bluetoothDropped(EID)).not.toBeNull()
       await releaseBluetoothLink(EID)
