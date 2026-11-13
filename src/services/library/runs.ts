@@ -1,8 +1,8 @@
 import type { Store } from 'vuex'
 import { modelsAssertion } from './assertion'
 import { MODELS_URL } from './api'
-import { cloudState } from '@/services/muon-cloud/state'
-import { confirmedAccountId } from '@/services/muon-cloud/account-events'
+import { cloudState, reconcileStoredSession } from '@/services/muon-cloud/state'
+import { confirmedAccountId, currentAccount } from '@/services/muon-cloud/account-events'
 import { storedToken } from '@/services/muon-cloud/api'
 import type { InstanceConfig } from '@/store/config/types'
 import { printerNameParts } from '@/util/printer-name'
@@ -47,11 +47,38 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 /** The account a run is reported for: the one /me confirmed for the stored token, else nobody (account-events.ts). */
 const confirmedOwner = (): string | null => confirmedAccountId(storedToken())
 
-async function request (path: string, method: string, body: object, key?: string, fetcher: typeof fetch = fetch, owner: string | null = confirmedOwner()): Promise<any | null> {
+/** The account a report is for when it is made: the confirmed one, else the one shown (asked about before it is used). */
+const reportOwner = (): string | null => confirmedOwner() ?? currentAccount().id
+
+/** How long a report waits for /me to confirm the stored token before it is given up. */
+export const CONFIRMATION_WAIT_MS = 10_000
+
+/**
+ * The confirmed account a report for `expect` (null: whoever it turns out to be) may go out under. While the stored
+ * token is unconfirmed but the account shown is the one the report is for, one /me is awaited (bounded), instead of
+ * dropping a report that only waits for the console to answer.
+ */
+async function settledOwner (expect: string | null): Promise<string | null> {
+  const known = confirmedOwner()
+  if (known) return expect === null || known === expect ? known : null
+  if (!storedToken()) return null
+  const shown = currentAccount().id
+  if (expect !== null && shown !== null && shown !== expect) return null
+  let timer: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([
+    reconcileStoredSession().catch(() => {}),
+    new Promise<void>(resolve => { timer = setTimeout(resolve, CONFIRMATION_WAIT_MS) })
+  ]).finally(() => clearTimeout(timer))
+  const after = confirmedOwner()
+  return after && (expect === null || after === expect) ? after : null
+}
+
+async function request (path: string, method: string, body: object, key?: string, fetcher: typeof fetch = fetch, expected: string | null = reportOwner()): Promise<any | null> {
   if (consentStopped) return null
-  // Nothing is reported until /me has confirmed the account for the stored token (it may be on its way, or failed and
-  // retried later), and only for the account that owns the run: no assertion is asked for otherwise.
-  if (!owner || confirmedOwner() !== owner) return null
+  // Nothing is reported until /me has confirmed the account for the stored token (waited for, bounded, when only that
+  // is missing), and only for the account that owns the run: no assertion is asked for otherwise.
+  const owner = await settledOwner(expected)
+  if (!owner) return null
   for (let attempt = 0; attempt <= RETRIES; attempt++) {
     try {
       const token = await modelsAssertion.get()
@@ -72,7 +99,7 @@ async function request (path: string, method: string, body: object, key?: string
   return null
 }
 
-export async function createRun (start: RunStart, fetcher: typeof fetch = fetch, owner: string | null = confirmedOwner()): Promise<{ id: string } | null> {
+export async function createRun (start: RunStart, fetcher: typeof fetch = fetch, owner: string | null = reportOwner()): Promise<{ id: string } | null> {
   const { gcode_sha256 } = start
   if (!gcode_sha256 && !start.file_name) return null
   // Not de-duplicated across browsers: every Control tab watching this printer reports its own run.
@@ -93,7 +120,7 @@ export async function createRun (start: RunStart, fetcher: typeof fetch = fetch,
  * another printer first: a run left running by switching away mid-print is
  * never closed (a known limitation).
  */
-export function watchRunEnd (store: AnyStore, id: string, startedAt = Date.now(), fetcher: typeof fetch = fetch, expectedPrinterId = printerId(store), owner: string | null = confirmedOwner()): () => void {
+export function watchRunEnd (store: AnyStore, id: string, startedAt = Date.now(), fetcher: typeof fetch = fetch, expectedPrinterId = printerId(store), owner: string | null = reportOwner()): () => void {
   const stop = store.watch(
     printSnapshot,
     ([state], [beforeState]) => {
@@ -117,8 +144,8 @@ export function watchRunEnd (store: AnyStore, id: string, startedAt = Date.now()
 /** Fire-and-forget by design: model-service latency must never delay a print. */
 export function reportStartedRun (store: AnyStore, start: RunStart): void {
   // The run's owner is kept with it: its end is reported only while that account is still the confirmed one.
-  const owner = confirmedOwner()
-  createRun(start, fetch, owner).then(run => { if (run?.id && printerId(store) === start.printer_id) watchRunEnd(store, run.id, Date.now(), fetch, start.printer_id, owner) }).catch(() => {})
+  const owner = reportOwner()
+  createRun(start, fetch, owner).then(run => { if (run?.id && printerId(store) === start.printer_id) watchRunEnd(store, run.id, Date.now(), fetch, start.printer_id, owner ?? confirmedOwner()) }).catch(() => {})
 }
 
 /**

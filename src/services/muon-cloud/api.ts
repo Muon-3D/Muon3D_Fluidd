@@ -6,7 +6,7 @@
  * when the console serves Fluidd, or the URL saved in `muon.cloud.url`.
  */
 
-import { currentAccount, rotateConfirmed } from './account-events'
+import { confirmedAccountId, currentAccount, rotateConfirmed } from './account-events'
 import { clearDeletion, deletionRevision, observeDeletion } from './deletion'
 import { isPrinterSecureOrigin } from '@/services/secure-origin'
 export { deletionState } from './deletion'
@@ -412,6 +412,14 @@ export function setSessionRecovery (recover: ((failedRefresh: string) => Promise
 export interface SessionHooks {
   recovered?: () => Promise<boolean>;
   refused?: () => void;
+  /** The stored token is one /me has not confirmed for the account on screen: ask now (state.ts reconcileStoredSession). */
+  check?: () => void;
+}
+
+/** A token was stored here for the same account (a refresh, a re-keyed session): carry the confirmation to it, or ask. */
+export function carryConfirmation (before: string | null, next: string) {
+  rotateConfirmed(before, next)
+  if (confirmedAccountId(next) === null) sessionHooks.check?.()
 }
 
 let sessionHooks: SessionHooks = {}
@@ -518,7 +526,7 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
         const session = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId() }, controller.signal)
         const before = storedToken()
         storeToken(session.access_token)
-        rotateConfirmed(before, session.access_token)
+        carryConfirmation(before, session.access_token)
         storeRefreshToken(session.refresh_token)
         resetRefreshBackoff()
         return 'ok'

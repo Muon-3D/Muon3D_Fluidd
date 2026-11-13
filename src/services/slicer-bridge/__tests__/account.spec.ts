@@ -41,7 +41,7 @@ async function frame (account: FluiddAccount, features: string[] = ['account'], 
   let port: MessagePort | null = null
   const contentWindow = { postMessage: (_m: unknown, _o: string, transfer: unknown[]) => { port = transfer[0] as MessagePort } }
   const frameElement = { contentWindow } as unknown as HTMLIFrameElement
-  Object.defineProperty(frameElement, 'src', { set: () => { order.push('src set') } })
+  Object.defineProperty(frameElement, 'src', { get: () => '', set: () => { order.push('src set') } })
   const host = startSlicerHost({
     frame: frameElement,
     slicerUrl: new URL(`${SLICER}/slicer/embed.html`),

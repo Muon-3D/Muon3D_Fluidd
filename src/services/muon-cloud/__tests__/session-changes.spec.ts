@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cloudApi, CloudError, refreshOutcome, setSessionRecovery, storeRefreshToken, storeToken, storedToken, TOKEN_KEY } from '../api'
 import { announceAccount, onAccountChange } from '../account-events'
-import { cloudState, initCloud, signIn, signOut } from '../state'
+import { cloudState, initCloud, resetReconcileForTests, signIn, signOut } from '../state'
 import { modelsAssertion } from '@/services/library/assertion'
 
 vi.mock('../iroh', () => ({ browserEndpoint: vi.fn(), forgetBrowserKey: vi.fn(), IrohPrinter: class {} }))
@@ -50,6 +50,7 @@ beforeEach(() => {
 afterEach(async () => {
   while (stops.length) stops.pop()!()
   setSessionRecovery(null)
+  resetReconcileForTests()
   await signOut()
   vi.restoreAllMocks()
   localStorage.clear()

@@ -11,7 +11,7 @@
  * 404 or 405 and no JSON error. `AccountError.missing` says so, and the
  * pages show "Coming soon" there instead of an error.
  */
-import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, refreshSession, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
+import { CloudError, INSECURE_ORIGIN_MESSAGE, carryConfirmation, cloudBaseUrl, cloudSessionAllowed, refreshSession, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
 import { deletionRevision, observeDeletion } from '@/services/muon-cloud/deletion'
 
 export class AccountError extends CloudError {
@@ -66,7 +66,10 @@ export interface RequestOptions {
 export function adoptRekeyedSession (data: unknown) {
   const session = (data as { session?: { access_token?: unknown, refresh_token?: unknown } | null } | null)?.session
   if (!session || typeof session.access_token !== 'string' || !session.access_token) return
+  const before = storedToken()
   storeToken(session.access_token)
+  // The same account's new token: the confirmation moves with it (or /me is asked, when there was none to move).
+  carryConfirmation(before, session.access_token)
   if (typeof session.refresh_token === 'string' && session.refresh_token) storeRefreshToken(session.refresh_token)
 }
 

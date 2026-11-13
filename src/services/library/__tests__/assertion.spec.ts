@@ -87,7 +87,7 @@ describe('a 401 from the model service', () => {
 describe('the assertion cache keyed by account', () => {
   function keyed () {
     let account: string | null = 'acct-a'
-    let clock = 1_000_000_000
+    const clock = 1_000_000_000
     let n = 0
     const fetch = vi.fn(async (): Promise<AssertionAnswer> => ({ assertion: `${account}-${++n}`, expires_at: (clock + 300_000) / 1000 }))
     const assertions = createAssertionCache({ fetch, session: () => 'console-session', account: () => account, now: () => clock })

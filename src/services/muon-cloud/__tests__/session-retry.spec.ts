@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cloudApi, CloudError, refreshOutcome, setSessionRecovery, storeRefreshToken, storeToken, storedToken, TOKEN_KEY } from '../api'
 import { onAccountChange } from '../account-events'
 import { signInAgainOnPrinterOrigin } from '../centralLogin'
-import { cloudState, initCloud, RECONCILE_RETRY_MS, signIn, signOut } from '../state'
+import { cloudState, initCloud, RECONCILE_RETRY_MS, resetReconcileForTests, signIn, signOut } from '../state'
 import { modelsAssertion } from '@/services/library/assertion'
 import { createRun } from '@/services/library/runs'
 
@@ -59,6 +59,7 @@ beforeEach(() => {
 afterEach(async () => {
   while (stops.length) stops.pop()!()
   setSessionRecovery(null)
+  resetReconcileForTests()
   await signOut()
   vi.useRealTimers()
   vi.unstubAllGlobals()
@@ -70,15 +71,16 @@ describe('the console could not be reached when the page loaded', () => {
   it('reports nothing until /me answers on a retry, then reports', async () => {
     fakeTimers()
     storeToken('token-jack')
-    const me = vi.spyOn(cloudApi, 'me').mockRejectedValueOnce(unreachable()).mockResolvedValue(meOf(jack))
+    const me = vi.spyOn(cloudApi, 'me').mockRejectedValueOnce(unreachable()).mockRejectedValueOnce(unreachable()).mockResolvedValue(meOf(jack))
     await initCloud()
     expect(cloudState.account).toBeNull()
     const early = vi.fn()
+    // The report asks /me once itself (the second failure) and gives up: nothing goes out.
     expect(await createRun(run, early)).toBeNull()
     expect(early).not.toHaveBeenCalled()
 
     await tick(RECONCILE_RETRY_MS[0])
-    expect(me).toHaveBeenCalledTimes(2)
+    expect(me).toHaveBeenCalledTimes(3)
     expect(cloudState.account?.id).toBe('acct-jack')
     const sent = vi.fn(async () => answer(201, { id: 'run-1' }))
     expect(await createRun(run, sent as unknown as typeof fetch)).toEqual({ id: 'run-1' })
@@ -213,5 +215,71 @@ describe('this tab\'s own refresh', () => {
     expect(await refreshOutcome()).toBe('ok')
     expect(storedToken()).toBe('token-jack-2')
     expect((await modelsAssertion.getWithExpiry()).assertion).toBe('assertion-1')
+  })
+})
+
+describe('which failures are retried', () => {
+  it('does not retry a 403 or a 404 from /me', async () => {
+    for (const status of [403, 404]) {
+      fakeTimers()
+      localStorage.clear()
+      storeToken('token-jack')
+      const me = vi.spyOn(cloudApi, 'me').mockRejectedValue(new CloudError('an answer', status))
+      await initCloud()
+      await tick(30 * 60_000)
+      expect(me).toHaveBeenCalledTimes(1)
+      vi.useRealTimers()
+      resetReconcileForTests()
+      await signOut()
+      me.mockRestore()
+    }
+  })
+
+  it('retries a 429 and a 503', async () => {
+    fakeTimers()
+    storeToken('token-jack')
+    const me = vi.spyOn(cloudApi, 'me').mockRejectedValueOnce(new CloudError('slow down', 429)).mockRejectedValueOnce(new CloudError('later', 503)).mockResolvedValue(meOf(jack))
+    await initCloud()
+    await tick(RECONCILE_RETRY_MS[0])
+    await tick(RECONCILE_RETRY_MS[1])
+    expect(me).toHaveBeenCalledTimes(3)
+    expect(cloudState.account?.id).toBe('acct-jack')
+  })
+
+  it('asks /me at once after this tab own refresh when the token is unconfirmed', async () => {
+    await signedInAs(jack, 'token-jack')
+    const me = vi.spyOn(cloudApi, 'me').mockRejectedValueOnce(unreachable()).mockResolvedValue(meOf(jack))
+    otherTabWrites('token-other-tab')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(me).toHaveBeenCalledTimes(1)
+    await expect(modelsAssertion.get()).rejects.toMatchObject({ code: 'not-signed-in' })
+    storeRefreshToken('refresh-1')
+    vi.stubGlobal('fetch', vi.fn(async () => answer(200, { access_token: 'token-refreshed', refresh_token: 'refresh-2', token_type: 'Bearer', expires_in: 900 })))
+    expect(await refreshOutcome()).toBe('ok')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(me).toHaveBeenCalledTimes(2)
+    expect((await modelsAssertion.getWithExpiry()).assertion).toBe('assertion-1')
+  })
+})
+
+describe('a recovered pair while another tab changes the token', () => {
+  it('asks afresh for the new token instead of confirming the old answer', async () => {
+    await signedInAs(jack, 'token-jack')
+    storeRefreshToken('refresh-1')
+    vi.stubGlobal('fetch', vi.fn(async () => answer(400, { error: 'invalid_grant' })))
+    setSessionRecovery(async () => { storeToken('token-recovered'); storeRefreshToken('refresh-2'); return true })
+    let release: () => void = () => {}
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const slow = vi.spyOn(cloudApi, 'meWithoutRefresh').mockImplementation(async () => { await gate; return meOf(jack) })
+    vi.spyOn(cloudApi, 'me').mockResolvedValue(meOf(harry))
+    watch()
+    const refreshing = refreshOutcome()
+    await vi.waitFor(() => expect(slow).toHaveBeenCalled())
+    storeToken('token-other-tab')
+    release()
+    expect(await refreshing).toBe('ok')
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(seen).toEqual(['acct-harry token=token-other-tab account=acct-jack'])
+    expect(cloudState.account?.id).toBe('acct-harry')
   })
 })

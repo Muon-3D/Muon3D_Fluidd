@@ -514,7 +514,7 @@ try {
  */
 let reconciling: Promise<void> | null = null
 
-function reconcileStoredSession (): Promise<void> {
+export function reconcileStoredSession (): Promise<void> {
   if (!reconciling) reconciling = reconcileOnce().finally(() => { reconciling = null })
   return reconciling
 }
@@ -530,7 +530,7 @@ async function reconcileOnce (): Promise<void> {
       if (error instanceof CloudError && error.status === 401) {
         stopReconcileRetry()
         await sessionRefused()
-      } else if (storedToken()) {
+      } else if (storedToken() && isTransient(error)) {
         scheduleReconcileRetry()
       }
       return
@@ -544,6 +544,14 @@ async function reconcileOnce (): Promise<void> {
     else await adoptSession(now, me.account)
     return
   }
+}
+
+/** Only a console that did not answer, or answered "later" (0, 5xx, 429), is asked again; 403 and 404 are answers. */
+const isTransient = (error: unknown): boolean => error instanceof CloudError && (error.status === 0 || error.status === 429 || error.status >= 500)
+
+/** For tests: no timer, no count left from the last one. */
+export function resetReconcileForTests () {
+  stopReconcileRetry()
 }
 
 /** Waits before the nth retry: 5 s, 15 s, 60 s, then every 5 minutes. */
@@ -583,14 +591,21 @@ try {
 // reaches dropSession, which announces before it clears anything, and api.ts clears the tokens after), then, on a
 // printer's own address, signs in again as for any refusal. A recovered pair is checked against the account on screen.
 setSessionHooks({
-  refused: () => { void sessionRefused() },
+  refused: () => { sessionRefused().catch(() => {}) },
+  check: () => { reconcileStoredSession().catch(() => {}) },
   async recovered () {
+    const asked = storedToken()
     try {
       const me = await cloudApi.meWithoutRefresh()
       const token = storedToken()
       if (!token) return false
+      // Another token since /me was asked (another tab): its account is asked afresh, never paired with this answer.
+      if (token !== asked) {
+        reconcileStoredSession().catch(() => {})
+        return true
+      }
       if (cloudState.account?.id === me.account.id) confirmToken(token)
-      else void adoptSession(token, me.account)
+      else adoptSession(token, me.account).catch(() => {})
       return true
     } catch (error) {
       // Only a refusal ends the session. A console that did not answer leaves the pair in place, unconfirmed, and the
@@ -599,7 +614,7 @@ setSessionHooks({
         await dropSession()
         return false
       }
-      scheduleReconcileRetry()
+      if (isTransient(error)) scheduleReconcileRetry()
       return true
     }
   }
@@ -654,7 +669,7 @@ export async function initCloud (sessionCheck?: Promise<void>): Promise<string |
     } catch (error) {
       if (error instanceof CloudError && error.status === 401) await sessionRefused()
       // The console could not be reached: no account yet, so nothing is served or reported; asked again on a backoff.
-      else scheduleReconcileRetry()
+      else if (isTransient(error)) scheduleReconcileRetry()
     }
   }
   cloudState.ready = true
