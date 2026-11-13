@@ -99,6 +99,8 @@ export default class ControlTrackpad extends Mixins(PredictedHeadMixin) {
   @Prop({ default: null }) readonly noGo!: NoGoConfig | null | 'invalid'
   @Prop({ type: Boolean }) readonly disabled!: boolean
   @Prop({ type: Boolean }) readonly targetBad!: boolean
+  /** The Overview's Trackpad: lifting the pointer sends the one move, so there is no Move here to press. */
+  @Prop({ type: Boolean }) readonly onRelease!: boolean
   @Prop({ type: Number, default: 10 }) readonly step!: number
 
   /** The tallest the bed is drawn, px. Width is capped from it, so the bed stays to scale. */
@@ -112,6 +114,7 @@ export default class ControlTrackpad extends Mixins(PredictedHeadMixin) {
   }
 
   get label (): string {
+    if (this.onRelease) return 'The bed, to scale, seen from above. Tap or drag to pick where the head should go; lifting the pointer, or Enter, moves it there once. Arrow keys move the pick.'
     return 'The bed, to scale, seen from above. Tap to pick where the head should go, then press Move here; or drag, and the head follows. Arrow keys move the pick.'
   }
 
@@ -175,7 +178,11 @@ export default class ControlTrackpad extends Mixins(PredictedHeadMixin) {
   onUp (e: PointerEvent) {
     if (e.pointerId !== this.pointer) return
     this.pointer = null
-    if (this.dragging) { this.dragging = false; this.$emit('drag-end') }
+    const was = this.dragging
+    this.dragging = false
+    if (was) this.$emit('drag-end')
+    // Every lift, tap or drag: the Overview's Trackpad sends its one move here.
+    this.$emit('release')
   }
 
   /** The pointer was taken away (a system gesture, a palm, a call): stop at once. */
@@ -211,6 +218,7 @@ export default class ControlTrackpad extends Mixins(PredictedHeadMixin) {
 
   onKey (e: KeyboardEvent) {
     const keys: Record<string, [number, number]> = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }
+    if (e.key === 'Enter' && !this.disabled) { e.preventDefault(); this.$emit('release'); return }
     const k = keys[e.key]
     if (!k || this.disabled) return
     e.preventDefault()

@@ -244,13 +244,13 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     const was = await springs(page)
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
     await page.mouse.down()
-    // Three and a bit columns narrower: 9 is not a size Quick commands offers, so it snaps (12 → 6).
+    // Three and a bit columns narrower: 4.6 is not a size Quick commands offers, so it snaps to the nearest (8 to 3).
     await page.mouse.move(handle.x + handle.width / 2 - column * 3.4, handle.y + handle.height / 2, { steps: 10 })
-    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('style', /--span: 6/)
+    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('style', /--span: 3;/)
     await expect.poll(async () => (await springs(page)) - was).toBeGreaterThan(0)
     await page.mouse.up()
     await settle(page)
-    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'M')
+    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'S')
   })
 
   test('stress: 20 random drags leave a valid layout, which is the one saved', async ({ page, open }) => {
@@ -294,7 +294,7 @@ async function boxOf (page: Page, id: string) {
 }
 const idsOf = (page: Page) => page.locator('[data-cell]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.cell as string))
 
-/** Row 1 Print mode and Position side by side; row 2 Temperatures across; Quick commands full width under the Trackpad and Jog (KAN-2076). */
+/** Row 1 Print mode and Position side by side; row 2 Temperatures across; then the Trackpad, Jog, and Quick commands under Jog (OV-19, OV-29). */
 async function expectJackLayout (page: Page) {
   expect(await idsOf(page)).toEqual(JACK_ORDER)
   const grid = (await page.locator('.overview__grid').boundingBox())!
@@ -313,13 +313,14 @@ async function expectJackLayout (page: Page) {
   expect(graph.y).toBeGreaterThan(Math.max(mode.y + mode.height, position.y + position.height) - 2)
   expect(Math.abs(graph.x - grid.x)).toBeLessThan(2)
   expect(Math.abs(graph.width - grid.width)).toBeLessThan(2)
-  // Then the trackpad, Jog on its right, and Quick commands across the full width under them.
+  // Then the Trackpad, Jog on its right, and Quick commands under Jog: out to the right edge and down to the Trackpad's floor (OV-19, OV-29).
   expect(trackpad.y).toBeGreaterThan(graph.y + graph.height - 2)
   expect(jog.x).toBeGreaterThan(trackpad.x + trackpad.width - 2)
   expect(Math.abs(jog.y - trackpad.y)).toBeLessThan(2)
-  expect(Math.abs(macros.x - grid.x)).toBeLessThan(2)
-  expect(Math.abs(macros.width - grid.width)).toBeLessThan(2)
-  expect(macros.y).toBeGreaterThan(Math.max(trackpad.y + trackpad.height, jog.y + jog.height) - 2)
+  expect(Math.abs(macros.x - jog.x)).toBeLessThan(2)
+  expect(Math.abs(macros.x + macros.width - (grid.x + grid.width))).toBeLessThan(2)
+  expect(macros.y).toBeGreaterThan(jog.y + jog.height - 2)
+  expect(Math.abs(macros.y + macros.height - (trackpad.y + trackpad.height))).toBeLessThan(2)
 }
 
 test.describe('KAN-2029: the default layout', () => {
@@ -347,7 +348,7 @@ test.describe('KAN-2029: the default layout', () => {
     const SIZES: Record<string, Record<string, [number, number]>> = {
       graph: { S: [3, 1], M: [6, 1], L: [12, 1] },
       mode: { S: [3, 1], M: [6, 1] },
-      macros: { S: [3, 1], M: [6, 1], L: [12, 1] }
+      macros: { S: [3, 1], M: [8, 1], L: [12, 1] }
     }
     // This test is about where tiles go, not the 3D view: with no WebGL the stage draws its fallback at the same size,
     // and a tall page does not stall on software GL.
@@ -399,7 +400,7 @@ test.describe('KAN-2029: the default layout', () => {
     // Scramble it: Position to the end, Temperatures to the front, a few sizes changed.
     await hold('position', 'macros')
     await hold('graph', 'stage')
-    await resizeTo('macros', 'M')
+    await resizeTo('macros', 'L')
     await resizeTo('mode', 'S')
     await resizeTo('graph', 'S')
     expect(await idsOf(page)).not.toEqual(JACK_ORDER)
@@ -407,7 +408,7 @@ test.describe('KAN-2029: the default layout', () => {
     // Rebuild: sizes first, then each place in turn gets the tile that belongs there.
     await resizeTo('graph', 'L')
     await resizeTo('mode', 'M')
-    await resizeTo('macros', 'L')
+    await resizeTo('macros', 'M')
     for (let i = 0; i < JACK_ORDER.length; i++) {
       const now = await idsOf(page)
       if (now[i] !== JACK_ORDER[i]) await hold(JACK_ORDER[i], now[i])

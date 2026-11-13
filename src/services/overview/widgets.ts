@@ -37,14 +37,16 @@ export const widgetMeta: WidgetMeta[] = [
   { id: 'job', title: 'Print job', category: 'Print', blurb: 'What is printing, or last printed, with time left.', sizes: [S(), M(4), L(4, 2)], size: 'M', defaultOn: true },
   { id: 'filament', title: 'Filament', category: 'Print', blurb: 'The spool in the printer, by type and colour.', sizes: [S(), M(4), L(4, 2)], size: 'M', defaultOn: true },
   // Jack's own default (KAN-2029): the printer, job and filament on top; then Print mode and Position
-  // side by side, Temperatures all the way across, and Quick commands full width under the Trackpad and Jog (KAN-2076).
+  // side by side, Temperatures all the way across, then the Trackpad, Jog, and Quick commands under Jog.
   { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(), M(6)], size: 'M', defaultOn: true, legacy: ['speed'] },
   { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(6), L(8)], size: 'M', defaultOn: true },
   { id: 'graph', title: 'Temperatures', category: 'Temperature', blurb: 'The temperature graph. Hotend, bed and chamber show to begin with.', sizes: [S(), M(6), L(12)], size: 'L', defaultOn: true },
-  // The trackpad is the tall left block; Jog is on its right with Quick commands directly under it.
-  { id: 'trackpad', title: 'Trackpad', category: 'Motion', blurb: 'Drag to move the head, with the no-go zones.', sizes: [S(2), M(8, 3), L(12, 3)], size: 'M', defaultOn: true },
-  { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Buttons to move the head and home it.', sizes: [S(2), M(4, 2), L(6, 2)], size: 'M', defaultOn: true },
-  { id: 'macros', title: 'Quick commands', category: 'Tools', blurb: 'The commands you press most.', sizes: [S(), M(6), L(12)], size: 'L', defaultOn: true },
+  // Jack's picks B (KAN-2077/2119): the Trackpad is a narrow, tall block on the left (4 columns, 3 rows); Jog is
+  // the wide variant on its right (8 columns, 2 rows), and Quick commands sits directly under Jog, out to the right
+  // edge and down to the Trackpad's floor (8 columns, 1 row; OV-19, OV-29).
+  { id: 'trackpad', title: 'Trackpad', category: 'Motion', blurb: 'Tap or drag the bed and let go: the head moves there.', sizes: [S(2), M(4, 3), L(6, 3)], size: 'M', defaultOn: true },
+  { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Arrows for the head, Plate up and Plate down, and the step.', sizes: [S(2), M(4, 2), L(8, 2)], size: 'L', defaultOn: true },
+  { id: 'macros', title: 'Quick commands', category: 'Tools', blurb: 'The commands you press most.', sizes: [S(), M(8), L(12)], size: 'M', defaultOn: true },
   // Off until added (the Temperatures graph already shows both).
   { id: 'hotend', title: 'Hotend', category: 'Temperature', blurb: 'Hotend temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: false },
   { id: 'bed', title: 'Bed', category: 'Temperature', blurb: 'Bed temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: false },
