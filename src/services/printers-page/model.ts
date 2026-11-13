@@ -19,6 +19,9 @@ export interface TileJob {
   layers: number | null;
   nozzle: number | null;
   bed: number | null;
+  /** What the heaters are asked to reach (0 or null: off, or not said). */
+  nozzleTarget?: number | null;
+  bedTarget?: number | null;
   /** What the printer says is loaded, when anyone has said. */
   material?: { name: string | null, colour: string | null } | null;
 }
@@ -115,6 +118,23 @@ const TONES: Record<TileState, TileTone> = {
   new: 'info'
 }
 
+/** A heater more than this many degrees below its target is still heating. */
+const HEATING_GAP = 3
+
+/**
+ * The temperature to show while a print is still heating up, or null when it is not:
+ * a heater with a target above 0 whose reported temperature is more than 3 degrees
+ * below it. The nozzle speaks first; the plate only when the nozzle is there.
+ */
+export function heatingTemp (job: TileJob | null | undefined): number | null {
+  if (!job) return null
+  const behind = (temp: number | null | undefined, target: number | null | undefined) =>
+    typeof temp === 'number' && typeof target === 'number' && target > 0 && target - temp > HEATING_GAP
+  if (behind(job.nozzle, job.nozzleTarget)) return job.nozzle
+  if (behind(job.bed, job.bedTarget)) return job.bed
+  return null
+}
+
 /** Paused and faulted printers want someone. */
 export function needsYou (state: TileState): boolean {
   return state === 'paused' || state === 'error'
@@ -136,6 +156,8 @@ function statusJob (s: PrinterStatus | undefined): TileJob | null {
     layers: s.totalLayers ?? null,
     nozzle: s.extruder ? Math.round(s.extruder.temperature) : null,
     bed: s.bed ? Math.round(s.bed.temperature) : null,
+    nozzleTarget: s.extruder ? s.extruder.target : null,
+    bedTarget: s.bed ? s.bed.target : null,
     material: s.material ?? null
   }
 }

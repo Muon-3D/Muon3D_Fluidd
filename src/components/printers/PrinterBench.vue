@@ -31,6 +31,7 @@
       <span
         v-else-if="kind === 'door'"
         class="bench__comet"
+        :class="{ 'bench__comet--still': !searching }"
         aria-hidden="true"
       ><i /><i /><i /></span>
       <svg
@@ -136,6 +137,10 @@ export default class PrinterBench extends Vue {
 
   @Prop({ type: String, default: '' })
   readonly caption!: string
+
+  /** A door's comet spins only while the page is still looking. */
+  @Prop({ type: Boolean })
+  readonly searching!: boolean
 
   folded = false
 
@@ -269,6 +274,8 @@ export default class PrinterBench extends Vue {
     i:nth-child(2) { transform: rotate(-38deg); opacity: 0.6; }
     i:nth-child(3) { transform: rotate(-76deg); opacity: 0.3; }
   }
+
+  .bench__comet--still { animation: none; }
 
   @keyframes bench-spin {
     to { transform: rotate(360deg); }

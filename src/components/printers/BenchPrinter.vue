@@ -1,18 +1,19 @@
 <template>
   <div
     class="bprint"
-    :class="[`bprint--${tile.tone}`, { 'bprint--found': found, 'bprint--grab': draggable }]"
+    :class="[`bprint--${tile.tone}`, { 'bprint--found': found, 'bprint--grab': draggable, 'bprint--heating': heating !== null }]"
     :draggable="draggable ? 'true' : undefined"
     :data-tid="`printer-tile-${tile.key}`"
     @dragstart="$emit('dragstart', $event)"
     @dragend="$emit('dragend', $event)"
   >
-    <!-- A focusable element, not a <button>: a drag can't start on a button. -->
+    <!-- A focusable element, not a <button>: a drag can't start on a button. A found printer with nothing to do is only a picture. -->
     <div
-      role="button"
-      tabindex="0"
+      :role="interactive ? 'button' : undefined"
+      :tabindex="interactive ? 0 : undefined"
       class="bprint__stand"
-      :aria-label="found ? `${tile.name}: ${tile.detail}` : `Open ${tile.name}`"
+      :class="{ 'bprint__stand--still': !interactive }"
+      :aria-label="found ? `${tile.name}: ${stateWords}` : `Open ${tile.name}`"
       @click="activate"
       @keydown.enter.prevent="activate"
       @keydown.space.prevent="activate"
@@ -97,7 +98,7 @@
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import PrinterDrawing from './PrinterDrawing.vue'
-import type { PrinterTile } from '@/services/printers-page/model'
+import { heatingTemp, type PrinterTile } from '@/services/printers-page/model'
 
 export interface BenchAction {
   id: string;
@@ -127,7 +128,13 @@ export default class BenchPrinter extends Vue {
   @Prop({ type: Boolean })
   readonly drawOn!: boolean
 
+  /** Something happens when it is pressed: not a found printer that offers nothing. */
+  get interactive (): boolean {
+    return !this.found || this.actions.length > 0
+  }
+
   activate () {
+    if (!this.interactive) return
     if (this.found) {
       if (this.actions[0] && !this.actions[0].disabled) this.$emit('action', this.actions[0].id)
     } else {
@@ -144,13 +151,20 @@ export default class BenchPrinter extends Vue {
   }
 
   get stateWords (): string {
-    if (this.found) return this.tile.detail
+    // A found printer with nothing to do says why, in the note its row has in Grid and List.
+    if (this.found) return this.actions.length ? this.tile.detail : this.tile.entry.detail
     const label = this.tile.label
-    // The state word first, as in the lab: "Printing · 62%". Control has no separate
-    // "heating" state for these printers, so there is no "Heating · 60°" line.
+    // The state word first, as in the lab: "Printing · 62%", and "Heating · 60°" until
+    // the heater is within 3 degrees of its target.
+    if (this.heating !== null) return `Heating · ${this.heating}°`
     if (this.tile.state === 'printing') return label === 'Printing' ? 'Printing' : `Printing · ${label}`
     const detail = this.tile.state === 'paused' ? this.tile.detail : ''
     return detail && detail !== label ? `${label} · ${detail}` : label
+  }
+
+  /** The temperature the print is heating towards, while it is still heating. */
+  get heating (): number | null {
+    return !this.found && this.tile.state === 'printing' ? heatingTemp(this.tile.job) : null
   }
 
   /** The file being printed, on the line under the state. */
@@ -183,6 +197,9 @@ export default class BenchPrinter extends Vue {
   .bprint--err { --bp-state: var(--m3d-danger); }
   .bprint--info { --bp-state: var(--m3d-text-muted); }
 
+  // Still heating up: the amber of a printer that is waiting, not the teal of one printing.
+  .bprint--heating { --bp-state: var(--m3d-warning); }
+
   .bprint--grab { cursor: grab; }
 
   .bprint__stand {
@@ -199,7 +216,9 @@ export default class BenchPrinter extends Vue {
     &:focus-visible { outline: 2px solid var(--m3d-focus-ring); outline-offset: 4px; border-radius: 12px; }
   }
 
-  .bprint:hover .bprint__stand { transform: translateY(-4px); }
+  .bprint__stand--still { cursor: default; }
+
+  .bprint:hover .bprint__stand:not(.bprint__stand--still) { transform: translateY(-4px); }
 
   .bprint__acts {
     position: absolute;
@@ -208,8 +227,9 @@ export default class BenchPrinter extends Vue {
     right: 24px;
     z-index: 2;
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
-    gap: 6px;
+    gap: 4px 6px;
     opacity: 0;
     transform: translateY(5px);
     pointer-events: none;

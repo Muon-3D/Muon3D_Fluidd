@@ -126,7 +126,7 @@
           :bench-id="g.id"
           :kind="g.id === 'shared' ? 'shelf' : 'bench'"
           :title="g.name"
-          :tiles="filtered(g.tiles)"
+          :tiles="groupTiles[g.id]"
           :over="dropTarget === g.id"
           :data-tid="`group-${g.id}`"
           @dragover.native.prevent="onDragOver(g)"
@@ -182,10 +182,10 @@
             </v-menu>
           </template>
           <bench-printer
-            v-for="tile in filtered(g.tiles)"
+            v-for="tile in groupTiles[g.id]"
             :key="tile.key"
             :tile="tile"
-            :actions="benchActions(tile)"
+            :actions="benchActionsByKey[tile.key]"
             :draggable="canGroup && !!tile.entry.cloud"
             :draw-on="drawOn"
             @open="openEntry(tile.entry)"
@@ -198,12 +198,17 @@
           v-if="canGroup && !query"
           class="printers__new-bench"
           :class="{ 'printers__new-bench--over': dropTarget === newBench }"
+          role="button"
+          tabindex="0"
+          aria-label="New bench"
           data-tid="new-bench"
           @dragenter.prevent="onDragOverNew"
           @dragover.prevent="onDragOverNew"
           @dragleave="dropTarget = null"
           @drop.prevent="onDropNew"
           @click="addGroup"
+          @keydown.enter.prevent="addGroup"
+          @keydown.space.prevent="addGroup"
         >
           <svg
             viewBox="0 0 300 40"
@@ -220,18 +225,38 @@
           title="Found nearby · not yours yet"
           caption="They wait here until you add them. Nothing is sent to them."
           :tiles="foundShown"
+          :searching="searching"
           data-tid="found"
         >
+          <template #actions>
+            <span
+              v-if="searching"
+              class="printers__looking"
+            >
+              <v-progress-circular
+                indeterminate
+                size="11"
+                width="2"
+              />
+              Looking{{ scanNetwork ? ` on ${scanNetwork}` : '' }}…
+            </span>
+          </template>
           <bench-printer
             v-for="tile in foundShown"
             :key="tile.key"
             :tile="tile"
-            :actions="foundOne(tile)"
+            :actions="benchActionsByKey[tile.key]"
             found
             :draw-on="drawOn"
             @action="onFoundRow(tile, $event)"
           />
         </printer-bench>
+        <p
+          v-if="otherShown.length && mixedContentBlocked"
+          class="foreign-warning"
+        >
+          {{ mixedContentNote }}
+        </p>
         <printer-bench
           v-if="otherShown.length"
           bench-id="other"
@@ -245,10 +270,10 @@
             v-for="tile in otherShown"
             :key="tile.key"
             :tile="tile"
-            :actions="[{ id: 'open', label: 'Open' }]"
+            :actions="otherActions"
             :draw-on="drawOn"
             @open="openForeign(tile)"
-            @action="openForeign(tile)"
+            @action="onOtherAction(tile, $event)"
           />
         </printer-bench>
         <printer-bench
@@ -264,7 +289,7 @@
             v-for="tile in offlineShown"
             :key="tile.key"
             :tile="tile"
-            :actions="benchActions(tile)"
+            :actions="benchActionsByKey[tile.key]"
             :draw-on="drawOn"
             @open="openEntry(tile.entry)"
             @action="onBenchAction(tile, $event)"
@@ -276,7 +301,7 @@
         <printers-section
           v-for="g in shownGroups"
           :key="g.id"
-          :count="filtered(g.tiles).length"
+          :count="groupTiles[g.id].length"
           :note="groupNote(g)"
           :class="{ 'printers__section--drop': dropTarget === g.id }"
           :data-tid="`group-${g.id}`"
@@ -335,7 +360,7 @@
 
           <div :class="gridClass">
             <printer-tile-card
-              v-for="tile in filtered(g.tiles)"
+              v-for="tile in groupTiles[g.id]"
               :key="tile.key"
               :tile="tile"
               :variant="tileVariant"
@@ -357,24 +382,6 @@
             </div>
           </div>
         </printers-section>
-
-        <!-- Nothing matches: say so, and how to get back. -->
-        <div
-          v-if="!deletionPending && query && !anyShown"
-          class="printers__none"
-          data-tid="printers-none"
-        >
-          <span class="printers__none-icon"><frame-icon name="search" /></span>
-          <b>No printer matches "{{ query }}"</b>
-          <span>Search looks at a printer's name, state and group.</span>
-          <button
-            type="button"
-            class="btn btn--sm"
-            @click="query = ''"
-          >
-            Clear search
-          </button>
-        </div>
 
         <!-- Found nearby, not yours yet: hidden when nothing is found. -->
         <printers-section
@@ -415,7 +422,7 @@
             v-if="mixedContentBlocked"
             class="foreign-warning"
           >
-            Firefox and Safari block this page (https) from talking to a printer on plain http — that's mixed content. Chrome can reach printers on your network: open Control in Chrome.
+            {{ mixedContentNote }}
           </p>
           <other-printers
             :tiles="otherShown"
@@ -439,6 +446,24 @@
           />
         </printers-section>
       </template>
+
+      <!-- Nothing matches: say so, and how to get back, in every view. -->
+      <div
+        v-if="!deletionPending && query && !anyShown"
+        class="printers__none"
+        data-tid="printers-none"
+      >
+        <span class="printers__none-icon"><frame-icon name="search" /></span>
+        <b>No printer matches "{{ query }}"</b>
+        <span>Search looks at a printer's name, state and group.</span>
+        <button
+          type="button"
+          class="btn btn--sm"
+          @click="query = ''"
+        >
+          Clear search
+        </button>
+      </div>
 
       <div
         v-if="!account"
@@ -593,6 +618,9 @@ import { pageBlocksPrinter } from '@/util/page-blocks-printer'
 
 type View = 'cards' | 'list' | 'bench'
 
+/** An Other brands printer on the Bench: open it, or have this browser forget it. */
+const OTHER_ACTIONS: BenchAction[] = [{ id: 'open', label: 'Open' }, { id: 'forget', label: 'Forget' }]
+
 /** How often the printers already known are asked again while the page is open. */
 const HEALTH_EVERY_MS = 15_000
 /** How often what the printers found on this network are doing is read again: a print moves. */
@@ -643,6 +671,8 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
   /** The Bench's drawings draw themselves on the first arrival only, not on every refresh. */
   drawOn = true
   readonly newBench = 'new-bench'
+  readonly otherActions = OTHER_ACTIONS
+  readonly mixedContentNote = "Firefox and Safari block this page (https) from talking to a printer on plain http — that's mixed content. Chrome can reach printers on your network: open Control in Chrome."
   addSheetOpen = false
   dragging: string | null = null
   dropTarget: string | null = null
@@ -695,7 +725,7 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
       }
     }
     for (const g of this.shownGroups) {
-      for (const t of this.filtered(g.tiles)) {
+      for (const t of this.groupTiles[g.id]) {
         if (!seen.has(t.key)) {
           seen.add(t.key)
           out.push(t)
@@ -734,6 +764,8 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
       layers: (this.$store.getters['printer/getPrintLayers'] as number) || null,
       nozzle: typeof printer.extruder?.temperature === 'number' ? Math.round(printer.extruder.temperature) : null,
       bed: typeof printer.heater_bed?.temperature === 'number' ? Math.round(printer.heater_bed.temperature) : null,
+      nozzleTarget: typeof printer.extruder?.target === 'number' ? printer.extruder.target : null,
+      bedTarget: typeof printer.heater_bed?.target === 'number' ? printer.heater_bed.target : null,
       material: loadedRecord(printer.save_variables?.variables) ?? null
     }
   }
@@ -849,9 +881,16 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
     return tiles.filter(t => this.matches(t))
   }
 
+  /** Each group's printers matching the search, worked out once per change rather than on every render. */
+  get groupTiles (): Record<string, PrinterTile[]> {
+    const tiles: Record<string, PrinterTile[]> = {}
+    for (const g of this.page.groups) tiles[g.id] = this.filtered(g.tiles)
+    return tiles
+  }
+
   get shownGroups (): TileGroup[] {
     return this.page.groups.filter(g => {
-      if (this.filtered(g.tiles).length) return true
+      if (this.groupTiles[g.id].length) return true
       if (this.query) return false
       // Yours stay (to rename, remove or drop into); "Not in a group" only while dragging.
       return g.editable || (g.id === 'ungrouped' && !!this.dragging)
@@ -1024,11 +1063,31 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
 
   // -- the Bench --------------------------------------------------------------
 
-  /** On hover: Open, and what the printer most likely wants next, where Control can do it. */
+  /**
+   * Each printer's hover actions, by tile key: worked out once per change, not
+   * on every render, for the benches, Offline and (as its one thing to do) Found.
+   */
+  get benchActionsByKey (): Record<string, BenchAction[]> {
+    const actions: Record<string, BenchAction[]> = {}
+    for (const g of this.page.groups) for (const t of g.tiles) actions[t.key] = this.benchActions(t)
+    for (const t of this.page.offline) actions[t.key] = this.benchActions(t)
+    for (const t of this.page.found) actions[t.key] = this.foundOne(t)
+    return actions
+  }
+
+  /**
+   * On hover: Open, and what the printer most likely wants next, where Control can do it.
+   * An offline printer also has what its Grid tile has: Remove, and Retry Bluetooth.
+   */
   benchActions (tile: PrinterTile): BenchAction[] {
     const actions: BenchAction[] = [{ id: 'open', label: 'Open' }]
     if (tile.entry.active && tile.state === 'printing') actions.push({ id: 'pause', label: 'Pause', disabled: this.controlBusy })
     else if (tile.entry.active && tile.state === 'paused') actions.push({ id: 'resume', label: 'Resume', disabled: this.controlBusy })
+    if (tile.state === 'offline') {
+      for (const a of this.actionsFor(tile.entry)) {
+        if (a.id === 'remove' || a.id === 'retry-bluetooth') actions.push({ id: a.id, label: a.label, disabled: a.disabled })
+      }
+    }
     return actions
   }
 
@@ -1036,6 +1095,11 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
     if (id === 'open') return this.openEntry(tile.entry)
     if (id === 'pause') return this.control(this.pausePrint)
     if (id === 'resume') return this.control(this.resumePrint)
+    return this.onAction(tile.entry, id)
+  }
+
+  onOtherAction (tile: PrinterTile, id: string) {
+    return id === 'forget' ? this.forgetForeignPrinter(tile) : this.openForeign(tile)
   }
 
   /**
