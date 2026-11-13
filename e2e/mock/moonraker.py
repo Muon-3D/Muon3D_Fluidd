@@ -473,4 +473,7 @@ app.router.add_route('*', '/server/aux/{tail:.*}', http_aux)
 app.router.add_route('*', '/{tail:.*}', http_generic)
 
 if __name__ == '__main__':
-    web.run_app(app, host='127.0.0.1', port=PORT, print=lambda *_: print(f'mock moonraker on {PORT}', flush=True))
+    # Both loopbacks: the page says `localhost`, which a browser tries as ::1 first. With only
+    # 127.0.0.1 listening, every new connection waited out a refused ::1 try (0.2 s here, seconds
+    # when the machine is busy), which slowed the route e2e's failovers past their windows.
+    web.run_app(app, host=['127.0.0.1', '::1'], port=PORT, print=lambda *_: print(f'mock moonraker on {PORT}', flush=True))

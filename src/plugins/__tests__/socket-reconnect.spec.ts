@@ -272,6 +272,28 @@ describe('WebSocketClient reconnecting', () => {
     expect(client.connection).toBe(second)
   })
 
+  it('a new route starts its backoff from the first step, not where the old route left off (#370)', async () => {
+    // Auto mode failed over from a dead relay to Bluetooth: the relay's failed
+    // tries (1, 2, 4 s ...) must not slow the first retry on the new route.
+    const { client } = lanClient()
+    const relay = new FakeSocket()
+    const failing = vi.fn(async () => { throw new Error('relay is gone') })
+    client.adoptTransportSocket(relay, failing)
+    relay.emit('open')
+    relay.emit('close', { code: 1006, reason: '', wasClean: false })
+    await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000)
+    expect(failing).toHaveBeenCalledTimes(3)
+    expect(client.reconnectCount).toBe(4)
+
+    const ble = new FakeSocket()
+    const reopen = vi.fn(async () => new FakeSocket())
+    client.adoptTransportSocket(ble, reopen)
+    expect(client.reconnectCount).toBe(0)
+    ble.emit('close', { code: 1006, reason: '', wasClean: false })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(reopen).toHaveBeenCalledTimes(1)
+  })
+
   it("drops a connect still waiting for its token once another printer's socket is adopted", async () => {
     // 14 Oct: a Walnut connect that outlived a switch to Boxwood would open
     // Walnut's socket under Boxwood's page.

@@ -210,6 +210,9 @@ export class WebSocketClient {
     this.purgeRequests()
     this.closing = false
     this.cancelRetry()
+    // A new route (auto mode failing over, or a chosen route) starts its own backoff:
+    // the old route's failed tries say nothing about this one (#370).
+    this.reconnectCount = 0
     this.bindConnection(connection, reconnect ?? null)
   }
 
