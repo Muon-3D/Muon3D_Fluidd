@@ -43,6 +43,10 @@ export interface DiscoverFeed {
   m1_ready: DiscoverCatalogue[];
   trending: DiscoverPublication[];
   new: DiscoverPublication[];
+  hero?: { headline: string, target_kind: string, target: DiscoverPublication } | null;
+  shelves?: Array<{ slug: string, title: string, description: string, items: Array<{ target_kind: string, target: DiscoverPublication }> }>;
+  new_this_week?: { window_seconds: number, items: DiscoverPublication[] };
+  made_for_m1?: { basis: string, items: DiscoverPublication[] };
 }
 
 /** One card, whichever shelf it came from: what LibraryDiscover draws. */
@@ -151,5 +155,5 @@ export async function loadDiscover (fetcher: typeof fetch = fetch, signal?: Abor
   if (!body || !Array.isArray(body.m1_ready) || !Array.isArray(body.trending) || !Array.isArray(body.new)) {
     throw new Error(unreadable)
   }
-  return { m1_ready: body.m1_ready, trending: body.trending, new: body.new }
+  return { ...body, m1_ready: body.m1_ready, trending: body.trending, new: body.new }
 }
