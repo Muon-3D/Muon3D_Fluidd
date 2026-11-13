@@ -22,7 +22,7 @@
       class="prn__detail"
       data-tid="permission-refusal-instead"
     >
-      Instead: at the printer's screen, over Bluetooth (Connect over Bluetooth), or signed in, through Muon3D.
+      {{ instead }}
     </p>
     <div class="prn__actions">
       <button
@@ -84,6 +84,15 @@ export default class PermissionRefusalNotice extends Mixins(MuonGatesMixin) {
 
   get signedIn (): boolean {
     return !!cloudState.account
+  }
+
+  /** The other ways to do it. Only the printer's screen when the printer allows nothing else. */
+  get instead (): string {
+    const r = this.refusal
+    const atPrinterOnly = !!r && (r.required === 'owner_at_printer' || (!r.required && r.allowed.length === 1 && r.allowed[0] === 'owner_at_printer'))
+    return atPrinterOnly
+      ? "Instead: at the printer's screen."
+      : "Instead: at the printer's screen, over Bluetooth (Connect over Bluetooth), or signed in, through Muon3D."
   }
 
   get text (): string {

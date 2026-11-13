@@ -23,6 +23,18 @@ afterEach(() => {
 })
 
 describe('PermissionRefusalNotice (KAN-2457)', () => {
+  it('only the printer itself allowed (owner_at_printer): offers only the printer’s screen, not Bluetooth or Muon3D', () => {
+    const atPrinter = { ...owner, required: 'owner_at_printer', allowed: ['owner_at_printer'] }
+    const w = mountIt(atPrinter)
+    const instead = w.find('[data-tid="permission-refusal-instead"]').text()
+    expect(instead).toContain("printer's screen")
+    expect(instead).not.toMatch(/Bluetooth|Muon3D/)
+    w.destroy()
+    const other = mountIt(shared)
+    expect(other.find('[data-tid="permission-refusal-instead"]').text()).toMatch(/Bluetooth/)
+    other.destroy()
+  })
+
   it('shows nothing without a refusal', () => {
     expect(mountIt(null).find('[data-tid="permission-refusal"]').exists()).toBe(false)
   })

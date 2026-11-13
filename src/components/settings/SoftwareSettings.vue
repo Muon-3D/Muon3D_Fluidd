@@ -422,6 +422,7 @@ import {
   anyHot, flagOf, needsKnob, restartBlocked, stagedReady, type PolicyStatus
 } from '@/services/updates/policy'
 import { classifyRefusal, isPanelOnlyRefusal, panelOnlyMessage, permissionMessage } from '@/services/wifi/panel-only'
+import { cloudState } from '@/services/muon-cloud/state'
 import type { Heater } from '@/store/printer/types'
 
 interface InstallSnapshot {
@@ -634,7 +635,7 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin, MuonGat
       } else if (isPanelOnlyRefusal({ response: r })) {
         this.policyNote = panelOnlyMessage('change how it updates')
       } else if (classifyRefusal({ response: r }).kind === 'permission') {
-        this.policyNote = permissionMessage(classifyRefusal({ response: r }) as Extract<ReturnType<typeof classifyRefusal>, { kind: 'permission' }>, false)
+        this.policyNote = permissionMessage(classifyRefusal({ response: r }) as Extract<ReturnType<typeof classifyRefusal>, { kind: 'permission' }>, !!cloudState.account)
       } else {
         this.policyNote = "The printer didn't take that change. Try again."
       }
