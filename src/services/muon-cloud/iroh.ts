@@ -12,12 +12,34 @@ import type {
   PrinterSocket
 } from '@/services/managed-transport'
 import { bluetoothRouteFor, noteBluetoothFellBack, type WasmBleLink } from '@/services/muon-ble/link'
-import { cloudBaseUrl } from './api'
-import bundledWasmUrl from './vendor/muon-link-web/2a79688/muon_link_web_bg.wasm?url'
+import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, cloudTokensPersist } from './api'
+import bundledWasmUrl from './vendor/muon-link-web/1d6706d/muon_link_web_bg.wasm?url'
 
 const KEY_STORAGE = 'muon.cloud.key'
 // Remove after one release. Normal loads never depend on the console's files.
 const ALLOW_CONSOLE_CLIENT_FALLBACK = true
+
+// KAN-2192 (H2/B9): the key is this browser's identity to every printer the
+// account reaches. On a plain-HTTP page anything on the network can read
+// localStorage, so the page never makes, reads or keeps one, and removes a key
+// an older build left. WebCrypto, which could hold it unreadable (KAN-1872),
+// does not exist on such a page.
+try {
+  // A printer's secure address (KAN-2198) keeps the key in memory only.
+  if (!cloudTokensPersist()) {
+    localStorage.removeItem(KEY_STORAGE)
+    // A tab still running an older build can write the key back. Remove it
+    // whenever it appears.
+    window.addEventListener('storage', (event) => {
+      if (event.key !== KEY_STORAGE || event.newValue === null) return
+      try {
+        localStorage.removeItem(KEY_STORAGE)
+      } catch { /* no storage */ }
+    })
+  }
+} catch {
+  // No storage or no window: nothing to clear.
+}
 
 interface WasmSocket {
   send (text: string): Promise<void>;
@@ -58,7 +80,7 @@ function loadWasm (): Promise<WasmModule> {
   if (!modulePromise) {
     modulePromise = (async () => {
       try {
-        const mod = await import('./vendor/muon-link-web/2a79688/muon_link_web.js') as WasmModule
+        const mod = await import('./vendor/muon-link-web/1d6706d/muon_link_web.js') as WasmModule
         await mod.default({ module_or_path: bundledWasmUrl })
         return mod
       } catch (error) {
@@ -84,20 +106,28 @@ function bytesToHex (bytes: Uint8Array): string {
   return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
 }
 
+let memoryKey: Uint8Array | null = null
+
 /** The tab's endpoint, bound to `relayUrl`. */
 export function browserEndpoint (relayUrl: string): Promise<WasmEndpoint> {
+  if (!cloudSessionAllowed()) return Promise.reject(new CloudError(INSECURE_ORIGIN_MESSAGE, 0, 'insecure_origin'))
   if (!endpointPromise || endpointRelay !== relayUrl) {
     endpointRelay = relayUrl
     endpointPromise = (async () => {
       const mod = await loadWasm()
       let secret: Uint8Array | null = null
+      const persist = cloudTokensPersist()
       try {
-        secret = hexToBytes(localStorage.getItem(KEY_STORAGE) ?? '')
+        secret = persist ? hexToBytes(localStorage.getItem(KEY_STORAGE) ?? '') : memoryKey
       } catch { /* no storage */ }
       const endpoint = await mod.MuonEndpoint.create(relayUrl, secret)
-      try {
-        localStorage.setItem(KEY_STORAGE, bytesToHex(endpoint.secretKey()))
-      } catch { /* no storage */ }
+      if (persist) {
+        try {
+          localStorage.setItem(KEY_STORAGE, bytesToHex(endpoint.secretKey()))
+        } catch { /* no storage */ }
+      } else {
+        memoryKey = endpoint.secretKey()
+      }
       return endpoint
     })()
     endpointPromise.catch(() => { endpointPromise = null })
@@ -107,6 +137,7 @@ export function browserEndpoint (relayUrl: string): Promise<WasmEndpoint> {
 
 /** Forgets this browser's key, so the next sign-in starts from a new one. */
 export function forgetBrowserKey () {
+  memoryKey = null
   try {
     localStorage.removeItem(KEY_STORAGE)
   } catch { /* no storage */ }

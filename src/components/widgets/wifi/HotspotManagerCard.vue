@@ -50,6 +50,10 @@
     </p>
 
     <protected-notice />
+    <permission-refusal-notice
+      :refusal="refusal"
+      @dismiss="refusal = null"
+    />
     <p
       v-if="remote"
       class="hs__note"
@@ -219,7 +223,9 @@
 <script lang="ts">
 import { Vue, Component, Prop, Watch } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
-import { PANEL_ONLY_NOTE, fallsBack, hotspotChangeBody, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
+import { PANEL_ONLY_NOTE, classifyRefusal, fallsBack, hotspotChangeBody, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
+import type { RefusalKind } from '@/services/wifi/panel-only'
+import PermissionRefusalNotice from './PermissionRefusalNotice.vue'
 import type { APCredentials, Device } from '@/aux_api'
 import QrcodeVue from 'qrcode.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
@@ -264,7 +270,8 @@ const { onHotspot } = useHotspotCheck()
   components: {
     QrcodeVue,
     ToggleSwitch,
-    TonePill
+    TonePill,
+    PermissionRefusalNotice
   }
 })
 export default class HotspotManagerCard extends Vue {
@@ -348,6 +355,16 @@ export default class HotspotManagerCard extends Vue {
 
   editing = false
   applying = false
+
+  /** The printer's permission store refused the last action (KAN-2457): who may do it, not a panel-only printer. */
+  refusal: Extract<RefusalKind, { kind: 'permission' }> | null = null
+
+  private takePermissionRefusal (err: unknown): boolean {
+    const r = classifyRefusal(err)
+    if (r.kind !== 'permission') return false
+    this.refusal = r
+    return true
+  }
 
   toggleEditing () {
     this.editing = !this.editing
@@ -492,6 +509,11 @@ export default class HotspotManagerCard extends Vue {
       await this.changeHotspotState(true)
     } catch (e) {
       console.error('Failed to apply hotspot config', e)
+      if (this.takePermissionRefusal(e)) {
+        this.applying = false
+        this.toggleEditing()
+        return
+      }
       if ((e as any)?.response?.status === 403) this.$store.dispatch('protection/onRefused')
       EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.apply_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
     }
@@ -514,7 +536,9 @@ export default class HotspotManagerCard extends Vue {
       await this.auxApi.apChange(body)
       EventBus.$emit('Press the knob on the printer to confirm. The hotspot changes when you do.', { type: 'primary', timeout: 10000 })
     } catch (e) {
-      if (isPanelOnlyRefusal(e)) {
+      if (this.takePermissionRefusal(e)) {
+        // The store refused this caller; the notice says who may.
+      } else if (isPanelOnlyRefusal(e)) {
         EventBus.$emit(panelOnlyMessage('change the hotspot'), { type: 'error', timeout: 8000 })
       } else {
         EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.apply_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
@@ -636,6 +660,7 @@ export default class HotspotManagerCard extends Vue {
       this.requestedApState = null
       this.apState = this.deviceStatus?.state === 'connected'
       console.error('Hotspot toggle failed', e)
+      if (this.takePermissionRefusal(e)) return
       if (!turnOn && isPanelOnlyRefusal(e)) {
         // Turning the hotspot off has no open route: it is the printer's screen now.
         refusedHere.hotspotOff = true

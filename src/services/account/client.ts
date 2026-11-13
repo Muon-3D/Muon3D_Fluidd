@@ -11,7 +11,7 @@
  * 404 or 405 and no JSON error. `AccountError.missing` says so, and the
  * pages show "Coming soon" there instead of an error.
  */
-import { CloudError, cloudBaseUrl, refreshSession, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
+import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, refreshSession, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
 import { deletionRevision, observeDeletion } from '@/services/muon-cloud/deletion'
 
 export class AccountError extends CloudError {
@@ -71,6 +71,9 @@ export function adoptRekeyedSession (data: unknown) {
 }
 
 async function send (method: string, path: string, body: unknown, token: string | null): Promise<Response> {
+  // KAN-2192: every call here is an account call. A plain-HTTP page makes none:
+  // no password, no token and no reset request leaves it.
+  if (!cloudSessionAllowed()) throw new AccountError(INSECURE_ORIGIN_MESSAGE, 0)
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'

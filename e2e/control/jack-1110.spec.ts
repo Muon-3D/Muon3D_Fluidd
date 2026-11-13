@@ -130,6 +130,24 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     return b
   }
   const settle = (page: Page) => page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => null))))
+  /**
+   * Scrolls `selector` to the middle of the screen and waits until it is inside the viewport and has stopped moving.
+   * Tiles above can still grow just after edit mode opens (a busy CI runner draws them late), which left a measured
+   * resize handle at y 1083 on a 900 px screen: the press then landed on nothing and the tile never resized.
+   */
+  async function toCentre (page: Page, selector: string) {
+    const target = page.locator(selector)
+    const height = page.viewportSize()!.height
+    let last = ''
+    await expect.poll(async () => {
+      await target.evaluate(e => e.scrollIntoView({ block: 'center' }))
+      const b = await target.boundingBox()
+      const at = b ? `${Math.round(b.x)},${Math.round(b.y)}` : ''
+      const steady = !!b && b.y >= 0 && b.y + b.height <= height && at === last
+      last = at
+      return steady
+    }, { timeout: 15_000, intervals: [100, 250, 500] }).toBe(true)
+  }
   async function edit (page: Page) {
     await page.getByTestId('edit-open').click()
     await expect(page.getByTestId('edit-done')).toBeVisible()
@@ -183,7 +201,7 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     await open('/')
     await edit(page)
     const before = await order(page)
-    await page.locator('[data-cell="mode"]').evaluate(e => e.scrollIntoView({ block: 'center' }))
+    await toCentre(page, '[data-cell="mode"]')
     const from = await box(page, 'mode')
     // The nearest tile on another row, on screen and clear of the edges where a held tile scrolls the page.
     const h = page.viewportSize()!.height
@@ -218,7 +236,7 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     await usePrinter(page, PRESETS.idleHomed(), { database: true })
     await open('/')
     await edit(page)
-    await page.locator('[data-cell="macros"]').evaluate(e => e.scrollIntoView({ block: 'center' }))
+    await toCentre(page, '[data-cell="macros"] [data-tid="tile-resize"]')
     const grid = await page.locator('.overview__grid').boundingBox()
     const handle = await page.locator('[data-cell="macros"] [data-tid="tile-resize"]').boundingBox()
     if (!grid || !handle) throw new Error('not on screen')
@@ -226,13 +244,14 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     const was = await springs(page)
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
     await page.mouse.down()
-    // Three and a bit columns: 7 is not a size Quick commands offers, so it snaps (4 → 8).
-    await page.mouse.move(handle.x + handle.width / 2 + column * 3.4, handle.y + handle.height / 2, { steps: 10 })
-    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('style', /--span: 8/)
+    // Three and a bit columns narrower: 4.6 is not a size Quick commands offers, so it snaps to the nearest (8 to 3).
+    await page.mouse.move(handle.x + handle.width / 2 - column * 3.4, handle.y + handle.height / 2, { steps: 10 })
+    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('style', /--span: 3;/)
     await expect.poll(async () => (await springs(page)) - was).toBeGreaterThan(0)
     await page.mouse.up()
     await settle(page)
-    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'L')
+    // With #398's sizes, span 3 is XS (one row of icon-only buttons, OV-29); S is also three across but two rows.
+    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'XS')
   })
 
   test('stress: 20 random drags leave a valid layout, which is the one saved', async ({ page, open }) => {
@@ -276,7 +295,7 @@ async function boxOf (page: Page, id: string) {
 }
 const idsOf = (page: Page) => page.locator('[data-cell]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.cell as string))
 
-/** Row 1 Print mode and Position side by side; row 2 Temperatures across; Quick commands directly under Jog. */
+/** Row 1 Print mode and Position side by side; row 2 Temperatures across; then the Trackpad, Jog, and Quick commands under Jog (OV-19, OV-29). */
 async function expectJackLayout (page: Page) {
   expect(await idsOf(page)).toEqual(JACK_ORDER)
   const grid = (await page.locator('.overview__grid').boundingBox())!
@@ -295,14 +314,14 @@ async function expectJackLayout (page: Page) {
   expect(graph.y).toBeGreaterThan(Math.max(mode.y + mode.height, position.y + position.height) - 2)
   expect(Math.abs(graph.x - grid.x)).toBeLessThan(2)
   expect(Math.abs(graph.width - grid.width)).toBeLessThan(2)
-  // Then the trackpad, Jog on its right, and Quick commands directly under Jog.
+  // Then the Trackpad, Jog on its right, and Quick commands under Jog: out to the right edge and down to the Trackpad's floor (OV-19, OV-29).
   expect(trackpad.y).toBeGreaterThan(graph.y + graph.height - 2)
   expect(jog.x).toBeGreaterThan(trackpad.x + trackpad.width - 2)
   expect(Math.abs(jog.y - trackpad.y)).toBeLessThan(2)
   expect(Math.abs(macros.x - jog.x)).toBeLessThan(2)
-  expect(Math.abs(macros.width - jog.width)).toBeLessThan(2)
+  expect(Math.abs(macros.x + macros.width - (grid.x + grid.width))).toBeLessThan(2)
   expect(macros.y).toBeGreaterThan(jog.y + jog.height - 2)
-  expect(macros.y - (jog.y + jog.height)).toBeLessThan(40)
+  expect(Math.abs(macros.y + macros.height - (trackpad.y + trackpad.height))).toBeLessThan(2)
 }
 
 test.describe('KAN-2029: the default layout', () => {
@@ -330,7 +349,7 @@ test.describe('KAN-2029: the default layout', () => {
     const SIZES: Record<string, Record<string, [number, number]>> = {
       graph: { S: [3, 1], M: [6, 1], L: [12, 1] },
       mode: { S: [3, 1], M: [6, 1] },
-      macros: { S: [3, 1], M: [4, 1], L: [8, 1] }
+      macros: { S: [3, 1], M: [8, 1], L: [12, 1] }
     }
     // This test is about where tiles go, not the 3D view: with no WebGL the stage draws its fallback at the same size,
     // and a tall page does not stall on software GL.

@@ -14,11 +14,15 @@
         >
           ‹ {{ backLabel }}
         </button>
-        <h1 data-tid="library-print-title">
+        <h1
+          ref="heading"
+          tabindex="-1"
+          data-tid="library-print-title"
+        >
           {{ title }}
         </h1>
         <p
-          v-if="byLine"
+          v-if="byLine && !unavailable"
           class="mlib-muted"
           data-tid="library-print-by"
         >
@@ -26,28 +30,6 @@
         </p>
       </div>
       <div class="mgrid__acts">
-        <button
-          v-if="signedIn"
-          type="button"
-          class="mlib-btn mlib-btn--icon mpage__heart"
-          :class="{ 'mpage__heart--on': !!saveId }"
-          :aria-pressed="saveId ? 'true' : 'false'"
-          :aria-label="saveId ? 'Saved' : 'Save'"
-          :disabled="saving"
-          data-tid="library-print-heart"
-          @click="toggleSave"
-        >
-          {{ saveId ? '♥' : '♡' }}
-        </button>
-        <button
-          v-if="slug"
-          type="button"
-          class="mlib-btn"
-          data-tid="library-print-share"
-          @click="share"
-        >
-          Share
-        </button>
         <a
           v-if="slug"
           class="mlib-btn mlib-btn--icon"
@@ -71,7 +53,15 @@
     </p>
 
     <library-state
-      v-if="error && !publication"
+      v-if="unavailable"
+      :title="context && context.owner && context.state === 'pending' ? 'Your model is under review' : 'Model not found'"
+      text="It may have been removed, made private or still be awaiting review. Only reviewed public versions can be opened here."
+      action="Back to Discover"
+      tid="library-print-unavailable"
+      @action="$emit('back')"
+    />
+    <library-state
+      v-else-if="error && !publication"
       kind="error"
       icon="alert"
       :title="error"
@@ -137,11 +127,62 @@
             <h2>Print</h2>
             <span class="mlib-grow" />
             <span
-              v-if="madeForM1 && printerFits && printerName"
-              class="mlib-badge mlib-badge--ok"
+              v-if="fitLabel"
+              class="mlib-badge"
+              :class="{ 'mlib-badge--ok': sizeFit === true }"
               data-tid="library-print-fits"
-            >Fits {{ printerName }}</span>
+            >{{ fitLabel }}</span>
+            <span
+              v-else
+              class="mlib-badge"
+              data-tid="library-print-fit-unknown"
+            >Check print size</span>
           </header>
+          <div
+            v-if="publication"
+            class="mpage__primary-actions"
+          >
+            <a
+              v-if="!print"
+              :href="sliceLink"
+              target="_blank"
+              rel="noopener"
+              class="mlib-btn mlib-btn--primary mpage__go"
+              data-tid="library-print-slice"
+            >Slice and print</a>
+            <button
+              v-if="print"
+              type="button"
+              class="mlib-btn mlib-btn--primary mpage__go"
+              :disabled="printing === card.key"
+              data-tid="library-print-print"
+              @click="go"
+            >
+              <frame-icon
+                name="printer"
+                small
+              />
+              {{ printing === card.key ? 'Opening…' : printerName ? `Print on ${printerName}` : 'Print' }}
+            </button>
+            <button
+              v-if="signedIn && publication"
+              type="button"
+              class="mlib-btn mlib-btn--icon mpage__heart"
+              :class="{ 'mpage__heart--on': !!saveId }"
+              :aria-pressed="saveId ? 'true' : 'false'"
+              :aria-label="saveId ? 'Saved' : 'Save'"
+              :disabled="saving"
+              data-tid="library-print-panel-heart"
+              @click="toggleSave"
+            >
+              <svg
+                class="mlib-i"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              ><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z" /></svg>
+            </button>
+          </div>
           <dl
             v-if="specs.length"
             class="mlook__specs"
@@ -153,12 +194,24 @@
               <dt>{{ s.label }}</dt><dd>{{ s.value }}</dd>
             </div>
           </dl>
+          <dl
+            v-if="publication"
+            class="mpage__profile"
+            data-tid="library-print-profile"
+          >
+            <div
+              v-for="fact in profileFacts"
+              :key="fact.label"
+            >
+              <dt>{{ fact.label }}</dt><dd>{{ fact.value }}</dd>
+            </div>
+          </dl>
           <p
-            v-else-if="!busy && publication && !print"
+            v-if="!busy && publication && !print"
             class="mlib-muted"
             data-tid="library-print-nogcode"
           >
-            This print has no G-code yet. Remix it to slice it for your printer.
+            This print has no G-code yet. Slice it for your printer.
           </p>
           <div
             v-if="colours.length || loadedLine"
@@ -180,20 +233,6 @@
               class="mlib-muted mlook__loaded"
             >{{ loadedLine }}</span>
           </div>
-          <button
-            v-if="print"
-            type="button"
-            class="mlib-btn mlib-btn--primary mpage__go"
-            :disabled="printing === card.key"
-            data-tid="library-print-print"
-            @click="go"
-          >
-            <frame-icon
-              name="printer"
-              small
-            />
-            {{ printing === card.key ? 'Opening…' : printerName ? `Print on ${printerName}` : 'Print' }}
-          </button>
           <div class="mlook__secondary">
             <label
               v-if="signedIn"
@@ -322,7 +361,14 @@
               :letter="initials"
             /></span>
             <span class="mpage__who-text">
-              <strong>{{ makerName }}</strong>
+              <a
+                v-if="makerHandle"
+                :href="`${libraryUrl}/@${encodeURIComponent(makerHandle)}`"
+                target="_blank"
+                rel="noopener"
+                data-tid="library-print-maker-link"
+              >{{ makerName }}</a>
+              <strong v-else>{{ makerName }}</strong>
               <span
                 v-if="makerHandle"
                 class="mlib-muted"
@@ -332,6 +378,144 @@
         </div>
       </div>
 
+      <section
+        v-if="publication"
+        class="mpage__tile"
+        data-tid="library-print-versions"
+      >
+        <h2>Versions</h2>
+        <div class="mpage__version-row">
+          <strong>Version {{ publication.version }}</strong>
+          <time
+            class="mlib-muted"
+            :datetime="publication.version_created_at"
+          >{{ dateText(publication.version_created_at) }}</time>
+          <span class="mlib-badge mlib-badge--ok">Public version</span>
+        </div>
+        <template v-if="context && context.owner">
+          <h3>Your version history</h3>
+          <p class="mlib-muted">
+            Only you can see versions that have not been published.
+          </p>
+          <div
+            v-for="v in otherVersions"
+            :key="v.number"
+            class="mpage__version-row"
+          >
+            <strong>Version {{ v.number }}</strong>
+            <time
+              class="mlib-muted"
+              :datetime="v.created_at"
+            >{{ dateText(v.created_at) }}</time>
+            <span class="mlib-badge">{{ versionLabel(v.origin) }}</span>
+          </div>
+        </template>
+      </section>
+      <section
+        v-if="publication"
+        class="mpage__tile"
+        data-tid="library-print-history"
+      >
+        <h2>Your print history</h2>
+        <p class="mlib-muted">
+          Private to your account. Other people's prints are never shown here.
+        </p>
+        <!-- Signed out: why it is empty, and the way in. -->
+        <template v-if="!signedIn">
+          <p
+            class="mlib-muted"
+            data-tid="library-print-history-signed-out"
+          >
+            Sign in to see your own prints of this model.
+          </p>
+          <button
+            class="mlib-btn"
+            type="button"
+            data-tid="library-print-history-sign-in"
+            @click="signIn"
+          >
+            Sign in
+          </button>
+        </template>
+        <div
+          v-if="contextBusy"
+          class="mlib-skeleton"
+          aria-label="Loading your print history"
+          style="min-height: 80px"
+        />
+        <!-- Library off: that is the reason, and Try again would not change it. -->
+        <template v-else-if="contextProblem === 'off'">
+          <p
+            role="status"
+            data-tid="library-print-history-off"
+          >
+            Turn on Library saving to keep a private history of your prints of this model.
+          </p>
+          <router-link
+            :to="settingsTo"
+            class="mlib-btn"
+            data-tid="library-print-history-settings"
+          >
+            Library settings
+          </router-link>
+        </template>
+        <template v-else-if="contextProblem">
+          <p
+            role="status"
+            data-tid="library-print-history-error"
+          >
+            {{ contextProblem === 'offline' ? 'You are offline. Check your internet connection and try again.' : 'Your print history could not be loaded just now.' }}
+          </p><button
+            class="mlib-btn"
+            type="button"
+            data-tid="library-print-history-retry"
+            @click="readContext"
+          >
+            Try again
+          </button>
+        </template>
+        <ul
+          v-else-if="context && context.runs.length"
+          class="mpage__runs"
+        >
+          <li
+            v-for="run in context.runs"
+            :key="run.id"
+          >
+            <strong>{{ run.printer_name }}</strong>
+            <time
+              class="mlib-muted"
+              :datetime="run.started_at"
+            >{{ dateText(run.started_at) }}</time>
+            <span
+              class="mlib-badge"
+              :class="{ 'mlib-badge--ok': ['finished', 'completed'].includes(run.outcome) }"
+            >{{ outcomeLabel(run.outcome) }}</span>
+          </li>
+        </ul>
+        <p
+          v-else
+          class="mlib-muted"
+        >
+          No prints recorded for this model yet.
+        </p>
+      </section>
+      <library-shelf
+        v-if="publication"
+        id="similar"
+        title="More like this"
+        sub="More ideas from this category"
+        :cards="similar.cards"
+        :loading="similar.loading"
+        :error="similar.error"
+        :printer-name="printerName"
+        :printing="printing"
+        :see-all="false"
+        :can-save="signedIn"
+        @retry="readSimilar"
+        @print="$emit('print-card', $event)"
+        @open="$emit('open', $event)"
+      />
       <library-shelf
         id="makes"
         title="Made by people"
@@ -370,12 +554,32 @@
         @print="$emit('print-card', $event)"
         @open="$emit('open', $event)"
       />
+      <footer
+        v-if="publication && slug"
+        class="mpage__footer"
+      >
+        <button
+          type="button"
+          class="mlib-link"
+          data-tid="library-print-share"
+          @click="share"
+        >
+          Share
+        </button>
+        <a
+          :href="`${pageHref}#report`"
+          target="_blank"
+          rel="noopener"
+          class="mlib-link"
+          data-tid="library-print-report"
+        >Report this model</a>
+      </footer>
     </template>
   </section>
 </template>
 
 <script lang="ts">
-import { Component, Mixins, Prop } from 'vue-property-decorator'
+import { Component, Inject, Mixins, Prop, Watch } from 'vue-property-decorator'
 import PhotoFace from '@/components/account/profile/PhotoFace.vue'
 import { publicAvatarUrl } from '@/services/account/avatar'
 import LibraryShelf from './LibraryShelf.vue'
@@ -383,9 +587,22 @@ import LibraryState from './LibraryState.vue'
 import LibraryPublicationMixin from '@/mixins/library-publication'
 import { LIBRARY_URL } from '@/services/library/discover'
 import { agoText } from '@/services/library/format'
-import { loadRelated, type ShelfCard } from '@/services/library/shelves'
+import { loadPublication, loadRelated, minutesText, publicationPrint, type ShelfCard } from '@/services/library/shelves'
+import { browse, dimensionFit } from '@/services/library/catalogue'
+import { libraryClient } from '@/services/library/store'
+import { cloudState } from '@/services/muon-cloud/state'
+import { configuredSlicerLinkBase } from '@/services/slicer-bridge/slicerUrl'
+import { LibraryError, type ModelContext } from '@/services/library/api'
+import { recordRecent } from '@/services/library/recents'
 
 interface Related { cards: ShelfCard[], loading: boolean, error: string }
+
+/** Why the history could not be read: the Library is off for this account (the service refuses without consent), the browser is offline, or anything else. */
+function historyProblem (error: unknown): 'off' | 'offline' | 'failed' {
+  if (error instanceof LibraryError && error.code === 'consent_required') return 'off'
+  if ((error instanceof LibraryError && error.code === 'offline') || (typeof navigator !== 'undefined' && navigator.onLine === false)) return 'offline'
+  return 'failed'
+}
 
 /**
  * A print's own page (Library v3, page 6): the gallery, a Print tile with
@@ -409,13 +626,115 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
   }
 
   private relatedReads: Record<string, number> = {}
+  unavailable = false
+  context: ModelContext | null = null
+  contextBusy = false
+  similar: Related = { cards: [], loading: false, error: '' }
+  private contextRead = 0
+  private similarRead = 0
+  libraryUrl = LIBRARY_URL
+  @Inject({ default: null }) readonly libraryCardContext!: (() => { volume: { x: number, y: number, z: number } | null, signIn?: () => void, settingsTo?: string }) | null
+  /** Why the history is not shown: the Library is off, the browser is offline, or it did not answer. */
+  contextProblem: '' | 'off' | 'offline' | 'failed' = ''
+
+  get accountKey (): string { return this.signedIn ? cloudState.account?.id ?? '' : '' }
+  @Watch('accountKey', { immediate: true })
+  async readContext () {
+    const read = ++this.contextRead
+    this.context = null
+    this.contextProblem = ''
+    this.contextBusy = this.signedIn
+    if (!this.signedIn) return
+    try {
+      const result = await libraryClient().modelContext(this.card.id)
+      if (read === this.contextRead) this.context = result
+    } catch (error) {
+      if (read === this.contextRead) this.contextProblem = historyProblem(error)
+    } finally { if (read === this.contextRead) this.contextBusy = false }
+  }
+
+  /** Signed out: the same sign-in the cards use (the host opens it). */
+  signIn () {
+    this.libraryCardContext?.().signIn?.()
+  }
+
+  /** The Library's settings: the host says where they are (under the printer open here). */
+  get settingsTo (): string {
+    return this.libraryCardContext?.().settingsTo || '/account/library'
+  }
+
+  async read () {
+    this.busy = true
+    this.error = ''
+    this.unavailable = false
+    try {
+      this.publication = await loadPublication(this.card.id)
+      this.print = publicationPrint(this.publication, this.card.id)
+      this.readSimilar()
+    } catch (error) {
+      this.unavailable = (error as { status?: number }).status === 404
+      this.error = error instanceof Error ? error.message : String(error)
+    } finally { this.busy = false }
+  }
+
+  async readSimilar () {
+    if (!this.publication?.category) return
+    const read = ++this.similarRead
+    this.similar.loading = true
+    this.similar.error = ''
+    try {
+      const page = await browse(this.publication.category, '', { sort: 'popular' }, null)
+      if (read === this.similarRead) this.similar.cards = page.cards.filter(c => c.id !== (this.publication?.id || this.card.id)).slice(0, 8)
+    } catch { if (read === this.similarRead) this.similar.error = 'Similar models could not be loaded. Try again.' } finally { if (read === this.similarRead) this.similar.loading = false }
+  }
+
+  get profileFacts (): Array<{ label: string, value: string }> {
+    const p = this.publication?.print_profile
+    const setup = this.print?.item.setups[0]
+    const seconds = p?.estimated_seconds || setup?.print_seconds
+    const grams = p?.filament_g || setup?.filament_g
+    return [
+      { label: 'Licence', value: this.publication?.licence || 'Not provided' },
+      { label: 'Layer height', value: p?.layer_height_mm ? `${p.layer_height_mm} mm` : 'Not provided' },
+      { label: 'Supports', value: typeof p?.supports === 'boolean' ? p.supports ? 'Required' : 'Not required' : 'Not provided' },
+      { label: 'Plate', value: p?.plate || 'Not provided' },
+      // With a G-code, the Print tile's facts already name its material.
+      ...(this.print ? [] : [{ label: 'Material', value: p?.material || 'Not provided' }]),
+      { label: 'Estimated time', value: seconds ? minutesText(seconds) : 'Not provided' },
+      { label: 'Estimated filament', value: grams ? `${grams} g` : 'Not provided' }
+    ]
+  }
+
+  get sizeFit (): boolean | null {
+    return dimensionFit(this.publication?.size_mm, this.libraryCardContext?.().volume ?? null)
+  }
+
+  get fitLabel (): string {
+    const fit = this.sizeFit
+    return fit === null ? '' : fit ? `Fits ${this.printerName || 'this printer'} by size` : 'Does not fit as oriented'
+  }
 
   // Each print is its own page: MuonLibrary keys it by id, so another print mounts afresh.
   mounted () {
     this.readRelated('makes')
     this.readRelated('remixes')
-    // A page opened from a shelf far down starts at its top.
+    // A page opened from a shelf far down starts at its top, and its heading is where focus is.
     ;(this.$el as HTMLElement).scrollIntoView?.({ block: 'start' })
+    this.$nextTick(() => (this.$refs.heading as HTMLElement | undefined)?.focus({ preventScroll: true }))
+  }
+
+  /** The model has loaded: this device opened it (Continue). */
+  @Watch('publication')
+  onPublication () {
+    const publication = this.publication
+    if (!publication) return
+    recordRecent({
+      id: this.card.id,
+      kind: 'publication',
+      title: publication.title || this.card.title,
+      thumbnail: this.pictures[0] ?? null,
+      maker: publication.creator?.display_name || publication.creator?.handle || this.card.creator || null
+    })
   }
 
   async readRelated (kind: 'makes' | 'remixes') {
@@ -440,7 +759,7 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
   }
 
   get title (): string {
-    return this.publication?.title || this.card.title
+    return this.unavailable ? 'Model unavailable' : this.publication?.title || this.card.title
   }
 
   get slug (): string {
@@ -449,6 +768,29 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
 
   get pageHref (): string {
     return `${LIBRARY_URL}/p/${encodeURIComponent(this.slug)}`
+  }
+
+  dateText (value?: string): string {
+    const date = new Date(value || '')
+    return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(date) : ''
+  }
+
+  versionLabel (origin?: string): string {
+    const label = ({ slice: 'Sliced', upload: 'Uploaded', import: 'Imported', restore: 'Restored', design: 'Designed' } as Record<string, string>)[origin || ''] || 'Saved'
+    return `${label}, not published`
+  }
+
+  outcomeLabel (outcome: string): string {
+    return ({ finished: 'Completed', completed: 'Completed', running: 'Printing', failed: 'Failed', cancelled: 'Cancelled' } as Record<string, string>)[outcome] || 'Unknown'
+  }
+
+  get otherVersions () {
+    return this.context?.versions.filter(v => v.number !== this.publication?.version) || []
+  }
+
+  get sliceLink (): string {
+    const file = this.publication?.files.find(f => f.role === 'project' || ['3mf', 'stl'].includes(f.format))
+    return `${configuredSlicerLinkBase()}?library=${encodeURIComponent(this.publication?.id || this.card.id)}&version=${this.publication?.version || 1}${file ? `&file=${encodeURIComponent(file.id)}` : ''}`
   }
 
   get remixLink (): string {

@@ -58,7 +58,7 @@ describe('Overview, normal mode', () => {
     const { w } = open()
     expect(cells(w)).toEqual(['jog'])
     // 40 by 9 is no size; the nearest the Jog widget offers is its L.
-    expect(w.find('[data-cell="jog"]').attributes('style')).toContain('--span: 6')
+    expect(w.find('[data-cell="jog"]').attributes('style')).toContain('--span: 8')
     w.destroy()
   })
 })
@@ -229,10 +229,11 @@ describe('Overview, edit mode', () => {
     vi.spyOn(w.find('[data-cell="macros"]').element, 'getBoundingClientRect').mockReturnValue(rect(380, 120))
     // One column is (1184 + 16) / 12 = 100 px.
     await w.find('[data-cell="macros"] [data-tid="tile-resize"]').trigger('pointerdown', { button: 0, clientX: 0, clientY: 0 })
-    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 0 }))
-    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 300, clientY: 0 }))
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: -300, clientY: 0 }))
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: -300, clientY: 0 }))
     await w.vm.$nextTick()
-    expect(w.find('[data-cell="macros"]').attributes('style')).toContain('--span: 8')
+    // 4 columns less 3 is 1: the nearest size Quick commands offers is its narrowest, 3.
+    expect(w.find('[data-cell="macros"]').attributes('style')).toContain('--span: 3;')
     w.destroy()
   })
 
