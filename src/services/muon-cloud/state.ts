@@ -9,6 +9,7 @@ import Vue from 'vue'
 import {
   cloudApi,
   CloudError,
+  setSessionHooks,
   storedToken,
   storeRefreshToken,
   storeToken,
@@ -22,12 +23,14 @@ import { centralLoginEnabled, clearSilentAttempt, redirectUri, signInAgainOnPrin
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
 import { consolePresence } from './presence'
+import { announceAccount, confirmedAccountId, confirmToken, currentAccount, identityOf, SIGNED_OUT } from './account-events'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
 import { forgetOwnAvatar } from '@/services/account/avatar'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
+import { onEndpointRebound } from './endpoint-hooks'
 
 const ACTIVE_KEY = 'muon.cloud.active'
 
@@ -300,6 +303,16 @@ async function statusConnection (printerId: string): Promise<PrinterTransport> {
 }
 
 /**
+ * An explicit Bluetooth connect replaced the tab's endpoint (KAN-2531): every
+ * other printer's transport died with it. Drop them, so the next poll and open
+ * dial again on the new one.
+ */
+export function dropOtherCloudConnections (except: string) {
+  for (const id of [...statusConnections.keys()]) if (id.toLowerCase() !== except.toLowerCase()) dropCloudConnection(id)
+}
+onEndpointRebound(dropOtherCloudConnections)
+
+/**
  * Drops the shared connection to a printer that stopped answering through it,
  * so the next open and the next status poll dial again instead of borrowing
  * the stalled one.
@@ -447,6 +460,10 @@ async function sessionRefused () {
 }
 
 async function dropSession () {
+  // Before anything of the session is cleared: whoever answers for the account hears that it left (account-events.ts).
+  if (cloudState.account || currentAccount().signedIn) announceAccount(SIGNED_OUT)
+  confirmToken(null)
+  stopReconcileRetry()
   forgetOwnAvatar()
   forgetSecureReach()
   stopPolling()
@@ -478,7 +495,11 @@ function defaultLayout (): FleetLayout {
 }
 
 async function adoptSession (token: string, account: CloudAccount) {
+  // A different account than the one on screen (a sign-in, or a switch without a sign-out) is announced before the
+  // new session replaces the old one. The same account with a new token announces nothing: nobody changed.
+  if (cloudState.account?.id !== account.id) announceAccount(identityOf(account))
   storeToken(token)
+  confirmToken(token)
   // Signed in as someone else without a sign-out first (signIn while signed in): the groups on screen are not theirs.
   if (cloudState.account?.id !== account.id) {
     cloudState.layout = defaultLayout()
@@ -500,11 +521,135 @@ async function adoptSession (token: string, account: CloudAccount) {
 
 // Another tab signed out, or the console's front-channel logout page
 // (public/auth/logout.html) cleared the token: this tab is signed out too.
+// Another tab signed in, or as someone else, or only rotated the token: this tab asks the console whose session it now
+// is (reconcileStoredSession) instead of keeping the account it had.
 try {
   window.addEventListener('storage', (event) => {
-    if ((event.key === TOKEN_KEY || event.key === null) && !storedToken() && cloudState.account) dropSession()
+    if (event.key !== TOKEN_KEY && event.key !== null) return
+    if (!storedToken()) {
+      if (cloudState.account) dropSession()
+      return
+    }
+    reconcileStoredSession().catch(() => {})
   })
 } catch { /* no window */ }
+
+/**
+ * The stored token's account, asked of the console: the same account as on screen is confirmed for this token and
+ * kept as it is; another (or none yet) is adopted, which announces it before anything is replaced; a refusal ends the
+ * session. A console that cannot be reached (status 0, 5xx, 429) leaves the account unconfirmed for this token, which
+ * keeps assertions and run reports from being served under a mismatched account, and is retried on a backoff and when
+ * the browser comes back online until it answers. Never more than one is in flight.
+ */
+let reconciling: Promise<void> | null = null
+
+export function reconcileStoredSession (): Promise<void> {
+  if (!reconciling) reconciling = reconcileOnce().finally(() => { reconciling = null })
+  return reconciling
+}
+
+async function reconcileOnce (): Promise<void> {
+  for (;;) {
+    const token = storedToken()
+    if (!token) return stopReconcileRetry()
+    let me: Awaited<ReturnType<typeof cloudApi.me>>
+    try {
+      me = await cloudApi.me()
+    } catch (error) {
+      if (error instanceof CloudError && error.status === 401) {
+        stopReconcileRetry()
+        await sessionRefused()
+      } else if (storedToken() && isTransient(error)) {
+        scheduleReconcileRetry()
+      }
+      return
+    }
+    const now = storedToken()
+    if (!now) return stopReconcileRetry()
+    // Another token since the question was asked: its account is asked afresh, never paired with this answer.
+    if (now !== token) continue
+    stopReconcileRetry()
+    if (cloudState.account?.id === me.account.id) confirmToken(now)
+    else await adoptSession(now, me.account)
+    return
+  }
+}
+
+/** Only a console that did not answer, or answered "later" (0, 5xx, 429), is asked again; 403 and 404 are answers. */
+// A 2xx whose body would not parse (a captive portal's page) and a 408 are passing, too.
+const isTransient = (error: unknown): boolean => error instanceof CloudError &&
+  (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500 || (error.status >= 200 && error.status < 300))
+
+/** For tests: no timer, no count left from the last one. */
+export function resetReconcileForTests () {
+  stopReconcileRetry()
+}
+
+/** Waits before the nth retry: 5 s, 15 s, 60 s, then every 5 minutes. */
+export const RECONCILE_RETRY_MS = [5_000, 15_000, 60_000, 300_000]
+let reconcileTimer: ReturnType<typeof setTimeout> | null = null
+let reconcileAttempts = 0
+
+function scheduleReconcileRetry () {
+  if (reconcileTimer !== null) return
+  const token = storedToken()
+  if (!token || confirmedAccountId(token)) return
+  const wait = RECONCILE_RETRY_MS[Math.min(reconcileAttempts, RECONCILE_RETRY_MS.length - 1)]
+  reconcileAttempts++
+  reconcileTimer = setTimeout(() => {
+    reconcileTimer = null
+    reconcileStoredSession().catch(() => {})
+  }, wait)
+}
+
+/** The one shared timer, cleared when the account is known, the token is gone, the console refused it, or on sign-out. */
+function stopReconcileRetry () {
+  if (reconcileTimer !== null) clearTimeout(reconcileTimer)
+  reconcileTimer = null
+  reconcileAttempts = 0
+}
+
+try {
+  window.addEventListener('online', () => {
+    const token = storedToken()
+    if (!token || confirmedAccountId(token)) return
+    if (reconcileTimer !== null) { clearTimeout(reconcileTimer); reconcileTimer = null }
+    reconcileStoredSession().catch(() => {})
+  })
+} catch { /* no window */ }
+
+// Where the console client changes the session on its own (api.ts): the account is announced first (sessionRefused
+// reaches dropSession, which announces before it clears anything, and api.ts clears the tokens after), then, on a
+// printer's own address, signs in again as for any refusal. A recovered pair is checked against the account on screen.
+setSessionHooks({
+  refused: () => { sessionRefused().catch(() => {}) },
+  check: () => { reconcileStoredSession().catch(() => {}) },
+  async recovered () {
+    const asked = storedToken()
+    try {
+      const me = await cloudApi.meWithoutRefresh()
+      const token = storedToken()
+      if (!token) return false
+      // Another token since /me was asked (another tab): its account is asked afresh, never paired with this answer.
+      if (token !== asked) {
+        reconcileStoredSession().catch(() => {})
+        return true
+      }
+      if (cloudState.account?.id === me.account.id) confirmToken(token)
+      else adoptSession(token, me.account).catch(() => {})
+      return true
+    } catch (error) {
+      // Only a refusal ends the session. A console that did not answer leaves the pair in place, unconfirmed, and the
+      // retry finishes the check.
+      if (error instanceof CloudError && error.status === 401) {
+        await dropSession()
+        return false
+      }
+      if (isTransient(error)) scheduleReconcileRetry()
+      return true
+    }
+  }
+})
 
 /**
  * Finishes a return from the console's `/authorize` (`WEB-12`): exchanges the
@@ -548,9 +693,14 @@ export async function initCloud (sessionCheck?: Promise<void>): Promise<string |
     try {
       const me = await cloudApi.me()
       const currentToken = storedToken()
-      if (currentToken) await adoptSession(currentToken, me.account)
+      // The account /me named belongs to the token it was asked with. Another token now (another tab, a recovery)
+      // is asked about afresh, never paired with this answer.
+      if (currentToken === token) await adoptSession(currentToken, me.account)
+      else if (currentToken) await reconcileStoredSession()
     } catch (error) {
       if (error instanceof CloudError && error.status === 401) await sessionRefused()
+      // The console could not be reached: no account yet, so nothing is served or reported; asked again on a backoff.
+      else if (isTransient(error)) scheduleReconcileRetry()
     }
   }
   cloudState.ready = true

@@ -6,6 +6,7 @@
  * when the console serves Fluidd, or the URL saved in `muon.cloud.url`.
  */
 
+import { confirmedAccountId, currentAccount, rotateConfirmed } from './account-events'
 import { clearDeletion, deletionRevision, observeDeletion } from './deletion'
 import { isPrinterSecureOrigin } from '@/services/secure-origin'
 export { deletionState } from './deletion'
@@ -403,6 +404,33 @@ export function setSessionRecovery (recover: ((failedRefresh: string) => Promise
 }
 
 /**
+ * What the session's owner (state.ts) does when this module changes the session on its own, so the account is
+ * announced (account-events.ts) before the tokens change, with no import of state.ts from here:
+ *
+ * - `recovered`: a refused refresh was recovered into a new pair. Resolves false when that pair is not a session the
+ *   owner can keep (the account could not be checked), and the refresh is then refused.
+ * - `refused`: the refresh was refused for good and the tokens are about to be cleared.
+ */
+export interface SessionHooks {
+  recovered?: () => Promise<boolean>;
+  refused?: () => void;
+  /** The stored token is one /me has not confirmed for the account on screen: ask now (state.ts reconcileStoredSession). */
+  check?: () => void;
+}
+
+/** A token was stored here for the same account (a refresh, a re-keyed session): carry the confirmation to it, or ask. */
+export function carryConfirmation (before: string | null, next: string) {
+  rotateConfirmed(before, next)
+  if (confirmedAccountId(next) === null) sessionHooks.check?.()
+}
+
+let sessionHooks: SessionHooks = {}
+
+export function setSessionHooks (hooks: SessionHooks) {
+  sessionHooks = hooks
+}
+
+/**
  * Runs `work` with no other tab of this origin refreshing: a refresh token
  * used twice ends its session, and the tokens sit in localStorage that every
  * tab shares. `navigator.locks` where there is one; else a BroadcastChannel
@@ -498,7 +526,9 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
       const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS)
       try {
         const session = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId() }, controller.signal)
+        const before = storedToken()
         storeToken(session.access_token)
+        carryConfirmation(before, session.access_token)
         storeRefreshToken(session.refresh_token)
         resetRefreshBackoff()
         return 'ok'
@@ -511,9 +541,15 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
           return 'unreachable'
         }
         try {
-          if (recoverSession && storedRefreshToken() === refreshToken && await recoverSession(refreshToken)) return 'ok'
+          if (recoverSession && storedRefreshToken() === refreshToken && await recoverSession(refreshToken)) {
+            // The new pair may belong to another account: the owner checks, and announces a change.
+            if (!sessionHooks.recovered || await sessionHooks.recovered()) return 'ok'
+            return 'refused'
+          }
         } catch { /* fall through to dropping */ }
         if (storedRefreshToken() === refreshToken) {
+          // Announced first, so whoever answers for the account hears of it before the token goes.
+          try { sessionHooks.refused?.() } catch { /* the tokens are cleared below either way */ }
           storeToken(null)
           storeRefreshToken(null)
         }
@@ -601,13 +637,19 @@ export const cloudApi = {
     request<{ token: string, account: CloudAccount }>('POST', '/v1/auth/sign-up', { email, password, name, declared_age: declaredAge }),
   signOut: () => request<{ ok: boolean }>('POST', '/v1/auth/sign-out'),
   me: () => request<{ account: CloudAccount, endpoint_id: string | null }>('GET', '/v1/me'),
+  /** `me` that never refreshes: for use while a refresh is itself in progress (it would wait for itself). */
+  meWithoutRefresh: () => request<{ account: CloudAccount, endpoint_id: string | null }>('GET', '/v1/me', undefined, storedToken(), false),
   /**
    * A signed assertion of this account for another Muon3D service (the
    * model service's Library), which never sees the console session. It lives
    * minutes; `expires_at` is in seconds.
    */
-  assertion: (audience: string) =>
-    request<{ assertion: string, expires_at: number }>('POST', '/v1/me/assertion', { audience }),
+  assertion: (audience: string) => {
+    // Asked for the account signed in now. A 401 is retried only while that account is still the one signed in: the
+    // retry uses whatever token is stored then, which after a switch is the next account's.
+    const owner = currentAccount().id
+    return request<{ assertion: string, expires_at: number }>('POST', '/v1/me/assertion', { audience }, storedToken(), true, () => owner !== null && currentAccount().id === owner)
+  },
   registerEndpoint: (endpointId: string) =>
     request<{ endpoint_id: string }>('PUT', '/v1/me/endpoint', { endpoint_id: endpointId }),
   printers: () => request<{ printers: CloudPrinter[] }>('GET', '/v1/printers'),

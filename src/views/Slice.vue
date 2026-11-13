@@ -88,6 +88,7 @@ import { isBoundToPrinterTransport } from '@/services/managed-session/httpTransp
 import type { ConfirmAnswer, ConfirmRequest } from '@/services/slicer-bridge/vendor/printer-client/bridge/host'
 import { printerError } from '@/services/slicer-bridge/vendor/printer-client/errors/kinds'
 import { createFluiddLibrary } from '@/services/slicer-bridge/library'
+import { createFluiddAccount } from '@/services/slicer-bridge/account'
 import { addModelText, handOverModels, heldModels } from '@/services/slicer-bridge/handover'
 import { libraryStatus, refreshLibrary, watchLibraryAccount } from '@/services/library/store'
 import { EventBus } from '@/eventBus'
@@ -290,6 +291,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
       setup: (key) => (key === this.host?.printer()?.key ? this.currentSetup : null),
       onMaterial: (key, material) => { if (key === this.host?.printer()?.key) this.takeMaterial(material) },
       library: createFluiddLibrary({ browse: () => { this.$router.push('/library').catch(() => {}) } }),
+      account: createFluiddAccount(),
       hostVersion: String(import.meta.env.VERSION ?? ''),
       onState: (state) => { this.dirty = state.dirty === true },
       log: (entry) => consola.debug('[slicer bridge]', entry)
