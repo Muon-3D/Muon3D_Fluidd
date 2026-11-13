@@ -93,6 +93,10 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return nearbyState.support === 'supported'
   }
 
+  get bluetoothInsecure () {
+    return nearbyState.support === 'insecure'
+  }
+
   get bluetoothOff () {
     return this.bluetoothSearch && nearbyState.radio === 'off'
   }
@@ -182,6 +186,20 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
   async onLookNearby () {
     this.notice = null
     await lookNearby()
+  }
+
+  /**
+   * The big Connect over Bluetooth button (KAN-2470): the chooser lists only
+   * Muon printers. A printer already on the account is opened over Bluetooth;
+   * a new one is now in the Bluetooth list (Look nearby's own result), ready
+   * to be set up or paired. A dismissed chooser does nothing.
+   */
+  async onConnectOverBluetooth () {
+    this.notice = null
+    const heard = await lookNearby()
+    if (!heard?.endpointId) return
+    const entry = this.directory.cloud.find(c => c.cloud && isPrinter(heard, c.cloud.id))
+    if (entry) await this.connectOverBluetooth(entry, heard)
   }
 
   // -- what each printer offers ----------------------------------------------
@@ -344,12 +362,13 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    * link and the connect. A printer that refuses this browser as a stranger
    * goes straight into pairing, and the connect continues once paired.
    */
-  async connectOverBluetooth (e: DirectoryEntry) {
+  async connectOverBluetooth (e: DirectoryEntry, chosen?: NearbyPrinter) {
     if (!e.cloud) return
     const id = e.cloud.id
-    let heard = e.nearby ?? await permittedPrinterFor(id).catch(() => null)
+    let heard = chosen ?? e.nearby ?? await permittedPrinterFor(id).catch(() => null)
     if (!heard) {
-      heard = await lookNearby()
+      // KAN-2470: the chooser lists only this printer (its EndpointId, else its short name).
+      heard = await lookNearby({ endpointId: id, name: e.nearby?.localName })
       if (!heard) return
       if (heard.endpointId && !isPrinter(heard, id)) {
         this.notice = `That device isn't ${e.name}. Choose ${e.name} in the Bluetooth list.`

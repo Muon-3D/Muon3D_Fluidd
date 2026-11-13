@@ -19,6 +19,7 @@ import {
   bluetoothAvailable,
   bluetoothSupport,
   choosePrinter,
+  type ChooserTarget,
   chooserDismissed,
   decodeAdvert,
   displayName,
@@ -173,14 +174,15 @@ export function clearNearby () {
 
 /**
  * Look nearby: the browser's chooser, then the chosen printer's `INFO`. Call
- * it straight from a click. Resolves to the printer, or `null` when the
+ * it straight from a click. With a `target` the chooser lists only that
+ * printer (KAN-2470). Resolves to the printer, or `null` when the
  * person closed the chooser.
  */
-export async function lookNearby (): Promise<NearbyPrinter | null> {
+export async function lookNearby (target?: ChooserTarget | null): Promise<NearbyPrinter | null> {
   nearbyState.error = null
   nearbyState.choosing = true
   try {
-    const chosen = await choosePrinter()
+    const chosen = await choosePrinter(target)
     remember(chosen.device.id, { endpointId: chosen.info.endpointId, localName: chosen.name })
     const printer = upsert(chosen.device, { localName: chosen.name, endpointId: chosen.info.endpointId })
     if (listening) watch(chosen.device, listening.signal)

@@ -29,8 +29,12 @@
         :view="view"
         :show-search="page.counts.printers > 1"
         :show-view="!!page.counts.printers"
+        :bluetooth-search="bluetoothSearch"
+        :bluetooth-off="bluetoothOff"
+        :bluetooth-insecure="bluetoothInsecure"
         @update:view="setView"
         @add="addSheetOpen = true"
+        @connect-bluetooth="onConnectOverBluetooth"
       />
 
       <p
