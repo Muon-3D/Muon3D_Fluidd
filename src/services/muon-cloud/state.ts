@@ -22,6 +22,7 @@ import { centralLoginEnabled, clearSilentAttempt, redirectUri, signInAgainOnPrin
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
 import { consolePresence } from './presence'
+import { announceAccount, identityOf, SIGNED_OUT } from './account-events'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
 import { forgetOwnAvatar } from '@/services/account/avatar'
@@ -430,6 +431,8 @@ async function sessionRefused () {
 }
 
 async function dropSession () {
+  // Before anything of the session is cleared: whoever answers for the account hears that it left (account-events.ts).
+  announceAccount(SIGNED_OUT)
   forgetOwnAvatar()
   stopPolling()
   sessionAbort.abort()
@@ -460,6 +463,9 @@ function defaultLayout (): FleetLayout {
 }
 
 async function adoptSession (token: string, account: CloudAccount) {
+  // A different account than the one on screen (a sign-in, or a switch without a sign-out) is announced before the
+  // new session replaces the old one. The same account with a new token announces nothing: nobody changed.
+  if (cloudState.account?.id !== account.id) announceAccount(identityOf(account))
   storeToken(token)
   // Signed in as someone else without a sign-out first (signIn while signed in): the groups on screen are not theirs.
   if (cloudState.account?.id !== account.id) {
