@@ -79,6 +79,42 @@
           />
           Open Console
         </router-link>
+        <router-link
+          v-if="settingsSection && settingsSection.id === 'files' && !isMobileViewport"
+          :to="filesTo"
+          class="cbtn cbtn--ghost"
+          data-tid="settings-open-files"
+        >
+          <frame-icon
+            name="files"
+            small
+          />
+          Open Files
+        </router-link>
+        <router-link
+          v-if="settingsSection && settingsSection.id === 'cameras' && !isMobileViewport"
+          :to="addCameraTo"
+          class="cbtn cbtn--primary"
+          data-tid="settings-add-camera"
+        >
+          <frame-icon
+            name="plus"
+            small
+          />
+          Add a camera
+        </router-link>
+        <router-link
+          v-if="settingsSection && settingsSection.id === 'timelapse' && !isMobileViewport"
+          :to="videosTo"
+          class="cbtn cbtn--ghost"
+          data-tid="settings-open-videos"
+        >
+          <frame-icon
+            name="clock"
+            small
+          />
+          Videos
+        </router-link>
         <charts-actions v-if="chartsHome" />
       </div>
     </div>
@@ -212,6 +248,18 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
 
   get consoleTo (): string {
     return scopedPath('/console', activeSlug())
+  }
+
+  get addCameraTo (): { path: string, hash: string, query: { add: string } } {
+    return { path: scopedPath('/settings', activeSlug()), hash: '#camera', query: { add: '1' } }
+  }
+
+  get videosTo (): string {
+    return scopedPath('/timelapse', activeSlug())
+  }
+
+  get filesTo (): string {
+    return scopedPath('/configure', activeSlug())
   }
 
   /** Jobs' own page: its header carries the search, the order and Upload, and History and Timelapse sit in its ··· menu. */

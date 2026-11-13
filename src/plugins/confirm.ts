@@ -20,6 +20,12 @@ export interface ConfirmOptions {
   width?: number;
   /** A print starts: the button stays off until the plate check is ticked. */
   plateCheck?: boolean;
+  /**
+   * A print starts and the printer can film it: a "Film it" switch under the
+   * message. `on` is what the printer's Timelapse settings say now; `set` is
+   * called with the switch's value, only when it changed, when the answer is yes.
+   */
+  film?: { on: boolean, line: string, set: (on: boolean) => unknown };
   color?: string;
   icon?: string;
 }
