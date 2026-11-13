@@ -50,6 +50,8 @@ export interface CloudPrinter {
   sharer?: Sharer | null;
   /** Who finds the printer in the nearby list. Only on a printer this account linked (#114). */
   discovery?: DiscoveryLevel | null;
+  /** The printer's own HTTPS name while its certificate lasts, else null (muon-link-cloud #133). */
+  secure_name?: string | null;
 }
 
 export interface Sharer {
