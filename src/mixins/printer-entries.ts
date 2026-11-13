@@ -443,7 +443,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         stopUsingBluetoothFor(e.endpointId)
         dropCloudConnection(e.endpointId)
       }
-      if (await activateLocalPrinter(instance)) return true
+      if (await activateLocalPrinter(instance, id)) return true
       return auto ? openManagedRoute(e) : false
     }, true)
   }

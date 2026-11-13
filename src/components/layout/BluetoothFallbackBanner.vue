@@ -63,7 +63,12 @@ import {
   autoMove,
   chooseRouteMode,
   dropChoices,
+  nextAutoSeen,
+  noteRelayLost,
+  relayLostAt,
+  relayTrusted,
   routeMode,
+  userOpenTarget,
   type DropChoice,
   type Route,
   type RouteAvailability
@@ -232,7 +237,8 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
     const e = this.entryFor(id)
     return {
       lan: this.lanReachable(e),
-      cloud: !!e?.cloud?.online,
+      // The list says online for up to its poll after the relay is gone: not while the relay just failed.
+      cloud: !!e?.cloud?.online && relayTrusted(relayLostAt(e.cloud.id), cloudState.printersAsOf, Date.now()),
       ble: (!!e?.nearby || !!bluetoothDeviceFor(id)) && !this.radioOff
     }
   }
@@ -258,6 +264,20 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
   /** The printer auto mode last looked after, so it is still looked after when its session is gone. */
   autoSeen: string | null = null
 
+  /** The route the looked-after printer's session was on at the last look, to see the relay go. */
+  lastLook: { id: string, route: Route | null } | null = null
+
+  /** Another account, or none: the printer auto mode looked after is not theirs to be dialled. */
+  get accountId (): string | null {
+    return cloudState.account?.id ?? null
+  }
+
+  @Watch('accountId')
+  onAccountChanged () {
+    this.autoSeen = null
+    this.lastLook = null
+  }
+
   /** The route the open printer's session is on, or null when it is down. */
   currentRoute (id: string): Route | null {
     const socket = this.$store.state.socket
@@ -272,8 +292,15 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
 
   autoTick () {
     const id = this.autoId
-    if (id) this.autoSeen = id
-    else if (cloudState.activePrinterId || this.localOpenId) this.autoSeen = null
+    this.autoSeen = nextAutoSeen(this.autoSeen, {
+      autoId: id,
+      otherOpen: !!(cloudState.activePrinterId || this.localOpenId),
+      userTarget: userOpenTarget()
+    })
+    // The relay went away under the session: the account's list does not know yet, so keep off it for a while.
+    const route = id ? this.currentRoute(id) : null
+    if (id && this.lastLook?.id === id && this.lastLook.route === 'cloud' && route === null) noteRelayLost(id)
+    this.lastLook = id ? { id, route } : null
     if (!id || this.busyKey || activationState.switching || this.retrying) {
       this.pendingMove = null
       return

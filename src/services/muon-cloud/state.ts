@@ -60,6 +60,8 @@ interface CloudState {
   account: CloudAccount | null;
   config: CloudConfig | null;
   printers: CloudPrinter[];
+  /** When the request behind `printers` was sent (ms); 0 before the first answer. */
+  printersAsOf: number;
   status: Record<string, PrinterStatus>;
   activePrinterId: string | null;
   layout: FleetLayout;
@@ -72,6 +74,7 @@ export const cloudState = Vue.observable<CloudState>({
   account: null,
   config: null,
   printers: [],
+  printersAsOf: 0,
   status: {},
   activePrinterId: readActive(),
   layout: { ...DEFAULT_FLEET_LAYOUT },
@@ -406,7 +409,9 @@ async function pollAll () {
 export async function refreshPrinters () {
   if (!cloudState.account || deletionState.deleteAfter !== null) return
   try {
+    const sentAt = Date.now()
     cloudState.printers = (await cloudApi.printers()).printers
+    cloudState.printersAsOf = sentAt
   } catch (error) {
     if (error instanceof CloudError && error.status === 401) await dropSession()
   }
