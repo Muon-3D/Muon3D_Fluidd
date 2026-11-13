@@ -168,9 +168,15 @@
   font-size: var(--m3d-text-sm);
   font-weight: 600;
   white-space: nowrap;
-  transition: transform var(--m3d-duration-fast) var(--m3d-ease), filter var(--m3d-duration-fast);
+  transition: transform var(--m3d-motion-press-out) var(--m3d-spring-snappy), filter var(--m3d-motion-fast) var(--m3d-ease-standard);
 
-  &:active { transform: scale(0.97); }
+  &:active {
+    transform: scale(var(--m3d-motion-press-scale, 0.95));
+    transition-duration: var(--m3d-motion-press-in), var(--m3d-motion-fast);
+    transition-timing-function: var(--m3d-ease-standard);
+  }
+  // Deleting is never eased: the danger button does not sink.
+  &--danger:active { transform: none; }
   &--primary { background: var(--m3d-accent); color: #04211f; }
   .theme--light &--primary { color: #fff; }
   &--tint { background: var(--m3d-accent-soft); color: var(--m3d-accent); }

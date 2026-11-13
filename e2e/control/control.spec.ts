@@ -357,8 +357,10 @@ test.describe('Movement', () => {
     await usePrinter(page, idle([150, 100, 10]))
     await open('/control')
     await expect(page.getByTestId('control-zoffset')).toHaveCount(0)
+    // Home Z sits beside Home all in the header now (CT-03), not in the menu.
+    await expect(page.getByTestId('control-move').getByTestId('home-z')).toBeVisible()
     await page.getByTestId('move-more').click()
-    await expect(page.getByTestId('menu-home-z')).toBeVisible()
+    await expect(page.getByTestId('motors-off')).toBeVisible()
     await expect(page.getByTestId('menu-zoffset')).toHaveCount(0)
     await expect(page.getByText('Z offset', { exact: true })).toHaveCount(0)
   })

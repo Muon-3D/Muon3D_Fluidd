@@ -479,6 +479,8 @@ export default class MuonLibrary extends Vue {
   feedError = ''
   /** The browser said it was offline, or nothing could be fetched at all. */
   offline = false
+  /** The browser is online but nothing could be fetched: the Library turned this address away (CORS), or something between refused it. */
+  unreachable = false
   popular: ShelfCard[] = []
   m1: ShelfCard[] = []
   posts: FeedPost[] = []
@@ -510,7 +512,7 @@ export default class MuonLibrary extends Vue {
 
   /** Back online after Discover couldn't be read: read it again, nobody needs to tap. */
   onOnline () {
-    if (this.offline || this.allFailed) this.load()
+    if (this.offline || this.unreachable || this.allFailed) this.load()
   }
 
   mounted () {
@@ -576,6 +578,7 @@ export default class MuonLibrary extends Vue {
     this.feedBusy = false
     this.busy = true
     this.popularError = this.m1Error = this.feedError = ''
+    this.unreachable = false
     this.offline = typeof navigator !== 'undefined' && navigator.onLine === false
     if (this.offline) {
       this.busy = false
@@ -599,8 +602,10 @@ export default class MuonLibrary extends Vue {
         this.posts = feed.posts
         this.feedCursor = feed.cursor
       }
-      // Nothing answered and nothing could be reached: offline, not an outage.
-      this.offline = this.allFailed && (navigator.onLine === false || (shelves.unreachable && feed instanceof Error && isNetworkError(feed)))
+      // Nothing answered and nothing could be reached: offline if the browser says so, else this address can't reach it. Not an outage.
+      const unreached = this.allFailed && shelves.unreachable && feed instanceof Error && isNetworkError(feed)
+      this.offline = this.allFailed && navigator.onLine === false
+      this.unreachable = !this.offline && unreached
     } catch (error) {
       // Something unreadable got past the readers: the page says so instead of loading forever.
       if (controller.signal.aborted) return
@@ -672,6 +677,7 @@ export default class MuonLibrary extends Vue {
   get pageState (): { kind: 'empty' | 'error', icon: string, title: string, text: string, action: string } | null {
     if (this.busy) return null
     if (this.offline) return { kind: 'error', icon: 'wifi', title: 'You\'re offline', text: 'Discover needs the internet. Your printers on this network still work.', action: 'Try again' }
+    if (this.unreachable) return { kind: 'error', icon: 'alert', title: 'The Library can\'t be reached from here', text: `You're online, but the Library didn't answer Control opened at ${location.host}.`, action: 'Try again' }
     if (this.allFailed) return { kind: 'error', icon: 'alert', title: 'The Library didn\'t answer', text: this.popularError, action: 'Try again' }
     // Nothing at all, whatever the filter (in Control "Fits" is on from the start),
     // and no shelf failed (a failed shelf shows its own Retry instead).

@@ -40,7 +40,7 @@ const gone: CommunitySave = {
 function publicFetch () {
   return vi.fn(async (url: string) => {
     const id = decodeURIComponent(String(url).split('/v1/public/publications/')[1] ?? '')
-    return new Response(JSON.stringify({ title: `Print ${id}`, version: 1, files: [], images: [{ id: 'i', name: 'Image 1', format: 'png', size_bytes: 1, url: `https://models.muon3d.com/v1/public/publications/${id}/images/i` }] }), { status: 200 })
+    return new Response(JSON.stringify({ title: `Print ${id}`, version: 1, files: [], images: [{ id: 'i', name: 'Image 1', format: 'png', size_bytes: 1, url: `https://library.muon3d.com/models/v1/public/publications/${id}/images/i` }] }), { status: 200 })
   })
 }
 
@@ -107,7 +107,7 @@ describe('Library v2: Yours shelves', () => {
     expect(saved.text()).toContain('Print p1')
     expect(saved.text()).toContain('Benchy')
     expect(saved.text()).not.toContain('No longer available')
-    expect(saved.find('img').attributes('src')).toBe('https://models.muon3d.com/v1/public/publications/p1/images/i')
+    expect(saved.find('img').attributes('src')).toBe('https://library.muon3d.com/models/v1/public/publications/p1/images/i')
     expect(wrapper.findAll('[data-tid="library-collection-c1"] img').length).toBe(1)
 
     // v3: a tile opens the collection's own page (the host keeps it in the address).

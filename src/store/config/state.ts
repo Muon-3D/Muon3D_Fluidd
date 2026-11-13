@@ -78,7 +78,8 @@ export const defaultState = (): ConfigState => {
         colorPickerValueRange: 'absolute',
         loadedMaterial: null,
         loadedMaterialColour: null,
-        pinnedMaterials: null
+        pinnedMaterials: null,
+        quickCommands: null
       },
       theme: {
         isDark: true,
@@ -160,6 +161,7 @@ export const defaultState = (): ConfigState => {
         }
       },
       fileSystem: {
+        showHiddenFiles: false,
         activeFilters: {},
         sortBy: {},
         sortDesc: {}
