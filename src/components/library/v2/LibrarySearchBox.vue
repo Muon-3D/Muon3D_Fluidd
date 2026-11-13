@@ -58,7 +58,8 @@
       <button
         type="button"
         class="mlib-link"
-        @mousedown.prevent="submit"
+        @mousedown.prevent
+        @click="submit"
       >
         Search all for “{{ draft.trim() }}”
       </button>

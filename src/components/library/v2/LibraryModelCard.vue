@@ -141,7 +141,7 @@ export default class LibraryModelCard extends Vue {
 
   @Watch('signedIn', { immediate: true })
   @Watch('card.id')
-  readSaved () { if (this.signedIn) readCardSave(this.card.id, this.card.kind) }
+  readSaved () { if (this.signedIn) { this.signedOutNote = ''; readCardSave(this.card.id, this.card.kind) } }
 
   async save () {
     if (!this.signedIn) { this.signedOutNote = 'Sign in to save this print.'; this.libraryCardContext?.().signIn(); return }

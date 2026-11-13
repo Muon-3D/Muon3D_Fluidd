@@ -439,16 +439,37 @@ async function dropSession () {
   cloudState.printers = []
   cloudState.status = {}
   cloudState.endpointId = null
+  // The groups belong to the account that left: the next one starts from the default (KAN-2249). The bump also
+  // makes any layout load still on its way for the old account stale.
+  cloudState.layout = defaultLayout()
+  layoutEdits++
+}
+
+/** Bumped by every layout change made here, and by every sign-out, so a slower load knows it is stale. */
+let layoutEdits = 0
+
+/** A fresh copy of the default layout, sharing no nested object with DEFAULT_FLEET_LAYOUT. */
+function defaultLayout (): FleetLayout {
+  return { ...DEFAULT_FLEET_LAYOUT, groups: [], widgets: { ...DEFAULT_FLEET_LAYOUT.widgets } }
 }
 
 async function adoptSession (token: string, account: CloudAccount) {
   storeToken(token)
+  // Signed in as someone else without a sign-out first (signIn while signed in): the groups on screen are not theirs.
+  if (cloudState.account?.id !== account.id) {
+    cloudState.layout = defaultLayout()
+    layoutEdits++
+  }
   cloudState.account = account
   cloudState.error = null
+  // Read before the printers fetch: a group made while either answer is on its way is newer than the saved layout.
+  const editsBefore = layoutEdits
   await refreshPrinters()
   try {
     const { layout } = await cloudApi.getLayout()
-    cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
+    // A late answer is dropped when the layout changed meanwhile (a group made here, which saveLayout sends on its
+    // own) or the account it was asked for is no longer the one signed in (a sign-out also bumps the counter).
+    if (layoutEdits === editsBefore && cloudState.account?.id === account.id) cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
   } catch { /* keep the default */ }
   startPolling()
 }
@@ -555,7 +576,7 @@ export async function signOut (): Promise<boolean> {
   }
   try {
     await cloudApi.signOut()
-  } catch { /* the session ends here either way */ }
+  } catch { /* the session ends here either way; on plain HTTP there is none and the call is refused unsent */ }
   await dropSession()
   forgetBrowserKey()
   setActiveCloudPrinter(null)
@@ -563,11 +584,15 @@ export async function signOut (): Promise<boolean> {
 }
 
 export async function saveLayout (layout: FleetLayout) {
+  layoutEdits++
   cloudState.layout = layout
+  // A 401 is retried only for the account that made the change, never with the next one's token.
+  const owner = cloudState.account?.id
   try {
-    await cloudApi.putLayout(layout)
+    await cloudApi.putLayout(layout, () => owner !== undefined && cloudState.account?.id === owner)
   } catch (error) {
-    cloudState.error = (error as Error).message
+    // A save refused for an account that has since left is not the signed-in account's error.
+    if (cloudState.account?.id === owner) cloudState.error = (error as Error).message
   }
 }
 
