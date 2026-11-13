@@ -33,6 +33,8 @@ export interface AccurateSpool {
   setColour: (colour: number) => void;
   /** Whether the spool is drawn now. */
   shown: () => boolean;
+  /** The colour the wound filament is drawn in now, 0xRRGGBB. */
+  colour: () => number;
 }
 
 /** The ring the spool hangs on, at the back of the column, and the column's back face there. */
@@ -197,6 +199,7 @@ export function buildAccurateSpool (root: THREE.Object3D): AccurateSpool {
       filament.color.setHex(colour)
       strandMaterial.color.setHex(colour)
     },
-    shown: () => spool.visible
+    shown: () => spool.visible,
+    colour: () => filament.color.getHex()
   }
 }

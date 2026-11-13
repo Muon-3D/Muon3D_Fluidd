@@ -1,11 +1,13 @@
 <template>
   <div
     class="m1-screen"
-    :class="`m1-screen--${phase}`"
+    :class="[`m1-screen--${phase}`, { 'm1-screen--camera': !!ring }]"
     data-tid="m1-screen"
     :data-phase="phase"
-    :style="flight"
+    :data-camera="ring ? 'on' : 'off'"
+    :style="{ ...flight, ...ringStyle }"
     @click.self="close"
+    @wheel="onWheel"
   >
     <div class="m1-screen__strip">
       <span class="m1-screen__live"><span class="m1-screen__dot" />Live</span>
@@ -62,6 +64,7 @@ import type { Verb } from '@/services/panel-embed/protocol'
 import { PanelBridge } from '@/services/panel-embed/bridge'
 import { httpClientActions } from '@/api/httpClientActions'
 import { NOTIFY_ACTIONS } from '@/services/panel-embed/allow'
+import { wheelDetents } from '@/services/m1-3d/knob'
 
 /** The zoom in from the model's screen, and back out to it, ms. */
 const FLY_MS = 380
@@ -103,6 +106,17 @@ export default class M1Screen extends Mixins(ControlMixin) {
   @Prop({ type: Boolean, default: false })
   readonly reducedMotion!: boolean
 
+  /**
+   * The live viewer while the camera is flying in to the screen, null when it is not (reduced motion, or a model with no
+   * screen): then the zoom is this overlay's own, over a dimmed stage. With the camera, the framed screen is the 3D model's
+   * own, top-down, and the live screen sits exactly on its disc, with the model's knob beside it (Jack, 11 Nov).
+   */
+  @Prop({ type: Object, default: null })
+  readonly viewer!: { screenCircle: () => { x: number, y: number, r: number } | null } | null
+
+  /** The screen's disc as the camera will have it once it has flown in: centre and radius in the stage's pixels. */
+  ring: { x: number, y: number, r: number } | null = null
+
   /** 'in' before the zoom starts, 'open', then 'out' while it flies back. */
   phase: 'in' | 'open' | 'out' = 'in'
   /** /panel/ is served here: null until known. */
@@ -136,8 +150,22 @@ export default class M1Screen extends Mixins(ControlMixin) {
     return { ...style, '--fly-x': `${dx}px`, '--fly-y': `${dy}px` }
   }
 
+  get ringStyle (): Record<string, string> {
+    const r = this.ring
+    if (!r) return {}
+    return { '--ring-x': `${Math.round(r.x)}px`, '--ring-y': `${Math.round(r.y)}px`, '--ring-d': `${Math.round(r.r * 2)}px`, '--ring-k': `${(r.r * 2 / 480).toFixed(4)}` }
+  }
+
+  /** A scroll on the strip or the stage around the screen turns the model's knob (the picture only); the embedded screen's own scroll is its own. */
+  onWheel (e: WheelEvent) {
+    if (!this.ring) return
+    e.preventDefault()
+    this.$emit('turn', wheelDetents(e.deltaY, e.deltaMode))
+  }
+
   async mounted () {
     document.addEventListener('keydown', this.onKey)
+    this.ring = this.viewer?.screenCircle() ?? null
     this.flight = this.flyFrom()
     // The next frame, so the zoom starts from the screen on the model.
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -434,6 +462,53 @@ export default class M1Screen extends Mixins(ControlMixin) {
     transform: scale(0.625);
     background: #000;
     box-shadow: 0 0 0 3px #222, 0 0 0 5px rgb(128 214 209 / 55%);
+  }
+
+  /*
+   * The camera has flown in to the model's own screen, straight down: the stage is left clear (the model's screen and its
+   * knob are what is framed, and a scroll or a click there goes to the knob), and the live screen sits on the disc. It
+   * fades in as the camera arrives, and goes at once on the way out.
+   */
+  .m1-screen--camera {
+    pointer-events: none;
+    background: transparent;
+    backdrop-filter: none;
+
+    .m1-screen__strip,
+    .m1-screen__bezel,
+    .m1-screen__note {
+      pointer-events: auto;
+    }
+
+    .m1-screen__bezel {
+      position: absolute;
+      left: calc(var(--ring-x) - var(--ring-d) / 2);
+      top: calc(var(--ring-y) - var(--ring-d) / 2);
+      width: var(--ring-d);
+      height: var(--ring-d);
+      background: transparent;
+      box-shadow: none;
+      transform: none;
+      opacity: 1;
+      transition: opacity calc(var(--fly-ms, 380ms) * 0.45) ease calc(var(--fly-ms, 380ms) * 0.55);
+    }
+
+    .m1-screen__frame {
+      transform: scale(var(--ring-k));
+      box-shadow: 0 0 0 2px rgb(128 214 209 / 40%);
+    }
+
+    &.m1-screen--in .m1-screen__bezel {
+      opacity: 0;
+      transform: none;
+    }
+
+    &.m1-screen--out .m1-screen__bezel {
+      opacity: 0;
+      transform: none;
+      transition-delay: 0s;
+      transition-duration: 0.12s;
+    }
   }
 
   .m1-screen__note {

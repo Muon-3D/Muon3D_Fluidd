@@ -85,11 +85,10 @@ test.describe('desktop pointer', () => {
     await expect(label).toContainText('Build plate')
     await expect(label).toContainText(/°C · (mesh loaded|no mesh)/)
     await expect(page.locator('.m1-parts__leader line')).toHaveCount(1)
-    await page.mouse.move(5, 5)
-    // Selected, so it stays named after the pointer has gone.
-    await page.waitForTimeout(800)
+    // Selected, it stays named while the pointer is on the stage; off the stage it lets go (Jack, 11 Nov, KAN-2093).
+    await page.waitForTimeout(500)
     await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'plate')
-    await page.keyboard.press('Escape')
+    await page.mouse.move(5, 5)
     await expect(page.getByTestId('m1-parts-label')).toHaveCount(0)
 
     // With nothing selected, a drag that starts on the part turns the model and selects nothing.

@@ -78,6 +78,8 @@ describe('accurate spool', () => {
     spool.setColour(0x123456)
     const strand = root.getObjectByName(ACCURATE_SPOOL_NODES.strand) as THREE.Mesh
     expect((strand.material as THREE.MeshPhysicalMaterial).color.getHex()).toBe(0x123456)
+    // And the wound filament on the reel, which the stage reports so a test can read what colour is drawn.
+    expect(spool.colour()).toBe(0x123456)
   })
 })
 

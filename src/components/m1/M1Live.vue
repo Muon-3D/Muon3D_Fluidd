@@ -361,10 +361,18 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
    * even when a slow renderer draws none of its frames. Written straight to
    * the element, not through Vue, since it runs every frame.
    */
-  markDrawn ({ model, accessories: a, spool, plug }: DrawnState) {
+  markDrawn ({ model, accessories: a, spool, plug, colour, seeThrough, phi, nozzle, knob }: DrawnState) {
     const el = this.$el as HTMLElement | undefined
     if (!el?.dataset) return
     const marks: Record<string, string> = { model, spool: spool ? 'on' : 'off', plug: plug ? 'on' : 'off' }
+    // Where the nozzle is drawn (px from the canvas's top left) and how the knob sits: for tests, written only when they change.
+    marks.filamentColour = colour === null ? '' : `#${colour.toString(16).padStart(6, '0')}`
+    marks.plateSee = seeThrough === null ? '' : seeThrough.toFixed(2)
+    marks.cameraPhi = phi.toFixed(3)
+    marks.nozzle = nozzle ? `${nozzle.x},${nozzle.y}` : ''
+    marks.knob = knob ? knob.angle.toFixed(2) : ''
+    marks.knobPushed = knob?.pushed ? 'on' : 'off'
+    marks.knobAt = knob ? `${knob.x},${knob.y}` : ''
     if (a) {
       marks.plate = a.plate.clip ?? (a.plate.on ? 'on' : 'off')
       marks.toolhead = a.tube.clip ?? (a.tube.attached ? (a.tube.unlocking ? 'unlocking' : 'connected') : 'disconnected')

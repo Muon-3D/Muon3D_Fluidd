@@ -5,6 +5,7 @@
     data-tid="m1-parts"
     :data-interactive="interactive ? 'on' : 'off'"
     :data-hovered="hovered || ''"
+    :data-selected="selected || ''"
     :data-view="zoomedIn ? 'screen' : topView ? 'top' : 'free'"
   >
     <div
@@ -109,7 +110,7 @@
     </svg>
 
     <svg
-      v-if="selected && anchor && leader"
+      v-if="selected && anchor && leader && !screenOpen"
       class="m1-parts__leader"
       aria-hidden="true"
     >
@@ -126,12 +127,16 @@
       />
     </svg>
     <div
-      v-if="selected"
+      v-if="selected && !screenOpen"
       ref="label"
       class="m1-parts__label"
       :class="[`m1-parts__label--${side}`, { 'm1-parts__label--info': !interactive }]"
       data-tid="m1-parts-label"
       :data-part="selected"
+      @pointerenter="onLabelEnter"
+      @pointerleave="onLabelLeave"
+      @pointerdown="hoverPicked = false"
+      @focusin="hoverPicked = false"
     >
       <b>{{ names[selected] }}</b>
       <span class="m1-parts__fact">{{ facts[selected] }}</span>
@@ -154,8 +159,12 @@
     </div>
     <m1-screen
       v-if="screenOpen && interactive"
+      ref="screen"
       :from="screenFrom"
       :reduced-motion="reducedMotion"
+      :viewer="zoomedIn ? viewer : null"
+      @turn="viewer && viewer.turnKnob($event)"
+      @press="viewer && viewer.pressKnob()"
       @close="screenOpen = false"
     />
   </div>
@@ -168,6 +177,7 @@ import M1PartOptions from './M1PartOptions.vue'
 import M1Screen from './M1Screen.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
 import { axisEdges, boundCorners } from '@/services/m1-3d/drag-bounds'
+import { wheelDetents } from '@/services/m1-3d/knob'
 import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
 import { modelAnimates } from '@/services/m1-3d/render-options'
@@ -194,6 +204,8 @@ interface PartDrag {
  * instant. From one part straight to another it moves at once.
  */
 const LEAVE_MS = 120
+/** A part picked by pointing lets go this long after the pointer leaves it, unless the pointer is on its panel by then. */
+const HOVER_RELEASE_MS = 700
 /** A press that moves less than this is a click or a tap, not a drag. */
 const TAP_PX = 10
 /** The label follows the part while the camera eases, for this long after a change. */
@@ -248,6 +260,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
   reducedMotion = false
 
   leaveTimer = 0
+  /** The selection was made by pointing (the filament, Jack 11 Nov), not clicked: it goes again when the pointer goes away. */
+  hoverPicked = false
+  releaseTimer = 0
+  labelOver = false
   pickFrame = 0
   /** The newest pointer position waiting for the next frame's pick. */
   pickAt: { x: number, y: number } | null = null
@@ -278,7 +294,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
    * and a drag on empty stage leaves the selection as it is.
    */
   get cameraLocked (): boolean {
-    return this.topView || (this.selected === 'plate' && this.interactive)
+    return this.topView || this.zoomedIn || (this.selected === 'plate' && this.interactive)
   }
 
   @Watch('cameraLocked')
@@ -355,6 +371,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.motionQuery?.removeEventListener?.('change', this.onMotionPref)
     document.removeEventListener('keydown', this.onEscape)
     clearTimeout(this.leaveTimer)
+    clearTimeout(this.releaseTimer)
     cancelAnimationFrame(this.pickFrame)
     cancelAnimationFrame(this.followFrame)
     this.viewer?.setFocus(null, 'info', false)
@@ -373,6 +390,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     if (old) {
       old.removeEventListener('pointermove', this.onMove)
       old.removeEventListener('pointerleave', this.onLeave)
+      old.removeEventListener('wheel', this.onWheel)
       old.removeEventListener('pointerdown', this.onDown, true)
       old.removeEventListener('pointerup', this.onUp)
       old.removeEventListener('pointercancel', this.onCancel)
@@ -384,6 +402,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
     if (!canvas) return
     canvas.addEventListener('pointermove', this.onMove)
     canvas.addEventListener('pointerleave', this.onLeave)
+    // Not passive: with the printer's screen open a scroll turns the model's knob and must not also scroll the page.
+    canvas.addEventListener('wheel', this.onWheel, { passive: false })
     // In the capture phase, so it runs before the viewer's own pointerdown and can keep a drag on a part from also turning the model.
     canvas.addEventListener('pointerdown', this.onDown, true)
     canvas.addEventListener('pointerup', this.onUp)
@@ -458,8 +478,18 @@ export default class M1Parts extends Mixins(ControlMixin) {
     if (part) {
       clearTimeout(this.leaveTimer)
       this.leaveTimer = 0
+      clearTimeout(this.releaseTimer)
+      this.releaseTimer = 0
       if (part !== this.hovered) this.hovered = part
+      this.pointPick(part)
       return
+    }
+    // Off the part it was picked by: it lets go soon, unless the pointer has reached its panel.
+    if (this.hoverPicked && !this.labelOver && !this.releaseTimer) {
+      this.releaseTimer = window.setTimeout(() => {
+        this.releaseTimer = 0
+        if (this.hoverPicked && !this.labelOver) this.deselect()
+      }, HOVER_RELEASE_MS)
     }
     if (this.hovered && !this.leaveTimer) {
       this.leaveTimer = window.setTimeout(() => {
@@ -469,11 +499,57 @@ export default class M1Parts extends Mixins(ControlMixin) {
     }
   }
 
-  onLeave () {
+  onLeave (e?: PointerEvent) {
     cancelAnimationFrame(this.pickFrame)
     this.pickFrame = 0
     this.pickAt = null
     this.onPoint(null)
+    // Off the stage altogether, the selection lets go (Jack, 11 Nov). Not for a finger (it has no cursor to move off),
+    // a press held (turning the model, or a drag that sends nothing until it is let go), the pointer going onto the
+    // part's own panel or the printer's screen, or the screen open.
+    if (!this.selected || !e || e.pointerType === 'touch' || this.down || this.drag || this.dragPointer !== null || this.screenOpen) return
+    const to = e.relatedTarget as Node | null
+    if (to && this.$el.contains(to)) return
+    this.deselect()
+  }
+
+  /** Lets the selected part go. */
+  deselect () {
+    clearTimeout(this.releaseTimer)
+    this.releaseTimer = 0
+    this.hoverPicked = false
+    if (!this.selected) return
+    this.selected = null
+    this.refused = ''
+  }
+
+  /** Pointing at the filament picks it (Jack, 11 Nov: hover the spool), so its panel is there to use; nothing else is picked by pointing. */
+  pointPick (part: PartId) {
+    if (part !== 'filament' || this.selected || this.touch || this.down || this.screenOpen) return
+    this.select(part)
+    this.hoverPicked = true
+  }
+
+  onLabelEnter () {
+    this.labelOver = true
+    clearTimeout(this.releaseTimer)
+    this.releaseTimer = 0
+  }
+
+  onLabelLeave (e: PointerEvent) {
+    this.labelOver = false
+    if (!this.hoverPicked) return
+    // A menu or dialog the panel opened is part of it.
+    const to = e.relatedTarget as HTMLElement | null
+    if (to?.closest?.('.v-menu__content, .v-dialog, [role="menu"], [role="listbox"], [role="dialog"]')) return
+    this.deselect()
+  }
+
+  /** With the printer's screen open, a scroll over the model turns its knob, as the knob on the printer would turn. Only the picture: nothing is sent. */
+  onWheel (e: WheelEvent) {
+    if (!this.screenOpen || !this.viewer) return
+    e.preventDefault()
+    this.viewer.turnKnob(wheelDetents(e.deltaY, e.deltaMode))
   }
 
   onUp (e: PointerEvent) {
@@ -488,6 +564,13 @@ export default class M1Parts extends Mixins(ControlMixin) {
       return
     }
     if (!start || this.dragged || e.button !== 0) return
+    // The printer's screen open: a click on the model's screen or knob presses the knob (the knob sits under the live screen,
+    // so the press is the picture's); a click anywhere else leaves the screen.
+    if (this.screenOpen) {
+      if (this.viewer?.knobAt(e.clientX, e.clientY) || this.viewer?.pick(e.clientX, e.clientY) === 'screen') this.viewer.pressKnob()
+      else (this.$refs.screen as { close?: () => void } | undefined)?.close?.()
+      return
+    }
     // A click or a tap: select what is under it, or clear on empty stage.
     const part = this.viewer?.pick(e.clientX, e.clientY) ?? null
     if (part) this.select(part)
@@ -564,7 +647,11 @@ export default class M1Parts extends Mixins(ControlMixin) {
         ? { x: 0, y: plateTopForZ(t.Z), z: 0 }
         : headToWorld(t.X, t.Y)
       const to = viewer.project(world)
-      const from = viewer.anchor(drag.part)
+      // From the nozzle itself (not the part's middle, where the panel's own line starts): where the head is now, so the line closes as it comes in.
+      const [x, y, z] = this.position
+      const from = viewer.project(drag.part === 'plate'
+        ? { x: 0, y: plateTopForZ(z), z: 0 }
+        : headToWorld(x, y))
       const next = to && from ? { from: round(from), to: round(to) } : null
       if (!samePx(next, this.dragPx)) this.dragPx = next
     }
@@ -628,6 +715,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   }
 
   select (part: PartId) {
+    this.hoverPicked = false
     this.selected = part
     // A click on the screen goes into it: the printer's own screen, flown in from where it is on the model.
     if (part === 'screen' && this.interactive) {
@@ -639,6 +727,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   }
 
   onChipFocus (id: PartId) {
+    this.hoverPicked = false
     this.focusIndex = PART_IDS.indexOf(id)
     this.selected = id
   }
