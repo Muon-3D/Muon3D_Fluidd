@@ -41,7 +41,8 @@ export async function browse (category: string | null, query: string, filters: C
   const response = await fetcher(`${MODELS_URL}${path}?${params}`, { credentials: 'omit', signal })
   if (response.status === 404) {
     const page = await loadPublications({ category: category ?? undefined, sort: filters.sort === 'relevance' ? 'new' : filters.sort, limit: 24 }, fetcher, signal)
-    return { cards: page.items.map(summaryCard).filter(c => !query || [c.title, c.creator, ...c.tags].join(' ').toLowerCase().includes(query.toLowerCase())), cursor: null, help: null, ratings: false, legacy: true }
+    const cards = page.items.map(summaryCard).filter(c => !query || [c.title, c.creator, ...c.tags].join(' ').toLowerCase().includes(query.toLowerCase()))
+    return { cards, cursor: null, help: query && !cards.length ? { message: 'No match among the newest models. This service only searches its newest 24 until the catalogue update.', categories: [] } : null, ratings: false, legacy: true }
   }
   if (!response.ok) {
     const body = await response.json().catch(() => null)
