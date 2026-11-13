@@ -3,6 +3,7 @@ import VueRouter from 'vue-router'
 import { shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PrintHandoff from '../PrintHandoff.vue'
+import LandingCard from '@/components/ui/LandingCard.vue'
 
 const mocks = vi.hoisted(() => ({
   rows: [] as any[],
@@ -47,7 +48,7 @@ function mount (query: Record<string, string> = {}) {
   const wrapper = shallowMount(PrintHandoff, {
     router,
     mocks: { $store: { state: { printer: { printer: {} } }, getters: {}, dispatch: vi.fn() } },
-    stubs: { CloudAccountDialog: true }
+    stubs: { CloudAccountDialog: true, LandingCard, FrameIcon: true }
   })
   const vm = wrapper.vm as any
   vm.item = { id: 'item', name: 'Part', setups: [setup] }
@@ -161,5 +162,31 @@ describe('Print hand-off target safety', () => {
     vm.chosen = 'other'
     await vm.openSelected()
     expect(router.push).toHaveBeenCalledWith({ path: '/other-slug/print', query: { library: 'item', file: 'file', version: '3', printer: 'other' } })
+  })
+
+  it('is one card: the printers as a radio list, busy ones dimmed, and one primary that names the printer', async () => {
+    mocks.rows = [row('active', true), { ...row('busy', true), status: 'Busy', action: 'queue', tone: 'run' }]
+    const { wrapper, vm } = mount()
+    vm.chosen = 'active'; await Vue.nextTick()
+    expect(wrapper.find('h1').text()).toBe('Print Part')
+    expect(wrapper.find('[data-tid="handoff-printer"]').attributes('role')).toBe('radiogroup')
+    expect(wrapper.find('[data-tid="handoff-printer-active"]').classes()).toContain('is-on')
+    expect(wrapper.find('[data-tid="handoff-printer-busy"]').classes()).toContain('is-dim')
+    expect(wrapper.find('[data-tid="handoff-upload"]').text()).toBe('Upload to active')
+
+    await wrapper.find('[data-tid="handoff-printer-busy"] input').setChecked()
+    expect(vm.chosen).toBe('busy')
+    expect(wrapper.find('[data-tid="handoff-upload"]').attributes('disabled')).toBe('disabled')
+  })
+
+  it('offers Start print only after the upload, and never starts by itself', async () => {
+    const { wrapper, vm } = mount({ library: 'item', version: '3', file: 'file' })
+    await vm.load()
+    vm.chosen = 'active'; await Vue.nextTick()
+    expect(wrapper.find('[data-tid="handoff-start"]').exists()).toBe(false)
+    await vm.upload(); await Vue.nextTick()
+    expect(wrapper.find('[data-tid="handoff-uploaded"]').text()).toContain('It has not started.')
+    expect(wrapper.find('[data-tid="handoff-start"]').exists()).toBe(true)
+    expect(mocks.start).not.toHaveBeenCalled()
   })
 })
