@@ -15,6 +15,7 @@
  * Nothing here connects to a printer beyond reading `INFO`; `link.ts` does.
  */
 import Vue from 'vue'
+import { NEARBY_FRESH_MS } from './heard'
 import {
   bluetoothAvailable,
   bluetoothSupport,
@@ -56,8 +57,32 @@ export const nearbyState = Vue.observable({
   printers: [] as NearbyPrinter[],
   /** The chooser is open. */
   choosing: false,
-  error: null as string | null
+  error: null as string | null,
+  /**
+   * A clock the directory reads, so "heard in the last 30 s" lapses on screen
+   * (KAN-2528). Kept up to date only while something was heard recently.
+   */
+  now: Date.now()
 })
+
+/** How often the clock above moves while a sighting is fresh. */
+const CLOCK_MS = 5_000
+let clock: ReturnType<typeof setInterval> | null = null
+
+function tickClock () {
+  nearbyState.now = Date.now()
+  // Nothing fresh is left to lapse: stop until the next sighting.
+  if (clock && !nearbyState.printers.some(p => nearbyState.now - p.heardAt <= NEARBY_FRESH_MS + CLOCK_MS)) {
+    clearInterval(clock)
+    clock = null
+  }
+}
+
+function ensureClock () {
+  if (clock) return
+  nearbyState.now = Date.now()
+  clock = setInterval(tickClock, CLOCK_MS)
+}
 
 const STORAGE = 'muon.ble.printers'
 
@@ -103,7 +128,10 @@ function upsert (device: BleDevice, fields: { localName?: string | null, endpoin
     // A factory reset gives the printer a new key: the remembered id is stale.
     if (p.endpointId && !p.endpointId.startsWith(fields.advert.endpointPrefix)) p.endpointId = null
   }
-  p.heardAt = Date.now()
+  // Adverts arrive many times a second; a second's resolution is plenty and spares re-renders.
+  const at = Date.now()
+  if (at - p.heardAt >= 1000) p.heardAt = at
+  ensureClock()
   return p
 }
 

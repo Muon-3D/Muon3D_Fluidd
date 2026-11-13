@@ -4,7 +4,7 @@ import { printerNameParts } from '@/util/printer-name'
 import type { ForeignStatus } from '@/services/foreign-printers/types'
 
 /** What a printer is doing, in the words the page uses. */
-export type TileState = 'printing' | 'paused' | 'ready' | 'error' | 'locked' | 'connecting' | 'reconnecting' | 'unreachable' | 'offline' | 'new'
+export type TileState = 'printing' | 'paused' | 'ready' | 'error' | 'locked' | 'connecting' | 'reconnecting' | 'unreachable' | 'offline' | 'nearby' | 'new'
 
 /** The colour a state is shown in: teal running, green ready, amber needs you, red fault, grey off, blue new. */
 export type TileTone = 'run' | 'ok' | 'warn' | 'err' | 'off' | 'info'
@@ -99,6 +99,7 @@ function stateOf (e: DirectoryEntry, status: Record<string, PrinterStatus>): Til
     case 'error': return 'error'
     case 'locked': return 'locked'
     case 'offline': return 'offline'
+    case 'nearby': return 'nearby'
     case 'reconnecting': return 'reconnecting'
     case 'available': return e.section === 'found' ? 'ready' : 'connecting'
     default: return 'connecting'
@@ -115,6 +116,7 @@ const TONES: Record<TileState, TileTone> = {
   reconnecting: 'warn',
   unreachable: 'off',
   offline: 'off',
+  nearby: 'info',
   new: 'info'
 }
 
@@ -195,7 +197,7 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
     : e.active ? src.activeJob : statusJob(statusFor(e, src.status))
   const parts = printerNameParts(e.name)
   const viaBluetooth = e.route === 'bluetooth'
-  const remote = !viaBluetooth && (e.active === 'cloud' || (!e.host && !!e.cloud))
+  const remote = !viaBluetooth && state !== 'nearby' && (e.active === 'cloud' || (!e.host && !!e.cloud))
   let label: string
   switch (state) {
     case 'printing': label = job?.progress != null ? `${job.progress}%` : 'Printing'; break
@@ -204,6 +206,7 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
     case 'error': label = 'Error'; break
     case 'locked': label = 'Wants access'; break
     case 'offline': label = 'Offline'; break
+    case 'nearby': label = 'Nearby'; break
     case 'reconnecting': label = 'Reconnecting…'; break
     case 'unreachable': label = 'Unreachable'; break
     case 'new': label = 'New'; break
