@@ -12,6 +12,8 @@ import {
   setSessionHooks,
   storedToken,
   storeRefreshToken,
+  currentSessionId,
+  forgetSessionId,
   storeToken,
   TOKEN_KEY,
   type CloudAccount,
@@ -32,6 +34,8 @@ import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
 import { onEndpointRebound } from './endpoint-hooks'
+import { ENDED_KEY, sessionStreamAvailable, startSessionStream, stopSessionStream } from './session-events'
+import { noteSignedOut, scopeOfReason } from '@/services/account/signed-out-note'
 
 const ACTIVE_KEY = 'muon.cloud.active'
 
@@ -461,6 +465,8 @@ function stopPolling () {
  */
 let signOutHolds = 0
 let dropDeferred = false
+/** KAN-2509: why the deferred drop is, when something said (a pushed `session_ended`, a refusal that carried it). */
+let deferredReason: string | undefined
 
 /** Defers every session-ended drop (a refused call, another tab's sign-out, the focus check) until `releaseSignOut`. */
 export function holdSignOut () {
@@ -476,7 +482,9 @@ export function releaseSignOut (dropNow = true) {
   if (signOutHolds > 0) signOutHolds--
   if (signOutHolds === 0 && dropDeferred) {
     dropDeferred = false
-    if (dropNow) sessionRefused(true).catch(() => {})
+    const reason = deferredReason
+    deferredReason = undefined
+    if (dropNow) sessionRefused(true, reason).catch(() => {})
   }
 }
 
@@ -485,25 +493,53 @@ export function releaseSignOut (dropNow = true) {
  * reconcile): end it, and on a printer's own address sign in again (once a minute at most). While a hold defers the
  * drop the session is still on screen, so nothing signs in again. Calls that overlap share one run (the refresh's own
  * hook and the request that met the refusal both arrive here). `force` is the released hold's: drop it now.
+ *
+ * KAN-2509: a refusal that says why (`reason`, the console's wire string: a pushed `session_ended`, another tab's, a
+ * refused refresh) also leaves the note the signed-out page words and goes there, in place of signing in again.
+ * One path, so every tab and every source ends the same way. No reason: as before.
  */
 let refusing: Promise<void> | null = null
-function sessionRefused (force = false): Promise<void> {
+function sessionRefused (force = false, reason?: string): Promise<void> {
   if (!refusing) {
     refusing = (async () => {
-      if (!await dropSession(force)) return
+      const email = cloudState.account?.email
+      if (!await dropSession(force, reason)) return
+      if (reason) {
+        showSignedOut(reason, email)
+        return
+      }
       await signInAgainOnPrinterOrigin().catch(() => {})
     })().finally(() => { refusing = null })
   }
   return refusing
 }
 
+/** Where a session that ended with a reason goes. A whole page load, as a sign-out from a cloud printer is: nothing of the session is left to clean. */
+let leaveForSignedOut = () => { window.location.assign('/signed-out') }
+
+/** For tests: replaces the navigation. */
+export function setSignedOutNavigation (go: () => void) {
+  leaveForSignedOut = go
+}
+
+function showSignedOut (reason: string, email: string | undefined) {
+  noteSignedOut({ scope: scopeOfReason(reason), email, reason })
+  try {
+    if (window.location.pathname !== '/signed-out') leaveForSignedOut()
+  } catch { /* no window */ }
+}
+
 /** True when the session was dropped, false when a hold deferred it (`force` drops through a hold). */
-async function dropSession (force = false): Promise<boolean> {
+async function dropSession (force = false, reason?: string): Promise<boolean> {
   if (signOutHolds > 0 && !force) {
     dropDeferred = true
+    if (reason) deferredReason = reason
     return false
   }
   dropDeferred = false
+  deferredReason = undefined
+  stopSessionStream()
+  forgetSessionId()
   // Before anything of the session is cleared: whoever answers for the account hears that it left (account-events.ts).
   if (cloudState.account || currentAccount().signedIn) announceAccount(SIGNED_OUT)
   confirmToken(null)
@@ -539,7 +575,9 @@ function defaultLayout (): FleetLayout {
   return { ...DEFAULT_FLEET_LAYOUT, groups: [], widgets: { ...DEFAULT_FLEET_LAYOUT.widgets } }
 }
 
-async function adoptSession (token: string, account: CloudAccount) {
+async function adoptSession (token: string, account: CloudAccount, fresh = false) {
+  // A sign-in is a new session: the id learned for the last one is not it.
+  if (fresh) forgetSessionId()
   // A different account than the one on screen (a sign-in, or a switch without a sign-out) is announced before the
   // new session replaces the old one. The same account with a new token announces nothing: nobody changed.
   if (cloudState.account?.id !== account.id) announceAccount(identityOf(account))
@@ -562,6 +600,44 @@ async function adoptSession (token: string, account: CloudAccount) {
     if (layoutEdits === editsBefore && cloudState.account?.id === account.id) cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
   } catch { /* keep the default */ }
   startPolling()
+  watchSessionEnd(account.id)
+}
+
+/**
+ * KAN-2509: this tab learns its session id (what makes another tab's `muon.cloud.ended` ours), and takes part in the
+ * browser's one live sign-out stream (session-events.ts). A new session in the leader tab reconnects its stream.
+ */
+function watchSessionEnd (accountId: string) {
+  if (!sessionStreamAvailable()) return
+  if (!currentSessionId(accountId)) cloudApi.me().catch(() => {})
+  startSessionStream({ onEnded: publishEnded })
+}
+
+/**
+ * The leader's stream heard `session_ended`. Written for every other tab first (their `storage` event), then this tab
+ * drops the session the one way a refusal does. The write comes before the drop, so a tab reads the reason before it
+ * sees the token go.
+ */
+function publishEnded (reason: string | undefined) {
+  const why = reason ?? 'signed_out'
+  try {
+    localStorage.setItem(ENDED_KEY, JSON.stringify({ reason: why, session_id: currentSessionId(cloudState.account?.id), at: Date.now() }))
+  } catch { /* no storage: the other tabs find out from the token going, or on focus */ }
+  sessionRefused(false, why).catch(() => {})
+}
+
+/**
+ * Another tab's leader wrote `muon.cloud.ended` (publishEnded). Only a record of THIS tab's session counts: another
+ * session id is a leftover of another account and changes nothing (the token going still ends this tab, as before).
+ */
+function endedElsewhere (raw: string | null) {
+  if (!raw || !cloudState.account) return
+  try {
+    const note = JSON.parse(raw) as { reason?: unknown, session_id?: unknown }
+    const mine = currentSessionId(cloudState.account.id)
+    if (!mine || note.session_id !== mine || typeof note.reason !== 'string') return
+    sessionRefused(false, note.reason).catch(() => {})
+  } catch { /* not ours to read */ }
 }
 
 // Another tab signed out, or the console's front-channel logout page
@@ -570,6 +646,7 @@ async function adoptSession (token: string, account: CloudAccount) {
 // is (reconcileStoredSession) instead of keeping the account it had.
 try {
   window.addEventListener('storage', (event) => {
+    if (event.key === ENDED_KEY) return endedElsewhere(event.newValue)
     if (event.key !== TOKEN_KEY && event.key !== null) return
     if (!storedToken()) {
       if (cloudState.account) dropSession()
@@ -670,7 +747,7 @@ try {
 // reaches dropSession, which announces before it clears anything, and api.ts clears the tokens after), then, on a
 // printer's own address, signs in again as for any refusal. A recovered pair is checked against the account on screen.
 setSessionHooks({
-  refused: () => { sessionRefused().catch(() => {}) },
+  refused: (reason) => { sessionRefused(false, reason).catch(() => {}) },
   check: () => { reconcileStoredSession().catch(() => {}) },
   async recovered () {
     const asked = storedToken()
@@ -685,6 +762,8 @@ setSessionHooks({
       }
       if (cloudState.account?.id === me.account.id) confirmToken(token)
       else adoptSession(token, me.account).catch(() => {})
+      // The recovered pair is another session of the account: its stream is the one to hold.
+      startSessionStream({ onEnded: publishEnded })
       return true
     } catch (error) {
       // Only a refusal ends the session. A console that did not answer leaves the pair in place, unconfirmed, and the
@@ -763,7 +842,7 @@ export async function initCloud (sessionCheck?: Promise<void>): Promise<string |
 export async function signIn (email: string, password: string): Promise<string | null> {
   try {
     const { token, account } = await cloudApi.signIn(email, password)
-    await adoptSession(token, account)
+    await adoptSession(token, account, true)
     return null
   } catch (error) {
     const mfa = error instanceof CloudError && error.status === 403 && error.body.mfa_required === true && typeof error.body.mfa_token === 'string'
@@ -777,12 +856,12 @@ export async function signIn (email: string, password: string): Promise<string |
 /** The second step of `signIn`: the six-digit code (or a recovery code). */
 export async function signInWithCode (mfaToken: string, code: string) {
   const { token, account } = await cloudApi.signInCode(mfaToken, code.replace(/\s+/g, ''))
-  await adoptSession(token, account)
+  await adoptSession(token, account, true)
 }
 
 export async function signUp (email: string, password: string, name: string, declaredAge?: number) {
   const { token, account } = await cloudApi.signUp(email, password, name, declaredAge)
-  await adoptSession(token, account)
+  await adoptSession(token, account, true)
 }
 
 /** True when the console's logout form is navigating away. */
