@@ -35,7 +35,8 @@ import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
 import { bluetoothCarrying, stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
-import { chooseRelay, mayTrySecureName, reachSecureName, relayChosen, secureNameOf } from '@/services/secure-origin/hosted'
+import { chooseRelay, clearRelayChoice, mayTrySecureName, reachSecureName, relayChosen, secureNameOf } from '@/services/secure-origin/hosted'
+import { localRoute, openableAddr, type LocalRoute } from '@/services/muon-cloud/local-route'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
 
 /**
@@ -47,6 +48,30 @@ export const RUN_TIMEOUT_MS = 60_000
 
 class RunTimeout extends Error {}
 
+/** How Connect locally would reach this printer from this page (KAN-2529). */
+function localRouteOf (e: DirectoryEntry): LocalRoute {
+  const id = e.cloud?.id ?? e.endpointId
+  return localRoute({
+    hosted: mayTrySecureName(),
+    host: e.host,
+    secureName: secureNameOf(e.cloud),
+    pageHost: window.location.hostname,
+    nearby: id ? discoveryState.cloud.find(c => c.printerId === id) : undefined,
+    nearbyChecked: discoveryState.cloudChecked,
+    blockedByPage: !!discoveryState.blockedByPage
+  })
+}
+
+/** The line under Connect locally: where it goes, or why it cannot. */
+function localHint (route: LocalRoute, e: DirectoryEntry): string {
+  switch (route.kind) {
+    case 'secure': return 'Opens its secure address'
+    case 'tab': return "Opens the printer's own page in a new tab"
+    case 'lan': return e.host ?? ''
+    case 'none': return route.reason
+  }
+}
+
 /** Printers whose "opened through Muon3D" notice has been shown on this page load. */
 const toldRelay = new Set<string>()
 
@@ -55,6 +80,19 @@ let navigate = (url: string) => window.location.assign(url)
 /** For tests: replaces how the page is sent to a printer's secure address. */
 export function setNavigate (fn: (url: string) => void) {
   navigate = fn
+}
+
+/** Opens the page in a new tab; false when the browser blocked it (no `noopener` flag, which would hide that). */
+let openTab = (url: string): boolean => {
+  const w = window.open(url, '_blank')
+  if (!w) return false
+  try { w.opener = null } catch { /* cross-origin already */ }
+  return true
+}
+
+/** For tests: replaces how the printer's own page is opened in a new tab. */
+export function setOpenTab (fn: (url: string) => boolean) {
+  openTab = fn
 }
 
 /** Counts runs, so one taken over by a chosen route does not clear the row of the one that took over. */
@@ -84,6 +122,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
   pendingOpen: DirectoryEntry | null = null
   busyKey: string | null = null
   notice: string | null = null
+  /** An address to show as a link under the notice, when a new tab was blocked. */
+  noticeLink: string | null = null
   setupDialog = false
   setupPrinter: NearbyPrinter | null = null
   /** "Ask for access" to a printer on this network (ACC-17). */
@@ -181,6 +221,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       found: discoveryState.found,
       cloudNearby: discoveryState.cloud,
       nearby: nearbyState.printers,
+      now: nearbyState.now,
       activeCloudId: cloudState.activePrinterId,
       viaBluetooth: bluetoothCarrying,
       local: this.localLive,
@@ -208,22 +249,53 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
   async onConnectOverBluetooth () {
     this.notice = null
     const heard = await lookNearby()
-    if (!heard?.endpointId) return
+    // A dismissed chooser is the person's answer: silent. A failed read already
+    // shows its own message (nearbyState.error).
+    if (!heard) return
+    if (!heard.endpointId) {
+      this.notice = `Couldn't tell which printer ${heard.display || heard.localName || 'that device'} is. ` +
+        'Move closer to it and try again.'
+      return
+    }
     const entry = this.directory.cloud.find(c => c.cloud && isPrinter(heard, c.cloud.id))
-    if (entry) await this.connectOverBluetooth(entry, heard)
+    if (entry) {
+      await this.connectOverBluetooth(entry, heard)
+      return
+    }
+    // Not on this account. If the account's printers have not loaded, it may be one of them.
+    if (!cloudState.ready) {
+      this.notice = 'Your printers are still loading. Try Connect over Bluetooth again in a moment.'
+      return
+    }
+    // The out-of-box path: a printer nobody has set up goes to its set-up (or its link), as from Look nearby.
+    const nearbyEntry = this.directory.found.find(f => f.nearby?.deviceId === heard.deviceId)
+    if (nearbyEntry) {
+      await this.openFoundEntry(nearbyEntry)
+      return
+    }
+    const known = this.directory.local.find(l => l.nearby?.deviceId === heard.deviceId)
+    this.notice = known
+      ? `${known.name} is saved in this browser and is nearby. Open it from its tile.`
+      : `${heard.display || heard.localName || 'That printer'} was found over Bluetooth. It is listed with the printers found nearby.`
   }
 
   // -- what each printer offers ----------------------------------------------
 
+  /** How Connect locally would reach this printer from this page (KAN-2529). */
+  localRouteFor (e: DirectoryEntry): LocalRoute {
+    return localRouteOf(e)
+  }
+
   cloudActions (e: DirectoryEntry): CardAction[] {
     const actions: CardAction[] = []
     if (e.active !== 'local') {
+      const route = localRouteOf(e)
       actions.push({
         id: 'connect-local',
         label: 'Connect locally',
         icon: '$lan',
-        hint: e.host ? e.host : 'Not found on this network',
-        disabled: !e.host
+        hint: localHint(route, e),
+        disabled: route.kind === 'none'
       })
     }
     if (e.active !== 'cloud') {
@@ -300,6 +372,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
 
   async onAction (e: DirectoryEntry, id: string) {
     this.notice = null
+    this.noticeLink = null
     switch (id) {
       case 'connect-local': return this.connectLocal(e)
       case 'connect-cloud': return this.connectCloud(e, 'relay')
@@ -399,6 +472,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       this.afterOpen()
       return
     }
+    // Heard over Bluetooth and out of every other reach: the cloud says it is offline, so Bluetooth is the way in.
+    if (e.health === 'nearby' && e.nearby && e.cloud) return this.connectOverBluetooth(e, e.nearby)
     // On the hosted page, the printer's own secure address is the way in on this network.
     const name = secureNameOf(e.cloud)
     if (e.cloud && name && mayTrySecureName() && !relayChosen(e.cloud.id) &&
@@ -456,7 +531,57 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return e.saved[0] ?? null
   }
 
+  /**
+   * Connect locally from the hosted page: the printer's secure address when it
+   * answers, else its own page in a new tab, else a reason. An explicit local
+   * choice, so it ends any held "through Muon3D" or Bluetooth choice and never
+   * falls back to the relay by itself.
+   */
+  async connectLocalFromHostedPage (e: DirectoryEntry, route: LocalRoute): Promise<boolean | undefined> {
+    const id = e.cloud?.id
+    if (route.kind === 'secure') {
+      let reached = false
+      // Busy: run says "Still opening" itself, and that stays the answer.
+      const busy = !!this.busyKey
+      await this.run(e.key, async () => {
+        reached = await reachSecureName(route.name)
+        if (reached) {
+          if (id) {
+            clearRelayChoice(id)
+            stopUsingBluetoothFor(id)
+          }
+          navigate('https://' + route.name + '/')
+        }
+        return reached
+      })
+      if (reached) return true
+      if (busy) return
+      const addr = openableAddr(discoveryState.cloud.find(c => c.printerId === (id ?? e.endpointId)), window.location.hostname)
+      if (addr) return this.connectLocalFromHostedPage(e, { kind: 'tab', addr })
+      this.notice = `Couldn't reach ${e.name} at its secure address from this browser. ` +
+        'It may be on another network, or this browser may have refused the local-network question.'
+      return
+    }
+    if (route.kind === 'tab') {
+      // A new tab leaves this page, and its route, alone.
+      const url = `http://${route.addr}/`
+      if (openTab(url)) {
+        this.notice = `Opened ${e.name}'s own page in a new tab.`
+      } else {
+        this.notice = `This browser blocked the new tab. Open ${e.name}'s own page from the link below.`
+        this.noticeLink = url
+      }
+      return
+    }
+    if (route.kind === 'none') this.notice = route.reason
+  }
+
   connectLocal (e: DirectoryEntry) {
+    if (mayTrySecureName()) {
+      const route = this.localRouteFor(e)
+      // A saved printer outside the account with no route keeps the old attempt and its fallback page.
+      if (route.kind !== 'none' || e.cloud) return this.connectLocalFromHostedPage(e, route)
+    }
     const instance = this.localInstance(e)
     if (!instance) {
       // The service found it beside this browser but gave no address to use

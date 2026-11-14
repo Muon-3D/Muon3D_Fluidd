@@ -69,16 +69,14 @@
       <button
         v-if="bluetoothSearch"
         type="button"
-        class="btn btn--primary"
+        class="btn btn--primary btn--icon"
         data-tid="connect-bluetooth"
+        aria-label="Connect over Bluetooth"
+        title="Connect over Bluetooth"
         :disabled="bluetoothOff"
         @click="$emit('connect-bluetooth')"
       >
-        <frame-icon
-          name="bluetooth"
-          small
-        />
-        Connect over Bluetooth
+        <frame-icon name="bluetooth" />
       </button>
       <button
         type="button"
@@ -209,10 +207,19 @@ export default class PrintersHeader extends Vue {
     }
   }
 
+  // The Bluetooth button is the icon alone (KAN-2530): a square, not a labelled button.
+  .phead .btn--icon {
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
   // Phone: search goes (the mockup), and Grid / List and Add share the row.
   @media (max-width: 699px) {
     .phead__search { display: none; }
     .phead__tools { width: 100%; }
     .phead__tools .btn { flex: 1 1 auto; }
+    .phead__tools .btn--icon { flex: 0 0 auto; }
   }
 </style>
