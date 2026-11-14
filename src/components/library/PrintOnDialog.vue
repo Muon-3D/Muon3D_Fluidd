@@ -276,8 +276,10 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
     font-weight: 400;
   }
 
+  // Secondary by size, not colour: muted text measured under 4.5:1 here (a selected row's tint,
+  // the glass dialog over a page). --m3d-text is 10:1 or more on every row background.
   .print-on__line {
-    color: var(--m3d-text-muted);
+    color: var(--m3d-text);
     font-size: 12px;
   }
 

@@ -36,7 +36,8 @@ async function scan (page: Page, view: string, found: string[], within = '[data-
     .analyze()
   for (const v of violations) {
     if (v.impact !== 'serious' && v.impact !== 'critical') continue
-    found.push(`${view}: ${v.id} (${v.impact}) ${v.help}: ${v.nodes.map(n => n.target.join(' ')).join(' | ')}`)
+    const nodes = v.nodes.map(n => `  ${n.target.join(' ')}\n    ${(n.failureSummary ?? '').split('\n').join('\n    ')}`)
+    found.push([`${view}: ${v.id} (${v.impact}) ${v.help}:`, ...nodes].join('\n'))
   }
 }
 
