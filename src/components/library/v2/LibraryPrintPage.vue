@@ -978,6 +978,8 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
     border-radius: 50%;
     background: var(--m3d-warning, #f2a33a);
     color: #111;
+    // Large bold text (3:1): #111 on the light glass theme's orange is 3.6:1.
+    font-size: 1.25rem;
     font-weight: 800;
   }
 

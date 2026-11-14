@@ -1,6 +1,7 @@
 import { shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Setup from '../Setup.vue'
+import SetupStepCard from '@/components/muon-setup/SetupStepCard.vue'
 import { resetSetupState, setLocal, setupState } from '@/services/muon-setup/state'
 import type { SetupState } from '@/services/muon-setup/types'
 import newState from '@/services/muon-setup/__tests__/fixtures/state.01-new.json'
@@ -28,7 +29,7 @@ const PHONE = '5b1f0c7e-9f7a-4f5e-8f0a-2d6f3c1a9b10'
 const copy = (fixture: unknown): SetupState => JSON.parse(JSON.stringify(fixture))
 
 const mount = async () => {
-  const wrapper = shallowMount(Setup, { mocks: { $t: (key: string) => key } })
+  const wrapper = shallowMount(Setup, { stubs: { SetupStepCard }, mocks: { $t: (key: string) => key } })
   await new Promise(resolve => setTimeout(resolve, 0))
   await wrapper.vm.$nextTick()
   return wrapper
