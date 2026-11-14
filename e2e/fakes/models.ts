@@ -335,6 +335,17 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       return p ? json(route, detail(p, all)) : json(route, { error: { code: 'not_found' } }, 404)
     }
 
+    // Someone's public collection: a public read, no assertion (src/saves.rs public_collection).
+    const publicCollections = (): FakeCollection[] => [...state.others, ...state.collections.filter(x => x.visibility === 'public')].filter(x => x.visibility === 'public')
+    const publicCollection = path.match(/^\/v1\/public\/collections\/([^/]+)$/)
+    if (publicCollection && method === 'GET') {
+      const c = publicCollections().find(x => x.id === publicCollection[1])
+      if (!c) return json(route, { error: { code: 'not_found', message: 'Not found.' } }, 404)
+      // Someone else's saves are not yours: each item gets its own save id.
+      const mine = state.collections.includes(c)
+      const items = c.items.map(id => mine ? state.saves.find(s => s.id === id) : { id: `pub-${id}`, target: id }).filter((s): s is FakeSave => !!s).map(s => { const j = saveJson(s, all); return { save_id: j.id, target: j.target, card: j.card } })
+      return json(route, { ...collectionJson(c), item_count: items.length, items })
+    }
     // Signed in: the assertion the console handed out must come with it.
     if (!request.headers().authorization) return json(route, { error: { code: 'unauthorized' } }, 401)
     const share = path.match(/^\/v1\/shares\/([^/]+)\/files\/([^/]+)$/)
@@ -473,7 +484,6 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       return json(route, { saves: state.saves.filter(s => targets.some(t => t.id === s.target)).map(s => ({ target: { kind: 'publication', id: s.target }, save_id: s.id })) })
     }
     // Following (src/saves.rs): public collections, yours or someone else's; a private one is 404.
-    const publicCollections = (): FakeCollection[] => [...state.others, ...state.collections.filter(x => x.visibility === 'public')].filter(x => x.visibility === 'public')
     if (path === '/v1/community/collections/followed' && method === 'GET') {
       const followed = state.follows.map(id => publicCollections().find(x => x.id === id)).filter((x): x is FakeCollection => !!x)
       return json(route, { collections: followed.map(collectionJson) })
@@ -489,15 +499,6 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       if (state.followLimit && !state.follows.includes(id)) return json(route, { error: { code: 'follow_limit', message: 'You can follow up to 500 collections.' } }, 400)
       if (!state.follows.includes(id)) state.follows.unshift(id)
       return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
-    }
-    const publicCollection = path.match(/^\/v1\/public\/collections\/([^/]+)$/)
-    if (publicCollection && method === 'GET') {
-      const c = publicCollections().find(x => x.id === publicCollection[1])
-      if (!c) return json(route, { error: { code: 'not_found', message: 'Not found.' } }, 404)
-      // Someone else's saves are not yours: each item gets its own save id.
-      const mine = state.collections.includes(c)
-      const items = c.items.map(id => mine ? state.saves.find(s => s.id === id) : { id: `pub-${id}`, target: id }).filter((s): s is FakeSave => !!s).map(s => { const j = saveJson(s, all); return { save_id: j.id, target: j.target, card: j.card } })
-      return json(route, { ...collectionJson(c), item_count: items.length, items })
     }
     if (path === '/v1/community/collections' && method === 'GET') return json(route, { collections: state.collections.map(collectionJson) })
     if (path === '/v1/community/collections' && method === 'POST') {

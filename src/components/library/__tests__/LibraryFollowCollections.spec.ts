@@ -6,6 +6,8 @@ import LibraryPublicCollectionPage from '../v2/LibraryPublicCollectionPage.vue'
 import MuonLibrary from '../v2/MuonLibrary.vue'
 import { libraryClient, setLibraryClient } from '@/services/library/store'
 import { LibraryError } from '@/services/library/api'
+import { configureModelsTransport } from '@/services/library/transport'
+import { loadPublicCollection } from '@/services/library/follow'
 import { cloudState } from '@/services/muon-cloud/state'
 
 const flush = async () => {
@@ -432,5 +434,27 @@ describe('MuonLibrary: whose collection is open', () => {
     held.resolve({ collections: [] })
     await flush()
     expect(kind(w)).toBe('other')
+  })
+})
+
+describe('The public read goes where the transport says, with no assertion', () => {
+  afterEach(() => configureModelsTransport({ hosted: true, blacklist: [] }))
+
+  async function urlFor (hosted: boolean) {
+    configureModelsTransport({ hosted, blacklist: [] })
+    const fetcher = vi.fn<[string, RequestInit?], Promise<Response>>(async () => new Response(JSON.stringify(detail()), { status: 200 }))
+    await loadPublicCollection('11111111-2222-3333-4444-555555555555', fetcher as never)
+    return fetcher.mock.calls[0]
+  }
+
+  it('hosted Control calls the Library site\'s /models', async () => {
+    const [url, init] = await urlFor(true)
+    expect(url).toBe('https://library.muon3d.com/models/v1/public/collections/11111111-2222-3333-4444-555555555555')
+    expect(init).toEqual({ method: 'GET', credentials: 'omit', signal: undefined })
+  })
+
+  it('Control on a printer calls its own /models, same-origin', async () => {
+    const [url] = await urlFor(false)
+    expect(url).toBe(`${window.location.origin}/models/v1/public/collections/11111111-2222-3333-4444-555555555555`)
   })
 })
