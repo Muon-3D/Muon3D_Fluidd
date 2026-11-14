@@ -18,7 +18,7 @@ import type { Route } from 'vue-router'
 import store from '@/store'
 import type { InstanceConfig } from '@/store/config/types'
 import { httpClientActions } from '@/api/httpClientActions'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, reachablePrinters } from '@/services/muon-cloud/state'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import { discoveryState, instanceFor, mdnsHostFor } from '@/services/muon-cloud/discovery'
 import { setActiveSlugSource, setForeignSlugSource } from '@/router/printerSlugSource'
@@ -89,7 +89,7 @@ function savedInstances (): InstanceConfig[] {
 /** Every printer this browser knows: saved ones, then account ones. */
 export function knownPrinters (): PrinterTarget[] {
   const local: PrinterTarget[] = savedInstances().map(instance => ({ kind: 'local', slug: slugForInstance(instance), instance }))
-  const cloud: PrinterTarget[] = cloudState.printers.map(p => ({
+  const cloud: PrinterTarget[] = reachablePrinters().map(p => ({
     kind: 'cloud',
     slug: slugForCloudPrinter(p),
     printerId: p.id
@@ -149,7 +149,7 @@ export function activeSlug (): string | null {
   if (isManagedApiUrl(apiUrl)) {
     const id = cloudState.activePrinterId
     if (!id) return null
-    const printer = cloudState.printers.find(p => p.id === id)
+    const printer = reachablePrinters().find(p => p.id === id)
     return printer ? slugForCloudPrinter(printer) : null
   }
   const instance = savedInstances().find(i => addressKey(i.apiUrl) === addressKey(apiUrl))
