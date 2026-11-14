@@ -46,6 +46,47 @@ const REOPEN_MS = 45_000
  */
 const BACK_TO_CLOUD_MS = 75_000
 
+/**
+ * #370 CI diagnosis: when a test fails, ask the mock printer directly from this process and from the page, and
+ * count what the fake transport still holds open. A hung mock fails both probes; a page that has used up its
+ * connections to the mock fails only the page's. Printed as DIAG370 lines in the CI log.
+ */
+test.afterEach(async ({ page }, info) => {
+  if (info.status === info.expectedStatus) return
+  const probe = async (url: string) => {
+    const t = Date.now()
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(5_000) })
+      return `${r.status} in ${Date.now() - t} ms`
+    } catch (e) {
+      return `${(e as Error).name}: ${(e as Error).message} after ${Date.now() - t} ms`
+    }
+  }
+  console.log('DIAG370 node 127.0.0.1', await probe(`http://127.0.0.1:${MOCK_PORT}/server/info`))
+  console.log('DIAG370 node localhost', await probe(`http://localhost:${MOCK_PORT}/server/info`))
+  const inPage = await Promise.race([
+    page.evaluate(async (port) => {
+      const t = Date.now()
+      let fetched: string
+      try {
+        const r = await fetch(`http://localhost:${port}/server/info`, { signal: AbortSignal.timeout(5_000) })
+        fetched = `${r.status} in ${Date.now() - t} ms`
+      } catch (e) {
+        fetched = `${(e as Error).name}: ${(e as Error).message} after ${Date.now() - t} ms`
+      }
+      const S = (window as any).__e2eRoute
+      const live = S ? [...S.live] : []
+      const sockets = live.flatMap((p: any) => [...p.sockets])
+      const ws = sockets.map((x: any) => x.ws.readyState).join(',')
+      const entries = performance.getEntriesByType('resource').filter(e => e.name.includes(`:${port}/`))
+      const unfinished = entries.filter(e => (e as PerformanceResourceTiming).responseEnd === 0).length
+      return { fetched, live: live.length, sockets: sockets.length, wsStates: ws, links: S?.links?.size, resources: entries.length, unfinished }
+    }, MOCK_PORT),
+    new Promise(resolve => setTimeout(() => resolve('page.evaluate hung for 10 s'), 10_000))
+  ])
+  console.log('DIAG370 page', JSON.stringify(inPage))
+})
+
 const control = (page: Page, what: 'silence' | 'radio' | 'cloud', on: boolean) =>
   page.evaluate(([what, on]) => (window as any).__e2eRoute[what](on), [what, on] as const)
 
