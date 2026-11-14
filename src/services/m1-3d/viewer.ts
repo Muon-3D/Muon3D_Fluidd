@@ -19,7 +19,8 @@ import { PartLight, type LightMode } from './part-light'
 import { buildPickProxy, placePickProxy, wantsPickProxy } from './pick-proxy'
 import { headToWorld } from './drag-map'
 import { HEAD_MARGIN, easePan, panNeeded } from './head-follow'
-import { KNOB_PRESS_MM, KNOB_PRESS_MS, knobGoal } from './knob'
+import { KNOB_PRESS_MM, KNOB_PRESS_MS, knobGoal, knobPressDepth } from './knob'
+import { buildKnobWheelGeometry, knobArcDegrees, knobDrawAngle, measureKnobArc } from './knob-wheel'
 
 /** Frees a model's GPU resources: geometries, materials, their textures, and a rigged mesh's bone texture. */
 function disposeTree (root: THREE.Object3D) {
@@ -83,6 +84,8 @@ export interface M1Viewer {
   setView: (mode: 'free' | 'top' | 'screen') => void;
   /** Whether a mouse drag turns the model (off while a drag moves a part instead). */
   setOrbit: (on: boolean) => void;
+  /** Holds the camera where it is while a part is dragged, so the target stays under the pointer; false lets it follow the nozzle again. */
+  holdPan: (on: boolean) => void;
   /** Where the screen's disc is drawn once the camera has flown in to it (centre and radius, CSS pixels from the canvas's top left), or null. Only after setView('screen'). */
   screenCircle: () => { x: number, y: number, r: number } | null;
   /** Whether the knob on the model's base is under this point of the page (clientX, clientY). */
@@ -118,7 +121,9 @@ export interface DrawnState {
   /** Where the nozzle tip is drawn, in CSS pixels from the canvas's top left (the accurate model, with the head homed), else null. */
   nozzle: { x: number, y: number } | null;
   /** How far the knob is turned (radians, as drawn) and whether it is pushed in; null if this model has none. */
-  knob: { angle: number, pushed: boolean, x: number, y: number } | null;
+  knob: { angle: number, pushed: boolean, x: number, y: number, rim: { x: number, y: number }, presses: number, peak: number, arc: number } | null;
+  /** Where the filament's end is drawn and where the hole it goes into is, in CSS pixels from the canvas's top left (the accurate model), else null. */
+  strand: { x: number, y: number, hole: { x: number, y: number } } | null;
 }
 
 /** Seen from the mast side and a little above, as the s1_1 product shot is. */
@@ -138,6 +143,12 @@ const FILL = 0.86
 const TOP_PHI = 0.0015
 /** Flying in to the screen, it fills this share of the stage's height; each frame closes this share of the gap. */
 const SCREEN_FILL = 0.62
+/**
+ * Which way the camera flies in to the screen. false (Jack, 11 Nov: "the screen sits flat on the base"): straight down, the
+ * live screen laid on the model's own disc, knob beside it. true: the 10 Nov flight, square-on from the side of the machine
+ * the screen is on, the live screen opening over the dimmed stage as an overlay. One switch; aimAtScreenSideOn is the whole of it.
+ */
+const SCREEN_FLY_SIDE_ON = false
 /** The flight in to the screen and back, ms: timed, not eased per frame, so slow frames don't stretch it (as M1Screen's FLY_MS). */
 const FLIGHT_MS = 380
 /** Each frame the lean closes this share of the gap: about 450 ms to settle at 30 frames a second, easing out. */
@@ -626,6 +637,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** How far the camera is panned to keep the nozzle on the stage, in the scene's units (right and up of the camera), and where that is going. */
   const pan = { right: 0, up: 0 }
   const panGoal = { right: 0, up: 0 }
+  /** A part is being dragged: the pan stays where it is, so the picture does not slide under the pointer. */
+  let panHeld = false
   /** The nozzle tip in the scene while the accurate model's head is homed, and where it was drawn. */
   const nozzleAt = new THREE.Vector3()
   let nozzleKnown = false
@@ -676,9 +689,13 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
    */
   function followHead (): boolean {
     const here = { right: pan.right, up: pan.up }
-    panGoal.right = 0
-    panGoal.up = 0
-    if (nozzleKnown && zoomGoal === 0 && !flight) {
+    panGoal.right = here.right
+    panGoal.up = here.up
+    if (!panHeld) {
+      panGoal.right = 0
+      panGoal.up = 0
+    }
+    if (!panHeld && nozzleKnown && zoomGoal === 0 && !flight) {
       // Where the nozzle would be seen with no pan: that is what the pan is measured from.
       pan.right = 0
       pan.up = 0
@@ -702,6 +719,17 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       nozzlePx = null
     }
     return pan.right !== panGoal.right || pan.up !== panGoal.up
+  }
+
+  /** Named nodes of the model shown, found once per model rather than by name on every call. */
+  let nodes: Map<string, THREE.Object3D | null> = new Map()
+  function named (name: string): THREE.Object3D | null {
+    let node = nodes.get(name)
+    if (node === undefined) {
+      node = rig.root.getObjectByName(name) ?? null
+      nodes.set(name, node)
+    }
+    return node
   }
 
   /** Each part's meshes in the model shown, found once per model rather than by name on every pick and frame. */
@@ -739,7 +767,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** Hides or shows the plate and what it carries (the bed stage on the accurate model, the bed lift on the simple one). */
   function showPlate (shown: boolean) {
     for (const name of ['M1_Z_Stage', 'bedLift']) {
-      const node = rig.root.getObjectByName(name)
+      const node = named(name)
       if (node) node.visible = shown
     }
     for (const o of plated) o.visible = shown
@@ -756,7 +784,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** The round screen's own meshes (the accurate model's panel, the simple model's display), not the knob beside it. */
   function screenFace (): THREE.Object3D | null {
     for (const name of ['M1_Panel_Screen', 'display']) {
-      const node = rig.root.getObjectByName(name)
+      const node = named(name)
       if (node) return node
     }
     return null
@@ -783,6 +811,32 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
    * the stage's shorter side. False if this model hasn't a screen.
    */
   function aimAtScreen (): boolean {
+    return SCREEN_FLY_SIDE_ON ? aimAtScreenSideOn() : aimAtScreenFromAbove()
+  }
+
+  /**
+   * The 10 Nov flight (develop before KAN-2098): square-on to the screen, from the side of the machine it is on, level with
+   * it, close enough for it to fill SCREEN_FILL of the stage. False if this model hasn't a screen.
+   */
+  function aimAtScreenSideOn (): boolean {
+    const meshes = partMeshes(rig.root, 'screen')
+    if (!meshes.length) return false
+    const b = new THREE.Box3()
+    for (const m of meshes) b.expandByObject(m)
+    b.getCenter(zoomPoint)
+    const out = zoomPoint.clone().sub(box.getCenter(new THREE.Vector3()))
+    const size = b.getSize(new THREE.Vector3())
+    const halfFov = THREE.MathUtils.degToRad(camera.fov) / 2
+    zoomDistance = Math.max(size.x, size.y, size.z) / 2 / SCREEN_FILL / Math.tan(halfFov)
+    // Turned the short way round to face it, and level with it.
+    const theta = Math.atan2(out.x, out.z)
+    const turn = Math.atan2(Math.sin(theta - view.goalTheta), Math.cos(theta - view.goalTheta))
+    view.goalTheta += turn
+    view.goalPhi = Math.min(PHI_RANGE[1], Math.max(PHI_RANGE[0], Math.PI / 2))
+    return true
+  }
+
+  function aimAtScreenFromAbove (): boolean {
     const measured = measureScreen()
     if (!measured) return false
     const halfFov = THREE.MathUtils.degToRad(camera.fov) / 2
@@ -826,6 +880,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   let knobIn = 0
   let knobPushed = 0
   let knobPushedAt = 0
+  /** Presses so far, and the deepest the knob has gone in (mm), for the marks. */
+  let knobPresses = 0
+  let knobPeak = 0
+  const knobPressDir = new THREE.Vector3(0, 0, -1)
 
   /**
    * The knob is a plain disc from above, so a turn would not show: a small light tick on its face turns with it (the
@@ -849,6 +907,45 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     m.add(tick)
   }
 
+  /** The GLB models only the arc of the wheel that stands proud of the case; swap it for a whole wheel so a long turn never shows a gap. */
+  let knobArc = 0
+  function wholeKnob (node: THREE.Object3D) {
+    const mesh = node as THREE.Mesh
+    if (!mesh.isMesh) return
+    const { radius, y0, y1 } = measureKnobArc(mesh.geometry)
+    if (!(radius > 0) || !(y1 > y0)) return
+    const whole = buildKnobWheelGeometry(radius, y0, y1)
+    mesh.geometry.dispose()
+    mesh.geometry = whole
+    knobArc = knobArcDegrees(whole)
+  }
+
+  /** The outermost point of the wheel's rim, as drawn: the part that is not under the live screen. */
+  function knobRimPx (): { x: number, y: number } {
+    const mesh = knobNode as THREE.Mesh
+    mesh.geometry.computeBoundingBox()
+    const bb = mesh.geometry.boundingBox as THREE.Box3
+    const v = new THREE.Vector3(0, (bb.min.y + bb.max.y) / 2, bb.max.z - 1).applyMatrix4(mesh.matrixWorld).project(camera)
+    return { x: Math.round((v.x + 1) / 2 * width), y: Math.round((1 - v.y) / 2 * height) }
+  }
+
+  /** Where the filament's end and the wall hole it goes into are drawn (the accurate model), in CSS pixels from the canvas's top left. */
+  let strandEnd: THREE.Object3D | null | undefined
+  let strandHole: THREE.Object3D | null = null
+  function strandPx (): DrawnState['strand'] {
+    if (rig.kind !== 'accurate') return null
+    if (strandEnd === undefined) {
+      strandEnd = rig.root.getObjectByName('M1_FilamentEnd') ?? null
+      strandHole = rig.root.getObjectByName('M1_FilamentHole') ?? null
+    }
+    if (!strandEnd || !strandHole) return null
+    const px = (o: THREE.Object3D) => {
+      const v = o.getWorldPosition(new THREE.Vector3()).project(camera)
+      return { x: Math.round((v.x + 1) / 2 * width), y: Math.round((1 - v.y) / 2 * height) }
+    }
+    return { ...px(strandEnd), hole: px(strandHole) }
+  }
+
   /** Where the knob is drawn, in CSS pixels from the canvas's top left. */
   function knobPx (): { x: number, y: number } {
     const v = (knobNode as THREE.Object3D).getWorldPosition(new THREE.Vector3()).project(camera)
@@ -860,6 +957,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     if (knobNode === undefined) {
       knobNode = rig.root.getObjectByName('M1_Knob') ?? null
       if (knobNode) {
+        wholeKnob(knobNode)
         knobRest.quaternion.copy(knobNode.quaternion)
         knobRest.position.copy(knobNode.position)
         markKnob(knobNode)
@@ -867,18 +965,18 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     }
     const node = knobNode
     if (!node) return false
-    if (knobPushed && now - knobPushedAt > KNOB_PRESS_MS) knobPushed = 0
     const animate = liveRenderOptions(width).animate
+    // A press goes in and out by the clock (not per frame), so a slow frame still shows it.
+    const elapsed = now - knobPushedAt
+    if (knobPushed && elapsed >= KNOB_PRESS_MS) knobPushed = 0
+    knobIn = knobPushed ? (animate ? knobPressDepth(elapsed) : 1) : 0
     knobAngle += (knobAimed - knobAngle) * (animate ? 0.35 : 1)
-    knobIn += (knobPushed - knobIn) * (animate ? 0.5 : 1)
-    const settled = Math.abs(knobAimed - knobAngle) < 1e-3 && Math.abs(knobPushed - knobIn) < 1e-3
-    if (settled) {
-      knobAngle = knobAimed
-      knobIn = knobPushed
-    }
-    // Spins on its own Y, pushed in along it.
-    node.quaternion.copy(knobRest.quaternion).multiply(knobTurn.setFromAxisAngle(knobAxis, knobAngle))
-    node.position.copy(knobRest.position).addScaledVector(knobAxis.clone().applyQuaternion(knobRest.quaternion), -knobIn * KNOB_PRESS_MM)
+    const settled = Math.abs(knobAimed - knobAngle) < 1e-3
+    if (settled) knobAngle = knobAimed
+    // Spins on its own Y (a whole turn looks the same, so only the part of a turn is drawn), pushed in toward the case, which is -Z (the arc stood out on +Z).
+    node.quaternion.copy(knobRest.quaternion).multiply(knobTurn.setFromAxisAngle(knobAxis, knobDrawAngle(knobAngle)))
+    node.position.copy(knobRest.position).addScaledVector(knobPressDir.clone().applyQuaternion(knobRest.quaternion), knobIn * KNOB_PRESS_MM)
+    knobPeak = Math.max(knobPeak, knobIn * KNOB_PRESS_MM)
     node.updateMatrixWorld(true)
     return !settled || knobPushed > 0
   }
@@ -1052,7 +1150,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       if (watch.slow) cheapenGlass('slow')
     }
     viewer.onFrame?.()
-    viewer.onDraw?.({ model: rig.kind, accessories: drawnAccessories, ...rig.fittings(), nozzle: nozzlePx, phi: view.phi, knob: knobNode ? { angle: knobAngle, pushed: knobIn > 0.5, ...knobPx() } : null })
+    viewer.onDraw?.({ model: rig.kind, accessories: drawnAccessories, ...rig.fittings(), nozzle: nozzlePx, phi: view.phi, knob: knobNode ? { angle: knobAngle, pushed: knobIn > 0.5, ...knobPx(), rim: knobRimPx(), presses: knobPresses, peak: knobPeak, arc: knobArc } : null, strand: strandPx() })
     const turning = Math.abs(view.goalTheta - view.theta) > 1e-3 || Math.abs(view.goalPhi - view.phi) > 1e-3 ||
       Math.abs(leanGoal.theta - lean.theta) > 1e-4 || Math.abs(leanGoal.phi - lean.phi) > 1e-4 || Math.abs(leanGoal.closer - lean.closer) > 1e-3 ||
       !!flight
@@ -1190,7 +1288,14 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     setOrbit (on) {
       orbit = on
     },
+    holdPan (on) {
+      if (panHeld === on) return
+      panHeld = on
+      invalidate()
+    },
     screenCircle () {
+      // Only the flight from above lays the live screen on the model's disc; side-on, the screen opens as an overlay.
+      if (SCREEN_FLY_SIDE_ON) return null
       const measured = width && height && zoomDistance > 0 ? measureScreen() : null
       if (!measured) return null
       const { radius } = measured
@@ -1203,21 +1308,22 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       }
     },
     knobAt (x, y) {
-      const node = rig.root.getObjectByName('M1_Knob')
+      const node = named('M1_Knob')
       if (!node || !ready || !width || !height) return false
       const ray = rayAt(x, y)
       return !!ray && raycaster.intersectObject(node, true).length > 0
     },
     turnKnob (detents) {
-      if (!rig.root.getObjectByName('M1_Knob')) return false
+      if (!named('M1_Knob')) return false
       knobAimed = knobGoal(knobAimed, detents)
       invalidate()
       return true
     },
     pressKnob () {
-      if (!rig.root.getObjectByName('M1_Knob')) return false
+      if (!named('M1_Knob')) return false
       knobPushed = 1
       knobPushedAt = performance.now()
+      knobPresses++
       invalidate()
       return true
     },
@@ -1302,6 +1408,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     rig = next
     partsOf = new Map()
     proxies = new Map()
+    nodes = new Map()
     if (next.root.parent !== scene) scene.add(next.root)
     for (const o of plated) {
       o.matrix.copy(next.printFrame)
@@ -1324,6 +1431,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     }
     lastPlacement = ''
     knobNode = undefined
+    strandEnd = undefined
     nozzleKnown = false
     if (colourShown !== null) next.setColour(colourShown)
     if (screenShown) next.setScreen(screenShown)

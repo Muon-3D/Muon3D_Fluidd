@@ -6,9 +6,9 @@
 
 /** One wheel notch (or one detent) turns the knob this much, radians. */
 export const KNOB_DETENT = Math.PI / 12
-/** A click pushes the knob in this far, mm, for this long. */
-export const KNOB_PRESS_MM = 0.9
-export const KNOB_PRESS_MS = 140
+/** A click pushes the knob in toward the case this far, mm, for this long (a short press, about a fifth of a second). */
+export const KNOB_PRESS_MM = 3
+export const KNOB_PRESS_MS = 220
 /** A wheel event's detents: a notch is about 100 units of delta, a trackpad sends many small ones; capped so a flick isn't a spin. */
 export function wheelDetents (deltaY: number, deltaMode = 0): number {
   const px = deltaMode === 1 ? deltaY * 16 : deltaMode === 2 ? deltaY * 400 : deltaY
@@ -19,4 +19,16 @@ export function wheelDetents (deltaY: number, deltaMode = 0): number {
 /** Where the knob is going after a turn of `detents` from `goal`. Scroll down turns it clockwise. */
 export function knobGoal (goal: number, detents: number): number {
   return goal + detents * KNOB_DETENT
+}
+
+/** The share of the push the knob is in after `elapsedMs` of a press: in quickly, out again by KNOB_PRESS_MS; 0 outside it. Set by the clock, not the frame rate, so a slow frame still shows it going in. */
+export function knobPressDepth (elapsedMs: number): number {
+  if (!(elapsedMs >= 0) || elapsedMs >= KNOB_PRESS_MS) return 0
+  const inMs = KNOB_PRESS_MS * 0.3
+  if (elapsedMs < inMs) {
+    const t = elapsedMs / inMs
+    return 1 - (1 - t) ** 3
+  }
+  const t = (elapsedMs - inMs) / (KNOB_PRESS_MS - inMs)
+  return 1 - (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
 }
