@@ -19,6 +19,7 @@ import {
   type CloudPrinter,
   type AccessHandoff
 } from './api'
+import { watchFocus } from './focus-check'
 import { centralLoginEnabled, clearSilentAttempt, redirectUri, signInAgainOnPrinterOrigin, signOutCentral, takeCallback } from './centralLogin'
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
@@ -453,13 +454,56 @@ function stopPolling () {
   stopPollTimer = stopPrintersTimer = null
 }
 
-/** The console refused the session's token: end it, and on a printer's own address sign in again (once a minute at most). */
-async function sessionRefused () {
-  await dropSession()
-  await signInAgainOnPrinterOrigin().catch(() => {})
+/**
+ * KAN-1389: while something on screen must outlive the session (the recovery codes, which are the only copy),
+ * a session that ends is remembered, not acted on: the account stays, so the page and its dialog stay mounted.
+ * `releaseSignOut` lets it through. Counted, so two holders do not release each other's hold.
+ */
+let signOutHolds = 0
+let dropDeferred = false
+
+/** Defers every session-ended drop (a refused call, another tab's sign-out, the focus check) until `releaseSignOut`. */
+export function holdSignOut () {
+  signOutHolds++
 }
 
-async function dropSession () {
+/**
+ * Lets go of one hold. When the last one goes, a session that ended meanwhile is dropped now, as any refusal is
+ * (then, on a printer's own address, signed in again), unless `dropNow` is false (the caller signs out itself right
+ * after, which does the same).
+ */
+export function releaseSignOut (dropNow = true) {
+  if (signOutHolds > 0) signOutHolds--
+  if (signOutHolds === 0 && dropDeferred) {
+    dropDeferred = false
+    if (dropNow) sessionRefused(true).catch(() => {})
+  }
+}
+
+/**
+ * The one path for a session the console refused (a refresh refused for good, a refused call, a focus check, a
+ * reconcile): end it, and on a printer's own address sign in again (once a minute at most). While a hold defers the
+ * drop the session is still on screen, so nothing signs in again. Calls that overlap share one run (the refresh's own
+ * hook and the request that met the refusal both arrive here). `force` is the released hold's: drop it now.
+ */
+let refusing: Promise<void> | null = null
+function sessionRefused (force = false): Promise<void> {
+  if (!refusing) {
+    refusing = (async () => {
+      if (!await dropSession(force)) return
+      await signInAgainOnPrinterOrigin().catch(() => {})
+    })().finally(() => { refusing = null })
+  }
+  return refusing
+}
+
+/** True when the session was dropped, false when a hold deferred it (`force` drops through a hold). */
+async function dropSession (force = false): Promise<boolean> {
+  if (signOutHolds > 0 && !force) {
+    dropDeferred = true
+    return false
+  }
+  dropDeferred = false
   // Before anything of the session is cleared: whoever answers for the account hears that it left (account-events.ts).
   if (cloudState.account || currentAccount().signedIn) announceAccount(SIGNED_OUT)
   confirmToken(null)
@@ -484,6 +528,7 @@ async function dropSession () {
   // makes any layout load still on its way for the old account stale.
   cloudState.layout = defaultLayout()
   layoutEdits++
+  return true
 }
 
 /** Bumped by every layout change made here, and by every sign-out, so a slower load knows it is stale. */
@@ -533,6 +578,9 @@ try {
     reconcileStoredSession().catch(() => {})
   })
 } catch { /* no window */ }
+
+// KAN-1389: a tab that comes back checks its session still stands (a refusal then reaches sessionRefused through api.ts's hook).
+watchFocus(() => cloudState.account !== null, () => cloudApi.me())
 
 /**
  * The stored token's account, asked of the console: the same account as on screen is confirmed for this token and
@@ -742,7 +790,7 @@ export async function signOut (): Promise<boolean> {
   if (centralLoginEnabled()) {
     // The console ends the browser session and every session issued from
     // it, this one included, and tells the other surfaces.
-    await dropSession()
+    await dropSession(true)
     forgetBrowserKey()
     setActiveCloudPrinter(null)
     signOutCentral()
@@ -751,7 +799,7 @@ export async function signOut (): Promise<boolean> {
   try {
     await cloudApi.signOut()
   } catch { /* the session ends here either way; on plain HTTP there is none and the call is refused unsent */ }
-  await dropSession()
+  await dropSession(true)
   forgetBrowserKey()
   setActiveCloudPrinter(null)
   return false

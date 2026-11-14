@@ -157,7 +157,7 @@ import { Component, Vue } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
 import { centralLoginEnabled, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
 import { describe } from '@/services/account/state'
-import { resetPassword, verifyEmail } from '@/services/account/sign-in'
+import { resetPassword, verifyEmailAnswer } from '@/services/account/sign-in'
 import '@/scss/muon3d-account.scss'
 import { cloudSessionAllowed } from '@/services/muon-cloud/api'
 import OpenInMuonControl from '@/components/muon-cloud/OpenInMuonControl.vue'
@@ -227,8 +227,15 @@ export default class AccountEmailLink extends Vue {
   async verify () {
     this.state = 'working'
     try {
-      this.confirmed = await verifyEmail(this.token)
+      const answer = await verifyEmailAnswer(this.token)
+      this.confirmed = answer.email
       this.state = 'done'
+      // A completed change ended every session of the account, this browser's included (KAN-1389).
+      if (answer.signedOut) {
+        // Loaded only here: a static import pulls the router in, which takes $route/$router over in every mount.
+        const { signOutNow } = await import('@/services/account/sign-out')
+        await signOutNow('browser', { reason: 'email', router: this.$router })
+      }
     } catch (error) {
       this.fail(describe(error))
     }
