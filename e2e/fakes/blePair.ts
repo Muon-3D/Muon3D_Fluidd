@@ -179,6 +179,8 @@ class Endpoint {
         log('submitCode ' + digits)
         if (String(digits) !== PANEL_CODE) throw Object.assign(new Error('wrong code'), { kind: 'code-rejected', attemptsRemaining: 2 })
         S().paired.push(id)
+        // The printer keeps the key through a reload of the page.
+        try { sessionStorage.setItem('e2ePaired', JSON.stringify(S().paired)) } catch {}
         log('paired ' + nameOf(id))
       },
       free () {}
@@ -195,7 +197,7 @@ export const MuonEndpoint = { async create () { return new Endpoint() } }
  * Nobody is signed in; `pick` is the printer the person chooses in the
  * browser's Bluetooth chooser.
  */
-export async function useNearbyPrinters (page: Page, pick: NearbyFake) {
+export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: { advertise?: boolean } = {}) {
   const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' }
   await page.route(`${CONSOLE}/v1/config`, route => route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ relay_url: RELAY, orchestrator_id: 'e2e', authority_key: 'e2e' }) }))
   // Nobody is signed in: the console refuses a grant, as it does for a request with no session.
@@ -213,17 +215,36 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake) {
   })
   // Nothing here is about the 3D model; the photoreal M1 stalls software WebGL.
   await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
-  await page.addInitScript(([printers, id]) => {
+  await page.addInitScript(([printers, id, advertise]) => {
     const state: any = { events: [] as string[], printers, paired: [] as string[], bleLive: 0, heard: id }
     for (const p of printers as any[]) if (p.kind === 'paired') state.paired.push(p.id)
     ;(window as any).__e2ePair = state
+    try { for (const k of JSON.parse(sessionStorage.getItem('e2ePaired') ?? '[]')) if (!state.paired.includes(k)) state.paired.push(k) } catch {}
     const asked: unknown[] = []
     ;(window as any).__bluetoothAsks = asked
     const pickedPrinter = (printers as any[]).find(p => p.id === id)
     const device: any = new EventTarget()
     device.id = 'e2e-' + pickedPrinter.advertised
     device.name = pickedPrinter.advertised
-    device.watchAdvertisements = async () => {}
+    // With `advertise`, the printer sends Muon's advertisement (flags, EndpointId prefix) while it is watched, as a
+    // real one does: a set-up printer is then known to be set up and its tile offers Pair over Bluetooth.
+    device.watchAdvertisements = async (opts: { signal?: AbortSignal } = {}) => {
+      if (!advertise) return
+      const bytes = new Uint8Array(10)
+      bytes[0] = 1
+      bytes[1] = pickedPrinter.kind === 'new' ? 1 : 0
+      for (let i = 0; i < 8; i++) bytes[2 + i] = parseInt((id as string).slice(i * 2, i * 2 + 2), 16)
+      const send = () => {
+        const event: any = new Event('advertisementreceived')
+        event.device = device
+        event.name = pickedPrinter.advertised
+        event.manufacturerData = new Map([[0xffff, new DataView(bytes.buffer)]])
+        device.dispatchEvent(event)
+      }
+      setTimeout(send, 50)
+      const timer = setInterval(send, 1000)
+      opts.signal?.addEventListener('abort', () => clearInterval(timer))
+    }
     let connected = false
     const tx: any = new EventTarget()
     tx.value = null
@@ -270,7 +291,7 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake) {
     bt.getDevices = async () => chosen ? [device] : []
     bt.getAvailability = async () => true
     Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: bt })
-  }, [PRINTERS, pick.id] as const)
+  }, [PRINTERS, pick.id, !!options.advertise] as const)
 }
 
 export function pairEvents (page: Page): Promise<string[]> {

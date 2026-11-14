@@ -417,7 +417,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         if (!e.cloud) return
         return this.connectOverBluetooth(e)
       case 'connect': return this.openFoundEntry(e)
-      case 'pair-bluetooth': return this.pairNearby(e)
+      case 'pair-bluetooth': return this.pairNearby(e, true)
       case 'link': return this.link(e)
       case 'remove': return this.remove(e)
       case 'access': return this.openAccess(e)
@@ -507,15 +507,20 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    * this browser was paired with opens; one that does not know this browser yet
    * goes straight into pairing (the code on its screen), as from a menu.
    */
-  async pairNearby (e: DirectoryEntry) {
-    await this.pairNearbyPrinter(e.row?.nearby ?? e.nearby ?? null, e.key)
+  async pairNearby (e: DirectoryEntry, hold = false) {
+    await this.pairNearbyPrinter(e.row?.nearby ?? e.nearby ?? null, e.key, hold)
   }
 
-  async pairNearbyPrinter (heard: NearbyPrinter | null, key = `ble:${heard?.deviceId}`) {
+  /**
+   * `hold` is true only from the explicit Pair over Bluetooth button, which
+   * keeps the Bluetooth route. An automatic open (a click on the tile) records
+   * no held route.
+   */
+  async pairNearbyPrinter (heard: NearbyPrinter | null, key = `ble:${heard?.deviceId}`, hold = false) {
     const id = heard?.endpointId
     if (!heard || !id) return
     this.notice = null
-    chooseRouteMode(id, 'ble')
+    chooseRouteMode(id, hold ? 'ble' : 'auto')
     // The account may not hold it (nobody signed in): it still needs a name for its page.
     if (!cloudState.printers.some(p => p.id === id)) rememberBluetoothOnly(id, heard.display || heard.localName || id.slice(0, 8))
     await this.run(key, async () => {

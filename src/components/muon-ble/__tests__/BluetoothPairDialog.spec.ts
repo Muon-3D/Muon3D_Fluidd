@@ -16,9 +16,10 @@ const state = service.pairingState as { phase: string, printerId: string | null,
 
 const source = vi.hoisted(() => ({
   cloudState: { ready: true, activePrinterId: null as string | null, account: { id: 'account' }, printers: [{ id: 'boxwood', name: 'Boxwood', online: false, last_seen: 0 }], status: {} },
+  bluetoothOnly: [] as Array<{ id: string, name: string }>,
   activationState: { switching: null as string | null, error: null as string | null, fallbackUrl: null, pairing: null as string | null }
 }))
-vi.mock('@/services/muon-cloud/state', () => ({ cloudState: source.cloudState, reachablePrinters: () => source.cloudState.printers }))
+vi.mock('@/services/muon-cloud/state', () => ({ cloudState: source.cloudState, reachablePrinters: () => [...source.cloudState.printers, ...source.bluetoothOnly] }))
 vi.mock('@/services/muon-cloud/activate', () => ({ activationState: source.activationState }))
 vi.mock('@/services/printer-pages', () => ({ resolveSlug: () => ({ kind: 'cloud', printerId: 'boxwood' }), printerPagesState: { missing: null }, openPrinterAt: vi.fn(), printerHomePath: () => '/boxwood-367a' }))
 
@@ -77,10 +78,20 @@ describe('the pairing dialog (KAN-1253)', () => {
     const wrapper = mount(BluetoothPairDialog, { stubs })
     // Whether or not another file in this worker installed the real router on Vue.
     Object.defineProperty(wrapper.vm, '$router', { configurable: true, value: { push } })
+    // What the service leaves behind when the printer answers `code-rejected` (see pairing.spec.ts).
+    ;(service.submitPairingCode as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      state.phase = 'waiting'
+      state.phase = 'code'
+      state.message = "Wrong code. 2 tries left. Check the printer's screen and type it again."
+    })
     await wrapper.find('[data-tid="pair-code"] input, input[data-tid="pair-code"]').setValue('87654321')
     await wrapper.find('[data-tid="pair-submit"]').trigger('click')
     await new Promise(resolve => setTimeout(resolve, 0))
+    expect(service.submitPairingCode).toHaveBeenCalledWith('87654321')
     expect(push).not.toHaveBeenCalled()
+    expect(state.phase).toBe('code')
+    expect(wrapper.find('[data-tid="pair-code"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tid="pair-message"]').text()).toContain('Wrong code. 2 tries left')
     state.printerId = null
   })
 
@@ -144,6 +155,20 @@ describe('the offer on a printer that refused this browser (KAN-1253)', () => {
     expect(wrapper.find('[data-tid="pair-offer"]').text()).toBe('Pair this browser')
     expect(wrapper.find('[data-tid="pair-hint"]').text()).toContain('Settings > Add a device')
     expect(service.startPairing).toHaveBeenCalledWith('boxwood')
+  })
+
+  it('names a printer opened over Bluetooth that the account does not hold, not its page address', () => {
+    const held = source.cloudState.printers.splice(0)
+    source.bluetoothOnly.push({ id: 'boxwood', name: 'Boxwood' })
+    source.activationState.error = 'Could not open it.'
+    try {
+      const wrapper = shallowMount(PrinterOpening, { ...options, propsData: { slug: 'sloe-5522' } })
+      expect(wrapper.text()).toContain("Couldn't open Boxwood")
+      expect(wrapper.text()).not.toContain('sloe-5522')
+    } finally {
+      source.bluetoothOnly.splice(0)
+      source.cloudState.printers.push(...held)
+    }
   })
 
   it('shows no offer for an ordinary error', () => {

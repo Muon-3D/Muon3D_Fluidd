@@ -35,13 +35,13 @@ async function expectNeverAskedToSignIn (page: Page) {
  * presses Look nearby, picks the printer in Chrome's Bluetooth chooser, and
  * presses what its tile offers.
  */
-async function lookNearby (page: Page, printer: NearbyFake) {
-  await useNearbyPrinters(page, printer)
+async function lookNearby (page: Page, printer: NearbyFake, advertise = false) {
+  await useNearbyPrinters(page, printer, { advertise })
   await page.goto('/')
   await ready(page)
   await page.getByRole('button', { name: 'Look nearby' }).click()
   await expect.poll(async () => (await page.evaluate(() => (window as any).__bluetoothAsks)).length).toBe(1)
-  await page.getByTestId('found-set-up').click()
+  if (!advertise) await page.getByTestId('found-set-up').click()
 }
 
 test('a printer that has never been set up opens the Bluetooth sheet and its code check, signed out', async ({ page, isMobile }) => {
@@ -51,7 +51,7 @@ test('a printer that has never been set up opens the Bluetooth sheet and its cod
   await expect(sheet.getByTestId('ble-sheet-step')).toHaveText('Step 1 of 3')
   await expect(sheet.getByTestId('setup-ble-compare')).toContainText('Check the code')
   await expect(sheet.getByTestId('ble-sas')).toHaveAttribute('aria-label', COMPARE.split('').join(' '))
-  if (isMobile) expect((await sheet.boundingBox())!.width).toBeGreaterThan(370)
+  if (isMobile) await expect.poll(async () => (await sheet.boundingBox())!.width).toBeGreaterThan(370)
   await expectNeverAskedToSignIn(page)
 
   await sheet.getByTestId('ble-sas-match').click()
@@ -72,7 +72,7 @@ test('a printer that is set up and was never paired here is paired over Bluetoot
   await expect(sheet.getByTestId('pair-code-step')).toContainText('Check the code')
   await expect(sheet.getByTestId('ble-sheet-step')).toHaveText('Step 2 of 2')
   await expect(sheet.getByTestId('pair-sas')).toHaveAttribute('aria-label', COMPARE.split('').join(' '))
-  if (isMobile) expect((await sheet.boundingBox())!.width).toBeGreaterThan(370)
+  if (isMobile) await expect.poll(async () => (await sheet.boundingBox())!.width).toBeGreaterThan(370)
   await expectNeverAskedToSignIn(page)
 
   // A wrong code is turned away with the tries left; the right one pairs.
@@ -111,4 +111,30 @@ test('a printer this browser was paired with before opens from Pair over Bluetoo
   await expect(page).toHaveURL(/\/boxwood-367a(\/|$)/)
   await expect(page.getByTestId('printers-summary')).toHaveCount(0)
   await expectNeverAskedToSignIn(page)
+})
+
+test('a set-up printer heard nearby is paired from its tile: Pair over Bluetooth, and a reload stays on its page', async ({ page, isMobile }) => {
+  // The printer advertises that it is set up, so its tile offers Pair over Bluetooth itself.
+  await lookNearby(page, NOT_PAIRED_HERE, true)
+  const pair = page.getByTestId('found-pair-bluetooth')
+  await expect(pair).toHaveText('Pair over Bluetooth')
+  await expect(page.getByTestId('found-set-up')).toHaveCount(0)
+  await pair.click()
+
+  const sheet = page.getByTestId('ble-sheet')
+  await expect(sheet.getByTestId('pair-code-step')).toContainText('Check the code')
+  if (isMobile) await expect.poll(async () => (await sheet.boundingBox())!.width).toBeGreaterThan(370)
+  await sheet.getByLabel('8-digit code from the printer').fill(PANEL_CODE)
+  await sheet.getByTestId('pair-submit').click()
+  await expect(sheet).toBeHidden({ timeout: 30_000 })
+  await expect(page).toHaveURL(/\/sloe-5522(\/|$)/)
+  await expect(page.getByTestId('printers-summary')).toHaveCount(0)
+  await expectNeverAskedToSignIn(page)
+
+  // No account knows this printer: its name must outlive a reload, or its page address leads nowhere.
+  await page.reload()
+  await ready(page)
+  await expect(page).toHaveURL(/\/sloe-5522(\/|$)/)
+  await expect(page.getByText('linked to another account')).toHaveCount(0)
+  await expect(page.getByText(/No printer called/)).toHaveCount(0)
 })

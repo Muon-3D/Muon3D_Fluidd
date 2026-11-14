@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import PrinterEntriesMixin from '../printer-entries'
 import * as cloudStateModule from '@/services/muon-cloud/state'
 import { activateCloudPrinter, activateLocalPrinter } from '@/services/muon-cloud/activate'
+import { chooseRouteMode, routeMode } from '@/services/muon-cloud/route-choice'
 import { stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import type { CardAction, DirectoryEntry } from '@/services/muon-cloud/directory'
 
@@ -151,7 +152,19 @@ describe('pairing with a printer that is set up and not on this account (signed 
     const pairNearbyPrinter = vi.fn()
     const e = { key: 'ble:dev-1', row: { action: 'nearby-info', name: 'Walnut', nearby: heard } } as unknown as DirectoryEntry
     await methods.openFoundEntry.call({ pairNearby: methods.pairNearby, pairNearbyPrinter }, e)
-    expect(pairNearbyPrinter).toHaveBeenCalledWith(heard, 'ble:dev-1')
+    expect(pairNearbyPrinter).toHaveBeenCalledWith(heard, 'ble:dev-1', false)
+  })
+
+  it('a click on the tile opens it with no held route; only the Pair over Bluetooth button holds Bluetooth', async () => {
+    chooseRouteMode(heard.endpointId, 'auto')
+    const c = { ...component(), pairNearby: methods.pairNearby }
+    const e = { key: 'ble:dev-1', row: { action: 'nearby-info', name: 'Walnut', nearby: heard } } as unknown as DirectoryEntry
+    await methods.openFoundEntry.call(c, e)
+    expect(routeMode(heard.endpointId)).toBe('auto')
+    expect(activate).toHaveBeenCalledWith(heard.endpointId)
+    await methods.onAction.call({ ...c, openFoundEntry: methods.openFoundEntry }, e, 'pair-bluetooth')
+    expect(routeMode(heard.endpointId)).toBe('ble')
+    chooseRouteMode(heard.endpointId, 'auto')
   })
 
   it('does nothing for a sighting with no EndpointId', async () => {
