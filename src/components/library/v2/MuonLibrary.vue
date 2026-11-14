@@ -63,7 +63,7 @@
       :key="collection"
       :collection-id="collection"
       :signed-in="signedIn"
-      :can-follow="signedIn"
+      :can-follow="collectionKind === 'other' && collectionsRead"
       :printer-name="printerName"
       :printing="printing"
       @back="$emit('collection-back')"
@@ -596,13 +596,13 @@ export default class MuonLibrary extends Vue {
   /**
    * Whose the open collection is: yours (its own page), someone else's (the
    * public view, read-only, with Follow), or not known yet. Signed out it is
-   * always someone else's. If your own list won't read, it is treated as yours:
-   * its page then says why, as before.
+   * always someone else's. If your own list won't read, the public view shows
+   * with Follow hidden (can-follow needs the list read).
    */
   get collectionKind (): 'own' | 'other' | 'pending' {
     if (!this.collection) return 'own'
     if (!this.signedIn) return 'other'
-    if (!this.collectionsRead) return this.collectionsError ? 'own' : 'pending'
+    if (!this.collectionsRead) return this.collectionsError ? 'other' : 'pending'
     return this.collections.some(c => c.id === this.collection) ? 'own' : 'other'
   }
 
@@ -927,6 +927,7 @@ export default class MuonLibrary extends Vue {
       return
     }
     const read = ++this.collectionReads
+    this.collectionsError = ''
     try {
       const answer = await libraryClient().collections()
       if (read !== this.collectionReads || !this.signedIn) return
@@ -941,7 +942,13 @@ export default class MuonLibrary extends Vue {
 
   /** Another account's hearts must not show on this one's cards. */
   get accountId (): string | null { return cloudState.account?.id ?? null }
-  @Watch('accountId') accountChanged () { clearCardSaves() }
+  @Watch('accountId') accountChanged () {
+    clearCardSaves()
+    // The last account's collections are not this one's: ownership is unknown until they are read.
+    this.collections = []
+    this.collectionsRead = false
+    this.readCollections()
+  }
 
   /** A heart or Add to… in the quick look: the counts and Yours' shelves read again. */
   onSaved () {

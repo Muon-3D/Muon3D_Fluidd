@@ -4,8 +4,9 @@ import Vue from 'vue'
 import LibraryFollowingShelf from '../v2/LibraryFollowingShelf.vue'
 import LibraryPublicCollectionPage from '../v2/LibraryPublicCollectionPage.vue'
 import MuonLibrary from '../v2/MuonLibrary.vue'
-import { setLibraryClient } from '@/services/library/store'
+import { libraryClient, setLibraryClient } from '@/services/library/store'
 import { LibraryError } from '@/services/library/api'
+import { cloudState } from '@/services/muon-cloud/state'
 
 const flush = async () => {
   for (let i = 0; i < 4; i++) {
@@ -271,5 +272,165 @@ describe('Which page a collection opens', () => {
     expect(w.find('[data-tid="library-public-collection"]').exists()).toBe(true)
     expect(w.find('[data-tid="library-collection-sign-in"]').exists()).toBe(true)
     expect(w.find('[data-tid="library-collection-follow"]').exists()).toBe(false)
+  })
+})
+
+const deferred = <T>() => {
+  let done!: (v: T) => void
+  let fail!: (e: unknown) => void
+  const promise = new Promise<T>((resolve, reject) => { done = resolve; fail = reject })
+  return { promise, resolve: done, reject: fail }
+}
+const signInAs = (id: string | null) => { cloudState.account = id ? { id } as never : null }
+afterEach(() => signInAs(null))
+
+describe('Following follows the account', () => {
+  it('switching from A to B clears A\'s follows and reads B\'s', async () => {
+    signInAs('A')
+    const followedCollections = vi.fn(async () => ({ collections: cloudState.account?.id === 'A' ? [col('a1', 'A pick')] : [col('b1', 'B pick')] }))
+    setLibraryClient({ followedCollections } as never)
+    const w = mount(LibraryFollowingShelf, { stubs, attachTo: document.body })
+    wrappers.push(w)
+    await flush()
+    expect(w.find('[data-tid="library-following-a1"]').exists()).toBe(true)
+    signInAs('B')
+    await Vue.nextTick()
+    expect(w.find('[data-tid="library-following-a1"]').exists()).toBe(false)
+    await flush()
+    expect(w.find('[data-tid="library-following-b1"]').exists()).toBe(true)
+    expect(w.find('[data-tid="library-following-a1"]').exists()).toBe(false)
+  })
+
+  it('a read for A that lands after B signed in is dropped', async () => {
+    signInAs('A')
+    const slow = deferred<unknown>()
+    const followedCollections = vi.fn(() => cloudState.account?.id === 'A' ? slow.promise : Promise.resolve({ collections: [col('b1', 'B pick')] }))
+    setLibraryClient({ followedCollections } as never)
+    const w = mount(LibraryFollowingShelf, { stubs, attachTo: document.body })
+    wrappers.push(w)
+    await flush()
+    signInAs('B')
+    await flush()
+    slow.resolve({ collections: [col('a1', 'A pick')] })
+    await flush()
+    expect(w.find('[data-tid="library-following-a1"]').exists()).toBe(false)
+    expect(w.find('[data-tid="library-following-b1"]').exists()).toBe(true)
+  })
+
+  it('a Follow for A that is refused after B signed in does not touch B\'s page', async () => {
+    signInAs('A')
+    publicFetch(detail())
+    const refused = deferred<null>()
+    setLibraryClient({ followedCollections: vi.fn(async () => ({ collections: [] })), followCollection: vi.fn(() => refused.promise) } as never)
+    const w = mount(LibraryPublicCollectionPage, { stubs, propsData: { collectionId: 'c9', signedIn: true, canFollow: true }, attachTo: document.body })
+    wrappers.push(w)
+    await flush()
+    await w.find('[data-tid="library-collection-follow"]').trigger('click')
+    signInAs('B')
+    await flush()
+    refused.reject(new LibraryError('follow_limit', 'You can follow up to 500 collections.', 400))
+    await flush()
+    expect(w.find('[data-tid="library-collection-note"]').exists()).toBe(false)
+    expect(w.find('[data-tid="library-collection-follow"]').attributes('aria-pressed')).toBe('false')
+    expect((w.find('[data-tid="library-collection-follow"]').element as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('B\'s page does not show A as following', async () => {
+    signInAs('A')
+    publicFetch(detail())
+    const followedCollections = vi.fn(async () => ({ collections: cloudState.account?.id === 'A' ? [col('c9', 'Maker picks')] : [] }))
+    setLibraryClient({ followedCollections } as never)
+    const w = mount(LibraryPublicCollectionPage, { stubs, propsData: { collectionId: 'c9', signedIn: true, canFollow: true }, attachTo: document.body })
+    wrappers.push(w)
+    await flush()
+    expect(w.find('[data-tid="library-collection-follow"]').text()).toBe('Following')
+    signInAs('B')
+    await flush()
+    expect(w.find('[data-tid="library-collection-follow"]').text()).toBe('Follow')
+  })
+})
+
+describe('A bad id', () => {
+  it('400 and 404 both say not available, with no Try again', async () => {
+    for (const status of [400, 404]) {
+      publicFetch({ error: { code: 'x' } }, status)
+      setLibraryClient({ followedCollections: vi.fn(async () => ({ collections: [] })) } as never)
+      const w = mount(LibraryPublicCollectionPage, { stubs, propsData: { collectionId: 'not-a-uuid', signedIn: true, canFollow: true }, attachTo: document.body })
+      wrappers.push(w)
+      await flush()
+      expect(w.find('[data-tid="library-collection-unavailable"]').exists()).toBe(true)
+      expect(w.find('[data-tid="library-collection-error"]').exists()).toBe(false)
+    }
+  })
+})
+
+describe('MuonLibrary: whose collection is open', () => {
+  function open (collections: () => Promise<unknown>, propsData: Record<string, unknown> = {}) {
+    setLibraryClient({
+      collections: vi.fn(collections),
+      collection: vi.fn(async () => ({ ...col('mine', 'My own'), visibility: 'private', items: [] })),
+      followedCollections: vi.fn(async () => ({ collections: [] })),
+      saved: vi.fn(async () => ({ saves: [], next_cursor: null }))
+    } as never)
+    publicFetch(detail({ id: 'theirs' }))
+    const w = mount(MuonLibrary, {
+      stubs: { ...stubs, 'library-yours-shelves': true },
+      propsData: { tab: 'yours', signedIn: true, collection: 'theirs', ...propsData },
+      mocks: { $vuetify: { breakpoint: { xsOnly: false } } },
+      attachTo: document.body
+    })
+    wrappers.push(w)
+    return w
+  }
+  const kind = (w: ReturnType<typeof open>) => (w.vm as unknown as { collectionKind: string }).collectionKind
+
+  it('pending while your list is read, then someone else\'s with Follow; yours when it is in the list', async () => {
+    const held = deferred<unknown>()
+    const w = open(() => held.promise)
+    await flush()
+    expect(kind(w)).toBe('pending')
+    expect(w.find('[data-tid="library-collection-pending"]').exists()).toBe(true)
+    expect(w.find('[data-tid="library-public-collection"]').exists()).toBe(false)
+    held.resolve({ collections: [col('mine', 'My own')] })
+    await flush()
+    expect(kind(w)).toBe('other')
+    expect(w.find('[data-tid="library-collection-follow"]').exists()).toBe(true)
+    await w.setProps({ collection: 'mine' })
+    await flush()
+    expect(kind(w)).toBe('own')
+    expect(w.find('[data-tid="library-collection-page"]').exists()).toBe(true)
+  })
+
+  it('your list failing shows the public view with Follow hidden, and a new read clears the error', async () => {
+    const w = open(async () => { throw new LibraryError('http-500', 'The Library answered 500.', 500) })
+    await flush()
+    expect(kind(w)).toBe('other')
+    expect(w.find('[data-tid="library-public-collection"]').exists()).toBe(true)
+    expect(w.find('[data-tid="library-collection-follow"]').exists()).toBe(false)
+    const held = deferred<unknown>()
+    ;(libraryClient() as unknown as { collections: () => Promise<unknown> }).collections = () => held.promise
+    ;(w.vm as unknown as { readCollections: () => void }).readCollections()
+    await flush()
+    expect((w.vm as unknown as { collectionsError: string }).collectionsError).toBe('')
+    expect(kind(w)).toBe('pending')
+    held.resolve({ collections: [] })
+    await flush()
+    expect(kind(w)).toBe('other')
+    expect(w.find('[data-tid="library-collection-follow"]').exists()).toBe(true)
+  })
+
+  it('switching account forgets the last one\'s collections', async () => {
+    signInAs('A')
+    const w = open(async () => ({ collections: cloudState.account?.id === 'A' ? [col('theirs', 'A owns it')] : [] }))
+    await flush()
+    expect(kind(w)).toBe('own')
+    const held = deferred<unknown>()
+    ;(libraryClient() as unknown as { collections: () => Promise<unknown> }).collections = () => held.promise
+    signInAs('B')
+    await flush()
+    expect(kind(w)).toBe('pending')
+    held.resolve({ collections: [] })
+    await flush()
+    expect(kind(w)).toBe('other')
   })
 })

@@ -19,7 +19,7 @@ export class CollectionUnavailable extends Error {
   }
 }
 
-/** Read `GET /v1/public/collections/:id` (404 is "not available"; anything else is a failure to retry). */
+/** Read `GET /v1/public/collections/:id` (404, or 400 for an id that is no collection, is "not available"; anything else is a failure to retry). */
 export async function loadPublicCollection (id: string, fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<CommunityCollectionDetail> {
   let response: Response
   try {
@@ -27,7 +27,7 @@ export async function loadPublicCollection (id: string, fetcher: typeof fetch = 
   } catch {
     throw new Error('The Library can\'t be reached. Check this computer\'s internet connection.')
   }
-  if (response.status === 404) throw new CollectionUnavailable()
+  if (response.status === 404 || response.status === 400) throw new CollectionUnavailable()
   if (!response.ok) throw new Error('The Library didn\'t answer. Try again.')
   const body = await response.json().catch(() => null) as CommunityCollectionDetail | null
   if (!body || typeof body.id !== 'string' || typeof body.name !== 'string' || !Array.isArray(body.items)) {

@@ -140,6 +140,7 @@ import LibraryState from './LibraryState.vue'
 import { describeLibraryError, LibraryError, type CommunityCollectionDetail } from '@/services/library/api'
 import { CollectionUnavailable, followedList, loadPublicCollection, printCount } from '@/services/library/follow'
 import { libraryClient } from '@/services/library/store'
+import { cloudState } from '@/services/muon-cloud/state'
 import { publicationPicture, saveCard, type ShelfCard } from '@/services/library/shelves'
 
 /** How many public prints have their picture read (the service sends none for them). */
@@ -204,6 +205,17 @@ export default class LibraryPublicCollectionPage extends Vue {
     this.readFollowing()
   }
 
+  get accountId (): string | null { return cloudState.account?.id ?? null }
+
+  /** Another account: the last one's Following is not this one's. */
+  @Watch('accountId')
+  onAccount () {
+    this.following = false
+    this.followBusy = false
+    this.note = ''
+    this.readFollowing()
+  }
+
   async load () {
     const read = ++this.reads
     this.busy = true
@@ -233,9 +245,10 @@ export default class LibraryPublicCollectionPage extends Vue {
       return
     }
     const id = this.collectionId
+    const account = this.accountId
     try {
       const list = followedList(await libraryClient().followedCollections())
-      if (id === this.collectionId && !this.followBusy) this.following = list.some(c => c.id === id)
+      if (id === this.collectionId && account === this.accountId && !this.followBusy) this.following = list.some(c => c.id === id)
     } catch {
       // Follow stays offered; following twice is harmless.
     }
@@ -253,20 +266,20 @@ export default class LibraryPublicCollectionPage extends Vue {
     if (!this.collection || this.followBusy) return
     const id = this.collectionId
     const was = this.following
+    const account = this.accountId
     this.followBusy = true
     this.note = ''
     this.following = !was
     try {
       if (was) await libraryClient().unfollowCollection(id)
       else await libraryClient().followCollection(id)
-      this.$emit('changed')
     } catch (error) {
-      if (id === this.collectionId) {
+      if (id === this.collectionId && account === this.accountId) {
         this.following = was
         this.note = this.refusal(error, was)
       }
     } finally {
-      this.followBusy = false
+      if (account === this.accountId) this.followBusy = false
     }
   }
 

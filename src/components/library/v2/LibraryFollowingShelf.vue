@@ -58,11 +58,12 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryShelf from './LibraryShelf.vue'
 import { describeLibraryError, type CommunityCollection } from '@/services/library/api'
 import { followedList, printCount } from '@/services/library/follow'
 import { libraryClient } from '@/services/library/store'
+import { cloudState } from '@/services/muon-cloud/state'
 
 /**
  * Following, on Yours: the public collections you follow (their name and how
@@ -80,6 +81,20 @@ export default class LibraryFollowingShelf extends Vue {
   note = ''
   busyId = ''
   private reads = 0
+
+  /** Another account signed in: the last one's follows go, and this one's are read. */
+  get accountId (): string | null { return cloudState.account?.id ?? null }
+
+  @Watch('accountId')
+  onAccount () {
+    this.reads++
+    this.collections = []
+    this.error = ''
+    this.note = ''
+    this.busyId = ''
+    this.loading = true
+    this.load()
+  }
 
   created () {
     if (this.signedIn) this.load()
@@ -109,16 +124,20 @@ export default class LibraryFollowingShelf extends Vue {
   async unfollow (collection: CommunityCollection) {
     if (this.busyId) return
     const before = this.collections
+    const account = this.accountId
     this.busyId = collection.id
     this.note = ''
     this.collections = before.filter(c => c.id !== collection.id)
     try {
       await libraryClient().unfollowCollection(collection.id)
     } catch (error) {
-      this.collections = before
-      this.note = `Couldn't unfollow ${collection.name}. ${describeLibraryError(error)}`
+      // Another account is signed in now: this refusal is not about its shelf.
+      if (account === this.accountId) {
+        this.collections = before
+        this.note = `Couldn't unfollow ${collection.name}. ${describeLibraryError(error)}`
+      }
     } finally {
-      this.busyId = ''
+      if (account === this.accountId) this.busyId = ''
     }
   }
 }
