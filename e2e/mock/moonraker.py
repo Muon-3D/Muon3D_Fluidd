@@ -453,8 +453,33 @@ async def http_generic(request):
     return web.json_response({'result': {}}, status=404)
 
 
+# What the mock has served, for a test that must say whether the page's requests ever reached it
+# (route-hold.spec.ts, KAN-2703): requests now in flight, the total served, the most in flight at once,
+# and the last few.
+SEEN: dict = {'inflight': {}, 'total': 0, 'peak': 0, 'recent': [], 'next': 0}
+
+
 @web.middleware
 async def cors(request, handler):
+    if request.path == '/__e2e/diag':
+        return web.json_response({
+            'inflight': [f"{m} {p} {round(time.time() - t, 1)}s" for m, p, t in SEEN['inflight'].values()],
+            'total': SEEN['total'], 'peak': SEEN['peak'], 'recent': SEEN['recent'][-12:]})
+    SEEN['next'] += 1
+    key = SEEN['next']
+    started = time.time()
+    SEEN['inflight'][key] = (request.method, request.path_qs[:60], started)
+    SEEN['peak'] = max(SEEN['peak'], len(SEEN['inflight']))
+    try:
+        return await _answer(request, handler)
+    finally:
+        SEEN['inflight'].pop(key, None)
+        SEEN['total'] += 1
+        SEEN['recent'].append(f"{request.method} {request.path_qs[:60]} {round((time.time() - started) * 1000)}ms")
+        del SEEN['recent'][:-40]
+
+
+async def _answer(request, handler):
     if request.method == 'OPTIONS':
         resp = web.Response()
     else:
