@@ -155,7 +155,8 @@ test('detail High asks for the accurate model, and Auto comes back as it was', a
   await expect(stage(page)).toHaveAttribute('data-detail', 'auto')
 })
 
-test('the 3D printer off, with no camera, shows the still picture on Overview', async ({ page, open }) => {
+// Quarantined (KAN-2856): on CI's software GL the loader never clears within 60 s; root cause open.
+test.fixme('the 3D printer off, with no camera, shows the still picture on Overview', async ({ page, open }) => {
   await simpleModel(page)
   const printer = await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await open('/')
