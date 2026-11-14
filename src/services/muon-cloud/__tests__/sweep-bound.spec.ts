@@ -31,7 +31,7 @@ function silentNetwork () {
   calls = []
   inFlight = 0
   peak = 0
-  vi.stubGlobal('fetch', vi.fn((url: unknown, init: RequestInit = {}) => new Promise((_, reject) => {
+  vi.stubGlobal('fetch', vi.fn((url: unknown, init: RequestInit = {}) => new Promise((_resolve, reject) => {
     const signal = init.signal as AbortSignal
     const call: Call = { url: String(url), signal, startedAt: Date.now(), abortedAt: null }
     calls.push(call)
@@ -48,10 +48,10 @@ function silentNetwork () {
 const isRange = (c: Call) => /^http:\/\/192\.168\.(137|1)\.\d+\/server\/muon\/identity/.test(c.url) && !c.url.startsWith('http://192.168.1.5/')
 
 async function settle (done: Promise<void>) {
-  let finished = false
-  void done.then(() => { finished = true })
-  for (let i = 0; i < 400 && !finished; i++) await vi.advanceTimersByTimeAsync(500)
-  expect(finished).toBe(true)
+  const state = { finished: false }
+  done.then(() => { state.finished = true }, () => {})
+  for (let i = 0; i < 400 && !state.finished; i++) await vi.advanceTimersByTimeAsync(500)
+  expect(state.finished).toBe(true)
 }
 
 beforeEach(() => {
