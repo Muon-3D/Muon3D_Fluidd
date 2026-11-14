@@ -425,7 +425,37 @@ function stopPolling () {
   stopPollTimer = stopPrintersTimer = null
 }
 
-async function dropSession () {
+/**
+ * KAN-1389: while something on screen must outlive the session (the recovery codes, which are the only copy),
+ * a session that ends is remembered, not acted on: the account stays, so the page and its dialog stay mounted.
+ * `releaseSignOut` lets it through. Counted, so two holders do not release each other's hold.
+ */
+let signOutHolds = 0
+let dropDeferred = false
+
+/** Defers every session-ended drop (a refused call, another tab's sign-out, the focus check) until `releaseSignOut`. */
+export function holdSignOut () {
+  signOutHolds++
+}
+
+/**
+ * Lets go of one hold. When the last one goes, a session that ended meanwhile is dropped now, unless
+ * `dropNow` is false (the caller signs out itself right after, which does the same).
+ */
+export function releaseSignOut (dropNow = true) {
+  if (signOutHolds > 0) signOutHolds--
+  if (signOutHolds === 0 && dropDeferred) {
+    dropDeferred = false
+    if (dropNow) dropSession(true)
+  }
+}
+
+async function dropSession (force = false) {
+  if (signOutHolds > 0 && !force) {
+    dropDeferred = true
+    return
+  }
+  dropDeferred = false
   forgetOwnAvatar()
   stopPolling()
   sessionAbort.abort()
@@ -574,7 +604,7 @@ export async function signOut (): Promise<boolean> {
   if (centralLoginEnabled()) {
     // The console ends the browser session and every session issued from
     // it, this one included, and tells the other surfaces.
-    await dropSession()
+    await dropSession(true)
     forgetBrowserKey()
     setActiveCloudPrinter(null)
     signOutCentral()
@@ -583,7 +613,7 @@ export async function signOut (): Promise<boolean> {
   try {
     await cloudApi.signOut()
   } catch { /* the session ends here either way; on plain HTTP there is none and the call is refused unsent */ }
-  await dropSession()
+  await dropSession(true)
   forgetBrowserKey()
   setActiveCloudPrinter(null)
   return false

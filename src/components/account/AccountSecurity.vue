@@ -604,7 +604,7 @@ import M3Dialog from '@/components/ui/M3Dialog.vue'
 import AppQrCode from '@/components/ui/AppQrCode.vue'
 import ReauthDialog from './ReauthDialog.vue'
 import AcctMore from './AcctMore.vue'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, holdSignOut, releaseSignOut } from '@/services/muon-cloud/state'
 import { accountApi, type AccountDetails, type Identity, type Me, type Passkey } from '@/services/account/api'
 import { endsSession, isMissing } from '@/services/account/client'
 import { signOutNow } from '@/services/account/sign-out'
@@ -645,6 +645,26 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
 
   created () {
     this.refresh()
+  }
+
+  /** The hold on the sign-out must not outlive this page (KAN-1389). */
+  beforeDestroy () {
+    this.releaseHold(true)
+  }
+
+  private holding = false
+
+  /** Keeps a session that ends from taking the page, and the recovery codes on it, away before they are read. */
+  holdForCodes () {
+    if (this.holding) return
+    this.holding = true
+    holdSignOut()
+  }
+
+  releaseHold (dropNow: boolean) {
+    if (!this.holding) return
+    this.holding = false
+    releaseSignOut(dropNow)
   }
 
   refresh () {
@@ -738,12 +758,14 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     this.codes = []
     this.setup = null
     if (this.endsAfterCodes) this.signOutAfter('two-step')
+    else this.releaseHold(true)
   }
 
   /** The console ended this session with the person's own change (KAN-1389): to the sign-in page, saying why. */
   async signOutAfter (reason: SignedOutReason) {
     this.endsAfterCodes = false
     this.dialog = ''
+    this.releaseHold(false)
     await signOutNow('browser', { reason, router: this.$router })
   }
 
@@ -891,7 +913,8 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
       if (setup) {
         // Replacing an unreadable secret answers with no secret and ends the session (KAN-1389): nothing to scan.
         if (!setup.secret) {
-          if (endsSession(setup)) await this.signOutAfter('two-step')
+          if (!endsSession(setup)) throw new Error('Two-step sign-in could not be started. Try again.')
+          await this.signOutAfter('two-step')
           return
         }
         this.open('twoStep')
@@ -905,10 +928,14 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     await this.run(async () => {
       const answer = await accountApi.totpConfirm(code)
       this.codes = answer.recovery_codes
-      // The codes are shown first: they are the only copy.
+      this.form.code = ''
+      this.setup = null
+      // The codes are shown first: they are the only copy. A session the console ended with them stays until Done.
       this.endsAfterCodes = endsSession(answer)
+      if (this.endsAfterCodes) this.holdForCodes()
     }, true)
-    loadMe().catch(() => {})
+    // The session is gone when the console ended it: asking who is signed in would only be refused.
+    if (!this.endsAfterCodes) loadMe().catch(() => {})
   }
 
   async twoStepOff () {
@@ -940,6 +967,7 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
           this.form.code = ''
           this.codes = answer.recovery_codes
           this.endsAfterCodes = endsSession(answer)
+          if (this.endsAfterCodes) this.holdForCodes()
           this.dialog = 'twoStep'
         }
       } catch (error) {
@@ -950,7 +978,7 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
         throw error
       }
     })
-    loadMe().catch(() => {})
+    if (!this.endsAfterCodes) loadMe().catch(() => {})
   }
 
   async copyCodes () {

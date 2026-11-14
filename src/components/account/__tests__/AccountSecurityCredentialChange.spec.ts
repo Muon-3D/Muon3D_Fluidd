@@ -100,9 +100,12 @@ describe('after a two-step change', () => {
     const w = mount()
     const vm = w.vm as any
     vm.open('twoStep'); vm.form.code = '123456'
+    vm.setup = { secret: 'ABCDEFGH', otpauth_url: 'otpauth://totp/x' }
     vi.spyOn(accountApi, 'totpConfirm').mockResolvedValue({ ok: true, recovery_codes: ['aaaa-bbbb'], signed_out: true } as any)
     await vm.confirmTwoStep()
     expect(vm.codes).toEqual(['aaaa-bbbb'])
+    expect(vm.form.code).toBe('')
+    expect(vm.setup).toBeNull()
     expect(signOutNow).not.toHaveBeenCalled()
     vm.close()
     await Promise.resolve()
@@ -140,6 +143,17 @@ describe('starting two-step sign-in (KAN-1389)', () => {
     vi.spyOn(accountApi, 'totpBegin').mockResolvedValue({ secret: 'ABCDEFGH', otpauth_url: 'otpauth://totp/x' } as any)
     await vm.startTwoStep()
     expect(vm.setup.secret).toBe('ABCDEFGH')
+    expect(signOutNow).not.toHaveBeenCalled()
+    w.destroy()
+  })
+
+  it('an answer with no secret that does not end the session says so instead of doing nothing', async () => {
+    const w = mount()
+    const vm = w.vm as any
+    vi.spyOn(accountApi, 'totpBegin').mockResolvedValue({ ok: true, session: { access_token: 'n', refresh_token: 'r' } } as any)
+    await vm.startTwoStep()
+    expect(vm.error).toBe('Two-step sign-in could not be started. Try again.')
+    expect(vm.setup).toBeNull()
     expect(signOutNow).not.toHaveBeenCalled()
     w.destroy()
   })
