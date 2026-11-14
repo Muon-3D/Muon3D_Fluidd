@@ -230,6 +230,23 @@ export class PrinterSession {
      */
     close(): void;
     /**
+     * Resolves when the connection ends, to `{ kind, reason }`, and `code`
+     * for a refusal:
+     *
+     * * `"closed"`: this side closed it, with this session's `close()` or
+     *   the endpoint's;
+     * * `"refused"`: the printer closed it with the `NET-17` `code` and
+     *   `reason` it gave, the same values a rejected `fetch` carries;
+     * * `"lost"`: anything else, a transport fault, with its description.
+     *
+     * The outcomes of `muon-link-mobile`'s `closed()`, read the same way
+     * (`muon-link-client`'s close reason), except that the last two resolve
+     * rather than reject: a page waits on this as an event, and nothing it
+     * asked for has failed. A pending `closed()` holds the connection open:
+     * freeing this object does not end it, `close()` does.
+     */
+    closed(): Promise<any>;
+    /**
      * `SEC-7`'s comparison value of this session's connection, grouped as
      * `F6Q TDH` (ADR 0032 D7). The printer shows the same six symbols for the
      * same connection; a page setting a printer up over Web Bluetooth shows
@@ -299,6 +316,22 @@ export class Socket {
 export function decodeInfo(bytes: Uint8Array): any;
 
 /**
+ * `endpointIdOf(secret)`: the EndpointId of a 32-byte secret key, 64
+ * lowercase hex characters, without binding an endpoint.
+ */
+export function endpointIdOf(secret: Uint8Array): string;
+
+/**
+ * `signEndpointProof(secret, nonceHex, endpointIdHex)`: the hex Ed25519
+ * signature `PUT /v1/me/endpoint` takes, over the console's proof message.
+ *
+ * `nonceHex` is the nonce from the console's challenge answer, and
+ * `endpointIdHex` must be this key's own EndpointId, as `endpointIdOf`
+ * gives it. Anything else throws, and nothing is signed.
+ */
+export function signEndpointProof(secret: Uint8Array, nonceHex: string, endpointIdHex: string): string;
+
+/**
  * The GATT identifiers: `{ service, info, rx, tx }`.
  */
 export function uuids(): any;
@@ -327,6 +360,7 @@ export interface InitOutput {
     readonly blelink_setTransmitNotify: (a: number, b: number) => void;
     readonly blelink_tryNextSegment: (a: number, b: number) => void;
     readonly decodeInfo: (a: number, b: number, c: number) => void;
+    readonly endpointIdOf: (a: number, b: number, c: number) => void;
     readonly muonendpoint_addLink: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly muonendpoint_beginPairing: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly muonendpoint_close: (a: number) => number;
@@ -340,11 +374,13 @@ export interface InitOutput {
     readonly pairing_submitCode: (a: number, b: number) => number;
     readonly printersession_announce: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly printersession_close: (a: number) => void;
+    readonly printersession_closed: (a: number) => number;
     readonly printersession_comparison: (a: number, b: number) => void;
     readonly printersession_fetch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
     readonly printersession_nextNotice: (a: number) => number;
     readonly printersession_openWebSocket: (a: number, b: number, c: number) => number;
     readonly printersession_printerId: (a: number, b: number) => void;
+    readonly signEndpointProof: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly socket_close: (a: number) => number;
     readonly socket_next: (a: number) => number;
     readonly socket_send: (a: number, b: number, c: number) => number;
@@ -363,15 +399,15 @@ export interface InitOutput {
     readonly intounderlyingsource_cancel: (a: number) => void;
     readonly intounderlyingsource_pull: (a: number, b: number) => number;
     readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly __wasm_bindgen_func_elem_9835: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_9837: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4144: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2406: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4941: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4012: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4365: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4397: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_9733: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9851: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_9853: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4159: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_2435: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4956: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4027: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4380: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4412: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9749: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

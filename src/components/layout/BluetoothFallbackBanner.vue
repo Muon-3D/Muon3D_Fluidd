@@ -141,7 +141,10 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
   }
 
   lanReachable (e: DirectoryEntry | null): boolean {
-    return !!e && (!!e.lan || !!e.host)
+    // The same local-route logic as Connect locally. A 'tab' route opens a page only on a click, so it is no automatic way in.
+    if (!e) return false
+    const kind = this.localRouteFor(e).kind
+    return kind === 'lan' || kind === 'secure'
   }
 
   get droppedSheet (): DroppedSheet | null {

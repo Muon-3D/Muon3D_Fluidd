@@ -509,6 +509,13 @@
       class="note"
     >
       {{ notice }}
+      <a
+        v-if="noticeLink"
+        :href="noticeLink"
+        target="_blank"
+        rel="noopener"
+        data-tid="notice-link"
+      >{{ noticeLink }}</a>
     </p>
     <p
       v-if="nearby.error"

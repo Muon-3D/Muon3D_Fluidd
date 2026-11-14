@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { activationState } from '@/services/muon-cloud/activate'
+import { cloudState } from '@/services/muon-cloud/state'
 import type { CardAction, DirectoryEntry } from '@/services/muon-cloud/directory'
 
 const nearby = vi.hoisted(() => ({
@@ -44,6 +45,7 @@ beforeEach(() => {
   nearby.permittedPrinterFor.mockReset().mockResolvedValue(null)
   pairing.startPairing.mockClear()
   activationState.pairing = null
+  cloudState.ready = true
 })
 
 describe('Connect over Bluetooth without Look nearby (I-129)', () => {
@@ -90,6 +92,15 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
     await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
     expect(nearby.lookNearby).not.toHaveBeenCalled()
     expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
+  })
+
+  it('an explicit choice uses a remembered device that no advert has been heard from (heardAt 0)', async () => {
+    const device = { remembered: true }
+    nearby.permittedPrinterFor.mockResolvedValue({ device, endpointId: 'walnut', heardAt: 0 })
+    const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
+    await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
+    expect(nearby.lookNearby).not.toHaveBeenCalled()
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
   })
 
   it('goes straight into pairing when the printer refused this browser', async () => {
@@ -145,12 +156,38 @@ describe('the Connect over Bluetooth button (KAN-2470)', () => {
     expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
   })
 
-  it('leaves a new printer to the Bluetooth list: nothing is opened', async () => {
-    nearby.lookNearby.mockResolvedValue({ device: {}, endpointId: 'brand-new' })
-    const c = page([entry(true, false)])
+  it('sends a printer that is not on the account to its set-up, never a silent no-op (KAN-2530)', async () => {
+    const heardNew = { deviceId: 'd1', device: {}, endpointId: 'brand-new', display: 'Walnut · 8987' }
+    nearby.lookNearby.mockResolvedValue(heardNew)
+    const found = { name: 'Walnut', nearby: heardNew }
+    const c = { ...page([entry(true, false)]), openFoundEntry: vi.fn() }
+    c.directory = { cloud: [entry(true, false)], found: [found], local: [] } as never
     await methods.onConnectOverBluetooth.call(c)
     expect(c.connectCloud).not.toHaveBeenCalled()
-    expect(c.notice).toBeNull()
+    expect(c.openFoundEntry).toHaveBeenCalledWith(found)
+  })
+
+  it('says so when the printer has no EndpointId', async () => {
+    nearby.lookNearby.mockResolvedValue({ deviceId: 'd1', device: {}, endpointId: null, display: 'Walnut · 8987' })
+    const c = page([entry(true, false)])
+    await methods.onConnectOverBluetooth.call(c)
+    expect(c.notice).toMatch(/Couldn't tell which printer/)
+  })
+
+  it('says the account is still loading rather than guessing', async () => {
+    cloudState.ready = false
+    nearby.lookNearby.mockResolvedValue({ deviceId: 'd1', device: {}, endpointId: 'brand-new', display: 'Walnut' })
+    const c = page([entry(true, false)])
+    await methods.onConnectOverBluetooth.call(c)
+    expect(c.notice).toMatch(/still loading/)
+  })
+
+  it('still says something when the heard printer is listed nowhere', async () => {
+    nearby.lookNearby.mockResolvedValue({ deviceId: 'd1', device: {}, endpointId: 'brand-new', display: 'Walnut · 8987' })
+    const c = { ...page([]), openFoundEntry: vi.fn() }
+    c.directory = { cloud: [], found: [], local: [] } as never
+    await methods.onConnectOverBluetooth.call(c)
+    expect(c.notice).toMatch(/Walnut · 8987 was found over Bluetooth/)
   })
 
   it('does nothing, and says nothing, when the chooser is dismissed', async () => {
