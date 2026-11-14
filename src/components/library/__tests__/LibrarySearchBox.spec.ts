@@ -1,8 +1,8 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const suggestions = vi.fn(async () => [])
-vi.mock('@/services/library/catalogue', () => ({ suggestions: (...args: unknown[]) => suggestions(...(args as [])) }))
+const suggestions = vi.fn<[query: string, signal?: AbortSignal], Promise<unknown[]>>(async () => [])
+vi.mock('@/services/library/catalogue', () => ({ suggestions: (query: string, signal?: AbortSignal) => suggestions(query, signal) }))
 
 // eslint-disable-next-line import/first
 import LibrarySearchBox from '../v2/LibrarySearchBox.vue'
