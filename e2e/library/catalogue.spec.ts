@@ -82,7 +82,12 @@ test('debounced suggestions support arrows, Enter and Escape; results update ins
   const search = page.getByTestId('library-discover-find')
   await search.pressSequentially('Print', { delay: 20 })
   await expect(page.getByRole('option').first()).toBeVisible()
-  expect(catalogue.urls.filter(u => u.pathname.endsWith('/suggestions'))).toHaveLength(1)
+  // The suggestions are for what was typed, last. How many requests the 250 ms debounce sent is timing a busy CI
+  // runner can't hold (a 20 ms keystroke gap stretched past 250 ms there, three requests, 14 Nov): that belongs
+  // in a fake-timer unit test (KAN-2904), not here.
+  const asked = catalogue.urls.filter(u => u.pathname.endsWith('/suggestions'))
+  expect(asked.length).toBeGreaterThan(0)
+  expect(asked.at(-1)!.searchParams.get('q')).toBe('Print')
   await search.press('ArrowDown')
   await expect(search).toHaveAttribute('aria-activedescendant', /-0$/)
   await search.press('Enter')
