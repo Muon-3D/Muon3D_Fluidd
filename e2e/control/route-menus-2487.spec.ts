@@ -56,20 +56,39 @@ async function allPrinters (page: Page) {
 
 const cardMenu = (page: Page, name: string) => page.locator(`button[aria-label="Options for ${name}"]`)
 
-/** Opens the printer page's three dots and waits for its items. */
-async function pageMenu (page: Page) {
-  await page.getByTestId('printer-page-menu-button').click()
-  await expect(page.getByRole('menuitem').first()).toBeVisible()
+/**
+ * Opens the printer's menu: the three dots on its own page, or, on a phone where the page has
+ * none, the printer's card in the switcher. Both list the same routes.
+ */
+async function pageMenu (page: Page, isMobile = false) {
+  if (isMobile) {
+    // The phone's printer switcher lists the printer's card, with the same menu as All printers.
+    if (!await cardMenu(page, ROUTE_PRINTER.name).isVisible()) {
+      await page.getByRole('button', { name: 'Switch printer' }).click()
+    }
+    await cardMenu(page, ROUTE_PRINTER.name).click()
+  } else {
+    await page.getByTestId('printer-page-menu-button').click()
+  }
+  await expect(page.locator('.menuable__content__active [data-action]').first()).toBeVisible()
 }
 
 test.beforeEach(async ({ page, account }) => {
   await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
   await useAllRoutes(page, account)
+  // The printer's own identity names the EndpointId the account lists it under, as a real printer's does,
+  // so asking it again (the switcher does, on opening) keeps it the same printer.
+  await page.route(`http://localhost:${MOCK_PORT}/server/muon/identity`, route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    headers: { 'access-control-allow-origin': '*' },
+    body: JSON.stringify({ name: 'Boxwood', display: ROUTE_PRINTER.name, derived_name: 'boxwood', suffix: '367a', endpoint_id: ROUTE_PRINTER.id })
+  }))
   // A second printer on the account, never opened here: its menu is the main menu.
   account.printers.push({ ...account.printers[0], id: SLOE.id, name: SLOE.name })
 })
 
-test('the printer menu lists the routes it is not on, and follows the route it is on', async ({ page }) => {
+test('the printer menu lists the routes it is not on, and follows the route it is on', async ({ page, isMobile }) => {
   await allPrinters(page)
   await cardMenu(page, ROUTE_PRINTER.name).click()
   await item(page, 'Connect over Bluetooth').click()
@@ -77,7 +96,7 @@ test('the printer menu lists the routes it is not on, and follows the route it i
   await expect.poll(() => where(page)).toMatchObject({ socketOpen: true, mode: 'ble' })
 
   // On Bluetooth: Muon3D and Locally, never Bluetooth (Jack: "it still has connect over bluetooth").
-  await pageMenu(page)
+  await pageMenu(page, isMobile)
   await expect(item(page, 'Connect through Muon3D')).toBeVisible()
   await expect(route(page, ID.local)).toBeVisible()
   await expect(item(page, 'Connect over Bluetooth')).toHaveCount(0)
@@ -86,26 +105,27 @@ test('the printer menu lists the routes it is not on, and follows the route it i
   await item(page, 'Connect through Muon3D').click()
   await expect.poll(() => lastRoute(page)).toBe('cloud')
   await expect.poll(() => where(page)).toMatchObject({ socketOpen: true, mode: 'cloud' })
-  await pageMenu(page)
+  await pageMenu(page, isMobile)
   await expect(item(page, 'Connect over Bluetooth')).toBeVisible()
   await expect(route(page, ID.local)).toBeVisible()
   await expect(item(page, 'Connect through Muon3D')).toHaveCount(0)
 })
 
-test('Connect locally is open on Bluetooth when the printer answers on the network, and holds the local route', async ({ page }) => {
+test('Connect locally is open on Bluetooth when the printer answers on the network, and holds the local route', async ({ page, isMobile }) => {
   await allPrinters(page)
   await cardMenu(page, ROUTE_PRINTER.name).click()
   await item(page, 'Connect over Bluetooth').click()
   await expect.poll(() => lastRoute(page)).toBe('ble')
   await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
 
-  await pageMenu(page)
+  await pageMenu(page, isMobile)
   // Not on the network yet: greyed.
   await expect(route(page, ID.local)).toHaveClass(greyed)
   await page.keyboard.press('Escape')
+  await expect(page.locator('.menuable__content__active')).toHaveCount(0)
 
   await reachOnLan(page)
-  await pageMenu(page)
+  await pageMenu(page, isMobile)
   await expect(route(page, ID.local)).not.toHaveClass(greyed)
   await item(page, 'Connect locally').click()
   await expect.poll(async () => (await where(page)).apiUrl).toBe(`http://localhost:${MOCK_PORT}`)
@@ -115,13 +135,17 @@ test('Connect locally is open on Bluetooth when the printer answers on the netwo
 test('the main menu of a printer that is not open lists all three, with the unavailable one greyed and why', async ({ page }) => {
   await allPrinters(page)
   await cardMenu(page, SLOE.name).click()
-  await expect(route(page, ID.local)).toBeVisible()
-  await expect(route(page, ID.cloud)).toBeVisible()
-  await expect(route(page, ID.bluetooth)).toBeVisible()
-  // Not found on this network: greyed, with a line saying so.
-  await expect(route(page, ID.local)).toHaveClass(greyed)
-  await expect(route(page, ID.local)).toContainText(/network|this page/i)
-  await expect(route(page, ID.cloud)).not.toHaveClass(greyed)
+  // One read of the open menu, so a redraw between checks cannot split the answer.
+  await expect.poll(() => page.locator('.menuable__content__active [data-action]').evaluateAll(els => els.map(el => ({
+    id: (el as HTMLElement).dataset.action,
+    greyed: el.classList.contains('v-list-item--disabled'),
+    text: el.textContent ?? ''
+  })).filter(i => i.id?.startsWith('connect-')))).toMatchObject([
+    // Not found on this network: greyed, with a line saying so.
+    { id: ID.local, greyed: true, text: expect.stringMatching(/network|this page/i) },
+    { id: ID.cloud, greyed: false },
+    { id: ID.bluetooth, greyed: false }
+  ])
 })
 
 test('a known printer shows on the network before any session is opened to it', async ({ page }) => {
