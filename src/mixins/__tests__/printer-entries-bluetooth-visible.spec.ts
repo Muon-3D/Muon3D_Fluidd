@@ -100,7 +100,7 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
     const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
     expect(nearby.lookNearby).not.toHaveBeenCalled()
-    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
   })
 
   it('goes straight into pairing when the printer refused this browser', async () => {
