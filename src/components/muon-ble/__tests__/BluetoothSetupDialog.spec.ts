@@ -133,6 +133,30 @@ describe('setup over Bluetooth from the hosted page', () => {
     expect(tid(wrapper, 'ble-use-wifi').exists()).toBe(reason !== 'set-up')
   })
 
+  it('offers to pair with a printer that is set up already, and hands it over (signed in or not)', async () => {
+    const wrapper = mount(async () => ({ ok: false, reason: 'set-up', message: '' }))
+    await flush(wrapper)
+    const pair = tid(wrapper, 'ble-pair-instead')
+    expect(pair.exists()).toBe(true)
+    expect(pair.text()).toContain('Pair over Bluetooth')
+    await (wrapper.vm as any).pairInstead()
+    expect(wrapper.emitted('pair')?.[0]).toEqual([WALNUT])
+    expect(wrapper.emitted('input')?.[0]).toEqual([false])
+  })
+
+  it('offers no pairing when the printer is not set up, or its id is unknown', async () => {
+    const unreachable = mount(async () => ({ ok: false, reason: 'unreachable', message: '' }))
+    await flush(unreachable)
+    expect(tid(unreachable, 'ble-pair-instead').exists()).toBe(false)
+    const noId = shallowMount(BluetoothSetupDialog, {
+      propsData: { value: true, printer: { ...WALNUT, endpointId: null }, connector: async () => ({ ok: false, reason: 'set-up', message: '' }) },
+      stubs: { SetupStepCard, BluetoothCodeBoxes, BluetoothSheet: { template: '<div><slot /></div>' } },
+      mocks: { $t: (k: string) => k }
+    })
+    await flush(noId)
+    expect(tid(noId as any, 'ble-pair-instead').exists()).toBe(false)
+  })
+
   it('tries again with a new connection', async () => {
     const connector = vi.fn(async (): Promise<BleSetupResult> => ({ ok: false, reason: 'unreachable', message: '' }))
     const wrapper = mount(connector)

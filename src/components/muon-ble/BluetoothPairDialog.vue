@@ -153,7 +153,8 @@
 <script lang="ts">
 import { Component, Vue, Watch } from 'vue-property-decorator'
 import { cancelPairing, pairingState, startPairing, submitPairingCode } from '@/services/muon-ble/pairing'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, reachablePrinters } from '@/services/muon-cloud/state'
+import { printerHomePath } from '@/services/printer-pages'
 import SetupStepCard from '@/components/muon-setup/SetupStepCard.vue'
 import BluetoothSheet from './BluetoothSheet.vue'
 import BluetoothCodeBoxes from './BluetoothCodeBoxes.vue'
@@ -175,7 +176,7 @@ export default class BluetoothPairDialog extends Vue {
 
   get printerName (): string {
     const id = pairingState.printerId
-    return cloudState.printers.find(p => p.id === id)?.name || 'the printer'
+    return reachablePrinters().find(p => p.id === id)?.name || 'the printer'
   }
 
   /** Step 1 finds it; the code and the printer's Confirm are step 2. */
@@ -188,8 +189,13 @@ export default class BluetoothPairDialog extends Vue {
     if (phase === 'code' || phase === 'idle') this.code = ''
   }
 
-  submit () {
-    return submitPairingCode(this.code)
+  async submit () {
+    const id = pairingState.printerId
+    await submitPairingCode(this.code)
+    // Paired, and the printer is open: its own page follows, as for a printer opened from the list.
+    if (id && pairingState.phase === 'idle' && cloudState.activePrinterId === id) {
+      await this.$router.push(printerHomePath()).catch(() => {})
+    }
   }
 
   cancel () {

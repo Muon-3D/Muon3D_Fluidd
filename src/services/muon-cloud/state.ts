@@ -826,6 +826,25 @@ export async function saveLayout (layout: FleetLayout) {
   }
 }
 
+/**
+ * Printers opened over Bluetooth that no account holds here (nobody is signed
+ * in, or it is not linked): their names by EndpointId. Without a name the
+ * open printer has no page address, and the person stays on the list.
+ */
+export const bluetoothOnly = Vue.observable({ names: {} as Record<string, string> })
+
+export function rememberBluetoothOnly (id: string, name: string) {
+  Vue.set(bluetoothOnly.names, id, name)
+}
+
+/** The account's printers, then those opened over Bluetooth that it does not hold. */
+export function reachablePrinters (): Array<{ id: string, name: string }> {
+  const extra = Object.entries(bluetoothOnly.names)
+    .filter(([id]) => !cloudState.printers.some(p => p.id === id))
+    .map(([id, name]) => ({ id, name }))
+  return [...cloudState.printers, ...extra]
+}
+
 export function printerName (id: string): string {
-  return cloudState.printers.find(p => p.id === id)?.name ?? id.slice(0, 8)
+  return reachablePrinters().find(p => p.id === id)?.name ?? id.slice(0, 8)
 }

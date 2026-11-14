@@ -131,7 +131,20 @@
           </template>
         </p>
         <template
-          v-if="failure !== 'set-up'"
+          v-if="failure === 'set-up' && printer.endpointId"
+          #footer
+        >
+          <!-- Set up already: not for setup, but this browser can pair with it over Bluetooth, signed in or not. -->
+          <app-btn
+            color="primary"
+            data-tid="ble-pair-instead"
+            @click="pairInstead"
+          >
+            Pair over Bluetooth
+          </app-btn>
+        </template>
+        <template
+          v-else-if="failure !== 'set-up'"
           #footer
         >
           <v-btn
@@ -397,6 +410,13 @@ export default class BluetoothSetupDialog extends Vue {
   finish () {
     this.open = false
     this.$emit('finished')
+  }
+
+  /** Hangs up this setup attempt, then hands the printer to the pairing way in. */
+  async pairInstead () {
+    await this.hangUp()
+    this.open = false
+    this.$emit('pair', this.printer)
   }
 }
 </script>

@@ -15,12 +15,12 @@ vi.mock('@/services/muon-ble/pairing', async () => {
 const state = service.pairingState as { phase: string, printerId: string | null, comparison: string, message: string | null }
 
 const source = vi.hoisted(() => ({
-  cloudState: { ready: true, account: { id: 'account' }, printers: [{ id: 'boxwood', name: 'Boxwood', online: false, last_seen: 0 }], status: {} },
+  cloudState: { ready: true, activePrinterId: null as string | null, account: { id: 'account' }, printers: [{ id: 'boxwood', name: 'Boxwood', online: false, last_seen: 0 }], status: {} },
   activationState: { switching: null as string | null, error: null as string | null, fallbackUrl: null, pairing: null as string | null }
 }))
-vi.mock('@/services/muon-cloud/state', () => ({ cloudState: source.cloudState }))
+vi.mock('@/services/muon-cloud/state', () => ({ cloudState: source.cloudState, reachablePrinters: () => source.cloudState.printers }))
 vi.mock('@/services/muon-cloud/activate', () => ({ activationState: source.activationState }))
-vi.mock('@/services/printer-pages', () => ({ resolveSlug: () => ({ kind: 'cloud', printerId: 'boxwood' }), printerPagesState: { missing: null }, openPrinterAt: vi.fn() }))
+vi.mock('@/services/printer-pages', () => ({ resolveSlug: () => ({ kind: 'cloud', printerId: 'boxwood' }), printerPagesState: { missing: null }, openPrinterAt: vi.fn(), printerHomePath: () => '/boxwood-367a' }))
 
 const { default: BluetoothPairDialog } = await import('../BluetoothPairDialog.vue')
 const { default: PrinterOpening } = await import('@/components/muon-cloud/PrinterOpening.vue')
@@ -50,6 +50,38 @@ describe('the pairing dialog (KAN-1253)', () => {
     await wrapper.find('[data-tid="pair-code"] input, input[data-tid="pair-code"]').setValue('1234 5678')
     await wrapper.find('[data-tid="pair-submit"]').trigger('click')
     expect(service.submitPairingCode).toHaveBeenCalledWith('1234 5678')
+  })
+
+  it('goes to the printer once it is paired and open, signed in or not', async () => {
+    state.phase = 'code'
+    state.printerId = 'boxwood'
+    source.cloudState.activePrinterId = null
+    const push = vi.fn(async () => {})
+    const wrapper = mount(BluetoothPairDialog, { stubs })
+    // Whether or not another file in this worker installed the real router on Vue.
+    Object.defineProperty(wrapper.vm, '$router', { configurable: true, value: { push } })
+    ;(service.submitPairingCode as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      state.phase = 'idle'
+      source.cloudState.activePrinterId = 'boxwood'
+    })
+    await wrapper.find('[data-tid="pair-code"] input, input[data-tid="pair-code"]').setValue('12345678')
+    await wrapper.find('[data-tid="pair-submit"]').trigger('click')
+    await vi.waitFor(() => expect(push).toHaveBeenCalledWith('/boxwood-367a'))
+    state.printerId = null
+  })
+
+  it('stays where it is when the code was wrong', async () => {
+    state.phase = 'code'
+    state.printerId = 'boxwood'
+    const push = vi.fn(async () => {})
+    const wrapper = mount(BluetoothPairDialog, { stubs })
+    // Whether or not another file in this worker installed the real router on Vue.
+    Object.defineProperty(wrapper.vm, '$router', { configurable: true, value: { push } })
+    await wrapper.find('[data-tid="pair-code"] input, input[data-tid="pair-code"]').setValue('87654321')
+    await wrapper.find('[data-tid="pair-submit"]').trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(push).not.toHaveBeenCalled()
+    state.printerId = null
   })
 
   it('can be cancelled at every step', async () => {
