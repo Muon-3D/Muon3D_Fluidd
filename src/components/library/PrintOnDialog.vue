@@ -270,12 +270,12 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
   .print-on__name { font-weight: 600; }
 
   .print-on__here {
-    color: var(--m3d-text-subtle);
+    color: var(--m3d-text-muted);
     font-weight: 400;
   }
 
   .print-on__line {
-    color: var(--m3d-text-subtle);
+    color: var(--m3d-text-muted);
     font-size: 12px;
   }
 
@@ -301,7 +301,7 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
 
   .print-on__why {
     margin: 6px 0 0 52px;
-    color: var(--m3d-text-subtle);
+    color: var(--m3d-text-muted);
     font-size: 12px;
   }
 
@@ -361,7 +361,7 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
     padding: 0;
     border: 0;
     background: none;
-    color: var(--m3d-text-subtle);
+    color: var(--m3d-text-muted);
     font: inherit;
     font-size: 13px;
     cursor: pointer;
@@ -373,10 +373,10 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
   .print-on__fine {
     flex-basis: 100%;
     margin: 4px 0 0;
-    color: var(--m3d-text-subtle);
+    color: var(--m3d-text-muted);
     font-size: 12px;
 
-    a { color: var(--m3d-accent); }
+    a { color: var(--mlib-link, var(--m3d-accent)); }
   }
 
   // The switch's slide and fade are decoration: off for anyone who asked for less motion.

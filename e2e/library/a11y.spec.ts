@@ -25,19 +25,19 @@ async function settled (page: Page) {
 }
 
 /**
- * axe on the Library root. serious and critical findings fail the test, and
- * the message names each rule and the elements it found, so a red run says
- * what to fix without opening a trace.
+ * axe on part of the page. serious and critical findings are added to
+ * `found` (rule, impact, what it is and the elements), not asserted at once, so
+ * one run reports every view's problems; the test asserts `found` at its end.
  */
-async function expectNoSeriousViolations (page: Page, view: string) {
+async function scan (page: Page, view: string, found: string[], within = '[data-tid="muon-library"]') {
   const { violations } = await new AxeBuilder({ page })
-    .include('[data-tid="muon-library"]')
+    .include(within)
     .withTags(['wcag2a', 'wcag2aa'])
     .analyze()
-  const serious = violations
-    .filter(v => v.impact === 'serious' || v.impact === 'critical')
-    .map(v => `${view}: ${v.id} (${v.impact}) ${v.help}: ${v.nodes.map(n => n.target.join(' ')).join(' | ')}`)
-  expect(serious, `axe found serious or critical problems:\n${serious.join('\n')}`).toEqual([])
+  for (const v of violations) {
+    if (v.impact !== 'serious' && v.impact !== 'critical') continue
+    found.push(`${view}: ${v.id} (${v.impact}) ${v.help}: ${v.nodes.map(n => n.target.join(' ')).join(' | ')}`)
+  }
 }
 
 /** Yours with something on every shelf the fake can fill, and a public collection to open. */
@@ -48,8 +48,10 @@ function stock (models: ModelServiceState) {
   models.others.push({ id: 'other-1', name: 'Maker picks', items: [models.publications[0].id, models.publications[1].id], visibility: 'public' })
 }
 
-test('axe finds nothing serious on Discover, Yours, a model page and a public collection', async ({ page, models, open }) => {
+test('axe finds nothing serious on Discover, Yours, a model page, Print on… and a public collection', async ({ page, models, account, open }) => {
   stock(models)
+  account.printers.push({ id: 'p-walnut', name: 'Walnut', model: 'Muon3D M1', state: 'online', version: '1', linked_at: 0, last_seen: 0, online: true, online_since: null } as never)
+  const found: string[] = []
   // Reduced motion keeps pictures and skeletons from fading while axe reads colours,
   // which would otherwise make the contrast rule flaky.
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -57,13 +59,13 @@ test('axe finds nothing serious on Discover, Yours, a model page and a public co
   await open('/library?view=discover')
   await expect(popular(page).getByRole('button', { name: /^Quick look at/ }).first()).toBeVisible()
   await settled(page)
-  await expectNoSeriousViolations(page, 'Discover')
+  await scan(page, 'Discover', found)
 
   await page.getByTestId('library-view-mine').click()
   await expect(page.getByTestId('library-shelf-sliced')).toContainText('Hex planter')
   await expect(page.getByTestId('library-collection-col-1')).toBeVisible()
   await settled(page)
-  await expectNoSeriousViolations(page, 'Yours')
+  await scan(page, 'Yours', found)
 
   await page.getByTestId('library-view-discover').click()
   await popular(page).getByRole('button', { name: 'Quick look at Print 11' }).first().click()
@@ -71,13 +73,23 @@ test('axe finds nothing serious on Discover, Yours, a model page and a public co
   await expect(page.getByTestId('library-print-title')).toHaveText('Print 11')
   await expect(page.getByTestId('library-print-profile')).toBeVisible()
   await settled(page)
-  await expectNoSeriousViolations(page, 'Model page')
+  await scan(page, 'Model page', found)
+
+  // Print on…, from the model page: a dialog outside the Library root.
+  await page.getByTestId('library-print-print').click()
+  await expect(page.getByTestId('print-on')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter(a => a.playState === 'running').length)).toBe(0)
+  await scan(page, 'Print on…', found, '[data-tid="print-on"]')
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('print-on')).toBeHidden()
 
   await open('/library?view=mine&collection=other-1')
   await expect(page.getByTestId('library-collection-title')).toHaveText('Maker picks')
   await expect(page.getByTestId('library-collection-cards').locator('.mcard__title')).toHaveText(['Print 1', 'Print 2'])
   await settled(page)
-  await expectNoSeriousViolations(page, 'Public collection')
+  await scan(page, 'Public collection', found)
+
+  expect(found, ['axe found serious or critical problems:', ...found].join('\n')).toEqual([])
 })
 
 interface Stop {
