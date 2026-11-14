@@ -32,6 +32,13 @@ CONFIG = {
     'heater_fan hotend_fan': {'pin': 'PB2'},
     'temperature_sensor mcu': {'sensor_type': 'temperature_mcu'},
     'temperature_sensor chamber': {'sensor_type': 'NTC 100K'},
+    # Boxwood's real sensors (read from the printer): the CPU is a temperature_fan AND a bare temperature_host object.
+    'temperature_fan cpu': {'pin': 'gpio11', 'sensor_type': 'temperature_host', 'sensor_path': '/sys/class/thermal/thermal_zone0/temp', 'target_temp': 65.0},
+    'temperature_fan motor_drivers': {'pin': 'gpio10', 'sensor_type': 'CMFD473F4050HANT', 'sensor_pin': 'gpio26', 'target_temp': 80.0},
+    'power_fan power_supply': {'pin': 'gpio9'},
+    'temperature_sensor toolhead_fan_air': {'sensor_type': 'CMFD473F4050HANT', 'sensor_pin': 'toolhead:gpio29'},
+    'temperature_sensor toolhead_extruder_motor': {'sensor_type': 'CMFD473F4050HANT', 'sensor_pin': 'toolhead:gpio26'},
+    'temperature_fan toolhead_heatsink': {'pin': 'toolhead:gpio9', 'sensor_type': 'CMFD473F4050HANT', 'sensor_pin': 'toolhead:gpio28', 'target_temp': 65.0},
     'bed_mesh': {'mesh_min': [10, 10], 'mesh_max': [190, 190], 'probe_count': [5, 5]},
     'virtual_sdcard': {'path': '/home/muon/printer_data/gcodes'},
     'firmware_retraction': {'retract_length': 0.8, 'retract_speed': 35, 'unretract_extra_length': 0, 'unretract_speed': 35},
@@ -65,6 +72,13 @@ def status():
         'heaters': {'available_heaters': ['heater_bed', 'extruder'], 'available_sensors': ['heater_bed', 'extruder', 'temperature_sensor mcu', 'temperature_sensor chamber']},
         'temperature_sensor mcu': {'temperature': 44.1, 'measured_min_temp': 30.2, 'measured_max_temp': 47.9},
         'temperature_sensor chamber': {'temperature': 34.7 + 0.2 * math.sin(t / 7), 'measured_min_temp': 21.0, 'measured_max_temp': 36.0},
+        'temperature_host CPU': {'temperature': 53.07},
+        'temperature_fan CPU': {'speed': 0.0, 'rpm': 0.0, 'temperature': 53.07, 'target': 65.0},
+        'temperature_fan Motor_Drivers': {'speed': 0.0, 'rpm': 0.0, 'temperature': 40.37, 'target': 80.0},
+        'power_fan Power_Supply': {'speed': 0.0, 'rpm': 0.0},
+        'temperature_sensor toolhead_fan_air': {'temperature': 30.85, 'measured_min_temp': 26.46, 'measured_max_temp': 38.41},
+        'temperature_sensor toolhead_extruder_motor': {'temperature': 31.84, 'measured_min_temp': 26.15, 'measured_max_temp': 40.0},
+        'temperature_fan toolhead_heatsink': {'speed': 0.0, 'rpm': 0.0, 'temperature': 30.99, 'target': 65.0},
         'fan': {'speed': 0.8, 'rpm': None},
         'heater_fan hotend_fan': {'speed': 1.0, 'rpm': 7800},
         'gcode_move': {'speed_factor': 1.0, 'extrude_factor': 1.0, 'absolute_coordinates': True, 'absolute_extrude': True,
@@ -308,6 +322,21 @@ NETWORKS = [
 ]
 
 
+PERMISSIONS = [
+    {'id': 'hotspot_toggle', 'value': 'anyone', 'default': 'anyone', 'read_only': False},
+    {'id': 'hotspot_change', 'value': 'anyone', 'default': 'anyone', 'read_only': False},
+    {'id': 'wifi_change', 'value': 'anyone', 'default': 'anyone', 'read_only': False},
+    {'id': 'update_install', 'value': 'anyone', 'default': 'anyone', 'read_only': False},
+    {'id': 'plate_clear', 'value': 'anyone', 'default': 'anyone', 'read_only': False},
+    {'id': 'dev_mode', 'value': 'owner_at_printer', 'default': 'owner_at_printer', 'read_only': False},
+    {'id': 'dev_mode_first_entry', 'value': 'owner_at_printer', 'values': ['owner_at_printer'], 'read_only': True, 'fixed': True},
+]
+PERMISSION_SWITCHES = [
+    {'id': 'hotspot_change_confirm', 'label': 'Confirm hotspot changes at the printer', 'value': False, 'default': False, 'read_only': False},
+    {'id': 'hotspot_password_on_screen', 'label': "Show the hotspot password on the printer's screen", 'value': True, 'default': True, 'read_only': False},
+]
+
+
 async def http_aux(request):
     tail = request.path[len('/server/aux'):]
     reason = refused(request.path)
@@ -329,8 +358,24 @@ async def http_aux(request):
         return web.json_response(0)
     if tail.startswith('/dev_mode'):
         return web.json_response({'enabled': False, 'guard_armed': False})
+    # Who may do each security-sensitive thing (KAN-1926, assumed shape). The
+    # shared mock never keeps a change: a test that changes one answers it itself.
+    if tail == '/permissions':
+        if request.method == 'POST':
+            body = await request.json()
+            return web.json_response({'knob': {**next((k for k in PERMISSIONS if k['id'] == body.get('id')), {}), 'value': body.get('value')}})
+        return web.json_response({'claimed': False, 'knobs': [{**k, 'values': k.get('values', ['anyone', 'owner_and_shared', 'owner', 'owner_at_printer'])} for k in PERMISSIONS], 'switches': PERMISSION_SWITCHES})
+    if tail == '/permissions/switch' and request.method == 'POST':
+        body = await request.json()
+        return web.json_response({'switch': {**next((x for x in PERMISSION_SWITCHES if x['id'] == body.get('id')), {}), 'value': body.get('value')}})
     if tail == '/update/status':
-        return web.json_response({'state': 'idle'})
+        return web.json_response({'state': 'idle', 'auto_install': True, 'install_presence_required': False})
+    # A fresh printer's update choices (KAN-1925, MuonOS #492). The shared
+    # mock never keeps a change: a test that changes them answers them itself.
+    if tail == '/update/auto_install':
+        return web.json_response({'enabled': True})
+    if tail == '/update/presence':
+        return web.json_response({'required': False})
     print('unhandled aux', request.method, tail, flush=True)
     return web.json_response({}, status=404)
 
@@ -387,6 +432,11 @@ async def http_generic(request):
         return web.json_response({'phase': 'unsupported'})
     if path == '/server/info':
         return web.json_response({'result': server_info()})
+    # The status poll a cloud printer card makes (muon-cloud/state.ts STATUS_QUERY).
+    if path == '/printer/objects/query':
+        current = status()
+        names = [key.split('=')[0] for key in request.query.keys()]
+        return web.json_response({'result': {'eventtime': time.time(), 'status': {n: current.get(n, {}) for n in names}}})
     if path == '/server/muon/protection':
         return web.json_response({'result': protection()})
     if path == '/access/oneshot_token':
@@ -403,8 +453,33 @@ async def http_generic(request):
     return web.json_response({'result': {}}, status=404)
 
 
+# What the mock has served, for a test that must say whether the page's requests ever reached it
+# (route-hold.spec.ts, KAN-2703): requests now in flight, the total served, the most in flight at once,
+# and the last few.
+SEEN: dict = {'inflight': {}, 'total': 0, 'peak': 0, 'recent': [], 'next': 0}
+
+
 @web.middleware
 async def cors(request, handler):
+    if request.path == '/__e2e/diag':
+        return web.json_response({
+            'inflight': [f"{m} {p} {round(time.time() - t, 1)}s" for m, p, t in SEEN['inflight'].values()],
+            'total': SEEN['total'], 'peak': SEEN['peak'], 'recent': SEEN['recent'][-12:]})
+    SEEN['next'] += 1
+    key = SEEN['next']
+    started = time.time()
+    SEEN['inflight'][key] = (request.method, request.path_qs[:60], started)
+    SEEN['peak'] = max(SEEN['peak'], len(SEEN['inflight']))
+    try:
+        return await _answer(request, handler)
+    finally:
+        SEEN['inflight'].pop(key, None)
+        SEEN['total'] += 1
+        SEEN['recent'].append(f"{request.method} {request.path_qs[:60]} {round((time.time() - started) * 1000)}ms")
+        del SEEN['recent'][:-40]
+
+
+async def _answer(request, handler):
     if request.method == 'OPTIONS':
         resp = web.Response()
     else:
@@ -423,4 +498,7 @@ app.router.add_route('*', '/server/aux/{tail:.*}', http_aux)
 app.router.add_route('*', '/{tail:.*}', http_generic)
 
 if __name__ == '__main__':
+    # 127.0.0.1 only, as on develop: with ::1 also bound, every status poll and /server/info from the page hung on the
+    # CI runner (traces of run 43559327919: requests to localhost:7125 with no response from the first poll on), so the
+    # socket never opened after a route change.
     web.run_app(app, host='127.0.0.1', port=PORT, print=lambda *_: print(f'mock moonraker on {PORT}', flush=True))

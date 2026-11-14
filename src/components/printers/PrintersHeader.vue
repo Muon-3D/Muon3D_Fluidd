@@ -40,6 +40,15 @@
       >
         <button
           type="button"
+          :class="{ on: view === 'bench' }"
+          :aria-pressed="view === 'bench' ? 'true' : 'false'"
+          data-tid="view-bench"
+          @click="$emit('update:view', 'bench')"
+        >
+          Bench
+        </button>
+        <button
+          type="button"
           :class="{ on: view === 'cards' }"
           :aria-pressed="view === 'cards' ? 'true' : 'false'"
           data-tid="view-grid"
@@ -58,6 +67,18 @@
         </button>
       </div>
       <button
+        v-if="bluetoothSearch"
+        type="button"
+        class="btn btn--primary btn--icon"
+        data-tid="connect-bluetooth"
+        aria-label="Connect over Bluetooth"
+        title="Connect over Bluetooth"
+        :disabled="bluetoothOff"
+        @click="$emit('connect-bluetooth')"
+      >
+        <frame-icon name="bluetooth" />
+      </button>
+      <button
         type="button"
         class="btn btn--primary"
         data-tid="add-printer"
@@ -69,6 +90,13 @@
         />
         Add printer
       </button>
+      <p
+        v-if="!bluetoothSearch"
+        class="phead__quiet"
+        data-tid="bluetooth-needs-chrome"
+      >
+        Connecting over Bluetooth needs Chrome or Edge{{ bluetoothInsecure ? ' on a secure page' : '' }}.
+      </p>
     </div>
   </header>
 </template>
@@ -90,13 +118,24 @@ export default class PrintersHeader extends Vue {
   readonly search!: string
 
   @Prop({ type: String, default: 'cards' })
-  readonly view!: 'cards' | 'list'
+  readonly view!: 'cards' | 'list' | 'bench'
 
   @Prop({ type: Boolean })
   readonly showSearch?: boolean
 
   @Prop({ type: Boolean })
   readonly showView?: boolean
+
+  /** Web Bluetooth is here (Chromium, secure context). */
+  @Prop({ type: Boolean })
+  readonly bluetoothSearch?: boolean
+
+  @Prop({ type: Boolean })
+  readonly bluetoothOff?: boolean
+
+  /** The page is not a secure context, which is why Bluetooth is missing. */
+  @Prop({ type: Boolean })
+  readonly bluetoothInsecure?: boolean
 
   onInput (event: Event) {
     this.$emit('update:search', (event.target as HTMLInputElement).value)
@@ -141,6 +180,12 @@ export default class PrintersHeader extends Vue {
     gap: 10px;
   }
 
+  .phead__quiet {
+    margin: 0;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+  }
+
   .phead__search {
     display: flex;
     align-items: center;
@@ -162,10 +207,19 @@ export default class PrintersHeader extends Vue {
     }
   }
 
+  // The Bluetooth button is the icon alone (KAN-2530): a square, not a labelled button.
+  .phead .btn--icon {
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
   // Phone: search goes (the mockup), and Grid / List and Add share the row.
   @media (max-width: 699px) {
     .phead__search { display: none; }
     .phead__tools { width: 100%; }
     .phead__tools .btn { flex: 1 1 auto; }
+    .phead__tools .btn--icon { flex: 0 0 auto; }
   }
 </style>

@@ -9,6 +9,7 @@ import {
   activateCloudPrinter,
   activateLocalPrinter,
   activationState,
+  SwitchSuperseded,
   MANAGED_API_URL
 } from '@/services/muon-cloud/activate'
 import {
@@ -33,9 +34,13 @@ import { scopedPath } from '@/router/printerPagePaths'
 import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
-import { bluetoothCarrying, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
+import { bluetoothCarrying, reconnectBluetooth, releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
+import { chooseRouteMode } from '@/services/muon-cloud/route-choice'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
+import { chooseRelay, clearRelayChoice, mayTrySecureName, reachSecureName, relayChosen, secureNameOf } from '@/services/secure-origin/hosted'
+import { localRoute, openableAddr, type LocalRoute } from '@/services/muon-cloud/local-route'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
+import { requestRefused } from '@/services/managed-transport/refusal'
 
 /**
  * The longest a row stays busy with one open. The slowest open is bounded
@@ -46,8 +51,88 @@ export const RUN_TIMEOUT_MS = 60_000
 
 class RunTimeout extends Error {}
 
+/** How Connect locally would reach this printer from this page (KAN-2529). */
+function localRouteOf (e: DirectoryEntry): LocalRoute {
+  const id = e.cloud?.id ?? e.endpointId
+  return localRoute({
+    hosted: mayTrySecureName(),
+    host: e.host,
+    secureName: secureNameOf(e.cloud),
+    pageHost: window.location.hostname,
+    nearby: id ? discoveryState.cloud.find(c => c.printerId === id) : undefined,
+    nearbyChecked: discoveryState.cloudChecked,
+    blockedByPage: !!discoveryState.blockedByPage
+  })
+}
+
+/** The line under Connect locally: where it goes, or why it cannot. */
+function localHint (route: LocalRoute, e: DirectoryEntry): string {
+  switch (route.kind) {
+    case 'secure': return 'Opens its secure address'
+    case 'tab': return "Opens the printer's own page in a new tab"
+    case 'lan': return e.host ?? ''
+    case 'none': return route.reason
+  }
+}
+
+/** Printers whose "opened through Muon3D" notice has been shown on this page load. */
+const toldRelay = new Set<string>()
+
+let navigate = (url: string) => window.location.assign(url)
+
+/** For tests: replaces how the page is sent to a printer's secure address. */
+export function setNavigate (fn: (url: string) => void) {
+  navigate = fn
+}
+
+/** Opens the page in a new tab; false when the browser blocked it (no `noopener` flag, which would hide that). */
+let openTab = (url: string): boolean => {
+  const w = window.open(url, '_blank')
+  if (!w) return false
+  try { w.opener = null } catch { /* cross-origin already */ }
+  return true
+}
+
+/** For tests: replaces how the printer's own page is opened in a new tab. */
+export function setOpenTab (fn: (url: string) => boolean) {
+  openTab = fn
+}
+
 /** Counts runs, so one taken over by a chosen route does not clear the row of the one that took over. */
 let runCounter = 0
+
+/**
+ * Opens `e` the way `route` says. `auto` is auto mode's own move (the banner's
+ * failover, or Connect locally's fall back to Muon3D): it opens the route but
+ * records no choice, so nothing becomes held and later plain Connects behave as
+ * before (#370).
+ */
+async function openManagedRoute (e: DirectoryEntry, route?: 'relay' | BleDevice, auto = false): Promise<boolean> {
+  if (!e.cloud) return false
+  const id = e.cloud.id
+  if (!route || route === 'relay') {
+    if (route === 'relay' && !auto) chooseRelay(id)
+    stopUsingBluetoothFor(id)
+  } else {
+    useBluetoothFor(id, route)
+    // Another try gets a fresh link: the old one can look open while it
+    // carries nothing (KAN-2080), and reusing it dead-ended "Try again".
+    await releaseBluetoothLink(id)
+    reconnectBluetooth(id)
+  }
+  dropCloudConnection(id)
+  try {
+    await activateCloudPrinter(id)
+  } catch (error) {
+    if (route || error instanceof SwitchSuperseded || requestRefused(error)) throw error
+    const nearby = e.nearby ?? await permittedPrinterFor(id)
+    if (!nearby) throw error
+    useBluetoothFor(id, nearby.device)
+    dropCloudConnection(id)
+    await activateCloudPrinter(id)
+  }
+  return true
+}
 
 /**
  * Every printer this browser knows of, and what can be done with each:
@@ -73,6 +158,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
   pendingOpen: DirectoryEntry | null = null
   busyKey: string | null = null
   notice: string | null = null
+  /** An address to show as a link under the notice, when a new tab was blocked. */
+  noticeLink: string | null = null
   setupDialog = false
   setupPrinter: NearbyPrinter | null = null
   /** "Ask for access" to a printer on this network (ACC-17). */
@@ -91,6 +178,10 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
 
   get bluetoothSearch () {
     return nearbyState.support === 'supported'
+  }
+
+  get bluetoothInsecure () {
+    return nearbyState.support === 'insecure'
   }
 
   get bluetoothOff () {
@@ -166,6 +257,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       found: discoveryState.found,
       cloudNearby: discoveryState.cloud,
       nearby: nearbyState.printers,
+      now: nearbyState.now,
       activeCloudId: cloudState.activePrinterId,
       viaBluetooth: bluetoothCarrying,
       local: this.localLive,
@@ -184,17 +276,62 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     await lookNearby()
   }
 
+  /**
+   * The big Connect over Bluetooth button (KAN-2470): the chooser lists only
+   * Muon printers. A printer already on the account is opened over Bluetooth;
+   * a new one is now in the Bluetooth list (Look nearby's own result), ready
+   * to be set up or paired. A dismissed chooser does nothing.
+   */
+  async onConnectOverBluetooth () {
+    this.notice = null
+    const heard = await lookNearby()
+    // A dismissed chooser is the person's answer: silent. A failed read already
+    // shows its own message (nearbyState.error).
+    if (!heard) return
+    if (!heard.endpointId) {
+      this.notice = `Couldn't tell which printer ${heard.display || heard.localName || 'that device'} is. ` +
+        'Move closer to it and try again.'
+      return
+    }
+    const entry = this.directory.cloud.find(c => c.cloud && isPrinter(heard, c.cloud.id))
+    if (entry) {
+      await this.connectOverBluetooth(entry, heard)
+      return
+    }
+    // Not on this account. If the account's printers have not loaded, it may be one of them.
+    if (!cloudState.ready) {
+      this.notice = 'Your printers are still loading. Try Connect over Bluetooth again in a moment.'
+      return
+    }
+    // The out-of-box path: a printer nobody has set up goes to its set-up (or its link), as from Look nearby.
+    const nearbyEntry = this.directory.found.find(f => f.nearby?.deviceId === heard.deviceId)
+    if (nearbyEntry) {
+      await this.openFoundEntry(nearbyEntry)
+      return
+    }
+    const known = this.directory.local.find(l => l.nearby?.deviceId === heard.deviceId)
+    this.notice = known
+      ? `${known.name} is saved in this browser and is nearby. Open it from its tile.`
+      : `${heard.display || heard.localName || 'That printer'} was found over Bluetooth. It is listed with the printers found nearby.`
+  }
+
   // -- what each printer offers ----------------------------------------------
+
+  /** How Connect locally would reach this printer from this page (KAN-2529). */
+  localRouteFor (e: DirectoryEntry): LocalRoute {
+    return localRouteOf(e)
+  }
 
   cloudActions (e: DirectoryEntry): CardAction[] {
     const actions: CardAction[] = []
     if (e.active !== 'local') {
+      const route = localRouteOf(e)
       actions.push({
         id: 'connect-local',
         label: 'Connect locally',
         icon: '$lan',
-        hint: e.host ? e.host : 'Not found on this network',
-        disabled: !e.host
+        hint: localHint(route, e),
+        disabled: route.kind === 'none'
       })
     }
     if (e.active !== 'cloud') {
@@ -271,6 +408,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
 
   async onAction (e: DirectoryEntry, id: string) {
     this.notice = null
+    this.noticeLink = null
     switch (id) {
       case 'connect-local': return this.connectLocal(e)
       case 'connect-cloud': return this.connectCloud(e, 'relay')
@@ -344,12 +482,13 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    * link and the connect. A printer that refuses this browser as a stranger
    * goes straight into pairing, and the connect continues once paired.
    */
-  async connectOverBluetooth (e: DirectoryEntry) {
+  async connectOverBluetooth (e: DirectoryEntry, chosen?: NearbyPrinter, auto = false) {
     if (!e.cloud) return
     const id = e.cloud.id
-    let heard = e.nearby ?? await permittedPrinterFor(id).catch(() => null)
+    let heard = chosen ?? e.nearby ?? await permittedPrinterFor(id).catch(() => null)
     if (!heard) {
-      heard = await lookNearby()
+      // KAN-2470: the chooser lists only this printer (its EndpointId, else its short name).
+      heard = await lookNearby({ endpointId: id, name: e.nearby?.localName })
       if (!heard) return
       if (heard.endpointId && !isPrinter(heard, id)) {
         this.notice = `That device isn't ${e.name}. Choose ${e.name} in the Bluetooth list.`
@@ -357,11 +496,11 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       }
     }
     retryBluetooth(id)
-    await this.connectCloud(e, heard.device)
+    await this.connectCloud(e, heard.device, auto)
     if (activationState.pairing === id) await startPairing(id)
   }
 
-  openCloudEntry (e: DirectoryEntry) {
+  async openCloudEntry (e: DirectoryEntry) {
     // KAN-1279: `active` only says this printer was chosen. With its socket not
     // open and ready the page is empty, and going to it again did nothing.
     const socket = this.$store.state.socket
@@ -369,8 +508,28 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       this.afterOpen()
       return
     }
-    // The service lost it, and it answers here: the local way in is the one that works.
-    if (!e.cloud?.online && e.host) return this.connectLocal(e)
+    if (e.cloud) chooseRouteMode(e.cloud.id, 'auto')
+    // Heard over Bluetooth and out of every other reach: the cloud says it is offline, so Bluetooth is the way in.
+    // An automatic move, not a choice: it records no held route.
+    if (e.health === 'nearby' && e.nearby && e.cloud) return this.connectOverBluetooth(e, e.nearby, true)
+    // On the hosted page, the printer's own secure address is the way in on this network.
+    const name = secureNameOf(e.cloud)
+    if (e.cloud && name && mayTrySecureName() && !relayChosen(e.cloud.id) &&
+      !wantsBluetoothFor(e.cloud.id) && name !== window.location.hostname) {
+      let reached = false
+      await this.run(e.key, async () => {
+        reached = await reachSecureName(name)
+        if (reached) navigate('https://' + name + '/')
+        return reached
+      })
+      if (reached) return true
+      if (!toldRelay.has(e.cloud.id)) {
+        toldRelay.add(e.cloud.id)
+        this.notice = `Opened ${e.name} through Muon3D. This browser can't reach its secure address on this network.`
+      }
+    }
+    // The service lost it, or it answers on this network: the local way in is the one that works.
+    if (e.lan || (!e.cloud?.online && e.host)) return this.connectLocal(e, true)
     return this.connectCloud(e)
   }
 
@@ -382,20 +541,10 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    * Bluetooth choice no longer waits on the service for this printer, and a
    * connection already open is dropped so this dial uses the chosen route.
    */
-  connectCloud (e: DirectoryEntry, route?: 'relay' | BleDevice) {
+  connectCloud (e: DirectoryEntry, route?: 'relay' | BleDevice, auto = false) {
     if (!e.cloud) return
-    const id = e.cloud.id
-    return this.run(e.key, async () => {
-      if (route === 'relay') {
-        stopUsingBluetoothFor(id)
-        dropCloudConnection(id)
-      } else if (route) {
-        useBluetoothFor(id, route)
-        dropCloudConnection(id)
-      }
-      await activateCloudPrinter(id)
-      return true
-    }, !!route)
+    if (route && !auto) chooseRouteMode(e.cloud.id, route === 'relay' ? 'cloud' : 'ble')
+    return this.run(e.key, () => openManagedRoute(e, route, auto), !!route)
   }
 
   /** The saved address it answers on, else its address on this network. */
@@ -409,7 +558,63 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return e.saved[0] ?? null
   }
 
-  connectLocal (e: DirectoryEntry) {
+  /**
+   * Connect locally from the hosted page: the printer's secure address when it
+   * answers, else its own page in a new tab, else a reason. An explicit local
+   * choice, so it holds 'lan' (even when it only opens a tab), ends any held
+   * "through Muon3D" or Bluetooth choice and never falls back to the relay by
+   * itself. Never called for an automatic move.
+   */
+  async connectLocalFromHostedPage (e: DirectoryEntry, route: LocalRoute): Promise<boolean | undefined> {
+    const id = e.cloud?.id
+    const heldId = id ?? e.endpointId
+    if (heldId) chooseRouteMode(heldId, 'lan')
+    if (route.kind === 'secure') {
+      let reached = false
+      // Busy: run says "Still opening" itself, and that stays the answer.
+      const busy = !!this.busyKey
+      await this.run(e.key, async () => {
+        reached = await reachSecureName(route.name)
+        if (reached) {
+          if (id) {
+            clearRelayChoice(id)
+            stopUsingBluetoothFor(id)
+          }
+          navigate('https://' + route.name + '/')
+        }
+        return reached
+      })
+      if (reached) return true
+      if (busy) return
+      const addr = openableAddr(discoveryState.cloud.find(c => c.printerId === (id ?? e.endpointId)), window.location.hostname)
+      if (addr) return this.connectLocalFromHostedPage(e, { kind: 'tab', addr })
+      this.notice = `Couldn't reach ${e.name} at its secure address from this browser. ` +
+        'It may be on another network, or this browser may have refused the local-network question.'
+      return
+    }
+    if (route.kind === 'tab') {
+      // A new tab leaves this page alone; the choice of the local route is still held.
+      const url = `http://${route.addr}/`
+      if (openTab(url)) {
+        this.notice = `Opened ${e.name}'s own page in a new tab.`
+      } else {
+        this.notice = `This browser blocked the new tab. Open ${e.name}'s own page from the link below.`
+        this.noticeLink = url
+      }
+      return
+    }
+    if (route.kind === 'none') this.notice = route.reason
+  }
+
+  connectLocal (e: DirectoryEntry, auto = false) {
+    // An automatic move never opens a tab or leaves the page: only a person's Connect locally does.
+    if (!auto && mayTrySecureName()) {
+      const route = this.localRouteFor(e)
+      // A saved printer outside the account with no route keeps the old attempt and its fallback page.
+      if (route.kind !== 'none' || e.cloud) return this.connectLocalFromHostedPage(e, route)
+    }
+    // An automatic move on the hosted page can't dial a plain local address (the browser blocks it), so Muon3D carries it.
+    if (auto && mayTrySecureName() && e.cloud?.online) return this.connectCloud(e)
     const instance = this.localInstance(e)
     if (!instance) {
       // The service found it beside this browser but gave no address to use
@@ -418,7 +623,16 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         'Search again, or add it by the IP address its screen shows under System.'
       return
     }
-    return this.run(e.key, () => activateLocalPrinter(instance))
+    const id = e.cloud?.id ?? e.endpointId
+    if (id && !auto) chooseRouteMode(id, 'lan')
+    return this.run(e.key, async () => {
+      if (e.endpointId) {
+        stopUsingBluetoothFor(e.endpointId)
+        dropCloudConnection(e.endpointId)
+      }
+      if (await activateLocalPrinter(instance, id)) return true
+      return auto ? openManagedRoute(e) : false
+    }, true)
   }
 
   openLocalEntry (e: DirectoryEntry) {

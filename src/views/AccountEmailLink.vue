@@ -14,8 +14,20 @@
 
     <main class="acct-solo__main">
       <div class="acct-solo__box lib-surface eml">
+        <!-- The printer's plain-HTTP address: the link is finished on the console (KAN-2192). -->
+        <template v-if="!sessionAllowed">
+          <h1>Open the link from your email again</h1>
+          <p
+            class="acct-muted"
+            data-tid="email-link-insecure"
+          >
+            That link is for Muon Control. It was opened on the printer's own address, so it was not used here.
+          </p>
+          <open-in-muon-control route="/account" />
+        </template>
+
         <!-- Confirming an address, or finishing a change of it. -->
-        <template v-if="kind === 'verify'">
+        <template v-else-if="kind === 'verify'">
           <h1>{{ verifyTitle }}</h1>
           <p
             v-if="state === 'working'"
@@ -145,8 +157,10 @@ import { Component, Vue } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
 import { centralLoginEnabled, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
 import { describe } from '@/services/account/state'
-import { resetPassword, verifyEmail } from '@/services/account/sign-in'
+import { resetPassword, verifyEmailAnswer } from '@/services/account/sign-in'
 import '@/scss/muon3d-account.scss'
+import { cloudSessionAllowed } from '@/services/muon-cloud/api'
+import OpenInMuonControl from '@/components/muon-cloud/OpenInMuonControl.vue'
 
 type Step = 'working' | 'ready' | 'done' | 'failed'
 
@@ -156,8 +170,10 @@ type Step = 'working' | 'ready' | 'done' | 'failed'
  * confirming an address, and choosing a new password. The token is used
  * once, and leaves the address as soon as the page has it.
  */
-@Component({})
+@Component({ components: { OpenInMuonControl } })
 export default class AccountEmailLink extends Vue {
+  /** False on the printer's plain-HTTP address: no form and no token use, one link to the console (KAN-2192). */
+  sessionAllowed = cloudSessionAllowed()
   token = ''
   state: Step = 'ready'
   error = ''
@@ -187,6 +203,12 @@ export default class AccountEmailLink extends Vue {
 
   created () {
     const token = this.$route.query.token
+    if (!this.sessionAllowed) {
+      // Take the token out of this address and keep it nowhere: not in this
+      // component and not in a link. It is used for nothing here.
+      if (typeof token === 'string' && token) this.$router.replace({ path: this.$route.path }).catch(() => {})
+      return
+    }
     this.token = typeof token === 'string' ? token : ''
     // Out of the address, the history and any screenshot.
     if (this.token) this.$router.replace({ path: this.$route.path }).catch(() => {})
@@ -205,8 +227,15 @@ export default class AccountEmailLink extends Vue {
   async verify () {
     this.state = 'working'
     try {
-      this.confirmed = await verifyEmail(this.token)
+      const answer = await verifyEmailAnswer(this.token)
+      this.confirmed = answer.email
       this.state = 'done'
+      // A completed change ended every session of the account, this browser's included (KAN-1389).
+      if (answer.signedOut) {
+        // Loaded only here: a static import pulls the router in, which takes $route/$router over in every mount.
+        const { signOutNow } = await import('@/services/account/sign-out')
+        await signOutNow('browser', { reason: 'email', router: this.$router })
+      }
     } catch (error) {
       this.fail(describe(error))
     }

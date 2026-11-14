@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { LEAN_LIMIT, PART_IDS, PART_NODES, leanToward, partOf } from '../parts'
+import * as THREE from 'three'
+import { LEAN_LIMIT, PART_IDS, PART_NODES, leanToward, partMeshes, partOf } from '../parts'
 
 const at = (x: number, y: number, z: number) => ({ x, y, z })
 
@@ -50,5 +51,21 @@ describe('partOf', () => {
       expect(PART_NODES[id].some(n => n.startsWith('M1_'))).toBe(true)
       expect(PART_NODES[id].some(n => !n.startsWith('M1_'))).toBe(true)
     }
+  })
+})
+
+describe('the filament on the accurate model', () => {
+  it('is the hose, the spool and the strand: pointing at the reel or the strand names the filament', () => {
+    const spool = new THREE.Group()
+    spool.name = 'M1_Spool'
+    const reel = new THREE.Mesh()
+    spool.add(reel)
+    const strand = new THREE.Mesh()
+    strand.name = 'M1_Filament'
+    const root = new THREE.Group()
+    root.add(spool, strand)
+    expect(partOf(reel)).toBe('filament')
+    expect(partOf(strand)).toBe('filament')
+    expect(partMeshes(root, 'filament')).toEqual([reel, strand])
   })
 })

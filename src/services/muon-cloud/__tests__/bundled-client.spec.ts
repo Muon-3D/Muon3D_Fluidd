@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 
 const binding = vi.hoisted(() => ({ init: vi.fn<[unknown], Promise<void>>().mockResolvedValue(undefined), create: vi.fn(async () => ({ endpointId: () => 'browser', secretKey: () => new Uint8Array(32), connect: vi.fn(async () => ({ printerId: () => 'boxwood' })), close: async () => {} })) }))
-vi.mock('../vendor/muon-link-web/2a79688/muon_link_web.js', () => ({ default: binding.init, MuonEndpoint: { create: binding.create } }))
+vi.mock('../vendor/muon-link-web/1608e20/muon_link_web.js', () => ({ default: binding.init, MuonEndpoint: { create: binding.create } }))
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear() })
 

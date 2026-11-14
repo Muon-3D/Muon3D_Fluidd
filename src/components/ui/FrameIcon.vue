@@ -70,6 +70,8 @@ const ICONS: Record<string, Shape[]> = {
   power: [{ d: 'M12 2v10' }, { d: 'M18.4 6.6a9 9 0 1 1-12.77.04' }],
   x: [{ d: 'M18 6 6 18M6 6l12 12' }],
   refresh: [{ d: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8' }, { d: 'M21 3v5h-5' }],
+  arrowUp: [{ d: 'M12 19V5M5 12l7-7 7 7' }],
+  arrowDown: [{ d: 'M12 5v14M19 12l-7 7-7-7' }],
   chevronUp: [{ d: 'm18 15-6-6-6 6' }],
   minus: [{ d: 'M5 12h14' }],
   lock: [{ r: [4, 11, 16, 10, 2] }, { d: 'M8 11V7a4 4 0 0 1 8 0v4' }],
@@ -100,6 +102,9 @@ const ICONS: Record<string, Shape[]> = {
   // The Library: books on a shelf, one leaning.
   library: [{ d: 'm16 6 4 14M12 6v14M8 8v12M4 4v16' }],
   copy: [{ r: [8, 8, 14, 14, 2] }, { d: 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2' }],
+  // Materials: pinned to the filament picker, and the handle to drag one into order.
+  pin: [{ d: 'M12 17v5' }, { d: 'M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.8l-1.8-.9a2 2 0 0 1-1.1-1.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z' }],
+  grip: [{ c: [9, 6, 1.2] }, { c: [9, 12, 1.2] }, { c: [9, 18, 1.2] }, { c: [15, 6, 1.2] }, { c: [15, 12, 1.2] }, { c: [15, 18, 1.2] }],
   // The account's (KAN-532).
   shield: [{ d: 'M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z' }, { d: 'm9 12 2 2 4-4' }],
   idCard: [{ r: [3, 4, 18, 16, 2.5] }, { c: [9, 11, 2.5] }, { d: 'M5.5 17a3.5 3.5 0 0 1 7 0M15 10h3M15 14h3' }],

@@ -20,6 +20,16 @@ const found = (over: Record<string, unknown> = {}) => ({
 }) as never
 
 describe('the page header', () => {
+  it('shows Connect over Bluetooth only where Web Bluetooth exists, else one quiet line (KAN-2470)', async () => {
+    const yes = shallowMount(PrintersHeader, { propsData: { bluetoothSearch: true } })
+    await yes.find('[data-tid="connect-bluetooth"]').trigger('click')
+    expect(yes.emitted('connect-bluetooth')).toHaveLength(1)
+    expect(yes.find('[data-tid="bluetooth-needs-chrome"]').exists()).toBe(false)
+    const no = shallowMount(PrintersHeader, { propsData: { bluetoothSearch: false } })
+    expect(no.find('[data-tid="connect-bluetooth"]').exists()).toBe(false)
+    expect(no.find('[data-tid="bluetooth-needs-chrome"]').text()).toMatch(/Chrome or Edge/)
+  })
+
   it('has one primary button, and says Add when it is pressed', async () => {
     const w = shallowMount(PrintersHeader, { propsData: { summary: '7 printers', showSearch: true, showView: true } })
     expect(w.find('h1').text()).toBe('All printers')

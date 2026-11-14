@@ -4,7 +4,7 @@
  * or links to a page of its own (Wi-Fi, System).
  */
 export type SettingsSectionId =
-  'general' | 'network' | 'access' | 'updates' | 'cameras' | 'materials' | 'macros' |
+  'general' | 'network' | 'access' | 'security' | 'updates' | 'cameras' | 'materials' | 'macros' |
   'timelapse' | 'spoolman' | 'console' | 'files' | 'toolhead' | 'gcodePreview' | 'developer' | 'system'
 
 /** The Moonraker components a settings section can depend on. */
@@ -46,15 +46,24 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     keywords: ['people', 'login', 'password', 'users', 'owner', 'api key', 'protection'],
     shows: c => ['muon_access', 'muon_protection', 'authorization'].some(name => c.components.includes(name))
   },
+  {
+    id: 'security',
+    label: 'Security',
+    anchors: ['security'],
+    icon: 'lock',
+    blurb: 'Who can change the hotspot, updates and Lockdown',
+    keywords: ['permissions', 'lockdown', 'hotspot', 'owner', 'devices'],
+    shows: c => ['muon_access', 'muon_protection'].some(name => c.components.includes(name))
+  },
   { id: 'updates', label: 'Updates', anchors: ['versions'], icon: 'download', blurb: "The printer's software and when it updates", keywords: ['update', 'version', 'upgrade', 'software'], shows: has('update_manager') },
   { id: 'cameras', label: 'Cameras', anchors: ['camera'], icon: 'camera', blurb: "The printer's cameras and how they stream", keywords: ['webcam', 'stream', 'video'] },
   { id: 'materials', label: 'Materials', anchors: ['presets'], icon: 'spool', blurb: 'Filament presets and temperatures', keywords: ['filament', 'preset', 'temperature', 'pla', 'petg'] },
-  { id: 'macros', label: 'Macros', anchors: ['macros'], icon: 'macro', blurb: 'Which macros show, and in which category', keywords: ['gcode', 'quick actions', 'buttons'] },
+  { id: 'macros', label: 'Macros', anchors: ['macros'], icon: 'macro', blurb: 'Every command the printer has, and which show as Quick commands', keywords: ['gcode', 'macros', 'quick actions', 'buttons'] },
   { id: 'timelapse', label: 'Timelapse', anchors: ['timelapse'], icon: 'clock', blurb: 'How print timelapses are made', keywords: ['video', 'render', 'frames'], shows: has('timelapse') },
   { id: 'spoolman', label: 'Spoolman', anchors: ['spoolman'], icon: 'spool', blurb: 'Your spool inventory', keywords: ['filament', 'spools'], shows: has('spoolman') },
   { id: 'console', label: 'Console', anchors: ['console'], icon: 'console', blurb: 'What the console shows, the one-tap commands above the input, and who may type', keywords: ['terminal', 'filter', 'log', 'quick commands', 'history', 'timestamps'] },
   { id: 'files', label: 'Files and editor', anchors: ['browser', 'editor'], icon: 'files', blurb: 'How files are listed and edited', keywords: ['browser', 'editor', 'gcode', 'config'] },
-  { id: 'toolhead', label: 'Moving and extruding', anchors: ['toolhead'], icon: 'control', blurb: "How Control's move pad, extrude buttons and macros behave", keywords: ['moving', 'extruding', 'speed', 'axis', 'homing', 'paper test'] },
+  { id: 'toolhead', label: 'Moving and extruding', anchors: ['toolhead'], icon: 'control', blurb: "How Control's move pad, extrude buttons and quick commands behave", keywords: ['moving', 'extruding', 'speed', 'axis', 'homing', 'paper test'] },
   { id: 'gcodePreview', label: 'G-code preview and 3D', anchors: ['gcodePreview'], icon: 'jobs', blurb: 'The 3D printer on Overview, and how the G-code preview draws a print', keywords: ['layers', '3d', 'render', 'preview', 'model', 'detail', 'glass', 'animations', 'motion', 'camera', 'opens on'] },
   { id: 'developer', label: 'Developer mode', anchors: ['developer'], icon: 'code', blurb: 'For people building on the printer', keywords: ['dev', 'developer', 'configuration'] },
   { id: 'system', label: 'System', anchors: [], icon: 'chip', blurb: "Restart, logs and the printer's health", keywords: ['restart', 'reboot', 'logs', 'shutdown', 'host'], page: '/system' }

@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import AccountEmailLink from '../AccountEmailLink.vue'
 import { AccountError } from '@/services/account/client'
 
-const verifyEmail = vi.hoisted(() => vi.fn(async () => 'new@muon3d.com'))
+const verifyEmail = vi.hoisted(() => vi.fn(async () => ({ email: 'new@muon3d.com', signedOut: false })))
+const signOutNow = vi.hoisted(() => vi.fn(async () => {}))
 const resetPassword = vi.hoisted(() => vi.fn(async () => {}))
-vi.mock('@/services/account/sign-in', () => ({ verifyEmail, resetPassword }))
+vi.mock('@/services/account/sign-in', () => ({ verifyEmailAnswer: verifyEmail, resetPassword }))
+vi.mock('@/services/account/sign-out', () => ({ signOutNow }))
 vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { account: null } }))
 vi.mock('@/services/muon-cloud/centralLogin', () => ({ centralLoginEnabled: () => true, startCentralSignIn: vi.fn(async () => {}) }))
 
@@ -30,6 +32,19 @@ describe('the pages the console\'s emails open', () => {
     await settle()
     expect(verifyEmail).toHaveBeenCalledWith('t1')
     expect(tid(w, 'email-link-done').text()).toContain('new@muon3d.com is your Muon3D address now')
+  })
+
+  it('a completed address change ends this browser\'s session: signed out with the email reason', async () => {
+    verifyEmail.mockResolvedValueOnce({ email: 'new@muon3d.com', signedOut: true })
+    open('/account/verify-email', 't1')
+    await settle()
+    expect(signOutNow).toHaveBeenCalledWith('browser', expect.objectContaining({ reason: 'email' }))
+  })
+
+  it('a plain confirmation signs nobody out', async () => {
+    open('/account/verify-email', 't1')
+    await settle()
+    expect(signOutNow).not.toHaveBeenCalled()
   })
 
   it('says plainly when the link has expired', async () => {

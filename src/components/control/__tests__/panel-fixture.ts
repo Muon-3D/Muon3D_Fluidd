@@ -39,5 +39,5 @@ export function panelStore () {
   return { state, getters, dispatch: vi.fn(), commit: vi.fn(), subscribe: vi.fn(() => vi.fn()), extruder }
 }
 
-export const panelStubs = { 'frame-icon': true, 'v-progress-circular': true }
+export const panelStubs = { 'frame-icon': true, 'v-icon': true, 'router-link': true, 'v-progress-circular': true, 'v-menu': { template: '<div><slot /></div>' } }
 export const waits = { onHomeXY: 'homeXY', onHomeZ: 'homeZ', onHomeAll: 'homeAll' }

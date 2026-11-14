@@ -120,8 +120,11 @@ export class LiveSync {
   }
 
   /** The segments done by the file's read position, for when the head can't be followed along it. */
-  setFileDone (segments: number) {
+  /** Returns whether the count moved, so a caller can skip a redraw of the same picture. */
+  setFileDone (segments: number): boolean {
+    if (segments === this.fileDone) return false
     this.fileDone = segments
+    return true
   }
 
   /** The current accessory signals for this printer. */

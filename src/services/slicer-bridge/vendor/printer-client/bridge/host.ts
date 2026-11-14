@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Vendored from @muon3d/printer-client 0.4.0 (src/bridge/host.ts), Copyright 2026 Muon 3D
+// Vendored from @muon3d/printer-client 0.5.0 (src/bridge/host.ts), Copyright 2026 Muon 3D
 // Technologies Limited, under the Apache License 2.0 (vendor/printer-client/LICENSE and NOTICE). Changed for
 // Fluidd by tools/vendor-printer-client.cjs: relative imports without ".ts"; Object.hasOwn as hasOwnProperty.call.
 // The host's side of printer-bridge/1 (protocol.ts), without a framework: the page that frames a printer client (Fluidd's
@@ -39,7 +39,7 @@
 // - Viewers never upload or print; a printer the host lists offline answers `offline`.
 // - The host's UI (protocol.ts, the file comment), each optional: given a `look`, the helper grants ui.look, puts the
 //   look in the welcome and sends each setLook() as ui.look (and as ui.theme, for a client that predates looks); given
-//   a `mode`, ui.mode the same way; given `setup`, printer.setup: the selected printer's setup after the welcome, after
+//   `setup`, printer.setup: the selected printer's setup after the welcome, after
 //   each printer.changed, and again on setupChanged(). `clientFeatures` is what the welcomed hello listed ([] from a
 //   client that predates them), for a host that draws its page differently around a client that uses its look.
 // - The printer's loaded material, the other way (0.3.0): given `onMaterial`, the helper grants printer.material and
@@ -53,6 +53,13 @@
 //   frame as a failure, never as an answer the client must refuse. libraryStatus() and libraryOpen() send the events.
 //   A handler's PrinterError (`not-signed-in`, `quota`, `console` with the service's words) reaches the frame as it is;
 //   any other error as `console`, "The host could not do it".
+// - The account: given `account` (the host's handlers), the helper grants `account` and answers account.status and
+//   account.assertion through them, naming no printer, each answer read as a client reads it (parseAccountStatus,
+//   parseAccountAssertion). The handler maps the protocol's audience (`models`) to the service's own; the frame never
+//   names one. accountStatus() sends the event when the person signs in or out. Failures as for the Library.
+// - Models handed over (0.5.0): modelsOpen() sends the person's model files as models.open, read first, only to a
+//   client whose hello listed `models.open`, and says whether it did, so a host can tell the person to add them by
+//   hand in an older client.
 //
 // An adapter's error reaches the frame as it is only when it is a PrinterError (errors/kinds.ts), so a host that maps
 // its printer's answers with errors/parse.ts passes the printer's own words through. Any other error (a fetch's, a
@@ -70,13 +77,17 @@ import {
   CAPABILITIES_V1,
   commonVersion,
   LIMITS,
+  MODELS_OPEN_FEATURE,
   OPS,
   parseClientEvent,
   parseHello,
+  parseAccountAssertion,
+  parseAccountStatus,
   parseLibraryOpen,
   parseLibraryProject,
   parseLibrarySaved,
   parseLibraryStatus,
+  parseModelsOpen,
   parseRequest,
   type BridgeError,
   type BridgeObjects,
@@ -84,12 +95,16 @@ import {
   type Density,
   type HostLook,
   type HostSetup,
+  type AccountAssertion,
+  type AccountAudience,
+  type AccountStatus,
   type LibraryOpen,
   type LibraryPreferencesChange,
   type LibraryProject,
   type LibrarySave,
   type LibrarySaved,
   type LibraryStatus,
+  type ModelsOpen,
   type OpRequest,
   type PlateClearAsk,
   type PrintDecision,
@@ -97,7 +112,6 @@ import {
   type PrintMode,
   type ReadMethod,
   type Theme,
-  type UiMode,
   type UploadStep,
   type Welcome,
 } from './protocol';
@@ -161,6 +175,13 @@ export interface HostLibrary {
   browse(signal: AbortSignal): Promise<void>;
 }
 
+/** The host's sign-in, as the frame may use it: who is signed in, and assertions for Muon's services. */
+export interface HostAccount {
+  status(signal: AbortSignal): Promise<AccountStatus> | AccountStatus;
+  /** An assertion of the signed-in account for the service the protocol names (`models`); `not-signed-in` when nobody is. */
+  assertion(audience: AccountAudience, signal: AbortSignal): Promise<AccountAssertion>;
+}
+
 /** The frame: its window now (iframe.contentWindow) and the origin of the src the host set. */
 export interface HostFrame {
   window(): unknown;
@@ -198,16 +219,14 @@ export interface BridgeHostOptions {
   host: string;
   hostVersion: string;
   /**
-   * Default: every capability of version 1, with ui.look, ui.mode and printer.setup for the options below that are
-   * given. Given, the list is exactly what the welcome grants.
+   * Default: every capability of version 1, with ui.look, printer.setup and printer.material for the options below
+   * that are given. Given, the list is exactly what the welcome grants.
    */
   capabilities?: readonly string[];
   theme: Theme;
   density?: Density;
   /** The host's look (ui.look): the client draws itself as a part of the host's page. */
   look?: HostLook;
-  /** The host's Simple or Pro (ui.mode). */
-  mode?: UiMode;
   /** The setup of printer `key` (printer.setup): what it has loaded and the host's material table; null for none. */
   setup?: (key: string) => HostSetup | null;
   /**
@@ -218,6 +237,8 @@ export interface BridgeHostOptions {
   onMaterial?: (key: string, material: PrinterMaterial) => void;
   /** The account's Library: its handlers. Given, the welcome grants `library`. */
   library?: HostLibrary;
+  /** The host's sign-in: its handlers. Given, the welcome grants `account`. */
+  account?: HostAccount;
   adapter: HostAdapter;
   /** The client's slicer.state events (Fluidd's leave prompt reads `dirty`). */
   onState?: (state: Record<string, unknown>) => void;
@@ -237,14 +258,20 @@ export interface BridgeHost {
   setDensity(density: Density): void;
   /** The host's look changed (its theme too): ui.look, then ui.theme. Granted only when created with a look. */
   setLook(look: HostLook): void;
-  /** The host's Simple or Pro changed: ui.mode. Granted only when created with a mode. */
-  setMode(mode: UiMode): void;
   /** The selected printer's setup changed (a spool, the heaters, the table): printer.setup, read again. */
   setupChanged(): void;
   /** Sign-in, consent or the preferences changed: library.status. Sent only where `library` was granted. */
   libraryStatus(status: LibraryStatus): void;
   /** The person chose "Open in Slice" for a print: library.open. Sent only where `library` was granted. */
   libraryOpen(open: LibraryOpen): void;
+  /** The person signed in or out: account.status. Sent only where `account` was granted. */
+  accountStatus(status: AccountStatus): void;
+  /**
+   * The person chose to open model files in the client (0.5.0): models.open, read first. Sent only to a client whose
+   * hello listed `models.open`; true when it was sent, false when there is no such client or the files are not ones.
+   * Sent, the files' ArrayBuffers are transferred to the frame (detached here): read nothing from them afterwards.
+   */
+  modelsOpen(open: ModelsOpen): boolean;
   /** Whether a frame has been welcomed (and not closed since). */
   readonly connected: boolean;
   /** The features the welcomed client's hello listed; [] before a welcome and from a client that lists none. */
@@ -379,10 +406,10 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     ...(options.capabilities ?? [
       ...CAPABILITIES_V1,
       ...(options.look ? ['ui.look'] : []),
-      ...(options.mode ? ['ui.mode'] : []),
       ...(options.setup ? ['printer.setup'] : []),
       ...(options.onMaterial ? ['printer.material'] : []),
       ...(options.library ? ['library'] : []),
+      ...(options.account ? ['account'] : []),
     ]),
   ];
   const now = options.now ?? (() => Date.now());
@@ -393,18 +420,19 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
   let theme = options.theme;
   let density = options.density;
   let look = options.look ?? null;
-  let mode = options.mode ?? null;
   let session: Session | null = null;
   let closed = false;
 
-  const post = (s: Session, message: unknown) => {
+  const post = (s: Session, message: unknown, transfer: Transferable[] = []) => {
     try {
-      s.port.postMessage(message);
+      if (transfer.length) s.port.postMessage(message, transfer);
+      else s.port.postMessage(message);
     } catch {
       // The frame has gone; its session ends with the next hello or close().
     }
   };
-  const event = (s: Session, name: string, printer: string | null, data: unknown) => post(s, { v: 1, event: name, printer, data });
+  const event = (s: Session, name: string, printer: string | null, data: unknown, transfer: Transferable[] = []) =>
+    post(s, { v: 1, event: name, printer, data }, transfer);
 
   /** printer.setup of the selected printer, when the session was granted it and the host has one. */
   const sendSetup = (s: Session) => {
@@ -450,7 +478,8 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
       nonce: hello.nonce,
       port: channel.port1,
       version,
-      granted: new Set(capabilities),
+      // `account` is granted only to a frame whose hello asked for it: a page that did not ask never gets to ask.
+      granted: new Set(capabilities.filter((c) => c !== 'account' || (hello.features ?? []).includes('account'))),
       uploads: new Map(),
       written: new Set(),
       approvals: new Map(),
@@ -468,11 +497,10 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
       nonce: hello.nonce,
       host: options.host,
       hostVersion: options.hostVersion,
-      capabilities: [...capabilities],
+      capabilities: [...s.granted],
       theme,
       ...(density ? { density } : {}),
       ...(look && s.granted.has('ui.look') ? { look } : {}),
-      ...(mode && s.granted.has('ui.mode') ? { mode } : {}),
     };
     (e.source as { postMessage(message: unknown, targetOrigin: string, transfer: unknown[]): void }).postMessage(welcome, frame.origin, [channel.port2]);
     log({ kind: 'welcome', nonce: hello.nonce, version });
@@ -641,7 +669,7 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
       if (running && running.printer === req.printer && running.cancellable) running.abort.abort(CANCELLED);
       return answer(s, req.op, id, req.printer, {});
     }
-    if (req.printer === null) return library(s, id, req);
+    if (req.printer === null) return req.op === 'account.status' || req.op === 'account.assertion' ? account(s, id, req) : library(s, id, req);
     const sel = selectedAs(req.printer);
     if (!sel) return fail(s, req.op, id, req.printer, printerChangedError());
     if (WRITES.includes(req.op)) {
@@ -773,7 +801,38 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
     return value;
   };
 
-  const library = (s: Session, id: number, req: Extract<OpRequest, { printer: null }>): Promise<void> | void => {
+  const account = (s: Session, id: number, req: Extract<OpRequest, { op: 'account.status' | 'account.assertion' }>): Promise<void> | void => {
+    const acc = options.account;
+    if (!acc) return fail(s, req.op, id, null, { kind: 'unsupported', message: 'The host has no sign-in' });
+    if (req.op === 'account.status') {
+      return run(s, id, req.op, null, async (signal) => {
+        const status = checked(parseAccountStatus(await acc.status(signal)), req.op);
+        // Only the first answer may set who is signed in; after that, only accountStatus() announcements change it, so
+        // a status read that started before a switch and answers late cannot put the old account back.
+        if (accountIdent === undefined) noteAccount(status, false);
+        return status;
+      });
+    }
+    return run(s, id, req.op, null, async (signal) => {
+      // An assertion is for the account that was signed in when it was asked for: if the person signed out or switched
+      // while the provider worked, the answer is for someone else and is not handed over.
+      const epoch = accountEpoch;
+      const assertion = checked(parseAccountAssertion(await acc.assertion(req.audience, signal)), req.op);
+      if (epoch !== accountEpoch) throw printerError('not-signed-in', 'The account changed; sign in and ask again');
+      return assertion;
+    });
+  };
+
+  /** Who the host last said is signed in (null: nobody; undefined: not yet said), and how many times that changed. */
+  let accountIdent: string | null | undefined;
+  let accountEpoch = 0;
+  const noteAccount = (status: AccountStatus, announced: boolean) => {
+    const ident = status.signedIn ? status.id : null;
+    if (ident !== accountIdent && (announced || accountIdent !== undefined)) accountEpoch++;
+    accountIdent = ident;
+  };
+
+  const library = (s: Session, id: number, req: Exclude<Extract<OpRequest, { printer: null }>, { op: 'account.status' | 'account.assertion' }>): Promise<void> | void => {
     const lib = options.library;
     if (!lib) return fail(s, req.op, id, null, { kind: 'unsupported', message: 'The host has no Library' });
     switch (req.op) {
@@ -880,15 +939,32 @@ export function createBridgeHost(options: BridgeHostOptions): BridgeHost {
       // A client that predates looks still follows the theme.
       if (next.theme !== theme) setTheme(next.theme);
     },
-    setMode(next) {
-      mode = next;
-      if (session && !closed && session.granted.has('ui.mode')) event(session, 'ui.mode', null, { mode: next });
-    },
     setupChanged() {
       if (session && !closed) sendSetup(session);
     },
     libraryStatus: (status) => libraryEvent('library.status', status, parseLibraryStatus),
     libraryOpen: (open) => libraryEvent('library.open', open, parseLibraryOpen),
+    accountStatus: (status) => {
+      const value = parseAccountStatus(status);
+      if (value) noteAccount(value, true);
+      const s = session;
+      if (!s || closed || !s.granted.has('account')) return;
+      if (!value) return log({ kind: 'ignored', why: 'an account.status that is not one' });
+      event(s, 'account.status', null, value);
+    },
+    modelsOpen(open) {
+      const s = session;
+      if (!s || closed || !s.features.includes(MODELS_OPEN_FEATURE)) return false;
+      const value = parseModelsOpen(open);
+      if (!value) {
+        log({ kind: 'ignored', why: 'a models.open that is not one' });
+        return false;
+      }
+      // Moved, not copied (up to 512 MiB): the caller's buffers are detached once sent and must not be read again.
+      // The same buffer twice in one transfer list is an error, so each goes once.
+      event(s, 'models.open', null, value, [...new Set(value.files.map((f) => f.bytes))]);
+      return true;
+    },
     get connected() {
       return session !== null && !closed;
     },

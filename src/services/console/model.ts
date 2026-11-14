@@ -47,7 +47,7 @@ const EXPLAINED: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/Timer too close/i, () => 'The computer fell behind the control board, usually because it was busy. Firmware restart, and if it repeats, look at what else is running.'],
   [/Extrude below minimum temp/i, () => 'The nozzle is too cold to push filament. Heat it first.'],
   [/ADC out of range/i, () => 'A temperature reading went out of range: often a loose thermistor, or a heater running too hot. Check the wiring before heating again.'],
-  [/Unknown command:?\s*"?([A-Za-z0-9_]+)"?/, m => `Klipper doesn't know ${m[1].toUpperCase()}. Check the spelling, or whether a macro by that name is installed.`]
+  [/Unknown command:?\s*"?([A-Za-z0-9_]+)"?/, m => `Klipper doesn't know ${m[1].toUpperCase()}. Check the spelling, or whether a command by that name is installed.`]
 ]
 
 /** What a common Klipper error or warning means, in a sentence; null for the rest. */

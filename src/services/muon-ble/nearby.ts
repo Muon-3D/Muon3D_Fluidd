@@ -15,10 +15,12 @@
  * Nothing here connects to a printer beyond reading `INFO`; `link.ts` does.
  */
 import Vue from 'vue'
+import { NEARBY_FRESH_MS } from './heard'
 import {
   bluetoothAvailable,
   bluetoothSupport,
   choosePrinter,
+  type ChooserTarget,
   chooserDismissed,
   decodeAdvert,
   displayName,
@@ -55,8 +57,32 @@ export const nearbyState = Vue.observable({
   printers: [] as NearbyPrinter[],
   /** The chooser is open. */
   choosing: false,
-  error: null as string | null
+  error: null as string | null,
+  /**
+   * A clock the directory reads, so "heard in the last 30 s" lapses on screen
+   * (KAN-2528). Kept up to date only while something was heard recently.
+   */
+  now: Date.now()
 })
+
+/** How often the clock above moves while a sighting is fresh. */
+const CLOCK_MS = 5_000
+let clock: ReturnType<typeof setInterval> | null = null
+
+function tickClock () {
+  nearbyState.now = Date.now()
+  // Nothing fresh is left to lapse: stop until the next sighting.
+  if (clock && !nearbyState.printers.some(p => nearbyState.now - p.heardAt <= NEARBY_FRESH_MS + CLOCK_MS)) {
+    clearInterval(clock)
+    clock = null
+  }
+}
+
+function ensureClock () {
+  if (clock) return
+  nearbyState.now = Date.now()
+  clock = setInterval(tickClock, CLOCK_MS)
+}
 
 const STORAGE = 'muon.ble.printers'
 
@@ -78,7 +104,7 @@ function remember (deviceId: string, value: Remembered) {
 }
 
 /** Adds or refreshes a sighting, and returns it. */
-function upsert (device: BleDevice, fields: { localName?: string | null, endpointId?: string | null, advert?: BleAdvert | null }): NearbyPrinter {
+function upsert (device: BleDevice, fields: { localName?: string | null, endpointId?: string | null, advert?: BleAdvert | null, heard?: boolean }): NearbyPrinter {
   let p = nearbyState.printers.find(x => x.deviceId === device.id)
   if (!p) {
     p = {
@@ -102,7 +128,14 @@ function upsert (device: BleDevice, fields: { localName?: string | null, endpoin
     // A factory reset gives the printer a new key: the remembered id is stale.
     if (p.endpointId && !p.endpointId.startsWith(fields.advert.endpointPrefix)) p.endpointId = null
   }
-  p.heardAt = Date.now()
+  // Only a real sighting (an advert, or a chooser pick) says the printer is here now:
+  // a device merely remembered from before is not (KAN-2528).
+  if (fields.heard) {
+    // Adverts arrive many times a second; a second's resolution is plenty and spares re-renders.
+    const at = Date.now()
+    if (at - p.heardAt >= 1000) p.heardAt = at
+    ensureClock()
+  }
   return p
 }
 
@@ -117,7 +150,8 @@ function onAdvertisement (event: Event) {
     localName: e.name ?? e.device.name ?? known?.localName,
     // A remembered id, until an advertisement says otherwise (upsert checks it).
     endpointId: existing ? undefined : known?.endpointId ?? null,
-    advert
+    advert,
+    heard: true
   })
 }
 
@@ -173,16 +207,17 @@ export function clearNearby () {
 
 /**
  * Look nearby: the browser's chooser, then the chosen printer's `INFO`. Call
- * it straight from a click. Resolves to the printer, or `null` when the
+ * it straight from a click. With a `target` the chooser lists only that
+ * printer (KAN-2470). Resolves to the printer, or `null` when the
  * person closed the chooser.
  */
-export async function lookNearby (): Promise<NearbyPrinter | null> {
+export async function lookNearby (target?: ChooserTarget | null): Promise<NearbyPrinter | null> {
   nearbyState.error = null
   nearbyState.choosing = true
   try {
-    const chosen = await choosePrinter()
+    const chosen = await choosePrinter(target)
     remember(chosen.device.id, { endpointId: chosen.info.endpointId, localName: chosen.name })
-    const printer = upsert(chosen.device, { localName: chosen.name, endpointId: chosen.info.endpointId })
+    const printer = upsert(chosen.device, { localName: chosen.name, endpointId: chosen.info.endpointId, heard: true })
     if (listening) watch(chosen.device, listening.signal)
     return printer
   } catch (error) {

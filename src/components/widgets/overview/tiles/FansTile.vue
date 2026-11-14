@@ -14,7 +14,10 @@
         class="ot__value"
         data-tid="fan-value"
       >{{ headline }}<small>{{ headlineLabel }}</small></span>
-      <span class="ot__sub">{{ others }}</span>
+      <span
+        v-if="size !== 'S'"
+        class="ot__sub"
+      >{{ others }}</span>
     </template>
     <template v-else>
       <span class="ot__value">—</span>

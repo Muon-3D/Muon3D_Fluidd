@@ -1,6 +1,6 @@
 import Vue from 'vue'
 import type { MutationTree } from 'vuex'
-import type { ConfigState, UiSettings, SaveByPath, InstanceConfig, InitConfig, UiStyle } from './types'
+import type { ConfigState, UiSettings, SaveByPath, InstanceConfig, InitConfig, UiStyle, PersonalSettings } from './types'
 import { defaultState } from './state'
 import { Globals } from '@/globals'
 import { cloneDeep, mergeWith, set } from 'lodash-es'
@@ -62,7 +62,23 @@ export const mutations: MutationTree<ConfigState> = {
       )
 
       Vue.set(state, 'uiSettings', mergedSettings)
+      // The printer-wide values are read again from what just loaded.
+      state.sharedPersonal = null
     }
+  },
+
+  setPersonalKey (state, payload: string | null) {
+    state.personalKey = payload
+  },
+
+  setSharedPersonal (state, payload: PersonalSettings | null) {
+    state.sharedPersonal = payload
+  },
+
+  /** The personal settings in effect: someone's own over the printer's. */
+  setPersonalValues (state, payload: Required<PersonalSettings>) {
+    Object.assign(state.uiSettings.theme, payload.theme)
+    Object.assign(state.uiSettings.general, payload.general)
   },
 
   /**
@@ -192,6 +208,9 @@ export const mutations: MutationTree<ConfigState> = {
       const i = state.uiSettings.dashboard.tempPresets.findIndex(preset => preset.id === payload.id)
       if (i >= 0) {
         Vue.set(state.uiSettings.dashboard.tempPresets, i, payload)
+      } else {
+        // A default the store added back is written the first time it changes.
+        state.uiSettings.dashboard.tempPresets.push(payload)
       }
     }
   },
@@ -215,13 +234,6 @@ export const mutations: MutationTree<ConfigState> = {
 
   setFileSystemSortDesc (state, payload: { root: string, value: boolean | null }) {
     Vue.set(state.uiSettings.fileSystem.sortDesc, payload.root, payload.value)
-  },
-
-  /**
-   * Puts us into layout mode
-   */
-  setLayoutMode (state, payload) {
-    state.layoutMode = payload
   },
 
   setContainerColumnCount (state, payload: number) {

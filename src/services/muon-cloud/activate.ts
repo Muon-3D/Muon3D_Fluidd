@@ -16,6 +16,8 @@ import { bindHttpClientToPrinterTransport } from '@/services/managed-session/htt
 import { type PrinterTransport } from '@/services/managed-transport'
 import { borrowCloudPrinter, cloudState, dropCloudConnection, printerName, setActiveCloudPrinter } from './state'
 import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
+import { noteRelayLost, noteUserOpen } from './route-choice'
+import { requestRefused } from '@/services/managed-transport/refusal'
 import { isOwnHotspot, pageReach } from './discovery'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
@@ -141,6 +143,7 @@ export class RemoteOpenTimeout extends Error {
 export async function activateCloudPrinter (printerId: string) {
   const mine = ++generation
   const superseded = () => mine !== generation
+  noteUserOpen(printerId)
   activationState.switching = printerId
   activationState.error = null
   activationState.fallbackUrl = null
@@ -199,6 +202,8 @@ export async function activateCloudPrinter (printerId: string) {
     ])
   } catch (error) {
     if (!superseded() && !(error instanceof SwitchSuperseded)) {
+      // The relay did not work for this printer: auto mode stays off it for a while (a refusal says nothing about a route).
+      if (!wantsBluetoothFor(printerId) && !requestRefused(error)) noteRelayLost(printerId)
       const refusal = wantsBluetoothFor(printerId) ? pairableRefusal(error) : null
       activationState.error = refusal ? notPairedMessage(refusal) : (error as Error).message
       activationState.pairing = refusal && panelCodePairing() ? printerId : null
@@ -250,8 +255,9 @@ export const LOCAL_OPEN_TIMEOUT_MS = 45_000
  * `activationState.fallbackUrl` is the printer's own page, which works in any
  * browser. False with no reason: another printer was opened meanwhile.
  */
-export async function activateLocalPrinter (instance: InstanceConfig): Promise<boolean> {
+export async function activateLocalPrinter (instance: InstanceConfig, printerId?: string | null): Promise<boolean> {
   const mine = ++generation
+  noteUserOpen(printerId, `address:${instance.apiUrl}`)
   let timer: ReturnType<typeof setTimeout> | undefined
   const timedOut = new Promise<false>(resolve => {
     timer = setTimeout(() => {

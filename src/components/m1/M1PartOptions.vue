@@ -3,203 +3,310 @@
     class="m1-opts"
     :data-tid="`m1-options-${part}`"
   >
-    <!-- Toolhead: the pad (back at the top, as seen from above), heat, load and unload. -->
+    <!-- Toolhead: move (the pad, back at the top as seen from above), heat the nozzle, load and unload. -->
     <template v-if="part === 'toolhead'">
-      <div class="m1-opts__move">
-        <div
-          class="m1-opts__pad"
-          :title="moveLock"
-        >
-          <button
-            v-for="b in pad"
-            :key="b.id"
-            type="button"
-            :class="`m1-opts__pad-${b.id}`"
-            :aria-label="b.label"
-            :disabled="!!moveLock && b.id !== 'home'"
-            :data-tid="`m1-pad-${b.id}`"
-            @click="b.run()"
+      <section
+        class="m1-opts__group"
+        aria-label="Move"
+      >
+        <span class="m1-opts__title">Move</span>
+        <div class="m1-opts__move">
+          <div
+            class="m1-opts__pad"
+            :title="moveLock"
           >
-            {{ b.text }}
+            <button
+              v-for="b in pad"
+              :key="b.id"
+              type="button"
+              :class="`m1-opts__pad-${b.id}`"
+              :aria-label="b.label"
+              :title="b.label"
+              :disabled="!!moveLock && b.id !== 'home'"
+              :data-tid="`m1-pad-${b.id}`"
+              @click="b.run()"
+            >
+              <frame-icon
+                :name="b.icon"
+                small
+              />
+            </button>
+          </div>
+          <div
+            class="m1-opts__seg"
+            role="radiogroup"
+            aria-label="Step"
+          >
+            <button
+              v-for="s in xySteps"
+              :key="s"
+              type="button"
+              role="radio"
+              :aria-checked="step === s ? 'true' : 'false'"
+              :class="{ on: step === s }"
+              @click="step = s"
+            >
+              {{ s }} mm
+            </button>
+          </div>
+        </div>
+      </section>
+      <section
+        class="m1-opts__group"
+        aria-label="Heat the nozzle"
+      >
+        <span class="m1-opts__title">Heat the nozzle</span>
+        <div class="m1-opts__row">
+          <button
+            v-for="m in heatChoices"
+            :key="m.name"
+            type="button"
+            class="m1-opts__chip"
+            :data-tid="`m1-heat-${m.name}`"
+            @click="heatNozzle(m)"
+          >
+            <frame-icon
+              name="flame"
+              small
+            />
+            {{ m.name }} {{ m.nozzle }}°
+          </button>
+          <button
+            type="button"
+            class="m1-opts__chip"
+            data-tid="m1-heat-off"
+            @click="nozzleOff"
+          >
+            <frame-icon
+              name="snow"
+              small
+            />
+            Off
           </button>
         </div>
-        <div
-          class="m1-opts__seg"
-          role="radiogroup"
-          aria-label="Step"
-        >
+      </section>
+      <section
+        class="m1-opts__group"
+        aria-label="Filament"
+      >
+        <span class="m1-opts__title">Filament</span>
+        <div class="m1-opts__row">
           <button
-            v-for="s in xySteps"
-            :key="s"
             type="button"
-            role="radio"
-            :aria-checked="step === s ? 'true' : 'false'"
-            :class="{ on: step === s }"
-            @click="step = s"
+            class="m1-opts__btn"
+            :disabled="loadPlan.kind === 'none'"
+            :title="loadPlan.kind === 'none' ? loadPlan.reason : ''"
+            data-tid="m1-load"
+            @click="runFilamentPlan('load')"
           >
-            {{ s }} mm
+            <frame-icon
+              name="download"
+              small
+            />
+            Load
+          </button>
+          <button
+            type="button"
+            class="m1-opts__btn"
+            :disabled="unloadPlan.kind === 'none'"
+            :title="unloadPlan.kind === 'none' ? unloadPlan.reason : ''"
+            data-tid="m1-unload"
+            @click="runFilamentPlan('unload')"
+          >
+            <frame-icon
+              name="upload"
+              small
+            />
+            Unload
           </button>
         </div>
-      </div>
-      <div class="m1-opts__row">
-        <button
-          v-for="m in heatChoices"
-          :key="m.name"
-          type="button"
-          class="m1-opts__chip"
-          :data-tid="`m1-heat-${m.name}`"
-          @click="heatNozzle(m)"
-        >
-          {{ m.name }} {{ m.nozzle }}°
-        </button>
-        <button
-          type="button"
-          class="m1-opts__chip"
-          data-tid="m1-heat-off"
-          @click="nozzleOff"
-        >
-          Off
-        </button>
-      </div>
-      <div class="m1-opts__row">
-        <button
-          type="button"
-          class="m1-opts__btn"
-          :disabled="!hasMacro('LOAD_FILAMENT')"
-          data-tid="m1-load"
-          @click="runFilament('LOAD_FILAMENT')"
-        >
-          Load
-        </button>
-        <button
-          type="button"
-          class="m1-opts__btn"
-          :disabled="!hasMacro('UNLOAD_FILAMENT')"
-          data-tid="m1-unload"
-          @click="runFilament('UNLOAD_FILAMENT')"
-        >
-          Unload
-        </button>
-      </div>
+      </section>
     </template>
 
     <!-- Plate: up and down as it physically moves, home, and a bed mesh. -->
     <template v-else-if="part === 'plate'">
-      <div class="m1-opts__row">
+      <section
+        class="m1-opts__group"
+        aria-label="Move"
+      >
+        <span class="m1-opts__title">Move</span>
         <div
-          class="m1-opts__seg"
-          role="radiogroup"
-          aria-label="Step"
+          class="m1-opts__row"
+          :title="zLock"
         >
           <button
-            v-for="s in zSteps"
-            :key="s"
             type="button"
-            role="radio"
-            :aria-checked="zStep === s ? 'true' : 'false'"
-            :class="{ on: zStep === s }"
-            @click="zStep = s"
+            class="m1-opts__btn"
+            :disabled="!!zLock"
+            data-tid="m1-plate-up"
+            @click="moveBy('Z', zStep)"
           >
-            {{ s }} mm
+            <frame-icon
+              name="chevronUp"
+              small
+            />
+            Plate up
+          </button>
+          <button
+            type="button"
+            class="m1-opts__btn"
+            :disabled="!!zLock"
+            data-tid="m1-plate-down"
+            @click="moveBy('Z', -zStep)"
+          >
+            <frame-icon
+              name="chevronDown"
+              small
+            />
+            Plate down
+          </button>
+          <div
+            class="m1-opts__seg"
+            role="radiogroup"
+            aria-label="Step"
+          >
+            <button
+              v-for="s in zSteps"
+              :key="s"
+              type="button"
+              role="radio"
+              :aria-checked="zStep === s ? 'true' : 'false'"
+              :class="{ on: zStep === s }"
+              @click="zStep = s"
+            >
+              {{ s }} mm
+            </button>
+          </div>
+        </div>
+      </section>
+      <section
+        class="m1-opts__group"
+        aria-label="Set up"
+      >
+        <span class="m1-opts__title">Set up</span>
+        <div class="m1-opts__row">
+          <button
+            type="button"
+            class="m1-opts__btn"
+            data-tid="m1-home"
+            @click="home()"
+          >
+            <frame-icon
+              name="home"
+              small
+            />
+            Home
+          </button>
+          <button
+            type="button"
+            class="m1-opts__btn"
+            :disabled="!meshRow || !!checksBlocked"
+            :title="checksBlocked"
+            data-tid="m1-mesh"
+            @click="meshRow && runCheck(meshRow)"
+          >
+            <frame-icon
+              name="mesh"
+              small
+            />
+            Bed mesh
           </button>
         </div>
-      </div>
-      <div
-        class="m1-opts__row"
-        :title="zLock"
-      >
-        <button
-          type="button"
-          class="m1-opts__btn"
-          :disabled="!!zLock"
-          data-tid="m1-plate-up"
-          @click="moveBy('Z', zStep)"
-        >
-          Plate up
-        </button>
-        <button
-          type="button"
-          class="m1-opts__btn"
-          :disabled="!!zLock"
-          data-tid="m1-plate-down"
-          @click="moveBy('Z', -zStep)"
-        >
-          Plate down
-        </button>
-      </div>
+      </section>
+    </template>
+
+    <!-- Screen: use the printer's own screen from here, when Control serves it (/panel/). -->
+    <template v-else-if="part === 'screen'">
       <div class="m1-opts__row">
         <button
           type="button"
           class="m1-opts__btn"
-          data-tid="m1-home"
-          @click="home()"
+          data-tid="m1-use-screen"
+          @click="$emit('use-screen')"
         >
-          Home
-        </button>
-        <button
-          type="button"
-          class="m1-opts__btn"
-          :disabled="!meshRow || !!checksBlocked"
-          :title="checksBlocked"
-          data-tid="m1-mesh"
-          @click="meshRow && runCheck(meshRow)"
-        >
-          Run a bed mesh
+          Use the printer's screen
         </button>
       </div>
     </template>
 
     <!-- Filament: load, unload and what is loaded, as the filament panel does it. -->
     <template v-else-if="part === 'filament'">
-      <div class="m1-opts__row">
-        <button
-          type="button"
-          class="m1-opts__btn"
-          :disabled="!hasMacro('LOAD_FILAMENT')"
-          data-tid="m1-load"
-          @click="runFilament('LOAD_FILAMENT')"
-        >
-          Load
-        </button>
-        <button
-          type="button"
-          class="m1-opts__btn"
-          :disabled="!hasMacro('UNLOAD_FILAMENT')"
-          data-tid="m1-unload"
-          @click="runFilament('UNLOAD_FILAMENT')"
-        >
-          Unload
-        </button>
-      </div>
-      <div class="m1-opts__row">
-        <button
-          v-for="m in materialChoices.slice(0, 6)"
-          :key="m.name"
-          type="button"
-          class="m1-opts__chip"
-          :class="{ on: loadedMaterial && loadedMaterial.name === m.name }"
-          :data-tid="`m1-material-${m.name}`"
-          @click="setLoadedMaterial(m)"
-        >
-          <span
-            class="m1-opts__swatch"
-            :style="{ background: m.colour }"
-          />
-          {{ m.name }}
-        </button>
-      </div>
+      <section
+        class="m1-opts__group"
+        aria-label="Load"
+      >
+        <span class="m1-opts__title">Load</span>
+        <div class="m1-opts__row">
+          <button
+            type="button"
+            class="m1-opts__btn"
+            :disabled="loadPlan.kind === 'none'"
+            :title="loadPlan.kind === 'none' ? loadPlan.reason : ''"
+            data-tid="m1-load"
+            @click="runFilamentPlan('load')"
+          >
+            <frame-icon
+              name="download"
+              small
+            />
+            Load
+          </button>
+          <button
+            type="button"
+            class="m1-opts__btn"
+            :disabled="unloadPlan.kind === 'none'"
+            :title="unloadPlan.kind === 'none' ? unloadPlan.reason : ''"
+            data-tid="m1-unload"
+            @click="runFilamentPlan('unload')"
+          >
+            <frame-icon
+              name="upload"
+              small
+            />
+            Unload
+          </button>
+        </div>
+      </section>
+      <section
+        class="m1-opts__group"
+        aria-label="Material"
+      >
+        <span class="m1-opts__title">Material</span>
+        <div class="m1-opts__row">
+          <material-picker>
+            <template #activator="{ on, attrs, disabled }">
+              <button
+                type="button"
+                class="m1-opts__chip"
+                :disabled="disabled"
+                aria-haspopup="listbox"
+                data-tid="m1-material"
+                v-bind="attrs"
+                v-on="on"
+              >
+                <span
+                  class="m1-opts__swatch"
+                  :style="{ background: loadedColour || (loadedMaterial ? loadedMaterial.colour : 'transparent') }"
+                />
+                {{ loadedMaterial ? loadedMaterial.name : 'Material and colour' }}
+              </button>
+            </template>
+          </material-picker>
+        </div>
+      </section>
     </template>
   </div>
 </template>
 
 <script lang="ts">
 import { Component, Mixins, Prop } from 'vue-property-decorator'
+import FrameIcon from '@/components/ui/FrameIcon.vue'
 import MaintenanceMixin from '@/mixins/maintenance'
+import FilamentActionsMixin from '@/mixins/filament-actions'
+import MaterialPicker from '@/components/overview/MaterialPicker.vue'
 import { Y_BACK } from '@/services/machine/orientation'
 import type { CheckRow } from '@/mixins/maintenance'
 import type { MaterialChoice } from '@/services/control/model'
-import { findFilamentMacro, type FilamentMacro } from '@/services/quick-actions/model'
-import type { Macro } from '@/store/macros/types'
 import type { PartId } from '@/services/m1-3d/parts'
 
 /**
@@ -212,8 +319,8 @@ import type { PartId } from '@/services/m1-3d/parts'
  * of it asks to confirm: Jack (6 Nov) keeps confirms for AI agents, not people.
  * Only shown on an idle printer the person can control (M1Parts).
  */
-@Component
-export default class M1PartOptions extends Mixins(MaintenanceMixin) {
+@Component({ components: { FrameIcon, MaterialPicker } })
+export default class M1PartOptions extends Mixins(MaintenanceMixin, FilamentActionsMixin) {
   @Prop({ type: String, required: true })
   readonly part!: PartId
 
@@ -240,11 +347,11 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin) {
     const back = Y_BACK
     const step = () => this.step
     return [
-      { id: 'n', text: '↑', label: 'Head back', run: () => this.moveBy('Y', back * step()) },
-      { id: 'w', text: '←', label: 'Head left (X−)', run: () => this.moveBy('X', -step()) },
-      { id: 'home', text: '⌂', label: 'Home X and Y', run: () => this.home('XY') },
-      { id: 'e', text: '→', label: 'Head right (X+)', run: () => this.moveBy('X', step()) },
-      { id: 's', text: '↓', label: 'Head forward', run: () => this.moveBy('Y', -back * step()) }
+      { id: 'n', icon: 'chevronUp', label: 'Head back', run: () => this.moveBy('Y', back * step()) },
+      { id: 'w', icon: 'chevronLeft', label: 'Head left (X−)', run: () => this.moveBy('X', -step()) },
+      { id: 'home', icon: 'home', label: 'Home all', run: () => this.home() },
+      { id: 'e', icon: 'chevronRight', label: 'Head right (X+)', run: () => this.moveBy('X', step()) },
+      { id: 's', icon: 'chevronDown', label: 'Head forward', run: () => this.moveBy('Y', -back * step()) }
     ]
   }
 
@@ -255,35 +362,6 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin) {
 
   get meshRow (): CheckRow | undefined {
     return this.checks.find(c => c.id === 'bedMesh')
-  }
-
-  get macroList (): Macro[] {
-    return ((this.$store.getters['macros/getMacros'] as Macro[]) ?? []).filter(m => typeof m.name === 'string')
-  }
-
-  /** Load and unload by any of their usual names, as Control's Filament card finds them. */
-  get loadMacro (): FilamentMacro | null {
-    return findFilamentMacro(this.macroList, 'load_filament', 'filament_load')
-  }
-
-  get unloadMacro (): FilamentMacro | null {
-    return findFilamentMacro(this.macroList, 'unload_filament', 'filament_unload')
-  }
-
-  hasMacro (name: string): boolean {
-    return name === 'LOAD_FILAMENT' ? !!this.loadMacro : !!this.unloadMacro
-  }
-
-  /**
-   * As Control's Filament card runs them (ControlFilament.run): idle only,
-   * and a macro that takes a TEMP is told the material's nozzle temperature.
-   */
-  runFilament (name: 'LOAD_FILAMENT' | 'UNLOAD_FILAMENT') {
-    const macro = name === 'LOAD_FILAMENT' ? this.loadMacro : this.unloadMacro
-    if (!macro || !this.controlReady || this.busy) return
-    const temp = this.material?.nozzle ?? this.loadedMaterial?.nozzle ?? null
-    if (this.refuseTooHot(this.material?.name ?? this.loadedMaterial?.name, temp)) return
-    this.sendGcode(macro.takesTemp && temp ? `${macro.name} TEMP=${temp}` : macro.name)
   }
 
   /** On the toolhead a chip heats the nozzle only, to the material's temperature; the bed is the plate's. */
@@ -304,9 +382,26 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin) {
   .m1-opts {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-top: 8px;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgb(255 255 255 / 8%);
     pointer-events: auto;
+  }
+
+  /* One group per kind of action: a quiet caption, then its buttons. */
+  .m1-opts__group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .m1-opts__title {
+    color: #98989d;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
   .m1-opts__row {
@@ -326,6 +421,15 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin) {
     color: #f5f5f7;
     font-size: 12px;
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    white-space: nowrap;
+
+    &:hover:not(:disabled) {
+      background: rgb(118 118 128 / 36%);
+    }
 
     &:disabled {
       opacity: 0.4;

@@ -21,6 +21,8 @@ test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '-
 test.beforeEach(async ({ page }) => {
   if (!GPU) await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
 })
+// Software WebGL under the whole default Overview (Movement included) takes seconds a step on a CI runner.
+test.slow(!GPU, 'software WebGL')
 
 /** The live M1 has drawn and its parts layer is up. */
 async function partsReady (page: Page): Promise<Locator> {
@@ -83,11 +85,16 @@ test.describe('desktop pointer', () => {
     await expect(label).toContainText('Build plate')
     await expect(label).toContainText(/°C · (mesh loaded|no mesh)/)
     await expect(page.locator('.m1-parts__leader line')).toHaveCount(1)
-    await page.mouse.move(5, 5)
-    // Selected, so it stays named after the pointer has gone.
-    await page.waitForTimeout(800)
+    // Selected, it stays named while the pointer is on the stage; off the stage it lets go (Jack, 11 Nov, KAN-2093).
+    await page.waitForTimeout(500)
     await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'plate')
+    // Esc lets it go too, the pointer still on the stage.
     await page.keyboard.press('Escape')
+    await expect(page.getByTestId('m1-parts-label')).toHaveCount(0)
+    await expect(page.getByTestId('m1-part-plate')).toHaveAttribute('aria-pressed', 'false')
+    await page.mouse.click(at.x, at.y)
+    await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'plate')
+    await page.mouse.move(5, 5)
     await expect(page.getByTestId('m1-parts-label')).toHaveCount(0)
 
     // With nothing selected, a drag that starts on the part turns the model and selects nothing.

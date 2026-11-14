@@ -36,6 +36,7 @@ import store from '@/store'
 import type { InstanceConfig } from '@/store/config/types'
 import { cloudApi } from './api'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
+import { knownReachable, secureNameOf } from '@/services/secure-origin/hosted'
 
 export interface LanLinkStatus {
   /**
@@ -332,11 +333,14 @@ export function pageIsSecure (): boolean {
  * links for a new tab. Opening `http://<ip>/` as a top-level page is not mixed
  * content, so it keeps the lock on this page.
  */
-export function lanOpenLinks (): Array<{ name: string, url: string }> {
+export function lanOpenLinks (accountPrinters: Array<{ id: string, secure_name?: string | null }> = []): Array<{ name: string, url: string }> {
   const links: Array<{ name: string, url: string }> = []
   for (const p of discoveryState.cloud) {
     const host = nearbyHost(p.localAddrs)
-    if (host) links.push({ name: p.name, url: `http://${host}/` })
+    // A printer this browser has already proven it reaches on its secure address: that link keeps the lock.
+    const secure = secureNameOf(accountPrinters.find(a => a.id === p.printerId))
+    if (secure && knownReachable(secure)) links.push({ name: p.name, url: `https://${secure}/` })
+    else if (host) links.push({ name: p.name, url: `http://${host}/` })
   }
   return links
 }

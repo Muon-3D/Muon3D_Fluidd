@@ -45,6 +45,8 @@
         </form>
         <h1
           v-else
+          ref="heading"
+          tabindex="-1"
           data-tid="library-collection-title"
         >
           {{ collection ? collection.name : '' }}
@@ -349,6 +351,17 @@ export default class LibraryCollectionPage extends Vue {
     this.note = ''
     this.sort = 'order'
     this.load()
+  }
+
+  /** The collection's name has loaded: focus goes to the heading, once per collection (not scrolled to). */
+  private focusedFor = ''
+
+  @Watch('collection')
+  async focusHeading () {
+    if (!this.collection || this.focusedFor === this.collectionId) return
+    this.focusedFor = this.collectionId
+    await this.$nextTick()
+    ;(this.$refs.heading as HTMLElement | undefined)?.focus({ preventScroll: true })
   }
 
   /** Read it again: after a Remove from its quick look, or Try again. */

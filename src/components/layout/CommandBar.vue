@@ -147,6 +147,7 @@ import { bluetoothCarrying } from '@/services/muon-ble/link'
 import { savedName } from '@/services/muon-cloud/directory'
 import { jobName } from '@/services/printers-page/model'
 import { plateCheckNeeded } from '@/services/jobs/plate'
+import { plateNoticeFor } from '@/services/plate/ask'
 import { printerNameParts } from '@/util/printer-name'
 import { presetCommands, presetSummary } from '@/util/temperature-preset'
 
@@ -432,7 +433,8 @@ export default class CommandBar extends Mixins(FrameMixin, BrowserMixin, TypedCo
     const ok = await this.$confirm(`${printer} heats up, homes and starts printing.`, {
       title: `Print ${name} on ${this.printerName ?? 'this printer'}?`,
       buttonTrueText: 'Print now',
-      plateCheck: plateCheckNeeded(this.$store.state.history?.jobs)
+      plateCheck: plateCheckNeeded(this.$store.state.history?.jobs),
+      plateNotice: plateNoticeFor(this.$store.state)
     })
     if (!ok) return
     const idle = () => !this.printerBusy
@@ -454,7 +456,7 @@ export default class CommandBar extends Mixins(FrameMixin, BrowserMixin, TypedCo
     const macros = visibleMacros(this.$store.getters['macros/getVisibleMacros'] as MacroGroup[])
     return macros.map(m => ({
       id: `macro-${m.name}`,
-      group: 'Macros' as const,
+      group: 'Quick commands' as const,
       label: m.name.toUpperCase(),
       hint: m.config?.description && m.config.description !== 'G-Code macro' ? m.config.description : undefined,
       words: 'macro run',

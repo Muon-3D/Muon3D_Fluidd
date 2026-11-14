@@ -167,6 +167,11 @@ export const getters: GetterTree<PrinterState, RootState> = {
           case 'filament':
             return getters.getFilamentPrintProgress
 
+          case 'layers':
+            return getters.getPrintLayers > 0
+              ? Math.min(1, Math.max(0, getters.getPrintLayer / getters.getPrintLayers))
+              : 0
+
           default:
             return 0
         }
@@ -941,7 +946,7 @@ export const getters: GetterTree<PrinterState, RootState> = {
     }
 
     if (config && !('gcode_macro CANCEL_PRINT' in config)) {
-      warnings.push({ message: 'CANCEL_PRINT macro not found in configuration.' })
+      warnings.push({ message: 'CANCEL_PRINT command not found in configuration.' })
     }
     return warnings
   },
