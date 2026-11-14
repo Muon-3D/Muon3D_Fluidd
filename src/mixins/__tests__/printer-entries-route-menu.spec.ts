@@ -34,7 +34,7 @@ beforeEach(() => {
   discoveryState.cloud = []
   discoveryState.cloudChecked = true
 })
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => { vi.restoreAllMocks() })
 
 describe('menus follow the live route', () => {
   it('on Bluetooth: Connect locally and Muon3D, not Bluetooth', () => {
@@ -96,8 +96,15 @@ describe('routes for a printer you do not own', () => {
 
 describe('a known printer is on the network before it is opened (KAN-2487)', () => {
   const sources = (over: Record<string, unknown> = {}) => ({
-    account: [], status: {}, email: null, saved: [{ name: 'Sloe', apiUrl: 'http://sloe.local:7125', socketUrl: 'ws://sloe.local:7125/websocket', endpointId: 'sloe-id' }],
-    found: [], cloudNearby: [], nearby: [], activeCloudId: null, ...over
+    account: [],
+    status: {},
+    email: null,
+    saved: [{ name: 'Sloe', apiUrl: 'http://sloe.local:7125', socketUrl: 'ws://sloe.local:7125/websocket', endpointId: 'sloe-id' }],
+    found: [],
+    cloudNearby: [],
+    nearby: [],
+    activeCloudId: null,
+    ...over
   }) as unknown as Parameters<typeof printerDirectory>[0]
 
   it('a saved printer the service finds beside this browser is on this network, not "Not found"', () => {

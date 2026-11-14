@@ -738,8 +738,10 @@ export async function refreshKnownPrinters () {
 export function lookForPrinters (): Promise<void> {
   const nearby = refreshCloudNearby().catch(() => {})
   if (pageIsSecure()) return nearby
-  const known = discoveryState.finishedAt ? refreshKnownPrinters().catch(() => {}) : discoverPrinters(false, { nearby: false }).catch(() => {})
-  return Promise.all([nearby, known]).then(() => {})
+  // Printers asked a minute ago are not asked again (the menus open often); the pages' own timers keep them fresh.
+  if (Date.now() - discoveryState.finishedAt < FRESH_FOR_MS) return nearby
+  const known = discoveryState.finishedAt ? refreshKnownPrinters() : discoverPrinters(false, { nearby: false })
+  return Promise.all([nearby, known.catch(() => {})]).then(() => {})
 }
 
 let readingStatus: Promise<void> | null = null
