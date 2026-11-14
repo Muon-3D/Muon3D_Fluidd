@@ -10,6 +10,12 @@ import type { Page } from '@playwright/test'
 
 const shelf = (page: Page, id: string) => page.getByTestId(`library-shelf-${id}`)
 
+/** Continue is what this browser opened: a print opened here before, kept in local storage (set once, so later opens are not overwritten). */
+async function openedBefore (page: Page, id: string, title: string) {
+  const entry = JSON.stringify([{ id, kind: 'own', title, thumbnail: null, maker: null, opened_at: 1 }])
+  await page.addInitScript(([value]) => { if (!localStorage.getItem('m3d.control.library.recents.v1')) localStorage.setItem('m3d.control.library.recents.v1', value) }, [entry])
+}
+
 /** A Library with something on every shelf. */
 function stock (models: ModelServiceState) {
   models.items.push(
@@ -27,6 +33,7 @@ test.describe('signed in', () => {
 
   test('Continue once, Collections, then Sliced, Printed, Saved, Shared by you and Designs; no tabs or chips', async ({ page, models, open }) => {
     stock(models)
+    await openedBefore(page, 'a', 'Hex planter')
     await open('/library?view=mine')
     await expect(page.getByTestId('library-continue')).toContainText('Hex planter')
     await expect(page.getByText('Pick up where you left off')).toHaveCount(0)
@@ -68,14 +75,28 @@ test.describe('signed in', () => {
     await expect(page).toHaveURL(/\/library\/b(\?|$)/)
   })
 
-  test('Continue prints the last print again, or opens it', async ({ page, models, open }) => {
+  test('Continue prints the last print opened here again, or opens it', async ({ page, models, open }) => {
     stock(models)
+    await openedBefore(page, 'a', 'Hex planter')
     await open('/library?view=mine')
     await page.getByTestId('library-continue-print').click()
     await expect(page.getByTestId('print-on').getByRole('heading', { name: 'Hex planter' })).toBeVisible()
     await open('/library?view=mine')
     await page.getByTestId('library-continue-open').click()
     await expect(page).toHaveURL(/\/library\/a(\?|$)/)
+  })
+
+  test('Continue is what this device opened: none at first, then the print you opened', async ({ page, models, open }) => {
+    stock(models)
+    await open('/library?view=mine')
+    await expect(shelf(page, 'sliced')).toContainText('Hex planter')
+    // The account has recent prints, but nothing was opened on this device yet.
+    await expect(page.getByTestId('library-continue')).toHaveCount(0)
+    await shelf(page, 'sliced').getByRole('button', { name: 'Open Desk bracket' }).first().click()
+    await expect(page).toHaveURL(/\/library\/b(\?|$)/)
+    await expect(page.getByTestId('library-print-name')).toHaveText('Desk bracket')
+    await open('/library?view=mine')
+    await expect(page.getByTestId('library-continue')).toContainText('Desk bracket')
   })
 
   test('See all opens the whole shelf as a grid with search and sort, and ‹ Yours comes back', async ({ page, models, open }) => {

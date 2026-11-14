@@ -16,7 +16,9 @@ export default defineConfig({
   testDir: '.',
   globalSetup: './global-setup.ts',
   // The whole run, warm-up included: a cold vite in CI can take minutes.
-  globalTimeout: 35 * 60_000,
+  // 37 min, under the 40-min job limit in .github/workflows/e2e.yml (D-117), leaving
+  // time to write the blob report. At 35 it cut shard 2 (442 tests) before the job limit did.
+  globalTimeout: 37 * 60_000,
   outputDir: '../test-results',
   timeout: 90_000,
   expect: { timeout: 15_000 },

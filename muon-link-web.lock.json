@@ -2,14 +2,14 @@
   "format": 1,
   "name": "muon-link-web",
   "source": "https://github.com/Muon-3D/muon-link",
-  "commit": "1d6706d36a8a6d61d3afa3f4e19d69d29182cc78",
-  "dir": "1d6706d",
+  "commit": "1608e20c93be86e6bd78d461f7a3878a54890604",
+  "dir": "1608e20",
   "provenance": "ci-release",
   "release": {
-    "tag": "web-1d6706d3",
-    "url": "https://github.com/Muon-3D/muon-link/releases/download/web-1d6706d3/muon-link-web-1d6706d3.tar.gz",
-    "sha256": "09014e63700d63607749f84ede7d5cf7f9bf7450736442b1823b752151fbd619",
-    "run": "43072319522"
+    "tag": "web-1608e20c",
+    "url": "https://github.com/Muon-3D/muon-link/releases/download/web-1608e20c/muon-link-web-1608e20c.tar.gz",
+    "sha256": "304fd54d961b55478c8871ac28e5253c56d6d47fa0f4176bb3d360b626afd6e7",
+    "run": "43503185303"
   },
   "license": "Apache-2.0",
   "wasmBindgen": "0.2.127",
@@ -36,22 +36,24 @@
     "Socket",
     "decodeInfo",
     "default",
+    "endpointIdOf",
     "initSync",
+    "signEndpointProof",
     "uuids"
   ],
   "files": {
-    "muon_link_web.js": "10dd7d4c8128cb33ff571b40b0f46ded54abc37bb1f0879ce057c82104621cee",
-    "muon_link_web_bg.wasm": "fd5e834f6201e9fcad9b0dd76f575034c61646c1f83ab77312053f74c02dbe79",
-    "muon_link_web.d.ts": "f06f3dfd6259e271abd9e16ba30b48396ef341f8587bd34b5ec3904abaac22c6",
-    "muon_link_web_bg.wasm.d.ts": "dc55c6ca1c05ab2a5feac236b1cf2d6077476594dc4e2a62604518525501e3a3",
+    "muon_link_web.js": "93c44bfbf089d8674806c861398621b6101bdf2454c6eaed474af440c4240739",
+    "muon_link_web_bg.wasm": "8499b55b8d25f3add33f5f7974f4ff8a84b7fe8b5295906a8e1abe9b4c61e7c1",
+    "muon_link_web.d.ts": "c65b2bfe2b37bfbb5ee6621351fe4ced210b52891d39b2940f8d035fc913413c",
+    "muon_link_web_bg.wasm.d.ts": "1911e0a7075ae1e872c25c21e2e8e928f264a8d631e6a3b9127347640edd2535",
     "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "NOTICE": "7f7c6fe649a2d9b21bdec54121acf6798eb5373f1cf3f694ddf02e7cd30db468",
+    "NOTICE": "72eec12a156330ea0d2ad187d1567458f6894ff052b334304f40736de8b55bae",
     "THIRD-PARTY-NOTICES.md": "3a0fcc2eea02ccd1c3e8511cd3f35d9fade900c4fab39ab9e642c52cf63c7daa",
-    "SOURCE.md": "30e6f8ec2aa68df4f28e01e1a1a89102b8dfd38cec92b15812a353f8f6a2e9f2"
+    "SOURCE.md": "2bd3849f2165e273911a8d6d38766aebbac8c42cb26468db0e9f0126a6af05f6"
   },
   "bytes": {
-    "muon_link_web.js": 71126,
-    "muon_link_web_bg.wasm": 3007433
+    "muon_link_web.js": 75249,
+    "muon_link_web_bg.wasm": 3019137
   },
   "crates": [
     "aead 0.5.2 MIT OR Apache-2.0",

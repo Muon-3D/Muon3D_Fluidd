@@ -30,7 +30,7 @@ export const FROSTED_PLATE = {
 } as const
 
 /** How much of the scene shows through the plate's faces. */
-const GLASS_OPACITY = 0.1
+export const GLASS_OPACITY = 0.1
 const EDGE_OPACITY = 0.55
 
 /**

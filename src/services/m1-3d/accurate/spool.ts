@@ -7,9 +7,10 @@ import type { AccessoryFrame } from '../accessory-motion'
  * one 1 kg spool hangs on the ring at the back of the Z column with its near
  * flange in the top clip; the filament leaves the bottom of the wound
  * filament, comes round the outside of the back-left wall and over it, and
- * goes down into the inlet: the round cup in the deck beside the screen. The
+ * goes down into the small hole at the back of the deck (BACK_HOLE), not the
+ * round cup beside the screen (Jack, 11 Nov: that one is the fan). The
  * load and unload clips play as on the simple model (accessory-parts.ts): the
- * reel turns as the strand comes off it to the inlet, and the end is held in
+ * reel turns as the strand comes off it to the hole, and the end is held in
  * a hole in the outer flange while unloaded.
  *
  * Places are in the M1 node's own millimetres, read off the GLB: x toward the
@@ -19,7 +20,8 @@ import type { AccessoryFrame } from '../accessory-motion'
 export const ACCURATE_SPOOL_NODES = {
   spool: 'M1_Spool',
   reel: 'M1_SpoolReel',
-  strand: 'M1_Filament'
+  strand: 'M1_Filament',
+  hole: 'M1_FilamentHole'
 } as const
 
 export interface AccurateSpool {
@@ -31,6 +33,8 @@ export interface AccurateSpool {
   setColour: (colour: number) => void;
   /** Whether the spool is drawn now. */
   shown: () => boolean;
+  /** The colour the wound filament is drawn in now, 0xRRGGBB. */
+  colour: () => number;
 }
 
 /** The ring the spool hangs on, at the back of the column, and the column's back face there. */
@@ -47,9 +51,16 @@ const GAP = 1.5
 /** The end's hole in the outer flange, and the filament's radius (1.75 mm). */
 const HOLE_R = 88
 const FILAMENT_R = 0.875
-/** The inlet: the cup in the deck beside the screen, its rim at this height. */
-const INLET = new THREE.Vector3(3, -111.1, 51.1)
 const DECK_Y = -107
+/**
+ * Where the filament goes in: the small hole at the back of the deck, inside
+ * the back-left wall. Not the round cup beside the screen. The strand's last
+ * point and the grommet round the hole both come from this, so one edit moves
+ * them together.
+ */
+export const BACK_HOLE = new THREE.Vector3(-97, DECK_Y, 66)
+/** The hole's radius: a little over the filament's 1.75 mm. */
+const HOLE_BORE_R = 2.4
 /** The column this far out (its lever up, proud of the socket) still has the strand on it. */
 const STRAND_COLUMN_LEVEL = 0.2
 
@@ -137,15 +148,20 @@ export function buildAccurateSpool (root: THREE.Object3D): AccurateSpool {
   const strandCurve = new THREE.CatmullRomCurve3([
     leave,
     new THREE.Vector3(-146, DECK_Y + 4, 50),
-    new THREE.Vector3(-104, DECK_Y + 2, 74),
-    new THREE.Vector3(-62, DECK_Y + 3, 90),
-    new THREE.Vector3(-28, DECK_Y + 4, 70),
-    new THREE.Vector3(-6, DECK_Y + 6, 55),
-    INLET.clone().setY(DECK_Y + 4),
-    INLET.clone().setY(INLET.y - 10)
+    new THREE.Vector3(-112, DECK_Y + 5, 71),
+    BACK_HOLE.clone().setY(DECK_Y + 6),
+    BACK_HOLE.clone().setY(DECK_Y - 9)
   ], false, 'centripetal')
   const strand = new THREE.Mesh(new THREE.TubeGeometry(strandCurve, STRAND_SEGS, FILAMENT_R, RADIAL, false), strandMaterial)
   strand.name = ACCURATE_SPOOL_NODES.strand
+  // The hole: a dark grommet on the deck round a black bore the strand goes down into.
+  const grommet = new THREE.Mesh(new THREE.CylinderGeometry(HOLE_BORE_R + 1.6, HOLE_BORE_R + 1.6, 1.2, 24), dark)
+  grommet.name = ACCURATE_SPOOL_NODES.hole
+  grommet.position.copy(BACK_HOLE).setY(DECK_Y + 0.6)
+  m1.add(grommet)
+  const bore = new THREE.Mesh(new THREE.CylinderGeometry(HOLE_BORE_R, HOLE_BORE_R, 0.2, 24), new THREE.MeshBasicMaterial({ color: 0x000000 }))
+  bore.position.copy(BACK_HOLE).setY(DECK_Y + 1.25)
+  m1.add(bore)
   strand.castShadow = true
   m1.add(strand)
   const strandTurn = strandCurve.getLength() / WOUND_R
@@ -183,6 +199,7 @@ export function buildAccurateSpool (root: THREE.Object3D): AccurateSpool {
       filament.color.setHex(colour)
       strandMaterial.color.setHex(colour)
     },
-    shown: () => spool.visible
+    shown: () => spool.visible,
+    colour: () => filament.color.getHex()
   }
 }

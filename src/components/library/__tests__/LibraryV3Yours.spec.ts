@@ -5,7 +5,7 @@ import LibraryYoursShelves from '../v2/LibraryYoursShelves.vue'
 import LibraryYoursGrid from '../v2/LibraryYoursGrid.vue'
 import { libraryState, resetLibrary, setLibraryClient } from '@/services/library/store'
 import type { LibraryItem, LibraryRun } from '@/services/library/api'
-import { findOwn, itemShelf, printedCards, publicShares, runCard, sharedCard, slicedCard } from '@/services/library/yours'
+import { findOwn, itemShelf, printedCards, ownPublicShares, runCard, sharedCard, slicedCard } from '@/services/library/yours'
 
 const NOW = Date.parse('2026-11-06T12:00:00Z')
 
@@ -59,8 +59,8 @@ describe('Library v3 Yours: cards from your own prints', () => {
     expect(cards.map(c => c.key)).toEqual(['printed:new', 'printed:other'])
   })
 
-  it('Shared by you: public, live shares only, printed as the item they share', () => {
-    const shares = publicShares({
+  it('Shared by you: live, waiting and refused public shares; not link, withdrawn or expired ones', () => {
+    const shares = ownPublicShares({
       shares: [
         { id: 's1', item: 'a', title: 'Hex planter', version: 1, audience: 'public', state: 'approved', expires_at: '2027-01-01T00:00:00Z' },
         { id: 's2', item: 'b', title: 'Link', version: 1, audience: 'link', state: 'approved' },
@@ -68,13 +68,28 @@ describe('Library v3 Yours: cards from your own prints', () => {
         { id: 's4', item: 'd', title: 'In review', version: 1, audience: 'public', state: 'pending' },
         { id: 's5', item: 'e', title: 'Expired', version: 1, audience: 'public', state: 'approved', expires_at: '2026-11-01T00:00:00Z' },
         { id: 's6', item: 'a', title: 'Twice', version: 2, audience: 'public', state: 'approved' },
+        { id: 's8', item: 'f', title: 'Turned down', version: 1, audience: 'public', state: 'rejected', reason: 'No safe way to print it' },
+        { id: 's9', item: 'g', title: 'Pending link', version: 1, audience: 'link', state: 'pending' },
+        { id: 's10', item: 'h', title: 'Expired review', version: 1, audience: 'public', state: 'pending', expires_at: '2026-11-01T00:00:00Z' },
         { id: 7, item: 'a', audience: 'public' }
       ]
     }, NOW)
-    expect(shares.map(s => s.id)).toEqual(['s1'])
+    expect(shares.map(s => s.id)).toEqual(['s1', 's4', 's8'])
     expect(sharedCard(shares[0], new Map([['a', item('a')]]))).toMatchObject({ title: 'Hex planter', action: 'print', note: 'Public' })
     expect(sharedCard(shares[0], new Map()).action).toBeNull()
-    expect(publicShares(null)).toEqual([])
+    expect(sharedCard(shares[1], new Map()).note).toBe('Waiting for review')
+    expect(sharedCard(shares[2], new Map()).note).toBe('Not approved: No safe way to print it')
+    expect(sharedCard({ ...shares[2], reason: undefined }, new Map()).note).toBe('Not approved')
+    expect(ownPublicShares(null)).toEqual([])
+  })
+
+  it('Shared by you: one card per print, approved over waiting over refused, newest within a state', () => {
+    const share = (id: string, state: string, created_at: string) => ({ id, item: 'a', title: id, version: 1, audience: 'public', state, created_at })
+    const ids = (list: unknown[]) => ownPublicShares({ shares: list }, NOW).map(s => s.id)
+    expect(ids([share('r', 'rejected', '2026-11-05T00:00:00Z'), share('p', 'pending', '2026-11-04T00:00:00Z'), share('ok', 'approved', '2026-11-01T00:00:00Z')])).toEqual(['ok'])
+    expect(ids([share('r', 'rejected', '2026-11-05T00:00:00Z'), share('p', 'pending', '2026-11-01T00:00:00Z')])).toEqual(['p'])
+    expect(ids([share('old', 'pending', '2026-11-01T00:00:00Z'), share('new', 'pending', '2026-11-03T00:00:00Z')])).toEqual(['new'])
+    expect(ids([share('new', 'rejected', '2026-11-03T00:00:00Z'), share('old', 'rejected', '2026-11-01T00:00:00Z')])).toEqual(['new'])
   })
 
   it('Sliced is every print that is not a design (uploads and phone models too); Designs is what Create made', () => {
@@ -182,6 +197,40 @@ describe('Library v3 Yours: the shelves', () => {
     expect((wrapper.emitted('own-open')?.[0][0] as { key: string }).key).toBe('sliced:a')
     await wrapper.find('[data-tid="library-shelf-sliced-all"]').trigger('click')
     expect(wrapper.emitted('see-all')?.[0]).toEqual(['sliced'])
+  })
+})
+
+describe('Library v3 Yours: waiting and refused shares', () => {
+  const share = (id: string, item: string, state: string, reason?: string) => ({ id, item, title: `Share ${id}`, version: 1, audience: 'public', state, expires_at: '2099-01-01T00:00:00Z', reason })
+
+  it('shows them on Shared by you with their notes; the reason stays text; each opens your own copy', async () => {
+    synced([item('a'), item('b'), item('c')])
+    setLibraryClient(client({
+      shares: vi.fn(async () => ({ shares: [share('s1', 'a', 'approved'), share('s2', 'b', 'pending'), share('s3', 'c', 'rejected', '<img src=x onerror=alert(1)>')] }))
+    }) as never)
+    const wrapper = mount(LibraryYoursShelves, { stubs: { 'frame-icon': true } })
+    wrappers.push(wrapper)
+    await flush()
+    const shelf = wrapper.find('[data-tid="library-shelf-shared"]')
+    expect(shelf.find('[data-tid="library-own-shared:s1"]').text()).toContain('Public')
+    expect(shelf.find('[data-tid="library-own-shared:s2"]').text()).toContain('Waiting for review')
+    expect(shelf.find('[data-tid="library-own-shared:s3"]').text()).toContain('Not approved: <img src=x onerror=alert(1)>')
+    expect(shelf.find('img[src="x"]').exists()).toBe(false)
+    await shelf.find('[data-tid="library-own-shared:s2"] .mcard__pic').trigger('click')
+    const opened = wrapper.emitted('own-open')?.[0][0] as { key: string, shelf: string, item: { id: string } }
+    expect([opened.key, opened.shelf, opened.item.id]).toEqual(['shared:s2', 'shared', 'b'])
+    expect(wrapper.emitted('open')).toBeUndefined()
+  })
+
+  it('shows nothing for link, withdrawn and expired shares', async () => {
+    synced([item('a'), item('b'), item('c')])
+    setLibraryClient(client({
+      shares: vi.fn(async () => ({ shares: [{ ...share('s1', 'a', 'pending'), audience: 'link' }, share('s2', 'b', 'revoked'), { ...share('s3', 'c', 'pending'), expires_at: '2020-01-01T00:00:00Z' }] }))
+    }) as never)
+    const wrapper = mount(LibraryYoursShelves, { stubs: { 'frame-icon': true } })
+    wrappers.push(wrapper)
+    await flush()
+    expect(wrapper.find('[data-tid="library-shelf-shared"]').exists()).toBe(false)
   })
 })
 

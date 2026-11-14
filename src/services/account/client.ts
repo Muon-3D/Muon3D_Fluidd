@@ -11,7 +11,7 @@
  * 404 or 405 and no JSON error. `AccountError.missing` says so, and the
  * pages show "Coming soon" there instead of an error.
  */
-import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, refreshOutcome, sessionRefused, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
+import { CloudError, INSECURE_ORIGIN_MESSAGE, carryConfirmation, cloudBaseUrl, cloudSessionAllowed, refreshOutcome, sessionRefused, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
 import { deletionRevision, observeDeletion } from '@/services/muon-cloud/deletion'
 
 export class AccountError extends CloudError {
@@ -74,10 +74,14 @@ export function endsSession (answer: unknown): boolean {
  * it at once. The browser session's cookie comes back as `Set-Cookie`, which
  * a page the console serves takes without any option (same origin).
  */
-export function adoptRekeyedSession (data: unknown) {
+export function adoptRekeyedSession (data: unknown, sameAccount = true) {
   const session = (data as { session?: { access_token?: unknown, refresh_token?: unknown } | null } | null)?.session
   if (!session || typeof session.access_token !== 'string' || !session.access_token) return
+  const before = storedToken()
   storeToken(session.access_token)
+  // The same account's new token: the confirmation moves with it (or /me is asked, when there was none to move).
+  // A session that came from a link's token (e-mail verify) may be another account's: nothing moves, /me is asked.
+  carryConfirmation(sameAccount ? before : null, session.access_token)
   if (typeof session.refresh_token === 'string' && session.refresh_token) storeRefreshToken(session.refresh_token)
 }
 
@@ -152,7 +156,7 @@ export async function accountRequest<T> (method: string, path: string, body?: un
     const now = storedToken()
     if ((!ownToken || options.adopt) && token !== null && token === now) {
       if (!ownToken) observeDeletion(method, path, response.status, data, startedAt)
-      adoptRekeyedSession(data)
+      adoptRekeyedSession(data, !ownToken)
     } else if (!ownToken && token !== null && !now) {
       // A concurrent 401 refresh cleared storage while this change was in
       // flight: the rotated session is still this person's. A different,

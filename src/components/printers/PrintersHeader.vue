@@ -40,6 +40,15 @@
       >
         <button
           type="button"
+          :class="{ on: view === 'bench' }"
+          :aria-pressed="view === 'bench' ? 'true' : 'false'"
+          data-tid="view-bench"
+          @click="$emit('update:view', 'bench')"
+        >
+          Bench
+        </button>
+        <button
+          type="button"
           :class="{ on: view === 'cards' }"
           :aria-pressed="view === 'cards' ? 'true' : 'false'"
           data-tid="view-grid"
@@ -58,6 +67,20 @@
         </button>
       </div>
       <button
+        v-if="bluetoothSearch"
+        type="button"
+        class="btn btn--primary"
+        data-tid="connect-bluetooth"
+        :disabled="bluetoothOff"
+        @click="$emit('connect-bluetooth')"
+      >
+        <frame-icon
+          name="bluetooth"
+          small
+        />
+        Connect over Bluetooth
+      </button>
+      <button
         type="button"
         class="btn btn--primary"
         data-tid="add-printer"
@@ -69,6 +92,13 @@
         />
         Add printer
       </button>
+      <p
+        v-if="!bluetoothSearch"
+        class="phead__quiet"
+        data-tid="bluetooth-needs-chrome"
+      >
+        Connecting over Bluetooth needs Chrome or Edge{{ bluetoothInsecure ? ' on a secure page' : '' }}.
+      </p>
     </div>
   </header>
 </template>
@@ -90,13 +120,24 @@ export default class PrintersHeader extends Vue {
   readonly search!: string
 
   @Prop({ type: String, default: 'cards' })
-  readonly view!: 'cards' | 'list'
+  readonly view!: 'cards' | 'list' | 'bench'
 
   @Prop({ type: Boolean })
   readonly showSearch?: boolean
 
   @Prop({ type: Boolean })
   readonly showView?: boolean
+
+  /** Web Bluetooth is here (Chromium, secure context). */
+  @Prop({ type: Boolean })
+  readonly bluetoothSearch?: boolean
+
+  @Prop({ type: Boolean })
+  readonly bluetoothOff?: boolean
+
+  /** The page is not a secure context, which is why Bluetooth is missing. */
+  @Prop({ type: Boolean })
+  readonly bluetoothInsecure?: boolean
 
   onInput (event: Event) {
     this.$emit('update:search', (event.target as HTMLInputElement).value)
@@ -139,6 +180,12 @@ export default class PrintersHeader extends Vue {
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
+  }
+
+  .phead__quiet {
+    margin: 0;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
   }
 
   .phead__search {

@@ -9,6 +9,7 @@
  * other only after a 403 or a 404.
  */
 import Vue from 'vue'
+import { refusal } from '@/services/permissions/api'
 
 export const PANEL_ONLY_NOTE = "Do this at the printer's screen"
 
@@ -46,22 +47,76 @@ export function routeFor (action: WifiAction, refused: Refused): RouteChoice {
 
 const statusOf = (error: unknown): number | undefined => (error as { response?: { status?: number } } | null | undefined)?.response?.status
 
-/** Fall back to another route only for a printer that refuses or lacks the first. */
+/**
+ * What a 403 from the printer is. The permission store (MuonOS) answers
+ * `detail: { code: "permission_restricted", knob, required, allowed, message }`
+ * when this caller isn't allowed by the printer's setting; that is not a
+ * panel-only printer (KAN-2457).
+ */
+export type RefusalKind =
+  | { kind: 'permission', knob: string, required: string, allowed: string[], message: string }
+  | { kind: 'panel-only' }
+  | { kind: 'protected' }
+  | { kind: 'other' }
+
+const bodyOf = (error: unknown): Record<string, unknown> | null => {
+  const data = (error as { response?: { data?: unknown } } | null | undefined)?.response?.data
+  return data && typeof data === 'object' ? data as Record<string, unknown> : null
+}
+
+export function classifyRefusal (error: unknown): RefusalKind {
+  if (statusOf(error) !== 403) return { kind: 'other' }
+  const body = bodyOf(error)
+  const text = (body?.error as { message?: unknown } | undefined)?.message
+  if (typeof text === 'string' && /protected/i.test(text)) return { kind: 'protected' }
+  const { code, message } = refusal(body)
+  if (code === 'permission_restricted') {
+    const detail = (body?.detail && typeof body.detail === 'object' ? body.detail : {}) as Record<string, unknown>
+    const allowed = Array.isArray(detail.allowed) ? detail.allowed.filter((a): a is string => typeof a === 'string') : []
+    return {
+      kind: 'permission',
+      knob: typeof detail.knob === 'string' ? detail.knob : '',
+      required: typeof detail.required === 'string' ? detail.required : '',
+      allowed,
+      message: typeof detail.message === 'string' ? message : ''
+    }
+  }
+  // `panel_only`, no code, or any other 403: today's reading, the printer's own screen.
+  return { kind: 'panel-only' }
+}
+
+/** Fall back to another route only for a printer that refuses or lacks the first. A permission refusal is not that. */
 export const fallsBack = (error: unknown): boolean => {
   const status = statusOf(error)
+  if (status === 403 && classifyRefusal(error).kind === 'permission') return false
   return status === 403 || status === 404
 }
+
+/** A permission-store refusal: who may do this, not where. */
+export const isPermissionRefusal = (error: unknown): boolean => classifyRefusal(error).kind === 'permission'
 
 /**
  * A 403 from the printer's own network authority. Moonraker's protection also
  * answers 403, and says so ("is protected on this printer"); that keeps its
- * own notice and is not a panel-only route.
+ * own notice and is not a panel-only route. Neither is a permission-store
+ * refusal, which names who may do the action.
  */
 export const isPanelOnlyRefusal = (error: unknown): boolean => {
-  if (statusOf(error) !== 403) return false
-  const data = (error as { response?: { data?: { error?: { message?: unknown } } } }).response?.data
-  const text = data?.error?.message
-  return !(typeof text === 'string' && /protected/i.test(text))
+  const kind = classifyRefusal(error).kind
+  return kind === 'panel-only'
+}
+
+/** Plain words for who may do it. */
+export function permissionMessage (r: Extract<RefusalKind, { kind: 'permission' }>, signedIn: boolean): string {
+  const required = r.required || (r.allowed.length === 1 ? r.allowed[0] : '')
+  if (required === 'owner') return "Only this printer's owner can do this."
+  if (required === 'owner_and_shared') {
+    return signedIn
+      ? "Only this printer's owner and the people it's shared with can do this, and this account isn't one of them."
+      : "Only this printer's owner and the people it's shared with can do this, and this browser isn't signed in as one of them."
+  }
+  if (required === 'owner_at_printer') return 'This printer only lets its owner do this, in person at the printer.'
+  return "This printer isn't letting this browser do this."
 }
 
 /** What a refused action says. */
