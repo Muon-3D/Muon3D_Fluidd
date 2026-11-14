@@ -6,10 +6,6 @@
         v-if="state"
         class="muon-setup__printer"
       >{{ state.printer.display }}</span>
-      <span
-        v-if="progress"
-        class="muon-setup__progress"
-      >{{ $t('app.muon.setup.progress', progress) }}</span>
       <label
         v-if="languages.length > 1"
         class="muon-setup__language"
@@ -41,51 +37,73 @@
       </p>
     </div>
 
-    <main class="muon-setup__body">
+    <main
+      class="muon-setup__body"
+      :class="{ 'is-framed': framed }"
+    >
       <!-- The printer answered, but its software has no phone setup. -->
-      <template v-if="unavailable">
-        <p class="muon-setup__title">
-          {{ $t('app.muon.setup.unavailable.title') }}
-        </p>
+      <setup-step-card
+        v-if="unavailable"
+        :title="$t('app.muon.setup.unavailable.title').toString()"
+      >
         <p>{{ $t('app.muon.setup.unavailable.body') }}</p>
         <a
           class="muon-setup__open"
           :href="fluiddUrl"
         >{{ $t('app.muon.setup.open_printer') }}</a>
-      </template>
+      </setup-step-card>
 
-      <template v-else-if="screen === 'S0'">
+      <!-- S0: no footer until the printer answers. -->
+      <setup-step-card
+        v-else-if="screen === 'S0'"
+        :title="$t('app.muon.setup.connecting.title').toString()"
+        :sub="waitedLong ? $t('app.muon.setup.connecting.stay_on_wifi', { ssid: hotspotSsid }).toString() : ''"
+        data-tid="setup-connecting"
+      >
         <v-progress-circular
           indeterminate
           color="primary"
           class="muon-setup__spinner"
         />
-        <p>{{ $t('app.muon.setup.connecting.title') }}</p>
-        <p v-if="waitedLong">
-          {{ $t('app.muon.setup.connecting.stay_on_wifi', { ssid: hotspotSsid }) }}
-        </p>
-      </template>
+      </setup-step-card>
 
-      <template v-else-if="screen === 'S10'">
-        <p class="muon-setup__title">
-          {{ $t('app.muon.setup.set_up.title', { name: printerName }) }}
-        </p>
+      <setup-step-card
+        v-else-if="screen === 'S10'"
+        :title="$t('app.muon.setup.set_up.title', { name: printerName }).toString()"
+      >
         <a
           class="muon-setup__open"
           :href="fluiddUrl"
         >{{ $t('app.muon.setup.open', { name: printerName }) }}</a>
-      </template>
+      </setup-step-card>
 
-      <!-- The other screens arrive with FL-3. Until then the panel, which can
-           finish every step on its own, carries the owner on, and S1 offers
-           the printer's full page too. -->
       <template v-else>
-        <p>{{ $t('app.muon.setup.continue_on_printer', { name: printerName }) }}</p>
-        <a
-          v-if="screen === 'S1'"
-          class="muon-setup__open"
-          :href="fluiddUrl"
-        >{{ $t('app.muon.setup.open', { name: printerName }) }}</a>
+        <setup-step-list
+          class="muon-setup__steps"
+          :steps="steps"
+        />
+        <div class="muon-setup__card">
+          <setup-wifi-steps :client="client">
+            <template #done>
+              <a
+                v-if="screen === 'S8'"
+                class="muon-setup__open"
+                :href="fluiddUrl"
+              >{{ $t('app.muon.setup.open', { name: printerName }) }}</a>
+            </template>
+            <template #elsewhere>
+              <p class="muon-setup__muted">
+                {{ $t('app.muon.setup.continue_on_printer', { name: printerName }) }}
+              </p>
+            </template>
+          </setup-wifi-steps>
+          <!-- S1 offers the printer's full page too. -->
+          <a
+            v-if="screen === 'S1'"
+            class="muon-setup__open muon-setup__full"
+            :href="fluiddUrl"
+          >{{ $t('app.muon.setup.open', { name: printerName }) }}</a>
+        </div>
       </template>
     </main>
   </div>
@@ -94,11 +112,15 @@
 <script lang="ts">
 import { Component, Vue, Watch } from 'vue-property-decorator'
 import { loadLocaleMessagesAsync } from '@/plugins/i18n'
-import { setupClient } from '@/services/muon-setup/client'
+import { setupClient, type SetupClient } from '@/services/muon-setup/client'
 import { pageLanguageFor } from '@/services/muon-setup/language'
-import { progressFor, screenFor, type ScreenId } from '@/services/muon-setup/screen'
+import { screenFor, type ScreenId } from '@/services/muon-setup/screen'
+import { frameSteps, type FrameStep } from '@/services/muon-setup/steps'
 import { setupState } from '@/services/muon-setup/state'
 import type { SetupOptions, SetupState } from '@/services/muon-setup/types'
+import SetupStepCard from '@/components/muon-setup/SetupStepCard.vue'
+import SetupStepList from '@/components/muon-setup/SetupStepList.vue'
+import SetupWifiSteps from '@/components/muon-setup/SetupWifiSteps.vue'
 
 /** The reconnect banner shows after 2 s without the printer (05 §4)... */
 const BANNER_AFTER_MS = 2000
@@ -108,6 +130,7 @@ const CHECK_SCREEN_AFTER_MS = 30000
 const S0_HINT_AFTER_MS = 10000
 
 @Component<Setup>({
+  components: { SetupStepCard, SetupStepList, SetupWifiSteps },
   metaInfo () {
     return {
       title: this.$t('app.muon.setup.title', { name: this.printerName }).toString()
@@ -134,8 +157,17 @@ export default class Setup extends Vue {
     return screenFor(setupState.state, setupState.local)
   }
 
-  get progress () {
-    return this.state ? progressFor(this.state) : null
+  get client (): SetupClient {
+    return setupClient()
+  }
+
+  /** The step list and card, once there is a step to show. */
+  get framed (): boolean {
+    return !this.unavailable && this.screen !== 'S0' && this.screen !== 'S10'
+  }
+
+  get steps (): FrameStep[] {
+    return frameSteps(this.state, this.screen)
   }
 
   get printerName (): string {
@@ -221,9 +253,9 @@ export default class Setup extends Vue {
 
 <style lang="scss" scoped>
 .muon-setup {
-  max-width: 480px;
+  max-width: 920px;
   margin: 0 auto;
-  padding: 16px;
+  padding: 24px 16px;
   min-height: 100vh;
   color: var(--m3d-text);
 }
@@ -235,9 +267,8 @@ export default class Setup extends Vue {
   margin-bottom: 24px;
 }
 
-.muon-setup__progress {
+.muon-setup__language {
   margin-left: auto;
-  opacity: 0.7;
 }
 
 .muon-setup__language select {
@@ -255,23 +286,58 @@ export default class Setup extends Vue {
 }
 
 .muon-setup__body {
-  text-align: center;
-  padding-top: 48px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding-top: 24px;
+
+  &.is-framed {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 560px);
+    gap: 32px;
+    max-width: none;
+    align-items: start;
+  }
 }
 
-.muon-setup__title {
-  font-size: 1.25rem;
+.muon-setup__muted {
+  color: var(--m3d-text-muted);
+  font-size: var(--m3d-text-sm);
 }
 
 .muon-setup__open {
   display: inline-block;
   min-height: 44px;
   line-height: 44px;
-  margin-top: 16px;
+}
+
+.muon-setup__full {
+  margin-top: 8px;
 }
 
 .muon-setup__spinner {
-  margin-bottom: 16px;
+  margin: 8px 0;
+}
+
+@media (max-width: 1023px) {
+  .muon-setup__body.is-framed {
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 20px;
+  }
+}
+
+@media (max-width: 699px) {
+  .muon-setup {
+    padding: 12px;
+  }
+
+  .muon-setup__body {
+    padding-top: 8px;
+
+    &.is-framed {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 12px;
+    }
+  }
 }
 
 :root.m3d-reduced-motion {
