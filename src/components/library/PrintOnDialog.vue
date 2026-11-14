@@ -249,7 +249,9 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
     box-shadow: inset 0 0 0 1.5px var(--m3d-accent);
   }
 
-  .print-on__row--off .print-on__text { opacity: 0.7; }
+  // A printer that cannot take this print reads as quieter by colour, not by opacity:
+  // fading its muted line to 70% made it 3.15:1 (glass dark) to 2.65:1 (glass light).
+  .print-on__row--off .print-on__name { color: var(--m3d-text-muted); }
 
   .print-on__icon {
     display: grid;
