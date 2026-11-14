@@ -33,7 +33,7 @@ const mountMenu = (e: DirectoryEntry | null, methods: Record<string, unknown> = 
     vuetify: new Vuetify(),
     attachTo: document.body,
     mocks: { $store: store, $route: { path: '/walnut', params: {} } },
-    computed: { directory: () => ({ cloud: e ? [e] : [], local: [], found: [] }) },
+    computed: { directory: () => ({ cloud: e && e.section === 'cloud' ? [e] : [], local: e && e.section === 'local' ? [e] : [], found: [] }) },
     methods
   } as any)
 }
@@ -79,11 +79,32 @@ describe('the printer page menu (KAN-1429)', () => {
     w.destroy()
   })
 
-  it('hides it where the card hides it: nothing heard and no Bluetooth in this browser', async () => {
+  it('greys it, with the reason, where nothing is heard and this browser has no Bluetooth', async () => {
     nearbyState.support = 'unsupported' as typeof nearbyState.support
     const w = mountMenu(entry())
     await open(w)
-    expect(item('connect-bluetooth')).toBeNull()
+    expect(item('connect-bluetooth')?.className).toContain('v-list-item--disabled')
+    expect(item('connect-bluetooth')?.textContent).toContain('This browser has no Bluetooth')
+    w.destroy()
+  })
+
+  it('on the local network offers Muon3D and Bluetooth, never Connect locally (KAN-2487)', async () => {
+    nearbyState.support = 'supported'
+    const w = mountMenu(entry({ section: 'local', active: 'local', cloud: undefined }))
+    await open(w)
+    expect(item('connect-local')).toBeNull()
+    expect(item('connect-cloud')?.textContent).toContain('Not on your account')
+    expect(item('connect-bluetooth')?.className).not.toContain('v-list-item--disabled')
+    w.destroy()
+  })
+
+  it('on Muon3D offers Connect locally and Bluetooth, never Muon3D', async () => {
+    nearbyState.support = 'supported'
+    const w = mountMenu(entry())
+    await open(w)
+    expect(item('connect-cloud')).toBeNull()
+    expect(item('connect-local')).not.toBeNull()
+    expect(item('connect-bluetooth')).not.toBeNull()
     w.destroy()
   })
 

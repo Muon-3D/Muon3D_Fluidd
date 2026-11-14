@@ -727,6 +727,23 @@ export async function refreshKnownPrinters () {
   return refreshing
 }
 
+/**
+ * Looks for every known printer on this network, whatever the page is open on
+ * (KAN-2487): on page load and when a menu opens, not only after a session
+ * to the printer is open. It asks the service who is beside this browser (one
+ * request, which also reads each of those printers at once), asks again every
+ * printer already found or saved, and sweeps only if nothing has been
+ * searched yet. A search that finished a minute ago is reused.
+ */
+export function lookForPrinters (): Promise<void> {
+  const nearby = refreshCloudNearby().catch(() => {})
+  if (pageIsSecure()) return nearby
+  // Printers asked a minute ago are not asked again (the menus open often); the pages' own timers keep them fresh.
+  if (Date.now() - discoveryState.finishedAt < FRESH_FOR_MS) return nearby
+  const known = discoveryState.finishedAt ? refreshKnownPrinters() : discoverPrinters(false, { nearby: false })
+  return Promise.all([nearby, known.catch(() => {})]).then(() => {})
+}
+
 let readingStatus: Promise<void> | null = null
 
 /**
