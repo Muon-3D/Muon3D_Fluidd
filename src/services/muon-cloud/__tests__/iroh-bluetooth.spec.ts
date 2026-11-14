@@ -38,7 +38,7 @@ describe('dialPrinter', () => {
     expect(ep.connect).toHaveBeenCalledWith(EID)
   })
 
-  it('still tries the relay when the link fails, and says Bluetooth failed when both do', async () => {
+  it('does not try the relay when an explicit Bluetooth open fails', async () => {
     const printer = fakePrinter({ answers: false })
     const ep = endpoint(async () => { throw new Error('no route to the printer') })
     useBluetoothFor(EID, printer.device)
@@ -49,7 +49,7 @@ describe('dialPrinter', () => {
         .toThrow(/Couldn't reach the printer over Bluetooth: The Bluetooth handshake timed out/)
       await vi.advanceTimersByTimeAsync(11_000)
       await dialled
-      expect(ep.connect).toHaveBeenCalled()
+      expect(ep.connect).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }
@@ -58,5 +58,18 @@ describe('dialPrinter', () => {
   it('gives the relay error when no Bluetooth was asked for', async () => {
     const ep = endpoint(async () => { throw new Error('no route to the printer') })
     await expect(dialPrinter(ep, EID)).rejects.toThrow('no route to the printer')
+  })
+
+  it('closes the session on a Bluetooth drop and blocks background redials', async () => {
+    const printer = fakePrinter()
+    const close = vi.fn()
+    const ep = endpoint(async () => ({ printerId: () => EID, close }))
+    useBluetoothFor(EID, printer.device)
+    await dialPrinter(ep, EID)
+    printer.drop()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(close).toHaveBeenCalledOnce()
+    await expect(dialPrinter(ep, EID)).rejects.toThrow(/Bluetooth dropped/)
+    expect(ep.connect).toHaveBeenCalledOnce()
   })
 })

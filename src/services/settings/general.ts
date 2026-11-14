@@ -156,9 +156,12 @@ const LABELS: Record<string, string> = {
   'uiSettings.general.topNavPowerToggle': 'Power switch in the printer chip',
   'uiSettings.general.enableKeyboardShortcuts': 'Shortcuts',
   'uiSettings.general.showSaveConfigAndRestart': 'Save and restart in the top bar',
+  'uiSettings.editor.saveAndRestart': 'Save and restart',
+  'uiSettings.editor.textSize': 'Text size',
   'uiSettings.general.sectionsToIgnorePendingConfigurationChanges': 'Changes not to list',
   'uiSettings.general.enableDiagnostics': 'Charts page',
-  'uiSettings.dashboard.overviewMacros': 'Macros on Overview',
+  'uiSettings.dashboard.overviewMacros': 'Quick commands on Overview',
+  'uiSettings.general.quickCommands': 'Quick commands on Overview and Control',
   'uiSettings.console.hideLines': 'Console filters',
   'uiSettings.console.filters': 'Console filters'
 }

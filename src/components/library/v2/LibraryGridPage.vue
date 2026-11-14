@@ -15,7 +15,12 @@
         >
           ‹ Discover
         </button>
-        <h1>{{ source === 'search' ? 'Library' : title }}</h1>
+        <h1
+          ref="heading"
+          tabindex="-1"
+        >
+          {{ source === 'search' ? 'Library' : title }}
+        </h1>
         <p
           class="mlib-muted"
           aria-live="polite"
@@ -338,7 +343,19 @@ export default class LibraryGridPage extends Vue {
 
   controller: AbortController | null = null
 
+  mounted () {
+    window.addEventListener('online', this.onOnline)
+    // A page opens with its heading focused (not scrolled to).
+    this.$nextTick(() => (this.$refs.heading as HTMLElement | undefined)?.focus({ preventScroll: true }))
+  }
+
+  /** Back online after the list did not load: read it again. */
+  onOnline () {
+    if (this.error) this.load(true)
+  }
+
   beforeDestroy () {
+    window.removeEventListener('online', this.onOnline)
     this.controller?.abort()
   }
 

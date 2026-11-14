@@ -144,6 +144,21 @@ export function pageMatches (page: string, path: string): boolean {
   return page === path || page.startsWith(`${path}/`)
 }
 
+/**
+ * The name people see for a printer page (without its printer): the most
+ * specific rail page that matches, so `/history` is "History" and `/` is
+ * "Overview". Undefined for a page the rail doesn't list.
+ */
+export function pageLabel (page: string): string | undefined {
+  let best: SectionPage | undefined
+  for (const section of SECTIONS) {
+    for (const p of section.pages) {
+      if (pageMatches(page, p.path) && (!best || p.path.length > best.path.length)) best = p
+    }
+  }
+  return best?.label
+}
+
 /** The section a printer page is in (`/history` is in Jobs), from its path without the printer. */
 export function sectionOf (page: string): Section | undefined {
   return SECTIONS.find(s => s.pages.some(p => pageMatches(page, p.path)))

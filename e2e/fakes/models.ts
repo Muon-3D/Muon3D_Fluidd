@@ -1,5 +1,5 @@
 /**
- * A fake model service (models.muon3d.com) for e2e tests: the public Library
+ * A fake model service (library.muon3d.com/models) for e2e tests: the public Library
  * (publications, discover, a print's page and pictures) and the signed-in
  * one (your Library feed, saves, collections), held in memory per test.
  * Shapes follow muon3d-model-service src/public_v2.rs, src/saves.rs and the
@@ -14,7 +14,7 @@ export const GCODE_TEXT = '; e2e print\nG28\nG1 X10 Y10 E1\n'
 const GCODE_STORED = gzipSync(Buffer.from(GCODE_TEXT))
 const GCODE_SHA256 = createHash('sha256').update(GCODE_STORED).digest('hex')
 
-export const MODELS = 'https://models.muon3d.com'
+export const MODELS = 'https://library.muon3d.com/models'
 
 /** A one-pixel PNG: the photo the fake serves back. */
 export const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
@@ -151,6 +151,11 @@ export interface ModelServiceState {
   publications: FakePublication[];
   saves: FakeSave[];
   collections: FakeCollection[];
+  /** Public collections other people made (`items` are publication ids), and which of them you follow. */
+  others: FakeCollection[];
+  follows: string[];
+  /** Following one more is refused 400 follow_limit (500 followed). */
+  followLimit: boolean;
   /** Your own Library: items, runs and shares (Yours). */
   items: FakeItem[];
   runs: FakeRun[];
@@ -181,6 +186,12 @@ export interface ModelServiceState {
   noSearch: boolean;
   /** Requests seen, for assertions ("method path"). */
   seen: string[];
+  /**
+   * The origins let in, exactly, as MODELS_CORS_ORIGINS does on the real
+   * service; any other origin gets no CORS headers, so the browser refuses
+   * the answer. null lets every origin in.
+   */
+  corsOrigins: string[] | null;
 }
 
 export function modelService (over: Partial<ModelServiceState> = {}): ModelServiceState {
@@ -188,6 +199,9 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     publications: Array.from({ length: 12 }, (_, i) => publication(i + 1)),
     saves: [],
     collections: [],
+    others: [],
+    follows: [],
+    followLimit: false,
     items: [],
     runs: [],
     shares: [],
@@ -198,6 +212,7 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     avatar: null,
     communityWrites: [],
     avatarInvalid: false,
+    corsOrigins: null,
     published: [],
     failWith: null,
     failOn: () => null,
@@ -255,14 +270,20 @@ function detail (p: FakePublication, all: FakePublication[]) {
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) })
 
-/** Serve `state` as models.muon3d.com for this page. */
+/** Serve `state` as the model service for this page. */
 export async function serveModels (page: Page, state: ModelServiceState) {
-  await page.route(`${MODELS}/**`, async route => {
+  // The service's own address (the Library site's origin, under /models) and a
+  // printer's same-origin proxy have the same shape: <origin>/models/<path>.
+  await page.route(url => url.pathname.startsWith('/models/'), async route => {
     const request = route.request()
     const url = new URL(request.url())
-    const path = url.pathname
+    const proxied = url.origin !== new URL(MODELS).origin
+    const path = url.pathname.slice('/models'.length)
     const method = request.method()
     state.seen.push(`${method} ${path}${url.search}`)
+    const origin = request.headers().origin
+    // Playwright's fulfill skips the browser's CORS check, so a refused origin is the TypeError fetch would give.
+    if (!proxied && state.corsOrigins && origin && !state.corsOrigins.includes(origin)) return route.abort('accessdenied')
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
     if (state.delayMs) await new Promise(resolve => setTimeout(resolve, state.delayMs))
     const failure = state.failWith ?? state.failOn(`${method} ${path}${url.search}`)
@@ -314,6 +335,17 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       return p ? json(route, detail(p, all)) : json(route, { error: { code: 'not_found' } }, 404)
     }
 
+    // Someone's public collection: a public read, no assertion (src/saves.rs public_collection).
+    const publicCollections = (): FakeCollection[] => [...state.others, ...state.collections.filter(x => x.visibility === 'public')].filter(x => x.visibility === 'public')
+    const publicCollection = path.match(/^\/v1\/public\/collections\/([^/]+)$/)
+    if (publicCollection && method === 'GET') {
+      const c = publicCollections().find(x => x.id === publicCollection[1])
+      if (!c) return json(route, { error: { code: 'not_found', message: 'Not found.' } }, 404)
+      // Someone else's saves are not yours: each item gets its own save id.
+      const mine = state.collections.includes(c)
+      const items = c.items.map(id => mine ? state.saves.find(s => s.id === id) : { id: `pub-${id}`, target: id }).filter((s): s is FakeSave => !!s).map(s => { const j = saveJson(s, all); return { save_id: j.id, target: j.target, card: j.card } })
+      return json(route, { ...collectionJson(c), item_count: items.length, items })
+    }
     // Signed in: the assertion the console handed out must come with it.
     if (!request.headers().authorization) return json(route, { error: { code: 'unauthorized' } }, 401)
     const share = path.match(/^\/v1\/shares\/([^/]+)\/files\/([^/]+)$/)
@@ -450,6 +482,23 @@ export async function serveModels (page: Page, state: ModelServiceState) {
     if (path === '/v1/community/saves/lookup') {
       const targets = JSON.parse(url.searchParams.get('targets') ?? '[]') as Array<{ id: string }>
       return json(route, { saves: state.saves.filter(s => targets.some(t => t.id === s.target)).map(s => ({ target: { kind: 'publication', id: s.target }, save_id: s.id })) })
+    }
+    // Following (src/saves.rs): public collections, yours or someone else's; a private one is 404.
+    if (path === '/v1/community/collections/followed' && method === 'GET') {
+      const followed = state.follows.map(id => publicCollections().find(x => x.id === id)).filter((x): x is FakeCollection => !!x)
+      return json(route, { collections: followed.map(collectionJson) })
+    }
+    const followMatch = path.match(/^\/v1\/community\/collections\/([^/]+)\/follow$/)
+    if (followMatch && (method === 'PUT' || method === 'DELETE')) {
+      const id = followMatch[1]
+      if (method === 'DELETE') {
+        state.follows = state.follows.filter(x => x !== id)
+        return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
+      }
+      if (!publicCollections().some(x => x.id === id)) return json(route, { error: { code: 'not_found', message: 'Not found.' } }, 404)
+      if (state.followLimit && !state.follows.includes(id)) return json(route, { error: { code: 'follow_limit', message: 'You can follow up to 500 collections.' } }, 400)
+      if (!state.follows.includes(id)) state.follows.unshift(id)
+      return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
     }
     if (path === '/v1/community/collections' && method === 'GET') return json(route, { collections: state.collections.map(collectionJson) })
     if (path === '/v1/community/collections' && method === 'POST') {

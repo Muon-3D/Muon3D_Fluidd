@@ -1,6 +1,8 @@
 /**
- * Slice: the Muon3D Slicer framed in a 12-column tile, under a page header
- * that names the printer it slices for and what that printer has loaded.
+ * Slice: the Muon3D Slicer is the page. Its frame fills the height under the
+ * bar and the width beside the rail, with no heading, chips or card of
+ * Control's own (route meta fullPage): the slicer names the printer and its
+ * material in its own Setup card, as slicer.muon3d.com does.
  *
  * The slicer is this origin's /slicer/embed.html, answered per test: a page
  * marked as embeddable (the slicer is there), held back (it is opening), or a
@@ -25,46 +27,49 @@ async function serveSlicer (page: Page, kind: 'present' | 'absent' | 'held') {
   return release
 }
 
-const frame = (page: Page) => page.getByTestId('slice-tile').locator('iframe[title="Muon3D Slicer"]')
+const frame = (page: Page) => page.getByTestId('slice-view').locator('iframe[title="Muon3D Slicer"]')
 
-test('the slicer, framed in a tile under a header naming the printer it slices for', async ({ page, open, isMobile }) => {
+test('the slicer is the page: under the bar, beside the rail, to the window\'s right and bottom edges', async ({ page, open, isMobile }) => {
   await serveSlicer(page, 'present')
   const printer = await usePrinter(page, PRESETS.idleHomed())
   await open('/slice')
   await expect(page.getByTestId('page-title')).toHaveText('Slice')
-  await expect(page.getByTestId('slice-printer')).toHaveText('Boxwood')
   await expect(frame(page)).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByTestId('slice-status')).toHaveText('Ready')
+  await expect(page.getByTestId('slice-opening')).toHaveCount(0)
   await expect(page.frameLocator('iframe[title="Muon3D Slicer"]').locator('#fake-slicer')).toHaveText('Fake slicer')
-  if (!isMobile) await expect(page.getByText('slices for Boxwood and sends the print to it')).toBeVisible()
+  // No heading, chips or card of Control's own: the slicer names the printer itself.
+  await expect(page.getByTestId('slice-tile')).toHaveCount(0)
+  await expect(page.getByTestId('slice-printer')).toHaveCount(0)
 
-  // The frame sits inside the tile, the tile fills the page's width below the header.
-  const tile = await page.getByTestId('slice-tile').boundingBox()
-  const box = await frame(page).boundingBox()
-  const head = await page.getByTestId('page-title').boundingBox()
-  expect(box!.x).toBeGreaterThanOrEqual(tile!.x)
-  expect(box!.y).toBeGreaterThan(tile!.y)
-  expect(box!.x + box!.width).toBeLessThanOrEqual(tile!.x + tile!.width + 1)
-  expect(tile!.y).toBeGreaterThan(head!.y + head!.height)
-  expect(box!.height).toBeGreaterThan(isMobile ? 400 : 500)
+  const view = page.viewportSize()!
+  const box = (await frame(page).boundingBox())!
+  const bar = (await page.locator('.v-app-bar').first().boundingBox())!
+  expect(Math.abs(box.y - (bar.y + bar.height))).toBeLessThanOrEqual(1)
+  expect(Math.abs(box.x + box.width - view.width)).toBeLessThanOrEqual(1)
+  expect(Math.abs(box.y + box.height - view.height)).toBeLessThanOrEqual(1)
+  if (isMobile) expect(box.x).toBeLessThanOrEqual(1)
+  else {
+    const rail = (await page.locator('nav').first().boundingBox())!
+    expect(Math.abs(box.x - (rail.x + rail.width))).toBeLessThanOrEqual(1)
+  }
+  // The page itself does not scroll.
+  expect(await page.evaluate(() => document.scrollingElement!.scrollHeight <= window.innerHeight + 1)).toBe(true)
   // Fluidd starts no print of its own: that only comes from its confirm, when the slicer asks.
   expect(printer.called('printer.print.start')).toHaveLength(0)
 })
 
-test('opening: the tile says so until the slicer has loaded', async ({ page, open }) => {
+test('opening: the page says so until the slicer has loaded', async ({ page, open }) => {
   const release = await serveSlicer(page, 'held')
   await usePrinter(page, PRESETS.idleHomed())
   await open('/slice')
   await expect(page.getByTestId('slice-opening')).toHaveText('Opening the slicer…')
-  await expect(page.getByTestId('slice-status')).toHaveText('Opening')
   await expect(frame(page)).toBeHidden()
   release()
   await expect(page.getByTestId('slice-opening')).toHaveCount(0, { timeout: 20_000 })
   await expect(frame(page)).toBeVisible()
-  await expect(page.getByTestId('slice-status')).toHaveText('Ready')
 })
 
-test('no slicer: the tile says so, Look again frames it once it is there, and Slice is not in the pages', async ({ page, open, isMobile }) => {
+test('no slicer: the page says so, Look again frames it once it is there, and Slice is not in the pages', async ({ page, open, isMobile }) => {
   let there = false
   await page.route('**/slicer/embed.html*', route => there
     ? route.fulfill({ status: 200, contentType: 'text/html', body: EMBED_HTML })
@@ -74,7 +79,6 @@ test('no slicer: the tile says so, Look again frames it once it is there, and Sl
   const missing = page.getByTestId('slice-missing')
   await expect(missing).toContainText('The slicer isn\'t here')
   await expect(missing).toContainText('The Muon3D Slicer is not available here yet.')
-  await expect(page.getByTestId('slice-status')).toHaveText('Not found')
   await expect(frame(page)).toHaveCount(0)
   if (!isMobile) await expect(page.locator('nav').getByRole('link', { name: 'Slice', exact: true })).toHaveCount(0)
 
@@ -89,19 +93,18 @@ test('/slice with a printer open is that printer\'s Slice', async ({ page }) => 
   await usePrinter(page, PRESETS.idleHomed())
   await page.goto('/slice')
   await expect(page).toHaveURL(/\/boxwood-367a\/slice$/)
-  await expect(page.getByTestId('slice-printer')).toHaveText('Boxwood')
   await expect(frame(page)).toBeVisible({ timeout: 20_000 })
 })
 
-test('offline: the printer chip says so, the slicer stays open, and it comes back by itself', async ({ page, open }) => {
+test('offline: the slicer stays open with its plates, and is still there when the printer comes back', async ({ page, open }) => {
   await serveSlicer(page, 'present')
   const printer = await usePrinter(page, PRESETS.idleHomed())
   await open('/slice')
   await expect(frame(page)).toBeVisible({ timeout: 20_000 })
   await printer.offline()
-  await expect(page.getByTestId('slice-printer')).toHaveText('Boxwood · offline', { timeout: 20_000 })
   await expect(frame(page)).toBeVisible()
   await expect(page.frameLocator('iframe[title="Muon3D Slicer"]').locator('#fake-slicer')).toHaveText('Fake slicer')
   printer.online()
-  await expect(page.getByTestId('slice-printer')).toHaveText('Boxwood', { timeout: 45_000 })
+  await expect(frame(page)).toBeVisible()
+  await expect(page.frameLocator('iframe[title="Muon3D Slicer"]').locator('#fake-slicer')).toHaveText('Fake slicer')
 })

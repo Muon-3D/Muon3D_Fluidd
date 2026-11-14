@@ -15,13 +15,26 @@ function list (rows: Array<Partial<TargetRow>>) {
 }
 
 describe('Your printers on one of your prints (Library v3, page 9)', () => {
-  it('says what each can do as a pill, not a button; Re-slice is the one button', async () => {
-    const w = list([{}, { status: 'Queue', action: 'queue', tone: 'run' }, { status: '', action: 'reslice', reslice: 'Re-slice for PETG', tone: 'warn' }])
+  it('a ready printer has a direct Print button; Queue and Offline are pills; Re-slice is a button', async () => {
+    const w = list([{}, { status: 'Queue', action: 'queue', tone: 'run' }, { status: 'Offline', action: null, tone: 'off' }, { status: '', action: 'reslice', reslice: 'Re-slice for PETG', tone: 'warn' }])
     const pills = w.findAll('[data-tid="library-fit-status"]')
-    expect(pills.wrappers.map(p => [p.element.tagName, p.text()])).toEqual([['SPAN', 'Ready'], ['SPAN', 'Queue']])
-    expect(w.findAll('button').wrappers.map(b => b.text())).toEqual(['Re-slice for PETG'])
-    await w.find('button').trigger('click')
+    expect(pills.wrappers.map(p => [p.element.tagName, p.text()])).toEqual([['SPAN', 'Queue'], ['SPAN', 'Offline']])
+    expect(w.findAll('button').wrappers.map(b => b.text())).toEqual(['Print', 'Re-slice for PETG'])
+    const print = w.find('[data-tid="library-fit-print"]')
+    expect(print.attributes('aria-label')).toBe('Print on P0')
+    await print.trigger('click')
+    // The row itself, so the page prints on that printer and no other (KAN-2021).
+    expect(w.emitted('print')).toHaveLength(1)
+    expect(w.emitted('print')![0][0]).toMatchObject({ id: 'p0', name: 'P0' })
+    expect(w.emitted('reslice')).toBeUndefined()
+    await w.findAll('button').at(1).trigger('click')
     expect(w.emitted('reslice')).toHaveLength(1)
+  })
+
+  it('a printer that cannot print it now has no Print button', () => {
+    const w = list([{ status: 'Queue', action: 'queue', tone: 'run' }, { status: 'Offline', action: null, tone: 'off' }])
+    expect(w.find('[data-tid="library-fit-print"]').exists()).toBe(false)
+    expect(w.findAll('button')).toHaveLength(0)
   })
 
   it('with no printers yet it links to where to add one', () => {

@@ -11,6 +11,9 @@
 /** Where the person signed out: this browser, every device, or the account went. */
 export type SignedOutScope = 'browser' | 'everywhere' | 'deleted'
 
+/** What the person changed that ended every session, this one included. */
+export type SignedOutReason = 'password' | 'email' | 'two-step'
+
 export interface SignedOutNote {
   /** Milliseconds since 1970. */
   at: number;
@@ -19,6 +22,8 @@ export interface SignedOutNote {
   email?: string;
   /** "Change my password next" was ticked. */
   password?: boolean;
+  /** KAN-1389: the person's own credential change ended this session: the sign-in page says so. */
+  reason?: SignedOutReason;
 }
 
 export const SIGNED_OUT_KEY = 'muon.account.signedOut'

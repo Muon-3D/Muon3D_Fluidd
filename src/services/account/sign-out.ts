@@ -14,7 +14,7 @@ import { cloudState, signOut } from '@/services/muon-cloud/state'
 import { activationState } from '@/services/muon-cloud/activate'
 import { accountApi } from './api'
 import { isMissing } from './client'
-import { noteSignedOut, type SignedOutScope } from './signed-out-note'
+import { noteSignedOut, type SignedOutReason, type SignedOutScope } from './signed-out-note'
 
 /**
  * "Sign out" from the menu, the Account list or this browser's row in
@@ -29,8 +29,8 @@ export async function beginSignOut (router?: VueRouter): Promise<void> {
  * Where the console serves Fluidd, its `/logout` takes the page away and
  * brings it back; on a printer's own page the page goes there itself.
  */
-export async function signOutNow (scope: SignedOutScope, options: { password?: boolean, router?: VueRouter } = {}): Promise<void> {
-  noteSignedOut({ scope, email: cloudState.account?.email, password: options.password || undefined })
+export async function signOutNow (scope: SignedOutScope, options: { password?: boolean, reason?: SignedOutReason, router?: VueRouter } = {}): Promise<void> {
+  noteSignedOut({ scope, email: cloudState.account?.email, password: options.password || undefined, reason: options.reason })
   const wasCloud = cloudState.activePrinterId !== null || activationState.switching !== null
   const navigating = await signOut()
   if (navigating) return

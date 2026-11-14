@@ -93,7 +93,7 @@ describe('staff requests', () => {
       .mockResolvedValueOnce(response({ entries: [], next: null }))
     vi.stubGlobal('fetch', fetch)
     expect(await readAudit('community', null, 'Review case 1042')).toEqual({ entries: [], next: null })
-    expect(fetch.mock.calls[1][0]).toBe('https://models.muon3d.com/v1/admin/audit/read')
+    expect(fetch.mock.calls[1][0]).toBe('https://library.muon3d.com/models/v1/admin/audit/read')
     expect(fetch.mock.calls[1][1].headers.authorization).toBe('Bearer staff-proof')
     expect(JSON.stringify(localStorage)).toBe(before)
     expect(JSON.stringify(fetch.mock.calls.map(c => c[0]))).not.toContain('staff-proof')

@@ -10,7 +10,6 @@ export const defaultState = (): ConfigState => {
     socketUrl: '',
     authKey: '',
     discovered: false,
-    layoutMode: false,
     containerColumnCount: 2,
     personalKey: null,
     sharedPersonal: null,
@@ -79,7 +78,8 @@ export const defaultState = (): ConfigState => {
         colorPickerValueRange: 'absolute',
         loadedMaterial: null,
         loadedMaterialColour: null,
-        pinnedMaterials: null
+        pinnedMaterials: null,
+        quickCommands: null
       },
       theme: {
         isDark: true,
@@ -94,7 +94,9 @@ export const defaultState = (): ConfigState => {
         confirmDirtyEditorClose: true,
         autoEditExtensions: ['.cfg', '.conf', '.ini', '.log', '.sh', '.txt'],
         restoreViewState: 'session',
-        codeLens: true
+        codeLens: true,
+        saveAndRestart: 'ask',
+        textSize: 'normal'
       },
       dashboard: {
         tempPresets: defaultMaterials()
@@ -159,6 +161,7 @@ export const defaultState = (): ConfigState => {
         }
       },
       fileSystem: {
+        showHiddenFiles: false,
         activeFilters: {},
         sortBy: {},
         sortDesc: {}

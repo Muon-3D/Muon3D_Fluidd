@@ -5,19 +5,42 @@
     data-tid="software-settings"
   >
     <section
-      class="soft__panel"
-      data-tid="software-printer"
+      class="soft__panel soft__hero"
+      data-tid="software-hero"
     >
       <header class="soft__head">
-        <div class="soft__titles">
-          <h2>{{ printerName }}'s software</h2>
-          <p>MuonOS: the printer's system, Klipper, its screen and this page, updated together.</p>
-        </div>
         <span
-          class="soft__chip"
-          :class="`soft__chip--${chip.tone}`"
-          data-tid="software-state"
-        >{{ chip.text }}</span>
+          class="soft__hero-ico"
+          :class="`soft__hero-ico--${chip.tone}`"
+        >
+          <frame-icon :name="heroIcon" />
+        </span>
+        <div class="soft__titles">
+          <span
+            class="soft__eyebrow"
+            :class="`soft__chip--${chip.tone}`"
+            data-tid="software-state"
+          >{{ chip.text }}</span>
+          <h2 data-tid="software-hero-title">
+            {{ heroTitle }}
+          </h2>
+          <p data-tid="software-hero-sub">
+            {{ heroSub }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="cbtn cbtn--sm soft__check"
+          :disabled="checking || active"
+          data-tid="software-check"
+          @click="check"
+        >
+          <frame-icon
+            name="refresh"
+            small
+          />
+          {{ checking ? 'Checking…' : 'Check now' }}
+        </button>
       </header>
 
       <p
@@ -28,28 +51,10 @@
       </p>
 
       <template v-else>
-        <dl class="soft__facts">
-          <div>
-            <dt>Installed</dt>
-            <dd data-tid="software-installed">
-              {{ installed }}
-            </dd>
-          </div>
-          <div v-if="available">
-            <dt>Ready to install</dt>
-            <dd data-tid="software-available">
-              {{ availableText }}
-            </dd>
-          </div>
-          <div>
-            <dt>Last checked</dt>
-            <dd>{{ checkedText }}</dd>
-          </div>
-        </dl>
-
         <div
           v-if="active"
           class="soft__progress"
+          data-tid="software-progress"
         >
           <span class="soft__bar"><i :style="{ width: `${progress ?? 0}%` }" /></span>
           <router-link
@@ -71,8 +76,12 @@
         <details
           v-if="available && status.release_notes"
           class="soft__notes"
+          data-tid="software-whats-new"
         >
-          <summary>What's new</summary>
+          <summary>
+            <b>What's new</b>
+            <span>{{ notesTeaser }}</span>
+          </summary>
           <p>{{ status.release_notes }}</p>
         </details>
 
@@ -87,15 +96,39 @@
         <p
           v-else-if="available"
           class="soft__note"
+          data-tid="software-how-long"
         >
-          Installing takes 10 to 40 minutes over Wi-Fi. The printer keeps working while the new version is written, then restarts for a few minutes. Not while printing.
+          Writing the update takes 10 to 40 minutes over Wi-Fi while {{ printerName }} keeps working; then it restarts for a few minutes. Not while printing.
         </p>
 
-        <div class="soft__actions">
+        <div
+          v-if="queued"
+          class="soft__queued"
+          data-tid="software-queued"
+        >
+          <frame-icon
+            name="clock"
+            small
+          />
+          <span>{{ queuedText }}</span>
+          <button
+            type="button"
+            class="cbtn cbtn--sm cbtn--ghost"
+            data-tid="software-queued-cancel"
+            @click="cancelQueued"
+          >
+            Cancel
+          </button>
+        </div>
+
+        <div
+          v-if="!active && (restartReady || (available && !queued))"
+          class="soft__actions"
+        >
           <button
             v-if="restartReady"
             type="button"
-            class="cbtn cbtn--primary"
+            class="cbtn cbtn--primary soft__go"
             :disabled="!!restartWhy"
             :title="restartWhy"
             data-tid="software-restart"
@@ -104,24 +137,15 @@
             Restart now to update
           </button>
           <button
-            v-else-if="available"
+            v-else
             type="button"
-            class="cbtn cbtn--primary"
-            :disabled="!canInstall"
-            :title="installBlocked"
+            class="cbtn cbtn--primary soft__go"
+            :disabled="!canAskInstall"
+            :title="askBlocked"
             data-tid="software-install"
-            @click="install"
+            @click="openInstall"
           >
-            Install the update
-          </button>
-          <button
-            type="button"
-            class="cbtn"
-            :disabled="checking || active"
-            data-tid="software-check"
-            @click="check"
-          >
-            {{ checking ? 'Checking…' : 'Check now' }}
+            Install…
           </button>
           <span
             v-if="restartReady && restartWhy"
@@ -129,9 +153,10 @@
             data-tid="software-restart-why"
           >{{ restartWhy }}</span>
           <span
-            v-else-if="!restartReady && installBlocked && available"
+            v-else-if="!restartReady && askBlocked"
             class="soft__why"
-          >{{ installBlocked }}</span>
+            data-tid="software-install-why"
+          >{{ askBlocked }}</span>
         </div>
         <p
           v-if="installRefusal"
@@ -143,6 +168,9 @@
       </template>
     </section>
 
+    <h3 class="soft__section">
+      How updates arrive
+    </h3>
     <section
       class="soft__panel"
       data-tid="software-policy"
@@ -194,12 +222,9 @@
       >
         {{ policyLoaded ? "This printer doesn't report its update settings yet." : 'Asking the printer…' }}
       </p>
-    </section>
-
-    <section class="soft__panel">
       <div class="soft__row">
         <div class="soft__titles">
-          <h3>Tell me when an update is ready</h3>
+          <h3>Tell me when one is ready</h3>
           <p>A notice in the bell at the top.</p>
         </div>
         <toggle-switch
@@ -208,43 +233,176 @@
           @input="enableNotifications = $event"
         />
       </div>
-    </section>
-
-    <task-fold
-      v-if="others.length"
-      v-model="otherSoftwareOpen"
-      fold-id="settings-other-software"
-      title="Other software"
-      summary="What else this printer's updater looks after"
-      class="soft__panel"
-      data-tid="software-others"
-    >
       <div
-        v-for="c in others"
-        :key="c.key"
         class="soft__row"
+        data-tid="software-channel"
       >
         <div class="soft__titles">
-          <h3>{{ c.title }}</h3>
-          <p>{{ c.text }}</p>
+          <h3>Channel</h3>
+          <p>Stable. A Beta channel comes here when there is one.</p>
         </div>
-        <button
-          v-if="c.update"
-          type="button"
-          class="cbtn"
-          :disabled="busy || !!otherUpdateBlocked"
-          :title="otherUpdateBlocked"
-          @click="updateOther(c.key)"
-        >
-          Update
-        </button>
+        <span class="soft__value">Stable</span>
       </div>
-    </task-fold>
+    </section>
+
+    <h3 class="soft__section">
+      History
+    </h3>
+    <section
+      class="soft__panel"
+      data-tid="software-history"
+    >
+      <div
+        v-for="(entry, i) in history"
+        :key="`${entry.at}-${i}`"
+        class="soft__row soft__hist"
+        :data-outcome="entry.outcome"
+        data-tid="software-history-row"
+      >
+        <span
+          class="soft__hist-ico"
+          :class="`soft__hist-ico--${entry.outcome}`"
+        >
+          <frame-icon
+            :name="entry.outcome === 'updated' ? 'check' : 'refresh'"
+            small
+          />
+        </span>
+        <div class="soft__titles">
+          <h3>{{ entryVersion(entry) }}</h3>
+          <p>{{ entryLine(entry) }}</p>
+        </div>
+      </div>
+      <p
+        v-if="!history.length"
+        class="soft__note"
+        data-tid="software-history-empty"
+      >
+        {{ installed !== 'unknown' ? `On ${installed}. Updates installed from here are listed here.` : 'Updates installed from here are listed here.' }}
+      </p>
+    </section>
+
+    <template v-if="others.length">
+      <h3 class="soft__section">
+        Developer mode only
+      </h3>
+      <locked-row
+        v-if="othersLocked"
+        label="Other software"
+        reason-text="Update Klipper, Moonraker or system packages on their own. On a Muon printer this can break the matched set."
+        data-tid="software-others-locked"
+      />
+      <task-fold
+        v-else
+        v-model="otherSoftwareOpen"
+        fold-id="settings-other-software"
+        title="Other software"
+        summary="What else this printer's updater looks after"
+        class="soft__panel"
+        data-tid="software-others"
+      >
+        <div
+          v-for="c in others"
+          :key="c.key"
+          class="soft__row"
+        >
+          <div class="soft__titles">
+            <h3>{{ c.title }}</h3>
+            <p>{{ c.text }}</p>
+          </div>
+          <button
+            v-if="c.update"
+            type="button"
+            class="cbtn"
+            :disabled="busy || !!otherUpdateBlocked"
+            :title="otherUpdateBlocked"
+            @click="updateOther(c.key)"
+          >
+            Update
+          </button>
+        </div>
+      </task-fold>
+    </template>
+
+    <router-link
+      :to="accessTo"
+      class="soft__link"
+      data-tid="software-access-link"
+    >
+      <frame-icon
+        name="user"
+        small
+      />
+      <span><b>Who may install updates</b>, and from where, is in People and access.</span>
+      <span class="soft__link-go">People and access ›</span>
+    </router-link>
+
+    <v-dialog
+      v-model="installDialog"
+      max-width="460"
+    >
+      <div
+        v-if="installDialog"
+        class="soft__dialog"
+        data-tid="software-install-dialog"
+      >
+        <h3>Install {{ heroTitle }}?</h3>
+        <p>{{ printerName }} restarts at the end, for about 3 minutes. Everyone using it sees "Updating".</p>
+        <div
+          class="soft__when"
+          role="radiogroup"
+          aria-label="When to install"
+        >
+          <button
+            v-for="w in whenOptions"
+            :key="w.value"
+            type="button"
+            role="radio"
+            class="soft__when-row"
+            :aria-checked="when === w.value"
+            :disabled="!!w.why"
+            :data-tid="`software-install-${w.value}`"
+            @click="when = w.value"
+          >
+            <span class="soft__titles">
+              <b>{{ w.label }}</b>
+              <small>{{ w.why || w.line }}</small>
+            </span>
+            <span class="soft__tick">
+              <frame-icon
+                v-if="when === w.value"
+                name="check"
+                small
+              />
+            </span>
+          </button>
+        </div>
+        <div class="soft__dialog-buttons">
+          <button
+            type="button"
+            class="cbtn cbtn--ghost"
+            data-tid="software-install-cancel"
+            @click="installDialog = false"
+          >
+            Not now
+          </button>
+          <button
+            type="button"
+            class="cbtn cbtn--primary"
+            :disabled="!when"
+            data-tid="software-install-go"
+            @click="confirmWhen"
+          >
+            Install
+          </button>
+        </div>
+      </div>
+    </v-dialog>
   </div>
 </template>
 
 <script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import TypedCommandsMixin from '@/mixins/typed-commands'
 import { SocketActions } from '@/api/socketActions'
 import { ACTIVE_PHASES, bannerVisible, commitPending, isStaged, stagedUnverified, versionLabel } from '@/services/updates/model'
@@ -254,12 +412,27 @@ import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import TaskFold from '@/components/control/TaskFold.vue'
+import FrameIcon from '@/components/ui/FrameIcon.vue'
+import LockedRow from '@/components/settings/gates/LockedRow.vue'
+import MuonGatesMixin from '@/mixins/muon-gates'
+import { afterPrint, cancelAfterPrint, loadAfterPrint, otaComponent, queueAfterPrint, type QueuedInstall } from '@/services/updates/after-print'
+import { historyLine, loadHistory, printerHistory, updateHistory, type HistoryEntry } from '@/services/updates/history'
 import {
   AUTO_INSTALL_PATH, AUTO_OFF_TEXT, AUTO_ON_TEXT, KNOB_TEXT, PRESENCE_PATH, STAGED_TEXT,
   anyHot, flagOf, needsKnob, restartBlocked, stagedReady, type PolicyStatus
 } from '@/services/updates/policy'
-import { isPanelOnlyRefusal, panelOnlyMessage } from '@/services/wifi/panel-only'
+import { classifyRefusal, isPanelOnlyRefusal, panelOnlyMessage, permissionMessage } from '@/services/wifi/panel-only'
+import { cloudState } from '@/services/muon-cloud/state'
 import type { Heater } from '@/store/printer/types'
+
+interface InstallSnapshot {
+  target: unknown;
+  component: string;
+  from: string | null;
+  to: string | null;
+}
+
+type When = 'now' | 'after'
 
 interface OtherComponent {
   key: string;
@@ -280,8 +453,8 @@ interface OtherComponent {
  * time it restarts, and "Restart now to update" does that now. Control never
  * restarts the printer on its own.
  */
-@Component({ components: { ToggleSwitch, TaskFold } })
-export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
+@Component({ components: { ToggleSwitch, TaskFold, FrameIcon, LockedRow } })
+export default class SoftwareSettings extends Mixins(TypedCommandsMixin, MuonGatesMixin) {
   checking = false
   otherSoftwareOpen = false
   installRefusal = ''
@@ -290,10 +463,138 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
   policyLoaded = false
   policyNote = ''
   saving = ''
+  installDialog = false
+  when: When | null = null
+  pending: InstallSnapshot | null = null
 
   mounted () {
     poll()
     this.loadPolicy()
+    this.loadKept()
+  }
+
+  @Watch('watchedPrinter')
+  loadKept () {
+    loadAfterPrint(this.watchedPrinter)
+    loadHistory(this.watchedPrinter)
+  }
+
+  get watchedPrinter (): string {
+    return updateWatch.printer
+  }
+
+  // -- the hero ---------------------------------------------------------------
+
+  get heroIcon (): string {
+    if (this.chip.tone === 'ok') return 'check'
+    if (this.outcomeText) return 'alert'
+    return 'download'
+  }
+
+  /** "MuonOS 6 November 2026": the one ready, else the one it has. */
+  get heroTitle (): string {
+    const v = this.available ? this.status?.target_version : this.status?.current_version
+    return v ? `MuonOS ${versionLabel(v).text.split(' · ')[0]}` : 'MuonOS'
+  }
+
+  get heroSub (): string {
+    if (!this.status) return "The printer's system, Klipper, its screen and Control, updated together."
+    const have = versionLabel(this.status.current_version).text.split(' · ')[0]
+    return this.available ? `You have ${have} · checked ${this.checkedText}` : `Up to date · checked ${this.checkedText}`
+  }
+
+  get notesTeaser (): string {
+    const notes = (this.status?.release_notes ?? '').replace(/\s+/g, ' ').trim()
+    return notes.length > 110 ? `${notes.slice(0, 107)}…` : notes
+  }
+
+  // -- install now or after this print ------------------------------------------
+
+  get queued (): QueuedInstall | null {
+    return afterPrint.printer === this.watchedPrinter ? afterPrint.queued : null
+  }
+
+  get queuedText (): string {
+    const file = this.queued?.file ? ` (${this.queued.file.replace(/\.gcode$/i, '')})` : ''
+    return `Installs after this print${file}. ${this.printerName} keeps printing until then.`
+  }
+
+  get printFile (): string | null {
+    return this.$store.state.printer?.printer?.print_stats?.filename || null
+  }
+
+  /** Install… opens: everything but "printing", which offers "after this print" instead. */
+  get askBlocked (): string {
+    if (this.printerBusy && this.available && this.commandControlAvailable && this.klippyConnected && !this.active) return ''
+    return this.installBlocked
+  }
+
+  get canAskInstall (): boolean {
+    return this.available && !this.askBlocked
+  }
+
+  get whenOptions (): Array<{ value: When, label: string, line: string, why: string }> {
+    const busy = this.printerBusy
+    return [
+      { value: 'now', label: 'Install now', line: 'Starts writing the update now.', why: busy ? 'Not while printing.' : '' },
+      { value: 'after', label: 'Install after this print', line: this.printFile ? `When ${this.printFile.replace(/\.gcode$/i, '')} ends.` : 'When the print ends.', why: busy ? '' : 'Nothing is printing.' }
+    ]
+  }
+
+  snapshot (): InstallSnapshot {
+    return { target: this.commandTarget, component: this.otaKey, from: this.status?.current_version ?? null, to: this.status?.target_version ?? null }
+  }
+
+  openInstall () {
+    this.installRefusal = this.askBlocked
+    if (!this.canAskInstall) return
+    this.pending = this.snapshot()
+    this.when = this.printerBusy ? 'after' : 'now'
+    this.installDialog = true
+  }
+
+  async confirmWhen () {
+    const pending = this.pending
+    const when = this.when
+    this.installDialog = false
+    if (!pending || !when) return
+    if (when === 'now') await this.install(pending)
+    else this.queueInstall(pending)
+  }
+
+  /** "After this print": kept until the print is over, then App sends it (services/updates/after-print). */
+  queueInstall (pending: InstallSnapshot) {
+    this.installRefusal = ''
+    if (pending.target !== this.commandTarget) this.installRefusal = 'Not kept. The selected printer or account changed. Try again.'
+    else if (pending.to !== (this.status?.target_version ?? null)) this.installRefusal = 'Not kept. The available version changed. Check again.'
+    else if (!this.printerBusy) this.installRefusal = 'The print has ended: install it now instead.'
+    else if (this.askBlocked) this.installRefusal = `Not kept. ${this.askBlocked}`
+    if (this.installRefusal) return
+    queueAfterPrint(this.watchedPrinter, { from: pending.from, to: pending.to, file: this.printFile, at: Date.now() })
+  }
+
+  cancelQueued () {
+    cancelAfterPrint()
+  }
+
+  // -- history ------------------------------------------------------------------
+
+  get history (): HistoryEntry[] {
+    return printerHistory(this.status) ?? (updateHistory.printer === this.watchedPrinter ? updateHistory.entries : [])
+  }
+
+  entryVersion (entry: HistoryEntry): string {
+    return entry.version ? versionLabel(entry.version).text.split(' · ')[0] : 'An update'
+  }
+
+  entryLine (entry: HistoryEntry): string {
+    const date = new Date(entry.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+    return `${historyLine(entry, this.printerName)} · ${date}`
+  }
+
+  /** On a Muon printer the parts are updated together; one at a time is for developer mode. */
+  get othersLocked (): boolean {
+    return this.isMuonPrinter === true && !this.devModeEnabled
   }
 
   async loadPolicy () {
@@ -333,6 +634,8 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
         else this.presence = kept
       } else if (isPanelOnlyRefusal({ response: r })) {
         this.policyNote = panelOnlyMessage('change how it updates')
+      } else if (classifyRefusal({ response: r }).kind === 'permission') {
+        this.policyNote = permissionMessage(classifyRefusal({ response: r }) as Extract<ReturnType<typeof classifyRefusal>, { kind: 'permission' }>, !!cloudState.account)
       } else {
         this.policyNote = "The printer didn't take that change. Try again."
       }
@@ -390,6 +693,10 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
     installStarted(fromVersion, toVersion)
     if (this.presence) this.installRefusal = `${KNOB_TEXT}. The printer restarts when you do.`
     this.$router.push(this.updatingTo).catch(() => undefined)
+  }
+
+  get accessTo (): string {
+    return `${scopedPath('/settings', activeSlug())}#access`
   }
 
   get printerName (): string {
@@ -491,23 +798,22 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
 
   /** The updater's name for MuonOS: the component of type ota. */
   get otaKey (): string {
-    const info = (this.$store.state.version.version_info ?? {}) as Record<string, { configured_type?: string }>
-    return Object.keys(info).find(k => info[k]?.configured_type === 'ota') ?? 'MuonOS'
+    return otaComponent(this.$store.state.version.version_info)
   }
 
-  async install () {
+  /** Install now. From the Install dialog its snapshot is the confirmation; called alone, it asks first. */
+  async install (asked?: InstallSnapshot) {
     this.installRefusal = this.installBlocked
     if (!this.canInstall) return
     this.installRefusal = ''
-    const target = this.commandTarget
-    const component = this.otaKey
-    const fromVersion = this.status?.current_version ?? null
-    const toVersion = this.status?.target_version ?? null
-    const ok = await this.$confirm(
-      `${this.printerName} writes the new version while it keeps working, then restarts into it, which takes a few minutes. Don't turn it off until it is back.`,
-      { title: 'Install the update now?', buttonTrueText: 'Install', buttonFalseText: 'Not now' }
-    )
-    if (!ok) return
+    const { target, component, from: fromVersion, to: toVersion } = asked ?? this.snapshot()
+    if (!asked) {
+      const ok = await this.$confirm(
+        `${this.printerName} writes the new version while it keeps working, then restarts into it, which takes a few minutes. Don't turn it off until it is back.`,
+        { title: 'Install the update now?', buttonTrueText: 'Install', buttonFalseText: 'Not now' }
+      )
+      if (!ok) return
+    }
     if (target !== this.commandTarget) this.installRefusal = 'Not sent. The selected printer or account changed. Try again.'
     else if (component !== this.otaKey) this.installRefusal = 'Not sent. The update component changed. Check again.'
     else if (fromVersion !== (this.status?.current_version ?? null) || toVersion !== (this.status?.target_version ?? null)) this.installRefusal = 'Not sent. The available version changed. Check again.'
@@ -581,6 +887,24 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
 </script>
 
 <style lang="scss" scoped>
+  .soft__link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: 18px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text);
+    font-size: 14px;
+    text-decoration: none;
+
+    .soft__link-go {
+      margin-left: auto;
+      color: var(--m3d-accent, #7fd6cf);
+      white-space: nowrap;
+    }
+  }
+
   .soft {
     display: flex;
     flex-direction: column;
@@ -736,5 +1060,171 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin) {
   .soft__why {
     color: var(--m3d-text-subtle);
     font-size: 13px;
+  }
+  .soft__section {
+    margin: 6px 4px -6px;
+    color: var(--m3d-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .soft__hero .soft__head {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .soft__hero .soft__titles {
+    flex: 1 1 auto;
+
+    h2 {
+      font-size: 20px;
+    }
+  }
+
+  .soft__hero-ico {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-accent);
+  }
+
+  .soft__hero-ico--ok { color: var(--m3d-success, #57c08a); }
+
+  .soft__eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .soft__check {
+    flex: none;
+  }
+
+  .soft__go {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+
+  .soft__value {
+    color: var(--m3d-text-muted);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .soft__queued {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: var(--m3d-surface-2);
+    font-size: 14px;
+
+    span {
+      flex: 1 1 auto;
+    }
+  }
+
+  .soft__hist {
+    justify-content: flex-start;
+  }
+
+  .soft__hist-ico {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-success, #57c08a);
+  }
+
+  .soft__hist-ico--rolled_back,
+  .soft__hist-ico--failed { color: var(--m3d-warning, #e8963c); }
+
+  .soft__dialog {
+    padding: 22px;
+    border-radius: 22px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text);
+
+    h3 {
+      margin: 0 0 6px;
+      font-size: 19px;
+    }
+
+    p {
+      margin: 0 0 14px;
+      color: var(--m3d-text-muted);
+      font-size: 14px;
+    }
+  }
+
+  .soft__when {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 14px;
+    background: var(--m3d-surface-2);
+  }
+
+  .soft__when-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 56px;
+    padding: 10px 14px;
+    color: var(--m3d-text);
+    text-align: left;
+
+    & + & {
+      border-top: 1px solid var(--m3d-border);
+    }
+
+    small {
+      display: block;
+      color: var(--m3d-text-muted);
+      font-size: 12px;
+    }
+
+    &:disabled {
+      opacity: 0.55;
+    }
+  }
+
+  .soft__tick {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--m3d-border);
+    border-radius: 6px;
+    color: var(--m3d-accent);
+  }
+
+  .soft__dialog-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+
+    .cbtn {
+      min-height: 44px;
+    }
+
+    .cbtn--primary {
+      flex: 1 1 auto;
+    }
   }
 </style>

@@ -56,6 +56,8 @@
       {{ narrow ? 'Drag the grip to move a widget, or the × to put it away. Add widget brings one back, at the size you pick.' : 'Drag the grip to move a widget and the corner to resize it; it snaps to a size the widget offers. Saved for you, on this printer.' }}
     </p>
 
+    <plate-clear-bar />
+
     <div
       ref="grid"
       class="overview__grid"
@@ -200,11 +202,26 @@
             <div class="overview__card-top">
               <b>{{ w.title }}</b>
               <span class="overview__card-cat">{{ w.category }}</span>
-              <span
+              <button
                 v-if="isOn(w.id)"
-                class="overview__card-on"
-                :data-tid="`widget-on-${w.id}`"
-              >On</span>
+                type="button"
+                class="overview__pm"
+                :aria-label="`Remove ${w.title} from Overview`"
+                :data-tid="`widget-remove-${w.id}`"
+                @click="remove(w.id)"
+              >
+                −
+              </button>
+              <button
+                v-else
+                type="button"
+                class="overview__pm"
+                :aria-label="`Add ${w.title} to Overview`"
+                :data-tid="`widget-add-${w.id}`"
+                @click="addWidget(w.id)"
+              >
+                +
+              </button>
             </div>
             <p>{{ w.blurb }}</p>
             <div
@@ -228,14 +245,6 @@
                   @click="pick(w.id, z.key)"
                 >{{ z.key }}</button>
               </span>
-              <button
-                type="button"
-                class="overview__btn overview__btn--primary"
-                :data-tid="`widget-add-${w.id}`"
-                @click="addWidget(w.id)"
-              >
-                Add to Overview
-              </button>
             </div>
           </li>
           <li
@@ -262,10 +271,11 @@
 <script lang="ts">
 import { Component, Vue, Watch } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
+import PlateClearBar from '@/components/ui/PlateClearBar.vue'
 import { overviewTiles, type OverviewTileDef } from '@/components/widgets/overview/registry'
 import {
-  addTile, defaultLayout, moveBy, moveTile, nudgeSize, removeTile, resizeTile, serverLayoutKey, sizeKeyOf,
-  type OverviewLayout, type PlacedTile
+  addTile, defaultLayout, dropIndex, moveBy, moveTile, nudgeSize, removeTile, resizeTile, serverLayoutKey, sizeKeyOf,
+  type OverviewLayout, type PlacedTile, type Slot
 } from '@/services/overview/layout'
 import { reducedMotion, springCurve, springKeyframes } from '@/services/overview/spring'
 import { searchWidgets, treatAsMuon, widgetCategories, widgetsFor, type WidgetCategory } from '@/services/overview/widgets'
@@ -289,7 +299,7 @@ const SPRING = 'overview-spring'
  * sit and how big they are is this person's saved layout (services/overview),
  * changed with Edit. While editing the tiles are inert: nothing is sent to the printer.
  */
-@Component({})
+@Component({ components: { PlateClearBar } })
 export default class Overview extends Vue {
   layout: OverviewLayout = defaultLayout(overviewTiles)
   draft: OverviewLayout | null = null
@@ -487,7 +497,6 @@ export default class Overview extends Vue {
     const def = this.defs.find(d => d.id === id)
     if (!def) return
     this.add(id, undefined, this.sizeFor(def))
-    this.sheet = false
   }
 
   gripLabel (tile: DrawnTile): string {
@@ -514,19 +523,22 @@ export default class Overview extends Vue {
     this.$nextTick(() => (this.$refs[`cell-${id}`] as HTMLElement[] | undefined)?.[0]?.querySelector<HTMLElement>('[data-tid="tile-grip"]')?.focus())
   }
 
-  /** The tile under the pointer, if it is one on the page. */
-  /** The tile whose slot is under the point. Slots, not drawn boxes: a tile still springing is where it is going. */
-  private cellAt (x: number, y: number): string | null {
+  /** Each tile's slot on screen, in layout order. Slots, not drawn boxes: a tile still springing is where it is going. */
+  private slots (): Slot[] {
+    const out: Slot[] = []
     for (const t of this.current.tiles) {
       const el = this.cellEl(t.id)
       const parent = el?.offsetParent as HTMLElement | null | undefined
       if (!el || !parent) continue
       const p = parent.getBoundingClientRect()
-      const left = p.left + parent.clientLeft + el.offsetLeft
-      const top = p.top + parent.clientTop + el.offsetTop
-      if (x >= left && x < left + el.offsetWidth && y >= top && y < top + el.offsetHeight) return t.id
+      out.push({ id: t.id, left: p.left + parent.clientLeft + el.offsetLeft, top: p.top + parent.clientTop + el.offsetTop, width: el.offsetWidth, height: el.offsetHeight })
     }
-    return null
+    return out
+  }
+
+  /** The tile whose slot is under the point. */
+  private cellAt (x: number, y: number): string | null {
+    return this.slots().find(s => x >= s.left && x < s.left + s.width && y >= s.top && y < s.top + s.height)?.id ?? null
   }
 
   /** Follows the pointer until it lifts, calling back with each move and the final position. */
@@ -580,6 +592,12 @@ export default class Overview extends Vue {
         const to = this.draft.tiles.findIndex(t => t.id === over)
         if (to >= 0) this.draft = moveTile(this.draft, id, to)
         last = over
+      } else if (this.draft && !over) {
+        // On no tile: the empty end of a row, or past the last one. Any row takes it (KAN-1958).
+        const to = dropIndex(this.slots(), id, ev.clientX, ev.clientY)
+        const key = to === null ? null : `gap:${to}`
+        if (to !== null && key !== last && to !== this.draft.tiles.findIndex(t => t.id === id)) this.draft = moveTile(this.draft, id, to)
+        if (key) last = key
       }
       follow(ev.clientX, ev.clientY)
       this.$nextTick(() => { if (this.drag?.kind === 'move' && this.drag.id === id) follow(ev.clientX, ev.clientY) })
@@ -648,7 +666,9 @@ export default class Overview extends Vue {
 .overview__card p { margin: 0; color: var(--m3d-text-muted); font-size: 12.5px; }
 .overview__card-top { display: flex; align-items: baseline; gap: 8px; b { font-size: 15px; font-weight: 600; } }
 .overview__card-cat { color: var(--m3d-text-subtle); font-size: 12px; }
-.overview__card-on { margin-left: auto; padding: 2px 9px; border-radius: 999px; background: var(--m3d-accent-soft, var(--m3d-fill-2)); color: var(--m3d-accent); font-size: 11.5px; font-weight: 600; }
+.overview__pm { display: grid; place-items: center; width: 32px; height: 32px; margin-left: auto; padding: 0; border: 0; border-radius: 999px; background: var(--m3d-fill-2); color: var(--m3d-text-muted); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+.overview__pm:hover { color: var(--m3d-text); }
+.overview__pm:focus-visible { outline: 2px solid var(--m3d-accent); outline-offset: 2px; }
 .overview__card-act { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
 .overview__sizes { display: inline-flex; gap: 4px; }
 .overview__size {
@@ -663,7 +683,7 @@ export default class Overview extends Vue {
   .overview__cards { grid-template-columns: minmax(0, 1fr); }
 }
 
-.overview__grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 16px; align-items: stretch; }
+.overview__grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
 .overview__cell { position: relative; display: flex; grid-column: span var(--span); grid-row: span var(--rows); min-width: 0; }
 /* Normally the wrapper takes no part in layout: the tile is the cell's only child, as it always was. */
 .overview__body { display: contents; }
@@ -681,7 +701,8 @@ export default class Overview extends Vue {
   content: ''; position: absolute; inset: 0; z-index: 4; border-radius: 22px; pointer-events: none;
   box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--m3d-accent) 55%, transparent);
 }
-.overview__cell--moving { z-index: 6; pointer-events: none; filter: drop-shadow(0 14px 28px rgb(0 0 0 / 22%)); }
+/* A box shadow, not a filter: a filter re-draws the whole tile (the 3D view too) on every pointer move. */
+.overview__cell--moving { z-index: 6; pointer-events: none; border-radius: 22px; box-shadow: 0 14px 28px rgb(0 0 0 / 22%); }
 .overview__cell--over::after { box-shadow: inset 0 0 0 3px var(--m3d-accent) !important; background: color-mix(in srgb, var(--m3d-accent) 10%, transparent); }
 .overview__grip {
   position: absolute; top: 14px; left: 12px; z-index: 5; display: grid; grid-template-columns: repeat(2, 4px); gap: 3px; padding: 6px 5px; border-radius: 8px;

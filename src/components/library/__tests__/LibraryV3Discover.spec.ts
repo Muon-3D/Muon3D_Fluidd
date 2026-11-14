@@ -71,7 +71,8 @@ describe('Library v3 Discover: filters', () => {
     vm.m1 = [card('1', { m1: true })]
     expect(vm.visibleShelves.map(s => s.id)).toEqual(['popular'])
     vm.fits = false
-    expect(vm.visibleShelves.map(s => s.id)).toEqual(['popular', 'm1'])
+    // New has nothing yet: it says so instead of vanishing.
+    expect(vm.visibleShelves.map(s => s.id)).toEqual(['popular', 'm1', 'new'])
   })
 
   it('says what hid everything, and Clear filter resets search, Fits and the category', async () => {
@@ -86,5 +87,15 @@ describe('Library v3 Discover: filters', () => {
     vm.clearFilter()
     expect([vm.query, vm.fits, vm.chip]).toEqual(['', false, 'all'])
     expect(vm.noMatch).toBe(false)
+  })
+})
+
+describe('Library v3: Print on… from a print\'s page', () => {
+  it('the link\'s arrival asks with no printer; a click keeps the open one', () => {
+    const vm = library({ printerId: 'p-1' }) as unknown as { printFromLook: (card: object, print: object | null, auto?: boolean) => void }
+    vm.printFromLook({ id: 'pub-1' }, null, true)
+    vm.printFromLook({ id: 'pub-1' }, null)
+    const requests = (wrapper as unknown as { emitted: (name: string) => Array<[{ printerId: string | null }]> }).emitted('print')
+    expect(requests.map(([request]) => request.printerId)).toEqual([null, 'p-1'])
   })
 })

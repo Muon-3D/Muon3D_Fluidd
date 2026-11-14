@@ -12,7 +12,8 @@ import { TOKEN_KEY, setCloudBaseUrl } from '@/services/muon-cloud/api'
 
 const passkey = vi.hoisted(() => ({ cancelled: false, pending: false, release: null as null | (() => void) }))
 const beginSignOut = vi.hoisted(() => vi.fn(async () => {}))
-vi.mock('@/services/account/sign-out', async (actual) => ({ ...(await actual() as object), beginSignOut }))
+const signOutNow = vi.hoisted(() => vi.fn(async () => {}))
+vi.mock('@/services/account/sign-out', async (actual) => ({ ...(await actual() as object), beginSignOut, signOutNow }))
 vi.mock('@/services/account/webauthn', async (actual) => ({
   ...(await actual() as object),
   passkeysSupported: () => true,
@@ -113,7 +114,7 @@ describe('account journeys against one stateful console', () => {
 
   it('schedules once with a passkey, signs every session out, then signs in and keeps the account', async () => {
     const w = mount(AccountDelete, { propsData: { linkTo: () => '/account/privacy' }, stubs, attachTo: document.body })
-    await tid(w, 'delete-open').trigger('click'); await tid(w, 'delete-continue').trigger('click'); await tid(w, 'delete-passkey').trigger('click'); await settle()
+    await tid(w, 'delete-open').trigger('click'); await tid(w, 'delete-type').setValue('DELETE'); await tid(w, 'delete-continue').trigger('click'); await tid(w, 'delete-passkey').trigger('click'); await settle()
     const deletes = console.calls.filter(c => c.method === 'DELETE' && c.path === '/v1/me')
     expect(deletes).toHaveLength(1); expect(deletes[0].body).toEqual({}); expect(console.sessions).toHaveLength(0)
     expect(w.find('.dialog h2').text()).toContain('Your account will be deleted on')
@@ -126,7 +127,7 @@ describe('account journeys against one stateful console', () => {
   it('cancels a deletion passkey without sending or changing state', async () => {
     passkey.cancelled = true
     const w = mount(AccountDelete, { propsData: { linkTo: () => '/' }, stubs, attachTo: document.body })
-    await tid(w, 'delete-open').trigger('click'); await tid(w, 'delete-continue').trigger('click'); await tid(w, 'delete-passkey').trigger('click'); await settle()
+    await tid(w, 'delete-open').trigger('click'); await tid(w, 'delete-type').setValue('DELETE'); await tid(w, 'delete-continue').trigger('click'); await tid(w, 'delete-passkey').trigger('click'); await settle()
     expect(console.calls.some(c => c.method === 'DELETE' && c.path === '/v1/me')).toBe(false); expect(console.account.deletion).toBeNull()
     expect(w.text()).toContain('Passkey confirmation was cancelled. Your account is unchanged.')
   })
@@ -134,7 +135,7 @@ describe('account journeys against one stateful console', () => {
   it('stops when another tab changes the session during the passkey ceremony', async () => {
     passkey.pending = true
     const w = mount(AccountDelete, { propsData: { linkTo: () => '/' }, stubs, attachTo: document.body })
-    await tid(w, 'delete-open').trigger('click'); await tid(w, 'delete-continue').trigger('click'); await tid(w, 'delete-passkey').trigger('click'); await settle()
+    await tid(w, 'delete-open').trigger('click'); await tid(w, 'delete-type').setValue('DELETE'); await tid(w, 'delete-continue').trigger('click'); await tid(w, 'delete-passkey').trigger('click'); await settle()
     localStorage.setItem(TOKEN_KEY, 'token-someone-else'); passkey.release?.(); await settle()
     expect(console.calls.some(c => c.method === 'DELETE' && c.path === '/v1/me')).toBe(false); expect(console.account.deletion).toBeNull()
     expect(w.text()).toContain('The account changed. Open this action again.')
@@ -143,7 +144,7 @@ describe('account journeys against one stateful console', () => {
   it('does not retry or claim success when deletion answers 401', async () => {
     console.delete401 = true
     const w = mount(AccountDelete, { propsData: { linkTo: () => '/' }, stubs, attachTo: document.body })
-    await tid(w, 'delete-open').trigger('click'); await tid(w, 'delete-continue').trigger('click'); await tid(w, 'delete-passkey').trigger('click'); await settle()
+    await tid(w, 'delete-open').trigger('click'); await tid(w, 'delete-type').setValue('DELETE'); await tid(w, 'delete-continue').trigger('click'); await tid(w, 'delete-passkey').trigger('click'); await settle()
     expect(console.calls.filter(c => c.method === 'DELETE' && c.path === '/v1/me')).toHaveLength(1)
     expect(tid(w, 'delete-done').exists()).toBe(false); expect(w.text()).toContain('Your session ended; sign in and try again.')
   })
@@ -163,7 +164,8 @@ describe('account journeys against one stateful console', () => {
     await w.find('input[aria-label="New password"]').setValue('new password'); await w.find('.dialog .cbtn--primary').trigger('click'); await settle()
     expect((w.vm as unknown as { reauthPasskey: unknown }).reauthPasskey).toBeTypeOf('function')
     await (w.vm as unknown as { reauthPasskey: () => Promise<void> }).reauthPasskey(); await settle()
-    expect(console.password).toBe('new password'); expect(w.text()).toContain('Your password is changed.')
+    // This console answers no `session`: the new console, which ends this session too (KAN-1389), so the person goes to sign-in.
+    expect(console.password).toBe('new password'); expect(signOutNow).toHaveBeenCalledWith('browser', expect.objectContaining({ reason: 'password' }))
     passkey.cancelled = true; const cancelled = open(); await settle(); await tid(cancelled, 'security-change-password').trigger('click')
     await cancelled.find('input[aria-label="New password"]').setValue('never applied'); await cancelled.find('.dialog .cbtn--primary').trigger('click'); await settle()
     await (cancelled.vm as unknown as { reauthPasskey: () => Promise<void> }).reauthPasskey(); await settle()

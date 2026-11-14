@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { codeSignIn, finishSignIn, forgotPassword, passwordSignIn, resetPassword, signUp, verifyEmail } from '../sign-in'
+import { codeSignIn, finishSignIn, forgotPassword, passwordSignIn, resetPassword, signUp, verifyEmail, verifyEmailAnswer } from '../sign-in'
 import { AccountError } from '../client'
 
 const BASE = 'https://control.example.test'
@@ -81,6 +81,14 @@ describe('the console\'s sign-in page', () => {
       [`${BASE}/v1/auth/email/verify`, { token: 'verify-without-email' }]
     ])
     expect(fetchMock.mock.calls.every(([, init]) => init.headers.authorization === undefined)).toBe(true)
+  })
+
+  it('says whether a confirmed address change ended this browser\'s session too', async () => {
+    fetchMock
+      .mockResolvedValueOnce(answer(200, { ok: true, email: 'new@example.test', signed_out: true }))
+      .mockResolvedValueOnce(answer(200, { ok: true, email: 'first@example.test' }))
+    await expect(verifyEmailAnswer('change-token')).resolves.toEqual({ email: 'new@example.test', signedOut: true })
+    await expect(verifyEmailAnswer('confirm-token')).resolves.toEqual({ email: 'first@example.test', signedOut: false })
   })
 
   it('ends the page\'s own session once the handoff is in hand, so it never shows in Devices', async () => {

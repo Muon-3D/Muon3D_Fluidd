@@ -24,6 +24,7 @@ import {
   type Version
 } from './api'
 import { modelsAssertion } from './assertion'
+import { forgetOwnRecents } from './recents'
 import { syncFeed } from './feed'
 import { libraryPromise } from './promise'
 import { cleanName, saveToLibrary, type SaveProgress, type SaveRequest } from './save'
@@ -162,8 +163,10 @@ let watching = false
 export function watchLibraryAccount () {
   if (watching) return
   watching = true
-  watch(signedInAccount, (account) => {
+  watch(signedInAccount, (account, previous) => {
     if (account === libraryState.account) return
+    // Another account (or none): what the last one opened of its own is not this one's.
+    if (previous !== undefined && previous !== account) forgetOwnRecents()
     resetLibrary(account)
     if (account) refreshLibrary().catch(() => {})
   }, { immediate: true })

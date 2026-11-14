@@ -28,8 +28,8 @@ const SYSTEM_INFO = {
 }
 
 /** An idle printer whose services are known, so the page can be driven without touching the real one. */
-async function system (page: import('@playwright/test').Page) {
-  const printer = await usePrinter(page, PRESETS.idleHomed())
+async function system (page: import('@playwright/test').Page, status: Record<string, unknown> = {}) {
+  const printer = await usePrinter(page, { ...PRESETS.idleHomed(), ...status })
   printer.state.results['machine.system_info'] = SYSTEM_INFO
   for (const method of ['machine.reboot', 'machine.shutdown', 'machine.services.restart', 'machine.services.stop', 'machine.services.start', 'printer.restart', 'printer.firmware_restart', 'server.restart']) {
     printer.state.answers[method] = 'ok'
@@ -40,12 +40,29 @@ async function system (page: import('@playwright/test').Page) {
 const sent = (printer: Awaited<ReturnType<typeof system>>) =>
   printer.calls.filter(c => /^(machine\.(reboot|shutdown|services\.)|printer\.(firmware_)?restart|server\.restart)/.test(c.method)).map(c => c.method)
 
+const PRINTING = {
+  idle_timeout: { state: 'Printing' },
+  print_stats: { state: 'printing', filename: 'M1_bracket.gcode', message: '' },
+  virtual_sdcard: { is_active: true, progress: 0.44, file_path: 'M1_bracket.gcode' }
+}
+
+const dialog = (page: import('@playwright/test').Page) => page.getByRole('dialog').last()
+const ok = (page: import('@playwright/test').Page) => page.getByRole('dialog').getByTestId('confirm-ok').last().click()
+const cancel = (page: import('@playwright/test').Page) => page.getByRole('dialog').getByTestId('confirm-cancel').last().click()
+
 test.describe('System', () => {
-  test('is tiles: the host, the load as four bars, the boards, services with a Restart on each row, and the logs', async ({ page, open }) => {
+  test('is tiles: four restart rows mildest first, the host, the load, the boards, programs with a ··· menu, and the logs', async ({ page, open }) => {
     await system(page)
     await open('/system')
     await expect(page.getByTestId('system-page')).toBeVisible()
     await expect(page.getByTestId('system-summary')).toContainText('1 service stopped')
+
+    const rows = page.getByTestId('system-restart').locator('[data-row]')
+    await expect(rows).toHaveCount(4)
+    expect(await rows.evaluateAll(els => els.map(e => e.getAttribute('data-row')))).toEqual(['klipper', 'boards', 'computer', 'shutdown'])
+    // Shut down is the only red one.
+    await expect(page.getByTestId('system-shutdown')).toHaveClass(/cbtn--danger/)
+    for (const id of ['system-restart-klipper', 'system-firmware-restart', 'system-reboot']) await expect(page.getByTestId(id)).not.toHaveClass(/cbtn--danger/)
 
     await expect(page.getByTestId('system-host')).toContainText('MuonOS 1.4.2')
     const load = page.getByTestId('system-usage')
@@ -53,82 +70,160 @@ test.describe('System', () => {
     await expect(load.getByRole('meter')).toHaveCount(4)
     await expect(page.getByTestId('system-boards')).toBeVisible()
 
-    // Services are rows with a state and a button on the row: nothing waits for a hover.
+    // Programs: a state pill and one ··· menu; a stopped one has Start.
     const klipper = page.locator('[data-service=klipper]')
     await expect(klipper).toContainText('Runs the printer')
     await expect(klipper).toContainText('Running')
-    await expect(klipper.getByRole('button', { name: 'Restart' })).toBeVisible()
+    await expect(page.getByTestId('system-svc-menu-klipper')).toBeVisible()
     await expect(page.locator('[data-service=timelapse]').getByRole('button', { name: 'Start' })).toBeVisible()
-    // Moonraker cannot be stopped from the page it answers.
-    await expect(page.locator('[data-service=moonraker]').getByRole('button', { name: 'Stop' })).toHaveCount(0)
 
     const logs = page.getByTestId('system-logs')
     await expect(logs).toContainText('klippy.log')
     await expect(logs).toContainText('moonraker.log')
   })
 
-  test('Reboot and Shut down are red, ask first, and send nothing until confirmed', async ({ page, open }) => {
+  test('Restart Klipper runs at once when idle: a progress line, then it is back', async ({ page, open }) => {
     const printer = await system(page)
     await open('/system')
-    const reboot = page.getByTestId('system-reboot')
-    const shutdown = page.getByTestId('system-shutdown')
-    await expect(reboot).toBeEnabled()
-    await expect(reboot).toHaveClass(/cbtn--danger/)
-    await expect(shutdown).toHaveClass(/cbtn--danger/)
-    await expect(reboot).not.toHaveClass(/cbtn--primary/)
-
-    // Asked, then cancelled: nothing sent.
-    await reboot.click()
-    const dialog = page.getByRole('dialog', { name: /Restart .* computer\?/ })
-    await expect(dialog).toBeVisible()
-    expect(sent(printer)).toEqual([])
-    await page.getByRole('dialog').getByTestId('confirm-cancel').last().click()
-    await expect(dialog).toHaveCount(0)
-    expect(sent(printer)).toEqual([])
-
-    await shutdown.click()
-    await expect(page.getByRole('dialog', { name: /Shut down .* computer\?/ })).toBeVisible()
-    expect(sent(printer)).toEqual([])
-    await page.getByRole('dialog').getByTestId('confirm-cancel').last().click()
-    expect(sent(printer)).toEqual([])
-
-    // Confirmed: sent once.
-    await reboot.click()
-    await page.getByRole('dialog').getByTestId('confirm-ok').last().click()
-    await expect.poll(() => sent(printer)).toEqual(['machine.reboot'])
+    await page.getByTestId('system-restart-klipper').click()
+    const run = page.getByTestId('system-run-klipper')
+    await expect(run).toHaveAttribute('data-phase', 'running')
+    await expect(run).toContainText('Restarting Klipper…')
+    await expect(page.getByTestId('system-restart-klipper')).toBeDisabled()
+    await expect.poll(() => sent(printer)).toEqual(['printer.restart'])
+    printer.notify('notify_klippy_disconnected')
+    await expect(run).toHaveAttribute('data-phase', 'back', { timeout: 15_000 })
+    await expect(run).toContainText('Klipper is back')
+    await expect(run).toContainText(/took \d+ s/)
+    await expect(page.getByTestId('system-restart-klipper')).toBeEnabled()
   })
 
-  test('Shut down sends machine.shutdown only after the confirm', async ({ page, open }) => {
+  test('a restart that fails says so, with the reason in Klipper\'s words', async ({ page, open }) => {
     const printer = await system(page)
     await open('/system')
-    await page.getByTestId('system-shutdown').click()
+    await page.getByTestId('system-restart-klipper').click()
+    await expect.poll(() => sent(printer)).toEqual(['printer.restart'])
+    printer.state.results['server.info'] = { klippy_state: 'error' }
+    printer.state.results['printer.info'] = { state: 'error', state_message: "MCU 'mcu' shutdown: Timer too close" }
+    printer.notify('notify_klippy_disconnected')
+    const run = page.getByTestId('system-run-klipper')
+    await expect(run).toHaveAttribute('data-phase', 'failed', { timeout: 15_000 })
+    await expect(run).toContainText("Klipper didn't come back")
+    await expect(run).toContainText('Timer too close')
+  })
+
+  test('Restart Klipper and the boards sends a firmware restart, with its own progress line', async ({ page, open }) => {
+    const printer = await system(page)
+    await open('/system')
+    await page.getByTestId('system-firmware-restart').click()
+    await expect(page.getByTestId('system-run-boards')).toContainText('Restarting Klipper and the boards…')
+    await expect.poll(() => sent(printer)).toEqual(['printer.firmware_restart'])
+    printer.notify('notify_klippy_disconnected')
+    await expect(page.getByTestId('system-run-boards')).toHaveAttribute('data-phase', 'back', { timeout: 15_000 })
+  })
+
+  test('Restart the computer asks, shows progress while the page is cut off, and the page comes back', async ({ page, open }) => {
+    const printer = await system(page)
+    await open('/system')
+    await page.getByTestId('system-reboot').click()
+    await expect(page.getByRole('dialog', { name: /Restart .* computer\?/ })).toBeVisible()
     expect(sent(printer)).toEqual([])
-    await page.getByRole('dialog').getByTestId('confirm-ok').last().click()
+    await cancel(page)
+    expect(sent(printer)).toEqual([])
+
+    await page.getByTestId('system-reboot').click()
+    await ok(page)
+    await expect.poll(() => sent(printer)).toEqual(['machine.reboot'])
+    const run = page.getByTestId('system-run-computer')
+    await expect(run).toContainText('Restarting the computer…')
+    await printer.offline()
+    await page.waitForTimeout(1500)
+    printer.online()
+    await expect(run).toHaveAttribute('data-phase', 'back', { timeout: 60_000 })
+    await expect(run).toContainText('is back')
+  })
+
+  test('while printing, Restart the computer and Shut down are refused in plain words', async ({ page, open }) => {
+    const printer = await system(page, PRINTING)
+    await open('/system')
+    await expect(page.getByTestId('system-reboot')).toBeDisabled()
+    await expect(page.getByTestId('system-shutdown')).toBeDisabled()
+    await expect(page.getByTestId('system-refused-computer')).toHaveText('Not while printing: it would stop the print. Wait for it to finish, or cancel it first.')
+    await expect(page.getByTestId('system-refused-shutdown')).toContainText('Not while printing')
+    await page.getByTestId('system-reboot').click({ force: true })
+    expect(sent(printer)).toEqual([])
+  })
+
+  test('while printing, Restart Klipper asks "Stop print and restart" and says where the print stops', async ({ page, open }) => {
+    const printer = await system(page, PRINTING)
+    await open('/system')
+    await page.getByTestId('system-restart-klipper').click()
+    await expect(page.getByRole('dialog', { name: 'Restart Klipper during the print?' })).toBeVisible()
+    await expect(dialog(page)).toContainText("M1_bracket stops at 44% and can't be resumed")
+    await expect(dialog(page).getByTestId('confirm-ok')).toHaveText('Stop print and restart')
+    await expect(dialog(page).getByTestId('confirm-cancel')).toHaveText('Keep printing')
+    await cancel(page)
+    expect(sent(printer)).toEqual([])
+
+    await page.getByTestId('system-restart-klipper').click()
+    await ok(page)
+    await expect.poll(() => sent(printer)).toEqual(['printer.restart'])
+  })
+
+  test('Shut down asks with the hotend\'s temperature, then the page says Off, not Disconnected', async ({ page, open }) => {
+    const printer = await system(page, { extruder: { temperature: 34, target: 0 } })
+    await open('/system')
+    await page.getByTestId('system-shutdown').click()
+    await expect(page.getByRole('dialog', { name: /Shut down .*\?/ })).toBeVisible()
+    await expect(dialog(page)).toContainText('Hotend is 34 °C: safe to shut down.')
+    expect(sent(printer)).toEqual([])
+    await ok(page)
+    await expect.poll(() => sent(printer)).toEqual(['machine.shutdown'])
+    await printer.offline()
+    await expect(page.getByTestId('system-off')).toContainText('is off')
+    await expect(page.getByTestId('system-page')).not.toContainText('Disconnected')
+  })
+
+  test('Shut down with a hot hotend waits for the fan to cool it below 50 °C, then powers off', async ({ page, open }) => {
+    const printer = await system(page, { extruder: { temperature: 62, target: 0 } })
+    await open('/system')
+    await page.getByTestId('system-shutdown').click()
+    await expect(dialog(page)).toContainText('Hotend is 62 °C: the fan cools it to 50 °C first')
+    await ok(page)
+    const run = page.getByTestId('system-run-shutdown')
+    await expect(run).toHaveAttribute('data-phase', 'cooling')
+    await expect(run).toContainText('Cooling the hotend: 62 °C')
+    await page.waitForTimeout(1200)
+    expect(sent(printer)).toEqual([])
+    printer.report({ extruder: { temperature: 48, target: 0 } })
     await expect.poll(() => sent(printer)).toEqual(['machine.shutdown'])
   })
 
-  test('restarting or stopping a service asks first, and sends nothing until confirmed', async ({ page, open }) => {
+  test('a program\'s ··· menu: Restart shows progress then back; Stop asks first; Moonraker has no Stop', async ({ page, open }) => {
     const printer = await system(page)
     await open('/system')
-    const row = page.locator('[data-service=klipper]')
-
-    await row.getByRole('button', { name: 'Restart' }).click()
-    await expect(page.getByRole('dialog', { name: 'Restart klipper?' })).toBeVisible()
-    await page.getByRole('dialog').getByTestId('confirm-cancel').last().click()
-    expect(sent(printer)).toEqual([])
-
-    await row.getByRole('button', { name: 'Stop' }).click()
+    await page.getByTestId('system-svc-menu-klipper').click()
+    await expect(page.getByTestId('system-svc-log-klipper')).toBeVisible()
+    await page.getByTestId('system-svc-stop-klipper').click()
     await expect(page.getByRole('dialog', { name: 'Stop klipper?' })).toBeVisible()
-    await page.getByRole('dialog').getByTestId('confirm-cancel').last().click()
+    await cancel(page)
     expect(sent(printer)).toEqual([])
 
-    await row.getByRole('button', { name: 'Restart' }).click()
-    await page.getByRole('dialog').getByTestId('confirm-ok').last().click()
+    await page.getByTestId('system-svc-menu-klipper').click()
+    await page.getByTestId('system-svc-restart-klipper').click()
     await expect.poll(() => printer.called('machine.services.restart')).toEqual([{ service: 'klipper' }])
+    const run = page.getByTestId('system-run-svc-klipper')
+    await expect(run).toContainText('Restarting klipper…')
+    printer.notify('notify_klippy_disconnected')
+    await expect(run).toHaveAttribute('data-phase', 'back', { timeout: 15_000 })
     expect(printer.called('machine.services.stop')).toEqual([])
+
+    await page.getByTestId('system-svc-menu-moonraker').click()
+    await expect(page.getByTestId('system-svc-restart-moonraker')).toBeVisible()
+    await expect(page.getByTestId('system-svc-stop-moonraker')).toHaveCount(0)
   })
 
-  test('a stopped service starts at once, as it did, and the logs are download rows', async ({ page, open }) => {
+  test('a stopped program starts at once, as it did, and the logs are download rows', async ({ page, open }) => {
     const printer = await system(page)
     await open('/system')
     await page.locator('[data-service=timelapse]').getByRole('button', { name: 'Start' }).click()
@@ -138,21 +233,13 @@ test.describe('System', () => {
     await expect(page.getByTestId('system-log-moonraker.log')).toHaveText('Download')
   })
 
-  test('while printing, Reboot and Shut down are off and say why', async ({ page, open }) => {
-    // The shared mock is a printer mid-print.
-    await usePrinter(page, { print_stats: { state: 'printing' } })
+  test('buttons are v3 pills: 40px on a desktop, 44px tap targets on a phone', async ({ page, open, isMobile }) => {
+    await system(page)
     await open('/system')
-    await expect(page.getByTestId('system-reboot')).toBeDisabled()
-    await expect(page.getByTestId('system-shutdown')).toBeDisabled()
-    await expect(page.getByTestId('system-page')).toContainText('Not while printing.')
-  })
-
-  test('Klipper restarts ask nothing new: they are as they were, one button each', async ({ page, open }) => {
-    const printer = await system(page)
-    await open('/system')
-    await expect(page.getByTestId('system-restart-klipper')).toBeVisible()
-    await expect(page.getByTestId('system-klipper')).toContainText('A restart reads printer.cfg again')
-    expect(sent(printer)).toEqual([])
+    for (const id of ['system-restart-klipper', 'system-shutdown', 'system-svc-menu-klipper']) {
+      const box = await page.getByTestId(id).boundingBox()
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(isMobile ? 44 : 32)
+    }
   })
 
   test('fits the screen with nothing cut off', async ({ page, open }) => {
@@ -174,7 +261,7 @@ test.describe('Wi-Fi and network', () => {
     return changes
   }
 
-  test('shows the network it is on as a tile, the others as a list, the hotspot and the cable', async ({ page, open }) => {
+  test('shows the network it is on as a tile, the others as a list, and the hotspot', async ({ page, open }) => {
     const printer = await usePrinter(page)
     printer.state.results['machine.system_info'] = SYSTEM_INFO
     await open('/wifi')
@@ -196,7 +283,25 @@ test.describe('Wi-Fi and network', () => {
     await expect(hotspot).toContainText('Turning it on drops the current connection')
     await expect(page.getByTestId('hotspot-state')).toHaveText('Off')
 
-    await expect(page.getByTestId('wifi-ethernet')).toContainText('No cable')
+    await expect(page.getByTestId('wifi-ethernet')).toHaveCount(0)
+  })
+
+  test('has no Ethernet entry, and the Wi-Fi and Hotspot rows are one height (KAN-2044)', async ({ page, open }, testInfo) => {
+    const printer = await usePrinter(page)
+    printer.state.results['machine.system_info'] = SYSTEM_INFO
+    await open('/wifi')
+    await expect(page.getByTestId('wifi-page')).toBeVisible()
+    await expect(page.getByTestId('hotspot-card')).toBeVisible()
+    await expect(page.getByTestId('wifi-connected')).toBeVisible()
+    await expect(page.getByTestId('wifi-page').getByText('Ethernet')).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: /ethernet/i })).toHaveCount(0)
+
+    const wifi = await page.getByTestId('wifi-connected').boundingBox()
+    const hotspot = await page.getByTestId('hotspot-card').boundingBox()
+    expect(wifi && hotspot).toBeTruthy()
+    expect(Math.abs(wifi!.height - hotspot!.height)).toBeLessThanOrEqual(1)
+
+    await page.getByTestId('wifi-page').screenshot({ path: `e2e/control/screenshots/wifi-tidy-${testInfo.project.name}.png` })
   })
 
   test('joining a network asks first and sends nothing until Proceed', async ({ page, open }) => {
@@ -646,4 +751,14 @@ test.describe('An update staged on the spare slot (real Boxwood status)', () => 
     await expect(page.getByTestId('update-banner')).toHaveCount(0)
     await expect(page.getByRole('status').filter({ hasText: /Restart delayed|Restarting/ })).toHaveCount(0)
   })
+})
+
+test('System points to Updates for software versions and installing updates', async ({ page, open }) => {
+  await usePrinter(page, PRESETS.idleHomed())
+  await open('/system')
+  const link = page.getByTestId('system-updates-link')
+  await expect(link).toContainText('Software versions and installing updates')
+  await link.click()
+  await expect(page).toHaveURL(/\/settings#versions$/)
+  await expect(page.getByTestId('page-title')).toHaveText('Updates')
 })

@@ -389,18 +389,15 @@ export default class MaterialPicker extends Mixins(FilamentActionsMixin) {
   }
 
   .matp__actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 10px;
     border-top: 1px solid var(--m3d-border);
 
-    > :first-child {
-      grid-column: 1 / -1;
-      justify-content: center;
-    }
-
-    > * {
+    .cbtn {
+      width: 100%;
+      min-height: 40px;
       justify-content: center;
     }
   }

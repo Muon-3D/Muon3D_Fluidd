@@ -19,13 +19,17 @@
       :printer-name="activePrinter ? activePrinter.name : null"
       :printer-model="activePrinter && activePrinter.model ? activePrinter.model : 'M1'"
       :tab="view === 'mine' ? 'yours' : 'discover'"
-      :continue-item="signedIn && state.synced && prints.length ? prints[0] : null"
+      :continue-recent="continueRecent"
+      :continue-item="continueItem"
       :signed-in="signedIn"
+      :settings-to="settingsTo"
       :grid="grid"
       :search="searchQuery"
       :own-ready="state.checked && state.enabled"
       :collection="collection"
       :print-id="printId"
+      :auto-print="autoPrint"
+      @auto-printed="onAutoPrinted"
       @update:tab="setView"
       @update:grid="setGrid"
       @grid-back="gridBack"
@@ -36,10 +40,12 @@
       @share="openShare('new')"
       @print-back="printBack"
       @open-search="openSearch"
+      @sign-in="accountDialog = true"
       @print="onLibraryPrint"
       @print-item="printOn($event, activePrinter ? activePrinter.id : null)"
       @print-run="onPrintRun"
       @open-item="openItem"
+      @open-recent="openRecent"
       @slice-item="openInSlice"
       @go-slice="goSlice"
     >
@@ -183,6 +189,7 @@ import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
 import { describeLibraryError, type LibraryItem, type LibraryRun } from '@/services/library/api'
 import { libraryState, turnLibraryOn } from '@/services/library/store'
 import { YOURS_GRIDS, type YoursGridSource } from '@/components/library/v2/LibraryYoursGrid.vue'
+import { readRecents, type RecentEntry } from '@/services/library/recents'
 
 /** Automatic consent, by account: asked once per app session, whichever page instance asked (KAN-735). */
 export const autoConsent = Vue.observable({ asked: {} as Record<string, 'pending' | 'done' | 'failed'> })
@@ -315,6 +322,21 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     return typeof id === 'string' && id ? id : null
   }
 
+  /**
+   * The site's Print button (`&do=print` beside `print=<id>`): the model's
+   * page opens Print on… once. A bare `print=` only shows the model.
+   */
+  get autoPrint (): boolean {
+    return !!this.printId && this.$route?.query.do === 'print'
+  }
+
+  /** Handled (opened, no file, or unavailable): `do` leaves the address, the model's page stays, so a reload or Back opens nothing. */
+  onAutoPrinted () {
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query }
+    delete query.do
+    this.$router.replace({ query }).catch(() => {})
+  }
+
   /** Off the print's pages (Back, the switch, a grid, a collection): nothing of ours to go back through. */
   @Watch('printId')
   onPrintId (id: string | null) {
@@ -332,7 +354,10 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   openPrint (id: string) {
     // The print already open adds no page, so nothing to go back through.
     if (id === this.printId) return
-    this.$router.push({ query: { ...this.$route.query, print: id } })
+    // Another model is not the link's Print: `do` does not follow it.
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, print: id }
+    delete query.do
+    this.$router.push({ query })
       .then(() => { this.printDepth++ })
       .catch(() => {})
   }
@@ -346,6 +371,7 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     }
     const query: Dictionary<string | (string | null)[]> = { ...this.$route.query }
     delete query.print
+    delete query.do
     this.$router.replace({ query }).catch(() => {})
   }
 
@@ -390,6 +416,7 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     delete rest.q
     delete rest.collection
     delete rest.print
+    delete rest.category
     const view = YOURS_GRIDS.includes(grid as YoursGridSource) ? 'mine' : 'discover'
     const query = grid ? { ...rest, view, shelf: grid, ...(grid === 'search' ? { q: q ?? this.searchQuery } : {}) } : rest
     if (this.grid && grid) {
@@ -489,6 +516,30 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   /** Printed's Print again: the print hand-off, for that version. */
   onPrintRun (run: LibraryRun) {
     if (this.canPrintAgain(run)) this.$router.push(this.printAgain(run)).catch(() => {})
+  }
+
+  /**
+   * Continue is what this device opened last (kept in this browser, not in the
+   * account). One of your own prints counts only signed in, and not once the
+   * synced Library no longer has it; a public model counts whoever is here.
+   */
+  get continueRecent (): RecentEntry | null {
+    return readRecents().find(entry => entry.kind === 'publication' ||
+      // A print of yours shows only once this account's list is read and holds it:
+      // never while it loads, after a failed read, or with Library saving off.
+      (this.signedIn && this.state.synced && !!this.everything.find(item => item.id === entry.id))) ?? null
+  }
+
+  /** The print behind Continue when it is one of yours, for Print again. */
+  get continueItem (): LibraryItem | null {
+    const entry = this.continueRecent
+    return entry && entry.kind === 'own' ? this.prints.find(item => item.id === entry.id) ?? null : null
+  }
+
+  /** Continue's Open: one of yours goes to its own page, a public model to its page here. */
+  openRecent (entry: RecentEntry) {
+    if (entry.kind === 'own') this.$router.push(this.printTo({ id: entry.id } as LibraryItem)).catch(() => {})
+    else this.openPrint(entry.id)
   }
 
   /** A Yours card's picture or Continue's Open: the print's own page. */

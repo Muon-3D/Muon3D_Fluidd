@@ -10,6 +10,30 @@ const idle = () => Promise.resolve({ status: 200, data: { result: { phase: 'idle
 const settle = () => vi.advanceTimersByTimeAsync(0)
 
 describe('updateWatch polling', () => {
+  it('never polls Aux over a managed route, including after a LAN switch or install', async () => {
+    const direct = vi.fn(idle)
+    watchUpdates('boxwood', direct)
+    await settle()
+    const remote = vi.fn(refused)
+    watchUpdates('boxwood', remote, true)
+    await vi.advanceTimersByTimeAsync(120_000)
+    installStarted('1.0', '1.1')
+    await settle()
+    expect(remote).not.toHaveBeenCalled()
+    expect(direct).toHaveBeenCalledOnce()
+    expect(updateWatch.status).toBeNull()
+    expect(updateWatch.answered).toBe(false)
+  })
+
+  it('ignores an in-flight LAN response after switching to managed', async () => {
+    let answer!: (value: { status: number, data: unknown }) => void
+    watchUpdates('boxwood', () => new Promise(resolve => { answer = resolve }))
+    watchUpdates('boxwood', vi.fn(refused), true)
+    answer({ status: 200, data: { state: 'idle' } })
+    await settle()
+    expect(updateWatch.status).toBeNull()
+    expect(updateWatch.answered).toBe(false)
+  })
   beforeEach(() => {
     vi.useFakeTimers()
     localStorage.clear()

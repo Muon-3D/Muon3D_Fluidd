@@ -1,3 +1,4 @@
+import type { EditorTextSize, SaveAndRestart } from '@/services/settings/editor'
 import type { ConsoleConfig } from '@/services/console/settings'
 import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { FileFilterType } from '../files/types'
@@ -8,7 +9,6 @@ export interface ConfigState {
   socketUrl: string;
   authKey: string;
   discovered: boolean;
-  layoutMode: boolean;
   containerColumnCount: number;
   instances: InstanceConfig[];
   lanInstances: InstanceConfig[];
@@ -139,6 +139,8 @@ export interface GeneralConfig {
   loadedMaterialColour: string | null;
   /** Material picker favorites; null uses the common-material defaults, [] deliberately pins none. */
   pinnedMaterials: string[] | null;
+  /** The Quick commands shown on Overview and Control, chosen on the Macros page (KAN-2122); null is the automatic pick. */
+  quickCommands: string[] | null;
 }
 
 export type ToolheadControlStyle = 'cross' | 'bars' | 'circle'
@@ -202,6 +204,10 @@ export interface EditorConfig {
   autoEditExtensions: string[];
   restoreViewState: RestoreViewState,
   codeLens: boolean;
+  /** What Save and restart does in the editor (KAN-1994). */
+  saveAndRestart: SaveAndRestart;
+  /** The editor's text size (KAN-1995). */
+  textSize: EditorTextSize;
 }
 
 export interface Axis {
@@ -309,6 +315,8 @@ export interface GcodePreviewConfig {
 }
 
 export interface FileSystemConfig {
+  /** Names starting with a dot show in file lists (Settings > Files and editor). Off by default. */
+  showHiddenFiles: boolean;
   activeFilters: Record<string, FileFilterType[]>;
   sortBy: Record<string, string | null>;
   sortDesc: Record<string, boolean | null>;

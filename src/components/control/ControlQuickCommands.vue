@@ -7,21 +7,22 @@
   >
     <template #aside>
       <button
-        v-if="commands.length > TOP"
+        v-if="commands.length > shownDefault.length"
         type="button"
         class="qc__all"
         :aria-expanded="all ? 'true' : 'false'"
         data-tid="quick-all"
         @click="all = !all"
       >
-        {{ all ? 'Fewer' : `All ${commands.length}` }}
+        {{ all ? 'Fewer' : 'All commands' }}
       </button>
       <a
         class="qc__arrange"
         :href="arrangeLink"
-        title="Hide, show and group macros in Settings › Macros"
+        title="Choose which quick commands show here and on Overview, on the Macros page"
+        data-tid="quick-manage"
         @click.prevent="$router.push(arrangeLink)"
-      >Arrange</a>
+      >Manage in Macros</a>
     </template>
 
     <div
@@ -98,7 +99,7 @@
       v-if="selected"
       class="macros__values"
       data-tid="macro-send"
-      aria-label="Macro values"
+      aria-label="Quick command values"
       @submit.prevent="submitMacro"
     >
       <h3>{{ selected.title }}</h3>
@@ -108,11 +109,11 @@
         :key="field.name"
         class="macros__field"
       >
-        <span>{{ field.name }} · {{ field.optional ? `optional${field.defaultValue ? ` · default ${field.defaultValue}` : ' · uses the macro’s own value'}` : 'required' }}</span>
+        <span>{{ field.name }} · {{ field.optional ? `optional${field.defaultValue ? ` · default ${field.defaultValue}` : ' · uses the command’s own value'}` : 'required' }}</span>
         <textarea
           v-model="values[field.name]"
           rows="1"
-          :aria-label="`Macro ${field.name}`"
+          :aria-label="`Value ${field.name}`"
           autocomplete="off"
         />
       </label>
@@ -151,6 +152,7 @@ import { restartReason } from '@/services/quick-actions/model'
 import {
   RESTART_COMMANDS, coveredElsewhere, quickCommandIcon, quickCommandLabel, quickCommandReason
 } from '@/services/control/quick-commands'
+import { quickCommandEligible } from '@/services/control/quick-command-picks'
 import ControlCard from './ControlCard.vue'
 
 interface QuickCommand {
@@ -180,7 +182,8 @@ export default class ControlQuickCommands extends Mixins(MacroRunMixin) {
   get commands (): QuickCommand[] {
     const byScore = (a: ShownMacro, b: ShownMacro) => b.score - a.score || a.name.localeCompare(b.name)
     return this.arrangedMacros
-      .filter(m => m.group !== 'printer' && !coveredElsewhere(m.name) && !RESTART_COMMANDS.some(r => r.name === m.name.toUpperCase()))
+      // One rule with the Overview tile and the Macros page's tick list: never the print controls (quick-command-picks).
+      .filter(m => quickCommandEligible(m) && !coveredElsewhere(m.name) && !RESTART_COMMANDS.some(r => r.name === m.name.toUpperCase()))
       .sort((a, b) => Number(!!b.userGroup) - Number(!!a.userGroup) || byScore(a, b))
       .map(m => ({
         name: m.name,
@@ -193,8 +196,19 @@ export default class ControlQuickCommands extends Mixins(MacroRunMixin) {
       }))
   }
 
+  /**
+   * What shows before All commands: the ones ticked on the Macros page's Quick
+   * commands section (KAN-2122), in that order, else the first few.
+   */
+  get shownDefault (): QuickCommand[] {
+    const picks = this.quickCommandPicks
+    if (picks === null) return this.commands.slice(0, this.TOP)
+    const byName = new Map(this.commands.map(c => [c.name.toUpperCase(), c]))
+    return picks.map(p => byName.get(p)).filter((c): c is QuickCommand => !!c)
+  }
+
   get shown (): QuickCommand[] {
-    return this.all ? this.commands : this.commands.slice(0, this.TOP)
+    return this.all ? this.commands : this.shownDefault
   }
 
   get restarts () {
