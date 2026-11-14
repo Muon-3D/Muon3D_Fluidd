@@ -7,10 +7,10 @@
  */
 import type { Page } from '@playwright/test'
 import { test, expect } from '../../fixtures'
+import { PRESETS, usePrinter, type PrinterHandle } from '../printer'
 
 // About the 3D stage: it needs WebGL, which the e2e fixtures turn off by default (KAN-2781).
 test.use({ webgl: true })
-import { PRESETS, usePrinter, type PrinterHandle } from '../printer'
 
 const KEY = 'muon3d.model3d'
 const CAMERA = {

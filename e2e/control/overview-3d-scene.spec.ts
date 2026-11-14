@@ -10,10 +10,10 @@
  */
 import type { Locator, Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
+import { overlay, usePrinter, PRESETS } from './printer'
 
 // About the 3D stage: it needs WebGL, which the e2e fixtures turn off by default (KAN-2781).
 test.use({ webgl: true })
-import { overlay, usePrinter, PRESETS } from './printer'
 
 const GPU = process.platform === 'win32'
 test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })

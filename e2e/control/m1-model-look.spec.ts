@@ -7,10 +7,10 @@
  * accurate model; elsewhere (CI) the page asks for the simple model.
  */
 import { test, expect } from '../fixtures'
+import { usePrinter, PRESETS } from './printer'
 
 // About the 3D stage: it needs WebGL, which the e2e fixtures turn off by default (KAN-2781).
 test.use({ webgl: true })
-import { usePrinter, PRESETS } from './printer'
 
 // E2E_M1_SIMPLE=1 tries the simple model's path on Windows too.
 const GPU = process.platform === 'win32' && process.env.E2E_M1_SIMPLE !== '1'
