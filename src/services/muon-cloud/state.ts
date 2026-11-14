@@ -34,8 +34,8 @@ import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
 import { onEndpointRebound } from './endpoint-hooks'
-import { ENDED_KEY, sessionStreamAvailable, startSessionStream, stopSessionStream } from './session-events'
-import { noteSignedOut, scopeOfReason } from '@/services/account/signed-out-note'
+import { ENDED_KEY, reconnectIfTokenChanged, sessionStreamAvailable, startSessionStream, stopSessionStream } from './session-events'
+import { forgetSignedOut, noteSignedOut, scopeOfReason } from '@/services/account/signed-out-note'
 
 const ACTIVE_KEY = 'muon.cloud.active'
 
@@ -499,17 +499,30 @@ export function releaseSignOut (dropNow = true) {
  * One path, so every tab and every source ends the same way. No reason: as before.
  */
 let refusing: Promise<void> | null = null
+// The shared run's reason, and where it has got to, for a caller that arrives with the reason after it began.
+let refusingReason: string | undefined
+let refusingEmail: string | undefined
+let refusingDropped = false
 function sessionRefused (force = false, reason?: string): Promise<void> {
   if (!refusing) {
+    refusingReason = reason
+    refusingEmail = cloudState.account?.email
+    refusingDropped = false
     refusing = (async () => {
-      const email = cloudState.account?.email
-      if (!await dropSession(force, reason)) return
-      if (reason) {
-        showSignedOut(reason, email)
+      if (!await dropSession(force, refusingReason)) return
+      refusingDropped = true
+      // Read after the drop: a caller that joined the run meanwhile may have brought the reason.
+      if (refusingReason) {
+        showSignedOut(refusingReason, refusingEmail)
         return
       }
       await signInAgainOnPrinterOrigin().catch(() => {})
     })().finally(() => { refusing = null })
+  } else if (reason && !refusingReason) {
+    // A run already on its way without a reason (the refresh's own hook) is joined by the caller that has it.
+    refusingReason = reason
+    if (signOutHolds > 0) deferredReason = reason
+    else if (refusingDropped) showSignedOut(reason, refusingEmail)
   }
   return refusing
 }
@@ -523,9 +536,11 @@ export function setSignedOutNavigation (go: () => void) {
 }
 
 function showSignedOut (reason: string, email: string | undefined) {
-  noteSignedOut({ scope: scopeOfReason(reason), email, reason })
   try {
-    if (window.location.pathname !== '/signed-out') leaveForSignedOut()
+    // Already there: the page has read its note, and a new one would greet the next visit to `/` with a stale sign-out.
+    if (window.location.pathname === '/signed-out') return
+    noteSignedOut({ scope: scopeOfReason(reason), email, reason })
+    leaveForSignedOut()
   } catch { /* no window */ }
 }
 
@@ -576,8 +591,11 @@ function defaultLayout (): FleetLayout {
 }
 
 async function adoptSession (token: string, account: CloudAccount, fresh = false) {
-  // A sign-in is a new session: the id learned for the last one is not it.
-  if (fresh) forgetSessionId()
+  // A sign-in is a new session: the id learned for the last one is not it, and no earlier sign-out note is about it.
+  if (fresh) {
+    forgetSessionId()
+    forgetSignedOut()
+  }
   // A different account than the one on screen (a sign-in, or a switch without a sign-out) is announced before the
   // new session replaces the old one. The same account with a new token announces nothing: nobody changed.
   if (cloudState.account?.id !== account.id) announceAccount(identityOf(account))
@@ -610,21 +628,29 @@ async function adoptSession (token: string, account: CloudAccount, fresh = false
 function watchSessionEnd (accountId: string) {
   if (!sessionStreamAvailable()) return
   if (!currentSessionId(accountId)) cloudApi.me().catch(() => {})
-  startSessionStream({ onEnded: publishEnded })
+  startSessionStream(streamDeps)
 }
 
 /**
  * The leader's stream heard `session_ended`. Written for every other tab first (their `storage` event), then this tab
  * drops the session the one way a refusal does. The write comes before the drop, so a tab reads the reason before it
  * sees the token go.
+ *
+ * `sessionId` and `token` are the session the connection was opened for. The reason is about that session: if another
+ * tab has stored another since, nothing is written and nothing is dropped (false: the stream asks again with the
+ * stored one). The id written is the connection's, never whatever is current now. Exported for tests.
  */
-function publishEnded (reason: string | undefined) {
+export function publishEnded (reason: string | undefined, sessionId: string | null, token: string): boolean {
+  if (storedToken() !== token) return false
   const why = reason ?? 'signed_out'
   try {
-    localStorage.setItem(ENDED_KEY, JSON.stringify({ reason: why, session_id: currentSessionId(cloudState.account?.id), at: Date.now() }))
+    localStorage.setItem(ENDED_KEY, JSON.stringify({ reason: why, session_id: sessionId ?? currentSessionId(cloudState.account?.id), at: Date.now() }))
   } catch { /* no storage: the other tabs find out from the token going, or on focus */ }
   sessionRefused(false, why).catch(() => {})
+  return true
 }
+
+const streamDeps = { sessionId: () => currentSessionId(cloudState.account?.id), onEnded: publishEnded }
 
 /**
  * Another tab's leader wrote `muon.cloud.ended` (publishEnded). Only a record of THIS tab's session counts: another
@@ -694,8 +720,11 @@ async function reconcileOnce (): Promise<void> {
     // Another token since the question was asked: its account is asked afresh, never paired with this answer.
     if (now !== token) continue
     stopReconcileRetry()
-    if (cloudState.account?.id === me.account.id) confirmToken(now)
-    else await adoptSession(now, me.account)
+    if (cloudState.account?.id === me.account.id) {
+      confirmToken(now)
+      // Another tab stored a new session or a rotated pair for this account: the stream follows the stored one.
+      reconnectIfTokenChanged()
+    } else await adoptSession(now, me.account)
     return
   }
 }
@@ -763,7 +792,7 @@ setSessionHooks({
       if (cloudState.account?.id === me.account.id) confirmToken(token)
       else adoptSession(token, me.account).catch(() => {})
       // The recovered pair is another session of the account: its stream is the one to hold.
-      startSessionStream({ onEnded: publishEnded })
+      startSessionStream(streamDeps)
       return true
     } catch (error) {
       // Only a refusal ends the session. A console that did not answer leaves the pair in place, unconfirmed, and the

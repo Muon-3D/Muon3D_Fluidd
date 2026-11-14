@@ -30,8 +30,16 @@ export const STREAM_BACKOFF_MS = [1000, 2000, 5000, 15000, 30000]
 export const STREAM_THROTTLED_MS = 30000
 
 export interface SessionStreamDeps {
-  /** The reason is the console's wire string, or undefined when its frame carried none. */
-  onEnded: (reason: string | undefined) => void;
+  /**
+   * The session id of the session in storage, read when a connection is opened (never later: by the time a verdict
+   * arrives another tab may have stored another session, and the verdict is about the one the stream was opened for).
+   */
+  sessionId?: () => string | null;
+  /**
+   * The console said this connection's session ended. `reason` is the wire string (undefined when the frame carried
+   * none); `sessionId` and `token` are the session the connection was opened for.
+   */
+  onEnded: (reason: string | undefined, sessionId: string | null, token: string) => boolean | void;
 }
 
 /** A `session_ended` or `reauth` is the last frame: after it the console closes. */
@@ -94,11 +102,12 @@ type Outcome =
   | { kind: 'verdict', verdict: Verdict }
   | { kind: 'unauthorized' }
   | { kind: 'throttled' }
+  | { kind: 'forbidden' }
   | { kind: 'closed' }
   | { kind: 'aborted' }
 
 /** One connection: open it, read frames until a verdict, the stream's end, or an abort. */
-async function connect (token: string, signal: AbortSignal, opened: () => void): Promise<Outcome> {
+async function connect (token: string, signal: AbortSignal, heardFrom: () => void): Promise<Outcome> {
   let response: Response
   try {
     response = await fetch(`${cloudBaseUrl()}/v1/me/session-events`, {
@@ -109,10 +118,16 @@ async function connect (token: string, signal: AbortSignal, opened: () => void):
   } catch {
     return signal.aborted ? { kind: 'aborted' } : { kind: 'closed' }
   }
-  if (response.status === 401) return { kind: 'unauthorized' }
-  if (response.status === 429 || response.status === 403) return { kind: 'throttled' }
-  if (!response.ok || !response.body) return { kind: 'closed' }
-  opened()
+  const refuse = (outcome: Outcome): Outcome => {
+    response.body?.cancel().catch(() => {})
+    return outcome
+  }
+  if (response.status === 401) return refuse({ kind: 'unauthorized' })
+  if (response.status === 429) return refuse({ kind: 'throttled' })
+  // Not for this session: asking again with the same token changes nothing.
+  if (response.status === 403) return refuse({ kind: 'forbidden' })
+  // A 200 that is not an event stream (a captive portal, a proxy's page) is a failure, not a stream.
+  if (!response.ok || !response.body || !(response.headers?.get?.('content-type') ?? '').includes('text/event-stream')) return refuse({ kind: 'closed' })
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   const heard: { verdict: Verdict | null } = { verdict: null }
@@ -125,6 +140,8 @@ async function connect (token: string, signal: AbortSignal, opened: () => void):
     while (!heard.verdict) {
       const { done, value } = await reader.read()
       if (done) break
+      // The first bytes (a frame or the console's ping) show a working stream: only then does the backoff start over.
+      heardFrom()
       feed(decoder.decode(value, { stream: true }))
     }
   } catch {
@@ -135,9 +152,31 @@ async function connect (token: string, signal: AbortSignal, opened: () => void):
   return heard.verdict ? { kind: 'verdict', verdict: heard.verdict } : { kind: 'closed' }
 }
 
-/** The module's one stream: the lock request of this tab, and the connection the leader holds open. */
+/**
+ * A leader tab that is frozen or suspended keeps the lock and its stream goes quiet: the other tabs hear nothing until it
+ * wakes. Their fallbacks are the focus check and the next refused call (KAN-1389), which end the session as before.
+ *
+ * The module's one stream: the lock request of this tab, and the connection the leader holds open. */
 let running: AbortController | null = null
 let connection: AbortController | null = null
+/** The token the open connection was made with. */
+let connectionToken: string | null = null
+
+/**
+ * The stored token is not the one the open connection was made with (another tab signed in again, rotated the pair or
+ * switched account): reconnect with the stored one, so a verdict is always about the session in storage.
+ */
+export function reconnectIfTokenChanged (): void {
+  if (connection && connectionToken !== storedToken()) connection.abort()
+}
+
+/** Resolves when `signal` aborts: a connection told never to retry for its token waits for a new one. */
+function untilAborted (signal: AbortSignal): Promise<void> {
+  return new Promise(resolve => {
+    if (signal.aborted) return resolve()
+    signal.addEventListener('abort', () => resolve(), { once: true })
+  })
+}
 
 /** For the leader: connect, and on every way a connection ends decide what is next, until the session is over. */
 async function lead (stop: AbortSignal, deps: SessionStreamDeps): Promise<void> {
@@ -148,6 +187,8 @@ async function lead (stop: AbortSignal, deps: SessionStreamDeps): Promise<void> 
     if (!token) return
     const own = new AbortController()
     connection = own
+    connectionToken = token
+    const sessionId = deps.sessionId?.() ?? null
     const stopped = () => own.abort()
     stop.addEventListener('abort', stopped, { once: true })
     try {
@@ -159,8 +200,20 @@ async function lead (stop: AbortSignal, deps: SessionStreamDeps): Promise<void> 
         continue
       }
       if (outcome.kind === 'verdict' && outcome.verdict.kind === 'ended') {
-        deps.onEnded(outcome.verdict.reason)
+        // The session in storage is another than the one this stream was opened for (another tab signed in again):
+        // the verdict is the old session's. Ask again with the stored one, which answers for itself.
+        if (storedToken() !== token) {
+          lastWas401 = false
+          continue
+        }
+        // false: not taken (the stored session changed in the meantime): ask again.
+        if (deps.onEnded(outcome.verdict.reason, sessionId, token) === false) continue
         return
+      }
+      if (outcome.kind === 'forbidden') {
+        await untilAborted(own.signal)
+        lastWas401 = false
+        continue
       }
       if (outcome.kind === 'throttled') {
         await sleep(STREAM_THROTTLED_MS, own.signal)

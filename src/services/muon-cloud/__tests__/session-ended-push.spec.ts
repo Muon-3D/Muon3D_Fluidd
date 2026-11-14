@@ -6,8 +6,8 @@
 // hold defers it like any other drop; /signed-out says why.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ENDED_KEY } from '../session-events'
-import { cloudApi, storedRefreshToken, storedToken, storeRefreshToken, storeToken } from '../api'
-import { cloudState, holdSignOut, initCloud, releaseSignOut, setSignedOutNavigation, signOut } from '../state'
+import { cloudApi, sessionRefused as refusedFromApi, storedRefreshToken, storedToken, storeRefreshToken, storeToken } from '../api'
+import { cloudState, holdSignOut, initCloud, publishEnded, releaseSignOut, setSignedOutNavigation, signOut } from '../state'
 import { readSignedOut } from '@/services/account/signed-out-note'
 
 vi.mock('../iroh', () => ({ browserEndpoint: vi.fn(), forgetBrowserKey: vi.fn(), IrohPrinter: class {} }))
@@ -43,7 +43,7 @@ function fakeConsole (options: { sessionId?: string, notices?: Response, refresh
         const live: Live = { aborted: false, push: t => controller.enqueue(encoder.encode(t)), close: () => { try { controller.close() } catch { /* closed */ } } }
         init?.signal?.addEventListener('abort', () => { live.aborted = true; try { controller.error(new DOMException('aborted', 'AbortError')) } catch { /* closed */ } })
         streams.push(live)
-        return { ok: true, status: 200, headers: new Headers(), body } as Response
+        return { ok: true, status: 200, headers: new Headers({ 'content-type': 'text/event-stream' }), body } as Response
       }
       default: throw new Error(`unexpected ${path}`)
     }
@@ -228,5 +228,84 @@ describe('the reason on a refused call (the refresh\'s 401)', () => {
     await vi.waitFor(() => expect(cloudState.account).toBeNull())
     expect(readSignedOut()).toBeNull()
     expect(go).not.toHaveBeenCalled()
+  })
+})
+
+describe('a verdict about an older session (KAN-2509 review H1)', () => {
+  it('another tab stored a new token for the same account: the old stream\'s session_ended changes nothing, tokens stay, the stream reopens', async () => {
+    const service = fakeConsole()
+    await signedIn(service)
+    await vi.waitFor(() => expect(service.streams).toHaveLength(1))
+    // Another tab signs in again as the same account: its pair is stored, and this tab's stream is still the old one's.
+    storeToken('access-s2')
+    storeRefreshToken('refresh-s2')
+    service.streams[0].push(sessionEnded('signed_out'))
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(cloudState.account?.id).toBe('acct-1')
+    expect(storedToken()).toBe('access-s2')
+    expect(storedRefreshToken()).toBe('refresh-s2')
+    expect(localStorage.getItem(ENDED_KEY)).toBeNull()
+    expect(go).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(service.streams).toHaveLength(2))
+    expect((service.fetch.mock.calls[service.fetch.mock.calls.length - 1][1] as RequestInit).headers).toMatchObject({ authorization: 'Bearer access-s2' })
+  })
+
+  it('another account\'s token stored in the window: likewise nothing is dropped', async () => {
+    const service = fakeConsole()
+    await signedIn(service)
+    await vi.waitFor(() => expect(service.streams).toHaveLength(1))
+    storeToken('access-of-another-account')
+    service.streams[0].push(sessionEnded('password_changed'))
+    await new Promise(resolve => setTimeout(resolve, 30))
+    expect(storedToken()).toBe('access-of-another-account')
+    expect(localStorage.getItem(ENDED_KEY)).toBeNull()
+    expect(go).not.toHaveBeenCalled()
+  })
+
+  it('the tab that sees the stored token change reconnects its stream (reconcile of the same account)', async () => {
+    const service = fakeConsole()
+    await signedIn(service)
+    await vi.waitFor(() => expect(service.streams).toHaveLength(1))
+    localStorage.setItem('muon.cloud.token', 'access-s2')
+    window.dispatchEvent(new StorageEvent('storage', { key: 'muon.cloud.token', newValue: 'access-s2' }))
+    await vi.waitFor(() => expect(service.streams).toHaveLength(2))
+    expect(service.streams[0].aborted).toBe(true)
+  })
+
+  it('publishEnded refuses a token that is no longer the stored one, and names the connection\'s session when it writes', async () => {
+    await signedIn(fakeConsole())
+    storeToken('access-s2')
+    expect(publishEnded('password_changed', 'sess-1', 'access-1')).toBe(false)
+    expect(storedToken()).toBe('access-s2')
+    expect(cloudState.account?.id).toBe('acct-1')
+    expect(localStorage.getItem(ENDED_KEY)).toBeNull()
+    expect(publishEnded('password_changed', 'sess-old', 'access-s2')).toBe(true)
+    expect(JSON.parse(localStorage.getItem(ENDED_KEY) ?? '{}').session_id).toBe('sess-old')
+  })
+})
+
+describe('a refusal that joins a run already on its way (KAN-2509 review M2)', () => {
+  it('the reasonless run takes the reason of the caller that came after it', async () => {
+    await signedIn(fakeConsole())
+    refusedFromApi('access-1') // the refresh's own hook: no reason
+    refusedFromApi('access-1', 'password_changed') // the call that met the refusal: has it
+    await vi.waitFor(() => expect(cloudState.account).toBeNull())
+    await vi.waitFor(() => expect(go).toHaveBeenCalledTimes(1))
+    expect(readSignedOut()?.reason).toBe('password_changed')
+  })
+})
+
+describe('the note does not linger (KAN-2509 review L5)', () => {
+  it('on /signed-out already: no new note is left for the next visit to /', async () => {
+    await signedIn(fakeConsole())
+    window.history.pushState({}, '', '/signed-out')
+    try {
+      otherTabWrites(ended('password_changed'))
+      await vi.waitFor(() => expect(cloudState.account).toBeNull())
+      expect(readSignedOut()).toBeNull()
+      expect(go).not.toHaveBeenCalled()
+    } finally {
+      window.history.pushState({}, '', '/')
+    }
   })
 })

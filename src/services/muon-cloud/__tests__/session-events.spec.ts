@@ -21,6 +21,7 @@ function fakeConsole () {
   const refreshes: string[] = []
   const behaviour = {
     streamStatus: 200,
+    contentType: 'text/event-stream; charset=utf-8',
     /** Statuses for the next connections, before `streamStatus` applies. */
     queue: [] as number[],
     streamBody: {} as Record<string, unknown>,
@@ -54,7 +55,7 @@ function fakeConsole () {
       try { controller.error(new DOMException('aborted', 'AbortError')) } catch { /* already closed */ }
     })
     streams.push(stream)
-    return { ok: true, status: 200, headers: new Headers(), body } as Response
+    return { ok: true, status: 200, headers: new Headers({ 'content-type': behaviour.contentType }), body } as Response
   })
   return { fetch, streams, refreshes, behaviour }
 }
@@ -196,7 +197,7 @@ describe('what the stream says', () => {
     service.streams[0].close()
     await settle(120_000)
     expect(onEnded).toHaveBeenCalledTimes(1)
-    expect(onEnded).toHaveBeenCalledWith('password_changed')
+    expect(onEnded).toHaveBeenCalledWith('password_changed', null, 'access-1')
     expect(service.streams).toHaveLength(1)
   })
 
@@ -210,7 +211,7 @@ describe('what the stream says', () => {
     await settle()
     service.streams[0].push(frame('session_ended', { reason: '<script>' }))
     await settle()
-    expect(onEnded).toHaveBeenCalledWith(undefined)
+    expect(onEnded).toHaveBeenCalledWith(undefined, null, 'access-1')
   })
 
   it('reauth: refreshes, then reconnects at once with the new token', async () => {
@@ -281,7 +282,7 @@ describe('reconnecting', () => {
     }
   })
 
-  it('a stream that opened starts the backoff over', async () => {
+  it('a stream that showed a ping or frame starts the backoff over', async () => {
     const service = fakeConsole()
     vi.stubGlobal('fetch', service.fetch)
     vi.stubGlobal('navigator', { locks: originLocks() })
@@ -289,19 +290,23 @@ describe('reconnecting', () => {
     events.startSessionStream({ onEnded: vi.fn() })
     await settle()
     for (let i = 0; i < 3; i++) {
+      service.streams[service.streams.length - 1].push(': ping\n\n')
+      await settle()
       service.streams[service.streams.length - 1].close()
       await settle(30_000)
     }
+    service.streams[service.streams.length - 1].push(': ping\n\n')
+    await settle()
     expect(service.streams.length).toBe(4)
-    // Every one of those opened, so each wait was the first (1 s), not 1, 2, 5.
+    // Every one of those sent bytes, so each wait was the first (1 s), not 1, 2, 5.
     service.streams[3].close()
     await settle(1000)
     expect(service.streams).toHaveLength(5)
   })
 
-  it.each([429, 403])('a %s waits 30 s before asking again', async (status) => {
+  it('a 429 waits 30 s before asking again', async () => {
     const service = fakeConsole()
-    service.behaviour.streamStatus = status
+    service.behaviour.streamStatus = 429
     vi.stubGlobal('fetch', service.fetch)
     vi.stubGlobal('navigator', { locks: originLocks() })
     const { events } = await openTab()
@@ -336,5 +341,117 @@ describe('reconnecting', () => {
     events.startSessionStream({ onEnded: vi.fn() })
     await settle(60_000)
     expect(service.fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('a 200 that is no working stream (KAN-2509 review M1)', () => {
+  const calls = (service: ReturnType<typeof fakeConsole>) => service.fetch.mock.calls.length
+
+  it('not an event stream: a failure with backoff, never a verdict or a fast loop', async () => {
+    const service = fakeConsole()
+    service.behaviour.contentType = 'text/html'
+    vi.stubGlobal('fetch', service.fetch)
+    vi.stubGlobal('navigator', { locks: originLocks() })
+    const { events } = await openTab()
+    const onEnded = vi.fn()
+    events.startSessionStream({ onEnded })
+    await settle()
+    expect(calls(service)).toBe(1)
+    // The console's body is cancelled unread: nothing in it counts.
+    for (const [wait, total] of [[1000, 2], [2000, 3], [5000, 4]]) {
+      await settle(wait - 1)
+      expect(calls(service)).toBe(total - 1)
+      await settle(1)
+      expect(calls(service)).toBe(total)
+    }
+    expect(onEnded).not.toHaveBeenCalled()
+  })
+
+  it('a stream that closes before any frame does not start the backoff over', async () => {
+    const service = fakeConsole()
+    vi.stubGlobal('fetch', service.fetch)
+    vi.stubGlobal('navigator', { locks: originLocks() })
+    const { events } = await openTab()
+    events.startSessionStream({ onEnded: vi.fn() })
+    await settle()
+    for (const [wait, total] of [[1000, 2], [2000, 3], [5000, 4]]) {
+      service.streams[service.streams.length - 1].close()
+      await settle(wait - 1)
+      expect(calls(service)).toBe(total - 1)
+      await settle(1)
+      expect(calls(service)).toBe(total)
+    }
+  })
+})
+
+describe('a 403 is final for its token (KAN-2509 review L1)', () => {
+  it('is not asked again until another session is stored', async () => {
+    const service = fakeConsole()
+    service.behaviour.queue = [403]
+    vi.stubGlobal('fetch', service.fetch)
+    vi.stubGlobal('navigator', { locks: originLocks() })
+    const { events } = await openTab()
+    events.startSessionStream({ onEnded: vi.fn() })
+    await settle(10 * 60_000)
+    expect(service.fetch).toHaveBeenCalledTimes(1)
+    localStorage.setItem('muon.cloud.token', 'access-new')
+    events.startSessionStream({ onEnded: vi.fn() })
+    await settle()
+    expect(service.streams.map(s => s.authorization)).toEqual(['Bearer access-new'])
+  })
+})
+
+describe('a verdict is about the session the stream was opened for (KAN-2509 review H1)', () => {
+  it('a session_ended after another tab stored a new session is not taken; the stream asks again with the stored one', async () => {
+    const service = fakeConsole()
+    vi.stubGlobal('fetch', service.fetch)
+    vi.stubGlobal('navigator', { locks: originLocks() })
+    const { events } = await openTab()
+    const onEnded = vi.fn(() => true)
+    let current = 'S1'
+    events.startSessionStream({ onEnded, sessionId: () => current })
+    await settle()
+    // Another tab signs in again for the same account: S2 and a new token are stored; the old stream then says S1 ended.
+    current = 'S2'
+    localStorage.setItem('muon.cloud.token', 'access-s2')
+    service.streams[0].push(frame('session_ended', { reason: 'signed_out' }))
+    await settle()
+    expect(onEnded).not.toHaveBeenCalled()
+    expect(service.streams.map(s => s.authorization)).toEqual(['Bearer access-1', 'Bearer access-s2'])
+    // The new session really ending is taken, as the session it belongs to.
+    service.streams[1].push(frame('session_ended', { reason: 'password_changed' }))
+    await settle()
+    expect(onEnded).toHaveBeenCalledWith('password_changed', 'S2', 'access-s2')
+  })
+
+  it('names the session the connection was opened for, read at open, not at the verdict', async () => {
+    const service = fakeConsole()
+    vi.stubGlobal('fetch', service.fetch)
+    vi.stubGlobal('navigator', { locks: originLocks() })
+    const { events } = await openTab()
+    const onEnded = vi.fn(() => true)
+    let current = 'S1'
+    events.startSessionStream({ onEnded, sessionId: () => current })
+    await settle()
+    current = 'S2' // learned by this tab meanwhile, token unchanged
+    service.streams[0].push(frame('session_ended', { reason: 'signed_out' }))
+    await settle()
+    expect(onEnded).toHaveBeenCalledWith('signed_out', 'S1', 'access-1')
+  })
+
+  it('reconnectIfTokenChanged reopens with the stored token, and leaves an unchanged one alone', async () => {
+    const service = fakeConsole()
+    vi.stubGlobal('fetch', service.fetch)
+    vi.stubGlobal('navigator', { locks: originLocks() })
+    const { events } = await openTab()
+    events.startSessionStream({ onEnded: vi.fn() })
+    await settle()
+    events.reconnectIfTokenChanged()
+    await settle()
+    expect(service.streams).toHaveLength(1)
+    localStorage.setItem('muon.cloud.token', 'access-rotated')
+    events.reconnectIfTokenChanged()
+    await settle()
+    expect(service.streams.map(s => s.authorization)).toEqual(['Bearer access-1', 'Bearer access-rotated'])
   })
 })
