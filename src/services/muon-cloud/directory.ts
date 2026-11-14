@@ -244,6 +244,11 @@ export function printerDirectory (src: DirectorySources): Directory {
   const claimedNearby = new Set<NearbyPrinter>()
   const activeLocal = src.local?.apiUrl ?? null
 
+  // The service says who shares this browser's network. On a page that cannot probe addresses it is the only
+  // proof there is, and it holds before any session is open (KAN-2487).
+  const besideBrowser = (endpointId: string | null) =>
+    !!endpointId && src.cloudNearby.some(c => c.printerId.toLowerCase() === endpointId.toLowerCase())
+
   const nearbyFor = (endpointId: string | null) => {
     if (!endpointId) return undefined
     const p = src.nearby.find(n => !claimedNearby.has(n) && isPrinter(n, endpointId))
@@ -272,7 +277,7 @@ export function printerDirectory (src: DirectorySources): Directory {
       // The service lost it, and it is right here.
       health = fromLanHealth(lan.health)
       detail = `${lanDetail(lan)} · on this network`
-    } else if (lan) {
+    } else if (lan || besideBrowser(c.id)) {
       detail = `${detail} · on this network`
     }
     const nearby = nearbyFor(c.id)
@@ -323,6 +328,10 @@ export function printerDirectory (src: DirectorySources): Directory {
     } else if (lan) {
       health = fromLanHealth(lan.health)
       detail = lanDetail(lan)
+    } else if (besideBrowser(endpointId)) {
+      // The service finds it beside this browser, though this page cannot probe it: it is on this network, not lost.
+      health = 'available'
+      detail = 'On this network'
     } else if (heard(nearby)) {
       // Not on this network, but its advert was heard (KAN-2528).
       health = 'nearby'

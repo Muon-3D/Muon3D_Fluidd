@@ -194,6 +194,17 @@ export const MuonEndpoint = { async create () { return new Endpoint() } }
  * `reachOnLan` says so.
  */
 export async function useAllRoutes (page: Page, account: ConsoleState) {
+  // Nothing here is about the 3D model, and the overview behind a sheet or a menu draws it all the time: on software
+  // GL (a CI runner, headless Chromium) that keeps the page's main thread busy for seconds at a time, so a sliding
+  // sheet is never still, a click is never "stable", and the page answers a request seconds late (measured 14 Nov,
+  // KAN-2487: page.evaluate took 0.4 to 5 s and long tasks filled 90% of the time with the model; 7 ms and none
+  // without). With no WebGL the stage draws its fallback, as in jack-1110.spec.ts.
+  await page.addInitScript(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext as (this: HTMLCanvasElement, type: string, ...rest: unknown[]) => unknown
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+      return /webgl/i.test(type) ? null : getContext.call(this, type, ...rest)
+    } as typeof HTMLCanvasElement.prototype.getContext
+  })
   const now = Math.floor(Date.now() / 1000)
   account.printers = [{ ...ROUTE_PRINTER, model: 'M1', state: 'ready', version: '1.0.0', linked_at: 1_700_000_000, last_seen: now, online: true, online_since: 1_700_000_000, role: 'operator' }]
   const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' }
@@ -319,6 +330,8 @@ export async function reachOnLan (page: Page, on = true) {
   await page.evaluate(async ([port, id, name, on]) => {
     const discovery = await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'discovery.ts'].join('/'))
     const state = discovery.discoveryState
+    // A sweep that is running (an open phone sheet starts one) ends by replacing the list: let it end first.
+    for (let i = 0; i < 300 && state.scanning; i++) await new Promise(resolve => setTimeout(resolve, 100))
     state.found = on
       ? [{ host: `localhost:${port}`, aliases: [`localhost:${port}`], apiUrl: `http://localhost:${port}`, name, endpointId: id }]
       : []

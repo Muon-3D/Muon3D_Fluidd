@@ -7,7 +7,7 @@
  * - KAN-1955: Home all is the first thing under the trackpad's header.
  */
 import type { Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
+import { test, expect, ready } from '../fixtures'
 import { overlay, usePrinter, PRESETS } from './printer'
 
 const M1_FILAMENT = {
@@ -129,7 +129,10 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     if (!b) throw new Error(`${id} not on screen`)
     return b
   }
-  const settle = (page: Page) => page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => null))))
+  // Finite animations only: an endless one (a spinner, a shimmer) never finishes, and waiting for it would hang.
+  const settle = (page: Page) => page.evaluate(() => Promise.all(document.getAnimations()
+    .filter(a => a.effect?.getComputedTiming().iterations !== Infinity)
+    .map(a => a.finished.catch(() => null))))
   /**
    * Scrolls `selector` to the middle of the screen and waits until it is inside the viewport and has stopped moving.
    * Tiles above can still grow just after edit mode opens (a busy CI runner draws them late), which left a measured
@@ -140,6 +143,8 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     const height = page.viewportSize()!.height
     let last = ''
     await expect.poll(async () => {
+      // Springs and growing tiles first: measuring while the layout still moves is what never came steady on a busy runner (KAN-2810).
+      await settle(page)
       await target.evaluate(e => e.scrollIntoView({ block: 'center' }))
       const b = await target.boundingBox()
       const at = b ? `${Math.round(b.x)},${Math.round(b.y)}` : ''
@@ -266,7 +271,10 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
       const now = await order(page)
       const id = now[Math.floor(rand() * now.length)]
       const c = page.locator(`[data-cell="${id}"]`)
+      // The last drop's spring must be over, or the grip is measured where the tile is leaving (KAN-2810).
+      await settle(page)
       await c.evaluate(e => e.scrollIntoView({ block: 'center' }))
+      await settle(page)
       const grid = await page.locator('.overview__grid').boundingBox()
       const view = page.viewportSize()!
       if (!grid) throw new Error('no grid')
@@ -279,7 +287,11 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     await page.getByTestId('edit-done').click()
     await expect(page.getByTestId('edit-open')).toBeVisible()
     expect(await order(page)).toEqual(final)
+    // The layout is written to this browser before the reload (it is what the page reads first), or the reload could race the write.
+    await expect.poll(() => page.evaluate(() => Object.keys(localStorage).some(k => /layout/i.test(k) && localStorage.getItem(k)!.includes('"tiles"')))).toBe(true)
     await page.reload()
+    // The page is loading again: wait for the app, not 15 s for the first tile (KAN-2810).
+    await ready(page)
     await expect(cells(page).first()).toBeVisible()
     expect(await order(page)).toEqual(final)
   })
