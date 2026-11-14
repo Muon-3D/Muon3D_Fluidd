@@ -35,7 +35,8 @@ import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPri
 import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
 import { bluetoothCarrying, reconnectBluetooth, releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
-import { chooseRouteMode } from '@/services/muon-cloud/route-choice'
+import { chooseRouteMode, type Route } from '@/services/muon-cloud/route-choice'
+import { routeMenuItems, type RouteMenuFacts } from '@/services/muon-cloud/route-menu'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { chooseRelay, clearRelayChoice, mayTrySecureName, reachSecureName, relayChosen, secureNameOf } from '@/services/secure-origin/hosted'
 import { localRoute, openableAddr, type LocalRoute } from '@/services/muon-cloud/local-route'
@@ -75,6 +76,35 @@ function localHint (route: LocalRoute, e: DirectoryEntry): string {
   }
 }
 
+/** The id a printer is reached by over any route: the account's, else the one it publishes. */
+function idOf (e: DirectoryEntry): string | null {
+  return e.cloud?.id ?? e.endpointId
+}
+
+/** The route the open session for this printer is on now, or null when it is not open. */
+export function liveRouteOf (e: DirectoryEntry): Route | null {
+  if (e.active === 'local') return 'lan'
+  if (e.active !== 'cloud') return null
+  const id = idOf(e)
+  return id && bluetoothCarrying(id) ? 'ble' : 'cloud'
+}
+
+/** The routes this printer offers: the ones it is not on, or all three when it is not open (KAN-2487). */
+function routeActionsOf (e: DirectoryEntry): CardAction[] {
+  return routeMenuItems(routeFactsOf(e)).map(({ id, label, icon, hint, disabled }) => ({ id, label, icon, hint, disabled }))
+}
+
+/** What the route menu needs to know about this printer, from the live state. */
+function routeFactsOf (e: DirectoryEntry): RouteMenuFacts {
+  const route = localRouteOf(e)
+  return {
+    live: liveRouteOf(e),
+    local: { usable: route.kind !== 'none', hint: localHint(route, e) },
+    cloud: { listed: !!e.cloud, online: !!e.cloud?.online },
+    ble: { support: nearbyState.support, heard: !!e.nearby, identified: !!idOf(e) }
+  }
+}
+
 /** Printers whose "opened through Muon3D" notice has been shown on this page load. */
 const toldRelay = new Set<string>()
 
@@ -108,8 +138,9 @@ let runCounter = 0
  * before (#370).
  */
 async function openManagedRoute (e: DirectoryEntry, route?: 'relay' | BleDevice, auto = false): Promise<boolean> {
-  if (!e.cloud) return false
-  const id = e.cloud.id
+  // A printer off the account has no Muon3D route, but Bluetooth reaches it as anyone's (KAN-2487).
+  const id = idOf(e)
+  if (!id || (!e.cloud && (!route || route === 'relay'))) return false
   if (!route || route === 'relay') {
     if (route === 'relay' && !auto) chooseRelay(id)
     stopUsingBluetoothFor(id)
@@ -323,28 +354,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
   }
 
   cloudActions (e: DirectoryEntry): CardAction[] {
-    const actions: CardAction[] = []
-    if (e.active !== 'local') {
-      const route = localRouteOf(e)
-      actions.push({
-        id: 'connect-local',
-        label: 'Connect locally',
-        icon: '$lan',
-        hint: localHint(route, e),
-        disabled: route.kind === 'none'
-      })
-    }
-    if (e.active !== 'cloud') {
-      actions.push({ id: 'connect-cloud', label: 'Connect through Muon3D', icon: '$cloud', disabled: !e.cloud?.online })
-    }
-    // Whenever it was heard nearby, whatever the service says (KAN-1175, ADR
-    // 0052): the service can call a printer online that this browser cannot
-    // reach through the relay, and Bluetooth is the way in then.
-    // I-129: and wherever this browser has Bluetooth at all, heard or not: the
-    // action runs the device picker itself, so "Look nearby" is not a first step.
-    if (e.cloud && (e.nearby || nearbyState.support === 'supported')) {
-      actions.push({ id: 'connect-bluetooth', label: 'Connect over Bluetooth', icon: '$bluetooth' })
-    }
+    const actions: CardAction[] = routeActionsOf(e)
     if (e.cloud && bleRetryState.stopped[e.cloud.id]) {
       actions.push({ id: 'retry-bluetooth', label: 'Retry Bluetooth', icon: '$bluetooth', hint: bleRetryState.stopped[e.cloud.id] })
     }
@@ -377,6 +387,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     } else if (e.linkedTo !== 'mine') {
       actions.push({ id: 'link', label: 'Link to my account', icon: '$linkPrinter', disabled: !e.host, hint: e.host ? undefined : 'Not found on this network' })
     }
+    // Any route anyone can reach the printer by (KAN-2487): the account only decides the Muon3D one.
+    actions.push(...routeActionsOf(e))
     if (e.active) {
       actions.push({ id: 'access', label: 'Access and protection', icon: '$printerAccess' })
     }
@@ -397,6 +409,9 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     if (e.row?.canLink) actions.push({ id: 'link', label: 'Link to my account', icon: '$linkPrinter' })
     const ask = this.askAction(e)
     if (ask) actions.push(ask)
+    // Bluetooth is the out-of-box way in to a printer nobody owns, or one that is someone else's (KAN-2487, I-285).
+    const bluetooth = routeActionsOf(e).find(a => a.id === 'connect-bluetooth')
+    if (bluetooth && (e.nearby || e.endpointId)) actions.push(bluetooth)
     return actions
   }
 
@@ -414,7 +429,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       case 'connect-cloud': return this.connectCloud(e, 'relay')
       case 'retry-bluetooth':
       case 'connect-bluetooth':
-        if (!e.cloud) return
+        if (!idOf(e)) return
         return this.connectOverBluetooth(e)
       case 'connect': return this.openFoundEntry(e)
       case 'link': return this.link(e)
@@ -483,8 +498,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    * goes straight into pairing, and the connect continues once paired.
    */
   async connectOverBluetooth (e: DirectoryEntry, chosen?: NearbyPrinter, auto = false) {
-    if (!e.cloud) return
-    const id = e.cloud.id
+    const id = idOf(e)
+    if (!id) return
     let heard = chosen ?? e.nearby ?? await permittedPrinterFor(id).catch(() => null)
     if (!heard) {
       // KAN-2470: the chooser lists only this printer (its EndpointId, else its short name).
@@ -542,8 +557,9 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    * connection already open is dropped so this dial uses the chosen route.
    */
   connectCloud (e: DirectoryEntry, route?: 'relay' | BleDevice, auto = false) {
-    if (!e.cloud) return
-    if (route && !auto) chooseRouteMode(e.cloud.id, route === 'relay' ? 'cloud' : 'ble')
+    const id = idOf(e)
+    if (!id || (!e.cloud && (!route || route === 'relay'))) return
+    if (route && !auto) chooseRouteMode(id, route === 'relay' ? 'cloud' : 'ble')
     return this.run(e.key, () => openManagedRoute(e, route, auto), !!route)
   }
 
