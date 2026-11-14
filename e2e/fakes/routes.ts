@@ -319,6 +319,8 @@ export async function reachOnLan (page: Page, on = true) {
   await page.evaluate(async ([port, id, name, on]) => {
     const discovery = await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'discovery.ts'].join('/'))
     const state = discovery.discoveryState
+    // A sweep that is running (an open phone sheet starts one) ends by replacing the list: let it end first.
+    for (let i = 0; i < 300 && state.scanning; i++) await new Promise(resolve => setTimeout(resolve, 100))
     state.found = on
       ? [{ host: `localhost:${port}`, aliases: [`localhost:${port}`], apiUrl: `http://localhost:${port}`, name, endpointId: id }]
       : []

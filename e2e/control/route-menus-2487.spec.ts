@@ -63,10 +63,14 @@ const cardMenu = (page: Page, name: string) => page.locator(`button[aria-label="
 async function pageMenu (page: Page, isMobile = false) {
   if (isMobile) {
     // The phone's printer switcher lists the printer's card, with the same menu as All printers.
-    if (!await cardMenu(page, ROUTE_PRINTER.name).isVisible()) {
-      await page.getByRole('button', { name: 'Switch printer' }).click()
+    // The sheet may be open already (Escape closes only the menu on it) or closing after the last pick;
+    // an active sheet is open, so only then is it left alone, and otherwise it is opened afresh.
+    const sheet = page.locator('.printer-switch__sheet.v-dialog--active')
+    if (await sheet.count() === 0) {
+      await page.getByRole('button', { name: 'Switch printer' }).click({ timeout: 10_000 })
     }
-    await cardMenu(page, ROUTE_PRINTER.name).click()
+    await expect(sheet).toBeVisible({ timeout: 10_000 })
+    await cardMenu(page, ROUTE_PRINTER.name).click({ timeout: 10_000 })
   } else {
     await page.getByTestId('printer-page-menu-button').click()
   }
