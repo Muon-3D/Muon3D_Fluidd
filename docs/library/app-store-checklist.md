@@ -153,12 +153,20 @@ Rules that apply to every line:
 
 ## Known accessibility issues
 
-None recorded. `e2e/library/a11y.spec.ts` was written without a local
-Playwright run (CI runs the e2e suite), so its first CI run is the first axe
-result. If it reports a serious or critical problem that is not a small fix,
-list it here with the rule id, the selector and what it affects, and exclude
-that rule for that selector in the spec with a comment naming this entry. A
-rule is never excluded for the whole page.
+None, and no rule is excluded. `e2e/library/a11y.spec.ts` is green in CI (run
+43593338907): axe scans five views (Discover, Yours, a model page, Print on…
+and a public collection) and finds no serious or critical problem.
 
-The ticks for Screen reader, Reduced motion and the keyboard walk-through
-stand once that spec is green in CI.
+What that run does and does not show:
+
+- axe runs in the default dark theme only. The light-theme contrast fixes
+  (accent text, pills, badges, the danger button) are calculated from the
+  theme tokens, not tested. "Dark and light" stays unticked until a capture
+  run covers both themes.
+- Focus is checked as an outline on every Library element Tab reaches on
+  Discover. Control's own chrome ahead of the Library is reported, not failed.
+- Reduced motion: every animation in the Library, its quick look and Print on…
+  is read right after opening and must be 1 ms or less, including a pressed
+  quick look button.
+- Not covered: dialogs trapping focus, results announcing their count, and
+  screen reader behaviour.

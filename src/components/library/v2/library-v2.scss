@@ -38,7 +38,8 @@
 @media (max-width: 700px) {
   .mc-hero { grid-template-columns: 1fr; gap: 24px; padding: 24px; .mcard { max-width: 100%; } .mcard__pic { aspect-ratio: 1.3; } &__story h2 { font-size: 28px; max-width: none; margin: 12px 0 18px; } &__story p { display: none; } }
 }
-@media (prefers-reduced-motion: reduce) { .mlib *, .mlib *::before, .mlib *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+// The quick look and Print on… mount outside .mlib (in the app root), so they are named too.
+@media (prefers-reduced-motion: reduce) { .mlib *, .mlib *::before, .mlib *::after, .mlook, .mlook *, .mlook *::before, .mlook *::after, .m3-dlg-frame, .m3-dlg-frame *, .m3-dlg-frame *::before, .m3-dlg-frame *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
 .mlib-i {
   width: 16px;
@@ -875,4 +876,4 @@ button.mlib-link { padding: 0; border: 0; background: none; font: inherit; font-
   select:focus-visible,
   [role="tab"]:focus-visible { outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent)); outline-offset: 2px; }
 }
-.mlib .mlib-search:focus-within { outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent)); outline-offset: 2px; }
+.mlib .mlib-search:has(input:focus-visible) { outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent)); outline-offset: 2px; }

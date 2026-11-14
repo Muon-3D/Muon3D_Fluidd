@@ -103,16 +103,17 @@ interface Stop {
   marked: boolean;
 }
 
-/** The focused element, and whether it shows a focus indicator (an outline, or a box-shadow). */
+/** The focused element, and whether it shows a focus ring (an outline). */
 const focused = (page: Page): Promise<Stop | null> => page.evaluate(() => {
   const el = document.activeElement as HTMLElement | null
   if (!el || el === document.body) return null
   const ring = (e: Element) => {
     const s = getComputedStyle(e)
-    const outline = s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0 && s.outlineColor !== 'rgba(0, 0, 0, 0)'
-    return outline || s.boxShadow !== 'none'
+    // The Library's ring is an outline (library-v2.scss), so only an outline counts: a box-shadow
+    // can be there all the time.
+    return s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0 && s.outlineColor !== 'rgba(0, 0, 0, 0)'
   }
-  // A search box draws its ring on the label around it (:focus-within).
+  // A search box draws its ring on the field around it (:has(input:focus-visible)).
   const wrap = el.tagName === 'INPUT' ? el.closest('label') : null
   const name = el.getAttribute('aria-label') || el.getAttribute('title') || (el.textContent || '').trim().slice(0, 40) || ''
   const holder = el.closest('[data-tid]')
@@ -154,7 +155,7 @@ test('keyboard: Tab reaches search, a card and its actions; Enter opens, Escape 
   // Library in tab order) is not the Library's to fix: it is listed in the report, not failed on.
   const unmarked = stops.filter(s => !s.marked)
   test.info().annotations.push(...unmarked.filter(s => !s.inLibrary).map(s => ({ type: 'focus outside the Library', description: s.describe })))
-  expect(unmarked.filter(s => s.inLibrary).map(s => s.describe), 'Library elements focused by Tab with no outline or box-shadow').toEqual([])
+  expect(unmarked.filter(s => s.inLibrary).map(s => s.describe), 'Library elements focused by Tab with no outline').toEqual([])
 
   // Enter opens the quick look; Escape closes it and focus goes back to the card.
   await pic.focus()
@@ -173,33 +174,43 @@ test('keyboard: Tab reaches search, a card and its actions; Enter opens, Escape 
   await expect(heading).toBeFocused()
 })
 
-test('reduced motion: nothing in the Library keeps animating when the system asks, with the quick look and Print on… open', async ({ page, account, open }) => {
+test('reduced motion: nothing in the Library, its quick look or Print on… animates for longer than a millisecond', async ({ page, account, open }) => {
   account.printers.push({ id: 'p-walnut', name: 'Walnut', model: 'Muon3D M1', state: 'online', version: '1', linked_at: 0, last_seen: 0, online: true, online_since: null } as never)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await open('/library?view=discover')
   await expect(popular(page).getByRole('button', { name: /^Quick look at/ }).first()).toBeVisible()
 
-  // The Library, its quick look and its Print on… dialog (the last two mount outside the root).
-  const running = () => page.evaluate(() => document.getAnimations()
+  // Every animation or transition in the Library, its quick look and its Print on… dialog (the last
+  // two mount outside the root), read at once with no polling: with reduced motion there are none,
+  // or each is no longer than 1 ms.
+  const longAnimations = () => page.evaluate(() => document.getAnimations()
     .filter(a => {
       const target = (a.effect as KeyframeEffect | null)?.target as Element | null | undefined
-      return !!target?.closest('[data-tid="muon-library"], .mlook, .m3-dlg-frame') && a.playState === 'running'
+      return !!target?.closest('[data-tid="muon-library"], .mlook, .m3-dlg-frame')
     })
     .map(a => {
       const target = (a.effect as KeyframeEffect).target as Element
       const what = a instanceof CSSAnimation ? a.animationName : a instanceof CSSTransition ? a.transitionProperty : a.id
-      return `${what} on ${target.tagName.toLowerCase()}.${String(target.className)}`
-    }))
+      return { what: `${what} on ${target.tagName.toLowerCase()}.${String(target.className)}`, ms: Number(a.effect?.getComputedTiming().duration) }
+    })
+    .filter(a => !(a.ms <= 1)))
 
-  // Empty, or finished within a moment (a dialog may still end a fast fade).
-  await expect.poll(running, { message: 'animations running in the Library page' }).toEqual([])
+  expect(await longAnimations(), 'animations over 1 ms on the page').toEqual([])
   await popular(page).getByRole('button', { name: /^Quick look at/ }).first().click()
   await expect(look(page)).toBeVisible()
-  await expect.poll(running, { message: 'animations running with the quick look open' }).toEqual([])
+  expect(await longAnimations(), 'animations over 1 ms with the quick look open').toEqual([])
+
+  // Pressing a button in the quick look (its press sink is a transition) starts nothing longer than 1 ms.
+  const box = await look(page).getByTestId('library-quick-look-page').boundingBox()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  expect(await longAnimations(), 'animations over 1 ms while a quick look button is pressed').toEqual([])
+  await page.mouse.move(0, 0)
+  await page.mouse.up()
   await page.keyboard.press('Escape')
   await expect(look(page)).toHaveCount(0)
 
   await popular(page).getByRole('button', { name: /^Print .* on Boxwood$/ }).first().click()
   await expect(page.getByTestId('print-on')).toBeVisible()
-  await expect.poll(running, { message: 'animations running with Print on… open' }).toEqual([])
+  expect(await longAnimations(), 'animations over 1 ms with Print on… open').toEqual([])
 })

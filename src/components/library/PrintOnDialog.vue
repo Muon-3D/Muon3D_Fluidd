@@ -249,9 +249,9 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
     box-shadow: inset 0 0 0 1.5px var(--m3d-accent);
   }
 
-  // A printer that cannot take this print reads as quieter by colour, not by opacity:
-  // fading its muted line to 70% made it 3.15:1 (glass dark) to 2.65:1 (glass light).
-  .print-on__row--off .print-on__name { color: var(--m3d-text-muted); }
+  // A printer that cannot take this print: its icon fades and goes grey (a picture, not text),
+  // and its pill says why. Text stays at full contrast (fading the line to 70% made it 2.65 to 3.15:1).
+  .print-on__row--off .print-on__icon { opacity: 0.45; filter: grayscale(1); }
 
   .print-on__icon {
     display: grid;
