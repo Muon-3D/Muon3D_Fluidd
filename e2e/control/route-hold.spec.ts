@@ -47,9 +47,15 @@ const REOPEN_MS = 45_000
 const BACK_TO_CLOUD_MS = 75_000
 
 /**
- * #370 CI diagnosis: when a test fails, ask the mock printer directly from this process and from the page, and
- * count what the fake transport still holds open. A hung mock fails both probes; a page that has used up its
- * connections to the mock fails only the page's. Printed as DIAG370 lines in the CI log.
+ * #370 / KAN-2703 CI diagnosis: when a test fails, say where the page's requests to the mock printer stopped.
+ * The test process asks the mock directly, the page asks it too, and each side counts what it holds:
+ * - the mock's own list of requests in flight, its total served and its peak (`/__e2e/diag`): a request the
+ *   page sent and the mock never saw is stuck in Chrome, not in the mock;
+ * - the page's fetches to the mock that have not settled (with their age) and the states of its WebSockets
+ *   (0 connecting, 1 open, 2 closing, 3 closed): a page that has run out of connections shows a pile of old
+ *   fetches here, and none on the mock's side;
+ * - what the fake transport still holds open.
+ * Printed as DIAG370 lines in the CI log.
  */
 test.afterEach(async ({ page }, info) => {
   if (info.status === info.expectedStatus) return
@@ -64,6 +70,11 @@ test.afterEach(async ({ page }, info) => {
   }
   console.log('DIAG370 node 127.0.0.1', await probe(`http://127.0.0.1:${MOCK_PORT}/server/info`))
   console.log('DIAG370 node localhost', await probe(`http://localhost:${MOCK_PORT}/server/info`))
+  try {
+    console.log('DIAG370 mock', JSON.stringify(await (await fetch(`http://127.0.0.1:${MOCK_PORT}/__e2e/diag`, { signal: AbortSignal.timeout(5_000) })).json()))
+  } catch (e) {
+    console.log('DIAG370 mock', (e as Error).message)
+  }
   const inPage = await Promise.race([
     page.evaluate(async (port) => {
       const t = Date.now()
@@ -77,10 +88,23 @@ test.afterEach(async ({ page }, info) => {
       const S = (window as any).__e2eRoute
       const live = S ? [...S.live] : []
       const sockets = live.flatMap((p: any) => [...p.sockets])
-      const ws = sockets.map((x: any) => x.ws.readyState).join(',')
-      const entries = performance.getEntriesByType('resource').filter(e => e.name.includes(`:${port}/`))
-      const unfinished = entries.filter(e => (e as PerformanceResourceTiming).responseEnd === 0).length
-      return { fetched, live: live.length, sockets: sockets.length, wsStates: ws, links: S?.links?.size, resources: entries.length, unfinished }
+      const net = (window as any).__e2eNet
+      const now = Date.now()
+      const pending = net ? [...net.fetches.values()] : []
+      const toMock = pending.filter((x: any) => x.url.includes(`:${port}/`))
+      return {
+        fetched,
+        live: live.length,
+        sockets: sockets.length,
+        links: S?.links?.size,
+        fetchesStarted: net?.started,
+        fetchesPending: toMock.length,
+        otherPending: pending.length - toMock.length,
+        oldestPendingMs: toMock.length ? now - Math.min(...toMock.map((x: any) => x.t)) : 0,
+        pending: toMock.slice(0, 8).map((x: any) => `${x.method} ${x.url.replace(/^https?:\/\/[^/]+/, '').slice(0, 50)} ${now - x.t} ms`),
+        wsOpened: net?.sockets.length,
+        wsStates: [0, 1, 2, 3].map(n => (net?.sockets ?? []).filter((x: any) => x.ws.readyState === n).length).join(',')
+      }
     }, MOCK_PORT),
     new Promise(resolve => setTimeout(() => resolve('page.evaluate hung for 10 s'), 10_000))
   ])
@@ -116,6 +140,29 @@ test.beforeEach(async ({ page, account }) => {
   // Nothing here is about the 3D model: the photoreal M1 stalls software WebGL for tens of seconds
   // on the printer page and starves the page, as in overview.spec.ts and jack-1110.spec.ts.
   await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
+  // The page's own count of fetches and WebSockets, for the diagnosis above.
+  await page.addInitScript(() => {
+    const net: any = { fetches: new Map(), sockets: [] as any[], started: 0 }
+    ;(window as any).__e2eNet = net
+    const realFetch = window.fetch.bind(window)
+    window.fetch = (input: any, init?: any) => {
+      const id = ++net.started
+      net.fetches.set(id, { url: typeof input === 'string' ? input : input.url, method: init?.method ?? 'GET', t: Date.now() })
+      const settled = () => net.fetches.delete(id)
+      const result = realFetch(input, init)
+      result.then(settled, settled)
+      return result
+    }
+    const RealWebSocket = window.WebSocket
+    const Counted: any = function (this: any, url: string, protocols?: any) {
+      const ws = new RealWebSocket(url, protocols)
+      net.sockets.push({ url, ws })
+      return ws
+    }
+    Counted.prototype = RealWebSocket.prototype
+    for (const k of ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED']) Counted[k] = (RealWebSocket as any)[k]
+    window.WebSocket = Counted
+  })
   await useAllRoutes(page, account)
 })
 

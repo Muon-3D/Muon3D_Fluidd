@@ -162,6 +162,22 @@ describe('setup over Bluetooth from the hosted page', () => {
     again.destroy()
   })
 
+  it('says the printer is restarting, not that the link dropped, when it goes during an install', async () => {
+    const s = session()
+    const wrapper = mount(async () => s.result)
+    await flush(wrapper)
+    await (wrapper.vm as any).theyMatch()
+    await wrapper.vm.$nextTick()
+    wrapper.findComponent({ name: 'SetupWifiSteps' }).vm.$emit('installing')
+    s.drop()
+    await flush(wrapper)
+    const lost = tid(wrapper, 'setup-ble-lost')
+    expect(lost.text()).toContain('restarting to finish its update')
+    expect(lost.text()).not.toContain('connection to')
+    expect(lost.text()).not.toContain('Try again')
+    wrapper.destroy()
+  })
+
   it('hangs up when the dialog closes', async () => {
     const s = session()
     const wrapper = mount(async () => s.result)

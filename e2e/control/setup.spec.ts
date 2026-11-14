@@ -23,6 +23,9 @@ async function startSetup (page: Page) {
 async function joinHome (page: Page, password: string) {
   await page.getByTestId('wifi-HomeWiFi').click()
   await page.getByTestId('wifi-password').fill(password)
+  // One Connect, under the password field: no second one in the footer.
+  await expect(page.getByTestId('wifi-connect')).toHaveCount(1)
+  await expect(page.locator('form').getByTestId('wifi-connect')).toBeVisible()
   await page.getByTestId('wifi-connect').click()
 }
 
