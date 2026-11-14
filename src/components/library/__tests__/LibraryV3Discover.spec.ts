@@ -99,3 +99,21 @@ describe('Library v3: Print on… from a print\'s page', () => {
     expect(requests.map(([request]) => request.printerId)).toEqual([null, 'p-1'])
   })
 })
+
+describe('Library v3: community posts', () => {
+  it('the print\'s name is a button that opens it, not a placeholder link, and no link in a post is href="#"', async () => {
+    const vm = library() as unknown as Vm & { posts: Array<{ card: ShelfCard, verb: string }> }
+    await settle()
+    vm.posts = [{ card: card('7', { makeOf: { id: 'o', slug: 'original', title: 'Original' } }), verb: 'made' }]
+    await settle()
+    const by = wrapper!.find('.mlib-post__by')
+    expect(by.exists()).toBe(true)
+    expect(by.findAll('a').filter(a => a.attributes('href') === '#')).toHaveLength(0)
+    const open = by.find('button')
+    expect(open.text()).toBe('Print 7')
+    // The "from" link is a real one, to the original's page.
+    expect(by.find('a').attributes('href')).not.toBe('#')
+    await open.trigger('click')
+    expect(wrapper!.emitted('open-model')).toEqual([['7']])
+  })
+})

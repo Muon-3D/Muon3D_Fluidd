@@ -436,7 +436,7 @@ function cards (saves: CommunitySave[] | undefined): ShelfCard[] {
   justify-content: center;
   gap: 6px;
   min-height: 120px;
-  color: var(--m3d-accent);
+  color: var(--mlib-link);
   font-weight: 600;
   border: 1px dashed var(--m3d-border, rgba(255, 255, 255, 0.16));
   background: transparent;
