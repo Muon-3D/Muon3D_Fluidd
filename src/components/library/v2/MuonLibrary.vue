@@ -58,6 +58,29 @@
     />
 
     <!-- A collection's own page (v3 page 8). -->
+    <library-public-collection-page
+      v-else-if="tab === 'yours' && collection && collectionKind === 'other'"
+      :key="collection"
+      :collection-id="collection"
+      :signed-in="signedIn"
+      :can-follow="signedIn"
+      :printer-name="printerName"
+      :printing="printing"
+      @back="$emit('collection-back')"
+      @sign-in="$emit('sign-in')"
+      @print="print"
+      @open="open"
+    />
+
+    <div
+      v-else-if="tab === 'yours' && collection && collectionKind === 'pending'"
+      class="mgrid"
+      role="status"
+      data-tid="library-collection-pending"
+    >
+      <span class="mlib-hidden">Loading the collection</span>
+    </div>
+
     <library-collection-page
       v-else-if="tab === 'yours' && collection && signedIn"
       ref="collectionPage"
@@ -429,6 +452,7 @@
           @changed="readCollections"
           @see-all="seeAll"
           @open-collection="$emit('update:collection', $event)"
+          @go-discover="setTab('discover')"
           @own-act="ownAct"
           @own-open="ownOpen"
           @go-slice="$emit('go-slice')"
@@ -466,6 +490,7 @@ import LibrarySearchBox from './LibrarySearchBox.vue'
 import LibraryBrowsePage from './LibraryBrowsePage.vue'
 import LibraryYoursGrid, { YOURS_GRIDS, type YoursGridSource } from './LibraryYoursGrid.vue'
 import LibraryCollectionPage, { saveIdOf } from './LibraryCollectionPage.vue'
+import LibraryPublicCollectionPage from './LibraryPublicCollectionPage.vue'
 import LibraryPrintPage from './LibraryPrintPage.vue'
 import type { OwnCard } from '@/services/library/yours'
 import type { RecentEntry } from '@/services/library/recents'
@@ -508,7 +533,7 @@ const PALETTE = ['#ff9f0a', '#ff453a', '#64d2ff', '#30d158', '#bf5af2', '#80d6d1
  * No router in here; it sizes to its container.
  */
 @Component({
-  components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState, LibraryGridPage, LibraryYoursGrid, LibraryCollectionPage, LibraryPrintPage, LibrarySearchBox, LibraryBrowsePage },
+  components: { LibraryModelCard, LibraryQuickLook, LibraryYoursShelves, LibraryShelf, LibraryState, LibraryGridPage, LibraryYoursGrid, LibraryCollectionPage, LibraryPublicCollectionPage, LibraryPrintPage, LibrarySearchBox, LibraryBrowsePage },
   provide (this: MuonLibrary) { return { libraryCardContext: () => ({ volume: this.printerVolume, printerName: this.printerName, signedIn: this.signedIn, signIn: () => this.$emit('sign-in'), settingsTo: this.settingsTo }) } }
 })
 export default class MuonLibrary extends Vue {
@@ -565,6 +590,22 @@ export default class MuonLibrary extends Vue {
   collections: CommunityCollection[] = []
   private collectionReads = 0
   collectionsError = ''
+  /** Your own list has been read, so a collection id can be told as yours or someone else's. */
+  collectionsRead = false
+
+  /**
+   * Whose the open collection is: yours (its own page), someone else's (the
+   * public view, read-only, with Follow), or not known yet. Signed out it is
+   * always someone else's. If your own list won't read, it is treated as yours:
+   * its page then says why, as before.
+   */
+  get collectionKind (): 'own' | 'other' | 'pending' {
+    if (!this.collection) return 'own'
+    if (!this.signedIn) return 'other'
+    if (!this.collectionsRead) return this.collectionsError ? 'own' : 'pending'
+    return this.collections.some(c => c.id === this.collection) ? 'own' : 'other'
+  }
+
   /** The card whose print is being read, for Print. */
   printing = ''
   libraryUrl = LIBRARY_URL
@@ -882,6 +923,7 @@ export default class MuonLibrary extends Vue {
     if (!this.signedIn) {
       clearCardSaves()
       this.collections = []
+      this.collectionsRead = false
       return
     }
     const read = ++this.collectionReads
@@ -889,6 +931,7 @@ export default class MuonLibrary extends Vue {
       const answer = await libraryClient().collections()
       if (read !== this.collectionReads || !this.signedIn) return
       this.collections = Array.isArray(answer.collections) ? answer.collections : []
+      this.collectionsRead = true
       this.collectionsError = ''
     } catch (error) {
       // Yours says so; Add to… stays hidden.
