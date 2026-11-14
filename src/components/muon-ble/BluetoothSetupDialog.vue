@@ -1,268 +1,269 @@
 <template>
-  <v-dialog
-    v-model="open"
-    max-width="480"
+  <bluetooth-sheet
+    :value="open"
+    :step="step"
     :persistent="phase === 'connecting' || phase === 'setup'"
+    label="Set up over Bluetooth"
+    close-tid="ble-setup-close"
+    @close="open = false"
   >
-    <v-card class="muon-ble-setup">
-      <div class="muon-ble-setup__top">
-        <span class="muon-ble-setup__pill">
-          <v-icon x-small>$bluetooth</v-icon>
-          Over Bluetooth
-        </span>
-        <v-spacer />
-        <v-btn
-          icon
-          small
-          data-tid="ble-setup-close"
-          @click="open = false"
-        >
-          <v-icon small>
-            $close
-          </v-icon>
-        </v-btn>
-      </div>
-
-      <v-card-text>
-        <!-- setup-ble-connecting -->
-        <div
-          v-if="phase === 'connecting'"
-          data-tid="setup-ble-connecting"
-        >
-          <setup-step-card
-            flat
-            :eyebrow="`${printerName} · nearby`"
-            title="Connecting over Bluetooth…"
-            :sub="`Keep this computer near ${shortName}. It stays on its own network.`"
+    <!-- setup-ble-connecting -->
+    <div
+      v-if="phase === 'connecting'"
+      data-tid="setup-ble-connecting"
+    >
+      <setup-step-card
+        flat
+        title="Find your printer"
+        sub="Turn the printer on and keep it within a few metres of this device."
+      >
+        <bluetooth-printer-row
+          :name="printerName"
+          line="New, not set up"
+          busy="Connecting…"
+        />
+        <p class="muon-ble-setup__body muon-ble-setup__after">
+          This computer stays on its own network and talks to {{ shortName }} over Bluetooth.
+        </p>
+        <template #footer>
+          <app-btn
+            text
+            class="setup-step__back"
+            data-tid="ble-use-other"
+            @click="useOtherWay"
           >
-            <v-progress-circular
-              indeterminate
-              size="20"
-              width="2"
-            />
-          </setup-step-card>
-        </div>
+            Use the network or a code instead
+          </app-btn>
+        </template>
+      </setup-step-card>
+    </div>
 
-        <!-- setup-ble-compare -->
-        <div
-          v-else-if="phase === 'compare'"
-          data-tid="setup-ble-compare"
-        >
-          <setup-step-card
-            flat
-            eyebrow="Pairing"
-            title="Check the code"
-            :sub="`${shortName}'s screen shows six characters. They must be the same as these.`"
+    <!-- setup-ble-compare -->
+    <div
+      v-else-if="phase === 'compare'"
+      data-tid="setup-ble-compare"
+    >
+      <setup-step-card
+        flat
+        title="Check the code"
+        :sub="`${shortName}'s screen shows six characters. They must be the same as these.`"
+      >
+        <bluetooth-code-boxes
+          :code="code"
+          data-tid="ble-sas"
+        />
+        <template #footer>
+          <v-btn
+            text
+            data-tid="ble-sas-mismatch"
+            @click="theyDiffer"
           >
-            <div
-              class="muon-ble-setup__code"
-              data-tid="ble-sas"
-              :aria-label="code.split('').join(' ')"
-            >
-              <span
-                v-for="(ch, i) in code.split('')"
-                :key="i"
-                :class="{ 'is-gap': i === 3 }"
-              >{{ ch }}</span>
-            </div>
-            <template #footer>
-              <v-btn
-                text
-                data-tid="ble-sas-mismatch"
-                @click="theyDiffer"
-              >
-                They don't match
-              </v-btn>
-              <app-btn
-                color="primary"
-                data-tid="ble-sas-match"
-                @click="theyMatch"
-              >
-                They match
-              </app-btn>
-            </template>
-          </setup-step-card>
-        </div>
+            They don't match
+          </v-btn>
+          <app-btn
+            color="primary"
+            data-tid="ble-sas-match"
+            @click="theyMatch"
+          >
+            They match
+          </app-btn>
+        </template>
+      </setup-step-card>
+    </div>
 
-        <!-- setup-ble-mismatch -->
-        <div
-          v-else-if="phase === 'mismatch'"
-          data-tid="setup-ble-mismatch"
-        >
-          <setup-step-card
-            flat
-            title="That wasn't your printer"
-            sub="The codes were different, so this page hung up and sent nothing."
+    <!-- setup-ble-mismatch -->
+    <div
+      v-else-if="phase === 'mismatch'"
+      data-tid="setup-ble-mismatch"
+    >
+      <setup-step-card
+        flat
+        title="That wasn't your printer"
+        sub="The codes were different, so this page hung up and sent nothing."
+      >
+        <p class="muon-ble-setup__body">
+          Set {{ shortName }} up through its own Wi-Fi instead, where what answers over Bluetooth
+          doesn't matter.
+        </p>
+        <template #footer>
+          <v-btn
+            text
+            @click="connect"
           >
-            <p class="muon-ble-setup__body">
-              Set {{ shortName }} up through its own Wi-Fi instead, where what answers over Bluetooth
-              doesn't matter.
-            </p>
-            <template #footer>
-              <v-btn
-                text
-                @click="connect"
-              >
-                Try Bluetooth again
-              </v-btn>
-              <app-btn
-                color="primary"
-                @click="phase = 'hotspot'"
-              >
-                Use its Wi-Fi instead
-              </app-btn>
-            </template>
-          </setup-step-card>
-        </div>
+            Try Bluetooth again
+          </v-btn>
+          <app-btn
+            color="primary"
+            @click="phase = 'hotspot'"
+          >
+            Use its Wi-Fi instead
+          </app-btn>
+        </template>
+      </setup-step-card>
+    </div>
 
-        <!-- setup-ble-failed, and the other reasons a session did not start -->
-        <div
-          v-else-if="phase === 'failed'"
-          data-tid="setup-ble-failed"
+    <!-- setup-ble-failed, and the other reasons a session did not start -->
+    <div
+      v-else-if="phase === 'failed'"
+      data-tid="setup-ble-failed"
+    >
+      <setup-step-card
+        flat
+        :title="failure === 'set-up' ? `${shortName} is set up already` : failure === 'unsupported'
+          ? `This page can't set printers up over Bluetooth yet` : `Couldn't reach ${shortName}`"
+      >
+        <p class="muon-ble-setup__body">
+          <template v-if="failure === 'set-up'">
+            {{ shortName }} only takes a new connection over Bluetooth before it is set up. Join the
+            network it's on, or link it to your account at the printer.
+          </template>
+          <template v-else-if="failure === 'unsupported'">
+            The Muon3D console hasn't been updated for Bluetooth yet. Use {{ shortName }}'s Wi-Fi
+            instead.
+          </template>
+          <template v-else-if="failure === 'busy'">
+            Another device is connected to {{ shortName }}. Try again once it has finished, or use
+            {{ shortName }}'s Wi-Fi instead.
+          </template>
+          <template v-else>
+            {{ shortName }} stopped answering over Bluetooth. Bring this computer closer, or use
+            {{ shortName }}'s Wi-Fi instead.
+          </template>
+        </p>
+        <template
+          v-if="failure === 'set-up' && printer.endpointId"
+          #footer
         >
-          <setup-step-card
-            flat
-            :title="failure === 'set-up' ? `${shortName} is set up already` : failure === 'unsupported'
-              ? `This page can't set printers up over Bluetooth yet` : `Couldn't reach ${shortName}`"
+          <!-- Set up already: not for setup, but this browser can pair with it over Bluetooth, signed in or not. -->
+          <app-btn
+            color="primary"
+            data-tid="ble-pair-instead"
+            @click="pairInstead"
           >
-            <p class="muon-ble-setup__body">
-              <template v-if="failure === 'set-up'">
-                {{ shortName }} only takes a new connection over Bluetooth before it is set up. Join the
-                network it's on, or link it to your account at the printer.
-              </template>
-              <template v-else-if="failure === 'unsupported'">
-                The Muon3D console hasn't been updated for Bluetooth yet. Use {{ shortName }}'s Wi-Fi
-                instead.
-              </template>
-              <template v-else-if="failure === 'busy'">
-                Another device is connected to {{ shortName }}. Try again once it has finished, or use
-                {{ shortName }}'s Wi-Fi instead.
-              </template>
-              <template v-else>
-                {{ shortName }} stopped answering over Bluetooth. Bring this computer closer, or use
-                {{ shortName }}'s Wi-Fi instead.
-              </template>
-            </p>
-            <template
-              v-if="failure !== 'set-up'"
-              #footer
-            >
-              <v-btn
-                :text="failure !== 'unsupported'"
-                :color="failure === 'unsupported' ? 'primary' : undefined"
-                data-tid="ble-use-wifi"
-                @click="phase = 'hotspot'"
-              >
-                Use its Wi-Fi instead
-              </v-btn>
-              <app-btn
-                v-if="failure !== 'unsupported'"
-                color="primary"
-                data-tid="ble-retry"
-                @click="connect"
-              >
-                Try again
-              </app-btn>
-            </template>
-          </setup-step-card>
-        </div>
+            Pair over Bluetooth
+          </app-btn>
+        </template>
+        <template
+          v-else-if="failure !== 'set-up'"
+          #footer
+        >
+          <v-btn
+            :text="failure !== 'unsupported'"
+            :color="failure === 'unsupported' ? 'primary' : undefined"
+            data-tid="ble-use-wifi"
+            @click="phase = 'hotspot'"
+          >
+            Use its Wi-Fi instead
+          </v-btn>
+          <app-btn
+            v-if="failure !== 'unsupported'"
+            color="primary"
+            data-tid="ble-retry"
+            @click="connect"
+          >
+            Try again
+          </app-btn>
+        </template>
+      </setup-step-card>
+    </div>
 
-        <!-- The hotspot route: it does not depend on what answers over Bluetooth. -->
-        <div
-          v-else-if="phase === 'hotspot'"
-          data-tid="setup-ble-hotspot"
-        >
-          <setup-step-card
-            flat
-            :title="`Set ${shortName} up on its Wi-Fi`"
-            :sub="`Or scan the QR code on ${shortName}'s screen with the Muon3D app.`"
-          >
-            <ol class="muon-ble-setup__steps">
-              <li>Join the Wi-Fi network <strong>{{ hotspotName }}</strong> on this computer.</li>
-              <li>Open <strong>http://10.42.0.1/setup</strong>.</li>
-            </ol>
-          </setup-step-card>
-        </div>
+    <!-- The hotspot route: it does not depend on what answers over Bluetooth. -->
+    <div
+      v-else-if="phase === 'hotspot'"
+      data-tid="setup-ble-hotspot"
+    >
+      <setup-step-card
+        flat
+        :title="`Set ${shortName} up on its Wi-Fi`"
+        :sub="`Or scan the QR code on ${shortName}'s screen with the Muon3D app.`"
+      >
+        <ol class="muon-ble-setup__steps">
+          <li>Join the Wi-Fi network <strong>{{ hotspotName }}</strong> on this computer.</li>
+          <li>Open <strong>http://10.42.0.1/setup</strong>.</li>
+        </ol>
+      </setup-step-card>
+    </div>
 
-        <!-- After "They match": the steps, over the same connection. -->
-        <div
-          v-else-if="phase === 'setup' && client"
-          data-tid="setup-ble-steps"
-        >
-          <setup-wifi-steps
-            :client="client"
-            over-bluetooth
-            @installing="installing = true"
+    <!-- After "They match": the steps, over the same connection. -->
+    <div
+      v-else-if="phase === 'setup' && client"
+      data-tid="setup-ble-steps"
+    >
+      <setup-wifi-steps
+        :client="client"
+        over-bluetooth
+        @installing="installing = true"
+      >
+        <template #done>
+          <p class="muon-ble-setup__body">
+            {{ shortName }} is on its Wi-Fi. Search again to open it from this page.
+          </p>
+          <app-btn
+            color="primary"
+            @click="finish"
           >
-            <template #done>
-              <p class="muon-ble-setup__body">
-                {{ shortName }} is on its Wi-Fi. Search again to open it from this page.
-              </p>
-              <app-btn
-                color="primary"
-                @click="finish"
-              >
-                Back to the list
-              </app-btn>
-            </template>
-            <template #elsewhere>
-              <app-btn
-                text
-                @click="finish"
-              >
-                Back to the list
-              </app-btn>
-            </template>
-          </setup-wifi-steps>
-        </div>
+            Back to the list
+          </app-btn>
+        </template>
+        <template #elsewhere>
+          <app-btn
+            text
+            @click="finish"
+          >
+            Back to the list
+          </app-btn>
+        </template>
+      </setup-wifi-steps>
+    </div>
 
-        <!-- The connection ended before setup finished. -->
-        <div
-          v-else-if="phase === 'lost'"
-          data-tid="setup-ble-lost"
-        >
-          <setup-step-card
-            flat
-            :title="updateRestart ? `${shortName} is restarting to finish its update` : `The Bluetooth connection to ${shortName} dropped`"
+    <!-- The connection ended before setup finished. -->
+    <div
+      v-else-if="phase === 'lost'"
+      data-tid="setup-ble-lost"
+    >
+      <setup-step-card
+        flat
+        :title="updateRestart ? `${shortName} is restarting to finish its update` : `The Bluetooth connection to ${shortName} dropped`"
+      >
+        <p class="muon-ble-setup__body">
+          <template v-if="updateRestart">
+            The Bluetooth link ends while it restarts. Carry on at its screen, or search again in a
+            few minutes to find it.
+          </template>
+          <template v-else-if="joinedWifi">
+            {{ shortName }} is on {{ joinedWifi }}. Search again to find it there, or carry on at its
+            screen.
+          </template>
+          <template v-else>
+            Bring this computer closer and try again, or use {{ shortName }}'s Wi-Fi instead.
+          </template>
+        </p>
+        <template #footer>
+          <v-btn
+            text
+            @click="finish"
           >
-            <p class="muon-ble-setup__body">
-              <template v-if="updateRestart">
-                The Bluetooth link ends while it restarts. Carry on at its screen, or search again in a
-                few minutes to find it.
-              </template>
-              <template v-else-if="joinedWifi">
-                {{ shortName }} is on {{ joinedWifi }}. Search again to find it there, or carry on at its
-                screen.
-              </template>
-              <template v-else>
-                Bring this computer closer and try again, or use {{ shortName }}'s Wi-Fi instead.
-              </template>
-            </p>
-            <template #footer>
-              <v-btn
-                text
-                @click="finish"
-              >
-                Back to the list
-              </v-btn>
-              <app-btn
-                v-if="!joinedWifi && !updateRestart"
-                color="primary"
-                @click="connect"
-              >
-                Try again
-              </app-btn>
-            </template>
-          </setup-step-card>
-        </div>
-      </v-card-text>
-    </v-card>
-  </v-dialog>
+            Back to the list
+          </v-btn>
+          <app-btn
+            v-if="!joinedWifi && !updateRestart"
+            color="primary"
+            @click="connect"
+          >
+            Try again
+          </app-btn>
+        </template>
+      </setup-step-card>
+    </div>
+  </bluetooth-sheet>
 </template>
 
 <script lang="ts">
 import { Component, Prop, VModel, Vue, Watch } from 'vue-property-decorator'
 import SetupStepCard from '@/components/muon-setup/SetupStepCard.vue'
+import BluetoothSheet from './BluetoothSheet.vue'
+import BluetoothCodeBoxes from './BluetoothCodeBoxes.vue'
+import BluetoothPrinterRow from './BluetoothPrinterRow.vue'
 import SetupWifiSteps from '@/components/muon-setup/SetupWifiSteps.vue'
 import { connectForSetup, type BleSetupFailure, type BleSetupSession } from '@/services/muon-ble/setup'
 import type { NearbyPrinter } from '@/services/muon-ble/nearby'
@@ -277,8 +278,12 @@ type Phase = 'connecting' | 'compare' | 'mismatch' | 'failed' | 'hotspot' | 'set
  * network. Nothing but reads of the setup state goes to the printer until the
  * person says the codes match; those reads also keep the code on the
  * printer's screen.
+ *
+ * Laid out as the Bluetooth sheet (v3 `bluetooth` storyboard): step 1 finds
+ * the printer and checks the code, step 2 is setup's own steps over the same
+ * connection, step 3 is the printer set up.
  */
-@Component({ components: { SetupStepCard, SetupWifiSteps } })
+@Component({ components: { BluetoothSheet, BluetoothCodeBoxes, BluetoothPrinterRow, SetupStepCard, SetupWifiSteps } })
 export default class BluetoothSetupDialog extends Vue {
   @VModel({ type: Boolean })
     open!: boolean
@@ -312,6 +317,11 @@ export default class BluetoothSetupDialog extends Vue {
 
   get hotspotName (): string {
     return this.printer.localName ? `Muon-${this.printer.localName}` : 'Muon-…'
+  }
+
+  get step (): number {
+    if (this.phase === 'setup') return setupState.state?.state === 'complete' ? 3 : 2
+    return this.phase === 'lost' ? 2 : 1
   }
 
   get joinedWifi (): string | null {
@@ -363,6 +373,12 @@ export default class BluetoothSetupDialog extends Vue {
     session.closed.then(() => this.onDropped(attempt))
   }
 
+  /** The other ways in: the printer's own Wi-Fi, or the QR code on its screen. Hangs up first. */
+  async useOtherWay () {
+    await this.hangUp()
+    this.phase = 'hotspot'
+  }
+
   theyMatch () {
     this.phase = 'setup'
   }
@@ -395,78 +411,26 @@ export default class BluetoothSetupDialog extends Vue {
     this.open = false
     this.$emit('finished')
   }
+
+  /** Hangs up this setup attempt, then hands the printer to the pairing way in. */
+  async pairInstead () {
+    await this.hangUp()
+    this.open = false
+    this.$emit('pair', this.printer)
+  }
 }
 </script>
 
 <style lang="scss" scoped>
 .muon-ble-setup {
-  &__top {
-    display: flex;
-    align-items: center;
-    padding: 12px 12px 0 20px;
-  }
-
-  &__pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 10px;
-    border-radius: 999px;
-    background: var(--m3d-accent-soft);
-    color: var(--m3d-accent);
-    font-size: var(--m3d-text-xs);
-    font-weight: var(--m3d-weight-semibold);
-
-    .v-icon {
-      color: inherit !important;
-    }
-  }
-
-  &__eyebrow {
-    font-size: var(--m3d-text-xs);
-    color: var(--m3d-text-muted);
-    margin: 8px 0 4px;
-  }
-
-  &__title {
-    display: flex;
-    align-items: center;
-    font-size: var(--m3d-text-lg);
-    font-weight: var(--m3d-weight-semibold);
-    color: var(--m3d-text);
-    margin: 8px 0;
-  }
-
   &__body {
     font-size: var(--m3d-text-sm);
     color: var(--m3d-text-muted);
     margin: 0 0 12px;
   }
 
-  &__code {
-    display: flex;
-    justify-content: center;
-    gap: 6px;
-    margin: 16px 0 20px;
-
-    span {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 40px;
-      height: 52px;
-      border: 1px solid var(--m3d-border);
-      border-radius: var(--m3d-radius-md);
-      background: var(--m3d-surface-2);
-      font-family: var(--m3d-font-mono);
-      font-size: 26px;
-      font-weight: var(--m3d-weight-semibold);
-      color: var(--m3d-text);
-
-      &.is-gap {
-        margin-left: 12px;
-      }
-    }
+  &__after {
+    margin: 12px 0 0;
   }
 
   &__steps {
@@ -478,12 +442,6 @@ export default class BluetoothSetupDialog extends Vue {
     li {
       margin-bottom: 4px;
     }
-  }
-
-  &__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
   }
 }
 </style>
