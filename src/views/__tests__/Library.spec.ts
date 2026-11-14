@@ -60,6 +60,73 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
+describe('the site\'s Print button: /library?view=discover&print=<id>&do=print', () => {
+  const props = (w: ReturnType<typeof renderLibrary>) => w.findComponent({ name: 'MuonLibrary' }).props() as { printId: string | null, autoPrint: boolean }
+
+  function live (query: Record<string, string>) {
+    const replace = vi.fn(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
+    const wrapper = shallowMount(Library, {
+      mocks: { $route: { query }, $router: { replace, push }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
+      stubs: { 'router-link': true, 'frame-icon': true, 'print-on-dialog': true, 'file-name-dialog': true, 'library-state': LibraryState }
+    })
+    return { wrapper, replace, push }
+  }
+
+  it('do=print with print=<id> asks the model\'s page for Print on…; a bare print=<id> only shows it', () => {
+    const link = renderLibrary({ view: 'discover', print: 'pub-1', do: 'print' })
+    const bare = renderLibrary({ view: 'discover', print: 'pub-1' })
+    const noModel = renderLibrary({ view: 'discover', do: 'print' })
+    try {
+      expect(props(link).printId).toBe('pub-1')
+      expect(props(link).autoPrint).toBe(true)
+      expect(props(bare).printId).toBe('pub-1')
+      expect(props(bare).autoPrint).toBe(false)
+      expect(props(noModel).autoPrint).toBe(false)
+    } finally {
+      link.destroy()
+      bare.destroy()
+      noModel.destroy()
+    }
+  })
+
+  it('handled: do leaves the address, print and the rest stay', () => {
+    const { wrapper, replace } = live({ view: 'discover', print: 'pub-1', do: 'print', q: 'x' })
+    try {
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('auto-printed')
+      expect(replace).toHaveBeenCalledWith({ query: { view: 'discover', print: 'pub-1', q: 'x' } })
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('another model opened from the page leaves do behind', () => {
+    const { wrapper, push } = live({ view: 'discover', print: 'pub-1', do: 'print' })
+    try {
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('update:print', 'pub-2')
+      expect(push).toHaveBeenCalledWith({ query: { view: 'discover', print: 'pub-2' } })
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('the request from the Print button names no printer; a click on the page keeps the open one', () => {
+    const { wrapper } = live({ view: 'discover', print: 'pub-1', do: 'print' })
+    try {
+      Object.assign(cloudState, { account: { id: 'a' } })
+      const request = (printerId: string | null) => ({ modelId: 'pub-1', printerId, card: {}, print: { item: { id: 'pub-1', name: 'Print 1', setups: [] } } })
+      const vm = wrapper.vm as unknown as { preferPrinter: string | null }
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('print', request(null))
+      expect(vm.preferPrinter).toBeNull()
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('print', request('p-1'))
+      expect(vm.preferPrinter).toBe('p-1')
+    } finally {
+      Object.assign(cloudState, { account: null })
+      wrapper.destroy()
+    }
+  })
+})
+
 describe('Library feed states', () => {
   it('shows an error without the off panel when the Library is disabled', () => {
     Object.assign(libraryState, {
