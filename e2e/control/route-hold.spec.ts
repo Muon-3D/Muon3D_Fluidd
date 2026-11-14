@@ -33,6 +33,60 @@ const where = (page: Page) => page.evaluate(async () => {
   const m = await import(/* @vite-ignore */ ['', 'e2e', 'fakes', 'routeActions.ts'].join('/'))
   return m.where()
 })
+/**
+ * A route change reloads the whole printer page (init.ts resets the store and loads it again), then opens
+ * the socket. That is about 1 s here and 8 to 14 s with the CPU at a sixth to a quarter of its speed
+ * (CDP throttle 4 and 6), which is what a CI runner with two workers is. The default 15 s is the page's own
+ * work on a fast machine, not a fixed delay: this is the wait for it, and nothing retries.
+ */
+const REOPEN_MS = 45_000
+/**
+ * Auto mode keeps off the relay for RELAY_HOLD_MS (30 s) after it failed, then waits AUTO_SETTLE_MS (3 s) on
+ * the move and a tick: the way back to the cloud cannot come sooner than about 34 s after the failure.
+ */
+const BACK_TO_CLOUD_MS = 75_000
+
+/**
+ * #370 CI diagnosis: when a test fails, ask the mock printer directly from this process and from the page, and
+ * count what the fake transport still holds open. A hung mock fails both probes; a page that has used up its
+ * connections to the mock fails only the page's. Printed as DIAG370 lines in the CI log.
+ */
+test.afterEach(async ({ page }, info) => {
+  if (info.status === info.expectedStatus) return
+  const probe = async (url: string) => {
+    const t = Date.now()
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(5_000) })
+      return `${r.status} in ${Date.now() - t} ms`
+    } catch (e) {
+      return `${(e as Error).name}: ${(e as Error).message} after ${Date.now() - t} ms`
+    }
+  }
+  console.log('DIAG370 node 127.0.0.1', await probe(`http://127.0.0.1:${MOCK_PORT}/server/info`))
+  console.log('DIAG370 node localhost', await probe(`http://localhost:${MOCK_PORT}/server/info`))
+  const inPage = await Promise.race([
+    page.evaluate(async (port) => {
+      const t = Date.now()
+      let fetched: string
+      try {
+        const r = await fetch(`http://localhost:${port}/server/info`, { signal: AbortSignal.timeout(5_000) })
+        fetched = `${r.status} in ${Date.now() - t} ms`
+      } catch (e) {
+        fetched = `${(e as Error).name}: ${(e as Error).message} after ${Date.now() - t} ms`
+      }
+      const S = (window as any).__e2eRoute
+      const live = S ? [...S.live] : []
+      const sockets = live.flatMap((p: any) => [...p.sockets])
+      const ws = sockets.map((x: any) => x.ws.readyState).join(',')
+      const entries = performance.getEntriesByType('resource').filter(e => e.name.includes(`:${port}/`))
+      const unfinished = entries.filter(e => (e as PerformanceResourceTiming).responseEnd === 0).length
+      return { fetched, live: live.length, sockets: sockets.length, wsStates: ws, links: S?.links?.size, resources: entries.length, unfinished }
+    }, MOCK_PORT),
+    new Promise(resolve => setTimeout(() => resolve('page.evaluate hung for 10 s'), 10_000))
+  ])
+  console.log('DIAG370 page', JSON.stringify(inPage))
+})
+
 const control = (page: Page, what: 'silence' | 'radio' | 'cloud', on: boolean) =>
   page.evaluate(([what, on]) => (window as any).__e2eRoute[what](on), [what, on] as const)
 
@@ -54,7 +108,7 @@ async function choose (page: Page, action: 'Connect over Bluetooth' | 'Connect t
 async function onBluetooth (page: Page) {
   await choose(page, 'Connect over Bluetooth')
   await expect.poll(() => lastRoute(page)).toBe('ble')
-  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
+  await expect.poll(() => where(page), { timeout: REOPEN_MS }).toMatchObject({ socketOpen: true })
   await expect(sheet(page)).toHaveCount(0)
 }
 
@@ -66,10 +120,12 @@ test.beforeEach(async ({ page, account }) => {
 })
 
 test('Bluetooth that goes quiet with the radio up says "Bluetooth dropped", moves nowhere, and Try Bluetooth again reconnects', async ({ page, isMobile }) => {
+  // The product's own waits (15 s of silence, 30 s off the relay) and two page reloads: more than the default 90 s on a slow runner.
+  test.setTimeout(240_000)
   await onBluetooth(page)
   if (!isMobile) await expect(page.getByText('Via Bluetooth', { exact: true }).first()).toBeVisible()
   // The printer has spoken over the radio (its keep-alive): only quiet after that is a dead path behind a live radio.
-  await expect.poll(() => where(page)).toMatchObject({ carrying: true })
+  await expect.poll(() => where(page), { timeout: REOPEN_MS }).toMatchObject({ carrying: true })
   const before = await routeCounts(page)
 
   await control(page, 'silence', true)
@@ -92,7 +148,7 @@ test('Bluetooth that goes quiet with the radio up says "Bluetooth dropped", move
   await expect(sheet(page)).toHaveCount(0)
   await expect.poll(() => lastRoute(page)).toBe('ble')
   expect((await routeCounts(page)).dials).toBe(before.dials + 1)
-  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
+  await expect.poll(() => where(page), { timeout: REOPEN_MS }).toMatchObject({ socketOpen: true })
   expect((await where(page)).mode).toBe('ble')
 })
 
@@ -118,7 +174,7 @@ test('Connect via cloud from the sheet moves the session to the relay, because t
   await page.getByTestId('bluetooth-dropped-cloud').click()
   await expect(sheet(page)).toHaveCount(0)
   await expect.poll(() => lastRoute(page)).toBe('cloud')
-  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
+  await expect.poll(() => where(page), { timeout: REOPEN_MS }).toMatchObject({ socketOpen: true })
   expect((await where(page)).mode).toBe('cloud')
   if (!isMobile) await expect(page.getByText('Through Muon3D', { exact: true }).first()).toBeVisible()
 })
@@ -149,7 +205,7 @@ test('Bluetooth coming back tries again by itself', async ({ page }) => {
   await expect(sheet(page)).toHaveCount(0)
   await expect.poll(() => routeCounts(page).then(c => c.dials)).toBe(before.dials + 1)
   expect(await lastRoute(page)).toBe('ble')
-  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
+  await expect.poll(() => where(page), { timeout: REOPEN_MS }).toMatchObject({ socketOpen: true })
 })
 
 test('a permission refusal never moves the chosen route', async ({ page, isMobile }) => {
@@ -172,6 +228,8 @@ test('a permission refusal never moves the chosen route', async ({ page, isMobil
 })
 
 test('plain Connect goes cloud before Bluetooth, fails over to Bluetooth, and returns to cloud, then to the local network', async ({ page, account }) => {
+  // The product's own waits (15 s of silence, 30 s off the relay) and two page reloads: more than the default 90 s on a slow runner.
+  test.setTimeout(240_000)
   await page.goto('/')
   await ready(page)
   // This page has heard the printer over Bluetooth (Look nearby).
@@ -184,24 +242,24 @@ test('plain Connect goes cloud before Bluetooth, fails over to Bluetooth, and re
   await expect(page.getByText('Connecting...')).toHaveCount(0, { timeout: 30_000 })
   await page.locator('[data-tid^="printer-tile-"]').first().click()
   await expect.poll(() => lastRoute(page)).toBe('cloud')
-  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
+  await expect.poll(() => where(page), { timeout: REOPEN_MS }).toMatchObject({ socketOpen: true })
   expect((await where(page)).mode).toBe('auto')
 
   // The relay goes away: auto mode fails over to Bluetooth, without a sheet.
   account.printers[0].online = false
   await control(page, 'cloud', false)
   await expect.poll(() => lastRoute(page), { timeout: 30_000 }).toBe('ble')
-  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
+  await expect.poll(() => where(page), { timeout: REOPEN_MS }).toMatchObject({ socketOpen: true })
   await expect(sheet(page)).toHaveCount(0)
   expect((await where(page)).mode).toBe('auto')
 
   // The relay is back: auto returns to it.
   account.printers[0].online = true
   await control(page, 'cloud', true)
-  await expect.poll(() => lastRoute(page), { timeout: 30_000 }).toBe('cloud')
-  await expect.poll(() => where(page)).toMatchObject({ socketOpen: true })
+  await expect.poll(() => lastRoute(page), { timeout: BACK_TO_CLOUD_MS }).toBe('cloud')
+  await expect.poll(() => where(page), { timeout: REOPEN_MS }).toMatchObject({ socketOpen: true })
 
   // The printer answers on this network: auto moves to it.
   await reachOnLan(page)
-  await expect.poll(async () => (await where(page)).apiUrl, { timeout: 20_000 }).toBe(`http://localhost:${MOCK_PORT}`)
+  await expect.poll(async () => (await where(page)).apiUrl, { timeout: REOPEN_MS }).toBe(`http://localhost:${MOCK_PORT}`)
 })
