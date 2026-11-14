@@ -64,3 +64,51 @@ describe('the line after the person\'s own credential change (KAN-1389)', () => 
     w.destroy()
   })
 })
+
+describe('the line after the console ended the session (KAN-2509)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); sessionStorage.clear() })
+  const lines: Array<[string, string, string]> = [
+    ['password_changed', 'browser', 'You were signed out because your password changed.'],
+    ['password_reset', 'browser', 'You were signed out because your password changed.'],
+    ['email_changed', 'browser', 'You were signed out because your email address changed.'],
+    ['two_step_changed', 'browser', 'You were signed out because two-step sign-in changed.'],
+    ['passkey_changed', 'browser', 'You were signed out because your sign-in methods changed.'],
+    ['identity_changed', 'browser', 'You were signed out because your sign-in methods changed.'],
+    ['signed_out_everywhere', 'everywhere', 'You were signed out on every device.'],
+    ['session_revoked', 'browser', 'This device was signed out from another device.'],
+    ['refresh_reuse', 'browser', 'You were signed out to protect your account. Sign in again.'],
+    ['staff_action', 'browser', 'You were signed out by Muon3D support.']
+  ]
+  it.each(lines)('says it for %s', async (reason, scope, text) => {
+    sessionStorage.setItem('muon.account.signedOut', JSON.stringify({ at: Date.now(), scope, reason }))
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('blocked') }))
+    const w = open()
+    await settle()
+    expect(w.find('[data-tid="signed-out-line"]').text()).toBe(text)
+    expect(w.find('[data-tid="signed-out-line"]').text()).not.toContain('_')
+    w.destroy()
+  })
+
+  it.each([
+    ['account_deleted', 'deleted', 'Your account is being deleted'],
+    ['signed_out', 'browser', 'signed out of Control and Slice in this browser'],
+    ['session_expired', 'browser', 'signed out of Control and Slice in this browser'],
+    ['a_reason_from_a_newer_console', 'browser', 'signed out of Control and Slice in this browser']
+  ])('says the existing or generic text for %s, never the raw key', async (reason, scope, part) => {
+    sessionStorage.setItem('muon.account.signedOut', JSON.stringify({ at: Date.now(), scope, reason }))
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('blocked') }))
+    const w = open()
+    await settle()
+    expect(w.find('[data-tid="signed-out-line"]').text()).toContain(part)
+    expect(w.find('[data-tid="signed-out-line"]').text()).not.toContain(reason)
+    w.destroy()
+  })
+
+  it('a note up to 15 minutes old still says why, an older one does not', async () => {
+    const { readSignedOut } = await import('@/services/account/signed-out-note')
+    const at = Date.now()
+    sessionStorage.setItem('muon.account.signedOut', JSON.stringify({ at, scope: 'browser', reason: 'password_changed' }))
+    expect(readSignedOut(at + 14 * 60 * 1000)?.reason).toBe('password_changed')
+    expect(readSignedOut(at + 16 * 60 * 1000)).toBeNull()
+  })
+})
