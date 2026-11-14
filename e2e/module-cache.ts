@@ -18,17 +18,24 @@ const MODULE = /^\/(src\/|node_modules\/|@vite\/|@fs\/|@id\/|assets\/|fonts\/|im
 
 export async function cacheModules (context: BrowserContext, origin: string) {
   await context.route(url => url.origin === origin && MODULE.test(url.pathname + url.search), async route => {
-    const request = route.request()
-    if (request.method() !== 'GET') return route.fallback()
-    const key = request.url()
-    const hit = cache.get(key)
-    if (hit) return route.fulfill(hit)
-    // A reset connection (vite busy) is not this test's failure: let the browser ask vite itself, uncached.
-    const response = await route.fetch().catch(() => null)
-    if (!response) return route.fallback()
-    if (response.status() !== 200) return route.fulfill({ response })
-    const entry = { status: response.status(), headers: response.headers(), body: await response.body() }
-    cache.set(key, entry)
-    return route.fulfill(entry)
+    try {
+      const request = route.request()
+      if (request.method() !== 'GET') return await route.fallback()
+      const key = request.url()
+      const hit = cache.get(key)
+      if (hit) return await route.fulfill(hit)
+      // A reset connection (vite busy) is not this test's failure: let the browser ask vite itself, uncached.
+      const response = await route.fetch().catch(() => null)
+      if (!response) return await route.fallback()
+      if (response.status() !== 200) return await route.fulfill({ response })
+      const entry = { status: response.status(), headers: response.headers(), body: await response.body() }
+      cache.set(key, entry)
+      return await route.fulfill(entry)
+    } catch {
+      // The test ended (its page or context closed) while this module was in flight: the fetched response is
+      // disposed and the route can't be answered. That is teardown, not the test's failure, so it must not throw
+      // out of the handler (it did: "apiResponse.body: Response has been disposed", 14 Nov, after #437).
+      await route.fallback().catch(() => {})
+    }
   })
 }
