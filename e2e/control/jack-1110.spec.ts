@@ -259,9 +259,10 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'XS')
   })
 
-  // Quarantined (KAN-2810): still fails on develop in CI after PR 436's settle waits; root cause open.
-  test.fixme('stress: 20 random drags leave a valid layout, which is the one saved', async ({ page, open }) => {
-    test.setTimeout(120_000)
+  test('stress: 20 random drags leave a valid layout, which is the one saved', async ({ page, open }) => {
+    // KAN-2810: 20 drags take ~40 s on a laptop and ~100 s on a slow runner, and the reload
+    // at the end then ran out of a 120 s budget (no layout was ever invalid). Budget for CI.
+    test.setTimeout(300_000)
     await usePrinter(page, PRESETS.idleHomed(), { database: true })
     await open('/')
     await edit(page)
