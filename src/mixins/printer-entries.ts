@@ -613,6 +613,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       // A saved printer outside the account with no route keeps the old attempt and its fallback page.
       if (route.kind !== 'none' || e.cloud) return this.connectLocalFromHostedPage(e, route)
     }
+    // An automatic move on the hosted page can't dial a plain local address (the browser blocks it), so Muon3D carries it.
+    if (auto && mayTrySecureName() && e.cloud?.online) return this.connectCloud(e)
     const instance = this.localInstance(e)
     if (!instance) {
       // The service found it beside this browser but gave no address to use

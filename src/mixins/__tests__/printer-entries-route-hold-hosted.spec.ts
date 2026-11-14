@@ -38,7 +38,7 @@ const component = () => ({
   connectLocalFromHostedPage: methods.connectLocalFromHostedPage,
   localInstance: methods.localInstance,
   connectOverBluetooth: vi.fn(),
-  connectCloud: methods.connectCloud
+  connectCloud: vi.fn()
 })
 
 const tab = vi.fn(() => true)
@@ -58,6 +58,14 @@ describe('route hold on the hosted page', () => {
   it('an automatic connectLocal on https opens no tab and records no choice', async () => {
     await methods.connectLocal.call(component(), entry(), true)
     expect(tab).not.toHaveBeenCalled()
+    expect(routeMode('p1')).toBe('auto')
+  })
+
+  it('an automatic connectLocal on https goes through Muon3D, not a blocked local dial', async () => {
+    const c = component()
+    await methods.connectLocal.call(c, entry({ host: '192.168.1.20' }), true)
+    expect(c.connectCloud).toHaveBeenCalledTimes(1)
+    expect(c.run).not.toHaveBeenCalled()
     expect(routeMode('p1')).toBe('auto')
   })
 
