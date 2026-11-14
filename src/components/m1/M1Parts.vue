@@ -164,7 +164,6 @@
       :reduced-motion="reducedMotion"
       :viewer="zoomedIn ? viewer : null"
       @turn="viewer && viewer.turnKnob($event)"
-      @press="viewer && viewer.pressKnob()"
       @close="screenOpen = false"
     />
   </div>
@@ -421,6 +420,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.drag = null
     this.dragPx = null
     this.dragPointer = null
+    this.viewer?.holdPan(false)
     this.viewer?.setOrbit(!this.cameraLocked)
   }
 
@@ -437,6 +437,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.viewer?.setOrbit(!onPart && !this.cameraLocked)
     if (onPart) {
       this.dragPointer = e.pointerId
+      // The camera stays where it is while the part is dragged, so the target stays under the pointer.
+      this.viewer?.holdPan(true)
       this.bound?.setPointerCapture?.(e.pointerId)
     }
   }
@@ -557,6 +559,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.down = null
     const dragPointer = this.dragPointer
     this.dragPointer = null
+    this.viewer?.holdPan(false)
     this.viewer?.setOrbit(!this.cameraLocked)
     if (this.drag) {
       if (e.pointerId === dragPointer && e.button === 0) this.release()

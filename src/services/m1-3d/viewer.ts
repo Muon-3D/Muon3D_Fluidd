@@ -84,6 +84,8 @@ export interface M1Viewer {
   setView: (mode: 'free' | 'top' | 'screen') => void;
   /** Whether a mouse drag turns the model (off while a drag moves a part instead). */
   setOrbit: (on: boolean) => void;
+  /** Holds the camera where it is while a part is dragged, so the target stays under the pointer; false lets it follow the nozzle again. */
+  holdPan: (on: boolean) => void;
   /** Where the screen's disc is drawn once the camera has flown in to it (centre and radius, CSS pixels from the canvas's top left), or null. Only after setView('screen'). */
   screenCircle: () => { x: number, y: number, r: number } | null;
   /** Whether the knob on the model's base is under this point of the page (clientX, clientY). */
@@ -141,6 +143,12 @@ const FILL = 0.86
 const TOP_PHI = 0.0015
 /** Flying in to the screen, it fills this share of the stage's height; each frame closes this share of the gap. */
 const SCREEN_FILL = 0.62
+/**
+ * Which way the camera flies in to the screen. false (Jack, 11 Nov: "the screen sits flat on the base"): straight down, the
+ * live screen laid on the model's own disc, knob beside it. true: the 10 Nov flight, square-on from the side of the machine
+ * the screen is on, the live screen opening over the dimmed stage as an overlay. One switch; aimAtScreenSideOn is the whole of it.
+ */
+const SCREEN_FLY_SIDE_ON = false
 /** The flight in to the screen and back, ms: timed, not eased per frame, so slow frames don't stretch it (as M1Screen's FLY_MS). */
 const FLIGHT_MS = 380
 /** Each frame the lean closes this share of the gap: about 450 ms to settle at 30 frames a second, easing out. */
@@ -629,6 +637,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** How far the camera is panned to keep the nozzle on the stage, in the scene's units (right and up of the camera), and where that is going. */
   const pan = { right: 0, up: 0 }
   const panGoal = { right: 0, up: 0 }
+  /** A part is being dragged: the pan stays where it is, so the picture does not slide under the pointer. */
+  let panHeld = false
   /** The nozzle tip in the scene while the accurate model's head is homed, and where it was drawn. */
   const nozzleAt = new THREE.Vector3()
   let nozzleKnown = false
@@ -679,9 +689,13 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
    */
   function followHead (): boolean {
     const here = { right: pan.right, up: pan.up }
-    panGoal.right = 0
-    panGoal.up = 0
-    if (nozzleKnown && zoomGoal === 0 && !flight) {
+    panGoal.right = here.right
+    panGoal.up = here.up
+    if (!panHeld) {
+      panGoal.right = 0
+      panGoal.up = 0
+    }
+    if (!panHeld && nozzleKnown && zoomGoal === 0 && !flight) {
       // Where the nozzle would be seen with no pan: that is what the pan is measured from.
       pan.right = 0
       pan.up = 0
@@ -705,6 +719,17 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       nozzlePx = null
     }
     return pan.right !== panGoal.right || pan.up !== panGoal.up
+  }
+
+  /** Named nodes of the model shown, found once per model rather than by name on every call. */
+  let nodes: Map<string, THREE.Object3D | null> = new Map()
+  function named (name: string): THREE.Object3D | null {
+    let node = nodes.get(name)
+    if (node === undefined) {
+      node = rig.root.getObjectByName(name) ?? null
+      nodes.set(name, node)
+    }
+    return node
   }
 
   /** Each part's meshes in the model shown, found once per model rather than by name on every pick and frame. */
@@ -742,7 +767,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** Hides or shows the plate and what it carries (the bed stage on the accurate model, the bed lift on the simple one). */
   function showPlate (shown: boolean) {
     for (const name of ['M1_Z_Stage', 'bedLift']) {
-      const node = rig.root.getObjectByName(name)
+      const node = named(name)
       if (node) node.visible = shown
     }
     for (const o of plated) o.visible = shown
@@ -759,7 +784,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   /** The round screen's own meshes (the accurate model's panel, the simple model's display), not the knob beside it. */
   function screenFace (): THREE.Object3D | null {
     for (const name of ['M1_Panel_Screen', 'display']) {
-      const node = rig.root.getObjectByName(name)
+      const node = named(name)
       if (node) return node
     }
     return null
@@ -786,6 +811,32 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
    * the stage's shorter side. False if this model hasn't a screen.
    */
   function aimAtScreen (): boolean {
+    return SCREEN_FLY_SIDE_ON ? aimAtScreenSideOn() : aimAtScreenFromAbove()
+  }
+
+  /**
+   * The 10 Nov flight (develop before KAN-2098): square-on to the screen, from the side of the machine it is on, level with
+   * it, close enough for it to fill SCREEN_FILL of the stage. False if this model hasn't a screen.
+   */
+  function aimAtScreenSideOn (): boolean {
+    const meshes = partMeshes(rig.root, 'screen')
+    if (!meshes.length) return false
+    const b = new THREE.Box3()
+    for (const m of meshes) b.expandByObject(m)
+    b.getCenter(zoomPoint)
+    const out = zoomPoint.clone().sub(box.getCenter(new THREE.Vector3()))
+    const size = b.getSize(new THREE.Vector3())
+    const halfFov = THREE.MathUtils.degToRad(camera.fov) / 2
+    zoomDistance = Math.max(size.x, size.y, size.z) / 2 / SCREEN_FILL / Math.tan(halfFov)
+    // Turned the short way round to face it, and level with it.
+    const theta = Math.atan2(out.x, out.z)
+    const turn = Math.atan2(Math.sin(theta - view.goalTheta), Math.cos(theta - view.goalTheta))
+    view.goalTheta += turn
+    view.goalPhi = Math.min(PHI_RANGE[1], Math.max(PHI_RANGE[0], Math.PI / 2))
+    return true
+  }
+
+  function aimAtScreenFromAbove (): boolean {
     const measured = measureScreen()
     if (!measured) return false
     const halfFov = THREE.MathUtils.degToRad(camera.fov) / 2
@@ -1237,7 +1288,14 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     setOrbit (on) {
       orbit = on
     },
+    holdPan (on) {
+      if (panHeld === on) return
+      panHeld = on
+      invalidate()
+    },
     screenCircle () {
+      // Only the flight from above lays the live screen on the model's disc; side-on, the screen opens as an overlay.
+      if (SCREEN_FLY_SIDE_ON) return null
       const measured = width && height && zoomDistance > 0 ? measureScreen() : null
       if (!measured) return null
       const { radius } = measured
@@ -1250,19 +1308,19 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       }
     },
     knobAt (x, y) {
-      const node = rig.root.getObjectByName('M1_Knob')
+      const node = named('M1_Knob')
       if (!node || !ready || !width || !height) return false
       const ray = rayAt(x, y)
       return !!ray && raycaster.intersectObject(node, true).length > 0
     },
     turnKnob (detents) {
-      if (!rig.root.getObjectByName('M1_Knob')) return false
+      if (!named('M1_Knob')) return false
       knobAimed = knobGoal(knobAimed, detents)
       invalidate()
       return true
     },
     pressKnob () {
-      if (!rig.root.getObjectByName('M1_Knob')) return false
+      if (!named('M1_Knob')) return false
       knobPushed = 1
       knobPushedAt = performance.now()
       knobPresses++
@@ -1350,6 +1408,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     rig = next
     partsOf = new Map()
     proxies = new Map()
+    nodes = new Map()
     if (next.root.parent !== scene) scene.add(next.root)
     for (const o of plated) {
       o.matrix.copy(next.printFrame)
