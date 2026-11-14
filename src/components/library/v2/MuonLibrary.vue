@@ -996,8 +996,9 @@ export default class MuonLibrary extends Vue {
     }
   }
 
-  printFromLook (card: ShelfCard, print: PublicationPrint | null) {
-    const request: LibraryPrintRequest = { modelId: card.id, printerId: this.printerId, card, print }
+  /** `auto`: opened by the site's Print link, so no printer is preselected: the person picks one. */
+  printFromLook (card: ShelfCard, print: PublicationPrint | null, auto = false) {
+    const request: LibraryPrintRequest = { modelId: card.id, printerId: auto ? null : this.printerId, card, print }
     this.$emit('print', request)
   }
 }

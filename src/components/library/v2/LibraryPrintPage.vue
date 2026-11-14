@@ -630,7 +630,7 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
     if (!this.autoPrint || this.autoPrinted || !this.signedIn || !this.print || this.unavailable || this.card.kind === 'catalogue') return
     this.autoPrinted = true
     this.$emit('auto-printed')
-    this.$emit('print', this.card, this.print)
+    this.$emit('print', this.card, this.print, true)
   }
 
   pictureLimit = 8

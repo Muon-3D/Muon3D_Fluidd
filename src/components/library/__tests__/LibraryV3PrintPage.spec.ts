@@ -80,6 +80,8 @@ describe('Library v3 print page: opened by the site\'s Print link', () => {
     expect(print).toHaveLength(1)
     expect(auto).toHaveLength(1)
     expect((print[0][1] as { item: { id: string } }).item.id).toBe('pub-1')
+    // Flagged as the link's arrival, so the host preselects no printer.
+    expect(print[0][2]).toBe(true)
     // Nothing reads it again.
     await w.setProps({ signedIn: false })
     await w.setProps({ signedIn: true })

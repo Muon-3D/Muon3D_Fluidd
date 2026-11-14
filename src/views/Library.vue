@@ -325,9 +325,9 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
 
   /**
    * The print this page was opened on by its address (the site's Print
-   * link), until Print on… has opened for it. Another print opened from here
-   * is not one the person asked to print, and one already handled in this tab
-   * (a reload, Back) is not opened again.
+   * link), until Print on… has opened for it. Only that arrival opens it: a
+   * print opened from inside Control, or one whose history entry already
+   * opened it (a reload, Back), does not.
    */
   arrivedPrint: string | null = null
 
@@ -350,6 +350,9 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   @Watch('printId')
   onPrintId (id: string | null) {
     if (!id) this.printDepth = 0
+    // A different print than the one the address arrived on (opened here, or Back to one): never an arrival, so a reload of this entry opens nothing.
+    if (id !== this.arrivedPrint) this.arrivedPrint = null
+    if (id && !this.arrivedPrint) markAutoPrintHandled(id)
   }
 
   /**

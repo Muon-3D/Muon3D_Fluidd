@@ -1,4 +1,5 @@
 import { shallowMount } from '@vue/test-utils'
+import Vue from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/services/muon-cloud/state', async () => {
@@ -63,7 +64,65 @@ beforeEach(() => {
 describe('the site\'s Print link: /library?view=discover&print=<id>', () => {
   const props = (w: ReturnType<typeof renderLibrary>) => w.findComponent({ name: 'MuonLibrary' }).props() as { printId: string | null, autoPrint: boolean }
 
-  beforeEach(() => sessionStorage.clear())
+  beforeEach(() => history.replaceState(null, ''))
+
+  /** A route that changes under the page, as the router does. */
+  function live (query: Record<string, string>) {
+    const route = Vue.observable({ query })
+    const wrapper = shallowMount(Library, {
+      mocks: { $route: route, $router: { replace: vi.fn(() => Promise.resolve()), push: vi.fn(() => Promise.resolve()) }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
+      stubs: { 'router-link': true, 'frame-icon': true, 'print-on-dialog': true, 'file-name-dialog': true, 'library-state': LibraryState }
+    })
+    return { route, wrapper }
+  }
+
+  it('a print opened from inside Control is no arrival: its entry is marked, so a reload opens nothing', async () => {
+    const { route, wrapper } = live({ view: 'discover' })
+    try {
+      route.query = { view: 'discover', print: 'pub-3' }
+      await wrapper.vm.$nextTick()
+      expect(props(wrapper).autoPrint).toBe(false)
+    } finally {
+      wrapper.destroy()
+    }
+    const reloaded = renderLibrary({ view: 'discover', print: 'pub-3' })
+    try {
+      expect(props(reloaded).autoPrint).toBe(false)
+    } finally {
+      reloaded.destroy()
+    }
+  })
+
+  it('another print on the page ends the arrival: Back to the first does not open it', async () => {
+    const { route, wrapper } = live({ view: 'discover', print: 'pub-1' })
+    try {
+      expect(props(wrapper).autoPrint).toBe(true)
+      route.query = { view: 'discover', print: 'pub-2' }
+      await wrapper.vm.$nextTick()
+      route.query = { view: 'discover', print: 'pub-1' }
+      await wrapper.vm.$nextTick()
+      expect(props(wrapper).printId).toBe('pub-1')
+      expect(props(wrapper).autoPrint).toBe(false)
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('the request from the link\'s arrival names no printer; a click on the page keeps the open one', async () => {
+    const { wrapper } = live({ view: 'discover', print: 'pub-1' })
+    try {
+      Object.assign(cloudState, { account: { id: 'a' } })
+      const request = (printerId: string | null) => ({ modelId: 'pub-1', printerId, card: {}, print: { item: { id: 'pub-1', name: 'Print 1', setups: [] } } })
+      const vm = wrapper.vm as unknown as { preferPrinter: string | null }
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('print', request(null))
+      expect(vm.preferPrinter).toBeNull()
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('print', request('p-1'))
+      expect(vm.preferPrinter).toBe('p-1')
+    } finally {
+      Object.assign(cloudState, { account: null })
+      wrapper.destroy()
+    }
+  })
 
   it('opens that model\'s page and asks it for Print on… once; handled, a reload does not ask again', async () => {
     const first = renderLibrary({ view: 'discover', print: 'pub-1' })

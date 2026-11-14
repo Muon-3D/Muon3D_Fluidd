@@ -83,13 +83,11 @@ describe('Print hand-off: a shared print\'s address with no version or file', ()
     expect(mocks.publication).toHaveBeenCalledWith('share-1')
   })
 
-  it('an id that does not resolve shows the print could not be opened, not a blank page', async () => {
-    mocks.publication.mockRejectedValue(new Error('That print is no longer public.'))
-    const { wrapper, vm } = mount({ publication: 'gone', version: '3', file: 'public-file' })
+  it('a malformed version also goes to the model\'s page', async () => {
+    const { vm, router } = mount({ publication: 'share-1', version: 'abc', file: 'public-file' })
     await vm.load()
-    await Vue.nextTick()
-    expect(wrapper.text()).toContain('That print couldn\'t be opened')
-    expect(wrapper.text()).toContain('no longer public')
+    expect(router.replace).toHaveBeenCalledWith({ path: '/library', query: { view: 'discover', print: 'share-1' } })
+    expect(mocks.publication).not.toHaveBeenCalled()
   })
 })
 
