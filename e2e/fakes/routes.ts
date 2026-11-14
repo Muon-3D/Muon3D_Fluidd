@@ -207,6 +207,13 @@ export async function useAllRoutes (page: Page, account: ConsoleState) {
     contentType: 'text/javascript',
     body: fakeClient(`http://localhost:${MOCK_PORT}`, ROUTE_PRINTER.id)
   }))
+  // The LAN sweep (discovery.ts) asks hundreds of private addresses; on a CI runner nothing answers them, so each
+  // is a connection attempt that hangs until the page gives up, all through the browser's one socket pool, in
+  // which the page's own requests to the mock printer queue (KAN-2703). Nothing here is on those networks: the
+  // request is held and then refused in Playwright, as a silent address would, and never leaves the browser.
+  await page.route(/^http:\/\/(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/, route => {
+    setTimeout(() => { route.abort('timedout').catch(() => {}) }, 3_500)
+  })
   // No address for the printer: it is found on this network only when a test says so.
   await page.route('**/config.json', async route => {
     const response = await route.fetch()
