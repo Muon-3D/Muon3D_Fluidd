@@ -23,7 +23,9 @@ export async function cacheModules (context: BrowserContext, origin: string) {
     const key = request.url()
     const hit = cache.get(key)
     if (hit) return route.fulfill(hit)
-    const response = await route.fetch()
+    // A reset connection (vite busy) is not this test's failure: let the browser ask vite itself, uncached.
+    const response = await route.fetch().catch(() => null)
+    if (!response) return route.fallback()
     if (response.status() !== 200) return route.fulfill({ response })
     const entry = { status: response.status(), headers: response.headers(), body: await response.body() }
     cache.set(key, entry)
