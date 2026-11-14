@@ -63,14 +63,14 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
     const c = { connectCloud: vi.fn(), notice: null as string | null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
     expect(nearby.lookNearby).toHaveBeenCalledOnce()
-    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
   })
 
   it('uses the device already heard, without the picker', async () => {
     const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, true), 'connect-bluetooth')
     expect(nearby.lookNearby).not.toHaveBeenCalled()
-    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), { heard: true })
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), { heard: true }, false)
   })
 
   it('does nothing when the picker is dismissed, and refuses a different printer', async () => {
@@ -89,7 +89,7 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
     const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
     expect(nearby.lookNearby).not.toHaveBeenCalled()
-    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
   })
 
   it('goes straight into pairing when the printer refused this browser', async () => {
@@ -142,7 +142,7 @@ describe('the Connect over Bluetooth button (KAN-2470)', () => {
     await methods.onConnectOverBluetooth.call(c)
     expect(nearby.lookNearby).toHaveBeenCalledOnce()
     expect(nearby.lookNearby).toHaveBeenCalledWith()
-    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
   })
 
   it('leaves a new printer to the Bluetooth list: nothing is opened', async () => {
