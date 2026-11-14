@@ -618,6 +618,31 @@ export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
   /** Where ‹ goes back to: "Discover", "Yours", or the print it was opened from. */
   @Prop({ type: String, default: 'Discover' }) readonly backLabel!: string
 
+  /** Opened by the site's Print button (do=print): Print on… opens once, signed in, when the print has a file. */
+  @Prop({ type: Boolean, default: false }) readonly autoPrint!: boolean
+
+  private autoPrinted = false
+
+  @Watch('print')
+  @Watch('publication')
+  @Watch('unavailable')
+  @Watch('signedIn')
+  @Watch('autoPrint')
+  maybeAutoPrint () {
+    if (!this.autoPrint || this.autoPrinted || this.card.kind === 'catalogue') return
+    // Nothing to print (gone, or no G-code): handled, the page says so itself.
+    if (this.unavailable || (this.publication && !this.print)) {
+      this.autoPrinted = true
+      this.$emit('auto-printed')
+      return
+    }
+    // Signed out the link waits: signing in opens it.
+    if (!this.signedIn || !this.print) return
+    this.autoPrinted = true
+    this.$emit('auto-printed')
+    this.$emit('print', this.card, this.print, true)
+  }
+
   pictureLimit = 8
   descriptionLimit = 4000
   related: { makes: Related, remixes: Related } = {

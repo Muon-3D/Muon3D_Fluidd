@@ -12,7 +12,8 @@ import { TOKEN_KEY, setCloudBaseUrl } from '@/services/muon-cloud/api'
 
 const passkey = vi.hoisted(() => ({ cancelled: false, pending: false, release: null as null | (() => void) }))
 const beginSignOut = vi.hoisted(() => vi.fn(async () => {}))
-vi.mock('@/services/account/sign-out', async (actual) => ({ ...(await actual() as object), beginSignOut }))
+const signOutNow = vi.hoisted(() => vi.fn(async () => {}))
+vi.mock('@/services/account/sign-out', async (actual) => ({ ...(await actual() as object), beginSignOut, signOutNow }))
 vi.mock('@/services/account/webauthn', async (actual) => ({
   ...(await actual() as object),
   passkeysSupported: () => true,
@@ -163,7 +164,8 @@ describe('account journeys against one stateful console', () => {
     await w.find('input[aria-label="New password"]').setValue('new password'); await w.find('.dialog .cbtn--primary').trigger('click'); await settle()
     expect((w.vm as unknown as { reauthPasskey: unknown }).reauthPasskey).toBeTypeOf('function')
     await (w.vm as unknown as { reauthPasskey: () => Promise<void> }).reauthPasskey(); await settle()
-    expect(console.password).toBe('new password'); expect(w.text()).toContain('Your password is changed.')
+    // This console answers no `session`: the new console, which ends this session too (KAN-1389), so the person goes to sign-in.
+    expect(console.password).toBe('new password'); expect(signOutNow).toHaveBeenCalledWith('browser', expect.objectContaining({ reason: 'password' }))
     passkey.cancelled = true; const cancelled = open(); await settle(); await tid(cancelled, 'security-change-password').trigger('click')
     await cancelled.find('input[aria-label="New password"]').setValue('never applied'); await cancelled.find('.dialog .cbtn--primary').trigger('click'); await settle()
     await (cancelled.vm as unknown as { reauthPasskey: () => Promise<void> }).reauthPasskey(); await settle()

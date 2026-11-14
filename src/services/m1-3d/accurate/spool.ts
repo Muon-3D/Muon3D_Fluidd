@@ -6,9 +6,10 @@ import type { AccessoryFrame } from '../accessory-motion'
  * GLB lacks (it is the exterior only). As on the real printer (Jack, 9 Nov),
  * one 1 kg spool hangs on the ring at the back of the Z column with its near
  * flange in the top clip; the filament leaves the bottom of the wound
- * filament, comes round the outside of the back-left wall and over it, and
- * goes down into the small hole at the back of the deck (BACK_HOLE), not the
- * round cup beside the screen (Jack, 11 Nov: that one is the fan). The
+ * filament, comes down the outside of the base's back-left wall and goes into
+ * the small round hole in that wall just round from the knob (WALL_HOLE; Jack,
+ * 11 Nov: the filament goes in there, not the round cup beside the screen,
+ * which is the fan, and not the back of the deck). The
  * load and unload clips play as on the simple model (accessory-parts.ts): the
  * reel turns as the strand comes off it to the hole, and the end is held in
  * a hole in the outer flange while unloaded.
@@ -21,7 +22,9 @@ export const ACCURATE_SPOOL_NODES = {
   spool: 'M1_Spool',
   reel: 'M1_SpoolReel',
   strand: 'M1_Filament',
-  hole: 'M1_FilamentHole'
+  hole: 'M1_FilamentHole',
+  /** A marker on the strand's last point, for the page to see where the end is drawn. */
+  end: 'M1_FilamentEnd'
 } as const
 
 export interface AccurateSpool {
@@ -53,14 +56,20 @@ const HOLE_R = 88
 const FILAMENT_R = 0.875
 const DECK_Y = -107
 /**
- * Where the filament goes in: the small hole at the back of the deck, inside
- * the back-left wall. Not the round cup beside the screen. The strand's last
- * point and the grommet round the hole both come from this, so one edit moves
- * them together.
+ * Where the filament goes in: the small round hole in the base's back-left
+ * wall, a little round from the knob (found on the GLB's wall by looking down
+ * its normal and casting rays: the hole is about 4 mm across in a 6 mm
+ * countersink, 11 Nov). The wall stands at 45 degrees to the base's axes; its
+ * outward normal is WALL_NORMAL. The strand's last point, the dark bore it goes
+ * into and the end marker all come from these, so one edit moves them together.
  */
-export const BACK_HOLE = new THREE.Vector3(-97, DECK_Y, 66)
-/** The hole's radius: a little over the filament's 1.75 mm. */
-const HOLE_BORE_R = 2.4
+export const WALL_HOLE = new THREE.Vector3(-39.6, -137.2, 98.8)
+export const WALL_NORMAL = new THREE.Vector3(-Math.SQRT1_2, 0, Math.SQRT1_2)
+/** The hole's bore radius: a little over the filament's 1.75 mm. */
+const HOLE_BORE_R = 2.1
+/** How far into the wall the strand's end goes, and where the dark bore sits behind the opening. */
+const END_DEPTH = 6
+const BORE_DEPTH = 8
 /** The column this far out (its lever up, proud of the socket) still has the strand on it. */
 const STRAND_COLUMN_LEVEL = 0.2
 
@@ -143,25 +152,31 @@ export function buildAccurateSpool (root: THREE.Object3D): AccurateSpool {
 
   m1.add(spool)
   spool.updateMatrixWorld(true)
-  // Off the bottom of the wound filament on the left, round the outside of the back-left wall, over it and into the cup.
+  // Off the bottom of the wound filament on the left, down the outside of the back-left wall and straight into its hole.
   const leave = new THREE.Vector3(centreX + 12, RING.y - WOUND_R * 0.9, RING.z + WOUND_R * 0.42)
+  const along = (out: number, y: number) => WALL_HOLE.clone().addScaledVector(WALL_NORMAL, out).setY(y)
+  const strandEnd = WALL_HOLE.clone().addScaledVector(WALL_NORMAL, -END_DEPTH)
   const strandCurve = new THREE.CatmullRomCurve3([
     leave,
-    new THREE.Vector3(-146, DECK_Y + 4, 50),
-    new THREE.Vector3(-112, DECK_Y + 5, 71),
-    BACK_HOLE.clone().setY(DECK_Y + 6),
-    BACK_HOLE.clone().setY(DECK_Y - 9)
+    new THREE.Vector3(-150, DECK_Y + 3, 62),
+    along(26, WALL_HOLE.y + 8),
+    along(9, WALL_HOLE.y + 0.8),
+    along(2, WALL_HOLE.y),
+    strandEnd
   ], false, 'centripetal')
   const strand = new THREE.Mesh(new THREE.TubeGeometry(strandCurve, STRAND_SEGS, FILAMENT_R, RADIAL, false), strandMaterial)
   strand.name = ACCURATE_SPOOL_NODES.strand
-  // The hole: a dark grommet on the deck round a black bore the strand goes down into.
-  const grommet = new THREE.Mesh(new THREE.CylinderGeometry(HOLE_BORE_R + 1.6, HOLE_BORE_R + 1.6, 1.2, 24), dark)
+  // The hole: a black bore behind its opening, which the exterior-only GLB leaves see-through, with the strand going into it.
+  const faceWall = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), WALL_NORMAL)
+  const grommet = new THREE.Mesh(new THREE.CylinderGeometry(HOLE_BORE_R, HOLE_BORE_R, 0.2, 24), new THREE.MeshBasicMaterial({ color: 0x000000 }))
   grommet.name = ACCURATE_SPOOL_NODES.hole
-  grommet.position.copy(BACK_HOLE).setY(DECK_Y + 0.6)
+  grommet.position.copy(WALL_HOLE).addScaledVector(WALL_NORMAL, -BORE_DEPTH)
+  grommet.quaternion.copy(faceWall)
   m1.add(grommet)
-  const bore = new THREE.Mesh(new THREE.CylinderGeometry(HOLE_BORE_R, HOLE_BORE_R, 0.2, 24), new THREE.MeshBasicMaterial({ color: 0x000000 }))
-  bore.position.copy(BACK_HOLE).setY(DECK_Y + 1.25)
-  m1.add(bore)
+  const end = new THREE.Object3D()
+  end.name = ACCURATE_SPOOL_NODES.end
+  end.position.copy(strandEnd)
+  m1.add(end)
   strand.castShadow = true
   m1.add(strand)
   const strandTurn = strandCurve.getLength() / WOUND_R

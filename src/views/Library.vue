@@ -28,6 +28,8 @@
       :own-ready="state.checked && state.enabled"
       :collection="collection"
       :print-id="printId"
+      :auto-print="autoPrint"
+      @auto-printed="onAutoPrinted"
       @update:tab="setView"
       @update:grid="setGrid"
       @grid-back="gridBack"
@@ -320,6 +322,21 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     return typeof id === 'string' && id ? id : null
   }
 
+  /**
+   * The site's Print button (`&do=print` beside `print=<id>`): the model's
+   * page opens Print on… once. A bare `print=` only shows the model.
+   */
+  get autoPrint (): boolean {
+    return !!this.printId && this.$route?.query.do === 'print'
+  }
+
+  /** Handled (opened, no file, or unavailable): `do` leaves the address, the model's page stays, so a reload or Back opens nothing. */
+  onAutoPrinted () {
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query }
+    delete query.do
+    this.$router.replace({ query }).catch(() => {})
+  }
+
   /** Off the print's pages (Back, the switch, a grid, a collection): nothing of ours to go back through. */
   @Watch('printId')
   onPrintId (id: string | null) {
@@ -337,7 +354,10 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   openPrint (id: string) {
     // The print already open adds no page, so nothing to go back through.
     if (id === this.printId) return
-    this.$router.push({ query: { ...this.$route.query, print: id } })
+    // Another model is not the link's Print: `do` does not follow it.
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, print: id }
+    delete query.do
+    this.$router.push({ query })
       .then(() => { this.printDepth++ })
       .catch(() => {})
   }
@@ -351,6 +371,7 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     }
     const query: Dictionary<string | (string | null)[]> = { ...this.$route.query }
     delete query.print
+    delete query.do
     this.$router.replace({ query }).catch(() => {})
   }
 

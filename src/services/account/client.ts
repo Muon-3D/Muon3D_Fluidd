@@ -11,7 +11,7 @@
  * 404 or 405 and no JSON error. `AccountError.missing` says so, and the
  * pages show "Coming soon" there instead of an error.
  */
-import { CloudError, INSECURE_ORIGIN_MESSAGE, carryConfirmation, cloudBaseUrl, cloudSessionAllowed, refreshSession, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
+import { CloudError, INSECURE_ORIGIN_MESSAGE, carryConfirmation, cloudBaseUrl, cloudSessionAllowed, refreshOutcome, sessionRefused, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
 import { deletionRevision, observeDeletion } from '@/services/muon-cloud/deletion'
 
 export class AccountError extends CloudError {
@@ -52,6 +52,17 @@ export interface RequestOptions {
    * a signed-in browser): adopt the re-keyed `session` the answer may carry.
    */
   adopt?: boolean;
+}
+
+/**
+ * Whether a credential change answer says this session ended with it (KAN-1389,
+ * the new console): `signed_out: true`, or no `session` to adopt. An older
+ * console still answers with the re-keyed `session`: then nothing ends here.
+ */
+export function endsSession (answer: unknown): boolean {
+  const a = answer as { signed_out?: unknown, session?: { access_token?: unknown } | null } | null
+  if (a?.signed_out === true) return true
+  return !(typeof a?.session?.access_token === 'string' && a.session.access_token)
 }
 
 /**
@@ -111,6 +122,13 @@ export function sentence (text: string): string {
   return /[.!?]$/.test(first) ? first : `${first}.`
 }
 
+/** Refreshes the stored session; if the console refuses it, the user is signed out (KAN-1389). True when there is a fresh pair. */
+async function refreshedOrEnded (sent: string): Promise<boolean> {
+  const outcome = await refreshOutcome()
+  if (outcome === 'refused') sessionRefused(sent)
+  return outcome === 'ok'
+}
+
 export async function accountRequest<T> (method: string, path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
   let startedAt = deletionRevision()
   const ownToken = options.token !== undefined
@@ -120,7 +138,7 @@ export async function accountRequest<T> (method: string, path: string, body?: un
   // mutation answers 401 its outcome is not safe to infer or repeat.
   if (response.status === 401 && method === 'GET' && !ownToken && token !== null) {
     const current = storedToken()
-    if (current && (current !== token || await refreshSession())) {
+    if (current && (current !== token || await refreshedOrEnded(token))) {
       token = storedToken()
       startedAt = deletionRevision()
       response = await send(method, path, body, token)

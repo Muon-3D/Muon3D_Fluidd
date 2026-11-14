@@ -164,7 +164,6 @@
       :reduced-motion="reducedMotion"
       :viewer="zoomedIn ? viewer : null"
       @turn="viewer && viewer.turnKnob($event)"
-      @press="viewer && viewer.pressKnob()"
       @close="screenOpen = false"
     />
   </div>
@@ -421,6 +420,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.drag = null
     this.dragPx = null
     this.dragPointer = null
+    this.viewer?.holdPan(false)
     this.viewer?.setOrbit(!this.cameraLocked)
   }
 
@@ -437,6 +437,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.viewer?.setOrbit(!onPart && !this.cameraLocked)
     if (onPart) {
       this.dragPointer = e.pointerId
+      // The camera stays where it is while the part is dragged, so the target stays under the pointer.
+      this.viewer?.holdPan(true)
       this.bound?.setPointerCapture?.(e.pointerId)
     }
   }
@@ -557,6 +559,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.down = null
     const dragPointer = this.dragPointer
     this.dragPointer = null
+    this.viewer?.holdPan(false)
     this.viewer?.setOrbit(!this.cameraLocked)
     if (this.drag) {
       if (e.pointerId === dragPointer && e.button === 0) this.release()
@@ -571,7 +574,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
       else (this.$refs.screen as { close?: () => void } | undefined)?.close?.()
       return
     }
-    // A click or a tap: select what is under it, or clear on empty stage.
+    // A click or a tap: the knob, if it is under it, is pressed in for a moment; then select what is under it, or clear on empty stage.
+    if (this.viewer?.knobAt(e.clientX, e.clientY)) this.viewer.pressKnob()
     const part = this.viewer?.pick(e.clientX, e.clientY) ?? null
     if (part) this.select(part)
     else this.selected = null

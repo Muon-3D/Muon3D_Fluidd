@@ -61,11 +61,18 @@ export async function resetPassword (token: string, password: string): Promise<v
 
 /** From the emailed link: confirms the address, or finishes changing it. */
 export async function verifyEmail (token: string): Promise<string> {
-  // A signed-in browser sends its session: a confirmed new address ends the
-  // account's other sessions, and this device keeps its own, re-keyed.
+  return (await verifyEmailAnswer(token)).email
+}
+
+/**
+ * As `verifyEmail`, and says whether the console ended this browser's session too: a completed address change
+ * ends every session of the account (KAN-1389), so the caller signs this browser out. A plain confirmation
+ * answers without `signed_out`, and the session stays (it has none to adopt either, so `endsSession` would lie).
+ */
+export async function verifyEmailAnswer (token: string): Promise<{ email: string, signedOut: boolean }> {
   const own = storedToken()
-  const answer = await accountRequest<{ ok: boolean, email?: string }>('POST', '/v1/auth/email/verify', { token }, { token: own, adopt: true })
-  return answer.email ?? ''
+  const answer = await accountRequest<{ ok: boolean, email?: string, signed_out?: boolean }>('POST', '/v1/auth/email/verify', { token }, { token: own, adopt: true })
+  return { email: answer.email ?? '', signedOut: answer.signed_out === true }
 }
 
 /**
