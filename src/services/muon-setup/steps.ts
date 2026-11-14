@@ -42,7 +42,7 @@ export const currentStep = (state: SetupState | null, screen: ScreenId): FrameSt
 /** An earlier step's real outcome: Welcome and Finish have none. */
 const earlier = (state: SetupState | null, id: FrameStepId): FrameStep['status'] => {
   if (!state || id === 'welcome' || id === 'finish') return 'done'
-  const status = state.steps[id].status
+  const status = state.steps?.[id]?.status
   if (status === 'skipped') return status
   // The cursor is past it, so anything else counts as done.
   return 'done'
@@ -52,7 +52,7 @@ export const frameSteps = (state: SetupState | null, screen: ScreenId): FrameSte
   const on = currentStep(state, screen)
   const ids: FrameStepId[] = [
     'welcome',
-    ...LISTED.filter(step => !state || state.steps[step].status !== 'hidden'),
+    ...LISTED.filter(step => !state || state.steps?.[step]?.status !== 'hidden'),
     'finish'
   ]
   const at = ids.indexOf(on)
@@ -74,7 +74,7 @@ export const previousStep = (state: SetupState | null): StepId | null => {
     const step = STEP_ORDER[i]
     // Language is chosen on Welcome; going back to it would leave the frame.
     if (step === 'language') return null
-    const status = state.steps[step].status
+    const status = state.steps?.[step]?.status
     if (status === 'done' || status === 'skipped') return step
   }
   return null

@@ -57,3 +57,11 @@ describe('Back', () => {
     expect(previousStep(copy(completeWithSkips))).toBeNull()
   })
 })
+
+describe('a state from older printer software, missing a step', () => {
+  it('neither the step list nor Back throws', () => {
+    const partial = { state: 'in_progress', cursor: 'name', steps: {} } as unknown as SetupState
+    expect(() => previousStep(partial)).not.toThrow()
+    expect(() => frameSteps(partial, 'name' as never)).not.toThrow()
+  })
+})
