@@ -69,6 +69,46 @@ async function page (props: Record<string, unknown> = {}, fetcher = service(), p
 
 const text = (w: Awaited<ReturnType<typeof page>>, tid: string) => w.find(`[data-tid="${tid}"]`).text()
 
+const GCODE = { id: 'f1', role: 'gcode', sha256: 'a'.repeat(64), size_bytes: 3, encoding: 'identity', setup: { printer_model: 'Muon3D M1', nozzle_mm: 0.4, material: 'PLA' } }
+
+describe('Library v3 print page: opened by the site\'s Print link', () => {
+  const opened = (w: Awaited<ReturnType<typeof page>>) => ({ print: w.emitted('print') ?? [], auto: w.emitted('auto-printed') ?? [] })
+
+  it('signed in with a printable file: Print on… is asked for once, with the print', async () => {
+    const w = await page({ signedIn: true, autoPrint: true, card: card({ id: 'pub-1', title: '' }) }, service({ files: [GCODE] }))
+    const { print, auto } = opened(w)
+    expect(print).toHaveLength(1)
+    expect(auto).toHaveLength(1)
+    expect((print[0][1] as { item: { id: string } }).item.id).toBe('pub-1')
+    // Nothing reads it again.
+    await w.setProps({ signedIn: false })
+    await w.setProps({ signedIn: true })
+    expect(opened(w).print).toHaveLength(1)
+  })
+
+  it('signed out: the page opens, no chooser; signing in then opens it', async () => {
+    const w = await page({ signedIn: false, autoPrint: true }, service({ files: [GCODE] }))
+    expect(opened(w).print).toHaveLength(0)
+    expect(text(w, 'library-print-title')).toBe('Pocket robot, no supports')
+    await w.setProps({ signedIn: true })
+    expect(opened(w).print).toHaveLength(1)
+  })
+
+  it('a print with no G-code, or one that is not a link\'s print, opens no chooser', async () => {
+    const noFile = await page({ signedIn: true, autoPrint: true }, service({ files: [] }))
+    expect(opened(noFile).print).toHaveLength(0)
+    const plain = await page({ signedIn: true, autoPrint: false }, service({ files: [GCODE] }))
+    expect(opened(plain).print).toHaveLength(0)
+    expect(opened(plain).auto).toHaveLength(0)
+  })
+
+  it('a print that is not available opens no chooser and says so', async () => {
+    const w = await page({ signedIn: true, autoPrint: true }, vi.fn(async (url: string) => new Response(JSON.stringify({ url }), { status: 404 })))
+    expect(opened(w).print).toHaveLength(0)
+    expect(w.find('[data-tid="library-print-unavailable"]').exists()).toBe(true)
+  })
+})
+
 describe('Library v3 print page', () => {
   it('says who shared it, when and under what licence; the counts in one line', async () => {
     const w = await page()

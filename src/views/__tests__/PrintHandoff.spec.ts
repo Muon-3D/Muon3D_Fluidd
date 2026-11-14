@@ -44,6 +44,7 @@ function mount (query: Record<string, string> = {}) {
   const router = new VueRouter({ mode: 'abstract', routes: [{ path: '*', component: { render: (h: any) => h('div') } }] })
   router.push({ path: '/print', query }).catch(() => {})
   const push = vi.spyOn(router, 'push')
+  const replace = vi.spyOn(router, 'replace')
   const wrapper = shallowMount(PrintHandoff, {
     router,
     mocks: { $store: { state: { printer: { printer: {} } }, getters: {}, dispatch: vi.fn() } },
@@ -52,7 +53,7 @@ function mount (query: Record<string, string> = {}) {
   const vm = wrapper.vm as any
   vm.item = { id: 'item', name: 'Part', setups: [setup] }
   vm.setup = setup
-  return { wrapper, vm, router: { push } }
+  return { wrapper, vm, router: { push, replace } }
 }
 
 beforeEach(() => {
@@ -62,6 +63,34 @@ beforeEach(() => {
   mocks.item.mockReset().mockResolvedValue({ id: 'item', name: 'Owner part' })
   mocks.versions.mockReset().mockResolvedValue({ versions: [{ number: 3, files: [{ id: 'file', role: 'gcode', setup, size_bytes: 3, format: 'gcode', encoding: 'identity', sha256: 'a'.repeat(64) }] }] })
   mocks.publication.mockReset().mockResolvedValue({ title: 'Community part', version: 3, files: [{ id: 'public-file', role: 'gcode', setup, size_bytes: 3, format: 'gcode', encoding: 'identity', sha256: 'b'.repeat(64) }] })
+})
+
+describe('Print hand-off: a shared print\'s address with no version or file', () => {
+  it('goes to the model\'s page, where Print on… is chosen, and reads nothing here', async () => {
+    const { vm, router } = mount({ publication: 'share-1' })
+    await vm.load()
+    expect(router.replace).toHaveBeenCalledWith({ path: '/library', query: { view: 'discover', print: 'share-1' } })
+    expect(mocks.publication).not.toHaveBeenCalled()
+  })
+
+  it('with a version but no file it does the same; the site\'s full link stays here', async () => {
+    const noFile = mount({ publication: 'share-1', version: '3' })
+    await noFile.vm.load()
+    expect(noFile.router.replace).toHaveBeenCalledWith({ path: '/library', query: { view: 'discover', print: 'share-1' } })
+    const full = mount({ publication: 'share-1', version: '3', file: 'public-file' })
+    await full.vm.load()
+    expect(full.router.replace).not.toHaveBeenCalled()
+    expect(mocks.publication).toHaveBeenCalledWith('share-1')
+  })
+
+  it('an id that does not resolve shows the print could not be opened, not a blank page', async () => {
+    mocks.publication.mockRejectedValue(new Error('That print is no longer public.'))
+    const { wrapper, vm } = mount({ publication: 'gone', version: '3', file: 'public-file' })
+    await vm.load()
+    await Vue.nextTick()
+    expect(wrapper.text()).toContain('That print couldn\'t be opened')
+    expect(wrapper.text()).toContain('no longer public')
+  })
 })
 
 describe('Print hand-off target safety', () => {

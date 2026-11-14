@@ -28,6 +28,8 @@
       :own-ready="state.checked && state.enabled"
       :collection="collection"
       :print-id="printId"
+      :auto-print="autoPrint"
+      @auto-printed="onAutoPrinted"
       @update:tab="setView"
       @update:grid="setGrid"
       @grid-back="gridBack"
@@ -188,6 +190,7 @@ import { describeLibraryError, type LibraryItem, type LibraryRun } from '@/servi
 import { libraryState, turnLibraryOn } from '@/services/library/store'
 import { YOURS_GRIDS, type YoursGridSource } from '@/components/library/v2/LibraryYoursGrid.vue'
 import { readRecents, type RecentEntry } from '@/services/library/recents'
+import { autoPrintHandled, markAutoPrintHandled } from '@/services/library/auto-print'
 
 /** Automatic consent, by account: asked once per app session, whichever page instance asked (KAN-735). */
 export const autoConsent = Vue.observable({ asked: {} as Record<string, 'pending' | 'done' | 'failed'> })
@@ -318,6 +321,29 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   get printId (): string | null {
     const id = this.$route?.query.print
     return typeof id === 'string' && id ? id : null
+  }
+
+  /**
+   * The print this page was opened on by its address (the site's Print
+   * link), until Print on… has opened for it. Another print opened from here
+   * is not one the person asked to print, and one already handled in this tab
+   * (a reload, Back) is not opened again.
+   */
+  arrivedPrint: string | null = null
+
+  created () {
+    const id = this.printId
+    this.arrivedPrint = id && !autoPrintHandled(id) ? id : null
+  }
+
+  get autoPrint (): boolean {
+    return !!this.arrivedPrint && this.printId === this.arrivedPrint
+  }
+
+  /** The print's page opened Print on… for the address: once. */
+  onAutoPrinted () {
+    if (this.arrivedPrint) markAutoPrintHandled(this.arrivedPrint)
+    this.arrivedPrint = null
   }
 
   /** Off the print's pages (Back, the switch, a grid, a collection): nothing of ours to go back through. */

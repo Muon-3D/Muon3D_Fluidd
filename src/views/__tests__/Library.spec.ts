@@ -60,6 +60,45 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
+describe('the site\'s Print link: /library?view=discover&print=<id>', () => {
+  const props = (w: ReturnType<typeof renderLibrary>) => w.findComponent({ name: 'MuonLibrary' }).props() as { printId: string | null, autoPrint: boolean }
+
+  beforeEach(() => sessionStorage.clear())
+
+  it('opens that model\'s page and asks it for Print on… once; handled, a reload does not ask again', async () => {
+    const first = renderLibrary({ view: 'discover', print: 'pub-1' })
+    try {
+      expect(props(first).printId).toBe('pub-1')
+      expect(props(first).autoPrint).toBe(true)
+      first.findComponent({ name: 'MuonLibrary' }).vm.$emit('auto-printed')
+      await first.vm.$nextTick()
+      expect(props(first).autoPrint).toBe(false)
+    } finally {
+      first.destroy()
+    }
+    const reloaded = renderLibrary({ view: 'discover', print: 'pub-1' })
+    try {
+      expect(props(reloaded).printId).toBe('pub-1')
+      expect(props(reloaded).autoPrint).toBe(false)
+    } finally {
+      reloaded.destroy()
+    }
+  })
+
+  it('another id is its own link; no print in the address asks for nothing', () => {
+    const other = renderLibrary({ view: 'discover', print: 'pub-2' })
+    const none = renderLibrary({ view: 'discover' })
+    try {
+      expect(props(other).autoPrint).toBe(true)
+      expect(props(none).printId).toBeNull()
+      expect(props(none).autoPrint).toBe(false)
+    } finally {
+      other.destroy()
+      none.destroy()
+    }
+  })
+})
+
 describe('Library feed states', () => {
   it('shows an error without the off panel when the Library is disabled', () => {
     Object.assign(libraryState, {

@@ -15,6 +15,8 @@
       :collections="collections"
       :printing="printing"
       :back-label="tab === 'yours' ? 'Yours' : 'Discover'"
+      :auto-print="autoPrint"
+      @auto-printed="$emit('auto-printed')"
       @back="$emit('print-back')"
       @saved="onSaved"
       @print="printFromLook"
@@ -528,6 +530,8 @@ export default class MuonLibrary extends Vue {
   @Prop({ type: Object, default: null }) readonly continueItem!: LibraryItem | null
   /** A print's own page (its publication id), over everything else; the host keeps it in the address. */
   @Prop({ type: String, default: null }) readonly printId!: string | null
+  /** The print's page was opened by its address (the site's Print link): it opens Print on… once, signed in. */
+  @Prop({ type: Boolean, default: false }) readonly autoPrint!: boolean
   /** A collection's page instead of Yours' shelves (its id); the host keeps it in the address. */
   @Prop({ type: String, default: null }) readonly collection!: string | null
   /** Where the Library's settings are, for the links that say to turn it on (the host knows its printer's path). */
