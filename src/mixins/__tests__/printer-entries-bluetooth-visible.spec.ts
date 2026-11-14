@@ -37,7 +37,7 @@ const entry = (online: boolean, heard: boolean): DirectoryEntry => ({
   cloud: { id: 'walnut', online } as DirectoryEntry['cloud'],
   nearby: heard ? ({ device: { heard: true } } as unknown as DirectoryEntry['nearby']) : undefined
 })
-const has = (e: DirectoryEntry) => methods.cloudActions(e).some(a => a.id === 'connect-bluetooth')
+const has = (e: DirectoryEntry) => methods.cloudActions(e).some(a => a.id === 'connect-bluetooth' && !a.disabled)
 
 beforeEach(() => {
   nearby.nearbyState.support = 'supported'

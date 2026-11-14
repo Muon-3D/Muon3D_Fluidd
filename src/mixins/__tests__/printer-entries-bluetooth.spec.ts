@@ -33,7 +33,7 @@ const entry = (online: boolean, heard: boolean): DirectoryEntry => ({
   nearby: heard ? ({ device: {} } as DirectoryEntry['nearby']) : undefined
 })
 
-const offersBluetooth = (e: DirectoryEntry) => cloudActions(e).some(a => a.id === 'connect-bluetooth')
+const offersBluetooth = (e: DirectoryEntry) => cloudActions(e).some(a => a.id === 'connect-bluetooth' && !a.disabled)
 
 describe('Connect over Bluetooth (KAN-1175)', () => {
   it('is offered for a printer heard nearby while the service calls it online', () => {
