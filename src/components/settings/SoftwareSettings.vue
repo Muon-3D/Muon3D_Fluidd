@@ -324,6 +324,19 @@
       </task-fold>
     </template>
 
+    <router-link
+      :to="accessTo"
+      class="soft__link"
+      data-tid="software-access-link"
+    >
+      <frame-icon
+        name="user"
+        small
+      />
+      <span><b>Who may install updates</b>, and from where, is in People and access.</span>
+      <span class="soft__link-go">People and access ›</span>
+    </router-link>
+
     <v-dialog
       v-model="installDialog"
       max-width="460"
@@ -408,7 +421,8 @@ import {
   AUTO_INSTALL_PATH, AUTO_OFF_TEXT, AUTO_ON_TEXT, KNOB_TEXT, PRESENCE_PATH, STAGED_TEXT,
   anyHot, flagOf, needsKnob, restartBlocked, stagedReady, type PolicyStatus
 } from '@/services/updates/policy'
-import { isPanelOnlyRefusal, panelOnlyMessage } from '@/services/wifi/panel-only'
+import { classifyRefusal, isPanelOnlyRefusal, panelOnlyMessage, permissionMessage } from '@/services/wifi/panel-only'
+import { cloudState } from '@/services/muon-cloud/state'
 import type { Heater } from '@/store/printer/types'
 
 interface InstallSnapshot {
@@ -620,6 +634,8 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin, MuonGat
         else this.presence = kept
       } else if (isPanelOnlyRefusal({ response: r })) {
         this.policyNote = panelOnlyMessage('change how it updates')
+      } else if (classifyRefusal({ response: r }).kind === 'permission') {
+        this.policyNote = permissionMessage(classifyRefusal({ response: r }) as Extract<ReturnType<typeof classifyRefusal>, { kind: 'permission' }>, !!cloudState.account)
       } else {
         this.policyNote = "The printer didn't take that change. Try again."
       }
@@ -677,6 +693,10 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin, MuonGat
     installStarted(fromVersion, toVersion)
     if (this.presence) this.installRefusal = `${KNOB_TEXT}. The printer restarts when you do.`
     this.$router.push(this.updatingTo).catch(() => undefined)
+  }
+
+  get accessTo (): string {
+    return `${scopedPath('/settings', activeSlug())}#access`
   }
 
   get printerName (): string {
@@ -867,6 +887,24 @@ export default class SoftwareSettings extends Mixins(TypedCommandsMixin, MuonGat
 </script>
 
 <style lang="scss" scoped>
+  .soft__link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: 18px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text);
+    font-size: 14px;
+    text-decoration: none;
+
+    .soft__link-go {
+      margin-left: auto;
+      color: var(--m3d-accent, #7fd6cf);
+      white-space: nowrap;
+    }
+  }
+
   .soft {
     display: flex;
     flex-direction: column;

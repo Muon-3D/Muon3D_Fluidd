@@ -71,7 +71,8 @@ describe('Library v3 Discover: filters', () => {
     vm.m1 = [card('1', { m1: true })]
     expect(vm.visibleShelves.map(s => s.id)).toEqual(['popular'])
     vm.fits = false
-    expect(vm.visibleShelves.map(s => s.id)).toEqual(['popular', 'm1'])
+    // New has nothing yet: it says so instead of vanishing.
+    expect(vm.visibleShelves.map(s => s.id)).toEqual(['popular', 'm1', 'new'])
   })
 
   it('says what hid everything, and Clear filter resets search, Fits and the category', async () => {

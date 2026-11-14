@@ -39,6 +39,16 @@ describe('M3Confirm', () => {
     wrapper.destroy()
   })
 
+  it('shows the plate-clear notice inline only when the caller passes it (CT-14)', () => {
+    const without = ask({ title: 'Print Benchy?', buttonTrueText: 'Print now' })
+    expect(tid(without, 'plate-clear-notice').exists()).toBe(false)
+    without.destroy()
+    const wrapper = ask({ title: 'Print Benchy?', buttonTrueText: 'Print now', plateNotice: { managed: false } })
+    expect(tid(wrapper, 'plate-clear-notice').text()).toContain('Clear the plate before the next print.')
+    expect(tid(wrapper, 'plate-clear-btn').text()).toBe('The plate is clear')
+    wrapper.destroy()
+  })
+
   it('says Continue and Cancel when a caller names no buttons, and its button is the accent one', () => {
     const wrapper = ask()
     expect(tid(wrapper, 'confirm-ok').text()).toBe('Continue')
@@ -103,6 +113,43 @@ describe('M3Confirm', () => {
   it('without the plate check, never shows it', () => {
     const wrapper = ask()
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false)
+    wrapper.destroy()
+  })
+
+  it('offers Film it on a print the printer can film, and sets it only when the switch changed and the answer is yes', async () => {
+    const set = vi.fn()
+    const wrapper = ask({ film: { on: false, line: 'Each layer', set } })
+    expect(tid(wrapper, 'confirm-film').text()).toContain('Film it')
+    expect(tid(wrapper, 'confirm-film').text()).toContain('Each layer')
+    const sw = tid(wrapper, 'confirm-film-switch')
+    expect(sw.attributes('aria-checked')).toBe('false')
+    await sw.trigger('click')
+    expect(sw.attributes('aria-checked')).toBe('true')
+    await tid(wrapper, 'confirm-ok').trigger('click')
+    vi.advanceTimersByTime(CLOSE_MS)
+    expect(set).toHaveBeenCalledWith(true)
+    wrapper.destroy()
+
+    const untouched = vi.fn()
+    const again = ask({ film: { on: true, line: 'Each layer', set: untouched } })
+    expect(tid(again, 'confirm-film-switch').attributes('aria-checked')).toBe('true')
+    await tid(again, 'confirm-ok').trigger('click')
+    vi.advanceTimersByTime(CLOSE_MS)
+    expect(untouched).not.toHaveBeenCalled()
+    again.destroy()
+
+    const cancelled = vi.fn()
+    const no = ask({ film: { on: false, line: 'Each layer', set: cancelled } })
+    await tid(no, 'confirm-film-switch').trigger('click')
+    await tid(no, 'confirm-cancel').trigger('click')
+    vi.advanceTimersByTime(CLOSE_MS)
+    expect(cancelled).not.toHaveBeenCalled()
+    no.destroy()
+  })
+
+  it('without film, shows no Film it row', () => {
+    const wrapper = ask()
+    expect(tid(wrapper, 'confirm-film').exists()).toBe(false)
     wrapper.destroy()
   })
 })

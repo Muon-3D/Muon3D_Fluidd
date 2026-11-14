@@ -16,10 +16,17 @@ export default defineConfig({
   testDir: '.',
   globalSetup: './global-setup.ts',
   // The whole run, warm-up included: a cold vite in CI can take minutes.
-  globalTimeout: 35 * 60_000,
+  // 37 min, under the 40-min job limit in .github/workflows/e2e.yml (D-117), leaving
+  // time to write the blob report. At 35 it cut shard 2 (442 tests) before the job limit did.
+  globalTimeout: 37 * 60_000,
   outputDir: '../test-results',
   timeout: 90_000,
   expect: { timeout: 15_000 },
+  // CI runs --shard=N/4, which cuts the test list into four runs of equal COUNT
+  // in file order (skipped tests count too), not equal time. The slow specs
+  // that load the 3D stage or the editors live in control/heavy/ so they sort
+  // into the first slice and no shard gets all of them. Re-balance by moving a
+  // file in or out of that folder when a shard drifts toward its 30 min limit.
   fullyParallel: true,
   workers: process.env.CI ? 2 : 3,
   retries: process.env.CI ? 1 : 0,

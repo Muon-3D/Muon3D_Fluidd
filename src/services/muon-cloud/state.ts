@@ -9,6 +9,7 @@ import Vue from 'vue'
 import {
   cloudApi,
   CloudError,
+  setSessionHooks,
   storedToken,
   storeRefreshToken,
   storeToken,
@@ -18,15 +19,18 @@ import {
   type CloudPrinter,
   type AccessHandoff
 } from './api'
-import { centralLoginEnabled, clearSilentAttempt, redirectUri, signOutCentral, takeCallback } from './centralLogin'
+import { centralLoginEnabled, clearSilentAttempt, redirectUri, signInAgainOnPrinterOrigin, signOutCentral, takeCallback } from './centralLogin'
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
 import { consolePresence } from './presence'
+import { announceAccount, confirmedAccountId, confirmToken, currentAccount, identityOf, SIGNED_OUT } from './account-events'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
 import { forgetOwnAvatar } from '@/services/account/avatar'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
+import { onEndpointRebound } from './endpoint-hooks'
 
 const ACTIVE_KEY = 'muon.cloud.active'
 
@@ -179,6 +183,9 @@ export function requestAccess (printerId: string): Promise<AccessHandoff> {
  */
 export const BLUETOOTH_GRANT_GRACE_MS = 4_000
 
+/** How long a Bluetooth open waits for the console's config (the relay URL) when none is cached. */
+export const BLUETOOTH_CONFIG_WAIT_MS = 4_000
+
 /**
  * The same wait for a printer the console calls online. Its key may rely on
  * a grant the console pushes, so the grant is worth waiting for. Bounded below
@@ -193,9 +200,11 @@ export const BLUETOOTH_ONLINE_GRANT_WAIT_MS = 20_000
  * it. But the radio must not wait on the console: a printer the console
  * calls offline (503 `device_unreachable`) may be sitting beside the laptop,
  * and a key it already holds (paired, or enrolled at setup) needs no grant.
- * So a 503, a timeout or no network ends the wait, and the session is
- * local and grantless (`grantless: true`). Any other refusal (401, 403, 404,
- * deletion pending) is the console's answer about this account and is raised.
+ * So any console failure ends the wait (503, 401, 403, 404, 500, a timeout, no
+ * network, a failed endpoint registration), and the session is local and
+ * grantless (`grantless: true`). The one exception is checked first: an
+ * account whose deletion is pending (`deletionRefusal()`) is the console's
+ * answer about this account and is raised (KAN-1396).
  *
  * The ask has its own abort, fired whenever the wait ends, so a 503 retry
  * loop never outlives the handoff and no entry is left in `grants`.
@@ -214,10 +223,9 @@ async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promis
     // I-133: the person chose Bluetooth, so the radio is the route. The console
     // is asked, but never waited on for more than the short grace.
     const wait = BLUETOOTH_GRANT_GRACE_MS
-    const asked = askConsole(printerId, own.signal).catch((error): null => {
-      if (error instanceof CloudError && error.status !== 503) throw error
-      return null // 503 (including offline presence), or the network
-    })
+    // Whatever goes wrong asking (any CloudError status, ensureEndpoint, an
+    // abort) means no grant, never a failed connect.
+    const asked = askConsole(printerId, own.signal).catch((): null => null)
     grant = await Promise.race([
       asked,
       new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), wait) })
@@ -228,12 +236,24 @@ async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promis
     own.abort()
   }
   signal.throwIfAborted()
+  // The ask itself may have been the first to learn the account is waiting to
+  // be deleted (a 403 deletion_pending sets deletionState). That refusal stands.
+  const refusedNow = deletionRefusal()
+  if (refusedNow) throw refusedNow
   if (grant) return sessionFrom(grant)
   let relayUrl = cloudState.config?.relay_url
   if (!relayUrl) {
+    // Bounded and swallowed: a stalled or failing console must not hold the radio.
+    let configTimer: ReturnType<typeof setTimeout> | undefined
     try {
-      relayUrl = (cloudState.config = await cloudApi.config()).relay_url
-    } catch { /* no console either: the error below says so */ }
+      const config = await Promise.race([
+        cloudApi.config(),
+        new Promise<null>(resolve => { configTimer = setTimeout(() => resolve(null), BLUETOOTH_CONFIG_WAIT_MS) })
+      ])
+      if (config) relayUrl = (cloudState.config = config).relay_url
+    } catch { /* no console either: the error below says so */ } finally {
+      clearTimeout(configTimer)
+    }
   }
   signal.throwIfAborted()
   if (!relayUrl) throw new Error('Muon3D could not be reached, and this page does not know its relay yet. Open Control once with a connection, then try Bluetooth again.')
@@ -281,6 +301,16 @@ async function statusConnection (printerId: string): Promise<PrinterTransport> {
   }
   return existing
 }
+
+/**
+ * An explicit Bluetooth connect replaced the tab's endpoint (KAN-2531): every
+ * other printer's transport died with it. Drop them, so the next poll and open
+ * dial again on the new one.
+ */
+export function dropOtherCloudConnections (except: string) {
+  for (const id of [...statusConnections.keys()]) if (id.toLowerCase() !== except.toLowerCase()) dropCloudConnection(id)
+}
+onEndpointRebound(dropOtherCloudConnections)
 
 /**
  * Drops the shared connection to a printer that stopped answering through it,
@@ -405,7 +435,7 @@ export async function refreshPrinters () {
   try {
     cloudState.printers = (await cloudApi.printers()).printers
   } catch (error) {
-    if (error instanceof CloudError && error.status === 401) await dropSession()
+    if (error instanceof CloudError && error.status === 401) await sessionRefused()
   }
 }
 
@@ -423,8 +453,19 @@ function stopPolling () {
   stopPollTimer = stopPrintersTimer = null
 }
 
+/** The console refused the session's token: end it, and on a printer's own address sign in again (once a minute at most). */
+async function sessionRefused () {
+  await dropSession()
+  await signInAgainOnPrinterOrigin().catch(() => {})
+}
+
 async function dropSession () {
+  // Before anything of the session is cleared: whoever answers for the account hears that it left (account-events.ts).
+  if (cloudState.account || currentAccount().signedIn) announceAccount(SIGNED_OUT)
+  confirmToken(null)
+  stopReconcileRetry()
   forgetOwnAvatar()
+  forgetSecureReach()
   stopPolling()
   sessionAbort.abort()
   sessionAbort = new AbortController()
@@ -439,27 +480,176 @@ async function dropSession () {
   cloudState.printers = []
   cloudState.status = {}
   cloudState.endpointId = null
+  // The groups belong to the account that left: the next one starts from the default (KAN-2249). The bump also
+  // makes any layout load still on its way for the old account stale.
+  cloudState.layout = defaultLayout()
+  layoutEdits++
+}
+
+/** Bumped by every layout change made here, and by every sign-out, so a slower load knows it is stale. */
+let layoutEdits = 0
+
+/** A fresh copy of the default layout, sharing no nested object with DEFAULT_FLEET_LAYOUT. */
+function defaultLayout (): FleetLayout {
+  return { ...DEFAULT_FLEET_LAYOUT, groups: [], widgets: { ...DEFAULT_FLEET_LAYOUT.widgets } }
 }
 
 async function adoptSession (token: string, account: CloudAccount) {
+  // A different account than the one on screen (a sign-in, or a switch without a sign-out) is announced before the
+  // new session replaces the old one. The same account with a new token announces nothing: nobody changed.
+  if (cloudState.account?.id !== account.id) announceAccount(identityOf(account))
   storeToken(token)
+  confirmToken(token)
+  // Signed in as someone else without a sign-out first (signIn while signed in): the groups on screen are not theirs.
+  if (cloudState.account?.id !== account.id) {
+    cloudState.layout = defaultLayout()
+    layoutEdits++
+  }
   cloudState.account = account
   cloudState.error = null
+  // Read before the printers fetch: a group made while either answer is on its way is newer than the saved layout.
+  const editsBefore = layoutEdits
   await refreshPrinters()
   try {
     const { layout } = await cloudApi.getLayout()
-    cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
+    // A late answer is dropped when the layout changed meanwhile (a group made here, which saveLayout sends on its
+    // own) or the account it was asked for is no longer the one signed in (a sign-out also bumps the counter).
+    if (layoutEdits === editsBefore && cloudState.account?.id === account.id) cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
   } catch { /* keep the default */ }
   startPolling()
 }
 
 // Another tab signed out, or the console's front-channel logout page
 // (public/auth/logout.html) cleared the token: this tab is signed out too.
+// Another tab signed in, or as someone else, or only rotated the token: this tab asks the console whose session it now
+// is (reconcileStoredSession) instead of keeping the account it had.
 try {
   window.addEventListener('storage', (event) => {
-    if ((event.key === TOKEN_KEY || event.key === null) && !storedToken() && cloudState.account) dropSession()
+    if (event.key !== TOKEN_KEY && event.key !== null) return
+    if (!storedToken()) {
+      if (cloudState.account) dropSession()
+      return
+    }
+    reconcileStoredSession().catch(() => {})
   })
 } catch { /* no window */ }
+
+/**
+ * The stored token's account, asked of the console: the same account as on screen is confirmed for this token and
+ * kept as it is; another (or none yet) is adopted, which announces it before anything is replaced; a refusal ends the
+ * session. A console that cannot be reached (status 0, 5xx, 429) leaves the account unconfirmed for this token, which
+ * keeps assertions and run reports from being served under a mismatched account, and is retried on a backoff and when
+ * the browser comes back online until it answers. Never more than one is in flight.
+ */
+let reconciling: Promise<void> | null = null
+
+export function reconcileStoredSession (): Promise<void> {
+  if (!reconciling) reconciling = reconcileOnce().finally(() => { reconciling = null })
+  return reconciling
+}
+
+async function reconcileOnce (): Promise<void> {
+  for (;;) {
+    const token = storedToken()
+    if (!token) return stopReconcileRetry()
+    let me: Awaited<ReturnType<typeof cloudApi.me>>
+    try {
+      me = await cloudApi.me()
+    } catch (error) {
+      if (error instanceof CloudError && error.status === 401) {
+        stopReconcileRetry()
+        await sessionRefused()
+      } else if (storedToken() && isTransient(error)) {
+        scheduleReconcileRetry()
+      }
+      return
+    }
+    const now = storedToken()
+    if (!now) return stopReconcileRetry()
+    // Another token since the question was asked: its account is asked afresh, never paired with this answer.
+    if (now !== token) continue
+    stopReconcileRetry()
+    if (cloudState.account?.id === me.account.id) confirmToken(now)
+    else await adoptSession(now, me.account)
+    return
+  }
+}
+
+/** Only a console that did not answer, or answered "later" (0, 5xx, 429), is asked again; 403 and 404 are answers. */
+// A 2xx whose body would not parse (a captive portal's page) and a 408 are passing, too.
+const isTransient = (error: unknown): boolean => error instanceof CloudError &&
+  (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500 || (error.status >= 200 && error.status < 300))
+
+/** For tests: no timer, no count left from the last one. */
+export function resetReconcileForTests () {
+  stopReconcileRetry()
+}
+
+/** Waits before the nth retry: 5 s, 15 s, 60 s, then every 5 minutes. */
+export const RECONCILE_RETRY_MS = [5_000, 15_000, 60_000, 300_000]
+let reconcileTimer: ReturnType<typeof setTimeout> | null = null
+let reconcileAttempts = 0
+
+function scheduleReconcileRetry () {
+  if (reconcileTimer !== null) return
+  const token = storedToken()
+  if (!token || confirmedAccountId(token)) return
+  const wait = RECONCILE_RETRY_MS[Math.min(reconcileAttempts, RECONCILE_RETRY_MS.length - 1)]
+  reconcileAttempts++
+  reconcileTimer = setTimeout(() => {
+    reconcileTimer = null
+    reconcileStoredSession().catch(() => {})
+  }, wait)
+}
+
+/** The one shared timer, cleared when the account is known, the token is gone, the console refused it, or on sign-out. */
+function stopReconcileRetry () {
+  if (reconcileTimer !== null) clearTimeout(reconcileTimer)
+  reconcileTimer = null
+  reconcileAttempts = 0
+}
+
+try {
+  window.addEventListener('online', () => {
+    const token = storedToken()
+    if (!token || confirmedAccountId(token)) return
+    if (reconcileTimer !== null) { clearTimeout(reconcileTimer); reconcileTimer = null }
+    reconcileStoredSession().catch(() => {})
+  })
+} catch { /* no window */ }
+
+// Where the console client changes the session on its own (api.ts): the account is announced first (sessionRefused
+// reaches dropSession, which announces before it clears anything, and api.ts clears the tokens after), then, on a
+// printer's own address, signs in again as for any refusal. A recovered pair is checked against the account on screen.
+setSessionHooks({
+  refused: () => { sessionRefused().catch(() => {}) },
+  check: () => { reconcileStoredSession().catch(() => {}) },
+  async recovered () {
+    const asked = storedToken()
+    try {
+      const me = await cloudApi.meWithoutRefresh()
+      const token = storedToken()
+      if (!token) return false
+      // Another token since /me was asked (another tab): its account is asked afresh, never paired with this answer.
+      if (token !== asked) {
+        reconcileStoredSession().catch(() => {})
+        return true
+      }
+      if (cloudState.account?.id === me.account.id) confirmToken(token)
+      else adoptSession(token, me.account).catch(() => {})
+      return true
+    } catch (error) {
+      // Only a refusal ends the session. A console that did not answer leaves the pair in place, unconfirmed, and the
+      // retry finishes the check.
+      if (error instanceof CloudError && error.status === 401) {
+        await dropSession()
+        return false
+      }
+      if (isTransient(error)) scheduleReconcileRetry()
+      return true
+    }
+  }
+})
 
 /**
  * Finishes a return from the console's `/authorize` (`WEB-12`): exchanges the
@@ -503,9 +693,14 @@ export async function initCloud (sessionCheck?: Promise<void>): Promise<string |
     try {
       const me = await cloudApi.me()
       const currentToken = storedToken()
-      if (currentToken) await adoptSession(currentToken, me.account)
+      // The account /me named belongs to the token it was asked with. Another token now (another tab, a recovery)
+      // is asked about afresh, never paired with this answer.
+      if (currentToken === token) await adoptSession(currentToken, me.account)
+      else if (currentToken) await reconcileStoredSession()
     } catch (error) {
-      if (error instanceof CloudError && error.status === 401) await dropSession()
+      if (error instanceof CloudError && error.status === 401) await sessionRefused()
+      // The console could not be reached: no account yet, so nothing is served or reported; asked again on a backoff.
+      else if (isTransient(error)) scheduleReconcileRetry()
     }
   }
   cloudState.ready = true
@@ -555,7 +750,7 @@ export async function signOut (): Promise<boolean> {
   }
   try {
     await cloudApi.signOut()
-  } catch { /* the session ends here either way */ }
+  } catch { /* the session ends here either way; on plain HTTP there is none and the call is refused unsent */ }
   await dropSession()
   forgetBrowserKey()
   setActiveCloudPrinter(null)
@@ -563,11 +758,15 @@ export async function signOut (): Promise<boolean> {
 }
 
 export async function saveLayout (layout: FleetLayout) {
+  layoutEdits++
   cloudState.layout = layout
+  // A 401 is retried only for the account that made the change, never with the next one's token.
+  const owner = cloudState.account?.id
   try {
-    await cloudApi.putLayout(layout)
+    await cloudApi.putLayout(layout, () => owner !== undefined && cloudState.account?.id === owner)
   } catch (error) {
-    cloudState.error = (error as Error).message
+    // A save refused for an account that has since left is not the signed-in account's error.
+    if (cloudState.account?.id === owner) cloudState.error = (error as Error).message
   }
 }
 

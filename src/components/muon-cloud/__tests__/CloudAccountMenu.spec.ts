@@ -4,7 +4,7 @@ import CloudAccountMenu from '../CloudAccountMenu.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 
 vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { account: { id: 'sample', name: 'Sample Person', email: 'sample@example.test', created_at: 1 }, printers: [] } }))
-vi.mock('@/services/muon-cloud/centralLogin', () => ({ centralLoginEnabled: () => false }))
+vi.mock('@/services/muon-cloud/centralLogin', () => ({ centralLoginEnabled: () => false, consoleServesPage: () => false }))
 vi.mock('@/services/account/state', () => ({ accountState: { approvals: [] }, loadApprovals: async () => {} }))
 vi.mock('@/services/account/sign-out', () => ({ beginSignOut: vi.fn() }))
 vi.mock('@/components/layout/AppUserMenu.vue', () => ({ default: { template: '<div />' } }))

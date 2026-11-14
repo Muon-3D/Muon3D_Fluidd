@@ -19,6 +19,9 @@ describe('deletion refusals across console clients', () => {
       removeItem: (key: string) => saved.delete(key),
       clear: () => saved.clear()
     })
+    // A page for the session gate to judge: this spec runs with no DOM, and the
+    // gate refuses what it cannot see (KAN-2192).
+    vi.stubGlobal('location', { protocol: 'https:', hostname: 'console.example.test', origin: 'https://console.example.test' })
     localStorage.setItem('muon.cloud.url', 'https://console.example.test')
     storeToken('session')
     vi.stubGlobal('fetch', fetchMock)

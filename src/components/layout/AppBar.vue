@@ -224,10 +224,13 @@ import PrinterSwitchButton from './PrinterSwitchButton.vue'
 import QuickActionsMenu from './QuickActionsMenu.vue'
 import FrameMixin from '@/mixins/frame'
 import ServicesMixin from '@/mixins/services'
-import FilesMixin from '@/mixins/files'
+import FilesMixin, { uploadErrorText } from '@/mixins/files'
+import consola from 'consola'
 import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
 import { EventBus } from '@/eventBus'
+import { isModelFile } from '@/services/jobs/model'
+import { MODEL_ACCEPT } from '@/services/slicer-bridge/handover'
 import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
 
@@ -440,7 +443,7 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
   /** What U's picker takes: the G-code root's own list, as the header's upload button uses. */
   get gcodeAccept (): string {
     const root = this.$store.getters['files/getRootProperties']('gcodes') as { accepts?: string[] } | undefined
-    return (root?.accepts ?? []).join(',')
+    return [...(root?.accepts ?? []), ...MODEL_ACCEPT].join(',')
   }
 
   async handlePowerToggle () {
@@ -497,6 +500,20 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
   }
 
   async handleUploadAndPrint (file: File) {
+    // A model is Slice's to open, not a file for the printer (KAN-2191).
+    if (isModelFile(file.name)) {
+      EventBus.bus.$emit('model-dropped', [file])
+      return
+    }
+    try {
+      await this.uploadAndHandOn(file)
+    } catch (error: unknown) {
+      consola.error('[FileUpload] file', error)
+      EventBus.$emit(`Upload of ${file.name} failed: ${uploadErrorText(error)}`, { type: 'error', timeout: -1 })
+    }
+  }
+
+  async uploadAndHandOn (file: File) {
     if (this.uploadPrintsNow) {
       // Never Moonraker's print-on-upload: that started the print with no
       // plate check, on a printer that prints upside down onto its plate.

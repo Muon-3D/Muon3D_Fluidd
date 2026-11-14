@@ -256,9 +256,10 @@ describe('Slice', () => {
     expect(welcomes[0].capabilities).not.toContain('ui.mode')
     expect('mode' in welcomes[0]).toBe(false)
 
-    const setMode = vi.spyOn(vm.host.bridge, 'setMode')
+    // The host no longer has a way to send a mode at all (printer-client from muon3d-slicer d0b2f589).
+    expect('setMode' in vm.host.bridge).toBe(false)
     await vm.$nextTick()
-    expect(setMode).not.toHaveBeenCalled()
+    expect(welcomes).toHaveLength(1)
     wrapper.destroy()
   })
 
@@ -308,52 +309,38 @@ describe('Slice', () => {
   })
 })
 
-describe('Slice v3 layout', () => {
+describe('Slice layout: the slicer is the page', () => {
   beforeEach(() => { resetSlicerProbe() })
   afterEach(() => {
     vi.unstubAllGlobals()
     resetSlicerProbe()
   })
 
-  it('frames the slicer in a tile under a page header naming the printer and what it has loaded', async () => {
+  it('frames the slicer as the page: a title for screen readers, and no heading, chips or card of its own', async () => {
     serve(200, EMBED_HTML)
     const wrapper = await mountSlice(undefined, {
-      computed: { printerName: () => 'Boxwood', socketConnected: () => true, loadedMaterial: () => ({ name: 'PLA', colour: '#00AA88' }), loadedColour: () => '#00AA88' }
+      computed: { socketConnected: () => true, loadedMaterial: () => ({ name: 'PLA', colour: '#00AA88' }), loadedColour: () => '#00AA88' }
     })
     expect(wrapper.get('[data-tid=page-title]').text()).toBe('Slice')
-    expect(wrapper.get('.slice-head__line').text()).toContain('slices for Boxwood')
-    expect(wrapper.get('[data-tid=slice-printer]').text()).toBe('Boxwood')
-    expect(wrapper.get('[data-tid=slice-material]').text()).toBe('PLA')
-    expect(wrapper.get('[data-tid=slice-material] i').attributes('style')).toContain('background')
-    expect(wrapper.get('[data-tid=slice-tile] iframe').attributes('title')).toBe('Muon3D Slicer')
-    expect(wrapper.get('[data-tid=slice-status]').text()).toBe('Opening')
+    expect(wrapper.get('[data-tid=page-title]').classes()).toContain('d-sr-only')
+    expect(wrapper.get('[data-tid=slice-view] > iframe').attributes('title')).toBe('Muon3D Slicer')
+    expect(wrapper.find('.slice-head').exists()).toBe(false)
+    expect(wrapper.find('[data-tid=slice-tile]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid=slice-printer]').exists()).toBe(false)
+    expect(wrapper.get('[data-tid=slice-opening]').text()).toBe('Opening the slicer…')
     wrapper.destroy()
   })
 
-  it('says a printer is offline and, with no printer open, that the slicer saves the file', async () => {
-    serve(200, EMBED_HTML)
-    const offline = await mountSlice(undefined, { computed: { printerName: () => 'Boxwood', socketConnected: () => false, loadedMaterial: () => null } })
-    expect(offline.get('[data-tid=slice-printer]').text()).toBe('Boxwood · offline')
-    expect(offline.find('[data-tid=slice-material]').exists()).toBe(false)
-    offline.destroy()
-
-    const none = await mountSlice()
-    expect(none.get('[data-tid=slice-printer]').text()).toBe('No printer')
-    expect(none.get('.slice-head__line').text()).toContain('no printer open')
-    none.destroy()
-  })
-
-  it('shows a missing slicer in the tile and frames it once Look again finds it', async () => {
+  it('shows a missing slicer in the page and frames it once Look again finds it', async () => {
     serve(404, 'Not Found')
     const wrapper = await mountSlice()
-    expect(wrapper.get('[data-tid=slice-status]').text()).toBe('Not found')
     expect(wrapper.get('[data-tid=slice-missing]').text()).toContain('app.slicer.msg.no_slicer')
     serve(200, EMBED_HTML)
     await wrapper.get('[data-tid=slice-retry]').trigger('click')
     await flushPromises()
     await wrapper.vm.$nextTick()
     expect(wrapper.find('[data-tid=slice-missing]').exists()).toBe(false)
-    expect(wrapper.find('[data-tid=slice-tile] iframe').exists()).toBe(true)
+    expect(wrapper.find('[data-tid=slice-view] > iframe').exists()).toBe(true)
     wrapper.destroy()
   })
 })

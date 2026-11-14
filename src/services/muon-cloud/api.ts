@@ -6,7 +6,9 @@
  * when the console serves Fluidd, or the URL saved in `muon.cloud.url`.
  */
 
+import { confirmedAccountId, currentAccount, rotateConfirmed } from './account-events'
 import { clearDeletion, deletionRevision, observeDeletion } from './deletion'
+import { isPrinterSecureOrigin } from '@/services/secure-origin'
 export { deletionState } from './deletion'
 
 export const TOKEN_KEY = 'muon.cloud.token'
@@ -16,6 +18,14 @@ const URL_KEY = 'muon.cloud.url'
 
 /** This surface's id in the console's client registry (`clients.json`). */
 export const CLIENT_ID = 'fluidd'
+
+/** The console client for a page on a printer's own secure address (KAN-2198): no refresh token, a short access token. */
+export const PRINTER_CLIENT_ID = 'printer-local'
+
+/** The `client_id` this page sends to the console: one choice, used by every call. */
+export function clientId (location: Pick<Location, 'protocol' | 'hostname'> | undefined = globalThis.location): string {
+  return location && isPrinterSecureOrigin(location) ? PRINTER_CLIENT_ID : CLIENT_ID
+}
 
 export interface CloudAccount {
   id: string;
@@ -50,6 +60,8 @@ export interface CloudPrinter {
   sharer?: Sharer | null;
   /** Who finds the printer in the nearby list. Only on a printer this account linked (#114). */
   discovery?: DiscoveryLevel | null;
+  /** The printer's own HTTPS name while its certificate lasts, else null (muon-link-cloud #133). */
+  secure_name?: string | null;
 }
 
 export interface Sharer {
@@ -166,7 +178,10 @@ export function sameConsole (a: string, b: string): boolean {
 }
 
 export function cloudBaseUrl (): string {
-  const saved = readStorage(URL_KEY)
+  // A saved console address is honoured only where the page's storage can be
+  // trusted. On a plain-HTTP page anything on the network can write it, and
+  // would choose where the page's calls and "open" links go (KAN-2192).
+  const saved = cloudTokensPersist() ? readStorage(URL_KEY) : null
   if (saved) return saved.replace(/\/$/, '')
   // A page the console serves talks to the console under the name it was
   // opened by, whichever name the build was made for: its sign-in, its cookie
@@ -191,21 +206,69 @@ export function setCloudBaseUrl (url: string | null) {
 export function cloudTokensPersist (location: Pick<Location, 'protocol' | 'hostname'> | undefined = globalThis.location): boolean {
   // No page (a worker or a test in node): nothing to judge, keep the old path.
   if (!location) return true
+  // A printer's own secure address holds the session in memory only (KAN-2198).
+  if (isPrinterSecureOrigin(location)) return false
+  return secureContext(location)
+}
+
+function secureContext (location: Pick<Location, 'protocol' | 'hostname'>): boolean {
   return location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
 }
 
-// On an insecure origin the pair lives here only: a reload signs out.
+/**
+ * Whether this page may hold a Muon3D account session at all (KAN-2192, the
+ * whole of H2/B9: "no credential may ever be stored or used on an http://
+ * origin"). The plain-HTTP printer address has to stay for the hotspot, setup
+ * with no internet and `muon3d.local`, and anyone on the network can answer
+ * for it or change the page. So there the page takes no password, holds no
+ * token even in memory, and never makes or reads the browser's Iroh key:
+ * account features are one link to the console (`controlUrl`). HTTPS and
+ * loopback keep the session.
+ */
+export function cloudSessionAllowed (location: Pick<Location, 'protocol' | 'hostname'> | undefined = globalThis.location): boolean {
+  // No page to judge: refuse. A gate does not pass what it cannot see.
+  if (!location) return false
+  return secureContext(location)
+}
+
+/** The console page that does what this page may not: `route` is a hash route such as `/account`. */
+export function controlUrl (route = '/'): string {
+  const base = (import.meta.env.VUE_MUON_CLOUD_URL as string | undefined)?.replace(/\/$/, '') || CONSOLE_ORIGINS[0]
+  return `${base}/#${route.startsWith('/') ? route : `/${route}`}`
+}
+
+/** What every refused account call on a plain-HTTP page says. */
+export const INSECURE_ORIGIN_MESSAGE = 'This page is not encrypted, so it cannot sign in to Muon3D. Open Muon Control to use your account.'
+
+function refuseOnInsecureOrigin (): never {
+  throw new CloudError(INSECURE_ORIGIN_MESSAGE, 0, 'insecure_origin')
+}
+
+// The only console calls a plain-HTTP page makes: the two that need no
+// account and carry nothing of the person's. An allow-list, so a route added
+// later is refused there until somebody decides it is safe.
+const INSECURE_ORIGIN_CALLS: readonly string[] = ['GET /v1/config', 'GET /v1/links/nearby']
+
+// Tokens of a page that may hold a session but not persist it (a printer's
+// secure address, KAN-2198): they last as long as the page.
 const memoryTokens = new Map<string, string>()
 
 function readTokenStorage (key: string): string | null {
-  if (cloudTokensPersist()) return readStorage(key)
-  return memoryTokens.get(key) ?? null
+  if (!cloudSessionAllowed()) return null
+  if (!cloudTokensPersist()) return memoryTokens.get(key) ?? null
+  return readStorage(key)
 }
 
 function writeTokenStorage (key: string, value: string | null) {
-  if (cloudTokensPersist()) return writeStorage(key, value)
-  if (value === null) memoryTokens.delete(key)
-  else memoryTokens.set(key, value)
+  // Not allowed: the token is dropped, not kept in memory. Nothing to read
+  // means nothing for injected script to take.
+  if (!cloudSessionAllowed()) return
+  if (!cloudTokensPersist()) {
+    if (value === null) memoryTokens.delete(key)
+    else memoryTokens.set(key, value)
+    return
+  }
+  writeStorage(key, value)
 }
 
 // Migration: an older build stored the pair in localStorage on this origin.
@@ -244,6 +307,8 @@ export function storeRefreshToken (token: string | null) {
  * `{error, error_description}`, not the API's sentence shape.
  */
 async function tokenRequest (form: Record<string, string>, signal?: AbortSignal): Promise<TokenSession> {
+  // KAN-2192: a code or a refresh token is a credential; none leaves a plain-HTTP page.
+  if (!cloudSessionAllowed()) refuseOnInsecureOrigin()
   let response: Response
   try {
     response = await fetch(`${cloudBaseUrl()}/token`, {
@@ -336,6 +401,33 @@ let recoverSession: ((failedRefresh: string) => Promise<boolean>) | null = null
 
 export function setSessionRecovery (recover: ((failedRefresh: string) => Promise<boolean>) | null) {
   recoverSession = recover
+}
+
+/**
+ * What the session's owner (state.ts) does when this module changes the session on its own, so the account is
+ * announced (account-events.ts) before the tokens change, with no import of state.ts from here:
+ *
+ * - `recovered`: a refused refresh was recovered into a new pair. Resolves false when that pair is not a session the
+ *   owner can keep (the account could not be checked), and the refresh is then refused.
+ * - `refused`: the refresh was refused for good and the tokens are about to be cleared.
+ */
+export interface SessionHooks {
+  recovered?: () => Promise<boolean>;
+  refused?: () => void;
+  /** The stored token is one /me has not confirmed for the account on screen: ask now (state.ts reconcileStoredSession). */
+  check?: () => void;
+}
+
+/** A token was stored here for the same account (a refresh, a re-keyed session): carry the confirmation to it, or ask. */
+export function carryConfirmation (before: string | null, next: string) {
+  rotateConfirmed(before, next)
+  if (confirmedAccountId(next) === null) sessionHooks.check?.()
+}
+
+let sessionHooks: SessionHooks = {}
+
+export function setSessionHooks (hooks: SessionHooks) {
+  sessionHooks = hooks
 }
 
 /**
@@ -433,8 +525,10 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS)
       try {
-        const session = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: CLIENT_ID }, controller.signal)
+        const session = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId() }, controller.signal)
+        const before = storedToken()
         storeToken(session.access_token)
+        carryConfirmation(before, session.access_token)
         storeRefreshToken(session.refresh_token)
         resetRefreshBackoff()
         return 'ok'
@@ -447,9 +541,15 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
           return 'unreachable'
         }
         try {
-          if (recoverSession && storedRefreshToken() === refreshToken && await recoverSession(refreshToken)) return 'ok'
+          if (recoverSession && storedRefreshToken() === refreshToken && await recoverSession(refreshToken)) {
+            // The new pair may belong to another account: the owner checks, and announces a change.
+            if (!sessionHooks.recovered || await sessionHooks.recovered()) return 'ok'
+            return 'refused'
+          }
         } catch { /* fall through to dropping */ }
         if (storedRefreshToken() === refreshToken) {
+          // Announced first, so whoever answers for the account hears of it before the token goes.
+          try { sessionHooks.refused?.() } catch { /* the tokens are cleared below either way */ }
           storeToken(null)
           storeRefreshToken(null)
         }
@@ -469,7 +569,13 @@ export async function refreshSession (): Promise<boolean> {
   return (await refreshOutcome()) === 'ok'
 }
 
-async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true): Promise<T> {
+/**
+ * `stillMine`, when given, is asked before a 401 is retried with another token: a request made for one account must
+ * never be sent again with the next account's (KAN-2249: a layout PUT in flight across a sign-out).
+ */
+async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true, stillMine?: () => boolean): Promise<T> {
+  // KAN-2192: no bearer and no password leaves a plain-HTTP page, whoever asks.
+  if (!cloudSessionAllowed() && (token || !INSECURE_ORIGIN_CALLS.includes(`${method} ${path}`))) refuseOnInsecureOrigin()
   const startedAt = deletionRevision()
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
@@ -486,7 +592,7 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
   }
   // A central-login access token lasts 15 minutes. Refresh once and retry;
   // only for the stored session, never for a token passed in.
-  if (response.status === 401 && retry && token !== null) {
+  if (response.status === 401 && retry && token !== null && (!stillMine || stillMine())) {
     // Another request may already have rotated the pair while this one's
     // response was in flight. Reuse that pair rather than refusing the late
     // response or spending the new refresh token again.
@@ -496,7 +602,8 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
     }
     if (currentToken) {
       const outcome = await refreshOutcome()
-      if (outcome === 'ok') return request<T>(method, path, body, storedToken(), false)
+      // Asked again: the account can change while the refresh is on its way.
+      if (outcome === 'ok' && (!stillMine || stillMine())) return request<T>(method, path, body, storedToken(), false)
       // The console did not answer: that is not a sign-out, so do not look like one.
       if (outcome === 'unreachable') throw new CloudError('The Muon3D service could not be reached.', 0)
     }
@@ -530,13 +637,19 @@ export const cloudApi = {
     request<{ token: string, account: CloudAccount }>('POST', '/v1/auth/sign-up', { email, password, name, declared_age: declaredAge }),
   signOut: () => request<{ ok: boolean }>('POST', '/v1/auth/sign-out'),
   me: () => request<{ account: CloudAccount, endpoint_id: string | null }>('GET', '/v1/me'),
+  /** `me` that never refreshes: for use while a refresh is itself in progress (it would wait for itself). */
+  meWithoutRefresh: () => request<{ account: CloudAccount, endpoint_id: string | null }>('GET', '/v1/me', undefined, storedToken(), false),
   /**
    * A signed assertion of this account for another Muon3D service (the
    * model service's Library), which never sees the console session. It lives
    * minutes; `expires_at` is in seconds.
    */
-  assertion: (audience: string) =>
-    request<{ assertion: string, expires_at: number }>('POST', '/v1/me/assertion', { audience }),
+  assertion: (audience: string) => {
+    // Asked for the account signed in now. A 401 is retried only while that account is still the one signed in: the
+    // retry uses whatever token is stored then, which after a switch is the next account's.
+    const owner = currentAccount().id
+    return request<{ assertion: string, expires_at: number }>('POST', '/v1/me/assertion', { audience }, storedToken(), true, () => owner !== null && currentAccount().id === owner)
+  },
   registerEndpoint: (endpointId: string) =>
     request<{ endpoint_id: string }>('PUT', '/v1/me/endpoint', { endpoint_id: endpointId }),
   printers: () => request<{ printers: CloudPrinter[] }>('GET', '/v1/printers'),
@@ -561,10 +674,10 @@ export const cloudApi = {
     request<{ printers: Array<{ printer_id: string, name: string, model: string, linked: boolean, local_addrs?: string[] }> }>('GET', '/v1/links/nearby'),
   linkState: (id: string) => request<{ printer_id: string, state: LinkState }>('GET', `/v1/links/${id}`),
   getLayout: () => request<{ layout: any }>('GET', '/v1/fleet/layout'),
-  putLayout: (layout: unknown) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout }),
+  putLayout: (layout: unknown, stillMine?: () => boolean) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout }, storedToken(), true, stillMine),
   /** The central login's code exchange (`WEB-12`). */
   exchangeCode: (code: string, redirectUri: string, verifier: string, signal?: AbortSignal) =>
-    tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: CLIENT_ID, code_verifier: verifier }, signal),
+    tokenRequest({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: clientId(), code_verifier: verifier }, signal),
   /**
    * A single-use code that opens the console's browser session at
    * `/handoff`. Takes the token of a session that signed in here, which is

@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import Vue from 'vue'
 import LibraryPrintPage from '../v2/LibraryPrintPage.vue'
 import { loadRelated, type ShelfCard } from '@/services/library/shelves'
+import { LibraryError } from '@/services/library/api'
+import { setLibraryClient } from '@/services/library/store'
 
-const MODELS = 'https://models.muon3d.com'
+const MODELS = 'https://library.muon3d.com/models'
 
 const card = (over: Partial<ShelfCard> = {}): ShelfCard => ({
   key: 'pub:p1',
@@ -52,13 +54,14 @@ afterEach(() => {
   wrappers.forEach(w => w.destroy())
   wrappers = []
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   // A share sheet a test gave the page goes with it, passed or failed.
   Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
 })
 
-async function page (props: Record<string, unknown> = {}, fetcher = service()) {
+async function page (props: Record<string, unknown> = {}, fetcher = service(), provide: Record<string, unknown> = {}) {
   vi.stubGlobal('fetch', fetcher)
-  const wrapper = mount(LibraryPrintPage, { stubs: { 'frame-icon': true }, propsData: { card: card(), printerName: 'Boxwood', printerFits: true, ...props }, mocks: { $store: { state: { printer: { printer: { save_variables: { variables: {} } } } } } } })
+  const wrapper = mount(LibraryPrintPage, { stubs: { 'frame-icon': true }, provide, propsData: { card: card(), printerName: 'Boxwood', printerFits: true, ...props }, mocks: { $store: { state: { printer: { printer: { save_variables: { variables: {} } } } } } } })
   wrappers.push(wrapper)
   await flush()
   return wrapper
@@ -75,10 +78,20 @@ describe('Library v3 print page', () => {
     expect(text(w, 'library-print-maker')).toContain('@wren')
   })
 
-  it('shows Fits <printer> for an M1 print by its tags too (opened by its address), and only on an M1', async () => {
-    expect((await page()).find('[data-tid="library-print-fits"]').text()).toBe('Fits Boxwood')
-    expect((await page({ printerFits: false })).find('[data-tid="library-print-fits"]').exists()).toBe(false)
-    expect((await page({}, service({ tags: [] }))).find('[data-tid="library-print-fits"]').exists()).toBe(false)
+  it('shows Fits <printer> by size only when the size is known; an M1-ready tag alone says Check print size', async () => {
+    const volume = () => ({ volume: { x: 220, y: 220, z: 250 } })
+    const fits = await page({}, service({ size_mm: [50, 50, 50] }), { libraryCardContext: volume })
+    expect(fits.find('[data-tid="library-print-fits"]').text()).toBe('Fits Boxwood by size')
+    expect(fits.find('[data-tid="library-print-fits"]').classes()).toContain('mlib-badge--ok')
+    const tooBig = await page({}, service({ size_mm: [500, 50, 50] }), { libraryCardContext: volume })
+    expect(tooBig.find('[data-tid="library-print-fits"]').text()).toBe('Does not fit as oriented')
+    expect(tooBig.find('[data-tid="library-print-fits"]').classes()).not.toContain('mlib-badge--ok')
+    // The publisher's m1-ready tag is not a measurement.
+    const unknown = await page()
+    expect(unknown.find('[data-tid="library-print-fits"]').exists()).toBe(false)
+    expect(unknown.find('[data-tid="library-print-fit-unknown"]').text()).toBe('Check print size')
+    expect(unknown.find('[data-tid="library-print-fit-unknown"]').classes()).not.toContain('mlib-badge--ok')
+    expect(unknown.text()).not.toContain('Fits Boxwood')
   })
 
   it('lists makes and remixes; no makes says how to add one; no remixes hides the shelf', async () => {
@@ -126,6 +139,57 @@ describe('Library v3 print page', () => {
     await w.find('[data-tid="library-print-share"]').trigger('click')
     await flush()
     expect(text(w, 'library-print-note')).toBe('Copy this link: https://library.muon3d.com/p/pocket-robot')
+  })
+})
+
+describe('Library v3 print page: review findings', () => {
+  const signedIn = async (error: unknown) => {
+    setLibraryClient({ modelContext: vi.fn(async () => { throw error }) } as never)
+    return page({ signedIn: true })
+  }
+
+  it('a history that failed for any other reason does not say the Library must be enabled', async () => {
+    const offline = await signedIn(new LibraryError('offline', 'x'))
+    expect(text(offline, 'library-print-history')).toContain('You are offline. Check your internet connection and try again.')
+    expect(text(offline, 'library-print-history')).not.toContain('Turn on Library saving')
+    const broken = await signedIn(new LibraryError('server_error', 'The Library is having a problem.', 500))
+    expect(text(broken, 'library-print-history')).toContain('Your print history could not be loaded just now.')
+    expect(text(broken, 'library-print-history')).not.toContain('Turn on Library saving')
+    const forbidden = await signedIn(new LibraryError('forbidden', 'x', 403))
+    expect(text(forbidden, 'library-print-history')).not.toContain('Turn on Library saving')
+  })
+
+  it('keeps the turn-on-Library text for a 403 consent_required', async () => {
+    const off = await signedIn(new LibraryError('consent_required', 'x', 403))
+    expect(text(off, 'library-print-history')).toContain('Turn on Library saving to keep a private history of your prints of this model.')
+  })
+
+  it('offers Share and Report only when the print has an address', async () => {
+    const bare = await page({ card: card({ slug: '' }) }, service({ slug: '' }))
+    expect(bare.find('[data-tid="library-print-title"]').exists()).toBe(true)
+    expect(bare.find('[data-tid="library-print-share"]').exists()).toBe(false)
+    expect(bare.find('[data-tid="library-print-report"]').exists()).toBe(false)
+    const addressed = await page()
+    expect(addressed.find('[data-tid="library-print-share"]').exists()).toBe(true)
+    expect(addressed.find('[data-tid="library-print-report"]').attributes('href')).toBe('https://library.muon3d.com/p/pocket-robot#report')
+  })
+
+  it('Slice and print goes to the slicer with the library parameter, version and file', async () => {
+    const detail = { id: 'p1', version: 3, files: [{ id: 'f1', role: 'project', format: '3mf', name: 'a.3mf', size_bytes: 1, sha256: 'x' }] }
+    vi.stubEnv('VUE_MUON_SLICER_URL', '')
+    expect((await page({}, service(detail))).find('[data-tid="library-print-slice"]').attributes('href')).toBe('https://slicer.muon3d.com/?library=p1&version=3&file=f1')
+    vi.stubEnv('VUE_MUON_SLICER_URL', 'https://slicer.example.test/embed.html')
+    expect((await page({}, service(detail))).find('[data-tid="library-print-slice"]').attributes('href')).toBe('https://slicer.example.test/?library=p1&version=3&file=f1')
+  })
+
+  it('has one Save, in the Print panel, and no sign-in line inside the signed-in history', async () => {
+    setLibraryClient({ modelContext: vi.fn(async () => ({ owner: false, state: 'approved', pinned_version: 1, versions: [], runs: [] })) } as never)
+    const w = await page({ signedIn: true })
+    expect(w.find('[data-tid="library-print-heart"]').exists()).toBe(false)
+    expect(w.find('[data-tid="library-print-panel-heart"]').exists()).toBe(true)
+    expect(w.text()).not.toContain('Sign in to see your print history.')
+    expect(text(w, 'library-print-versions')).toContain('Public version')
+    expect(text(w, 'library-print-versions')).not.toContain('Reviewed public version')
   })
 })
 

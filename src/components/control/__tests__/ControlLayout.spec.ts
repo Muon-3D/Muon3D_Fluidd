@@ -94,3 +94,17 @@ it('sends nothing from a tile while the layout is being edited', async () => {
   expect(SocketActions.printerGcodeScript).not.toHaveBeenCalled()
   wrapper.destroy()
 })
+
+it('Control\'s Quick commands never offers the print controls, ticked or not (one rule with the Overview tile)', async () => {
+  const store = panelStore()
+  const settings = store.state.printer.printer.configfile.settings
+  for (const name of ['CANCEL_PRINT', 'PAUSE', 'RESUME', 'CLEAN_NOZZLE']) settings[`gcode_macro ${name}`] = { gcode: 'M118 hi' }
+  store.state.config.uiSettings.general.quickCommands = ['CANCEL_PRINT', 'CLEAN_NOZZLE']
+  const wrapper = mount(Control, { mocks: { $store: store, $waits: waits, $route: { params: { printer: 'mock' } } }, computed: { isMobileViewport: () => false }, stubs: { ...panelStubs, MaterialPicker: true } })
+  expect(wrapper.find('[data-tid="qc-CLEAN_NOZZLE"]').exists()).toBe(true)
+  for (const name of ['CANCEL_PRINT', 'PAUSE', 'RESUME']) expect(wrapper.find(`[data-tid="qc-${name}"]`).exists()).toBe(false)
+  store.state.config.uiSettings.general.quickCommands = null
+  await wrapper.vm.$nextTick()
+  for (const name of ['CANCEL_PRINT', 'PAUSE', 'RESUME']) expect(wrapper.find(`[data-tid="qc-${name}"]`).exists()).toBe(false)
+  wrapper.destroy()
+})

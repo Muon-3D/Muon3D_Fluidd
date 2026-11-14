@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Vendored from @muon3d/printer-client 0.4.0 (src/bridge/protocol.ts), Copyright 2026 Muon 3D
+// Vendored from @muon3d/printer-client 0.5.0 (src/bridge/protocol.ts), Copyright 2026 Muon 3D
 // Technologies Limited, under the Apache License 2.0 (vendor/printer-client/LICENSE and NOTICE). Changed for
 // Fluidd by tools/vendor-printer-client.cjs: relative imports without ".ts"; Object.hasOwn as hasOwnProperty.call.
 // printer-bridge/1: how a page that frames a printer client (the host: Fluidd, a reference host in the tests) and the
@@ -41,12 +41,18 @@
 // (e2e/fixtures/bridgeHost.html); a host's own may differ.
 //
 // The host's UI (inside version 1, optional on both sides): a host that wants the client drawn as a part of its own page
-// grants `ui.look` (its resolved colours, radii and fonts; the client then draws no chrome of its own), `ui.mode` (its
-// Simple or Pro switch) and `printer.setup` (what its selected printer has loaded, and its material table). A welcome
-// may carry the first look and mode; the events `ui.look`, `ui.mode` and `printer.setup` carry each change. A client
-// lists what it uses in its hello's `features`, so a host knows whether the frame will draw itself as a part of the
-// host's page. An old client ignores the fields and the events; an old host never sends them, and the client then
-// draws itself as it always has. A malformed look, mode or setup is dropped: never a reason to refuse a welcome.
+// grants `ui.look` (its resolved colours, radii and fonts; the client then draws no chrome of its own) and
+// `printer.setup` (what its selected printer has loaded, and its material table). A welcome may carry the first look;
+// the events `ui.look` and `printer.setup` carry each change. A client lists what it uses in its hello's `features`, so
+// a host knows whether the frame will draw itself as a part of the host's page. An old client ignores the fields and
+// the events; an old host never sends them, and the client then draws itself as it always has. A malformed look or
+// setup is dropped: never a reason to refuse a welcome.
+//
+// No mode (KAN-550): a host lends its look, its printer and its material, never how much of the client shows.
+// `ui.mode` (from 0.2.0: the host's Simple or Pro switch) is retired. An older host may still grant it, put a `mode` in
+// its welcome and send the event `ui.mode`: the welcome is taken as any other, its `mode` is not read, and the event is
+// one this version does not have, so it is dropped. A client never lists it, and the name is never given another
+// meaning.
 //
 // The other way (0.3.0, optional the same way): a host that keeps its printer's loaded material grants
 // `printer.material`, and a client that lists it in its features then sends the event `printer.material` (the material
@@ -66,6 +72,20 @@
 // null makes a new print, an item's id a new version of it. A host's own failures are `not-signed-in`, `quota` (its
 // message says how much is used of what) and `console`. An old host never grants it, so a client never asks one; an
 // old client never asks, and the host's Library is as before.
+//
+// The account itself (`account`, optional the same way): a host where
+// the person signs in grants `account`, and a client that lists it in its features may then ask account.status (who is
+// signed in: an opaque account id and the name the host shows, or nobody) and account.assertion (a short-lived
+// assertion of the account for one of Muon's services, named by ACCOUNT_AUDIENCES: `models`, the model service that
+// keeps the person's print profiles), and hears account.status when the person signs in or out. The host keeps its
+// sign-in and its tokens; the client never gets them, only the assertion it asked for, for a service the protocol
+// names. Like the Library's, these name no printer. A host's own failures are `not-signed-in` and `console`. An old
+// host never grants it, so a client never asks one; an old client never asks.
+// Models handed over (0.5.0, optional the same way): a client that lists `models.open` in its features hears the host's
+// event models.open, the model files the person dropped or picked in the host and chose to open in the client (each its
+// name and raw bytes). The client adds them as a drop on its own page would. It names no printer (null). A host sends
+// it only to a client whose hello listed the feature, so an old client is never sent bytes it would drop; an old host
+// never sends it, and the person adds the models with the client's own Add as before.
 import { CHECKSUM_RE } from '../multipart/build';
 import { unsafeNameReason } from '../multipart/names';
 import { cleanText, type ErrorKind, type PrinterError } from '../errors/kinds';
@@ -93,22 +113,42 @@ export const OPS = {
   'library.save': 'library',
   'library.get': 'library',
   'library.browse': 'library',
+  'account.status': 'account',
+  'account.assertion': 'account',
 } as const;
 export type BridgeOp = keyof typeof OPS;
 
-/** The account's capabilities (0.4.0), optional inside version 1 like the host's UI: the person's Library. */
-export const CAPABILITIES_ACCOUNT = ['library'] as const;
+/**
+ * The account's capabilities, optional inside version 1 like the host's UI: the person's Library (0.4.0), and the
+ * account itself (who is signed in, and assertions for Muon's services).
+ */
+export const CAPABILITIES_ACCOUNT = ['library', 'account'] as const;
 export type AccountCapability = (typeof CAPABILITIES_ACCOUNT)[number];
 
 /** The operations of the Library: account-level, so their params.printer is null. */
 export type LibraryOp = { [K in BridgeOp]: (typeof OPS)[K] extends 'library' ? K : never }[BridgeOp];
 export const isLibraryOp = (op: string): op is LibraryOp => Object.prototype.hasOwnProperty.call(OPS, op) && OPS[op as BridgeOp] === 'library';
 
+/** The operations of the account (account.status, account.assertion): account-level too. */
+export type AccountOp = { [K in BridgeOp]: (typeof OPS)[K] extends 'account' ? K : never }[BridgeOp];
+export const isAccountOp = (op: string): op is AccountOp => Object.prototype.hasOwnProperty.call(OPS, op) && OPS[op as BridgeOp] === 'account';
+
+/** Every operation that names no printer: the Library's and the account's. */
+export const isAccountLevelOp = (op: string): op is LibraryOp | AccountOp => isLibraryOp(op) || isAccountOp(op);
+
+/**
+ * The services a client may ask an assertion for (account.assertion), by the protocol's name for each; the host maps
+ * the name to the service's own audience. `models`: the model service (the Library, the person's print profiles).
+ */
+export const ACCOUNT_AUDIENCES = ['models'] as const;
+export type AccountAudience = (typeof ACCOUNT_AUDIENCES)[number];
+export const isAccountAudience = (value: unknown): value is AccountAudience => typeof value === 'string' && (ACCOUNT_AUDIENCES as readonly string[]).includes(value);
+
 /**
  * The host's UI capabilities (see the file comment), optional inside version 1: a host grants the ones it sends (or,
  * for printer.material, takes), and a client lists the ones it uses in its hello's `features`.
  */
-export const CAPABILITIES_HOST_UI = ['ui.look', 'ui.mode', 'printer.setup', 'printer.material'] as const;
+export const CAPABILITIES_HOST_UI = ['ui.look', 'printer.setup', 'printer.material'] as const;
 export type HostUiCapability = (typeof CAPABILITIES_HOST_UI)[number];
 
 /** The events a host sends, and the capability each comes with (null: always). */
@@ -119,12 +159,17 @@ export const HOST_EVENTS = {
   'ui.theme': null,
   'ui.density': null,
   'ui.look': 'ui.look',
-  'ui.mode': 'ui.mode',
   'printer.setup': 'printer.setup',
   'library.status': 'library',
   'library.open': 'library',
+  'account.status': 'account',
+  // Granted by no capability: the host sends it only where the client's hello listed MODELS_OPEN_FEATURE.
+  'models.open': null,
 } as const;
 export type HostEventName = keyof typeof HOST_EVENTS;
+
+/** The feature a client lists in its hello to be sent models.open (0.5.0). */
+export const MODELS_OPEN_FEATURE = 'models.open';
 
 /** The events a client sends. */
 export const CLIENT_EVENTS = ['slicer.state', 'printer.material'] as const;
@@ -227,9 +272,6 @@ export interface Hello {
 
 export type Theme = 'light' | 'dark';
 export type Density = 'compact' | 'touch';
-
-/** The host's Simple or Pro switch: a display choice (how much the client shows), never a permission. */
-export type UiMode = 'simple' | 'pro';
 
 /**
  * The tokens of a host's look, each with the kind of value it takes. The names are the host's own CSS custom
@@ -341,8 +383,6 @@ export interface Welcome {
   density?: Density;
   /** The host's look, when it granted ui.look (else the client ignores one). */
   look?: HostLook;
-  /** The host's Simple or Pro, when it granted ui.mode. */
-  mode?: UiMode;
 }
 
 export type PrinterRoute = 'cloud' | 'local';
@@ -429,7 +469,9 @@ export type OpRequest =
   | { op: 'library.status' | 'library.browse'; printer: null }
   | ({ op: 'library.preferences'; printer: null } & LibraryPreferencesChange)
   | ({ op: 'library.save'; printer: null } & LibrarySave)
-  | { op: 'library.get'; printer: null; item: string; version: number | null };
+  | { op: 'library.get'; printer: null; item: string; version: number | null }
+  | { op: 'account.status'; printer: null }
+  | { op: 'account.assertion'; printer: null; audience: AccountAudience };
 
 /**
  * What a print.request did. `started` (with `startedPath`): the host's dialog said Print and the printer accepted the
@@ -539,6 +581,36 @@ export interface LibraryProject {
 export interface LibraryOpen {
   item: string;
   version: number | null;
+}
+
+// ---- the account ---------------------------------------------------------------------------------------------------
+
+/** Who is signed in to the host: account.status's answer and the event's data. */
+export interface AccountStatus {
+  signedIn: boolean;
+  /** The account's opaque, stable id (the console's); null signed out. A client keeps what it syncs per id. */
+  id: string | null;
+  /** The account as the host shows it (a name or an e-mail address); null signed out. */
+  name: string | null;
+}
+
+/** account.assertion's answer: the account, asserted for one service, for a few minutes. */
+export interface AccountAssertion {
+  /** Sent as the bearer token to that service. */
+  assertion: string;
+  /** When it stops working: milliseconds since the epoch. */
+  expiresAt: number;
+}
+
+/** One model file of a models.open: its name (as the person's computer had it) and its bytes. */
+export interface ModelFile {
+  name: string;
+  bytes: ArrayBuffer;
+}
+
+/** models.open's data: the model files the person chose to open in the client (0.5.0). */
+export interface ModelsOpen {
+  files: ModelFile[];
 }
 
 // ---------------------------------------------------------------------------
@@ -675,7 +747,8 @@ export function commonVersion(offered: readonly number[], spoken: readonly numbe
  * A welcome as the client reads it, against the hello it sent: the protocol, the echoed nonce, a version it offered,
  * the host's name and version, the capabilities and the theme. Returns the welcome, or why it is refused (a string).
  * The window checks (the sender is the parent, its origin is allowed, exactly one port) are the caller's, on the event.
- * The look and the mode are read only where the welcome grants ui.look and ui.mode; a malformed one is left out.
+ * The look is read only where the welcome grants ui.look; a malformed one is left out. An older host's `mode` (ui.mode,
+ * retired) is not read: the welcome is taken without it.
  */
 export function parseWelcome(data: unknown, hello: Pick<Hello, 'nonce' | 'versions'>): Welcome | string {
   const r = record(data);
@@ -700,10 +773,6 @@ export function parseWelcome(data: unknown, hello: Pick<Hello, 'nonce' | 'versio
     const look = parseLook(r.look);
     if (look) welcome.look = look;
   }
-  if (welcome.capabilities.includes('ui.mode')) {
-    const mode = parseUiMode(r.mode);
-    if (mode) welcome.mode = mode;
-  }
   return welcome;
 }
 
@@ -727,7 +796,7 @@ export function parseBridgePrinter(value: unknown): BridgePrinter | null {
 }
 
 // ---------------------------------------------------------------------------
-// The host's UI: its look, its mode, its printer's setup
+// The host's UI: its look, its printer's setup
 // ---------------------------------------------------------------------------
 
 const NUMBER = String.raw`[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?`;
@@ -859,11 +928,6 @@ export function parseLook(value: unknown): HostLook | null {
     if (fonts.length) look.fonts = fonts;
   }
   return look;
-}
-
-/** Simple or Pro (the welcome's `mode`, a ui.mode event's `data.mode`), or null. */
-export function parseUiMode(value: unknown): UiMode | null {
-  return value === 'simple' || value === 'pro' ? value : null;
 }
 
 const MATERIAL_SOURCES: readonly MaterialSource[] = ['spool', 'loaded', 'heaters', 'table'];
@@ -1024,6 +1088,34 @@ export function parseLibraryProject(value: unknown, asked?: { item: string; vers
   return { item: r.item, version: r.version, name, project: r.project };
 }
 
+/** The longest account id and assertion a host may give. */
+const ACCOUNT_ID_MAX = 128;
+const ASSERTION_MAX = 8192;
+/** An assertion is a token: base64url and JWT punctuation only. */
+const ASSERTION_RE = /^[A-Za-z0-9._~+/=-]+$/;
+
+/**
+ * An account status (account.status's answer and event's data), or null when it is not one: signedIn a boolean; signed
+ * in, an id (printable, at most 128 characters) and a name (cleaned, cut to the text limit; the id when it has none).
+ * Signed out, there is no id or name, whatever was sent.
+ */
+export function parseAccountStatus(value: unknown): AccountStatus | null {
+  const r = record(value);
+  if (!r || typeof r.signedIn !== 'boolean') return null;
+  if (!r.signedIn) return { signedIn: false, id: null, name: null };
+  if (typeof r.id !== 'string' || !r.id || r.id.length > ACCOUNT_ID_MAX || cleanText(r.id, ACCOUNT_ID_MAX) !== r.id) return null;
+  const name = displayText(r.name) || r.id;
+  return { signedIn: true, id: r.id, name };
+}
+
+/** account.assertion's answer, or null: a token of at most 8 KiB, and when it expires (milliseconds, finite, positive). */
+export function parseAccountAssertion(value: unknown): AccountAssertion | null {
+  const r = record(value);
+  if (!r || typeof r.assertion !== 'string' || !r.assertion || r.assertion.length > ASSERTION_MAX || !ASSERTION_RE.test(r.assertion)) return null;
+  if (typeof r.expiresAt !== 'number' || !Number.isFinite(r.expiresAt) || r.expiresAt <= 0) return null;
+  return { assertion: r.assertion, expiresAt: r.expiresAt };
+}
+
 /** library.open's data, or null: an item id and a version (null: the current one). */
 export function parseLibraryOpen(value: unknown): LibraryOpen | null {
   const r = record(value);
@@ -1031,6 +1123,27 @@ export function parseLibraryOpen(value: unknown): LibraryOpen | null {
   const version = r.version === null || r.version === undefined ? null : r.version;
   if (version !== null && !isVersion(version)) return null;
   return { item: r.item, version };
+}
+
+/**
+ * models.open's data, or null: 1 to LIMITS.paths files, each a name (display text, at most LIMITS.printName, with no
+ * folder in it) and 1 or more bytes, all of them together at most LIMITS.uploadBytes.
+ */
+export function parseModelsOpen(value: unknown): ModelsOpen | null {
+  const r = record(value);
+  if (!r || !Array.isArray(r.files) || r.files.length < 1 || r.files.length > LIMITS.paths) return null;
+  const files: ModelFile[] = [];
+  let total = 0;
+  for (const entry of r.files) {
+    const f = record(entry);
+    if (!f || typeof f.name !== 'string' || /[\\/]/.test(f.name)) return null;
+    const name = displayText(f.name, LIMITS.printName);
+    if (!name || !(f.bytes instanceof ArrayBuffer) || f.bytes.byteLength < 1) return null;
+    total += f.bytes.byteLength;
+    if (total > LIMITS.uploadBytes) return null;
+    files.push({ name, bytes: f.bytes });
+  }
+  return { files };
 }
 
 /** A number of a save that may be unknown: null, or a finite number from 0. */
@@ -1170,10 +1283,10 @@ export function parseRequest(data: unknown): { ok: true; id: number; request: Op
   if (!Object.prototype.hasOwnProperty.call(OPS, r.op)) return failure({ kind: 'unsupported', message: `Unknown operation "${r.op.slice(0, 64)}"` });
   const op = r.op as BridgeOp;
   if (!params) return failure(bad('params must be an object'));
-  if (isLibraryOp(op)) {
+  if (isAccountLevelOp(op)) {
     const refuse = (message: string) => ({ ok: false as const, id, printer: null, error: bad(message) });
     if (params.printer !== undefined && params.printer !== null) return refuse(`${op} is the account's: params.printer must be null`);
-    const read = readLibraryParams(op, params);
+    const read = isLibraryOp(op) ? readLibraryParams(op, params) : readAccountParams(op, params);
     return typeof read === 'string' ? refuse(read) : { ok: true, id, request: read };
   }
   if (op === 'printer.get') {
@@ -1187,7 +1300,18 @@ export function parseRequest(data: unknown): { ok: true; id: number; request: Op
   return { ok: true, id, request: read };
 }
 
-function readOpParams(op: Exclude<BridgeOp, 'printer.get' | LibraryOp>, p: Record<string, unknown>, printer: string): OpRequest | BridgeError | string {
+/** An account request's params (besides printer), checked; or the reason it is refused. */
+function readAccountParams(op: AccountOp, p: Record<string, unknown>): OpRequest | string {
+  switch (op) {
+    case 'account.status':
+      return { op, printer: null };
+    case 'account.assertion':
+      if (!isAccountAudience(p.audience)) return `audience must be one of ${ACCOUNT_AUDIENCES.join(', ')}`;
+      return { op, printer: null, audience: p.audience };
+  }
+}
+
+function readOpParams(op: Exclude<BridgeOp, 'printer.get' | LibraryOp | AccountOp>, p: Record<string, unknown>, printer: string): OpRequest | BridgeError | string {
   switch (op) {
     case 'status.watch': {
       const objects = readObjects(p.objects);
