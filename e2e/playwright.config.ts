@@ -29,7 +29,10 @@ export default defineConfig({
   // file in or out of that folder, or add a shard, when a shard drifts toward its 37 min limit.
   fullyParallel: true,
   workers: process.env.CI ? 2 : 3,
-  retries: process.env.CI ? 1 : 0,
+  // Two retries in CI (14 Nov): on the 2-core runner one or two heavy tests a run time out on both of two tries
+  // under load (a different one each run: ble-chooser:97, history:169, settings-3d-model...), while a real
+  // failure fails all three. The report still lists them as flaky.
+  retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never', outputFolder: '../playwright-report' }]] : 'list',
   use: {
     // Control marks elements for tests with data-tid.
