@@ -49,11 +49,12 @@ test.describe('signed in', () => {
     await page.getByTestId('print-on-cancel').click()
     await page.getByTestId('library-shelf-makes').getByRole('button', { name: 'Quick look at Print 3' }).first().click()
     await page.getByTestId('library-quick-look-page').click()
+    // The cancelled dialog stays in the page, hidden (Vuetify keeps its content): not shown is what counts.
     await expect(title(page)).toHaveText('Print 3')
-    await expect(dialog(page)).toHaveCount(0)
+    await expect(dialog(page)).toBeHidden()
     await page.goBack()
     await expect(title(page)).toHaveText('Print 11')
-    await expect(dialog(page)).toHaveCount(0)
+    await expect(dialog(page)).toBeHidden()
   })
 
   test('a second click of the link opens it again', async ({ page, models, open }) => {
