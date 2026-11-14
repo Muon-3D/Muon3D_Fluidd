@@ -192,6 +192,7 @@
           <setup-wifi-steps
             :client="client"
             over-bluetooth
+            @installing="installing = true"
           >
             <template #done>
               <p class="muon-ble-setup__body">
@@ -222,10 +223,14 @@
         >
           <setup-step-card
             flat
-            :title="`The Bluetooth connection to ${shortName} dropped`"
+            :title="updateRestart ? `${shortName} is restarting to finish its update` : `The Bluetooth connection to ${shortName} dropped`"
           >
             <p class="muon-ble-setup__body">
-              <template v-if="joinedWifi">
+              <template v-if="updateRestart">
+                The Bluetooth link ends while it restarts. Carry on at its screen, or search again in a
+                few minutes to find it.
+              </template>
+              <template v-else-if="joinedWifi">
                 {{ shortName }} is on {{ joinedWifi }}. Search again to find it there, or carry on at its
                 screen.
               </template>
@@ -241,7 +246,7 @@
                 Back to the list
               </v-btn>
               <app-btn
-                v-if="!joinedWifi"
+                v-if="!joinedWifi && !updateRestart"
                 color="primary"
                 @click="connect"
               >
@@ -286,6 +291,9 @@ export default class BluetoothSetupDialog extends Vue {
   readonly connector!: typeof connectForSetup
 
   phase: Phase = 'connecting'
+  /** An update was started over this link: the printer restarts and the link ends. */
+  installing = false
+  updateRestart = false
   failure: BleSetupFailure | null = null
   code = ''
   client: SetupClient | null = null
@@ -327,6 +335,8 @@ export default class BluetoothSetupDialog extends Vue {
   async connect () {
     await this.hangUp()
     const attempt = ++this.attempt
+    this.installing = false
+    this.updateRestart = false
     this.phase = 'connecting'
     this.failure = null
     const result = await this.connector(this.printer)
@@ -368,6 +378,8 @@ export default class BluetoothSetupDialog extends Vue {
     this.client?.stop()
     this.session = null
     if (this.phase !== 'compare' && this.phase !== 'setup') return
+    // An install restarts the printer, so its link going is expected, not a fault.
+    this.updateRestart = this.installing || setupState.state?.op?.kind === 'update_install'
     this.phase = setupState.state?.state === 'complete' ? 'setup' : 'lost'
   }
 

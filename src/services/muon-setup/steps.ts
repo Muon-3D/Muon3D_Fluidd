@@ -11,7 +11,7 @@ export type FrameStepId = 'welcome' | StepId | 'finish'
 export interface FrameStep {
   id: FrameStepId;
   label: string;
-  status: 'done' | 'on' | 'todo';
+  status: 'done' | 'skipped' | 'on' | 'todo';
 }
 
 export const STEP_LABELS: Record<FrameStepId, string> = {
@@ -39,6 +39,15 @@ export const currentStep = (state: SetupState | null, screen: ScreenId): FrameSt
   return state.cursor
 }
 
+/** An earlier step's real outcome: Welcome and Finish have none. */
+const earlier = (state: SetupState | null, id: FrameStepId): FrameStep['status'] => {
+  if (!state || id === 'welcome' || id === 'finish') return 'done'
+  const status = state.steps[id].status
+  if (status === 'skipped') return status
+  // The cursor is past it, so anything else counts as done.
+  return 'done'
+}
+
 export const frameSteps = (state: SetupState | null, screen: ScreenId): FrameStep[] => {
   const on = currentStep(state, screen)
   const ids: FrameStepId[] = [
@@ -50,7 +59,7 @@ export const frameSteps = (state: SetupState | null, screen: ScreenId): FrameSte
   return ids.map((id, i) => ({
     id,
     label: STEP_LABELS[id],
-    status: i < at ? 'done' : i === at ? 'on' : 'todo'
+    status: i < at ? earlier(state, id) : i === at ? 'on' : 'todo'
   }))
 }
 

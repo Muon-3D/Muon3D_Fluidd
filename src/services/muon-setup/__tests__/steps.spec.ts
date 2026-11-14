@@ -21,7 +21,17 @@ describe('the setup frame steps', () => {
   it('marks the steps before the cursor done, and the cursor current', () => {
     const steps = frameSteps(copy(linkCode), 'S6')
     expect(steps.find(s => s.status === 'on')?.id).toBe('remote')
-    expect(steps.filter(s => s.status === 'done').map(s => s.id)).toEqual(['welcome', 'network', 'name', 'update'])
+    expect(steps.filter(s => s.status === 'done').map(s => s.id)).toEqual(['welcome', 'network', 'name'])
+    // The fixture's update step was skipped: it shows as skipped, not done.
+    expect(steps.find(s => s.id === 'update')?.status).toBe('skipped')
+  })
+
+  it('shows an earlier skipped step as skipped, not done', () => {
+    const state = copy(linkCode)
+    state.steps.name.status = 'skipped'
+    state.steps.update.status = 'done'
+    const byId = Object.fromEntries(frameSteps(state, 'S6').map(s => [s.id, s.status]))
+    expect(byId).toMatchObject({ welcome: 'done', network: 'done', name: 'skipped', update: 'done', remote: 'on' })
   })
 
   it('leaves hidden steps out', () => {
