@@ -187,7 +187,7 @@ export default class PrintHandoff extends Mixins(PrinterRowsMixin) {
   async load () {
     // A shared print's address with no version or file (the site always sends both): its own page, where the print is read and Print on… is chosen.
     if (this.publicationId && (!this.version || typeof this.$route.query.file !== 'string' || !this.$route.query.file)) {
-      this.$router.replace({ path: '/library', query: { view: 'discover', print: this.publicationId } }).catch(() => {})
+      this.$router.replace({ path: '/library', query: { view: 'discover', print: this.publicationId, do: 'print' } }).catch(() => {})
       return
     }
     if (!this.signedIn || (!this.itemId && !this.publicationId) || !this.version) return

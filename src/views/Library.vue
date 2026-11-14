@@ -190,7 +190,6 @@ import { describeLibraryError, type LibraryItem, type LibraryRun } from '@/servi
 import { libraryState, turnLibraryOn } from '@/services/library/store'
 import { YOURS_GRIDS, type YoursGridSource } from '@/components/library/v2/LibraryYoursGrid.vue'
 import { readRecents, type RecentEntry } from '@/services/library/recents'
-import { autoPrintHandled, markAutoPrintHandled } from '@/services/library/auto-print'
 
 /** Automatic consent, by account: asked once per app session, whichever page instance asked (KAN-735). */
 export const autoConsent = Vue.observable({ asked: {} as Record<string, 'pending' | 'done' | 'failed'> })
@@ -324,35 +323,24 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   }
 
   /**
-   * The print this page was opened on by its address (the site's Print
-   * link), until Print on… has opened for it. Only that arrival opens it: a
-   * print opened from inside Control, or one whose history entry already
-   * opened it (a reload, Back), does not.
+   * The site's Print button (`&do=print` beside `print=<id>`): the model's
+   * page opens Print on… once. A bare `print=` only shows the model.
    */
-  arrivedPrint: string | null = null
-
-  created () {
-    const id = this.printId
-    this.arrivedPrint = id && !autoPrintHandled(id) ? id : null
-  }
-
   get autoPrint (): boolean {
-    return !!this.arrivedPrint && this.printId === this.arrivedPrint
+    return !!this.printId && this.$route?.query.do === 'print'
   }
 
-  /** The print's page opened Print on… for the address: once. */
+  /** Handled (opened, no file, or unavailable): `do` leaves the address, the model's page stays, so a reload or Back opens nothing. */
   onAutoPrinted () {
-    if (this.arrivedPrint) markAutoPrintHandled(this.arrivedPrint)
-    this.arrivedPrint = null
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query }
+    delete query.do
+    this.$router.replace({ query }).catch(() => {})
   }
 
   /** Off the print's pages (Back, the switch, a grid, a collection): nothing of ours to go back through. */
   @Watch('printId')
   onPrintId (id: string | null) {
     if (!id) this.printDepth = 0
-    // A different print than the one the address arrived on (opened here, or Back to one): never an arrival, so a reload of this entry opens nothing.
-    if (id !== this.arrivedPrint) this.arrivedPrint = null
-    if (id && !this.arrivedPrint) markAutoPrintHandled(id)
   }
 
   /**
@@ -366,7 +354,10 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   openPrint (id: string) {
     // The print already open adds no page, so nothing to go back through.
     if (id === this.printId) return
-    this.$router.push({ query: { ...this.$route.query, print: id } })
+    // Another model is not the link's Print: `do` does not follow it.
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, print: id }
+    delete query.do
+    this.$router.push({ query })
       .then(() => { this.printDepth++ })
       .catch(() => {})
   }
@@ -380,6 +371,7 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     }
     const query: Dictionary<string | (string | null)[]> = { ...this.$route.query }
     delete query.print
+    delete query.do
     this.$router.replace({ query }).catch(() => {})
   }
 

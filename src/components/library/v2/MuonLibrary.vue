@@ -530,7 +530,7 @@ export default class MuonLibrary extends Vue {
   @Prop({ type: Object, default: null }) readonly continueItem!: LibraryItem | null
   /** A print's own page (its publication id), over everything else; the host keeps it in the address. */
   @Prop({ type: String, default: null }) readonly printId!: string | null
-  /** The print's page was opened by its address (the site's Print link): it opens Print on… once, signed in. */
+  /** The site's Print button (do=print) opened the print's page: it opens Print on… once, signed in. */
   @Prop({ type: Boolean, default: false }) readonly autoPrint!: boolean
   /** A collection's page instead of Yours' shelves (its id); the host keeps it in the address. */
   @Prop({ type: String, default: null }) readonly collection!: string | null

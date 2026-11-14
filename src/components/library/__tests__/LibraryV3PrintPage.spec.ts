@@ -71,7 +71,7 @@ const text = (w: Awaited<ReturnType<typeof page>>, tid: string) => w.find(`[data
 
 const GCODE = { id: 'f1', role: 'gcode', sha256: 'a'.repeat(64), size_bytes: 3, encoding: 'identity', setup: { printer_model: 'Muon3D M1', nozzle_mm: 0.4, material: 'PLA' } }
 
-describe('Library v3 print page: opened by the site\'s Print link', () => {
+describe('Library v3 print page: the site\'s Print button (do=print)', () => {
   const opened = (w: Awaited<ReturnType<typeof page>>) => ({ print: w.emitted('print') ?? [], auto: w.emitted('auto-printed') ?? [] })
 
   it('signed in with a printable file: Print on… is asked for once, with the print', async () => {
@@ -80,7 +80,7 @@ describe('Library v3 print page: opened by the site\'s Print link', () => {
     expect(print).toHaveLength(1)
     expect(auto).toHaveLength(1)
     expect((print[0][1] as { item: { id: string } }).item.id).toBe('pub-1')
-    // Flagged as the link's arrival, so the host preselects no printer.
+    // Flagged as the Print button's, so the host preselects no printer.
     expect(print[0][2]).toBe(true)
     // Nothing reads it again.
     await w.setProps({ signedIn: false })
@@ -88,25 +88,29 @@ describe('Library v3 print page: opened by the site\'s Print link', () => {
     expect(opened(w).print).toHaveLength(1)
   })
 
-  it('signed out: the page opens, no chooser; signing in then opens it', async () => {
+  it('signed out: the page opens, no chooser, not handled; signing in then opens it once', async () => {
     const w = await page({ signedIn: false, autoPrint: true }, service({ files: [GCODE] }))
     expect(opened(w).print).toHaveLength(0)
+    expect(opened(w).auto).toHaveLength(0)
     expect(text(w, 'library-print-title')).toBe('Pocket robot, no supports')
     await w.setProps({ signedIn: true })
     expect(opened(w).print).toHaveLength(1)
+    expect(opened(w).auto).toHaveLength(1)
   })
 
-  it('a print with no G-code, or one that is not a link\'s print, opens no chooser', async () => {
+  it('a print with no G-code is handled with no chooser; a bare address (no do=print) asks for nothing', async () => {
     const noFile = await page({ signedIn: true, autoPrint: true }, service({ files: [] }))
     expect(opened(noFile).print).toHaveLength(0)
+    expect(opened(noFile).auto).toHaveLength(1)
     const plain = await page({ signedIn: true, autoPrint: false }, service({ files: [GCODE] }))
     expect(opened(plain).print).toHaveLength(0)
     expect(opened(plain).auto).toHaveLength(0)
   })
 
-  it('a print that is not available opens no chooser and says so', async () => {
+  it('a print that is not available is handled with no chooser, and says so', async () => {
     const w = await page({ signedIn: true, autoPrint: true }, vi.fn(async (url: string) => new Response(JSON.stringify({ url }), { status: 404 })))
     expect(opened(w).print).toHaveLength(0)
+    expect(opened(w).auto).toHaveLength(1)
     expect(w.find('[data-tid="library-print-unavailable"]').exists()).toBe(true)
   })
 })

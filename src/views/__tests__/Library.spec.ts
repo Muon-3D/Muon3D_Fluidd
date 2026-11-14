@@ -1,5 +1,4 @@
 import { shallowMount } from '@vue/test-utils'
-import Vue from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/services/muon-cloud/state', async () => {
@@ -61,55 +60,58 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('the site\'s Print link: /library?view=discover&print=<id>', () => {
+describe('the site\'s Print button: /library?view=discover&print=<id>&do=print', () => {
   const props = (w: ReturnType<typeof renderLibrary>) => w.findComponent({ name: 'MuonLibrary' }).props() as { printId: string | null, autoPrint: boolean }
 
-  beforeEach(() => history.replaceState(null, ''))
-
-  /** A route that changes under the page, as the router does. */
   function live (query: Record<string, string>) {
-    const route = Vue.observable({ query })
+    const replace = vi.fn(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
     const wrapper = shallowMount(Library, {
-      mocks: { $route: route, $router: { replace: vi.fn(() => Promise.resolve()), push: vi.fn(() => Promise.resolve()) }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
+      mocks: { $route: { query }, $router: { replace, push }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
       stubs: { 'router-link': true, 'frame-icon': true, 'print-on-dialog': true, 'file-name-dialog': true, 'library-state': LibraryState }
     })
-    return { route, wrapper }
+    return { wrapper, replace, push }
   }
 
-  it('a print opened from inside Control is no arrival: its entry is marked, so a reload opens nothing', async () => {
-    const { route, wrapper } = live({ view: 'discover' })
+  it('do=print with print=<id> asks the model\'s page for Print on…; a bare print=<id> only shows it', () => {
+    const link = renderLibrary({ view: 'discover', print: 'pub-1', do: 'print' })
+    const bare = renderLibrary({ view: 'discover', print: 'pub-1' })
+    const noModel = renderLibrary({ view: 'discover', do: 'print' })
     try {
-      route.query = { view: 'discover', print: 'pub-3' }
-      await wrapper.vm.$nextTick()
-      expect(props(wrapper).autoPrint).toBe(false)
+      expect(props(link).printId).toBe('pub-1')
+      expect(props(link).autoPrint).toBe(true)
+      expect(props(bare).printId).toBe('pub-1')
+      expect(props(bare).autoPrint).toBe(false)
+      expect(props(noModel).autoPrint).toBe(false)
     } finally {
-      wrapper.destroy()
-    }
-    const reloaded = renderLibrary({ view: 'discover', print: 'pub-3' })
-    try {
-      expect(props(reloaded).autoPrint).toBe(false)
-    } finally {
-      reloaded.destroy()
+      link.destroy()
+      bare.destroy()
+      noModel.destroy()
     }
   })
 
-  it('another print on the page ends the arrival: Back to the first does not open it', async () => {
-    const { route, wrapper } = live({ view: 'discover', print: 'pub-1' })
+  it('handled: do leaves the address, print and the rest stay', () => {
+    const { wrapper, replace } = live({ view: 'discover', print: 'pub-1', do: 'print', q: 'x' })
     try {
-      expect(props(wrapper).autoPrint).toBe(true)
-      route.query = { view: 'discover', print: 'pub-2' }
-      await wrapper.vm.$nextTick()
-      route.query = { view: 'discover', print: 'pub-1' }
-      await wrapper.vm.$nextTick()
-      expect(props(wrapper).printId).toBe('pub-1')
-      expect(props(wrapper).autoPrint).toBe(false)
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('auto-printed')
+      expect(replace).toHaveBeenCalledWith({ query: { view: 'discover', print: 'pub-1', q: 'x' } })
     } finally {
       wrapper.destroy()
     }
   })
 
-  it('the request from the link\'s arrival names no printer; a click on the page keeps the open one', async () => {
-    const { wrapper } = live({ view: 'discover', print: 'pub-1' })
+  it('another model opened from the page leaves do behind', () => {
+    const { wrapper, push } = live({ view: 'discover', print: 'pub-1', do: 'print' })
+    try {
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('update:print', 'pub-2')
+      expect(push).toHaveBeenCalledWith({ query: { view: 'discover', print: 'pub-2' } })
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('the request from the Print button names no printer; a click on the page keeps the open one', () => {
+    const { wrapper } = live({ view: 'discover', print: 'pub-1', do: 'print' })
     try {
       Object.assign(cloudState, { account: { id: 'a' } })
       const request = (printerId: string | null) => ({ modelId: 'pub-1', printerId, card: {}, print: { item: { id: 'pub-1', name: 'Print 1', setups: [] } } })
@@ -121,39 +123,6 @@ describe('the site\'s Print link: /library?view=discover&print=<id>', () => {
     } finally {
       Object.assign(cloudState, { account: null })
       wrapper.destroy()
-    }
-  })
-
-  it('opens that model\'s page and asks it for Print on… once; handled, a reload does not ask again', async () => {
-    const first = renderLibrary({ view: 'discover', print: 'pub-1' })
-    try {
-      expect(props(first).printId).toBe('pub-1')
-      expect(props(first).autoPrint).toBe(true)
-      first.findComponent({ name: 'MuonLibrary' }).vm.$emit('auto-printed')
-      await first.vm.$nextTick()
-      expect(props(first).autoPrint).toBe(false)
-    } finally {
-      first.destroy()
-    }
-    const reloaded = renderLibrary({ view: 'discover', print: 'pub-1' })
-    try {
-      expect(props(reloaded).printId).toBe('pub-1')
-      expect(props(reloaded).autoPrint).toBe(false)
-    } finally {
-      reloaded.destroy()
-    }
-  })
-
-  it('another id is its own link; no print in the address asks for nothing', () => {
-    const other = renderLibrary({ view: 'discover', print: 'pub-2' })
-    const none = renderLibrary({ view: 'discover' })
-    try {
-      expect(props(other).autoPrint).toBe(true)
-      expect(props(none).printId).toBeNull()
-      expect(props(none).autoPrint).toBe(false)
-    } finally {
-      other.destroy()
-      none.destroy()
     }
   })
 })
