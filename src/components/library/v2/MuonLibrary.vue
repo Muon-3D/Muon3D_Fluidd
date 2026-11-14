@@ -358,10 +358,10 @@
                     class="mlib-ava"
                     :style="{ background: colourOf(p.card.creator) }"
                   >{{ initials(p.card.creator) }}</span>
-                  <span><strong>{{ p.card.creator }}</strong> {{ p.verb }} <a
-                    href="#"
-                    @click.prevent="open(p.card)"
-                  >{{ p.card.title }}</a><template v-if="p.card.makeOf">, from <a
+                  <span><strong>{{ p.card.creator }}</strong> {{ p.verb }} <button
+                    type="button"
+                    @click="open(p.card)"
+                  >{{ p.card.title }}</button><template v-if="p.card.makeOf">, from <a
                     :href="publicationHref(p.card.makeOf.slug)"
                     target="_blank"
                     rel="noopener"
