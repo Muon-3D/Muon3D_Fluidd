@@ -577,6 +577,7 @@
       v-model="setupDialog"
       :printer="setupPrinter"
       @finished="rescan"
+      @pair="pairNearbyPrinter"
     />
   </div>
 </template>

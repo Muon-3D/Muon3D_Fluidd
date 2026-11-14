@@ -2,7 +2,7 @@ import { Component, Mixins } from 'vue-property-decorator'
 import consola from 'consola'
 import type { InstanceConfig } from '@/store/config/types'
 import StateMixin from './state'
-import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
+import { cloudState, dropCloudConnection, rememberBluetoothOnly } from '@/services/muon-cloud/state'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import { foundOpenFor } from '@/services/muon-cloud/found-open'
 import {
@@ -432,6 +432,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         if (!idOf(e)) return
         return this.connectOverBluetooth(e)
       case 'connect': return this.openFoundEntry(e)
+      case 'pair-bluetooth': return this.pairNearby(e, true)
       case 'link': return this.link(e)
       case 'remove': return this.remove(e)
       case 'access': return this.openAccess(e)
@@ -512,6 +513,39 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     }
     retryBluetooth(id)
     await this.connectCloud(e, heard.device, auto)
+    if (activationState.pairing === id) await startPairing(id)
+  }
+
+  /**
+   * A printer heard over Bluetooth that is set up and not on this account (or
+   * with nobody signed in): open it over Bluetooth, which needs no account. One
+   * this browser was paired with opens; one that does not know this browser yet
+   * goes straight into pairing (the code on its screen), as from a menu.
+   */
+  async pairNearby (e: DirectoryEntry, hold = false) {
+    await this.pairNearbyPrinter(e.row?.nearby ?? e.nearby ?? null, e.key, hold)
+  }
+
+  /**
+   * `hold` is true only from the explicit Pair over Bluetooth button, which
+   * keeps the Bluetooth route. An automatic open (a click on the tile) records
+   * no held route.
+   */
+  async pairNearbyPrinter (heard: NearbyPrinter | null, key = `ble:${heard?.deviceId}`, hold = false) {
+    const id = heard?.endpointId
+    if (!heard || !id) return
+    this.notice = null
+    chooseRouteMode(id, hold ? 'ble' : 'auto')
+    // The account may not hold it (nobody signed in): it still needs a name for its page.
+    if (!cloudState.printers.some(p => p.id === id)) rememberBluetoothOnly(id, heard.display || heard.localName || id.slice(0, 8))
+    await this.run(key, async () => {
+      useBluetoothFor(id, heard.device)
+      await releaseBluetoothLink(id)
+      reconnectBluetooth(id)
+      dropCloudConnection(id)
+      await activateCloudPrinter(id)
+      return true
+    }, true)
     if (activationState.pairing === id) await startPairing(id)
   }
 
@@ -684,6 +718,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         this.setupDialog = true
         return
       case 'nearby-info':
+        // Set up, and not on this network or an account: still this browser's to pair with over Bluetooth, signed in or not.
+        if (row.nearby?.endpointId) return this.pairNearby(e)
         this.notice = `${row.name} is nearby. This browser hears it over Bluetooth, but it isn't on this ` +
           "network or your account. Join the network it's on, or link it to your account at the printer."
     }

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import PrinterEntriesMixin from '../printer-entries'
 import * as cloudStateModule from '@/services/muon-cloud/state'
 import { activateCloudPrinter, activateLocalPrinter } from '@/services/muon-cloud/activate'
+import { chooseRouteMode, routeMode } from '@/services/muon-cloud/route-choice'
 import { stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import type { CardAction, DirectoryEntry } from '@/services/muon-cloud/directory'
 
@@ -120,6 +121,54 @@ describe('choosing the way in (KAN-1253)', () => {
     expect(wantsBluetoothFor('walnut')).toBe(true)
     await connectCloud.call(component(true), entry(true, true), device)
     expect(drop).not.toHaveBeenCalled()
+    expect(activate).not.toHaveBeenCalled()
+  })
+})
+
+describe('pairing with a printer that is set up and not on this account (signed out too)', () => {
+  const methods = (PrinterEntriesMixin as unknown as { options: { methods: Record<string, (...args: any[]) => any> } }).options.methods
+  const device = { addEventListener () {}, removeEventListener () {} } as any
+  const heard = { deviceId: 'dev-1', device, localName: 'walnut-8987', display: 'Walnut', endpointId: 'cafe'.repeat(16), advert: null, heardAt: 1 }
+  const component = () => ({
+    notice: 'old' as string | null,
+    run: async (_key: string, work: () => Promise<boolean>) => { await work() },
+    pairNearbyPrinter: methods.pairNearbyPrinter
+  })
+
+  afterEach(() => {
+    stopUsingBluetoothFor(heard.endpointId)
+    activate.mockClear()
+  })
+
+  it('opens it over Bluetooth on the radio route, needing no account', async () => {
+    const c = component()
+    await methods.pairNearbyPrinter.call(c, heard)
+    expect(wantsBluetoothFor(heard.endpointId)).toBe(true)
+    expect(activate).toHaveBeenCalledWith(heard.endpointId)
+    expect(c.notice).toBeNull()
+  })
+
+  it('a found printer that is set up pairs from its tile instead of only saying what it is', async () => {
+    const pairNearbyPrinter = vi.fn()
+    const e = { key: 'ble:dev-1', row: { action: 'nearby-info', name: 'Walnut', nearby: heard } } as unknown as DirectoryEntry
+    await methods.openFoundEntry.call({ pairNearby: methods.pairNearby, pairNearbyPrinter }, e)
+    expect(pairNearbyPrinter).toHaveBeenCalledWith(heard, 'ble:dev-1', false)
+  })
+
+  it('a click on the tile opens it with no held route; only the Pair over Bluetooth button holds Bluetooth', async () => {
+    chooseRouteMode(heard.endpointId, 'auto')
+    const c = { ...component(), pairNearby: methods.pairNearby }
+    const e = { key: 'ble:dev-1', row: { action: 'nearby-info', name: 'Walnut', nearby: heard } } as unknown as DirectoryEntry
+    await methods.openFoundEntry.call(c, e)
+    expect(routeMode(heard.endpointId)).toBe('auto')
+    expect(activate).toHaveBeenCalledWith(heard.endpointId)
+    await methods.onAction.call({ ...c, openFoundEntry: methods.openFoundEntry }, e, 'pair-bluetooth')
+    expect(routeMode(heard.endpointId)).toBe('ble')
+    chooseRouteMode(heard.endpointId, 'auto')
+  })
+
+  it('does nothing for a sighting with no EndpointId', async () => {
+    await methods.pairNearbyPrinter.call(component(), { ...heard, endpointId: null })
     expect(activate).not.toHaveBeenCalled()
   })
 })
