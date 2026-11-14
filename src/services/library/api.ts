@@ -454,6 +454,11 @@ export function createLibraryClient (options: LibraryClientOptions) {
       'GET', `/v1/community/saves/lookup?targets=${encodeURIComponent(JSON.stringify(ids.map(id => ({ kind, id }))))}`),
     collections: () => request<{ collections: CommunityCollection[] }>('GET', '/v1/community/collections'),
     collection: (id: string) => request<CommunityCollectionDetail>('GET', `/v1/community/collections/${encodeURIComponent(id)}`),
+    /** Follow someone's public collection (`PUT .../follow`, 204; 404 not public, 400 `follow_limit` at 500). */
+    followCollection: (id: string) => request<null>('PUT', `/v1/community/collections/${encodeURIComponent(id)}/follow`),
+    unfollowCollection: (id: string) => request<null>('DELETE', `/v1/community/collections/${encodeURIComponent(id)}/follow`),
+    /** The collections you follow, newest follow first (src/saves.rs `followed`): the public view of each, no items. */
+    followedCollections: () => request<{ collections: CommunityCollection[] }>('GET', '/v1/community/collections/followed'),
     createCollection: (name: string) => request<CommunityCollection>('POST', '/v1/community/collections', { name, visibility: 'private' }),
     addToCollection: (collectionId: string, saveId: string) =>
       request<null>('PUT', `/v1/community/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(saveId)}`),
