@@ -399,6 +399,24 @@ const CLAIM_SETTLE_MS = 50
  */
 let recoverSession: ((failedRefresh: string) => Promise<boolean>) | null = null
 
+/**
+ * KAN-1389: a call the console refused (the refresh and the silent sign-in both failed) ends the session whoever made
+ * it, not only the printer poll. For `request` below that is the `refused` hook of a refresh the console refused
+ * (SessionHooks), which state.ts answers with its one refused-session path. A session with no refresh token (a
+ * printer's own address) is not ended by a refused `request`: the printer list poll ends it, and a Bluetooth open
+ * that a 401 on the grant call meets must still go on (KAN-1396). The account client calls this for its own
+ * refused refresh.
+ *
+ * Ends the session only if it is still the one `sent` belongs to: a refusal that lands after a sign-out and a new
+ * sign-in belongs to the previous account and must not end the new one (KAN-2249). Tokens already cleared by the
+ * refresh count as still ours.
+ */
+export function sessionRefused (sent: string) {
+  const now = storedToken()
+  if (now !== null && now !== sent) return
+  try { sessionHooks.refused?.() } catch { /* the caller's own refusal is raised either way */ }
+}
+
 export function setSessionRecovery (recover: ((failedRefresh: string) => Promise<boolean>) | null) {
   recoverSession = recover
 }

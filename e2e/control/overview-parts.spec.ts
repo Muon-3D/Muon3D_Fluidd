@@ -88,6 +88,12 @@ test.describe('desktop pointer', () => {
     // Selected, it stays named while the pointer is on the stage; off the stage it lets go (Jack, 11 Nov, KAN-2093).
     await page.waitForTimeout(500)
     await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'plate')
+    // Esc lets it go too, the pointer still on the stage.
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('m1-parts-label')).toHaveCount(0)
+    await expect(page.getByTestId('m1-part-plate')).toHaveAttribute('aria-pressed', 'false')
+    await page.mouse.click(at.x, at.y)
+    await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'plate')
     await page.mouse.move(5, 5)
     await expect(page.getByTestId('m1-parts-label')).toHaveCount(0)
 

@@ -89,3 +89,13 @@ describe('Library v3 Discover: filters', () => {
     expect(vm.noMatch).toBe(false)
   })
 })
+
+describe('Library v3: Print on… from a print\'s page', () => {
+  it('the link\'s arrival asks with no printer; a click keeps the open one', () => {
+    const vm = library({ printerId: 'p-1' }) as unknown as { printFromLook: (card: object, print: object | null, auto?: boolean) => void }
+    vm.printFromLook({ id: 'pub-1' }, null, true)
+    vm.printFromLook({ id: 'pub-1' }, null)
+    const requests = (wrapper as unknown as { emitted: (name: string) => Array<[{ printerId: string | null }]> }).emitted('print')
+    expect(requests.map(([request]) => request.printerId)).toEqual([null, 'p-1'])
+  })
+})
