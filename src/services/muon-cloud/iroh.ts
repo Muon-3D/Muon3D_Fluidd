@@ -11,10 +11,10 @@ import type {
   ManagedIrohRelay,
   PrinterSocket
 } from '@/services/managed-transport'
-import { bluetoothRouteFor, noteBluetoothFellBack, wantsBluetoothFor, type WasmBleLink } from '@/services/muon-ble/link'
+import { bluetoothDropped, bluetoothRouteFor, noteBluetoothDropped, wantsBluetoothFor, type WasmBleLink } from '@/services/muon-ble/link'
 import { pinnedBluetoothError } from '@/services/muon-ble/refusal'
 import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, cloudTokensPersist } from './api'
-import { endpointBusy, notifyEndpointRebound } from './endpoint-hooks'
+import { endpointBusy, notifyEndpointRebound, notifyEndpointReplacing } from './endpoint-hooks'
 import bundledWasmUrl from './vendor/muon-link-web/1608e20/muon_link_web_bg.wasm?url'
 
 const KEY_STORAGE = 'muon.cloud.key'
@@ -171,6 +171,8 @@ export function freshBrowserEndpoint (relayUrl: string): Promise<WasmEndpoint> {
   const old = endpointPromise
   endpointRelay = relayUrl
   dialed.clear()
+  // Every Bluetooth link on the old endpoint is about to close: that is not a drop (#370).
+  notifyEndpointReplacing()
   const fresh = (async () => {
     if (old) {
       let previous: WasmEndpoint | null = null
@@ -354,7 +356,13 @@ export class IrohPrinter implements ManagedIrohRelay {
     this.printer = printer
   }
 
+  private assertRoute () {
+    const dropped = bluetoothDropped(this.printer.printerId())
+    if (dropped) throw new Error(`Bluetooth dropped: ${dropped} Reconnect, or choose how to connect.`)
+  }
+
   async fetch (path: string, init?: RequestInit): Promise<Response> {
+    this.assertRoute()
     const signal = init?.signal
     if (signal?.aborted) throw abortError(signal)
     const method = (init?.method ?? 'GET').toUpperCase()
@@ -401,6 +409,7 @@ export class IrohPrinter implements ManagedIrohRelay {
   }
 
   async openWebSocket (path: string): Promise<PrinterSocket> {
+    this.assertRoute()
     return new IrohSocket(await this.printer.openWebSocket(path))
   }
 
@@ -415,20 +424,35 @@ export class IrohPrinter implements ManagedIrohRelay {
  * as a path as well as the relay: for a printer with no Wi-Fi, the only one.
  */
 export async function dialPrinter (endpoint: WasmEndpoint, printerId: string): Promise<WasmPrinter> {
-  let bluetoothError: Error | null = null
+  const dropped = bluetoothDropped(printerId)
+  if (dropped) throw new Error(`Bluetooth dropped: ${dropped} Reconnect, or choose how to connect.`)
+  let link
   try {
-    await bluetoothRouteFor(endpoint, printerId)
+    link = await bluetoothRouteFor(endpoint, printerId)
+    if (wantsBluetoothFor(printerId) && !link) throw new Error('Bluetooth is unavailable on this endpoint.')
   } catch (error) {
-    bluetoothError = error as Error
-    // The relay may still carry the open, but never quietly (KAN-1396).
-    noteBluetoothFellBack(printerId, bluetoothError.message)
+    const message = (error as Error).message
+    noteBluetoothDropped(printerId, message)
+    throw new Error(`Couldn't reach the printer over Bluetooth: ${message}`)
   }
-  try {
-    return await endpoint.connect(printerId)
-  } catch (error) {
-    if (bluetoothError) throw new Error(`Couldn't reach the printer over Bluetooth: ${bluetoothError.message}`)
-    throw error
+  const printer = await endpoint.connect(printerId)
+  if (link) {
+    if (!link.isOpen()) {
+      printer.close?.()
+      throw new Error('Bluetooth dropped while connecting. Reconnect, or choose how to connect.')
+    }
+    // Once: the link closing and an endpoint replace can both end this session.
+    let closedOnce = false
+    const closeOnce = () => {
+      if (closedOnce) return
+      closedOnce = true
+      try {
+        printer.close?.()
+      } catch { /* already closed */ }
+    }
+    link.closed.then(closeOnce, closeOnce)
   }
+  return printer
 }
 
 /** Fluidd's `ManagedIrohEndpoint`: dials the printer the handoff names. */

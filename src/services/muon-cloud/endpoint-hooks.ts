@@ -6,6 +6,7 @@
 
 const busyChecks = new Set<() => boolean>()
 const reboundListeners = new Set<(except: string) => void>()
+const replacingListeners = new Set<() => void>()
 
 /** A module whose work would be cut by replacing the endpoint (a pairing, a Bluetooth setup) says so here. */
 export function registerEndpointBusy (check: () => boolean): () => void {
@@ -21,6 +22,26 @@ export function endpointBusy (): boolean {
     } catch { /* a broken check never blocks a connect */ }
   }
   return false
+}
+
+/**
+ * Runs just before the endpoint is closed to be replaced, so a module that holds
+ * links on it can tell their closing from a drop (KAN-2531, #370).
+ */
+export function onEndpointReplacing (listener: () => void): () => void {
+  replacingListeners.add(listener)
+  return () => { replacingListeners.delete(listener) }
+}
+
+/** Tells every listener the endpoint is about to be closed to be replaced. */
+export function notifyEndpointReplacing (): void {
+  for (const listener of replacingListeners) {
+    try {
+      listener()
+    } catch (error) {
+      console.warn(`muon-link: a replacing listener failed: ${(error as Error)?.message ?? error}`)
+    }
+  }
 }
 
 /** Runs after an explicit Bluetooth connect replaced the endpoint; `except` is the printer it was for. */
@@ -44,4 +65,5 @@ export function notifyEndpointRebound (except: string): void {
 export function resetEndpointHooks (): void {
   busyChecks.clear()
   reboundListeners.clear()
+  replacingListeners.clear()
 }

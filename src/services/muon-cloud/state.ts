@@ -31,6 +31,7 @@ import { forgetOwnAvatar } from '@/services/account/avatar'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
+import { requestRefused } from '@/services/managed-transport/refusal'
 import { onEndpointRebound } from './endpoint-hooks'
 
 const ACTIVE_KEY = 'muon.cloud.active'
@@ -64,6 +65,8 @@ interface CloudState {
   account: CloudAccount | null;
   config: CloudConfig | null;
   printers: CloudPrinter[];
+  /** When the request behind `printers` was sent (ms); 0 before the first answer. */
+  printersAsOf: number;
   status: Record<string, PrinterStatus>;
   activePrinterId: string | null;
   layout: FleetLayout;
@@ -76,6 +79,7 @@ export const cloudState = Vue.observable<CloudState>({
   account: null,
   config: null,
   printers: [],
+  printersAsOf: 0,
   status: {},
   activePrinterId: readActive(),
   layout: { ...DEFAULT_FLEET_LAYOUT },
@@ -362,6 +366,7 @@ async function pollOne (printer: CloudPrinter) {
       connection.fetch(STATUS_QUERY),
       new Promise<never>((_resolve, reject) => { silence = setTimeout(() => reject(new StatusSilence()), STATUS_TIMEOUT_MS) })
     ]).finally(() => clearTimeout(silence))
+    if (requestRefused({ status: response.status })) return
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const s = (await response.json()).result.status
     if (signal.aborted) return
@@ -377,6 +382,7 @@ async function pollOne (printer: CloudPrinter) {
       updatedAt: Date.now()
     } as PrinterStatus)
   } catch (error) {
+    if (requestRefused(error)) return
     if (overBluetooth && !signal.aborted) noteBluetoothFailure(printer.id, error)
     const failed = (pollFailures.get(printer.id) ?? 0) + 1
     pollFailures.set(printer.id, failed)
@@ -434,7 +440,9 @@ async function pollAll () {
 export async function refreshPrinters () {
   if (!cloudState.account || deletionState.deleteAfter !== null) return
   try {
+    const sentAt = Date.now()
     cloudState.printers = (await cloudApi.printers()).printers
+    cloudState.printersAsOf = sentAt
   } catch (error) {
     if (error instanceof CloudError && error.status === 401) await sessionRefused()
   }

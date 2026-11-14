@@ -5,6 +5,7 @@ import * as state from '../state'
 
 const fake = vi.hoisted(() => ({
   down: false,
+  status: 200,
   dials: 0,
   closes: 0,
   sockets: [] as any[],
@@ -26,7 +27,7 @@ vi.mock('../iroh', async () => {
           if (fake.down || closed) throw new Error('connection lost')
           if (fake.fetchPause) await fake.fetchPause
           return {
-            status: 200,
+            status: fake.status,
             headers: [],
             body: new TextEncoder().encode(JSON.stringify({
               result: { status: { webhooks: { state: 'ready' }, print_stats: { state: 'printing', filename: 'part.gcode' }, virtual_sdcard: { progress: 0.42 } } }
@@ -79,6 +80,7 @@ beforeEach(async () => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-10-13T12:00:00Z'))
   fake.down = false
+  fake.status = 200
   fake.dials = fake.closes = 0
   fake.sockets = []
   fake.grantTimes = []
@@ -107,6 +109,16 @@ afterEach(async () => {
   vi.restoreAllMocks()
   vi.useRealTimers()
   localStorage.clear()
+})
+
+it.each([401, 403])('a status refusal (%s) never marks the route down or redials', async status => {
+  await vi.advanceTimersByTimeAsync(3000)
+  const before = { ...state.cloudState.status.boxwood }
+  fake.status = status
+  await vi.advanceTimersByTimeAsync(30_000)
+  expect(state.cloudState.status.boxwood).toEqual(before)
+  expect(fake.dials).toBe(1)
+  expect(fake.closes).toBe(0)
 })
 
 it('shows Offline within 10 seconds when the relay goes silent, and flips back when it answers (I-133)', async () => {
