@@ -152,7 +152,7 @@ describe('Library v3 Yours: the shelves', () => {
     wrappers.push(wrapper)
     await flush()
     const ids = wrapper.findAll('section.mlib-shelf').wrappers.map(w => w.attributes('data-tid'))
-    expect(ids).toEqual(['library-collections', 'library-shelf-sliced', 'library-shelf-printed', 'library-saved'])
+    expect(ids).toEqual(['library-collections', 'library-following', 'library-shelf-sliced', 'library-shelf-printed', 'library-saved'])
     expect(wrapper.find('[data-tid="library-shelf-sliced"]').text()).toContain('Print a')
     expect(wrapper.find('[data-tid="library-shelf-sliced"]').text()).not.toContain('Print gone')
     expect(wrapper.find('[data-tid="library-shelf-sliced"]').text()).toContain('Print on Boxwood')
