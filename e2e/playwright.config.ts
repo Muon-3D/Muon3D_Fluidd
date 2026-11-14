@@ -37,7 +37,9 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    colorScheme: 'dark'
+    colorScheme: 'dark',
+    // E2E_SOFTWARE_GL=1: draw WebGL on SwiftShader as a CI runner (no GPU) does, to reproduce its starvation locally.
+    ...(process.env.E2E_SOFTWARE_GL ? { launchOptions: { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-gpu'] } } : {})
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
@@ -57,6 +59,7 @@ export default defineConfig({
       cwd: '..',
       reuseExistingServer: !process.env.CI,
       timeout: 240_000,
+      stdout: 'pipe',
       env: { E2E: '1', E2E_PORT: String(PORT) }
     }
   ]
