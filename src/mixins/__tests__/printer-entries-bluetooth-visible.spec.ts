@@ -7,6 +7,7 @@ const nearby = vi.hoisted(() => ({
   nearbyState: { printers: [] as unknown[], support: 'supported', radio: 'on', choosing: false, error: null },
   lookNearby: vi.fn(),
   permittedPrinterFor: vi.fn(async () => null as unknown),
+  rememberedName: vi.fn((): string | undefined => undefined),
   isPrinter: vi.fn((p: { endpointId: string | null }, id: string) => p.endpointId === id)
 }))
 vi.mock('@/services/muon-ble/nearby', () => nearby)
@@ -127,6 +128,14 @@ describe('Connect over Bluetooth for one printer lists only that printer (KAN-24
     const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
     expect(nearby.lookNearby).toHaveBeenCalledWith({ endpointId: 'walnut', name: undefined })
+  })
+
+  it('names the printer as this browser last heard it, for the name filter (KAN-2516)', async () => {
+    nearby.lookNearby.mockResolvedValue(null)
+    nearby.rememberedName.mockReturnValueOnce('walnut-8987')
+    const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
+    await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
+    expect(nearby.lookNearby).toHaveBeenCalledWith({ endpointId: 'walnut', name: 'walnut-8987' })
   })
 
   it('a pick that is not this printer is refused after connect, whatever the filter said', async () => {

@@ -31,7 +31,7 @@ import {
 } from '@/services/muon-cloud/directory'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
-import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
+import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, rememberedName, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
 import { bluetoothCarrying, reconnectBluetooth, releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
@@ -504,7 +504,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     let heard = chosen ?? e.nearby ?? await permittedPrinterFor(id).catch(() => null)
     if (!heard) {
       // KAN-2470: the chooser lists only this printer (its EndpointId, else its short name).
-      heard = await lookNearby({ endpointId: id, name: e.nearby?.localName })
+      // e.nearby is always empty here, so the name is the one remembered from an earlier choice (KAN-2516).
+      heard = await lookNearby({ endpointId: id, name: rememberedName(id) })
       if (!heard) return
       if (heard.endpointId && !isPrinter(heard, id)) {
         this.notice = `That device isn't ${e.name}. Choose ${e.name} in the Bluetooth list.`

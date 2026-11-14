@@ -230,6 +230,16 @@ export async function lookNearby (target?: ChooserTarget | null): Promise<Nearby
   }
 }
 
+/**
+ * The name this printer advertised when this browser last chose it, for the
+ * chooser's name filter when its EndpointId can't be matched (KAN-2516).
+ * Undefined when it was never chosen here.
+ */
+export function rememberedName (endpointId: string): string | undefined {
+  const id = endpointId.toLowerCase()
+  return Object.values(loadRemembered()).find(r => r?.endpointId?.toLowerCase() === id && !!r.localName)?.localName
+}
+
 /** Whether a sighting is this EndpointId, by the whole id or the advertised prefix. */
 export function isPrinter (p: NearbyPrinter, endpointId: string): boolean {
   const id = endpointId.toLowerCase()
