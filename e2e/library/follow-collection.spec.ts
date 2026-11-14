@@ -27,7 +27,7 @@ test.describe('signed in', () => {
     await follow.click()
     await expect(follow).toHaveText('Following')
     await expect(follow).toHaveAttribute('aria-pressed', 'true')
-    expect(models.follows).toEqual(['other-1'])
+    await expect.poll(() => models.follows).toEqual(['other-1'])
 
     await page.getByTestId('library-collection-back').click()
     const row = page.getByTestId('library-following-other-1')
@@ -41,7 +41,7 @@ test.describe('signed in', () => {
     await page.getByTestId('library-following-unfollow-other-1').click()
     await expect(page.getByTestId('library-following-other-1')).toHaveCount(0)
     await expect(page.getByTestId('library-shelf-following-empty')).toContainText('You don\'t follow any collections yet.')
-    expect(models.follows).toEqual([])
+    await expect.poll(() => models.follows).toEqual([])
   })
 
   test('Unfollow from the collection view updates the shelf', async ({ page, models, open }) => {
@@ -52,7 +52,7 @@ test.describe('signed in', () => {
     await expect(follow).toHaveAttribute('aria-pressed', 'true')
     await follow.click()
     await expect(follow).toHaveAttribute('aria-pressed', 'false')
-    expect(models.follows).toEqual([])
+    await expect.poll(() => models.follows).toEqual([])
     await page.getByTestId('library-collection-back').click()
     await expect(page.getByTestId('library-shelf-following-empty')).toBeVisible()
   })
@@ -65,7 +65,7 @@ test.describe('signed in', () => {
     await follow.click()
     await expect(page.getByTestId('library-collection-note')).toHaveText('You can follow up to 500 collections.')
     await expect(follow).toHaveAttribute('aria-pressed', 'false')
-    expect(models.follows).toEqual([])
+    await expect.poll(() => models.follows).toEqual([])
   })
 
   test('your own public collection has no Follow', async ({ page, models, open }) => {
