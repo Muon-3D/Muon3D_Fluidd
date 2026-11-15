@@ -249,7 +249,9 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
     box-shadow: inset 0 0 0 1.5px var(--m3d-accent);
   }
 
-  .print-on__row--off .print-on__text { opacity: 0.7; }
+  // A printer that cannot take this print: its icon fades and goes grey (a picture, not text),
+  // and its pill says why. Text stays at full contrast (fading the line to 70% made it 2.65 to 3.15:1).
+  .print-on__row--off .print-on__icon { opacity: 0.45; filter: grayscale(1); }
 
   .print-on__icon {
     display: grid;
@@ -270,12 +272,14 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
   .print-on__name { font-weight: 600; }
 
   .print-on__here {
-    color: var(--m3d-text-subtle);
+    color: var(--m3d-text-muted);
     font-weight: 400;
   }
 
+  // Secondary by size, not colour: muted text measured under 4.5:1 here (a selected row's tint,
+  // the glass dialog over a page). --m3d-text is 10:1 or more on every row background.
   .print-on__line {
-    color: var(--m3d-text-subtle);
+    color: var(--m3d-text);
     font-size: 12px;
   }
 
@@ -301,7 +305,7 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
 
   .print-on__why {
     margin: 6px 0 0 52px;
-    color: var(--m3d-text-subtle);
+    color: var(--m3d-text-muted);
     font-size: 12px;
   }
 
@@ -361,7 +365,7 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
     padding: 0;
     border: 0;
     background: none;
-    color: var(--m3d-text-subtle);
+    color: var(--m3d-text-muted);
     font: inherit;
     font-size: 13px;
     cursor: pointer;
@@ -373,10 +377,10 @@ export default class PrintOnDialog extends Mixins(PrintOnMixin) {
   .print-on__fine {
     flex-basis: 100%;
     margin: 4px 0 0;
-    color: var(--m3d-text-subtle);
+    color: var(--m3d-text-muted);
     font-size: 12px;
 
-    a { color: var(--m3d-accent); }
+    a { color: var(--mlib-link, var(--m3d-accent)); }
   }
 
   // The switch's slide and fade are decoration: off for anyone who asked for less motion.

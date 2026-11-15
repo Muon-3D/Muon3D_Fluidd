@@ -13,24 +13,47 @@ import { test as base, expect, type Page } from '@playwright/test'
 import { modelService, serveModels, type ModelServiceState } from './fakes/models'
 import { consoleState, serveConsole, signIn, useConsole, type ConsoleState } from './fakes/console'
 import { MOCK_PORT } from './ports'
+import { cacheModules } from './module-cache'
 
 /** The mock printer's page prefix: Control puts a printer's pages under its name. */
 export const PRINTER = '/boxwood-367a'
 
 interface Options {
+  /**
+   * Whether the page can draw WebGL. Off by default: with it on, every page that shows the overview or the G-code
+   * preview draws the M1 model or the toolpath, and on a CI runner (software GL, two cores, two workers) that keeps
+   * the main thread and both cores busy for seconds, so the app shell takes over 60 s to mount, and the page the
+   * OTHER worker is loading starves too (KAN-2781). Control then draws its fallback, as in a browser without
+   * WebGL. Specs that are about the 3D model, the stage or the toolpath ask for it with `test.use({ webgl: true })`.
+   */
+  webgl: boolean;
   signedIn: boolean;
   printerHosted: boolean;
 }
 
 interface Fixtures {
   printerAddress: void;
+  cpuThrottle: void;
+  noWebgl: void;
+  moduleCache: void;
   models: ModelServiceState;
   account: ConsoleState;
   open: (path: string) => Promise<void>;
 }
 
 export const test = base.extend<Options & Fixtures>({
+  webgl: [!!process.env.E2E_WEBGL, { option: true }],
   signedIn: [false, { option: true }],
+  // E2E_THROTTLE=4: run every page at 1/4 CPU speed (CDP), to reproduce a slow
+  // CI runner locally. Off by default.
+  cpuThrottle: [async ({ page }, use) => {
+    const rate = Number(process.env.E2E_THROTTLE || 1)
+    if (rate > 1) {
+      const client = await page.context().newCDPSession(page)
+      await client.send('Emulation.setCPUThrottlingRate', { rate })
+    }
+    await use()
+  }, { auto: true }],
   printerHosted: [false, { option: true }],
   models: [async ({ page }, use) => {
     const state = modelService()
@@ -40,6 +63,21 @@ export const test = base.extend<Options & Fixtures>({
   // Control finds its printer from config.json: point it at this run's mock
   // only (localhost blacklisted, so it doesn't also probe :7125, where another
   // run's mock may be).
+  moduleCache: [async ({ context, baseURL }, use) => {
+    if (!process.env.E2E_NO_MODULE_CACHE) await cacheModules(context, new URL(baseURL!).origin)
+    await use()
+  }, { auto: true }],
+  noWebgl: [async ({ page, webgl }, use) => {
+    if (!webgl) {
+      await page.addInitScript(() => {
+        const getContext = HTMLCanvasElement.prototype.getContext as (this: HTMLCanvasElement, type: string, ...rest: unknown[]) => unknown
+        HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...rest: unknown[]) {
+          return /webgl/i.test(type) ? null : getContext.call(this, type, ...rest)
+        } as typeof HTMLCanvasElement.prototype.getContext
+      })
+    }
+    await use()
+  }, { auto: true }],
   printerAddress: [async ({ page, printerHosted }, use) => {
     await page.route('**/config.json', async route => {
       const response = await route.fetch()

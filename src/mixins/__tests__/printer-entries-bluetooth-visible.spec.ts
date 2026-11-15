@@ -7,6 +7,7 @@ const nearby = vi.hoisted(() => ({
   nearbyState: { printers: [] as unknown[], support: 'supported', radio: 'on', choosing: false, error: null },
   lookNearby: vi.fn(),
   permittedPrinterFor: vi.fn(async () => null as unknown),
+  rememberedName: vi.fn((): string | undefined => undefined),
   isPrinter: vi.fn((p: { endpointId: string | null }, id: string) => p.endpointId === id)
 }))
 vi.mock('@/services/muon-ble/nearby', () => nearby)
@@ -37,7 +38,7 @@ const entry = (online: boolean, heard: boolean): DirectoryEntry => ({
   cloud: { id: 'walnut', online } as DirectoryEntry['cloud'],
   nearby: heard ? ({ device: { heard: true } } as unknown as DirectoryEntry['nearby']) : undefined
 })
-const has = (e: DirectoryEntry) => methods.cloudActions(e).some(a => a.id === 'connect-bluetooth')
+const has = (e: DirectoryEntry) => methods.cloudActions(e).some(a => a.id === 'connect-bluetooth' && !a.disabled)
 
 beforeEach(() => {
   nearby.nearbyState.support = 'supported'
@@ -65,14 +66,14 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
     const c = { connectCloud: vi.fn(), notice: null as string | null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
     expect(nearby.lookNearby).toHaveBeenCalledOnce()
-    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
   })
 
   it('uses the device already heard, without the picker', async () => {
     const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, true), 'connect-bluetooth')
     expect(nearby.lookNearby).not.toHaveBeenCalled()
-    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), { heard: true })
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), { heard: true }, false)
   })
 
   it('does nothing when the picker is dismissed, and refuses a different printer', async () => {
@@ -91,7 +92,7 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
     const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
     expect(nearby.lookNearby).not.toHaveBeenCalled()
-    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
   })
 
   it('an explicit choice uses a remembered device that no advert has been heard from (heardAt 0)', async () => {
@@ -100,7 +101,7 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
     const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
     expect(nearby.lookNearby).not.toHaveBeenCalled()
-    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
   })
 
   it('goes straight into pairing when the printer refused this browser', async () => {
@@ -129,6 +130,14 @@ describe('Connect over Bluetooth for one printer lists only that printer (KAN-24
     expect(nearby.lookNearby).toHaveBeenCalledWith({ endpointId: 'walnut', name: undefined })
   })
 
+  it('names the printer as this browser last heard it, for the name filter (KAN-2516)', async () => {
+    nearby.lookNearby.mockResolvedValue(null)
+    nearby.rememberedName.mockReturnValueOnce('walnut-8987')
+    const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
+    await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
+    expect(nearby.lookNearby).toHaveBeenCalledWith({ endpointId: 'walnut', name: 'walnut-8987' })
+  })
+
   it('a pick that is not this printer is refused after connect, whatever the filter said', async () => {
     nearby.lookNearby.mockResolvedValue({ device: {}, endpointId: 'impostor' })
     const c = { connectCloud: vi.fn(), notice: null as string | null, connectOverBluetooth: methods.connectOverBluetooth }
@@ -153,7 +162,7 @@ describe('the Connect over Bluetooth button (KAN-2470)', () => {
     await methods.onConnectOverBluetooth.call(c)
     expect(nearby.lookNearby).toHaveBeenCalledOnce()
     expect(nearby.lookNearby).toHaveBeenCalledWith()
-    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device)
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
   })
 
   it('sends a printer that is not on the account to its set-up, never a silent no-op (KAN-2530)', async () => {

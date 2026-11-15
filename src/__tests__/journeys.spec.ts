@@ -21,6 +21,7 @@ vi.mock('@/services/slicer-bridge/slicerUrl', () => ({
 }))
 vi.mock('@/services/muon-cloud/state', () => ({
   cloudState: { account: null, activePrinterId: null, printers: [] },
+  reachablePrinters: () => [],
   initCloud: vi.fn()
 }))
 vi.mock('@/api/socketActions', () => ({

@@ -432,6 +432,11 @@ async def http_generic(request):
         return web.json_response({'phase': 'unsupported'})
     if path == '/server/info':
         return web.json_response({'result': server_info()})
+    # The status poll a cloud printer card makes (muon-cloud/state.ts STATUS_QUERY).
+    if path == '/printer/objects/query':
+        current = status()
+        names = [key.split('=')[0] for key in request.query.keys()]
+        return web.json_response({'result': {'eventtime': time.time(), 'status': {n: current.get(n, {}) for n in names}}})
     if path == '/server/muon/protection':
         return web.json_response({'result': protection()})
     if path == '/access/oneshot_token':
@@ -450,6 +455,10 @@ async def http_generic(request):
 
 @web.middleware
 async def cors(request, handler):
+    return await _answer(request, handler)
+
+
+async def _answer(request, handler):
     if request.method == 'OPTIONS':
         resp = web.Response()
     else:
@@ -468,4 +477,7 @@ app.router.add_route('*', '/server/aux/{tail:.*}', http_aux)
 app.router.add_route('*', '/{tail:.*}', http_generic)
 
 if __name__ == '__main__':
+    # 127.0.0.1 only, as on develop: with ::1 also bound, every status poll and /server/info from the page hung on the
+    # CI runner (traces of run 43559327919: requests to localhost:7125 with no response from the first poll on), so the
+    # socket never opened after a route change.
     web.run_app(app, host='127.0.0.1', port=PORT, print=lambda *_: print(f'mock moonraker on {PORT}', flush=True))

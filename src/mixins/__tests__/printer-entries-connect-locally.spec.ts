@@ -130,7 +130,7 @@ describe('Connect locally on the hosted page (KAN-2529)', () => {
     const c = { ...component(), connectOverBluetooth: vi.fn() }
     const e = { ...entry(null), health: 'nearby', nearby: { device: {} } } as unknown as DirectoryEntry
     await methods.openCloudEntry.call(c, e)
-    expect(c.connectOverBluetooth).toHaveBeenCalledWith(e, e.nearby)
+    expect(c.connectOverBluetooth).toHaveBeenCalledWith(e, e.nearby, true)
     expect(c.connectCloud).not.toHaveBeenCalled()
   })
 

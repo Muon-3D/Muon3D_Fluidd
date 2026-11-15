@@ -16,7 +16,7 @@
   font-family: var(--m3d-font-sans);
   padding-bottom: 40px;
 
-  a { color: var(--m3d-accent); text-decoration: none; }
+  a { color: var(--mlib-link); text-decoration: none; }
 
   &--control { gap: 22px; }
   &--phone { --mlib-card: 168px; --mlib-gap: 12px; gap: 20px; }
@@ -38,7 +38,8 @@
 @media (max-width: 700px) {
   .mc-hero { grid-template-columns: 1fr; gap: 24px; padding: 24px; .mcard { max-width: 100%; } .mcard__pic { aspect-ratio: 1.3; } &__story h2 { font-size: 28px; max-width: none; margin: 12px 0 18px; } &__story p { display: none; } }
 }
-@media (prefers-reduced-motion: reduce) { .mlib *, .mlib *::before, .mlib *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+// The quick look and Print on… mount outside .mlib (in the app root), so they are named too.
+@media (prefers-reduced-motion: reduce) { .mlib *, .mlib *::before, .mlib *::after, .mlook, .mlook *, .mlook *::before, .mlook *::after, .m3-dlg-frame, .m3-dlg-frame *, .m3-dlg-frame *::before, .m3-dlg-frame *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
 .mlib-i {
   width: 16px;
@@ -167,7 +168,8 @@
 
   &--on { background: var(--m3d-text); color: var(--m3d-bg); }
   &--ghost { background: transparent; color: var(--m3d-text-muted); }
-  &--quiet { height: 26px; padding: 0 10px; font-size: var(--m3d-text-xs); color: var(--m3d-text-muted); }
+  // Muted text on the light glass theme's chip tint is 4.2:1: a quiet chip is an outline on the page instead (4.5 or more).
+  &--quiet { height: 26px; padding: 0 10px; font-size: var(--m3d-text-xs); color: var(--m3d-text-muted); background: transparent; box-shadow: inset 0 0 0 1px var(--m3d-border-strong, var(--m3d-border)); }
 
   .mlib-muted { font-size: var(--m3d-text-xs); }
 }
@@ -197,8 +199,9 @@
   // Deleting is never eased: the danger button does not sink.
   &--danger:active { transform: none; }
   &--primary { background: var(--m3d-accent); color: #04211f; }
-  .theme--light &--primary { color: #fff; }
-  &--tint { background: var(--m3d-accent-soft); color: var(--m3d-accent); }
+  // White on the light theme's accent is 4.39:1; on its darker offset, 6.2:1.
+  .theme--light &--primary { background: var(--mlib-link); color: #fff; }
+  &--tint { background: var(--m3d-accent-soft); color: var(--mlib-link); }
   &--sm { height: 32px; padding: 0 12px; font-size: var(--m3d-text-xs); }
   &--icon { width: 40px; padding: 0; }
   &--sm.mlib-btn--icon { width: 32px; }
@@ -208,7 +211,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--m3d-accent);
+  color: var(--mlib-link);
   font-size: var(--m3d-text-sm);
   font-weight: 600;
 }
@@ -223,7 +226,8 @@
   font-weight: 600;
   white-space: nowrap;
 
-  &--ok { background: color-mix(in srgb, var(--m3d-success) 16%, transparent); color: var(--m3d-success); }
+  // The light themes' green is 3.3:1 on its own tint; mixed toward the text colour it is above 5.
+  &--ok { background: color-mix(in srgb, var(--m3d-success) 16%, transparent); color: color-mix(in srgb, var(--m3d-success) 70%, var(--m3d-text)); }
 
   &--glass {
     background: var(--m3d-glass, rgb(0 0 0 / 50%));
@@ -416,7 +420,7 @@
     color: var(--m3d-text-muted);
   }
 
-  &__facts { font-size: var(--m3d-text-xs); color: var(--m3d-text-subtle); font-variant-numeric: tabular-nums; }
+  &__facts { font-size: var(--m3d-text-xs); color: var(--m3d-text-muted); font-variant-numeric: tabular-nums; }
 }
 
 /* --------------------------------------------------------- collections -- */
@@ -484,6 +488,16 @@
     line-height: 1.3;
 
     > span:nth-child(2) { flex: 1; min-width: 0; }
+
+    // Links in a sentence are not told apart by colour alone (WCAG 1.4.1): underlined.
+    // The print's name opens its quick look, so it is a button that reads as a link.
+    a, button {
+      color: var(--mlib-link);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+    button { display: inline; padding: 0; border: 0; background: none; font: inherit; text-align: inherit; cursor: pointer; }
   }
 
   &__when { font-size: var(--m3d-text-xs); white-space: nowrap; }
@@ -654,6 +668,15 @@
   &--on { color: var(--m3d-danger); }
 }
 
+// The select inside takes the label's look: a bare one is a white field under the theme's light text.
+.mlook__collect select {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  option { background: var(--m3d-surface); color: var(--m3d-text); }
+}
+
 .mlook__collect {
   height: 32px;
   padding: 0 10px;
@@ -728,9 +751,9 @@
 
 .v-application a.mlib-btn.mlib-btn--primary { color: #04211f; }
 .v-application.theme--light a.mlib-btn.mlib-btn--primary,
-.theme--light .v-application a.mlib-btn.mlib-btn--primary { color: #fff; }
-.v-application a.mlib-btn.mlib-btn--tint { color: var(--m3d-accent); }
-.v-application a.mlib-link { color: var(--m3d-accent); text-decoration: none; }
+.theme--light .v-application a.mlib-btn.mlib-btn--primary { background: var(--mlib-link); color: #fff; }
+.v-application a.mlib-btn.mlib-btn--tint { color: var(--mlib-link); }
+.v-application a.mlib-link { color: var(--mlib-link); text-decoration: none; }
 
 .mlib--phone {
   .mlib__titles { flex-wrap: wrap; gap: 12px; }
@@ -837,3 +860,20 @@ button.mlib-link { padding: 0; border: 0; background: none; font: inherit; font-
 .mpage__runs li { align-items: center; }
 .mpage__runs time { margin-left: auto; }
 .mpage__footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 24px; padding: 24px 0; border-top: 1px solid var(--m3d-border); }
+
+/* Link colour: the accent, but where the accent is too pale for text (the light themes' is 3.9 to 4.4:1)
+   its darker offset. PrintOnDialog is outside .mlib, so this is on the app. */
+.v-application { --mlib-link: var(--m3d-accent); }
+.v-application.theme--light { --mlib-link: var(--v-primary-offset-base, var(--m3d-accent)); }
+
+/* Focus: every control in the Library shows where focus is, whatever the theme
+   scope around it (the quick look is mounted outside .mlib). A search box draws
+   the ring on the field around its input. Programmatic targets (tabindex -1:
+   headings, the dialog card) show none. */
+.mlib, .mlook {
+  button:not([tabindex="-1"]):focus-visible,
+  a[href]:focus-visible,
+  select:focus-visible,
+  [role="tab"]:focus-visible { outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent)); outline-offset: 2px; }
+}
+.mlib .mlib-search:has(input:focus-visible) { outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent)); outline-offset: 2px; }

@@ -88,6 +88,26 @@ describe('the found list', () => {
   })
 })
 
+describe('a printer found over Bluetooth that is set up already (KAN-2123)', () => {
+  const tile = (endpointId: string | null) => found({
+    entry: { row: { action: 'nearby-info', nearby: { endpointId } } }
+  })
+
+  it('offers Pair over Bluetooth, not just what it is, when its id is known (signed in or not)', async () => {
+    const t = tile('cafe'.repeat(16))
+    const w = shallowMount(FoundList, { propsData: { tiles: [t], actionsFor: () => [] } })
+    const primary = w.find('.btn--primary')
+    expect(primary.text()).toContain('Pair over Bluetooth')
+    await primary.trigger('click')
+    expect(w.emitted('action')![0]).toEqual([t, 'pair-bluetooth'])
+  })
+
+  it('still only says what it is when the sighting has no id to pair with', () => {
+    const w = shallowMount(FoundList, { propsData: { tiles: [tile(null)], actionsFor: () => [] } })
+    expect(w.find('.btn--primary').text()).toContain('What is this?')
+  })
+})
+
 describe('the found row text', () => {
   it('keeps the printer own detail line', () => {
     const w = shallowMount(FoundList, { propsData: { tiles: [found({ entry: { host: '192.168.1.37', detail: '192.168.1.37 · not linked to an account', row: { action: 'open' } } })], actionsFor: () => [] } })

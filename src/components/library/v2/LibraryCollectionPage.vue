@@ -641,4 +641,6 @@ export default class LibraryCollectionPage extends Vue {
   background: var(--m3d-danger);
   color: #fff;
 }
+// White on the dark themes' red is 3.0 to 3.4:1; black is 6.1 or more.
+.theme--dark .mlib-btn--danger { color: #000; }
 </style>

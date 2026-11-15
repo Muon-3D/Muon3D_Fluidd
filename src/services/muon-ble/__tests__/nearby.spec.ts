@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, startNearby, stopNearby } from '../nearby'
+import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, rememberedName, startNearby, stopNearby } from '../nearby'
 import { heardRecently } from '../heard'
 import { chooserOptions } from '../webBluetooth'
 import { advert, EID, fakeBluetooth, fakePrinter, OTHER_EID, removeBluetooth } from './fakes'
@@ -151,5 +151,28 @@ describe('Look nearby for one printer (KAN-2470)', () => {
   it('a chooser pick is heard now', async () => {
     fakeBluetooth({ chosen: fakePrinter().device })
     expect(heardRecently(await lookNearby())).toBe(true)
+  })
+})
+
+describe('the name remembered for the chooser (KAN-2516)', () => {
+  it('is the name the printer advertised when it was chosen, matched by EndpointId in any case', () => {
+    localStorage.setItem('muon.ble.printers', JSON.stringify({ 'dev-walnut': { endpointId: EID, localName: 'walnut-8987' } }))
+    expect(rememberedName(EID)).toBe('walnut-8987')
+    expect(rememberedName(EID.toUpperCase())).toBe('walnut-8987')
+  })
+
+  it('is undefined for a printer never chosen here, or with nothing stored', () => {
+    expect(rememberedName(EID)).toBeUndefined()
+    localStorage.setItem('muon.ble.printers', JSON.stringify({ 'dev-walnut': { endpointId: EID, localName: 'walnut-8987' } }))
+    expect(rememberedName(OTHER_EID)).toBeUndefined()
+    localStorage.setItem('muon.ble.printers', 'not json')
+    expect(rememberedName(EID)).toBeUndefined()
+  })
+
+  it('becomes the chooser name filter when the EndpointId cannot be matched', () => {
+    localStorage.setItem('muon.ble.printers', JSON.stringify({ 'dev-x': { endpointId: 'short-id', localName: 'walnut-8987' } }))
+    expect(chooserOptions({ endpointId: 'short-id', name: rememberedName('short-id') }).filters).toEqual([
+      expect.objectContaining({ name: 'walnut-8987' })
+    ])
   })
 })

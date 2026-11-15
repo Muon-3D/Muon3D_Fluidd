@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   e2e:
-    name: Playwright shard ${{ matrix.shard }}/4
+    name: Playwright shard ${{ matrix.shard }}/6
     runs-on: ubuntu-latest
     # 40, not 30 (Jack, 13 Nov, D-117): a shard of about 410 tests on 2 workers ran 26-30 min and was
     # cancelled at 30 with no test failing, costing a rerun on most PRs. A green run costs no more.
@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     env:
       NODE_OPTIONS: --experimental-websocket
       PYTHON: python3
@@ -77,8 +77,8 @@ jobs:
             timeout 300 npx playwright install --with-deps chromium
           fi
 
-      - name: Run e2e (shard ${{ matrix.shard }}/4)
-        run: npx playwright test -c e2e/playwright.config.ts --shard=${{ matrix.shard }}/4 --reporter=blob,github
+      - name: Run e2e (shard ${{ matrix.shard }}/6)
+        run: npx playwright test -c e2e/playwright.config.ts --shard=${{ matrix.shard }}/6 --reporter=blob,github
 
       - name: Upload blob report
         if: always()

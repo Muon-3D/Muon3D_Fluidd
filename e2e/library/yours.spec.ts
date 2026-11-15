@@ -39,7 +39,7 @@ test.describe('signed in', () => {
     await expect(page.getByText('Pick up where you left off')).toHaveCount(0)
     await expect(shelf(page, 'designs')).toContainText('Ring organiser')
     const order = await page.locator('[data-tid="library-yours-shelves"] > section').evaluateAll(els => els.map(e => e.getAttribute('data-tid')))
-    expect(order).toEqual(['library-collections', 'library-shelf-sliced', 'library-shelf-printed', 'library-saved', 'library-shelf-shared', 'library-shelf-designs'])
+    expect(order).toEqual(['library-collections', 'library-following', 'library-shelf-sliced', 'library-shelf-printed', 'library-saved', 'library-shelf-shared', 'library-shelf-designs'])
     await expect(shelf(page, 'sliced')).toContainText('Hex planter')
     await expect(shelf(page, 'sliced')).toContainText('Desk bracket')
     await expect(shelf(page, 'printed')).toContainText('on Walnut')
