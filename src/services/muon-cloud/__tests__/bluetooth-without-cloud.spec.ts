@@ -115,6 +115,25 @@ describe('Connect over Bluetooth with the cloud saying the printer is offline (K
     expect(ble.endpoint.addLink).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps body progress through the borrowed shared connection', async () => {
+    cloudState.printers = [printer(true)]
+    cloud(granted)
+    useBluetoothFor(EID, fakePrinter().device)
+    connect.mockImplementationOnce(async id => ({
+      printerId: () => id,
+      fetchWithProgress: async (_method: string, _path: string, _headers: string[], body: Uint8Array, progress: (sent: number, total: number) => void) => {
+        progress(2, body.length)
+        return { status: 200, headers: [], body: new Uint8Array() }
+      },
+      close () {}
+    } as any))
+    const transport = await borrowCloudPrinter(EID)
+    const progress = vi.fn()
+    await transport.fetch('/server/files/upload', { method: 'POST', body: 'G28\n' }, progress)
+    expect(progress).toHaveBeenCalledWith(2, 4)
+    transport.close()
+  })
+
   it('does not wait past the 4 s grace for the grant, even for a printer the service calls online (I-133)', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     cloudState.printers = [printer(true)]

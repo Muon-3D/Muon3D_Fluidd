@@ -38,7 +38,23 @@ export function bindHttpClientToPrinterTransport (
   const previousAdapter = httpClient.defaults.adapter
   const transportAdapter: AxiosAdapter = async config => {
     const path = requestPath(httpClient, config)
-    const response = await withTimeout(config, transport.fetch(path, requestInit(config)))
+    let previous = 0
+    const started = performance.now()
+    const response = await withTimeout(config, transport.fetch(path, requestInit(config), (loaded, total) => {
+      if (config.signal?.aborted) return
+      const seconds = (performance.now() - started) / 1000
+      config.onUploadProgress?.({
+        loaded,
+        total,
+        progress: total ? loaded / total : 1,
+        bytes: loaded - previous,
+        rate: seconds > 0 ? loaded / seconds : undefined,
+        lengthComputable: true,
+        upload: true,
+        event: { lengthComputable: true, loaded, total }
+      })
+      previous = loaded
+    }))
 
     const answer = {
       data: await responseData(response, config),

@@ -262,6 +262,11 @@ export class PrinterSession {
      */
     fetch(method: string, path: string, headers: string[], body: Uint8Array): Promise<any>;
     /**
+     * Fetch with body-byte progress: callback(sent, total), every 256 KiB.
+     * Counts QUIC writes, not publication; await the response for success.
+     */
+    fetchWithProgress(method: string, path: string, headers: string[], body: Uint8Array, progress?: Function | null): Promise<any>;
+    /**
      * The next notice from the printer. For a connection the printer is
      * holding for approval, resolves to
      * `{ type: "pending", code: "F6QTDH", expiresIn: 120 }`: show "Waiting for
@@ -377,6 +382,7 @@ export interface InitOutput {
     readonly printersession_closed: (a: number) => number;
     readonly printersession_comparison: (a: number, b: number) => void;
     readonly printersession_fetch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
+    readonly printersession_fetchWithProgress: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
     readonly printersession_nextNotice: (a: number) => number;
     readonly printersession_openWebSocket: (a: number, b: number, c: number) => number;
     readonly printersession_printerId: (a: number, b: number) => void;
@@ -399,15 +405,15 @@ export interface InitOutput {
     readonly intounderlyingsource_cancel: (a: number) => void;
     readonly intounderlyingsource_pull: (a: number, b: number) => number;
     readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly __wasm_bindgen_func_elem_9851: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_9853: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4159: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2435: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4956: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4027: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4380: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4412: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_9749: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9857: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_9859: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4165: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_2441: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4962: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4033: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4386: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4418: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9755: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

@@ -410,9 +410,9 @@ export async function borrowCloudPrinter (printerId: string): Promise<PrinterTra
   const sockets = new Set<PrinterSocket>()
   let closed = false
   return {
-    async fetch (path, init) {
+    async fetch (path, init, progress) {
       if (closed) throw new Error('Printer page closed')
-      const response = await shared.fetch(path, init)
+      const response = await shared.fetch(path, init, progress)
       if (closed) throw new Error('Printer page closed')
       return response
     },

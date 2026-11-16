@@ -20,6 +20,7 @@
       :text="flashMessageState.text"
       :type="flashMessageState.type"
       :timeout="flashMessageState.timeout"
+      :action="flashMessageState.action"
     />
 
     <app-tab-bar v-if="showTabBar" />
@@ -687,6 +688,7 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
       this.flashMessageState.text = (payload && payload.text) || undefined
       this.flashMessageState.type = (payload && payload.type) || undefined
       this.flashMessageState.timeout = (payload && payload.timeout !== undefined) ? payload.timeout : undefined
+      this.$set(this.flashMessageState, 'action', payload?.action)
       this.flashMessageState.open = true
     })
 

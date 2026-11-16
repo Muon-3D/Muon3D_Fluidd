@@ -1,5 +1,6 @@
 import Vue from 'vue'
 import type { AxiosRequestConfig, AxiosResponse } from 'axios'
+import { uploadChecksum } from '@/utils/uploadChecksum'
 
 export const httpClientActions = {
   get<T = unknown, R = AxiosResponse<T>, D = unknown> (url: string, options?: AxiosRequestConfig) {
@@ -180,9 +181,10 @@ export const httpClientActions = {
     }>(`/server/database/item?namespace=${namespace}&key=${key}`, options)
   },
 
-  serverFilesUploadPost (file: File, path: string, root: string, print?: boolean, options?: AxiosRequestConfig) {
+  async serverFilesUploadPost (file: File, path: string, root: string, print?: boolean, options?: AxiosRequestConfig) {
     const formData = new FormData()
 
+    formData.append('checksum', await uploadChecksum(file))
     formData.append('file', file, file.name)
     formData.append('path', path)
     formData.append('root', root)

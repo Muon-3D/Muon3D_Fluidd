@@ -6,6 +6,7 @@
  * reached through the relay the console names; a browser has no other path.
  */
 import { connectWithApproval, type ApprovingEndpoint } from './approval'
+import type { UploadProgress } from '@/services/managed-transport/types'
 import type {
   AuthorizedManagedRelaySession,
   ManagedIrohEndpoint,
@@ -16,7 +17,7 @@ import { bluetoothDropped, bluetoothRouteFor, noteBluetoothDropped, wantsBluetoo
 import { pinnedBluetoothError } from '@/services/muon-ble/refusal'
 import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, cloudTokensPersist } from './api'
 import { endpointBusy, notifyEndpointRebound, notifyEndpointReplacing } from './endpoint-hooks'
-import bundledWasmUrl from './vendor/muon-link-web/1608e20/muon_link_web_bg.wasm?url'
+import bundledWasmUrl from './vendor/muon-link-web/82af1be/muon_link_web_bg.wasm?url'
 
 const KEY_STORAGE = 'muon.cloud.key'
 // Remove after one release. Normal loads never depend on the console's files.
@@ -55,6 +56,7 @@ interface WasmPrinter {
   /** SEC-7's comparison value of this connection, "F6Q TDH" (muon-link#33 on). */
   comparison? (): string;
   fetch (method: string, path: string, headers: string[], body: Uint8Array): Promise<{ status: number, headers: string[], body: Uint8Array }>;
+  fetchWithProgress? (method: string, path: string, headers: string[], body: Uint8Array, progress?: UploadProgress): Promise<{ status: number, headers: string[], body: Uint8Array }>;
   openWebSocket (path: string): Promise<WasmSocket>;
   close (): void;
 }
@@ -87,7 +89,7 @@ function loadWasm (): Promise<WasmModule> {
   if (!modulePromise) {
     modulePromise = (async () => {
       try {
-        const mod = await import('./vendor/muon-link-web/1608e20/muon_link_web.js') as WasmModule
+        const mod = await import('./vendor/muon-link-web/82af1be/muon_link_web.js') as WasmModule
         await mod.default({ module_or_path: bundledWasmUrl })
         return mod
       } catch (error) {
@@ -364,7 +366,7 @@ export class IrohPrinter implements ManagedIrohRelay {
     if (dropped) throw new Error(`Bluetooth dropped: ${dropped} Reconnect, or choose how to connect.`)
   }
 
-  async fetch (path: string, init?: RequestInit): Promise<Response> {
+  async fetch (path: string, init?: RequestInit, progress?: UploadProgress): Promise<Response> {
     this.assertRoute()
     const signal = init?.signal
     if (signal?.aborted) throw abortError(signal)
@@ -400,7 +402,10 @@ export class IrohPrinter implements ManagedIrohRelay {
     }
     // Aborted while the body was read: nothing is sent.
     if (signal?.aborted) throw abortError(signal)
-    const answer = await untilAborted(this.printer.fetch(method, path, headers, body), signal)
+    const work = this.printer.fetchWithProgress
+      ? this.printer.fetchWithProgress(method, path, headers, body, progress)
+      : this.printer.fetch(method, path, headers, body)
+    const answer = await untilAborted(work, signal)
     const responseHeaders = new Headers()
     for (let i = 0; i + 1 < answer.headers.length; i += 2) {
       try {

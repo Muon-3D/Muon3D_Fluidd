@@ -2,15 +2,9 @@
   "format": 1,
   "name": "muon-link-web",
   "source": "https://github.com/Muon-3D/muon-link",
-  "commit": "1608e20c93be86e6bd78d461f7a3878a54890604",
-  "dir": "1608e20",
-  "provenance": "ci-release",
-  "release": {
-    "tag": "web-1608e20c",
-    "url": "https://github.com/Muon-3D/muon-link/releases/download/web-1608e20c/muon-link-web-1608e20c.tar.gz",
-    "sha256": "304fd54d961b55478c8871ac28e5253c56d6d47fa0f4176bb3d360b626afd6e7",
-    "run": "43503185303"
-  },
+  "commit": "82af1befa3c819c008551b20d80b9bdb0ea7eeca",
+  "dir": "82af1be",
+  "provenance": "built",
   "license": "Apache-2.0",
   "wasmBindgen": "0.2.127",
   "toolchain": {
@@ -42,18 +36,18 @@
     "uuids"
   ],
   "files": {
-    "muon_link_web.js": "93c44bfbf089d8674806c861398621b6101bdf2454c6eaed474af440c4240739",
-    "muon_link_web_bg.wasm": "8499b55b8d25f3add33f5f7974f4ff8a84b7fe8b5295906a8e1abe9b4c61e7c1",
-    "muon_link_web.d.ts": "c65b2bfe2b37bfbb5ee6621351fe4ced210b52891d39b2940f8d035fc913413c",
-    "muon_link_web_bg.wasm.d.ts": "1911e0a7075ae1e872c25c21e2e8e928f264a8d631e6a3b9127347640edd2535",
+    "muon_link_web.js": "324bc37db6c820b571d9bc9c9e48b175ecb27138647d99b798db0936b1c611e5",
+    "muon_link_web_bg.wasm": "639062df415f6379bee63663d12d19c961f8ecefa5780357389e6065bf1d872c",
+    "muon_link_web.d.ts": "626285379bab88a352c9fcef10e18d54e9c3f995e2deee611fa02c4cdbd666da",
+    "muon_link_web_bg.wasm.d.ts": "73afee6be87ccaee2544809daae9f5477ed3aac01134ea8eb15232e4ffebbbb1",
     "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "NOTICE": "72eec12a156330ea0d2ad187d1567458f6894ff052b334304f40736de8b55bae",
-    "THIRD-PARTY-NOTICES.md": "3a0fcc2eea02ccd1c3e8511cd3f35d9fade900c4fab39ab9e642c52cf63c7daa",
-    "SOURCE.md": "2bd3849f2165e273911a8d6d38766aebbac8c42cb26468db0e9f0126a6af05f6"
+    "THIRD-PARTY-NOTICES.md": "d1917f83fe23cc188a840cc3ccaac04f0fb190889a588293ae63dd324750d617",
+    "SOURCE.md": "fd5d0ff3d79b27cdce7df4bbef35df8e969fea30add4f03c23ec25c5635f97dd"
   },
   "bytes": {
-    "muon_link_web.js": 75249,
-    "muon_link_web_bg.wasm": 3019137
+    "muon_link_web.js": 76650,
+    "muon_link_web_bg.wasm": 3021015
   },
   "crates": [
     "aead 0.5.2 MIT OR Apache-2.0",

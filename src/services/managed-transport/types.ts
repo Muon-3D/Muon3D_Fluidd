@@ -8,8 +8,10 @@ export interface PrinterSocket {
 
 export const PRINTER_SOCKET_OPEN = 1
 
+export type UploadProgress = (sent: number, total: number) => void
+
 export interface PrinterTransport {
-  fetch(path: string, init?: RequestInit): Promise<Response>;
+  fetch(path: string, init?: RequestInit, progress?: UploadProgress): Promise<Response>;
   openWebSocket(path: string): Promise<PrinterSocket>;
   close(): void;
 }
@@ -67,7 +69,7 @@ export interface AuthorizedManagedRelaySession {
 }
 
 export interface ManagedIrohRelay {
-  fetch(path: string, init?: RequestInit): Promise<Response>;
+  fetch(path: string, init?: RequestInit, progress?: UploadProgress): Promise<Response>;
   openWebSocket(path: string): Promise<PrinterSocket>;
   close(): void;
 }
