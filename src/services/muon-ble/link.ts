@@ -16,6 +16,7 @@
  * object supports.
  */
 import Vue from 'vue'
+import { onEndpointReplacing } from '@/services/muon-cloud/endpoint-hooks'
 import {
   decodeInfo,
   MUON_BLE_INFO,
@@ -60,12 +61,22 @@ export interface BleCapableEndpoint {
    * on). Absent on an older muon-link-web, where the radio stays a standby.
    */
   pinBluetooth? (printerId: string, pinned: boolean): void;
+  /**
+   * Chooses the route to `printerId` (Jack's path rule, KAN-1913): `ble`,
+   * `lan` or `cloud` is the only route the session uses, on the page and on
+   * the printer; `auto` ranks Wi-Fi/LAN, then Muon3D, then Bluetooth.
+   * muon-link-web from muon-link#135 on; `pinBluetooth` before it.
+   */
+  chooseRoute? (printerId: string, route: 'auto' | 'ble' | 'lan' | 'cloud'): void;
+  /** True once the chosen route had no path when iroh last selected one (muon-link#135 on). */
+  routeUnavailable? (printerId: string): boolean;
 }
 
 /** Pins or unpins `id` on `endpoint`, where its muon-link-web can. Never throws. */
 function pinOn (endpoint: BleCapableEndpoint | undefined, id: string, pinned: boolean) {
   try {
-    endpoint?.pinBluetooth?.(id, pinned)
+    if (endpoint?.chooseRoute) endpoint.chooseRoute(id, pinned ? 'ble' : 'auto')
+    else endpoint?.pinBluetooth?.(id, pinned)
   } catch { /* an older or closed endpoint: the default path ranking stays */ }
 }
 
@@ -85,6 +96,8 @@ export interface BleLinkHandle {
   isOpen (): boolean;
   /** When a segment last crossed the radio, either way (ms since the epoch; 0 for never). */
   lastTrafficAt (): number;
+  /** When the printer last sent a segment (ms since the epoch; 0 for never): writes alone do not show a live path. */
+  lastHeardAt? (): number;
 }
 
 export interface OpenLinkOptions {
@@ -182,11 +195,12 @@ export async function openBleLink (
   const drained = new Promise<void>(resolve => { resolveDrained = resolve })
 
   let lastTraffic = 0
+  let lastHeard = 0
   const onNotification = (event: Event) => {
     if (!radioUp) return
     const value = (event.target as GattCharacteristic).value
     if (!value) return
-    lastTraffic = Date.now()
+    lastTraffic = lastHeard = Date.now()
     const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
     if (link) link.onSegment(bytes)
     else early.push(bytes.slice())
@@ -227,7 +241,8 @@ export async function openBleLink (
     },
     closed,
     isOpen: () => radioUp,
-    lastTrafficAt: () => lastTraffic
+    lastTrafficAt: () => lastTraffic,
+    lastHeardAt: () => lastHeard
   }
 
   // One GATT setup. A drop during it fails only this attempt (onGone is not
@@ -363,6 +378,12 @@ export async function openBleLink (
  */
 const routes = new Map<string, { device: BleDevice, link: BleLinkHandle | null, pinnedOn?: BleCapableEndpoint }>()
 
+/** Links whose endpoint is being replaced: their closing is not a drop of their printer's route (#370). */
+const replacedLinks = new WeakSet<object>()
+onEndpointReplacing(() => {
+  for (const route of routes.values()) if (route.link) replacedLinks.add(route.link)
+})
+
 /**
  * What is true of each printer's Bluetooth route, reactive so a badge can
  * follow it (KAN-1396). `wantsBluetoothFor` is only the person's choice; this
@@ -373,7 +394,8 @@ const routeState = Vue.observable({
   up: {} as Record<string, boolean>,
   carrying: {} as Record<string, boolean>,
   opening: {} as Record<string, boolean>,
-  fellBack: {} as Record<string, string>
+  fellBack: {} as Record<string, string>,
+  dropped: {} as Record<string, string>
 })
 
 function forgetRouteState (id: string) {
@@ -381,23 +403,72 @@ function forgetRouteState (id: string) {
   Vue.delete(routeState.carrying, id)
   Vue.delete(routeState.opening, id)
   Vue.delete(routeState.fellBack, id)
+  Vue.delete(routeState.dropped, id)
 }
 
-/**
- * How recently bytes must have crossed the radio for Bluetooth to count as
- * carrying the session. A link that is up is not enough: muon-link's
- * BlePathSelector (ADR 0032 D3) moves the connection onto the relay as soon as
- * iroh finds it, and the radio then sits idle (btmon on Boxwood, 5 Nov 2026:
- * an LE link up, 0 ACL packets in 20 s, while the label said Bluetooth).
- * Over Bluetooth a page sees status at least every few seconds and QUIC's
- * keep-alive every 5 s.
- */
+/** How recent the printer's last packet over the radio must be for the session to count as carried by it (KAN-2531). */
 export const CARRYING_WINDOW_MS = 8_000
 const CARRYING_TICK_MS = 1_000
 
+/**
+ * How long a chosen Bluetooth link may carry nothing before it counts as
+ * dropped (KAN-1913 review). A live path carries QUIC's keep-alive every 5 s,
+ * so an idle session never trips this. The link can stay "connected" while
+ * carrying nothing: on the bench (12 Nov) Chrome unsubscribed from the TX
+ * notifications about 580 s into a session with the radio still up, and iroh
+ * then moved the session to the relay under a "Via Bluetooth" label. So this
+ * reads the bytes, not the radio.
+ */
+export const SILENT_DROP_MS = 15_000
+
+/** When each held Bluetooth route last dropped, so "Bluetooth is back" can be told apart from before. */
+const droppedAt = new Map<string, number>()
+
 /** True while the session to `printerId` really travels over Bluetooth: the one truth for every label. */
 export function bluetoothCarrying (printerId: string): boolean {
-  return routeState.carrying[printerId.toLowerCase()] === true
+  const id = printerId.toLowerCase()
+  return routeState.carrying[id] === true && radioState.heard[id] === true
+}
+
+/**
+ * Whether the printer itself has spoken over the radio since the link came up
+ * (KAN-2531). The handshake crosses the radio whatever route the session ends
+ * up on, and the page writes to a link whatever the printer answers on, so
+ * neither says the session is on Bluetooth: only the printer sending QUIC
+ * packets over the radio does. `bluetoothCarrying` needs this, so "Via
+ * Bluetooth" is never shown before the real path is Bluetooth.
+ */
+const radioState = Vue.observable({ heard: {} as Record<string, boolean> })
+
+/** How long after the link comes up the printer may stay silent on it before the session is called "not on Bluetooth". */
+export const NOT_ON_BLUETOOTH_MS = 10_000
+
+export const NOT_ON_BLUETOOTH_REASON = 'The printer answered through Muon3D, not over Bluetooth. Connect over Bluetooth again to retry.'
+
+/**
+ * Watches `link` for the printer's own packets after it came up. Sets
+ * `radioState.heard` once they arrive and clears it when they stop; if none
+ * arrive within {@link NOT_ON_BLUETOOTH_MS} the session is on another path
+ * (the relay answered), and that is said, not switched to quietly.
+ */
+function watchRadioPath (id: string, link: BleLinkHandle) {
+  const upAt = Date.now()
+  Vue.set(radioState.heard, id, false)
+  const tick = setInterval(() => {
+    if (routes.get(id)?.link !== link || !link.isOpen()) {
+      clearInterval(tick)
+      Vue.set(radioState.heard, id, false)
+      return
+    }
+    const heardAt = link.lastHeardAt?.() ?? link.lastTrafficAt()
+    const heard = heardAt > upAt && Date.now() - heardAt < CARRYING_WINDOW_MS
+    if (radioState.heard[id] !== heard) Vue.set(radioState.heard, id, heard)
+    if (heard) {
+      if (routeState.fellBack[id] === NOT_ON_BLUETOOTH_REASON) Vue.delete(routeState.fellBack, id)
+    } else if (heardAt <= upAt && Date.now() - upAt > NOT_ON_BLUETOOTH_MS && !routeState.fellBack[id]) {
+      Vue.set(routeState.fellBack, id, NOT_ON_BLUETOOTH_REASON)
+    }
+  }, CARRYING_TICK_MS)
 }
 
 /** True while this page is bringing a Bluetooth link to `printerId` up: the wait after Connect over Bluetooth. */
@@ -415,8 +486,11 @@ export function bluetoothLinkUp (printerId: string): boolean {
  * one label for every place that names the route (title, rail, reconnect
  * screen, menus), from the same truth as the Bluetooth badge (KAN-1566).
  */
-export function remoteRouteLabel (printerId: string | null | undefined): 'Via Bluetooth' | 'Through Muon3D' {
-  return printerId && bluetoothCarrying(printerId) ? 'Via Bluetooth' : 'Through Muon3D'
+export function remoteRouteLabel (printerId: string | null | undefined): 'Via Bluetooth' | 'Through Muon3D' | 'Bluetooth dropped' {
+  if (!printerId) return 'Through Muon3D'
+  // Radio truth (KAN-2531): "Via Bluetooth" only while the printer is heard over the radio.
+  if (bluetoothCarrying(printerId)) return 'Via Bluetooth'
+  return bluetoothDropped(printerId) ? 'Bluetooth dropped' : 'Through Muon3D'
 }
 
 /** Why the open went on through Muon3D though Bluetooth was chosen, or null. */
@@ -430,6 +504,61 @@ export function noteBluetoothFellBack (printerId: string, reason: string) {
   if (!routes.has(id)) return
   Vue.set(routeState.fellBack, id, reason)
   Vue.set(routeState.up, id, false)
+}
+
+/**
+ * Why the chosen Bluetooth route dropped during the session, or null. The
+ * session does not move to another route on its own (KAN-1913): the person
+ * reconnects or chooses another.
+ */
+export function bluetoothDropped (printerId: string): string | null {
+  return routeState.dropped[printerId.toLowerCase()] ?? null
+}
+
+/** Only a deliberate retry clears the held route's drop. */
+export function reconnectBluetooth (printerId: string) {
+  Vue.delete(routeState.dropped, printerId.toLowerCase())
+}
+
+/** The chosen Bluetooth route dropped: say so, and let the person choose (KAN-1913). */
+export function noteBluetoothDropped (printerId: string, reason: string) {
+  const id = printerId.toLowerCase()
+  if (!routes.has(id)) return
+  if (!routeState.dropped[id]) droppedAt.set(id, Date.now())
+  Vue.set(routeState.dropped, id, reason)
+}
+
+/**
+ * Forgets that `printerId`'s Bluetooth route dropped (the person went to another printer, so its sheet
+ * and its automatic retries end). The choice of Bluetooth for it stays; only the drop is cleared.
+ */
+export function clearBluetoothDropped (printerId: string) {
+  const id = printerId.toLowerCase()
+  Vue.delete(routeState.dropped, id)
+  droppedAt.delete(id)
+}
+
+/** When the held Bluetooth route to `printerId` last dropped (ms since the epoch), or 0. */
+export function bluetoothDroppedAt (printerId: string): number {
+  return droppedAt.get(printerId.toLowerCase()) ?? 0
+}
+
+/** Every printer whose chosen Bluetooth route has dropped: the sheet outlives the open printer. */
+export function droppedBluetoothPrinters (): string[] {
+  return Object.keys(routeState.dropped)
+}
+
+/** The device the person chose for `printerId`, or null. */
+export function bluetoothDeviceFor (printerId: string): BleDevice | null {
+  return routes.get(printerId.toLowerCase())?.device ?? null
+}
+
+function routeUnavailableOn (endpoint: BleCapableEndpoint | undefined, id: string): boolean {
+  try {
+    return endpoint?.routeUnavailable?.(id) === true
+  } catch {
+    return false
+  }
 }
 
 export function useBluetoothFor (printerId: string, device: BleDevice) {
@@ -482,6 +611,14 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
   // The person chose Bluetooth: keep the session on the radio while it is up,
   // not only as a fallback behind the relay (D-080, Jack 5 Nov 2026).
   if (route.pinnedOn !== endpoint) {
+    // A link joined to another endpoint (the tab rebinds one for an explicit
+    // Bluetooth connect, KAN-2531) goes with it: hang it up, and bring a new
+    // one up on this endpoint.
+    if (route.pinnedOn && route.link) {
+      const old = route.link
+      route.link = null
+      await old.disconnect().catch(() => {})
+    }
     pinOn(route.pinnedOn, id, false)
     pinOn(endpoint, id, true)
     route.pinnedOn = endpoint
@@ -501,19 +638,43 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
   }
   Vue.set(routeState.up, id, true)
   Vue.delete(routeState.fellBack, id)
-  // The handshake just crossed the radio; from here on, carrying is whatever the bytes say.
+  Vue.delete(routeState.dropped, id)
   Vue.set(routeState.carrying, id, true)
+  const openedAt = Date.now()
+  watchRadioPath(id, link)
   const tick = setInterval(() => {
     if (routes.get(id)?.link !== link) return
-    const carrying = link.isOpen() && Date.now() - link.lastTrafficAt() < CARRYING_WINDOW_MS
+    const heard = link.lastHeardAt?.() ?? link.lastTrafficAt()
+    // Quiet after the printer spoke over the radio is a dead path behind a live radio. A printer that
+    // never spoke on it was never on Bluetooth: that is `fellBack` (watchRadioPath), said once, not a drop.
+    const silent = link.isOpen() && heard > openedAt && Date.now() - heard > SILENT_DROP_MS
+    const carrying = link.isOpen() && !silent
     if (routeState.carrying[id] !== carrying) Vue.set(routeState.carrying, id, carrying)
+    if (routeState.dropped[id]) return
+    if (routeUnavailableOn(routes.get(id)?.pinnedOn, id)) {
+      noteBluetoothDropped(id, 'Bluetooth has no path to the printer.')
+    } else if (silent) {
+      // A dead path behind a live radio: say so, and hang up, so the session
+      // ends here instead of going on quietly through the relay.
+      noteBluetoothDropped(id, `Nothing came over Bluetooth for ${SILENT_DROP_MS / 1000} seconds.`)
+      link.disconnect().catch(() => {})
+    }
   }, CARRYING_TICK_MS)
   // The printer or the radio ending the link ends the claim, whoever hung up.
   link.closed.then(() => {
     clearInterval(tick)
-    if (routes.get(id)?.link === link) {
+    const route = routes.get(id)
+    if (route?.link === link) {
       Vue.set(routeState.up, id, false)
       Vue.set(routeState.carrying, id, false)
+      // A link closed because the tab replaced its endpoint (an explicit Bluetooth
+      // connect for another printer, KAN-2531) was not dropped by the radio or the
+      // printer: it is simply gone, and the next open brings a new one up.
+      if (replacedLinks.has(link)) {
+        route.link = null
+      } else if (!routeState.dropped[id]) {
+        noteBluetoothDropped(id, 'The Bluetooth link dropped.')
+      }
     }
   })
   return link

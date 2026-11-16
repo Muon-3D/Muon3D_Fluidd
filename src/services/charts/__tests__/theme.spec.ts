@@ -23,6 +23,8 @@ describe('chart text uses the glass theme tokens', () => {
       expect(GLASS_TOKENS[theme].text).toBe(hex6(token(theme, 'text')))
       expect(GLASS_TOKENS[theme].muted).toBe(hex6(token(theme, 'text-muted')))
       expect(GLASS_TOKENS[theme].surface).toBe(hex6(token(theme, 'surface')))
+      expect(GLASS_TOKENS[theme].bg).toBe(hex6(token(theme, 'bg')))
+      expect(chartInk(theme === 'dark')).toEqual({ label: GLASS_TOKENS[theme].muted, text: GLASS_TOKENS[theme].text })
     })
 
     it(`reads at WCAG AA (4.5:1) on the card and the page (${theme})`, () => {
@@ -40,6 +42,8 @@ describe('chart text uses the glass theme tokens', () => {
       const option: any = buildGraphOption({ from: 0, to: 1, dark, markers: [], lines: [] })
       expect(option.xAxis.axisLabel.color).toBe(chartInk(dark).label)
       expect(option.yAxis[0].axisLabel.color).toBe(chartInk(dark).label)
+      expect(option.yAxis[1].axisLabel.color).toBe(chartInk(dark).label)
+      expect(option.tooltip.textStyle.color).toBe(chartInk(dark).label)
     }
   })
 

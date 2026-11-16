@@ -106,4 +106,15 @@ describe('HeaterTile', () => {
     expect(store.dispatch).toHaveBeenCalledWith('charts/saveSelectedLegends', expect.objectContaining({ extruder: expect.any(Boolean) }))
     w.destroy()
   })
+
+  it('has a sparkline at M, where there is room, and none at S', () => {
+    const store = tileStore()
+    Vue.set(store.getters, 'charts/getChartData', [0, 30, 60].map(s => ({ date: new Date(1_800_000_000_000 + s * 1000), extruder: 200 + s / 10, extruderTarget: 215 })))
+    const m = mount(HeaterTile, { ...tileMount(store), propsData: { kind: 'hotend', size: 'M' } })
+    expect(m.find('[data-tid="heater-spark"]').attributes('data-state')).toBe('line')
+    m.destroy()
+    const s = mount(HeaterTile, { ...tileMount(store), propsData: { kind: 'hotend', size: 'S' } })
+    expect(s.find('[data-tid="heater-spark"]').exists()).toBe(false)
+    s.destroy()
+  })
 })

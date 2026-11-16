@@ -43,22 +43,24 @@ describe('series discovery', () => {
     expect(keys.some(k => k.startsWith('toolhead') || k.startsWith('gcode_macro') || k.startsWith('print_stats') || k === 'configfile')).toBe(false)
   })
 
-  it('puts the heaters first, then the rest, and the power and speed lines last', () => {
-    expect(keys.slice(0, 2)).toEqual(['extruder', 'heater_bed'])
-    const firstExtra = defs.findIndex(d => d.kind !== 'temp')
-    expect(defs.slice(firstExtra).every(d => d.kind !== 'temp')).toBe(true)
+  it('lists the toolhead first with its power, then the bed with its power, then the rest', () => {
+    expect(keys.slice(0, 4)).toEqual(['extruder', 'extruder1', 'extruderPower', 'extruder1Power'])
+    expect(keys.indexOf('heater_bed')).toBeGreaterThan(keys.indexOf('heater_fan hotend_fanSpeed'))
+    expect(keys[keys.indexOf('heater_bed') + 1]).toBe('heater_bedPower')
   })
 
-  it('labels in plain words and groups MCU and host temperatures together', () => {
+  it('labels in plain words and groups the machine own temperatures together', () => {
     expect(by.extruder.label).toBe('Nozzle')
     expect(by.extruder1.label).toBe('Nozzle 2')
     expect(by.heater_bed.label).toBe('Bed')
     expect(by.fanSpeed.label).toBe('Part fan')
     expect(by['temperature_sensor mcu_temp'].label).toBe('MCU temp')
     expect(by['tmc2240 stepper_x'].label).toBe('Stepper X driver')
-    expect(by['temperature_sensor mcu_temp'].group).toBe('Board and host')
-    expect(by['temperature_sensor raspberry_pi'].group).toBe('Board and host')
-    expect(by['temperature_sensor chamber_air'].group).toBe('Sensors')
+    expect(by['temperature_sensor mcu_temp'].group).toBe('Chamber and system')
+    expect(by['temperature_sensor raspberry_pi'].group).toBe('Chamber and system')
+    expect(by['temperature_sensor chamber_air'].group).toBe('Chamber and system')
+    expect(by.fanSpeed.group).toBe('Fans')
+    expect(by['heater_fan hotend_fanSpeed'].group).toBe('Toolhead')
     expect(by['temperature_fan exhaustSpeed'].label).toBe('Exhaust speed')
   })
 
@@ -67,6 +69,13 @@ describe('series discovery', () => {
     expect(by['temperature_sensor mcu_temp'].targetKey).toBeUndefined()
     expect(by.extruderPower.axis).toBe(1)
     expect(by.extruder.axis).toBe(0)
+  })
+
+  it('draws only the hotends, the bed and the chamber until others are picked', () => {
+    const on = defs.filter(d => isSeriesOn(d, {})).map(d => d.key)
+    expect([...on].sort()).toEqual(['extruder', 'extruder1', 'heater_bed', 'heater_generic chamber', 'temperature_sensor chamber_air'])
+    expect(isSeriesOn(by['temperature_sensor mcu_temp'], {})).toBe(false)
+    expect(isSeriesOn(by['temperature_sensor mcu_temp'], { 'temperature_sensor mcu_temp': true })).toBe(true)
   })
 
   it('shows temperatures by default and leaves power and speed off until chosen', () => {

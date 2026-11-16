@@ -62,7 +62,7 @@ export function changeFilamentPlan (state: FilamentState, change: FilamentMacro 
   const why = blocked(state)
   if (why) return { kind: 'none', reason: why }
   if (!state.printing) return { kind: 'panel' }
-  if (!change) return { kind: 'none', reason: 'This printer has no filament change macro (M600).' }
+  if (!change) return { kind: 'none', reason: 'This printer has no filament change command (M600).' }
   if (tooHot) return { kind: 'none', reason: tooHot }
   return {
     kind: 'pause',

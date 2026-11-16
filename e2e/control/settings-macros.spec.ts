@@ -55,7 +55,7 @@ test('one panel: each category a section, Uncategorised a section in it, and no 
   await expect(section(page, FILAMENT.id)).toHaveAttribute('data-section', 'Filament')
   await expect(section(page, '0')).toHaveAttribute('data-section', /Uncategori[sz]ed/)
   await expect(section(page, '0').getByTestId('macro-row-load_filament')).toBeVisible()
-  await expect(section(page, FILAMENT.id)).toContainText('Drag a macro here')
+  await expect(section(page, FILAMENT.id)).toContainText('Drag a command here')
   await expect(panel.getByRole('button', { name: /^Read$/ })).toHaveCount(0)
   await expect(page.getByTestId('macro-edit-list')).toHaveCount(0)
   // The categories' controls are in the panel.
@@ -137,7 +137,7 @@ test('clicking any empty space in the panel clears the selection, and Ctrl+A sel
   const all = await page.locator('[role="option"]').count()
   await expect(count).toHaveText(`${all} selected`)
   // The panel's own padding, a section's heading row, the gap beside a row and the text under the title.
-  const empty = [page.getByTestId('macro-panel'), page.locator('[data-tid^="macro-section-head-"]').first(), page.locator('[role="listbox"]').first(), page.getByTestId('macro-panel').getByRole('heading', { name: 'Macros' })]
+  const empty = [page.getByTestId('macro-panel'), page.locator('[data-tid^="macro-section-head-"]').first(), page.locator('[role="listbox"]').first(), page.getByTestId('macro-panel').getByRole('heading', { name: 'Quick commands' })]
   for (const target of empty) {
     await first.click()
     await expect(count).toHaveText('1 selected')
@@ -155,7 +155,7 @@ test('the checkboxes select without a keyboard, and the toolbar\'s Move to… mo
   await page.getByTestId('macro-check-clean_nozzle').click()
   await expect(page.getByTestId('macro-selected-count')).toHaveText('2 selected')
   await page.getByTestId('macro-toolbar-move').click()
-  await expect(page.getByRole('dialog')).toContainText('Move 2 macros to')
+  await expect(page.getByRole('dialog')).toContainText('Move 2 commands to')
   await page.getByTestId(`macro-move-to-${FILAMENT.id}`).click()
   await expect(section(page, FILAMENT.id).getByTestId('macro-row-load_filament')).toBeVisible()
   await expect(section(page, FILAMENT.id).getByTestId('macro-row-clean_nozzle')).toBeVisible()
@@ -245,7 +245,7 @@ test('the find narrows every section', async ({ page, open }) => {
   await macrosPrinter(page)
   await configFiles(page)
   await openMacros(page, open)
-  await page.getByRole('searchbox', { name: 'Find a macro' }).fill('filament')
+  await page.getByRole('searchbox', { name: 'Find a quick command' }).fill('filament')
   await expect(section(page, '0').locator('[role="option"]')).toHaveCount(2)
   await expect(section(page, FILAMENT.id)).toContainText('None found here.')
 })
@@ -266,7 +266,7 @@ test('empty: a printer with no macros says so, and still shows Uncategorised', a
   printer.state.without = MOCK_MACROS.map(n => `gcode_macro ${n}`)
   await configFiles(page)
   await openMacros(page, open)
-  await expect(page.getByTestId('macro-panel-empty')).toContainText('no macros yet')
+  await expect(page.getByTestId('macro-panel-empty')).toContainText('no quick commands yet')
   await expect(page.getByTestId('macro-panel').locator('[role="option"]')).toHaveCount(0)
   await expect(section(page, '0')).toBeVisible()
   expect(printer.called('server.database.post_item').filter(p => p.key === 'macros.stored')).toEqual([])
@@ -298,4 +298,56 @@ test('macros starting with _ are listed locked under Uncategorised, and can\'t b
   await expect(hidden).toContainText("can't be shown")
   await expect(hidden.getByRole('switch')).toHaveCount(0)
   await expect(row(page, '_probe_helper')).toHaveCount(0)
+})
+
+/** Every word a person can see, read or hear on the page that says "macro". */
+async function macroWords (page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const re = /\bmacros?\b/i
+    const fileName = /\bmacros?\.cfg\b/gi
+    const out: string[] = []
+    const shown = (el: Element) => {
+      const r = (el as HTMLElement).getBoundingClientRect?.()
+      const s = getComputedStyle(el as HTMLElement)
+      return !!r && (r.width > 0 || r.height > 0) && s.visibility !== 'hidden' && s.display !== 'none'
+    }
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const text = (n.textContent ?? '').replace(fileName, '')
+      if (re.test(text) && n.parentElement && shown(n.parentElement)) out.push(text.trim())
+    }
+    for (const el of Array.from(document.querySelectorAll('[title], [placeholder], [aria-label]'))) {
+      if (!shown(el)) continue
+      for (const a of ['title', 'placeholder', 'aria-label']) {
+        const v = (el.getAttribute(a) ?? '').replace(fileName, '')
+        if (re.test(v)) out.push(`${a}="${v}"`)
+      }
+    }
+    return out
+  })
+}
+
+test('Settings › Macros (KAN-1970, OV-30): one panel holding every section and its controls, and "Macro" only as the page’s name', async ({ page, open }) => {
+  await macrosPrinter(page)
+  await configFiles(page)
+  await openMacros(page, open)
+  const panel = page.getByTestId('macro-panel')
+  await expect(page.getByTestId('macro-panel')).toHaveCount(1)
+  await expect(panel.getByRole('heading', { name: 'Quick commands' })).toBeVisible()
+  // Fluidd's own categories and the Uncategorised block are sections of this one panel, nothing below it.
+  const sections = page.locator('[data-section]')
+  await expect(sections).toHaveCount(2)
+  expect(await panel.locator('[data-section]').count()).toBe(await sections.count())
+  await expect(page.getByTestId('macro-category-settings')).toHaveCount(0)
+  await expect(page.getByRole('searchbox', { name: 'Find a quick command' })).toBeVisible()
+  await page.waitForTimeout(500)
+  // Jack's later note (OV-30, 11 Nov) wins over KAN-1970: the page itself is called Macros, so its name may show
+  // (the title and the menus that lead to it); nothing else on it says "macro".
+  await expect(page.getByTestId('page-title')).toHaveText('Macros')
+  expect((await macroWords(page)).filter(w => w !== 'Macros')).toEqual([])
+
+  // The sheet a double-click opens says it too.
+  await row(page, 'load_filament').dblclick()
+  await expect(page.getByRole('dialog')).toContainText('Name in Control')
+  expect((await macroWords(page)).filter(w => w !== 'Macros')).toEqual([])
 })

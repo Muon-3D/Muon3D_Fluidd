@@ -1,7 +1,7 @@
 <template>
   <tile-shell
     tile="speed"
-    title="Speed / flow"
+    :title="heading"
     icon="pulse"
     :menu="menu"
     :open="open"
@@ -102,7 +102,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins, Watch } from 'vue-property-decorator'
+import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
 import type { TileMenuItem } from '@/services/overview/tiles'
 import TileShell from './TileShell.vue'
@@ -118,6 +118,9 @@ import NumberField from '@/components/control/NumberField.vue'
  */
 @Component({ components: { TileShell, TileDialog, SegPicker, NumberField, ControlTuning: () => import('@/components/control/ControlTuning.vue'), Retract: () => import('@/components/widgets/retract/Retract.vue') } })
 export default class SpeedTile extends Mixins(OverviewMixin) {
+  /** The tile's name: "Print mode" when it stands in for that widget. */
+  @Prop({ type: String, default: 'Speed / flow' }) readonly heading!: string
+
   open = false
   dialog: '' | 'limits' | 'retraction' = ''
 
