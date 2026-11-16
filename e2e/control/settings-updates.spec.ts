@@ -130,3 +130,147 @@ test('no restart is offered when automatic updates are off: the update installs 
   await expect(page.getByTestId('software-restart')).toHaveCount(0)
   await expect(page.getByTestId('software-settings')).not.toContainText('installs on next restart')
 })
+
+test.describe('the update hero (ST-09b, KAN-1927)', () => {
+  const READY = {
+    state: 'idle',
+    current_version: '20261030120000-aaaaaaa',
+    target_version: '20261106120000-bbbbbbb',
+    update_available: true,
+    last_checked: new Date().toISOString(),
+    release_notes: 'Smoother Edit mode, the filament panel opens straight away, a fix for "Verifying an update" staying on screen.',
+    install: { phase: 'idle' },
+    session: null
+  }
+  const PRINTING = { print_stats: { state: 'printing', filename: 'M1_bracket.gcode' }, idle_timeout: { state: 'Printing' }, virtual_sdcard: { is_active: true, progress: 0.44 } }
+  const hero = (page: Page) => page.getByTestId('software-hero')
+
+  test('with an update ready: what is ready, what you have, what is new, how long, and one Install', async ({ page, open }) => {
+    await usePrinter(page, { ...PRESETS.idleHomed(), ...COOL })
+    await printerChoices(page, READY)
+    await open('/settings#versions')
+    await expect(page.getByTestId('software-state')).toHaveText('Update ready')
+    await expect(page.getByTestId('software-hero-title')).toHaveText('MuonOS 6 November 2026')
+    await expect(page.getByTestId('software-hero-sub')).toContainText('You have 30 October 2026 · checked')
+    await expect(page.getByTestId('software-whats-new')).toContainText('Smoother Edit mode')
+    await expect(page.getByTestId('software-how-long')).toContainText('10 to 40 minutes')
+    await expect(hero(page).getByTestId('software-install')).toHaveCount(1)
+    await expect(page.getByTestId('software-install')).toHaveText('Install…')
+    // How updates arrive: automatic updates stay on by default (#327), Stable only, no channel picker.
+    await expect(autoSwitch(page)).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('software-channel')).toContainText('Stable')
+    await expect(page.getByTestId('software-channel').getByRole('radio')).toHaveCount(0)
+    await expect(page.getByTestId('software-settings')).not.toContainText('Beta gets')
+    await expect(page.getByTestId('software-history')).toBeVisible()
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow).toBeLessThanOrEqual(1)
+  })
+
+  test('with no update: Up to date, the version it has, and no Install', async ({ page, open }) => {
+    await usePrinter(page, { ...PRESETS.idleHomed(), ...COOL })
+    await printerChoices(page, { ...READY, target_version: null, update_available: false, release_notes: null })
+    await open('/settings#versions')
+    await expect(page.getByTestId('software-state')).toHaveText('Up to date')
+    await expect(page.getByTestId('software-hero-title')).toHaveText('MuonOS 30 October 2026')
+    await expect(page.getByTestId('software-hero-sub')).toContainText('Up to date · checked')
+    await expect(page.getByTestId('software-install')).toHaveCount(0)
+    await expect(page.getByTestId('software-check')).toBeEnabled()
+  })
+
+  test('while installing: the hero shows progress and the bar at the top follows it', async ({ page, open }) => {
+    await usePrinter(page, { ...PRESETS.idleHomed(), ...COOL })
+    await printerChoices(page, { ...READY, state: 'installing', progress: 58, install: { phase: 'installing', job_id: 'job-1', progress: 58 } })
+    await open('/settings#versions')
+    await expect(page.getByTestId('software-state')).toHaveText('Updating · 58%')
+    await expect(page.getByTestId('software-progress')).toContainText('See progress')
+    await expect(page.getByTestId('update-banner')).toContainText('Installing update')
+    await expect(page.getByTestId('software-install')).toHaveCount(0)
+    await page.getByTestId('update-banner').click()
+    await expect(page).toHaveURL(/\/updating/)
+    await expect(page.getByRole('status').filter({ hasText: 'Installing update' })).toContainText('Step 1 of 4')
+  })
+
+  test('when the last one failed: the reason in plain words, and Install again', async ({ page, open }) => {
+    await usePrinter(page, { ...PRESETS.idleHomed(), ...COOL })
+    await printerChoices(page, { ...READY, state: 'failed', error: "The download didn't finish: the printer lost Wi-Fi." })
+    await open('/settings#versions')
+    await expect(page.getByTestId('software-outcome')).toHaveText("The download didn't finish: the printer lost Wi-Fi.")
+    await expect(page.getByTestId('software-install')).toBeEnabled()
+  })
+
+  test('Install now: the dialog offers now (after this print needs a print), Not now sends nothing, Install starts it', async ({ page, open }) => {
+    const printer = await usePrinter(page, { ...PRESETS.idleHomed(), ...COOL })
+    await printerChoices(page, READY)
+    await open('/settings#versions')
+    await page.getByTestId('software-install').click()
+    const dialog = page.getByTestId('software-install-dialog')
+    await expect(dialog).toContainText('Install MuonOS 6 November 2026?')
+    await expect(dialog.getByTestId('software-install-now')).toHaveAttribute('aria-checked', 'true')
+    await expect(dialog.getByTestId('software-install-after')).toBeDisabled()
+    await expect(dialog.getByTestId('software-install-after')).toContainText('Nothing is printing.')
+    await dialog.getByTestId('software-install-cancel').click()
+    expect(printer.called('machine.update.client')).toEqual([])
+
+    await page.getByTestId('software-install').click()
+    await page.getByTestId('software-install-dialog').getByTestId('software-install-go').click()
+    await expect.poll(() => printer.called('machine.update.client').length).toBe(1)
+    await expect(page).toHaveURL(/\/updating/)
+  })
+
+  test('Install after this print: kept across a reload, sent only once the print is over', async ({ page, open }) => {
+    const printer = await usePrinter(page, { ...PRESETS.idleHomed(), ...COOL, ...PRINTING })
+    await printerChoices(page, READY)
+    await open('/settings#versions')
+    await page.getByTestId('software-install').click()
+    const dialog = page.getByTestId('software-install-dialog')
+    await expect(dialog.getByTestId('software-install-now')).toBeDisabled()
+    await expect(dialog.getByTestId('software-install-now')).toContainText('Not while printing.')
+    await expect(dialog.getByTestId('software-install-after')).toHaveAttribute('aria-checked', 'true')
+    await expect(dialog.getByTestId('software-install-after')).toContainText('When M1_bracket ends.')
+    await dialog.getByTestId('software-install-go').click()
+    await expect(page.getByTestId('software-queued')).toContainText('Installs after this print (M1_bracket)')
+    expect(printer.called('machine.update.client')).toEqual([])
+
+    await page.reload()
+    await expect(page.getByTestId('software-queued')).toBeVisible()
+    await page.waitForTimeout(1000)
+    expect(printer.called('machine.update.client')).toEqual([])
+
+    printer.report({ print_stats: { state: 'complete', filename: 'M1_bracket.gcode' }, idle_timeout: { state: 'Idle' }, virtual_sdcard: { is_active: false, progress: 1 } })
+    await expect.poll(() => printer.called('machine.update.client').length).toBe(1)
+    await expect(page.getByTestId('software-queued')).toHaveCount(0)
+  })
+
+  test('a queued install can be cancelled and is then never sent', async ({ page, open }) => {
+    const printer = await usePrinter(page, { ...PRESETS.idleHomed(), ...COOL, ...PRINTING })
+    await printerChoices(page, READY)
+    await open('/settings#versions')
+    await page.getByTestId('software-install').click()
+    await page.getByTestId('software-install-dialog').getByTestId('software-install-go').click()
+    await page.getByTestId('software-queued-cancel').click()
+    await expect(page.getByTestId('software-queued')).toHaveCount(0)
+    printer.report({ print_stats: { state: 'complete' }, idle_timeout: { state: 'Idle' } })
+    await page.waitForTimeout(1500)
+    expect(printer.called('machine.update.client')).toEqual([])
+  })
+
+  test('other software is behind developer mode on a Muon printer', async ({ page, open }) => {
+    await usePrinter(page, { ...PRESETS.idleHomed(), ...COOL, muon_guard: { dev_mode: false } }, { components: ['file_manager', 'update_manager', 'machine', 'muon_protection'] })
+    await printerChoices(page, READY)
+    await open('/settings#versions')
+    await expect(page.getByTestId('software-others-locked')).toContainText('Other software')
+    await expect(page.getByTestId('software-others')).toHaveCount(0)
+  })
+})
+
+test('who may install updates is in People and access: the page says so and links there', async ({ page, open }) => {
+  await usePrinter(page, { ...PRESETS.idleHomed(), ...COOL })
+  await printerChoices(page)
+  await open('/settings#versions')
+  const link = page.getByTestId('software-access-link')
+  await expect(link).toContainText('Who may install updates')
+  await expect(link).toContainText('People and access')
+  await link.click()
+  await expect(page).toHaveURL(/#access$/)
+  await expect(page.getByTestId('page-title')).toHaveText('People and access')
+})

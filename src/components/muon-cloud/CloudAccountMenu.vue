@@ -362,7 +362,7 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { cloudBaseUrl } from '@/services/muon-cloud/api'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import type { InstanceConfig } from '@/store/config/types'
-import { centralLoginEnabled } from '@/services/muon-cloud/centralLogin'
+import { consoleServesPage } from '@/services/muon-cloud/centralLogin'
 import { beginSignOut } from '@/services/account/sign-out'
 import { printerNameParts } from '@/util/printer-name'
 import { activeSlug } from '@/services/printer-pages'
@@ -371,6 +371,7 @@ import { ACCOUNT_SECTIONS, initialsOf, type AccountSectionId } from '@/services/
 import { accountState, loadApprovals } from '@/services/account/state'
 import { EventBus } from '@/eventBus'
 import { Globals } from '@/globals'
+import LinkPrinterDialog from './LinkPrinterDialog.vue'
 import PhotoFace from '@/components/account/profile/PhotoFace.vue'
 import { forgetOwnAvatar, loadOwnAvatar, ownAvatar } from '@/services/account/avatar'
 import AppUserMenu from '@/components/layout/AppUserMenu.vue'
@@ -391,9 +392,8 @@ const NAMELESS_USERS = ['_TRUSTED_USER_', '_API__API_KEY_USER_USER_']
  */
 @Component({
   components: {
-    // The dialogs (v-if) load when first opened (KAN-2013).
     CloudAccountDialog: () => import('./CloudAccountDialog.vue'),
-    LinkPrinterDialog: () => import('./LinkPrinterDialog.vue'),
+    LinkPrinterDialog,
     UserPasswordDialog: () => import('@/components/settings/auth/UserPasswordDialog.vue'),
     AppUserMenu,
     PhotoFace
@@ -408,7 +408,7 @@ export default class CloudAccountMenu extends Vue {
 
   /** Not the console's page: passkeys, its cookie and the Library's CORS don't reach here. */
   get printerPage (): boolean {
-    return !centralLoginEnabled()
+    return !consoleServesPage()
   }
 
   get consoleHost (): string {
@@ -470,7 +470,7 @@ export default class CloudAccountMenu extends Vue {
     return initialsOf(cloudState.account?.name || this.printerUser, cloudState.account?.email)
   }
 
-  /** Your photo (one fetch, shared with Account › Profile), or null: the initials stand in. */
+  /** Your photo (one fetch, shared with Account â€º Profile), or null: the initials stand in. */
   get photo (): string | null {
     return ownAvatar.url
   }
@@ -492,7 +492,7 @@ export default class CloudAccountMenu extends Vue {
 
   loadPhoto () {
     // The Library's service answers where the console serves Control, to a signed-in account.
-    if (this.accountId && centralLoginEnabled()) loadOwnAvatar().catch(() => {})
+    if (this.accountId && consoleServesPage()) loadOwnAvatar().catch(() => {})
   }
 
   /** Requests to use one of your printers, waiting for you. */

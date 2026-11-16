@@ -253,7 +253,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+import { Component, Vue, Watch } from 'vue-property-decorator'
 import type { NewWebcamConfig, WebcamConfig, WebcamService } from '@/store/webcams/types'
 import { Globals } from '@/globals'
 import { moveCamera } from '@/services/camera/order'
@@ -283,6 +283,20 @@ export default class CameraSettings extends Vue {
   readonly types = STREAM_TYPES
 
   view: 'list' | 'types' | 'detail' = 'list'
+
+  /** The header's "Add a camera" opens this page with ?add=1: start at the stream types. */
+  created () {
+    this.openFromHeader()
+  }
+
+  @Watch('$route.query.add')
+  openFromHeader () {
+    if (this.$route.query.add) {
+      this.view = 'types'
+      this.$router.replace({ path: this.$route.path, hash: this.$route.hash }).catch(() => {})
+    }
+  }
+
   editing: WebcamConfig | NewWebcamConfig | null = null
   editKey = 0
   dragIndex: number | null = null

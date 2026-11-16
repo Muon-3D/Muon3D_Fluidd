@@ -28,11 +28,19 @@ import {
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
-import { handMoveSettling, headStatus, lockHandMove, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
+import { endOwnMotion, handMoveSettling, headStatus, lockHandMove, noteOwnMotion, ownMotionActive, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
+import Vue from 'vue'
 import { EventBus } from '@/eventBus'
 import type { LoadedFilament } from '@/services/jobs/model'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
+
+/**
+ * Ticks when a hand move starts and when its own-motion window ends
+ * (safe-move's ownMotion), so `busy` is worked out again at both moments.
+ */
+const motionClock = Vue.observable({ epoch: 0 })
+let motionTimer: ReturnType<typeof setTimeout> | null = null
 
 /** A print's peak flow, worked out once per parsed file, however many panels ask. */
 const peakFlows = new WeakMap<readonly Move[], number | null>()
@@ -101,8 +109,51 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     return v === undefined ? null : v
   }
 
+  /**
+   * A real print is running or paused, by print_stats (Klipper's own record
+   * of a print), not by idle_timeout, which reads Printing for ANY G-code,
+   * a jog included (KAN-2120). Only this says "printing" to the person.
+   */
+  get printLocked (): boolean {
+    const state = String(this.$store.state.printer.printer.print_stats?.state ?? '').toLowerCase()
+    return state === 'printing' || state === 'paused' || this.printerPrinting || this.printerPaused
+  }
+
+  /**
+   * The printer is busy with this page's own hand move (a jog, the trackpad,
+   * Go to) and nothing else: KAN-2120. Moving stays open then, so a new
+   * target is planned from the commanded end position and queued behind it.
+   */
+  get busyWithOwnMove (): boolean {
+    // Read so this is worked out again when the move's window ends (the window itself isn't reactive).
+    const seen = motionClock.epoch >= 0
+    const commanded = this.$store.state.printer.printer.gcode_move?.gcode_position as number[] | undefined
+    return seen && !this.printLocked && this.printerState === 'busy' && ownMotionActive(this.panelTarget, Date.now(), commanded)
+  }
+
+  /**
+   * Moves, extrusion and motors are left alone: a real print, or the printer
+   * busy with something that isn't this page's own hand move (homing, a
+   * macro, another client). See printLocked and busyWithOwnMove.
+   */
   get busy (): boolean {
-    return this.printerPrinting || this.printerPaused || this.printerState === 'busy'
+    return this.printLocked || (this.printerState === 'busy' && !this.busyWithOwnMove)
+  }
+
+  /** The printer stopped being busy: the own-move window ends, so the next busy (a macro from anywhere) locks moving. */
+  @Watch('printerState')
+  onPrinterStateForOwnMove (now: string, before: string) {
+    if (before === 'busy' && now !== 'busy') {
+      endOwnMotion()
+      motionClock.epoch++
+    }
+  }
+
+  /** Why moving is locked, in words: "printing" only for a real print. '' when it isn't. */
+  get moveLockReason (): string {
+    if (this.printLocked) return 'Not while printing.'
+    if (this.busy) return 'The printer is busy. Moving comes back when it finishes.'
+    return ''
   }
 
   get toolhead () {
@@ -387,7 +438,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     if (noGo === null) return planMove(from, to, null, limits)
     const offset = this.gcodeOffset
     if (!offset) return { ok: false, reason: 'The head position is not known.' }
-    const plan = planMove(from, to, noGo, limits, meshSpan(this.$store.state.printer.printer.bed_mesh))
+    const plan = planMove(from, to, noGo, limits, meshSpan(this.$store.state.printer.printer.bed_mesh), this.isHomed('Z'), this.isHomed('XY'))
     if (!plan.ok) return plan
     const toGcode = (p: Place): Place => {
       const out: Place = {}
@@ -405,7 +456,19 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   markHandMove (realTo: number[]) {
     const offset = this.gcodeOffset
     if (!offset) return
-    lockHandMove(realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000), this.panelTarget, Date.now(), this.travelMs(realTo))
+    const now = Date.now()
+    const travel = this.travelMs(realTo)
+    const target = realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000)
+    lockHandMove(target, this.panelTarget, now, travel)
+    // Only a move sent while the printer wasn't busy opens the own-move window; one sent mid-move never extends it
+    // (it only moves the window's target, so the printer heading there still counts as this page's move).
+    const from = (this.$store.state.printer.printer.gcode_move?.gcode_position as number[] | undefined)?.slice(0, 3)
+    const ms = noteOwnMotion(this.panelTarget, now, travel, this.printerState !== 'busy', target, from)
+    motionClock.epoch++
+    if (ms > 0) {
+      if (motionTimer !== null) clearTimeout(motionTimer)
+      motionTimer = setTimeout(() => { motionTimer = null; motionClock.epoch++ }, ms + 20)
+    }
   }
 
   /**
@@ -496,7 +559,8 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
    */
   moveRefusal (place: { X?: number, Y?: number, Z?: number }): string {
     if (!this.controlReady) return this.controlLock || 'Not connected to the printer'
-    if (this.busy) return 'Not while printing: moving the head would ruin the print.'
+    if (this.printLocked) return 'Not while printing: moving the head would ruin the print.'
+    if (this.busy) return 'Wait for the printer to finish what it is doing.'
     if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return 'Set the jog speeds in Settings first.'
     const axes = (['X', 'Y', 'Z'] as Axis[]).filter(a => place[a] !== undefined)
     if (!axes.length) return 'Nothing to move.'

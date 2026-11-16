@@ -189,6 +189,12 @@
       class="muon-switcher__note"
     >
       {{ notice }}
+      <a
+        v-if="noticeLink"
+        :href="noticeLink"
+        target="_blank"
+        rel="noopener"
+      >{{ noticeLink }}</a>
     </div>
     <div
       v-if="nearby.error"
@@ -210,7 +216,7 @@
       <span
         v-if="pairingOffer"
         data-tid="pair-hint"
-      >(Open Settings &gt; Add a device on the printer first.)</span>
+      >(Open System &gt; Add a device on the printer first.)</span>
       <template v-if="activationFallback">
         <a :href="activationFallback">Open the printer's own page</a> instead.
       </template>
@@ -275,6 +281,7 @@
       v-model="setupDialog"
       :printer="setupPrinter"
       @finished="rescan"
+      @pair="pairNearbyPrinter"
     />
   </div>
 </template>
@@ -286,6 +293,7 @@ import PrinterEntriesMixin from '@/mixins/printer-entries'
 import { discoverPrinters, discoveryState, lanAddresses, refreshKnownPrinters } from '@/services/muon-cloud/discovery'
 import { savedUpdates, type DirectoryEntry } from '@/services/muon-cloud/directory'
 import { startNearby, stopNearby } from '@/services/muon-ble/nearby'
+import LinkPrinterDialog from './LinkPrinterDialog.vue'
 import PrinterCard from './PrinterCard.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { switcherGroups, switcherSectionShown, type SwitcherGroup } from '@/services/muon-cloud/switcher-groups'
@@ -301,11 +309,9 @@ const HEALTH_EVERY_MS = 15_000
  */
 @Component({
   components: {
-    // The dialogs (v-if) load when first opened (KAN-2013). A name of its own,
-    // or the auto-import of components/common would import it up front.
     LazyAddInstanceDialog: () => import('@/components/common/AddInstanceDialog.vue'),
     CloudAccountDialog: () => import('./CloudAccountDialog.vue'),
-    LinkPrinterDialog: () => import('./LinkPrinterDialog.vue'),
+    LinkPrinterDialog,
     AccessRequestDialog: () => import('@/components/muon-access/AccessRequestDialog.vue'),
     PrinterCard,
     BluetoothSetupDialog: () => import('@/components/muon-ble/BluetoothSetupDialog.vue'),

@@ -45,10 +45,28 @@ async function mountGraph (opts: ReturnType<typeof makeStore>, props: Record<str
 beforeEach(() => { vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] }); handle.setOption.mockClear() })
 afterEach(() => { vi.useRealTimers() })
 
+/** Opens "N more", so every line the printer has is in the legend. */
+async function showAll (wrapper: ReturnType<typeof mount>) {
+  const more = wrapper.find('[data-tid="legend-more"]')
+  if (more.exists()) { await more.trigger('click'); await Vue.nextTick() }
+}
+
 describe('legend', () => {
+  it('shows only the lines that are on until the rest are asked for, grouped by part', async () => {
+    const o = makeStore()
+    const wrapper = await mountGraph(o)
+    expect(wrapper.findAll('[data-legend]').wrappers.map(w => w.attributes('data-legend'))).toEqual(['extruder', 'heater_bed'])
+    expect(wrapper.findAll('[data-group]').wrappers.map(w => w.attributes('data-group'))).toEqual(['Toolhead', 'Bed'])
+    expect(wrapper.find('[data-tid="legend-more"]').text()).toContain('more')
+    await showAll(wrapper)
+    expect(wrapper.findAll('[data-group]').wrappers.map(w => w.attributes('data-group'))).toEqual(['Toolhead', 'Bed', 'Chamber and system', 'Fans'])
+    wrapper.destroy()
+  })
+
   it('has a labelled entry per tracked series with the current and target value', async () => {
     const o = makeStore()
     const wrapper = await mountGraph(o)
+    await showAll(wrapper)
     const nozzle = wrapper.find('[data-legend="extruder"]')
     expect(nozzle.text()).toContain('Nozzle')
     expect(nozzle.text()).toContain('214.6°')
@@ -62,6 +80,7 @@ describe('legend', () => {
   it('shows hidden series struck through and toggles one per click, saving the choice', async () => {
     const o = makeStore({ extruder: false })
     const wrapper = await mountGraph(o)
+    await showAll(wrapper)
     expect(wrapper.find('[data-legend="extruder"]').attributes('aria-pressed')).toBe('false')
     expect(wrapper.find('[data-legend="heater_bed"]').attributes('aria-pressed')).toBe('true')
     expect(wrapper.find('[data-legend="extruderPower"]').attributes('aria-pressed')).toBe('false')
@@ -90,6 +109,7 @@ describe('legend', () => {
   it('finds a sensor that appears after the graph opened', async () => {
     const o = makeStore()
     const wrapper = await mountGraph(o)
+    await showAll(wrapper)
     Vue.set(o.printer, 'temperature_sensor late', { temperature: 33 })
     vi.advanceTimersByTime(1000)
     await Vue.nextTick()

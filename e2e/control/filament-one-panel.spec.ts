@@ -42,10 +42,10 @@ for (const item of [/Set material and colour/, /Load or unload/]) {
   })
 }
 
-test('Control: the material chip opens the same panel', async ({ page, open }) => {
+test('Control: the filament row opens the same panel', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed())
   await open('/control')
-  await page.getByTestId('chip-filament').click()
+  await page.getByTestId('control-filament').getByTestId('filament-row').click()
   await isThePanel(page, printer)
 })
 

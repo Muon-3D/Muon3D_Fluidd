@@ -40,11 +40,17 @@
             v-for="a in actionsFor(tile)"
             :key="a.id"
             :disabled="a.disabled"
+            :data-action="a.id"
             @click="$emit('action', tile, a.id)"
           >
-            <v-list-item-title :class="{ 'error--text': a.danger }">
-              {{ a.label }}
-            </v-list-item-title>
+            <v-list-item-content>
+              <v-list-item-title :class="{ 'error--text': a.danger }">
+                {{ a.label }}
+              </v-list-item-title>
+              <v-list-item-subtitle v-if="a.hint">
+                {{ a.hint }}
+              </v-list-item-subtitle>
+            </v-list-item-content>
           </v-list-item>
         </v-list>
       </v-menu>

@@ -7,7 +7,6 @@
   >
     <v-card-title
       class="collapsable-card-title card-heading"
-      :class="{ 'draggable': inLayout }"
     >
       <v-row
         no-gutters
@@ -17,16 +16,13 @@
           align-self="center"
           class="text-no-wrap"
         >
-          <slot
-            name="title"
-            :in-layout="inLayout"
-          >
+          <slot name="title">
             <v-icon left>
               {{ icon }}
             </v-icon>
             <span class="font-weight-light">{{ title }}</span>
             <app-inline-help
-              v-if="!inLayout && helpTooltip"
+              v-if="helpTooltip"
               bottom
               small
               :tooltip="helpTooltip"
@@ -35,7 +31,6 @@
         </v-col>
 
         <v-col
-          v-if="!inLayout"
           cols="auto"
           align-self="center"
         >
@@ -49,10 +44,8 @@
           <!-- Collapse Control -->
           <slot name="collapse-button">
             <app-btn-collapse
-              v-if="_collapsable || inLayout"
+              v-if="_collapsable"
               :collapsed.sync="isCollapsed"
-              :enabled.sync="isEnabled"
-              :in-layout="inLayout"
             />
           </slot>
         </v-col>
@@ -60,14 +53,14 @@
     </v-card-title>
 
     <v-expand-transition>
-      <div v-show="isCollapsed && !inLayout">
+      <div v-show="isCollapsed">
         <slot name="collapsed-content" />
       </div>
     </v-expand-transition>
 
     <v-expand-transition v-if="!lazy">
       <div
-        v-if="!isCollapsed && !inLayout"
+        v-if="!isCollapsed"
         id="card-content"
         :class="_contentClasses"
         :style="_contentStyles"
@@ -90,7 +83,7 @@
 
     <v-expand-transition v-else>
       <div
-        v-show="!isCollapsed && !inLayout"
+        v-show="!isCollapsed"
         id="card-content"
         :class="_contentClasses"
         :style="_contentStyles"
@@ -175,13 +168,6 @@ export default class CollapsableCard extends Vue {
    */
   @Prop({ type: Boolean })
   readonly loading?: boolean
-
-  /**
-   * Enables dragging of the card. Also causes the card
-   * to react to layoutMode state.
-   */
-  @Prop({ type: Boolean })
-  readonly draggable?: boolean
 
   /**
    * Whether this card is collapsable or not.
@@ -327,31 +313,6 @@ export default class CollapsableCard extends Vue {
   @Watch('isCollapsed')
   isCollapsedChange (val: boolean) {
     this.$emit('collapsed', val)
-  }
-
-  /**
-   * Whether this card is in an enabled state or not.
-   * E.g., in layout mode - you may set it to disabled
-   * in order to prevent its display.
-   * If the layout isn't defined, then this should always be enabled.
-   */
-  get isEnabled (): boolean {
-    return (this.layout) ? this.layout.enabled : true
-  }
-
-  set isEnabled (enabled: boolean) {
-    const value = this.layout
-    if (value && this._layoutPath) {
-      value.enabled = enabled
-      this.$store.dispatch('layout/onUpdateConfig', { name: this._layoutPath.name, value })
-    }
-  }
-
-  get inLayout (): boolean {
-    return (
-      this.$store.state.config.layoutMode &&
-      !!this.draggable
-    )
   }
 
   /**

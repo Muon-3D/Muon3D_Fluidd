@@ -16,7 +16,7 @@
           v-model="query"
           type="search"
           placeholder="Find"
-          aria-label="Find a macro"
+          aria-label="Find a quick command"
         >
       </label>
       <a
@@ -47,7 +47,7 @@
     <component
       :is="query ? 'div' : 'control-task-fold'"
       fold-key="macros.all"
-      :title="`All ${arrangedMacros.length} macros`"
+      title="All commands"
       summary="By what they are for"
     >
       <template v-for="group in shownGroups">
@@ -100,13 +100,13 @@
       v-if="!shownGroups.length"
       class="macros__none"
     >
-      {{ query ? `No macro matches "${query}".` : 'This printer has no macros to show.' }}
+      {{ query ? `No quick command matches "${query}".` : 'This printer has no quick commands to show.' }}
     </p>
     <form
       v-if="selected"
       class="macros__values"
       data-tid="macro-send"
-      aria-label="Macro values"
+      aria-label="Quick command values"
       @submit.prevent="submitMacro"
     >
       <h3>{{ selected.title }}</h3>
@@ -116,7 +116,7 @@
         :key="field.name"
         class="macros__field"
       >
-        <span>{{ field.name }} · {{ field.optional ? `optional${field.defaultValue ? ` · default ${field.defaultValue}` : ' · uses the macro’s own value'}` : 'required' }}</span>
+        <span>{{ field.name }} · {{ field.optional ? `optional${field.defaultValue ? ` · default ${field.defaultValue}` : ' · uses the command’s own value'}` : 'required' }}</span>
         <textarea
           v-model="values[field.name]"
           rows="1"
@@ -180,7 +180,7 @@ export default class ControlMacros extends Mixins(MacroRunMixin) {
   get note (): string {
     const all = this.arrangedMacros.length
     const own = this.arrangedMacros.filter(m => m.group === 'printer').length
-    return `${all} ${all === 1 ? 'macro' : 'macros'}, ${own} run by the printer itself. Grouped automatically; a group set under Settings › Macros wins.`
+    return `${all} ${all === 1 ? 'quick command' : 'quick commands'}, ${own} run by the printer itself. Grouped automatically; a group set under Settings › Quick commands wins.`
   }
 
   get arrangeLink (): string {
