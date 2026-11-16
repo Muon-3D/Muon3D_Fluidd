@@ -25,6 +25,8 @@
       title="Switches and sensors"
       summary="Endstops, probe and filament state"
       class="maintenance-page__wide"
+      :expand="sensorsAsked"
+      data-tid="maintenance-sensors"
     >
       <control-outputs diagnostics-only />
     </control-task-fold>
@@ -43,6 +45,7 @@ import MaintenanceWear from '@/components/maintenance/MaintenanceWear.vue'
 import ControlOutputs from '@/components/control/ControlOutputs.vue'
 import ControlTaskFold from '@/components/control/ControlTaskFold.vue'
 import ProbeCard from '@/components/maintenance/ProbeCard.vue'
+import { SENSORS_QUERY } from '@/services/control/sensors-link'
 
 /**
  * Health (`/boxwood-367a/maintenance`): what keeps prints coming out right,
@@ -54,6 +57,19 @@ import ProbeCard from '@/components/maintenance/ProbeCard.vue'
  */
 @Component({ components: { MaintenanceHealth, MaintenanceMesh, MaintenanceCalibration, MaintenanceConsumables, MaintenanceWear, ControlOutputs, ControlTaskFold, ProbeCard } })
 export default class Maintenance extends Mixins(BrowserMixin, TypedCommandsMixin) {
+  /** A filament action sent someone here for the sensors (?sensors=open, KAN-1697). */
+  get sensorsAsked (): boolean {
+    return this.$route?.query?.[SENSORS_QUERY] === 'open'
+  }
+
+  mounted () {
+    if (!this.sensorsAsked) return
+    this.$nextTick(() => {
+      const fold = this.$el?.querySelector?.('[data-tid="maintenance-sensors"]') as HTMLElement | null
+      fold?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    })
+  }
+
   get supportsBedMesh (): boolean {
     return this.$store.getters['mesh/getSupportsBedMesh'] as boolean
   }

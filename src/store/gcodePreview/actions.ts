@@ -11,8 +11,16 @@ export const actions: ActionTree<GcodePreviewState, RootState> = {
   /**
    * Reset our store
    */
-  async reset ({ commit }) {
+  async reset ({ commit, dispatch }) {
     commit('setReset')
+    dispatch('applyViewerDefaults')
+  },
+
+  /** What a preview starts out showing, from Settings › G-code preview and 3D. */
+  async applyViewerDefaults ({ commit, rootState }) {
+    const config = rootState.config?.uiSettings.gcodePreview
+    if (!config) return
+    commit('setViewerState', { showMoves: config.showMoves !== false, showRetractions: config.showRetractions !== false })
   },
 
   async terminateParserWorker ({ commit, state }) {

@@ -11,7 +11,7 @@ export type FrameStepId = 'welcome' | StepId | 'finish'
 export interface FrameStep {
   id: FrameStepId;
   label: string;
-  status: 'done' | 'on' | 'todo';
+  status: 'done' | 'skipped' | 'on' | 'todo';
 }
 
 export const STEP_LABELS: Record<FrameStepId, string> = {
@@ -39,18 +39,27 @@ export const currentStep = (state: SetupState | null, screen: ScreenId): FrameSt
   return state.cursor
 }
 
+/** An earlier step's real outcome: Welcome and Finish have none. */
+const earlier = (state: SetupState | null, id: FrameStepId): FrameStep['status'] => {
+  if (!state || id === 'welcome' || id === 'finish') return 'done'
+  const status = state.steps?.[id]?.status
+  if (status === 'skipped') return status
+  // The cursor is past it, so anything else counts as done.
+  return 'done'
+}
+
 export const frameSteps = (state: SetupState | null, screen: ScreenId): FrameStep[] => {
   const on = currentStep(state, screen)
   const ids: FrameStepId[] = [
     'welcome',
-    ...LISTED.filter(step => !state || state.steps[step].status !== 'hidden'),
+    ...LISTED.filter(step => !state || state.steps?.[step]?.status !== 'hidden'),
     'finish'
   ]
   const at = ids.indexOf(on)
   return ids.map((id, i) => ({
     id,
     label: STEP_LABELS[id],
-    status: i < at ? 'done' : i === at ? 'on' : 'todo'
+    status: i < at ? earlier(state, id) : i === at ? 'on' : 'todo'
   }))
 }
 
@@ -65,7 +74,7 @@ export const previousStep = (state: SetupState | null): StepId | null => {
     const step = STEP_ORDER[i]
     // Language is chosen on Welcome; going back to it would leave the frame.
     if (step === 'language') return null
-    const status = state.steps[step].status
+    const status = state.steps?.[step]?.status
     if (status === 'done' || status === 'skipped') return step
   }
   return null
@@ -76,7 +85,7 @@ export const previousStep = (state: SetupState | null): StepId | null => {
  * so a done language means the printer restarted, or this page lost the
  * driver, mid-setup. What is done stays done, so S1 says to carry on.
  */
-export const resumedSetup = (state: SetupState | null): boolean => state?.steps.language.status === 'done'
+export const resumedSetup = (state: SetupState | null): boolean => state?.steps.language?.status === 'done'
 
 /** S1's plan, each part with whether the printer already has it done or skipped. */
 export const startParts = (state: SetupState | null): Array<{ label: string; done: boolean }> => {

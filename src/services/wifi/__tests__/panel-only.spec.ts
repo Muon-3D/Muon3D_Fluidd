@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   PANEL_ONLY_NOTE,
+  classifyRefusal,
   fallsBack,
   hotspotChangeBody,
   isPanelOnlyRefusal,
   panelOnlyMessage,
+  permissionMessage,
   routeFor
 } from '../panel-only'
 
@@ -83,5 +85,59 @@ describe('the body of POST /wifi/ap/change', () => {
 
   it('cannot make the hotspot open: that is for the printer', () => {
     expect(hotspotChangeBody({ ssid: 'Muon-Shop', securityEnabled: false, password: '' })).toBeNull()
+  })
+})
+
+describe('KAN-2457: what a 403 means', () => {
+  const restricted = (required: string, extra: Record<string, unknown> = {}) => failed(403, {
+    detail: { code: 'permission_restricted', knob: 'wifi_change', required, allowed: ['owner'], message: 'Not allowed for this caller.', ...extra }
+  })
+
+  it('reads permission_restricted as a permission refusal, with what the printer said', () => {
+    const r = classifyRefusal(restricted('owner_and_shared'))
+    expect(r).toEqual({ kind: 'permission', knob: 'wifi_change', required: 'owner_and_shared', allowed: ['owner'], message: 'Not allowed for this caller.' })
+  })
+
+  it('is not panel-only: no panel text, no fall-back, nothing marked refused', () => {
+    for (const required of ['owner_and_shared', 'owner']) {
+      expect(isPanelOnlyRefusal(restricted(required))).toBe(false)
+      expect(fallsBack(restricted(required))).toBe(false)
+    }
+  })
+
+  it('says who may, for owner_and_shared signed out and signed in, and for owner', () => {
+    const shared = classifyRefusal(restricted('owner_and_shared'))
+    const owner = classifyRefusal(restricted('owner'))
+    if (shared.kind !== 'permission' || owner.kind !== 'permission') throw new Error('expected permission')
+    expect(permissionMessage(shared, false)).toBe("Only this printer's owner and the people it's shared with can do this, and this browser isn't signed in as one of them.")
+    expect(permissionMessage(shared, true)).toContain("this account isn't one of them")
+    expect(permissionMessage(owner, false)).toBe("Only this printer's owner can do this.")
+    expect(permissionMessage(owner, false)).not.toContain('screen')
+  })
+
+  it('falls back to allowed when required is missing', () => {
+    const r = classifyRefusal(failed(403, { detail: { code: 'permission_restricted', allowed: ['owner'] } }))
+    if (r.kind !== 'permission') throw new Error('expected permission')
+    expect(permissionMessage(r, false)).toBe("Only this printer's owner can do this.")
+  })
+
+  it('keeps panel_only as panel-only, and falls back as before', () => {
+    const e = failed(403, { detail: { code: 'panel_only', message: 'At the printer.' } })
+    expect(classifyRefusal(e)).toEqual({ kind: 'panel-only' })
+    expect(isPanelOnlyRefusal(e)).toBe(true)
+    expect(fallsBack(e)).toBe(true)
+  })
+
+  it('keeps Moonraker protection as protected', () => {
+    const e = failed(403, { error: { code: 403, message: "'/server/aux/wifi/up' is protected on this printer." } })
+    expect(classifyRefusal(e)).toEqual({ kind: 'protected' })
+    expect(isPanelOnlyRefusal(e)).toBe(false)
+  })
+
+  it('keeps a 403 with no code as panel-only, and other statuses as other', () => {
+    expect(classifyRefusal(failed(403))).toEqual({ kind: 'panel-only' })
+    expect(classifyRefusal(failed(403, { detail: { message: 'no' } }))).toEqual({ kind: 'panel-only' })
+    expect(classifyRefusal(failed(500))).toEqual({ kind: 'other' })
+    expect(classifyRefusal(undefined)).toEqual({ kind: 'other' })
   })
 })

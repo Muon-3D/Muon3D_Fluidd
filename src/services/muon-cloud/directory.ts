@@ -17,6 +17,7 @@
 import type { InstanceConfig } from '@/store/config/types'
 import { Globals } from '@/globals'
 import { isPrinter, type NearbyPrinter } from '@/services/muon-ble/nearby'
+import { heardRecently } from '@/services/muon-ble/heard'
 import type { CloudPrinter } from './api'
 import type { PrinterStatus } from './state'
 import type { ForeignPrinterRecord, ForeignStatus } from '@/services/foreign-printers/types'
@@ -41,9 +42,11 @@ import { consolePresence } from './presence'
  * - `error`: it answered, and Klipper is not ready, or the connection failed.
  * - `locked`: it answered, and wants a sign-in or refuses this browser.
  * - `available`: found, and its state was not read (Discovery rows).
+ * - `nearby`: not reachable by any other way, but its Bluetooth advert was heard
+ *   in the last 30 s, so it is here and Bluetooth can open it (KAN-2528).
  */
 export type PrinterHealth =
-  'online' | 'printing' | 'paused' | 'connecting' | 'reconnecting' | 'searching' | 'offline' | 'error' | 'locked' | 'available'
+  'online' | 'printing' | 'paused' | 'connecting' | 'reconnecting' | 'searching' | 'offline' | 'error' | 'locked' | 'available' | 'nearby'
 
 export type DirectorySection = 'cloud' | 'local' | 'found' | 'foreign'
 
@@ -109,6 +112,8 @@ export interface DirectorySources {
   local: LocalLive | null;
   /** The search is still running, so a printer with no answer may yet answer. */
   searching: boolean;
+  /** The time to judge Bluetooth sightings against; now when omitted. */
+  now?: number;
   foreign?: Array<{ record: ForeignPrinterRecord, status: ForeignStatus | null }>;
 }
 
@@ -175,6 +180,7 @@ export function healthLabel (h: PrinterHealth): string {
     case 'error': return 'Error'
     case 'locked': return 'Needs access'
     case 'available': return 'On this network'
+    case 'nearby': return 'Nearby · Bluetooth'
   }
 }
 
@@ -227,11 +233,21 @@ export function foreignEntries (list: Array<{ record: ForeignPrinterRecord, stat
   }))
 }
 
+/** What an entry says when it is out of every other reach and its advert was heard. */
+const NEARBY_DETAIL = 'Nearby · Bluetooth'
+
 export function printerDirectory (src: DirectorySources): Directory {
+  const now = src.now ?? Date.now()
+  const heard = (n: NearbyPrinter | undefined) => heardRecently(n, now)
   const claimedLan = new Set<LanPrinter>()
   const claimedSaved = new Set<InstanceConfig>()
   const claimedNearby = new Set<NearbyPrinter>()
   const activeLocal = src.local?.apiUrl ?? null
+
+  // The service says who shares this browser's network. On a page that cannot probe addresses it is the only
+  // proof there is, and it holds before any session is open (KAN-2487).
+  const besideBrowser = (endpointId: string | null) =>
+    !!endpointId && src.cloudNearby.some(c => c.printerId.toLowerCase() === endpointId.toLowerCase())
 
   const nearbyFor = (endpointId: string | null) => {
     if (!endpointId) return undefined
@@ -261,8 +277,14 @@ export function printerDirectory (src: DirectorySources): Directory {
       // The service lost it, and it is right here.
       health = fromLanHealth(lan.health)
       detail = `${lanDetail(lan)} · on this network`
-    } else if (lan) {
+    } else if (lan || besideBrowser(c.id)) {
       detail = `${detail} · on this network`
+    }
+    const nearby = nearbyFor(c.id)
+    // KAN-2528: heard over Bluetooth now, so it is not offline: Bluetooth opens it.
+    if (health === 'offline' && heard(nearby)) {
+      health = 'nearby'
+      detail = NEARBY_DETAIL
     }
     return {
       key: `cloud:${c.id}`,
@@ -278,7 +300,7 @@ export function printerDirectory (src: DirectorySources): Directory {
       saved,
       lan,
       route,
-      nearby: nearbyFor(c.id)
+      nearby
     }
   })
 
@@ -297,6 +319,7 @@ export function printerDirectory (src: DirectorySources): Directory {
     }
     if (lan) claimedLan.add(lan)
     const active = s.apiUrl === activeLocal ? 'local' : null
+    const nearby = nearbyFor(endpointId)
     let health: PrinterHealth
     let detail: string
     if (active && src.local) {
@@ -305,6 +328,14 @@ export function printerDirectory (src: DirectorySources): Directory {
     } else if (lan) {
       health = fromLanHealth(lan.health)
       detail = lanDetail(lan)
+    } else if (besideBrowser(endpointId)) {
+      // The service finds it beside this browser, though this page cannot probe it: it is on this network, not lost.
+      health = 'available'
+      detail = 'On this network'
+    } else if (heard(nearby)) {
+      // Not on this network, but its advert was heard (KAN-2528).
+      health = 'nearby'
+      detail = NEARBY_DETAIL
     } else {
       health = src.searching ? 'searching' : 'offline'
       detail = src.searching ? 'Looking for it on this network…' : 'Not found on this network'
@@ -321,7 +352,7 @@ export function printerDirectory (src: DirectorySources): Directory {
       linkedTo: linkedFrom(lan, src.email),
       saved: [s],
       lan,
-      nearby: nearbyFor(endpointId)
+      nearby
     })
   }
   // An entry whose active saved address was not the first one.

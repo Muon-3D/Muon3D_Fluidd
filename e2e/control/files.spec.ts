@@ -280,7 +280,7 @@ test('an emptied file is saved empty', async ({ page, open }) => {
   expect(seen[0]).not.toContain('mesh_min')
 })
 
-test('Save and restart saves, then restarts Klipper', async ({ page, open }) => {
+test('Save and restart asks (Settings: Ask), saves, then restarts Klipper', async ({ page, open }) => {
   const printer = await files(page)
   const seen = await uploads(page)
   await open('/configure')
@@ -288,6 +288,8 @@ test('Save and restart saves, then restarts Klipper', async ({ page, open }) => 
   await editorOpen(page)
   await typeAtEnd(page, 'x: 1')
   await page.getByRole('button', { name: 'Save & Restart', exact: true }).click()
+  expect(seen).toHaveLength(0)
+  await page.getByTestId('confirm-ok').last().click()
   await expect.poll(() => seen.length).toBe(1)
   await expect.poll(() => printer.called('printer.firmware_restart').length).toBe(1)
   await expect(page.getByTestId('files-editor-title')).toHaveCount(0)

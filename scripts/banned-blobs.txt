@@ -1,0 +1,6 @@
+# Git blob ids that must never enter this repository (KAN-2048).
+# One 40-hex id per line. Lines starting with # are ignored.
+7371e063732af9b40183e94a7c950f0d20393267
+a2954ff868c336030d9923b68ef3c72b17c5f580
+75804d40720a561c084ad0633e2c706432b484fa
+41889cf626d22992d80a2b2874206eea3e885fa4

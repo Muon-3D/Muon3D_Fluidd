@@ -70,10 +70,15 @@ export default class ProbeAccuracyMixin extends Mixins(MaintenanceMixin) {
     const settings = this.$store.state.printer.printer.configfile?.settings
     const noGo = settings && Object.keys(settings).length ? readNoGo(settings.bed_mesh) : 'invalid'
     if (noGo === 'invalid') {
-      EventBus.$emit('The printer’s no-go regions could not be read, so the probe check will not move the head. Check [bed_mesh] in printer.cfg.', { type: 'warning' })
+      EventBus.$emit('The printer’s notch could not be read, so the probe check will not move the head. Check [bed_mesh] in printer.cfg.', { type: 'warning' })
       return
     }
     let lift: number | undefined
+    if (noGo && !Number.isFinite(noGo.traverseZ)) {
+      // A notch with no height (no_go_traverse_z missing or not above 0): there is no safe height to cross it at.
+      EventBus.$emit('The printer’s notch height (no_go_traverse_z) could not be read, so the probe check will not move the head. Check [bed_mesh] in printer.cfg.', { type: 'warning' })
+      return
+    }
     if (noGo) {
       // Where homing leaves the head isn't known here, so with no-go regions
       // the check starts from a homed head whose height is known.

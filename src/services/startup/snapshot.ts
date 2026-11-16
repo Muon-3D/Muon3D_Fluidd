@@ -137,7 +137,8 @@ const drawStatus = (doc: Document, slot: HTMLElement, slug: string, st: Snapshot
   if (st.progress != null) {
     const track = el(doc, 'div', 'muon-loader__progress')
     const fill = el(doc, 'div', 'muon-loader__progress-fill')
-    fill.style.width = `${Math.max(0, Math.min(100, st.progress))}%`
+    // By transform, like every progress bar (KAN-2257): no layout per frame.
+    fill.style.transform = `scaleX(${Math.max(0, Math.min(100, st.progress)) / 100})`
     track.appendChild(fill)
     box.appendChild(track)
   }

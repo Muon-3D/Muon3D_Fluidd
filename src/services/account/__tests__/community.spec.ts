@@ -10,7 +10,7 @@ describe('community credential and field boundary', () => {
     vi.stubGlobal('fetch', fetch)
     await communityApi.claim('ada')
     const [url, request] = fetch.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toBe('https://models.muon3d.com/v1/community/profile/handle')
+    expect(url).toBe('https://library.muon3d.com/models/v1/community/profile/handle')
     expect(request.credentials).toBe('omit')
     expect(request.headers).toMatchObject({ authorization: 'Bearer models-proof' })
     expect(JSON.parse(request.body as string)).toEqual({ handle: 'ada' })

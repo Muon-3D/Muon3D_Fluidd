@@ -38,12 +38,13 @@ it.each([false, true])('offers fine jog steps down to 0.1 mm on phone=%s', phone
   s.wrapper.destroy()
 })
 
-it('types an exact place, shows the limits and speeds, and goes there through moveTo', async () => {
+it('Go to turns the readout into fields and goes there through moveTo', async () => {
   const s = show({ bedMesh: null })
-  expect(s.wrapper.text()).toContain('0 to 200'); expect(s.wrapper.text()).toContain('130 mm/s')
+  await s.wrapper.find('[data-tid="move-goto"]').trigger('click')
   const x = s.wrapper.find('input[aria-label="X to go to"]')
   await x.setValue('120'); await x.trigger('keydown.enter')
-  await s.wrapper.find('[data-tid="move-go"]').trigger('click')
+  await s.wrapper.find('[data-tid="move-go-form"]').trigger('submit')
+  // Only the changed axis is sent, at the head's speed.
   expect(sent()).toEqual(['SAVE_GCODE_STATE NAME=_ui_movement\nG90\nG1 X120 F7800\nRESTORE_GCODE_STATE NAME=_ui_movement'])
   s.wrapper.destroy()
 })
@@ -78,7 +79,7 @@ describe('the trackpad', () => {
     s.wrapper.destroy()
   })
 
-  it('dragging moves the pick and sends nothing', async () => {
+  it('a drag streams the pick through moveTo: one move in flight, the rest wait for it to land', async () => {
     const s = show()
     const pad = s.wrapper.findComponent(ControlTrackpad)
     const el = pad.element as HTMLElement
@@ -86,7 +87,8 @@ describe('the trackpad', () => {
     await pad.trigger('pointerdown', { pointerId: 1, button: 0, pointerType: 'touch', clientX: 100, clientY: 100 })
     for (let x = 110; x < 300; x += 20) await pad.trigger('pointermove', { pointerId: 1, clientX: x, clientY: 150 })
     await pad.trigger('pointerup', { pointerId: 1 })
-    expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+    // The press only picked; the first move past the slop went at once, the rest wait for it to land.
+    expect(moves()).toHaveLength(1)
     expect(s.vm.target.x).toBeCloseTo(290 / 400 * 200, 0)
     s.wrapper.destroy()
   })
@@ -201,7 +203,7 @@ describe('the trackpad', () => {
     s.store.state.printer.printer.gcode_move.gcode_position = [60, 20, 0.8, 0]
     s.vm.pick({ x: 140, y: 20 })
     await s.wrapper.vm.$nextTick()
-    expect(s.vm.targetNote).toBe('Lifts to Z 6 first, to cross the no-go region')
+    expect(s.vm.targetNote).toBe('Lifts to Z 6 first, to cross the notch')
     s.vm.confirmMove()
     expect(moves()).toEqual(['G1 Z5.8 F600', 'G1 X140 Y20 F7800', 'G1 Z0.8 F600'])
     s.wrapper.destroy()
@@ -235,29 +237,39 @@ it('a diagonal that would end in the notch low down is refused through the plann
   expect(socket.printerGcodeScript).not.toHaveBeenCalled()
   expect(bus.$emit).toHaveBeenCalledWith(expect.stringContaining('bed notch'), { type: 'warning' })
   into.wrapper.destroy()
-  const across = show({ head: [70, 40, 1] })
-  across.vm.step = 50
-  across.vm.jogButtons.find((b: { id: string }) => b.id === 'se').run()
-  // Forward is Y+ on the M1: 70,40 → 120,90 clips the notch's tolerance band low down.
+  const across = show({ head: [60, 20, 1] })
+  across.vm.step = 100
+  across.vm.jogButtons.find((b: { id: string }) => b.id === 'e').run()
+  // 60,20 → 160,20 runs through the notch low down.
   expect(moves()[0]).toMatch(/^G1 Z6(\.\d+)? F600$/)
-  expect(moves().slice(1)).toEqual(['G1 X120 Y90 F7800', 'G1 Z1 F600'])
+  expect(moves().slice(1)).toEqual(['G1 X160 Y20 F7800', 'G1 Z1 F600'])
   across.wrapper.destroy()
 })
 
-it('Motors off sends M84 at once, and sits apart from the homing row', async () => {
+it('Motors off sends M84 at once, and is only in the menu', async () => {
   const s = show()
   const motors = s.wrapper.find('[data-tid="motors-off"]')
-  expect(motors.element.closest('.move__actions')).toBeNull()
-  expect(s.wrapper.find('.move__actions [data-tid="home-z"]').exists()).toBe(true)
+  expect(motors.attributes('role')).toBe('menuitem')
+  expect(motors.element.closest('.move__bar')).toBeNull()
+  expect(s.wrapper.find('.move__hhomes [data-tid="home-z"]').exists()).toBe(true)
   await motors.trigger('click')
   expect(sent()).toEqual(['M84'])
   expect(s.confirm).not.toHaveBeenCalled()
   s.wrapper.destroy()
 })
 
-it('has no Home Z between Z+ and Z−; Home Z is in the action row only', () => {
+it('has no Home Z between Z+ and Z−: the live Z readout is there; Home Z is beside Home all in the header (CT-03)', () => {
   const s = show()
-  expect(s.wrapper.findAll('[aria-label="Home Z"]').length).toBe(0)
+  expect(s.wrapper.findAll('.move__zcol button').length).toBe(2)
+  expect(s.wrapper.find('.move__zcol [data-tid="pos-z"]').exists()).toBe(true)
   expect(s.wrapper.findAll('[data-tid="home-z"]').length).toBe(1)
+  expect(s.wrapper.find('[data-tid="home-z"]').element.closest('.move__hhomes')).not.toBeNull()
+  s.wrapper.destroy()
+})
+
+it('offers the step sizes set in Settings › Moving and extruding, for the head and the plate', () => {
+  const s = show({})
+  s.store.state.config.uiSettings = { general: { toolheadXYMoveDistances: [5, 25], toolheadZMoveDistances: [0.2, 5] } }
+  expect(s.vm.stepOptions.map((o: { value: number }) => o.value)).toEqual([0.2, 5, 25])
   s.wrapper.destroy()
 })

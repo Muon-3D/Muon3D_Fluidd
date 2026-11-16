@@ -1,7 +1,7 @@
 // Where /slice finds the slicer, and whether it is there (Slice in the nav
 // only then).
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkSlicer, probeSlicer, resetSlicerProbe, slicerPresence, slicerUrl } from '../slicerUrl'
+import { checkSlicer, probeSlicer, resetSlicerProbe, slicerLinkBase, slicerPresence, slicerUrl } from '../slicerUrl'
 
 const PAGE = 'http://walnut.local'
 const EMBED = new URL('/slicer/embed.html', PAGE)
@@ -67,5 +67,21 @@ describe('probeSlicer', () => {
   it('records a slicer that is not there as absent', async () => {
     await expect(probeSlicer(EMBED, PAGE, answer(200, FLUIDD_HTML))).resolves.toBe(false)
     expect(slicerPresence.state).toBe('absent')
+  })
+})
+
+describe('slicerLinkBase: where a link that leaves the page sends someone', () => {
+  it('is the hosted slicer unless a build sets its own', () => {
+    expect(slicerLinkBase(undefined, PAGE)).toBe('https://slicer.muon3d.com/')
+    expect(slicerLinkBase('  ', PAGE)).toBe('https://slicer.muon3d.com/')
+    expect(slicerLinkBase('ftp://elsewhere/slicer', PAGE)).toBe('https://slicer.muon3d.com/')
+  })
+  it('is the origin of the configured slicer', () => {
+    expect(slicerLinkBase('https://slicer.example.test/embed.html', PAGE)).toBe('https://slicer.example.test/')
+  })
+  it('is never this page: the slicer a page frames from its own origin is not a page to send someone to', () => {
+    expect(slicerLinkBase('/slicer/embed.html', PAGE)).toBe('https://slicer.muon3d.com/')
+    expect(slicerLinkBase('http://walnut.local/slicer/embed.html', PAGE)).toBe('https://slicer.muon3d.com/')
+    expect(slicerLinkBase('/slicer/embed.html', 'https://control.muon3d.com/library')).toBe('https://slicer.muon3d.com/')
   })
 })

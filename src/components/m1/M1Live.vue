@@ -355,16 +355,32 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
 
   /**
    * Marks what the model drew on the stage's element (data-model,
-   * data-plate, data-toolhead, data-column, data-filament): the state once a
-   * clip ends, the clip's name while it plays. data-played lists the last
+   * data-plate, data-toolhead, data-column, data-filament, and data-spool and
+   * data-plug, on or off): the state once a clip ends, the clip's name while it plays. data-played lists the last
    * clips started ("part:clip", newest last), so a test can see a clip ran
    * even when a slow renderer draws none of its frames. Written straight to
    * the element, not through Vue, since it runs every frame.
    */
-  markDrawn ({ model, accessories: a }: DrawnState) {
+  markDrawn ({ model, accessories: a, spool, plug, colour, seeThrough, phi, nozzle, knob, strand }: DrawnState) {
     const el = this.$el as HTMLElement | undefined
     if (!el?.dataset) return
-    const marks: Record<string, string> = { model }
+    const marks: Record<string, string> = { model, spool: spool ? 'on' : 'off', plug: plug ? 'on' : 'off' }
+    // Where the nozzle is drawn (px from the canvas's top left) and how the knob sits: for tests, written only when they change.
+    marks.filamentColour = colour === null ? '' : `#${colour.toString(16).padStart(6, '0')}`
+    marks.plateSee = seeThrough === null ? '' : seeThrough.toFixed(2)
+    marks.cameraPhi = phi.toFixed(3)
+    marks.nozzle = nozzle ? `${nozzle.x},${nozzle.y}` : ''
+    marks.knob = knob ? knob.angle.toFixed(2) : ''
+    marks.knobPushed = knob?.pushed ? 'on' : 'off'
+    marks.knobAt = knob ? `${knob.x},${knob.y}` : ''
+    // The knob's rim (the part of it outside the screen's disc), how often it was pressed, the deepest it has gone in (mm) and how much of a turn the drawn wheel covers.
+    marks.knobRim = knob ? `${knob.rim.x},${knob.rim.y}` : ''
+    marks.knobPresses = knob ? String(knob.presses) : ''
+    marks.knobPeak = knob ? knob.peak.toFixed(2) : ''
+    marks.knobArc = knob ? String(knob.arc) : ''
+    // Where the filament's end is drawn and the hole in the wall it goes into.
+    marks.strandEnd = strand ? `${strand.x},${strand.y}` : ''
+    marks.strandHole = strand ? `${strand.hole.x},${strand.hole.y}` : ''
     if (a) {
       marks.plate = a.plate.clip ?? (a.plate.on ? 'on' : 'off')
       marks.toolhead = a.tube.clip ?? (a.tube.attached ? (a.tube.unlocking ? 'unlocking' : 'connected') : 'disconnected')
@@ -560,8 +576,8 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
 
   @Watch('filePosition')
   onFilePosition () {
-    this.sync().setFileDone(this.printPath ? segmentsDone(this.printPath, this.filePosition) : 0)
-    this.viewer?.wake()
+    // Only a changed count changes the picture: a status update that leaves it alone asks for no frame (a frame costs seconds on a CPU-only GL).
+    if (this.sync().setFileDone(this.printPath ? segmentsDone(this.printPath, this.filePosition) : 0)) this.viewer?.wake()
   }
 
   /** A new print clears what the last one left on the plate; a resume doesn't. */

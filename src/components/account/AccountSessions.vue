@@ -11,74 +11,82 @@
             Signing a device out ends its remote connections to your printers. Prints carry on. A device unused for 30 days signs out by itself.
           </acct-more>
         </div>
+        <p>Where your account is signed in, and the devices paired straight to your printers</p>
       </div>
       <button
         v-if="others.length && !everywhereMissing"
         type="button"
-        class="lib-btn"
+        class="lib-btn lib-btn--dng"
         :disabled="busy"
         data-tid="sessions-everywhere-else"
         @click="signOutOthers"
       >
-        <frame-icon
-          name="logout"
-          small
-        />Sign out everywhere else
+        Sign out everywhere else…
       </button>
     </div>
 
-    <section
-      class="lib-surface acct-card"
-      aria-label="Signed in"
+    <!-- 1 · Signed in to your account. -->
+    <div
+      class="acct-gt"
+      data-tid="sessions-signed-in-title"
+    >
+      Signed in to your account<template v-if="devices">
+        · {{ devices.length }}
+      </template>
+    </div>
+    <div
+      class="acct-glist"
+      role="group"
+      aria-label="Signed in to your account"
     >
       <p
         v-if="!devices"
-        class="acct-muted sess__reading"
+        class="acct-grow acct-muted sess__reading"
       >
         Reading your devices…
       </p>
       <div
-        v-else
-        class="acct-list"
+        v-for="device in devices || []"
+        :key="device.id"
+        class="acct-grow sess__device"
+        :data-tid="device.current ? 'sessions-this-device' : 'sessions-device'"
       >
-        <div
-          v-for="device in devices"
-          :key="device.id"
-          class="sess__device"
-          :data-tid="device.current ? 'sessions-this-device' : 'sessions-device'"
-        >
-          <span
-            class="acct-icon-box"
-            :class="{ 'sess__icon--here': device.current }"
-          ><frame-icon
-            :name="iconOf(device)"
-            small
-          /></span>
-          <div class="acct-row__label">
-            <span class="sess__name">
-              <b>{{ device.label }}</b>
-              <span
-                v-if="device.current"
-                class="lib-pill lib-pill--run"
-              >This browser</span>
-              <span
-                v-else-if="isNew(device)"
-                class="lib-pill sess__new"
-              >New</span>
-            </span>
-            <span>{{ detail(device) }}</span>
-          </div>
-          <button
-            type="button"
-            class="lib-btn lib-btn--sm lib-btn--ghost"
-            :disabled="busy"
-            @click="signOutDevice(device)"
-          >
-            Sign out
-          </button>
+        <span
+          class="acct-icon-box"
+          :class="{ 'sess__icon--here': device.current }"
+        ><frame-icon
+          :name="iconOf(device)"
+          small
+        /></span>
+        <div class="acct-grow__text">
+          <span class="sess__name">
+            <b>{{ device.label }}</b>
+            <span
+              v-if="device.current"
+              class="lib-pill lib-pill--run"
+            >This device</span>
+            <span
+              v-else-if="isNew(device)"
+              class="lib-pill sess__new"
+            >New</span>
+          </span>
+          <span>{{ detail(device) }}</span>
         </div>
+        <button
+          v-if="!device.current"
+          type="button"
+          class="lib-btn lib-btn--sm"
+          :disabled="busy"
+          data-tid="sessions-sign-out"
+          @click="signOutDevice(device)"
+        >
+          Sign out
+        </button>
       </div>
-    </section>
+    </div>
+    <div class="acct-gh">
+      A device unused for 30 days signs out by itself.
+    </div>
     <div
       v-if="devices && !others.length"
       class="acct-empty"
@@ -88,53 +96,37 @@
         name="monitor"
         large
       /></span>
-      <h3>Only this browser is signed in</h3>
+      <h3>Only this device is signed in</h3>
       <p>Get the Muon3D app for print alerts away from home.</p>
     </div>
 
-    <section
-      class="lib-surface acct-card"
-      aria-label="Activity"
-      data-tid="sessions-activity"
+    <!-- 2 · Paired over Bluetooth or let in at a printer. -->
+    <div class="acct-gt">
+      Paired over Bluetooth or let in at a printer
+    </div>
+    <div
+      class="acct-glist"
+      role="group"
+      aria-label="Paired over Bluetooth or let in at a printer"
+      data-tid="sessions-paired"
     >
-      <div class="acct-card__title">
-        <h2>Activity</h2>
-        <span class="acct-card__aside">Last 90 days</span>
-      </div>
-      <div class="acct-list">
-        <div
-          v-for="item in shownEvents"
-          :key="item.id"
-          class="sess__event"
-        >
-          <frame-icon
-            :name="item.icon"
-            small
-            class="acct-muted"
-          />
-          <span>{{ item.text }}</span>
-          <span class="acct-lrow__time">{{ item.when }}</span>
-        </div>
-        <p
-          v-if="events && !events.length"
-          class="acct-muted sess__reading"
-        >
-          Nothing yet.
-        </p>
-      </div>
       <div
-        v-if="events && events.length > shown"
-        class="sess__more"
+        class="acct-grow"
+        data-tid="sessions-paired-unavailable"
       >
-        <button
-          type="button"
-          class="lib-btn lib-btn--sm lib-btn--ghost"
-          @click="shown += 10"
-        >
-          Show older
-        </button>
+        <span class="acct-icon-box"><frame-icon
+          name="devices"
+          small
+        /></span>
+        <span class="acct-grow__text">
+          <b>Not available yet</b>
+          <span>Your account can't list the devices your printers have paired or let in yet, with the printers each one reaches, so they can't be removed everywhere from here.</span>
+        </span>
       </div>
-    </section>
+    </div>
+    <div class="acct-gh">
+      These reach a printer directly. Removing one here will sign it out and end its pairings on every printer. To take one off a single printer, use that printer's People and access.
+    </div>
 
     <div class="acct-note acct-note--warn">
       <frame-icon
@@ -170,25 +162,23 @@
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
-import { cloudState } from '@/services/muon-cloud/state'
 import { accountApi } from '@/services/account/api'
 import { AccountError, isMissing } from '@/services/account/client'
-import { accountState, describe, loadEvents, loadSessions } from '@/services/account/state'
-import { agoText, devicesFrom, eventLine, whenText, type AccountSectionId, type Device } from '@/services/account/model'
+import { accountState, describe, loadSessions } from '@/services/account/state'
+import { agoText, devicesFrom, listText, type AccountSectionId, type Device } from '@/services/account/model'
 import { beginSignOut } from '@/services/account/sign-out'
 import AcctMore from './AcctMore.vue'
-
-const EVENT_ICONS: Record<string, string> = {
-  signIn: 'signIn', signOut: 'logout', key: 'key', shield: 'shield', userPlus: 'userPlus', userMinus: 'userMinus', mail: 'mail', lock: 'lock', alert: 'alert', link: 'link'
-}
 
 /** Signed in for less than this, and not this browser: "New". */
 const NEW_FOR_S = 3 * 86400
 
 /**
- * Devices and sessions (the canvas's "Account · Devices and sessions"):
- * each device once, with what it uses and when it was last used, signing
- * one out or all the others, and the account's history.
+ * Your devices (settings/account-devices, 6 Nov): each device signed in to
+ * the account once, with what it uses and when it was last used; signing one
+ * out, or every other one (Bluetooth pairings stay). Devices paired at a
+ * printer, with Remove everywhere (People and access R11), wait for the
+ * console to list them: until then the row says so. The account's activity
+ * is in Sign-in and security.
  */
 @Component({ components: { AcctMore } })
 export default class AccountSessions extends Vue {
@@ -198,7 +188,6 @@ export default class AccountSessions extends Vue {
   busy = false
   error = ''
   message = ''
-  shown = 8
   everywhereMissing = false
 
   created () {
@@ -207,7 +196,6 @@ export default class AccountSessions extends Vue {
 
   refresh () {
     loadSessions().catch(() => {})
-    loadEvents().catch(() => {})
   }
 
   get devices (): Device[] | null {
@@ -216,20 +204,6 @@ export default class AccountSessions extends Vue {
 
   get others (): Device[] {
     return (this.devices ?? []).filter(d => !d.current)
-  }
-
-  get events () {
-    return accountState.events
-  }
-
-  get shownEvents () {
-    const name = (id: string) => cloudState.printers.find(p => p.id === id)?.name ?? 'a printer'
-    const devices = this.devices ?? []
-    return (this.events ?? []).slice(0, this.shown).map(e => {
-      const line = eventLine(e, name)
-      const session = typeof e.detail?.session_id === 'string' ? devices.find(d => d.sessionIds.includes(e.detail.session_id as string)) : undefined
-      return { id: e.id, icon: EVENT_ICONS[line.icon] ?? 'alert', text: session ? `${line.text} · ${session.label}` : line.text, when: whenText(e.at) }
-    })
   }
 
   iconOf (device: Device): string {
@@ -273,9 +247,11 @@ export default class AccountSessions extends Vue {
   }
 
   async signOutOthers () {
-    const sure = await this.$confirm(`${this.others.length === 1 ? this.others[0].label : `${this.others.length} devices`} will be signed out at once, the Muon3D app on your phone included. This browser stays signed in.`, {
-      title: 'Sign out everywhere else?',
-      buttonTrueText: 'Sign them out'
+    const n = this.others.length
+    const sure = await this.$confirm(`${listText(this.others.map(d => d.label))}. Bluetooth pairings to your printers stay.`, {
+      title: `Sign out ${n === 1 ? 'one other device' : `${n} other devices`}?`,
+      buttonTrueText: 'Sign out',
+      danger: true
     })
     if (!sure) return
     this.busy = true
@@ -283,7 +259,7 @@ export default class AccountSessions extends Vue {
     this.message = ''
     try {
       await accountApi.endSessions('others')
-      this.message = 'Every other device is signed out.'
+      this.message = 'Every other device is signed out. Bluetooth pairings to your printers stay.'
     } catch (error) {
       if (isMissing(error)) {
         this.everywhereMissing = true
@@ -303,9 +279,6 @@ export default class AccountSessions extends Vue {
   .sess__device {
     display: grid;
     grid-template-columns: 40px minmax(0, 1fr) auto;
-    gap: 14px;
-    align-items: center;
-    padding: 14px 0;
   }
 
   .sess__icon--here {
@@ -327,24 +300,8 @@ export default class AccountSessions extends Vue {
     color: var(--m3d-accent);
   }
 
-  .sess__event {
-    display: grid;
-    grid-template-columns: 20px minmax(0, 1fr) auto;
-    gap: 12px;
-    align-items: center;
-    padding: 10px 0;
-    font-size: 13px;
-  }
-
-  .sess__more {
-    display: flex;
-    justify-content: center;
-    padding: 6px 0 14px;
-  }
-
   .sess__reading {
     margin: 0;
-    padding: 14px 0;
     font-size: 13px;
   }
 
@@ -355,12 +312,6 @@ export default class AccountSessions extends Vue {
     .sess__device > button {
       grid-column: 2;
       justify-self: start;
-    }
-    .sess__event {
-      grid-template-columns: 20px minmax(0, 1fr);
-    }
-    .acct-lrow__time {
-      grid-column: 2;
     }
   }
 </style>
