@@ -31,6 +31,8 @@ import type { DeviceWifi } from '../models';
 import type { HTTPValidationError } from '../models';
 // @ts-ignore
 import type { ResponseGetDetailsWifiShowGetValue } from '../models';
+// @ts-ignore
+import type { SavedNetwork } from '../models';
 /**
  * WifiApi - axios parameter creator
  * @export
@@ -65,6 +67,34 @@ export const WifiApiAxiosParamCreator = function (configuration?: Configuration)
 
 
     
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * List the saved Wi-Fi profiles, in one call.
+         * @summary Wifi Saved
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        wifiSavedWifiSavedGet: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/wifi/saved`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
@@ -396,6 +426,18 @@ export const WifiApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * List the saved Wi-Fi profiles, in one call.
+         * @summary Wifi Saved
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async wifiSavedWifiSavedGet(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Array<SavedNetwork>>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.wifiSavedWifiSavedGet(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WifiApi.wifiSavedWifiSavedGet']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Connect to an SSID (with optional password).
          * @summary Wifi Connect
          * @param {Credentials} credentials 
@@ -529,6 +571,15 @@ export const WifiApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.getDetailsWifiShowGet(ssid, options).then((request) => request(axios, basePath));
         },
         /**
+         * List the saved Wi-Fi profiles, in one call.
+         * @summary Wifi Saved
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        wifiSavedWifiSavedGet(options?: RawAxiosRequestConfig): AxiosPromise<Array<SavedNetwork>> {
+            return localVarFp.wifiSavedWifiSavedGet(options).then((request) => request(axios, basePath));
+        },
+        /**
          * Connect to an SSID (with optional password).
          * @summary Wifi Connect
          * @param {Credentials} credentials 
@@ -636,6 +687,16 @@ export class WifiApi extends BaseAPI {
         return WifiApiFp(this.configuration).getDetailsWifiShowGet(ssid, options).then((request) => request(this.axios, this.basePath));
     }
 
+    /**
+     * List the saved Wi-Fi profiles, in one call.
+     * @summary Wifi Saved
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof WifiApi
+     */
+    public wifiSavedWifiSavedGet(options?: RawAxiosRequestConfig) {
+        return WifiApiFp(this.configuration).wifiSavedWifiSavedGet(options).then((request) => request(this.axios, this.basePath));
+    }
     /**
      * Connect to an SSID (with optional password).
      * @summary Wifi Connect
