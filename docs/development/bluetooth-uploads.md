@@ -45,14 +45,14 @@ segments, or noisy radios may be slower; hardware validation remains necessary.
 
 BLE and cloud relay share `IrohPrinter.fetch` → WASM `fetchWithProgress` →
 managed transport → Axios upload events → the existing upload progress UI.
-The pinned client reports body bytes written to QUIC at 256 KiB intervals,
+The pinned client reports body bytes written to QUIC at 32 KiB intervals,
 not every GATT write and not final Moonraker publication. A very small file
 may only report zero and completion.
 
-At the assumed goodput, 256 KiB takes **51.2 seconds**, so the no-progress
-watchdog allows **75 seconds** between increasing byte counts. Duplicate
+At the assumed goodput, 32 KiB takes **6.4 seconds**, so the no-progress
+watchdog allows **30 seconds** between increasing byte counts. Duplicate
 callbacks do not reset it. Increasing progress can keep an upload alive longer
-than 75 seconds in total. The timer also bounds waiting for the final response;
+than 30 seconds in total. The timer also bounds waiting for the final response;
 success still requires the HTTP response and checksum verification.
 
 On a stall, the request fails with a Bluetooth-specific explanation and closes

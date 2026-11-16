@@ -1,7 +1,7 @@
 import type { UploadProgress } from '@/services/managed-transport/types'
 
 export const MAX_BLUETOOTH_UPLOAD_BYTES = 512 * 1024
-export const BLUETOOTH_UPLOAD_STALL_MS = 75_000
+export const BLUETOOTH_UPLOAD_STALL_MS = 30_000
 export const BLUETOOTH_UPLOAD_TOO_BIG = 'This file is too big to send over Bluetooth. Connect the printer to Wi-Fi to send it.'
 export const BLUETOOTH_UPLOAD_STALLED = 'Bluetooth upload stopped making progress. Reconnect over Bluetooth and try again, or connect the printer to Wi-Fi.'
 

@@ -89,7 +89,7 @@ export async function managedBluetooth (origin: string, options: { operator?: bo
           const attempt = { name: file.name, size: file.size, root: String(form.get('root')), path: String(form.get('path') ?? ''), checksum: String(form.get('checksum')), completed: false }
           upload.attempts.push(attempt)
           progress?.(0, body.length)
-          for (let sent = 256 * 1024; sent < body.length; sent += 256 * 1024) {
+          for (let sent = 32 * 1024; sent < body.length; sent += 32 * 1024) {
             progress?.(sent, body.length)
             while ((upload.pause || upload.stall) && !closed) await new Promise(resolve => setTimeout(resolve, 25))
             if (closed) throw new Error('Bluetooth connection closed')

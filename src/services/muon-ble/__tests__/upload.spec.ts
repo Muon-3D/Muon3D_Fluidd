@@ -29,7 +29,7 @@ describe('Bluetooth upload progress watchdog', () => {
     const work = watchBluetoothUpload(p => { report = p; return new Promise(resolve => { done = resolve }) }, progress, stop)
     await Promise.resolve()
     for (let n = 1; n <= 3; n++) {
-      await vi.advanceTimersByTimeAsync(50_000)
+      await vi.advanceTimersByTimeAsync(20_000)
       report(n, 3)
     }
     done('saved')
