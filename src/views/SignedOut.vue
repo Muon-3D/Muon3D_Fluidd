@@ -172,7 +172,7 @@ import { printerStatusWord } from '@/util/printer-status-word'
 import { describe } from '@/services/account/state'
 import { finishSignIn, forgotPassword, passkeySignIn } from '@/services/account/sign-in'
 import { cancelledPasskey, passkeysSupported } from '@/services/account/webauthn'
-import { forgetSignedOut, readSignedOut, type SignedOutNote } from '@/services/account/signed-out-note'
+import { forgetSignedOut, readSignedOut, reasonLine, type SignedOutNote } from '@/services/account/signed-out-note'
 import '@/scss/muon3d-account.scss'
 
 /**
@@ -220,6 +220,8 @@ export default class SignedOut extends Vue {
     if (this.note?.reason === 'password') return 'Your password was changed. Sign in again.'
     if (this.note?.reason === 'email') return 'Your email address was changed. Sign in again.'
     if (this.note?.reason === 'two-step') return 'Your two-step sign-in was changed. Sign in again.'
+    const said = reasonLine(this.note?.reason)
+    if (said) return said
     switch (this.note?.scope) {
       case 'everywhere':
         return `${who} ${is} signed out everywhere: every browser, Slice and the Muon3D app.`

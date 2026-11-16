@@ -327,7 +327,9 @@ async function tokenRequest (form: Record<string, string>, signal?: AbortSignal)
     throw new CloudError('The Muon3D service sent an unreadable answer.', response.status)
   }
   if (!response.ok || typeof data.access_token !== 'string') {
-    throw new CloudError(data.error_description ?? data.error ?? `The Muon3D service answered ${response.status}.`, response.status, data.error, {}, retryAfterOf(response))
+    // KAN-2509: a refused refresh of an ended session says why (`reason`, the console's wire string).
+    const body = typeof data.reason === 'string' ? { reason: data.reason } : {}
+    throw new CloudError(data.error_description ?? data.error ?? `The Muon3D service answered ${response.status}.`, response.status, data.error, body, retryAfterOf(response))
   }
   return data as TokenSession
 }
@@ -411,10 +413,10 @@ let recoverSession: ((failedRefresh: string) => Promise<boolean>) | null = null
  * sign-in belongs to the previous account and must not end the new one (KAN-2249). Tokens already cleared by the
  * refresh count as still ours.
  */
-export function sessionRefused (sent: string) {
+export function sessionRefused (sent: string, reason?: string) {
   const now = storedToken()
   if (now !== null && now !== sent) return
-  try { sessionHooks.refused?.() } catch { /* the caller's own refusal is raised either way */ }
+  try { sessionHooks.refused?.(reason) } catch { /* the caller's own refusal is raised either way */ }
 }
 
 export function setSessionRecovery (recover: ((failedRefresh: string) => Promise<boolean>) | null) {
@@ -431,7 +433,8 @@ export function setSessionRecovery (recover: ((failedRefresh: string) => Promise
  */
 export interface SessionHooks {
   recovered?: () => Promise<boolean>;
-  refused?: () => void;
+  /** `reason`: why the console ended the session, when its refusal said (KAN-2509). */
+  refused?: (reason?: string) => void;
   /** The stored token is one /me has not confirmed for the account on screen: ask now (state.ts reconcileStoredSession). */
   check?: () => void;
 }
@@ -567,7 +570,7 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
         } catch { /* fall through to dropping */ }
         if (storedRefreshToken() === refreshToken) {
           // Announced first, so whoever answers for the account hears of it before the token goes.
-          try { sessionHooks.refused?.() } catch { /* the tokens are cleared below either way */ }
+          try { sessionHooks.refused?.(refusalReason(error)) } catch { /* the tokens are cleared below either way */ }
           storeToken(null)
           storeRefreshToken(null)
         }
@@ -580,6 +583,11 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
       .finally(() => { refreshing = null })
   }
   return refreshing
+}
+
+/** The `reason` a refused refresh carried (KAN-2509), if any. */
+function refusalReason (error: unknown): string | undefined {
+  return error instanceof CloudError && typeof error.body.reason === 'string' ? error.body.reason : undefined
 }
 
 /** `refreshOutcome` as a yes or no: whether there is a fresh pair to use. */
@@ -644,6 +652,29 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
   return data as T
 }
 
+type MeAnswer = { account: CloudAccount, endpoint_id: string | null, session_id?: string | null }
+
+/**
+ * KAN-2509: the id of the session this tab is signed in with, as `/v1/me` names it. It is stable across refresh
+ * rotation and is not a secret; the live sign-out push uses it to tell a leftover of another account from this one's.
+ * Kept with the account it was learned for.
+ */
+let knownSession: { accountId: string, id: string } | null = null
+
+function noteSessionId (answer: MeAnswer): MeAnswer {
+  if (typeof answer.session_id === 'string' && answer.session_id && answer.account?.id) knownSession = { accountId: answer.account.id, id: answer.session_id }
+  return answer
+}
+
+/** The session id learned for `accountId`, or null (not asked yet, or another account's). */
+export function currentSessionId (accountId: string | null | undefined): string | null {
+  return knownSession && accountId && knownSession.accountId === accountId ? knownSession.id : null
+}
+
+export function forgetSessionId () {
+  knownSession = null
+}
+
 export const cloudApi = {
   config: () => request<CloudConfig>('GET', '/v1/config'),
   signIn: (email: string, password: string) =>
@@ -654,9 +685,9 @@ export const cloudApi = {
   signUp: (email: string, password: string, name: string, declaredAge?: number) =>
     request<{ token: string, account: CloudAccount }>('POST', '/v1/auth/sign-up', { email, password, name, declared_age: declaredAge }),
   signOut: () => request<{ ok: boolean }>('POST', '/v1/auth/sign-out'),
-  me: () => request<{ account: CloudAccount, endpoint_id: string | null }>('GET', '/v1/me'),
+  me: async () => noteSessionId(await request<MeAnswer>('GET', '/v1/me')),
   /** `me` that never refreshes: for use while a refresh is itself in progress (it would wait for itself). */
-  meWithoutRefresh: () => request<{ account: CloudAccount, endpoint_id: string | null }>('GET', '/v1/me', undefined, storedToken(), false),
+  meWithoutRefresh: async () => noteSessionId(await request<MeAnswer>('GET', '/v1/me', undefined, storedToken(), false)),
   /**
    * A signed assertion of this account for another Muon3D service (the
    * model service's Library), which never sees the console session. It lives
