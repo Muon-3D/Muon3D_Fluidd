@@ -15,7 +15,7 @@ const summary = (over: Partial<PublicationSummary> = {}): PublicationSummary => 
   make_count: 4,
   remix_count: 1,
   remix_of: null,
-  thumbnail_url: 'https://models.muon3d.com/v1/public/images/1.png',
+  thumbnail_url: 'https://library.muon3d.com/models/v1/public/images/1.png',
   ...over
 })
 

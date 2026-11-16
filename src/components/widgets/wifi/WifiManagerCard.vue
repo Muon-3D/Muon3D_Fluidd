@@ -31,6 +31,11 @@
     </header>
 
     <protected-notice class="wf__span" />
+    <permission-refusal-notice
+      class="wf__span"
+      :refusal="refusal"
+      @dismiss="refusal = null"
+    />
     <p
       v-if="remote"
       class="wf__note wf__span"
@@ -327,7 +332,7 @@
       max-width="420"
     >
       <div class="wf__dialog">
-        <h3>{{ $t('app.general.confirm.enter_password', { ssid: selectedNetwork?.ssid }) }}</h3>
+        <h3>Password for {{ selectedNetwork?.ssid }}</h3>
         <v-text-field
           v-model="password"
           :label="$t('app.general.label.password')"
@@ -351,7 +356,7 @@
             data-tid="wifi-connect"
             @click="connectToSelected"
           >
-            {{ $t('app.general.btn.connect') }}
+            Connect
           </button>
         </div>
       </div>
@@ -362,9 +367,12 @@
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
-import { PANEL_ONLY_NOTE, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
+import { PANEL_ONLY_NOTE, classifyRefusal, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
+import type { RefusalKind } from '@/services/wifi/panel-only'
+import PermissionRefusalNotice from './PermissionRefusalNotice.vue'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
+import { wifiProbe } from '@/services/wifi/saved-probe'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
@@ -378,12 +386,23 @@ const HIDDEN_NAME = 'Hidden network'
 
 type AggWifi = DeviceWifi & { chanList?: string; freqList?: string }
 
-@Component({ components: { TonePill } })
+@Component({ components: { TonePill, PermissionRefusalNotice } })
 export default class WifiManagerCard extends Vue {
   @Prop({ type: Boolean }) readonly menuCollapsed?: boolean
 
   /** The rail's quick menu: the network it's on and the next few, to join with the same warnings. */
   @Prop({ type: Boolean }) readonly compact?: boolean
+
+  /** The printer's permission store refused the last action (KAN-2457): who may do it, not a panel-only printer. */
+  refusal: Extract<RefusalKind, { kind: 'permission' }> | null = null
+
+  /** Keeps a permission refusal for the notice; false for any other error. */
+  private takePermissionRefusal (err: unknown): boolean {
+    const r = classifyRefusal(err)
+    if (r.kind !== 'permission') return false
+    this.refusal = r
+    return true
+  }
 
   // Dialog & connection state
   disconnectConfirmDialog = false
@@ -398,14 +417,13 @@ export default class WifiManagerCard extends Vue {
   // Wi-Fi scan data
   wifi_available_networks: DeviceWifi[] = []
   knownSsids = new Set<string>()
-  testedSsids = new Set<string>()
+  /** SSIDs the per-SSID fallback has asked about: the page session's, see saved-probe.ts. */
+  get testedSsids (): Set<string> { return wifiProbe.asked }
   wifiOrder: string[] = []
   private intervalId: ReturnType<typeof setInterval> | null = null
 
   refresh () {
     this.wifi_available_networks = []
-    this.knownSsids.clear()
-    this.testedSsids.clear()
     this.wifiOrder = []
   }
 
@@ -436,12 +454,38 @@ export default class WifiManagerCard extends Vue {
 
   // Lifecycle
   mounted () {
+    this.visibilityHandler = () => this.onVisibilityChange()
+    document.addEventListener('visibilitychange', this.visibilityHandler)
     this.fetchDevices()
-    this.intervalId = setInterval(() => this.fetchDevices(), 5000)
+    this.startPolling()
   }
 
   beforeDestroy () {
+    if (this.visibilityHandler) document.removeEventListener('visibilitychange', this.visibilityHandler)
+    this.stopPolling()
+  }
+
+  // The 5 s poll runs only while the tab is visible: every tick costs the
+  // printer an nmcli scan. Becoming visible refreshes once, then polls again.
+  private startPolling () {
+    if (this.intervalId || document.visibilityState === 'hidden') return
+    this.intervalId = setInterval(() => this.fetchDevices(), 5000)
+  }
+
+  private stopPolling () {
     if (this.intervalId) clearInterval(this.intervalId)
+    this.intervalId = null
+  }
+
+  private visibilityHandler: (() => void) | null = null
+
+  onVisibilityChange () {
+    if (document.visibilityState === 'hidden') {
+      this.stopPolling()
+    } else if (!this.intervalId) {
+      this.fetchDevices()
+      this.startPolling()
+    }
   }
 
   fetching: boolean = false
@@ -454,20 +498,7 @@ export default class WifiManagerCard extends Vue {
       const res = await this.auxApi.wifi.wifiScanWifiScanGet(true)
       this.wifi_available_networks = res.data
 
-      // Skip hidden SSIDs when probing for "known" status
-      for (const net of this.wifi_available_networks) {
-        const ssid = (net.ssid || '').trim() // NEW
-        if (!ssid) continue // NEW: hide hidden networks at source
-        if (!this.knownSsids.has(ssid) && !this.testedSsids.has(ssid)) {
-          try {
-            await this.auxApi.wifi.getDetailsWifiShowGet(ssid)
-            console.log('Known SSID:', ssid)
-            this.knownSsids.add(ssid)
-          } catch {
-            this.testedSsids.add(ssid)
-          }
-        }
-      }
+      await this.updateKnownSsids()
 
       // —— CHANGED: “first-come” ordering now tracked by SSID (after grouping) ——
       const groups = this.groupedNetworks // NEW
@@ -485,6 +516,35 @@ export default class WifiManagerCard extends Vue {
       if (e?.response?.status === 403) this.$store.dispatch('protection/onRefused')
     }
     this.fetching = false
+  }
+
+  /**
+   * Which scanned networks the printer has saved. One `GET /wifi/saved` per
+   * poll answers it for all of them. A printer without that route (404, once)
+   * is asked per SSID instead, at most once each for the page session.
+   */
+  async updateKnownSsids () {
+    if (!wifiProbe.savedUnsupported) {
+      try {
+        const res = await this.auxApi.wifi.wifiSavedWifiSavedGet()
+        this.knownSsids = new Set((res.data || []).map(p => (p.name || '').trim()))
+        return
+      } catch (e: any) {
+        if (e?.response?.status !== 404) return // transient: keep what we know
+        wifiProbe.savedUnsupported = true
+      }
+    }
+    for (const net of this.wifi_available_networks) {
+      const ssid = (net.ssid || '').trim()
+      if (!ssid || this.knownSsids.has(ssid) || wifiProbe.asked.has(ssid)) continue
+      wifiProbe.asked.add(ssid)
+      try {
+        await this.auxApi.wifi.getDetailsWifiShowGet(ssid)
+        this.knownSsids = new Set(this.knownSsids).add(ssid)
+      } catch {
+        // 404: not saved.
+      }
+    }
   }
 
   // NEW: one row per SSID with merged details
@@ -627,10 +687,13 @@ export default class WifiManagerCard extends Vue {
         ssid: this.selectedNetwork.ssid,
         password: this.password || undefined
       })
+      this.testedSsids.delete(this.selectedNetwork.ssid) // now saved: the fallback may ask once more
       EventBus.$emit(this.$t('app.wifi.msg.connect.success') + ' ' + this.selectedNetwork.ssid, { type: 'success', timeout: 2000 })
       await this.fetchDevices()
     } catch (err: any) {
-      if (isPanelOnlyRefusal(err)) {
+      if (this.takePermissionRefusal(err)) {
+        // The store refused this caller; the notice says who may.
+      } else if (isPanelOnlyRefusal(err)) {
         // An owner can turn AUX_NETWORK_STRICT on, and then /wifi/connect is refused too.
         EventBus.$emit(panelOnlyMessage('join a network'), { type: 'error', timeout: 8000 })
       } else {
@@ -653,7 +716,9 @@ export default class WifiManagerCard extends Vue {
         await this.fetchDevices()
       }
     } catch (err: any) {
-      if (isPanelOnlyRefusal(err)) {
+      if (this.takePermissionRefusal(err)) {
+        // The store refused this caller: not a panel-only printer, so refusedHere stays as it was.
+      } else if (isPanelOnlyRefusal(err)) {
         // No open route does this job: it is the printer's screen now.
         refusedHere.disconnect = true
         EventBus.$emit(panelOnlyMessage('disconnect from a network'), { type: 'error', timeout: 8000 })

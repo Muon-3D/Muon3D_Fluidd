@@ -119,7 +119,19 @@ export class JogStream {
   release () {
     if (!this.active) return
     const target = this.latest
-    if (target && this.sent) this.emit(target, true)
+    if (target && this.sent) {
+      const reason = this.host.refusal(target)
+      if (reason) {
+        this.cancel()
+        this.onRefused(reason)
+        return
+      }
+      if (!this.emit(target, true)) {
+        this.stop()
+        this.onRefused('The move was not sent.')
+        return
+      }
+    }
     this.stop()
   }
 

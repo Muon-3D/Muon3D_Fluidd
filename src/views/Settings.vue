@@ -234,7 +234,9 @@ export default class Settings extends Mixins(StateMixin, BrowserMixin) {
   }
 
   get sections (): SettingsSection[] {
-    return visibleSettingsSections({ components: SECTION_COMPONENTS.filter(name => this.supports(name)) })
+    const sections = visibleSettingsSections({ components: SECTION_COMPONENTS.filter(name => this.supports(name)) })
+    // Developer mode is a Muon printer's gate: a printer that is not one (or not known to be yet) has no such page.
+    return this.isMuonPrinter === true ? sections : sections.filter(s => s.id !== 'developer')
   }
 
   /** A macro category's page, inside Settings. */

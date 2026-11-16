@@ -215,6 +215,20 @@
       </section>
     </template>
 
+    <!-- Screen: use the printer's own screen from here, when Control serves it (/panel/). -->
+    <template v-else-if="part === 'screen'">
+      <div class="m1-opts__row">
+        <button
+          type="button"
+          class="m1-opts__btn"
+          data-tid="m1-use-screen"
+          @click="$emit('use-screen')"
+        >
+          Use the printer's screen
+        </button>
+      </div>
+    </template>
+
     <!-- Filament: load, unload and what is loaded, as the filament panel does it. -->
     <template v-else-if="part === 'filament'">
       <section

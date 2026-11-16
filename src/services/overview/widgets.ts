@@ -17,7 +17,7 @@ export interface WidgetMeta {
   category: WidgetCategory;
   /** One line for the Add widget sheet. */
   blurb: string;
-  /** S is 3 columns, M is 4 to 6, L is 8 to 12 or two rows. A widget may leave one out. */
+  /** S is 3 columns, M is 4 to 6, L is 8 to 12 or two rows (Quick commands also has XS, 3 columns of icons). A widget may leave one out. */
   sizes: SizeVariant[];
   /** The size it has when added, and in the default layout. */
   size: 'S' | 'M' | 'L';
@@ -26,6 +26,8 @@ export interface WidgetMeta {
   legacy?: string[];
 }
 
+/** Extra small: the narrowest tile, for a widget that can shrink to icons (Quick commands, OV-29). */
+const XS = (rows = 1, span = 3): SizeVariant => ({ key: 'XS', span, rows })
 const S = (rows = 1, span = 3): SizeVariant => ({ key: 'S', span, rows })
 const M = (span: number, rows = 1): SizeVariant => ({ key: 'M', span, rows })
 const L = (span: number, rows = 1): SizeVariant => ({ key: 'L', span, rows })
@@ -36,18 +38,21 @@ export const widgetMeta: WidgetMeta[] = [
   { id: 'stage', title: 'Printer view', category: 'Printer', blurb: 'The live 3D view of the printer. It needs both rows, so it has no S.', sizes: [M(8, 2), L(12, 2)], size: 'M', defaultOn: true },
   { id: 'job', title: 'Print job', category: 'Print', blurb: 'What is printing, or last printed, with time left.', sizes: [S(), M(4), L(4, 2)], size: 'M', defaultOn: true },
   { id: 'filament', title: 'Filament', category: 'Print', blurb: 'The spool in the printer, by type and colour.', sizes: [S(), M(4), L(4, 2)], size: 'M', defaultOn: true },
-  // The row of four under them.
-  { id: 'hotend', title: 'Hotend', category: 'Temperature', blurb: 'Hotend temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: true },
-  { id: 'bed', title: 'Bed', category: 'Temperature', blurb: 'Bed temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: true },
-  { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(), M(6)], size: 'S', defaultOn: true, legacy: ['speed'] },
-  // The fourth tile: part cooling is the fan people reach for most, and it is on every printer.
-  { id: 'fans', title: 'Fans', category: 'Tools', blurb: 'Part cooling and the other fans.', sizes: [S(), M(4), L(6, 2)], size: 'S', defaultOn: true },
-  // Movement (the trackpad, live drag), then Jog and Position as separate widgets.
-  { id: 'trackpad', title: 'Movement', category: 'Motion', blurb: 'The trackpad: drag to move the head, with the no-go zones.', sizes: [S(2), M(8, 2), L(12, 2)], size: 'M', defaultOn: true },
-  { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Buttons to move the head and home it.', sizes: [S(2), M(4, 2), L(6, 2)], size: 'M', defaultOn: true },
-  { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(4), L(8)], size: 'M', defaultOn: true },
-  { id: 'macros', title: 'Quick commands', category: 'Tools', blurb: 'The commands you press most.', sizes: [S(), M(6), L(8)], size: 'L', defaultOn: true },
+  // Jack's own default (KAN-2029): the printer, job and filament on top; then Print mode and Position
+  // side by side, Temperatures all the way across, then the Trackpad, Jog, and Quick commands under Jog.
+  { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(), M(6)], size: 'M', defaultOn: true, legacy: ['speed'] },
+  { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(6), L(8)], size: 'M', defaultOn: true },
   { id: 'graph', title: 'Temperatures', category: 'Temperature', blurb: 'The temperature graph. Hotend, bed and chamber show to begin with.', sizes: [S(), M(6), L(12)], size: 'L', defaultOn: true },
+  // Jack's picks B (KAN-2077/2119): the Trackpad is a narrow, tall block on the left (4 columns, 3 rows); Jog is
+  // the wide variant on its right (8 columns, 2 rows), and Quick commands sits directly under Jog, out to the right
+  // edge and down to the Trackpad's floor (8 columns, 1 row; OV-19, OV-29).
+  { id: 'trackpad', title: 'Trackpad', category: 'Motion', blurb: 'Tap or drag the bed and let go: the head moves there.', sizes: [S(2), M(4, 3), L(6, 3)], size: 'M', defaultOn: true },
+  { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Arrows for the head, Plate up and Plate down, and the step.', sizes: [S(2), M(4, 2), L(8, 2)], size: 'L', defaultOn: true },
+  { id: 'macros', title: 'Quick commands', category: 'Tools', blurb: 'The commands you press most.', sizes: [XS(), S(2), M(8), L(12)], size: 'M', defaultOn: true },
+  // Off until added (the Temperatures graph already shows both).
+  { id: 'hotend', title: 'Hotend', category: 'Temperature', blurb: 'Hotend temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: false },
+  { id: 'bed', title: 'Bed', category: 'Temperature', blurb: 'Bed temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: false },
+  { id: 'fans', title: 'Fans', category: 'Tools', blurb: 'Part cooling and the other fans.', sizes: [S(), M(4), L(6, 2)], size: 'S', defaultOn: false },
   // Off until added.
   // Never on a Muon printer (see muonHidden); in Add widget on the others.
   { id: 'zoffset', title: 'Z offset', category: 'Print', blurb: 'The live Z offset, to nudge the first layer.', sizes: [S(), M(4)], size: 'S', defaultOn: false },

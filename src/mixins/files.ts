@@ -5,6 +5,27 @@ import type { AxiosRequestConfig, AxiosProgressEvent } from 'axios'
 import { httpClientActions } from '@/api/httpClientActions'
 import type { FileWithPath } from '@/types'
 import consola from 'consola'
+import { EventBus } from '@/eventBus'
+
+/**
+ * The words a failed upload is reported with: Moonraker's or muon-link's own
+ * message when the printer answered, else the transport's error text (for
+ * example the relay's "sending stopped by peer: error 0").
+ */
+export function uploadErrorText (error: unknown): string {
+  const response = (error as { response?: { status?: number, data?: unknown } } | null)?.response
+  if (response) {
+    const data = response.data as { error?: { message?: unknown } } | string | undefined
+    const message = typeof data === 'string'
+      ? data.trim()
+      : typeof data?.error?.message === 'string' ? data.error.message : ''
+    if (message) return `${message} (HTTP ${response.status})`
+    if (response.status) return `the printer answered HTTP ${response.status}`
+  }
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'string' && error) return error
+  return 'unknown error'
+}
 
 type UploadResponse = ReturnType<typeof httpClientActions.serverFilesUploadPost>
 
@@ -312,8 +333,16 @@ export default class FilesMixin extends Vue {
         try {
           await this.uploadFile(fileObject, fullPath, root, andPrint)
           uploaded.push(filepath)
+          EventBus.$emit(`Uploaded ${fileObject.name}`, { type: 'success', timeout: 4000 })
         } catch (error: unknown) {
           consola.error('[FileUpload] file', error)
+          // A cancelled upload was the user's choice, not a failure.
+          const cancelled = this.$store.state.files.uploads.find((u: FilesUpload) => u.filepath === filepath)?.cancelled ||
+            (error as { name?: string, code?: string } | null)?.name === 'CanceledError' ||
+            (error as { code?: string } | null)?.code === 'ERR_CANCELED'
+          if (!cancelled) {
+            EventBus.$emit(`Upload of ${fileObject.name} failed: ${uploadErrorText(error)}`, { type: 'error', timeout: -1 })
+          }
         }
       } else {
         this.$store.dispatch('files/removeFileUpload', filepath)

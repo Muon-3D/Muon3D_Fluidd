@@ -112,4 +112,38 @@ describe('JogStream', () => {
     expect(s.following).toBe(false)
     expect(reasons).toEqual(['The move was not sent.'])
   })
+
+  it('release and cancel without a target send nothing', () => {
+    const { h, api } = host()
+    const s = new JogStream(api)
+    s.release()
+    s.cancel()
+    expect(h.sent).toEqual([])
+    expect(s.following).toBe(false)
+  })
+
+  it('rechecks refusal before FINAL, stopping instead when a gate was lost', () => {
+    const { h, api } = host()
+    const reasons: string[] = []
+    const s = new JogStream(api, { onRefused: r => reasons.push(r) })
+    s.start({ Z: 20 }, idle)
+    h.refuse = () => 'Not while printing.'
+    s.release()
+    expect(h.sent).toEqual(['MUON_JOG Z=20 SPEED=10', 'MUON_JOG STOP=1'])
+    expect(reasons).toEqual(['Not while printing.'])
+    expect(s.following).toBe(false)
+  })
+
+  it('reports a failed FINAL send and stops', () => {
+    const { h, api } = host()
+    const reasons: string[] = []
+    const s = new JogStream(api, { onRefused: r => reasons.push(r) })
+    s.start({ Z: 20 }, idle)
+    h.ok = false
+    s.release()
+    expect(reasons).toEqual(['The move was not sent.'])
+    expect(s.following).toBe(false)
+    vi.advanceTimersByTime(1000)
+    expect(h.sent).toHaveLength(1)
+  })
 })

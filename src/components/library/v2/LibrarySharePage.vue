@@ -649,7 +649,7 @@ const EMAIL = {
     padding: 0;
     border: 0;
     background: none;
-    color: var(--m3d-accent);
+    color: var(--mlib-link);
     font: inherit;
     font-size: 13px;
     cursor: pointer;
@@ -799,7 +799,12 @@ const EMAIL = {
     &::after { transform: translateX(16px); }
   }
 
-  .mshare__warn { margin: 0; color: var(--m3d-warning); font-size: 13px; }
+  // The switch's slide is decoration: off for anyone who asked for less motion.
+  @media (prefers-reduced-motion: reduce) {
+    .mshare__switch::after { transition: none; }
+  }
+
+  .mshare__warn { margin: 0; color: color-mix(in srgb, var(--m3d-warning) 60%, var(--m3d-text)); font-size: 13px; }
   .mshare__error { margin: 0; color: var(--m3d-danger); }
 
   .mshare__state {

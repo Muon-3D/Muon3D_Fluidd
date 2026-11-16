@@ -323,6 +323,8 @@ test('offline: Jobs says it is connecting and lists nothing, and the files come 
   await expect(rows(page)).toHaveCount(0)
   await expect(page.getByTestId('jobs-sel-delete')).toHaveCount(0)
   printer.online()
-  await page.getByTestId('connection-try-again').click()
+  // The socket client reconnects by itself (KAN-2890). Clicking Try again here raced that
+  // reconnect: the connecting screen unmounts and the button detaches mid-click.
+  await expect(rows(page)).toHaveCount(5, { timeout: 60_000 })
   await settled(page, 5)
 })

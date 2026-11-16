@@ -30,10 +30,10 @@ export default class MacroRunMixin extends Mixins(ControlMixin, MacrosMixin) {
     this.formError = ''
     const current = this.arrangedMacros.find(m => m.name === this.selected?.name)
     if (!current || this.panelTarget !== this.formTarget || this.gcodeOf(current.name) !== this.formGcode) {
-      this.formError = 'The printer or macro changed. Open the values again.'; return
+      this.formError = 'The printer or command changed. Open the values again.'; return
     }
     if (!this.controlReady || (current.disabledWhilePrinting && this.busy)) {
-      this.formError = 'Not sent. Wait until you can control this printer and the macro is available.'; return
+      this.formError = 'Not sent. Wait until you can control this printer and the command is available.'; return
     }
     const command = this.preview
     if (!command) { this.formError = 'Enter each required value. Use one number or word without spaces, quotes or command separators.'; return }

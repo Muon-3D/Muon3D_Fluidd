@@ -40,15 +40,17 @@ export function filamentView (
   loaded: { name: string, colour: string | null } | null,
   fromFile: { name: string, colour: string | null } | null
 ): FilamentView {
+  // What the printer records as loaded comes first: it is what Load and the
+  // material panel set, live. A Spoolman spool is only a fallback (KAN-1954).
+  if (loaded?.name) {
+    const colour = normaliseColour(loaded.colour)
+    return { type: loaded.name, detail: colourName(colour) || 'Colour not set', colour, source: 'printer' }
+  }
   const f = spool?.filament
   if (f && (f.material || f.name)) {
     const colour = normaliseColour(f.color_hex)
     const detail = [f.vendor?.name, f.name].filter(Boolean).join(' ') || colourName(colour) || 'From Spoolman'
     return { type: f.material || f.name || 'Unknown', detail, colour, source: 'spoolman' }
-  }
-  if (loaded?.name) {
-    const colour = normaliseColour(loaded.colour)
-    return { type: loaded.name, detail: colourName(colour) || 'Colour not set', colour, source: 'printer' }
   }
   if (fromFile?.name) {
     const colour = normaliseColour(fromFile.colour)

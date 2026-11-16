@@ -45,7 +45,7 @@ describe('PrintModeTile', () => {
 })
 
 describe('sizes draw different things', () => {
-  it('Quick commands shows 2, 4 or 7 commands', () => {
+  it('Quick commands shows 2, 5 or 7 commands', () => {
     const count = (size: string) => {
       const w = mount(MacrosTile, tileMount(tileStore(), { propsData: { size } }))
       const n = w.findAll('[data-tid="macro-chip"]').length

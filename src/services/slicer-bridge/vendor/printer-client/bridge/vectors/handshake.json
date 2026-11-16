@@ -57,7 +57,7 @@
       "expect": null
     },
     {
-      "name": "a welcome with the host's look and mode, granted (ui.look, ui.mode)",
+      "name": "a welcome with the host's look (ui.look), from an older host that also grants ui.mode and sends its mode (retired, KAN-550): taken, the mode not read",
       "messages": [{ "source": "parent", "origin": "https://host.example", "ports": 1, "data": { "protocol": "printer-bridge", "type": "welcome", "version": 1, "nonce": "$nonce", "host": "fluidd", "hostVersion": "1", "capabilities": ["printer", "status", "gcode", "moonraker.read", "files.upload", "print", "ui.look", "ui.mode", "printer.setup"], "theme": "dark", "look": { "theme": "dark", "tokens": { "bg": "#13171a", "accent": "#80d6d1", "radius-md": "6px" } }, "mode": "simple" } }],
       "expect": 0
     },
@@ -72,7 +72,7 @@
       "expect": 0
     },
     {
-      "name": "a welcome whose look and mode are not ones: taken all the same, without them",
+      "name": "a welcome whose look is not one, from an older host with a mode that is not one either: taken all the same, without them",
       "messages": [{ "source": "parent", "origin": "https://host.example", "ports": 1, "data": { "protocol": "printer-bridge", "type": "welcome", "version": 1, "nonce": "$nonce", "host": "fluidd", "hostVersion": "1", "capabilities": ["ui.look", "ui.mode"], "theme": "light", "look": "glass", "mode": "expert" } }],
       "expect": 0
     },
@@ -141,7 +141,7 @@
       "expect": { "welcomes": 1, "nonces": ["00112233445566778899aabbccddeeff"], "version": 1 }
     },
     {
-      "name": "a hello listing the client's features (it uses the host's look, mode and setup)",
+      "name": "a hello listing the client's features, from a client that still listed ui.mode (its look, mode and setup): welcomed as any other",
       "hellos": [{ "source": "frame", "origin": "https://slicer.example", "data": { "protocol": "printer-bridge", "type": "hello", "versions": [1], "app": "muon3d-slicer", "appVersion": "0.1.0", "nonce": "00112233445566778899aabbccddeeff", "features": ["ui.look", "ui.mode", "printer.setup"] } }],
       "expect": { "welcomes": 1, "nonces": ["00112233445566778899aabbccddeeff"] }
     },
