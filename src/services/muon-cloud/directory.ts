@@ -32,6 +32,7 @@ import {
 import { searchRows, type SearchRow } from './searchRows'
 import { consolePresence } from './presence'
 import { knownReachable, secureNameOf } from '@/services/secure-origin/hosted'
+import { faultSummary } from '@/services/machine-faults/faults'
 
 /**
  * What the status icon says:
@@ -206,6 +207,7 @@ export function cloudHealth (online: boolean, s: PrinterStatus | undefined, last
   if (s.state === 'printing') return 'printing'
   if (s.state === 'paused') return 'paused'
   if (s.state === 'error' || s.state?.startsWith('klipper')) return 'error'
+  if (s.faults?.length) return 'error'
   return 'online'
 }
 
@@ -444,7 +446,8 @@ export function cloudDetail (online: boolean, s: PrinterStatus | undefined, last
     const percent = Math.round((s.progress ?? 0) * 100)
     return `${state} · ${percent}%${s.filename ? ` · ${s.filename}` : ''}`
   }
-  return state
+  const fault = faultSummary(s.faults)
+  return fault ? `${fault} � ${state}` : state
 }
 
 /**
