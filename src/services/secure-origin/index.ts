@@ -20,16 +20,17 @@
  * Only zones Muon3D controls: a zone anyone else could register would let a
  * spoofed HTTP page send people to a site with a valid certificate.
  *
- * A build setting, `VITE_PRINTER_NAME_ZONE`, so the zone moves in one place
- * when decision D-115 picks a separate domain (the console refuses a zone
- * under muon3d.com until then). Only ever a domain registered to Muon3D.
+ * A build setting, `VITE_PRINTER_NAME_ZONE`, so the zone moves in one place.
+ * The default is `muonlan.net` (D-137), a domain separate from muon3d.com so
+ * a printer page is never same-site with the console. Only ever a domain
+ * registered to Muon3D.
  */
 export const PRINTER_NAME_ZONES: readonly string[] = [printerNameZone(import.meta.env.VITE_PRINTER_NAME_ZONE)]
 
 /** The build setting as a zone: DNS labels ending in letters, else the default. */
 export function printerNameZone (setting: unknown): string {
   const zone = String(setting ?? '').trim().toLowerCase()
-  return /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(zone) ? zone : 'lan.muon3d.com'
+  return /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/.test(zone) ? zone : 'muonlan.net'
 }
 
 /** What the printer's probe location answers, and nothing else. */

@@ -1,5 +1,5 @@
 /**
- * @vitest-environment-options { "url": "https://abcdefghijklmnopqrst.lan.muon3d.com/" }
+ * @vitest-environment-options { "url": "https://abcdefghijklmnopqrst.muonlan.net/" }
  *
  * KAN-2756: the console refuses a `/logout` post from a printer's own page,
  * and a printer page must not end the person's console session anyway. So

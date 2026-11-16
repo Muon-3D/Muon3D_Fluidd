@@ -17,8 +17,8 @@ const base: LocalRouteInput = {
 
 describe('what Connect locally does (KAN-2529)', () => {
   it('uses the secure address on the hosted page when the printer has one', () => {
-    expect(localRoute({ ...base, secureName: 'abc.lan.muon3d.com', nearby: cloud(['192.168.1.20']) }))
-      .toEqual({ kind: 'secure', name: 'abc.lan.muon3d.com' })
+    expect(localRoute({ ...base, secureName: 'abc.muonlan.net', nearby: cloud(['192.168.1.20']) }))
+      .toEqual({ kind: 'secure', name: 'abc.muonlan.net' })
   })
 
   it('otherwise opens the printer\'s address in a new tab, skipping the hotspot range', () => {
@@ -40,7 +40,7 @@ describe('what Connect locally does (KAN-2529)', () => {
   })
 
   it('keeps the LAN path on a printer-served page', () => {
-    expect(localRoute({ ...base, hosted: false, host: '192.168.1.20', secureName: 'abc.lan.muon3d.com' })).toEqual({ kind: 'lan' })
+    expect(localRoute({ ...base, hosted: false, host: '192.168.1.20', secureName: 'abc.muonlan.net' })).toEqual({ kind: 'lan' })
   })
 
   it('says the page is the reason on an http page that cannot reach addresses', () => {

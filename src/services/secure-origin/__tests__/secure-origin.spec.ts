@@ -23,7 +23,7 @@ import {
 } from '..'
 
 const LABEL = 'abcdefghijklmnopqrst'
-const NAME = `${LABEL}.lan.muon3d.com`
+const NAME = `${LABEL}.muonlan.net`
 const PAGE = { protocol: 'http:', hostname: '192.168.1.50' }
 
 type Answer = { status?: number, body?: string, fail?: boolean, stall?: boolean }
@@ -77,7 +77,7 @@ describe('the zone setting', () => {
   it('takes a DNS zone and falls back to the default for anything else', () => {
     expect(printerNameZone('Lan.Example.NET ')).toBe('lan.example.net')
     for (const bad of [undefined, '', '   ', 'com', 'a..b.com', 'evil.com/x', 'x.c0m', '*.example.com']) {
-      expect(printerNameZone(bad)).toBe('lan.muon3d.com')
+      expect(printerNameZone(bad)).toBe('muonlan.net')
     }
   })
 })
@@ -87,15 +87,15 @@ describe('which names are printer names', () => {
     expect(printerName(NAME)).toBe(NAME)
     expect(printerName(NAME.toUpperCase())).toBe(NAME)
     for (const bad of [
-      // Not registered to Muon3D: never a printer name until it is.
-      `${LABEL}.muonlan.net`,
+      // The retired default zone (D-137): no longer a printer name.
+      `${LABEL}.lan.muon3d.com`,
       'control.muon3d.com',
-      `${LABEL}.lan.muon3d.com.attacker.example`,
+      `${LABEL}.muonlan.net.attacker.example`,
       `attacker.example/${NAME}`,
       `x.${NAME}`,
-      'short.lan.muon3d.com',
+      'short.muonlan.net',
       `${LABEL}.lan.example.com`,
-      `${LABEL}xlan.muon3d.com`,
+      `${LABEL}xmuonlan.net`,
       '',
       null,
       42
@@ -162,7 +162,7 @@ describe('the proof', () => {
   })
 
   it('never follows a description that names anything but a printer name', async () => {
-    for (const name of ['attacker.example', `${LABEL}.lan.muon3d.com.attacker.example`, 'control.muon3d.com']) {
+    for (const name of ['attacker.example', `${LABEL}.muonlan.net.attacker.example`, 'control.muon3d.com']) {
       const asked = network({
         '/muon/secure-origin.json': { body: description({ name, origin: `https://${name}` }) },
         [`https://${name}/muon/secure-probe.txt`]: { body: PROBE_MARKER }
@@ -251,20 +251,20 @@ describe('isPrinterSecureOrigin', () => {
   const on = (hostname: string, protocol = 'https:') => isPrinterSecureOrigin({ protocol, hostname })
 
   it('is true for the stable name and for the address written into it', () => {
-    expect(on('abcdefghijklmnopqrst.lan.muon3d.com')).toBe(true)
-    expect(on('ABCDEFGHIJKLMNOPQRST.lan.muon3d.com.')).toBe(true)
-    expect(on('192-168-1-50.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(true)
-    expect(on('0-0-0-255.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(true)
+    expect(on('abcdefghijklmnopqrst.muonlan.net')).toBe(true)
+    expect(on('ABCDEFGHIJKLMNOPQRST.muonlan.net.')).toBe(true)
+    expect(on('192-168-1-50.abcdefghijklmnopqrst.muonlan.net')).toBe(true)
+    expect(on('0-0-0-255.abcdefghijklmnopqrst.muonlan.net')).toBe(true)
   })
 
   it('is false on plain HTTP, another zone, the console, a short label or extra labels', () => {
-    expect(on('abcdefghijklmnopqrst.lan.muon3d.com', 'http:')).toBe(false)
+    expect(on('abcdefghijklmnopqrst.muonlan.net', 'http:')).toBe(false)
     expect(on('abcdefghijklmnopqrst.lan.example.com')).toBe(false)
     expect(on('control.muon3d.com')).toBe(false)
-    expect(on('abcdefghijklmnopqrs.lan.muon3d.com')).toBe(false)
-    expect(on('x.y.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(false)
-    expect(on('192-168-1-256.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(false)
-    expect(on('192-168-01-50.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(false)
-    expect(on('192-168-1.abcdefghijklmnopqrst.lan.muon3d.com')).toBe(false)
+    expect(on('abcdefghijklmnopqrs.muonlan.net')).toBe(false)
+    expect(on('x.y.abcdefghijklmnopqrst.muonlan.net')).toBe(false)
+    expect(on('192-168-1-256.abcdefghijklmnopqrst.muonlan.net')).toBe(false)
+    expect(on('192-168-01-50.abcdefghijklmnopqrst.muonlan.net')).toBe(false)
+    expect(on('192-168-1.abcdefghijklmnopqrst.muonlan.net')).toBe(false)
   })
 })

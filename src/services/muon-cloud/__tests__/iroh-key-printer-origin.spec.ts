@@ -1,5 +1,5 @@
 /**
- * @vitest-environment-options { "url": "https://abcdefghijklmnopqrst.lan.muon3d.com/" }
+ * @vitest-environment-options { "url": "https://abcdefghijklmnopqrst.muonlan.net/" }
  *
  * KAN-2198: on a printer's secure address the browser's Iroh key lives in
  * memory only: a key an older build left in localStorage is removed when the

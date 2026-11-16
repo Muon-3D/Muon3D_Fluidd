@@ -9,7 +9,7 @@ import { forgetSecureReach, reachSecureName } from '@/services/secure-origin/hos
 
 vi.mock('@/store', () => ({ default: { getters: { 'config/getInstances': [] } } }))
 
-const NAME = 'abcdefghijklmnopqrst.lan.muon3d.com'
+const NAME = 'abcdefghijklmnopqrst.muonlan.net'
 
 beforeEach(() => {
   forgetSecureReach()

@@ -27,7 +27,7 @@ describe('opening an account printer on a plain-HTTP page', () => {
       host: null,
       active: null,
       saved: [],
-      cloud: { id: 'h1', online: true, secure_name: 'abcdefghijklmnopqrst.lan.muon3d.com' }
+      cloud: { id: 'h1', online: true, secure_name: 'abcdefghijklmnopqrst.muonlan.net' }
     } as unknown as DirectoryEntry
     await methods.openCloudEntry.call(c, e)
     expect(f).not.toHaveBeenCalled()

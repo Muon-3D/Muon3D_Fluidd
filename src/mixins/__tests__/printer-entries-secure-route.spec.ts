@@ -12,7 +12,7 @@ import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 type Fn = (this: unknown, ...a: unknown[]) => unknown
 const methods = (PrinterEntriesMixin as unknown as { options: { methods: Record<string, Fn> } }).options.methods
 
-const NAME = 'abcdefghijklmnopqrst.lan.muon3d.com'
+const NAME = 'abcdefghijklmnopqrst.muonlan.net'
 const MARKER = 'muon3d-secure-origin-1'
 
 let n = 0

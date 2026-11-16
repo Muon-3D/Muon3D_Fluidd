@@ -1,5 +1,5 @@
 /**
- * @vitest-environment-options { "url": "https://abcdefghijklmnopqrst.lan.muon3d.com/" }
+ * @vitest-environment-options { "url": "https://abcdefghijklmnopqrst.muonlan.net/" }
  *
  * KAN-2198: Control served by a printer on its own HTTPS name signs in as the
  * `printer-local` client, keeps the access token in memory only, and signs in
@@ -52,7 +52,7 @@ describe('the sign-in client', () => {
     const url = new URL(await login.prepareAuthorize({ silent: false }))
     expect(url.origin).toBe(CONSOLE)
     expect(url.searchParams.get('client_id')).toBe('printer-local')
-    expect(url.searchParams.get('redirect_uri')).toBe('https://abcdefghijklmnopqrst.lan.muon3d.com/')
+    expect(url.searchParams.get('redirect_uri')).toBe('https://abcdefghijklmnopqrst.muonlan.net/')
   })
 
   it('is printer-local in the code exchange', async () => {
@@ -63,7 +63,7 @@ describe('the sign-in client', () => {
       return new Response(JSON.stringify({ access_token: 'a', token_type: 'Bearer' }), { status: 200 })
     }))
     const { api } = await load()
-    await api.cloudApi.exchangeCode('c0de', 'https://abcdefghijklmnopqrst.lan.muon3d.com/', 'verifier')
+    await api.cloudApi.exchangeCode('c0de', 'https://abcdefghijklmnopqrst.muonlan.net/', 'verifier')
     expect(new URLSearchParams(bodies[0]).get('client_id')).toBe('printer-local')
     vi.unstubAllGlobals()
   })

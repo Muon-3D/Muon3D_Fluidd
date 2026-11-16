@@ -1,5 +1,5 @@
 /**
- * @vitest-environment-options { "url": "https://abcdefghijklmnopqrst.lan.muon3d.com/" }
+ * @vitest-environment-options { "url": "https://abcdefghijklmnopqrst.muonlan.net/" }
  *
  * KAN-2198: a printer serves Control itself, so the page registers no service
  * worker and removes one an earlier visit left.
