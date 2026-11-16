@@ -6,7 +6,10 @@
     :menu="menu"
     class="gt"
   >
-    <template #head>
+    <template
+      v-if="size === 'L'"
+      #head
+    >
       <seg-picker
         data-tid="graph-range"
         class="gt__range"
@@ -18,7 +21,7 @@
     </template>
 
     <table
-      v-if="table"
+      v-if="table || size === 'S'"
       class="gt__table"
       data-tid="graph-table"
     >
@@ -71,7 +74,7 @@
       v-else
       :events="markers"
       :window-seconds="windowSeconds"
-      :phone="phone"
+      :phone="phone || size === 'M'"
     />
   </tile-shell>
 </template>

@@ -34,7 +34,7 @@ test.describe('materials', () => {
     expect(printer.called('server.database.post_item')).toEqual([])
   })
 
-  test('a list someone already saved is shown as saved, not replaced', async ({ page, open }) => {
+  test('a list someone already saved is shown as saved, with the four defaults always beside it', async ({ page, open }) => {
     const printer = await usePrinter(page, PRESETS.idleHomed())
     await savedSettings(page, {
       dashboard: {
@@ -44,17 +44,19 @@ test.describe('materials', () => {
     await open(`${PRINTER}/settings#presets`)
     const pane = page.getByTestId('materials-settings')
     await expect(pane.getByTestId('material-row-Nylon')).toBeVisible()
-    await expect(pane.getByTestId('material-row-PLA')).toHaveCount(0)
+    // Settings › Materials (v3): PLA, PETG, ABS and TPU are always there; they can be unpinned, not deleted.
+    await expect(pane.getByTestId('material-row-PLA')).toBeVisible()
     expect(printer.called('server.database.post_item')).toEqual([])
   })
 
-  test('a list someone emptied stays empty: the defaults are not put back', async ({ page, open }) => {
+  test('a list someone emptied still shows the defaults, without writing them', async ({ page, open }) => {
     const printer = await usePrinter(page, PRESETS.idleHomed())
     await savedSettings(page, { dashboard: { tempPresets: [] } })
     await open(`${PRINTER}/settings#presets`)
     const pane = page.getByTestId('materials-settings')
-    await expect(pane).toBeVisible()
-    await expect(pane.locator('[data-tid^="material-row-"]')).toHaveCount(0)
+    for (const name of ['ABS', 'PETG', 'PLA', 'TPU']) {
+      await expect(pane.getByTestId(`material-row-${name}`), name).toBeVisible()
+    }
     expect(await storeValue(page, 'config.uiSettings.dashboard.tempPresets')).toEqual([])
     expect(printer.called('server.database.post_item')).toEqual([])
   })
@@ -107,7 +109,7 @@ test.describe('quick actions icon', () => {
     expect(Math.abs((bolt.y + bolt.height / 2) - (box.y + box.height / 2))).toBeLessThanOrEqual(1)
 
     // Level with the notifications bell beside it.
-    const bell = (await page.getByRole('button', { name: 'Notifications' }).boundingBox())!
+    const bell = (await page.getByTestId('notices-bell').boundingBox())!
     expect(Math.abs(box.y - bell.y)).toBeLessThanOrEqual(1)
     expect(Math.abs(box.height - bell.height)).toBeLessThanOrEqual(1)
   })
@@ -310,22 +312,22 @@ test.describe('no material loaded', () => {
     await expect(page.getByTestId('filament-warning')).toHaveCount(0)
   })
 
-  test('the filament picker says what the tile says, with no sensor reading and with filament seen', async ({ page, open }) => {
+  test('the filament row opens the picker and says "No material loaded" when the sensor sees none', async ({ page, open }) => {
     const none = await usePrinter(page, sensors({ [SENSOR]: { filament_detected: false, enabled: true } }))
     await open('/')
-    await page.getByRole('button', { name: 'More for Filament' }).click()
-    await page.getByRole('menuitem', { name: /Set material and colour/ }).click()
-    await expect(page.getByTestId('tile-filament').getByTestId('material-name')).toHaveText('No material loaded')
-    await expect(page.getByTestId('material-warning')).toBeVisible()
+    await expect(page.getByTestId('filament-type')).toHaveText('No material loaded')
+    await page.getByTestId('filament-row').click()
+    await expect(page.getByTestId('material-picker')).toBeVisible()
+    await expect(page.getByTestId('filament-warning')).toBeVisible()
     expect(none.gcode).toEqual([])
   })
 
-  test('the filament picker says "Filament loaded", without the warning, when the sensor sees filament', async ({ page, open }) => {
+  test('the filament row opens the picker and says "Filament loaded", without the warning, when the sensor sees filament', async ({ page, open }) => {
     await usePrinter(page, sensors({ [SENSOR]: { filament_detected: true, enabled: true } }))
     await open('/')
-    await page.getByRole('button', { name: 'More for Filament' }).click()
-    await page.getByRole('menuitem', { name: /Set material and colour/ }).click()
-    await expect(page.getByTestId('tile-filament').getByTestId('material-name')).toHaveText('Filament loaded')
-    await expect(page.getByTestId('material-warning')).toHaveCount(0)
+    await expect(page.getByTestId('filament-type')).toHaveText('Filament loaded')
+    await page.getByTestId('filament-row').click()
+    await expect(page.getByTestId('material-picker')).toBeVisible()
+    await expect(page.getByTestId('filament-warning')).toHaveCount(0)
   })
 })

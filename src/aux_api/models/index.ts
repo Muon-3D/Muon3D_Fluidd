@@ -19,6 +19,7 @@ export * from './rugix-build-info';
 export * from './rugix-release-info';
 export * from './rugix-system-boot-info';
 export * from './rugix-system-info';
+export * from './saved-network';
 export * from './validation-error';
 export * from './validation-error-loc-inner';
 export * from './verify-request';

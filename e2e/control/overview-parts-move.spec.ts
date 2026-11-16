@@ -12,6 +12,9 @@ import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
 import { usePrinter, PRESETS } from './printer'
 
+// About the 3D stage: it needs WebGL, which the e2e fixtures turn off by default (KAN-2781).
+test.use({ webgl: true })
+
 /**
  * On Windows the browser draws on the real GPU. E2E_NO_GPU=1 tries the
  * software path (as CI draws), which is too slow for these tests.

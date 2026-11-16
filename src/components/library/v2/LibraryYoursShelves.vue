@@ -91,6 +91,13 @@
       </div>
     </section>
 
+    <!-- Following: public collections other people made, that you follow. -->
+    <library-following-shelf
+      ref="following"
+      @open-collection="$emit('open-collection', $event)"
+      @go-discover="$emit('go-discover')"
+    />
+
     <template v-for="s in shelves">
       <library-shelf
         v-if="s.id === 'saved'"
@@ -165,6 +172,7 @@
 
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
+import LibraryFollowingShelf from './LibraryFollowingShelf.vue'
 import LibraryOwnCard from './LibraryOwnCard.vue'
 import LibraryShelf from './LibraryShelf.vue'
 import { describeLibraryError, type CommunityCollection, type CommunitySave, type LibraryItem } from '@/services/library/api'
@@ -198,7 +206,7 @@ const EMPTY: Record<OwnShelfId, string> = {
  * Each shelf reads on its own: one that fails says so with Retry while the
  * others keep working.
  */
-@Component({ components: { LibraryOwnCard, LibraryShelf } })
+@Component({ components: { LibraryFollowingShelf, LibraryOwnCard, LibraryShelf } })
 export default class LibraryYoursShelves extends Vue {
   @Prop({ type: String, default: null }) readonly printerName!: string | null
   /** The card whose print is being read (MuonLibrary's), for its Print button. */
@@ -428,7 +436,7 @@ function cards (saves: CommunitySave[] | undefined): ShelfCard[] {
   justify-content: center;
   gap: 6px;
   min-height: 120px;
-  color: var(--m3d-accent);
+  color: var(--mlib-link);
   font-weight: 600;
   border: 1px dashed var(--m3d-border, rgba(255, 255, 255, 0.16));
   background: transparent;
