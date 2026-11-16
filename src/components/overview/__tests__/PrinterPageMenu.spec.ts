@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import PrinterPageMenu from '../PrinterPageMenu.vue'
 import { nearbyState } from '@/services/muon-ble/nearby'
 import { setPanelCodePairing } from '@/services/muon-cloud/activate'
+import { chooseRouteMode } from '@/services/muon-cloud/route-choice'
 import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 
 Vue.use(Vuetify)
@@ -46,6 +47,7 @@ const open = async (w: ReturnType<typeof mountMenu>) => {
 const item = (id: string) => document.querySelector(`[data-action="${id}"]`) as HTMLElement | null
 
 afterEach(() => {
+  chooseRouteMode('walnut', 'auto')
   setPanelCodePairing(null)
   nearbyState.support = 'unsupported' as typeof nearbyState.support
   document.body.innerHTML = ''
@@ -90,8 +92,9 @@ describe('the printer page menu (KAN-1429)', () => {
     w.destroy()
   })
 
-  it('on the local network offers Muon3D and Bluetooth, never Connect locally (KAN-2487)', async () => {
+  it('held on the local network offers Muon3D and Bluetooth, never Connect locally (KAN-2487)', async () => {
     nearbyState.support = 'supported'
+    chooseRouteMode('walnut', 'lan')
     const w = mountMenu(entry({ section: 'local', active: 'local', cloud: undefined }))
     await open(w)
     expect(item('connect-local')).toBeNull()
@@ -100,11 +103,22 @@ describe('the printer page menu (KAN-1429)', () => {
     w.destroy()
   })
 
-  it('on Muon3D offers Connect locally and Bluetooth, never Muon3D', async () => {
+  it('held on Muon3D offers Connect locally and Bluetooth, never Muon3D', async () => {
     nearbyState.support = 'supported'
+    chooseRouteMode('walnut', 'cloud')
     const w = mountMenu(entry())
     await open(w)
     expect(item('connect-cloud')).toBeNull()
+    expect(item('connect-local')).not.toBeNull()
+    expect(item('connect-bluetooth')).not.toBeNull()
+    w.destroy()
+  })
+
+  it('in Auto offers every route, including the one it is on, so it can be held (KAN-3414)', async () => {
+    nearbyState.support = 'supported'
+    const w = mountMenu(entry())
+    await open(w)
+    expect(item('connect-cloud')).not.toBeNull()
     expect(item('connect-local')).not.toBeNull()
     expect(item('connect-bluetooth')).not.toBeNull()
     w.destroy()
