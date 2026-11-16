@@ -2,8 +2,8 @@
   "format": 1,
   "name": "muon-link-web",
   "source": "https://github.com/Muon-3D/muon-link",
-  "commit": "5b6aebb58f639d778a7556ca717b30d5eb4ce19f",
-  "dir": "5b6aebb",
+  "commit": "022d090bc6d7b40ba823212689bec5ac649f0a67",
+  "dir": "022d090",
   "provenance": "built",
   "license": "Apache-2.0",
   "wasmBindgen": "0.2.127",
@@ -36,18 +36,18 @@
     "uuids"
   ],
   "files": {
-    "muon_link_web.js": "dcb8960a7338291bdafc26a7ab6d10b708adb41fd914650f480cb763e9c84a17",
-    "muon_link_web_bg.wasm": "1adc000c4554b818e5adf3ea1bad21d46b5e10cd0fc61dd2f94f84c8cb5deb5e",
-    "muon_link_web.d.ts": "6727daae1ffeceb08636bf63af12d475993eb868d8d7a2ea6974085b718b3c48",
-    "muon_link_web_bg.wasm.d.ts": "73afee6be87ccaee2544809daae9f5477ed3aac01134ea8eb15232e4ffebbbb1",
+    "muon_link_web.js": "1bd3878e96e2c16291d92c006463d1f70f49120b7587122907dd7e2fa5557eb3",
+    "muon_link_web_bg.wasm": "7a2d3be6b8a6acb6f2efea56366c2934854b9f463fe1b762bb2f185d1f06ab35",
+    "muon_link_web.d.ts": "1c543261a17c9216e7813265f6a8c49693cb4f8f96ff7e9d36292de51606fe8b",
+    "muon_link_web_bg.wasm.d.ts": "7dfc66e8342eb6012237c4385e30f0fb72113aa167663bac15221846944f7efb",
     "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "NOTICE": "72eec12a156330ea0d2ad187d1567458f6894ff052b334304f40736de8b55bae",
-    "THIRD-PARTY-NOTICES.md": "800b32e28916e5cc7fb09f5c771bfb67db6b373c966021cf1195e18824caeae9",
-    "SOURCE.md": "b8cbdb25618ae7d82412bfb19d57d9adafea876fdf33e74ab1578933abfd0379"
+    "NOTICE": "a76657d3cb083b6ff6f89d7199c7dd49c7e8031fc9bc26684a2539b9d3322ccc",
+    "THIRD-PARTY-NOTICES.md": "1d231435448cef6bf5e9879e47a9264282a7901a510c1a51e22c70de7f4ec326",
+    "SOURCE.md": "35d3a6f59360cb372b9d93f19d3238c2d6e5c50993800fe5eedc34679bae9741"
   },
   "bytes": {
-    "muon_link_web.js": 76649,
-    "muon_link_web_bg.wasm": 3021015
+    "muon_link_web.js": 78633,
+    "muon_link_web_bg.wasm": 3072167
   },
   "crates": [
     "aead 0.5.2 MIT OR Apache-2.0",
