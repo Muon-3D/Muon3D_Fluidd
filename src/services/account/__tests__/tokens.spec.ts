@@ -182,7 +182,7 @@ describe('the list and the agent text (6 Nov storyboard)', () => {
     expect(printersShort({ printer_ids: ['p1'] }, name)).toBe('Boxwood only')
     expect(printersShort({ printer_ids: ['p1', 'p2'] }, name)).toBe('Boxwood and Oak only')
     expect(printersShort({ printer_ids: null }, name)).toBe('All your printers')
-    expect(printersShort({ printer_ids: [] }, name)).toBe('All your printers')
+    expect(printersShort({ printer_ids: [] }, name)).toBe('No printers')
     expect(printersShort({ printer_ids: ['a', 'b', 'c'] }, name)).toBe('3 printers')
   })
 
