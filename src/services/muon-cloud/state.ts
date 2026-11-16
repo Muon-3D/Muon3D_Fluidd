@@ -22,7 +22,7 @@ import {
   type AccessHandoff
 } from './api'
 import { watchFocus } from './focus-check'
-import { centralLoginEnabled, clearSilentAttempt, redirectUri, signInAgainOnPrinterOrigin, signOutCentral, takeCallback } from './centralLogin'
+import { centralLoginEnabled, clearSilentAttempt, holdSilentSignIn, redirectUri, signInAgainOnPrinterOrigin, signOutCentral, takeCallback } from './centralLogin'
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
 import { consolePresence } from './presence'
@@ -31,6 +31,7 @@ import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
 import { forgetOwnAvatar } from '@/services/account/avatar'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { isPrinterSecureOrigin } from '@/services/secure-origin'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
 import { requestRefused } from '@/services/managed-transport/refusal'
@@ -904,11 +905,19 @@ export async function signUp (email: string, password: string, name: string, dec
 /** True when the console's logout form is navigating away. */
 export async function signOut (): Promise<boolean> {
   if (centralLoginEnabled()) {
-    // The console ends the browser session and every session issued from
-    // it, this one included, and tells the other surfaces.
     await dropSession(true)
     forgetBrowserKey()
     setActiveCloudPrinter(null)
+    // On a printer's own address the session is this page's (client
+    // `printer-local`, a token in memory); the console's browser session is
+    // not, and the console refuses a logout post from here (KAN-2756). So
+    // only this page signs out; "Sign in" starts a fresh /authorize trip.
+    if (isPrinterSecureOrigin()) {
+      holdSilentSignIn()
+      return false
+    }
+    // The console ends the browser session and every session issued from
+    // it, this one included, and tells the other surfaces.
     signOutCentral()
     return true
   }
