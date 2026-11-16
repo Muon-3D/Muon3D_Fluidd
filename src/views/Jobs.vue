@@ -493,6 +493,8 @@
       />
     </div>
 
+    <upload-progress />
+
     <input
       ref="upload"
       type="file"
@@ -502,8 +504,6 @@
       data-tid="jobs-upload-input"
       @change="onPicked"
     >
-
-    <upload-progress />
 
     <file-name-dialog
       v-if="folderDialog"
@@ -578,7 +578,6 @@ import type { QueuedJob } from '@/store/jobQueue/types'
 import type { AppDirectory, AppFileWithMeta, FileBrowserEntry } from '@/store/files/types'
 import { fileSize, isGcodeFile, isModelFile, jobTitle, parentFolder, queueLabel, readyChecks } from '@/services/jobs/model'
 import { MODEL_ACCEPT } from '@/services/slicer-bridge/handover'
-import UploadProgress from '@/components/jobs/UploadProgress.vue'
 import { NO_SELECTION, allSelected, clearSelection, clickRow, keepShown, moveCursor, selectAll, someSelected, toggleRow, type Selection } from '@/services/jobs/selection'
 import { JOBS_COLUMNS, lastPrinted, layerCountOf, listDuration, materialOf, nextColumnSort, sortDirection, sortListRows, type JobsSort } from '@/services/jobs/list'
 import { jobsPage, resetJobsPage, setJobsSort } from '@/services/jobs/page-state'
@@ -589,6 +588,7 @@ import JobMenu, { type JobMenuAction } from '@/components/jobs/JobMenu.vue'
 import JobPicture from '@/components/jobs/JobPicture.vue'
 import { retryFailedThumbnails } from '@/services/jobs/thumbnail'
 import TonePill from '@/components/printers/TonePill.vue'
+import UploadProgress from '@/components/jobs/UploadProgress.vue'
 
 /** A row of the list: a folder, or a G-code file in the folder that's open. */
 interface ListRow {
