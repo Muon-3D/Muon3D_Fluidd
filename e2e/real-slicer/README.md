@@ -12,6 +12,10 @@ node scripts/build-printer.mjs
 # In Control:
 PYTHON=python3 E2E_PORT=8310 E2E_MOCK_PORT=7310 \
   npx playwright test -c e2e/playwright.real-slicer.config.ts
+
+# Also check the release bundle, after building Control:
+REAL_CONTROL_DIST="$PWD/dist" PYTHON=python3 E2E_PORT=8310 \
+  npx playwright test -c e2e/playwright.real-slicer.config.ts
 ```
 
 `SLICER_REPO` overrides the sibling `../muon3d-slicer` checkout.
