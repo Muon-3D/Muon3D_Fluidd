@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const accountRequest = vi.hoisted(() => vi.fn())
 const device = vi.hoisted(() => ({ id: 'a'.repeat(64) }))
+const context = vi.hoisted(() => ({ managed: true, learned: null as string | null, instance: undefined as { endpointId?: string } | undefined }))
 vi.mock('@/services/account/client', () => ({ accountRequest }))
 vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { get activePrinterId () { return device.id } } }))
-vi.mock('@/services/muon-cloud/origin', () => ({ isManagedApiUrl: () => true }))
-vi.mock('@/services/printer-pages', () => ({ learnedEndpointId: () => null }))
-vi.mock('@/store', () => ({ default: { state: { config: { apiUrl: 'https://control.muon3d.com' } }, getters: {} } }))
+vi.mock('@/services/muon-cloud/origin', () => ({ isManagedApiUrl: () => context.managed }))
+vi.mock('@/services/printer-pages', () => ({ learnedEndpointId: () => context.learned }))
+vi.mock('@/store', () => ({ default: { state: { config: { apiUrl: 'https://control.muon3d.com' } }, getters: { get 'config/getCurrentInstance' () { return context.instance } } } }))
 
-const { agentActivity, agentsState, handleMessage, refreshConnections, resetAgentsForTests, revokeAgent, watchConnections } = await import('..')
+const { agentActivity, agentsState, handleMessage, openPrinterDeviceId, refreshConnections, resetAgentsForTests, revokeAgent, watchConnections } = await import('..')
 
 const CLAUDE = { id: 'agt_1', name: 'Claude', colour: '#476CE0', colour_index: 5, provider: 'anthropic' }
 const PRINTER = { id: 'p1', name: 'Boxwood', device_id: 'a'.repeat(64) }
@@ -22,6 +23,9 @@ const settle = () => new Promise(resolve => setTimeout(resolve))
 
 beforeEach(() => {
   resetAgentsForTests()
+  context.managed = true
+  context.learned = null
+  context.instance = undefined
   accountRequest.mockReset()
   accountRequest.mockResolvedValue({ connections: [connection()] })
 })
@@ -34,6 +38,15 @@ describe('agents service', () => {
     device.id = 'b'.repeat(64)
     expect(agentActivity()).toEqual({})
     device.id = 'a'.repeat(64)
+  })
+
+  it('uses local endpoint identity, including an unsaved printer, without falling back to a cloud printer', () => {
+    context.managed = false
+    expect(openPrinterDeviceId()).toBeNull()
+    context.learned = 'B'.repeat(64)
+    expect(openPrinterDeviceId()).toBe('b'.repeat(64))
+    context.instance = { endpointId: 'C'.repeat(64) }
+    expect(openPrinterDeviceId()).toBe('c'.repeat(64))
   })
 
   it('reset clears what it shows and reads the snapshot again', async () => {
@@ -57,6 +70,11 @@ describe('agents service', () => {
     accountRequest.mockRejectedValue(Object.assign(new Error('down'), { status: 503 }))
     await refreshConnections()
     expect(agentsState.loadError).toBe(true)
+    expect(agentsState.missing).toBe(false)
+    accountRequest.mockRejectedValue(Object.assign(new Error('gone'), { status: 404, missing: true }))
+    await refreshConnections()
+    expect(agentsState.missing).toBe(true)
+    expect(agentsState.loadError).toBe(false)
   })
 
   it('revoke posts, takes the agent off Control, marks the row, and agent.revoked re-reads', async () => {

@@ -84,7 +84,16 @@
     </div>
 
     <div
-      v-else-if="state.loadError"
+      v-else-if="!state.loadError"
+      class="acct-empty"
+      data-tid="services-empty"
+    >
+      <h3>No connected services</h3>
+      <p>When you let an AI agent act on a printer, it shows here with its colour.</p>
+    </div>
+
+    <div
+      v-if="state.loadError"
       class="acct-empty"
       data-tid="services-load-error"
     >
@@ -98,15 +107,6 @@
       >
         Try again
       </button>
-    </div>
-
-    <div
-      v-else
-      class="acct-empty"
-      data-tid="services-empty"
-    >
-      <h3>No connected services</h3>
-      <p>When you let an AI agent act on a printer, it shows here with its colour.</p>
     </div>
 
     <p

@@ -8,7 +8,8 @@ vi.mock('@/services/m1-3d/parked', () => ({
   newCanvas: vi.fn(() => document.createElement('canvas')),
   park: vi.fn(),
   prebuild: vi.fn(async () => {}),
-  takeParked: vi.fn(() => null)
+  takeParked: vi.fn(() => null),
+  viewerKey: vi.fn(() => 'auto/auto')
 }))
 vi.mock('@/services/startup/idle', () => ({ afterFirstPaint: vi.fn() }))
 vi.mock('@/services/m1-3d/live-sync', () => {

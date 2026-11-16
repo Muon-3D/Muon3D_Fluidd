@@ -183,7 +183,9 @@ export class AgentStream {
     }
     if (!this.running || controller.signal.aborted) return
     if (response.status === 401 && !refreshed) {
-      if (await this.options.refresh().catch(() => false)) return this.connect(true)
+      const renewed = await this.options.refresh().catch(() => false)
+      if (!this.running || controller.signal.aborted || this.controller !== controller) return
+      if (renewed) return this.connect(true)
       return this.later(IDLE_RETRY_MS, 'unavailable')
     }
     const type = response.headers.get('content-type') ?? ''

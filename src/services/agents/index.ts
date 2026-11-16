@@ -186,8 +186,10 @@ export async function refreshConnections (): Promise<void> {
     const missing = (error as { missing?: boolean }).missing === true
     if (missing || status === 404 || status === 405) {
       agentsState.missing = true
+      agentsState.loadError = false
       agentsState.connections = []
     } else {
+      agentsState.missing = false
       agentsState.loadError = true
       agentsState.connections = agentsState.connections ?? []
     }

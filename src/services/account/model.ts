@@ -9,11 +9,19 @@ import type { AccountEvent, Me, Session } from './api'
 export const LIBRARY_RETURN_HOSTS = ['library.muon3d.com', 'staging.library.muon3d.com'] as const
 
 /**
- * Accept an absolute, encrypted Library return address only. Parsing the URL
- * (rather than comparing strings) rejects userinfo and protocol-relative URL tricks.
+ * Accept a Library return address: an absolute, encrypted URL on a Library
+ * host, or a path on this site starting with exactly one "/" (the Library
+ * inside Control, `/library?view=discover`). Parsing the URL (rather than
+ * comparing strings) rejects userinfo and protocol-relative URL tricks. A
+ * path with "//", a backslash, whitespace or a control character is refused:
+ * browsers read "/\evil.com", or a tab after the first slash, as another host.
  */
 export function libraryReturnUrl (value: unknown): string | null {
   if (typeof value !== 'string' || !value) return null
+  if (value.startsWith('/')) {
+    // eslint-disable-next-line no-control-regex
+    return /^\/(?![/\\])[^\\\s\x00-\x1f\x7f]*$/.test(value) ? value : null
+  }
   try {
     const url = new URL(value)
     return url.protocol === 'https:' && !url.username && !url.password &&
@@ -292,22 +300,43 @@ export interface AccountSection {
   icon: string;
   /** In the list only once its page exists. */
   built: boolean;
+  /** The nav group it sits in: You, Access, Everything else (settings/MAP.md). None: reached from another page. */
+  group?: AccountNavGroup;
 }
 
+export type AccountNavGroup = 'You' | 'Access' | 'Everything else'
+
+export const ACCOUNT_NAV_GROUPS: AccountNavGroup[] = ['You', 'Access', 'Everything else']
+
+/**
+ * The nav (Control v3, settings/MAP.md and PEOPLE-ACCESS.md J12): "Your
+ * devices" was Devices and sessions; "Apps and agents" holds Connected apps
+ * and Access tokens; "Your data" holds Privacy and Delete account. The
+ * overview is the landing page, and Delete account opens from Your data.
+ */
 export const ACCOUNT_SECTIONS: AccountSection[] = [
   { id: 'overview', label: 'Overview', icon: 'user', built: true },
-  { id: 'profile', label: 'Profile', icon: 'idCard', built: true },
-  { id: 'security', label: 'Sign-in and security', icon: 'shield', built: true },
-  { id: 'sessions', label: 'Devices and sessions', icon: 'devices', built: true },
-  { id: 'printers', label: 'Printers and access', icon: 'printer', built: true },
-  { id: 'tokens', label: 'Access tokens', icon: 'key', built: true },
-  { id: 'apps', label: 'Connected apps', icon: 'link', built: true },
-  { id: 'notifications', label: 'Notifications', icon: 'bell', built: true },
-  { id: 'library', label: 'Library and storage', icon: 'library', built: true },
-  { id: 'plan', label: 'Plan', icon: 'card', built: true },
-  { id: 'privacy', label: 'Privacy and data', icon: 'eye', built: true },
+  { id: 'profile', label: 'Profile', icon: 'idCard', built: true, group: 'You' },
+  { id: 'security', label: 'Sign-in and security', icon: 'shield', built: true, group: 'You' },
+  { id: 'printers', label: 'Printers and access', icon: 'printer', built: true, group: 'Access' },
+  { id: 'sessions', label: 'Your devices', icon: 'devices', built: true, group: 'Access' },
+  { id: 'apps', label: 'Apps and agents', icon: 'link', built: true, group: 'Access' },
+  // Merged into Apps and agents; its old address opens that page.
+  { id: 'tokens', label: 'Access tokens', icon: 'key', built: false },
+  { id: 'notifications', label: 'Notifications', icon: 'bell', built: true, group: 'Everything else' },
+  { id: 'library', label: 'Library and storage', icon: 'library', built: true, group: 'Everything else' },
+  { id: 'plan', label: 'Plan', icon: 'card', built: true, group: 'Everything else' },
+  { id: 'privacy', label: 'Your data', icon: 'eye', built: true, group: 'Everything else' },
   { id: 'delete', label: 'Delete account', icon: 'trash', built: true }
 ]
+
+/** Addresses that name a section by another name: `/account/devices` is Your devices, `/account/tokens` Apps and agents. */
+export const ACCOUNT_SECTION_ALIASES: Record<string, AccountSectionId> = { devices: 'sessions', tokens: 'apps', data: 'privacy' }
+
+/** The nav item a section lights up: Delete account sits inside Your data. */
+export function accountNavId (id: AccountSectionId): AccountSectionId {
+  return id === 'delete' ? 'privacy' : id
+}
 
 /** The sections the list shows. */
 export function accountSections (): AccountSection[] {
@@ -316,5 +345,13 @@ export function accountSections (): AccountSection[] {
 
 /** The section an address names, or the overview. */
 export function accountSectionFor (id: string | undefined | null): AccountSection {
-  return accountSections().find(section => section.id === id) ?? ACCOUNT_SECTIONS[0]
+  const named = (id && ACCOUNT_SECTION_ALIASES[id]) || id
+  return accountSections().find(section => section.id === named) ?? ACCOUNT_SECTIONS[0]
+}
+
+/** The nav's groups, each with its sections in order. */
+export function accountNav (sections: AccountSection[] = accountSections()): Array<{ group: AccountNavGroup, sections: AccountSection[] }> {
+  return ACCOUNT_NAV_GROUPS
+    .map(group => ({ group, sections: sections.filter(section => section.group === group) }))
+    .filter(entry => entry.sections.length)
 }

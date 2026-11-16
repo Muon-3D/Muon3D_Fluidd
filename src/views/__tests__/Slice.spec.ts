@@ -39,7 +39,7 @@ async function mountSlice (confirm: (message: string) => Promise<boolean> = asyn
     stubs: { 'print-confirm-dialog': true, 'v-alert': true },
     ...options,
     // Fluidd's theme and density, set here rather than through the mocked $vuetify, which the host reads after the probe.
-    computed: { theme: () => 'dark', density: () => 'compact', ...(options.computed as object | undefined) }
+    computed: { theme: () => 'dark', density: () => 'compact', isMobileViewport: () => false, ...(options.computed as object | undefined) }
   })
   await flushPromises()
   await wrapper.vm.$nextTick()
@@ -161,7 +161,7 @@ describe('Slice', () => {
     serve(status, body)
     const wrapper = await mountSlice()
     expect(wrapper.find('iframe').exists()).toBe(false)
-    expect(wrapper.find('v-alert-stub').exists()).toBe(true)
+    expect(wrapper.find('[data-tid=slice-missing]').exists()).toBe(true)
     expect((wrapper.vm as any).host).toBeNull()
     wrapper.destroy()
   })
@@ -256,9 +256,10 @@ describe('Slice', () => {
     expect(welcomes[0].capabilities).not.toContain('ui.mode')
     expect('mode' in welcomes[0]).toBe(false)
 
-    const setMode = vi.spyOn(vm.host.bridge, 'setMode')
+    // The host no longer has a way to send a mode at all (printer-client from muon3d-slicer d0b2f589).
+    expect('setMode' in vm.host.bridge).toBe(false)
     await vm.$nextTick()
-    expect(setMode).not.toHaveBeenCalled()
+    expect(welcomes).toHaveLength(1)
     wrapper.destroy()
   })
 
@@ -304,6 +305,42 @@ describe('Slice', () => {
     await vm.beforeRouteLeave({}, {}, next)
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(next).toHaveBeenLastCalledWith(false)
+    wrapper.destroy()
+  })
+})
+
+describe('Slice layout: the slicer is the page', () => {
+  beforeEach(() => { resetSlicerProbe() })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    resetSlicerProbe()
+  })
+
+  it('frames the slicer as the page: a title for screen readers, and no heading, chips or card of its own', async () => {
+    serve(200, EMBED_HTML)
+    const wrapper = await mountSlice(undefined, {
+      computed: { socketConnected: () => true, loadedMaterial: () => ({ name: 'PLA', colour: '#00AA88' }), loadedColour: () => '#00AA88' }
+    })
+    expect(wrapper.get('[data-tid=page-title]').text()).toBe('Slice')
+    expect(wrapper.get('[data-tid=page-title]').classes()).toContain('d-sr-only')
+    expect(wrapper.get('[data-tid=slice-view] > iframe').attributes('title')).toBe('Muon3D Slicer')
+    expect(wrapper.find('.slice-head').exists()).toBe(false)
+    expect(wrapper.find('[data-tid=slice-tile]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid=slice-printer]').exists()).toBe(false)
+    expect(wrapper.get('[data-tid=slice-opening]').text()).toBe('Opening the slicer…')
+    wrapper.destroy()
+  })
+
+  it('shows a missing slicer in the page and frames it once Look again finds it', async () => {
+    serve(404, 'Not Found')
+    const wrapper = await mountSlice()
+    expect(wrapper.get('[data-tid=slice-missing]').text()).toContain('app.slicer.msg.no_slicer')
+    serve(200, EMBED_HTML)
+    await wrapper.get('[data-tid=slice-retry]').trigger('click')
+    await flushPromises()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-tid=slice-missing]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid=slice-view] > iframe').exists()).toBe(true)
     wrapper.destroy()
   })
 })

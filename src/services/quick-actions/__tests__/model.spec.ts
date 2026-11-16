@@ -63,7 +63,7 @@ describe('quickActions', () => {
   it('says so when the printer has no preset, no filament macro or no bed mesh command', () => {
     const a = by({ ...ready, preheatName: null, changeFilament: false, levelGcode: null })
     expect(a.preheat.reason).toBe('No material is set up to preheat for.')
-    expect(a.filament.reason).toBe('This printer has no filament change macro (M600).')
+    expect(a.filament.reason).toBe('This printer has no filament change command (M600).')
     expect(a.level.reason).toBe("This printer can't measure the bed.")
   })
 

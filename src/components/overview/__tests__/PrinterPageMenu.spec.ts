@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import PrinterPageMenu from '../PrinterPageMenu.vue'
 import { nearbyState } from '@/services/muon-ble/nearby'
+import { setPanelCodePairing } from '@/services/muon-cloud/activate'
 import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 
 Vue.use(Vuetify)
@@ -33,7 +34,7 @@ const mountMenu = (e: DirectoryEntry | null, methods: Record<string, unknown> = 
     vuetify: new Vuetify(),
     attachTo: document.body,
     mocks: { $store: store, $route: { path: '/walnut', params: {} } },
-    computed: { directory: () => ({ cloud: e ? [e] : [], local: [], found: [] }) },
+    computed: { directory: () => ({ cloud: e && e.section === 'cloud' ? [e] : [], local: e && e.section === 'local' ? [e] : [], found: [] }) },
     methods
   } as any)
 }
@@ -45,6 +46,7 @@ const open = async (w: ReturnType<typeof mountMenu>) => {
 const item = (id: string) => document.querySelector(`[data-action="${id}"]`) as HTMLElement | null
 
 afterEach(() => {
+  setPanelCodePairing(null)
   nearbyState.support = 'unsupported' as typeof nearbyState.support
   document.body.innerHTML = ''
 })
@@ -79,22 +81,76 @@ describe('the printer page menu (KAN-1429)', () => {
     w.destroy()
   })
 
-  it('hides it where the card hides it: nothing heard and no Bluetooth in this browser', async () => {
+  it('greys it, with the reason, where nothing is heard and this browser has no Bluetooth', async () => {
     nearbyState.support = 'unsupported' as typeof nearbyState.support
     const w = mountMenu(entry())
     await open(w)
-    expect(item('connect-bluetooth')).toBeNull()
+    expect(item('connect-bluetooth')?.className).toContain('v-list-item--disabled')
+    expect(item('connect-bluetooth')?.textContent).toContain('This browser has no Bluetooth')
     w.destroy()
   })
 
-  it('has no menu when the page is on no linked printer, and never offers a pairing entry', async () => {
+  it('on the local network offers Muon3D and Bluetooth, never Connect locally (KAN-2487)', async () => {
     nearbyState.support = 'supported'
+    const w = mountMenu(entry({ section: 'local', active: 'local', cloud: undefined }))
+    await open(w)
+    expect(item('connect-local')).toBeNull()
+    expect(item('connect-cloud')?.textContent).toContain('Not on your account')
+    expect(item('connect-bluetooth')?.className).not.toContain('v-list-item--disabled')
+    w.destroy()
+  })
+
+  it('on Muon3D offers Connect locally and Bluetooth, never Muon3D', async () => {
+    nearbyState.support = 'supported'
+    const w = mountMenu(entry())
+    await open(w)
+    expect(item('connect-cloud')).toBeNull()
+    expect(item('connect-local')).not.toBeNull()
+    expect(item('connect-bluetooth')).not.toBeNull()
+    w.destroy()
+  })
+
+  it('has no menu when the page is on no linked printer, and never offers a pairing entry while the switch is off', async () => {
+    nearbyState.support = 'supported'
+    setPanelCodePairing(false)
     const none = mountMenu(null)
     expect(none.find('[data-tid="printer-page-menu-button"]').exists()).toBe(false)
     none.destroy()
     const w = mountMenu(entry())
     await open(w)
     expect(document.body.textContent).not.toMatch(/pair/i)
+    w.destroy()
+  })
+})
+
+describe('Pair this browser on the printer page (KAN-1374)', () => {
+  it('is in the page menu for a linked and for a not-linked printer when the switch is on, and calls the pairing handler', async () => {
+    nearbyState.support = 'supported'
+    setPanelCodePairing(true)
+    const pairFrom = vi.fn()
+    const w = mountMenu(entry(), { pairThisBrowserFrom: pairFrom })
+    await open(w)
+    expect(item('pair-browser')?.textContent).toContain('Pair this browser')
+    item('pair-browser')!.click()
+    await Vue.nextTick()
+    expect(pairFrom).toHaveBeenCalledTimes(1)
+    expect((pairFrom.mock.calls[0][0] as DirectoryEntry).cloud?.id).toBe('walnut')
+    w.destroy()
+    document.body.innerHTML = ''
+
+    const local = mountMenu(entry({ section: 'local', active: 'local', cloud: undefined, linkedTo: 'none' as DirectoryEntry['linkedTo'] }))
+    await open(local)
+    expect(item('pair-browser')).not.toBeNull()
+    local.destroy()
+  })
+
+  it('is not in the page menu when the switch is off', async () => {
+    nearbyState.support = 'supported'
+    setPanelCodePairing(false)
+    const w = mountMenu(entry())
+    await open(w)
+    expect(item('connect-bluetooth')).not.toBeNull()
+    expect(item('pair-browser')).toBeNull()
     w.destroy()
   })
 })

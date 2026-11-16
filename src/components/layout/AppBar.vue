@@ -25,7 +25,6 @@
       </router-link>
 
       <div class="app-header__actions">
-        <app-status-alerts v-if="!sectionContext.foreign && authenticated" />
         <!-- On a printer, Quick actions take the search icon's place; with none chosen, search stays. -->
         <quick-actions-menu v-if="showQuickActions" />
         <button
@@ -38,7 +37,7 @@
         >
           <frame-icon name="search" />
         </button>
-        <app-notification-menu v-if="!sectionContext.foreign && authenticated && socketConnected" />
+        <notices-bell :printer="printerNotices" />
         <router-link
           v-if="!printerFrame && !onLibrary"
           to="/library"
@@ -48,7 +47,6 @@
         >
           <frame-icon name="library" />
         </router-link>
-        <notices-bell v-if="!printerFrame" />
         <cloud-account-menu v-if="!printerFrame" />
       </div>
 
@@ -128,8 +126,6 @@
           @click="saveConfigAndRestart"
         />
 
-        <app-status-alerts v-if="!sectionContext.foreign && authenticated" />
-
         <app-upload-and-print-btn
           v-if="printerFrame && !sectionContext.foreign && authenticated && socketConnected && showUploadAndPrint"
           :tooltip="uploadTooltip"
@@ -161,9 +157,8 @@
           <span>{{ $t(`app.general.label.turn_device_${topNavPowerDeviceOn ? 'off' : 'on'}`, { device: topNavPowerToggle.name }) }}</span>
         </v-tooltip>
 
-        <app-notification-menu v-if="!sectionContext.foreign && authenticated && socketConnected" />
+        <notices-bell :printer="printerNotices" />
 
-        <notices-bell />
         <cloud-account-menu />
       </div>
 
@@ -199,50 +194,6 @@
       </template>
     </template>
 
-    <template
-      v-if="inLayout"
-      #extension
-    >
-      <app-btn
-        small
-        class="layout-action mx-2"
-        color="primary"
-        @click.stop="handleExitLayout"
-      >
-        {{ $t('app.general.btn.exit_layout') }}
-      </app-btn>
-      <app-btn
-        small
-        class="layout-action mx-2"
-        color="primary"
-        @click.stop="handleResetLayout"
-      >
-        {{ $t('app.general.btn.reset_layout') }}
-      </app-btn>
-      <template v-if="isDashboard">
-        <v-divider
-          vertical
-          class="mx-2"
-        />
-        <app-btn
-          small
-          class="layout-action mx-2"
-          color="primary"
-          @click.stop="handleSetDefaultLayout"
-        >
-          {{ $t('app.general.btn.set_default_layout') }}
-        </app-btn>
-        <app-btn
-          small
-          class="mx-2"
-          color="primary"
-          @click.stop="handleResetDefaultLayout"
-        >
-          {{ $t('app.general.btn.reset_default_layout') }}
-        </app-btn>
-      </template>
-    </template>
-
     <input
       ref="uploadInput"
       type="file"
@@ -262,6 +213,7 @@
 </template>
 
 <script lang="ts">
+import { activeSlug } from '@/services/printer-pages'
 import CloudAccountMenu from '@/components/muon-cloud/CloudAccountMenu.vue'
 import NoticesBell from '@/components/muon-cloud/NoticesBell.vue'
 import { Component, Mixins } from 'vue-property-decorator'
@@ -270,16 +222,17 @@ import AppSaveConfigAndRestartBtn from './AppSaveConfigAndRestartBtn.vue'
 import AppUploadAndPrintBtn from './AppUploadAndPrintBtn.vue'
 import PrinterSwitchButton from './PrinterSwitchButton.vue'
 import QuickActionsMenu from './QuickActionsMenu.vue'
-import { defaultState } from '@/store/layout/state'
 import FrameMixin from '@/mixins/frame'
 import ServicesMixin from '@/mixins/services'
-import FilesMixin from '@/mixins/files'
+import FilesMixin, { uploadErrorText } from '@/mixins/files'
+import consola from 'consola'
 import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
 import { EventBus } from '@/eventBus'
+import { isModelFile } from '@/services/jobs/model'
+import { MODEL_ACCEPT } from '@/services/slicer-bridge/handover'
 import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
-import { pageOfRoute } from '@/router/printerPagePaths'
 
 /**
  * The header answers three questions in order: where am I (Muon3D, the
@@ -305,13 +258,26 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     return this.isMobileViewport
   }
 
-  /** Always in the bar on a printer: it is greyed, never gone, while the printer cannot be reached. */
+  /**
+   * Always in the bar on a printer: it is greyed, never gone, while the printer cannot be reached.
+   * Account is a top-level page with no printer frame, but a printer open behind it can still be stopped.
+   */
   get showEstop (): boolean {
-    return !this.sectionContext.foreign && this.printerFrame
+    return (!this.sectionContext.foreign && this.printerFrame) || this.accountOverPrinter === true
+  }
+
+  /** Account (always top-level) with a printer open. */
+  get accountOverPrinter (): boolean {
+    return !!this.$route?.name?.startsWith('Account') && !!activeSlug()
   }
 
   get estopReady (): boolean {
     return this.authenticated && this.socketConnected && this.klippyReady
+  }
+
+  /** The one notification icon carries this printer's warnings and notifications too. */
+  get printerNotices (): boolean {
+    return !this.sectionContext.foreign && this.authenticated && this.socketConnected
   }
 
   /** Quick actions are on every printer's bar; each says why it cannot run when it cannot. */
@@ -396,10 +362,6 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     return this.$store.getters['server/componentSupport']('power')
   }
 
-  get inLayout (): boolean {
-    return (this.$store.state.config.layoutMode)
-  }
-
   get showSaveConfigAndRestart (): boolean {
     return this.$store.state.config.uiSettings.general.showSaveConfigAndRestart as boolean
   }
@@ -478,56 +440,10 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     return this.$store.state.config.uiSettings.general.enableKeyboardShortcuts
   }
 
-  handleExitLayout () {
-    this.$store.commit('config/setLayoutMode', false)
-  }
-
   /** What U's picker takes: the G-code root's own list, as the header's upload button uses. */
   get gcodeAccept (): string {
     const root = this.$store.getters['files/getRootProperties']('gcodes') as { accepts?: string[] } | undefined
-    return (root?.accepts ?? []).join(',')
-  }
-
-  get isDashboard () {
-    return this.$route.name === 'Dashboard'
-  }
-
-  handleResetLayout () {
-    const pathLayouts: Record<string, string> = {
-      '/diagnostics': 'diagnostics'
-    }
-
-    const pathLayout = pathLayouts[pageOfRoute(this.$route)]
-    let layoutDefaultState
-    if (pathLayout) {
-      // reset to default init state
-      layoutDefaultState = defaultState().layouts[pathLayout]
-    } else {
-      // reset dashboard to default layout
-      layoutDefaultState = this.$store.getters['layout/getLayout']('dashboard')
-    }
-
-    const toReset = pathLayout ?? this.$store.getters['layout/getSpecificLayoutName']
-
-    this.$store.dispatch('layout/onLayoutChange', {
-      name: toReset,
-      value: layoutDefaultState
-    })
-  }
-
-  handleSetDefaultLayout () {
-    const currentLayoutName = this.$store.getters['layout/getSpecificLayoutName']
-    this.$store.dispatch('layout/onLayoutChange', {
-      name: 'dashboard',
-      value: this.$store.getters['layout/getLayout'](currentLayoutName)
-    })
-  }
-
-  handleResetDefaultLayout () {
-    this.$store.dispatch('layout/onLayoutChange', {
-      name: 'dashboard',
-      value: defaultState().layouts.dashboard
-    })
+    return [...(root?.accepts ?? []), ...MODEL_ACCEPT].join(',')
   }
 
   async handlePowerToggle () {
@@ -584,6 +500,20 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
   }
 
   async handleUploadAndPrint (file: File) {
+    // A model is Slice's to open, not a file for the printer (KAN-2191).
+    if (isModelFile(file.name)) {
+      EventBus.bus.$emit('model-dropped', [file])
+      return
+    }
+    try {
+      await this.uploadAndHandOn(file)
+    } catch (error: unknown) {
+      consola.error('[FileUpload] file', error)
+      EventBus.$emit(`Upload of ${file.name} failed: ${uploadErrorText(error)}`, { type: 'error', timeout: -1 })
+    }
+  }
+
+  async uploadAndHandOn (file: File) {
     if (this.uploadPrintsNow) {
       // Never Moonraker's print-on-upload: that started the print with no
       // plate check, on a printer that prints upside down onto its plate.
@@ -604,7 +534,8 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
   }
 
   saveConfigAndRestart (force = false) {
-    if (!force) {
+    // Save and restart: Always (Settings › Files and editor) restarts without the list.
+    if (!force && this.$store.state.config.uiSettings.editor.saveAndRestart !== 'always') {
       const confirmOnSaveConfigAndRestart = this.$store.state.config.uiSettings.general.confirmOnSaveConfigAndRestart
 
       if (confirmOnSaveConfigAndRestart) {
@@ -620,6 +551,24 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
 </script>
 
 <style lang="scss">
+  // The top bar's icon button: one box for every icon in it. Not scoped, since
+  // Quick actions renders its own button from another component.
+  .app-header__icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    color: var(--m3d-text-muted);
+
+    &:hover {
+      background: var(--m3d-hover);
+      color: var(--m3d-text);
+    }
+  }
+
   // A sheet's scrim must not cover STOP: while one is open on a phone, the
   // top bar stands above the scrim. The sheet rises from the bottom, so the
   // two never overlap.
@@ -802,22 +751,6 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     }
   }
 
-  .app-header__icon {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    color: var(--m3d-text-muted);
-
-    &:hover {
-      background: var(--m3d-hover);
-      color: var(--m3d-text);
-    }
-  }
-
   .app-header__rule {
     flex: none;
     width: 1px;
@@ -862,10 +795,6 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
     height: 36px;
     padding: 0 12px;
     font-size: 12px;
-  }
-
-  .layout-action {
-    min-height: 32px !important;
   }
 
   // Narrower windows keep every control at full size: the printer switch

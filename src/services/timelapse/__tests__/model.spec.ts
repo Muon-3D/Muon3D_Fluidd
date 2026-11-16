@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { frameFile, renderText, timelapseItems, timelapseName } from '../model'
+import { frameFile, renamedTimelapse, renderText, timelapseItems, timelapseName, timelapseSummary } from '../model'
 
 describe('a timelapse\'s name', () => {
   it('reads the print and when it rendered from moonraker-timelapse\'s name', () => {
@@ -40,5 +40,42 @@ describe('frames and rendering', () => {
     expect(renderText({ status: 'started', count: 120 })).toBe('Starting to render 120 frames…')
     expect(renderText({ status: 'success' })).toBeNull()
     expect(renderText(undefined)).toBeNull()
+  })
+})
+
+describe('the Timelapse header\'s count', () => {
+  it('counts the videos, and the space every file in the folder takes', () => {
+    expect(timelapseSummary([
+      { filename: 'a.mp4', size: 1000 },
+      { filename: 'a.jpg', size: 50 },
+      { filename: 'b_frames.zip', size: 400 }
+    ])).toEqual({ videos: 1, bytes: 1450 })
+  })
+})
+
+describe('renaming a timelapse', () => {
+  it('keeps the extension, and renames the picture beside it to match', () => {
+    expect(renamedTimelapse({ name: 'timelapse_x_20261011_1405.mp4', thumbnail: 'timelapse_x_20261011_1405.jpg' }, 'Bracket run'))
+      .toEqual({ name: 'Bracket run.mp4', thumbnail: 'Bracket run.jpg' })
+  })
+
+  it('keeps a dot in the name, and takes only the video\'s own extension off the end', () => {
+    expect(renamedTimelapse({ name: 'a.mp4', thumbnail: null }, 'cable_clip_PLA_0.2mm_20261103_1720')).toEqual({ name: 'cable_clip_PLA_0.2mm_20261103_1720.mp4', thumbnail: null })
+    expect(renamedTimelapse({ name: 'a.mp4', thumbnail: null }, 'run.MP4')).toEqual({ name: 'run.mp4', thumbnail: null })
+  })
+
+  it('finds a picture that is not a .jpg, and keeps its extension', () => {
+    const items = timelapseItems([{ filename: 'a.mp4', size: 1, modified: 1 }, { filename: 'a.png', size: 1, modified: 1 }])
+    expect(items[0].thumbnail).toBe('a.png')
+    expect(renamedTimelapse({ name: 'a.mp4', thumbnail: 'a.png' }, 'b')).toEqual({ name: 'b.mp4', thumbnail: 'b.png' })
+  })
+
+  it('takes a name typed with the extension once, and no folders', () => {
+    expect(renamedTimelapse({ name: 'a.mp4', thumbnail: null }, 'parts/b.mp4')).toEqual({ name: 'parts_b.mp4', thumbnail: null })
+  })
+
+  it('does nothing for an empty or unchanged name', () => {
+    expect(renamedTimelapse({ name: 'a.mp4', thumbnail: null }, '  ')).toBeNull()
+    expect(renamedTimelapse({ name: 'a.mp4', thumbnail: null }, 'a')).toBeNull()
   })
 })

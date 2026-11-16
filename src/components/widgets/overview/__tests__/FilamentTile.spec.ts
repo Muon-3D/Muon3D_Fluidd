@@ -10,10 +10,11 @@ vi.mock('@/api/socketActions', async () => ({ SocketActions: (await import('./fi
 const mountIt = (store: ReturnType<typeof tileStore>) => mount(FilamentTile, tileMount(store, { stubs: { ...tileMount(store).stubs, 'material-picker': true } }))
 
 describe('FilamentTile', () => {
-  it('says Unknown plainly with no data, and shows no amount', () => {
+  it('says "No material loaded" with a warning icon when there is no data, and shows no amount', () => {
     const w = mountIt(tileStore({ empty: true }))
     expect(w.text()).toContain('Filament')
-    expect(w.text()).toContain('Unknown')
+    expect(w.text()).toContain('No material loaded')
+    expect(w.find('[data-tid="filament-warning"]').exists()).toBe(true)
     expect(w.text()).not.toMatch(/\d\s?%|\d\s?g\b|remaining/i)
     w.destroy()
   })
@@ -56,6 +57,27 @@ describe('FilamentTile', () => {
     expect(w.findAll('[data-menu]').wrappers.map(i => i.attributes('data-menu'))).toEqual(['material', 'load', 'sensors', 'spoolman'])
     await w.find('[data-menu="spoolman"]').trigger('click')
     expect(store.commit).toHaveBeenCalledWith('spoolman/setDialogState', { show: true })
+    w.destroy()
+  })
+
+  it('opens the material panel itself from ⋯ Set material and Load or unload, with no dialog of its own', async () => {
+    const w = mountIt(tileStore())
+    const picker = w.findComponent({ name: 'MaterialPicker' }).exists()
+      ? w.findComponent({ name: 'MaterialPicker' })
+      : w.find('material-picker-stub')
+    expect(picker.exists()).toBe(true)
+    expect(w.find('[data-tid="tile-dialog"]').exists()).toBe(false)
+    const section = w.findComponent({ name: 'FilamentSection' })
+    expect(section.exists()).toBe(true)
+    for (const id of ['material', 'load']) {
+      const vm = section.vm as unknown as { $refs: { picker: { open: boolean } } }
+      vm.$refs.picker = { open: false } as never
+      await w.find('[data-tid="tile-more"]').trigger('click')
+      await w.find(`[data-menu="${id}"]`).trigger('click')
+      await w.vm.$nextTick()
+      await w.vm.$nextTick()
+      expect(vm.$refs.picker.open).toBe(true)
+    }
     w.destroy()
   })
 })

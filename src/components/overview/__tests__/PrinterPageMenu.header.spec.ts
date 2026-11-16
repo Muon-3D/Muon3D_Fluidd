@@ -25,7 +25,7 @@ const header = (home: boolean) => mount(AppPageTitle, {
     tabs: () => [],
     subtitle: () => ''
   },
-  stubs: { ...panelStubs, CameraTabs: true, OverviewActions: true, PrinterPageMenu: true, MaintenanceDue: true, CameraActions: true, TonePill: true }
+  stubs: { ...panelStubs, OverviewActions: true, PrinterPageMenu: true, MaintenanceDue: true, CameraActions: true, TonePill: true }
 })
 
 it('puts the three-dot menu in the header of the printer\'s own page only (KAN-1429)', () => {

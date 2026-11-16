@@ -140,6 +140,24 @@ describe('AgentStream', () => {
     expect(h.timers.map(t => t.ms)).toEqual([IDLE_RETRY_MS])
   })
 
+  it('a refresh from a stopped stream cannot open a second connection after restart', async () => {
+    let resolveRefresh!: (renewed: boolean) => void
+    const renewed = new Promise<boolean>(resolve => { resolveRefresh = resolve })
+    const h = harness([() => new Response('', { status: 401 }), () => sse([': ping\n\n'])])
+    h.refresh.mockReturnValueOnce(renewed)
+    h.stream.start()
+    await h.settle(); await h.settle()
+    expect(h.refresh).toHaveBeenCalledTimes(1)
+    h.stream.stop()
+    h.stream.start()
+    await h.settle(); await h.settle()
+    expect(h.fetch).toHaveBeenCalledTimes(2)
+    resolveRefresh(true)
+    await h.settle(); await h.settle()
+    expect(h.fetch).toHaveBeenCalledTimes(2)
+    h.stream.stop()
+  })
+
   it('no token: no request', async () => {
     const h = harness([], null)
     h.stream.start()

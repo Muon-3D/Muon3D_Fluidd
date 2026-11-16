@@ -111,10 +111,11 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
+import DevGuardMixin from '@/mixins/dev-guard'
 import ToolheadMixin from '@/mixins/toolhead'
 
 @Component({})
-export default class ToolheadPosition extends Mixins(StateMixin, ToolheadMixin) {
+export default class ToolheadPosition extends Mixins(StateMixin, ToolheadMixin, DevGuardMixin) {
   get gcodePosition () {
     return this.$store.state.printer.printer.gcode_move.gcode_position
   }
@@ -132,7 +133,8 @@ export default class ToolheadPosition extends Mixins(StateMixin, ToolheadMixin) 
   }
 
   get forceMove () {
-    return this.$store.state.config.uiSettings.toolhead.forceMove
+    // FORCE_MOVE is developer-mode only (Klipper#112): outside it the head moves as normal.
+    return !this.devOnlyLocked && this.$store.state.config.uiSettings.toolhead.forceMove
   }
 
   get xForceMove () {

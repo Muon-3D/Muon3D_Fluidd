@@ -8,9 +8,22 @@
       class="ccard__head"
     >
       <h2 class="ccard__title">
+        <frame-icon
+          v-if="icon"
+          :name="icon"
+          small
+        />
         {{ title }}
       </h2>
-      <span class="ccard__aside"><slot name="aside" /></span>
+      <span class="ccard__aside">
+        <span
+          v-if="pill"
+          class="ccard__pill"
+          :class="`ccard__pill--${pillTone}`"
+          data-tid="tile-pill"
+        >{{ pill }}</span>
+        <slot name="aside" />
+      </span>
     </header>
     <slot />
     <p
@@ -48,6 +61,18 @@ export default class ControlCard extends Vue {
   @Prop({ type: String, default: '' })
   readonly note!: string
 
+  /** The icon beside the title (a frame-icon name). */
+  @Prop({ type: String, default: '' })
+  readonly icon!: string
+
+  /** A short status pill on the right of the header ("Locked while printing"). */
+  @Prop({ type: String, default: '' })
+  readonly pill!: string
+
+  /** The pill's tone: warn (orange) or ok (green). */
+  @Prop({ type: String, default: 'warn' })
+  readonly pillTone!: string
+
   /** Why the controls can't be used now, shown in place of the note. */
   @Prop({ type: String, default: '' })
   readonly locked!: string
@@ -60,7 +85,7 @@ export default class ControlCard extends Vue {
     flex-direction: column;
     gap: 16px;
     min-width: 0;
-    padding: 20px;
+    padding: 18px;
     border-radius: 22px;
     background: var(--m3d-surface);
     color: var(--m3d-text);
@@ -76,10 +101,46 @@ export default class ControlCard extends Vue {
   }
 
   .ccard__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
     margin: 0;
-    font-size: 17px;
+    font-size: 16px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .ccard__title .frame-icon {
+    color: var(--m3d-text-muted);
+  }
+
+  .ccard__pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
     font-weight: 600;
     white-space: nowrap;
+
+    &::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+  }
+
+  .ccard__pill--warn {
+    background: color-mix(in srgb, var(--m3d-warning) 16%, transparent);
+    color: var(--m3d-warning);
+  }
+
+  .ccard__pill--ok {
+    background: color-mix(in srgb, var(--m3d-success) 16%, transparent);
+    color: var(--m3d-success);
   }
 
   .ccard__aside {

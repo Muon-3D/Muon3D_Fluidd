@@ -2,6 +2,7 @@
   <control-card
     v-agent-highlight="'fans'"
     title="Fans and lights"
+    icon="fan"
     :locked="controlLock"
     data-tid="control-fans"
   >

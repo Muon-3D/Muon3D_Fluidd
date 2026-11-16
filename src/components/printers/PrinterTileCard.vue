@@ -34,6 +34,12 @@
         </tone-pill>
       </div>
       <span
+        v-if="tile.sharedBy"
+        class="tile__tag"
+        data-tid="shared-by"
+        :title="`from ${tile.sharedBy}`"
+      >from {{ tile.sharedBy }}</span>
+      <span
         class="tile__detail"
         :class="`tile__detail--${detailTone}`"
       >
@@ -134,10 +140,6 @@ export default class PrinterTileCard extends Vue {
   @Prop({ type: Boolean })
   readonly draggable?: boolean
 
-  /** It is printing, and shown larger above. */
-  @Prop({ type: Boolean })
-  readonly shownAbove?: boolean
-
   @Prop({ type: Number, default: 236 })
   readonly stageHeight!: number
 
@@ -157,7 +159,7 @@ export default class PrinterTileCard extends Vue {
       if (this.tile.state === 'printing') return this.tile.label === 'Printing' ? 'Printing' : `Printing · ${this.tile.label}`
       return this.tile.state === 'ready' ? `Ready · ${this.tile.detail}` : this.tile.detail
     }
-    return this.shownAbove ? 'Printing · shown above' : this.tile.detail
+    return this.tile.detail
   }
 
   get detailTone (): TileTone | 'muted' {
@@ -285,6 +287,21 @@ export default class PrinterTileCard extends Vue {
   .tile__name {
     overflow: hidden;
     font-size: 15px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // Who shared it, the same small tag as on the Bench.
+  .tile__tag {
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 1px 6px;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--m3d-fill);
+    color: var(--m3d-text-muted);
+    font-size: 10px;
     font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;

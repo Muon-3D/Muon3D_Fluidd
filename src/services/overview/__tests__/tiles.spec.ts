@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { filamentView, inkFor, signed, spanText } from '../tiles'
 
 describe('filamentView', () => {
-  it('says Unknown plainly when nothing is known, with no amount', () => {
+  it('says "No material loaded" plainly when nothing is known, with no amount', () => {
     const v = filamentView(null, null, null)
-    expect(v).toEqual({ type: 'Unknown', detail: 'Set it from the ⋯ menu', colour: null, source: 'none' })
+    expect(v).toEqual({ type: 'No material loaded', detail: 'Set it from the ⋯ menu', colour: null, source: 'none' })
     expect(JSON.stringify(v)).not.toMatch(/%| g\b|remaining/)
   })
-  it('prefers the active Spoolman spool', () => {
-    const v = filamentView({ filament: { material: 'PETG', name: 'Black', color_hex: '2b2f31', vendor: { name: 'Acme' } } }, { name: 'PLA', colour: '#FFFFFF' }, null)
+  it('prefers what the printer records as loaded, so Load and the panel show at once (KAN-1954)', () => {
+    const spool = { filament: { material: 'PETG', name: 'Black', color_hex: '2b2f31', vendor: { name: 'Acme' } } }
+    expect(filamentView(spool, { name: 'PLA', colour: '#FFFFFF' }, null)).toMatchObject({ type: 'PLA', colour: '#FFFFFF', source: 'printer' })
+  })
+  it('then the active Spoolman spool', () => {
+    const v = filamentView({ filament: { material: 'PETG', name: 'Black', color_hex: '2b2f31', vendor: { name: 'Acme' } } }, null, null)
     expect(v).toMatchObject({ type: 'PETG', detail: 'Acme Black', colour: '#2B2F31', source: 'spoolman' })
   })
   it('then what someone said is loaded, with its colour name', () => {

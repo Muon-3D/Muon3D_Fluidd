@@ -1,6 +1,7 @@
 <template>
   <control-card
-    title="Speed"
+    title="Speed and flow"
+    icon="pulse"
     :locked="controlLock"
     :note="controlReady ? speedNote : ''"
     data-tid="control-speed"

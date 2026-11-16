@@ -8,6 +8,7 @@ export interface Material {
   name: string;
   nozzle: number | null;
   bed: number | null;
+  colour?: string;
 }
 
 function heaterTarget (preset: TemperaturePreset, heater: string): number | null {
@@ -18,7 +19,7 @@ function heaterTarget (preset: TemperaturePreset, heater: string): number | null
 /** The presets that set the nozzle, as materials. */
 export function materialsFrom (presets: TemperaturePreset[], extruder = 'extruder', bed = 'heater_bed'): Material[] {
   return presets
-    .map(p => ({ id: p.id, name: p.name, nozzle: heaterTarget(p, extruder), bed: heaterTarget(p, bed) }))
+    .map(p => ({ id: p.id, name: p.name, nozzle: heaterTarget(p, extruder), bed: heaterTarget(p, bed), ...(p.colour ? { colour: p.colour } : {}) }))
     .filter(m => m.nozzle !== null)
 }
 
@@ -56,7 +57,7 @@ export function materialChoices (materials: Material[]): MaterialChoice[] {
     name: m.name,
     nozzle: m.nozzle,
     bed: m.bed,
-    colour: PANEL_MATERIALS.find(p => sameName(p.name, m.name))?.colour ?? '#8a9597',
+    colour: m.colour ?? PANEL_MATERIALS.find(p => sameName(p.name, m.name))?.colour ?? '#8a9597',
     presetId: m.id
   }))
   const extra = PANEL_MATERIALS
@@ -99,6 +100,17 @@ export function fileFilament (metadata: Record<string, unknown> | null | undefin
   if (!name) return null
   const colour = normaliseColour(first(metadata.filament_colors) || first(metadata.filament_colour))
   return { name, colour }
+}
+
+/**
+ * Why a material can't be heated for on this hotend, or null when it can: the
+ * extruder's max_temp (printer.cfg) is a hard limit and Klipper refuses
+ * anything above it, so nothing is sent and the person is told instead.
+ */
+export function hotendLimitReason (material: string | null | undefined, nozzle: number | null | undefined, maxTemp: number | null | undefined): string | null {
+  if (nozzle === null || nozzle === undefined || typeof maxTemp !== 'number' || !Number.isFinite(maxTemp)) return null
+  if (nozzle <= maxTemp) return null
+  return `${material?.trim() || 'This material'} needs a higher-temperature hotend`
 }
 
 /** Remembers the loaded material on the printer, exactly as the panel does, so either can change it. */
@@ -235,7 +247,7 @@ export function extrudeLengths (max: number): number[] {
 /** Why the extruder can't move filament now, in words, or null when it can. */
 export function extrudeBlocked (temperature: number, minTemp: number, canExtrude?: boolean): string | null {
   if (canExtrude || temperature >= minTemp) return null
-  return `Heat the nozzle first · it's at ${Math.round(temperature)}°, it needs ${Math.round(minTemp)}°`
+  return `The nozzle is at ${Math.round(temperature)}°; extruding needs ${Math.round(minTemp)}°. Press Heat.`
 }
 
 // -- Tuning and outputs -------------------------------------------------------
@@ -328,6 +340,28 @@ export function filamentSensorRole (configfile: SensorConfigFile | undefined, na
   const loaded = sensorSection(configfile?.settings, name)
   if (loadsOnInsert(loaded) || loadsOnInsert(sensorSection(configfile?.config, name))) return 'loads'
   return loaded ? 'runout' : 'unknown'
+}
+
+/**
+ * Whether filament is in the printer, from the filament sensors: true or
+ * false when a trustworthy sensor reports, null when none does.
+ *
+ * Only a switch sensor can say "no filament present". A motion sensor reports
+ * filament_detected false while nothing moves, loaded or not, so it is
+ * ignored; so is a sensor that is switched off, and one whose settings have
+ * not arrived (role `unknown`), which may be a motion sensor or not yet known.
+ */
+export function filamentSensed (printer: Record<string, any> | undefined): boolean | null {
+  if (!printer) return null
+  const readings: boolean[] = []
+  for (const key of Object.keys(printer)) {
+    if (!key.startsWith('filament_switch_sensor ')) continue
+    const sensor = printer[key] as { enabled?: boolean, filament_detected?: boolean } | undefined
+    if (!sensor || sensor.enabled === false || typeof sensor.filament_detected !== 'boolean') continue
+    if (filamentSensorRole(printer.configfile, key.slice('filament_switch_sensor '.length)) === 'unknown') continue
+    readings.push(sensor.filament_detected)
+  }
+  return readings.length ? readings.some(Boolean) : null
 }
 
 /**

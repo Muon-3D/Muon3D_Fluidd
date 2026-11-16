@@ -18,11 +18,13 @@
           spellcheck="false"
           class="console-command"
           @input="emitChange"
-          @keyup.enter.exact="emitSend(newValue)"
-          @keydown.enter.exact.prevent
+          @keyup.enter.exact="onEnterUp"
+          @keydown.enter.exact="onEnterDown"
+          @keydown.ctrl.enter.exact.prevent="emitSend(newValue)"
+          @keydown.meta.enter.exact.prevent="emitSend(newValue)"
           @keydown.up.exact.prevent="historyUp()"
           @keydown.down.exact.prevent="historyDown()"
-          @keydown.prevent.tab="autoComplete()"
+          @keydown.tab.exact="onTab"
         />
       </v-col>
       <v-col cols="auto">
@@ -70,16 +72,43 @@ export default class ConsoleCommand extends Vue {
   }
 
   newValue = ''
-  commandHistoryCount = Globals.CONSOLE_COMMAND_HISTORY
   history: string[] = []
   originalHistory: string[] = []
   isFirst = true
+
+  get commandHistoryCount (): number {
+    return this.$store.state.config.uiSettings.console?.historyCount ?? Globals.CONSOLE_COMMAND_HISTORY
+  }
 
   mounted () {
     this.newValue = this.value
     const savedHistory = this.$store.state.console.commandHistory
     this.history = [...savedHistory]
     this.originalHistory = [...savedHistory]
+  }
+
+  /** Settings › Console › Enter sends: off, Enter adds a line and Ctrl or ⌘ Enter sends. */
+  get enterSends (): boolean {
+    return this.$store.state.config.uiSettings.console?.enterSends !== false
+  }
+
+  /** Settings › Console › Suggest commands: off, Tab keeps its job of moving on. */
+  get suggest (): boolean {
+    return this.$store.state.config.uiSettings.console?.suggest !== false
+  }
+
+  onEnterDown (event: KeyboardEvent) {
+    if (this.enterSends) event.preventDefault()
+  }
+
+  onEnterUp () {
+    if (this.enterSends) this.emitSend(this.newValue)
+  }
+
+  onTab (event: KeyboardEvent) {
+    if (!this.suggest) return
+    event.preventDefault()
+    this.autoComplete()
   }
 
   emitChange (val: string) {

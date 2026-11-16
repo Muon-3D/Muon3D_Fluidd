@@ -8,17 +8,17 @@ const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn() }))
 vi.mock('@/api/socketActions', () => ({ SocketActions: socket }))
 afterEach(() => { socket.printerGcodeScript.mockClear(); cloudState.account = null })
 
-it('shows only unique actions on desktop and keeps Home and Cool down in the phone menu', () => {
+it('shows only unique actions on desktop and keeps Cool down in the phone menu (homing and Motors off are in the Move tile)', () => {
   const store = panelStore()
   const mountActions = (phone: boolean) => mount(ControlActions, { propsData: { phone }, mocks: { $store: store, $waits: waits, $route: { params: {} }, $confirm: vi.fn() }, stubs: panelStubs })
   const desktop = mountActions(false)
   expect(desktop.find('[data-tid="home-all"]').exists()).toBe(false)
   expect(desktop.find('[data-tid="cool-down"]').exists()).toBe(false)
-  expect(desktop.find('[data-tid="motors-off"]').exists()).toBe(true)
+  expect(desktop.find('[data-tid="motors-off"]').exists()).toBe(false)
   expect(desktop.find('summary').exists()).toBe(false)
   desktop.destroy()
   const phone = mountActions(true)
-  expect(phone.find('[data-tid="home-all"]').exists()).toBe(true)
+  expect(phone.find('[data-tid="home-all"]').exists()).toBe(false)
   expect(phone.find('[data-tid="cool-down"]').exists()).toBe(true)
   expect(phone.find('summary').exists()).toBe(true)
   phone.destroy()
@@ -52,7 +52,6 @@ it('keeps motors locked while paused and offers recovery restarts without Klippe
   const store = panelStore()
   store.getters['printer/getPrinterState'] = 'paused'
   const wrapper = mount(ControlActions, { mocks: { $store: store, $waits: waits, $route: { params: {} }, $confirm: vi.fn().mockResolvedValue(true) }, stubs: panelStubs })
-  const motors = wrapper.find('[data-tid="motors-off"]'); expect(motors.exists()).toBe(true)
   ;(wrapper.vm as any).motorsOff(); expect(socket.printerGcodeScript).not.toHaveBeenCalled()
   store.getters['printer/getPrinterState'] = 'error'; store.getters['printer/getKlippyState'] = 'error'; store.getters['printer/getKlippyReady'] = false; store.getters['printer/getKlippyConnected'] = false
   await wrapper.vm.$nextTick()

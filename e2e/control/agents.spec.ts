@@ -7,7 +7,7 @@
  * so Control reconnects with `Last-Event-ID` as it does when dropped.
  */
 import { test, expect } from '../fixtures'
-import { agentsFake, consoleRoute, pushAgentEvent, type AgentsFake, type ConsoleState } from '../fakes/console'
+import { agentsFake, answerConsole, pushAgentEvent, type AgentsFake } from '../fakes/console'
 import { usePrinter, PRESETS } from './printer'
 
 test.use({ signedIn: true })
@@ -74,7 +74,7 @@ test.describe('Control', () => {
     await expect(highlight(page, 'hotend')).toHaveCount(0)
 
     act(agents, 'started', { action: 'printer.home', target: { axes: 'xyz' } })
-    // Every Home on the page: Home X Y and Home Z on a desktop, Home on a phone.
+    // Every Home on the page.
     const home = highlight(page, 'home')
     await expect(home.first()).toContainText('Claude')
     // The layer takes no clicks: Home still works under it.
@@ -118,7 +118,7 @@ test.describe('Account > Connected apps', () => {
   // console at the page's own origin and answer its /v1 routes there.
   test.beforeEach(async ({ page, account, baseURL }) => {
     const origin = new URL(baseURL!).origin
-    await page.route(url => url.origin === origin && url.pathname.startsWith('/v1/'), consoleRoute(account as ConsoleState))
+    await page.route(url => url.origin === origin && url.pathname.startsWith('/v1/'), route => answerConsole(route, account))
     await page.addInitScript(([url]) => { localStorage.setItem('muon.cloud.url', url) }, [origin])
   })
 
@@ -174,5 +174,17 @@ test.describe('Account > Connected apps', () => {
   test('a console without the agents API says so', async ({ page, open }) => {
     await open('/account/apps')
     await expect(page.getByTestId('services-missing')).toBeVisible()
+  })
+
+  test('a failed list read can be retried without pretending it is empty', async ({ page, open, account }) => {
+    account.agents = agentsFake()
+    account.failOn = call => call === 'GET /v1/agents' ? 503 : null
+    await open('/account/apps')
+    await expect(page.getByTestId('services-load-error')).toBeVisible()
+    await expect(page.getByTestId('services-empty')).toHaveCount(0)
+    account.failOn = undefined
+    await page.getByTestId('services-retry').click()
+    await expect(page.getByTestId('services-empty')).toBeVisible()
+    await expect(page.getByTestId('services-load-error')).toHaveCount(0)
   })
 })

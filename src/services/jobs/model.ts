@@ -70,12 +70,21 @@ export interface ReadyCheck {
   text: string;
 }
 
+/** The one phrase for a printer with nothing loaded, wherever Control says it. */
+export const NO_MATERIAL_LOADED = 'No material loaded'
+
+/** What is in the printer: whether any filament is loaded, and the material if someone said which. */
+export interface LoadedFilament {
+  loaded: boolean;
+  name: string | null;
+}
+
 /**
  * What to know before a dropped G-code file prints: what it was sliced
- * for, whether its material is the one set, and whether the printer is
+ * for, whether that material is the one loaded, and whether the printer is
  * free. Nothing here stops it; it says so before anything moves.
  */
-export function readyChecks (meta: Partial<KlipperFileMeta> | undefined, filename: string, material: string | null, printerName: string, busy: boolean): ReadyCheck[] {
+export function readyChecks (meta: Partial<KlipperFileMeta> | undefined, filename: string, filament: LoadedFilament, printerName: string, busy: boolean): ReadyCheck[] {
   const checks: ReadyCheck[] = []
   if (/muon3d|\bm1\b/i.test(filename) || /muon3d/i.test(meta?.slicer ?? '')) {
     checks.push({ ok: true, text: 'Sliced for the Muon3D M1' })
@@ -84,9 +93,11 @@ export function readyChecks (meta: Partial<KlipperFileMeta> | undefined, filenam
   }
   const needs = meta?.filament_type?.split(';')[0]?.trim()
   if (needs) {
-    if (!material) checks.push({ ok: false, warn: true, text: `Needs ${needs} · no material is set` })
-    else if (material.toLowerCase() === needs.toLowerCase()) checks.push({ ok: true, text: `Needs ${needs} · ${material} is set` })
-    else checks.push({ ok: false, warn: true, text: `Needs ${needs} · ${material} is set` })
+    const material = filament.name
+    if (!filament.loaded) checks.push({ ok: false, warn: true, text: `${NO_MATERIAL_LOADED} · needs ${needs}` })
+    else if (!material) checks.push({ ok: true, text: `Needs ${needs} · filament is loaded` })
+    else if (material.toLowerCase() === needs.toLowerCase()) checks.push({ ok: true, text: `Needs ${needs} · ${material} is loaded` })
+    else checks.push({ ok: false, warn: true, text: `Needs ${needs} · ${material} is loaded` })
   }
   if (busy) checks.push({ ok: false, warn: true, text: `${printerName} is busy · it can go next in the queue` })
   return checks
