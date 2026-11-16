@@ -171,6 +171,21 @@ class Endpoint {
     log('connect ' + nameOf(id))
     return new Printer(id, this)
   }
+  async connectAs (id, name, role, onPending, onClosed) {
+    log('connectAs ' + JSON.stringify({ id, name, role }))
+    if (!S().approval || S().paired.includes(id)) return this.connect(id)
+    onPending({ code: COMPARE, expiresIn: 120 })
+    await new Promise(resolve => { S().answer = resolve })
+    const outcome = S().outcome
+    log('approval ' + outcome)
+    if (outcome !== 'accept') {
+      const reason = outcome === 'reject' ? 'refused' : 'timed_out'
+      onClosed(reason)
+      throw Object.assign(new Error(reason), { kind: 'refused', reason })
+    }
+    S().paired.push(id)
+    return this.connect(id)
+  }
   async beginPairing (id) {
     log('beginPairing ' + nameOf(id))
     return {
@@ -178,6 +193,12 @@ class Endpoint {
       submitCode: async digits => {
         log('submitCode ' + digits)
         if (String(digits) !== PANEL_CODE) throw Object.assign(new Error('wrong code'), { kind: 'code-rejected', attemptsRemaining: 2 })
+        if (S().panel) {
+          await new Promise(resolve => { S().answer = resolve })
+          log('panel ' + S().outcome)
+          if (S().outcome === 'reject') throw Object.assign(new Error('rejected'), { kind: 'refused', reason: 'refused' })
+          if (S().outcome === 'time out') throw new Error('pairing window expired')
+        }
         S().paired.push(id)
         // The printer keeps the key through a reload of the page.
         try { sessionStorage.setItem('e2ePaired', JSON.stringify(S().paired)) } catch {}
@@ -197,7 +218,7 @@ export const MuonEndpoint = { async create () { return new Endpoint() } }
  * Nobody is signed in; `pick` is the printer the person chooses in the
  * browser's Bluetooth chooser.
  */
-export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: { advertise?: boolean } = {}) {
+export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: { advertise?: boolean, panel?: boolean, approval?: boolean } = {}) {
   const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' }
   await page.route(`${CONSOLE}/v1/config`, route => route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ relay_url: RELAY, orchestrator_id: 'e2e', authority_key: 'e2e' }) }))
   // Nobody is signed in: the console refuses a grant, as it does for a request with no session.
@@ -215,8 +236,8 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
   })
   // Nothing here is about the 3D model; the photoreal M1 stalls software WebGL.
   await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
-  await page.addInitScript(([printers, id, advertise]) => {
-    const state: any = { events: [] as string[], printers, paired: [] as string[], bleLive: 0, heard: id }
+  await page.addInitScript(([printers, id, advertise, panel, approval]) => {
+    const state: any = { events: [] as string[], printers, paired: [] as string[], bleLive: 0, heard: id, panel, approval }
     for (const p of printers as any[]) if (p.kind === 'paired') state.paired.push(p.id)
     ;(window as any).__e2ePair = state
     try { for (const k of JSON.parse(sessionStorage.getItem('e2ePaired') ?? '[]')) if (!state.paired.includes(k)) state.paired.push(k) } catch {}
@@ -291,7 +312,22 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
     bt.getDevices = async () => chosen ? [device] : []
     bt.getAvailability = async () => true
     Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: bt })
-  }, [PRINTERS, pick.id, !!options.advertise] as const)
+  }, [PRINTERS, pick.id, !!options.advertise, !!options.panel, !!options.approval] as const)
+}
+
+export async function answerAtPrinter (page: Page, outcome: 'accept' | 'reject' | 'time out') {
+  await page.waitForFunction(() => typeof (window as any).__e2ePair.answer === 'function')
+  await page.evaluate(outcome => {
+    const state = (window as any).__e2ePair
+    state.outcome = outcome
+    const answer = state.answer
+    state.answer = null
+    answer()
+  }, outcome)
+}
+
+export function pairedHere (page: Page): Promise<string[]> {
+  return page.evaluate(() => [...(window as any).__e2ePair.paired])
 }
 
 export function pairEvents (page: Page): Promise<string[]> {
