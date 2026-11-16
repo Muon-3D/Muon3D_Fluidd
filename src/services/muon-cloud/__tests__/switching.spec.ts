@@ -182,6 +182,21 @@ describe('switching printers', () => {
 })
 
 describe('opening a printer through Muon3D', () => {
+  it('keeps the held Bluetooth choice and drop state when retrying the same printer fails', async () => {
+    cloud.borrowCloudPrinter.mockResolvedValueOnce(transport())
+    init.appInit.mockResolvedValue(loaded('https://muon-cloud.invalid'))
+    await activateCloudPrinter('boxwood')
+    ble.releaseBluetoothLink.mockClear()
+    ble.stopUsingBluetoothFor.mockClear()
+
+    cloud.borrowCloudPrinter.mockRejectedValueOnce(new Error('Bluetooth is still down'))
+    await expect(activateCloudPrinter('boxwood')).rejects.toThrow('Bluetooth is still down')
+
+    expect(ble.releaseBluetoothLink).not.toHaveBeenCalled()
+    expect(ble.stopUsingBluetoothFor).not.toHaveBeenCalled()
+    expect(activationState.error).toBe('Bluetooth is still down')
+  })
+
   // Boxwood, 27 Oct: the grant reached the printer and its gateway connection
   // opened, but no request followed, and the page said "Opening" for good.
   it('gives up after a while, says why, and lets go of the printer, when the load never finishes', async () => {

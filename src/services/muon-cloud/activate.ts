@@ -246,7 +246,7 @@ export async function activateCloudPrinter (printerId: string) {
       const bound = !(error instanceof RemoteOpenTimeout) || (!!transport && current?.transport === transport)
       if (bound) {
         setActiveCloudPrinter(null)
-        await releaseCurrent()
+        await releaseCurrent(printerId)
       }
       if (error instanceof RemoteOpenTimeout) {
         transport?.close()
