@@ -22,7 +22,7 @@
  *   await open('/control')
  *   expect(printer.moves()).toEqual(['G1 Z6 F600', …])
  */
-import type { Page } from '@playwright/test'
+import type { Page, WebSocketRoute } from '@playwright/test'
 import { MOCK_PORT } from '../ports'
 
 type Json = Record<string, any>
@@ -68,6 +68,11 @@ export interface PrinterHandle {
   offline: () => Promise<void>
   /** The printer is reachable again: the page's next websocket connects. */
   online: () => void
+  /** Close only the current websocket; HTTP and the next websocket still work. */
+  dropSocket: () => Promise<void>
+  /** Stop messages on this websocket without a close event; the next one talks normally. */
+  stallSocket: () => void
+  socketOpens: number
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -138,7 +143,14 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     },
     online: () => {
       handle.state.offline = false
-    }
+    },
+    dropSocket: async () => {
+      const socket = pageSocket
+      pageSocket = null
+      await socket?.close({ code: 1000, reason: 'Moonraker reaped this socket' })
+    },
+    stallSocket: () => silenceCurrent(),
+    socketOpens: 0
   }
   const written = (namespace: string): Json => (handle.database[namespace] ??= {})
 
@@ -167,14 +179,18 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
   let eventTime = 0
   const asked = new Map<unknown, string>()
   const infoRequests = new Set<unknown>()
-  let pageSocket: { send: (message: string) => void, close: () => Promise<void> } | null = null
+  let pageSocket: Pick<WebSocketRoute, 'send' | 'close'> | null = null
+  let silenceCurrent = () => {}
 
-  await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
+  await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket(?:\\?.*)?$`), ws => {
     if (handle.state.offline) {
       ws.close().catch(() => {})
       return
     }
     pageSocket = ws
+    handle.socketOpens++
+    let silent = false
+    silenceCurrent = () => { silent = true }
     const server = ws.connectToServer()
 
     ws.onMessage(raw => {
@@ -216,6 +232,7 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     })
 
     server.onMessage(raw => {
+      if (silent) return
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { ws.send(raw); return }
       const over = handle.state.status
