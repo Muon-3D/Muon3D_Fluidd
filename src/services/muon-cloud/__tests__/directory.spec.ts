@@ -62,6 +62,17 @@ it('shows Reconnecting for a recently seen console-offline printer, then Offline
 })
 
 describe('one entry per printer', () => {
+  it('keeps a saved off-account printer active when it is opened over Bluetooth', () => {
+    const d = directory({ saved: [saved('http://192.168.1.37', { endpointId: BOXWOOD })], activeCloudId: BOXWOOD })
+    expect(d.local[0]).toMatchObject({ active: 'cloud', endpointId: BOXWOOD })
+    expect(d.cloud).toHaveLength(0)
+  })
+
+  it.each([null, WALNUT])('does not mark a different or unidentified saved printer active (%s)', endpointId => {
+    const d = directory({ saved: [saved('http://192.168.1.37', { endpointId: endpointId ?? undefined })], activeCloudId: BOXWOOD })
+    expect(d.local[0].active).toBeNull()
+  })
+
   it('keeps browser-local foreign records separate from local and cloud printers', () => {
     const record: ForeignPrinterRecord = {
       id: 'foreign:octo',

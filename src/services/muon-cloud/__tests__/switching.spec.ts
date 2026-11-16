@@ -17,6 +17,12 @@ const cloud = vi.hoisted(() => ({
 vi.mock('../state', () => cloud)
 vi.mock('../discovery', () => ({ pageReach: vi.fn(async () => 'reached'), isOwnHotspot: vi.fn(() => false) }))
 vi.mock('@/services/managed-session/httpTransportBinding', () => ({ bindHttpClientToPrinterTransport: vi.fn(() => () => {}) }))
+const ble = vi.hoisted(() => ({
+  wantsBluetoothFor: vi.fn<[string], boolean>(() => false),
+  releaseBluetoothLink: vi.fn<[string], Promise<void>>(async () => {}),
+  stopUsingBluetoothFor: vi.fn()
+}))
+vi.mock('@/services/muon-ble/link', () => ble)
 
 const { activateCloudPrinter, activateLocalPrinter, activationState, LOAD_WAIT_MS, REMOTE_OPEN_TIMEOUT_MS, RemoteOpenTimeout, SwitchSuperseded } = await import('../activate')
 
@@ -45,11 +51,44 @@ function loaded (apiUrl: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  ble.wantsBluetoothFor.mockReturnValue(false)
   ;(Vue as any).$socket = socket
   ;(Vue as any).$httpClient = {}
 })
 
 describe('switching printers', () => {
+  it('closes the old socket and Bluetooth route, waiting for hangup before loading the next printer', async () => {
+    const first = transport()
+    cloud.borrowCloudPrinter.mockResolvedValue(first)
+    init.appInit.mockResolvedValue(loaded(walnut.apiUrl))
+    await activateCloudPrinter('boxwood')
+    vi.clearAllMocks()
+    ble.wantsBluetoothFor.mockImplementation(id => id === 'boxwood')
+    const hangup = later<void>()
+    ble.releaseBluetoothLink.mockReturnValueOnce(hangup.promise)
+    const next = activateLocalPrinter(walnut)
+    await vi.waitFor(() => expect(ble.releaseBluetoothLink).toHaveBeenCalledWith('boxwood'))
+    expect(socket.releaseTransportSocket).toHaveBeenCalledWith(true)
+    expect(first.close).toHaveBeenCalledOnce()
+    expect(ble.stopUsingBluetoothFor).toHaveBeenCalledWith('boxwood')
+    expect(init.appInit).not.toHaveBeenCalled()
+    expect(socket.connect).not.toHaveBeenCalled()
+    hangup.resolve()
+    await expect(next).resolves.toBe(true)
+    expect(init.appInit).toHaveBeenCalledOnce()
+    expect(socket.connect).toHaveBeenCalledOnce()
+  })
+
+  it('does not disconnect a new Bluetooth link when reopening the same printer', async () => {
+    cloud.borrowCloudPrinter.mockResolvedValue(transport())
+    init.appInit.mockResolvedValue(loaded(walnut.apiUrl))
+    await activateCloudPrinter('boxwood')
+    ble.wantsBluetoothFor.mockReturnValue(true)
+    await activateCloudPrinter('boxwood')
+    expect(ble.releaseBluetoothLink).not.toHaveBeenCalled()
+    expect(ble.stopUsingBluetoothFor).not.toHaveBeenCalled()
+  })
+
   it('never loads two printers at once: the second waits for the first', async () => {
     // Two appInits at once reset each other's store; on 14 Oct the page
     // ended on Walnut's address after Boxwood was asked for.

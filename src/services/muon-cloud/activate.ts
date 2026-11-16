@@ -19,7 +19,7 @@ import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
 import { noteRelayLost, noteUserOpen } from './route-choice'
 import { requestRefused } from '@/services/managed-transport/refusal'
 import { isOwnHotspot, pageReach } from './discovery'
-import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { releaseBluetoothLink, stopUsingBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
 import { onApprovalWatch, type ApprovalWatch } from './approval'
 
@@ -82,7 +82,7 @@ export function notPairedMessage (refusal: PairableRefusal): string {
   return `${NOT_PAIRED_REASONS[refusal]} ${panelCodePairing() ? OPEN_ADD_A_DEVICE : PAIRING_COMING_SOON}`
 }
 
-let current: { transport: PrinterTransport, release: () => void } | null = null
+let current: { printerId: string, transport: PrinterTransport, release: () => void } | null = null
 let generation = 0
 
 /**
@@ -127,12 +127,18 @@ async function oneAtATime<T> (mine: number, work: () => Promise<T>): Promise<T> 
   return run
 }
 
-function releaseCurrent () {
+async function releaseCurrent (nextPrinterId?: string) {
   if (!current) return
-  Vue.$socket?.releaseTransportSocket(true)
-  current.release()
-  current.transport.close()
+  const previous = current
   current = null
+  Vue.$socket?.releaseTransportSocket(true)
+  previous.release()
+  previous.transport.close()
+  if (previous.printerId !== nextPrinterId) {
+    const hangingUp = releaseBluetoothLink(previous.printerId)
+    stopUsingBluetoothFor(previous.printerId)
+    await hangingUp
+  }
 }
 
 /**
@@ -190,9 +196,10 @@ export async function activateCloudPrinter (printerId: string) {
       if (superseded()) throw new SwitchSuperseded()
       await oneAtATime(mine, async () => {
         Vue.$socket?.releaseTransportSocket(true)
-        releaseCurrent()
+        await releaseCurrent(printerId)
+        if (superseded()) throw new SwitchSuperseded()
         const release = bindHttpClientToPrinterTransport(Vue.$httpClient, borrowed)
-        current = { transport: borrowed, release }
+        current = { printerId, transport: borrowed, release }
         setActiveCloudPrinter(printerId)
 
         const instance: InstanceConfig = {
@@ -239,7 +246,7 @@ export async function activateCloudPrinter (printerId: string) {
       const bound = !(error instanceof RemoteOpenTimeout) || (!!transport && current?.transport === transport)
       if (bound) {
         setActiveCloudPrinter(null)
-        releaseCurrent()
+        await releaseCurrent()
       }
       if (error instanceof RemoteOpenTimeout) {
         transport?.close()
@@ -334,7 +341,8 @@ async function openLocalPrinter (instance: InstanceConfig, mine: number): Promis
       return false
     }
     return await oneAtATime(mine, async () => {
-      releaseCurrent()
+      await releaseCurrent()
+      if (superseded()) throw new SwitchSuperseded()
       setActiveCloudPrinter(null)
       forgetManagedInstance()
       Vue.$socket?.close()
