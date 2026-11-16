@@ -22,6 +22,7 @@ const found = (over: Record<string, unknown> = {}) => ({
 describe('the page header', () => {
   it('shows Connect over Bluetooth only where Web Bluetooth exists, else one quiet line (KAN-2470)', async () => {
     const yes = shallowMount(PrintersHeader, { propsData: { bluetoothSearch: true } })
+    expect(yes.find('[data-tid="connect-bluetooth"]').text()).toBe('$bluetooth')
     await yes.find('[data-tid="connect-bluetooth"]').trigger('click')
     expect(yes.emitted('connect-bluetooth')).toHaveLength(1)
     expect(yes.find('[data-tid="bluetooth-needs-chrome"]').exists()).toBe(false)
@@ -98,6 +99,7 @@ describe('a printer found over Bluetooth that is set up already (KAN-2123)', () 
     const w = shallowMount(FoundList, { propsData: { tiles: [t], actionsFor: () => [] } })
     const primary = w.find('.btn--primary')
     expect(primary.text()).toContain('Pair over Bluetooth')
+    expect(primary.text()).toContain('$bluetooth')
     await primary.trigger('click')
     expect(w.emitted('action')![0]).toEqual([t, 'pair-bluetooth'])
   })
