@@ -487,7 +487,7 @@
               v-if="enableXYHoming"
               class="cc-btn large"
               :class="xyHomeClasses"
-              @click="sendGcode('G28 X Y', $waits.onHomeXY)"
+              @click="homeAll"
             >
               <path
                 d="m8.5,283.781v48.724c0,3.311,2.684,5.995,5.995,5.995h48.724c5.851,0,8.259-7.555,3.454-10.892-18.441-12.807-34.473-28.839-47.28-47.28-3.337-4.805-10.892-2.397-10.892,3.454Z"
@@ -520,13 +520,14 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
+import DevGuardMixin from '@/mixins/dev-guard'
 import ToolheadMixin from '@/mixins/toolhead'
 import type { BedSize } from '@/store/printer/types'
 
 type Axis = 'X' | 'Y' | 'Z'
 
 @Component({})
-export default class ToolheadControlCircle extends Mixins(StateMixin, ToolheadMixin) {
+export default class ToolheadControlCircle extends Mixins(StateMixin, ToolheadMixin, DevGuardMixin) {
   get enableXYHoming (): boolean {
     return this.$store.state.config.uiSettings.general.toolheadCircleXYHomingEnabled as boolean
   }
@@ -540,7 +541,8 @@ export default class ToolheadControlCircle extends Mixins(StateMixin, ToolheadMi
   }
 
   get forceMove () {
-    return this.$store.state.config.uiSettings.toolhead.forceMove
+    // FORCE_MOVE is developer-mode only (Klipper#112): outside it the head moves as normal.
+    return !this.devOnlyLocked && this.$store.state.config.uiSettings.toolhead.forceMove
   }
 
   get hasSteppersEnabled (): boolean {

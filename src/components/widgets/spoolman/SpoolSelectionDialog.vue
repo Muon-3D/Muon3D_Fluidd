@@ -181,8 +181,10 @@
       >
         {{ $t('app.general.btn.cancel') }}
       </app-btn>
+      <dev-only-note v-if="macroSelectLocked" />
       <app-btn
         color="primary"
+        :disabled="macroSelectLocked"
         @click="handleSelectSpool"
       >
         {{ filename ? $t('app.general.btn.print') : $tc('app.spoolman.btn.select', targetMacro ? 2 : 1, { macro: targetMacro }) }}
@@ -200,10 +202,12 @@
 <script lang="ts">
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
+import DevGuardMixin from '@/mixins/dev-guard'
 import { SocketActions } from '@/api/socketActions'
 import type { MacroWithSpoolId, Spool } from '@/store/spoolman/types'
 import BrowserMixin from '@/mixins/browser'
 import QRReader from '@/components/widgets/spoolman/QRReader.vue'
+import DevOnlyNote from '@/components/widgets/toolhead/DevOnlyNote.vue'
 import type { WebcamConfig } from '@/store/webcams/types'
 import QrScanner from 'qr-scanner'
 import type { AppTableHeader } from '@/types'
@@ -211,9 +215,9 @@ import getFilePaths from '@/util/get-file-paths'
 import { printerHomePath } from '@/services/printer-pages'
 
 @Component({
-  components: { QRReader }
+  components: { QRReader, DevOnlyNote }
 })
-export default class SpoolSelectionDialog extends Mixins(StateMixin, BrowserMixin) {
+export default class SpoolSelectionDialog extends Mixins(StateMixin, BrowserMixin, DevGuardMixin) {
   search = ''
   selectedSpoolId: number | null = null
 
@@ -385,7 +389,13 @@ export default class SpoolSelectionDialog extends Mixins(StateMixin, BrowserMixi
     }
   }
 
+  /** Choosing a spool for a macro sets its variables, which is developer-mode only (Klipper#112). */
+  get macroSelectLocked (): boolean {
+    return !!this.targetMacro && this.devOnlyLocked
+  }
+
   async handleSelectSpool () {
+    if (this.macroSelectLocked) return
     if (!this.selectedSpool) {
       // no spool selected
 

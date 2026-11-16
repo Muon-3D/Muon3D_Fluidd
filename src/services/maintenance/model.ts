@@ -60,7 +60,7 @@ export function meshSummary (matrix: number[][] | undefined): MeshSummary | null
   const max = Math.max(...values)
   const range = Math.round((max - min) * 1000) / 1000
   if (range <= 0.25) return { range, min, max, verdict: 'Flat enough to print well', tone: 'ok' }
-  if (range <= 0.6) return { range, min, max, verdict: 'A little uneven; the mesh evens out the first layer', tone: 'warn' }
+  if (range <= 0.6) return { range, min, max, verdict: 'A little uneven', tone: 'warn' }
   return { range, min, max, verdict: 'Very uneven: check the plate sits flat and clean', tone: 'err' }
 }
 
@@ -96,10 +96,17 @@ function changedResults (before: CheckEvidence, after: CheckEvidence): Array<[st
   const changed: Array<[string, string]> = []
   for (const [section, values] of Object.entries(after.pending ?? {})) {
     for (const [key, value] of Object.entries(values ?? {})) {
-      if (before.pending?.[section]?.[key] !== value) changed.push([section, key])
+      if (before.pending?.[section]?.[key] !== value && reportedNumber(value) !== null) changed.push([section, key])
     }
   }
   return changed
+}
+
+/** Empty, missing or malformed reports are not measurements of zero. */
+export function reportedNumber (value: unknown): number | null {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
 }
 
 /**
@@ -108,7 +115,15 @@ function changedResults (before: CheckEvidence, after: CheckEvidence): Array<[st
  * or one that errors, changes neither, so it doesn't count as run.
  */
 export function checkProduced (id: CheckId, before: CheckEvidence, after: CheckEvidence): boolean {
-  if (id === 'bedMesh') return after.mesh !== before.mesh && after.mesh !== '' && after.mesh !== '[]'
+  if (id === 'bedMesh') {
+    if (after.mesh === before.mesh) return false
+    try {
+      const grid: unknown = JSON.parse(after.mesh)
+      if (!Array.isArray(grid) || !grid.length || !Array.isArray(grid[0]) || !grid[0].length) return false
+      const columns = grid[0].length
+      return grid.every(row => Array.isArray(row) && row.length === columns && row.every(value => typeof value === 'number' && Number.isFinite(value)))
+    } catch { return false }
+  }
   const changed = changedResults(before, after)
   if (id === 'pid') return changed.some(([, key]) => key === 'pid_kp')
   if (id === 'shaper') return changed.some(([section, key]) => section === 'input_shaper' && key.startsWith('shaper_freq'))
@@ -121,6 +136,11 @@ export interface CheckContext {
   homed: boolean;
   /** The nozzle temperature heater tuning heats to. */
   nozzleTarget: number;
+  /**
+   * Whether the raw PID_CALIBRATE may stand in for a printer's own tuning macro.
+   * It is developer-mode only on a Muon printer (Klipper#112), so unset means no.
+   */
+  pidFallback?: boolean;
 }
 
 /**
@@ -141,7 +161,7 @@ export function checkCommand (id: CheckId, c: CheckContext): string | null {
     case 'pid':
       // A printer's own tuning macro knows its heater and temperature (the M1's tunes at 220°C).
       if (knows('CALIBRATE_HEATING_HOTEND')) return 'CALIBRATE_HEATING_HOTEND'
-      return knows('PID_CALIBRATE') ? `PID_CALIBRATE HEATER=extruder TARGET=${Math.round(c.nozzleTarget)}` : null
+      return c.pidFallback === true && knows('PID_CALIBRATE') ? `PID_CALIBRATE HEATER=extruder TARGET=${Math.round(c.nozzleTarget)}` : null
   }
 }
 
@@ -162,7 +182,7 @@ export function probeCount (setting: unknown): [number, number] | null {
   return [counts[0], counts[1] ?? counts[0]]
 }
 
-// -- Pro's Bed mesh page ------------------------------------------------------
+// -- Bed mesh page ------------------------------------------------------------
 
 export interface ProbeAccuracy {
   maximum: number;
@@ -209,6 +229,11 @@ export function bedMiddle (meshMin: number[] | undefined, meshMax: number[] | un
  * PROBE_ACCURACY probes wherever the head is, so it goes to the middle of
  * the bed first, homing if it hasn't.
  */
-export function probeAccuracyScript (homed: boolean, middle: [number, number]): string {
-  return [...(homed ? [] : ['G28']), 'G90', `G1 X${middle[0]} Y${middle[1]} F6000`, 'PROBE_ACCURACY'].join('\n')
+export function probeAccuracyScript (homed: boolean, middle: [number, number], traverseZ?: number): string {
+  // On a bed with no-go regions (the M1's notch) the way to the middle may
+  // cross one: go there at the traverse height, as bed_mesh itself does.
+  // A height that isn't a number is never dropped: that would send the XY move low, with no lift.
+  if (traverseZ !== undefined && !Number.isFinite(traverseZ)) throw new Error('probeAccuracyScript: no safe height to cross the notch at')
+  const lift = traverseZ !== undefined ? [`G1 Z${traverseZ} F600`] : []
+  return [...(homed ? [] : ['G28']), 'G90', ...lift, `G1 X${middle[0]} Y${middle[1]} F6000`, 'PROBE_ACCURACY'].join('\n')
 }

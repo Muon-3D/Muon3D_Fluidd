@@ -5,6 +5,8 @@
  * console leaves them out, and the pages say "Coming soon" for them.
  */
 import { accountRequest } from './client'
+import type { CreatedToken, CreateTokenBody, PersonalToken } from './tokenTypes'
+import type { ConnectedApp } from './connectedAppTypes'
 
 /** `GET /v1/me`'s account. */
 export interface AccountDetails {
@@ -130,7 +132,10 @@ export interface PrinterShare {
   ends_at: number | null;
   created_at: number;
   accepted?: boolean;
+  /** Their profile name, when the console knows it. */
   name?: string;
+  /** Their public photo (`/v1/public/avatars/:id`); 404s while their profile isn't visible. */
+  avatar_url?: string | null;
 }
 
 export interface PrinterInvite {
@@ -163,7 +168,7 @@ export interface JoinApproval {
   link_id: string;
   role: string;
   state: 'pending' | 'allowed' | 'refused' | 'expired';
-  requester?: { name?: string, email: string };
+  requester?: { name?: string, email: string, avatar_url?: string | null };
   created_at: number;
   expires_at: number;
 }
@@ -175,6 +180,15 @@ export interface SignInAnswer {
   account: AccountDetails;
 }
 
+/**
+ * New (muon-link-cloud KAN-1389): a credential change answers `session`, the
+ * caller's new access and refresh token, and `null` when there is nothing to
+ * re-key. `accountRequest` stores it.
+ */
+export interface Rekeyed {
+  session?: { access_token: string, refresh_token?: string, session_id?: string } | null;
+}
+
 const json = <T>(method: string, path: string, body?: unknown) => accountRequest<T>(method, path, body)
 
 export const accountApi = {
@@ -184,6 +198,8 @@ export const accountApi = {
 
   sessions: () => json<{ sessions: Session[] }>('GET', '/v1/me/sessions'),
   endSession: (id: string) => json<{ ok: boolean }>('DELETE', `/v1/me/sessions/${encodeURIComponent(id)}`),
+  /** Ends the named browser and all its clients, even when given a child session ID. */
+  endDevice: (id: string) => json<{ ok: boolean, ended: number }>('DELETE', `/v1/me/devices/${encodeURIComponent(id)}`),
   /** New: every session but this one (`others`), or every one (`all`). */
   endSessions: (scope: 'others' | 'all') => json<{ ok: boolean, ended?: number }>('DELETE', `/v1/me/sessions?scope=${scope}`),
   events: () => json<{ events: AccountEvent[] }>('GET', '/v1/me/events'),
@@ -191,21 +207,21 @@ export const accountApi = {
   passkeys: () => json<{ passkeys: Passkey[] }>('GET', '/v1/me/passkeys'),
   passkeyCreateOptions: () => json<{ ceremony_id: string, options: { publicKey: Record<string, unknown> } }>('POST', '/v1/me/passkeys/options'),
   passkeyCreate: (ceremonyId: string, credential: unknown, name: string, reauth: Reauth = {}) =>
-    json<{ id: string, name: string }>('POST', '/v1/me/passkeys', { ceremony_id: ceremonyId, credential, name, ...reauth }),
+    json<{ id: string, name: string } & Rekeyed>('POST', '/v1/me/passkeys', { ceremony_id: ceremonyId, credential, name, ...reauth }),
   /** New. */
   renamePasskey: (id: string, name: string, reauth: Reauth = {}) => json<{ id: string, name: string }>('PATCH', `/v1/me/passkeys/${encodeURIComponent(id)}`, { name, ...reauth }),
-  removePasskey: (id: string, reauth: Reauth = {}) => json<{ ok: boolean }>('DELETE', `/v1/me/passkeys/${encodeURIComponent(id)}`, reauth),
+  removePasskey: (id: string, reauth: Reauth = {}) => json<{ ok: boolean } & Rekeyed>('DELETE', `/v1/me/passkeys/${encodeURIComponent(id)}`, reauth),
 
   identities: () => json<{ identities: Identity[] }>('GET', '/v1/me/identities'),
-  unlinkIdentity: (provider: string, reauth: Reauth = {}) => json<{ ok: boolean }>('DELETE', `/v1/me/identities/${encodeURIComponent(provider)}`, reauth),
+  unlinkIdentity: (provider: string, reauth: Reauth = {}) => json<{ ok: boolean } & Rekeyed>('DELETE', `/v1/me/identities/${encodeURIComponent(provider)}`, reauth),
 
-  totpBegin: (reauth: Reauth = {}) => json<{ secret: string, otpauth_url: string }>('POST', '/v1/me/totp', reauth),
-  totpConfirm: (code: string) => json<{ ok: boolean, recovery_codes: string[] }>('POST', '/v1/me/totp/confirm', { code }),
-  totpOff: (code: string) => json<{ ok: boolean }>('DELETE', '/v1/me/totp', { code }),
+  totpBegin: (reauth: Reauth = {}) => json<{ secret: string, otpauth_url: string } & Rekeyed>('POST', '/v1/me/totp', reauth),
+  totpConfirm: (code: string) => json<{ ok: boolean, recovery_codes: string[] } & Rekeyed>('POST', '/v1/me/totp/confirm', { code }),
+  totpOff: (code: string) => json<{ ok: boolean } & Rekeyed>('DELETE', '/v1/me/totp', { code }),
   /** New. */
-  newRecoveryCodes: (reauth: Reauth = {}) => json<{ ok: boolean, recovery_codes: string[], recovery_generated_at?: number }>('POST', '/v1/me/totp/recovery-codes', reauth),
+  newRecoveryCodes: (reauth: Reauth = {}) => json<{ ok: boolean, recovery_codes: string[], recovery_generated_at?: number } & Rekeyed>('POST', '/v1/me/totp/recovery-codes', reauth),
 
-  changePassword: (newPassword: string, reauth: Reauth = {}) => json<{ ok: boolean }>('PUT', '/v1/me/password', { new_password: newPassword, ...reauth }),
+  changePassword: (newPassword: string, reauth: Reauth = {}) => json<{ ok: boolean } & Rekeyed>('PUT', '/v1/me/password', { new_password: newPassword, ...reauth }),
   changeEmail: (email: string, reauth: Reauth = {}) => json<{ ok: boolean }>('PUT', '/v1/me/email', { email, ...reauth }),
   /** New. */
   cancelEmailChange: () => json<{ ok: boolean }>('DELETE', '/v1/me/email/pending'),
@@ -225,16 +241,35 @@ export const accountApi = {
     ? accountRequest<Response>('POST', '/v1/me/export', reauth, { raw: true })
     : accountRequest<Response>('GET', '/v1/me/export', undefined, { raw: true }),
   retention: () => json<Record<string, unknown>>('GET', '/v1/retention'),
+  /** The plan, credits left and when they renew (the console's proxy of the model service). */
+  plan: () => json<PlanSummary>('GET', '/v1/me/plan'),
+  /** Asks for the data export to be built and emailed. Takes the same confirmation as deleting the account. 202; 409 one is open; 429 once a day. */
+  requestExport: (reauth: Reauth = {}, choice: { parts?: string[], format?: string } = {}) =>
+    json<ExportRequest>('POST', '/v1/me/exports', { ...choice, ...reauth }),
+  /** The last few export requests: a list, or `{exports: []}`. */
+  exports: () => json<ExportRequest[] | { exports: ExportRequest[] }>('GET', '/v1/me/exports'),
 
   /**
-   * Deletes the account: in 14 days on a console with the grace period
-   * (`delete_after` in the answer), or `now`. An older console deletes at once
-   * whatever is asked, and answers `{ ok, unlinked }`.
+   * Schedules deletion with a 14-day grace period. The page requires the
+   * console's grace-period capability before offering this action.
    */
-  deleteAccount: (reauth: Reauth, now = false) =>
-    json<{ ok: boolean, delete_after?: number, unlinked?: number }>('DELETE', '/v1/me', { ...reauth, ...(now ? { now: true } : {}) }),
+  deleteAccount: (reauth: Reauth) =>
+    json<{ ok: boolean, delete_after?: number, unlinked?: number }>('DELETE', '/v1/me', reauth),
   /** New. */
   cancelDeletion: () => json<{ ok: boolean, account?: AccountDetails }>('POST', '/v1/me/deletion/cancel'),
+
+  /** Personal access tokens (KAN-904): a signed-in session only. */
+  tokens: () => json<{ tokens: PersonalToken[] }>('GET', '/v1/tokens'),
+  /** The token is in the answer and nowhere else. `reauth` is the fresh two-step code a strong token takes. */
+  createToken: (body: CreateTokenBody, reauth: Reauth = {}) =>
+    json<CreatedToken>('POST', '/v1/tokens', Object.keys(reauth).length ? { ...body, reauth } : body),
+  revokeToken: (id: string) => json<{ id: string, revoked: boolean }>('DELETE', `/v1/tokens/${encodeURIComponent(id)}`),
+
+  /** Connected apps (KAN-905): the OAuth apps the account let in. A signed-in session only. */
+  connectedApps: () => json<{ apps: ConnectedApp[] }>('GET', '/v1/me/connected-apps'),
+  /** Ends every session the app holds for this account and removes its approval. */
+  disconnectApp: (clientId: string) =>
+    json<{ ok: boolean, client_id: string, sessions_ended: number }>('DELETE', `/v1/me/connected-apps/${encodeURIComponent(clientId)}`),
 
   shares: (printerId: string) => json<{ shares: PrinterShare[] }>('GET', `/v1/printers/${encodeURIComponent(printerId)}/shares`),
   share: (printerId: string, email: string, role: string, endsAt: number | null) =>
@@ -252,4 +287,29 @@ export const accountApi = {
   approvals: () => json<{ approvals: JoinApproval[] }>('GET', '/v1/approvals'),
   answerApproval: (id: string, allow: boolean) =>
     json<{ approval: JoinApproval }>('POST', `/v1/approvals/${encodeURIComponent(id)}`, { allow })
+}
+
+/** One emailed data export (`GET /v1/me/exports`). Helpers are in plan-export.ts. */
+export interface ExportRequest {
+  id: string;
+  status: 'queued' | 'building' | 'ready' | 'failed' | 'expired';
+  requested_at?: number | string | null;
+  ready_at?: number | string | null;
+  expires_at?: number | string | null;
+  size_bytes?: number | null;
+}
+
+/** `GET /v1/me/plan`. Helpers are in plan-export.ts. */
+export interface PlanSummary {
+  plan: { id?: string, name: string, renews_at?: string | number | null, will_renew?: boolean };
+  credits?: {
+    balance: number | null;
+    unit?: string;
+    weekly?: { used: number, limit: number, resets_at?: string | number | null };
+    monthly?: { left: number, allowance: number };
+  };
+  /** Where the full credit history can be read. */
+  ledger_url?: string | null;
+  limits?: { jobs_at_once?: number };
+  source?: 'model-service' | 'unavailable';
 }

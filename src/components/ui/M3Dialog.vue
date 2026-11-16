@@ -122,6 +122,8 @@ export default class M3Dialog extends Vue {
   readonly focusTitle!: boolean
 
   uid = ++shown
+  returnFocus: HTMLElement | null = null
+  focusTimer: ReturnType<typeof setTimeout> | null = null
 
   get titleId (): string {
     return this.labelId || `m3-dlg-title-${this.uid}`
@@ -131,10 +133,30 @@ export default class M3Dialog extends Vue {
     if (this.value) this.onValue(true)
   }
 
+  beforeDestroy () {
+    // The focus retry must not outlive the dialog.
+    this.cancelFocusTimer()
+  }
+
+  cancelFocusTimer () {
+    if (this.focusTimer !== null) clearTimeout(this.focusTimer)
+    this.focusTimer = null
+  }
+
   @Watch('value')
   onValue (open: boolean) {
-    if (!open || !this.focusTitle) return
-    this.$nextTick(() => this.focus())
+    if (open) {
+      this.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      this.cancelFocusTimer()
+      if (this.focusTitle) this.$nextTick(() => this.focus())
+    } else {
+      this.cancelFocusTimer()
+    }
+    if (!open && this.returnFocus) {
+      const target = this.returnFocus
+      this.returnFocus = null
+      this.$nextTick(() => target.isConnected && target.focus())
+    }
   }
 
   /**
@@ -144,10 +166,11 @@ export default class M3Dialog extends Vue {
    * until the title is there and has it.
    */
   focus (tries = 10) {
+    if ((this as any)._isDestroyed) return
     const title = this.$refs.title as HTMLElement | undefined
     title?.focus()
     if (title && document.activeElement === title) return
-    if (tries > 0) window.setTimeout(() => this.focus(tries - 1), 30)
+    if (tries > 0) this.focusTimer = setTimeout(() => this.focus(tries - 1), 30)
   }
 
   /** Esc or a click outside: Vuetify closes it unless it is persistent. */

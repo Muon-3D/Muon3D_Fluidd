@@ -5,13 +5,17 @@
   >
     <v-card class="muon-cloud-dialog">
       <v-card-title class="pb-1">
-        {{ mode === 'sign-in' ? 'Sign in to Muon3D' : 'Create your Muon3D account' }}
+        {{ !sessionAllowed ? 'Your Muon3D account' : mfaToken ? 'Enter your code' : mode === 'sign-in' ? 'Sign in to Muon3D' : 'Create your Muon3D account' }}
       </v-card-title>
       <v-card-subtitle class="pt-1">
         Reach your linked printers from anywhere. Printers on this network keep working without an account.
       </v-card-subtitle>
 
-      <v-card-text v-if="redirecting">
+      <v-card-text v-if="!sessionAllowed">
+        <open-in-muon-control :route="$route ? $route.fullPath : '/'" />
+      </v-card-text>
+
+      <v-card-text v-else-if="redirecting">
         Taking you to the Muon3D sign-in…
       </v-card-text>
 
@@ -21,23 +25,63 @@
           @submit.prevent="submit"
         >
           <v-text-field
-            v-if="mode === 'sign-up'"
+            v-if="mfaToken"
+            v-model="code"
+            label="Code"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            hint="Six digits from your authenticator app, or a recovery code."
+            persistent-hint
+            outlined
+            dense
+            autofocus
+            data-tid="sign-in-code"
+            class="mb-3"
+          />
+          <v-text-field
+            v-if="!mfaToken && mode === 'sign-up'"
             v-model="name"
             label="Name"
             autocomplete="name"
+            autofocus
             outlined
             dense
           />
           <v-text-field
+            v-if="!mfaToken && mode === 'sign-up'"
+            v-model="age"
+            label="Your age"
+            type="text"
+            inputmode="numeric"
+            hint="Private. Confirm once; accounts require age 13 or over."
+            persistent-hint
+            outlined
+            dense
+            data-tid="sign-up-age"
+            :aria-describedby="ageError ? 'dialog-sign-up-age-error' : undefined"
+            :aria-invalid="ageError ? 'true' : undefined"
+          />
+          <p
+            v-if="ageError"
+            id="dialog-sign-up-age-error"
+            class="error--text text-caption"
+            data-tid="sign-up-age-error"
+            role="alert"
+          >
+            {{ ageError }}
+          </p>
+          <v-text-field
+            v-if="!mfaToken"
             v-model="email"
             label="Email"
             type="email"
             autocomplete="email"
             outlined
             dense
-            autofocus
+            :autofocus="mode === 'sign-in'"
           />
           <v-text-field
+            v-if="!mfaToken"
             v-model="password"
             label="Password"
             :type="showPassword ? 'text' : 'password'"
@@ -54,6 +98,8 @@
             dense
             text
             class="mb-3"
+            role="alert"
+            aria-live="assertive"
           >
             {{ error }}
           </v-alert>
@@ -63,13 +109,28 @@
             block
             :loading="busy"
           >
-            {{ mode === 'sign-in' ? 'Sign in' : 'Create account' }}
+            {{ mfaToken ? 'Continue' : mode === 'sign-in' ? 'Sign in' : 'Create account' }}
           </app-btn>
         </v-form>
       </v-card-text>
 
       <v-card-actions
-        v-if="!redirecting"
+        v-if="sessionAllowed && mfaToken"
+        class="justify-center pb-4"
+      >
+        <v-btn
+          text
+          small
+          color="primary"
+          data-tid="sign-in-code-back"
+          @click="mfaToken = ''; code = ''; error = null"
+        >
+          Start again
+        </v-btn>
+      </v-card-actions>
+
+      <v-card-actions
+        v-else-if="sessionAllowed && !redirecting"
         class="justify-center pb-4"
       >
         <span class="text-body-2 text--secondary">
@@ -90,10 +151,12 @@
 
 <script lang="ts">
 import { Component, Prop, VModel, Vue } from 'vue-property-decorator'
-import { signIn, signUp } from '@/services/muon-cloud/state'
+import { signIn, signInWithCode, signUp } from '@/services/muon-cloud/state'
 import { centralLoginEnabled, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
+import { cloudSessionAllowed } from '@/services/muon-cloud/api'
+import OpenInMuonControl from './OpenInMuonControl.vue'
 
-@Component({})
+@Component({ components: { OpenInMuonControl } })
 export default class CloudAccountDialog extends Vue {
   @VModel({ type: Boolean })
     open?: boolean
@@ -102,15 +165,23 @@ export default class CloudAccountDialog extends Vue {
   readonly initialMode!: 'sign-in' | 'sign-up'
 
   mode: 'sign-in' | 'sign-up' = 'sign-in'
+  age = ''
   name = ''
   email = ''
   password = ''
+  /** Set once the password was right and the account wants its authenticator code. */
+  mfaToken = ''
+  code = ''
   showPassword = false
   busy = false
   error: string | null = null
+  ageError = ''
   icons = { eye: '$eye', eyeOff: '$eyeOff' }
 
   redirecting = false
+
+  /** False on the printer's plain-HTTP address: no form, one link to the console (KAN-2192). */
+  sessionAllowed = cloudSessionAllowed()
 
   created () {
     this.mode = this.initialMode
@@ -128,18 +199,45 @@ export default class CloudAccountDialog extends Vue {
 
   async submit () {
     this.error = null
+    this.ageError = ''
+    if (this.mode === 'sign-up') {
+      this.ageError = validateAge(this.age)
+      if (this.ageError) return
+    }
     this.busy = true
     try {
-      if (this.mode === 'sign-in') await signIn(this.email, this.password)
-      else await signUp(this.email, this.password, this.name)
+      if (this.mfaToken) {
+        await signInWithCode(this.mfaToken, this.code)
+      } else if (this.mode === 'sign-in') {
+        const mfa = await signIn(this.email, this.password)
+        if (mfa) {
+          // The password was right; the code finishes it.
+          this.password = ''
+          this.mfaToken = mfa
+          this.code = ''
+          return
+        }
+      } else {
+        await signUp(this.email, this.password, this.name, Number(this.age))
+      }
       this.password = ''
+      this.code = ''
+      this.mfaToken = ''
       this.$emit('signed-in')
       this.open = false
     } catch (error) {
       this.error = (error as Error).message
+      // A wrong code is the console's 401 as is an expired sign-in: the box
+      // stays either way, and "Start again" is there for the expired one.
+      if (this.mfaToken) this.code = ''
     } finally {
       this.busy = false
     }
   }
+}
+
+function validateAge (age: string): string {
+  if (!/^\d+$/.test(age)) return 'Enter your age as a whole number.'
+  return Number(age) >= 13 && Number(age) <= 120 ? '' : 'Age must be between 13 and 120.'
 }
 </script>

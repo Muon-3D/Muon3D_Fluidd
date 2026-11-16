@@ -67,11 +67,11 @@
       >
         <app-btn-toolhead-move
           :color="(!xyHomed) ? 'primary' : undefined"
-          :loading="hasWait($waits.onHomeXY)"
+          :loading="hasWait($waits.onHomeAll)"
           :disabled="!klippyReady || printerPrinting"
           :tooltip="$t('app.tool.tooltip.home_xy')"
           icon="$home"
-          @click="sendGcode('G28 X Y', $waits.onHomeXY)"
+          @click="homeAll"
         />
       </v-col>
       <v-col
@@ -190,16 +190,18 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
+import DevGuardMixin from '@/mixins/dev-guard'
 import ToolheadMixin from '@/mixins/toolhead'
 
 type Axis = 'X' | 'Y' | 'Z'
 
 @Component({})
-export default class ToolheadControlCross extends Mixins(StateMixin, ToolheadMixin) {
+export default class ToolheadControlCross extends Mixins(StateMixin, ToolheadMixin, DevGuardMixin) {
   moveLength: number | null = null
 
   get forceMove (): boolean {
-    return this.$store.state.config.uiSettings.toolhead.forceMove as boolean
+    // FORCE_MOVE is developer-mode only (Klipper#112): outside it the head moves as normal.
+    return !this.devOnlyLocked && this.$store.state.config.uiSettings.toolhead.forceMove as boolean
   }
 
   get hasRoundBed (): boolean {

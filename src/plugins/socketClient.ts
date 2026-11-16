@@ -18,12 +18,26 @@ import {
   type PrinterSocket
 } from '@/services/managed-transport'
 import axios from 'axios'
+import { cloudState } from '@/services/muon-cloud/state'
+import { headStatus } from '@/services/control/safe-move'
 
 /** The longest wait between two tries to reconnect. */
 const MAX_RECONNECT_DELAY_MS = 30_000
 
 /** How long the one-shot token request may take before the try counts as failed. */
 const TOKEN_TIMEOUT_MS = 5_000
+
+/**
+ * The token endpoint said there is no one-shot token for this caller, rather
+ * than that the caller must sign in (401). Behind the muon-link Bluetooth
+ * bridge the printer refuses `/access/oneshot_token` for every role (403):
+ * the link authenticates the session, so the socket opens without one. A
+ * Moonraker with no authorization component answers 404 and needs no token
+ * either. The printer still decides whether the socket may open.
+ */
+function tokenNotOffered (status: number | undefined): boolean {
+  return status === 403 || status === 404
+}
 
 export class WebSocketClient {
   url = ''
@@ -35,6 +49,8 @@ export class WebSocketClient {
   reconnectCount = 0
   logPrefix = '[WEBSOCKET]'
   requests: Array<Request> = []
+  /** The next JSON-RPC id. Starts somewhere random so a reload doesn't reuse a recent one. */
+  private nextRequestId = 10000 + Math.floor(Math.random() * 80000)
   store: any | null = null
   pingTimeout: any
   deadTimeout: any
@@ -81,9 +97,10 @@ export class WebSocketClient {
       !this.store.state.socket.disconnecting && // We arent about to disonnect and..
       !this.store.state.files.download // We're not in the middle of a download.
     ) {
-      this.store.commit('socket/setSocketOpen', true)
+      // Moonraker talks several times a second: only a change goes to the store.
+      if (!this.store.state.socket.open) this.store.commit('socket/setSocketOpen', true)
       if (this.store.state.socket.stalled) this.store.commit('socket/setSocketStalled', false)
-      this.store.dispatch('socket/onSocketConnecting', false)
+      if (this.store.state.socket.connecting) this.store.dispatch('socket/onSocketConnecting', false)
     }
     this.armSilenceTimers()
   }
@@ -128,6 +145,7 @@ export class WebSocketClient {
 
   close () {
     this.attempt++
+    this.purgeRequests()
     this.cancelRetry()
     clearTimeout(this.pingTimeout)
     clearTimeout(this.deadTimeout)
@@ -142,31 +160,42 @@ export class WebSocketClient {
   async connect (url?: string) {
     if (url) this.url = url
     const attempt = ++this.attempt
+    this.purgeRequests()
     const target = this.url
     this.cache = null
     this.closing = false
     this.cancelRetry()
 
+    let token: string | null
     try {
       const response = await httpClientActions.accessOneshotTokenGet({ timeout: TOKEN_TIMEOUT_MS })
-      // Fluidd moved on while the token came: another printer, or closed.
-      if (attempt !== this.attempt || target !== this.url) return
-
-      const token = response.data.result
-
-      // Good. Move on with setting up the socket.
-      if (this.store) this.store.dispatch('socket/onSocketConnecting', true)
-      this.bindConnection(new WebSocket(`${this.url}?token=${token}`))
+      token = response.data.result
     } catch (error: unknown) {
       if (attempt !== this.attempt) return
-      // Bad. If this is a 401, then don't retry. Otherwise do.
-      if (
-        !axios.isAxiosError(error) ||
-        error.response?.status !== 401
-      ) {
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined
+      // Bad. If this is a 401, then don't retry.
+      if (status === 401) return
+      if (!tokenNotOffered(status)) {
         this.reconnect()
+        return
       }
+      // No one-shot token to be had, and none needed: open without one.
+      token = null
     }
+    // Fluidd moved on while the token came: another printer, or closed.
+    if (attempt !== this.attempt || target !== this.url) return
+
+    // Good. Move on with setting up the socket.
+    if (this.store) this.store.dispatch('socket/onSocketConnecting', true)
+    let socket: WebSocket
+    try {
+      socket = new WebSocket(token === null ? this.url : `${this.url}?token=${token}`)
+    } catch {
+      // A browser that won't open this address (mixed content, a bad URL): try again later.
+      this.reconnect()
+      return
+    }
+    this.bindConnection(socket)
   }
 
   /**
@@ -178,14 +207,21 @@ export class WebSocketClient {
     reconnect?: () => Promise<PrinterSocket>
   ) {
     this.attempt++
+    this.purgeRequests()
     this.closing = false
     this.cancelRetry()
+    // A new route (auto mode failing over, or a chosen route) starts its own backoff:
+    // the old route's failed tries say nothing about this one (#370).
+    this.reconnectCount = 0
     this.bindConnection(connection, reconnect ?? null)
   }
 
   /** Ends an adopted session without allowing its close event to reconnect. */
   releaseTransportSocket (closeConnection = true) {
+    // A printer switch or a released transport: the head position held is the old one's.
+    headStatus.fresh = false
     this.attempt++
+    this.purgeRequests()
     this.cancelRetry()
     const connection = this.connection
     this.connection = null
@@ -238,6 +274,7 @@ export class WebSocketClient {
     consola.debug(`${this.logPrefix} Connection closed:`, event)
     clearTimeout(this.pingTimeout)
     clearTimeout(this.deadTimeout)
+    this.purgeRequests()
     const asked = this.closing
     this.closing = false
     if (this.store) {
@@ -273,10 +310,16 @@ export class WebSocketClient {
       this.requests.splice(requestIndex, 1)
     }
 
+    // A response captured by an earlier connection attempt has no authority
+    // over the newly selected session, even if a transport delivers it late.
+    if (request?.requestContext?.connectionAttempt !== undefined && request.requestContext.connectionAttempt !== this.attempt) return
+
     // Remove a wait if defined.
     if (this.store && request && request.wait && request.wait.length) {
       this.store.commit('wait/setRemoveWait', request.wait)
     }
+
+    this.pong()
 
     if (d.error) {
       if (request) {
@@ -284,10 +327,9 @@ export class WebSocketClient {
       }
       consola.debug(`${this.logPrefix} Response error:`, d.error)
       if (this.store) this.store.dispatch('socket/onSocketError', d.error)
+      request?.resolve?.(undefined)
       return
     }
-
-    this.pong()
 
     if (request) {
       let result = (d.result) ? d.result : d.params
@@ -295,8 +337,9 @@ export class WebSocketClient {
 
       Object.defineProperty(result, '__request__', { enumerable: false, value: request })
       consola.debug(`${this.logPrefix} Response:`, result)
-      if (request.dispatch && this.store) this.store.dispatch(request.dispatch, result)
+      if (request.dispatch && this.store) this.store.dispatch(request.dispatch, request.requestContext ? { payload: result, requestContext: request.requestContext } : result)
       if (request.commit && this.store) this.store.commit(request.commit, result)
+      request.resolve?.(result)
     } else if (d.params && d.params[0]) {
       const [params, eventtime] = d.params
 
@@ -351,6 +394,19 @@ export class WebSocketClient {
     this.retryTimer = null
     this.retryAction = null
     this.retryAt = null
+  }
+
+  /** Forget unanswered RPCs and their loading indicators when a session ends. */
+  private purgeRequests () {
+    if (this.store) {
+      for (const request of this.requests) {
+        if (request.wait?.length) this.store.commit('wait/setRemoveWait', request.wait)
+      }
+    }
+    // Settle their promises too, so nothing waiting on an answer waits forever
+    // (the in-flight G-code count, safe-move.ts, ends with them).
+    for (const request of this.requests) request.resolve?.(undefined)
+    this.requests = []
   }
 
   /** Runs a waiting retry now, from the first step of the backoff. */
@@ -411,11 +467,11 @@ export class WebSocketClient {
     }
 
     if (this.connection?.readyState === PRINTER_SOCKET_OPEN) {
-      // moonraker expects a unique id for us to reference back to when data is returned.
-      const getRandomNumber = (min: number, max: number) => {
-        return Math.floor(Math.random() * (max - min + 1)) + min
-      }
-      const id = getRandomNumber(10000, 99999)
+      // moonraker expects a unique id for us to reference back to when data is
+      // returned. Counted, not random: two pending requests must never share
+      // one, or one's answer would settle the other (a running G28 ending early
+      // for the in-flight G-code count, safe-move.ts).
+      const id = this.nextRequestId++
       const packet: SocketRequest = {
         id,
         method,
@@ -434,11 +490,22 @@ export class WebSocketClient {
         request.params = options.params
       }
       if (options && options.dispatch) request.dispatch = options.dispatch
+      if (options?.captureContext && this.store) {
+        request.requestContext = {
+          apiUrl: this.store.state.config.apiUrl,
+          connectionId: this.store.state.socket.connectionId,
+          printerId: cloudState.activePrinterId,
+          connectionAttempt: this.attempt
+        }
+      }
       if (options && options.commit) request.commit = options.commit
+      const response = new Promise<unknown>(resolve => { request.resolve = resolve })
       this.requests.push(request)
       this.connection.send(JSON.stringify(packet))
+      return response
     } else {
       consola.debug(`${this.logPrefix} Not ready, or closed.`, method, options, this.connection?.readyState)
+      return Promise.resolve(undefined)
     }
   }
 }
@@ -478,6 +545,7 @@ export interface NotifyOptions {
   dispatch?: string;
   commit?: string;
   wait?: string;
+  captureContext?: boolean;
 }
 
 interface Request {
@@ -487,6 +555,8 @@ interface Request {
   commit?: string;
   params?: any;
   wait?: string;
+  resolve?: (result: unknown) => void;
+  requestContext?: { apiUrl: string; connectionId: string | null, printerId: string | null, connectionAttempt: number };
 }
 
 interface SocketRequest {

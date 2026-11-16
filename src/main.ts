@@ -24,7 +24,7 @@ import { InlineSvgPlugin } from 'vue-inline-svg'
 // Init.
 import { appInit } from './init'
 import { initCloud } from './services/muon-cloud/state'
-import { checkCentralSession } from './services/muon-cloud/centralLogin'
+import { checkCentralSession, setPageBusyCheck } from './services/muon-cloud/centralLogin'
 import { activateCloudPrinter, activateLocalPrinter, forgetManagedInstance } from './services/muon-cloud/activate'
 import {
   activeSlug,
@@ -33,6 +33,7 @@ import {
   isPrintersOwnPage,
   learnActiveIdentity,
   openPrinterAt,
+  ownPageHome,
   preferSavedPrinterFor
 } from './services/printer-pages'
 import type { InitConfig } from './store/config/types'
@@ -49,13 +50,22 @@ import App from './App.vue'
 import { LOADER_ID, setLoaderProgress, startupState } from './services/startup/loader'
 import { readSnapshot, renderCachedState } from './services/startup/snapshot'
 import { afterFirstPaint, NO_PREFETCH_PATHS, prefetchRoutes } from './services/startup/idle'
+import { retireProStorage } from './services/retired-storage'
 
 // Register global directives.
 import Blur from '@/directives/blur'
 import { restoreUiStyle } from '@/util/ui-style'
+import { followStartup } from '@/services/startup/heard'
 import { applyGlassIcons } from '@/util/glass-icons'
+import { followMotionSetting } from '@/services/m1-3d/device-settings'
+
+// KAN-2198: no automatic sign-in trip away from a printer's page while a file is uploading to it.
+setPageBusyCheck(() => store.state.files.uploads.length > 0)
 
 // The entry is evaluated: the loader's next mark (KAN-525).
+retireProStorage()
+// Library run reporting loads after first paint: it never delays startup (KAN-836).
+afterFirstPaint(() => { import('./services/library/runs').then(m => m.observePrintRuns(store)) })
 setLoaderProgress(0.8)
 
 // What the printers last showed goes up while the socket connects; the
@@ -108,6 +118,9 @@ preferSavedPrinterFor(window.location.pathname, Globals.LOCAL_INSTANCES_STORAGE_
 const restoredUiStyle = restoreUiStyle()
 store.commit('config/setRestoredUiStyle', restoredUiStyle)
 applyGlassIcons(vuetify.framework.icons.values as unknown as Record<string, unknown>, restoredUiStyle === 'glass')
+
+followMotionSetting()
+followStartup(store)
 
 const mountApp = () => {
   Vue.config.productionTip = false
@@ -173,6 +186,13 @@ if (/^\/(?:setup|sign-in)(?:\/|$)/.test(window.location.pathname)) {
 
       // The address names the printer Fluidd shows (/boxwood-367a/jobs).
       installPrinterPages(router, { activateLocalPrinter, activateCloudPrinter })
+
+      // A printer's own address opens that printer's page from the first frame:
+      // the list of every printer must never draw while the account restores.
+      if (config.apiConnected && config.apiAuthenticated) {
+        const home = ownPageHome(window.location.pathname, store.state.config.apiUrl, activeSlug())
+        if (home) window.history.replaceState(window.history.state, '', home + window.location.search + window.location.hash)
+      }
 
       mountApp()
 

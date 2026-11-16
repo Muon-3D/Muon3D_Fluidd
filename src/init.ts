@@ -13,8 +13,10 @@ import promiseAny from './util/promise-any'
 import sleep from './util/sleep'
 import { setAuxApiBasePath } from './aux_api/useAuxApi'
 import { resetSetupState } from './services/muon-setup/state'
+import { resetGates } from './services/gates/state'
 import { isManagedApiUrl } from './services/muon-cloud/origin'
 import { activeSlug, correctAddress, isActiveSlug, learnActiveIdentity } from './services/printer-pages'
+import { configureModelsTransport } from './services/library/transport'
 
 // Load API configuration
 /**
@@ -26,7 +28,25 @@ import { activeSlug, correctAddress, isActiveSlug, learnActiveIdentity } from '.
  * 4. Resume Vue Init
  */
 
+/**
+ * The answer to the config.json request index.html starts while the page is
+ * still being parsed. Taken once; null when there was none or it failed, and
+ * the caller then asks for itself.
+ */
+export const takePreloadedHostConfig = async (): Promise<HostConfig | null> => {
+  const pending = window.__muonHostConfig
+  window.__muonHostConfig = undefined
+  if (!pending) return null
+  const config = await pending.catch(() => null)
+  return config && typeof config === 'object' && !Array.isArray(config) ? config : null
+}
+
 const getHostConfig = async () => {
+  const preloaded = await takePreloadedHostConfig()
+  if (preloaded) {
+    consola.debug('Loaded web host configuration', preloaded)
+    return preloaded
+  }
   const hostConfigResponse = await httpClientActions.get<HostConfig>(`${import.meta.env.BASE_URL}config.json`)
   if (hostConfigResponse && hostConfigResponse.data) {
     consola.debug('Loaded web host configuration', hostConfigResponse.data)
@@ -106,7 +126,9 @@ export const getApiConfig = async (hostConfig: HostConfig): Promise<ApiConfig | 
     const instances = JSON.parse(localStorage[Globals.LOCAL_INSTANCES_STORAGE_KEY]) as InstanceConfig[]
     if (instances && instances.length) {
       for (const config of instances) {
-        if (config.active) {
+        // I-133: a saved plain-http printer is never connected by itself from the
+        // https site (mixed content drops the lock). It opens on a click.
+        if (config.active && !(document.location.protocol === 'https:' && /^http:/i.test(config.apiUrl))) {
           consola.debug('API Config from Local Storage', config)
           return startingPrinter(config, ownEndpoint(hostConfig))
         }
@@ -253,11 +275,15 @@ export const appInit = async (apiConfig?: ApiConfig, hostConfig?: HostConfig, op
   // The setup state lives outside Vuex; drop the previous printer's too, or a
   // higher rev from it would win over the new printer's notifications.
   resetSetupState()
+  // And the gates', so one printer's answer never reads as the next one's.
+  resetGates()
 
   // Load the Host Config
   if (!hostConfig) {
     hostConfig = await getHostConfig()
   }
+
+  configureModelsTransport(hostConfig)
 
   if (!(Globals.LOCAL_INSTANCES_STORAGE_KEY in localStorage)) {
     for (const endpoint of hostConfig.endpoints) {

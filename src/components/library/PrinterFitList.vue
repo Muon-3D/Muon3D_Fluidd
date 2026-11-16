@@ -7,7 +7,10 @@
       v-if="!rows.length"
       class="fit-list__none"
     >
-      There are no printers in your account yet. Link one from Printers.
+      There are no printers in your account yet.
+      <router-link to="/">
+        Add a printer ›
+      </router-link>
     </p>
     <div
       v-for="row in rows"
@@ -32,26 +35,24 @@
       >
         {{ row.reslice }}
       </button>
-      <button
-        v-else-if="row.action === 'queue'"
-        type="button"
-        class="lib-btn lib-btn--sm"
-        @click="$emit('print', row)"
-      >
-        Queue it
-      </button>
+      <!-- A printer that can print this now: Print, here, on that printer
+           (KAN-2021, Jack: "your own print's page has a direct Print button"). -->
       <button
         v-else-if="row.action === 'print'"
         type="button"
-        class="lib-pill lib-pill--ok fit-list__ready"
+        class="lib-btn lib-btn--sm lib-btn--pri"
+        data-tid="library-fit-print"
         :aria-label="`Print on ${row.name}`"
         @click="$emit('print', row)"
       >
-        <span class="lib-dot" />{{ row.status }}
+        Print
       </button>
+      <!-- Anything else it can do there, as a pill: the page's Print on… does it. -->
       <span
         v-else
         class="lib-pill"
+        :class="{ 'lib-pill--run': row.action === 'queue' }"
+        data-tid="library-fit-status"
       >{{ row.status }}</span>
     </div>
   </div>
@@ -64,8 +65,9 @@ import PrinterRowsMixin from '@/mixins/printer-rows'
 
 /**
  * A print's "Your printers": each account printer and whether the print
- * fits it now (printer-rows.ts). Ready and Queue open Print on… for that
- * printer; Re-slice opens Slice on it.
+ * fits it now (printer-rows.ts). A printer that is ready has a Print button
+ * that prints there directly; Queue and Offline are pills (the page's
+ * Print on… handles those). Re-slice opens Slice on that printer.
  */
 @Component({ components: { PrinterThumb } })
 export default class PrinterFitList extends Mixins(PrinterRowsMixin) {}
@@ -89,10 +91,5 @@ export default class PrinterFitList extends Mixins(PrinterRowsMixin) {}
     margin: 0;
     color: var(--m3d-text-muted);
     font-size: 13px;
-  }
-
-  .fit-list__ready {
-    border: 0;
-    cursor: pointer;
   }
 </style>

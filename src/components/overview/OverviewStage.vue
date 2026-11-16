@@ -7,6 +7,7 @@
       class="ov-stage__m1"
       :state="stageState"
       :shift="busy && jobThumbnail ? 0.12 : 0"
+      parts
     />
     <span
       v-if="badge"

@@ -21,11 +21,15 @@
  * The console's own sign-in page, which `/authorize` sends a browser to with
  * `continue`, is `views/SignIn.vue`; `safeContinue` below is its guard.
  */
-import { CLIENT_ID, cloudApi, cloudBaseUrl, sameConsole, storedToken, storeToken, storeRefreshToken } from './api'
+import { CONSOLE_ORIGINS, clientId, cloudApi, cloudBaseUrl, cloudSessionAllowed, sameConsole, setSessionRecovery, storedRefreshToken, storedToken, storeRefreshToken, storeToken } from './api'
 import { challengeFor, newState, newVerifier } from './pkce'
+import { refreshServiceWorker } from '@/util/service-worker-update'
+import { isPrinterSecureOrigin } from '@/services/secure-origin'
 
 const PENDING_KEY = 'muon.cloud.authorize'
 const SILENT_KEY = 'muon.cloud.silent'
+/** When this tab last came back from `/authorize` with a code: a number, nothing of the account. */
+const RETURNED_KEY = 'muon.cloud.returned'
 // Explicit sign-in/out supersedes any asynchronous silent check in flight.
 let signInRevision = 0
 
@@ -55,8 +59,17 @@ function session (): Storage | null {
 
 /** Whether this page signs in through the central login: the console serves it. */
 export function centralLoginEnabled (location: Pick<Location, 'origin' | 'protocol' | 'hostname'> = window.location): boolean {
+  // A printer's own secure address signs in through the console as the
+  // `printer-local` client (KAN-2198); its redirect URI is that address.
+  // Only to a real console: with none configured the base URL is the printer itself.
+  if (isPrinterSecureOrigin(location)) return CONSOLE_ORIGINS.includes(cloudBaseUrl())
   if (cloudBaseUrl() !== location.origin) return false
-  return location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)
+  return cloudSessionAllowed(location)
+}
+
+/** Whether the console itself serves this page, for screens that only make sense there (not the printer origin). */
+export function consoleServesPage (location: Pick<Location, 'origin' | 'protocol' | 'hostname'> = window.location): boolean {
+  return !isPrinterSecureOrigin(location) && cloudBaseUrl() === location.origin && cloudSessionAllowed(location)
 }
 
 /** The registered redirect URI: the console's root, where Fluidd is served. */
@@ -67,7 +80,7 @@ export function redirectUri (origin: string = window.location.origin): string {
 export function authorizeUrl (base: string, params: { redirectUri: string, challenge: string, state: string, silent: boolean }): string {
   const query = new URLSearchParams({
     response_type: 'code',
-    client_id: CLIENT_ID,
+    client_id: clientId(),
     redirect_uri: params.redirectUri,
     code_challenge: params.challenge,
     code_challenge_method: 'S256',
@@ -99,7 +112,10 @@ function currentAddress (): string {
  * again in a loop.
  */
 export async function startCentralSignIn (options: { silent: boolean, returnTo?: string }, go: (url: string) => void = (url) => window.location.assign(url)): Promise<void> {
-  go(await prepareAuthorize(options))
+  const url = await prepareAuthorize(options)
+  // An older worker may answer /authorize with its cached printers page.
+  if (!options.silent) await refreshServiceWorker()
+  go(url)
 }
 
 /**
@@ -140,6 +156,9 @@ export function isAuthCallback (search: string): boolean {
 /** Whether to try a background `prompt=none` check on this load. */
 export function shouldTrySilentSignIn (location: Pick<Location, 'origin' | 'protocol' | 'hostname' | 'search' | 'pathname'> = window.location): boolean {
   if (!centralLoginEnabled(location)) return false
+  // The silent check is a same-origin fetch of the console's `/authorize`; a
+  // printer's address is another origin, so it signs in with a top-level trip.
+  if (isPrinterSecureOrigin(location)) return false
   if (storedToken()) return false
   if (session()?.getItem(SILENT_KEY)) return false
   // A page's own code too (/join?code=): that page signs in for itself.
@@ -160,12 +179,23 @@ export function shouldTrySilentSignIn (location: Pick<Location, 'origin' | 'prot
  */
 export async function checkCentralSession (): Promise<void> {
   if (!shouldTrySilentSignIn() || session()?.getItem(PENDING_KEY)) return
+  session()?.setItem(SILENT_KEY, '1')
+  await silentSignIn(null)
+}
+
+/**
+ * One `/authorize?prompt=none` fetch and, if it answers with a code, the
+ * exchange. True when a new pair was stored. `failedRefresh` is for a session
+ * whose refresh was refused: the dead pair is still stored then, and is
+ * replaced, but only while it is still the stored one, so a sign-out or
+ * another sign-in in the meantime is never overwritten.
+ */
+async function silentSignIn (failedRefresh: string | null): Promise<boolean> {
   const revision = ++signInRevision
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 5000)
-  const current = () => revision === signInRevision && !controller.signal.aborted && !storedToken()
+  const current = () => revision === signInRevision && !controller.signal.aborted && (failedRefresh === null ? !storedToken() : storedRefreshToken() === failedRefresh)
   try {
-    session()?.setItem(SILENT_KEY, '1')
     const verifier = newVerifier()
     const state = newState()
     const base = cloudBaseUrl()
@@ -185,22 +215,50 @@ export async function checkCentralSession (): Promise<void> {
     })
     // Only headers and the URL matter. Do not download/parse another app.
     await response.body?.cancel()
-    if (!current() || cloudBaseUrl() !== base || !response.ok || !response.redirected) return
+    if (!current() || cloudBaseUrl() !== base || !response.ok || !response.redirected) return false
     const url = new URL(response.url)
-    if (`${url.origin}${url.pathname}` !== callback || url.hash) return
+    if (`${url.origin}${url.pathname}` !== callback || url.hash) return false
     const query = url.searchParams
-    if (query.getAll('state').length !== 1 || query.get('state') !== state) return
-    if (query.getAll('iss').length !== 1 || !sameConsole(query.get('iss')!, base)) return
+    if (query.getAll('state').length !== 1 || query.get('state') !== state) return false
+    if (query.getAll('iss').length !== 1 || !sameConsole(query.get('iss')!, base)) return false
     // login_required and every other OAuth error leave sign-in to the user.
-    if (query.has('error') || query.getAll('code').length !== 1 || !query.get('code')) return
+    if (query.has('error') || query.getAll('code').length !== 1 || !query.get('code')) return false
     const tokens = await cloudApi.exchangeCode(query.get('code')!, callback, verifier, controller.signal)
-    if (!current() || cloudBaseUrl() !== base) return
+    if (!current() || cloudBaseUrl() !== base) return false
     storeToken(tokens.access_token)
     storeRefreshToken(tokens.refresh_token)
-  } catch { /* offline, timeout, denied or unsupported: keep the app usable */ } finally {
+    return true
+  } catch {
+    // offline, timeout, denied or unsupported: keep the app usable
+    return false
+  } finally {
     window.clearTimeout(timeout)
   }
 }
+
+/** Least time between two recoveries in a tab, so a console that keeps refusing is not asked in a loop. */
+const RECOVERY_GAP_MS = 60000
+let lastRecovery = 0
+
+/**
+ * After the console refused a refresh: the browser session may still be
+ * alive, and `/authorize?prompt=none` then issues a new pair without a
+ * sign-in page (KAN-932). Once per minute per tab; only where the console
+ * serves this page.
+ */
+export async function recoverCentralSession (failedRefresh: string, now: number = Date.now()): Promise<boolean> {
+  if (!centralLoginEnabled() || isPrinterSecureOrigin()) return false
+  if (lastRecovery && now - lastRecovery < RECOVERY_GAP_MS) return false
+  lastRecovery = now
+  return silentSignIn(failedRefresh)
+}
+
+/** For tests. */
+export function resetRecovery (): void {
+  lastRecovery = 0
+}
+
+setSessionRecovery((failedRefresh) => recoverCentralSession(failedRefresh))
 
 /**
  * Reads a return from `/authorize` off the address, if this is one, and
@@ -234,12 +292,59 @@ export function takeCallback (location: Pick<Location, 'search'> = window.locati
   }
 
   const error = query.get('error')
+  if (error === 'access_denied' && isPrinterSecureOrigin()) return { outcome: 'error', message: ACCESS_DENIED_MESSAGE, returnTo }
   if (error === 'login_required' && pending.silent) return { outcome: 'signed_out', returnTo }
   if (error) return { outcome: 'error', message: query.get('error_description') || `Sign-in failed (${error}).`, returnTo }
 
   const code = query.get('code') ?? ''
   if (!code) return { outcome: 'error', message: 'Sign-in failed.', returnTo }
+  try {
+    store?.setItem(RETURNED_KEY, String(Date.now()))
+  } catch { /* no storage */ }
   return { outcome: 'code', code, verifier: pending.verifier, returnTo }
+}
+
+/** What a printer's address says when the console refuses the account for that printer. */
+export const ACCESS_DENIED_MESSAGE = 'This account cannot use this printer. Sign in with the printer\'s owner account, or open Muon Control.'
+
+/** Least time between a return from sign-in and the next automatic trip. */
+export const RESIGNIN_GAP_MS = 60000
+
+/**
+ * A printer's address holds no refresh token, so when its 15-minute access
+ * token runs out or is refused the page signs in again with a top-level trip.
+ * Not if a trip came back within the last minute: that token was refused as
+ * soon as it was issued, and another trip would only loop. The page then
+ * shows the signed-out state. Not while a file is going up to the printer
+ * either: leaving the page would cut the upload off, so the page stays,
+ * signed out, and the account button signs in. True when a trip was started.
+ */
+export async function signInAgainOnPrinterOrigin (now: number = Date.now(), go?: (url: string) => void, busy: () => Promise<boolean> = uploadInProgress): Promise<boolean> {
+  if (!isPrinterSecureOrigin() || !centralLoginEnabled()) return false
+  const returned = Number(session()?.getItem(RETURNED_KEY) ?? 0)
+  if (returned && now - returned < RESIGNIN_GAP_MS) return false
+  if (await busy()) return false
+  await startCentralSignIn({ silent: false }, go)
+  return true
+}
+
+let pageBusy: () => boolean = () => false
+
+/**
+ * Tells this module how to ask whether the page is in the middle of something
+ * a top-level trip would cut off (a file uploading to the printer). The page
+ * sets it at start; this module does not import the store (it would be a cycle).
+ */
+export function setPageBusyCheck (check: () => boolean) {
+  pageBusy = check
+}
+
+async function uploadInProgress (): Promise<boolean> {
+  try {
+    return pageBusy()
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -266,9 +371,20 @@ export function safeContinue (value: unknown): string | null {
 export function handoffUrl (handoff: string, next: string | null): string {
   const base = cloudBaseUrl()
   const given = new URL(handoff, base)
-  const url = sameConsole(given.origin, base) ? new URL(`${given.pathname}${given.search}`, base) : given
+  if (!sameConsole(given.origin, base)) throw new Error('The sign-in handoff came from the wrong origin.')
+  const url = new URL(`${given.pathname}${given.search}`, base)
   url.searchParams.set('next', next ?? '/')
   return url.toString()
+}
+
+/**
+ * Signed out: no silent sign-in in this tab until the person signs in
+ * again. Also all that signing out on a printer's own address does, where
+ * the console's session is not this page's to end (KAN-2756).
+ */
+export function holdSilentSignIn (): void {
+  signInRevision++
+  session()?.setItem(SILENT_KEY, '1')
 }
 
 /**
@@ -276,13 +392,12 @@ export function handoffUrl (handoff: string, next: string | null): string {
  * session and every session issued from it, and comes back here.
  */
 export function signOutCentral (doc: Document = document): void {
-  signInRevision++
-  session()?.setItem(SILENT_KEY, '1')
+  holdSilentSignIn()
   const form = doc.createElement('form')
   form.method = 'POST'
   form.action = `${cloudBaseUrl()}/logout`
   form.style.display = 'none'
-  for (const [name, value] of Object.entries({ client_id: CLIENT_ID, post_logout_redirect_uri: redirectUri() })) {
+  for (const [name, value] of Object.entries({ client_id: clientId(), post_logout_redirect_uri: redirectUri() })) {
     const input = doc.createElement('input')
     input.type = 'hidden'
     input.name = name

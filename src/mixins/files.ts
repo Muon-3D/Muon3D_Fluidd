@@ -5,6 +5,34 @@ import type { AxiosRequestConfig, AxiosProgressEvent } from 'axios'
 import { httpClientActions } from '@/api/httpClientActions'
 import type { FileWithPath } from '@/types'
 import consola from 'consola'
+import { EventBus } from '@/eventBus'
+
+/**
+ * The words a failed upload is reported with: Moonraker's or muon-link's own
+ * message when the printer answered, else the transport's error text (for
+ * example the relay's "sending stopped by peer: error 0").
+ */
+export function uploadErrorText (error: unknown): string {
+  const response = (error as { response?: { status?: number, data?: unknown } } | null)?.response
+  if (response) {
+    const data = response.data as { error?: { message?: unknown } } | string | undefined
+    const message = typeof data === 'string'
+      ? data.trim()
+      : typeof data?.error?.message === 'string' ? data.error.message : ''
+    if (message) return `${message} (HTTP ${response.status})`
+    if (response.status) return `the printer answered HTTP ${response.status}`
+  }
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === 'string' && error) return error
+  return 'unknown error'
+}
+
+type UploadResponse = ReturnType<typeof httpClientActions.serverFilesUploadPost>
+
+// A picker/drop action can be observed by more than one mounted upload surface.
+// The File object identifies that one browser action; forget it after settlement
+// so a later, deliberate upload or retry still reaches the printer.
+const uploadsInFlight = new WeakMap<File, Map<string, UploadResponse>>()
 
 @Component
 export default class FilesMixin extends Vue {
@@ -175,7 +203,27 @@ export default class FilesMixin extends Vue {
    * @param andPrint If we should attempt to print this file or not.
    * @param options Axios request options
    */
-  async uploadFile (file: File, path: string, root: string, andPrint: boolean, options?: AxiosRequestConfig) {
+  uploadFile (file: File, path: string, root: string, andPrint: boolean, options?: AxiosRequestConfig): UploadResponse {
+    const destination = `${root}\0${path}\0${andPrint}`
+    let destinations = uploadsInFlight.get(file)
+    const existing = destinations?.get(destination)
+    if (existing) return existing
+
+    if (!destinations) {
+      destinations = new Map()
+      uploadsInFlight.set(file, destinations)
+    }
+
+    const upload = this.performUploadFile(file, path, root, andPrint, options)
+    destinations.set(destination, upload)
+    upload.finally(() => {
+      destinations?.delete(destination)
+      if (!destinations?.size) uploadsInFlight.delete(file)
+    }).catch(() => {})
+    return upload
+  }
+
+  private async performUploadFile (file: File, path: string, root: string, andPrint: boolean, options?: AxiosRequestConfig) {
     const filepath = path
       ? `${path}/${file.name}`
       : file.name
@@ -235,9 +283,10 @@ export default class FilesMixin extends Vue {
   }
 
   // Upload some files.
-  async uploadFiles (files: FileList | File[] | FileWithPath[], path: string, root: string, andPrint: boolean) {
+  async uploadFiles (files: FileList | File[] | FileWithPath[], path: string, root: string, andPrint: boolean, canContinue: () => boolean = () => true): Promise<string[] | false> {
+    const pendingFiles = Array.from(files as ArrayLike<File | FileWithPath>)
     // For each file, adds the associated state.
-    for (const file of files) {
+    for (const file of pendingFiles) {
       const [fullPath, fileObject] = this.getFullPathAndFile(path, file)
 
       const filepath = fullPath
@@ -259,24 +308,46 @@ export default class FilesMixin extends Vue {
     // So instead, upload sequentially waiting for moonraker to finish
     // processing of each file.
     if (files.length > 1) andPrint = false
-    for (const file of files) {
+    // The files that really reached the printer: a cancelled or failed one is left out.
+    const uploaded: string[] = []
+    for (const [index, file] of pendingFiles.entries()) {
       const [fullPath, fileObject] = this.getFullPathAndFile(path, file)
 
       const filepath = fullPath
         ? `${fullPath}/${fileObject.name}`
         : fileObject.name
 
+      // A caller whose commands belong to a captured printer/account checks
+      // again after every awaited upload, before the next request is sent.
+      if (!canContinue()) {
+        for (const remaining of pendingFiles.slice(index)) {
+          const [remainingPath, remainingFile] = this.getFullPathAndFile(path, remaining)
+          this.$store.dispatch('files/removeFileUpload', remainingPath ? `${remainingPath}/${remainingFile.name}` : remainingFile.name)
+        }
+        return false
+      }
+
       const fileState = this.$store.state.files.uploads.find((u: FilesUpload) => u.filepath === filepath)
 
       if (fileState && !fileState?.cancelled) {
         try {
           await this.uploadFile(fileObject, fullPath, root, andPrint)
+          uploaded.push(filepath)
+          EventBus.$emit(`Uploaded ${fileObject.name}`, { type: 'success', timeout: 4000 })
         } catch (error: unknown) {
           consola.error('[FileUpload] file', error)
+          // A cancelled upload was the user's choice, not a failure.
+          const cancelled = this.$store.state.files.uploads.find((u: FilesUpload) => u.filepath === filepath)?.cancelled ||
+            (error as { name?: string, code?: string } | null)?.name === 'CanceledError' ||
+            (error as { code?: string } | null)?.code === 'ERR_CANCELED'
+          if (!cancelled) {
+            EventBus.$emit(`Upload of ${fileObject.name} failed: ${uploadErrorText(error)}`, { type: 'error', timeout: -1 })
+          }
         }
       } else {
         this.$store.dispatch('files/removeFileUpload', filepath)
       }
     }
+    return uploaded
   }
 }

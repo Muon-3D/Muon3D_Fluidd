@@ -32,7 +32,7 @@
       <a :href="url">Open its camera URL</a>
     </template>
     <template v-else>
-      This printer doesn't publish a camera Fluidd can show.
+      This printer doesn't publish a camera Control can show.
     </template>
   </p>
 </template>

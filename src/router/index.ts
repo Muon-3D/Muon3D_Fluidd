@@ -3,6 +3,7 @@ import VueRouter, { type NavigationGuard, type RouteConfig, type Route } from 'v
 import { applyLegacyHash } from './legacyHash'
 import { readSignedOut } from '@/services/account/signed-out-note'
 import { activeSlugNow, foreignSlugNow } from './printerSlugSource'
+import { noteAccountEntry } from '@/services/account/came-from'
 import { PRINTER_PAGE_PATHS } from './printerPagePaths'
 import { ROUTE_SLUG_PATTERN } from '@/services/printer-pages/slug'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
@@ -32,6 +33,7 @@ const Login = () => import('@/views/Login.vue')
 const Icons = () => import('@/views/Icons.vue')
 const LinkLanding = () => import('@/views/LinkLanding.vue')
 const JoinLanding = () => import('@/views/JoinLanding.vue')
+const PrintHandoff = () => import('@/views/PrintHandoff.vue')
 
 Vue.use(VueRouter)
 
@@ -68,7 +70,7 @@ const defaultRouteConfig: Partial<RouteConfig> = {
 }
 
 function foreignPageRedirect (to: Route): string | null {
-  return foreignSlugNow(to.params.printer) && !['Dashboard', 'Jobs', 'Slice', 'Camera'].includes(String(to.name))
+  return foreignSlugNow(to.params.printer) && !['Overview', 'Jobs', 'Slice', 'Camera'].includes(String(to.name))
     ? `/${to.params.printer}`
     : null
 }
@@ -78,8 +80,14 @@ const P = `/:printer(${ROUTE_SLUG_PATTERN})`
 
 const printerRoutes: Array<RouteConfig> = [
   {
+    path: `${P}/print`,
+    name: 'Print hand-off',
+    component: PrintHandoff,
+    meta: { printerIndependent: true, frame: 'printer' }
+  },
+  {
     path: P,
-    name: 'Dashboard',
+    name: 'Overview',
     component: Overview,
     ...defaultRouteConfig
   },
@@ -169,7 +177,11 @@ const printerRoutes: Array<RouteConfig> = [
       printerIndependent: true,
       keepOnPrinterSwitch: true,
       // The printer's page all the same: the rail and the E-STOP stay (KAN-511).
-      frame: 'printer'
+      frame: 'printer',
+      // The slicer is framed with no Control layout mode (KAN-550).
+      noMode: true,
+      // The slicer fills the page under the bar, beside the rail.
+      fullPage: true
     }
   },
   {
@@ -196,16 +208,12 @@ const printerRoutes: Array<RouteConfig> = [
     }
   },
   {
-    // Your account (KAN-532), the account's like the Library, so the same
-    // whichever printer is open, drawn beside its rail. Lazy: the first load
-    // doesn't carry it.
+    // Your account (KAN-532) is its own top-level page, never inside a
+    // printer's view (Jack, 6 Nov): an old printer-scoped address opens it
+    // there. The page keeps a way back to the printer that is open.
     path: `${P}/account/:section?`,
-    name: 'Account',
-    component: () => import('@/views/Account.vue'),
-    meta: {
-      printerIndependent: true,
-      frame: 'printer'
-    }
+    name: 'Account under a printer',
+    redirect: to => ({ path: to.params.section ? `/account/${to.params.section}` : '/account', query: to.query, hash: to.hash })
   },
   {
     path: `${P}/configure`,
@@ -269,6 +277,12 @@ const LEGACY_PRINTER_PAGES = [
 
 const routes: Array<RouteConfig> = [
   {
+    path: '/admin',
+    name: 'Admin',
+    component: () => import('@/views/Admin.vue'),
+    meta: { printerIndependent: true }
+  },
+  {
     // Every printer: printing now, your groups, those found on this network
     // and those offline, and a welcome with none. A printer's own address
     // opens that printer instead (U2): see main.ts. Loaded on its own: it
@@ -293,6 +307,12 @@ const routes: Array<RouteConfig> = [
   {
     path: '/welcome',
     redirect: '/'
+  },
+  {
+    path: '/print',
+    name: 'Print hand-off (no printer)',
+    component: PrintHandoff,
+    meta: { printerIndependent: true }
   },
   // Your Library (KAN-521) with no printer open: with one, the same pages
   // under that printer, so the rail and the printer stay beside it.
@@ -349,12 +369,11 @@ const routes: Array<RouteConfig> = [
       printerIndependent: true
     }
   },
-  // Your account (KAN-532) with no printer open: with one, under that printer.
+  // Your account (KAN-532): always top-level, with or without a printer open. Lazy.
   {
     path: '/account/:section?',
     name: 'Account (no printer)',
     component: () => import('@/views/Account.vue'),
-    beforeEnter: toLibraryOfActivePrinter,
     meta: {
       printerIndependent: true
     }
@@ -409,7 +428,9 @@ const routes: Array<RouteConfig> = [
     },
     meta: {
       printerIndependent: true,
-      keepOnPrinterSwitch: true
+      keepOnPrinterSwitch: true,
+      noMode: true,
+      fullPage: true
     }
   },
   {
@@ -468,6 +489,9 @@ const router = new VueRouter({
   }
 })
 
+// Account remembers the printer page it was opened from, for its way back.
+router.afterEach((to, from) => noteAccountEntry(to, from))
+
 // Where the navigation in flight is going, for a stale build's reload to land on.
 let pendingTarget: string | undefined
 
@@ -498,6 +522,16 @@ declare module 'vue-router' {
     keepOnPrinterSwitch?: boolean
     /** 'printer': drawn as the printer's page (the rail, the E-STOP) though it works without one. */
     frame?: 'printer'
+    /**
+     * Another app framed here (Slice, later Design), which receives no Control layout mode.
+     * Embedded Slice deliberately has no Control layout mode (KAN-550).
+     */
+    noMode?: boolean
+    /**
+     * Another app framed here fills the page: the whole width and height under the bar, beside the rail, with no
+     * page padding or width limit (App.vue). Slice: one slicer, the same as slicer.muon3d.com's, drawn as the page.
+     */
+    fullPage?: boolean
   }
 }
 

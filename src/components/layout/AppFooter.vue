@@ -7,7 +7,14 @@
     class="footer justify-end"
   >
     <span class="secondary--text">
-      {{ $globals.PRODUCT_NAME }} &middot; built on Fluidd v{{ version }}-{{ hash }}
+      {{ $globals.PRODUCT_NAME }} Control v{{ version }}-{{ hash }} &middot;
+      <!-- The GPL notice for Fluidd, which Control is based on, lives on this page. -->
+      <a
+        :href="licencesUrl"
+        target="_blank"
+        rel="noopener"
+        class="secondary--text"
+      >Licences</a>
     </span>
   </v-footer>
 </template>
@@ -20,6 +27,10 @@ import { Component } from 'vue-property-decorator'
 export default class AppFooter extends Vue {
   get version () {
     return import.meta.env.VERSION
+  }
+
+  get licencesUrl () {
+    return `${import.meta.env.BASE_URL}licences.html`
   }
 
   get hash () {

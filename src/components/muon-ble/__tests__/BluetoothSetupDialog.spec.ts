@@ -1,6 +1,8 @@
 import { shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import BluetoothSetupDialog from '../BluetoothSetupDialog.vue'
+import SetupStepCard from '@/components/muon-setup/SetupStepCard.vue'
+import BluetoothCodeBoxes from '../BluetoothCodeBoxes.vue'
 import type { BleSetupResult } from '@/services/muon-ble/setup'
 import type { NearbyPrinter } from '@/services/muon-ble/nearby'
 import { resetSetupState, setupState } from '@/services/muon-setup/state'
@@ -46,6 +48,7 @@ const flush = async (wrapper: { vm: { $nextTick: () => Promise<void> } }) => {
 function mount (connector: () => Promise<BleSetupResult>) {
   return shallowMount(BluetoothSetupDialog, {
     propsData: { value: true, printer: WALNUT, connector },
+    stubs: { SetupStepCard, BluetoothCodeBoxes, BluetoothSheet: { template: '<div><slot /></div>' } },
     mocks: { $t: (k: string) => k }
   })
 }
@@ -59,7 +62,7 @@ describe('setup over Bluetooth from the hosted page', () => {
   it('connects, then shows the code grouped as the printer shows it', async () => {
     const s = session()
     const wrapper = mount(async () => s.result)
-    expect(tid(wrapper, 'setup-ble-connecting').text()).toContain('Connecting over Bluetooth')
+    expect(tid(wrapper, 'setup-ble-connecting').text()).toContain('Find your printer')
     await flush(wrapper)
     expect(tid(wrapper, 'setup-ble-compare').exists()).toBe(true)
     expect(tid(wrapper, 'ble-sas').text().replace(/\s+/g, '')).toBe('F6QTDH')
@@ -94,22 +97,27 @@ describe('setup over Bluetooth from the hosted page', () => {
   })
 
   it("hangs up when they don't match, and offers the printer's own Wi-Fi", async () => {
-    const s = session()
-    const wrapper = mount(async () => s.result)
-    await flush(wrapper)
-    const reads = s.requests.length
-    await (wrapper.vm as any).theyDiffer()
-    await wrapper.vm.$nextTick()
-    expect(s.close).toHaveBeenCalled()
-    expect(tid(wrapper, 'setup-ble-mismatch').text()).toContain("That wasn't your printer")
-    await new Promise(resolve => setTimeout(resolve, 2500))
-    // Nothing more after hanging up.
-    expect(s.requests.length).toBe(reads)
-    ;(wrapper.vm as any).phase = 'hotspot'
-    await wrapper.vm.$nextTick()
-    expect(tid(wrapper, 'setup-ble-hotspot').text()).toContain('Muon-walnut-8987')
-    expect(tid(wrapper, 'setup-ble-hotspot').text()).toContain('http://10.42.0.1/setup')
-    wrapper.destroy()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const s = session()
+      const wrapper = mount(async () => s.result)
+      await flush(wrapper)
+      const reads = s.requests.length
+      await (wrapper.vm as any).theyDiffer()
+      await wrapper.vm.$nextTick()
+      expect(s.close).toHaveBeenCalled()
+      expect(tid(wrapper, 'setup-ble-mismatch').text()).toContain("That wasn't your printer")
+      await vi.advanceTimersByTimeAsync(2500)
+      // Nothing more after hanging up.
+      expect(s.requests.length).toBe(reads)
+      ;(wrapper.vm as any).phase = 'hotspot'
+      await wrapper.vm.$nextTick()
+      expect(tid(wrapper, 'setup-ble-hotspot').text()).toContain('Muon-walnut-8987')
+      expect(tid(wrapper, 'setup-ble-hotspot').text()).toContain('http://10.42.0.1/setup')
+      wrapper.destroy()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it.each([
@@ -123,6 +131,30 @@ describe('setup over Bluetooth from the hosted page', () => {
     expect(tid(wrapper, 'setup-ble-failed').text()).toContain(title)
     expect(tid(wrapper, 'ble-retry').exists()).toBe(canRetry)
     expect(tid(wrapper, 'ble-use-wifi').exists()).toBe(reason !== 'set-up')
+  })
+
+  it('offers to pair with a printer that is set up already, and hands it over (signed in or not)', async () => {
+    const wrapper = mount(async () => ({ ok: false, reason: 'set-up', message: '' }))
+    await flush(wrapper)
+    const pair = tid(wrapper, 'ble-pair-instead')
+    expect(pair.exists()).toBe(true)
+    expect(pair.text()).toContain('Pair over Bluetooth')
+    await (wrapper.vm as any).pairInstead()
+    expect(wrapper.emitted('pair')?.[0]).toEqual([WALNUT])
+    expect(wrapper.emitted('input')?.[0]).toEqual([false])
+  })
+
+  it('offers no pairing when the printer is not set up, or its id is unknown', async () => {
+    const unreachable = mount(async () => ({ ok: false, reason: 'unreachable', message: '' }))
+    await flush(unreachable)
+    expect(tid(unreachable, 'ble-pair-instead').exists()).toBe(false)
+    const noId = shallowMount(BluetoothSetupDialog, {
+      propsData: { value: true, printer: { ...WALNUT, endpointId: null }, connector: async () => ({ ok: false, reason: 'set-up', message: '' }) },
+      stubs: { SetupStepCard, BluetoothCodeBoxes, BluetoothSheet: { template: '<div><slot /></div>' } },
+      mocks: { $t: (k: string) => k }
+    })
+    await flush(noId)
+    expect(tid(noId as any, 'ble-pair-instead').exists()).toBe(false)
   })
 
   it('tries again with a new connection', async () => {
@@ -154,6 +186,22 @@ describe('setup over Bluetooth from the hosted page', () => {
     again.destroy()
   })
 
+  it('says the printer is restarting, not that the link dropped, when it goes during an install', async () => {
+    const s = session()
+    const wrapper = mount(async () => s.result)
+    await flush(wrapper)
+    await (wrapper.vm as any).theyMatch()
+    await wrapper.vm.$nextTick()
+    wrapper.findComponent({ name: 'SetupWifiSteps' }).vm.$emit('installing')
+    s.drop()
+    await flush(wrapper)
+    const lost = tid(wrapper, 'setup-ble-lost')
+    expect(lost.text()).toContain('restarting to finish its update')
+    expect(lost.text()).not.toContain('connection to')
+    expect(lost.text()).not.toContain('Try again')
+    wrapper.destroy()
+  })
+
   it('hangs up when the dialog closes', async () => {
     const s = session()
     const wrapper = mount(async () => s.result)
@@ -161,5 +209,38 @@ describe('setup over Bluetooth from the hosted page', () => {
     await wrapper.setProps({ value: false })
     await flush(wrapper)
     expect(s.close).toHaveBeenCalled()
+  })
+})
+
+describe('setup over Bluetooth as the Bluetooth sheet', () => {
+  it('is step 1 while finding and checking, 2 in setup, 3 once set up', async () => {
+    const s = session()
+    const wrapper = mount(async () => s.result)
+    const vm = wrapper.vm as unknown as { step: number, phase: string, theyMatch: () => void, useOtherWay: () => Promise<void> }
+    expect(vm.step).toBe(1)
+    await flush(wrapper)
+    expect(vm.phase).toBe('compare')
+    expect(vm.step).toBe(1)
+    vm.theyMatch()
+    expect(vm.step).toBe(2)
+    setupState.state = { ...(setupState.state as object), state: 'complete' } as never
+    expect(vm.step).toBe(3)
+    wrapper.destroy()
+  })
+
+  it('offers the network or a code instead while it connects, and hangs up first', async () => {
+    const s = session()
+    let answer: (r: BleSetupResult) => void = () => {}
+    const wrapper = mount(() => new Promise(resolve => { answer = resolve }))
+    await flush(wrapper)
+    expect(tid(wrapper, 'ble-use-other').exists()).toBe(true)
+    await (wrapper.vm as unknown as { useOtherWay: () => Promise<void> }).useOtherWay()
+    await flush(wrapper)
+    expect(tid(wrapper, 'setup-ble-hotspot').exists()).toBe(true)
+    answer(s.result)
+    await flush(wrapper)
+    expect(tid(wrapper, 'setup-ble-hotspot').exists()).toBe(true)
+    expect(s.close).toHaveBeenCalled()
+    wrapper.destroy()
   })
 })

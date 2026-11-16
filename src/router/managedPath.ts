@@ -6,6 +6,7 @@
 // so it shows no printer chrome either, nor do signing out and the pages the
 // console's emails open (KAN-532).
 const MANAGED_CONSOLE_PATHS = new Set<string>([
+  '/admin',
   '/setup',
   '/sign-in',
   '/sign-out',
@@ -15,5 +16,7 @@ const MANAGED_CONSOLE_PATHS = new Set<string>([
 ])
 
 export function isManagedConsolePath (path: string): boolean {
-  return MANAGED_CONSOLE_PATHS.has(path)
+  // Vue Router accepts a trailing slash on these routes. The shell must use
+  // the same classification or it draws the printer watermark over sign-in.
+  return MANAGED_CONSOLE_PATHS.has(path.replace(/\/+$/, '') || '/')
 }

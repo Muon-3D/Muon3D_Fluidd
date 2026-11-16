@@ -30,7 +30,11 @@
         {{ subtitle }}
       </v-card-subtitle>
 
-      <v-card-text>
+      <v-card-text v-if="!sessionAllowed">
+        <open-in-muon-control route="/sign-in" />
+      </v-card-text>
+
+      <v-card-text v-if="sessionAllowed">
         <v-alert
           v-if="notice"
           type="info"
@@ -83,9 +87,33 @@
               v-model="name"
               label="Name"
               autocomplete="name"
+              autofocus
               outlined
               dense
             />
+            <v-text-field
+              v-if="mode === 'sign-up'"
+              v-model="age"
+              label="Your age"
+              type="text"
+              inputmode="numeric"
+              hint="Private. Confirm once; accounts require age 13 or over."
+              persistent-hint
+              outlined
+              dense
+              data-tid="sign-up-age"
+              :aria-describedby="ageError ? 'sign-up-age-error' : undefined"
+              :aria-invalid="ageError ? 'true' : undefined"
+            />
+            <p
+              v-if="ageError"
+              id="sign-up-age-error"
+              class="error--text text-caption"
+              data-tid="sign-up-age-error"
+              role="alert"
+            >
+              {{ ageError }}
+            </p>
             <v-text-field
               v-model="email"
               label="Email"
@@ -93,7 +121,7 @@
               autocomplete="email webauthn"
               outlined
               dense
-              :autofocus="!passkeys"
+              :autofocus="mode !== 'sign-up' && !passkeys"
               data-tid="sign-in-email"
             />
             <v-text-field
@@ -115,6 +143,8 @@
             text
             class="mb-3"
             data-tid="sign-in-error"
+            role="alert"
+            aria-live="assertive"
           >
             {{ error }}
           </v-alert>
@@ -152,7 +182,10 @@
         </p>
       </v-card-text>
 
-      <v-card-actions class="justify-center pb-4">
+      <v-card-actions
+        v-if="sessionAllowed"
+        class="justify-center pb-4"
+      >
         <template v-if="mode === 'sign-in' || mode === 'sign-up'">
           <span class="text-body-2 text--secondary">
             {{ mode === 'sign-in' ? 'New to Muon3D?' : 'Already have an account?' }}
@@ -187,12 +220,18 @@ import { safeContinue } from '@/services/muon-cloud/centralLogin'
 import { AccountError } from '@/services/account/client'
 import { codeSignIn, finishSignIn, forgotPassword, passkeySignIn, passwordSignIn, signUp } from '@/services/account/sign-in'
 import { cancelledPasskey, passkeysSupported } from '@/services/account/webauthn'
+import { cloudSessionAllowed } from '@/services/muon-cloud/api'
+import OpenInMuonControl from '@/components/muon-cloud/OpenInMuonControl.vue'
 
 type Mode = 'sign-in' | 'sign-up' | 'code' | 'forgot' | 'sent'
 
-@Component({})
+@Component({ components: { OpenInMuonControl } })
 export default class SignIn extends Vue {
+  /** False on the printer's plain-HTTP address: no form, one link to the console (KAN-2192). */
+  sessionAllowed = cloudSessionAllowed()
+
   mode: Mode = 'sign-in'
+  age = ''
   name = ''
   email = ''
   password = ''
@@ -202,6 +241,7 @@ export default class SignIn extends Vue {
   busy = false
   passkeyBusy = false
   error: string | null = null
+  ageError = ''
 
   /** Where the console carries on after the handoff, if it is one it may. */
   get continuePath (): string | null {
@@ -248,6 +288,7 @@ export default class SignIn extends Vue {
   setMode (mode: Mode) {
     this.mode = mode
     this.error = null
+    this.ageError = ''
     if (mode !== 'code') {
       this.code = ''
       this.mfaToken = ''
@@ -286,7 +327,9 @@ export default class SignIn extends Vue {
           await this.finish(await codeSignIn(this.mfaToken, this.code))
           return
         case 'sign-up':
-          await this.finish(await signUp(this.email.trim(), this.password, this.name.trim()))
+          this.ageError = validateAge(this.age)
+          if (this.ageError) { this.busy = false; return }
+          await this.finish(await signUp(this.email.trim(), this.password, this.name.trim(), Number(this.age)))
           return
         default:
           await this.finish(await passwordSignIn(this.email.trim(), this.password))
@@ -311,6 +354,11 @@ export default class SignIn extends Vue {
     this.code = ''
     this.go(await finishSignIn(token, this.continuePath))
   }
+}
+
+function validateAge (age: string): string {
+  if (!/^\d+$/.test(age)) return 'Enter your age as a whole number.'
+  return Number(age) >= 13 && Number(age) <= 120 ? '' : 'Age must be between 13 and 120.'
 }
 </script>
 

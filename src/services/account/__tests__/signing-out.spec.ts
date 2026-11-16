@@ -27,11 +27,12 @@ function session (id: string, extra: Partial<Session> = {}): Session {
 describe('the note the signed-out page reads', () => {
   afterEach(() => sessionStorage.clear())
 
-  it('is kept for two minutes, in this tab only', () => {
+  it('is kept for fifteen minutes (KAN-2509: a tab that was asleep), in this tab only', () => {
     noteSignedOut({ scope: 'everywhere', email: 'jack@muon3d.com', password: true }, 1000)
     expect(JSON.parse(sessionStorage.getItem(SIGNED_OUT_KEY)!)).toMatchObject({ scope: 'everywhere', at: 1000 })
     expect(readSignedOut(1000 + 60_000)).toMatchObject({ scope: 'everywhere', email: 'jack@muon3d.com', password: true })
-    expect(readSignedOut(1000 + 3 * 60_000)).toBeNull()
+    expect(readSignedOut(1000 + 14 * 60_000)).not.toBeNull()
+    expect(readSignedOut(1000 + 16 * 60_000)).toBeNull()
     forgetSignedOut()
     expect(readSignedOut(1000)).toBeNull()
   })
@@ -55,11 +56,13 @@ describe('signing out', () => {
     sessionStorage.clear()
   })
 
-  it('opens the sign-out page where the console serves Fluidd', async () => {
+  it('signs this browser out from the menu without opening a choice page or ending other devices', async () => {
     const router = { push: vi.fn(async () => {}) }
     await beginSignOut(router as never)
-    expect(router.push).toHaveBeenCalledWith('/sign-out')
-    expect(signOut).not.toHaveBeenCalled()
+    expect(signOut).toHaveBeenCalledOnce()
+    expect(router.push).not.toHaveBeenCalled()
+    expect(endSessions).not.toHaveBeenCalled()
+    expect(readSignedOut()).toMatchObject({ scope: 'browser' })
   })
 
   it('signs out at once on a printer\'s own page, and says so after', async () => {

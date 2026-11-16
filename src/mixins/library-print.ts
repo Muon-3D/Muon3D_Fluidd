@@ -1,12 +1,32 @@
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug, printerPath } from '@/services/printer-pages'
-import type { LibraryItem, Version } from '@/services/library/api'
+import { describeLibraryError, type LibraryItem, type LibraryRun, type Version } from '@/services/library/api'
 import { agoText, setupLine, versionLine, versionOrigin, versionWhen } from '@/services/library/format'
 import { loadThumbnail, thumbnailFor } from '@/services/library/thumbnails'
-import { libraryState, loadItem, printVersions, restoreVersion } from '@/services/library/store'
+import { libraryClient, libraryState, loadItem, printVersions, refreshLibrary, restoreVersion } from '@/services/library/store'
+import { shortDuration } from '@/util/short-duration'
 import type { TargetRow } from '@/services/library/print-targets'
 import LibraryPageMixin from './library-page'
+
+/** One time it was printed, as the Printed tile lists it. */
+export interface RunRow {
+  id: string;
+  /** "Boxwood · 1h 47m", or "Walnut · stopped at 62%". */
+  title: string;
+  /** "yesterday · finished". */
+  line: string;
+  status: string;
+  tone: 'ok' | 'run' | 'bad';
+}
+
+const RUN_WORDS: Record<string, { line: string, status: string, tone: RunRow['tone'] }> = {
+  finished: { line: 'finished', status: 'Done', tone: 'ok' },
+  running: { line: 'printing now', status: 'Printing', tone: 'run' },
+  cancelled: { line: 'stopped', status: 'Stopped', tone: 'bad' },
+  failed: { line: 'failed', status: 'Failed', tone: 'bad' },
+  unknown: { line: '', status: '', tone: 'run' }
+}
 
 export interface VersionRow {
   number: number;
@@ -27,7 +47,11 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
   /** The print, once read; null when the Library has no such print. */
   loaded: LibraryItem | null = null
   missing = false
+  /** Why it could not be read (the Library didn't answer), not that it is gone. */
+  loadError = ''
   versions: Version[] = []
+  /** Its prints, newest first, from the Library's runs. */
+  runs: LibraryRun[] = []
 
   get itemId (): string {
     return String(this.$route.params.item ?? '')
@@ -40,41 +64,159 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
 
   @Watch('itemId', { immediate: true })
   async onItemId (id: string) {
+    this.readFor = libraryState.account
     this.missing = false
+    this.loadError = ''
     this.loaded = null
     this.versions = []
-    if (!id) return
+    this.runs = []
+    // Not until the account is known and the Library has answered for it (then onLibrary reads again).
+    if (!id || !this.libraryKnown) return
+    // Off: the page says so (libraryOff) rather than reading for ever.
+    if (!libraryState.enabled) return
+    const account = libraryState.account
     try {
-      await this.readyLibrary()
       const item = await loadItem(id)
-      if (id !== this.itemId) return
+      // An answer for another print, or for an account no longer signed in, is not this page's.
+      if (!this.stillFor(id, account)) return
       this.loaded = item
-      this.missing = !item && libraryState.enabled
-    } catch {
-      this.missing = libraryState.enabled
+      this.missing = !item
+    } catch (error) {
+      // Not gone: the Library didn't answer. Say why, with Retry.
+      if (this.stillFor(id, account)) this.loadError = describeLibraryError(error)
     }
   }
 
-  /** Waits until the Library has answered for this account (or there is none). */
-  async readyLibrary () {
-    const ready = () => libraryState.checked || !libraryState.account
-    if (ready()) return
-    await new Promise<void>(resolve => {
-      const stop = this.$watch(ready, (now: boolean) => {
-        if (!now) return
-        stop()
-        resolve()
-      })
+  /** The page still shows this print, for this account. */
+  stillFor (id: string, account: string | null): boolean {
+    return id === this.itemId && account === libraryState.account
+  }
+
+  /** Retry: the Library itself when it could not be read, else the print. */
+  reload () {
+    if (!this.loadError && this.libraryError) return refreshLibrary().catch(() => {})
+    return this.onItemId(this.itemId)
+  }
+
+  /** The Library itself could not be read for this account (so the print can't be asked for yet). */
+  get libraryError (): string {
+    return this.signedIn && !this.libraryKnown && !libraryState.busy ? libraryState.error ?? '' : ''
+  }
+
+  /** Why the page can't show the print: it, or the Library, didn't answer. */
+  get readError (): string {
+    return this.loadError || this.libraryError
+  }
+
+  /** The Library is off: its synced list is empty of this print (a copy read earlier doesn't count). */
+  get libraryOff (): boolean {
+    return this.signedIn && libraryState.checked && !libraryState.enabled && !libraryState.items[this.itemId]
+  }
+
+  /** Its prints, from the Library's newest runs (they carry the print they were of). */
+  async readRuns () {
+    const id = this.itemId
+    const account = libraryState.account
+    try {
+      const page = await libraryClient().runs('', 100)
+      if (!this.stillFor(id, account)) return
+      this.runs = (Array.isArray(page.runs) ? page.runs : []).filter(run => run.item_id === id)
+    } catch { /* the tile says it has printed, from the item, without the list */ }
+  }
+
+  get runRows (): RunRow[] {
+    return this.runs.slice(0, 8).map(run => {
+      // One word per outcome, the same in the line and the pill.
+      const words = RUN_WORDS[run.outcome] ?? RUN_WORDS.unknown
+      const stopped = run.outcome === 'cancelled' || run.outcome === 'failed'
+      const at = stopped
+        ? (typeof run.progress_pct === 'number' ? `${words.line} at ${Math.round(run.progress_pct)}%` : words.line)
+        : run.duration_s ? shortDuration(run.duration_s) : ''
+      return {
+        id: run.id,
+        title: [run.printer_name, at].filter(Boolean).join(' · '),
+        line: [agoText(run.started_at), stopped ? '' : words.line].filter(Boolean).join(' · '),
+        status: words.status,
+        tone: words.tone
+      }
     })
+  }
+
+  /** It printed more often than the runs listed: they are only the latest. */
+  get moreRuns (): boolean {
+    return (this.item?.printed_count ?? 0) > this.runRows.length && this.runRows.length > 0
+  }
+
+  /** The print and how often it printed: the same print printed again reads its list again. */
+  get printedKey (): string {
+    return this.item ? `${this.item.id}|${this.item.printed_count ?? 0}` : ''
+  }
+
+  /** Printed again (here or elsewhere): the list reads again. Another print arriving is read by onItemPicture. */
+  @Watch('printedKey')
+  onPrinted (key: string, before?: string) {
+    if (key && before && key !== before && key.split('|')[0] === before.split('|')[0]) this.readRuns()
+  }
+
+  /** "Version 3 · saved from Slice today · printed 4×". */
+  get headLine (): string {
+    const item = this.item
+    if (!item) return ''
+    const n = item.printed_count ?? 0
+    return [
+      item.version ? `Version ${item.version}` : '',
+      `${item.versioned ? 'saved from Slice' : 'from the app'} ${this.savedAgo}`.trim(),
+      n ? `printed ${n}×` : 'not printed yet'
+    ].filter(Boolean).join(' · ')
+  }
+
+  /** The facts that matter, from its first G-code. */
+  get specs (): Array<{ label: string, value: string }> {
+    const setup = this.item?.setups?.[0]
+    if (!setup) return []
+    return [
+      { label: 'Material', value: setup.material },
+      ...(setup.print_seconds ? [{ label: 'Time', value: shortDuration(setup.print_seconds) }] : []),
+      ...(setup.filament_g ? [{ label: 'Filament', value: `${Math.round(setup.filament_g)} g` }] : []),
+      { label: 'Nozzle', value: `${setup.nozzle_mm} mm` }
+    ]
+  }
+
+  /** The Library has answered for the signed-in account (a session still being restored has none yet). */
+  get libraryKnown (): boolean {
+    return !!libraryState.account && libraryState.checked
+  }
+
+  /** The account, whether it answered, and whether it is on: when any changes, the print is read again. */
+  get libraryKey (): string {
+    return `${libraryState.account ?? ''}|${libraryState.checked}|${libraryState.enabled}`
+  }
+
+  /** Whose Library the page last read for: another account (or none) forgets what it read. */
+  private readFor: string | null = null
+
+  @Watch('libraryKey')
+  onLibrary () {
+    const account = libraryState.account
+    if (account !== this.readFor) {
+      this.readFor = account
+      this.loaded = null
+      this.missing = false
+      this.loadError = ''
+      this.versions = []
+      this.runs = []
+    }
+    if (this.libraryKnown && !this.item) this.onItemId(this.itemId)
   }
 
   @Watch('item.version')
   async readVersions () {
     const item = this.item
     if (!item?.versioned) return
+    const account = libraryState.account
     try {
       const versions = await printVersions(item.id)
-      if (item.id === this.itemId) this.versions = versions
+      if (this.stillFor(item.id, account)) this.versions = versions
     } catch { /* the page shows what the item says */ }
   }
 
@@ -82,7 +224,10 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
   onItemPicture (item: LibraryItem | null, before?: LibraryItem | null) {
     if (!item) return
     loadThumbnail(item)
-    if (item.id !== before?.id) this.readVersions()
+    if (item.id !== before?.id) {
+      this.readVersions()
+      this.readRuns()
+    }
   }
 
   /** It fits the printer open here as it is. */
@@ -142,10 +287,16 @@ export default class LibraryPrintMixin extends Mixins(LibraryPageMixin) {
     this.$router.push({ path: printerPath(row.slug, 'slice'), query: { library: item.id } }).catch(() => {})
   }
 
+  /** Yours, where ‹ goes. */
+  get yoursTo () {
+    return { path: this.libraryTo, query: { view: 'mine' } }
+  }
+
+  /** Delete (it asks first): then back to Yours. */
   async removeHere () {
     const item = this.item
     if (!item) return
     await this.remove(item)
-    if (!libraryState.items[item.id]) this.$router.push(this.libraryTo).catch(() => {})
+    if (!libraryState.items[item.id]) this.$router.push(this.yoursTo).catch(() => {})
   }
 }

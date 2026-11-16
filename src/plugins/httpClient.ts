@@ -28,11 +28,25 @@ const createHttpClient = (store: Store<RootState>) => {
     400: [
       '/access/login'
     ],
+    // Behind the muon-link Bluetooth bridge the printer refuses these for
+    // every role. The socket opens without a one-shot token, and the page
+    // keeps the printer's address when it can't learn its name (KAN-435).
+    403: [
+      '/access/oneshot_token',
+      '/server/muon/identity'
+    ],
     502: [
       '/access/oneshot_token',
       '/access/user'
     ]
   }
+
+  // For these paths, no status is toasted: the page that asked shows the
+  // printer's answer itself (a developer-mode refusal names who may ask).
+  const quietErrorRequests = [
+    '/server/muon/dev_mode/request',
+    '/access/settings'
+  ]
 
   const requestInterceptor = async (config: InternalAxiosRequestConfig) => {
     // Check our auth token.
@@ -96,6 +110,7 @@ const createHttpClient = (store: Store<RootState>) => {
     }
 
     const url = error.config?.url || ''
+    const quiet = quietErrorRequests.includes(url)
 
     // A cloud printer's gateway refuses what a remote session may never
     // reach (Moonraker's users, the Aux API, updates). A read refused that
@@ -113,12 +128,13 @@ const createHttpClient = (store: Store<RootState>) => {
     switch (error.response.status) {
       case 500:
         consola.debug(error.response.status, error.message, message)
-        EventBus.$emit(message || 'Server error', { type: 'error' })
+        if (!quiet) EventBus.$emit(message || 'Server error', { type: 'error' })
         break
       case 502:
+      case 403:
       case 400:
         consola.debug(error.response.status, error.message, message)
-        if (!handledErrorRequests[error.response.status].includes(url)) {
+        if (!quiet && !handledErrorRequests[error.response.status].includes(url)) {
           EventBus.$emit(message || 'Server error', { type: 'error' })
         }
         break
@@ -134,7 +150,7 @@ const createHttpClient = (store: Store<RootState>) => {
         break
       default:
         consola.debug(error.response.status, error.message)
-        EventBus.$emit(message || 'Server error', { type: 'error' })
+        if (!quiet) EventBus.$emit(message || 'Server error', { type: 'error' })
     }
 
     return Promise.reject(error)

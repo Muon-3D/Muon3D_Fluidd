@@ -1,0 +1,381 @@
+import { createLocalVue, shallowMount } from '@vue/test-utils'
+import Vue from 'vue'
+import VueRouter from 'vue-router'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SocketActions } from '@/api/socketActions'
+import GeneralSettings from '../GeneralSettings.vue'
+import SoftwareSettings from '../SoftwareSettings.vue'
+import Settings from '@/views/Settings.vue'
+import { updateWatch, installStarted } from '@/services/updates/watch'
+
+import { BOXWOOD_STAGED } from '@/services/updates/__tests__/fixtures/boxwood-staged'
+
+vi.mock('@/services/updates/watch', () => ({
+  updateWatch: { status: null, remembered: null }, currentOutcome: () => null, installStarted: vi.fn(), poll: vi.fn()
+}))
+vi.mock('@/services/dev-mode/state', () => ({ devModeState: {}, refreshDevMode: vi.fn() }))
+
+afterEach(() => {
+  localStorage.clear()
+  vi.clearAllMocks()
+})
+
+const commonStubs = {
+  'v-text-field': true,
+  'v-select': true,
+  'v-combobox': true,
+  'toggle-switch': true
+}
+
+function general (pro: boolean) {
+  localStorage.setItem('muon3d.pro', pro ? '1' : '0')
+  return shallowMount(GeneralSettings, {
+    stubs: { ...commonStubs, 'seg-picker': true, 'm3-dialog': true, 'router-link': true, 'v-icon': true },
+    mocks: {
+      $t: (key: string) => key,
+      $rules: { required: true },
+      $globals: { APP_NAME: 'Control' },
+      $store: { getters: { 'server/isMuonPrinter': false }, state: {}, dispatch: vi.fn() }
+    },
+    computed: {
+      general: () => ({ instanceName: 'M1', printProgressCalculation: ['file'], printEtaCalculation: ['file'], sectionsToIgnorePendingConfigurationChanges: [] }),
+      theme: () => ({ color: '#80d6d1', isDark: true }),
+      settingsPath: () => '/settings',
+      availableDateFormats: () => [],
+      hasPowerDevices: () => false,
+      powerDevicesList: () => []
+    }
+  })
+}
+
+interface InstallState {
+  control: boolean;
+  connected: boolean;
+  target: string;
+  component: string;
+  version: string;
+  printerState: string;
+}
+
+function softwareInstall (state: InstallState, confirm: () => Promise<boolean>, statusOver: Record<string, unknown> | null = null, ownRemembered = false) {
+  const status = () => statusOver ?? ({
+    update_available: true,
+    current_version: '1.0.0',
+    target_version: state.version,
+    requires_commit: false
+  })
+  const localVue = createLocalVue()
+  localVue.use(VueRouter)
+  const router = new VueRouter({ mode: 'abstract' })
+  return shallowMount(SoftwareSettings, {
+    localVue,
+    router,
+    stubs: { 'toggle-switch': true, 'router-link': true },
+    mocks: {
+      $confirm: confirm,
+      $store: {
+        dispatch: vi.fn(),
+        getters: { 'version/hasUpdate': () => false },
+        state: { version: { busy: false, version_info: {} } }
+      }
+    },
+    computed: {
+      printerName: () => 'M1',
+      status,
+      ...(ownRemembered ? {} : { remembered: () => null }),
+      enableNotifications: () => true,
+      others: () => [],
+      commandTarget: () => state.target,
+      commandControlAvailable: () => state.control,
+      klippyConnected: () => state.connected,
+      printerState: () => state.printerState,
+      otaKey: () => state.component
+    }
+  })
+}
+
+describe('Settings in one layout', () => {
+  it.each([false, true])('shows the same Settings sections when legacy Pro is %s', pro => {
+    localStorage.setItem('muon3d.pro', pro ? '1' : '0')
+    const localVue = createLocalVue()
+    localVue.use(VueRouter)
+    const router = new VueRouter({ mode: 'abstract', routes: [{ path: '/settings', name: 'Settings', component: Settings }] })
+    router.push('/settings')
+    const wrapper = shallowMount(Settings, {
+      localVue,
+      router,
+      stubs: { 'router-link': true, 'router-view': true },
+      mocks: {
+        $store: {
+          getters: { 'server/isMuonPrinter': true, 'server/componentSupport': () => false, 'config/getDisplayName': 'M1', 'webcams/getWebcams': [], 'config/getTempPresets': [], 'macros/getMacros': [], 'version/hasUpdate': () => false },
+          state: { version: { version_info: {} } }
+        }
+      },
+      computed: { isMobileViewport: () => false }
+    })
+    expect((wrapper.vm as any).sections.map((section: any) => section.id)).toEqual([
+      'general', 'network', 'cameras', 'materials', 'macros', 'console', 'files',
+      'toolhead', 'gcodePreview', 'developer', 'system'
+    ])
+    wrapper.destroy()
+  })
+
+  it.each([false, true])('shows General task controls when legacy Pro is %s', pro => {
+    const wrapper = general(pro)
+    expect(wrapper.text()).toContain('Saving the configuration')
+    expect(wrapper.text()).toContain('Printing straight after upload')
+    expect(wrapper.text()).toContain('Progress is measured by')
+    expect(wrapper.text()).toContain('Changes not to list')
+    expect(wrapper.findComponent({ name: 'TaskFold' }).exists()).toBe(false)
+    expect(wrapper.text()).toContain('These settings')
+    wrapper.destroy()
+  })
+
+  it.each([[false, true], [true, false]])('on a Muon printer, Other software is a locked row unless developer mode is on (dev mode %s)', async (dev, locked) => {
+    const wrapper = shallowMount(SoftwareSettings, {
+      stubs: { 'toggle-switch': true, 'router-link': true },
+      mocks: { $store: { dispatch: vi.fn(), getters: {}, state: { version: { busy: false } } } },
+      computed: {
+        printerName: () => 'M1',
+        isMuonPrinter: () => true,
+        otherUpdateBlocked: () => '',
+        devModeEnabled: () => dev,
+        status: () => null,
+        unavailableText: () => '',
+        enableNotifications: () => true,
+        others: () => [{ key: 'moonraker', title: 'moonraker', text: 'Up to date', update: true }]
+      }
+    })
+    expect(wrapper.findComponent({ name: 'LockedRow' }).exists()).toBe(locked)
+    expect(wrapper.findComponent({ name: 'TaskFold' }).exists()).toBe(!locked)
+    wrapper.destroy()
+  })
+
+  it.each([false, true])('puts Other software in a closed task fold when legacy Pro is %s', async pro => {
+    localStorage.setItem('muon3d.pro', pro ? '1' : '0')
+    const wrapper = shallowMount(SoftwareSettings, {
+      stubs: { 'toggle-switch': true, 'router-link': true },
+      computed: {
+        printerName: () => 'M1',
+        isMuonPrinter: () => false,
+        status: () => null,
+        unavailableText: () => 'Asking the printer…',
+        enableNotifications: () => true,
+        others: () => [{ key: 'moonraker', title: 'moonraker', text: 'Up to date', update: false }]
+      }
+    })
+    const fold = wrapper.findComponent({ name: 'TaskFold' })
+    expect(fold.exists()).toBe(true)
+    expect(fold.props('title')).toBe('Other software')
+    expect(fold.props('value')).toBe(false)
+    expect(fold.text()).toContain('moonraker')
+    wrapper.destroy()
+  })
+
+  it.each([
+    ['viewer', false, true, false],
+    ['disconnected session', true, false, false],
+    ['printing printer', true, true, true]
+  ])('refuses an Other software update for a %s', async (_case, control, connected, printing) => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const confirm = vi.fn().mockResolvedValue(true)
+    const wrapper = shallowMount(SoftwareSettings, {
+      stubs: { 'toggle-switch': true, 'router-link': true },
+      mocks: { $confirm: confirm, $store: { dispatch: vi.fn(), state: { version: { busy: false } } } },
+      computed: {
+        printerName: () => 'M1',
+        isMuonPrinter: () => false,
+        status: () => null,
+        unavailableText: () => '',
+        others: () => [],
+        enableNotifications: () => true,
+        commandControlAvailable: () => control,
+        klippyConnected: () => connected,
+        printerPrinting: () => printing,
+        printerPaused: () => false,
+        printerState: () => printing ? 'printing' : 'standby'
+      }
+    })
+    await (wrapper.vm as any).updateOther('moonraker')
+    expect(confirm).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('confirms Other software updates and sends nothing when cancelled', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const confirm = vi.fn().mockResolvedValue(false)
+    const dispatch = vi.fn()
+    const wrapper = shallowMount(SoftwareSettings, {
+      stubs: { 'toggle-switch': true, 'router-link': true },
+      mocks: { $confirm: confirm, $store: { dispatch, state: { version: { busy: false } } } },
+      computed: {
+        printerName: () => 'M1',
+        isMuonPrinter: () => false,
+        status: () => null,
+        unavailableText: () => '',
+        others: () => [],
+        enableNotifications: () => true,
+        commandTarget: () => 'same',
+        commandControlAvailable: () => true,
+        klippyConnected: () => true,
+        printerPrinting: () => false,
+        printerPaused: () => false,
+        printerState: () => 'standby'
+      }
+    })
+    await (wrapper.vm as any).updateOther('moonraker')
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(update).not.toHaveBeenCalled()
+    expect(dispatch).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('rechecks access and printer state after confirming an Other software update', async () => {
+    const state = Vue.observable({ control: true })
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const confirm = vi.fn().mockImplementation(async () => {
+      state.control = false
+      await Vue.nextTick()
+      return true
+    })
+    const dispatch = vi.fn()
+    const wrapper = shallowMount(SoftwareSettings, {
+      stubs: { 'toggle-switch': true, 'router-link': true },
+      mocks: { $confirm: confirm, $store: { dispatch, state: { version: { busy: false } } } },
+      computed: {
+        printerName: () => 'M1',
+        isMuonPrinter: () => false,
+        status: () => null,
+        unavailableText: () => '',
+        others: () => [],
+        enableNotifications: () => true,
+        commandTarget: () => 'same',
+        commandControlAvailable: () => state.control,
+        klippyConnected: () => true,
+        printerPrinting: () => false,
+        printerPaused: () => false,
+        printerState: () => 'standby'
+      }
+    })
+    await (wrapper.vm as any).updateOther('moonraker')
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(update).not.toHaveBeenCalled()
+    expect(dispatch).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('refuses a primary MuonOS install for a viewer', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const confirm = vi.fn().mockResolvedValue(true)
+    const state = Vue.observable<InstallState>({ control: false, connected: true, target: 'printer-a|account-a', component: 'muonos', version: '2.0.0', printerState: 'standby' })
+    const wrapper = softwareInstall(state, confirm)
+
+    await (wrapper.vm as any).install()
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Connect to a printer you can control first.')
+    wrapper.destroy()
+  })
+
+  it.each([
+    ['disconnect', (state: InstallState) => { state.connected = false }],
+    ['control loss', (state: InstallState) => { state.control = false }],
+    ['printer becoming busy', (state: InstallState) => { state.printerState = 'printing' }],
+    ['printer switch', (state: InstallState) => { state.target = 'printer-b|account-a' }],
+    ['account switch', (state: InstallState) => { state.target = 'printer-a|account-b' }],
+    ['version change', (state: InstallState) => { state.version = '2.1.0' }],
+    ['component change', (state: InstallState) => { state.component = 'other-ota' }]
+  ])('rechecks a %s before sending a primary MuonOS install', async (_case, change) => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: '2.0.0', printerState: 'standby' })
+    const confirm = vi.fn().mockImplementation(async () => {
+      change(state)
+      await Vue.nextTick()
+      return true
+    })
+    const wrapper = softwareInstall(state, confirm)
+
+    await (wrapper.vm as any).install()
+
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(update).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-tid="software-install-refusal"]').text()).toContain('Not sent.')
+    wrapper.destroy()
+  })
+
+  it('sends one primary MuonOS install when confirmation state remains valid', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: '2.0.0', printerState: 'standby' })
+    const wrapper = softwareInstall(state, vi.fn().mockResolvedValue(true))
+
+    await (wrapper.vm as any).install()
+    expect(update).toHaveBeenCalledOnce()
+    expect(update).toHaveBeenCalledWith('muonos')
+    wrapper.destroy()
+  })
+
+  it('sends no install or commit call until Install is pressed and confirmed', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: '2.0.0', printerState: 'standby' })
+    const confirm = vi.fn().mockResolvedValue(false)
+    const wrapper = softwareInstall(state, confirm)
+    // Mounted, polled, rendered: nothing sent.
+    expect(update).not.toHaveBeenCalled()
+    expect(installStarted).not.toHaveBeenCalled()
+    // Pressed, then declined: nothing sent.
+    await (wrapper.vm as any).install()
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(update).not.toHaveBeenCalled()
+    expect(installStarted).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('refuses a one-tap install from a staged record that cannot prove the spare slot (empty slot fingerprint, KAN-1364)', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: BOXWOOD_STAGED.target_version as string, printerState: 'standby' })
+    const confirm = vi.fn().mockResolvedValue(true)
+    const wrapper = softwareInstall(state, confirm, BOXWOOD_STAGED as never)
+
+    await (wrapper.vm as any).install()
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain("Install it from the printer's screen.")
+    wrapper.destroy()
+  })
+
+  it('offers the install once the staged record carries a slot fingerprint', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: BOXWOOD_STAGED.target_version as string, printerState: 'standby' })
+    const proven = { ...BOXWOOD_STAGED, stage: { ...BOXWOOD_STAGED.stage, slot_fingerprint: { 'system-b': 'sha512-256:abc' } } }
+    const wrapper = softwareInstall(state, vi.fn().mockResolvedValue(true), proven as never)
+    await (wrapper.vm as any).install()
+    expect(update).toHaveBeenCalledOnce()
+    wrapper.destroy()
+  })
+
+  it('shows the staged update as "Update ready to install", not "Checking the update"', () => {
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: BOXWOOD_STAGED.target_version as string, printerState: 'standby' })
+    const wrapper = softwareInstall(state, vi.fn(), BOXWOOD_STAGED as never)
+    expect((wrapper.vm as any).chip).toEqual({ text: 'Update ready to install', tone: 'warn' })
+    wrapper.destroy()
+  })
+
+  it('does not let a stale remembered install block Install', async () => {
+    const update = vi.spyOn(SocketActions, 'machineUpdateClient').mockImplementation(() => undefined as any)
+    Object.assign(updateWatch, {
+      answered: false,
+      now: Date.now(),
+      remembered: { jobId: 'j1', phase: 'installing', from: '1.0', to: '1.1', progress: 40, seenAt: Date.now() - 3 * 3_600_000, lostAt: null, budgetMs: 1_200_000 }
+    })
+    const state = Vue.observable<InstallState>({ control: true, connected: true, target: 'printer-a|account-a', component: 'muonos', version: '2.0.0', printerState: 'standby' })
+    const wrapper = softwareInstall(state, vi.fn().mockResolvedValue(true), null, true)
+    expect((wrapper.vm as any).active).toBe(false)
+    await (wrapper.vm as any).install()
+    expect(update).toHaveBeenCalledOnce()
+    updateWatch.remembered = null
+    wrapper.destroy()
+  })
+})

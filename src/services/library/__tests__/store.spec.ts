@@ -2,6 +2,7 @@
  * @vitest-environment node
  */
 import Vue from 'vue'
+import { createLibraryClient, LibraryError } from '../api'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PROMISE_SUMMARY, PROMISE_URL, PROMISE_VERSION } from '../promise'
 import { fakeService } from './fakeService'
@@ -15,6 +16,126 @@ vi.mock('@/services/muon-cloud/state', async () => {
 })
 
 const store = await import('../store')
+
+describe('Library feed outcomes', () => {
+  it('reports a feed 401 after a successful status check', async () => {
+    const service = fakeService({ presign: true })
+    service.queue(/^\/v1\/items$/, 401, { error: { code: 'not_signed_in', message: 'Sign in again.' } })
+    service.queue(/^\/v1\/items$/, 401, { error: { code: 'not_signed_in', message: 'Sign in again.' } })
+    store.setLibraryClient(service.client())
+
+    await store.refreshLibrary()
+
+    expect(store.libraryState).toMatchObject({
+      checked: true,
+      synced: false,
+      feedLoading: false,
+      errorCode: 'not-signed-in'
+    })
+    expect(store.libraryState.error).toBeTruthy()
+  })
+
+  it('reports a feed network failure after a successful status check', async () => {
+    const service = fakeService({ presign: true })
+    const client = createLibraryClient({
+      baseUrl: 'https://models.example',
+      assertion: { get: async () => 'assertion', drop: () => {} },
+      fetch: (async (input, init) => {
+        if (new URL(String(input)).pathname === '/v1/items') throw new TypeError('Failed to fetch')
+        return service.fetch(input, init)
+      }) as typeof fetch
+    })
+    store.setLibraryClient(client)
+
+    await store.refreshLibrary()
+
+    expect(store.libraryState).toMatchObject({
+      checked: true,
+      synced: false,
+      feedLoading: false,
+      errorCode: 'offline',
+      error: "Your Library can't be reached. Check this computer's internet connection."
+    })
+  })
+
+  it('keeps a preference failure visible after the feed succeeds and clears it on retry', async () => {
+    const service = fakeService({ presign: true })
+    const client = service.client()
+    vi.spyOn(client, 'preferences').mockRejectedValueOnce(new LibraryError('service_unavailable', 'Preferences unavailable'))
+    store.setLibraryClient(client)
+
+    await store.refreshLibrary()
+
+    expect(store.libraryState).toMatchObject({
+      checked: true,
+      synced: true,
+      feedLoading: false,
+      error: 'Preferences unavailable'
+    })
+
+    await store.syncLibrary()
+    expect(store.libraryState.error).toBe('Preferences unavailable')
+
+    await store.refreshLibrary()
+    expect(store.libraryState.error).toBeNull()
+  })
+
+  it('retains synced items when a refresh fails and clears the error after a successful feed retry', async () => {
+    const service = fakeService({ presign: true })
+    const client = service.client()
+    store.setLibraryClient(client)
+    await store.refreshLibrary()
+    const item = {
+      id: 'existing',
+      kind: 'plate',
+      format: '3mf',
+      name: 'Existing print',
+      size_bytes: 10,
+      has_thumbnail: false,
+      state: 'ready',
+      rev: 1,
+      created_at: '2026-10-12T10:00:00Z',
+      updated_at: '2026-10-12T10:00:00Z',
+      deleted_at: null,
+      versioned: true
+    }
+    Vue.set(store.libraryState.items, item.id, item)
+    const rev = store.libraryState.rev
+    vi.spyOn(client, 'feed').mockRejectedValueOnce(new LibraryError('offline', 'Network failed'))
+
+    await store.refreshLibrary()
+
+    expect(store.libraryState.items).toEqual({ existing: item })
+    expect(store.libraryState).toMatchObject({ rev, synced: true, feedLoading: false, errorCode: 'offline' })
+
+    await store.syncLibrary()
+    expect(store.libraryState.error).toBeNull()
+    expect(store.libraryState.errorCode).toBeNull()
+  })
+
+  it('tracks the initial feed as loading until it succeeds', async () => {
+    const service = fakeService({ presign: true })
+    const client = service.client()
+    const feed = client.feed.bind(client)
+    let release!: () => void
+    const pending = new Promise<void>(resolve => { release = resolve })
+    vi.spyOn(client, 'feed').mockImplementationOnce(async since => {
+      await pending
+      return feed(since)
+    })
+    store.setLibraryClient(client)
+
+    const refresh = store.refreshLibrary()
+    try {
+      await vi.waitFor(() => expect(store.libraryState.checked).toBe(true))
+      expect(store.libraryState).toMatchObject({ synced: false, feedLoading: true })
+    } finally {
+      release()
+      await refresh
+    }
+    expect(store.libraryState).toMatchObject({ synced: true, feedLoading: false, error: null })
+  })
+})
 
 beforeEach(() => {
   cloud.state.account = { id: 'jack' }
@@ -50,6 +171,78 @@ describe('the Library store', () => {
   it('offers no promise when the service wants another version than the text shown here', () => {
     Object.assign(store.libraryState, { enabled: false, promiseVersion: '2099-01-01' })
     expect(store.libraryStatus().promise).toBeNull()
+  })
+
+  it('offers the prepared October words and sends their version when enabled', async () => {
+    const service = fakeService({ enabled: false })
+    store.setLibraryClient(service.client())
+    Object.assign(store.libraryState, { checked: true, promiseVersion: '2026-10-13' })
+    expect(store.libraryStatus().promise).toMatchObject({ version: '2026-10-13' })
+    expect(store.libraryStatus().promise?.summary).toContain('Your public name comes from the name you choose in Control.')
+    await store.turnLibraryOn('2026-10-13')
+    expect(service.calls[0]).toMatchObject({ path: '/v1/library/consent', body: { promise_version: '2026-10-13' } })
+    expect(store.libraryState).toMatchObject({ enabled: true, synced: true })
+    expect(service.calls.some(call => call.path.startsWith('/v1/items?since='))).toBe(true)
+  })
+
+  it('refuses unknown or stale consent before any request is sent', async () => {
+    const service = fakeService({ enabled: false })
+    store.setLibraryClient(service.client())
+    Object.assign(store.libraryState, { checked: true, promiseVersion: '2099-01-01' })
+    await expect(store.turnLibraryOn('2099-01-01')).rejects.toMatchObject({ code: 'promise_changed' })
+    Object.assign(store.libraryState, { promiseVersion: '2026-10-13' })
+    await expect(store.turnLibraryOn('2026-09-26')).rejects.toMatchObject({ code: 'promise_changed' })
+    expect(service.calls).toEqual([])
+  })
+
+  it('a promise that changed on the service is read again, so the new words are offered without a reload', async () => {
+    const service = fakeService({ enabled: false })
+    store.setLibraryClient(service.client())
+    await store.refreshLibrary()
+    expect(store.libraryStatus().promise?.version).toBe('2026-09-26')
+    service.queue(/^\/v1\/library\/consent$/, 409, { error: { code: 'promise_changed', message: 'The promise changed.' } })
+    service.queue(/^\/v1\/library$/, 200, { enabled: false, promise_version: '2026-10-13', account: null, used_bytes: 0, quota_bytes: 1e9 })
+    await expect(store.turnLibraryOn('2026-09-26')).rejects.toMatchObject({ code: 'promise_changed' })
+    expect(store.libraryState.promiseVersion).toBe('2026-10-13')
+    expect(store.libraryStatus().promise?.version).toBe('2026-10-13')
+  })
+
+  // KAN-799: the service refused the words, and asking again sent the same words, refused again.
+  it('asking again after the service refuses the promise never sends the refused words', async () => {
+    const service = fakeService({ enabled: false })
+    store.setLibraryClient(service.client())
+    await store.refreshLibrary()
+    service.queue(/^\/v1\/library\/consent$/, 409, { error: { code: 'promise_changed', message: 'The promise changed.' } })
+    // A promise newer than this build knows: it has no words to show for it.
+    service.queue(/^\/v1\/library$/, 200, { enabled: false, promise_version: '2099-01-01', account: null, used_bytes: 0, quota_bytes: 1e9 })
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await expect(store.turnLibraryOn('2026-09-26')).rejects.toMatchObject({ code: 'promise_changed' })
+    }
+    expect(service.calls.filter(c => c.path === '/v1/library/consent')).toHaveLength(1)
+    expect(store.libraryStatus().promise).toBeNull()
+  })
+
+  it('a slicer save the service refuses for its promise reads the promise again, and a retry sends nothing', async () => {
+    const service = fakeService({ enabled: false })
+    store.setLibraryClient(service.client())
+    await store.refreshLibrary()
+    service.queue(/^\/v1\/library\/consent$/, 409, { error: { code: 'promise_changed', message: 'The promise changed.' } })
+    service.queue(/^\/v1\/library$/, 200, { enabled: false, promise_version: '2026-10-13', account: null, used_bytes: 0, quota_bytes: 1e9 })
+    const save = () => store.saveFromSlicer({ item: null, name: 'Cube', origin: 'save', consent: '2026-09-26', project: new ArrayBuffer(1), outputs: [], thumbnail: null, summary: {} })
+    await expect(save()).rejects.toMatchObject({ code: 'promise_changed' })
+    expect(store.libraryStatus().promise?.version).toBe('2026-10-13')
+    const sent = service.calls.length
+    await expect(save()).rejects.toMatchObject({ code: 'promise_changed' })
+    expect(service.calls).toHaveLength(sent)
+  })
+
+  it('refuses a slicer consent for words other than the current service promise', async () => {
+    const service = fakeService({ enabled: false })
+    store.setLibraryClient(service.client())
+    Object.assign(store.libraryState, { checked: true, promiseVersion: '2026-10-13' })
+    await expect(store.saveFromSlicer({ item: null, name: 'Cube', origin: 'save', consent: '2026-09-26', project: new ArrayBuffer(1), outputs: [], thumbnail: null, summary: {} }))
+      .rejects.toMatchObject({ code: 'promise_changed' })
+    expect(service.calls).toEqual([])
   })
 
   it('signed out, says so and nothing else', () => {
@@ -97,5 +290,27 @@ describe('the Library store', () => {
     await Vue.nextTick()
     expect(store.libraryState.account).toBeNull()
     expect(store.libraryState.items).toEqual({})
+  })
+})
+
+describe('turned off, not never on (KAN-735)', () => {
+  it('counts a past consent the service still has as withdrawn, and never-on as not', async () => {
+    const service = fakeService({ presign: true })
+    const client = service.client()
+    store.setLibraryClient(client)
+    vi.spyOn(client, 'info').mockResolvedValueOnce({
+      enabled: false,
+      promise_version: PROMISE_VERSION,
+      account: { consent_version: null, consented_at: '2026-10-01T00:00:00Z', purge_after: null, quota_bytes: 1e9 },
+      used_bytes: 0,
+      quota_bytes: 1e9
+    })
+    await store.refreshLibrary()
+    expect(store.libraryState).toMatchObject({ enabled: false, purgeAfter: null, withdrawn: true })
+
+    store.resetLibrary('jack')
+    vi.spyOn(client, 'info').mockResolvedValueOnce({ enabled: false, promise_version: PROMISE_VERSION, account: null, used_bytes: 0, quota_bytes: 1e9 })
+    await store.refreshLibrary()
+    expect(store.libraryState).toMatchObject({ enabled: false, withdrawn: false })
   })
 })

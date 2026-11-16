@@ -8,7 +8,8 @@ const boot = vi.hoisted(() => ({
   appInit: vi.fn(async () => ({ apiConfig: { socketUrl: '' } })),
   check: vi.fn(() => new Promise<void>(() => {})),
   initCloud: vi.fn(async () => null),
-  navigate: vi.fn(async () => {})
+  navigate: vi.fn(async () => {}),
+  retire: vi.fn()
 }))
 vi.mock('vue', () => ({
   default: class {
@@ -20,8 +21,9 @@ vi.mock('vue', () => ({
   }
 }))
 vi.mock('@/init', () => ({ appInit: boot.appInit }))
+vi.mock('@/services/retired-storage', () => ({ retireProStorage: boot.retire }))
 vi.mock('@/services/muon-cloud/state', () => ({ initCloud: boot.initCloud }))
-vi.mock('@/services/muon-cloud/centralLogin', () => ({ shouldTrySilentSignIn: () => true, checkCentralSession: boot.check, startCentralSignIn: boot.navigate }))
+vi.mock('@/services/muon-cloud/centralLogin', () => ({ shouldTrySilentSignIn: () => true, checkCentralSession: boot.check, startCentralSignIn: boot.navigate, setPageBusyCheck: vi.fn() }))
 vi.mock('@/App.vue', () => ({ default: {} }))
 vi.mock('@/router', () => ({ default: { onReady: vi.fn() } }))
 vi.mock('@/store', () => ({ default: { commit: vi.fn() } }))
@@ -43,6 +45,8 @@ vi.mock('@/plugins/confirm', () => ({ ConfirmPlugin: {} }))
 vi.mock('@/directives/blur', () => ({ default: {} }))
 vi.mock('@/util/ui-style', () => ({ restoreUiStyle: () => 'glass' }))
 vi.mock('@/util/glass-icons', () => ({ applyGlassIcons: vi.fn() }))
+vi.mock('@/services/m1-3d/device-settings', () => ({ followMotionSetting: vi.fn() }))
+vi.mock('@/services/startup/heard', () => ({ followStartup: vi.fn() }))
 vi.mock('@/services/muon-cloud/activate', () => ({ forgetManagedInstance: vi.fn(), activateCloudPrinter: vi.fn(), activateLocalPrinter: vi.fn() }))
 vi.mock('@/services/printer-pages', () => ({ preferSavedPrinterFor: vi.fn(), installPrinterPages: vi.fn() }))
 vi.mock('@/services/startup/snapshot', () => ({ readSnapshot: vi.fn(), renderCachedState: vi.fn() }))
@@ -59,4 +63,5 @@ it('initializes and mounts the app while the silent check is unresolved, without
   expect(boot.check).toHaveBeenCalledOnce()
   expect(boot.navigate).not.toHaveBeenCalled()
   expect(boot.initCloud).toHaveBeenCalledWith(boot.check.mock.results[0].value)
+  expect(boot.retire).toHaveBeenCalledOnce()
 })

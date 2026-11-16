@@ -23,4 +23,6 @@ export interface MacroCategory {
   name: string;
   count?: number;
   visible?: number;
+  /** Where Settings › Macros puts it; unset, by name after the ordered ones. */
+  order?: number;
 }

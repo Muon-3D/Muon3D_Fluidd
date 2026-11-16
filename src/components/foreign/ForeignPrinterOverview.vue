@@ -10,7 +10,7 @@
       v-if="mixedContentBlocked"
       class="foreign-muted"
     >
-      Firefox and Safari block this HTTPS page from reaching a printer over plain HTTP or WebSocket: mixed content. Open Fluidd in Chrome on a computer or Android and allow local network access.
+      Firefox and Safari block this HTTPS page from reaching a printer over plain HTTP or WebSocket: mixed content. Open Control in Chrome on a computer or Android and allow local network access.
     </p>
     <foreign-camera
       :url="status.cameraUrl"
@@ -70,7 +70,7 @@
       </div>
     </section>
     <section class="foreign-card">
-      <h2>With this printer, Fluidd can</h2>
+      <h2>With this printer, Control can</h2>
       <ul>
         <li
           v-for="item in capabilities"
@@ -172,7 +172,7 @@ export default class ForeignPrinterOverview extends Mixins(StateMixin) {
     const record = this.record
     const slug = this.$route.params.printer
     if (!record) return
-    if (await this.$confirm('Fluidd forgets this printer in this browser.', { title: `Forget ${record.name}?`, buttonTrueText: 'Forget', danger: true })) {
+    if (await this.$confirm('Control forgets this printer in this browser.', { title: `Forget ${record.name}?`, buttonTrueText: 'Forget', danger: true })) {
       await forget(record.id)
       if (this.$route.params.printer === slug) this.$router.push('/').catch(() => {})
     }

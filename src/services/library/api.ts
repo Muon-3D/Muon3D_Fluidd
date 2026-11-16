@@ -12,9 +12,8 @@
  * service's own route and `needs_auth` says to send the assertion.
  */
 
-/** The model service, and the audience its assertions name (the same string). */
-export const MODELS_URL: string = (import.meta.env.VITE_MODELS_URL || 'https://models.muon3d.com').replace(/\/+$/, '')
-export const MODELS_AUDIENCE = MODELS_URL
+import { MODELS_URL, isUnderBase, modelsResourceUrl } from './transport'
+export { MODELS_URL, MODELS_AUDIENCE } from './transport'
 
 export interface Transfer {
   method: string;
@@ -59,6 +58,8 @@ export interface LibraryItem {
   printed_count?: number;
   last_printed_at?: string | null;
   last_printer_name?: string | null;
+  /** Where it came from: slice, upload, import, remix, design or printer. */
+  origin?: string;
 }
 
 export type FileRole = 'project' | 'gcode' | 'thumbnail'
@@ -86,6 +87,48 @@ export interface Version {
   created_at: string;
   summary: Record<string, unknown> | null;
   files: VersionFile[];
+}
+
+export interface ModelContext {
+  owner: boolean;
+  state: string;
+  pinned_version: number;
+  versions: Array<{ number: number, origin?: string, created_at?: string }>;
+  runs: Array<{ id: string, printer_name: string, started_at: string, outcome: string, duration_s?: number | null, filament_mm?: number | null }>;
+}
+
+/** The live, immutable version exposed by `GET /v1/public/publications/:id`. */
+export interface PublicPublication {
+  title: string;
+  version: number;
+  files: VersionFile[];
+  // The rest of `detail` (public_v2.rs), read by the Library's quick look.
+  id?: string;
+  slug?: string;
+  description?: string | null;
+  category?: string;
+  tags?: string[];
+  creator?: { handle: string | null, display_name: string | null, avatar_url?: string | null };
+  images?: Array<{ id: string, name: string, format: string, size_bytes: number, url: string }>;
+  counts?: { makes?: number, remixes?: number, saves?: number };
+  colours?: string[];
+  material?: string | null;
+  size_mm?: number[] | null;
+  print_profile?: { material?: string, estimated_seconds?: number, filament_g?: number, layer_height_mm?: number, supports?: boolean, plate?: string } | null;
+  created_at?: string;
+  version_created_at?: string;
+  /** "CC-BY-4.0". */
+  licence?: string | null;
+}
+
+/** What a published print says about itself (model service src/publication.rs). */
+export interface PublishDetails {
+  licence: string;
+  rights_confirmed: boolean;
+  category: string;
+  tags: string[];
+  description?: string;
+  ai_generated?: 'no' | 'partly' | 'yes';
 }
 
 export type SaveOrigin = 'save' | 'autosave' | 'card' | 'print-check'
@@ -125,7 +168,11 @@ export interface LibraryInfo {
   account: LibraryAccount | null;
   used_bytes: number;
   quota_bytes: number;
+  /** What the space holds, by kind, once the service splits it. Not sent yet. */
+  used_by_kind?: Partial<Record<StorageKind, number>>;
 }
+
+export type StorageKind = 'uploads' | 'slices' | 'designs'
 
 /** One page of `GET /v1/items?since=`. */
 export interface FeedPage {
@@ -139,6 +186,107 @@ export interface PrintedEvent {
   printer_name: string;
   setup?: PrintSetup;
   version?: number;
+}
+
+export interface LibrarySections {
+  all: number;
+  printed: number;
+  sliced: number;
+  uploads: number;
+  saved: number;
+  imported: number;
+  designs: number;
+}
+
+export type LibraryRunOutcome = 'running' | 'finished' | 'cancelled' | 'failed' | 'unknown'
+
+export interface LibraryRun {
+  id: string;
+  item_id: string | null;
+  version: number | null;
+  printer_id: string;
+  printer_name: string;
+  /** Absent when the run was reported by its hash alone. */
+  file_name: string | null;
+  started_at: string;
+  ended_at: string | null;
+  outcome: LibraryRunOutcome;
+  progress_pct: number | null;
+  duration_s: number | null;
+  in_library: boolean;
+  item?: LibraryItem | null;
+}
+
+/** `GET /v1/library/runs` answers `{runs, cursor}`: `cursor` is the last run's start, to pass back for the next page. */
+export interface LibraryRunsPage {
+  runs: LibraryRun[];
+  cursor: string | null;
+}
+
+/** A person's bookmark as returned by `GET /v1/community/saves`. */
+export interface CommunitySave {
+  id: string;
+  target: { kind: string } & Record<string, unknown>;
+  card: {
+    title: string;
+    thumbnail_url?: string | null;
+    creator?: string | null;
+    /** A publication's is relative (`/p/<slug>`); a catalogue or source print's is its own page. */
+    url?: string | null;
+    source?: string;
+    /** What the service sends (src/saves.rs `Card`). */
+    availability?: 'available' | 'unavailable';
+    /** Older answers' name for it. */
+    available?: boolean;
+  };
+  created_at: string;
+}
+
+export interface CommunitySavesPage {
+  saves: CommunitySave[];
+  next_cursor: string | null;
+}
+
+/** The deliberately small display model for a community save. */
+export interface SavedRow {
+  id: string;
+  title: string;
+  thumbnailUrl: string | null;
+  creator: string | null;
+  url: string | null;
+  available: boolean;
+}
+
+/** A collection of saves, as `/v1/community/collections` answers it (src/saves.rs). */
+export interface CommunityCollection {
+  id: string;
+  name: string;
+  description: string;
+  visibility: 'private' | 'public';
+  created_at: string;
+  updated_at: string;
+  item_count: number;
+}
+
+export interface CommunityCollectionDetail extends CommunityCollection {
+  items: Array<{ save_id: string, target: CommunitySave['target'], card: CommunitySave['card'] }>;
+}
+
+export function savedRows (page: CommunitySavesPage): SavedRow[] {
+  if (!Array.isArray(page.saves)) return []
+  return page.saves.map(({ id, card }) => ({
+    id,
+    title: card.title,
+    thumbnailUrl: card.thumbnail_url ?? null,
+    creator: card.creator ?? null,
+    url: card.url ?? null,
+    available: isAvailable(card)
+  }))
+}
+
+/** Whether a save's print can still be seen: `availability`, or an older answer's `available`. */
+export function isAvailable (card: CommunitySave['card']): boolean {
+  return card.availability ? card.availability === 'available' : card.available === true
 }
 
 /**
@@ -173,7 +321,7 @@ export function describeLibraryError (error: unknown): string {
     case 'offline': return 'Your Library can\'t be reached. Check this computer\'s internet connection.'
     case 'consent_required': return 'Your Library is off. Turn it on in Settings › Library.'
     case 'quota_exceeded': return `Your Library is full. ${error.message}`
-    case 'promise_changed': return 'The Library\'s promise has changed. Reload this page to read the new one.'
+    case 'promise_changed': return 'The Library\'s promise has changed. Settings › Library shows the new one, or says to update Control.'
     default: return error.message
   }
 }
@@ -218,9 +366,28 @@ export interface LibraryClientOptions {
 export type LibraryClient = ReturnType<typeof createLibraryClient>
 
 export function createLibraryClient (options: LibraryClientOptions) {
-  const base = (options.baseUrl ?? MODELS_URL).replace(/\/+$/, '')
+  const base = () => (options.baseUrl ?? MODELS_URL).replace(/\/+$/, '')
   const http: typeof fetch = options.fetch ?? ((input, init) => fetch(input, init))
   const send = options.send ?? xhrSend
+
+  /**
+   * Where a Transfer goes. The assertion is only ever sent to the service at
+   * this page's transport: a Transfer that asks for it anywhere else (another
+   * host, or a path that leaves the service's own) is refused before anything
+   * is sent. A presigned bucket URL without `needs_auth` goes as it came.
+   */
+  function resolve (transfer: Transfer): string {
+    let url: string
+    try {
+      url = modelsResourceUrl(transfer.url, base(), options.baseUrl)
+    } catch {
+      throw new LibraryError('protocol', 'The Library sent a file address this page will not use.')
+    }
+    if (transfer.needs_auth && !isUnderBase(url, base())) {
+      throw new LibraryError('protocol', 'The Library sent a file address this page will not use.')
+    }
+    return url
+  }
 
   /** A request with the assertion; a 401 asks once more with a new one. */
   async function authorised (url: string, init: RequestInit, retried = false): Promise<Response> {
@@ -244,7 +411,7 @@ export function createLibraryClient (options: LibraryClientOptions) {
       init.headers = { 'content-type': 'application/json' }
       init.body = JSON.stringify(body)
     }
-    const response = await authorised(`${base}${path}`, init)
+    const response = await authorised(`${base()}${path}`, init)
     const text = await response.text()
     let data: unknown = null
     try {
@@ -259,19 +426,77 @@ export function createLibraryClient (options: LibraryClientOptions) {
   const item = (id: string) => `/v1/items/${encodeURIComponent(id)}`
 
   return {
-    base,
+    get base () { return base() },
     info: () => request<LibraryInfo>('GET', '/v1/library'),
     consent: (promiseVersion: string) => request<LibraryAccount>('PUT', '/v1/library/consent', { promise_version: promiseVersion }),
     withdraw: () => request<{ enabled: boolean, account: LibraryAccount | null }>('DELETE', '/v1/library/consent'),
     preferences: () => request<Preferences>('GET', '/v1/library/preferences'),
     setPreferences: (patch: PreferencesPatch) => request<Preferences>('PUT', '/v1/library/preferences', patch),
     feed: (since: number) => request<FeedPage>('GET', `/v1/items?since=${since}`),
+    sections: () => request<LibrarySections>('GET', '/v1/library/sections'),
+    // An empty cursor is left out: the service reads a present-but-empty one as a malformed timestamp.
+    runs: (cursor = '', limit = 50) => request<LibraryRunsPage>('GET', `/v1/library/runs?${cursor ? `cursor=${encodeURIComponent(cursor)}&` : ''}limit=${limit}`),
+    sliced: () => request<FeedPage>('GET', '/v1/items?origin=slice'),
+    /**
+     * Publish one of your prints for everyone (`POST /v1/items/:id/publish`): it is reviewed
+     * first (state `pending`), then shows in Discover. Body is exactly `{version, title, publication}`.
+     */
+    publish: (id: string, body: { version: number, title: string, publication: PublishDetails }) =>
+      request<{ id: string, state: string, audience: string, title: string, version: number }>('POST', `${item(id)}/publish`, body),
+    /** Your shares, newest first (public ones are your published prints). */
+    shares: () => request<unknown>('GET', '/v1/community/shares'),
+    saved: () => request<CommunitySavesPage>('GET', '/v1/community/saves'),
+    /** Save a public print (the Library's heart): the save, new or the one already there. */
+    save: (id: string, kind: 'publication' | 'catalogue' = 'publication') => request<CommunitySave>('PUT', '/v1/community/saves', { kind, id }),
+    unsave: (saveId: string) => request<null>('DELETE', `/v1/community/saves/${encodeURIComponent(saveId)}`),
+    /** Which of these public prints are saved, and as which save. */
+    savesOf: (ids: string[], kind: 'publication' | 'catalogue' = 'publication') => request<{ saves: Array<{ target: { kind: string, id: string }, save_id: string }> }>(
+      'GET', `/v1/community/saves/lookup?targets=${encodeURIComponent(JSON.stringify(ids.map(id => ({ kind, id }))))}`),
+    collections: () => request<{ collections: CommunityCollection[] }>('GET', '/v1/community/collections'),
+    collection: (id: string) => request<CommunityCollectionDetail>('GET', `/v1/community/collections/${encodeURIComponent(id)}`),
+    /** Follow someone's public collection (`PUT .../follow`, 204; 404 not public, 400 `follow_limit` at 500). */
+    followCollection: (id: string) => request<null>('PUT', `/v1/community/collections/${encodeURIComponent(id)}/follow`),
+    unfollowCollection: (id: string) => request<null>('DELETE', `/v1/community/collections/${encodeURIComponent(id)}/follow`),
+    /** The collections you follow, newest follow first (src/saves.rs `followed`): the public view of each, no items. */
+    followedCollections: () => request<{ collections: CommunityCollection[] }>('GET', '/v1/community/collections/followed'),
+    createCollection: (name: string) => request<CommunityCollection>('POST', '/v1/community/collections', { name, visibility: 'private' }),
+    addToCollection: (collectionId: string, saveId: string) =>
+      request<null>('PUT', `/v1/community/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(saveId)}`),
+    /** Rename it, or make it public or private (PATCH takes only these). */
+    updateCollection: (id: string, patch: { name?: string, visibility?: 'private' | 'public' }) =>
+      request<CommunityCollection>('PATCH', `/v1/community/collections/${encodeURIComponent(id)}`, patch),
+    deleteCollection: (id: string) => request<null>('DELETE', `/v1/community/collections/${encodeURIComponent(id)}`),
+    removeFromCollection: (collectionId: string, saveId: string) =>
+      request<null>('DELETE', `/v1/community/collections/${encodeURIComponent(collectionId)}/items/${encodeURIComponent(saveId)}`),
+    /** Your order: every save in it, in the new order (the service checks it is the same set). */
+    reorderCollection: (id: string, saveIds: string[]) =>
+      request<null>('POST', `/v1/community/collections/${encodeURIComponent(id)}/reorder`, { save_ids: saveIds }),
     createPrint: (body: VersionBody & { name: string }) => request<Created>('POST', '/v1/prints', body),
     createVersion: (id: string, body: VersionBody) => request<Created>('POST', `${item(id)}/versions`, body),
     complete: (id: string, version: number) =>
       request<{ item?: LibraryItem, version?: Version }>('POST', `${item(id)}/versions/${version}/complete`),
     item: (id: string) => request<LibraryItem>('GET', item(id)),
     versions: (id: string) => request<{ versions: Version[] }>('GET', `${item(id)}/versions`),
+    publicPublication: (id: string) => request<PublicPublication>('GET', `/v1/public/publications/${encodeURIComponent(id)}`),
+    modelContext: async (id: string) => {
+      const context = await request<ModelContext>('GET', `/v1/library/publications/${encodeURIComponent(id)}/context`)
+      if (!context || typeof context.owner !== 'boolean' || !Array.isArray(context.versions) || !Array.isArray(context.runs)) throw new LibraryError('protocol', 'The Library sent an unreadable model history.')
+      return context
+    },
+    /** The raw bytes of a shared file: `POST /v1/shares/:id/files/:file` takes `{key?}` and answers the bytes, or a JSON refusal. */
+    async shareFile (id: string, fileId: string, key?: string): Promise<Uint8Array> {
+      const response = await authorised(`${base()}/v1/shares/${encodeURIComponent(id)}/files/${encodeURIComponent(fileId)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(key === undefined ? {} : { key })
+      })
+      if (!response.ok) {
+        let data: unknown = null
+        try { data = await response.json() } catch { /* nothing readable */ }
+        throw libraryErrorFrom(response.status, data)
+      }
+      return new Uint8Array(await response.arrayBuffer())
+    },
     restore: (id: string, version: number) => request<{ item: LibraryItem, version: Version }>('POST', `${item(id)}/versions/${version}/restore`),
     rename: (id: string, name: string) => request<LibraryItem>('PATCH', item(id), { name }),
     remove: (id: string) => request<LibraryItem>('DELETE', item(id)),
@@ -285,10 +510,11 @@ export function createLibraryClient (options: LibraryClientOptions) {
     async put (transfer: Transfer, bytes: Uint8Array, onProgress?: (sent: number) => void): Promise<void> {
       const attempt = async (retried: boolean): Promise<void> => {
         const headers: Record<string, string> = {}
+        const url = resolve(transfer)
         if (transfer.needs_auth) headers.authorization = `Bearer ${await options.assertion.get()}`
         let status: number
         try {
-          status = await send({ url: transfer.url, body: bytes, headers, onProgress })
+          status = await send({ url, body: bytes, headers, onProgress })
         } catch (error) {
           if (error instanceof LibraryError) throw error
           throw new LibraryError('offline', 'The upload failed on the network.')
@@ -305,11 +531,12 @@ export function createLibraryClient (options: LibraryClientOptions) {
     /** GETs a file where the Transfer says, with the assertion only when the URL is the service's own. */
     async get (transfer: Transfer): Promise<Uint8Array> {
       let response: Response
+      const url = resolve(transfer)
       if (transfer.needs_auth) {
-        response = await authorised(transfer.url, { method: 'GET' })
+        response = await authorised(url, { method: 'GET' })
       } else {
         try {
-          response = await http(transfer.url, { method: 'GET' })
+          response = await http(url, { method: 'GET' })
         } catch {
           throw new LibraryError('offline', 'The file could not be fetched.')
         }

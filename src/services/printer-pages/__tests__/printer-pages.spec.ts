@@ -6,7 +6,9 @@ import type { ForeignPrinterRecord } from '@/services/foreign-printers/types'
 import { foreignRegistry, foreignSlug } from '@/services/foreign-printers/registry'
 import { httpClientActions } from '@/api/httpClientActions'
 import { cloudState } from '@/services/muon-cloud/state'
+import { discoveryState } from '@/services/muon-cloud/discovery'
 import { MANAGED_API_URL } from '@/services/muon-cloud/origin'
+import { slugForCloudPrinter } from '../slug'
 import {
   activeSlug,
   installPrinterPages,
@@ -14,6 +16,7 @@ import {
   isPrintersOwnPage,
   learnActiveIdentity,
   openPrinterAt,
+  ownPageHome,
   preferSavedPrinterFor,
   printerPageNeedsLogin,
   printerPagesState,
@@ -89,6 +92,23 @@ describe('opening a foreign printer', () => {
   })
 })
 
+describe('a cloud printer route', () => {
+  it('still identifies the clicked printer after the account list is renamed and reordered', () => {
+    const boxwood = { id: 'same-prefix-boxwood', name: 'Boxwood' }
+    const giblet = { id: 'same-prefix-giblet', name: 'Giblet' }
+    const clicked = slugForCloudPrinter(boxwood)
+
+    // The account refresh arrives between render and click. Display names and
+    // ordering are presentation only; neither may change the route identity.
+    const refreshed = [
+      { kind: 'cloud' as const, slug: slugForCloudPrinter({ ...giblet, name: 'Boxwood' }), printerId: giblet.id },
+      { kind: 'cloud' as const, slug: slugForCloudPrinter({ ...boxwood, name: 'Workshop Boxwood' }), printerId: boxwood.id }
+    ]
+
+    expect(resolveSlug(clicked, refreshed)).toMatchObject({ kind: 'cloud', printerId: boxwood.id })
+  })
+})
+
 describe('the printer an address names', () => {
   const printers = [
     local('boxwood-367a', 'http://192.168.1.153'),
@@ -156,7 +176,7 @@ describe("a printer's identity, answered after Fluidd moved to another printer",
     await expect(learning).resolves.toBeNull()
     expect(printerPagesState.aliases).toEqual({})
     expect(printerPagesState.learned).toEqual({})
-    expect(activeSlug()).toBe('boxwood-367a')
+    expect(activeSlug()).toBe(slugForCloudPrinter({ id: BOXWOOD_ID, name: 'Boxwood · 367A' }))
     expect(isActiveSlug('walnut-8987')).toBe(false)
   })
 
@@ -168,14 +188,98 @@ describe("a printer's identity, answered after Fluidd moved to another printer",
   })
 })
 
+describe('a page that lands on the address made before the printer said who it is', () => {
+  it('is corrected to the real slug as it lands, even after the identity has already come', async () => {
+    store.state.config.apiUrl = 'http://192.168.9.9'
+    const before = activeSlug()!
+    const walnutIdentity = { name: 'walnut', suffix: '8987', derived_name: 'walnut', endpoint_id: 'a'.repeat(64) }
+    vi.spyOn(httpClientActions, 'get').mockResolvedValue({ data: { result: walnutIdentity } } as never)
+    await learnActiveIdentity()
+    expect(before).not.toBe('walnut-8987')
+
+    // The bare /slice redirected to the old address while the identity was in flight.
+    let landed: (to: unknown) => void = () => {}
+    const replace = vi.fn(() => Promise.resolve())
+    const router = {
+      afterEach: (hook: (to: unknown) => void) => { landed = hook },
+      currentRoute: { params: { printer: before }, fullPath: `/${before}/slice`, path: `/${before}/slice` },
+      replace
+    } as unknown as VueRouter
+    installPrinterPages(router, { activateLocalPrinter: vi.fn(async () => true), activateCloudPrinter: vi.fn(async () => {}) })
+    landed({ params: { printer: before } })
+    expect(replace).toHaveBeenCalledWith(expect.stringContaining('/walnut-8987/slice'))
+    store.state.config.apiUrl = ''
+    vi.restoreAllMocks()
+  })
+})
+
 describe("another account printer's address", () => {
   it('is never kept as another name for the printer Fluidd is on', () => {
     cloudState.printers = [{ id: 'f1f6920f', name: 'Boxwood · 367A' } as never]
     store.state.config.apiUrl = 'http://192.168.137.73'
-    rememberAlias('boxwood-367a', 'walnut-8987')
+    rememberAlias(slugForCloudPrinter({ id: 'f1f6920f', name: 'Boxwood · 367A' }), 'walnut-8987')
     expect(printerPagesState.aliases).toEqual({})
     store.state.config.apiUrl = ''
     cloudState.printers = []
+  })
+})
+
+describe('a printer the network search found', () => {
+  const BOXWOOD_ID = 'f1f6920f757634a16b969df342a052e2fac8af51567754717d86bf0905f1ad65'
+  const found = (endpointId: string | null) => ({
+    host: '192.168.1.153',
+    apiUrl: 'http://192.168.1.153',
+    name: 'Boxwood · 367A',
+    endpointId,
+    mdnsHost: 'muon-boxwood-367a.local',
+    link: { phase: 'linked' } as never
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    discoveryState.found = []
+    cloudState.printers = []
+    cloudState.activePrinterId = null
+    store.state.config.apiUrl = ''
+  })
+
+  it('opens at its own address, through the account when it is in it', () => {
+    // 2 Nov: Boxwood showed on control.muon3d.com when it was on, and
+    // /boxwood-367a said "No printer called boxwood-367a here".
+    cloudState.printers = [{ id: BOXWOOD_ID, name: 'Boxwood · 367A' } as never]
+    discoveryState.found = [found(BOXWOOD_ID)]
+    expect(resolveSlug('boxwood-367a')).toMatchObject({ kind: 'cloud', printerId: BOXWOOD_ID })
+  })
+
+  it('opens at its own address on this network when it is in no account', () => {
+    discoveryState.found = [found(null)]
+    expect(resolveSlug('boxwood-367a')).toMatchObject({
+      kind: 'local',
+      instance: { apiUrl: 'http://192.168.1.153', mdnsHost: 'muon-boxwood-367a.local' }
+    })
+  })
+
+  it('does not take the address of a printer saved here', () => {
+    const saved = store.state.config.instances
+    store.state.config.instances = [instance('http://10.0.0.9', { mdnsHost: 'muon-boxwood-367a.local' })]
+    discoveryState.found = [found(null)]
+    expect(resolveSlug('boxwood-367a')).toMatchObject({ kind: 'local', instance: { apiUrl: 'http://10.0.0.9' } })
+    store.state.config.instances = saved
+  })
+
+  it('is the open printer under its own address once it has said who it is through Muon3D', async () => {
+    cloudState.printers = [{ id: BOXWOOD_ID, name: 'Boxwood · 367A' } as never]
+    store.state.config.apiUrl = MANAGED_API_URL
+    cloudState.activePrinterId = BOXWOOD_ID
+    vi.spyOn(httpClientActions, 'get').mockResolvedValue({
+      data: { result: { name: 'Boxwood', suffix: '367a', endpoint_id: BOXWOOD_ID } }
+    } as never)
+
+    const cloudSlug = slugForCloudPrinter({ id: BOXWOOD_ID, name: 'Boxwood · 367A' })
+    await expect(learnActiveIdentity()).resolves.toBe(cloudSlug)
+    expect(activeSlug()).toBe(cloudSlug)
+    expect(isActiveSlug('boxwood-367a')).toBe(true)
+    expect(isActiveSlug('walnut-8987')).toBe(false)
   })
 })
 
@@ -282,5 +386,30 @@ describe('a printer opened by its address', () => {
     // 14 Oct: Boxwood opened through Muon3D showed the login page, whose
     // password went to /access/login, which muon-link refuses to every role.
     expect(printerPageNeedsLogin({ ...page, managed: true }, on)).toBe(false)
+  })
+})
+
+describe('ownPageHome (KAN-2008)', () => {
+  const own = { origin: 'http://192.168.137.81:8098', hostname: '192.168.137.81' }
+
+  it('sends the root of a printer own page straight to that printer, before any list can draw', () => {
+    expect(ownPageHome('/', 'http://192.168.137.81:8098', 'boxwood-367a', own)).toBe('/boxwood-367a')
+  })
+
+  it('leaves every other address alone', () => {
+    expect(ownPageHome('/boxwood-367a', 'http://192.168.137.81:8098', 'boxwood-367a', own)).toBeNull()
+    expect(ownPageHome('/library', 'http://192.168.137.81:8098', 'boxwood-367a', own)).toBeNull()
+  })
+
+  it('keeps the list for the shared name, the console and a printer that is not this page', () => {
+    const shared = { origin: 'http://muon3d.local', hostname: 'muon3d.local' }
+    expect(ownPageHome('/', 'http://muon3d.local', 'boxwood-367a', shared)).toBeNull()
+    expect(ownPageHome('/', 'http://192.168.137.95', 'boxwood-367a', own)).toBeNull()
+    expect(ownPageHome('/', MANAGED_API_URL, 'boxwood-367a', own)).toBeNull()
+  })
+
+  it('waits for the old behaviour when no printer slug is known', () => {
+    expect(ownPageHome('/', 'http://192.168.137.81:8098', null, own)).toBeNull()
+    expect(ownPageHome('/', '', 'boxwood-367a', own)).toBeNull()
   })
 })

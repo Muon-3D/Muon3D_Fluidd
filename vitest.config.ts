@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue2'
 import content from '@originjs/vite-plugin-content'
 import Components from 'unplugin-vue-components/vite'
 import { VuetifyResolver } from 'unplugin-vue-components/resolvers'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 // vite-plugin-pwa supplies virtual:pwa-register, and unit tests don't load it.
 // RegisterServiceWorker.vue imports it, so a spec that imports App.vue needs a stand-in.
@@ -36,6 +36,8 @@ export default defineConfig({
     pool: 'forks',
     maxWorkers: 1,
     minWorkers: 1,
-    testTimeout: 60000
+    testTimeout: 60000,
+    // e2e/ is Playwright's (npm run test:e2e), not vitest's.
+    exclude: [...configDefaults.exclude, 'e2e/**']
   }
 })

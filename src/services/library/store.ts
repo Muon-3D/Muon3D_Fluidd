@@ -20,11 +20,13 @@ import {
   type Preferences,
   type PreferencesPatch,
   type PrintedEvent,
+  type StorageKind,
   type Version
 } from './api'
 import { modelsAssertion } from './assertion'
+import { forgetOwnRecents } from './recents'
 import { syncFeed } from './feed'
-import { PROMISE_SUMMARY, PROMISE_URL, PROMISE_VERSION } from './promise'
+import { libraryPromise } from './promise'
 import { cleanName, saveToLibrary, type SaveProgress, type SaveRequest } from './save'
 
 export interface LibraryState {
@@ -37,13 +39,18 @@ export interface LibraryState {
   promiseVersion: string | null;
   /** When the files of a Library turned off are deleted. */
   purgeAfter: string | null;
+  /** Off because it was turned off (the service still has a past consent, or it was turned off here), not never on. */
+  withdrawn: boolean;
   usedBytes: number | null;
   quotaBytes: number | null;
+  /** The used space split by kind, only when the service sends it. */
+  usedByKind: Partial<Record<StorageKind, number>> | null;
   preferences: Preferences | null;
   items: Record<string, LibraryItem>;
   rev: number;
   /** The list has been read at least once. */
   synced: boolean;
+  feedLoading: boolean;
   error: string | null;
   errorCode: string | null;
 }
@@ -56,18 +63,22 @@ function blank (account: string | null): LibraryState {
     enabled: false,
     promiseVersion: null,
     purgeAfter: null,
+    withdrawn: false,
     usedBytes: null,
     quotaBytes: null,
+    usedByKind: null,
     preferences: null,
     items: {},
     rev: 0,
     synced: false,
+    feedLoading: false,
     error: null,
     errorCode: null
   }
 }
 
 export const libraryState = Vue.observable<LibraryState>(blank(null))
+let errorSource: 'library' | 'feed' | null = null
 
 let client: LibraryClient = createLibraryClient({ assertion: modelsAssertion })
 
@@ -83,11 +94,13 @@ export function setLibraryClient (next: LibraryClient) {
 /** Starts the Library again for `account` (null: signed out). */
 export function resetLibrary (account: string | null) {
   Object.assign(libraryState, blank(account))
+  errorSource = null
 }
 
-function setError (error: unknown) {
+function setError (error: unknown, source: 'library' | 'feed' = 'library') {
   libraryState.error = describeLibraryError(error)
   libraryState.errorCode = error instanceof LibraryError ? error.code : null
+  errorSource = source
 }
 
 function clearItems () {
@@ -96,12 +109,50 @@ function clearItems () {
   libraryState.synced = false
 }
 
+/**
+ * A deliberate turn-off is remembered per account here too: the service
+ * forgets the account once its files are purged, and an account it has never
+ * seen must not be told apart from one that said no (KAN-735).
+ */
+const TURNED_OFF_KEY = 'muon.library.turned-off.'
+
+function turnedOffHere (account: string | null): boolean {
+  if (!account) return false
+  try {
+    return window.localStorage.getItem(TURNED_OFF_KEY + account) !== null
+  } catch {
+    return false
+  }
+}
+
+function rememberTurnedOff (account: string | null, off: boolean) {
+  if (!account) return
+  try {
+    if (off) window.localStorage.setItem(TURNED_OFF_KEY + account, new Date().toISOString())
+    else window.localStorage.removeItem(TURNED_OFF_KEY + account)
+  } catch {
+    // Storage blocked: the service's own answer still counts.
+  }
+}
+
 function takeInfo (info: LibraryInfo) {
   libraryState.enabled = info.enabled
+  libraryState.withdrawn = !info.enabled && (!!info.account?.consented_at || turnedOffHere(libraryState.account))
   libraryState.promiseVersion = info.promise_version ?? null
   libraryState.purgeAfter = info.account?.purge_after ?? null
   libraryState.usedBytes = typeof info.used_bytes === 'number' ? info.used_bytes : null
   libraryState.quotaBytes = typeof info.quota_bytes === 'number' ? info.quota_bytes : null
+  libraryState.usedByKind = byKind(info.used_by_kind)
+}
+
+function byKind (split: unknown): Partial<Record<StorageKind, number>> | null {
+  if (!split || typeof split !== 'object') return null
+  const out: Partial<Record<StorageKind, number>> = {}
+  for (const kind of ['uploads', 'slices', 'designs'] as StorageKind[]) {
+    const bytes = (split as Record<string, unknown>)[kind]
+    if (typeof bytes === 'number' && Number.isFinite(bytes) && bytes >= 0) out[kind] = bytes
+  }
+  return Object.keys(out).length ? out : null
 }
 
 const signedInAccount = (): string | null => cloudState.account?.id ?? null
@@ -112,8 +163,10 @@ let watching = false
 export function watchLibraryAccount () {
   if (watching) return
   watching = true
-  watch(signedInAccount, (account) => {
+  watch(signedInAccount, (account, previous) => {
     if (account === libraryState.account) return
+    // Another account (or none): what the last one opened of its own is not this one's.
+    if (previous !== undefined && previous !== account) forgetOwnRecents()
     resetLibrary(account)
     if (account) refreshLibrary().catch(() => {})
   }, { immediate: true })
@@ -143,6 +196,7 @@ async function readLibrary () {
     libraryState.checked = true
     libraryState.error = null
     libraryState.errorCode = null
+    errorSource = null
     if (preferences instanceof LibraryError) setError(preferences)
     else libraryState.preferences = preferences
     if (info.enabled) await syncLibrary()
@@ -165,19 +219,27 @@ export function syncLibrary (): Promise<void> {
 async function readFeed () {
   const account = libraryState.account
   if (!account) return
+  libraryState.feedLoading = true
   try {
     const next = await syncFeed({ items: libraryState.items, rev: libraryState.rev }, since => client.feed(since))
     if (libraryState.account !== account) return
     libraryState.items = next.items
     libraryState.rev = next.rev
     libraryState.synced = true
+    if (errorSource === 'feed') {
+      libraryState.error = null
+      libraryState.errorCode = null
+      errorSource = null
+    }
   } catch (error) {
     if (libraryState.account !== account) return
     if (error instanceof LibraryError && error.code === 'consent_required') {
       libraryState.enabled = false
       clearItems()
     }
-    setError(error)
+    setError(error, 'feed')
+  } finally {
+    if (libraryState.account === account) libraryState.feedLoading = false
   }
 }
 
@@ -213,17 +275,40 @@ export async function setLibraryPreferences (patch: PreferencesPatch): Promise<v
 }
 
 /** Turns the Library on with the promise this Fluidd shows (MSV-3). */
-export async function turnLibraryOn (): Promise<void> {
-  await client.consent(PROMISE_VERSION)
+export async function turnLibraryOn (version: string): Promise<void> {
+  requireCurrentPromise(version)
+  await rereadIfPromiseChanged(() => client.consent(version))
+  rememberTurnedOff(libraryState.account, false)
   // A read that began before the consent would answer "off".
   await refreshing?.catch(() => {})
   await refreshLibrary()
 }
 
+/**
+ * Runs `work`; when the service refuses it because the promise changed, reads
+ * the Library again before passing the refusal on. Settings and
+ * the slicer's card then show the promise the service wants now, or say this
+ * Control is too old to show it, so asking again never sends the same stale
+ * words (KAN-799: a refusal followed by "reload" looped on a stale build).
+ */
+async function rereadIfPromiseChanged<T> (work: () => Promise<T>): Promise<T> {
+  try {
+    return await work()
+  } catch (error) {
+    if (error instanceof LibraryError && error.code === 'promise_changed' && libraryState.account) {
+      await refreshing?.catch(() => {})
+      await refreshLibrary().catch(() => {})
+    }
+    throw error
+  }
+}
+
 /** Turns it off: the service deletes the files after 30 days, unless it is turned on again. */
 export async function turnLibraryOff (): Promise<void> {
   const answer = await client.withdraw()
+  rememberTurnedOff(libraryState.account, true)
   libraryState.enabled = false
+  libraryState.withdrawn = true
   libraryState.purgeAfter = answer?.account?.purge_after ?? null
   clearItems()
 }
@@ -256,9 +341,11 @@ export async function recordPrinted (id: string, event: PrintedEvent): Promise<v
 export async function loadItem (id: string): Promise<LibraryItem | null> {
   const kept = libraryState.items[id]
   if (kept) return kept
+  const account = libraryState.account
   try {
     const item = await client.item(id)
-    keep(item)
+    // Signed out or another account meanwhile: not this Library's to keep.
+    if (libraryState.account === account) keep(item)
     return item
   } catch (error) {
     if (error instanceof LibraryError && error.code === 'not_found') return null
@@ -305,9 +392,17 @@ export async function loadProject (id: string, version: number | null): Promise<
 
 /** Saves what the slicer sent (library.save), then reads the storage used again. */
 export async function saveFromSlicer (request: SaveRequest, onProgress?: (progress: SaveProgress) => void) {
-  const saved = await saveToLibrary(client, request, onProgress)
+  if (request.consent) {
+    await ensureLibraryRead()
+    requireCurrentPromise(request.consent)
+  }
+  const saved = await rereadIfPromiseChanged(() => saveToLibrary(client, request, onProgress))
   keep(saved.item)
-  if (request.consent) libraryState.enabled = true
+  if (request.consent) {
+    libraryState.enabled = true
+    libraryState.withdrawn = false
+    rememberTurnedOff(libraryState.account, false)
+  }
   refreshLibrary().catch(() => {})
   return saved
 }
@@ -326,13 +421,21 @@ export function libraryStatus (state: LibraryState = libraryState): LibraryStatu
   const signedIn = state.account !== null
   // The text here is the one this Fluidd can show; a service that now wants
   // another version gets no promise, so nobody consents to words they weren't shown.
-  const promiseShown = signedIn && !state.enabled && (state.promiseVersion === null || state.promiseVersion === PROMISE_VERSION)
+  const promise = state.checked ? libraryPromise(state.promiseVersion) : null
+  const promiseShown = signedIn && !state.enabled && promise !== null
   return {
     signedIn,
     enabled: signedIn && state.enabled,
-    promise: promiseShown ? { version: PROMISE_VERSION, summary: PROMISE_SUMMARY, url: PROMISE_URL } : null,
+    promise: promiseShown && promise ? { version: promise.version, summary: promise.summary, url: promise.url } : null,
     preferences: signedIn && state.preferences ? { autosave: state.preferences.autosave, ask: state.preferences.ask } : null,
     usedBytes: signedIn ? state.usedBytes : null,
     quotaBytes: signedIn ? state.quotaBytes : null
+  }
+}
+
+function requireCurrentPromise (version: string) {
+  if (!libraryState.account) throw notSignedIn()
+  if (!libraryState.checked || !libraryPromise(version) || libraryState.promiseVersion !== version) {
+    throw new LibraryError('promise_changed', "The Library's promise has changed. Settings › Library shows the new one, or says to update Control.", 409)
   }
 }

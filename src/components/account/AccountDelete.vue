@@ -5,7 +5,6 @@
   >
     <div class="acct-head">
       <h1>Delete your account</h1>
-      <p>This deletes your Muon3D account and everything kept in it. Your printers keep working without it.</p>
     </div>
 
     <div
@@ -18,7 +17,7 @@
         name="clock"
         small
       />
-      <span class="del__grow"><b>Your account will be deleted on {{ deleteDay }}.</b> Until then you can keep it, with your printers and sharing as they were.</span>
+      <span class="del__grow"><b>Your account will be deleted on {{ deleteDay }}.</b> Until then you can keep it.</span>
       <button
         type="button"
         class="lib-btn lib-btn--sm lib-btn--pri"
@@ -69,7 +68,7 @@
                 small
                 class="del__green"
               />
-              <span>Your printers, their files and their history. They work on your network with no account, for good.</span>
+              <span>Your printers, their files and history. They work on your network without an account.</span>
             </div>
             <div class="del__keep">
               <frame-icon
@@ -77,7 +76,7 @@
                 small
                 class="del__green"
               />
-              <span>You stay their owner. That is set at each printer, not in your account.</span>
+              <span>You unlink the printers you own first, so nobody is left on one with no owner.</span>
             </div>
           </div>
         </section>
@@ -89,7 +88,7 @@
           <h2 class="lib-card-title">
             Before you go
           </h2>
-          <span class="acct-muted del__text">Download your account first. Once it's gone we can't get it back.</span>
+          <span class="acct-muted del__text">Once it's gone we can't get it back.</span>
           <div>
             <router-link
               :to="linkTo('privacy')"
@@ -105,14 +104,16 @@
           aria-label="Delete"
         >
           <span class="acct-muted del__text">{{ graceLine }}</span>
-          <div>
+          <div
+            v-if="grace && !scheduled"
+          >
             <button
               type="button"
               class="lib-btn lib-btn--dng"
               data-tid="delete-open"
               @click="open"
             >
-              {{ scheduled ? 'Delete now…' : 'Delete account…' }}
+              Delete account…
             </button>
           </div>
         </section>
@@ -139,13 +140,18 @@
     >
       <div class="del__steps">
         <span
-          v-for="(name, i) in ['Check', 'It\'s you', 'Done']"
+          class="sr-only"
+          role="status"
+          aria-live="polite"
+        >Step {{ stepNames.indexOf(stepName) + 1 }} of {{ stepNames.length }}: {{ stepTitle }}</span>
+        <span
+          v-for="(name, i) in stepNames"
           :key="name"
           class="del__step"
-          :class="{ 'del__step--on': step === i + 1, 'del__step--done': step > i + 1 }"
+          :class="{ 'del__step--on': stepNames.indexOf(stepName) === i, 'del__step--done': stepNames.indexOf(stepName) > i }"
         ><span class="del__n">
           <frame-icon
-            v-if="step > i + 1"
+            v-if="stepNames.indexOf(stepName) > i"
             name="check"
             small
           />
@@ -153,9 +159,47 @@
         </span>{{ name }}</span>
       </div>
 
-      <template v-if="step === 1">
+      <template v-if="step === 0">
         <p class="m3-dlg__text">
-          {{ grace ? 'In 14 days we delete your account, your Library and who you share with. Until then you can change your mind.' : 'Your account, your Library and who you share with are deleted at once.' }}
+          Unlink them first, so nobody is left on a printer with no owner. Each one keeps working on your network.
+        </p>
+        <div
+          class="del__printers"
+          data-tid="delete-owned"
+        >
+          <div
+            v-for="printer in owned"
+            :key="printer.id"
+            class="del__printer"
+          >
+            <frame-icon
+              name="printer"
+              small
+            />
+            <span class="del__grow"><b>{{ printer.name }}</b></span>
+            <button
+              type="button"
+              class="cbtn cbtn--ghost cbtn--sm"
+              :disabled="busy"
+              :data-tid="`delete-unlink-${printer.id}`"
+              @click="unlink(printer)"
+            >
+              Unlink…
+            </button>
+          </div>
+        </div>
+        <p
+          v-if="dialogError"
+          class="m3-dlg__error"
+          role="alert"
+        >
+          {{ dialogError }}
+        </p>
+      </template>
+
+      <template v-else-if="step === 1">
+        <p class="m3-dlg__text">
+          In 14 days we delete your account, your Library and who you share with. Until then you can change your mind.
         </p>
         <div class="del__keep">
           <frame-icon
@@ -178,47 +222,41 @@
             class="del__green"
           /><span>Your printers keep working on your network</span>
         </div>
-        <div
-          v-if="grace && !scheduled"
-          class="m3-field"
-        >
-          <span class="m3-field__label">When</span>
-          <div class="del__when">
-            <button
-              type="button"
-              class="lib-chip"
-              :class="{ 'lib-chip--on': !now }"
-              :aria-pressed="!now ? 'true' : 'false'"
-              data-tid="delete-later"
-              @click="now = false"
-            >
-              In 14 days
-            </button>
-            <button
-              type="button"
-              class="lib-chip"
-              :class="{ 'lib-chip--on': now }"
-              :aria-pressed="now ? 'true' : 'false'"
-              data-tid="delete-now"
-              @click="now = true"
-            >
-              Now, at once
-            </button>
-          </div>
-          <span class="m3-dlg__note">{{ now ? 'Nothing to change your mind with: it goes as soon as you confirm.' : 'You can sign in and keep it until then.' }}</span>
+        <div class="acct-note acct-note--warn">
+          <frame-icon
+            name="alert"
+            small
+          />
+          <span>Your Library uploads, designs and tokens go too. <router-link :to="linkTo('privacy')">Request a copy</router-link> first if you want one.</span>
         </div>
+        <label class="m3-field">
+          <span class="m3-field__label">Type DELETE to confirm</span>
+          <span class="m3-field__box m3-field__box--mono"><input
+            v-model="typed"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            aria-label="Type DELETE to confirm"
+            data-tid="delete-type"
+            @keydown.enter="typedOk && (step = 2)"
+          ></span>
+        </label>
       </template>
 
       <template v-else-if="step === 2">
         <p class="m3-dlg__text">
-          {{ hasPassword ? 'Deleting needs your password, so someone using an unlocked computer can\'t do it.' : 'Deleting needs a fresh sign-in.' }}
+          {{ hasPasskey ? 'Confirm with your passkey to delete in 14 days, or use the other sign-in method below.' : hasPassword ? 'Deleting needs your password, so someone using an unlocked computer can\'t do it.' : 'Deleting needs a fresh sign-in.' }}
         </p>
-        <p
+        <button
           v-if="hasPasskey"
-          class="m3-dlg__note"
+          type="button"
+          class="cbtn cbtn--danger"
+          :disabled="busy"
+          data-tid="delete-passkey"
+          @click="confirmPasskey"
         >
-          Passkey confirmation: Coming soon.
-        </p>
+          Delete in 14 days with passkey
+        </button>
         <template v-if="hasPassword">
           <label class="m3-field">
             <span class="m3-field__label">Password</span>
@@ -227,6 +265,7 @@
               type="password"
               autocomplete="current-password"
               aria-label="Password"
+              :aria-describedby="dialogError ? errorId : undefined"
               data-tid="delete-password"
               @keydown.enter="confirm"
             ></span>
@@ -241,6 +280,7 @@
               inputmode="numeric"
               autocomplete="one-time-code"
               aria-label="Code from your authenticator app"
+              :aria-describedby="dialogError ? errorId : undefined"
               @keydown.enter="confirm"
             ></span>
             <span class="m3-dlg__note">Or use a recovery code.</span>
@@ -255,6 +295,7 @@
         </p>
         <p
           v-if="dialogError"
+          :id="errorId"
           class="m3-dlg__error"
           role="alert"
         >
@@ -287,7 +328,26 @@
       </template>
 
       <template #actions>
-        <template v-if="step === 1">
+        <template v-if="step === 0">
+          <button
+            type="button"
+            class="cbtn cbtn--ghost"
+            :disabled="busy"
+            @click="close"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="cbtn cbtn--primary"
+            :disabled="owned.length > 0 || busy"
+            data-tid="delete-next"
+            @click="step = 1"
+          >
+            Next
+          </button>
+        </template>
+        <template v-else-if="step === 1">
           <button
             type="button"
             class="cbtn cbtn--ghost"
@@ -298,10 +358,11 @@
           <button
             type="button"
             class="cbtn cbtn--danger"
+            :disabled="!typedOk || owned.length > 0"
             data-tid="delete-continue"
             @click="step = 2"
           >
-            Continue
+            Delete account
           </button>
         </template>
         <template v-else-if="step === 2">
@@ -320,7 +381,7 @@
             data-tid="delete-confirm"
             @click="confirm"
           >
-            {{ grace && !now ? 'Delete in 14 days' : 'Delete now' }}
+            Delete in 14 days
           </button>
         </template>
         <button
@@ -340,8 +401,11 @@
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import M3Dialog from '@/components/ui/M3Dialog.vue'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, refreshPrinters } from '@/services/muon-cloud/state'
+import { cloudApi, type CloudPrinter } from '@/services/muon-cloud/api'
 import { deletionState } from '@/services/muon-cloud/deletion'
+import { confirmAccount } from '@/services/account/confirmation'
+import { storedToken } from '@/services/muon-cloud/api'
 import { accountApi } from '@/services/account/api'
 import { accountState, describe, loadMe } from '@/services/account/state'
 import { dayText, listText, type AccountSectionId } from '@/services/account/model'
@@ -351,26 +415,28 @@ import { bytesText } from '@/services/library/format'
 
 /**
  * Delete account (the canvas's "Account · Delete account" and its three
- * steps): what goes and what stays, with the real numbers, then check, it's
- * you, done. With the console's 14-day grace period the person can choose
- * to wait (the default) or delete at once, and can keep the account until
- * the day. A console without the grace period deletes at once, and the page
- * says so before anything is asked.
+ * steps): what goes and what stays, then check, it's you, done. The account
+ * can be kept for 14 days. An older console needs an update before deletion.
  */
 @Component({ components: { M3Dialog } })
 export default class AccountDelete extends Vue {
   @Prop({ type: Function, required: true })
   readonly linkTo!: (id: AccountSectionId) => string
 
+  alive = true
+  beforeDestroy () { this.alive = false }
+
   dialog = false
   step = 1
-  now = false
   password = ''
   code = ''
+  typed = ''
   busy = false
   error = ''
   dialogError = ''
+  readonly errorId = 'delete-confirmation-error'
   deletedAt: number | null = null
+  startedOwning = false
 
   created () {
     loadMe().catch(() => {})
@@ -413,6 +479,20 @@ export default class AccountDelete extends Vue {
     return cloudState.printers.filter(p => !p.shared)
   }
 
+  /** Typed exactly, as the storyboard asks: DELETE. */
+  get typedOk (): boolean {
+    return this.typed.trim() === 'DELETE'
+  }
+
+  /** Unlink your owned printers, then confirm, then it's you, then done (settings/account-data, frame 5). */
+  get stepNames (): string[] {
+    return [...(this.startedOwning ? ['Printers'] : []), 'Check', 'It\'s you', 'Done']
+  }
+
+  get stepName (): string {
+    return ['Printers', 'Check', 'It\'s you', 'Done'][this.step]
+  }
+
   get printersGo (): string {
     const names = this.owned.map(p => p.name)
     if (!names.length) return 'No printers are linked to it'
@@ -430,8 +510,8 @@ export default class AccountDelete extends Vue {
     return [
       {
         icon: 'printer',
-        title: this.owned.length ? `${listText(this.owned.map(p => p.name))} ${this.owned.length === 1 ? 'is' : 'are'} unlinked` : 'No printers are linked',
-        text: "You can't reach them from outside your home any more. Link them again from a new account at each printer's screen."
+        title: this.owned.length ? `Unlink ${listText(this.owned.map(p => p.name))} first` : 'No printers are linked',
+        text: 'Printers you own block deletion until they\'re unlinked. Link them again at each printer.'
       },
       {
         icon: 'userMinus',
@@ -441,7 +521,7 @@ export default class AccountDelete extends Vue {
       {
         icon: 'library',
         title: libraryState.enabled ? `Your Library: ${prints === 1 ? '1 print' : `${prints} prints`}${models ? `, ${models === 1 ? '1 model' : `${models} models`}` : ''}` : 'Your Library',
-        text: `${this.librarySize ? `${this.librarySize}, deleted` : 'Deleted'} from our storage. Backups are cleared within 14 days.`
+        text: `${this.librarySize ? `${this.librarySize}, deleted` : 'Deleted'}. Backups clear within 14 days.`
       },
       {
         icon: 'card',
@@ -452,13 +532,14 @@ export default class AccountDelete extends Vue {
   }
 
   get graceLine (): string {
-    if (this.scheduled) return `Deletion is already set for ${this.deleteDay}. Until then you can keep your account, or delete it now.`
+    if (this.scheduled) return `Deletion is set for ${this.deleteDay}. Until then you can keep your account.`
     return this.grace
-      ? 'We wait 14 days before deleting anything, in case this wasn\'t you or you change your mind, unless you choose to delete at once. You\'re signed out everywhere straight away, and nothing of yours is shared from that moment.'
-      : 'Your account is deleted at once, and you\'re signed out everywhere.'
+      ? 'We wait 14 days in case you change your mind. You\'re signed out, and sharing stops, at once.'
+      : 'Account deletion needs a console update to support the 14-day recovery period.'
   }
 
   get stepTitle (): string {
+    if (this.step === 0) return this.owned.length ? `You own ${this.owned.length === 1 ? 'a printer' : `${this.owned.length} printers`}` : 'Your printers are unlinked'
     if (this.step === 1) return 'Delete your Muon3D account?'
     if (this.step === 2) return 'Confirm it\'s you'
     return this.deletedAt ? `Your account will be deleted on ${dayText(this.deletedAt)}` : 'Your account is deleted'
@@ -468,12 +549,13 @@ export default class AccountDelete extends Vue {
     return dayText(seconds)
   }
 
-  /** While a deletion waits, only "now" is left to choose (the console allows it). */
   open () {
-    this.step = 1
-    this.now = this.scheduled
+    if (!this.grace || this.scheduled) return
+    this.startedOwning = this.owned.length > 0
+    this.step = this.startedOwning ? 0 : 1
     this.password = ''
     this.code = ''
+    this.typed = ''
     this.dialogError = ''
     this.deletedAt = null
     this.dialog = true
@@ -484,17 +566,61 @@ export default class AccountDelete extends Vue {
     this.dialog = false
   }
 
-  async confirm () {
+  /** The same unlink as the printer's People and access, asked first. */
+  async unlink (printer: CloudPrinter) {
+    if (this.busy) return
+    const sure = await this.$confirm(`${printer.name} leaves your account: you can't reach it from outside your home, and everyone you share it with loses access. It keeps working on your network, and you can link it again at its screen.`, {
+      title: `Unlink ${printer.name}?`,
+      buttonTrueText: 'Unlink',
+      danger: true
+    })
+    if (!sure || !this.dialog || this.step !== 0) return
     this.busy = true
     this.dialogError = ''
     try {
-      const reauth = this.hasPassword ? { password: this.password, code: this.twoStep ? this.code.replace(/\s+/g, '') : undefined } : {}
-      const answer = await accountApi.deleteAccount(reauth, this.grace && this.now)
+      await cloudApi.unlinkPrinter(printer.id)
+      await refreshPrinters().catch(() => {})
+    } catch (error) {
+      this.dialogError = describe(error)
+    } finally {
+      this.busy = false
+    }
+  }
+
+  async confirm () {
+    await this.submitDeletion(false)
+  }
+
+  async confirmPasskey () {
+    await this.submitDeletion(true)
+  }
+
+  private async submitDeletion (passkey: boolean) {
+    if (!this.grace || this.scheduled || this.busy || !this.dialog || this.step !== 2 || !this.typedOk || this.owned.length || (passkey && !this.hasPasskey)) return
+    const token = storedToken()
+    const current = () => this.alive && this.dialog && this.step === 2 && storedToken() === token && !document.hidden
+    if (!current()) return
+    this.busy = true
+    this.dialogError = ''
+    try {
+      if (passkey) await confirmAccount(current)
+      if (!current() || !this.grace || this.scheduled) return
+      const reauth = !passkey && this.hasPassword ? { password: this.password, code: this.twoStep ? this.code.replace(/\s+/g, '') : undefined } : {}
+      const answer = await accountApi.deleteAccount(reauth)
+      if (!current()) return
       this.password = ''
       this.deletedAt = answer.delete_after ?? null
       this.step = 3
     } catch (error) {
-      this.dialogError = describe(error)
+      if (current()) {
+        this.dialogError = error instanceof DOMException && error.name === 'NotAllowedError'
+          ? 'Passkey confirmation was cancelled. Your account is unchanged.'
+          : describe(error)
+      } else if (this.alive && this.dialog && this.step === 2 && storedToken() !== token) {
+        // A passkey prompt can outlive this tab's session. Explain why the
+        // destructive request stopped rather than silently leaving the wizard.
+        this.dialogError = 'The account changed. Open this action again.'
+      }
     } finally {
       this.busy = false
     }
@@ -635,10 +761,23 @@ export default class AccountDelete extends Vue {
     }
   }
 
-  .del__when {
+  .del__printers {
+    display: grid;
+    margin-top: 12px;
+    border: 1px solid var(--m3d-border);
+    border-radius: 10px;
+  }
+
+  .del__printer {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    font-size: 13.5px;
+
+    & + & {
+      border-top: 1px solid var(--m3d-border);
+    }
   }
 
   .del__done {

@@ -1,0 +1,142 @@
+# End-to-end tests (Jack, 5 Nov 2026): what the user sees and does. Control
+# runs from vite against the mock printer (e2e/mock/moonraker.py); the model
+# service and the console are faked per test. See e2e/README.md.
+name: E2E
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  e2e:
+    name: Playwright shard ${{ matrix.shard }}/6
+    runs-on: ubuntu-latest
+    # 40, not 30 (Jack, 13 Nov, D-117): a shard of about 410 tests on 2 workers ran 26-30 min and was
+    # cancelled at 30 with no test failing, costing a rerun on most PRs. A green run costs no more.
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    env:
+      NODE_OPTIONS: --experimental-websocket
+      PYTHON: python3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          python3 -m pip install -r e2e/mock/requirements.txt
+
+      - name: Read Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # A cache saved from a PR branch is only visible to that PR, so the
+      # restore key falls back to caches saved on develop.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium
+        # GitHub's ubuntu-latest image already has Chrome's system libraries, so install only the
+        # browser (no apt). On 11 Nov the runner's apt mirror stopped resolving and the old
+        # --with-deps step hung every shard. Fall back to --with-deps, time-boxed, only if the
+        # browser then fails to start.
+        run: |
+          npx playwright install chromium
+          if ! node -e "require('@playwright/test').chromium.launch().then(b => b.close()).catch(e => { console.error(e); process.exit(1) })"; then
+            timeout 300 npx playwright install --with-deps chromium
+          fi
+
+      - name: Run e2e (shard ${{ matrix.shard }}/6)
+        run: npx playwright test -c e2e/playwright.config.ts --shard=${{ matrix.shard }}/6 --reporter=blob,github
+
+      - name: Upload blob report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: blob-report/
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 3
+          if-no-files-found: ignore
+
+  # Keeps the original check name so branch protection and PR checks still
+  # match. Fails if any shard failed, was cancelled or was skipped.
+  merge-reports:
+    name: Playwright (desktop + phone)
+    needs: [e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: blob-report-*
+          path: all-blob-reports
+          merge-multiple: true
+
+      - name: Merge into one HTML report
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 3
+          if-no-files-found: ignore
+
+      - name: Fail if any shard failed
+        if: needs.e2e.result != 'success'
+        run: |
+          echo "Shard job result: ${{ needs.e2e.result }}"
+          exit 1

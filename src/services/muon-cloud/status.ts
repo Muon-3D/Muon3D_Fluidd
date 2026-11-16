@@ -25,6 +25,8 @@ export interface PrinterStatus {
   extruder?: { temperature: number, target: number };
   bed?: { temperature: number, target: number };
   position?: number[];
+  /** Machine faults the printer reports (m1_machine.faults): codes, empty when none or when it has no such object. */
+  faults?: string[];
   speedFactor?: number;
   extrudeFactor?: number;
   layer?: number;
@@ -53,7 +55,8 @@ export const STATUS_OBJECTS = [
   'toolhead=position,homed_axes',
   'gcode_move=speed_factor,extrude_factor',
   'webhooks',
-  'save_variables'
+  'save_variables',
+  'm1_machine=faults'
 ].join('&')
 
 export const STATUS_QUERY = `/printer/objects/query?${STATUS_OBJECTS}`
@@ -97,6 +100,7 @@ export function statusFrom (s: Record<string, any>): Omit<PrinterStatus, 'reacha
     totalLayers: info.total_layer ?? undefined,
     filePosition: s.virtual_sdcard?.file_position,
     fileSize: s.virtual_sdcard?.file_size,
-    material: loadedRecord(s.save_variables?.variables)
+    material: loadedRecord(s.save_variables?.variables),
+    faults: Array.isArray(s.m1_machine?.faults) ? s.m1_machine.faults.filter((f: unknown) => typeof f === 'string') : undefined
   }
 }

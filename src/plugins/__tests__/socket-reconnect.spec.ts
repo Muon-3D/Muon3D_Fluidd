@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PrinterSocket } from '@/services/managed-transport'
 
-const tokens = vi.hoisted(() => ({ get: vi.fn() }))
-vi.mock('@/api/httpClientActions', () => ({ httpClientActions: { accessOneshotTokenGet: tokens.get } }))
-
 // eslint-disable-next-line import/first
 import { WebSocketClient } from '../socketClient'
+import { headStatus } from '@/services/control/safe-move'
+
+const tokens = vi.hoisted(() => ({ get: vi.fn() }))
+vi.mock('@/api/httpClientActions', () => ({ httpClientActions: { accessOneshotTokenGet: tokens.get } }))
 
 /** A socket the test drives: it opens, talks and closes when told to. */
 class FakeSocket implements PrinterSocket {
@@ -92,6 +93,52 @@ async function opened (client: WebSocketClient) {
 }
 
 describe('WebSocketClient reconnecting', () => {
+  it('policy refusals prove liveness and never reconnect a socket', async () => {
+    const { client } = lanClient()
+    const socket = await opened(client)
+    for (let i = 0; i < 120; i++) {
+      await vi.advanceTimersByTimeAsync(1000)
+      socket.emit('message', { data: JSON.stringify({ jsonrpc: '2.0', id: i, error: { code: 403, message: 'muon-link policy refused this request' } }) })
+    }
+    expect(socket.closedByClient).toBe(false)
+    expect(sockets).toHaveLength(1)
+  })
+  it('purges unanswered requests and waits when reconnecting', async () => {
+    const { client, store } = lanClient()
+    const socket = await opened(client)
+    client.emit('server.temperature_store', { dispatch: 'charts/initTempStore', wait: 'history' })
+    expect(client.requests).toHaveLength(1)
+
+    socket.emit('close', { code: 1006, reason: 'lost', wasClean: false })
+
+    expect(client.requests).toHaveLength(0)
+    expect(store.commit).toHaveBeenCalledWith('wait/setRemoveWait', 'history')
+  })
+
+  it('settles the promise of every request it drops, so nothing waits on an answer forever', async () => {
+    // The in-flight G-code count (safe-move.ts) ends with these promises.
+    const { client } = lanClient()
+    const socket = await opened(client)
+    const answer = client.emit('printer.gcode.script', { params: { script: 'G28' } })
+    socket.emit('close', { code: 1006, reason: 'lost', wasClean: false })
+    await expect(answer).resolves.toBeUndefined()
+  })
+
+  it('gives every pending request its own id', async () => {
+    const { client } = lanClient()
+    await opened(client)
+    for (let i = 0; i < 50; i++) client.emit('server.info', {})
+    expect(new Set(client.requests.map(r => r.id)).size).toBe(50)
+  })
+
+  it('marks the head position stale when a transport is released (a printer switch)', async () => {
+    const { client } = lanClient()
+    await opened(client)
+    headStatus.fresh = true
+    client.releaseTransportSocket()
+    expect(headStatus.fresh).toBe(false)
+  })
+
   it('retries a clean close it did not ask for, and tells the store it was not clean', async () => {
     // Moonraker closes cleanly when it reaps a quiet socket, and over Iroh
     // every close from the printer arrives as clean. Both used to end on
@@ -225,6 +272,28 @@ describe('WebSocketClient reconnecting', () => {
     expect(client.connection).toBe(second)
   })
 
+  it('a new route starts its backoff from the first step, not where the old route left off (#370)', async () => {
+    // Auto mode failed over from a dead relay to Bluetooth: the relay's failed
+    // tries (1, 2, 4 s ...) must not slow the first retry on the new route.
+    const { client } = lanClient()
+    const relay = new FakeSocket()
+    const failing = vi.fn(async () => { throw new Error('relay is gone') })
+    client.adoptTransportSocket(relay, failing)
+    relay.emit('open')
+    relay.emit('close', { code: 1006, reason: '', wasClean: false })
+    await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000)
+    expect(failing).toHaveBeenCalledTimes(3)
+    expect(client.reconnectCount).toBe(4)
+
+    const ble = new FakeSocket()
+    const reopen = vi.fn(async () => new FakeSocket())
+    client.adoptTransportSocket(ble, reopen)
+    expect(client.reconnectCount).toBe(0)
+    ble.emit('close', { code: 1006, reason: '', wasClean: false })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(reopen).toHaveBeenCalledTimes(1)
+  })
+
   it("drops a connect still waiting for its token once another printer's socket is adopted", async () => {
     // 14 Oct: a Walnut connect that outlived a switch to Boxwood would open
     // Walnut's socket under Boxwood's page.
@@ -254,5 +323,109 @@ describe('WebSocketClient reconnecting', () => {
 
     expect(sockets).toHaveLength(0)
     expect(client.retryPending).toBe(false)
+  })
+})
+
+/** What axios rejects with when the printer answers `status`. */
+const answered = (status: number) => ({ isAxiosError: true, message: `HTTP ${status}`, response: { status } })
+const socketUrls = () => (WebSocket as unknown as { mock: { calls: unknown[][] } }).mock.calls.map(call => call[0])
+
+describe('WebSocketClient without a one-shot token', () => {
+  // 27 Oct, bench: behind the muon-link Bluetooth bridge the printer refuses
+  // /access/oneshot_token for every role, and Fluidd retried it for ever while
+  // the socket itself would have opened.
+  it.each([403, 404])('opens the socket without a token when the token endpoint answers %i', async (status) => {
+    const { client, store } = lanClient()
+    tokens.get.mockRejectedValueOnce(answered(status))
+
+    await client.connect()
+
+    expect(socketUrls()).toEqual(['ws://printer/websocket'])
+    expect(store.dispatch).toHaveBeenCalledWith('socket/onSocketConnecting', true)
+    expect(client.retryPending).toBe(false)
+    sockets[0].emit('open')
+    expect(client.connection).toBe(sockets[0])
+  })
+
+  it('still sends the token when there is one', async () => {
+    const { client } = lanClient()
+    await client.connect()
+    expect(socketUrls()).toEqual(['ws://printer/websocket?token=token'])
+  })
+
+  it('opens nothing and does not retry on a 401: sign in first', async () => {
+    const { client } = lanClient()
+    tokens.get.mockRejectedValueOnce(answered(401))
+    await client.connect()
+    expect(sockets).toHaveLength(0)
+    expect(client.retryPending).toBe(false)
+  })
+
+  it('retries, and opens nothing, when the printer could not answer', async () => {
+    const { client } = lanClient()
+    tokens.get.mockRejectedValueOnce(answered(502))
+    await client.connect()
+    expect(sockets).toHaveLength(0)
+    expect(client.retryPending).toBe(true)
+  })
+
+  it('opens nothing for a refusal that came after Fluidd closed the connection', async () => {
+    const { client } = lanClient()
+    let refuse!: (error: unknown) => void
+    tokens.get.mockReturnValueOnce(new Promise((_resolve, reject) => { refuse = reject }))
+    const waiting = client.connect()
+
+    client.close()
+    refuse(answered(403))
+    await waiting
+
+    expect(sockets).toHaveLength(0)
+  })
+
+  it('goes back to the token-less socket after it drops', async () => {
+    const { client } = lanClient()
+    tokens.get.mockRejectedValue(answered(403))
+    await client.connect()
+    sockets[0].emit('open')
+    sockets[0].emit('close', { code: 1006, reason: 'lost', wasClean: false })
+
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(socketUrls()).toEqual(['ws://printer/websocket', 'ws://printer/websocket'])
+  })
+
+  it('tries again later when the browser refuses to open the address', async () => {
+    const { client } = lanClient()
+    vi.stubGlobal('WebSocket', vi.fn(() => { throw new DOMException('insecure', 'SecurityError') }))
+    await client.connect()
+    expect(client.connection).toBeNull()
+    expect(client.retryPending).toBe(true)
+  })
+})
+
+describe('WebSocketClient status traffic', () => {
+  it('does not tell the store the socket is open and connected on every message', async () => {
+    const { client, store } = lanClient()
+    const socket = await opened(client)
+    socket.message()
+    store.commit.mockClear()
+    store.dispatch.mockClear()
+
+    for (let i = 0; i < 20; i++) socket.message()
+
+    const open = store.commit.mock.calls.filter(([name]) => name === 'socket/setSocketOpen')
+    const connecting = store.dispatch.mock.calls.filter(([name]) => name === 'socket/onSocketConnecting')
+    expect(open).toHaveLength(0)
+    expect(connecting).toHaveLength(0)
+  })
+
+  it('still marks the socket open when the first message arrives', async () => {
+    const { client, store } = lanClient()
+    const socket = await opened(client)
+    store.state.socket.open = false
+    store.state.socket.connecting = true
+    socket.message()
+    expect(store.commit).toHaveBeenCalledWith('socket/setSocketOpen', true)
+    expect(store.dispatch).toHaveBeenCalledWith('socket/onSocketConnecting', false)
   })
 })

@@ -10,13 +10,18 @@
  * signed in, not the session. A console with muon-link-cloud #26 also ends
  * it when the code is spent; ending it here works on one without.
  */
-import { handoffUrl, prepareAuthorize } from '@/services/muon-cloud/centralLogin'
+import { storedToken } from '@/services/muon-cloud/api'
+import { handoffUrl, prepareAuthorize, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
 import { accountRequest } from './client'
 import { usePasskey } from './webauthn'
 import type { AccountDetails } from './api'
 
 /** How the console lists the page's session, for the moment it lives. */
 export const SIGN_IN_DEVICE = 'Muon3D sign-in'
+
+export function beginSignIn (returnTo: string): Promise<void> {
+  return startCentralSignIn({ silent: false, returnTo })
+}
 
 interface SessionAnswer {
   token: string;
@@ -43,8 +48,8 @@ export async function passkeySignIn (): Promise<string> {
   return answer.token
 }
 
-export async function signUp (email: string, password: string, name: string): Promise<string> {
-  const answer = await accountRequest<SessionAnswer>('POST', '/v1/auth/sign-up', { email, password, name, device: SIGN_IN_DEVICE, refresh: false }, { token: null })
+export async function signUp (email: string, password: string, name: string, declaredAge?: number): Promise<string> {
+  const answer = await accountRequest<SessionAnswer>('POST', '/v1/auth/sign-up', { email, password, name, declared_age: declaredAge, device: SIGN_IN_DEVICE, refresh: false }, { token: null })
   return answer.token
 }
 
@@ -60,8 +65,18 @@ export async function resetPassword (token: string, password: string): Promise<v
 
 /** From the emailed link: confirms the address, or finishes changing it. */
 export async function verifyEmail (token: string): Promise<string> {
-  const answer = await accountRequest<{ ok: boolean, email?: string }>('POST', '/v1/auth/email/verify', { token }, { token: null })
-  return answer.email ?? ''
+  return (await verifyEmailAnswer(token)).email
+}
+
+/**
+ * As `verifyEmail`, and says whether the console ended this browser's session too: a completed address change
+ * ends every session of the account (KAN-1389), so the caller signs this browser out. A plain confirmation
+ * answers without `signed_out`, and the session stays (it has none to adopt either, so `endsSession` would lie).
+ */
+export async function verifyEmailAnswer (token: string): Promise<{ email: string, signedOut: boolean }> {
+  const own = storedToken()
+  const answer = await accountRequest<{ ok: boolean, email?: string, signed_out?: boolean }>('POST', '/v1/auth/email/verify', { token }, { token: own, adopt: true })
+  return { email: answer.email ?? '', signedOut: answer.signed_out === true }
 }
 
 /**

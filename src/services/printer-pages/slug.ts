@@ -8,8 +8,9 @@
  *
  * - A Muon3D printer: its name and serial suffix, from `/server/muon/identity`
  *   or the `.local` name built from them (`muon-boxwood-367a.local`).
- * - An account printer: the console's display name ("Boxwood · 367A"); one
- *   renamed there without its suffix keeps four characters of its EndpointId.
+ * - An account printer: its name when that has a slug's shape, else its name
+ *   and four characters of a hash of its stable EndpointId (KAN-1279: the
+ *   complete id is not a valid route).
  * - Any other Klipper printer: its name and four characters of a hash of its
  *   address.
  */
@@ -23,7 +24,6 @@ const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*-[a-z0-9]{4}$/
  * looser; `isPrinterSlug` is the exact test.
  */
 export const ROUTE_SLUG_PATTERN = '[a-z0-9][a-z0-9-]*-[a-z0-9]{4}'
-const HAS_SUFFIX = /-[a-z0-9]{4}$/
 
 /**
  * Paths the printer's nginx proxies to Moonraker without a trailing slash
@@ -95,11 +95,18 @@ export function slugForMdnsHost (host: string | null | undefined): string | null
   return match ? finish(match[1], match[2].toLowerCase()) : null
 }
 
-/** An account printer's slug, from the console's display name and EndpointId. */
+/**
+ * An account printer's route key. It is the printer's name when that already
+ * has a slug's shape ("Boxwood · 367A" is `boxwood-367a`); else its words and
+ * four characters of its stable EndpointId, so two printers called "Walnut"
+ * stay apart. The complete id never goes in a route: the router takes a
+ * hyphen and exactly four characters at the end, and a 64-hex id 404s (KAN-1279).
+ */
 export function slugForCloudPrinter (printer: { id: string, name: string }): string {
-  const words = slugify(printer.name)
-  if (HAS_SUFFIX.test(words)) return finish(words.slice(0, -5), words.slice(-4))
-  return finish(words, slugify(printer.id).slice(0, 4).padEnd(4, '0'))
+  const words = slugify(printer.name).slice(0, MAX_WORDS_LENGTH).replace(/-+$/, '')
+  if (isPrinterSlug(words)) return RESERVED_PREFIX.test(words) ? `p-${words}` : words
+  const id4 = slugify(printer.id).replace(/-/g, '').slice(0, 4).padEnd(4, '0')
+  return finish(words || 'printer', words ? hash4(printer.id) : id4)
 }
 
 /** A slug for any other printer: its name and a hash of its address. */

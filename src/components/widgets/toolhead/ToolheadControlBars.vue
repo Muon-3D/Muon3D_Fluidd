@@ -27,10 +27,10 @@
 
         <app-btn
           :disabled="!klippyReady || printerPrinting"
-          :loading="hasWait($waits.onHomeXY)"
+          :loading="hasWait($waits.onHomeAll)"
           :color="!xyHomed ? 'primary' : undefined"
           class="px-2"
-          @click="sendGcode('G28 X Y', $waits.onHomeXY)"
+          @click="homeAll"
         >
           <v-icon
             small
@@ -38,7 +38,7 @@
           >
             $home
           </v-icon>
-          XY
+          Home all
         </app-btn>
       </v-col>
     </v-row>
@@ -57,6 +57,7 @@ import { Component, Mixins } from 'vue-property-decorator'
 import ToolheadControlBarsAxis from './ToolheadControlBarsAxis.vue'
 import ToolheadControlBarsStepper from './ToolheadControlBarsStepper.vue'
 import StateMixin from '@/mixins/state'
+import DevGuardMixin from '@/mixins/dev-guard'
 import ToolheadMixin from '@/mixins/toolhead'
 import type { Stepper } from '@/store/printer/types'
 
@@ -66,7 +67,7 @@ import type { Stepper } from '@/store/printer/types'
     ToolheadControlBarsStepper
   }
 })
-export default class ToolheadControlBars extends Mixins(StateMixin, ToolheadMixin) {
+export default class ToolheadControlBars extends Mixins(StateMixin, ToolheadMixin, DevGuardMixin) {
   get steppers (): Stepper[] {
     const steppers = this.$store.getters['printer/getSteppers'] as Stepper[]
 
@@ -75,7 +76,8 @@ export default class ToolheadControlBars extends Mixins(StateMixin, ToolheadMixi
   }
 
   get forceMove (): boolean {
-    return this.$store.state.config.uiSettings.toolhead.forceMove as boolean
+    // FORCE_MOVE is developer-mode only (Klipper#112): outside it the axis bars show.
+    return !this.devOnlyLocked && this.$store.state.config.uiSettings.toolhead.forceMove as boolean
   }
 }
 </script>

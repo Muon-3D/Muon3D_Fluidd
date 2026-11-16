@@ -5,7 +5,6 @@
   >
     <div class="acct-head">
       <h1>Sign-in and security</h1>
-      <p>How you get into your account, and what keeps someone else out.</p>
     </div>
 
     <div
@@ -30,14 +29,13 @@
         <div class="acct-row__label">
           <b>Email</b>
           <span>
-            {{ email }}<template v-if="details && details.email_verified === true"><span class="sec__ok"> · confirmed</span></template><template v-else-if="details && details.email_verified === false"><span class="sec__warn"> · not confirmed yet</span></template>.
-            You sign in with it, and every security email goes here.
+            {{ email }}<template v-if="details && details.email_verified === true"><span class="sec__ok"> · confirmed</span></template><template v-else-if="details && details.email_verified === false"><span class="sec__warn"> · not confirmed</span></template>
           </span>
           <span
             v-if="pending"
             class="sec__warn"
             data-tid="security-email-pending"
-          >Waiting for you to open the link sent to {{ pending.address }}.</span>
+          >Link sent to {{ pending.address }}</span>
         </div>
         <div class="acct-row__control">
           <button
@@ -76,7 +74,12 @@
     >
       <div class="acct-card__title">
         <h2>Ways to sign in</h2>
-        <span class="acct-card__aside">Keep at least two, in case you lose a phone</span>
+        <acct-more
+          label="Why more than one"
+          end
+        >
+          Keep at least two, so losing a phone doesn't lock you out.
+        </acct-more>
       </div>
       <div
         v-if="me && !passkeys.length && !twoStep && canAddPasskey"
@@ -88,7 +91,7 @@
           large
         /></span>
         <h3>No passkeys yet</h3>
-        <p>Add one and sign in with your fingerprint, face or screen lock instead.</p>
+        <p>Sign in with your face, fingerprint or screen lock.</p>
         <div class="acct-actions acct-actions--center">
           <button
             type="button"
@@ -116,7 +119,7 @@
           /></span>
           <div class="acct-row__label">
             <b>Passkeys <span class="acct-subtle">{{ passkeys.length || '' }}</span></b>
-            <span>Sign in with your fingerprint, face or screen lock. Nothing to type, nothing to steal. Skips the two-step code.</span>
+            <span>Face, fingerprint or screen lock</span>
           </div>
           <button
             v-if="canAddPasskey"
@@ -233,7 +236,7 @@
         <div class="acct-row">
           <div class="acct-row__label">
             <b>Authenticator app</b>
-            <span>{{ twoStep ? 'A six-digit code after your password, or after Apple or Google.' : 'Off. Turn it on and a password alone no longer gets anyone in.' }}</span>
+            <span>{{ twoStep ? 'A code after your password' : 'Adds a code after your password' }}</span>
           </div>
           <button
             type="button"
@@ -252,7 +255,9 @@
         >
           <div class="acct-row__label">
             <b>Recovery codes</b>
-            <span><template v-if="recoveryLeft !== null"><span class="sec__num">{{ recoveryLeft }} of 10</span> left. </template>Each works once, if you lose your authenticator. Making new ones cancels the old.</span>
+            <span><template v-if="recoveryLeft !== null"><span class="sec__num">{{ recoveryLeft }} of 10</span> left </template><acct-more label="About recovery codes">
+              Each works once, if you lose your authenticator. New codes cancel the old ones.
+            </acct-more></span>
           </div>
           <span
             v-if="recoveryMissing"
@@ -279,7 +284,9 @@
       <div class="acct-row">
         <div class="acct-row__label">
           <b>Security emails</b>
-          <span>We always email you when someone signs in on a new device, or your password, email, passkeys or two-step sign-in change. These can't be turned off.</span>
+          <span>Always on <acct-more label="What they cover">
+            New-device sign-ins, and changes to your password, email, passkeys or two-step sign-in.
+          </acct-more></span>
         </div>
         <router-link
           :to="linkTo('sessions')"
@@ -317,7 +324,7 @@
       @close="close"
     >
       <p class="m3-dlg__text">
-        We send a link to the new address. It changes when you open the link, and we tell the old address.
+        It changes when you open the link we send.
       </p>
       <label class="m3-field">
         <span class="m3-field__label">New email address</span>
@@ -362,20 +369,8 @@
       @close="close"
     >
       <p class="m3-dlg__text">
-        Changing it signs you out everywhere else.
+        Every device is signed out; you may need to sign in again here.
       </p>
-      <label
-        v-if="hasPassword"
-        class="m3-field"
-      >
-        <span class="m3-field__label">Current password</span>
-        <span class="m3-field__box"><input
-          v-model="form.current"
-          type="password"
-          autocomplete="current-password"
-          aria-label="Current password"
-        ></span>
-      </label>
       <label class="m3-field">
         <span class="m3-field__label">New password</span>
         <span class="m3-field__box"><input
@@ -383,25 +378,15 @@
           type="password"
           autocomplete="new-password"
           aria-label="New password"
+          :aria-describedby="dialogError ? 'security-password-error' : undefined"
         ></span>
         <span class="m3-dlg__note">At least 8 characters.</span>
       </label>
-      <label
-        v-if="twoStep"
-        class="m3-field"
-      >
-        <span class="m3-field__label">Code from your authenticator app</span>
-        <span class="m3-field__box m3-field__box--mono"><input
-          v-model="form.code"
-          inputmode="numeric"
-          autocomplete="one-time-code"
-          aria-label="Code from your authenticator app"
-          @keydown.enter="changePassword"
-        ></span>
-      </label>
       <p
         v-if="dialogError"
+        id="security-password-error"
         class="m3-dlg__error"
+        role="alert"
       >
         {{ dialogError }}
       </p>
@@ -416,7 +401,7 @@
         <button
           type="button"
           class="cbtn cbtn--primary"
-          :disabled="form.next.length < 8 || (hasPassword && !form.current) || (twoStep && !form.code) || busy"
+          :disabled="form.next.length < 8 || busy"
           @click="changePassword"
         >
           {{ hasPassword ? 'Change password' : 'Set password' }}
@@ -476,7 +461,7 @@
     >
       <template v-if="!codes.length">
         <p class="m3-dlg__text">
-          Scan this with an authenticator app, then type the six-digit code it shows.
+          Scan with an authenticator app, then type its code.
         </p>
         <div class="sec__qr">
           <app-qr-code
@@ -503,7 +488,7 @@
       </template>
       <template v-else>
         <p class="m3-dlg__text">
-          Each works once, if you lose your authenticator. We won't show them again, so save them somewhere safe.
+          Each works once. Save them now: we won't show them again.
         </p>
         <div
           class="sec__codes"
@@ -569,7 +554,7 @@
       @close="close"
     >
       <p class="m3-dlg__text">
-        A password alone gets into your account again. Type a code from your authenticator app, or a recovery code, to confirm.
+        A password alone gets in again. Type an authenticator or recovery code to confirm.
       </p>
       <label class="m3-field">
         <span class="m3-field__label">Code</span>
@@ -618,9 +603,12 @@ import AccountReauthMixin from '@/mixins/account-reauth'
 import M3Dialog from '@/components/ui/M3Dialog.vue'
 import AppQrCode from '@/components/ui/AppQrCode.vue'
 import ReauthDialog from './ReauthDialog.vue'
-import { cloudState } from '@/services/muon-cloud/state'
+import AcctMore from './AcctMore.vue'
+import { cloudState, holdSignOut, releaseSignOut } from '@/services/muon-cloud/state'
 import { accountApi, type AccountDetails, type Identity, type Me, type Passkey } from '@/services/account/api'
-import { isMissing } from '@/services/account/client'
+import { endsSession, isMissing } from '@/services/account/client'
+import { signOutNow } from '@/services/account/sign-out'
+import type { SignedOutReason } from '@/services/account/signed-out-note'
 import { accountState, describe, loadConfig, loadEvents, loadMe } from '@/services/account/state'
 import { agoText, dayText, providerName, securityHealth, type AccountSectionId, type SecurityHealth } from '@/services/account/model'
 import { cancelledPasskey, createPasskey, deviceLabel, passkeysSupported } from '@/services/account/webauthn'
@@ -633,7 +621,7 @@ type Dialog = '' | 'email' | 'password' | 'rename' | 'twoStep' | 'twoStepOff'
  * its recovery codes. Each change asks "Confirm it's you" when the console
  * wants it. What the console can't do yet says so ("Renaming soon").
  */
-@Component({ components: { M3Dialog, AppQrCode, ReauthDialog } })
+@Component({ components: { M3Dialog, AppQrCode, ReauthDialog, AcctMore } })
 export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   @Prop({ type: Function, required: true })
   readonly linkTo!: (id: AccountSectionId) => string
@@ -645,6 +633,8 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   renaming: Passkey | null = null
   setup: { secret: string, otpauth_url: string } | null = null
   codes: string[] = []
+  /** KAN-1389: the console ended this session with the change; signed out once the recovery codes are read. */
+  endsAfterCodes = false
   copied = false
   busy = false
   error = ''
@@ -655,6 +645,26 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
 
   created () {
     this.refresh()
+  }
+
+  /** The hold on the sign-out must not outlive this page (KAN-1389). */
+  beforeDestroy () {
+    this.releaseHold(true)
+  }
+
+  private holding = false
+
+  /** Keeps a session that ends from taking the page, and the recovery codes on it, away before they are read. */
+  holdForCodes () {
+    if (this.holding) return
+    this.holding = true
+    holdSignOut()
+  }
+
+  releaseHold (dropNow: boolean) {
+    if (!this.holding) return
+    this.holding = false
+    releaseSignOut(dropNow)
   }
 
   refresh () {
@@ -703,13 +713,12 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   }
 
   get passwordLine (): string {
-    if (!this.hasPassword) return 'No password. You sign in with a passkey, Apple or Google.'
+    if (!this.hasPassword) return 'Not set'
     const changed = (accountState.events ?? []).find(e => e.kind === 'password_changed' || e.kind === 'password_reset')
-    return `${changed ? `Changed ${dayText(changed.at)}. ` : ''}Changing it signs you out everywhere else.`
+    return changed ? `Changed ${dayText(changed.at)}` : 'Set'
   }
 
   get providers () {
-    const social = accountState.config?.social ?? {}
     return (['apple', 'google'] as const).map(id => {
       const linked = this.identities.find(i => i.provider === id)
       return {
@@ -718,8 +727,8 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
         letter: id === 'apple' ? 'A' : 'G',
         linked: !!linked,
         line: linked
-          ? `Linked ${dayText(linked.created_at)}${linked.email ? ` to ${linked.email}` : ''}.`
-          : social[id] ? 'Not linked.' : 'Not linked. Signing in with it isn\'t open yet.'
+          ? `Linked${linked.email ? ` · ${linked.email}` : ''}`
+          : 'Not linked'
       }
     })
   }
@@ -748,6 +757,16 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     this.dialog = ''
     this.codes = []
     this.setup = null
+    if (this.endsAfterCodes) this.signOutAfter('two-step')
+    else this.releaseHold(true)
+  }
+
+  /** The console ended this session with the person's own change (KAN-1389): to the sign-in page, saying why. */
+  async signOutAfter (reason: SignedOutReason) {
+    this.endsAfterCodes = false
+    this.dialog = ''
+    this.releaseHold(false)
+    await signOutNow('browser', { reason, router: this.$router })
   }
 
   async run (what: () => Promise<unknown>, inDialog = false): Promise<boolean> {
@@ -797,9 +816,19 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   }
 
   async changePassword () {
-    const reauth = { password: this.hasPassword ? this.form.current : undefined, code: this.twoStep ? this.form.code.trim() : undefined }
-    const done = await this.run(() => accountApi.changePassword(this.form.next, reauth), true)
-    if (done) {
+    const next = this.form.next
+    let changed = false
+    let ended = false
+    await this.run(async () => {
+      const answer = await this.withReauth(r => accountApi.changePassword(next, r), { action: 'Change password' })
+      changed = answer !== null
+      ended = answer !== null && endsSession(answer)
+    }, true)
+    if (changed && ended) {
+      await this.signOutAfter('password')
+      return
+    }
+    if (changed) {
       this.dialog = ''
       this.message = 'Your password is changed. Every other device is signed out.'
       this.refresh()
@@ -882,6 +911,12 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     await this.run(async () => {
       const setup = await this.withReauth(r => accountApi.totpBegin(r), { action: 'Continue' })
       if (setup) {
+        // Replacing an unreadable secret answers with no secret and ends the session (KAN-1389): nothing to scan.
+        if (!setup.secret) {
+          if (!endsSession(setup)) throw new Error('Two-step sign-in could not be started. Try again.')
+          await this.signOutAfter('two-step')
+          return
+        }
         this.open('twoStep')
         this.setup = setup
       }
@@ -891,14 +926,27 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   async confirmTwoStep () {
     const code = this.form.code.replace(/\s+/g, '')
     await this.run(async () => {
-      const { recovery_codes: codes } = await accountApi.totpConfirm(code)
-      this.codes = codes
+      const answer = await accountApi.totpConfirm(code)
+      this.codes = answer.recovery_codes
+      this.form.code = ''
+      this.setup = null
+      // The codes are shown first: they are the only copy. A session the console ended with them stays until Done.
+      this.endsAfterCodes = endsSession(answer)
+      if (this.endsAfterCodes) this.holdForCodes()
     }, true)
-    loadMe().catch(() => {})
+    // The session is gone when the console ended it: asking who is signed in would only be refused.
+    if (!this.endsAfterCodes) loadMe().catch(() => {})
   }
 
   async twoStepOff () {
-    const done = await this.run(() => accountApi.totpOff(this.form.code.replace(/\s+/g, '')), true)
+    let ended = false
+    const done = await this.run(async () => {
+      ended = endsSession(await accountApi.totpOff(this.form.code.replace(/\s+/g, '')))
+    }, true)
+    if (done && ended) {
+      await this.signOutAfter('two-step')
+      return
+    }
     if (done) {
       this.dialog = ''
       this.message = 'Two-step sign-in is off.'
@@ -918,6 +966,8 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
         if (answer) {
           this.form.code = ''
           this.codes = answer.recovery_codes
+          this.endsAfterCodes = endsSession(answer)
+          if (this.endsAfterCodes) this.holdForCodes()
           this.dialog = 'twoStep'
         }
       } catch (error) {
@@ -928,7 +978,7 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
         throw error
       }
     })
-    loadMe().catch(() => {})
+    if (!this.endsAfterCodes) loadMe().catch(() => {})
   }
 
   async copyCodes () {

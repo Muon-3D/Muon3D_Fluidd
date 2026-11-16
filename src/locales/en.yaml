@@ -386,9 +386,9 @@ app:
       needs_refresh: A new version of this page is ready. Reload to use it.
       pending_configuration_sections_deleted: The following sections are marked for deletion
       rolledover_logs: 'The following application logs have been rolled over: %{applications}'
-      not_valid_fluidd_backup_file: That isn't a Fluidd backup file.
-      fluidd_settings_backup_failed: Fluidd's settings couldn't be backed up.
-      fluidd_settings_restore_failed: Fluidd's settings couldn't be restored.
+      not_valid_fluidd_backup_file: That isn't a Control backup file.
+      fluidd_settings_backup_failed: Control's settings couldn't be backed up.
+      fluidd_settings_restore_failed: Control's settings couldn't be restored.
     simple_form:
       error:
         arrayofnums: Only numbers
@@ -475,7 +475,7 @@ app:
       jobs: Jobs
       job_queue: Job Queue
       limits: Printer Limits
-      macros: Macros
+      macros: Quick commands
       metrics_explorer: Metrics Explorer
       nav_machine: Machine
       nav_print: Print
@@ -534,7 +534,7 @@ app:
         I understand the risks and accept full responsibility for any effects of
         changing system configuration.
       backup-config: Backup Config
-      restore-defaults: Reset Macros to Defaults
+      restore-defaults: Reset quick commands to defaults
       manage-at-printer: Can only be changed at the printer
       waiver-unavailable: >-
         The printer's Developer Mode waiver could not be loaded, so it cannot be
@@ -660,7 +660,7 @@ app:
       fill_color: Fill color
       fill_opacity: Fill opacity
       filter: Filter | Filters
-      fluidd_settings_in_moonraker_db: Fluidd settings in Moonraker database
+      fluidd_settings_in_moonraker_db: Control settings in Moonraker database
       fps_target: FPS Target
       fps_idle_target: FPS Target when not in focus
       height: Height
@@ -747,7 +747,7 @@ app:
       file_editor: File Editor
       gcode_preview: Gcode Preview
       general: General
-      macros: Macros
+      macros: Quick commands
       theme: Theme
       thermal_presets: Thermal Presets
       tool: Tool
@@ -775,7 +775,7 @@ app:
       connecting: Connecting to moonraker...
       no_connection: No moonraker connection. Please check moonraker status and / or refresh.
       stalled: Waiting for the printer. It hasn't answered for a few seconds, so what you see may be out of date.
-      retrying: Trying again. Fluidd keeps trying until the printer answers.
+      retrying: Trying again. Control keeps trying until the printer answers.
   system_info:
     label:
       awake_time: awake time
@@ -834,7 +834,7 @@ app:
     tooltip:
       absolute_positioning: Absolute Positioning
       extruder_disabled: extruder disabled, below min_extrude_temp (%{min}<small>°C</small>)
-      home_xy: Home XY
+      home_xy: Home all
       home_z: Home Z
       manual_probe: Manual Probe
       motors_off: Motors Off
@@ -877,7 +877,7 @@ app:
       updates_available: Updates are available
       old_component_version: >-
         You are using an old version of %{name} that does not support all
-        features of Fluidd.<br>Update %{name} to at least %{version}.
+        features of Control.<br>Update %{name} to at least %{version}.
     status:
       finished: Updates finished
       updating: Updating...
@@ -910,7 +910,7 @@ app:
       fw_retract: Use Firmware Retraction
       gcode_verbose: Verbose Gcode
       mode: Mode
-      mode_layermacro: Layer Macro
+      mode_layermacro: Layer command
       mode_hyperlapse: Hyperlapse
       hyperlapse_cycle: Hyperlapse Cycle
       output_framerate: Output Framerate
@@ -948,7 +948,7 @@ app:
       select: Select | Select for {macro}
     title:
       spoolman: Spoolman
-      spool_selection: Spool Selection | Spool Selection for macro {macro}
+      spool_selection: Spool Selection | Spool Selection for {macro}
       scan_spool: Scan Spool
     label:
       active_spool: Active Spool

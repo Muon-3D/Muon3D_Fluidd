@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { changedLines, compareWithDefaults, opensInEditor, orderRoots, resetRestartNote, restartNote, rootGroup, rootSection, validName } from '../model'
+import { changedLines, compareWithDefaults, defaultTags, downloadsOnly, listedFiles, opensInEditor, orderRoots, resetRestartNote, restartNote, tapDownloads } from '../model'
 
 describe('Files\' folders', () => {
-  it('names MuonOS\'s roots for people', () => {
-    expect(rootGroup('calibration').title).toBe('This printer\'s settings')
-    expect(rootGroup('defaults').note).toMatch(/^read only/)
-    expect(rootGroup('logs').download).toBe(true)
-    expect(rootGroup('timelapse_frames').title).toBe('Timelapse frames')
+  it('downloads the logs and nothing else by root', () => {
+    expect(downloadsOnly('logs')).toBe(true)
+    expect(downloadsOnly('calibration')).toBe(false)
+    expect(downloadsOnly('docs')).toBe(false)
   })
 
   it('lists the printer\'s own first', () => {
@@ -20,6 +19,14 @@ describe('opening a file', () => {
     expect(opensInEditor('moonraker.conf', 900)).toBe(true)
     expect(opensInEditor('klippy.log', 30_000_000)).toBe(false)
     expect(opensInEditor('photo.jpg', 100)).toBe(false)
+  })
+
+  it('downloads on a tap: logs, files over 2 MB, and anything that is not text', () => {
+    expect(tapDownloads('logs', 'klippy.log', 100)).toBe(true)
+    expect(tapDownloads('calibration', 'big.cfg', 3_000_000)).toBe(true)
+    expect(tapDownloads('calibration', 'photo.jpg', 100)).toBe(true)
+    expect(tapDownloads('calibration', 'printer.cfg', 4000)).toBe(false)
+    expect(tapDownloads('defaults', 'm1.cfg', 4000)).toBe(false)
   })
 })
 
@@ -36,45 +43,40 @@ describe('saving', () => {
     expect(changedLines('a\nb', 'a\nb\nc\nd')).toBe(2)
     expect(changedLines('same', 'same')).toBe(0)
   })
-
-  it('takes names without slashes', () => {
-    expect(validName('my_macros.cfg')).toBe(true)
-    expect(validName('macros/x.cfg')).toBe(false)
-    expect(validName('..')).toBe(false)
-    expect(validName('  ')).toBe(false)
-  })
 })
 
-describe('your configuration and the defaults', () => {
-  it('heads the folders as Fluidd lists them, grouped: yours, the defaults, the rest', () => {
-    expect(['config', 'calibration', 'defaults', 'logs', 'docs', 'timelapse'].map(rootSection))
-      .toEqual(['yours', 'yours', 'defaults', 'other', 'other', 'other'])
-    expect(rootGroup('config').title).toBe('Your copy of the configuration')
-  })
+describe('configuration defaults', () => {
+  const file = (path: string, size = 10, modified = 1) => ({ path, size, modified })
 
-  it('tells a changed file from a copied one by the listings, and leaves the rest to the contents', () => {
-    const defaults = [
-      { path: 'core.cfg', size: 3000, modified: 1700000000 },
-      { path: 'macros/print.cfg', size: 800, modified: 1700000000 },
-      { path: 'macros/homing.cfg', size: 120, modified: 1700000000 }
-    ]
-    const mine = [
-      { path: 'core.cfg', size: 3000, modified: 1700000000 },
-      { path: 'macros/print.cfg', size: 812, modified: 1760000000 },
-      { path: 'macros/homing.cfg', size: 120, modified: 1760000000 },
-      { path: 'my_macros.cfg', size: 40, modified: 1760000000 },
-      { path: 'backups/20261016-1/core.cfg', size: 3000, modified: 1700000000 }
-    ]
-    expect(compareWithDefaults(mine, defaults)).toEqual({
-      'core.cfg': 'same',
-      'macros/print.cfg': 'changed',
-      'macros/homing.cfg': 'check',
-      'my_macros.cfg': 'yours'
+  it('compares sizes and timestamps, leaves equal-size edits for a content check, and skips backups', () => {
+    expect(compareWithDefaults([
+      file('same.cfg'), file('changed.cfg', 11), file('check.cfg', 10, 2), file('own.cfg'), file('backups/old.cfg')
+    ], [file('same.cfg'), file('changed.cfg'), file('check.cfg')])).toEqual({
+      'same.cfg': 'same', 'changed.cfg': 'changed', 'check.cfg': 'check', 'own.cfg': 'yours'
     })
   })
 
-  it('asks for the restart after a reset only when it is safe', () => {
+  it('marks changed folders but not folders containing only personal files or unresolved comparisons', () => {
+    expect(defaultTags({ 'macros/start.cfg': 'changed', 'own/file.cfg': 'yours', 'other/check.cfg': 'check', 'same.cfg': 'same' }))
+      .toEqual({ 'macros/start.cfg': 'changed', macros: 'changed', 'own/file.cfg': 'yours' })
+  })
+
+  it('handles empty listings and a configuration with no corresponding defaults', () => {
+    expect(compareWithDefaults([], [])).toEqual({})
+    expect(defaultTags({})).toEqual({})
+    expect(compareWithDefaults([file('yours.cfg')], [])).toEqual({ 'yours.cfg': 'yours' })
+    expect(listedFiles({ result: [] })).toEqual([])
+    expect(listedFiles([file('core.cfg')])).toEqual([file('core.cfg')])
+  })
+
+  it('does not turn a missing or malformed listing into a list of personal files', () => {
+    for (const reply of [undefined, null, { error: 'denied' }, { result: {} }, [{ path: 'bad.cfg' }]]) {
+      expect(() => listedFiles(reply)).toThrow('file listing')
+    }
+  })
+
+  it('offers a restart only outside a print and explains the deferred restart during one', () => {
     expect(resetRestartNote('Boxwood', false)).toBe("Boxwood uses it after Klipper restarts. It isn't printing, so it's safe now.")
-    expect(resetRestartNote('Boxwood', true)).toMatch(/stops the print\. Restart once it's done\.$/)
+    expect(resetRestartNote('Boxwood', true)).toContain("restarting stops the print. Restart once it's done.")
   })
 })

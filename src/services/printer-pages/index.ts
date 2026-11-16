@@ -18,9 +18,9 @@ import type { Route } from 'vue-router'
 import store from '@/store'
 import type { InstanceConfig } from '@/store/config/types'
 import { httpClientActions } from '@/api/httpClientActions'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, reachablePrinters } from '@/services/muon-cloud/state'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
-import { mdnsHostFor } from '@/services/muon-cloud/discovery'
+import { discoveryState, instanceFor, mdnsHostFor } from '@/services/muon-cloud/discovery'
 import { setActiveSlugSource, setForeignSlugSource } from '@/router/printerSlugSource'
 import { foreignRegistry, foreignSlug } from '@/services/foreign-printers/registry'
 import type { ForeignPrinterRecord } from '@/services/foreign-printers/types'
@@ -57,7 +57,7 @@ export function foreignRecordForSlug (slug: string | undefined): ForeignPrinterR
 }
 
 export const printerPagesState = Vue.observable({
-  /** Slugs learned from `/server/muon/identity`, by API address. */
+  /** Local-printer slugs learned from `/server/muon/identity`, by API address. */
   learned: {} as Record<string, string>,
   /**
    * The address a printer had before its identity was known (from its IP:
@@ -89,13 +89,27 @@ function savedInstances (): InstanceConfig[] {
 /** Every printer this browser knows: saved ones, then account ones. */
 export function knownPrinters (): PrinterTarget[] {
   const local: PrinterTarget[] = savedInstances().map(instance => ({ kind: 'local', slug: slugForInstance(instance), instance }))
-  const cloud: PrinterTarget[] = cloudState.printers.map(p => ({
+  const cloud: PrinterTarget[] = reachablePrinters().map(p => ({
     kind: 'cloud',
-    slug: printerPagesState.learned[`cloud:${p.id}`] ?? slugForCloudPrinter(p),
+    slug: slugForCloudPrinter(p),
     printerId: p.id
   }))
   const targets = [...local, ...cloud]
   const used = new Set(targets.map(target => target.slug))
+  // A printer the network search found is listed and can be opened, so its
+  // own address must open it too. On control.muon3d.com Boxwood showed when
+  // it was on, but /boxwood-367a said "No printer called boxwood-367a here":
+  // only saved and account printers had addresses. One in the account is
+  // that printer, under the name it gives itself.
+  for (const lan of discoveryState.found) {
+    const slug = slugForMdnsHost(lan.mdnsHost)
+    if (!slug || used.has(slug)) continue
+    const account = lan.endpointId ? cloudState.printers.find(p => p.id === lan.endpointId) : undefined
+    targets.push(account
+      ? { kind: 'cloud', slug, printerId: account.id }
+      : { kind: 'local', slug, instance: instanceFor(lan) })
+    used.add(slug)
+  }
   const foreign = foreignRegistry.records.map(record => {
     let slug = foreignSlug(record)
     let suffix = 1
@@ -135,9 +149,7 @@ export function activeSlug (): string | null {
   if (isManagedApiUrl(apiUrl)) {
     const id = cloudState.activePrinterId
     if (!id) return null
-    const learned = printerPagesState.learned[`cloud:${id}`]
-    if (learned) return learned
-    const printer = cloudState.printers.find(p => p.id === id)
+    const printer = reachablePrinters().find(p => p.id === id)
     return printer ? slugForCloudPrinter(printer) : null
   }
   const instance = savedInstances().find(i => addressKey(i.apiUrl) === addressKey(apiUrl))
@@ -208,11 +220,16 @@ export async function learnActiveIdentity (timeout = 3000): Promise<string | nul
     const identity = response.data?.result
     const slug = slugForIdentity(identity as any)
     if (!slug) return null
-    rememberAlias(before, slug)
+    // A hosted route is the complete account ID, never identity/display text.
+    // Learning a name must not change what printer that route identifies,
+    // but the printer's own address is another name for it while it is open,
+    // so a link to /boxwood-367a doesn't try to open it again.
     if (isManagedApiUrl(apiUrl)) {
-      Vue.set(printerPagesState.learned, asked, slug)
-      return slug
+      const active = activeSlug()
+      if (active && active !== slug) Vue.set(printerPagesState.aliases, slug, active)
+      return active
     }
+    rememberAlias(before, slug)
     Vue.set(printerPagesState.learned, addressKey(apiUrl), slug)
     // Kept with the saved printer, so the next visit knows its slug at once.
     const mdnsHost = mdnsHostFor(identity)
@@ -324,6 +341,10 @@ export function installPrinterPages (router: VueRouter, how: PrinterOpeners): vo
   router.afterEach((to) => {
     const slug = to.params.printer
     if (slug && !isActiveSlug(slug)) openPrinterAt(slug).catch(() => {})
+    // A page that landed on the address made before the printer said who it
+    // is (a bare /slice redirected while the identity was in flight) is
+    // corrected as soon as it lands, or when the identity arrives (init.ts).
+    else correctAddress(router)
   })
 }
 
@@ -373,6 +394,24 @@ export function isPrintersOwnPage (apiUrl: string, location: Pick<Location, 'ori
   } catch {
     return false
   }
+}
+
+/**
+ * Where `/` goes on a printer's own page, known before the first frame: the
+ * printer's page, so the list of every printer never draws first (KAN-2008).
+ * It used to wait for the account to restore (a call to the console) and for
+ * the printer's identity, and the page showed every saved, found and account
+ * printer by name for that long, then jumped to this one. Null when `/` is
+ * right: not the root, not the printer's own page, or no printer slug yet.
+ */
+export function ownPageHome (
+  pathname: string,
+  apiUrl: string,
+  slug: string | null,
+  location: Pick<Location, 'origin' | 'hostname'> = window.location
+): string | null {
+  if (pathname !== '/' || !slug || !isPrintersOwnPage(apiUrl, location)) return null
+  return printerPath(slug)
 }
 
 /** The page of the printer Fluidd is on, or Printers with none. */

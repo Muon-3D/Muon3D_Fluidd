@@ -142,3 +142,103 @@
   border-radius: 6px;
   text-wrap: nowrap;
 }
+
+/**
+ * The file manager in the redesign's colours: Fluidd's table, toolbar,
+ * breadcrumbs and menus, drawn with the --m3d tokens so both themes follow.
+ */
+.filesystem-wrapper.v-card {
+  border: 1px solid var(--m3d-border);
+  border-radius: 16px !important;
+  background: var(--m3d-surface) !important;
+  color: var(--m3d-text);
+
+  .v-toolbar {
+    background: var(--m3d-surface) !important;
+    border-bottom: 1px solid var(--m3d-border);
+    box-shadow: none !important;
+
+    .v-tab {
+      color: var(--m3d-text-muted);
+      font-weight: 600;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+  }
+
+  .file-crumbs {
+    display: flex;
+    align-items: center;
+    font-family: var(--m3d-font-mono, monospace);
+    font-size: 13px;
+
+    .file-crumbs__crumb {
+      padding: 2px 4px;
+      border-radius: var(--m3d-radius-sm);
+      color: var(--m3d-accent);
+
+      &:hover:not(:disabled) { background: var(--m3d-accent-soft); }
+      &:disabled { color: var(--m3d-text); cursor: default; font-weight: 600; }
+    }
+
+    .file-crumbs__sep { color: var(--m3d-text-subtle); }
+  }
+
+  .file-system .v-data-table {
+    background: transparent !important;
+
+    .v-data-table__wrapper { scrollbar-gutter: stable; }
+
+    th {
+      background: var(--m3d-surface-2) !important;
+      border-bottom: 1px solid var(--m3d-border) !important;
+      color: var(--m3d-text-muted) !important;
+      font-size: 12px !important;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    td {
+      border-bottom: 1px solid var(--m3d-border) !important;
+      color: var(--m3d-text);
+    }
+
+    tr.row-select { transition: background var(--m3d-duration-fast) var(--m3d-ease); }
+    tr.row-select:hover { background: var(--m3d-hover) !important; }
+    tr.row-select.v-data-table__selected { background: var(--m3d-accent-soft) !important; }
+    tr.row-select.active { outline: 2px dashed var(--m3d-accent-line); outline-offset: -2px; }
+    tr.fs-pad td { padding: 0; border: 0 !important; }
+
+    td.fs-cell {
+      color: var(--m3d-text-muted);
+      font-family: var(--m3d-font-mono, monospace);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    td.fs-name {
+      font-weight: 500;
+      max-width: 0;
+      min-width: 160px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    td.fs-more { padding-left: 0 !important; text-align: right; }
+
+    .fs-more__btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      color: var(--m3d-text-muted);
+
+      &:hover:not(:disabled) { background: var(--m3d-surface-2); color: var(--m3d-text); }
+      &:focus-visible { outline: 2px solid var(--m3d-accent); }
+    }
+  }
+}

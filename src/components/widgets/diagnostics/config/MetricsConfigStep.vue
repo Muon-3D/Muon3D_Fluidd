@@ -160,7 +160,7 @@
 import { Component, Vue, Prop } from 'vue-property-decorator'
 import type { DiagnosticsCardConfig } from '@/store/diagnostics/types'
 import MetricsCollectorConfig from './MetricsCollectorConfig.vue'
-import { defaultState } from '@/store/layout/state'
+import { newChartTemplate } from '@/store/layout/state'
 
 @Component({
   components: {
@@ -181,7 +181,7 @@ export default class MetricsConfigStep extends Vue {
   ]
 
   addMetric (axis: number) {
-    const defaultCard = defaultState().layouts.diagnostics.container1[0] as DiagnosticsCardConfig
+    const defaultCard = newChartTemplate()
     const defaultMetric = defaultCard.axes[0].metrics[0]
 
     this.config.axes[axis].metrics.push(defaultMetric)

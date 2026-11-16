@@ -1,5 +1,6 @@
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Prop } from 'vue-property-decorator'
 import ControlMixin from './control'
+import { NO_MATERIAL_LOADED } from '@/services/jobs/model'
 import FilesMixin from './files'
 import { SocketActions } from '@/api/socketActions'
 import type { TimeEstimates } from '@/store/printer/types'
@@ -7,6 +8,7 @@ import type { HistoryItem } from '@/store/history/types'
 import type { QueuedJob } from '@/store/jobQueue/types'
 import { jobName } from '@/services/printers-page/model'
 import { plateCheckNeeded } from '@/services/jobs/plate'
+import { plateNoticeFor } from '@/services/plate/ask'
 import { filamentFact, heaterTile, longDuration, spoolFact, type HeaterTile } from '@/services/overview/model'
 import { activeSlug, printerHomePath } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
@@ -29,6 +31,9 @@ export interface RecentJob {
  */
 @Component
 export default class OverviewMixin extends Mixins(ControlMixin, FilesMixin) {
+  /** The widget's size on the Overview: S, M or L. Each draws a different amount, not the same thing scaled. */
+  @Prop({ type: String, default: 'M' }) readonly size!: 'S' | 'M' | 'L'
+
   get printerName (): string {
     return printerNameParts(this.$store.getters['config/getDisplayName'] as string).name
   }
@@ -43,6 +48,10 @@ export default class OverviewMixin extends Mixins(ControlMixin, FilesMixin) {
 
   get jobFile (): string {
     return (this.printStats.filename as string | undefined) || ''
+  }
+
+  get activePrintJob (): HistoryItem | undefined {
+    return this.$store.state.history?.jobs?.find((job: HistoryItem) => job.status === 'in_progress' && job.filename === this.jobFile && !job.end_time)
   }
 
   get jobName (): string {
@@ -104,7 +113,8 @@ export default class OverviewMixin extends Mixins(ControlMixin, FilesMixin) {
    * attached even though it's printing").
    */
   get spoolFact (): string {
-    return spoolFact(this.loadedMaterial?.name ?? null, this.loadedColour, this.printingWith)
+    const fact = spoolFact(this.loadedMaterial?.name ?? null, this.loadedColour, this.printingWith)
+    return fact === NO_MATERIAL_LOADED && this.filamentSensed ? 'Filament loaded' : fact
   }
 
   get runningFor (): string | null {
@@ -160,18 +170,34 @@ export default class OverviewMixin extends Mixins(ControlMixin, FilesMixin) {
     return `printed ${days} days ago`
   }
 
+  /** The "Film it" switch on the print sheet, when the printer can film (moonraker-timelapse): what its settings say now. */
+  get filmChoice () {
+    if (!this.$store.getters['server/componentSupport']('timelapse')) return undefined
+    const settings = (this.$store.getters['timelapse/getSettings'] ?? {}) as { enabled?: boolean, mode?: string }
+    if (typeof settings.enabled !== 'boolean') return undefined
+    return {
+      on: settings.enabled,
+      line: settings.mode === 'hyperlapse' ? 'Every few seconds' : 'Each layer',
+      set: (on: boolean) => SocketActions.machineTimelapseSetSettings({ enabled: on })
+    }
+  }
+
   pagePath (page: string): string {
     return scopedPath(page, activeSlug())
   }
 
   async printAgain (filename: string) {
+    if (!this.controlReady || this.busy) return
+    const target = this.panelTarget
     const name = jobName(filename) ?? filename
     const ok = await this.$confirm(`${this.printerName} heats up, homes and starts printing.`, {
       title: `Print ${name} on ${this.printerName}?`,
       buttonTrueText: 'Print now',
-      plateCheck: plateCheckNeeded(this.$store.state.history?.jobs)
+      plateCheck: plateCheckNeeded(this.$store.state.history?.jobs),
+      plateNotice: plateNoticeFor(this.$store.state),
+      film: this.filmChoice
     })
-    if (!ok) return
+    if (!ok || target !== this.panelTarget || !this.controlReady || this.busy) return
     const spoolman = this.$store.getters['spoolman/getAvailable'] && this.$store.state.config.uiSettings.spoolman.autoSpoolSelectionDialog
     if (spoolman) {
       this.$store.commit('spoolman/setDialogState', { show: true, filename })

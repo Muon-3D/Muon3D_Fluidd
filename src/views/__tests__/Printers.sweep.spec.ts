@@ -40,7 +40,7 @@ describe('the Printers page on its first load', () => {
     const wrapper = shallowMount(Printers, {
       localVue,
       router: new VueRouter({ mode: 'abstract', routes: [] }),
-      computed: { isMobileViewport: () => false, perRow: () => 2 },
+      computed: { isMobileViewport: () => false },
       mocks: { $store: store, $vuetify: { breakpoint: { mobile: false } } }
     })
 

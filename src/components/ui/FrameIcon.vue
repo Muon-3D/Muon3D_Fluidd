@@ -58,15 +58,20 @@ const ICONS: Record<string, Shape[]> = {
   chevronLeft: [{ d: 'm15 18-6-6 6-6' }],
   list: [{ d: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01' }],
   estop: [{ d: 'M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z' }, { d: 'M12 7v6M12 16.5h.01' }],
+  // Quick actions: the lightning bolt, drawn at the frame's stroke weight like the rest.
+  bolt: [{ d: 'M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z' }],
   wifi: [{ d: 'M5 12.6a11 11 0 0 1 14 0M1.4 9a16 16 0 0 1 21.2 0M8.5 16.1a6 6 0 0 1 7 0M12 20h.01' }],
   cloud: [{ d: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z' }],
   plus: [{ d: 'M5 12h14M12 5v14' }],
+  bluetooth: [{ d: 'm7 7 10 10-5 5V2l5 5L7 17' }],
   more: [{ c: [5, 12, 1.2] }, { c: [12, 12, 1.2] }, { c: [19, 12, 1.2] }],
   user: [{ d: 'M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2' }, { c: [12, 7, 4] }],
   layout: [{ r: [3, 3, 18, 18, 2] }, { d: 'M3 9h18M9 21V9' }],
   power: [{ d: 'M12 2v10' }, { d: 'M18.4 6.6a9 9 0 1 1-12.77.04' }],
   x: [{ d: 'M18 6 6 18M6 6l12 12' }],
   refresh: [{ d: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8' }, { d: 'M21 3v5h-5' }],
+  arrowUp: [{ d: 'M12 19V5M5 12l7-7 7 7' }],
+  arrowDown: [{ d: 'M12 5v14M19 12l-7 7-7-7' }],
   chevronUp: [{ d: 'm18 15-6-6-6 6' }],
   minus: [{ d: 'M5 12h14' }],
   lock: [{ r: [4, 11, 16, 10, 2] }, { d: 'M8 11V7a4 4 0 0 1 8 0v4' }],
@@ -97,6 +102,9 @@ const ICONS: Record<string, Shape[]> = {
   // The Library: books on a shelf, one leaning.
   library: [{ d: 'm16 6 4 14M12 6v14M8 8v12M4 4v16' }],
   copy: [{ r: [8, 8, 14, 14, 2] }, { d: 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2' }],
+  // Materials: pinned to the filament picker, and the handle to drag one into order.
+  pin: [{ d: 'M12 17v5' }, { d: 'M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.8l-1.8-.9a2 2 0 0 1-1.1-1.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z' }],
+  grip: [{ c: [9, 6, 1.2] }, { c: [9, 12, 1.2] }, { c: [9, 18, 1.2] }, { c: [15, 6, 1.2] }, { c: [15, 12, 1.2] }, { c: [15, 18, 1.2] }],
   // The account's (KAN-532).
   shield: [{ d: 'M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z' }, { d: 'm9 12 2 2 4-4' }],
   idCard: [{ r: [3, 4, 18, 16, 2.5] }, { c: [9, 11, 2.5] }, { d: 'M5.5 17a3.5 3.5 0 0 1 7 0M15 10h3M15 14h3' }],
@@ -117,7 +125,11 @@ const ICONS: Record<string, Shape[]> = {
   userPlus: [{ c: [9, 8, 3.5] }, { d: 'M2.5 20a6.5 6.5 0 0 1 13 0' }, { d: 'M19 8v6M16 11h6' }],
   userMinus: [{ c: [9, 8, 3.5] }, { d: 'M2.5 20a6.5 6.5 0 0 1 13 0' }, { d: 'M16 11h6' }],
   clock: [{ c: [12, 12, 9] }, { d: 'M12 7v5l3 2' }],
-  info: [{ c: [12, 12, 9] }, { d: 'M12 8h.01M11 12h1v4h1' }]
+  info: [{ c: [12, 12, 9] }, { d: 'M12 8h.01M11 12h1v4h1' }],
+  // Settings' sections (v3): a macro, the system's chip, developer mode's code brackets.
+  macro: [{ r: [3, 3, 18, 18, 3] }, { d: 'm10 9-3 3 3 3M14 9l3 3-3 3' }],
+  chip: [{ r: [6, 6, 12, 12, 2] }, { r: [9.5, 9.5, 5, 5, 0.8] }, { d: 'M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4' }],
+  code: [{ d: 'm16 18 6-6-6-6M8 6l-6 6 6 6' }]
 }
 
 @Component({})

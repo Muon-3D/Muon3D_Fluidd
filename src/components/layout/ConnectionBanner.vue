@@ -35,6 +35,8 @@
 import { Component, Mixins, Prop } from 'vue-property-decorator'
 import ReconnectMixin from '@/mixins/reconnect'
 import { retryIn } from '@/services/connection/view'
+import { bluetoothOpening } from '@/services/muon-ble/link'
+import { cloudState } from '@/services/muon-cloud/state'
 
 /**
  * Over a page whose printer has gone quiet or dropped (the concept sheet's
@@ -51,13 +53,21 @@ export default class ConnectionBanner extends Mixins(ReconnectMixin) {
     return this.socketConnecting && !this.retryPending
   }
 
+  /** Re-opening onto Bluetooth after Connect over Bluetooth: a wait the person asked for, not a drop. */
+  get switchingToBluetooth (): boolean {
+    const id = cloudState.activePrinterId
+    return this.kind === 'reconnecting' && !!id && bluetoothOpening(id)
+  }
+
   get title (): string {
     if (this.kind === 'quiet') return `No word from ${this.printerName} for a few seconds`
+    if (this.switchingToBluetooth) return 'Switching to Bluetooth…'
     return this.kind === 'offline' ? 'Offline' : 'Reconnecting…'
   }
 
   get detail (): string {
     if (this.kind === 'quiet') return 'Probably a slow network. Nothing is lost.'
+    if (this.switchingToBluetooth) return `Bringing up the Bluetooth link to ${this.printerName}. The page keeps its last view.`
     if (this.kind === 'offline') return `${this.printerName} has been offline for at least two minutes. The page keeps its last view.`
     const wait = this.retryInMs
     const when = this.trying ? 'Trying again now.' : wait !== null ? `Trying again in ${retryIn(wait)}.` : 'Not trying.'

@@ -8,8 +8,11 @@ import { Globals } from '@/globals'
 import { consola } from 'consola'
 import type { DiagnosticsCardContainer } from '@/store/diagnostics/types'
 import sandboxedEval from '@/plugins/sandboxedEval'
+import { headStatus } from '@/services/control/safe-move'
 
 // let retryTimeout: number
+
+let lastDiagnosticsAt = 0
 
 export const actions: ActionTree<PrinterState, RootState> = {
   /**
@@ -117,6 +120,8 @@ export const actions: ActionTree<PrinterState, RootState> = {
     // Accept notifications, and commit the first subscribe.
     commit('socket/setAcceptNotifications', true, { root: true })
     await dispatch('onNotifyStatusUpdate', status)
+    // The head position Control holds is now this connection's (safe-move.ts).
+    headStatus.fresh = true
 
     SocketActions.serverGcodeStore()
     SocketActions.printerGcodeHelp()
@@ -164,7 +169,7 @@ export const actions: ActionTree<PrinterState, RootState> = {
         rootStateServerConfig?.data_store?.temperature_store_size ??
         rootStateServerConfig?.server?.temperature_store_size ??
         Globals.CHART_HISTORY_RETENTION
-      handleAddChartEntry(retention, rootState, commit, getters)
+      handleAddChartEntry(retention, rootState, commit)
       dispatch('onDiagnosticsMetricsUpdate')
     }
   },
@@ -181,6 +186,10 @@ export const actions: ActionTree<PrinterState, RootState> = {
 
   async onDiagnosticsMetricsUpdate ({ rootState, commit, rootGetters }) {
     if (!rootState.config.uiSettings.general.enableDiagnostics) return
+    // The collectors stringify the whole printer object: at most once a second.
+    const now = Date.now()
+    if (now - lastDiagnosticsAt < 1000) return
+    lastDiagnosticsAt = now
     const layout = rootState.layout.layouts.diagnostics as DiagnosticsCardContainer
     const metrics = Object.values(layout)
       .flat()

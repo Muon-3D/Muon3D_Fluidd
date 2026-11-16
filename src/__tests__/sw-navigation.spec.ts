@@ -7,13 +7,14 @@ const shellPage = () => new Response('<!doctype html><title>Fluidd</title>', { s
 describe('a navigation the service worker takes', () => {
   it('is answered by the network while it answers', async () => {
     const fromNetwork = new Response('page from the server', { status: 200 })
-    const network = vi.fn(async () => fromNetwork)
+    const network = vi.fn(async (request: Request) => (request ? fromNetwork : fromNetwork))
     const shell = vi.fn(async () => shellPage())
     const handle = networkFirstNavigation(network, shell)
 
     const request = new Request('https://app.muon3d.com/boxwood-367a/jobs')
     expect(await handle({ request })).toBe(fromNetwork)
-    expect(network).toHaveBeenCalledWith(request)
+    expect(network).toHaveBeenCalledTimes(1)
+    expect(network.mock.calls[0][0].url).toBe(request.url)
     expect(shell).not.toHaveBeenCalled()
   })
 
@@ -49,7 +50,50 @@ describe('a navigation the service worker takes', () => {
   })
 })
 
+describe('a fresh index', () => {
+  it('beats the cached one while the network is up, and is never read from the HTTP cache', async () => {
+    const fresh = new Response('<title>new build</title>')
+    const seen: Request[] = []
+    const network = vi.fn(async (request: Request) => { seen.push(request); return fresh })
+    const cached = vi.fn(async () => new Response('<title>old build</title>'))
+    const handle = networkFirstNavigation(network, cached, { timeoutMs: 3500 })
+
+    const answer = await handle({ request: new Request('https://control.muon3d.com/') })
+    expect(await answer.text()).toContain('new build')
+    expect(cached).not.toHaveBeenCalled()
+    expect(seen[0].cache).toBe('no-cache')
+  })
+
+  it('falls back to the cached index when the network is slower than the timeout', async () => {
+    vi.useFakeTimers()
+    const network = () => new Promise<Response>(() => {})
+    const handle = networkFirstNavigation(network, async () => new Response('<title>old build</title>'), { timeoutMs: 3500 })
+    const pending = handle({ request: new Request('https://control.muon3d.com/') })
+    await vi.advanceTimersByTimeAsync(3600)
+    expect(await (await pending).text()).toContain('old build')
+    vi.useRealTimers()
+  })
+
+  it('still leaves the console and server paths to the server', () => {
+    for (const path of ['/authorize?client_id=slicer', '/handoff', '/logout', '/j/abc123', '/auth/callback', '/slicer/', '/printer/info', '/server/info', '/websocket', '/.well-known/x']) {
+      expect(isDeniedNavigation(path.split('?')[0]), path).toBe(true)
+    }
+  })
+})
+
 describe('sw.ts', () => {
+  it('never caches models proxy images as static assets or answers their navigations with the shell', () => {
+    const source = swSource.match(/^const SERVER_API_PATHS = \/(.+)\/$/m)
+    expect(source).not.toBeNull()
+    const excluded = new RegExp(source![1])
+    for (const path of ['/models', '/models/v1/library', '/models/v1/public/publications/a/images/b']) {
+      expect(excluded.test(path)).toBe(true)
+      expect(isDeniedNavigation(path)).toBe(true)
+    }
+    expect(excluded.test('/models-gallery')).toBe(false)
+    expect(swSource).toContain('!SERVER_API_PATHS.test(url.pathname)')
+  })
+
   it('routes navigations network first, with the precached index.html as the offline answer', () => {
     expect(swSource).toMatch(/new NavigationRoute\(networkFirstNavigation\(\(request\) => fetch\(request\), createHandlerBoundToURL\('index\.html'\)\)/)
     // The precached page is no longer the first answer to any navigation.

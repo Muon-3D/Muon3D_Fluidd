@@ -1,5 +1,5 @@
 /** The command bar's groups, in the order they show. */
-export const GROUPS = ['Do', 'Jobs', 'Macros', 'Go to', 'Printers'] as const
+export const GROUPS = ['Do', 'Jobs', 'Quick commands', 'Go to', 'Printers'] as const
 
 export type CommandGroup = typeof GROUPS[number]
 
@@ -19,7 +19,8 @@ export interface Command {
   icon?: string;
   /** Shown with nothing typed yet. */
   suggested?: boolean;
-  run: () => void | Promise<void>;
+  /** False keeps the palette open after a refusal or cancelled confirmation. */
+  run: () => void | boolean | Promise<void | boolean>;
 }
 
 export interface Segment {

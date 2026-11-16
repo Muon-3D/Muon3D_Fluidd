@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { bluetoothRouteFor, openBleLink, stopUsingBluetoothFor, takesBleLinks, useBluetoothFor } from '../link'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { bluetoothRouteFor, cappedSegment, MAX_WRITE_SEGMENT, openBleLink, releaseBluetoothLink, stopUsingBluetoothFor, takesBleLinks, useBluetoothFor, wantsBluetoothFor } from '../link'
 import { EID, fakeEndpoint, fakePrinter, info, OTHER_EID } from './fakes'
 
 afterEach(() => {
@@ -18,6 +18,22 @@ describe('openBleLink', () => {
     expect(links[0].received).toEqual([new Uint8Array([2])])
     expect(link.isOpen()).toBe(true)
     await link.disconnect()
+  })
+
+  it('caps the segment size at 244 even when INFO says 512 (BlueZ drops 512-byte writes)', async () => {
+    const printer = fakePrinter({ infoValue: info(0, 512) })
+    const { endpoint } = fakeEndpoint()
+    const link = await openBleLink(endpoint, printer.device)
+    expect(endpoint.addLink).toHaveBeenCalledWith('central', MAX_WRITE_SEGMENT)
+    expect(MAX_WRITE_SEGMENT).toBe(244)
+    await link.disconnect()
+  })
+
+  it('keeps a smaller INFO segment size, and leaves an unknown one to the endpoint', () => {
+    expect(cappedSegment(182)).toBe(182)
+    expect(cappedSegment(244)).toBe(244)
+    expect(cappedSegment(245)).toBe(244)
+    expect(cappedSegment(0)).toBeUndefined()
   })
 
   it('hangs up with BYE, then drops the GATT connection', async () => {
@@ -56,6 +72,73 @@ describe('openBleLink', () => {
     await expect(openBleLink(endpoint, printer.device, { helloTimeoutMs: 50 })).rejects.toThrow(/handshake timed out/)
   })
 
+  it('connects again when the first connection goes down before its services are read (Boxwood, 5 Nov)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const server = printer.device.gatt
+      const connect = server.connect
+      const getPrimaryService = server.getPrimaryService
+      let stale = true
+      // Chrome resolves connect() on the connection readInfo just hung up;
+      // that connection then ends, and service discovery fails.
+      server.getPrimaryService = async (uuid: string) => {
+        if (stale) {
+          stale = false
+          server.disconnect()
+          throw Object.assign(new Error('GATT Server is disconnected. Cannot retrieve services. (Re)connect first with `device.gatt.connect`.'), { name: 'NetworkError' })
+        }
+        return getPrimaryService(uuid)
+      }
+      server.connect = connect
+      const { endpoint } = fakeEndpoint()
+      const opening = openBleLink(endpoint, printer.device)
+      await vi.advanceTimersByTimeAsync(1000)
+      const link = await opening
+      expect(link.printerId).toBe(EID)
+      expect(link.isOpen()).toBe(true)
+      expect(printer.calls.filter(c => c === 'connect')).toHaveLength(2)
+      await link.disconnect()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('outlasts a Windows teardown: three lost setups, then the fourth connects (btmon, 5 Nov)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const printer = fakePrinter()
+      const server = printer.device.gatt
+      const getPrimaryService = server.getPrimaryService
+      let lost = 3
+      server.getPrimaryService = async (uuid: string) => {
+        if (lost > 0) {
+          lost--
+          server.disconnect()
+          throw Object.assign(new Error('GATT Server is disconnected. Cannot retrieve services.'), { name: 'NetworkError' })
+        }
+        return getPrimaryService(uuid)
+      }
+      const { endpoint } = fakeEndpoint()
+      const opening = openBleLink(endpoint, printer.device)
+      await vi.advanceTimersByTimeAsync(6000)
+      const link = await opening
+      expect(link.isOpen()).toBe(true)
+      expect(printer.calls.filter(c => c === 'connect')).toHaveLength(4)
+      await link.disconnect()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not retry a GATT failure that is not a lost connection', async () => {
+    const printer = fakePrinter()
+    printer.device.gatt.getPrimaryService = async () => { throw new Error('no such service') }
+    const { endpoint } = fakeEndpoint()
+    await expect(openBleLink(endpoint, printer.device)).rejects.toThrow('no such service')
+    expect(printer.calls.filter(c => c === 'connect')).toHaveLength(1)
+  })
+
   it('refuses a second link to a device that has one', async () => {
     const printer = fakePrinter()
     const { endpoint } = fakeEndpoint()
@@ -76,6 +159,27 @@ describe('the Bluetooth route', () => {
     // Reused while it is up.
     expect(await bluetoothRouteFor(endpoint, EID)).toBe(link)
     expect(endpoint.addLink).toHaveBeenCalledTimes(1)
+  })
+
+  it('releasing the link forgets it at once and hangs it up, and keeps the choice', async () => {
+    const printer = fakePrinter()
+    const { endpoint, links } = fakeEndpoint()
+    useBluetoothFor(EID, printer.device)
+    const first = await bluetoothRouteFor(endpoint, EID)
+
+    const hangingUp = releaseBluetoothLink(EID)
+    // The route no longer holds the closing link: the radio is still going down
+    // here, so a route that kept it would hand it back as if it were up.
+    await expect(bluetoothRouteFor(endpoint, EID)).rejects.toThrow(/already connected/)
+    expect(links[0].isClosed()).toBe(true)
+    expect(wantsBluetoothFor(EID)).toBe(true)
+
+    await hangingUp
+    expect(first?.isOpen()).toBe(false)
+    const second = await bluetoothRouteFor(endpoint, EID)
+    expect(second).not.toBe(first)
+    expect(second?.isOpen()).toBe(true)
+    expect(endpoint.addLink).toHaveBeenCalledTimes(2)
   })
 
   it('does nothing with an endpoint that takes no Bluetooth links (the console before muon-link#31)', async () => {

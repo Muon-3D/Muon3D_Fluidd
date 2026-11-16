@@ -22,6 +22,15 @@
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
+  position: relative;
+  // Motion gallery, "Press, hover, focus" (KAN-2257): the press lands in an
+  // instant and the release springs back with no overshoot; hover is a quiet
+  // tone change; the focus ring grows out of the button.
+  transition:
+    filter var(--m3d-motion-fast) var(--m3d-ease-standard),
+    background-color var(--m3d-motion-fast) var(--m3d-ease-standard),
+    opacity var(--m3d-motion-fast) var(--m3d-ease-standard),
+    transform var(--m3d-motion-press-out) var(--m3d-spring-snappy);
 
   .v-icon {
     color: inherit !important;
@@ -31,10 +40,48 @@
     filter: brightness(1.12);
   }
 
+  &:active:not(:disabled) {
+    transform: scale(var(--m3d-motion-press-scale, 0.95));
+    transition-duration: var(--m3d-motion-fast), var(--m3d-motion-fast), var(--m3d-motion-fast), var(--m3d-motion-press-in);
+    transition-timing-function: var(--m3d-ease-standard);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: inherit;
+    border: 2px solid var(--m3d-focus-ring, var(--m3d-accent));
+    opacity: 0;
+    transform: scale(0.94);
+    pointer-events: none;
+    transition:
+      opacity var(--m3d-motion-fast) var(--m3d-ease-standard),
+      transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy);
+  }
+
+  &:focus-visible::after {
+    opacity: 1;
+    transform: none;
+  }
+
   &:disabled {
     opacity: 0.45;
     cursor: default;
   }
+}
+
+// Stopping is never eased: a stop button's press shows on the frame it happens.
+.cbtn--danger:active:not(:disabled) {
+  transform: none;
+}
+
+.m3d-reduced-motion .cbtn:active:not(:disabled) {
+  transform: none;
 }
 
 .cbtn--primary {
@@ -528,4 +575,193 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.45;
+}
+
+// Settings sub-pages in the v3 layout (Wi-Fi, System, Updating): a 12-column
+// grid of tiles, grouped lists with rows of 52px or more, and bars.
+.stiles {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.stile {
+  grid-column: span 12;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border-radius: 22px;
+  background: var(--m3d-surface);
+  color: var(--m3d-text);
+}
+
+.stile--4 { grid-column: span 4; }
+.stile--6 { grid-column: span 6; }
+.stile--8 { grid-column: span 8; }
+
+.stile__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  font-size: 16px;
+  font-weight: 700;
+
+  h2 {
+    margin: 0;
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  .frame-icon,
+  svg:first-child {
+    flex: none;
+    color: var(--m3d-text-muted);
+  }
+}
+
+.stile__aside {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.stile__note {
+  margin: 0;
+  color: var(--m3d-text-muted);
+  font-size: 13px;
+}
+
+.stile__group-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--m3d-text-muted);
+}
+
+.slist {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--m3d-surface);
+}
+
+.stile .slist {
+  border-radius: 0;
+  background: transparent;
+}
+
+.srow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 16px;
+
+  & + & {
+    border-top: 1px solid var(--m3d-border);
+  }
+}
+
+.stile .srow {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.srow__ico {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--m3d-surface-2);
+  color: var(--m3d-text-muted);
+}
+
+.srow__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+
+  b,
+  .srow__t {
+    display: block;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  small,
+  .srow__s {
+    display: block;
+    color: var(--m3d-text-muted);
+    font-size: 12px;
+  }
+}
+
+.srow__v {
+  flex: none;
+  max-width: 55%;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.srow__act {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.sbar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--m3d-surface-2);
+
+  i {
+    display: block;
+    height: 100%;
+    background: var(--m3d-accent);
+  }
+}
+
+.cbtn--sm {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.scallout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--m3d-warning) 14%, transparent);
+  color: var(--m3d-text);
+  font-size: 14px;
+
+  svg {
+    flex: none;
+    color: var(--m3d-warning);
+  }
+}
+
+@media (max-width: 1100px) {
+  .stile--4,
+  .stile--6,
+  .stile--8 {
+    grid-column: span 12;
+  }
 }

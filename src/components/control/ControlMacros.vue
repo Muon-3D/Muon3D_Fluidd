@@ -1,7 +1,8 @@
 <template>
   <control-card
-    title="Macros"
-    :locked="klippyReady ? '' : notReadyReason"
+    title="Quick commands"
+    icon="macro"
+    :locked="controlLock"
     :note="klippyReady ? note : ''"
     data-tid="control-macros"
   >
@@ -15,7 +16,7 @@
           v-model="query"
           type="search"
           placeholder="Find"
-          aria-label="Find a macro"
+          aria-label="Find a quick command"
         >
       </label>
       <a
@@ -25,76 +26,146 @@
       >Arrange</a>
     </template>
 
-    <template v-for="group in shownGroups">
-      <component
-        :is="group.id === 'printer' && !query ? 'details' : 'section'"
-        :key="group.id"
-        class="macros__group"
-        :data-tid="`macro-group-${group.id}`"
+    <div
+      v-if="!query"
+      class="macros__grid"
+    >
+      <button
+        v-for="macro in topMacroList(8)"
+        :key="macro.name"
+        type="button"
+        class="macros__macro"
+        :disabled="!controlReady || (macro.disabledWhilePrinting && busy)"
+        :title="tooltipOf(macro)"
+        :data-tid="`macro-${macro.name}`"
+        @click="run(macro)"
       >
+        <span class="macros__title">{{ macro.title }}</span>
+        <span class="macros__name">{{ macro.name }}{{ macro.params.length ? ' · values' : '' }}</span>
+      </button>
+    </div>
+    <component
+      :is="query ? 'div' : 'control-task-fold'"
+      fold-key="macros.all"
+      title="All commands"
+      summary="By what they are for"
+    >
+      <template v-for="group in shownGroups">
         <component
-          :is="group.id === 'printer' && !query ? 'summary' : 'h3'"
-          class="macros__group-title"
+          :is="group.id === 'printer' && !query ? 'details' : 'section'"
+          :key="group.id"
+          class="macros__group"
+          :data-tid="`macro-group-${group.id}`"
         >
-          {{ group.label }}
-          <span>{{ group.macros.length }}</span>
-        </component>
-        <p
-          v-if="group.id === 'printer'"
-          class="macros__group-note"
-        >
-          Prompt buttons, hooks and replacements for standard commands. They run by themselves; press one only if you know why.
-        </p>
-        <div class="macros__grid">
-          <button
-            v-for="macro in group.macros"
-            :key="macro.name"
-            type="button"
-            class="macros__macro"
-            :disabled="!klippyReady || (macro.disabledWhilePrinting && busy) || macro.needsParams"
-            :title="tooltipOf(macro)"
-            :data-tid="`macro-${macro.name}`"
-            @click="run(macro)"
+          <component
+            :is="group.id === 'printer' && !query ? 'summary' : 'h3'"
+            class="macros__group-title"
           >
-            <span class="macros__title">{{ macro.title }}</span>
-            <span class="macros__name">{{ macro.name }}</span>
-            <span
-              v-if="macro.needsParams"
-              class="macros__hint"
-            >needs {{ macro.params.join(', ') }}: run it from the console</span>
-            <span
-              v-else-if="macro.description"
-              class="macros__hint"
-            >{{ macro.description }}</span>
-          </button>
-        </div>
-      </component>
-    </template>
+            {{ group.label }}
+            <span>{{ group.macros.length }}</span>
+          </component>
+          <p
+            v-if="group.id === 'printer'"
+            class="macros__group-note"
+          >
+            Prompt buttons, hooks and replacements for standard commands. They run by themselves; press one only if you know why.
+          </p>
+          <div class="macros__grid">
+            <button
+              v-for="macro in group.macros"
+              :key="macro.name"
+              type="button"
+              class="macros__macro"
+              :disabled="!controlReady || (macro.disabledWhilePrinting && busy)"
+              :title="tooltipOf(macro)"
+              :data-tid="`macro-${macro.name}`"
+              @click="run(macro)"
+            >
+              <span class="macros__title">{{ macro.title }}</span>
+              <span class="macros__name">{{ macro.name }}</span>
+              <span
+                v-if="macro.params.length"
+                class="macros__hint"
+              >asks for {{ macro.params.join(', ') }}</span>
+              <span
+                v-else-if="macro.description"
+                class="macros__hint"
+              >{{ macro.description }}</span>
+            </button>
+          </div>
+        </component>
+      </template>
+    </component>
     <p
       v-if="!shownGroups.length"
       class="macros__none"
     >
-      {{ query ? `No macro matches "${query}".` : 'This printer has no macros to show.' }}
+      {{ query ? `No quick command matches "${query}".` : 'This printer has no quick commands to show.' }}
     </p>
+    <form
+      v-if="selected"
+      class="macros__values"
+      data-tid="macro-send"
+      aria-label="Quick command values"
+      @submit.prevent="submitMacro"
+    >
+      <h3>{{ selected.title }}</h3>
+      <p>{{ selected.description }}</p>
+      <label
+        v-for="field in fields"
+        :key="field.name"
+        class="macros__field"
+      >
+        <span>{{ field.name }} · {{ field.optional ? `optional${field.defaultValue ? ` · default ${field.defaultValue}` : ' · uses the command’s own value'}` : 'required' }}</span>
+        <textarea
+          v-model="values[field.name]"
+          rows="1"
+          :aria-label="`Macro ${field.name}`"
+          autocomplete="off"
+        />
+      </label>
+      <p>Sends <code>{{ preview || 'check the values' }}</code></p>
+      <p
+        v-if="formError || commandRefusal"
+        role="alert"
+      >
+        {{ formError || commandRefusal }}
+      </p>
+      <button
+        type="button"
+        class="cbtn"
+        @click="selected = null"
+      >
+        Cancel
+      </button>
+      <button
+        type="submit"
+        class="cbtn cbtn--primary"
+        :disabled="!controlReady"
+      >
+        Run
+      </button>
+    </form>
   </control-card>
 </template>
 
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
-import ControlMixin from '@/mixins/control'
-import MacrosMixin, { type ShownMacro, type ShownMacroGroup } from '@/mixins/macros'
+import MacroRunMixin from '@/mixins/macro-run'
+import type { ShownMacro, ShownMacroGroup } from '@/mixins/macros'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import ControlCard from './ControlCard.vue'
+import ControlTaskFold from './ControlTaskFold.vue'
 
 /**
- * Pro: every macro the printer has, in groups by what it is for (filament,
+ * Every visible macro, in groups by what it is for (filament,
  * moving, the nozzle, calibration...), the ones you'd press first at the
  * front of each. The ones the printer runs by itself sit folded at the end.
  * A macro that needs a value to run says so instead of running half-asked.
  */
-@Component({ components: { ControlCard } })
-export default class ControlMacros extends Mixins(ControlMixin, MacrosMixin) {
+@Component({ components: { ControlCard, ControlTaskFold } })
+export default class ControlMacros extends Mixins(MacroRunMixin) {
   query = ''
 
   get shownGroups (): ShownMacroGroup[] {
@@ -109,25 +180,19 @@ export default class ControlMacros extends Mixins(ControlMixin, MacrosMixin) {
   get note (): string {
     const all = this.arrangedMacros.length
     const own = this.arrangedMacros.filter(m => m.group === 'printer').length
-    return `${all} ${all === 1 ? 'macro' : 'macros'}, ${own} run by the printer itself. Grouped automatically; a group set under Settings › Macros wins.`
+    return `${all} ${all === 1 ? 'quick command' : 'quick commands'}, ${own} run by the printer itself. Grouped automatically; a group set under Settings › Quick commands wins.`
   }
 
   get arrangeLink (): string {
     return `${scopedPath('/settings', activeSlug())}#macros`
   }
-
-  tooltipOf (macro: ShownMacro): string {
-    return [macro.name, macro.description, macro.internal].filter(Boolean).join(' · ')
-  }
-
-  run (macro: ShownMacro) {
-    if (macro.needsParams) return
-    this.sendGcode(macro.name)
-  }
 }
 </script>
 
 <style lang="scss" scoped>
+  .macros__values { border-top: 1px solid var(--m3d-border); padding-top: 12px; }
+  .macros__field { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; margin: 10px 0; font-size: 13px; }
+  .macros__field textarea { background: var(--m3d-surface-2); color: var(--m3d-text); padding: 6px 10px; border-radius: 8px; width: 140px; resize: none; }
   .macros__find {
     display: inline-flex;
     align-items: center;

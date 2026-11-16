@@ -6,10 +6,11 @@ import { AccountError } from '@/services/account/client'
 import type { Session } from '@/services/account/api'
 
 const endSession = vi.hoisted(() => vi.fn(async () => ({ ok: true })))
+const endDevice = vi.hoisted(() => vi.fn(async () => ({ ok: true })))
 const endSessions = vi.hoisted(() => vi.fn(async (): Promise<{ ok: boolean, ended?: number }> => ({ ok: true, ended: 1 })))
 vi.mock('@/services/account/api', async (actual) => ({
   ...(await actual() as object),
-  accountApi: { endSession, endSessions }
+  accountApi: { endSession, endDevice, endSessions }
 }))
 vi.mock('@/services/account/state', async (actual) => ({
   ...(await actual() as object),
@@ -71,8 +72,29 @@ describe('Devices and sessions', () => {
     expect(rows).toHaveLength(1)
     await rows.at(0).find('button').trigger('click')
     await settle()
-    expect(endSession).toHaveBeenCalledWith('s-mac')
-    await w.find('[data-tid="sessions-this-device"] button').trigger('click')
-    expect(beginSignOut).toHaveBeenCalled()
+    expect(endDevice).toHaveBeenCalledTimes(1)
+    expect(endDevice).toHaveBeenCalledWith('s-mac')
+    expect(endSession).not.toHaveBeenCalled()
+    // This device signs out from the account menu, as drawn: no button on its row.
+    expect(w.find('[data-tid="sessions-this-device"] button').exists()).toBe(false)
+  })
+
+  it('asks before signing the others out, naming them, and says pairings stay', async () => {
+    const confirm = vi.fn(async () => false)
+    accountState.sessions = [session('s-here', 'Chrome on Windows', { current: true }), session('s-mac', 'Safari on Mac'), session('s-app', 'Muon3D app on Pixel 8')]
+    const w = mount(AccountSessions, {
+      propsData: { linkTo: (id: string) => `/account/${id}` },
+      mocks: { $confirm: confirm },
+      stubs: { 'frame-icon': true, 'router-link': { template: '<a><slot /></a>' } }
+    })
+    await w.find('[data-tid="sessions-everywhere-else"]').trigger('click')
+    await settle()
+    expect(confirm).toHaveBeenCalledWith('Safari on Mac and Muon3D app on Pixel 8. Bluetooth pairings to your printers stay.', expect.objectContaining({ title: 'Sign out 2 other devices?', buttonTrueText: 'Sign out', danger: true }))
+    expect(endSessions).not.toHaveBeenCalled()
+  })
+
+  it('says devices paired at a printer are not available yet', () => {
+    const w = open()
+    expect(w.find('[data-tid="sessions-paired-unavailable"]').text()).toContain('Not available yet')
   })
 })

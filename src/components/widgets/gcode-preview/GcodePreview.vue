@@ -329,6 +329,8 @@ import ExcludeObjects from '@/components/widgets/exclude-objects/ExcludeObjects.
 import GcodePreviewButton from './GcodePreviewButton.vue'
 import type { AppFile } from '@/store/files/types'
 import type { BedSize } from '@/store/printer/types'
+import { gcodeShapeRendering, modelAnimates } from '@/services/m1-3d/render-options'
+import { modelSettings } from '@/services/m1-3d/device-settings'
 
 @Component({
   components: {
@@ -390,8 +392,17 @@ export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
     return this.getUiSetting('drawOrigin')
   }
 
+  /** Settings › Animations, which follows the device's reduce-motion setting until set. */
+  /** The system's prefers-reduced-motion, kept current: the animations' default. */
+  reducedMotion = false
+  reducedMotionQuery: MediaQueryList | null = null
+
   get showAnimations () {
-    return this.getUiSetting('showAnimations')
+    return modelAnimates(modelSettings.animations, this.reducedMotion)
+  }
+
+  onReducedMotion (event: MediaQueryListEvent) {
+    this.reducedMotion = event.matches
   }
 
   get autoZoom () {
@@ -409,7 +420,7 @@ export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
   }
 
   get shapeRendering () {
-    return this.panning ? 'optimizeSpeed' : 'geometricPrecision'
+    return gcodeShapeRendering(modelSettings.detail, this.panning)
   }
 
   get showExcludeObjects () {
@@ -586,6 +597,9 @@ export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
   }
 
   mounted () {
+    this.reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null
+    this.reducedMotion = this.reducedMotionQuery?.matches ?? false
+    this.reducedMotionQuery?.addEventListener?.('change', this.onReducedMotion)
     this.panzoom = panzoom(this.svg, {
       maxZoom: 20,
       minZoom: 0.95,
@@ -607,6 +621,7 @@ export default class GcodePreview extends Mixins(StateMixin, BrowserMixin) {
   }
 
   beforeDestroy () {
+    this.reducedMotionQuery?.removeEventListener?.('change', this.onReducedMotion)
     this.panzoom?.dispose()
   }
 

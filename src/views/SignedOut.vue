@@ -166,13 +166,13 @@ import { Component, Vue, Watch } from 'vue-property-decorator'
 import PrinterThumb from '@/components/ui/PrinterThumb.vue'
 import { cloudApi } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
-import { centralLoginEnabled, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
-import { nearbyHost, printerHealth } from '@/services/muon-cloud/discovery'
+import { centralLoginEnabled, consoleServesPage, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
+import { nearbyHost, pageIsSecure, printerHealth } from '@/services/muon-cloud/discovery'
 import { printerStatusWord } from '@/util/printer-status-word'
 import { describe } from '@/services/account/state'
 import { finishSignIn, forgotPassword, passkeySignIn } from '@/services/account/sign-in'
 import { cancelledPasskey, passkeysSupported } from '@/services/account/webauthn'
-import { forgetSignedOut, readSignedOut, type SignedOutNote } from '@/services/account/signed-out-note'
+import { forgetSignedOut, readSignedOut, reasonLine, type SignedOutNote } from '@/services/account/signed-out-note'
 import '@/scss/muon3d-account.scss'
 
 /**
@@ -211,12 +211,17 @@ export default class SignedOut extends Vue {
 
   /** The console's page: passkeys belong to its name (muon3d.com). */
   get passkeys (): boolean {
-    return centralLoginEnabled() && passkeysSupported()
+    return consoleServesPage() && passkeysSupported()
   }
 
   get line (): string {
     const who = this.note?.email || 'You'
     const is = this.note?.email ? 'is' : 'are'
+    if (this.note?.reason === 'password') return 'Your password was changed. Sign in again.'
+    if (this.note?.reason === 'email') return 'Your email address was changed. Sign in again.'
+    if (this.note?.reason === 'two-step') return 'Your two-step sign-in was changed. Sign in again.'
+    const said = reasonLine(this.note?.reason)
+    if (said) return said
     switch (this.note?.scope) {
       case 'everywhere':
         return `${who} ${is} signed out everywhere: every browser, Slice and the Muon3D app.`
@@ -235,6 +240,11 @@ export default class SignedOut extends Vue {
       this.nearby = printers
         .map(p => ({ id: p.printer_id, name: p.name, host: nearbyHost(p.local_addrs ?? []) ?? '', status: 'Checking…' }))
         .filter(p => p.host)
+      // No http from the https site (I-134): the name stands without a status.
+      if (pageIsSecure()) {
+        for (const printer of this.nearby) printer.status = ''
+        return
+      }
       await Promise.all(this.nearby.map(async printer => {
         const health = await printerHealth(`http://${printer.host}`)
         printer.status = printerStatusWord(health?.state ?? null)
