@@ -93,6 +93,7 @@ describe('choosing the way in (KAN-1253)', () => {
   })
 
   it('Auto falls back from LAN to cloud, then Bluetooth if cloud also fails', async () => {
+    chooseRouteMode('walnut', 'auto')
     const methods = (PrinterEntriesMixin as unknown as { options: { methods: Record<string, (...args: any[]) => any> } }).options.methods
     const c = { ...component(false), localInstance: () => ({ apiUrl: 'http://192.0.2.1' }) }
     activate.mockRejectedValueOnce(new Error('cloud unavailable'))
@@ -103,6 +104,7 @@ describe('choosing the way in (KAN-1253)', () => {
   })
 
   it('Auto tries cloud first and may fall back to a known Bluetooth printer', async () => {
+    chooseRouteMode('walnut', 'auto')
     activate.mockRejectedValueOnce(new Error('cloud unavailable'))
     await connectCloud.call(component(false), entry(true, true))
     expect(activate).toHaveBeenCalledTimes(2)

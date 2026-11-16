@@ -2,6 +2,7 @@ import Vue from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { cloudApi, CloudError, storeToken, type CloudPrinter } from '../api'
 import * as state from '../state'
+import * as bluetooth from '@/services/muon-ble/link'
 
 const fake = vi.hoisted(() => ({
   down: false,
@@ -139,4 +140,33 @@ it('does not call one slow read Offline', async () => {
   fake.fetchPause = new Promise<void>(resolve => setTimeout(resolve, 5000))
   await vi.advanceTimersByTimeAsync(5500)
   expect(state.cloudState.status.boxwood.error).not.toBe('offline')
+})
+
+it.each([0, 119_000, 180_000])('keeps a carrying Bluetooth printer reachable when console last_seen is %s ms old', async age => {
+  vi.spyOn(bluetooth, 'wantsBluetoothFor').mockReturnValue(true)
+  vi.spyOn(bluetooth, 'bluetoothCarrying').mockReturnValue(true)
+  await vi.advanceTimersByTimeAsync(3000)
+  for (let i = 0; i < 10; i++) {
+    state.cloudState.printers[0] = { ...printer, online: false, last_seen: (Date.now() - age) / 1000 }
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(state.cloudState.status.boxwood).toMatchObject({ reachable: true, error: undefined })
+  }
+})
+
+it('does not hide console offline when no Bluetooth route is carrying the printer', async () => {
+  vi.spyOn(bluetooth, 'wantsBluetoothFor').mockReturnValue(false)
+  vi.spyOn(bluetooth, 'bluetoothCarrying').mockReturnValue(false)
+  state.cloudState.printers[0] = { ...printer, online: false, last_seen: 0 }
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(state.cloudState.status.boxwood).toMatchObject({ reachable: false, error: 'offline' })
+  expect(fake.dials).toBe(0)
+})
+
+it('still surfaces failed reads over Bluetooth even if the radio is carrying packets', async () => {
+  vi.spyOn(bluetooth, 'wantsBluetoothFor').mockReturnValue(true)
+  vi.spyOn(bluetooth, 'bluetoothCarrying').mockReturnValue(true)
+  await vi.advanceTimersByTimeAsync(3000)
+  fake.down = true
+  await vi.advanceTimersByTimeAsync(6000)
+  expect(state.cloudState.status.boxwood).toMatchObject({ reachable: false, error: 'offline' })
 })

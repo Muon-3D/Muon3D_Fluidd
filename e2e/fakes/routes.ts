@@ -58,13 +58,13 @@ class Socket {
     this.owner = owner
     this.queue = []
     this.waiting = []
-    this.ws = new WebSocket(PRINTER.replace(/^http/, 'ws') + path)
+    this.ws = new WebSocket(PRINTER.replace(/^http/, 'ws') + path + (path.includes('?') ? '&' : '?') + 'e2e_route=' + owner.route)
     this.open = new Promise((resolve, reject) => {
       this.ws.onopen = resolve
       this.ws.onerror = () => reject(new Error('the gateway closed the websocket'))
     })
     this.ws.onmessage = e => this.push(e.data)
-    this.ws.onclose = () => { this.closed = true; this.push(null) }
+    this.ws.onclose = () => { this.closed = true; S().sessionEvents.push({ route: owner.route, event: 'socket-close', at: Date.now() }); this.push(null) }
   }
   push (item) {
     const next = this.waiting.shift()
@@ -109,27 +109,35 @@ class Printer {
     }
     const h = new Headers()
     for (let i = 0; i + 1 < headers.length; i += 2) h.append(headers[i], headers[i + 1])
-    const answer = await fetch(PRINTER + path, { method, headers: h, body: method === 'GET' || method === 'HEAD' || !body.length ? undefined : body })
-    const out = []
-    answer.headers.forEach((v, k) => out.push(k, v))
-    return { status: answer.status, headers: out, body: new Uint8Array(await answer.arrayBuffer()) }
+    S().pendingFetches = (S().pendingFetches ?? 0) + 1
+    try {
+      const answer = await fetch(PRINTER + path + (path.includes('?') ? '&' : '?') + 'e2e_route=' + this.route, { method, headers: h, body: method === 'GET' || method === 'HEAD' || !body.length ? undefined : body })
+      const out = []
+      answer.headers.forEach((v, k) => out.push(k, v))
+      return { status: answer.status, headers: out, body: new Uint8Array(await answer.arrayBuffer()) }
+    } finally {
+      S().pendingFetches--
+    }
   }
   async openWebSocket (path) {
     if (this.dead) throw new Error('connection lost')
     const socket = new Socket(path, this)
     this.sockets.add(socket)
     await socket.open
+    S().sessionEvents.push({ route: this.route, event: 'socket-open', at: Date.now() })
     return socket
   }
   /** The path under this session went away. */
   cut () {
     this.dead = true
+    S().sessionEvents.push({ route: this.route, event: 'cut', at: Date.now() })
     for (const s of this.sockets) s.ws.close()
   }
   close () {
     if (this.closed) return
     this.closed = true
     S().closes++
+    S().sessionEvents.push({ route: this.route, event: 'close', at: Date.now() })
     S().live.delete(this)
     for (const s of this.sockets) s.ws.close()
   }
@@ -139,6 +147,7 @@ class Link {
   constructor () {
     this.closed = false
     this.waiters = []
+    S().linkEvents.push({ event: 'open', at: Date.now() })
     // QUIC's keep-alive: a segment to send every 2 s while the path is live.
     this.timer = setInterval(() => { if (!S().silent) this.wake() }, 2000)
     S().links.add(this)
@@ -158,6 +167,7 @@ class Link {
     if (this.closed) return
     this.closed = true
     clearInterval(this.timer)
+    S().linkEvents.push({ event: 'close', at: Date.now() })
     S().links.delete(this)
     this.waiters.splice(0).forEach(w => w())
   }
@@ -242,6 +252,8 @@ export async function useAllRoutes (page: Page, account: ConsoleState) {
       closes: 0,
       heard: 0,
       routes: [] as string[],
+      sessionEvents: [],
+      linkEvents: [],
       refused: [] as string[],
       links: new Set(),
       live: new Set(),
@@ -345,11 +357,13 @@ export interface RouteCounts {
   closes: number;
   routes: string[];
   refused: string[];
+  sessionEvents: Array<{ route: string, event: string, at: number }>;
+  linkEvents: Array<{ event: string, at: number }>;
 }
 
 export function routeCounts (page: Page): Promise<RouteCounts> {
   return page.evaluate(() => {
     const s = (window as any).__e2eRoute
-    return { dials: s.dials, closes: s.closes, routes: [...s.routes], refused: [...s.refused] }
+    return { dials: s.dials, closes: s.closes, routes: [...s.routes], refused: [...s.refused], sessionEvents: [...s.sessionEvents], linkEvents: [...s.linkEvents] }
   })
 }

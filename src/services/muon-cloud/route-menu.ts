@@ -1,13 +1,13 @@
 import type { NearbySupport } from '@/services/muon-ble/nearby'
-import type { Route } from './route-choice'
+import type { Route, RouteMode } from './route-choice'
 
 /**
  * Which ways in a printer's menus offer (KAN-2487, Jack 13 Nov).
  *
- * A printer reached over one route offers the other two, and a printer that
- * is not open offers all three. A route that cannot be used now is still
- * listed, greyed, with one line saying why. The route a session is on is
- * never offered. Nothing here depends on who owns the printer: the account
+ * An explicit route omits itself while connected; Auto offers every route,
+ * including its current transport, so the person can hold it explicitly.
+ * Unavailable routes stay listed, greyed, with one line saying why.
+ * Nothing here depends on who owns the printer: the account
  * only decides whether the Muon3D route is open to it.
  */
 export type RouteItemId = 'connect-local' | 'connect-cloud' | 'connect-bluetooth'
@@ -22,6 +22,7 @@ export interface RouteMenuItem {
 }
 
 export interface RouteMenuFacts {
+  mode: RouteMode;
   /** The route the open session is on now, or null when this printer is not open. */
   live: Route | null;
   /** What Connect locally would do from this page. */
@@ -50,7 +51,8 @@ export function bluetoothReason (ble: RouteMenuFacts['ble']): string | null {
 /** The routes the menu lists for a printer, in the order Local, Muon3D, Bluetooth. */
 export function routeMenuItems (f: RouteMenuFacts): RouteMenuItem[] {
   const items: RouteMenuItem[] = []
-  if (f.live !== 'lan') {
+  const held = f.mode === f.live ? f.live : null
+  if (held !== 'lan') {
     items.push({
       id: 'connect-local',
       route: 'lan',
@@ -60,11 +62,11 @@ export function routeMenuItems (f: RouteMenuFacts): RouteMenuItem[] {
       disabled: !f.local.usable
     })
   }
-  if (f.live !== 'cloud') {
+  if (held !== 'cloud') {
     const reason = !f.cloud.listed ? NOT_ON_ACCOUNT : !f.cloud.online ? OFFLINE_IN_MUON3D : undefined
     items.push({ id: 'connect-cloud', route: 'cloud', label: 'Connect through Muon3D', icon: '$cloud', hint: reason, disabled: !!reason })
   }
-  if (f.live !== 'ble') {
+  if (held !== 'ble') {
     const reason = bluetoothReason(f.ble)
     items.push({ id: 'connect-bluetooth', route: 'ble', label: 'Connect over Bluetooth', icon: '$bluetooth', hint: reason ?? undefined, disabled: !!reason })
   }
