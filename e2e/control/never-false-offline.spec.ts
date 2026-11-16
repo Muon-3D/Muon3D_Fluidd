@@ -167,6 +167,12 @@ test.describe('account printers', () => {
       await lookNearby(page)
       await (await menu(page)).getByText(route === 'LAN' ? 'Connect locally' : 'Connect through Muon3D', { exact: true }).click()
       await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible()
+      const approval = page.getByTestId('approval-outcome')
+      if (await approval.isVisible()) {
+        await expect(approval).toContainText('Boxwood let this device in.')
+        await page.getByTestId('approval-close').click()
+        await expect(approval).toBeHidden()
+      }
       await page.evaluate(async () => {
         const router = (await import(/* @vite-ignore */ ['', 'src', 'router', 'index.ts'].join('/'))).default
         await router.push('/')
