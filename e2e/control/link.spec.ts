@@ -72,7 +72,7 @@ test.describe('signed in', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0)
     expect(account.changes).toEqual([])
     await page.getByTestId('link-button').click()
-    await expect.poll(() => account.changes.filter(c => c.path === '/v1/links/claim').length).toBe(1)
+    await expect.poll(() => account.changes.filter(c => c.call === 'POST /v1/links/claim').length).toBe(1)
   })
 
   test('/join: the invite, Not now and Accept; Accept posts the code once and waits for the owner', async ({ page }) => {
