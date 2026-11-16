@@ -1,5 +1,5 @@
 /**
- * KAN-1374, Jack 3 Nov at the printer: the panel showed Settings > Add a device with its
+ * KAN-1374, Jack 3 Nov at the printer: the panel showed System > Add a device with its
  * 8-digit code, but Control had "no button to pair... very not intuitive".
  *
  * "Pair this browser" is in a printer's options menu, linked to an account or not, whenever

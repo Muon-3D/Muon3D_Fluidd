@@ -21,7 +21,7 @@
         busy="Connecting…"
       />
       <p class="muon-ble-pair__body">
-        It needs a pairing window open first: on its screen, open <strong>Settings &gt; Add a device</strong>.
+        It needs a pairing window open first: on its screen, open <strong>System &gt; Add a device</strong>.
       </p>
       <template #footer>
         <app-btn
@@ -39,7 +39,7 @@
       v-else-if="state.phase === 'code'"
       flat
       title="Check the code"
-      :sub="`Add Control on ${printerName}: on its screen, open Settings > Add a device. It shows an 8-digit code.`"
+      :sub="`Add Control on ${printerName}: on its screen, open System > Add a device. It shows an 8-digit code.`"
       data-tid="pair-code-step"
     >
       <p class="muon-ble-pair__label">

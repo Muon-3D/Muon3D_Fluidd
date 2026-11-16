@@ -47,7 +47,7 @@ describe('offering to pair this browser (KAN-1253)', () => {
     expect(activationState.error).toMatch(/Control/)
     expect(activationState.error).toMatch(/doesn't know this browser/)
     // The window must be open before pairing can start.
-    expect(activationState.error).toMatch(/first open Settings > Add a device/)
+    expect(activationState.error).toMatch(/first open System > Add a device/)
   })
 
   it.each([
@@ -61,7 +61,7 @@ describe('offering to pair this browser (KAN-1253)', () => {
 
     expect(activationState.pairing).toBe(EID)
     expect(activationState.error).toMatch(copy)
-    expect(activationState.error).toMatch(/first open Settings > Add a device/)
+    expect(activationState.error).toMatch(/first open System > Add a device/)
   })
 
   it.each([0x040a, 0x040b, 0x0403])('in a release build (refusal %i) offers pairing by default, with no coming-soon line (I-170, KAN-1374)', async (code) => {
@@ -73,7 +73,7 @@ describe('offering to pair this browser (KAN-1253)', () => {
       await expect(activateCloudPrinter(EID)).rejects.toThrow()
 
       expect(activationState.pairing).toBe(EID)
-      expect(activationState.error).toMatch(/first open Settings > Add a device/)
+      expect(activationState.error).toMatch(/first open System > Add a device/)
       expect(activationState.error).not.toMatch(/coming soon/)
     } finally {
       vi.unstubAllEnvs()

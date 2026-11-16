@@ -44,7 +44,7 @@ describe('the pairing dialog (KAN-1253)', () => {
     state.comparison = 'F6Q TDH'
     const wrapper = mount(BluetoothPairDialog, { stubs })
 
-    expect(wrapper.text()).toContain('Settings > Add a device')
+    expect(wrapper.text()).toContain('System > Add a device')
     expect(wrapper.text()).toContain('Control')
     expect(wrapper.find('[data-tid="pair-sas"]').text().replace(/\s/g, '')).toBe('F6QTDH')
 
@@ -108,7 +108,7 @@ describe('the pairing dialog (KAN-1253)', () => {
   it('says to open Add a device on the printer while it connects, before the pairing starts', () => {
     state.phase = 'connecting'
     const wrapper = mount(BluetoothPairDialog, { stubs })
-    expect(wrapper.find('[data-tid="pair-connecting"]').text()).toContain('Settings > Add a device')
+    expect(wrapper.find('[data-tid="pair-connecting"]').text()).toContain('System > Add a device')
   })
 
   it('still shows the six symbols while it waits for the panel, so they can be compared', () => {
@@ -153,7 +153,7 @@ describe('the offer on a printer that refused this browser (KAN-1253)', () => {
     const wrapper = shallowMount(PrinterOpening, options)
     await wrapper.find('[data-tid="pair-offer"]').trigger('click')
     expect(wrapper.find('[data-tid="pair-offer"]').text()).toBe('Pair this browser')
-    expect(wrapper.find('[data-tid="pair-hint"]').text()).toContain('Settings > Add a device')
+    expect(wrapper.find('[data-tid="pair-hint"]').text()).toContain('System > Add a device')
     expect(service.startPairing).toHaveBeenCalledWith('boxwood')
   })
 
