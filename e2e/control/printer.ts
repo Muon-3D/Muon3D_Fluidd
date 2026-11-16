@@ -169,7 +169,7 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
   const infoRequests = new Set<unknown>()
   let pageSocket: { send: (message: string) => void, close: () => Promise<void> } | null = null
 
-  await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
+  await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket(?:\\?|$)`), ws => {
     if (handle.state.offline) {
       ws.close().catch(() => {})
       return

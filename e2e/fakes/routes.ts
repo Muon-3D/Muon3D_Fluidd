@@ -75,6 +75,7 @@ class Socket {
             reply.result.files.push({ filename: file.name, size: file.size, modified: Date.now() / 1000 })
           }
         }
+        S().upload?.listings?.push({ path, files: reply.result.files.map(file => file.filename) })
       }
       this.push(JSON.stringify(reply))
     }
@@ -142,6 +143,7 @@ class Printer {
     return { status: 201, headers: ['content-type', 'application/json'], body: text(JSON.stringify({ result: { item, action: 'create_file' } })) }
   }
   async fetch (method, path, headers, body) {
+    if (path === '/server/files/upload' && S().upload) return this.fetchWithProgress(method, path, headers, body)
     if (this.dead) throw new Error('connection lost')
     const bare = decodeURIComponent(path.split('?')[0])
     if (bare === '/muon-link/plate/clear') {

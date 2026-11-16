@@ -1,11 +1,16 @@
 import { createHash } from 'node:crypto'
+import { writeFile } from 'node:fs/promises'
 import { test, expect, ready, PRINTER } from '../fixtures'
 import { routeCounts, ROUTE_PRINTER, useAllRoutes } from '../fakes/routes'
+import { usePrinter, PRESETS } from './printer'
+
+let printer: Awaited<ReturnType<typeof usePrinter>>
 
 test.use({ signedIn: true, serviceWorkers: 'block' })
 
 test.beforeEach(async ({ page, account }) => {
   await useAllRoutes(page, account)
+  printer = await usePrinter(page, PRESETS.idleHomed(), { ticks: false })
   await page.goto('/')
   await ready(page)
   await page.evaluate(async id => {
@@ -22,15 +27,17 @@ test.beforeEach(async ({ page, account }) => {
   await page.evaluate(async path => {
     const { default: router } = await import(/* @vite-ignore */ '/src/router/index.ts')
     await router.push(`${path}/jobs`)
-    ;(window as any).__e2eRoute.upload = { outcome: 'ok', maxStep: 4, attempts: [] }
+    ;(window as any).__e2eRoute.upload = { outcome: 'ok', maxStep: 4, attempts: [], listings: [] }
   }, PRINTER)
   await expect(page.getByTestId('jobs-upload-input')).toBeAttached()
 })
 
-test('50 MB through Muon3D shows intermediate byte progress and publishes the file', async ({ page }, info) => {
+test('52 MiB through Muon3D shows intermediate byte progress and publishes the file', async ({ page }, info) => {
   await page.evaluate(() => { (window as any).__e2eRoute.upload.maxStep = 1 })
-  const bytes = Buffer.alloc(50_000_000, 'G')
-  await page.getByTestId('jobs-upload-input').setInputFiles({ name: 'relay-50mb.gcode', mimeType: 'text/x-gcode', buffer: bytes })
+  const bytes = Buffer.alloc(52 * 1024 * 1024, 'G')
+  const file = info.outputPath('relay-52mib.gcode')
+  await writeFile(file, bytes)
+  await page.getByTestId('jobs-upload-input').setInputFiles(file)
   const panel = page.getByTestId('upload-progress')
   await expect(panel).toContainText('25%')
   await expect(panel).toContainText('/')
@@ -40,10 +47,43 @@ test('50 MB through Muon3D shows intermediate byte progress and publishes the fi
   await expect(panel).toContainText('50%')
   await page.evaluate(() => { (window as any).__e2eRoute.upload.maxStep = 4 })
   await expect(panel).toBeHidden()
-  await expect(page.getByTestId('flash-message')).toContainText('Uploaded relay-50mb.gcode')
-  await expect(page.getByTestId('jobs-page').getByText('Relay 50mb', { exact: true }).first()).toBeVisible()
+  await expect(page.getByTestId('flash-message')).toContainText('Uploaded relay-52mib.gcode')
+  await expect(page.getByTestId('jobs-page').getByText('Relay 52mib', { exact: true }).first()).toBeVisible()
   const attempts = await page.evaluate(() => (window as any).__e2eRoute.upload.attempts)
-  expect(attempts).toEqual([expect.objectContaining({ size: 50_000_000, checksum: createHash('sha256').update(bytes).digest('hex'), completed: true })])
+  expect(attempts).toEqual([expect.objectContaining({ size: 52 * 1024 * 1024, checksum: createHash('sha256').update(bytes).digest('hex'), completed: true })])
+})
+
+test('upload then Print starts the exact uploaded file', async ({ page }) => {
+  await page.getByTestId('jobs-upload-input').setInputFiles({ name: 'print-upload.gcode', mimeType: 'text/x-gcode', buffer: Buffer.from('G28\n') })
+  await page.getByTestId('job-ready-print').click()
+  const plate = page.getByTestId('confirm-plate')
+  if (await plate.count()) await plate.click()
+  await page.getByTestId('confirm-ok').click()
+  await expect.poll(() => printer.called('printer.print.start')).toEqual([{ filename: 'print-upload.gcode' }])
+})
+
+test('a mid-transfer cut publishes neither the file nor any temporary entry, even after refresh', async ({ page }) => {
+  await expect(page.getByTestId('jobs-row')).toHaveCount(5)
+  const names = await page.getByTestId('jobs-row').locator('b').allTextContents()
+  const filenames = await page.evaluate(async () => {
+    const { default: store } = await import(/* @vite-ignore */ '/src/store/index.ts')
+    return store.state.files.pathFiles.gcodes.files.map((file: any) => file.filename)
+  })
+  await page.evaluate(() => { (window as any).__e2eRoute.upload.outcome = 'cut' })
+  await page.getByTestId('jobs-upload-input').setInputFiles({ name: 'unfinished.gcode', mimeType: 'text/x-gcode', buffer: Buffer.alloc(1024 * 1024, 'G') })
+  await expect(page.getByTestId('flash-message')).toContainText('failed')
+  expect(await page.getByTestId('jobs-row').locator('b').allTextContents()).toEqual(names)
+  const count = await page.evaluate(async () => {
+    const state = (window as any).__e2eRoute.upload
+    const count = state.listings.length
+    const { SocketActions } = await import(/* @vite-ignore */ '/src/api/socketActions.ts')
+    await SocketActions.serverFilesGetDirectory('gcodes', 'gcodes')
+    return count
+  })
+  await expect.poll(() => page.evaluate(() => (window as any).__e2eRoute.upload.listings.length)).toBeGreaterThan(count)
+  const refreshed = await page.evaluate(() => (window as any).__e2eRoute.upload.listings.at(-1).files)
+  expect(refreshed).toEqual(filenames)
+  expect(await page.getByTestId('jobs-row').locator('b').allTextContents()).toEqual(names)
 })
 
 test('a cut transfer gives a reason and Try again uploads the same file and folder', async ({ page }) => {
