@@ -547,6 +547,7 @@ export function refreshOutcome (): Promise<RefreshOutcome> {
       const timer = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS)
       try {
         const session = await tokenRequest({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId() }, controller.signal)
+        if (storedRefreshToken() !== refreshToken) return storedToken() !== null && storedRefreshToken() !== null ? 'ok' : 'refused'
         const before = storedToken()
         storeToken(session.access_token)
         carryConfirmation(before, session.access_token)
