@@ -84,7 +84,11 @@
     { "name": "library.get of the current version", "message": { "v": 1, "id": 65, "op": "library.get", "params": { "printer": null, "item": "6f1d2c3a-8b4e-4f5a-9c6d-7e8f9a0b1c2d" } }, "expect": { "op": "library.get", "item": "6f1d2c3a-8b4e-4f5a-9c6d-7e8f9a0b1c2d", "version": null } },
     { "name": "library.get of version 0", "message": { "v": 1, "id": 66, "op": "library.get", "params": { "printer": null, "item": "6f1d2c3a-8b4e-4f5a-9c6d-7e8f9a0b1c2d", "version": 0 } }, "expect": { "error": "bad-request", "re": 66 } },
     { "name": "library.get of no item", "message": { "v": 1, "id": 67, "op": "library.get", "params": { "printer": null, "item": "" } }, "expect": { "error": "bad-request", "re": 67 } },
-    { "name": "library.browse", "message": { "v": 1, "id": 68, "op": "library.browse", "params": { "printer": null } }, "expect": { "op": "library.browse", "printer": null } }
+    { "name": "library.browse", "message": { "v": 1, "id": 68, "op": "library.browse", "params": { "printer": null } }, "expect": { "op": "library.browse", "printer": null } },
+    { "name": "account.status: who is signed in to the host, naming no printer", "message": { "v": 1, "id": 69, "op": "account.status", "params": { "printer": null } }, "expect": { "op": "account.status", "printer": null } },
+    { "name": "account.status naming a printer", "message": { "v": 1, "id": 70, "op": "account.status", "params": { "printer": "$walnut" } }, "expect": { "error": "bad-request", "re": 70 } },
+    { "name": "account.assertion for the model service", "message": { "v": 1, "id": 71, "op": "account.assertion", "params": { "printer": null, "audience": "models" } }, "expect": { "op": "account.assertion", "printer": null, "audience": "models" } },
+    { "name": "account.assertion for an audience the protocol does not name (the host never hears of it)", "message": { "v": 1, "id": 72, "op": "account.assertion", "params": { "printer": null, "audience": "https://control.muon3d.com" } }, "expect": { "error": "bad-request", "re": 72 } }
   ],
   "incoming": [
     { "name": "a result", "message": { "v": 1, "re": 3, "printer": "$walnut", "result": { "path": "a.gcode", "size": 12 } }, "expect": { "kind": "result", "re": 3, "printer": "$walnut" } },
@@ -99,7 +103,7 @@
     { "name": "printer.changed", "message": { "v": 1, "event": "printer.changed", "printer": "$oak", "data": { "printer": { "key": "$oak", "name": "Oak", "model": "Muon3D M1", "route": "local", "role": null, "online": true } } }, "expect": { "kind": "event", "event": "printer.changed", "printer": "$oak" } },
     { "name": "printer.status", "message": { "v": 1, "event": "printer.status", "printer": "$walnut", "data": { "status": { "print_stats": { "state": "printing" } }, "eventtime": 1234.5 } }, "expect": { "kind": "event", "event": "printer.status" } },
     { "name": "ui.look", "message": { "v": 1, "event": "ui.look", "printer": null, "data": { "theme": "dark", "tokens": { "bg": "#13171a", "accent": "#80d6d1" } } }, "expect": { "kind": "event", "event": "ui.look", "printer": null } },
-    { "name": "ui.mode", "message": { "v": 1, "event": "ui.mode", "printer": null, "data": { "mode": "pro" } }, "expect": { "kind": "event", "event": "ui.mode", "printer": null } },
+    { "name": "ui.mode, an older host's Simple or Pro (retired, KAN-550): not an event of this version", "message": { "v": 1, "event": "ui.mode", "printer": null, "data": { "mode": "pro" } }, "expect": "ignored" },
     { "name": "printer.setup", "message": { "v": 1, "event": "printer.setup", "printer": "$walnut", "data": { "material": { "name": "Teal PLA", "type": "PLA", "colour": "#00A3A3", "nozzle": 215, "bed": 60, "source": "spool", "remaining": 610 }, "materials": [{ "name": "PLA", "type": "PLA", "colour": null, "nozzle": 215, "bed": 60, "source": "table" }] } }, "expect": { "kind": "event", "event": "printer.setup", "printer": "$walnut" } },
     { "name": "an event this version does not have", "message": { "v": 1, "event": "printer.exploded", "printer": "$walnut", "data": {} }, "expect": "ignored" },
     { "name": "a message whose printer is not a key", "message": { "v": 1, "re": 3, "printer": "Walnut", "result": {} }, "expect": "ignored" },

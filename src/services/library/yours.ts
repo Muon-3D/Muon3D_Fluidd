@@ -45,12 +45,14 @@ export interface OwnShare {
   state: string;
   expires_at?: string | null;
   created_at?: string | null;
+  /** Why a refused share was not approved. The service does not send one yet (state is pending, approved, active or revoked); read if it ever does. */
+  reason?: string | null;
 }
 
 export const OWN_SHELVES: Array<{ id: OwnShelfId, title: string, sub: string }> = [
   { id: 'sliced', title: 'Sliced', sub: 'Ready to print, newest first' },
   { id: 'printed', title: 'Printed', sub: 'What your printers made' },
-  { id: 'shared', title: 'Shared by you', sub: 'Your public prints' },
+  { id: 'shared', title: 'Shared by you', sub: 'Your public prints, and any waiting for review' },
   { id: 'designs', title: 'Designs', sub: 'Made in Create' }
 ]
 
@@ -115,7 +117,17 @@ export function runCard (run: LibraryRun): OwnCard {
   }
 }
 
-/** One of your public prints: the item it shares, printed like any other. */
+/** "Public", "Waiting for review", or "Not approved" with the reason when one is sent (text only). */
+function shareNote (share: OwnShare): string {
+  if (share.state === 'pending') return 'Waiting for review'
+  if (share.state === 'rejected') {
+    const reason = typeof share.reason === 'string' ? share.reason.trim() : ''
+    return reason ? `Not approved: ${reason}` : 'Not approved'
+  }
+  return 'Public'
+}
+
+/** One of your public prints: the item it shares, printed like any other; it opens your own copy, never the public page. */
 export function sharedCard (share: OwnShare, items: Map<string, LibraryItem>): OwnCard {
   const item = items.get(share.item) ?? null
   const setup = item?.setups?.[0]
@@ -127,26 +139,35 @@ export function sharedCard (share: OwnShare, items: Map<string, LibraryItem>): O
     title: share.title || item?.name || 'A print',
     material: setup?.material || null,
     facts: printFacts(setup),
-    note: 'Public',
+    note: shareNote(share),
     action: item && live(item) && printable(item) ? 'print' : null,
     at: share.created_at || item?.updated_at || ''
   }
 }
 
-/** Public, live shares: approved by review and not expired, one per print (a link share is not one). */
-export function publicShares (value: unknown, now = Date.now()): OwnShare[] {
+/** Which public shares show, best first: live, then under review, then refused. */
+const SHARE_RANK: Record<string, number> = { approved: 0, pending: 1, rejected: 2 }
+
+/**
+ * Your own public shares: live (approved), waiting for review (pending) and
+ * refused (rejected), not expired, one per print (a link share is not one;
+ * withdrawn ones are gone). Per print the best state wins, newest within it.
+ * Order is the service's, newest first.
+ */
+export function ownPublicShares (value: unknown, now = Date.now()): OwnShare[] {
   const shares = (value as { shares?: unknown } | null)?.shares
   if (!Array.isArray(shares)) return []
-  const seen = new Set<string>()
-  return shares.filter((s): s is OwnShare => {
+  const best = new Map<string, OwnShare>()
+  for (const s of shares) {
     const share = s as OwnShare | null
-    if (!share || typeof share !== 'object' || typeof share.id !== 'string' || typeof share.item !== 'string') return false
-    if (share.audience !== 'public' || share.state !== 'approved') return false
-    if (share.expires_at && !(Date.parse(share.expires_at) > now)) return false
-    if (seen.has(share.item)) return false
-    seen.add(share.item)
-    return true
-  })
+    if (!share || typeof share !== 'object' || typeof share.id !== 'string' || typeof share.item !== 'string') continue
+    if (share.audience !== 'public' || !(share.state in SHARE_RANK)) continue
+    if (share.expires_at && !(Date.parse(share.expires_at) > now)) continue
+    const held = best.get(share.item)
+    if (!held || SHARE_RANK[share.state] < SHARE_RANK[held.state] ||
+      (SHARE_RANK[share.state] === SHARE_RANK[held.state] && time(share.created_at ?? '') > time(held.created_at ?? ''))) best.set(share.item, share)
+  }
+  return shares.filter((s): s is OwnShare => best.get((s as OwnShare)?.item) === s)
 }
 
 /**
@@ -208,7 +229,7 @@ const RUN_PAGES = 10
 export async function loadOwnShelf (id: 'printed' | 'shared', client: OwnClient, items: LibraryItem[], all = false): Promise<OwnCard[]> {
   if (id === 'shared') {
     const byId = new Map(items.map(item => [item.id, item]))
-    return findOwn(publicShares(await client.shares()).map(share => sharedCard(share, byId)), '', 'new')
+    return findOwn(ownPublicShares(await client.shares()).map(share => sharedCard(share, byId)), '', 'new')
   }
   const runs: LibraryRun[] = []
   let cursor = ''

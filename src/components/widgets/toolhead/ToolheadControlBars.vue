@@ -27,10 +27,10 @@
 
         <app-btn
           :disabled="!klippyReady || printerPrinting"
-          :loading="hasWait($waits.onHomeXY)"
+          :loading="hasWait($waits.onHomeAll)"
           :color="!xyHomed ? 'primary' : undefined"
           class="px-2"
-          @click="sendGcode('G28 X Y', $waits.onHomeXY)"
+          @click="homeAll"
         >
           <v-icon
             small
@@ -38,7 +38,7 @@
           >
             $home
           </v-icon>
-          XY
+          Home all
         </app-btn>
       </v-col>
     </v-row>

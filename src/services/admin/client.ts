@@ -1,5 +1,6 @@
 import { cloudBaseUrl, storedToken, refreshSession } from '@/services/muon-cloud/api'
 import { usePasskey } from '@/services/account/webauthn'
+import { MODELS_AUDIENCE, MODELS_SERVICE_URL } from '@/services/library/transport'
 
 export interface StaffSession { actor: string; staff_expires_at: number }
 export interface AdminAccount {
@@ -13,7 +14,6 @@ export interface AuditPage { entries: AuditEntry[]; next: number | null; staff_e
 export class AdminError extends Error {
   constructor (message: string, readonly status: number, readonly expired = false) { super(message) }
 }
-const MODELS = 'https://models.muon3d.com'
 
 export function adminAvailable (page = window.location.href, console = cloudBaseUrl(), framed = window.top !== window.self): boolean {
   const origin = new URL(page).origin
@@ -80,9 +80,9 @@ export const lookupAccount = (query: string, reason: string): Promise<Lookup> =>
 export async function readAudit (source: 'console' | 'community', before: number | null, reason: string): Promise<AuditPage> {
   if (source === 'console') return await consoleRequest('/v1/admin/audit/read', { before, reason })
   // Local to this call only: never a URL, storage entry or refresh token.
-  const proof = await consoleRequest<{ assertion: string; expires_at: number }>('/v1/me/staff/assertion', { audience: MODELS })
+  const proof = await consoleRequest<{ assertion: string; expires_at: number }>('/v1/me/staff/assertion', { audience: MODELS_AUDIENCE })
   if (proof.expires_at * 1000 <= Date.now()) throw new AdminError('Staff confirmation expired.', 401, true)
-  return await send<AuditPage>(MODELS, '/v1/admin/audit/read', proof.assertion, { before, reason })
+  return await send<AuditPage>(MODELS_SERVICE_URL, '/v1/admin/audit/read', proof.assertion, { before, reason })
 }
 
 export interface StaffCommand { command: string; action: string; target: string; version: number; reason: string; details: Record<string, unknown> }

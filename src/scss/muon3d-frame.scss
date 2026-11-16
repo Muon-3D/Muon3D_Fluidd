@@ -22,6 +22,15 @@
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
+  position: relative;
+  // Motion gallery, "Press, hover, focus" (KAN-2257): the press lands in an
+  // instant and the release springs back with no overshoot; hover is a quiet
+  // tone change; the focus ring grows out of the button.
+  transition:
+    filter var(--m3d-motion-fast) var(--m3d-ease-standard),
+    background-color var(--m3d-motion-fast) var(--m3d-ease-standard),
+    opacity var(--m3d-motion-fast) var(--m3d-ease-standard),
+    transform var(--m3d-motion-press-out) var(--m3d-spring-snappy);
 
   .v-icon {
     color: inherit !important;
@@ -31,10 +40,48 @@
     filter: brightness(1.12);
   }
 
+  &:active:not(:disabled) {
+    transform: scale(var(--m3d-motion-press-scale, 0.95));
+    transition-duration: var(--m3d-motion-fast), var(--m3d-motion-fast), var(--m3d-motion-fast), var(--m3d-motion-press-in);
+    transition-timing-function: var(--m3d-ease-standard);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: inherit;
+    border: 2px solid var(--m3d-focus-ring, var(--m3d-accent));
+    opacity: 0;
+    transform: scale(0.94);
+    pointer-events: none;
+    transition:
+      opacity var(--m3d-motion-fast) var(--m3d-ease-standard),
+      transform var(--m3d-spring-snappy-duration) var(--m3d-spring-snappy);
+  }
+
+  &:focus-visible::after {
+    opacity: 1;
+    transform: none;
+  }
+
   &:disabled {
     opacity: 0.45;
     cursor: default;
   }
+}
+
+// Stopping is never eased: a stop button's press shows on the frame it happens.
+.cbtn--danger:active:not(:disabled) {
+  transform: none;
+}
+
+.m3d-reduced-motion .cbtn:active:not(:disabled) {
+  transform: none;
 }
 
 .cbtn--primary {

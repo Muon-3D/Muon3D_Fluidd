@@ -178,3 +178,11 @@ describe('probe accuracy', () => {
     expect(probeAccuracyScript(true, [100, 90], 6)).toBe('G90\nG1 Z6 F600\nG1 X100 Y90 F6000\nPROBE_ACCURACY')
   })
 })
+
+describe('probeAccuracyScript with a notch that has no height (Opus review of #399)', () => {
+  it('never sends the move to the middle without its lift: no height is an error, not a dropped lift', () => {
+    expect(probeAccuracyScript(true, [100, 90], 6.4)).toBe('G90\nG1 Z6.4 F600\nG1 X100 Y90 F6000\nPROBE_ACCURACY')
+    expect(() => probeAccuracyScript(true, [100, 90], Infinity)).toThrow()
+    expect(() => probeAccuracyScript(true, [100, 90], NaN)).toThrow()
+  })
+})

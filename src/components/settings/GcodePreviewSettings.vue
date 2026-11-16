@@ -204,133 +204,16 @@
     <v-card
       :elevation="5"
       dense
-      class="mb-4"
+      class="mb-2"
+      data-tid="gcode-preview-settings"
     >
-      <app-setting :title="$t('app.setting.label.draw_origin')">
-        <v-switch
-          v-model="drawOrigin"
-          hide-details
-          class="mb-5"
-          @click.native.stop
-        />
-      </app-setting>
-
-      <v-divider />
-
-      <app-setting :title="$t('app.setting.label.draw_background')">
-        <v-switch
-          v-model="drawBackground"
-          hide-details
-          class="mb-5"
-          @click.native.stop
-        />
-      </app-setting>
-
-      <v-divider />
-
-      <app-setting :title="$t('app.setting.label.default_min_layer_height')">
-        <v-text-field
-          :value="minLayerHeight"
-          :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThanOrEqual(0.1)
-          ]"
-          filled
-          dense
-          single-line
-          hide-details="auto"
-          suffix="mm"
-          @change="setMinLayerHeight"
-        />
-      </app-setting>
-
-      <v-divider />
-
-      <app-setting :title="$t('app.setting.label.extrusion_line_width')">
-        <v-text-field
-          :value="extrusionLineWidth"
-          :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThan(0)
-          ]"
-          filled
-          dense
-          single-line
-          hide-details="auto"
-          suffix="mm"
-          @change="setExtrusionLineWidth"
-        />
-      </app-setting>
-
-      <v-divider />
-
-      <app-setting :title="$t('app.setting.label.move_line_width')">
-        <v-text-field
-          :value="moveLineWidth"
-          :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThan(0)
-          ]"
-          filled
-          dense
-          single-line
-          hide-details="auto"
-          suffix="mm"
-          @change="setMoveLineWidth"
-        />
-      </app-setting>
-
-      <v-divider />
-
-      <app-setting :title="$t('app.setting.label.retraction_icon_size')">
-        <v-text-field
-          :value="retractionIconSize"
-          :rules="[
-            $rules.required,
-            $rules.numberValid,
-            $rules.numberGreaterThan(0)
-          ]"
-          filled
-          dense
-          single-line
-          hide-details="auto"
-          suffix="mm"
-          @change="setRetractionIconSize"
-        />
-      </app-setting>
-
-      <v-divider />
-
-      <app-setting :title="$t('app.setting.label.flip_horizontal')">
-        <v-switch
-          v-model="flipHorizontal"
-          hide-details
-          class="mb-5"
-          @click.native.stop
-        />
-      </app-setting>
-
-      <v-divider />
-
-      <app-setting :title="$t('app.setting.label.flip_vertical')">
-        <v-switch
-          v-model="flipVertical"
-          hide-details
-          class="mb-5"
-          @click.native.stop
-        />
-      </app-setting>
-
-      <v-divider />
-
-      <app-setting :title="$t('app.setting.label.auto_load_on_print_start')">
+      <app-setting title="Open the preview when a print starts">
         <v-switch
           v-model="autoLoadOnPrintStart"
           hide-details
           class="mb-5"
+          aria-label="Open the preview when a print starts"
+          data-tid="preview-auto-open"
           @click.native.stop
         />
       </app-setting>
@@ -338,11 +221,16 @@
       <template v-if="autoLoadOnPrintStart">
         <v-divider />
 
-        <app-setting :title="$t('app.setting.label.auto_load_mobile_on_print_start')">
+        <app-setting
+          title="On a phone too"
+          sub-title="Drawing a big file is slow on a phone."
+        >
           <v-switch
             v-model="autoLoadMobileOnPrintStart"
             hide-details
             class="mb-5"
+            aria-label="Open the preview when a print starts, on a phone too"
+            data-tid="preview-auto-open-phone"
             @click.native.stop
           />
         </app-setting>
@@ -350,24 +238,175 @@
 
       <v-divider />
 
-      <app-setting :title="$t('app.setting.label.auto_follow_on_file_load')">
+      <app-setting title="Follow the head while printing">
         <v-switch
           v-model="autoFollowOnFileLoad"
           hide-details
           class="mb-5"
+          aria-label="Follow the head while printing"
+          data-tid="preview-follow-head"
           @click.native.stop
         />
       </app-setting>
 
       <v-divider />
 
-      <app-setting :title="$t('app.setting.label.hide_single_part_bounding_box')">
+      <app-setting title="Show travel moves">
         <v-switch
-          v-model="hideSinglePartBoundingBox"
+          v-model="showMoves"
           hide-details
           class="mb-5"
+          aria-label="Show travel moves"
+          data-tid="preview-show-moves"
           @click.native.stop
         />
+      </app-setting>
+
+      <v-divider />
+
+      <app-setting title="Show retractions">
+        <v-switch
+          v-model="showRetractions"
+          hide-details
+          class="mb-5"
+          aria-label="Show retractions"
+          data-tid="preview-show-retractions"
+          @click.native.stop
+        />
+      </app-setting>
+
+      <template v-if="showRetractions">
+        <v-divider />
+
+        <app-setting
+          title="Retraction marker size"
+          sub-title="The size of the dot drawn where the filament pulls back."
+        >
+          <v-text-field
+            :value="retractionIconSize"
+            :rules="[
+              $rules.required,
+              $rules.numberValid,
+              $rules.numberGreaterThan(0)
+            ]"
+            filled
+            dense
+            single-line
+            hide-details="auto"
+            suffix="mm"
+            aria-label="Retraction marker size"
+            data-tid="preview-retraction-size"
+            @change="setRetractionIconSize"
+          />
+        </app-setting>
+      </template>
+
+      <v-divider />
+
+      <app-setting
+        title="Draw the plate and origin"
+        sub-title="The plate behind the print, and the 0,0 mark."
+      >
+        <div
+          class="gps__pair"
+          role="group"
+          aria-label="Draw the plate and origin"
+        >
+          <v-btn
+            small
+            :class="{ 'v-btn--active': drawBackground }"
+            :aria-pressed="drawBackground ? 'true' : 'false'"
+            data-tid="preview-draw-plate"
+            @click="drawBackground = !drawBackground"
+          >
+            Plate {{ drawBackground ? 'on' : 'off' }}
+          </v-btn>
+          <v-btn
+            small
+            :class="{ 'v-btn--active': drawOrigin }"
+            :aria-pressed="drawOrigin ? 'true' : 'false'"
+            data-tid="preview-draw-origin"
+            @click="drawOrigin = !drawOrigin"
+          >
+            Origin {{ drawOrigin ? 'on' : 'off' }}
+          </v-btn>
+        </div>
+      </app-setting>
+
+      <v-divider />
+
+      <app-setting
+        title="Line thickness"
+        sub-title="Extrusion, then travel."
+      >
+        <div class="gps__pair">
+          <v-text-field
+            :value="extrusionLineWidth"
+            :rules="[
+              $rules.required,
+              $rules.numberValid,
+              $rules.numberGreaterThan(0)
+            ]"
+            filled
+            dense
+            single-line
+            hide-details="auto"
+            suffix="mm"
+            aria-label="Extrusion line thickness"
+            data-tid="preview-extrusion-width"
+            @change="setExtrusionLineWidth"
+          />
+          <v-text-field
+            :value="moveLineWidth"
+            :rules="[
+              $rules.required,
+              $rules.numberValid,
+              $rules.numberGreaterThan(0)
+            ]"
+            filled
+            dense
+            single-line
+            hide-details="auto"
+            suffix="mm"
+            aria-label="Travel line thickness"
+            data-tid="preview-travel-width"
+            @change="setMoveLineWidth"
+          />
+        </div>
+      </app-setting>
+
+      <v-divider />
+
+      <app-setting
+        title="Flip"
+        sub-title="For printers whose origin is in another corner."
+      >
+        <div
+          class="gps__pair"
+          role="group"
+          aria-label="Flip"
+        >
+          <v-btn
+            small
+            :class="{ 'v-btn--active': flipVertical }"
+            :aria-pressed="flipVertical ? 'true' : 'false'"
+            :aria-label="`Flip top to bottom: ${flipVertical ? 'on' : 'off'}`"
+            data-tid="preview-flip-vertical"
+            @click="flipVertical = !flipVertical"
+          >
+            ↕ {{ flipVertical ? 'on' : 'off' }}
+          </v-btn>
+          <v-btn
+            small
+            :class="{ 'v-btn--active': flipHorizontal }"
+            :aria-pressed="flipHorizontal ? 'true' : 'false'"
+            :aria-label="`Flip left to right: ${flipHorizontal ? 'on' : 'off'}`"
+            data-tid="preview-flip-horizontal"
+            @click="flipHorizontal = !flipHorizontal"
+          >
+            ↔ {{ flipHorizontal ? 'on' : 'off' }}
+          </v-btn>
+        </div>
       </app-setting>
 
       <v-divider />
@@ -377,12 +416,19 @@
           outlined
           small
           color="primary"
+          data-tid="preview-settings-reset"
           @click="handleReset"
         >
           {{ $t('app.setting.btn.reset') }}
         </app-btn>
       </app-setting>
     </v-card>
+    <p
+      class="gps__note"
+      data-tid="preview-one-file-note"
+    >
+      "Hide the bounding box" and "Minimum layer height" are in the preview's own ··· menu: they're about one file, not a setting.
+    </p>
   </div>
 </template>
 
@@ -532,18 +578,6 @@ export default class GcodePreviewSettings extends Vue {
     })
   }
 
-  get minLayerHeight () {
-    return this.$store.state.config.uiSettings.gcodePreview.minLayerHeight
-  }
-
-  setMinLayerHeight (value: number) {
-    this.$store.dispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.minLayerHeight',
-      value: +value,
-      server: true
-    })
-  }
-
   get autoLoadOnPrintStart () {
     return this.$store.state.config.uiSettings.gcodePreview.autoLoadOnPrintStart
   }
@@ -584,16 +618,30 @@ export default class GcodePreviewSettings extends Vue {
     })
   }
 
-  get hideSinglePartBoundingBox () {
-    return this.$store.state.config.uiSettings.gcodePreview.hideSinglePartBoundingBox
+  get showMoves (): boolean {
+    return this.$store.state.config.uiSettings.gcodePreview.showMoves !== false
   }
 
-  set hideSinglePartBoundingBox (value: boolean) {
+  set showMoves (value: boolean) {
+    this.saveViewerDefault('showMoves', value)
+  }
+
+  get showRetractions (): boolean {
+    return this.$store.state.config.uiSettings.gcodePreview.showRetractions !== false
+  }
+
+  set showRetractions (value: boolean) {
+    this.saveViewerDefault('showRetractions', value)
+  }
+
+  /** Saved on the printer as what a preview starts out showing, and the preview open now follows it. */
+  saveViewerDefault (key: 'showMoves' | 'showRetractions', value: boolean) {
     this.$store.dispatch('config/saveByPath', {
-      path: 'uiSettings.gcodePreview.hideSinglePartBoundingBox',
+      path: `uiSettings.gcodePreview.${key}`,
       value,
       server: true
     })
+    this.$store.commit('gcodePreview/setViewerState', { [key]: value })
   }
 
   handleReset () {
@@ -602,6 +650,26 @@ export default class GcodePreviewSettings extends Vue {
       value: defaultState().uiSettings.gcodePreview,
       server: true
     })
+    this.$store.dispatch('gcodePreview/applyViewerDefaults')
   }
 }
 </script>
+
+<style lang="scss" scoped>
+  .gps__pair {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+
+    .v-text-field {
+      max-width: 120px;
+    }
+  }
+
+  .gps__note {
+    margin: 0 4px 16px;
+    color: var(--m3d-text-subtle);
+    font-size: 13px;
+  }
+</style>
