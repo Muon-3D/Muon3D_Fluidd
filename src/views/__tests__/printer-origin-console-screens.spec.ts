@@ -1,5 +1,5 @@
 /**
- * @vitest-environment-options { "url": "https://abcdefghijklmnopqrst.lan.muon3d.com/" }
+ * @vitest-environment-options { "url": "https://abcdefghijklmnopqrst.muonlan.net/" }
  *
  * KAN-2198: on a printer's own secure address the page signs in through the
  * console, but the screens that mean "the console serves this page" (the

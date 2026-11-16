@@ -10,7 +10,7 @@ import {
   secureNameOf
 } from '../hosted'
 
-const NAME = 'abcdefghijklmnopqrst.lan.muon3d.com'
+const NAME = 'abcdefghijklmnopqrst.muonlan.net'
 const MARKER = 'muon3d-secure-origin-1'
 
 describe('secureNameOf', () => {
@@ -19,7 +19,7 @@ describe('secureNameOf', () => {
   })
   it.each([
     'abcdefghijklmnopqrst.evil.com',
-    'x.abcdefghijklmnopqrst.lan.muon3d.com',
+    'x.abcdefghijklmnopqrst.muonlan.net',
     null,
     undefined,
     42

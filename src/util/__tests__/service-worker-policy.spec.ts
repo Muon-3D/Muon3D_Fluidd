@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { serviceWorkerAllowed, serviceWorkerMustGo, unregisterServiceWorkers } from '../service-worker-policy'
 
-const NAME = 'abcdefghijklmnopqrst.lan.muon3d.com'
+const NAME = 'abcdefghijklmnopqrst.muonlan.net'
 const at = (protocol: string, hostname: string) => ({ protocol, hostname })
 
 describe('service worker policy', () => {
