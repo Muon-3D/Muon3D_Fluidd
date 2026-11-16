@@ -503,6 +503,8 @@
       @change="onPicked"
     >
 
+    <upload-progress />
+
     <file-name-dialog
       v-if="folderDialog"
       v-model="folderDialog"
@@ -576,6 +578,7 @@ import type { QueuedJob } from '@/store/jobQueue/types'
 import type { AppDirectory, AppFileWithMeta, FileBrowserEntry } from '@/store/files/types'
 import { fileSize, isGcodeFile, isModelFile, jobTitle, parentFolder, queueLabel, readyChecks } from '@/services/jobs/model'
 import { MODEL_ACCEPT } from '@/services/slicer-bridge/handover'
+import UploadProgress from '@/components/jobs/UploadProgress.vue'
 import { NO_SELECTION, allSelected, clearSelection, clickRow, keepShown, moveCursor, selectAll, someSelected, toggleRow, type Selection } from '@/services/jobs/selection'
 import { JOBS_COLUMNS, lastPrinted, layerCountOf, listDuration, materialOf, nextColumnSort, sortDirection, sortListRows, type JobsSort } from '@/services/jobs/list'
 import { jobsPage, resetJobsPage, setJobsSort } from '@/services/jobs/page-state'
@@ -618,7 +621,7 @@ interface ListRow {
  * a file is in its ··· menu. The search, the order, Upload and the
  * pages that used to be tabs are in the header (JobsActions).
  */
-@Component({ components: { FileNameDialog, JobMenu, JobPicture, TonePill } })
+@Component({ components: { FileNameDialog, JobMenu, JobPicture, TonePill, UploadProgress } })
 export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   path = ''
   selectedKey: string | null = null
