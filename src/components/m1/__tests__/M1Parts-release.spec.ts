@@ -49,7 +49,7 @@ function ctx (over: Record<string, unknown> = {}) {
     sendGcode: vi.fn(),
     ...over
   }
-  for (const name of ['release', 'onCancel', 'onUp', 'onDown', 'cancelFollow', 'createMover', 'startMover', 'placeFor', 'atStart', 'jogRefusal', 'onFollowRefused', 'onJogStreamsChanged']) c[name] = methods[name].bind(c)
+  for (const name of ['release', 'onCancel', 'onUp', 'onDown', 'cancelFollow', 'createMover', 'startMover', 'placeFor', 'atStart', 'jogRefusal', 'onFollowRefused', 'onJogStreamsChanged', 'onMovable']) c[name] = methods[name].bind(c)
   Object.defineProperty(c, 'mover', { get: () => computed.mover.get.call(c) })
   ;(c.createMover as () => void)()
   return c as Record<string, unknown> & {
@@ -137,7 +137,8 @@ describe('a part release uses its mover, and other endings cancel', () => {
 
   it.each([false, true])('has one mover, using only the selected send path (stream=%s)', stream => {
     const c = ctx({ jogStreams: stream })
-    expect((c.createMover as () => unknown)()).toBe(c.mover)
+    const first = c.mover
+    expect((c.createMover as () => unknown)()).toBe(first)
     expect(c.mover).toBeInstanceOf(stream ? JogStream : DragFollow)
     c.release()
     if (stream) {
@@ -189,5 +190,17 @@ describe('a part release uses its mover, and other endings cancel', () => {
     vi.advanceTimersByTime(200)
     expect(c.sendGcode).toHaveBeenCalledTimes(1)
     expect(c.refused).toContain('printer changed')
+  })
+
+  it.each([false, true])('cancels the old drag when another movable part is selected (stream=%s)', stream => {
+    const c = ctx({ jogStreams: stream })
+    const mover = c.mover as DragFollow | JogStream
+    mover.start({ X: 120, Y: 80 })
+    expect(mover.following).toBe(true)
+    c.movable = 'plate'
+    ;(c.onMovable as (part: string) => void)('plate')
+    expect(mover.following).toBe(false)
+    expect(c.mover).toBeUndefined()
+    expect(c.drag).toBeNull()
   })
 })

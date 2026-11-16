@@ -499,18 +499,20 @@ export default class M1Parts extends Mixins(ControlMixin) {
       if (!Array.isArray(g)) return null
       return this.movable === 'plate' ? { Z: Number(g[2]) } : { X: Number(g[0]), Y: Number(g[1]) }
     }
-    const mover = this.jogStreams ? new JogStream({
-      refusal: target => samePrinter() ? this.jogRefusal(target) : 'The printer changed; that move was not sent.',
-      send: script => {
-        if (!samePrinter() || !this.controlReady) return false
-        this.sendGcode(script)
-        return true
-      },
-      speed: axes => axes === 'Z' ? this.zSpeed : this.xySpeed
-    }, { onRefused: reason => this.onFollowRefused(reason) }) : new DragFollow({ ...host, from }, {
-      onRefused: reason => this.onFollowRefused(reason),
-      maxStep: target => dragStepMm('Z' in target ? this.zSpeed : this.xySpeed)
-    })
+    const mover = this.jogStreams
+      ? new JogStream({
+        refusal: target => samePrinter() ? this.jogRefusal(target) : 'The printer changed; that move was not sent.',
+        send: script => {
+          if (!samePrinter() || !this.controlReady) return false
+          this.sendGcode(script)
+          return true
+        },
+        speed: axes => axes === 'Z' ? this.zSpeed : this.xySpeed
+      }, { onRefused: reason => this.onFollowRefused(reason) })
+      : new DragFollow({ ...host, from }, {
+        onRefused: reason => this.onFollowRefused(reason),
+        maxStep: target => dragStepMm('Z' in target ? this.zSpeed : this.xySpeed)
+      })
     movers.set(this, mover)
     return mover
   }
@@ -937,8 +939,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
   @Watch('movable')
   onMovable (part: 'toolhead' | 'plate' | null) {
     if (this.bound) this.bound.style.touchAction = part ? 'none' : ''
-    if (!part) this.cancelFollow()
-    if (!part && (this.drag || this.dragPointer !== null)) this.onCancel()
+    this.cancelFollow()
+    if (this.drag || this.dragPointer !== null) this.onCancel()
   }
 
   select (part: PartId) {
