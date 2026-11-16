@@ -3,7 +3,7 @@
  *
  * A printer that is set up admits a stranger's key over Bluetooth for one
  * thing only: the `muon/pair/1` ceremony, and only while someone has opened a
- * pairing window at its panel (Settings > Add a device). So this page:
+ * pairing window at its panel (System > Add a device). So this page:
  *
  *   1. brings the Bluetooth link up (the route the person chose),
  *   2. `beginPairing` over it, and shows the six comparison symbols,
@@ -89,12 +89,19 @@ function within<T> (promise: Promise<T>, ms: number, onTimeout: () => Error): Pr
   })
 }
 
-const NO_WINDOW = 'No pairing window is open on the printer. On its screen, open Settings > Add a device, then try again.'
+const NO_WINDOW = "Open System > Add a device on the printer's screen, then try again."
+const REASON_WORDS: Record<string, string> = {
+  refused: 'The printer said no to this browser, so nothing was added.',
+  timed_out: "Check the printer's screen, then try again.",
+  disabled: 'Adding devices is turned off on this printer. Ask its owner to turn it on.',
+  busy: "Check the printer's screen, then try again.",
+  cooldown: 'The printer is pausing new requests for a few minutes. Try again later.'
+}
 const BUSY = 'The printer is busy with another pairing. Wait for it to finish, or cancel it on the printer, then try again.'
 const DID_NOT_COMPLETE = 'The pairing did not complete. The code may have been wrong, or it took longer than about a minute and a half. After three wrong codes the printer pauses pairing for 15 minutes. Otherwise, on the printer, open Add a device for a new code and try again.'
 const ANOTHER_DEVICE = 'Another device is already pairing with this printer. Wait for it to finish, then try again.'
 const ENDED = 'The printer ended the pairing, so nothing was added. On its screen, open Add a device and try again.'
-const WINDOW_CLOSED = 'The pairing window closed after 2 minutes, so nothing was added. On the printer, open Settings > Add a device and try again.'
+const WINDOW_CLOSED = 'The pairing window closed after 2 minutes, so nothing was added. On the printer, open System > Add a device and try again.'
 /** Said whenever Control stops waiting for Confirm: the panel may still be about to write the record. */
 const MAY_HAVE_BEEN_ADDED = 'Control stopped waiting. If you pressed Confirm on the printer, Control may have been added. You can remove it under Add a device.'
 
@@ -115,6 +122,8 @@ export function pairingMessage (error: unknown): string {
   const text = textOf(error)
   if (error instanceof Closed) return error.message
   if (bluetoothUnavailable(error)) return BLUETOOTH_NOT_CONNECTED_MESSAGE
+  const reason = (error as { reason?: unknown } | null)?.reason
+  if (typeof reason === 'string' && REASON_WORDS[reason]) return REASON_WORDS[reason]
   if (kind === 'code-burned') {
     return 'Three wrong codes. The printer has paused adding devices for 15 minutes, and nothing was added.'
   }

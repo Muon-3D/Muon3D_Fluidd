@@ -9,6 +9,7 @@ import {
   activateCloudPrinter,
   activateLocalPrinter,
   activationState,
+  panelCodePairing,
   SwitchSuperseded,
   MANAGED_API_URL
 } from '@/services/muon-cloud/activate'
@@ -36,7 +37,7 @@ import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
 import { bluetoothCarrying, reconnectBluetooth, releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import { chooseRouteMode, type Route } from '@/services/muon-cloud/route-choice'
-import { routeMenuItems, type RouteMenuFacts } from '@/services/muon-cloud/route-menu'
+import { bluetoothReason, routeMenuItems, type RouteMenuFacts } from '@/services/muon-cloud/route-menu'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { chooseRelay, clearRelayChoice, mayTrySecureName, reachSecureName, relayChosen, secureNameOf } from '@/services/secure-origin/hosted'
 import { localRoute, openableAddr, type LocalRoute } from '@/services/muon-cloud/local-route'
@@ -102,6 +103,35 @@ function routeFactsOf (e: DirectoryEntry): RouteMenuFacts {
     local: { usable: route.kind !== 'none', hint: localHint(route, e) },
     cloud: { listed: !!e.cloud, online: !!e.cloud?.online },
     ble: { support: nearbyState.support, heard: !!e.nearby, identified: !!idOf(e) }
+  }
+}
+
+/**
+ * What to tell the person to do at the printer first. A printer with an owner opens its pairing window
+ * from System > Add a device; one still in first-run set-up opens it by itself, so it gets no hint.
+ * Where Control cannot tell the two apart, the line covers both.
+ */
+export function pairHint (e: DirectoryEntry): string | undefined {
+  const unclaimed = (e.nearby ?? e.row?.nearby)?.advert?.unclaimed
+  if (unclaimed === true) return undefined
+  const owned = unclaimed === false || e.linkedTo === 'mine' || e.linkedTo === 'other' || !!e.cloud?.shared
+  if (owned) return "Open System > Add a device on the printer's screen first."
+  return "Check the printer's screen. If nothing shows, open System > Add a device."
+}
+
+/**
+ * Pair this browser with the printer by the code on its screen (KAN-1374). Offered for any
+ * printer Control can name, linked or not, whenever the pairing switch is on (panelCodePairing).
+ */
+function pairAction (e: DirectoryEntry): CardAction | null {
+  if (!panelCodePairing() || !idOf(e)) return null
+  const reason = bluetoothReason({ support: nearbyState.support, heard: !!e.nearby, identified: true })
+  return {
+    id: 'pair-browser',
+    label: 'Pair this browser',
+    icon: '$bluetooth',
+    hint: reason ?? pairHint(e),
+    disabled: !!reason
   }
 }
 
@@ -358,6 +388,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     if (e.cloud && bleRetryState.stopped[e.cloud.id]) {
       actions.push({ id: 'retry-bluetooth', label: 'Retry Bluetooth', icon: '$bluetooth', hint: bleRetryState.stopped[e.cloud.id] })
     }
+    const pair = pairAction(e)
+    if (pair) actions.push(pair)
     actions.push({
       id: 'access',
       label: 'Access and protection',
@@ -389,6 +421,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     }
     // Any route anyone can reach the printer by (KAN-2487): the account only decides the Muon3D one.
     actions.push(...routeActionsOf(e))
+    const pair = pairAction(e)
+    if (pair) actions.push(pair)
     if (e.active) {
       actions.push({ id: 'access', label: 'Access and protection', icon: '$printerAccess' })
     }
@@ -412,6 +446,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     // Bluetooth is the out-of-box way in to a printer nobody owns, or one that is someone else's (KAN-2487, I-285).
     const bluetooth = routeActionsOf(e).find(a => a.id === 'connect-bluetooth')
     if (bluetooth && (e.nearby || e.endpointId)) actions.push(bluetooth)
+    const pair = pairAction(e)
+    if (pair) actions.push(pair)
     return actions
   }
 
@@ -431,6 +467,9 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       case 'connect-bluetooth':
         if (!idOf(e)) return
         return this.connectOverBluetooth(e)
+      case 'pair-browser':
+        if (!idOf(e)) return
+        return this.pairThisBrowserFrom(e)
       case 'connect': return this.openFoundEntry(e)
       case 'pair-bluetooth': return this.pairNearby(e, true)
       case 'link': return this.link(e)
@@ -514,7 +553,23 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     }
     retryBluetooth(id)
     await this.connectCloud(e, heard.device, auto)
-    if (activationState.pairing === id) await startPairing(id)
+    if (activationState.pairing === id) {
+      // The printer would not hold this browser for Accept or Reject: the code is the way in, so the wait's outcome goes.
+      activationState.approval = null
+      await startPairing(id)
+    }
+  }
+
+  /**
+   * Pair this browser from the menu (KAN-1374): the one entry point. It is Connect over Bluetooth
+   * (the picker if the printer has not been chosen yet), so a printer that knows this browser opens,
+   * one that holds it for Accept or Reject at its screen shows the wait (ApprovalWaitHost), and one
+   * that will not take a stranger, or whose owner turned new-device requests off, goes on to the
+   * code dialog (startPairing).
+   */
+  async pairThisBrowserFrom (e: DirectoryEntry) {
+    if (!idOf(e) || !panelCodePairing()) return
+    await this.connectOverBluetooth(e)
   }
 
   /**

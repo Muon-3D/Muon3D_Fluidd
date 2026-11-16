@@ -96,6 +96,7 @@
         <job-ready-dialog />
 
         <bluetooth-pair-dialog />
+        <approval-wait-host />
       </template>
     </v-main>
 
@@ -185,6 +186,7 @@ import { Globals } from '@/globals'
     UpdateBanner,
     PrinterOpening,
     BluetoothPairDialog: () => import('@/components/muon-ble/BluetoothPairDialog.vue'),
+    ApprovalWaitHost: () => import('@/components/muon-cloud/ApprovalWaitHost.vue'),
     JobReadyDialog,
     SpoolSelectionDialog,
     FileSystemDownloadDialog,

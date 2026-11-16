@@ -103,8 +103,28 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
       await startPairing(EID)
 
       expect(pairingState.phase).toBe('error')
-      expect(pairingState.message).toMatch(/No pairing window is open/)
-      expect(pairingState.message).toMatch(/Settings > Add a device/)
+      expect(pairingState.message).toBe("Open System > Add a device on the printer's screen, then try again.")
+    })
+
+    it.each([
+      ['refused', /said no to this browser/],
+      ['timed_out', /Check the printer's screen, then try again/],
+      ['disabled', /turned off on this printer. Ask its owner/],
+      ['busy', /Check the printer's screen, then try again/],
+      ['cooldown', /pausing new requests/]
+    ])('reason "%s" from the pairing call has its own plain line', async (reason, copy) => {
+      beginPairing.mockRejectedValue(Object.assign(wasmError('refused', 'x', { code: 0x040a }), { reason }))
+
+      await startPairing(EID)
+
+      expect(pairingState.phase).toBe('error')
+      expect(pairingState.message).toMatch(copy)
+    })
+
+    it('the reason lines that differ are different', () => {
+      const lines = ['refused', 'timed_out', 'disabled', 'busy', 'cooldown']
+        .map(reason => pairingMessage(Object.assign(wasmError('refused', 'x'), { reason })))
+      expect(new Set(lines).size).toBe(4)
     })
 
     it('"pairing is busy": says another pairing is in progress, not that no window is open', async () => {

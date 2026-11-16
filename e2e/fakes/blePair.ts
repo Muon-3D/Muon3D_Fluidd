@@ -297,3 +297,14 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
 export function pairEvents (page: Page): Promise<string[]> {
   return page.evaluate(() => [...(window as any).__e2ePair.events])
 }
+
+/**
+ * Turns the pairing switch (panelCodePairing, KAN-1374) on or off for the page that is open.
+ * A development build has it on already; this is how a test says which it wants.
+ */
+export function setPairingGate (page: Page, on: boolean | null) {
+  return page.evaluate(async value => {
+    const m = await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'activate.ts'].join('/'))
+    m.setPanelCodePairing(value)
+  }, on)
+}

@@ -21,6 +21,7 @@ import { requestRefused } from '@/services/managed-transport/refusal'
 import { isOwnHotspot, pageReach } from './discovery'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
+import { onApprovalWatch, type ApprovalWatch } from './approval'
 
 export { MANAGED_API_URL, MANAGED_SOCKET_URL }
 
@@ -34,21 +35,41 @@ export const activationState = Vue.observable({
    * (KAN-1253). Set only by that refusal, never by the console, so the offer
    * to pair this browser appears for nothing else.
    */
-  pairing: null as string | null
+  pairing: null as string | null,
+  /** The wait for the printer's owner to accept this browser (I-170), when the printer is holding it. */
+  approval: null as ApprovalWatch | null,
+  /** The printer that wait is for, so Try again dials the same one. */
+  approvalFor: null as string | null
 })
 
+let panelCodePairingOverride: boolean | null = null
+
+/** For tests and the e2e fakes: forces the pairing switch on or off. `null` goes back to the build's own setting. */
+export function setPanelCodePairing (on: boolean | null) {
+  panelCodePairingOverride = on
+}
+
 /**
- * Pairing this browser by the printer's panel code needs printer-side approval that
- * has not shipped (I-170). Until it does, only development builds, and builds made
- * with VUE_MUON_PANEL_CODE_PAIRING=1, offer it. Read at call time so a test can set it.
+ * THE SWITCH for pairing this browser by the printer's panel code (KAN-1374).
+ *
+ * It decides whether Control offers pairing at all: both the always-there
+ * "Pair this browser" item in a printer's options menu and on its page menu,
+ * and the offer made after a printer refuses this browser over Bluetooth.
+ * Off, none of those appear and the "coming soon" line is shown instead.
+ *
+ * On by default: the printer side (System > Add a device, I-170) is live
+ * (muon-link #126, in MuonOS f50aa4b9, with the panel proxying /muon-link/pairing).
+ * Build with VUE_MUON_PANEL_CODE_PAIRING=0 to turn it off again. Read at call
+ * time so a test can set it (setPanelCodePairing).
  */
 export function panelCodePairing (): boolean {
-  return import.meta.env.DEV === true || import.meta.env.VUE_MUON_PANEL_CODE_PAIRING === '1'
+  if (panelCodePairingOverride !== null) return panelCodePairingOverride
+  return import.meta.env.VUE_MUON_PANEL_CODE_PAIRING !== '0'
 }
 
 export const PAIRING_COMING_SOON = "Pairing from the printer is coming soon. For now, this printer can't be added from here."
 
-const OPEN_ADD_A_DEVICE = "To pair this browser, first open Settings > Add a device on the printer's screen, then choose Pair this browser."
+const OPEN_ADD_A_DEVICE = "To pair this browser, first open System > Add a device on the printer's screen, then choose Pair this browser."
 
 const NOT_PAIRED_REASONS: Record<PairableRefusal, string> = {
   unknown: "This printer doesn't know this browser yet, so it won't let Control in over Bluetooth.",
@@ -148,6 +169,13 @@ export async function activateCloudPrinter (printerId: string) {
   activationState.error = null
   activationState.fallbackUrl = null
   activationState.pairing = null
+  activationState.approval?.cancel()
+  activationState.approval = null
+  onApprovalWatch(watch => {
+    if (superseded()) return
+    activationState.approval = watch
+    activationState.approvalFor = printerId
+  })
   // Set inside `open`, so typed here rather than narrowed to null.
   let transport = null as PrinterTransport | null
   const open = async () => {
