@@ -89,7 +89,14 @@ function within<T> (promise: Promise<T>, ms: number, onTimeout: () => Error): Pr
   })
 }
 
-const NO_WINDOW = 'No pairing window is open on the printer. On its screen, open Settings > Add a device, then try again.'
+const NO_WINDOW = "Open System > Add a device on the printer's screen, then try again."
+const REASON_WORDS: Record<string, string> = {
+  refused: 'The printer said no to this browser, so nothing was added.',
+  timed_out: 'The printer waited and nobody answered, so nothing was added. Try again.',
+  disabled: 'Adding devices is turned off on this printer. Ask its owner to turn it on.',
+  busy: 'The printer is busy with another request. Wait a moment, then try again.',
+  cooldown: 'The printer is pausing new requests for a few minutes. Try again later.'
+}
 const BUSY = 'The printer is busy with another pairing. Wait for it to finish, or cancel it on the printer, then try again.'
 const DID_NOT_COMPLETE = 'The pairing did not complete. The code may have been wrong, or it took longer than about a minute and a half. After three wrong codes the printer pauses pairing for 15 minutes. Otherwise, on the printer, open Add a device for a new code and try again.'
 const ANOTHER_DEVICE = 'Another device is already pairing with this printer. Wait for it to finish, then try again.'
@@ -115,6 +122,8 @@ export function pairingMessage (error: unknown): string {
   const text = textOf(error)
   if (error instanceof Closed) return error.message
   if (bluetoothUnavailable(error)) return BLUETOOTH_NOT_CONNECTED_MESSAGE
+  const reason = (error as { reason?: unknown } | null)?.reason
+  if (typeof reason === 'string' && REASON_WORDS[reason]) return REASON_WORDS[reason]
   if (kind === 'code-burned') {
     return 'Three wrong codes. The printer has paused adding devices for 15 minutes, and nothing was added.'
   }

@@ -64,8 +64,24 @@ describe('offering to pair this browser (KAN-1253)', () => {
     expect(activationState.error).toMatch(/first open Settings > Add a device/)
   })
 
-  it.each([0x040a, 0x040b, 0x0403])('in a release build (refusal %i) says pairing is coming soon, with no Add a device step and no offer (I-170)', async (code) => {
+  it.each([0x040a, 0x040b, 0x0403])('in a release build (refusal %i) offers pairing by default, with no coming-soon line (I-170, KAN-1374)', async (code) => {
     vi.stubEnv('DEV', false)
+    try {
+      useBluetoothFor(EID, fakePrinter().device)
+      cloud.borrowCloudPrinter.mockResolvedValue(transport(async () => { throw refusal(code) }))
+
+      await expect(activateCloudPrinter(EID)).rejects.toThrow()
+
+      expect(activationState.pairing).toBe(EID)
+      expect(activationState.error).toMatch(/first open Settings > Add a device/)
+      expect(activationState.error).not.toMatch(/coming soon/)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it.each([0x040a, 0x040b, 0x0403])('built with VUE_MUON_PANEL_CODE_PAIRING=0 (refusal %i) says pairing is coming soon and makes no offer', async (code) => {
+    vi.stubEnv('VUE_MUON_PANEL_CODE_PAIRING', '0')
     try {
       useBluetoothFor(EID, fakePrinter().device)
       cloud.borrowCloudPrinter.mockResolvedValue(transport(async () => { throw refusal(code) }))

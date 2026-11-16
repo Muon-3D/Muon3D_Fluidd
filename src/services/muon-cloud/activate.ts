@@ -37,13 +37,29 @@ export const activationState = Vue.observable({
   pairing: null as string | null
 })
 
+let panelCodePairingOverride: boolean | null = null
+
+/** For tests and the e2e fakes: forces the pairing switch on or off. `null` goes back to the build's own setting. */
+export function setPanelCodePairing (on: boolean | null) {
+  panelCodePairingOverride = on
+}
+
 /**
- * Pairing this browser by the printer's panel code needs printer-side approval that
- * has not shipped (I-170). Until it does, only development builds, and builds made
- * with VUE_MUON_PANEL_CODE_PAIRING=1, offer it. Read at call time so a test can set it.
+ * THE SWITCH for pairing this browser by the printer's panel code (KAN-1374).
+ *
+ * It decides whether Control offers pairing at all: both the always-there
+ * "Pair this browser" item in a printer's options menu and on its page menu,
+ * and the offer made after a printer refuses this browser over Bluetooth.
+ * Off, none of those appear and the "coming soon" line is shown instead.
+ *
+ * On by default: the printer side (Settings > Add a device, I-170) is live
+ * (muon-link #126, in MuonOS f50aa4b9, with the panel proxying /muon-link/pairing).
+ * Build with VUE_MUON_PANEL_CODE_PAIRING=0 to turn it off again. Read at call
+ * time so a test can set it (setPanelCodePairing).
  */
 export function panelCodePairing (): boolean {
-  return import.meta.env.DEV === true || import.meta.env.VUE_MUON_PANEL_CODE_PAIRING === '1'
+  if (panelCodePairingOverride !== null) return panelCodePairingOverride
+  return import.meta.env.VUE_MUON_PANEL_CODE_PAIRING !== '0'
 }
 
 export const PAIRING_COMING_SOON = "Pairing from the printer is coming soon. For now, this printer can't be added from here."
