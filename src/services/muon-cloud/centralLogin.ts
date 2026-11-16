@@ -378,12 +378,21 @@ export function handoffUrl (handoff: string, next: string | null): string {
 }
 
 /**
+ * Signed out: no silent sign-in in this tab until the person signs in
+ * again. Also all that signing out on a printer's own address does, where
+ * the console's session is not this page's to end (KAN-2756).
+ */
+export function holdSilentSignIn (): void {
+  signInRevision++
+  session()?.setItem(SILENT_KEY, '1')
+}
+
+/**
  * Signs out of the console: a form post to `/logout`, which ends the browser
  * session and every session issued from it, and comes back here.
  */
 export function signOutCentral (doc: Document = document): void {
-  signInRevision++
-  session()?.setItem(SILENT_KEY, '1')
+  holdSilentSignIn()
   const form = doc.createElement('form')
   form.method = 'POST'
   form.action = `${cloudBaseUrl()}/logout`
