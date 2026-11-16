@@ -114,16 +114,19 @@ describe('account sign-in security', () => {
 
   it('saves the recovery codes locally and releases the download URL', async () => {
     const { wrapper } = open()
-    const create = vi.fn((_blob: Blob) => 'blob:recovery-codes')
+    const create = vi.fn((blob: Blob) => {
+      expect(blob).toBeInstanceOf(Blob)
+      return 'blob:recovery-codes'
+    })
     const revoke = vi.fn()
     vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: revoke })
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
-      expect(this.download).toBe('muon3d-recovery-codes.txt')
-      expect(this.href).toBe('blob:recovery-codes')
-    })
+    const downloads: HTMLAnchorElement[] = []
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { downloads.push(this) })
     await wrapper.setData({ dialog: 'twoStep', codes: ['fixture-one', 'fixture-two'] })
     await wrapper.find('[data-tid="recovery-codes-save"]').trigger('click')
     expect(click).toHaveBeenCalledOnce()
+    expect(downloads[0].download).toBe('muon3d-recovery-codes.txt')
+    expect(downloads[0].href).toBe('blob:recovery-codes')
     const blob = create.mock.calls[0][0]
     const saved = await new Promise(resolve => {
       const reader = new FileReader()

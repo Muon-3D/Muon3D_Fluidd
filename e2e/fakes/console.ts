@@ -226,6 +226,7 @@ export async function signIn (page: Page) {
 export async function serveConsoleHere (page: Page, state: ConsoleState, origin: string) {
   await page.route(`${origin}/v1/**`, route => answerConsole(route, state))
   await page.route(`${origin}/authorize**`, route => route.fulfill({ status: 400, contentType: 'application/json', body: '{"error":"login_required"}' }))
+  await page.route(`${origin}/logout`, route => route.fulfill({ status: 303, headers: { location: `${origin}/` } }))
   await page.addInitScript(([url]) => {
     localStorage.setItem('muon.cloud.url', url)
   }, [origin])

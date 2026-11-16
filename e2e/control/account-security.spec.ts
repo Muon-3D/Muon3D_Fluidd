@@ -6,7 +6,7 @@
  * fake (e2e/fakes/console.ts, its `security`).
  */
 import { test, expect } from '../fixtures'
-import { consoleSecurity, FAKE_RECOVERY_CODES, serveConsoleHere } from '../fakes/console'
+import { consoleSecurity, FAKE_RECOVERY_CODES, serveConsoleHere, signIn } from '../fakes/console'
 import { readFile } from 'node:fs/promises'
 
 test.use({ signedIn: true })
@@ -56,7 +56,10 @@ test('turning on 2-step walks the QR code, the code and the recovery codes, show
   expect(download.suggestedFilename()).toBe('muon3d-recovery-codes.txt')
   expect(await readFile((await download.path())!, 'utf8')).toContain(FAKE_RECOVERY_CODES[0])
   await page.getByTestId('recovery-codes-done').click()
+  await expect(page).toHaveURL(/\/signed-out$/)
   await expect(page.getByTestId('recovery-codes')).toHaveCount(0)
+  await signIn(page)
+  await open('/account/security')
   await expect(page.getByTestId('security-two-step')).toHaveAttribute('aria-checked', 'true')
   await expect(page.getByTestId('security-codes-line')).toContainText('10 of 10')
   // Shown once: the page never shows them again.
