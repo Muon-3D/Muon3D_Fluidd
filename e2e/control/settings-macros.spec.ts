@@ -327,7 +327,7 @@ async function macroWords (page: Page): Promise<string[]> {
   })
 }
 
-test('Settings › Quick commands (KAN-1970): one panel holding every section and its controls, and no "Macro" anywhere', async ({ page, open }) => {
+test('Settings › Macros (KAN-1970, OV-30): one panel holding every section and its controls, and "Macro" only as the page’s name', async ({ page, open }) => {
   await macrosPrinter(page)
   await configFiles(page)
   await openMacros(page, open)
@@ -341,10 +341,13 @@ test('Settings › Quick commands (KAN-1970): one panel holding every section an
   await expect(page.getByTestId('macro-category-settings')).toHaveCount(0)
   await expect(page.getByRole('searchbox', { name: 'Find a quick command' })).toBeVisible()
   await page.waitForTimeout(500)
-  expect(await macroWords(page)).toEqual([])
+  // Jack's later note (OV-30, 11 Nov) wins over KAN-1970: the page itself is called Macros, so its name may show
+  // (the title and the menus that lead to it); nothing else on it says "macro".
+  await expect(page.getByTestId('page-title')).toHaveText('Macros')
+  expect((await macroWords(page)).filter(w => w !== 'Macros')).toEqual([])
 
   // The sheet a double-click opens says it too.
   await row(page, 'load_filament').dblclick()
   await expect(page.getByRole('dialog')).toContainText('Name in Control')
-  expect(await macroWords(page)).toEqual([])
+  expect((await macroWords(page)).filter(w => w !== 'Macros')).toEqual([])
 })

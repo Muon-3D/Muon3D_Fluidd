@@ -5,14 +5,14 @@ import PositionTile from '../tiles/PositionTile.vue'
 import ZOffsetTile from '../tiles/ZOffsetTile.vue'
 import JogTile from '../tiles/JogTile.vue'
 import { resetSocket, sent, tileMount, tileStore } from './fixture'
-import { handMoveLock, headStatus, releaseHandMove } from '@/services/control/safe-move'
+import { handMoveLock, headStatus, noteOwnMotion, ownMotion, releaseHandMove } from '@/services/control/safe-move'
 import { X_RIGHT } from '@/services/machine/orientation'
 
 vi.mock('@/api/socketActions', async () => ({ SocketActions: (await import('./fixture')).socket }))
 
 const m = (C: any, store: ReturnType<typeof tileStore>) => mount(C, tileMount(store))
 const seg = (w: any, group: string, label: string) => w.findAll(`[aria-label="${group}"] button`).wrappers.find((b: any) => b.text() === label)
-afterEach(() => { resetSocket(); handMoveLock.target = null })
+afterEach(() => { resetSocket(); handMoveLock.target = null; ownMotion.until = 0 })
 
 describe('PositionTile', () => {
   it('renders with no data as dashes and not homed', () => {
@@ -99,6 +99,32 @@ describe('ZOffsetTile', () => {
     w2.destroy()
   })
 
+  it('refuses a nudge closer with the head idle low over the notch, as Control\'s card does; raising still goes', async () => {
+    headStatus.fresh = true
+    const notch = { no_go_region_1_min: [75, 0], no_go_region_1_max: [125, 34], no_go_boundary_tolerance: 10, no_go_traverse_z: 6 }
+    const over = tileStore()
+    const p = over.state.printer.printer
+    p.toolhead.position = [100, 10, 2, 0]
+    p.gcode_move.gcode_position = [100, 10, 2, 0]
+    p.configfile.settings = { ...p.configfile.settings, bed_mesh: notch }
+    const w = m(ZOffsetTile, over)
+    expect(w.find('[data-tid="zoffset-down"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-tid="zoffset-down"]').attributes('title')).toMatch(/over the bed notch/)
+    ;(w.vm as any).nudge(-0.005)
+    await w.find('[data-tid="zoffset-up"]').trigger('click')
+    expect(sent()).toEqual(['SET_GCODE_OFFSET Z_ADJUST=+0.005 MOVE=1'])
+    w.destroy()
+    const away = tileStore()
+    const a = away.state.printer.printer
+    a.toolhead.position = [160, 100, 2, 0]
+    a.gcode_move.gcode_position = [160, 100, 2, 0]
+    a.configfile.settings = { ...a.configfile.settings, bed_mesh: notch }
+    const w2 = m(ZOffsetTile, away)
+    await w2.find('[data-tid="zoffset-down"]').trigger('click')
+    expect(sent()).toEqual(['SET_GCODE_OFFSET Z_ADJUST=+0.005 MOVE=1', 'SET_GCODE_OFFSET Z_ADJUST=-0.005 MOVE=1'])
+    w2.destroy()
+  })
+
   it('saves to config and runs probe calibration from the three dots only when the printer can', async () => {
     const store = tileStore()
     Vue.set(store.getters, 'printer/getAvailableCommands', { Z_OFFSET_APPLY_PROBE: {}, PROBE_CALIBRATE: {} })
@@ -125,7 +151,7 @@ describe('JogTile', () => {
     // Each hand move waits for the last to land (KAN-1745); the test lands it.
     await w.find('[data-jog="x+"]').trigger('click')
     releaseHandMove()
-    await seg(w, 'Step', '10').trigger('click')
+    await seg(w, 'Step', '10 mm').trigger('click')
     await w.find('[data-jog="x-"]').trigger('click')
     releaseHandMove()
     await w.find('[data-jog="z+"]').trigger('click')
@@ -168,5 +194,58 @@ describe('JogTile', () => {
     await w.find('[data-menu="motors"]').trigger('click')
     expect(sent()).toEqual(['M84'])
     w.destroy()
+  })
+})
+
+/* KAN-2120: only a real print says "printing"; the page's own move in flight doesn't lock anything. */
+describe('JogTile while the printer is busy', () => {
+  const busyStore = () => {
+    const store = tileStore()
+    // idle_timeout reads Printing (a move is running), print_stats does not: Fluidd calls that "busy".
+    Vue.set(store.getters, 'printer/getPrinterState', 'busy')
+    return store
+  }
+  const panelKey = (w: any) => (w.vm as unknown as { panelTarget: string }).panelTarget
+
+  it('busy with something else (homing, a macro): disabled, and the pill says Busy, not printing', () => {
+    const w = m(JogTile, busyStore())
+    expect(w.find('[data-jog="x+"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-tid="tile-state"]').text()).toBe('Busy')
+    expect(w.text()).not.toMatch(/printing/i)
+    w.destroy()
+  })
+
+  it('busy with this page\'s own hand move: the keys stay live and nothing says printing', async () => {
+    const store = busyStore()
+    const w = m(JogTile, store)
+    noteOwnMotion(panelKey(w), Date.now(), 0)
+    // The window is not reactive by itself: a fresh mount reads it.
+    w.destroy()
+    const again = m(JogTile, store)
+    expect(again.find('[data-jog="x+"]').attributes('disabled')).toBeUndefined()
+    expect(again.text()).not.toMatch(/printing/i)
+    again.destroy()
+  })
+
+  it('a real print still locks it, even inside the own-move window', () => {
+    const store = tileStore({ printing: true })
+    const w = m(JogTile, store)
+    noteOwnMotion(panelKey(w), Date.now(), 0)
+    w.destroy()
+    const again = m(JogTile, store)
+    expect(again.find('[data-jog="x+"]').attributes('disabled')).toBeDefined()
+    expect(again.find('[data-tid="tile-state"]').text()).toBe('Printing')
+    again.destroy()
+  })
+
+  it('the own-move window is for this printer only, and ends', () => {
+    noteOwnMotion('another-printer', Date.now(), 0)
+    const w = m(JogTile, busyStore())
+    expect(w.find('[data-jog="x+"]').attributes('disabled')).toBeDefined()
+    w.destroy()
+    noteOwnMotion('x', Date.now() - 60_000, 0)
+    expect(ownMotion.until).toBeLessThan(Date.now())
+    releaseHandMove()
+    expect(ownMotion.until).toBe(0)
   })
 })

@@ -262,3 +262,15 @@ test.describe('the update hero (ST-09b, KAN-1927)', () => {
     await expect(page.getByTestId('software-others')).toHaveCount(0)
   })
 })
+
+test('who may install updates is in People and access: the page says so and links there', async ({ page, open }) => {
+  await usePrinter(page, { ...PRESETS.idleHomed(), ...COOL })
+  await printerChoices(page)
+  await open('/settings#versions')
+  const link = page.getByTestId('software-access-link')
+  await expect(link).toContainText('Who may install updates')
+  await expect(link).toContainText('People and access')
+  await link.click()
+  await expect(page).toHaveURL(/#access$/)
+  await expect(page.getByTestId('page-title')).toHaveText('People and access')
+})

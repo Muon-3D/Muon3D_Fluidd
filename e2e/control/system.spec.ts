@@ -752,3 +752,13 @@ test.describe('An update staged on the spare slot (real Boxwood status)', () => 
     await expect(page.getByRole('status').filter({ hasText: /Restart delayed|Restarting/ })).toHaveCount(0)
   })
 })
+
+test('System points to Updates for software versions and installing updates', async ({ page, open }) => {
+  await usePrinter(page, PRESETS.idleHomed())
+  await open('/system')
+  const link = page.getByTestId('system-updates-link')
+  await expect(link).toContainText('Software versions and installing updates')
+  await link.click()
+  await expect(page).toHaveURL(/\/settings#versions$/)
+  await expect(page.getByTestId('page-title')).toHaveText('Updates')
+})

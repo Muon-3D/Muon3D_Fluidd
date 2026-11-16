@@ -13,6 +13,21 @@
       </p>
     </div>
 
+    <div
+      class="sys__facts"
+      data-tid="system-facts"
+    >
+      <div
+        v-for="tile in factTiles"
+        :key="tile.key"
+        class="sys__fact"
+        :data-fact="tile.key"
+      >
+        <b>{{ tile.value }}</b>
+        <span>{{ tile.label }}<template v-if="tile.sub"> · {{ tile.sub }}</template></span>
+      </div>
+    </div>
+
     <div class="stiles">
       <section
         class="stile stile--12 sys__restart"
@@ -523,6 +538,16 @@
       </section>
     </div>
 
+    <router-link
+      :to="updatesTo"
+      class="sys__updates-link"
+      data-tid="system-updates-link"
+    >
+      <frame-icon name="download" />
+      <span>Software versions and installing updates: <b>Updates</b>.</span>
+      <span class="sys__updates-go">Updates ›</span>
+    </router-link>
+
     <peripherals-dialog
       v-if="devicesOpen"
       v-model="devicesOpen"
@@ -656,6 +681,10 @@ export default class System extends Mixins(OverviewMixin, ServicesMixin, Browser
 
   get restartRows (): RestartRow[] {
     return RESTART_ROWS.filter(row => this.canControlHost || row.id === 'klipper' || row.id === 'boards')
+  }
+
+  get updatesTo (): string {
+    return `${scopedPath('/settings', activeSlug())}#versions`
   }
 
   get consoleTo (): string {
@@ -913,6 +942,23 @@ export default class System extends Mixins(OverviewMixin, ServicesMixin, Browser
     }, fileSize)
   }
 
+  /** The four facts at the top: the computer's load and heat, memory, storage, and how many boards answer. */
+  get factTiles (): Array<{ key: string, value: string, label: string, sub: string }> {
+    const bar = (key: string) => this.bars.find(b => b.key === key)
+    const cpu = bar('cpu')
+    const temp = bar('temperature')
+    const memory = bar('memory')
+    const disk = bar('disk')
+    const boards = this.boards
+    const answering = boards.filter(b => b.status === 'Ready').length
+    return [
+      { key: 'computer', value: cpu?.value ?? '—', label: 'Computer', sub: temp && temp.value !== '—' ? temp.value : '' },
+      { key: 'memory', value: memory?.value ?? '—', label: 'Memory', sub: memory?.sub ?? '' },
+      { key: 'storage', value: disk?.value ?? '—', label: 'Storage', sub: disk?.sub ?? '' },
+      { key: 'boards', value: String(boards.length), label: boards.length === 1 ? 'Board' : 'Boards', sub: !boards.length ? '' : answering === boards.length ? 'all answering' : `${answering} answering` }
+    ]
+  }
+
   get health () {
     return loadHealth(this.bars)
   }
@@ -1041,6 +1087,55 @@ export default class System extends Mixins(OverviewMixin, ServicesMixin, Browser
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 10px;
+  }
+
+  .sys__facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .sys__fact {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 14px 18px;
+    border-radius: 18px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text);
+
+    b {
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    span {
+      color: var(--m3d-text-muted);
+      font-size: 13px;
+    }
+  }
+
+  .sys--phone .sys__facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sys__updates-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: 18px;
+    background: var(--m3d-surface);
+    color: var(--m3d-text);
+    font-size: 14px;
+    text-decoration: none;
+
+    .sys__updates-go {
+      margin-left: auto;
+      color: var(--m3d-accent, #7fd6cf);
+      white-space: nowrap;
+    }
   }
 
   .sys__tile {

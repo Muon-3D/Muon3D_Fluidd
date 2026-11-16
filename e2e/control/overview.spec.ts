@@ -19,7 +19,9 @@ test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '-
 test.beforeEach(async ({ page }) => {
   // An idle printer: the mid-print mock keeps the stage drawing a live toolpath every frame, which on a CI runner
   // without a GPU leaves the page too busy to take a click (the layout is the same either way).
-  await usePrinter(page, PRESETS.idleHomed())
+  // The layout these tests save stays with this page ({ database: true }): saved to the shared mock it
+  // reached the tests running beside it, which then opened on another test's layout (no Position).
+  await usePrinter(page, PRESETS.idleHomed(), { database: true })
   if (!GPU) await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
 })
 

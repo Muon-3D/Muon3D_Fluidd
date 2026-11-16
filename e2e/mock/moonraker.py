@@ -323,14 +323,17 @@ NETWORKS = [
 
 
 PERMISSIONS = [
-    {'id': 'hotspot_toggle', 'value': 'anyone'},
-    {'id': 'hotspot_change', 'value': 'owner'},
-    {'id': 'wifi_change', 'value': 'owner'},
-    {'id': 'update_install', 'value': 'anyone'},
-    {'id': 'new_device_requests', 'value': 'owner'},
-    {'id': 'hotspot_password_on_screen', 'value': 'anyone'},
-    {'id': 'lockdown', 'value': 'owner_at_printer'},
-    {'id': 'dev_mode', 'value': 'owner_at_printer', 'values': ['owner_at_printer'], 'read_only': True},
+    {'id': 'hotspot_toggle', 'value': 'anyone', 'default': 'anyone', 'read_only': False},
+    {'id': 'hotspot_change', 'value': 'anyone', 'default': 'anyone', 'read_only': False},
+    {'id': 'wifi_change', 'value': 'anyone', 'default': 'anyone', 'read_only': False},
+    {'id': 'update_install', 'value': 'anyone', 'default': 'anyone', 'read_only': False},
+    {'id': 'plate_clear', 'value': 'anyone', 'default': 'anyone', 'read_only': False},
+    {'id': 'dev_mode', 'value': 'owner_at_printer', 'default': 'owner_at_printer', 'read_only': False},
+    {'id': 'dev_mode_first_entry', 'value': 'owner_at_printer', 'values': ['owner_at_printer'], 'read_only': True, 'fixed': True},
+]
+PERMISSION_SWITCHES = [
+    {'id': 'hotspot_change_confirm', 'label': 'Confirm hotspot changes at the printer', 'value': False, 'default': False, 'read_only': False},
+    {'id': 'hotspot_password_on_screen', 'label': "Show the hotspot password on the printer's screen", 'value': True, 'default': True, 'read_only': False},
 ]
 
 
@@ -361,7 +364,10 @@ async def http_aux(request):
         if request.method == 'POST':
             body = await request.json()
             return web.json_response({'knob': {**next((k for k in PERMISSIONS if k['id'] == body.get('id')), {}), 'value': body.get('value')}})
-        return web.json_response({'knobs': PERMISSIONS})
+        return web.json_response({'claimed': False, 'knobs': [{**k, 'values': k.get('values', ['anyone', 'owner_and_shared', 'owner', 'owner_at_printer'])} for k in PERMISSIONS], 'switches': PERMISSION_SWITCHES})
+    if tail == '/permissions/switch' and request.method == 'POST':
+        body = await request.json()
+        return web.json_response({'switch': {**next((x for x in PERMISSION_SWITCHES if x['id'] == body.get('id')), {}), 'value': body.get('value')}})
     if tail == '/update/status':
         return web.json_response({'state': 'idle', 'auto_install': True, 'install_presence_required': False})
     # A fresh printer's update choices (KAN-1925, MuonOS #492). The shared
@@ -426,6 +432,11 @@ async def http_generic(request):
         return web.json_response({'phase': 'unsupported'})
     if path == '/server/info':
         return web.json_response({'result': server_info()})
+    # The status poll a cloud printer card makes (muon-cloud/state.ts STATUS_QUERY).
+    if path == '/printer/objects/query':
+        current = status()
+        names = [key.split('=')[0] for key in request.query.keys()]
+        return web.json_response({'result': {'eventtime': time.time(), 'status': {n: current.get(n, {}) for n in names}}})
     if path == '/server/muon/protection':
         return web.json_response({'result': protection()})
     if path == '/access/oneshot_token':
@@ -444,6 +455,10 @@ async def http_generic(request):
 
 @web.middleware
 async def cors(request, handler):
+    return await _answer(request, handler)
+
+
+async def _answer(request, handler):
     if request.method == 'OPTIONS':
         resp = web.Response()
     else:
@@ -462,4 +477,7 @@ app.router.add_route('*', '/server/aux/{tail:.*}', http_aux)
 app.router.add_route('*', '/{tail:.*}', http_generic)
 
 if __name__ == '__main__':
+    # 127.0.0.1 only, as on develop: with ::1 also bound, every status poll and /server/info from the page hung on the
+    # CI runner (traces of run 43559327919: requests to localhost:7125 with no response from the first poll on), so the
+    # socket never opened after a route change.
     web.run_app(app, host='127.0.0.1', port=PORT, print=lambda *_: print(f'mock moonraker on {PORT}', flush=True))

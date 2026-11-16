@@ -26,12 +26,14 @@ describe('the default layout', () => {
     expect(at('graph')).toMatchObject({ span: 12, rows: 1 })
   })
 
-  it('has the Trackpad, then Jog on its right with Quick commands directly under it', () => {
+  it('has the Trackpad, Jog on its right, and Quick commands under Jog down to the Trackpad floor (OV-19, OV-29)', () => {
     expect(ids.slice(6)).toEqual(['trackpad', 'jog', 'macros'])
-    expect(at('trackpad')).toMatchObject({ span: 8, rows: 3 })
-    expect(at('jog')).toMatchObject({ span: 4, rows: 2 })
-    expect(at('macros')).toMatchObject({ span: at('jog').span, rows: 1 })
+    expect(at('trackpad')).toMatchObject({ span: 4, rows: 3 })
+    expect(at('jog')).toMatchObject({ span: 8, rows: 2 })
+    expect(at('macros')).toMatchObject({ span: 8, rows: 1 })
     expect(at('trackpad').span + at('jog').span).toBe(12)
+    expect(at('macros').span).toBe(at('jog').span)
+    expect(at('jog').rows + at('macros').rows).toBe(at('trackpad').rows)
   })
 
   it('puts everything else away until it is added', () => {
@@ -46,18 +48,22 @@ describe('the default layout', () => {
 })
 
 describe('the catalogue', () => {
-  it('has unique ids, a category from the list, and S, M or L sizes inside the grid', () => {
+  it('has unique ids, a category from the list, and S, M or L sizes (XS for Quick commands) inside the grid', () => {
     expect(new Set(widgetMeta.map(w => w.id)).size).toBe(widgetMeta.length)
     for (const w of widgetMeta) {
       expect(widgetCategories).toContain(w.category)
       expect(w.sizes.length).toBeGreaterThanOrEqual(2)
       for (const z of w.sizes) {
-        expect(['S', 'M', 'L']).toContain(z.key)
+        expect(w.id === 'macros' ? ['XS', 'S', 'M', 'L'] : ['S', 'M', 'L']).toContain(z.key)
         expect(z.span).toBeGreaterThanOrEqual(3); expect(z.span).toBeLessThanOrEqual(12)
         expect(z.rows).toBeGreaterThanOrEqual(1); expect(z.rows).toBeLessThanOrEqual(4)
       }
       expect(w.sizes.map(z => z.key)).toContain(w.size)
     }
+  })
+
+  it('gives Quick commands XS, S, M and L: icons in 3 columns, then 3 by 2, 8 and 12 (OV-29)', () => {
+    expect(byId('macros').sizes).toEqual([{ key: 'XS', span: 3, rows: 1 }, { key: 'S', span: 3, rows: 2 }, { key: 'M', span: 8, rows: 1 }, { key: 'L', span: 12, rows: 1 }])
   })
 
   it('gives S exactly 3 columns', () => {

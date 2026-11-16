@@ -58,7 +58,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'updates', label: 'Updates', anchors: ['versions'], icon: 'download', blurb: "The printer's software and when it updates", keywords: ['update', 'version', 'upgrade', 'software'], shows: has('update_manager') },
   { id: 'cameras', label: 'Cameras', anchors: ['camera'], icon: 'camera', blurb: "The printer's cameras and how they stream", keywords: ['webcam', 'stream', 'video'] },
   { id: 'materials', label: 'Materials', anchors: ['presets'], icon: 'spool', blurb: 'Filament presets and temperatures', keywords: ['filament', 'preset', 'temperature', 'pla', 'petg'] },
-  { id: 'macros', label: 'Quick commands', anchors: ['macros'], icon: 'macro', blurb: 'Which quick commands show, and in which section', keywords: ['gcode', 'macros', 'quick actions', 'buttons'] },
+  { id: 'macros', label: 'Macros', anchors: ['macros'], icon: 'macro', blurb: 'Every command the printer has, and which show as Quick commands', keywords: ['gcode', 'macros', 'quick actions', 'buttons'] },
   { id: 'timelapse', label: 'Timelapse', anchors: ['timelapse'], icon: 'clock', blurb: 'How print timelapses are made', keywords: ['video', 'render', 'frames'], shows: has('timelapse') },
   { id: 'spoolman', label: 'Spoolman', anchors: ['spoolman'], icon: 'spool', blurb: 'Your spool inventory', keywords: ['filament', 'spools'], shows: has('spoolman') },
   { id: 'console', label: 'Console', anchors: ['console'], icon: 'console', blurb: 'What the console shows, the one-tap commands above the input, and who may type', keywords: ['terminal', 'filter', 'log', 'quick commands', 'history', 'timestamps'] },

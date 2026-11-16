@@ -1,8 +1,5 @@
 <template>
-  <div>
-    <v-subheader id="browser">
-      {{ $t('app.setting.title.file_browser') }}
-    </v-subheader>
+  <div id="browser">
     <div
       v-if="isMuonPrinter === true && !devModeEnabled"
       class="files-devmode"
@@ -19,33 +16,57 @@
         Developer mode ›
       </router-link>
     </div>
-    <v-card
-      :elevation="5"
-      dense
-      class="mb-4"
+    <section
+      class="m3-set"
+      data-tid="files-lists"
     >
-      <app-setting :title="$t('app.setting.label.text_sort_order')">
-        <v-select
-          v-model="textSortOrder"
-          filled
-          dense
-          hide-details="auto"
-          :items="availableTextSortOrders"
-        />
-      </app-setting>
-    </v-card>
+      <h2 class="m3-set__title">
+        Lists of files
+      </h2>
+      <div class="m3-set__row">
+        <div class="m3-set__label">
+          <b>Sort names</b>
+          <span>Numbers in order means "part 2" comes before "part 10".</span>
+        </div>
+        <div class="m3-set__control">
+          <seg-picker
+            :options="sortOptions"
+            :value="textSortOrder"
+            label="Sort names"
+            data-tid="files-sort-names"
+            @input="textSortOrder = $event"
+          />
+        </div>
+      </div>
+      <div class="m3-set__row">
+        <div class="m3-set__label">
+          <b>Show hidden files</b>
+          <span>Names starting with a dot.</span>
+        </div>
+        <div class="m3-set__control">
+          <toggle-switch
+            :value="showHiddenFiles"
+            label="Show hidden files"
+            data-tid="files-show-hidden"
+            @input="showHiddenFiles = $event"
+          />
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import MuonGatesMixin from '@/mixins/muon-gates'
+import SegPicker from '@/components/control/SegPicker.vue'
+import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
 
 /** Settings › Files and editor (KAN-1960, files storyboard): says up front what Developer mode means for these files on a Muon printer. */
-@Component({})
+@Component({ components: { SegPicker, ToggleSwitch } })
 export default class FileBrowserSettings extends Mixins(MuonGatesMixin) {
   get printerName (): string {
     return printerNameParts(this.$store.getters['config/getDisplayName'] as string).name
@@ -67,22 +88,19 @@ export default class FileBrowserSettings extends Mixins(MuonGatesMixin) {
     })
   }
 
-  get availableTextSortOrders () {
-    return [
-      {
-        value: 'default',
-        text: this.$t('app.general.label.default')
-      },
-      {
-        value: 'numeric-prefix',
-        text: this.$t('app.general.label.numeric_prefix_sort')
-      },
-      {
-        value: 'version',
-        text: this.$t('app.general.label.version_sort')
-      }
-    ]
+  get showHiddenFiles (): boolean {
+    return !!this.$store.state.config.uiSettings.fileSystem.showHiddenFiles
   }
+
+  set showHiddenFiles (value: boolean) {
+    this.$store.dispatch('config/saveByPath', { path: 'uiSettings.fileSystem.showHiddenFiles', value, server: true })
+  }
+
+  readonly sortOptions = [
+    { value: 'default', label: 'A–Z' },
+    { value: 'numeric-prefix', label: 'Numbers in order' },
+    { value: 'version', label: 'Versions' }
+  ]
 }
 </script>
 

@@ -23,7 +23,9 @@ export interface ConsolePrinter {
 }
 
 export interface ConsoleState {
-  account: { id: string, email: string, name: string, created_at?: number };
+  account: { id: string, email: string, name: string, created_at?: number, deletion?: { requested_at: number, delete_after: number } | null };
+  /** `/v1/me/exports`, when a test needs it: the data requests. A POST files a queued one. */
+  exports?: Array<Record<string, unknown> & { id: string }>;
   printers: ConsolePrinter[];
   /** `/v1/me/preferences`, kept across reloads; null answers 404, as a console from before it. */
   preferences: Record<string, boolean> | null;
@@ -40,6 +42,8 @@ export interface ConsoleState {
   identity?: { declared_age: number | null, declared_at: number | null, can_community: boolean, can_public: boolean, identity_public: boolean, revision: number, projection_pending: boolean };
   /** Sign-in and security, when a test needs it: the ways in, 2-step and its codes. */
   security?: ConsoleSecurity;
+  /** The account's sessions (`/v1/me/sessions`), when a test needs them: the console's own shape. */
+  sessions?: Array<Record<string, unknown> & { id: string, current: boolean }>;
   /** Answer matching requests with a status ("PATCH /v1/me"): the console failing. */
   failOn?: (request: string) => number | null;
   /** Every request that changes something (not a GET), with its body: `DELETE /v1/printers/p1/shares/s1`. */
@@ -130,6 +134,24 @@ export async function answerConsole (route: Route, state: ConsoleState) {
     if (typeof body.name === 'string') state.account.name = body.name
     return json(route, { account: { ...state.account, display_name: state.account.name } })
   }
+  if (state.exports && url.pathname === '/v1/me/exports') {
+    if (request.method() === 'GET') return json(route, { exports: state.exports })
+    if (request.method() === 'POST') {
+      const made = { id: `exp-${state.exports.length + 1}`, status: 'queued', requested_at: Math.floor(Date.now() / 1000) }
+      state.exports = [made, ...state.exports]
+      return json(route, made, 202)
+    }
+  }
+  if (request.method() === 'DELETE' && url.pathname === '/v1/me' && state.account.deletion !== undefined) {
+    const now = Math.floor(Date.now() / 1000)
+    state.account.deletion = { requested_at: now, delete_after: now + 14 * 86_400 }
+    return json(route, { ok: true, delete_after: state.account.deletion.delete_after })
+  }
+  const owned = url.pathname.match(/^\/v1\/printers\/([^/]+)$/)
+  if (owned && request.method() === 'DELETE') {
+    state.printers = state.printers.filter(p => p.id !== decodeURIComponent(owned[1]))
+    return json(route, { ok: true })
+  }
   if (state.identity && url.pathname === '/v1/me/community-identity') {
     if (request.method() === 'PATCH') {
       const body = request.postDataJSON() as { declared_age?: number, identity_public?: boolean }
@@ -149,6 +171,14 @@ export async function answerConsole (route: Route, state: ConsoleState) {
   if (state.security) {
     const answered = answerSecurity(route, state, state.security, request.method(), url.pathname)
     if (answered) return answered
+  }
+  if (state.sessions && url.pathname === '/v1/me/sessions') {
+    if (request.method() === 'GET') return json(route, { sessions: state.sessions })
+    if (request.method() === 'DELETE' && url.searchParams.get('scope') === 'others') {
+      const ended = state.sessions.filter(s => !s.current).length
+      state.sessions = state.sessions.filter(s => s.current)
+      return json(route, { ok: true, ended })
+    }
   }
   if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
   switch (url.pathname) {

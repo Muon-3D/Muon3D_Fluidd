@@ -428,7 +428,7 @@
       @close="close"
     >
       <p class="m3-dlg__text">
-        Changing it signs you out everywhere else.
+        Every device is signed out; you may need to sign in again here.
       </p>
       <label class="m3-field">
         <span class="m3-field__label">New password</span>
@@ -673,9 +673,11 @@ import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import AppQrCode from '@/components/ui/AppQrCode.vue'
 import ReauthDialog from './ReauthDialog.vue'
 import AcctMore from './AcctMore.vue'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, holdSignOut, releaseSignOut } from '@/services/muon-cloud/state'
 import { accountApi, type AccountDetails, type Identity, type Me, type Passkey } from '@/services/account/api'
-import { isMissing } from '@/services/account/client'
+import { endsSession, isMissing } from '@/services/account/client'
+import { signOutNow } from '@/services/account/sign-out'
+import type { SignedOutReason } from '@/services/account/signed-out-note'
 import { accountState, describe, loadConfig, loadEvents, loadMe } from '@/services/account/state'
 import { agoText, dayText, eventLine, nextProtectionStep, protectionSteps, providerName, securityHealth, signInWays, whenText, type AccountSectionId, type ProtectionStep, type SecurityHealth } from '@/services/account/model'
 import { cancelledPasskey, createPasskey, deviceLabel, passkeysSupported } from '@/services/account/webauthn'
@@ -702,6 +704,8 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   renaming: Passkey | null = null
   setup: { secret: string, otpauth_url: string } | null = null
   codes: string[] = []
+  /** KAN-1389: the console ended this session with the change; signed out once the recovery codes are read. */
+  endsAfterCodes = false
   copied = false
   busy = false
   error = ''
@@ -714,6 +718,26 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
 
   created () {
     this.refresh()
+  }
+
+  /** The hold on the sign-out must not outlive this page (KAN-1389). */
+  beforeDestroy () {
+    this.releaseHold(true)
+  }
+
+  private holding = false
+
+  /** Keeps a session that ends from taking the page, and the recovery codes on it, away before they are read. */
+  holdForCodes () {
+    if (this.holding) return
+    this.holding = true
+    holdSignOut()
+  }
+
+  releaseHold (dropNow: boolean) {
+    if (!this.holding) return
+    this.holding = false
+    releaseSignOut(dropNow)
   }
 
   refresh () {
@@ -844,6 +868,16 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     this.dialog = ''
     this.codes = []
     this.setup = null
+    if (this.endsAfterCodes) this.signOutAfter('two-step')
+    else this.releaseHold(true)
+  }
+
+  /** The console ended this session with the person's own change (KAN-1389): to the sign-in page, saying why. */
+  async signOutAfter (reason: SignedOutReason) {
+    this.endsAfterCodes = false
+    this.dialog = ''
+    this.releaseHold(false)
+    await signOutNow('browser', { reason, router: this.$router })
   }
 
   async run (what: () => Promise<unknown>, inDialog = false): Promise<boolean> {
@@ -895,9 +929,16 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   async changePassword () {
     const next = this.form.next
     let changed = false
+    let ended = false
     await this.run(async () => {
-      changed = (await this.withReauth(r => accountApi.changePassword(next, r), { action: 'Change password' })) !== null
+      const answer = await this.withReauth(r => accountApi.changePassword(next, r), { action: 'Change password' })
+      changed = answer !== null
+      ended = answer !== null && endsSession(answer)
     }, true)
+    if (changed && ended) {
+      await this.signOutAfter('password')
+      return
+    }
     if (changed) {
       this.dialog = ''
       this.message = 'Your password is changed. Every other device is signed out.'
@@ -992,6 +1033,12 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
     await this.run(async () => {
       const setup = await this.withReauth(r => accountApi.totpBegin(r), { action: 'Continue' })
       if (setup) {
+        // Replacing an unreadable secret answers with no secret and ends the session (KAN-1389): nothing to scan.
+        if (!setup.secret) {
+          if (!endsSession(setup)) throw new Error('Two-step sign-in could not be started. Try again.')
+          await this.signOutAfter('two-step')
+          return
+        }
         this.open('twoStep')
         this.setup = setup
       }
@@ -1001,14 +1048,27 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
   async confirmTwoStep () {
     const code = this.form.code.replace(/\s+/g, '')
     await this.run(async () => {
-      const { recovery_codes: codes } = await accountApi.totpConfirm(code)
-      this.codes = codes
+      const answer = await accountApi.totpConfirm(code)
+      this.codes = answer.recovery_codes
+      this.form.code = ''
+      this.setup = null
+      // The codes are shown first: they are the only copy. A session the console ended with them stays until Done.
+      this.endsAfterCodes = endsSession(answer)
+      if (this.endsAfterCodes) this.holdForCodes()
     }, true)
-    loadMe().catch(() => {})
+    // The session is gone when the console ended it: asking who is signed in would only be refused.
+    if (!this.endsAfterCodes) loadMe().catch(() => {})
   }
 
   async twoStepOff () {
-    const done = await this.run(() => accountApi.totpOff(this.form.code.replace(/\s+/g, '')), true)
+    let ended = false
+    const done = await this.run(async () => {
+      ended = endsSession(await accountApi.totpOff(this.form.code.replace(/\s+/g, '')))
+    }, true)
+    if (done && ended) {
+      await this.signOutAfter('two-step')
+      return
+    }
     if (done) {
       this.dialog = ''
       this.message = 'Two-step sign-in is off.'
@@ -1028,6 +1088,8 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
         if (answer) {
           this.form.code = ''
           this.codes = answer.recovery_codes
+          this.endsAfterCodes = endsSession(answer)
+          if (this.endsAfterCodes) this.holdForCodes()
           this.dialog = 'twoStep'
         }
       } catch (error) {
@@ -1038,18 +1100,26 @@ export default class AccountSecurity extends Mixins(AccountReauthMixin) {
         throw error
       }
     })
-    loadMe().catch(() => {})
+    if (!this.endsAfterCodes) loadMe().catch(() => {})
   }
 
   /** Saved as a file on this device: never sent anywhere, never in an address bar. */
   saveCodes () {
-    const blob = new Blob([`Muon3D recovery codes\nEach works once.\n\n${this.codes.join('\n')}\n`], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'muon3d-recovery-codes.txt'
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 0)
+    if (!this.codes.length) return
+    this.dialogError = ''
+    let url = ''
+    try {
+      const blob = new Blob([`Muon3D recovery codes\nEach works once.\n\n${this.codes.join('\n')}\n`], { type: 'text/plain' })
+      url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'muon3d-recovery-codes.txt'
+      a.click()
+    } catch {
+      this.dialogError = "The codes couldn't be saved. Copy them instead."
+    } finally {
+      if (url) setTimeout(() => URL.revokeObjectURL(url), 0)
+    }
   }
 
   async copyCodes () {

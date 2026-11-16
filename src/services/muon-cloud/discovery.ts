@@ -36,6 +36,7 @@ import store from '@/store'
 import type { InstanceConfig } from '@/store/config/types'
 import { cloudApi } from './api'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
+import { knownReachable, secureNameOf } from '@/services/secure-origin/hosted'
 
 export interface LanLinkStatus {
   /**
@@ -122,7 +123,19 @@ const PROBE_TIMEOUT_MS = 3000
 const ADDRESS_TIMEOUT_MS = 8000
 const GATEWAY_TIMEOUT_MS = 1500
 const GATEWAY_ANSWERS_WITHIN_MS = 900
-const CONCURRENCY = 64
+/**
+ * At most this many probes are in flight at once. A silent address (packet
+ * dropped, no refusal) holds its socket until the timeout, and the browser
+ * has about 256 sockets for the whole page: 64 silent probes at a time, over
+ * 280 addresses, starved the page's own requests to the printer (KAN-2724).
+ */
+const CONCURRENCY = 16
+/**
+ * How long one address of the range sweep gets. A Muon printer on the same
+ * network answers its identity in well under a second; the printers already
+ * saved keep the longer `PROBE_TIMEOUT_MS`.
+ */
+const RANGE_PROBE_TIMEOUT_MS = 1500
 const FRESH_FOR_MS = 60_000
 
 export const discoveryState = Vue.observable({
@@ -332,11 +345,14 @@ export function pageIsSecure (): boolean {
  * links for a new tab. Opening `http://<ip>/` as a top-level page is not mixed
  * content, so it keeps the lock on this page.
  */
-export function lanOpenLinks (): Array<{ name: string, url: string }> {
+export function lanOpenLinks (accountPrinters: Array<{ id: string, secure_name?: string | null }> = []): Array<{ name: string, url: string }> {
   const links: Array<{ name: string, url: string }> = []
   for (const p of discoveryState.cloud) {
     const host = nearbyHost(p.localAddrs)
-    if (host) links.push({ name: p.name, url: `http://${host}/` })
+    // A printer this browser has already proven it reaches on its secure address: that link keeps the lock.
+    const secure = secureNameOf(accountPrinters.find(a => a.id === p.printerId))
+    if (secure && knownReachable(secure)) links.push({ name: p.name, url: `https://${secure}/` })
+    else if (host) links.push({ name: p.name, url: `http://${host}/` })
   }
   return links
 }
@@ -363,9 +379,12 @@ export function lanFetch (url: string, init: RequestInit = {}): Promise<Response
   return fetch(url, { ...init, ...local } as RequestInit)
 }
 
-async function getJson (url: string, init: RequestInit = {}, timeout = PROBE_TIMEOUT_MS): Promise<any> {
+async function getJson (url: string, init: RequestInit = {}, timeout = PROBE_TIMEOUT_MS, signal?: AbortSignal): Promise<any> {
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeout)
+  const stop = () => controller.abort()
+  if (signal?.aborted) controller.abort()
+  else signal?.addEventListener('abort', stop, { once: true })
   try {
     const response = await lanFetch(url, { ...init, signal: controller.signal, cache: 'no-store' })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -373,6 +392,7 @@ async function getJson (url: string, init: RequestInit = {}, timeout = PROBE_TIM
     return body?.result ?? body
   } finally {
     window.clearTimeout(timer)
+    signal?.removeEventListener('abort', stop)
   }
 }
 
@@ -399,14 +419,15 @@ export async function lanLinkStatus (apiUrl: string): Promise<LanLinkStatus> {
 }
 
 /** Asks one address whether it is a Muon3D printer. */
-export async function probe (host: string, timeout = PROBE_TIMEOUT_MS): Promise<LanPrinter | null> {
+export async function probe (host: string, timeout = PROBE_TIMEOUT_MS, signal?: AbortSignal): Promise<LanPrinter | null> {
   const apiUrl = apiUrlFor(host)
   let identity: any
   try {
-    identity = await getJson(`${apiUrl}/server/muon/identity`, {}, timeout)
+    identity = await getJson(`${apiUrl}/server/muon/identity`, {}, timeout, signal)
   } catch {
     return null
   }
+  if (signal?.aborted) return null
   if (!identity || typeof identity !== 'object') return null
   const name = String(identity.display || identity.name || host)
   const endpointId = typeof identity.endpoint_id === 'string' && identity.endpoint_id ? identity.endpoint_id : null
@@ -569,17 +590,21 @@ export function nearbyHost (localAddrs: string[]): string | null {
 }
 
 /** Whether something answered at `host` quickly. A refusal is an answer. */
-async function answersQuickly (host: string): Promise<boolean> {
+async function answersQuickly (host: string, signal?: AbortSignal): Promise<boolean> {
   const controller = new AbortController()
   const started = performance.now()
   const timer = window.setTimeout(() => controller.abort(), GATEWAY_TIMEOUT_MS)
+  const stop = () => controller.abort()
+  if (signal?.aborted) controller.abort()
+  else signal?.addEventListener('abort', stop, { once: true })
   try {
     await lanFetch(`http://${host}/`, { mode: 'no-cors', signal: controller.signal, cache: 'no-store' })
     return true
   } catch {
-    return performance.now() - started < GATEWAY_ANSWERS_WITHIN_MS
+    return !signal?.aborted && performance.now() - started < GATEWAY_ANSWERS_WITHIN_MS
   } finally {
     window.clearTimeout(timer)
+    signal?.removeEventListener('abort', stop)
   }
 }
 
@@ -611,10 +636,10 @@ function forget (host: string) {
   else discoveryState.found.splice(i, 1, { ...printer, aliases, host: printer.host === host ? aliases[0] : printer.host })
 }
 
-async function pool<T> (items: T[], work: (item: T) => Promise<void>) {
+async function pool<T> (items: T[], work: (item: T) => Promise<void>, signal?: AbortSignal) {
   let next = 0
   const runners = Array.from({ length: Math.min(CONCURRENCY, items.length) }, async () => {
-    while (next < items.length) {
+    while (next < items.length && !signal?.aborted) {
       const item = items[next++]
       await work(item)
     }
@@ -637,27 +662,55 @@ export function knownHosts (blocked = !!discoveryState.blockedByPage): string[] 
   return [...new Set(hosts)]
 }
 
-async function sweep () {
+/** The sweep running now, if any: its abort stops every probe it has in flight. */
+let sweepAbort: AbortController | null = null
+let watching = false
+
+/**
+ * Stops the sweep running now: its probes are aborted, so their sockets are
+ * released at once. Called when the page leaves, when a new sweep starts and
+ * when a printer connection opens, so a probe never holds up the page's own
+ * requests (KAN-2724). A stopped sweep did not finish, so it does not make
+ * the next look wait out the freshness window.
+ */
+export function abortSweep () {
+  sweepAbort?.abort()
+}
+
+function watchPage () {
+  if (watching) return
+  watching = true
+  window.addEventListener('pagehide', abortSweep)
+  // A printer connection opening is the page's own traffic: it goes first.
+  store.subscribe?.((mutation: { type: string, payload: unknown }) => {
+    if (mutation.type === 'socket/setSocketConnecting' && mutation.payload === true) abortSweep()
+  })
+}
+
+async function sweep (controller: AbortController) {
+  const { signal } = controller
   discoveryState.scanning = true
   try {
     const blocked = await pageBlocksLanIpv4()
     const known = knownHosts(blocked)
     discoveryState.network = 'printers you have added'
     await pool(known, async host => {
-      const printer = await probe(host)
-      if (printer) remember(printer)
-    })
+      const printer = await probe(host, PROBE_TIMEOUT_MS, signal)
+      if (printer && !signal.aborted) remember(printer)
+    }, signal)
     // Every probe of an IPv4 address would be refused before it was sent, and
     // each refusal would read as a gateway answering.
-    if (blocked) return
+    if (blocked || signal.aborted) return
 
     const own = [...new Set(known.filter(isIpv4).map(h => h.split('.').slice(0, 3).join('.')))]
     discoveryState.network = 'this network'
     const answering = new Set<string>()
-    await pool(COMMON_NETWORKS.filter(n => !own.includes(n)), async network => {
-      const [first, last] = await Promise.all([answersQuickly(`${network}.1`), answersQuickly(`${network}.254`)])
-      if (first || last) answering.add(network)
-    })
+    // One address per slot, so the pool's bound holds for the two asked of each network too.
+    const gateways = COMMON_NETWORKS.filter(n => !own.includes(n)).flatMap(n => [`${n}.1`, `${n}.254`])
+    await pool(gateways, async host => {
+      if (await answersQuickly(host, signal)) answering.add(host.slice(0, host.lastIndexOf('.')))
+    }, signal)
+    if (signal.aborted) return
     const networks = [...new Set([
       ...own,
       ...COMMON_NETWORKS.filter(n => answering.has(n)),
@@ -673,13 +726,17 @@ async function sweep () {
     }
     await pool(hosts, async host => {
       discoveryState.network = `${host.slice(0, host.lastIndexOf('.'))}.x`
-      const printer = await probe(host)
-      if (printer) remember(printer)
-    })
+      const printer = await probe(host, RANGE_PROBE_TIMEOUT_MS, signal)
+      if (printer && !signal.aborted) remember(printer)
+    }, signal)
   } finally {
-    discoveryState.scanning = false
-    discoveryState.network = ''
-    discoveryState.finishedAt = Date.now()
+    // A sweep that was replaced leaves the state to the one that replaced it.
+    if (sweepAbort === controller) {
+      sweepAbort = null
+      discoveryState.scanning = false
+      discoveryState.network = ''
+      if (!signal.aborted) discoveryState.finishedAt = Date.now()
+    }
   }
 }
 
@@ -697,10 +754,16 @@ export function discoverPrinters (force = false, { nearby = true }: { nearby?: b
     return Promise.resolve()
   }
   if (nearby) refreshCloudNearby().catch(() => {})
-  if (running) return running
+  // An explicit search starts over: the one running is stopped, not joined.
+  if (running && !force) return running
   if (!force && Date.now() - discoveryState.finishedAt < FRESH_FOR_MS) return Promise.resolve()
-  running = sweep().finally(() => { running = null })
-  return running
+  watchPage()
+  abortSweep()
+  const controller = new AbortController()
+  sweepAbort = controller
+  const mine: Promise<void> = sweep(controller).finally(() => { if (running === mine) running = null })
+  running = mine
+  return mine
 }
 
 let refreshing: Promise<void> | null = null
@@ -721,6 +784,23 @@ export async function refreshKnownPrinters () {
     else forget(host)
   }).finally(() => { refreshing = null })
   return refreshing
+}
+
+/**
+ * Looks for every known printer on this network, whatever the page is open on
+ * (KAN-2487): on page load and when a menu opens, not only after a session
+ * to the printer is open. It asks the service who is beside this browser (one
+ * request, which also reads each of those printers at once), asks again every
+ * printer already found or saved, and sweeps only if nothing has been
+ * searched yet. A search that finished a minute ago is reused.
+ */
+export function lookForPrinters (): Promise<void> {
+  const nearby = refreshCloudNearby().catch(() => {})
+  if (pageIsSecure()) return nearby
+  // Printers asked a minute ago are not asked again (the menus open often); the pages' own timers keep them fresh.
+  if (Date.now() - discoveryState.finishedAt < FRESH_FOR_MS) return nearby
+  const known = discoveryState.finishedAt ? refreshKnownPrinters() : discoverPrinters(false, { nearby: false })
+  return Promise.all([nearby, known.catch(() => {})]).then(() => {})
 }
 
 let readingStatus: Promise<void> | null = null

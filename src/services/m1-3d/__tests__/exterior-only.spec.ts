@@ -16,7 +16,9 @@ function glbJson (): any {
 const NODES = [
   'M1', 'M1_Base', 'M1_Base_Decals', 'M1_Hose', 'M1_HoseRig', 'hose_base', 'M1_Belt', 'M1_BeltRig', 'belt_base',
   'M1_Arm', 'M1_Z_Stage', 'M1_BuildPlate_Glass', 'M1_Y_Gantry', 'M1_X_Carriage', 'hose_head', 'belt_gantry',
-  'M1_Knob', 'M1_Panel_Screen'
+  'M1_Knob', 'M1_Panel_Screen',
+  // the near-black surface behind openings and seams, riding with each part
+  'M1_Backing_M1_Base', 'M1_Backing_M1_Arm', 'M1_Backing_M1_Z_Stage', 'M1_Backing_M1_Y_Gantry', 'M1_Backing_M1_X_Carriage'
 ]
 
 describe('the shipped M1 model is exterior only', () => {
@@ -51,5 +53,5 @@ describe('the shipped M1 model is exterior only', () => {
   })
 })
 
-const MAX_TRIANGLES = 430_000
+const MAX_TRIANGLES = 600_000
 const MAX_PER_PART = 160_000

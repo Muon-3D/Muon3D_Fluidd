@@ -236,13 +236,6 @@ export const mutations: MutationTree<ConfigState> = {
     Vue.set(state.uiSettings.fileSystem.sortDesc, payload.root, payload.value)
   },
 
-  /**
-   * Puts us into layout mode
-   */
-  setLayoutMode (state, payload) {
-    state.layoutMode = payload
-  },
-
   setContainerColumnCount (state, payload: number) {
     state.containerColumnCount = payload
   },

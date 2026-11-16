@@ -9,8 +9,8 @@
   >
     <header class="mpanel__head">
       <div>
-        <h2>Quick commands</h2>
-        <p>Which quick commands Control shows, in which section, and what they're called</p>
+        <h2>Macros</h2>
+        <p>The printer's commands: which show on Overview and Control, in which section, and what they're called</p>
       </div>
       <div class="mpanel__tools">
         <label class="mpanel__find">
@@ -40,6 +40,8 @@
         </button>
       </div>
     </header>
+
+    <quick-command-picker v-if="allMacros.length" />
 
     <p
       v-if="allMacros.length && !connected"
@@ -431,6 +433,7 @@ import { Component, Mixins, Watch } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import MacroCategoryDialog from './MacroCategoryDialog.vue'
 import MacroSheet from './MacroSheet.vue'
+import QuickCommandPicker from './QuickCommandPicker.vue'
 import { devModeState, refreshDevMode } from '@/services/dev-mode/state'
 import { macroPlacesOn } from '@/services/macros/places'
 import type { MacroPlace } from '@/services/macros/locate'
@@ -452,7 +455,7 @@ const HIDDEN_SHOWN = 3
  * double-click or Enter opens the macro's sheet, with its code read-only.
  */
 @Component({
-  components: { MacroCategoryDialog, MacroSheet }
+  components: { MacroCategoryDialog, MacroSheet, QuickCommandPicker }
 })
 export default class MacroPanel extends Mixins(StateMixin) {
   query = ''

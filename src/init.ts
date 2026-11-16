@@ -16,6 +16,7 @@ import { resetSetupState } from './services/muon-setup/state'
 import { resetGates } from './services/gates/state'
 import { isManagedApiUrl } from './services/muon-cloud/origin'
 import { activeSlug, correctAddress, isActiveSlug, learnActiveIdentity } from './services/printer-pages'
+import { configureModelsTransport } from './services/library/transport'
 
 // Load API configuration
 /**
@@ -281,6 +282,8 @@ export const appInit = async (apiConfig?: ApiConfig, hostConfig?: HostConfig, op
   if (!hostConfig) {
     hostConfig = await getHostConfig()
   }
+
+  configureModelsTransport(hostConfig)
 
   if (!(Globals.LOCAL_INSTANCES_STORAGE_KEY in localStorage)) {
     for (const endpoint of hostConfig.endpoints) {

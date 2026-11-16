@@ -181,7 +181,7 @@ export default class ControlFilament extends Mixins(FilamentActionsMixin) {
   /** Why Heat can't be pressed now, if it can't. */
   get heatBlocked (): string | null {
     if (!this.ready || !this.nozzle) return 'Not connected to the printer'
-    if (this.busy) return 'Not while printing'
+    if (this.busy) return this.printLocked ? 'Not while printing' : 'The printer is busy'
     const temp = this.heatTemp
     if (!Number.isFinite(temp) || temp < this.minExtrude) return `Extruding needs at least ${this.minExtrude}°`
     return hotendLimitReason(this.heatChoice.material ?? undefined, temp, this.extruderMaxTemp)
@@ -197,7 +197,7 @@ export default class ControlFilament extends Mixins(FilamentActionsMixin) {
 
   get extrudeReason (): string | null {
     if (!this.ready) return null
-    if (this.busy) return 'Not while printing'
+    if (this.busy) return this.printLocked ? 'Not while printing' : 'The printer is busy'
     const temperature = this.activeExtruder?.temperature ?? 0
     const canExtrude = this.activeExtruder?.can_extrude
     if (canExtrude === false && temperature >= this.minExtrude) return 'Klipper isn\'t allowing extrusion yet. Wait a moment for the nozzle to settle.'

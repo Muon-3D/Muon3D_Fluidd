@@ -10,6 +10,9 @@ import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
 import { usePrinter, PRESETS, M1_NO_GO } from './printer'
 
+// About the 3D stage: it needs WebGL, which the e2e fixtures turn off by default (KAN-2781).
+test.use({ webgl: true })
+
 const GPU = process.platform === 'win32'
 test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
 test.beforeEach(async ({ page }) => {
@@ -31,6 +34,11 @@ const STUB = `<!doctype html><html><body><script>
   })
   window.parent.postMessage({ type: 'muon-panel-hello', version: 1 }, '*')
 </script></body></html>`
+
+// The bridge is under test, not the mock's ticks: the shared mock is a hot, mid-print M1 whose status ticks (several a
+// second) kept a desktop page on a loaded CI runner so busy that the stub's answers, one message hop each, took longer
+// than the poll (reproduced at a 4x CPU throttle: 16 s from the hello to the first answer). The page holds still instead.
+const STILL = { ticks: false }
 
 type StubResult = { id: number, ok: boolean, error?: { message: string } }
 
@@ -101,7 +109,7 @@ async function ready (page: Page) {
 }
 
 test('the screen opens the printer\'s own screen; only allowed calls reach the printer', async ({ page, open }) => {
-  const printer = await usePrinter(page, PRESETS.idleHomed())
+  const printer = await usePrinter(page, PRESETS.idleHomed(), STILL)
   // Answered here, not by the shared mock, which can fall behind on a loaded CI runner.
   printer.state.answers['printer.info'] = { state: 'ready', state_message: 'Printer is ready', hostname: 'm1' }
   await servePanel(page)
@@ -141,7 +149,7 @@ test('the screen opens the printer\'s own screen; only allowed calls reach the p
 test('it zooms in from the screen on the model, and Done or a click outside fly back out', async ({ page, open }) => {
   // Three flights in and three out, each a few software-WebGL frames on a loaded CI runner.
   test.slow()
-  const printer = await usePrinter(page, PRESETS.idleHomed())
+  const printer = await usePrinter(page, PRESETS.idleHomed(), STILL)
   await servePanel(page)
   await open('/')
   await ready(page)
@@ -169,7 +177,7 @@ test('it zooms in from the screen on the model, and Done or a click outside fly 
 })
 
 test('without a /panel/ build the screen says so, and frames nothing', async ({ page, open }) => {
-  const printer = await usePrinter(page, PRESETS.idleHomed())
+  const printer = await usePrinter(page, PRESETS.idleHomed(), STILL)
   await page.route('**/panel/**', route => route.fulfill({ status: 404, body: '' }))
   await open('/')
   await ready(page)
@@ -193,7 +201,7 @@ test('while it prints the screen cannot be opened', async ({ page, open }) => {
 })
 
 test('a confirmation that must be done on the printer stays blocked: tagged, and Control sends nothing', async ({ page, open }) => {
-  const printer = await usePrinter(page, PRESETS.idleHomed())
+  const printer = await usePrinter(page, PRESETS.idleHomed(), STILL)
   await servePanel(page, STUB_CONFIRM)
   await open('/')
   await ready(page)
@@ -212,7 +220,7 @@ test('a confirmation that must be done on the printer stays blocked: tagged, and
 })
 
 test('a heat target above the max_temp in the printer config is refused and never sent', async ({ page, open }) => {
-  const printer = await usePrinter(page, heated({ extruder: { max_temp: 300 }, heater_bed: { max_temp: 110 } }))
+  const printer = await usePrinter(page, heated({ extruder: { max_temp: 300 }, heater_bed: { max_temp: 110 } }), STILL)
   await servePanel(page, STUB_HEAT)
   await open('/')
   await ready(page)
@@ -233,7 +241,7 @@ test('a heat target above the max_temp in the printer config is refused and neve
 })
 
 test('with no max_temp known for a heater, the screen cannot heat it', async ({ page, open }) => {
-  const printer = await usePrinter(page, heated({ extruder: { max_temp: 'unknown' }, heater_bed: { max_temp: 'unknown' } }))
+  const printer = await usePrinter(page, heated({ extruder: { max_temp: 'unknown' }, heater_bed: { max_temp: 'unknown' } }), STILL)
   await servePanel(page, STUB_HEAT)
   await open('/')
   await ready(page)

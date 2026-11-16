@@ -7,6 +7,7 @@
  */
 import { test, expect } from '../fixtures'
 import { consoleSecurity, FAKE_RECOVERY_CODES, serveConsoleHere } from '../fakes/console'
+import { readFile } from 'node:fs/promises'
 
 test.use({ signedIn: true })
 
@@ -49,6 +50,11 @@ test('turning on 2-step walks the QR code, the code and the recovery codes, show
   await expect(page.getByText("Copy or save them now: they're shown only this once.")).toBeVisible()
   await expect(page.getByTestId('recovery-codes-copy')).toBeVisible()
   await expect(page.getByTestId('recovery-codes-save')).toBeVisible()
+  const saved = page.waitForEvent('download')
+  await page.getByTestId('recovery-codes-save').click()
+  const download = await saved
+  expect(download.suggestedFilename()).toBe('muon3d-recovery-codes.txt')
+  expect(await readFile((await download.path())!, 'utf8')).toContain(FAKE_RECOVERY_CODES[0])
   await page.getByTestId('recovery-codes-done').click()
   await expect(page.getByTestId('recovery-codes')).toHaveCount(0)
   await expect(page.getByTestId('security-two-step')).toHaveAttribute('aria-checked', 'true')

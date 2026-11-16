@@ -1,7 +1,8 @@
 /**
  * KAN-1952 (Jack, 10 Nov): people see "Quick commands", never "Macro".
- * Overview, Control and Settings (with its Quick commands page open) must
- * show no "macro" anywhere: text, tooltips, placeholders or labels.
+ * Overview and Control must show no "macro" anywhere: text, tooltips,
+ * placeholders or labels. Jack's later note (KAN-2122, 11 Nov) wins for one
+ * place: the management page is called Macros, and the links to it say so.
  */
 import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
@@ -39,19 +40,28 @@ for (const path of ['/', '/control']) {
     await usePrinter(page, PRESETS.idleHomed())
     await open(path)
     await page.waitForTimeout(1500)
-    expect(await visibleMacroWords(page)).toEqual([])
+    // The one exception (KAN-2122): the link to the Macros page, named for it.
+    const words = (await visibleMacroWords(page)).filter(w => w !== 'Manage in Macros' && !/on the Macros page"?$/.test(w))
+    expect(words).toEqual([])
     await expect(page.getByText('Quick commands').first()).toBeVisible()
   })
 }
 
-test('Settings never says "macro", on its Quick commands page too', async ({ page, open }) => {
+test('Settings: the management page is "Macros" (KAN-2122), with its "Quick commands" section; nothing else says macro', async ({ page, open }) => {
   await usePrinter(page, PRESETS.idleHomed())
-  await open('/settings')
-  await page.waitForTimeout(1000)
-  expect(await visibleMacroWords(page)).toEqual([])
   await open('/settings#macros')
-  await expect(page.getByTestId('macro-panel')).toBeVisible()
-  await page.waitForTimeout(500)
-  expect(await visibleMacroWords(page)).toEqual([])
-  await expect(page.getByTestId('macro-panel').getByRole('heading', { name: 'Quick commands' })).toBeVisible()
+  const panel = page.getByTestId('macro-panel')
+  await expect(panel).toBeVisible()
+  await expect(panel.getByRole('heading', { name: 'Macros', exact: true })).toBeVisible()
+  await expect(panel.getByTestId('quick-command-picker').getByRole('heading', { name: 'Quick commands' })).toBeVisible()
+  // The only "macro" words are the page's own name: its heading, its line, and the Settings list entry for it.
+  const words = await visibleMacroWords(page)
+  expect(words.filter(w => !/^Macros$/.test(w))).toEqual([])
+})
+
+test('Control and Overview link to the Macros page by its name, and say "Quick commands" for the feature', async ({ page, open }) => {
+  await usePrinter(page, PRESETS.idleHomed())
+  await open('/control')
+  await expect(page.getByTestId('control-quick').getByRole('heading', { name: 'Quick commands' }).or(page.getByTestId('control-quick').getByText('Quick commands').first())).toBeVisible()
+  await expect(page.getByTestId('quick-manage')).toHaveText('Manage in Macros')
 })
