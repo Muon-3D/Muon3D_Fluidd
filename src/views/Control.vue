@@ -5,6 +5,8 @@
     :class="{ 'control-page--phone': isMobileViewport, 'control-page--edit': editing }"
     data-tid="control-page"
   >
+    <machine-fault-bar />
+
     <plate-clear-bar />
 
     <div class="control-page__bar">
@@ -184,6 +186,7 @@ import BrowserMixin from '@/mixins/browser'
 import { cloudState } from '@/services/muon-cloud/state'
 import ControlActions from '@/components/control/ControlActions.vue'
 import PlateClearBar from '@/components/ui/PlateClearBar.vue'
+import MachineFaultBar from '@/components/ui/MachineFaultBar.vue'
 import { controlTiles, type ControlTileDef } from '@/components/control/registry'
 import { addTile, defaultLayout, moveBy, nudgeSize, removeTile, serverLayoutKey, type OverviewLayout, type PlacedTile } from '@/services/overview/layout'
 import { loadLayout, saveLayout, type LayoutContext } from '@/services/overview/layout-store'
@@ -197,7 +200,7 @@ type DrawnTile = ControlTileDef & PlacedTile
  * with Edit layout (the same layout rules as the Overview). While editing,
  * the tiles are inert: nothing is sent to the printer.
  */
-@Component({ components: { ControlActions, PlateClearBar } })
+@Component({ components: { ControlActions, MachineFaultBar, PlateClearBar } })
 export default class Control extends Mixins(BrowserMixin) {
   readonly defs = controlTiles
   layout: OverviewLayout = defaultLayout(controlTiles)
