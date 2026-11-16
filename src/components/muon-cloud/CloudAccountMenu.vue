@@ -375,6 +375,7 @@ import LinkPrinterDialog from './LinkPrinterDialog.vue'
 import PhotoFace from '@/components/account/profile/PhotoFace.vue'
 import { forgetOwnAvatar, loadOwnAvatar, ownAvatar } from '@/services/account/avatar'
 import AppUserMenu from '@/components/layout/AppUserMenu.vue'
+import UserPasswordDialog from '@/components/settings/auth/UserPasswordDialog.vue'
 
 /** A trusted client or an API key has no name to show, password or log out. */
 const NAMELESS_USERS = ['_TRUSTED_USER_', '_API__API_KEY_USER_USER_']
@@ -394,8 +395,8 @@ const NAMELESS_USERS = ['_TRUSTED_USER_', '_API__API_KEY_USER_USER_']
   components: {
     CloudAccountDialog: () => import('./CloudAccountDialog.vue'),
     LinkPrinterDialog,
-    UserPasswordDialog: () => import('@/components/settings/auth/UserPasswordDialog.vue'),
     AppUserMenu,
+    UserPasswordDialog,
     PhotoFace
   }
 })

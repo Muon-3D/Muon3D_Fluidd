@@ -7,12 +7,14 @@ import { MOCK_PORT, VITE_PORT } from './ports'
  * e2e/perf/first-paint.perf.ts, one run at a time on the desktop size.
  *
  *   npx vite build --outDir ../dist-prod-check --emptyOutDir
- *   PERF_OUT=perf.jsonl E2E_PORT=8412 E2E_MOCK_PORT=7412 npx playwright test -c e2e/playwright.perf.config.ts
+ *   PYTHON=python3 E2E_NO_MODULE_CACHE=1 PERF_OUT=perf.jsonl E2E_PORT=8412 E2E_MOCK_PORT=7412 npx playwright test -c e2e/playwright.perf.config.ts
  *
  * PERF_DIST serves another build; PERF_RATES (default "1,6") and PERF_RUNS (default 3) pick the CPU slowdowns and runs.
+ * On a Linux VM without hardware GL, also set E2E_SOFTWARE_GL=1; its timings are not hardware-GPU timings.
  */
 export default defineConfig({
   ...base,
+  globalSetup: undefined,
   testMatch: '**/*.perf.ts',
   fullyParallel: false,
   workers: 1,

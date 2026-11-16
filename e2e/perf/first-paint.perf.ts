@@ -6,6 +6,9 @@
 import { appendFileSync } from 'fs'
 import { test, expect } from '../fixtures'
 import { usePrinter, PRESETS } from '../control/printer'
+import { MOCK_PORT } from '../ports'
+
+test.use({ webgl: true })
 
 const RATES = (process.env.PERF_RATES || '1,6').split(',').map(Number)
 const RUNS = Number(process.env.PERF_RUNS || 3)
@@ -22,7 +25,9 @@ interface Marks {
 
 for (const rate of RATES) {
   for (let run = 1; run <= RUNS; run++) {
-    test(`cold load, ${rate}x CPU, run ${run}`, async ({ page }) => {
+    test(`cold load, ${rate}x CPU, run ${run}`, async ({ page, baseURL }) => {
+      const allowed = new Set([new URL(baseURL!).origin, `http://localhost:${MOCK_PORT}`])
+      await page.context().route('**/*', route => allowed.has(new URL(route.request().url()).origin) ? route.continue() : route.abort())
       await usePrinter(page, PRESETS.idleHomed())
       await page.addInitScript(() => {
         const marks: Record<string, unknown> & { longTasks: Array<[number, number]> } = { longTasks: [] }
@@ -42,6 +47,8 @@ for (const rate of RATES) {
         new MutationObserver(check).observe(document, { childList: true, subtree: true })
       })
       const cdp = await page.context().newCDPSession(page)
+      await cdp.send('Network.enable')
+      await cdp.send('Network.setCacheDisabled', { cacheDisabled: true })
       await cdp.send('Emulation.setCPUThrottlingRate', { rate })
       await page.goto('/boxwood-367a')
       await expect(page.locator('[data-cell="job"]')).toBeVisible({ timeout: 120_000 })

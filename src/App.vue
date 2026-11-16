@@ -123,6 +123,7 @@ import type { LinkPropertyHref, MetaPropertyName } from 'vue-meta'
 import type { FlashMessage } from '@/types'
 import { getFilesFromDataTransfer, hasFilesInDataTransfer } from './util/file-system-entry'
 import type { ThemeConfig } from '@/store/config/types'
+import ActionCommandPromptDialog from './components/common/ActionCommandPromptDialog.vue'
 import KeyboardShortcutsDialog from './components/common/KeyboardShortcutsDialog.vue'
 import { eventTargetIsContentEditable, keyboardEventToKeyboardShortcut } from './util/event-helpers'
 import { isManagedConsolePath } from '@/router/managedPath'
@@ -187,7 +188,7 @@ import { Globals } from '@/globals'
     JobReadyDialog,
     SpoolSelectionDialog: () => import('@/components/widgets/spoolman/SpoolSelectionDialog.vue'),
     FileSystemDownloadDialog: () => import('@/components/widgets/filesystem/FileSystemDownloadDialog.vue'),
-    ActionCommandPromptDialog: () => import('./components/common/ActionCommandPromptDialog.vue'),
+    ActionCommandPromptDialog,
     KeyboardShortcutsDialog
   }
 })
