@@ -11,7 +11,7 @@ const ids = (c: typeof simple) => visibleSettingsSections(c).map(s => s.id)
 describe("Settings' sections", () => {
   it('shows every supported settings section', () => {
     const expected = [
-      'general', 'network', 'access', 'updates', 'cameras', 'materials', 'macros',
+      'general', 'network', 'access', 'security', 'updates', 'cameras', 'materials', 'macros',
       'console', 'files', 'toolhead', 'gcodePreview', 'developer', 'system'
     ]
     expect(ids(simple)).toEqual(expected)
@@ -19,7 +19,7 @@ describe("Settings' sections", () => {
 
   it('adds only the sections backed by printer capabilities', () => {
     expect(ids(withTimelapse)).toEqual([
-      'general', 'network', 'access', 'updates', 'cameras', 'materials', 'macros', 'timelapse',
+      'general', 'network', 'access', 'security', 'updates', 'cameras', 'materials', 'macros', 'timelapse',
       'console', 'files', 'toolhead', 'gcodePreview', 'developer', 'system'
     ])
   })
@@ -27,6 +27,7 @@ describe("Settings' sections", () => {
   it('leave out Updates and People without the printer parts behind them', () => {
     expect(ids({ components: [] })).not.toContain('updates')
     expect(ids({ components: [] })).not.toContain('access')
+    expect(ids({ components: ['update_manager', 'authorization'] })).not.toContain('security')
   })
 
   it('open from any of their cards\' anchors', () => {

@@ -38,6 +38,37 @@ afterEach(() => {
 })
 
 describe('ManagedIrohPrinterTransport re-dialling', () => {
+  it.each([401, 403])('HTTP %s is route-neutral and never redials', async status => {
+    const log: string[] = []
+    const shared = relay('shared', log)
+    shared.fetch = vi.fn(async () => new Response('policy refused', { status }))
+    const openRelay = vi.fn(async () => shared)
+    const onStatusChange = vi.fn()
+    const transport = new ManagedIrohPrinterTransport({ authorizedSession: session('grant'), createEndpoint: async () => ({ openRelay, close () {} }), onStatusChange })
+    expect((await transport.fetch('/server/muon/identity')).status).toBe(status)
+    await transport.fetch('/server/info')
+    expect(openRelay).toHaveBeenCalledOnce()
+    expect(log).not.toContain('shared:close')
+    expect(transport.status.connection).toBe('connected')
+    expect(onStatusChange.mock.calls.some(([s]) => s.connection === 'unavailable')).toBe(false)
+  })
+
+  it.each([{ status: 401 }, { response: { status: 403 } }, new Error('muon-link policy refused this request')])('a rejected request refusal preserves the connection: %j', async refusal => {
+    const log: string[] = []
+    const shared = relay('shared', log)
+    const fetch = shared.fetch
+    shared.fetch = async path => {
+      if (path === '/server/muon/identity') throw refusal
+      return fetch(path)
+    }
+    const openRelay = vi.fn(async () => shared)
+    const transport = new ManagedIrohPrinterTransport({ authorizedSession: session('grant'), createEndpoint: async () => ({ openRelay, close () {} }) })
+    await expect(transport.fetch('/server/muon/identity')).rejects.toBe(refusal)
+    await transport.fetch('/server/info')
+    expect(openRelay).toHaveBeenCalledOnce()
+    expect(log).toEqual(['shared:fetch'])
+    expect(transport.status.connection).toBe('connected')
+  })
   it('never redials a shared transport after its owner closes it', async () => {
     const log: string[] = []
     const openRelay = vi.fn(async () => relay('shared', log))
@@ -64,6 +95,25 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
     cancelled.abort()
     await expect(transport.fetch('/server/files', { signal: cancelled.signal })).rejects.toMatchObject({ name: 'AbortError' })
     await transport.fetch('/server/info')
+    expect(openRelay).toHaveBeenCalledTimes(1)
+    expect(log).toEqual(['shared:fetch', 'shared:fetch'])
+  })
+  it('keeps the connection when the printer stops one upload stream (STOP_SENDING)', async () => {
+    // Harry, 11 Nov: an upload over the cloud route failed with "sending
+    // stopped by peer: error 0", and dropping the relay then failed the
+    // developer-mode read and the next upload with "closed".
+    const log: string[] = []
+    const shared = relay('shared', log)
+    const originalFetch = shared.fetch
+    shared.fetch = async (path, init) => {
+      if (path === '/server/files/upload') throw new Error('sending stopped by peer: error 0')
+      return originalFetch(path, init)
+    }
+    const openRelay = vi.fn(async () => shared)
+    const transport = new ManagedIrohPrinterTransport({ authorizedSession: session('grant'), createEndpoint: async () => ({ openRelay, close () {} }) })
+    await transport.fetch('/server/info')
+    await expect(transport.fetch('/server/files/upload', { method: 'POST', body: 'x' })).rejects.toThrow('sending stopped by peer: error 0')
+    await transport.fetch('/server/muon/dev_mode')
     expect(openRelay).toHaveBeenCalledTimes(1)
     expect(log).toEqual(['shared:fetch', 'shared:fetch'])
   })

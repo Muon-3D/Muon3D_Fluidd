@@ -11,6 +11,8 @@ import { TinyColor, readability } from '@ctrl/tinycolor'
 import { consola } from 'consola'
 import { applyUiStyle } from '@/util/ui-style'
 import { applyGlassIcons } from '@/util/glass-icons'
+import { mergePersonal, pickPersonal, systemPrefersDark, themeModeOf } from '@/services/settings/general'
+import { set } from 'lodash-es'
 
 const parseLanInstances = (value: unknown): InstanceConfig[] => {
   if (typeof value !== 'object' || value == null || !('version' in value) || !('printers' in value)) return []
@@ -85,6 +87,8 @@ export const actions: ActionTree<ConfigState, RootState> = {
    */
   async initUiSettings ({ commit, dispatch, state }, payload: Partial<UiSettings>) {
     commit('setInitUiSettings', payload)
+    await dispatch('applyPersonal')
+    dispatch('gcodePreview/applyViewerDefaults', undefined, { root: true })
 
     // Vuetify sometimes fails to apply the changes in a single operation but
     // doing it twice fixes it
@@ -269,6 +273,45 @@ export const actions: ActionTree<ConfigState, RootState> = {
     if (state.uiSettings.tableHeaders[payload.name]) {
       SocketActions.serverWrite(`uiSettings.tableHeaders.${payload.name}`, state.uiSettings.tableHeaders[payload.name])
     }
+  },
+
+  /**
+   * Puts someone's own Look and Ask before in effect over the printer's:
+   * with `key`, theirs (quickCommandsKey of the account) from now on.
+   */
+  async applyPersonal ({ state, commit, dispatch }, key?: string | null) {
+    if (key !== undefined) commit('setPersonalKey', key)
+    if (!state.sharedPersonal) commit('setSharedPersonal', pickPersonal(state.uiSettings))
+    const mine = state.personalKey ? state.uiSettings.personal?.[state.personalKey] : null
+    const values = mergePersonal(state.sharedPersonal ?? {}, mine)
+    if (themeModeOf({ isDark: values.theme.isDark ?? true, mode: values.theme.mode }) === 'auto') {
+      values.theme.isDark = systemPrefersDark()
+    }
+    commit('setPersonalValues', values)
+    dispatch('onThemeChange', state.uiSettings.theme)
+  },
+
+  /**
+   * Saves one of the personal settings (`theme.color`, `general.confirmOnEstop`)
+   * as this person's own on this printer; before anyone is known, for the printer.
+   */
+  async savePersonal ({ state, commit, dispatch }, payload: { path: string, value: unknown }) {
+    commit('setSaveByPath', { path: `uiSettings.${payload.path}`, value: payload.value })
+    const key = state.personalKey
+    if (key) {
+      await dispatch('saveByPath', { path: `uiSettings.personal.${key}.${payload.path}`, value: payload.value, server: true })
+    } else {
+      if (state.sharedPersonal) set(state.sharedPersonal, payload.path, payload.value)
+      await dispatch('saveByPath', { path: `uiSettings.${payload.path}`, value: payload.value, server: true })
+    }
+    if (payload.path.startsWith('theme.')) dispatch('onThemeChange', state.uiSettings.theme)
+  },
+
+  /** The device switched between light and dark: Auto follows it. */
+  async applySystemDark ({ state, commit, dispatch }, dark: boolean) {
+    if (themeModeOf(state.uiSettings.theme) !== 'auto' || state.uiSettings.theme.isDark === dark) return
+    commit('setSaveByPath', { path: 'uiSettings.theme.isDark', value: dark })
+    dispatch('onThemeChange', state.uiSettings.theme)
   },
 
   async updateTheme ({ state, dispatch }, payload: Partial<ThemeConfig>) {

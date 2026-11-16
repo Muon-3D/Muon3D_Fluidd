@@ -60,6 +60,73 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
+describe('the site\'s Print button: /library?view=discover&print=<id>&do=print', () => {
+  const props = (w: ReturnType<typeof renderLibrary>) => w.findComponent({ name: 'MuonLibrary' }).props() as { printId: string | null, autoPrint: boolean }
+
+  function live (query: Record<string, string>) {
+    const replace = vi.fn(() => Promise.resolve())
+    const push = vi.fn(() => Promise.resolve())
+    const wrapper = shallowMount(Library, {
+      mocks: { $route: { query }, $router: { replace, push }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
+      stubs: { 'router-link': true, 'frame-icon': true, 'print-on-dialog': true, 'file-name-dialog': true, 'library-state': LibraryState }
+    })
+    return { wrapper, replace, push }
+  }
+
+  it('do=print with print=<id> asks the model\'s page for Print on…; a bare print=<id> only shows it', () => {
+    const link = renderLibrary({ view: 'discover', print: 'pub-1', do: 'print' })
+    const bare = renderLibrary({ view: 'discover', print: 'pub-1' })
+    const noModel = renderLibrary({ view: 'discover', do: 'print' })
+    try {
+      expect(props(link).printId).toBe('pub-1')
+      expect(props(link).autoPrint).toBe(true)
+      expect(props(bare).printId).toBe('pub-1')
+      expect(props(bare).autoPrint).toBe(false)
+      expect(props(noModel).autoPrint).toBe(false)
+    } finally {
+      link.destroy()
+      bare.destroy()
+      noModel.destroy()
+    }
+  })
+
+  it('handled: do leaves the address, print and the rest stay', () => {
+    const { wrapper, replace } = live({ view: 'discover', print: 'pub-1', do: 'print', q: 'x' })
+    try {
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('auto-printed')
+      expect(replace).toHaveBeenCalledWith({ query: { view: 'discover', print: 'pub-1', q: 'x' } })
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('another model opened from the page leaves do behind', () => {
+    const { wrapper, push } = live({ view: 'discover', print: 'pub-1', do: 'print' })
+    try {
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('update:print', 'pub-2')
+      expect(push).toHaveBeenCalledWith({ query: { view: 'discover', print: 'pub-2' } })
+    } finally {
+      wrapper.destroy()
+    }
+  })
+
+  it('the request from the Print button names no printer; a click on the page keeps the open one', () => {
+    const { wrapper } = live({ view: 'discover', print: 'pub-1', do: 'print' })
+    try {
+      Object.assign(cloudState, { account: { id: 'a' } })
+      const request = (printerId: string | null) => ({ modelId: 'pub-1', printerId, card: {}, print: { item: { id: 'pub-1', name: 'Print 1', setups: [] } } })
+      const vm = wrapper.vm as unknown as { preferPrinter: string | null }
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('print', request(null))
+      expect(vm.preferPrinter).toBeNull()
+      wrapper.findComponent({ name: 'MuonLibrary' }).vm.$emit('print', request('p-1'))
+      expect(vm.preferPrinter).toBe('p-1')
+    } finally {
+      Object.assign(cloudState, { account: null })
+      wrapper.destroy()
+    }
+  })
+})
+
 describe('Library feed states', () => {
   it('shows an error without the off panel when the Library is disabled', () => {
     Object.assign(libraryState, {
@@ -512,6 +579,116 @@ describe('Library v3 states (page 12)', () => {
     } finally {
       yours.destroy()
       pages.forEach(page => page.destroy())
+    }
+  })
+})
+
+describe('Library: Continue is what this device opened', () => {
+  const RECENTS = 'm3d.control.library.recents.v1'
+  const open = (entries: unknown[]) => localStorage.setItem(RECENTS, JSON.stringify(entries))
+  const own = { id: 'a', kind: 'own', title: 'Hex planter', thumbnail: null, maker: null, opened_at: 2000 }
+  const pub = { id: 'p1', kind: 'publication', title: 'Pocket robot', thumbnail: null, maker: 'Wren Atelier', opened_at: 3000 }
+  const synced = (ids: string[]) => {
+    libraryState.synced = true
+    libraryState.items = Object.fromEntries(ids.map(id => [id, { id, kind: 'plate', format: '3mf', name: id, size_bytes: 1, has_thumbnail: false, state: 'ready', rev: 1, created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-01T00:00:00Z', deleted_at: null, versioned: true }]))
+  }
+  const props = (w: ReturnType<typeof renderLibrary>) => w.findComponent({ name: 'MuonLibrary' }).props() as { continueRecent: { id: string } | null, continueItem: { id: string } | null }
+
+  beforeEach(() => {
+    localStorage.clear()
+    Object.assign(libraryState, { account: 'fixture' })
+  })
+
+  it('a print of yours is not offered until this account has read its list and it is there', () => {
+    // Another account opened it on this browser; this one has Library saving off, or is still loading.
+    libraryState.synced = false
+    libraryState.items = {}
+    open([{ ...own, opened_at: 5000 }, { ...pub, opened_at: 1000 }])
+    const w = renderLibrary()
+    try {
+      expect(props(w).continueRecent?.id).toBe('p1')
+      expect(props(w).continueItem).toBeNull()
+    } finally {
+      w.destroy()
+    }
+  })
+
+  it('with nothing opened here there is nothing to Continue, even when the account has a recent print', () => {
+    synced(['a'])
+    const w = renderLibrary()
+    try {
+      expect(props(w).continueRecent).toBeNull()
+      expect(props(w).continueItem).toBeNull()
+    } finally {
+      w.destroy()
+    }
+  })
+
+  it('the most recently opened print is the one, whichever order it was synced in', () => {
+    synced(['a', 'b'])
+    open([own, pub])
+    const w = renderLibrary()
+    try {
+      expect(props(w).continueRecent?.id).toBe('p1')
+    } finally {
+      w.destroy()
+    }
+  })
+
+  it('one of yours is offered with its synced print for Print again; a public model has no print of yours behind it', () => {
+    synced(['a'])
+    open([own])
+    const mine = renderLibrary()
+    try {
+      expect(props(mine).continueRecent?.id).toBe('a')
+      expect(props(mine).continueItem?.id).toBe('a')
+    } finally {
+      mine.destroy()
+    }
+    open([pub])
+    const theirs = renderLibrary()
+    try {
+      expect(props(theirs).continueRecent?.id).toBe('p1')
+      expect(props(theirs).continueItem).toBeNull()
+    } finally {
+      theirs.destroy()
+    }
+  })
+
+  it('a print of yours that the synced Library no longer has, or signed out, is passed over for the next one', () => {
+    synced(['b'])
+    open([{ ...own, opened_at: 5000 }, { ...pub, opened_at: 1000 }])
+    const gone = renderLibrary()
+    try {
+      expect(props(gone).continueRecent?.id).toBe('p1')
+    } finally {
+      gone.destroy()
+    }
+    Object.assign(libraryState, { account: null })
+    synced(['a'])
+    const out = renderLibrary()
+    try {
+      expect(props(out).continueRecent?.id).toBe('p1')
+    } finally {
+      out.destroy()
+    }
+  })
+
+  it('Open goes to the right route: your print to its own page, a public model to its page here', () => {
+    synced(['a'])
+    const push = vi.fn(() => Promise.resolve())
+    const mounted = shallowMount(Library, {
+      mocks: { $route: { query: { view: 'discover' } }, $router: { push, replace: vi.fn(() => Promise.resolve()) }, $store: { state: { config: { apiUrl: '', instances: [] } }, getters: {} }, $vuetify: { breakpoint: { mobile: false } } },
+      stubs: { 'router-link': true, 'frame-icon': true, 'print-on-dialog': true, 'file-name-dialog': true, 'library-state': LibraryState }
+    })
+    try {
+      const library = mounted.findComponent({ name: 'MuonLibrary' })
+      library.vm.$emit('open-recent', own)
+      expect(push).toHaveBeenLastCalledWith('/library/a')
+      library.vm.$emit('open-recent', pub)
+      expect(push).toHaveBeenLastCalledWith({ query: { view: 'discover', print: 'p1' } })
+    } finally {
+      mounted.destroy()
     }
   })
 })

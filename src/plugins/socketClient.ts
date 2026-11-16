@@ -242,6 +242,9 @@ export class WebSocketClient {
     this.closing = false
     this.cancelRetry()
     this.clearFailure()
+    // A new route (auto mode failing over, or a chosen route) starts its own backoff:
+    // the old route's failed tries say nothing about this one (#370).
+    this.reconnectCount = 0
     this.bindConnection(connection, reconnect ?? null)
   }
 
@@ -351,6 +354,8 @@ export class WebSocketClient {
       this.store.commit('wait/setRemoveWait', request.wait)
     }
 
+    this.pong()
+
     if (d.error) {
       if (request) {
         Object.defineProperty(d.error, '__request__', { enumerable: false, value: request })
@@ -360,8 +365,6 @@ export class WebSocketClient {
       request?.resolve?.(undefined)
       return
     }
-
-    this.pong()
 
     if (request) {
       let result = (d.result) ? d.result : d.params

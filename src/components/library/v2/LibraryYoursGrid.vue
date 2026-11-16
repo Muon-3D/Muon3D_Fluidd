@@ -14,7 +14,12 @@
         >
           ‹ Yours
         </button>
-        <h1>{{ title }}</h1>
+        <h1
+          ref="heading"
+          tabindex="-1"
+        >
+          {{ title }}
+        </h1>
         <p
           class="mlib-muted"
           aria-live="polite"
@@ -245,6 +250,21 @@ export default class LibraryYoursGrid extends Vue {
   /** Sliced and Designs when the Library's first sync failed. */
   get syncError (): string {
     return (this.source === 'sliced' || this.source === 'designs') && !libraryState.synced && !libraryState.busy ? libraryState.error ?? '' : ''
+  }
+
+  mounted () {
+    window.addEventListener('online', this.onOnline)
+    // A page opens with its heading focused (not scrolled to).
+    this.$nextTick(() => (this.$refs.heading as HTMLElement | undefined)?.focus({ preventScroll: true }))
+  }
+
+  beforeDestroy () {
+    window.removeEventListener('online', this.onOnline)
+  }
+
+  /** Back online after the shelf did not load: read it again. */
+  onOnline () {
+    if (this.error || this.syncError) this.retry()
   }
 
   retry () {

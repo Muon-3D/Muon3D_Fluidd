@@ -173,7 +173,8 @@ export default defineConfig(async ({ command, mode }) => {
     }
   },
 
-  // VITE_MODELS_URL: the model service the Library talks to (services/library).
+  // VITE_MODELS_URL: the model service's address; VITE_MODELS_AUDIENCE: what its
+  // assertions are addressed to (services/library/transport.ts).
   envPrefix: ['VUE_', 'VITE_'],
 
   resolve: {

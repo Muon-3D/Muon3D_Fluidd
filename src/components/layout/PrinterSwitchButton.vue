@@ -35,7 +35,16 @@
             :state="thumbState"
           />
           <span class="printer-switch__text">
-            <span class="printer-switch__name">{{ name }}</span>
+            <span class="printer-switch__name">
+              <span
+                v-if="namePending"
+                class="printer-switch__pending"
+                role="img"
+                aria-label="Finding the printer's name"
+                data-tid="printer-name-pending"
+              />
+              <template v-else>{{ name }}</template>
+            </span>
             <span
               class="printer-switch__status"
               :class="`printer-switch__status--${switcherTone}`"
@@ -77,7 +86,14 @@
         />
         <span class="printer-switch__text">
           <span class="printer-switch__name">
-            {{ name }}
+            <span
+              v-if="namePending"
+              class="printer-switch__pending"
+              role="img"
+              aria-label="Finding the printer's name"
+              data-tid="printer-name-pending"
+            />
+            <template v-else>{{ name }}</template>
             <frame-icon
               name="chevronDown"
               small
@@ -112,10 +128,10 @@
 <script lang="ts">
 import { Component, Mixins, Prop } from 'vue-property-decorator'
 import PrinterStatusMixin from '@/mixins/printer-status'
+import { printModeLabel } from '@/services/control/print-mode'
 import PrinterSwitcher from '@/components/muon-cloud/PrinterSwitcher.vue'
 import type { ThumbState } from '@/components/ui/PrinterThumb.vue'
 import type { TimeEstimates } from '@/store/printer/types'
-import { printerNameParts } from '@/util/printer-name'
 import { shortDuration } from '@/util/short-duration'
 import { foreignRecordForSlug, isForeignSlug } from '@/services/printer-pages'
 import { liveForeign } from '@/services/foreign-printers/live'
@@ -148,7 +164,15 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
   }
 
   get name (): string {
-    return this.foreignRecord?.name ?? printerNameParts(this.displayName).name
+    return this.foreignRecord?.name ?? this.shownName
+  }
+
+  /**
+   * The name isn't known until the printer says it: a drawn placeholder holds
+   * its place instead of the product name standing in for it (KAN-2257).
+   */
+  get namePending (): boolean {
+    return !this.foreignRecord && this.nameWaiting
   }
 
   get switcherTone (): PrinterStatusTone {
@@ -169,9 +193,20 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
     return seconds > 0 ? `${shortDuration(seconds)} left` : null
   }
 
+  /**
+   * The print mode, when it isn't the everyday one: "Quiet", "Turbo". From
+   * printer.fan_modes as Klipper reports it (it isn't saved across a restart
+   * yet; Klipper starts in Normal).
+   */
+  get printModeChip (): string {
+    const mode = this.$store.state.printer.printer.fan_modes?.mode
+    return typeof mode === 'string' && mode && mode.toLowerCase() !== 'normal' ? printModeLabel(mode) : ''
+  }
+
   get statusLine (): string {
     if (this.foreignStatus) return FOREIGN_STATE_LABELS[this.foreignStatus.state]
-    return this.timeLeft ? `${this.statusText} · ${this.timeLeft}` : this.statusText
+    const line = this.timeLeft ? `${this.statusText} · ${this.timeLeft}` : this.statusText
+    return this.printModeChip ? `${line} · ${this.printModeChip}` : line
   }
 
   get statusLineShort (): string {
@@ -208,6 +243,32 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
     &:hover {
       box-shadow: inset 0 0 0 1px var(--m3d-border-strong);
     }
+  }
+
+  // The name's place while the printer hasn't said it: the width of a short
+  // name, with the loading sheen of the motion gallery (transform only).
+  .printer-switch__pending {
+    position: relative;
+    display: inline-block;
+    width: 84px;
+    height: 12px;
+    border-radius: 6px;
+    overflow: hidden;
+    vertical-align: middle;
+    background: var(--m3d-fill, rgb(128 128 128 / 20%));
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 20%, rgb(255 255 255 / 14%) 50%, transparent 80%);
+      animation: printer-switch-sheen 1.4s var(--m3d-ease-standard, ease) infinite;
+    }
+  }
+
+  @keyframes printer-switch-sheen {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
   }
 
   .printer-switch__button--open {
@@ -286,6 +347,10 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
 </style>
 
 <style lang="scss">
+  .m3d-reduced-motion .printer-switch__pending::after {
+    animation: none !important;
+  }
+
   .printer-switch__menu {
     overflow-y: auto;
     border-radius: 22px !important;

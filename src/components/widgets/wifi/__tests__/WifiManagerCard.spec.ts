@@ -48,7 +48,7 @@ const dispatch = vi.fn()
 /** `locked`: MuonOS network protection is on and this browser has no identity. */
 const mocks = (locked = false) => ({
   $t: (key: string) => key,
-  $route: { name: 'Dashboard' },
+  $route: { name: 'Overview' },
   $store: { getters: { 'protection/isLocked': locked }, dispatch }
 })
 

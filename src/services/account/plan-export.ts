@@ -58,3 +58,45 @@ export function planLine (v: Pick<PlanView, 'name' | 'renews' | 'willRenew'>): s
   if (!v.renews) return v.name
   return `${v.name} · ${v.willRenew === false ? 'ends' : 'renews'} ${dayText(v.renews)}`
 }
+
+/** What a copy holds: the storyboard's "Ask for a copy" choices. */
+export type ExportPart = 'account' | 'library' | 'history'
+export type ExportFormat = 'zip' | 'json'
+export const EXPORT_PARTS: Array<{ id: ExportPart, label: string, text?: string }> = [
+  { id: 'account', label: 'Account and access' },
+  { id: 'library', label: 'Library', text: 'Includes your uploaded models' },
+  { id: 'history', label: 'Print history' }
+]
+
+/** Requested → Confirmed → Gathering → Ready (settings/account-data, frame 4). */
+export const EXPORT_STAGES = ['Requested', 'Confirmed', 'Gathering', 'Ready'] as const
+
+/**
+ * The stage a request has reached, as an index into EXPORT_STAGES, or null
+ * when it has left them (failed or expired). A request only exists once it
+ * passed "Check it's you", so a queued one is already confirmed.
+ */
+export function exportStage (e: Pick<ExportRequest, 'status'>): number | null {
+  switch (e.status) {
+    case 'queued': return 1
+    case 'building': return 2
+    case 'ready': return 3
+    default: return null
+  }
+}
+
+/** The pill on a request's row. */
+export function exportStatusText (e: Pick<ExportRequest, 'status'>): string {
+  switch (e.status) {
+    case 'queued': return 'Confirmed'
+    case 'building': return 'Preparing'
+    case 'ready': return 'Ready'
+    case 'failed': return "Couldn't finish"
+    default: return 'Expired'
+  }
+}
+
+/** The requests list, newest first. */
+export function exportsNewestFirst (list: ExportRequest[]): ExportRequest[] {
+  return [...list].sort((a, b) => (exportTime(b.requested_at) ?? 0) - (exportTime(a.requested_at) ?? 0))
+}

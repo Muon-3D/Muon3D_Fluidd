@@ -197,8 +197,8 @@
           >
             <span class="acct-row">
               <span class="acct-row__label">
-                <b class="acct-data-delete__title">Delete account</b>
-                <span>Your account, your Library and your access to every printer</span>
+                <b class="acct-data-delete__title">Delete account…</b>
+                <span>You'll be asked to unlink the printers you own first. Takes effect after 14 days; sign in to undo.</span>
               </span>
               <frame-icon
                 name="chevronRight"
@@ -206,6 +206,16 @@
               />
             </span>
           </router-link>
+          <p
+            class="acct-note acct-note--good"
+            data-tid="account-data-printer-note"
+          >
+            <frame-icon
+              name="printer"
+              small
+            />
+            <span><b>Data on a printer</b> stays on the printer. Each printer's own files and logs are under its Settings › System.</span>
+          </p>
         </template>
         <account-delete
           v-else-if="current.id === 'delete'"
@@ -227,7 +237,7 @@ import BrowserMixin from '@/mixins/browser'
 import { cloudState } from '@/services/muon-cloud/state'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import { cloudBaseUrl } from '@/services/muon-cloud/api'
-import { centralLoginEnabled } from '@/services/muon-cloud/centralLogin'
+import { consoleServesPage } from '@/services/muon-cloud/centralLogin'
 import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
 import { accountCameFrom, backTarget } from '@/services/account/came-from'
@@ -311,7 +321,7 @@ export default class Account extends Mixins(BrowserMixin) {
 
   /** The console serves this page: the account's own pages work here. */
   get consoleHere (): boolean {
-    return centralLoginEnabled()
+    return consoleServesPage()
   }
 
   get consoleHost (): string {
