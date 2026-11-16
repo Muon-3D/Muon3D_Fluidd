@@ -68,9 +68,14 @@ test('make a token, see it once, copy the setup text for an AI agent', async ({ 
   expect(page.url()).not.toContain(FAKE_TOKEN)
 })
 
-test('revoking asks first, and says it is everywhere', async ({ page, open }) => {
+test('revoking asks first, and says it is everywhere', async ({ page, open, account }) => {
   await open('/account/apps')
   await page.getByTestId('tokens-row-active').getByTestId('tokens-revoke').click()
   await expect(page.getByTestId('confirm')).toContainText('Revoke Claude agent everywhere?')
   await page.getByTestId('confirm-cancel').click()
+  expect(account.changes.some(c => c.call === 'DELETE /v1/tokens/t-claude')).toBe(false)
+  await page.getByTestId('tokens-row-active').getByTestId('tokens-revoke').click()
+  await page.getByTestId('confirm-ok').click()
+  await expect.poll(() => account.changes.map(c => c.call)).toContain('DELETE /v1/tokens/t-claude')
+  await expect(page.getByTestId('tokens-row-revoked')).toContainText('Claude agent')
 })

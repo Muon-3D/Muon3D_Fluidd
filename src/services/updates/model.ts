@@ -70,6 +70,8 @@ export interface Remembered {
   reconnectedAt?: number | null;
   /** The job id the printer's install record held when Install was pressed (an earlier install's, if any): a different one is this install's. */
   startedJobId?: string | null;
+  /** When the printer, back up, first said it was verifying, ms. */
+  verifyingSince?: number | null;
 }
 
 /** When the printer doesn't say how long a restart may take: 20 minutes (one slow boot took 15). */
@@ -221,7 +223,8 @@ export function remember (prev: Remembered | null, status: AuxUpdateStatus | nul
       budgetMs: s.offline_budget_seconds ? s.offline_budget_seconds * 1000 : prev?.budgetMs ?? DEFAULT_BUDGET_MS,
       startedAt: prev?.startedAt ?? null,
       reconnectedAt: prev?.reconnectedAt ?? null,
-      startedJobId: prev?.startedJobId ?? null
+      startedJobId: prev?.startedJobId ?? null,
+      ...(s.phase === 'verifying' ? { verifyingSince: prev?.phase === 'verifying' ? prev.verifyingSince ?? now : now } : {})
     }
   }
   const terminal = s && s.phase && s.phase !== 'idle' ? s : null
@@ -240,6 +243,17 @@ export function remember (prev: Remembered | null, status: AuxUpdateStatus | nul
   const ended = prev.from ? outcome(prev, status) : null
   if (ended) return { ...prev, phase: ended, seenAt: now, lostAt: null }
   return now - heardAt(prev) <= graceOf(prev) ? prev : null
+}
+
+/**
+ * Still "verifying" this long after the printer said so, while it answers:
+ * the bar says "Couldn't confirm the update" with Details instead of
+ * staying for ever (storyboard settings/updates.md, bugs 2 and 10).
+ */
+export const VERIFY_STALE_MS = 10 * 60 * 1000
+
+export function verifyStale (r: Remembered | null, now: number): boolean {
+  return !!r && r.phase === 'verifying' && typeof r.verifyingSince === 'number' && now - r.verifyingSince > VERIFY_STALE_MS
 }
 
 /** The printer went quiet: when, if an install was under way. */
@@ -306,8 +320,11 @@ export function updateSteps (phase: SessionPhase | 'offline' | 'late'): UpdateSt
 }
 
 /** What the page says for where the update stands. */
-export function updateHeadline (phase: SessionPhase | 'offline' | 'late', progress: number | null, to: string | null): { title: string, text: string } {
+export function updateHeadline (phase: SessionPhase | 'offline' | 'late', progress: number | null, to: string | null, stale = false): { title: string, text: string } {
   const version = to ? versionLabel(to).text : 'the new version'
+  if (phase === 'verifying' && stale) {
+    return { title: "Couldn't confirm the update", text: `${version} is running, but the printer hasn't confirmed it after 10 minutes. It goes back to the version it had if it can't, the next time it restarts.` }
+  }
   switch (phase) {
     case 'preparing':
       return { title: 'Preparing update', text: `Verifying ${version} before installation.` }

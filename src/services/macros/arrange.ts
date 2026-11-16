@@ -116,7 +116,7 @@ export function internalReason (macro: MacroSource, hooks: string[], prompts: st
   if (macro.renameExisting) return `Replaces ${name}, which runs as usual`
   const description = macroDescription(macro.description)
   if (/^(called|runs?|internal|used) (when|by|on|from)\b|^internal\b|\b(called|triggered|triggers?|runs|fires|invoked)\b.*\bwhen\b/i.test(description)) return description
-  if (/(^|_)(PROMPT|CLOSE|GATE|RESULT|STATE|CALLBACK)$/.test(name)) return 'A step of another macro'
+  if (/(^|_)(PROMPT|CLOSE|GATE|RESULT|STATE|CALLBACK)$/.test(name)) return 'A step of another command'
   if (/(^|_)(PRE|POST|BEFORE|AFTER)(_|$)/.test(name)) return 'A step of printing'
   return ''
 }

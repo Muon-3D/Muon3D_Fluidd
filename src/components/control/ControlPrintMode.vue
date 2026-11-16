@@ -1,6 +1,6 @@
 <template>
   <control-card
-    :title="modes ? 'Print mode' : 'Speed and flow'"
+    title="Print mode"
     icon="pulse"
     :locked="controlLock"
     data-tid="control-printmode"
@@ -31,18 +31,24 @@
         <span v-if="card.blurb">{{ card.blurb }}</span>
       </button>
     </div>
+    <p
+      v-else
+      class="pmode__none"
+      data-tid="printmode-none"
+    >
+      Quiet, Normal and Turbo need [fan_modes] in the printer config.
+    </p>
 
     <button
       type="button"
       class="pmode__disc"
-      :class="{ 'pmode__disc--bare': !modes }"
       :aria-expanded="advanced ? 'true' : 'false'"
       aria-controls="pmode-advanced"
       data-tid="advanced-toggle"
       @click="advanced = !advanced"
     >
       <span class="pmode__disc-text">
-        <b>Advanced</b>
+        <b>Speed, flow and fans</b>
         <span data-tid="advanced-summary">{{ summary }}</span>
       </span>
       <frame-icon
@@ -99,6 +105,30 @@
         data-tid="advanced-flow"
         @change="setFlow"
       />
+      <template v-if="partFan">
+        <div class="pmode__row">
+          <b>Part fan</b>
+          <span data-tid="advanced-fan-value">{{ fanValue(partFan) ? `${fanValue(partFan)}%` : 'off' }}</span>
+        </div>
+        <range-slider
+          :key="`fan-${panelTarget}`"
+          :value="fanValue(partFan)"
+          :min="0"
+          :max="100"
+          :step="5"
+          label="Part fan"
+          :value-text-formatter="percentText"
+          :disabled="!controlReady"
+          data-tid="advanced-fan"
+          @change="setFan(partFan, $event)"
+        />
+        <p
+          v-if="busy"
+          class="pmode__fan-note"
+        >
+          The print's next fan command sets it again.
+        </p>
+      </template>
       <div
         v-if="pressureAdvance !== null"
         class="pmode__pa"
@@ -194,7 +224,8 @@ import { pressureAdvanceRange, printModeCommand, readPrintModes, type PrintModes
 /**
  * Print mode: Quiet, Normal and Turbo cards (SET_PRINT_MODE, read back from
  * printer.fan_modes.mode), hidden on a printer without fan_modes. Below them
- * Advanced, collapsed: speed %, flow % and pressure advance as a fine
+ * "Speed, flow and fans", collapsed, so the three are adjusted together
+ * (KAN-1976): speed %, flow %, the part fan %, and pressure advance as a fine
  * adjustment around the profile's value, with the motion limits and firmware
  * retraction that Speed and flow had, folded. All of it stays live while a
  * print runs: changing speed mid-print is its main use.
@@ -242,7 +273,8 @@ export default class ControlPrintMode extends ControlSpeed {
 
   get summary (): string {
     const pa = this.pressureAdvance === null ? '' : ` · Pressure advance ${this.pressureAdvance.toFixed(3)}`
-    return `Speed ${this.speedFactor}% · Flow ${this.flowFactor}%${pa}`
+    const fan = this.partFan ? ` · Fan ${this.fanValue(this.partFan)}%` : ''
+    return `Speed ${this.speedFactor}% · Flow ${this.flowFactor}%${fan}${pa}`
   }
 
   /** Kept inside the fine-adjustment range: an overshoot goes to the bound, not nowhere. */
@@ -319,11 +351,9 @@ export default class ControlPrintMode extends ControlSpeed {
     text-align: left;
   }
 
-  .pmode__disc--bare {
-    margin-top: 0;
-    padding-top: 0;
-    border-top: 0;
-  }
+  .pmode__none { margin: 0 0 8px; color: var(--m3d-text-muted); font-size: 13px; }
+
+  .pmode__fan-note { margin: 0; color: var(--m3d-text-subtle); font-size: 12px; }
 
   .pmode__disc-text {
     display: flex;

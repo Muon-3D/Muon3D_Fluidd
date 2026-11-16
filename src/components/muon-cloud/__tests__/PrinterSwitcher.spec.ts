@@ -25,6 +25,7 @@ vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { account: null, pri
 vi.mock('@/services/muon-cloud/activate', () => ({
   activateCloudPrinter: vi.fn(),
   activateLocalPrinter: vi.fn(),
+  panelCodePairing: () => false,
   activationState: { switching: null, error: null, fallbackUrl: null }
 }))
 vi.mock('@/services/muon-access/api', () => ({ lanPrinterAccess: vi.fn() }))

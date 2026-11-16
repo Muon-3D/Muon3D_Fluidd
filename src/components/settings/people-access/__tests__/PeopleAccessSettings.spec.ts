@@ -48,6 +48,8 @@ vi.mock('@/services/muon-access/api', () => ({
     setPrivateUploads: access.setPrivateUploads
   })
 }))
+const newDevices = vi.hoisted(() => ({ get: vi.fn(async (): Promise<boolean | null> => null), set: vi.fn(async (v: boolean) => v) }))
+vi.mock('@/services/muon-access/newDevices', () => ({ currentPrinterNewDevices: () => newDevices }))
 vi.mock('@/services/muon-cloud/state', () => ({ cloudState: cloud, refreshPrinters: async () => {} }))
 vi.mock('@/services/muon-cloud/api', () => ({ cloudApi: { unlinkPrinter } }))
 vi.mock('@/services/muon-cloud/origin', () => ({ isManagedApiUrl: () => false }))
@@ -549,3 +551,62 @@ describe('People and access on the printer', () => {
 })
 
 Vue.config.productionTip = false
+
+describe('Allow new devices to ask (I-170, KAN-1374)', () => {
+  const sw = (w: ReturnType<typeof open>) => w.find('[data-tid="pa-accept-requests"]')
+  beforeEach(() => {
+    access.fail = null
+    access.gate = null
+    gates.manage = true
+    ident.id = 'prn-1'
+    newDevices.get.mockReset().mockResolvedValue(null)
+    newDevices.set.mockReset().mockImplementation(async (v: boolean) => v)
+    api.shares.mockResolvedValue({ shares: [] })
+    api.invites.mockResolvedValue({ invites: [] })
+    api.links.mockResolvedValue({ links: [] })
+  })
+
+  it('shows what the printer holds to the owner and saves a change, showing what the printer now holds', async () => {
+    asOwner()
+    newDevices.get.mockResolvedValue(true)
+    newDevices.set.mockResolvedValue(false)
+    const w = open()
+    await settle(); await settle()
+    expect(sw(w).exists()).toBe(true)
+    await sw(w).trigger('click')
+    await settle()
+    expect(newDevices.set).toHaveBeenCalledWith(false)
+    w.destroy()
+  })
+
+  it('is not asked of, and not shown to, a browser that may not change the rules', async () => {
+    asMember('operator')
+    const w = open()
+    await settle(); await settle()
+    expect(newDevices.get).not.toHaveBeenCalled()
+    expect(sw(w).exists()).toBe(false)
+    w.destroy()
+  })
+
+  it('is replaced by a plain line when the printer has no such setting', async () => {
+    asOwner()
+    newDevices.get.mockResolvedValue(null)
+    const w = open()
+    await settle(); await settle()
+    expect(sw(w).exists()).toBe(false)
+    expect(w.text()).toContain('Not available on this printer yet.')
+    w.destroy()
+  })
+
+  it('shows the printer words when it refuses the change', async () => {
+    asOwner()
+    newDevices.get.mockResolvedValue(true)
+    newDevices.set.mockRejectedValue(new Error('Only the owner can change this.'))
+    const w = open()
+    await settle(); await settle()
+    await sw(w).trigger('click')
+    await settle()
+    expect(w.find('[data-tid="pa-message"]').text()).toContain('Only the owner can change this.')
+    w.destroy()
+  })
+})

@@ -232,6 +232,38 @@ describe('Access tokens', () => {
     log.mockRestore()
   })
 
+  it('does not copy setup instructions after the token has been dismissed', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const { w } = open()
+    await settle()
+    await (w.vm as any).copySetup()
+    expect(writeText).not.toHaveBeenCalled()
+    expect((w.vm as any).copyFailed).toBe(false)
+    expect((w.vm as any).setupCopied).toBe(false)
+    expect(w.find('[data-tid="tokens-secret"]').exists()).toBe(false)
+  })
+
+  it('recovers from a failed setup copy without leaving the token unmasked', async () => {
+    createToken.mockResolvedValue({ ...token(), token: SECRET } as CreatedToken)
+    const writeText = vi.fn(async () => undefined).mockRejectedValueOnce(new Error('Clipboard permission denied'))
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const { w } = open()
+    await startForm(w)
+    await w.find('[data-tid="tokens-create"]').trigger('click')
+    await settle()
+    await w.find('[data-tid="tokens-copy-setup"]').trigger('click')
+    await settle()
+    expect(w.find('[data-tid="tokens-fresh"]').text()).toContain("Couldn't copy")
+    expect(w.find('[data-tid="tokens-copy-setup"]').text()).toBe('copy setup instructions')
+    expect((w.find('[data-tid="tokens-secret"]').element as HTMLInputElement).value).toBe(SECRET)
+    await w.find('[data-tid="tokens-copy-setup"]').trigger('click')
+    await settle()
+    expect(w.find('[data-tid="tokens-copy-setup"]').text()).toBe('setup instructions copied')
+    expect(w.find('[data-tid="tokens-fresh"]').text()).not.toContain("Couldn't copy")
+    expect((w.find('[data-tid="tokens-secret"]').element as HTMLInputElement).type).toBe('password')
+  })
+
   it('files Emergency stop under Make changes, not Look only', async () => {
     const { w } = open()
     await startForm(w)

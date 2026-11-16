@@ -362,7 +362,7 @@ import { cloudState } from '@/services/muon-cloud/state'
 import { cloudBaseUrl } from '@/services/muon-cloud/api'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import type { InstanceConfig } from '@/store/config/types'
-import { centralLoginEnabled } from '@/services/muon-cloud/centralLogin'
+import { consoleServesPage } from '@/services/muon-cloud/centralLogin'
 import { beginSignOut } from '@/services/account/sign-out'
 import { printerNameParts } from '@/util/printer-name'
 import { activeSlug } from '@/services/printer-pages'
@@ -402,7 +402,7 @@ export default class CloudAccountMenu extends Vue {
 
   /** Not the console's page: passkeys, its cookie and the Library's CORS don't reach here. */
   get printerPage (): boolean {
-    return !centralLoginEnabled()
+    return !consoleServesPage()
   }
 
   get consoleHost (): string {
@@ -486,7 +486,7 @@ export default class CloudAccountMenu extends Vue {
 
   loadPhoto () {
     // The Library's service answers where the console serves Control, to a signed-in account.
-    if (this.accountId && centralLoginEnabled()) loadOwnAvatar().catch(() => {})
+    if (this.accountId && consoleServesPage()) loadOwnAvatar().catch(() => {})
   }
 
   /** Requests to use one of your printers, waiting for you. */

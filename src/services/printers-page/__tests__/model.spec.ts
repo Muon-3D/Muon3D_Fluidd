@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 import type { CloudPrinter } from '@/services/muon-cloud/api'
 import type { ForeignPrinterRecord, ForeignStatus } from '@/services/foreign-printers/types'
-import { groupSummary, jobName, printersPage, type PageSources, type PrinterTile } from '../model'
+import { groupSummary, heatingTemp, jobName, printersPage, type PageSources, type PrinterTile, type TileJob } from '../model'
 
 function entry (key: string, fields: Partial<DirectoryEntry>): DirectoryEntry {
   return {
@@ -267,6 +267,28 @@ describe('the Printers page', () => {
     expect(page.groups.map(g => [g.name, g.tiles.length])).toEqual([['Workshop', 1], ['Not in a group', 0]])
   })
 
+  it('puts printers shared with you in their own group, each tagged with who shared it', () => {
+    const shared = (id: string, name: string, by: string) => cloudEntry(id, name, { cloud: { ...cloudPrinter(id, name), shared: true, role: 'operator', sharer: { account_id: `a-${by}`, display_name: by } } })
+    const page = printersPage(sources({
+      signedIn: true,
+      directory: { cloud: [cloudEntry('b', 'Boxwood'), shared('e', 'Elder', 'Mara'), shared('j', 'Juniper', 'Tom')], local: [], found: [] },
+      groups: [{ id: 'g1', name: 'Workshop', printers: ['b'] }]
+    }))
+    expect(page.groups.map(g => [g.name, names(g.tiles)])).toEqual([['Workshop', ['Boxwood']], ['Not in a group', []], ['Shared with you', ['Elder', 'Juniper']]])
+    expect(page.groups[2].tiles.map(t => t.sharedBy)).toEqual(['Mara', 'Tom'])
+    expect(page.groups[0].tiles[0].sharedBy).toBeNull()
+  })
+
+  it('keeps a shared printer you put in one of your groups there, still tagged', () => {
+    const page = printersPage(sources({
+      signedIn: true,
+      directory: { cloud: [cloudEntry('e', 'Elder', { cloud: { ...cloudPrinter('e', 'Elder'), shared: true, shared_by: 'Mara' } })], local: [], found: [] },
+      groups: [{ id: 'g1', name: 'Workshop', printers: ['e'] }]
+    }))
+    expect(page.groups.map(g => g.name)).toEqual(['Workshop', 'Not in a group'])
+    expect(page.groups[0].tiles[0].sharedBy).toBe('Mara')
+  })
+
   it('still counts a printer that answered with a fault', () => {
     const page = printersPage(sources({
       signedIn: true,
@@ -360,6 +382,8 @@ describe('a printer found on this network, printing', () => {
       layers: 40,
       nozzle: 240,
       bed: 80,
+      nozzleTarget: 240,
+      bedTarget: 80,
       material: { name: 'PETG', colour: '#2F63C6' }
     })
     expect(page.printingNow[0].label).toBe('56%')
@@ -373,5 +397,55 @@ describe('a printer found on this network, printing', () => {
       status: { b: { reachable: false, error: 'reconnecting', updatedAt: 1 } }
     }))
     expect(page.printingNow[0].job).toMatchObject({ file: 'Harry/tray_v2_PETG.gcode', progress: 56 })
+  })
+})
+
+describe('heatingTemp', () => {
+  const job = (fields: Partial<TileJob>): TileJob => ({
+    file: 'a.gcode',
+    progress: 1,
+    secondsLeft: null,
+    layer: null,
+    layers: null,
+    nozzle: 220,
+    bed: 60,
+    nozzleTarget: 220,
+    bedTarget: 60,
+    ...fields
+  })
+
+  it('is heating when a heater is more than 3 degrees below its target, and not at 3', () => {
+    expect(heatingTemp(job({ nozzle: 216 }))).toBe(216)
+    expect(heatingTemp(job({ nozzle: 217 }))).toBeNull()
+    expect(heatingTemp(job({ nozzle: 218 }))).toBeNull()
+  })
+
+  it('goes back to printing within 3 degrees, and when over the target', () => {
+    expect(heatingTemp(job({ nozzle: 217 }))).toBeNull()
+    expect(heatingTemp(job({ nozzle: 230 }))).toBeNull()
+  })
+
+  it('is not heating when the target is 0, null or unknown', () => {
+    expect(heatingTemp(job({ nozzle: 24, nozzleTarget: 0, bed: 23, bedTarget: 0 }))).toBeNull()
+    expect(heatingTemp(job({ nozzle: 24, nozzleTarget: null, bed: 23, bedTarget: null }))).toBeNull()
+    expect(heatingTemp(job({ nozzle: 24, nozzleTarget: undefined, bed: 23, bedTarget: undefined }))).toBeNull()
+    expect(heatingTemp(job({ nozzle: null, bed: null }))).toBeNull()
+    expect(heatingTemp(null)).toBeNull()
+  })
+
+  it('takes the nozzle before the plate, and the plate only when the nozzle is there', () => {
+    expect(heatingTemp(job({ nozzle: 180, bed: 40 }))).toBe(180)
+    expect(heatingTemp(job({ nozzle: 218, bed: 40 }))).toBe(40)
+    expect(heatingTemp(job({ nozzle: 218, bed: 56 }))).toBe(56)
+    expect(heatingTemp(job({ nozzle: 218, bed: 57 }))).toBeNull()
+  })
+
+  it('reads the targets from a printer status', () => {
+    const page = printersPage(sources({
+      directory: { cloud: [cloudEntry('c', 'Cedar', { health: 'printing' })], local: [], found: [] },
+      status: { c: { reachable: true, state: 'printing', filename: 'a.gcode', progress: 0.04, extruder: { temperature: 180, target: 220 }, bed: { temperature: 60, target: 60 }, updatedAt: 1 } as never }
+    }))
+    expect(page.printingNow[0].job).toMatchObject({ nozzle: 180, nozzleTarget: 220, bed: 60, bedTarget: 60 })
+    expect(heatingTemp(page.printingNow[0].job)).toBe(180)
   })
 })

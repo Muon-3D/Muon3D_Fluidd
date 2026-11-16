@@ -829,6 +829,7 @@ export default class AccountTokens extends Mixins(AccountReauthMixin) {
     try {
       await navigator.clipboard.writeText(agentSetupText(this.fresh))
       this.setupCopied = true
+      this.copyFailed = false
     } catch {
       this.setupCopied = false
       this.copyFailed = true

@@ -70,6 +70,8 @@ const ICONS: Record<string, Shape[]> = {
   power: [{ d: 'M12 2v10' }, { d: 'M18.4 6.6a9 9 0 1 1-12.77.04' }],
   x: [{ d: 'M18 6 6 18M6 6l12 12' }],
   refresh: [{ d: 'M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8' }, { d: 'M21 3v5h-5' }],
+  arrowUp: [{ d: 'M12 19V5M5 12l7-7 7 7' }],
+  arrowDown: [{ d: 'M12 5v14M19 12l-7 7-7-7' }],
   chevronUp: [{ d: 'm18 15-6-6-6 6' }],
   minus: [{ d: 'M5 12h14' }],
   lock: [{ r: [4, 11, 16, 10, 2] }, { d: 'M8 11V7a4 4 0 0 1 8 0v4' }],

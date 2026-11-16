@@ -168,6 +168,7 @@ describe('wording that must stay true', () => {
 
 describe('the list and the agent text (6 Nov storyboard)', () => {
   it('draws scopes as Look and Change pills', () => {
+    expect(scopePills([])).toEqual([])
     expect(scopePills(['printers:read', 'library:read'])).toEqual([{ text: 'Look', changes: false }])
     expect(scopePills(['printers:read', 'printers:files', 'printers:queue', 'printers:camera'])).toEqual([
       { text: 'Look', changes: false },
@@ -181,6 +182,7 @@ describe('the list and the agent text (6 Nov storyboard)', () => {
     expect(printersShort({ printer_ids: ['p1'] }, name)).toBe('Boxwood only')
     expect(printersShort({ printer_ids: ['p1', 'p2'] }, name)).toBe('Boxwood and Oak only')
     expect(printersShort({ printer_ids: null }, name)).toBe('All your printers')
+    expect(printersShort({ printer_ids: [] }, name)).toBe('All your printers')
     expect(printersShort({ printer_ids: ['a', 'b', 'c'] }, name)).toBe('3 printers')
   })
 

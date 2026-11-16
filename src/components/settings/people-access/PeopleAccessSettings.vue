@@ -401,10 +401,30 @@
               >{{ entry === 'open' ? 'Open' : 'Protected' }}</button>
             </span>
           </div>
-          <div class="pa-row pa-row--soon">
+          <div
+            v-if="acceptRequests !== null"
+            class="pa-row"
+          >
             <div class="pa-row__text">
               <b>Allow new devices to ask</b>
-              <span>Not available yet: a new phone or browser asking, accepted on the printer's screen or your phone.</span>
+              <span>A new phone or browser can ask to connect, and you accept or reject it at the printer.</span>
+            </div>
+            <toggle-switch
+              :key="`accept-${renderKey}`"
+              :value="acceptRequests"
+              label="Allow new devices to ask"
+              :disabled="busy"
+              data-tid="pa-accept-requests"
+              @input="saveAcceptRequests(!!$event)"
+            />
+          </div>
+          <div
+            v-else
+            class="pa-row pa-row--soon"
+          >
+            <div class="pa-row__text">
+              <b>Allow new devices to ask</b>
+              <span>Not available on this printer yet.</span>
             </div>
           </div>
           <div class="pa-row">
@@ -820,6 +840,7 @@ import { dayText } from '@/services/account/model'
 import { ownAvatar, publicAvatarUrl } from '@/services/account/avatar'
 import PhotoFace from '@/components/account/profile/PhotoFace.vue'
 import { activeSlug } from '@/services/printer-pages'
+import { currentPrinterNewDevices } from '@/services/muon-access/newDevices'
 import { printerNameParts } from '@/util/printer-name'
 import type { InstanceConfig } from '@/store/config/types'
 import {
@@ -881,6 +902,9 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
   renderKey = 0
   /** The EndpointId the connected printer reports about itself, read with the rest. */
   reportedEndpoint: string | null = null
+  /** What the printer holds for "Allow new devices to ask" (I-170); null hides the switch. */
+  acceptRequests: boolean | null = null
+  newDevices = currentPrinterNewDevices()
   asking: AccessAsk | null = null
   /** The ask dialog is mounted only while open, so closing it withdraws the request. */
   askingOpen = false
@@ -1151,7 +1175,23 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
     this.printerError = printerError
     this.loading = false
     this.renderKey++
+    await this.loadAcceptRequests(key)
     await this.refreshCloud()
+  }
+
+  /** Asked only of a browser that may change the rules; an older printer or a refusal leaves the switch out. */
+  async loadAcceptRequests (key = this.printerKey) {
+    let held: boolean | null = null
+    if (this.canManage) held = await this.newDevices.get().catch(() => null)
+    if (key === this.printerKey) this.acceptRequests = held
+  }
+
+  /** Nothing changes on screen until the printer says so; a refusal shows its words. */
+  async saveAcceptRequests (value: boolean) {
+    await this.run(async () => {
+      this.acceptRequests = await this.newDevices.set(value)
+    })
+    this.renderKey++
   }
 
   /** The console's people, invites, links and requests for this printer: its owner's only. */
