@@ -663,7 +663,7 @@ export class PrinterSession {
         return takeObject(ret);
     }
     /**
-     * Fetch with body-byte progress: callback(sent, total), every 256 KiB.
+     * Fetch with body-byte progress: callback(sent, total), every 32 KiB.
      * Counts QUIC writes, not publication; await the response for success.
      * @param {string} method
      * @param {string} path

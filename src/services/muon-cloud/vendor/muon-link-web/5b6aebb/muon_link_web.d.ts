@@ -262,7 +262,7 @@ export class PrinterSession {
      */
     fetch(method: string, path: string, headers: string[], body: Uint8Array): Promise<any>;
     /**
-     * Fetch with body-byte progress: callback(sent, total), every 256 KiB.
+     * Fetch with body-byte progress: callback(sent, total), every 32 KiB.
      * Counts QUIC writes, not publication; await the response for success.
      */
     fetchWithProgress(method: string, path: string, headers: string[], body: Uint8Array, progress?: Function | null): Promise<any>;
