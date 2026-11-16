@@ -121,6 +121,7 @@ export async function managedBluetooth (origin: string, options: { operator?: bo
           const directories = new Map<number, string>()
           const notify = (message: string) => { queue.push(message); wake?.() }
           notices.add(notify)
+          const heartbeat = setInterval(() => notify(JSON.stringify({ jsonrpc: '2.0', method: 'notify_status_update', params: [{}, Date.now() / 1000] })), 1000)
           wire.onmessage = event => {
             const message = JSON.parse(event.data)
             const directory = directories.get(message.id)
@@ -134,7 +135,7 @@ export async function managedBluetooth (origin: string, options: { operator?: bo
             }
             notify(JSON.stringify(message))
           }
-          wire.onclose = () => { notices.delete(notify); queue.push(null); wake?.() }
+          wire.onclose = () => { clearInterval(heartbeat); notices.delete(notify); queue.push(null); wake?.() }
           await new Promise<void>(resolve => { wire.onopen = () => resolve() })
           return {
             send: async (text: string) => {
