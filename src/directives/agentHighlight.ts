@@ -40,6 +40,17 @@ interface Layer {
 
 const layers = new WeakMap<HTMLElement, Layer>()
 
+function updateHost (host: HTMLElement | null, activity: ControlActivity | null) {
+  if (!host) return
+  if (activity) {
+    host.setAttribute('data-agent-look', activity.look)
+    host.style.setProperty('--m3d-agent-count', String(activity.stack.length))
+  } else {
+    host.removeAttribute('data-agent-look')
+    host.style.removeProperty('--m3d-agent-count')
+  }
+}
+
 const Overlay = Vue.extend({
   data: () => ({ id: '' }),
   computed: {
@@ -50,16 +61,12 @@ const Overlay = Vue.extend({
   watch: {
     activity: {
       handler (this: Vue & { activity: ControlActivity | null }) {
-        const host = this.$el?.parentElement
-        if (!host) return
-        if (this.activity) host.setAttribute('data-agent-look', this.activity.look)
-        else host.removeAttribute('data-agent-look')
+        updateHost(this.$el?.parentElement ?? null, this.activity)
       }
     }
   },
   mounted (this: Vue & { activity: ControlActivity | null }) {
-    const host = this.$el.parentElement
-    if (host && this.activity) host.setAttribute('data-agent-look', this.activity.look)
+    updateHost(this.$el.parentElement, this.activity)
   },
   render (this: Vue & { activity: ControlActivity | null, id: string }, h): VNode {
     const a = this.activity
@@ -104,6 +111,7 @@ export const AgentHighlight: DirectiveOptions = {
     layer.vm.$destroy()
     el.classList.remove('m3d-agent-host')
     el.removeAttribute('data-agent-look')
+    el.style.removeProperty('--m3d-agent-count')
   }
 }
 

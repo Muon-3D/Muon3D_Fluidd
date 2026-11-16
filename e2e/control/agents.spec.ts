@@ -71,6 +71,11 @@ test.describe('Control', () => {
     act(agents, 'finished', { action: 'printer.read', target: null })
     const bed = highlight(page, 'bed')
     await expect(bed.getByTestId('agent-highlight-name')).toHaveText(['Claude', 'ChatGPT'])
+    const targetBox = await page.getByLabel('Bed target', { exact: true }).boundingBox()
+    const namesBox = await bed.locator('.m3d-agent-hl__names').boundingBox()
+    expect(targetBox).not.toBeNull()
+    expect(namesBox).not.toBeNull()
+    expect(targetBox!.y + targetBox!.height).toBeLessThanOrEqual(namesBox!.y)
     await expect(highlight(page, 'hotend')).toHaveCount(0)
 
     act(agents, 'started', { action: 'printer.home', target: { axes: 'xyz' } })

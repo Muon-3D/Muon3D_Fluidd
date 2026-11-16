@@ -122,6 +122,15 @@
   }
 }
 
+.heat__stepper.m3d-agent-host[data-agent-look] {
+  padding-bottom: calc(var(--m3d-agent-count, 1) * 23px + 9px);
+
+  .m3d-agent-hl__names {
+    top: auto;
+    bottom: 6px;
+  }
+}
+
 @keyframes m3d-agent-pulse {
   0%, 100% { box-shadow: inset 0 0 0 2px var(--m3d-agent-hl); }
   50% { box-shadow: inset 0 0 0 2px transparent, 0 0 0 3px color-mix(in srgb, var(--m3d-agent-hl) 35%, transparent); }
