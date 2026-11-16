@@ -133,6 +133,7 @@ import PrinterSwitcher from '@/components/muon-cloud/PrinterSwitcher.vue'
 import type { ThumbState } from '@/components/ui/PrinterThumb.vue'
 import type { TimeEstimates } from '@/store/printer/types'
 import { shortDuration } from '@/util/short-duration'
+import { faultCodes, faultSummary } from '@/services/machine-faults/faults'
 import { foreignRecordForSlug, isForeignSlug } from '@/services/printer-pages'
 import { liveForeign } from '@/services/foreign-printers/live'
 import { emptyStatus } from '@/services/foreign-printers/adapters/base'
@@ -175,8 +176,13 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
     return !this.foreignRecord && this.nameWaiting
   }
 
+  /** Machine faults (m1_machine.faults), as short words: the dot goes red and the line says so. */
+  get faultWords (): string | null {
+    return faultSummary(faultCodes(this.$store.state.printer.printer))
+  }
+
   get switcherTone (): PrinterStatusTone {
-    if (!this.foreignStatus) return this.statusTone
+    if (!this.foreignStatus) return this.faultWords ? 'fault' : this.statusTone
     const tone = FOREIGN_STATE_TONES[this.foreignStatus.state]
     return ({ ok: 'ok', run: 'active', warn: 'warn', err: 'fault', off: 'off' } as const)[tone]
   }
@@ -205,6 +211,7 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
 
   get statusLine (): string {
     if (this.foreignStatus) return FOREIGN_STATE_LABELS[this.foreignStatus.state]
+    if (this.faultWords) return this.faultWords
     const line = this.timeLeft ? `${this.statusText} · ${this.timeLeft}` : this.statusText
     return this.printModeChip ? `${line} · ${this.printModeChip}` : line
   }
