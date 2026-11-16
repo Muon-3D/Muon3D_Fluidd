@@ -11,7 +11,7 @@
  * 404 or 405 and no JSON error. `AccountError.missing` says so, and the
  * pages show "Coming soon" there instead of an error.
  */
-import { CloudError, cloudBaseUrl, refreshSession, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
+import { CloudError, INSECURE_ORIGIN_MESSAGE, carryConfirmation, cloudBaseUrl, cloudSessionAllowed, refreshOutcome, sessionRefused, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
 import { deletionRevision, observeDeletion } from '@/services/muon-cloud/deletion'
 
 export class AccountError extends CloudError {
@@ -55,6 +55,17 @@ export interface RequestOptions {
 }
 
 /**
+ * Whether a credential change answer says this session ended with it (KAN-1389,
+ * the new console): `signed_out: true`, or no `session` to adopt. An older
+ * console still answers with the re-keyed `session`: then nothing ends here.
+ */
+export function endsSession (answer: unknown): boolean {
+  const a = answer as { signed_out?: unknown, session?: { access_token?: unknown } | null } | null
+  if (a?.signed_out === true) return true
+  return !(typeof a?.session?.access_token === 'string' && a.session.access_token)
+}
+
+/**
  * A credential change (password, email, two-step, recovery codes, a passkey,
  * a linked sign-in; muon-link-cloud KAN-1389) ends the account's other
  * sessions and gives this one new credentials: `session` in the answer holds
@@ -63,14 +74,21 @@ export interface RequestOptions {
  * it at once. The browser session's cookie comes back as `Set-Cookie`, which
  * a page the console serves takes without any option (same origin).
  */
-export function adoptRekeyedSession (data: unknown) {
+export function adoptRekeyedSession (data: unknown, sameAccount = true) {
   const session = (data as { session?: { access_token?: unknown, refresh_token?: unknown } | null } | null)?.session
   if (!session || typeof session.access_token !== 'string' || !session.access_token) return
+  const before = storedToken()
   storeToken(session.access_token)
+  // The same account's new token: the confirmation moves with it (or /me is asked, when there was none to move).
+  // A session that came from a link's token (e-mail verify) may be another account's: nothing moves, /me is asked.
+  carryConfirmation(sameAccount ? before : null, session.access_token)
   if (typeof session.refresh_token === 'string' && session.refresh_token) storeRefreshToken(session.refresh_token)
 }
 
 async function send (method: string, path: string, body: unknown, token: string | null): Promise<Response> {
+  // KAN-2192: every call here is an account call. A plain-HTTP page makes none:
+  // no password, no token and no reset request leaves it.
+  if (!cloudSessionAllowed()) throw new AccountError(INSECURE_ORIGIN_MESSAGE, 0)
   const headers: Record<string, string> = {}
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
@@ -104,6 +122,13 @@ export function sentence (text: string): string {
   return /[.!?]$/.test(first) ? first : `${first}.`
 }
 
+/** Refreshes the stored session; if the console refuses it, the user is signed out (KAN-1389). True when there is a fresh pair. */
+async function refreshedOrEnded (sent: string): Promise<boolean> {
+  const outcome = await refreshOutcome()
+  if (outcome === 'refused') sessionRefused(sent)
+  return outcome === 'ok'
+}
+
 export async function accountRequest<T> (method: string, path: string, body?: unknown, options: RequestOptions = {}): Promise<T> {
   let startedAt = deletionRevision()
   const ownToken = options.token !== undefined
@@ -113,7 +138,7 @@ export async function accountRequest<T> (method: string, path: string, body?: un
   // mutation answers 401 its outcome is not safe to infer or repeat.
   if (response.status === 401 && method === 'GET' && !ownToken && token !== null) {
     const current = storedToken()
-    if (current && (current !== token || await refreshSession())) {
+    if (current && (current !== token || await refreshedOrEnded(token))) {
       token = storedToken()
       startedAt = deletionRevision()
       response = await send(method, path, body, token)
@@ -131,7 +156,7 @@ export async function accountRequest<T> (method: string, path: string, body?: un
     const now = storedToken()
     if ((!ownToken || options.adopt) && token !== null && token === now) {
       if (!ownToken) observeDeletion(method, path, response.status, data, startedAt)
-      adoptRekeyedSession(data)
+      adoptRekeyedSession(data, !ownToken)
     } else if (!ownToken && token !== null && !now) {
       // A concurrent 401 refresh cleared storage while this change was in
       // flight: the rotated session is still this person's. A different,

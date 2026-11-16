@@ -11,8 +11,7 @@
  */
 import type { HostLibrary } from './vendor/printer-client/bridge/host'
 import type { LibraryStatus } from './vendor/printer-client/bridge/protocol'
-import { isPrinterError, printerError, type PrinterError } from './vendor/printer-client/errors/kinds'
-import { LibraryError } from '@/services/library/api'
+import { libraryBridgeError } from './errors'
 import {
   ensureLibraryRead,
   libraryStatus,
@@ -22,18 +21,7 @@ import {
   setLibraryPreferences
 } from '@/services/library/store'
 
-/** A failure of the Library as the slicer reads it. */
-export function libraryBridgeError (error: unknown): PrinterError {
-  if (isPrinterError(error)) return error
-  if (error instanceof LibraryError) {
-    const status = error.status ? { status: error.status } : {}
-    if (error.code === 'not-signed-in') return printerError('not-signed-in', 'Nobody is signed in to Muon3D', status)
-    if (error.code === 'quota_exceeded') return printerError('quota', error.message, status)
-    if (error.code === 'cancelled') return printerError('cancelled', error.message)
-    return printerError('console', error.message, { ...status, detail: error.code })
-  }
-  return printerError('console', 'The Library could not do it')
-}
+export { libraryBridgeError }
 
 async function guard<T> (work: () => Promise<T>): Promise<T> {
   try {

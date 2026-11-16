@@ -29,6 +29,14 @@ const component = (socket: { open: boolean, ready: boolean }) => ({
 })
 
 describe('opening an account printer (KAN-1279)', () => {
+  it('Auto prefers a LAN answer over an online cloud printer', () => {
+    const c = component({ open: false, ready: false })
+    const e = entry(null)
+    e.lan = { host: '192.0.2.1' } as DirectoryEntry['lan']
+    openCloudEntry.call(c, e)
+    expect(c.connectLocal).toHaveBeenCalledOnce()
+    expect(c.connectCloud).not.toHaveBeenCalled()
+  })
   it('connects when the entry is marked active but its socket is not ready', () => {
     const c = component({ open: false, ready: false })
     openCloudEntry.call(c, entry('cloud'))

@@ -8,6 +8,7 @@
 import Vue from 'vue'
 import type { LibraryItem } from './api'
 import { libraryClient } from './store'
+import { modelsResourceUrl } from './transport'
 
 export const thumbnails = Vue.observable({ urls: {} as Record<string, string> })
 
@@ -29,7 +30,7 @@ export function loadThumbnail (item: LibraryItem): void {
   ;(async () => {
     const client = libraryClient()
     const transfer = await client.thumbnailUrl(item.id)
-    let url = transfer.url
+    let url = modelsResourceUrl(transfer.url, client.base)
     if (transfer.needs_auth) url = URL.createObjectURL(new Blob([await client.get(transfer)]))
     Vue.set(thumbnails.urls, key, url)
   })().catch(() => {

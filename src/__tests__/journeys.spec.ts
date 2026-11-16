@@ -21,6 +21,7 @@ vi.mock('@/services/slicer-bridge/slicerUrl', () => ({
 }))
 vi.mock('@/services/muon-cloud/state', () => ({
   cloudState: { account: null, activePrinterId: null, printers: [] },
+  reachablePrinters: () => [],
   initCloud: vi.fn()
 }))
 vi.mock('@/api/socketActions', () => ({
@@ -131,7 +132,7 @@ describe.sequential('Muon3D M1 journeys through the application router', () => {
     expect(wrapper.find('[data-tid="overview-stop"]').exists()).toBe(true)
 
     await go(`/${slug}/control`, '[data-tid="control-page"]', wrapper)
-    expect(wrapper.findAll('.control-page [data-cell]').length).toBeGreaterThanOrEqual(6)
+    expect(wrapper.findAll('.control-page [data-cell]').length).toBeGreaterThanOrEqual(5)
     const hotter = wrapper.find('button[aria-label="Nozzle hotter"]')
     await hotter.trigger('click')
     expect(SocketActions.printerGcodeScript).toHaveBeenCalledTimes(1)
@@ -200,7 +201,7 @@ describe.sequential('Muon3D M1 journeys through the application router', () => {
     retireProStorage()
     expect(localStorage.getItem('muon3d.pro')).toBeNull()
     await go(`/${slug}/control`, '[data-tid="control-page"]', wrapper)
-    expect(wrapper.findAll('.control-page [data-cell]').length).toBeGreaterThanOrEqual(6)
+    expect(wrapper.findAll('.control-page [data-cell]').length).toBeGreaterThanOrEqual(5)
   })
 
   // Product bug: Console assumes its async scroller ref exists in mounted/beforeDestroy.

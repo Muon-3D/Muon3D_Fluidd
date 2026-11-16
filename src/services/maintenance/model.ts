@@ -232,6 +232,8 @@ export function bedMiddle (meshMin: number[] | undefined, meshMax: number[] | un
 export function probeAccuracyScript (homed: boolean, middle: [number, number], traverseZ?: number): string {
   // On a bed with no-go regions (the M1's notch) the way to the middle may
   // cross one: go there at the traverse height, as bed_mesh itself does.
-  const lift = traverseZ !== undefined && Number.isFinite(traverseZ) ? [`G1 Z${traverseZ} F600`] : []
+  // A height that isn't a number is never dropped: that would send the XY move low, with no lift.
+  if (traverseZ !== undefined && !Number.isFinite(traverseZ)) throw new Error('probeAccuracyScript: no safe height to cross the notch at')
+  const lift = traverseZ !== undefined ? [`G1 Z${traverseZ} F600`] : []
   return [...(homed ? [] : ['G28']), 'G90', ...lift, `G1 X${middle[0]} Y${middle[1]} F6000`, 'PROBE_ACCURACY'].join('\n')
 }

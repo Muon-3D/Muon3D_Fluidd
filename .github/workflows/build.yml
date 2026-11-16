@@ -30,6 +30,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse banned blobs (KAN-2048)
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            sh scripts/check-banned-blobs.sh "$BASE_SHA..HEAD"
+          elif [ -n "$BEFORE_SHA" ] && [ "${BEFORE_SHA#0000000}" != "$BEFORE_SHA" ]; then
+            sh scripts/check-banned-blobs.sh HEAD
+          elif [ -n "$BEFORE_SHA" ] && git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            sh scripts/check-banned-blobs.sh "$BEFORE_SHA..HEAD"
+          else
+            sh scripts/check-banned-blobs.sh HEAD
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
