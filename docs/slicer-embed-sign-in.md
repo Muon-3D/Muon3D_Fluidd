@@ -3,14 +3,11 @@
 The slicer saves its work before asking its parent Control page to sign in:
 
 ```js
-window.parent.postMessage({
-  protocol: 'printer-bridge/1',
-  type: 'account.signIn'
-}, controlOrigin)
+window.parent.postMessage({ type: 'account.signIn' }, controlOrigin)
 ```
 
-This is a **window message**, not a bridge-port operation. Its two fields are
-exact; extra fields are ignored along with malformed messages. Control accepts
+This is a **window message**, not a bridge-port operation. Its one field is
+exact (as muon3d-slicer #57 sends it, `SIGN_IN_MESSAGE` in `web/src/app/embedSignIn.ts`); extra fields are ignored along with malformed messages. Control accepts
 it only from its own slicer iframe's `contentWindow`, at the exact origin of
 the configured `VUE_MUON_SLICER_URL`. Use the known Control origin as
 `targetOrigin`, never `*`. The vendored printer-client protocol is unchanged.

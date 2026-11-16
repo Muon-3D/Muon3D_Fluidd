@@ -4,7 +4,7 @@ import type { AccountIdentity } from '@/services/muon-cloud/account-events'
 
 const OUT: AccountIdentity = { signedIn: false, id: null, name: null }
 const IN: AccountIdentity = { signedIn: true, id: 'jack', name: 'Jack' }
-const request = { protocol: 'printer-bridge/1', type: 'account.signIn' }
+const request = { type: 'account.signIn' }
 
 function setup (signedIn = false) {
   sessionStorage.clear()

@@ -43,7 +43,7 @@ export function listenForSlicerSignIn (options: SignInOptions): () => void {
     const data: unknown = event.data
     if (!data || typeof data !== 'object' || Array.isArray(data)) return
     const request = data as Record<string, unknown>
-    if (Object.keys(request).length !== 2 || request.protocol !== 'printer-bridge/1' || request.type !== 'account.signIn') return
+    if (Object.keys(request).length !== 1 || request.type !== 'account.signIn') return
     const status = identity()
     if (status.signedIn) {
       options.accountStatus(status)

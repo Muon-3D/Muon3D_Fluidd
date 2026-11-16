@@ -8,7 +8,7 @@ const CONTROL = `http://localhost:${VITE_PORT}`
 const SLICER = 'https://slicer.e2e.test'
 const EMBED = `${SLICER}/slicer/embed.html`
 const ADDRESS = '/boxwood-367a/slice?printer=sloe&plate=2#saved-work'
-const REQUEST = { protocol: 'printer-bridge/1', type: 'account.signIn' }
+const REQUEST = { type: 'account.signIn' }
 
 test.use({ serviceWorkers: 'block' })
 
