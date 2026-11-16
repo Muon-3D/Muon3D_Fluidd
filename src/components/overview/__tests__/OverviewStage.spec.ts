@@ -23,7 +23,7 @@ async function flush () {
 }
 
 beforeEach(() => {
-  stage.wait.mockReset().mockResolvedValue(undefined)
+  stage.wait.mockReset().mockResolvedValue(10_000)
   stage.load.mockReset().mockResolvedValue({ default: Live })
   wrapper = null
 })
@@ -33,16 +33,24 @@ afterEach(() => {
 })
 
 it('keeps the picture until mounting is allowed, then preserves the current live state and part controls', async () => {
-  let allow!: () => void
-  stage.wait.mockReturnValueOnce(new Promise<void>(resolve => { allow = resolve }))
+  let allow!: (deadline: number) => void
+  let allowMount!: (deadline: number) => void
+  stage.wait
+    .mockReturnValueOnce(new Promise<number>(resolve => { allow = resolve }))
+    .mockReturnValueOnce(new Promise<number>(resolve => { allowMount = resolve }))
   const w = show()
   await w.setData({ busy: true, jobThumbnail: '/part.png' })
   expect(w.findComponent(Picture).props('state')).toBe('printing')
   expect(w.findComponent(Live).exists()).toBe(false)
   expect(stage.load).not.toHaveBeenCalled()
-  allow()
+  allow(10_000)
   await flush()
   expect(stage.load).toHaveBeenCalledTimes(1)
+  expect(stage.wait).toHaveBeenLastCalledWith(10_000)
+  expect(w.findComponent(Picture).exists()).toBe(true)
+  expect(w.findComponent(Live).exists()).toBe(false)
+  allowMount(10_000)
+  await flush()
   expect(w.findComponent(Picture).exists()).toBe(false)
   expect(w.findComponent(Live).props()).toMatchObject({ state: 'printing', shift: 0.12, parts: true })
 })

@@ -11,7 +11,7 @@ describe('liveStageMayMount', () => {
   })
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
-  const settled = (p: Promise<void>) => {
+  const settled = (p: Promise<unknown>) => {
     let done = false
     p.then(() => { done = true })
     return () => done
@@ -68,7 +68,8 @@ describe('liveStageMayMount', () => {
 
   it('mounts after MAX_WAIT_MS even while the person keeps using the page', async () => {
     const { liveStageMayMount, MAX_WAIT_MS } = await import('../stage-mount')
-    const done = settled(liveStageMayMount())
+    const pending = liveStageMayMount()
+    const done = settled(pending)
     for (let t = 0; t < MAX_WAIT_MS - 500; t += 500) {
       window.dispatchEvent(new Event('keydown'))
       await vi.advanceTimersByTimeAsync(500)
@@ -76,5 +77,8 @@ describe('liveStageMayMount', () => {
     }
     await vi.advanceTimersByTimeAsync(1000)
     expect(done()).toBe(true)
+    const rechecked = settled(liveStageMayMount(await pending))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(rechecked()).toBe(true)
   })
 })

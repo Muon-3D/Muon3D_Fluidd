@@ -72,7 +72,11 @@ export default class OverviewStage extends Mixins(OverviewMixin) {
 
   created () {
     liveStageMayMount()
-      .then(loadLiveStage)
+      .then(async deadline => {
+        const module = await loadLiveStage()
+        await liveStageMayMount(deadline)
+        return module
+      })
       .then(m => {
         if (this.gone) return
         // Registered once loaded, so the first render with it has it (an async component would draw nothing for a tick).

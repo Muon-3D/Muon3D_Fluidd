@@ -35,17 +35,17 @@ const idle = (timeout: number): Promise<void> => new Promise(resolve => {
   else setTimeout(resolve, Math.min(timeout, 200))
 })
 
-/** Resolves when the live stage may mount: see the module comment. */
-export async function liveStageMayMount (): Promise<void> {
-  const asked = performance.now()
+/** Resolves with the shared deadline when the live stage may mount. */
+export async function liveStageMayMount (until?: number): Promise<number> {
+  const asked = until === undefined ? performance.now() : 0
   await appPainted()
-  const deadline = performance.now() + MAX_WAIT_MS
+  const deadline = until ?? performance.now() + MAX_WAIT_MS
   for (;;) {
     const left = deadline - performance.now()
-    if (left <= 0) return
+    if (left <= 0) return deadline
     await idle(Math.max(1, Math.min(left, 3000)))
     const quietFor = performance.now() - Math.max(lastInput, asked)
-    if (quietFor >= QUIET_INPUT_MS || performance.now() >= deadline) return
+    if (quietFor >= QUIET_INPUT_MS || performance.now() >= deadline) return deadline
     await new Promise(resolve => setTimeout(resolve, Math.min(QUIET_INPUT_MS - quietFor, Math.max(0, deadline - performance.now()))))
   }
 }
