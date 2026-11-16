@@ -6,6 +6,7 @@
  */
 import Vue from 'vue'
 import { cloudState } from '@/services/muon-cloud/state'
+import { onAccountCleared } from '@/services/muon-cloud/account-events'
 import { accountApi, type AccountEvent, type ConsoleConfig, type JoinApproval, type Me, type Session } from './api'
 import { AccountError } from './client'
 
@@ -31,10 +32,11 @@ export const accountState = Vue.observable<AccountState>({
   error: ''
 })
 
-/** Empties what was read for another account, or for none. */
-function belongsTo (): boolean {
-  const id = cloudState.account?.id ?? null
+let accountRevision = 0
+
+function resetAccount (id: string | null) {
   if (accountState.accountId !== id) {
+    accountRevision++
     accountState.accountId = id
     accountState.me = null
     accountState.sessions = null
@@ -42,6 +44,14 @@ function belongsTo (): boolean {
     accountState.approvals = null
     accountState.error = ''
   }
+}
+
+onAccountCleared(next => resetAccount(next.id))
+
+/** Empties what was read for another account, or for none. */
+function belongsTo (): boolean {
+  const id = cloudState.account?.id ?? null
+  resetAccount(id)
   return id !== null
 }
 
@@ -52,11 +62,15 @@ export function describe (error: unknown): string {
 
 async function read<K extends 'me' | 'sessions' | 'events' | 'approvals' | 'config'> (key: K, load: () => Promise<AccountState[K]>): Promise<AccountState[K]> {
   if (!belongsTo() && key !== 'config') return accountState[key]
+  const revision = accountRevision
+  const current = () => key === 'config' || (revision === accountRevision && accountState.accountId === (cloudState.account?.id ?? null))
   try {
     const value = await load()
-    if (key === 'config' || accountState.accountId === (cloudState.account?.id ?? null)) accountState[key] = value
+    if (!current()) return accountState[key]
+    accountState[key] = value
     return value
   } catch (error) {
+    if (!current()) return accountState[key]
     // A route the console doesn't have: empty, not an error.
     if (error instanceof AccountError && error.missing) return accountState[key]
     accountState.error = describe(error)

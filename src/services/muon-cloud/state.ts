@@ -444,12 +444,17 @@ async function pollAll () {
 
 export async function refreshPrinters () {
   if (!cloudState.account || deletionState.deleteAfter !== null) return
+  const owner = cloudState.account.id
+  const signal = sessionAbort.signal
+  const current = () => !signal.aborted && cloudState.account?.id === owner
   try {
     const sentAt = Date.now()
-    cloudState.printers = (await cloudApi.printers()).printers
+    const { printers } = await cloudApi.printers()
+    if (!current()) return
+    cloudState.printers = printers
     cloudState.printersAsOf = sentAt
   } catch (error) {
-    if (error instanceof CloudError && error.status === 401) await sessionRefused()
+    if (current() && error instanceof CloudError && error.status === 401) await sessionRefused()
   }
 }
 
@@ -619,13 +624,17 @@ async function adoptSession (token: string, account: CloudAccount, fresh = false
   cloudState.error = null
   // Read before the printers fetch: a group made while either answer is on its way is newer than the saved layout.
   const editsBefore = layoutEdits
+  const signal = sessionAbort.signal
+  const current = () => !signal.aborted && cloudState.account?.id === account.id
   await refreshPrinters()
+  if (!current()) return
   try {
     const { layout } = await cloudApi.getLayout()
     // A late answer is dropped when the layout changed meanwhile (a group made here, which saveLayout sends on its
     // own) or the account it was asked for is no longer the one signed in (a sign-out also bumps the counter).
-    if (layoutEdits === editsBefore && cloudState.account?.id === account.id) cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
+    if (layoutEdits === editsBefore && current()) cloudState.layout = { ...DEFAULT_FLEET_LAYOUT, ...layout, widgets: { ...DEFAULT_FLEET_LAYOUT.widgets, ...(layout?.widgets ?? {}) } }
   } catch { /* keep the default */ }
+  if (!current()) return
   startPolling()
   watchSessionEnd(account.id)
 }
