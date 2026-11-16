@@ -84,7 +84,9 @@ test.describe('a socket that drops and comes back', () => {
     await expect(page.getByText('Nothing is printing')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toHaveCount(0)
     printer.report({ ...FINISHED, extruder: { temperature: 151.5 } })
-    await expect(page.getByText('151.5°')).toBeVisible()
+    const graph = page.getByTestId('thermal-graph')
+    await graph.scrollIntoViewIfNeeded()
+    await expect(graph.locator('[data-legend="extruder"]')).toContainText('151.5°')
   })
 
   test('Overview: Klipper shut down meanwhile, so the print is not shown going on', async ({ page, open }) => {
@@ -110,8 +112,8 @@ test.describe('a socket that drops and comes back', () => {
     await expect.poll(() => printer.moves().length).toBe(1)
     await printer.offline()
     await expect(page.getByTestId('connection-reconnecting')).toBeVisible()
-    await right.click({ force: true })
-    await page.waitForTimeout(300)
+    await expect(right).toHaveCount(0)
+    await expect(page.getByTestId('control-move')).toContainText('Connect to a printer you can control first.')
     expect(printer.moves()).toHaveLength(1)
     printer.online()
     await expect(page.getByTestId('connection-reconnecting')).toHaveCount(0, { timeout: 30_000 })
