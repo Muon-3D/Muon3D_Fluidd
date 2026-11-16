@@ -250,7 +250,7 @@ import { cameraFor, liveFacts, snapshotName, snapshotPlan } from '@/services/cam
 import { cameraPage } from '@/services/camera/page-state'
 import type { WebcamConfig } from '@/store/webcams/types'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
-import { cameraOutOfReach } from '@/services/camera/route'
+import { cameraOutOfReach, cameraReachableThroughMuon3d } from '@/services/camera/route'
 
 /**
  * Camera (`/boxwood-367a/camera/front`), v3: the picture full-bleed in a
@@ -461,7 +461,7 @@ export default class Camera extends Mixins(OverviewMixin, BrowserMixin) {
     } catch {
       // A frame from another address that doesn't allow it: fall through.
     }
-    if (camera.snapshot_url) {
+    if (camera.snapshot_url && (!printerTransportBinding.remote || cameraReachableThroughMuon3d(camera.snapshot_url, window.location.protocol))) {
       window.open(new URL(camera.snapshot_url, document.URL).toString(), '_blank', 'noopener')
     } else {
       EventBus.$emit("This camera's picture can't be saved from here.", { type: 'warning', timeout: 5000 })
