@@ -16,6 +16,7 @@ import {
   isPrintersOwnPage,
   learnActiveIdentity,
   openPrinterAt,
+  ownPageHome,
   preferSavedPrinterFor,
   printerPageNeedsLogin,
   printerPagesState,
@@ -385,5 +386,30 @@ describe('a printer opened by its address', () => {
     // 14 Oct: Boxwood opened through Muon3D showed the login page, whose
     // password went to /access/login, which muon-link refuses to every role.
     expect(printerPageNeedsLogin({ ...page, managed: true }, on)).toBe(false)
+  })
+})
+
+describe('ownPageHome (KAN-2008)', () => {
+  const own = { origin: 'http://192.168.137.81:8098', hostname: '192.168.137.81' }
+
+  it('sends the root of a printer own page straight to that printer, before any list can draw', () => {
+    expect(ownPageHome('/', 'http://192.168.137.81:8098', 'boxwood-367a', own)).toBe('/boxwood-367a')
+  })
+
+  it('leaves every other address alone', () => {
+    expect(ownPageHome('/boxwood-367a', 'http://192.168.137.81:8098', 'boxwood-367a', own)).toBeNull()
+    expect(ownPageHome('/library', 'http://192.168.137.81:8098', 'boxwood-367a', own)).toBeNull()
+  })
+
+  it('keeps the list for the shared name, the console and a printer that is not this page', () => {
+    const shared = { origin: 'http://muon3d.local', hostname: 'muon3d.local' }
+    expect(ownPageHome('/', 'http://muon3d.local', 'boxwood-367a', shared)).toBeNull()
+    expect(ownPageHome('/', 'http://192.168.137.95', 'boxwood-367a', own)).toBeNull()
+    expect(ownPageHome('/', MANAGED_API_URL, 'boxwood-367a', own)).toBeNull()
+  })
+
+  it('waits for the old behaviour when no printer slug is known', () => {
+    expect(ownPageHome('/', 'http://192.168.137.81:8098', null, own)).toBeNull()
+    expect(ownPageHome('/', '', 'boxwood-367a', own)).toBeNull()
   })
 })

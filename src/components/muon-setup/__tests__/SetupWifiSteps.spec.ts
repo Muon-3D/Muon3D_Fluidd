@@ -46,8 +46,11 @@ const flush = async (wrapper: { vm: { $nextTick: () => Promise<void> } }) => {
   await wrapper.vm.$nextTick()
 }
 
+// Real buttons, so a test presses what the owner presses (disabled, type and click all work).
+const Btn = { inheritAttrs: false, render (this: any, h: any) { return h('button', { attrs: this.$attrs, on: this.$listeners }, this.$slots.default) } }
+
 function mount (client: SetupClient) {
-  return shallowMount(SetupWifiSteps, { propsData: { client, overBluetooth: true }, stubs: { SetupStepCard }, mocks: { $t: (k: string) => k } })
+  return shallowMount(SetupWifiSteps, { propsData: { client, overBluetooth: true }, stubs: { SetupStepCard, AppBtn: Btn, VBtn: Btn }, mocks: { $t: (k: string) => k } })
 }
 
 const tid = (wrapper: ReturnType<typeof mount>, id: string) => wrapper.find(`[data-tid="${id}"]`)
@@ -151,9 +154,36 @@ describe('S4 and S4r', () => {
     const wrapper = mount(client)
     await flush(wrapper)
     expect(tid(wrapper, 'join-error').text()).toBe("the network didn't accept that password.")
-    ;(wrapper.vm as any).tryAgain()
-    await wrapper.vm.$nextTick()
+    await tid(wrapper, 'join-retry').trigger('click')
     expect((wrapper.vm as any).screen).toBe('S3')
+  })
+
+  it('never reveals the password after Try again, and hides it again when the row changes', async () => {
+    setupState.state = copy(wrongPassword)
+    setupState.state!.steps.network.error = { ...setupState.state!.steps.network.error!, detail: { ssid: 'HomeWiFi' } }
+    setLocal({ joinRev: 7 })
+    const { client } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    await tid(wrapper, 'join-retry').trigger('click')
+    await flush(wrapper)
+    expect(tid(wrapper, 'wifi-password').attributes('type')).toBe('password')
+    // Revealed by the owner, then another row opens: hidden again.
+    ;(wrapper.vm as any).showPassword = true
+    await tid(wrapper, 'wifi-BT-Hub-8JX2').trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(tid(wrapper, 'wifi-password').attributes('type')).toBe('password')
+  })
+
+  it('hides a revealed password when the owner chooses another network', async () => {
+    setupState.state = copy(wrongPassword)
+    setLocal({ joinRev: 7 })
+    const { client } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    ;(wrapper.vm as any).showPassword = true
+    await tid(wrapper, 'join-another').trigger('click')
+    expect((wrapper.vm as any).showPassword).toBe(false)
   })
 
   it('confirms the region the printer detected after joining', async () => {
@@ -178,18 +208,26 @@ describe('the step card', () => {
     expect(wrapper.find('h1').text()).toBe('Choose Wi-Fi')
   })
 
-  it('opens the chosen network\'s password in place, and enables Connect in the footer', async () => {
+  it('opens the chosen network\'s password in place with Connect under it, and drops the footer one', async () => {
     setupState.state = copy(networkPhone)
-    const { client } = fakeClient()
+    const { client, posts } = fakeClient()
     const wrapper = mount(client)
     await flush(wrapper)
+    expect(wrapper.findAll('[data-tid="wifi-connect"]').length).toBe(1)
     expect(tid(wrapper, 'wifi-connect').attributes('disabled')).toBeDefined()
     await tid(wrapper, 'wifi-HomeWiFi').trigger('click')
     expect(tid(wrapper, 'wifi-password').exists()).toBe(true)
+    // One Connect, inside the open row's form: no second tab stop in the footer.
+    expect(wrapper.findAll('[data-tid="wifi-connect"]').length).toBe(1)
+    expect(tid(wrapper, 'wifi-connect').element.closest('form')).not.toBeNull()
+    expect(tid(wrapper, 'wifi-connect').attributes('disabled')).toBeDefined()
     ;(wrapper.vm as any).password = 'correct horse battery staple'
     await wrapper.vm.$nextTick()
     expect(tid(wrapper, 'wifi-connect').attributes('disabled')).toBeUndefined()
     expect((wrapper.vm as any).selectedNetwork.ssid).toBe('HomeWiFi')
+    tid(wrapper, 'wifi-password').element.closest('form')!.dispatchEvent(new Event('submit'))
+    await flush(wrapper)
+    expect(posts.map(p => p[0])).toEqual(['network'])
   })
 })
 
@@ -212,8 +250,10 @@ describe('S5 name, updates and your account', () => {
     expect(vm.screen).toBe('S5')
     expect(vm.nameDraft).toBe('Walnut')
     vm.nameDraft = '  Workshop  '
-    await vm.saveName()
-    await vm.goBack()
+    await tid(wrapper, 'name-save').trigger('click')
+    await flush(wrapper)
+    await tid(wrapper, 'setup-back').trigger('click')
+    await flush(wrapper)
     expect(posts).toEqual([['name', { name: 'Workshop' }, undefined], ['goto', { step: 'network' }, undefined]])
   })
 
@@ -223,9 +263,41 @@ describe('S5 name, updates and your account', () => {
     const wrapper = mount(client)
     await flush(wrapper)
     expect(wrapper.find('h1').text()).toBe('Update available')
-    await (wrapper.vm as any).installUpdate()
-    await (wrapper.vm as any).updateLater()
+    await tid(wrapper, 'update-go').trigger('click')
+    await flush(wrapper)
+    await tid(wrapper, 'update-later').trigger('click')
+    await flush(wrapper)
     expect(posts.map(p => p[1])).toEqual([{ action: 'install' }, { action: 'later' }])
+    expect(wrapper.emitted('installing')).toHaveLength(1)
+  })
+
+  it('warns over Bluetooth that installing restarts the printer and drops the link', async () => {
+    setupState.state = at('update')
+    const { client } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    expect(tid(wrapper, 'update-ble-warning').text()).toMatch(/restarts.*Bluetooth link will drop/s)
+    await wrapper.setProps({ overBluetooth: false })
+    expect(tid(wrapper, 'update-ble-warning').exists()).toBe(false)
+  })
+
+  it('sends one write when a button is pressed twice before the first answers', async () => {
+    setupState.state = at('update')
+    const { client, posts } = fakeClient()
+    let release: () => void = () => {}
+    client.post.mockImplementationOnce(async (path: string, body?: Record<string, unknown>) => {
+      posts.push([path, body, undefined])
+      await new Promise<void>(resolve => { release = resolve })
+      return { ok: true, error: null, state: null }
+    })
+    const wrapper = mount(client)
+    await flush(wrapper)
+    const go = tid(wrapper, 'update-go')
+    await go.trigger('click')
+    await go.trigger('click')
+    release()
+    await flush(wrapper)
+    expect(posts).toHaveLength(1)
   })
 
   it('offers the account link, only on this network, or Skip for now', async () => {
@@ -235,9 +307,40 @@ describe('S5 name, updates and your account', () => {
     await flush(wrapper)
     const vm = wrapper.vm as any
     expect(vm.remoteChoice).toBe('cloud')
-    await vm.chooseRemote('cloud')
-    await vm.chooseRemote('later')
+    await tid(wrapper, 'remote-continue').trigger('click')
+    await flush(wrapper)
+    await tid(wrapper, 'remote-skip').trigger('click')
+    await flush(wrapper)
     expect(posts).toEqual([['remote', { mode: 'cloud' }, undefined], ['remote', { mode: 'later' }, undefined]])
+  })
+
+  it('falls back to the working choice if the internet goes after the link was picked', async () => {
+    setupState.state = at('remote')
+    const { client, posts } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    expect((wrapper.vm as any).remoteChoice).toBe('cloud')
+    setupState.state!.steps.network.internet = false
+    await wrapper.vm.$nextTick()
+    expect(tid(wrapper, 'remote-cloud').attributes('aria-checked')).toBe('false')
+    await tid(wrapper, 'remote-continue').trigger('click')
+    await flush(wrapper)
+    expect(posts.some(p => (p[1] as any)?.mode === 'cloud')).toBe(false)
+  })
+
+  it('keeps Continue off while the selected option is blocked', async () => {
+    setupState.state = at('remote')
+    const { client, posts } = fakeClient()
+    const wrapper = mount(client)
+    await flush(wrapper)
+    setupState.state!.steps.network.internet = false
+    await wrapper.vm.$nextTick()
+    // A stale selection the watcher would repair: force it to prove Continue itself holds.
+    ;(wrapper.vm as any).remoteChoice = 'cloud'
+    await wrapper.vm.$nextTick()
+    expect(tid(wrapper, 'remote-continue').attributes('disabled')).toBeDefined()
+    await tid(wrapper, 'remote-continue').trigger('click')
+    expect(posts).toEqual([])
   })
 
   it("doesn't offer the account link without the internet", async () => {
@@ -274,7 +377,9 @@ describe('S6 and S7', () => {
     expect(tid(wrapper, 'ready-self_test').text()).toContain('Running now')
     expect(tid(wrapper, 'ready-skip-transport_clips').exists()).toBe(false)
     expect(tid(wrapper, 'ready-skip-self_test').exists()).toBe(false)
-    await (wrapper.vm as any).skipReadyItem('load_filament')
+    expect(tid(wrapper, 'ready-skip-load_filament').exists()).toBe(true)
+    await tid(wrapper, 'ready-skip-load_filament').trigger('click')
+    await flush(wrapper)
     expect(posts).toEqual([['ready', { action: 'skip', item: 'load_filament' }, undefined]])
   })
 

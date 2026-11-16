@@ -113,11 +113,12 @@
           </span>
         </button>
         <form
-          v-if="selected === n.ssid && needsPassword(n)"
+          v-if="selected === n.ssid"
           class="muon-setup-steps__join"
           @submit.prevent="join(n)"
         >
           <v-text-field
+            v-if="needsPassword(n)"
             v-model="password"
             :type="showPassword ? 'text' : 'password'"
             :label="`Password for ${n.ssid}`"
@@ -132,6 +133,15 @@
             data-tid="wifi-password"
             @click:append="showPassword = !showPassword"
           />
+          <app-btn
+            color="primary"
+            type="submit"
+            :loading="busy"
+            :disabled="needsPassword(n) && !password"
+            data-tid="wifi-connect"
+          >
+            Connect and continue
+          </app-btn>
         </form>
       </div>
 
@@ -177,12 +187,12 @@
         >
           Skip for now
         </v-btn>
+        <!-- Once a row is open its own Connect takes over: one tab stop, not two. -->
         <app-btn
+          v-if="!selectedNetwork"
           color="primary"
-          :loading="busy"
-          :disabled="!selectedNetwork || (needsPassword(selectedNetwork) && !password)"
+          disabled
           data-tid="wifi-connect"
-          @click="selectedNetwork && join(selectedNetwork)"
         >
           Connect and continue
         </app-btn>
@@ -392,6 +402,14 @@
         : `${name} runs ${update.current}.`"
     >
       <p
+        v-if="overBluetooth && update.available"
+        class="muon-setup-steps__muted"
+        data-tid="update-ble-warning"
+      >
+        {{ name }} restarts to install this, and the Bluetooth link will drop. Setup carries on at the
+        printer, or reconnect once it has restarted.
+      </p>
+      <p
         v-if="update.error"
         class="muon-setup-steps__error"
         data-tid="update-error"
@@ -501,7 +519,7 @@
         <app-btn
           color="primary"
           :loading="busy"
-          :disabled="!remoteChoice"
+          :disabled="!remoteChoice || remoteBlocked"
           data-tid="remote-continue"
           @click="remoteChoice && chooseRemote(remoteChoice)"
         >
@@ -819,6 +837,11 @@ export default class SetupWifiSteps extends Vue {
     return null
   }
 
+  /** The selected option is one the printer can't do right now. */
+  get remoteBlocked (): boolean {
+    return this.remoteChoice === 'cloud' && !!this.cloudBlocked
+  }
+
   get remoteOptions () {
     return [
       {
@@ -918,6 +941,12 @@ export default class SetupWifiSteps extends Vue {
     this.writeError = null
   }
 
+  /** The internet or clock went while "Link to my account" was picked: fall back to the choice that works. */
+  @Watch('cloudBlocked')
+  onCloudBlocked (blocked: string | null) {
+    if (blocked && this.remoteChoice === 'cloud') this.remoteChoice = 'local'
+  }
+
   @Watch('screen', { immediate: true })
   onScreen (screen: ScreenId, before?: ScreenId) {
     if (screen === 'S3' && before !== 'S3') this.scan(true)
@@ -979,12 +1008,14 @@ export default class SetupWifiSteps extends Vue {
       this.selected = n.ssid
       this.password = ''
       this.passwordError = null
+      this.showPassword = false
     }
     this.writeError = null
   }
 
   /** Posts a write, and says why it was refused. Resolves to whether it went through. */
   async write (path: string, body: Record<string, unknown> = {}, opts?: { rev?: boolean }): Promise<boolean> {
+    if (this.busy) return false
     this.busy = true
     this.writeError = null
     try {
@@ -1067,12 +1098,13 @@ export default class SetupWifiSteps extends Vue {
     const ssid = this.network.error?.detail?.ssid
     setLocal({ joinRev: null })
     if (typeof ssid === 'string') this.selected = ssid
-    this.showPassword = true
+    this.showPassword = false
   }
 
   chooseAnother () {
     setLocal({ joinRev: null })
     this.selected = null
+    this.showPassword = false
   }
 
   acknowledge () {
@@ -1088,8 +1120,11 @@ export default class SetupWifiSteps extends Vue {
     if (name) return this.write('name', { name })
   }
 
-  installUpdate () {
-    return this.write('update', { action: 'install' })
+  async installUpdate () {
+    const sent = await this.write('update', { action: 'install' })
+    // Install restarts the printer: a Bluetooth link that drops after this is expected.
+    if (sent) this.$emit('installing')
+    return sent
   }
 
   updateLater () {

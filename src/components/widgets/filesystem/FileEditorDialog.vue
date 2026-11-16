@@ -108,10 +108,11 @@
             <span v-if="!$vuetify.breakpoint.smAndDown">{{ $t('app.general.btn.config_reference') }}</span>
           </app-btn>
           <app-btn
-            v-if="!readonly && !printerPrinting && configMap.serviceSupported"
+            v-if="canSaveAndRestart"
             :disabled="!ready"
             :aria-label="$t('app.general.btn.save_restart')"
-            @click="emitSave(true)"
+            data-tid="files-save-restart"
+            @click="saveAndRestart"
           >
             <v-icon
               small
@@ -125,6 +126,7 @@
             v-if="!readonly"
             :disabled="!ready"
             :aria-label="$t('app.general.btn.save')"
+            data-tid="files-save"
             @click="emitSave(false)"
           >
             <v-icon
@@ -146,6 +148,7 @@
         :filename="filename"
         :readonly="readonly"
         :code-lens="codeLens"
+        :font-size="fontSize"
         :line="line"
         @ready="editorReady = true"
         @save="emitSave(false)"
@@ -157,6 +160,7 @@
         v-model="updatedContent"
         :filename="filename"
         :readonly="readonly"
+        :font-size="fontSize"
         :line="line"
         @ready="editorReady = true"
       />
@@ -186,6 +190,7 @@ import FileEditorTextOnly from './FileEditorTextOnly.vue'
 import isWebAssemblySupported from '@/util/is-web-assembly-supported'
 import { changedLines, restartNote } from '@/services/files/model'
 import { printerNameParts } from '@/util/printer-name'
+import { editorFontPx, saveAndRestartMode, type SaveAndRestart } from '@/services/settings/editor'
 
 @Component({
   components: {
@@ -264,6 +269,35 @@ export default class FileEditorDialog extends Mixins(StateMixin, BrowserMixin) {
 
   get codeLens () {
     return this.$store.state.config.uiSettings.editor.codeLens
+  }
+
+  get fontSize (): number {
+    return editorFontPx(this.$store.state.config.uiSettings.editor.textSize)
+  }
+
+  // Settings › Files and editor › Save and restart: Ask, Always or Never.
+  get saveAndRestartMode (): SaveAndRestart {
+    return saveAndRestartMode(this.$store.state.config.uiSettings.editor.saveAndRestart)
+  }
+
+  // Only someone who may write the file, and only for a file a service reads.
+  get canSaveAndRestart (): boolean {
+    return !this.readonly && !this.printerPrinting && !!this.configMap?.serviceSupported && this.saveAndRestartMode !== 'never'
+  }
+
+  async saveAndRestart () {
+    if (!this.canSaveAndRestart) return
+    if (this.saveAndRestartMode === 'ask') {
+      const service = String(this.configMap.service)
+      const lines = this.changed
+      const what = lines > 0 ? `${lines} ${lines === 1 ? 'line changes' : 'lines change'} in ${this.filename}.` : `${this.filename} has no changes to write.`
+      const ok = await this.$confirm(
+        `${what} ${this.restartInfo}`.trim(),
+        { title: `Save and restart ${service}?`, buttonTrueText: 'Save and restart', buttonFalseText: 'Cancel' }
+      )
+      if (!ok) return
+    }
+    this.emitSave(true)
   }
 
   created () {

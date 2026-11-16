@@ -66,13 +66,12 @@ import type { RenderStatus, TimelapseLastFrame } from '@/store/timelapse/types'
 import { timelapsePage } from '@/services/timelapse/page-state'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
-import TimelapseRenderSettingsDialog from '@/components/widgets/timelapse/TimelapseRenderSettingsDialog.vue'
 
 /**
  * The Timelapse header's actions: the settings live in Settings › Timelapse,
  * and this print's render and saved frames, with Refresh, in the ··· menu.
  */
-@Component({ components: { TimelapseRenderSettingsDialog } })
+@Component({ components: { TimelapseRenderSettingsDialog: () => import('@/components/widgets/timelapse/TimelapseRenderSettingsDialog.vue') } })
 export default class TimelapseActions extends Mixins(StateMixin) {
   page = timelapsePage
   renderOpen = false

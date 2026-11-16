@@ -33,9 +33,12 @@
         fluid
         :class="{
           'fill-height': $route.meta?.fillHeight ?? false,
+          'constrained-width pa-2 pa-sm-4': !fullPage,
+          'muon-content--full': fullPage,
           [['single', 'double', 'triple', 'quad'][columnCount - 1]]: true
         }"
-        class="constrained-width muon-content pa-2 pa-sm-4"
+        :style="fullPage ? { '--muon-header-height': `${headerHeight}px` } : undefined"
+        class="muon-content"
       >
         <deletion-banner v-if="deletionPending" />
         <app-page-title
@@ -49,6 +52,8 @@
         />
 
         <bluetooth-fallback-banner />
+
+        <secure-address-banner />
 
         <update-banner v-if="showUpdateBanner" />
 
@@ -94,7 +99,8 @@
       </template>
     </v-main>
 
-    <app-footer v-if="!managedConsoleRoute && !foreignPrinterRoute" />
+    <!-- Not under a full page (Slice): the app reaches the bottom edge; every other page keeps the licences. -->
+    <app-footer v-if="!managedConsoleRoute && !foreignPrinterRoute && !fullPage" />
 
     <app-drag-overlay
       v-if="!managedConsoleRoute"
@@ -138,23 +144,27 @@ import ConnectionBanner from './components/layout/ConnectionBanner.vue'
 import ConnectingScreen from './components/layout/ConnectingScreen.vue'
 import UpdatingScreen from './components/updates/UpdatingScreen.vue'
 import UpdateBanner from './components/updates/UpdateBanner.vue'
-import { printerLost, updateWatch, watchUpdates } from '@/services/updates/watch'
+import { installStarted, printerLost, updateWatch, watchUpdates } from '@/services/updates/watch'
+import { afterPrint, afterPrintDue, cancelAfterPrint, loadAfterPrint, otaComponent } from '@/services/updates/after-print'
+import { SocketActions } from '@/api/socketActions'
 import { bannerVisible, offlineScreen } from '@/services/updates/model'
 import { printerNameParts } from '@/util/printer-name'
 import { connectionView, type ConnectionView } from '@/services/connection/view'
 import { cloudState } from '@/services/muon-cloud/state'
+import { accountQuickKey } from '@/services/console/settings'
 import { bluetoothCarrying } from '@/services/muon-ble/link'
 import { activationState } from '@/services/muon-cloud/activate'
 import { consolePresence } from '@/services/muon-cloud/presence'
 import FrameMixin from '@/mixins/frame'
-import { ACCOUNT_KEY, ALL_PRINTERS_KEY, LIBRARY_KEY, PAGE_KEYS, sectionForKey } from '@/router/printerSections'
-import { scopedPath } from '@/router/printerPagePaths'
+import { ACCOUNT_KEY, ALL_PRINTERS_KEY, LIBRARY_KEY, PAGE_KEYS, pageLabel, sectionForKey } from '@/router/printerSections'
+import { pageOfRoute, scopedPath } from '@/router/printerPagePaths'
 import { GoKeys } from '@/util/go-keys'
 import { isGcodeFile, isModelFile } from '@/services/jobs/model'
 import JobReadyDialog from './components/jobs/JobReadyDialog.vue'
 import { loaderCanGo, rememberTheme, removeLoader, startupState } from '@/services/startup/loader'
 import { saveSnapshotStatus } from '@/services/startup/snapshot'
 import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletion'
+import { Globals } from '@/globals'
 
 @Component<App>({
   metaInfo () {
@@ -167,6 +177,7 @@ import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletio
   components: {
     DeletionBanner: () => import('@/components/account/DeletionBanner.vue'),
     BluetoothFallbackBanner: () => import('@/components/layout/BluetoothFallbackBanner.vue'),
+    SecureAddressBanner: () => import('@/components/layout/SecureAddressBanner.vue'),
     DeletionNotice: () => import('@/components/account/DeletionNotice.vue'),
     ConnectionBanner,
     ConnectingScreen,
@@ -242,6 +253,16 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     rememberTheme(isDark)
   }
 
+  /** Whose Look and Ask before apply: the signed-in account's, else anyone's here. */
+  get personalKey (): string | null {
+    return accountQuickKey(cloudState)
+  }
+
+  @Watch('personalKey', { immediate: true })
+  onPersonalKey (key: string | null) {
+    this.$store.dispatch('config/applyPersonal', key)
+  }
+
   get theme (): ThemeConfig {
     return this.$store.state.config.uiSettings.theme as ThemeConfig
   }
@@ -258,10 +279,6 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   // our translations are loading.
   get updating () {
     return this.$store.state.version.busy
-  }
-
-  get inLayout (): boolean {
-    return (this.$store.state.config.layoutMode)
   }
 
   /**
@@ -331,10 +348,38 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     if (connected) this.wasConnected = true
     // The printer's own update: watched while connected, and a drop mid-install is remembered.
     if (connected && this.printerFrame) {
-      watchUpdates(activeSlug() ?? String(this.$store.state.config.apiUrl ?? ''), url => this.$httpClient.get(url, { validateStatus: () => true }))
+      this.watchPrinterUpdates()
     } else if (!connected && this.wasConnected) {
       printerLost()
     }
+  }
+
+  /** A load straight onto a printer's page can connect before the route has its printer. */
+  @Watch('printerFrame')
+  onPrinterFrame (frame: boolean) {
+    if (frame && this.socketConnected) this.watchPrinterUpdates()
+  }
+
+  watchPrinterUpdates () {
+    watchUpdates(activeSlug() ?? String(this.$store.state.config.apiUrl ?? ''), url => this.$httpClient.get(url, { validateStatus: () => true }), !!this.cloudPrinter)
+  }
+
+  /** "Install after this print": what it waits on. */
+  get afterPrintKey (): string {
+    return [updateWatch.printer, this.printerState, updateWatch.status?.target_version ?? '', afterPrint.printer, afterPrint.queued?.at ?? ''].join('|')
+  }
+
+  @Watch('afterPrintKey')
+  onAfterPrint () {
+    if (!updateWatch.printer || !updateWatch.answered) return
+    const queued = loadAfterPrint(updateWatch.printer)
+    if (!queued) return
+    const due = afterPrintDue(queued, this.printerState, updateWatch.status, Date.now())
+    if (due === 'drop') cancelAfterPrint()
+    if (due !== 'install' || !this.socketConnected || !this.klippyConnected) return
+    cancelAfterPrint()
+    SocketActions.machineUpdateClient(otaComponent(this.$store.state.version.version_info))
+    installStarted(queued.from, queued.to)
   }
 
   get displayName (): string {
@@ -411,6 +456,16 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     return this.$route.name === 'Slice' || this.$route.name === 'Slice (no printer)'
   }
 
+  /** A framed app that is the page (route meta fullPage: Slice): no padding or width limit, the height under the bar. */
+  get fullPage (): boolean {
+    return !this.managedConsoleRoute && this.$route.meta?.fullPage === true
+  }
+
+  /** The bar's height (AppBar.vue), which a full page fills the rest under. */
+  get headerHeight (): number {
+    return this.isMobileViewport ? this.$globals.HEADER_HEIGHT_PHONE : this.$globals.HEADER_HEIGHT
+  }
+
   // Each printer page is named above its content, with its section's pages
   // as tabs. Not the slicer, which fills the page with its own bar; on a
   // phone the console and G-code preview keep that height for the tool.
@@ -455,16 +510,17 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
       return `Muon3D | ${this.$route.name ?? 'Managed preview'}`
     }
 
+    // The printer's name as people know it (Boxwood, not muon-boxwood-367a),
+    // and only once the printer has said it; the page's own name as the rail
+    // shows it (Overview, not the route's internal name); never "null"
+    // (KAN-2257).
+    const displayName = this.$store.getters['config/getDisplayName'] as string
     const instanceName = this.foreignPrinterRoute
       ? foreignRecordForSlug(this.$route.params.printer)?.name ?? 'Other printer'
-      : this.$store.getters['config/getDisplayName'] as string
-    const pageName = this.$route.name
+      : displayName && displayName !== Globals.PRODUCT_NAME ? printerNameParts(displayName).name : Globals.PRODUCT_NAME
+    const pageName = this.$route.params.printer ? pageLabel(pageOfRoute(this.$route)) ?? this.$route.name : this.$route.name
 
-    if (this.printerPrinting) {
-      return `[${this.progress}%] | ${instanceName} | ${pageName}`
-    } else {
-      return `${instanceName} | ${pageName}`
-    }
+    return [this.printerPrinting ? `[${this.progress}%]` : '', instanceName, pageName ?? ''].filter(Boolean).join(' | ')
   }
 
   get pageIcon (): LinkPropertyHref[] {
@@ -621,6 +677,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     window.addEventListener('drop', this.handleDrop)
     window.addEventListener('keydown', this.handleKeyDown, false)
     document.addEventListener('visibilitychange', this.onVisibilitySave)
+    this.darkQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null
+    this.darkQuery?.addEventListener?.('change', this.onSystemDark)
 
     // this.onLoadLocale(this.$i18n.locale)
     EventBus.bus.$on('flashMessage', (payload: FlashMessage) => {
@@ -655,6 +713,13 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     window.removeEventListener('drop', this.handleDrop)
     window.removeEventListener('keydown', this.handleKeyDown)
     document.removeEventListener('visibilitychange', this.onVisibilitySave)
+    this.darkQuery?.removeEventListener?.('change', this.onSystemDark)
+  }
+
+  darkQuery: MediaQueryList | null = null
+
+  onSystemDark (event: MediaQueryListEvent) {
+    this.$store.dispatch('config/applySystemDark', event.matches)
   }
 
   handleDragOver (event: DragEvent) {
@@ -700,7 +765,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
           // keep; G-code goes in, and one file on its own is offered to print.
           const models = root === 'gcodes' ? files.filter(f => isModelFile(f.file.name)) : []
           const rest = files.filter(f => !models.includes(f))
-          if (models.length) EventBus.bus.$emit('model-dropped', models.map(f => f.file.name))
+          // The File objects go with it: Open Slice hands them to the slicer (KAN-2191).
+          if (models.length) EventBus.bus.$emit('model-dropped', models.map(f => f.file))
           if (!rest.length) return
 
           const pathWithRoot = this.$store.getters['files/getCurrentPathByRoot'](root) as string || ''
@@ -712,11 +778,13 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
 
           this.$store.dispatch('wait/addWait', wait)
 
-          await this.uploadFiles(rest, path, root, false)
+          const uploaded = await this.uploadFiles(rest, path, root, false)
 
           this.$store.dispatch('wait/removeWait', wait)
 
-          const gcodes = rest.filter(f => isGcodeFile(f.file.name) && !f.path)
+          // Only a file that really uploaded is offered to print.
+          const gcodes = rest.filter(f => isGcodeFile(f.file.name) && !f.path &&
+            uploaded !== false && uploaded.includes(path ? `${path}/${f.file.name}` : f.file.name))
           if (root === 'gcodes' && gcodes.length === 1) {
             EventBus.bus.$emit('job-ready', path ? `${path}/${gcodes[0].file.name}` : gcodes[0].file.name)
           }
@@ -854,6 +922,16 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
   .muon-content {
     position: relative;
     z-index: 1;
+  }
+
+  // A framed app that is the page (Slice): the height under the bar, banners above it, the app taking the rest.
+  .muon-content--full {
+    display: flex;
+    flex-direction: column;
+    max-width: none;
+    height: calc(100vh - var(--muon-header-height, 64px));
+    height: calc(100dvh - var(--muon-header-height, 64px));
+    padding: 0;
   }
 
   // A page from before the connection dropped: its numbers are out of date

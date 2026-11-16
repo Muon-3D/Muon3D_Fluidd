@@ -3,6 +3,7 @@ import { shallowMount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import ControlFilament from '../ControlFilament.vue'
 import MaterialPicker from '@/components/overview/MaterialPicker.vue'
+import FilamentSection from '../FilamentSection.vue'
 
 const choices = [
   { name: 'PLA', nozzle: 215, bed: 60, colour: '#E8A53B', presetId: null },
@@ -32,17 +33,20 @@ function setup (variables: Record<string, unknown>) {
 }
 
 describe('the loaded filament controls', () => {
-  it('keeps the picker available with Spoolman and gives the saved record precedence', async () => {
+  it('is the shared filament section, with the picker, and gives the saved record precedence over Spoolman', async () => {
     const s = setup({ muon_material: 'PLA', muon_material_colour: '2F63C6' })
     const wrapper = shallowMount(ControlFilament, {
       ...s.options,
       stubs: { 'control-card': { template: '<div><slot name="aside" /><slot /></div>' } }
     })
-    expect(wrapper.findComponent(MaterialPicker).exists()).toBe(true)
-    expect(wrapper.text()).not.toContain('Old spool')
+    expect(wrapper.findComponent(FilamentSection).exists()).toBe(true)
+    const section = shallowMount(FilamentSection, s.options)
+    expect(section.findComponent(MaterialPicker).exists()).toBe(true)
+    expect(section.text()).not.toContain('Old spool')
     s.printer.save_variables.variables = {}
     await Vue.nextTick()
-    expect(wrapper.findComponent(MaterialPicker).exists()).toBe(true)
+    expect(section.findComponent(MaterialPicker).exists()).toBe(true)
+    section.destroy()
     wrapper.destroy()
   })
 

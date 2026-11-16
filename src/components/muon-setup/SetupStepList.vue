@@ -21,6 +21,11 @@
           <template v-else>{{ i + 1 }}</template>
         </span>
         <span class="setup-steps__label">{{ step.label }}</span>
+        <span
+          v-if="step.status === 'skipped'"
+          class="setup-steps__outcome"
+          :data-tid="`step-${step.id}-skipped`"
+        >Skipped</span>
       </li>
     </ol>
     <div
@@ -80,6 +85,11 @@ export default class SetupStepList extends Vue {
     }
   }
 
+  &__outcome {
+    margin-left: auto;
+    font-size: var(--m3d-text-xs);
+  }
+
   &__mark {
     display: inline-flex;
     align-items: center;
@@ -114,6 +124,11 @@ export default class SetupStepList extends Vue {
 
       &.is-done {
         background: var(--m3d-accent-soft);
+      }
+
+      &.is-skipped {
+        background: var(--m3d-fill-strong);
+        opacity: 0.6;
       }
 
       &.is-on {

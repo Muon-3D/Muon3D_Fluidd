@@ -5,7 +5,7 @@
     :state="stateText"
     :tone="stateTone"
     :menu="menu"
-    class="jt"
+    :class="['jt', `jt--${size}`]"
   >
     <template v-if="busy">
       <div class="jt__who">
@@ -38,7 +38,10 @@
         >{{ layerText }}</span>
       </div>
       <span class="ot__bar jt__bar"><i :style="{ width: `${Math.min(100, progress)}%` }" /></span>
-      <div class="jt__stats">
+      <div
+        v-if="size !== 'S'"
+        class="jt__stats"
+      >
         <div>
           <span>Elapsed</span><b data-tid="job-elapsed">{{ elapsed }}</b>
         </div>
@@ -49,7 +52,7 @@
           <span>Done at</span><b data-tid="job-done">{{ doneAt || '—' }}</b>
         </div>
       </div>
-      <first-layer-nudges />
+      <first-layer-nudges v-if="size !== 'S'" />
       <div class="jt__actions">
         <button
           type="button"
