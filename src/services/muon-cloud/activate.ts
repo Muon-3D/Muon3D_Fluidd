@@ -21,6 +21,7 @@ import { requestRefused } from '@/services/managed-transport/refusal'
 import { isOwnHotspot, pageReach } from './discovery'
 import { wantsBluetoothFor } from '@/services/muon-ble/link'
 import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
+import { onApprovalWatch, type ApprovalWatch } from './approval'
 
 export { MANAGED_API_URL, MANAGED_SOCKET_URL }
 
@@ -34,7 +35,11 @@ export const activationState = Vue.observable({
    * (KAN-1253). Set only by that refusal, never by the console, so the offer
    * to pair this browser appears for nothing else.
    */
-  pairing: null as string | null
+  pairing: null as string | null,
+  /** The wait for the printer's owner to accept this browser (I-170), when the printer is holding it. */
+  approval: null as ApprovalWatch | null,
+  /** The printer that wait is for, so Try again dials the same one. */
+  approvalFor: null as string | null
 })
 
 let panelCodePairingOverride: boolean | null = null
@@ -164,6 +169,13 @@ export async function activateCloudPrinter (printerId: string) {
   activationState.error = null
   activationState.fallbackUrl = null
   activationState.pairing = null
+  activationState.approval?.cancel()
+  activationState.approval = null
+  onApprovalWatch(watch => {
+    if (superseded()) return
+    activationState.approval = watch
+    activationState.approvalFor = printerId
+  })
   // Set inside `open`, so typed here rather than narrowed to null.
   let transport = null as PrinterTransport | null
   const open = async () => {

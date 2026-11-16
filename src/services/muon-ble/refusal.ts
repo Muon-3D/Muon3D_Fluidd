@@ -16,8 +16,10 @@ export type PairableRefusal = 'unknown' | 'expired' | 'revoked'
  * offer starts a ceremony that only a person at the printer can finish.
  */
 export function pairableRefusal (error: unknown): PairableRefusal | null {
-  const e = error as { kind?: unknown, code?: unknown } | null
+  const e = error as { kind?: unknown, code?: unknown, reason?: unknown } | null
   if (!e || typeof e !== 'object' || e.kind !== 'refused') return null
+  // The owner turned "Allow new devices to ask" off: Accept or Reject is not offered, so the code is the way in (I-170).
+  if (e.reason === 'disabled') return 'unknown'
   if (e.code === CLOSE_UNAUTHORISED) return 'unknown'
   if (e.code === CLOSE_EXPIRED) return 'expired'
   if (e.code === CLOSE_REVOKED) return 'revoked'

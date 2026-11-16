@@ -92,9 +92,9 @@ function within<T> (promise: Promise<T>, ms: number, onTimeout: () => Error): Pr
 const NO_WINDOW = "Open System > Add a device on the printer's screen, then try again."
 const REASON_WORDS: Record<string, string> = {
   refused: 'The printer said no to this browser, so nothing was added.',
-  timed_out: 'The printer waited and nobody answered, so nothing was added. Try again.',
+  timed_out: "Check the printer's screen, then try again.",
   disabled: 'Adding devices is turned off on this printer. Ask its owner to turn it on.',
-  busy: 'The printer is busy with another request. Wait a moment, then try again.',
+  busy: "Check the printer's screen, then try again.",
   cooldown: 'The printer is pausing new requests for a few minutes. Try again later.'
 }
 const BUSY = 'The printer is busy with another pairing. Wait for it to finish, or cancel it on the printer, then try again.'

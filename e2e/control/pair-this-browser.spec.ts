@@ -25,16 +25,11 @@ async function heardNearby (page: import('@playwright/test').Page) {
   await expect(page.getByTestId('found-pair-bluetooth')).toBeVisible()
 }
 
-const optionsButton = (page: import('@playwright/test').Page) => page.locator('button[aria-label^="Options for"]').first()
-
-test('Pair this browser is in the printer menu and opens the code dialog', async ({ page, isMobile }) => {
+test('Pair this browser is offered on a printer heard nearby and opens the code dialog', async ({ page, isMobile }) => {
   await heardNearby(page)
   await setPairingGate(page, true)
-  await optionsButton(page).click()
-  const item = page.locator('.menuable__content__active [data-action="pair-browser"]')
-  await expect(item).toContainText('Pair this browser')
-  await expect(item).toContainText("Open Add a device on the printer's screen first.")
-  await item.click()
+  // A printer heard nearby and linked to nobody lists its actions as buttons on its tile.
+  await page.getByRole('button', { name: 'Pair this browser' }).click()
 
   const sheet = page.getByTestId('ble-sheet')
   await expect(sheet.getByTestId('pair-code-step')).toContainText('Check the code')
@@ -48,10 +43,9 @@ test('Pair this browser is in the printer menu and opens the code dialog', async
   expect(events.indexOf(`submitCode ${PANEL_CODE}`)).toBeGreaterThan(events.indexOf(`beginPairing ${NAME}`))
 })
 
-test('Pair this browser is not in the menu while the pairing switch is off', async ({ page }) => {
+test('Pair this browser is not offered while the pairing switch is off', async ({ page }) => {
   await heardNearby(page)
   await setPairingGate(page, false)
-  await optionsButton(page).click()
-  await expect(page.locator('.menuable__content__active [data-action]').first()).toBeVisible()
-  await expect(page.locator('[data-action="pair-browser"]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Pair over Bluetooth' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Pair this browser' })).toHaveCount(0)
 })

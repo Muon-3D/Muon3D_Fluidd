@@ -107,6 +107,19 @@ function routeFactsOf (e: DirectoryEntry): RouteMenuFacts {
 }
 
 /**
+ * What to tell the person to do at the printer first. A printer with an owner opens its pairing window
+ * from System > Add a device; one still in first-run set-up opens it by itself, so it gets no hint.
+ * Where Control cannot tell the two apart, the line covers both.
+ */
+export function pairHint (e: DirectoryEntry): string | undefined {
+  const unclaimed = (e.nearby ?? e.row?.nearby)?.advert?.unclaimed
+  if (unclaimed === true) return undefined
+  const owned = unclaimed === false || e.linkedTo === 'mine' || e.linkedTo === 'other' || !!e.cloud?.shared
+  if (owned) return "Open System > Add a device on the printer's screen first."
+  return "Check the printer's screen. If nothing shows, open System > Add a device."
+}
+
+/**
  * Pair this browser with the printer by the code on its screen (KAN-1374). Offered for any
  * printer Control can name, linked or not, whenever the pairing switch is on (panelCodePairing).
  */
@@ -117,7 +130,7 @@ function pairAction (e: DirectoryEntry): CardAction | null {
     id: 'pair-browser',
     label: 'Pair this browser',
     icon: '$bluetooth',
-    hint: reason ?? "Open Add a device on the printer's screen first.",
+    hint: reason ?? pairHint(e),
     disabled: !!reason
   }
 }
@@ -540,27 +553,23 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     }
     retryBluetooth(id)
     await this.connectCloud(e, heard.device, auto)
-    if (activationState.pairing === id) await startPairing(id)
+    if (activationState.pairing === id) {
+      // The printer would not hold this browser for Accept or Reject: the code is the way in, so the wait's outcome goes.
+      activationState.approval = null
+      await startPairing(id)
+    }
   }
 
   /**
-   * Pair this browser from the menu (KAN-1374): the Bluetooth picker if this printer has not been
-   * chosen yet (as Connect over Bluetooth does), then the code dialog. One flow, startPairing's.
+   * Pair this browser from the menu (KAN-1374): the one entry point. It is Connect over Bluetooth
+   * (the picker if the printer has not been chosen yet), so a printer that knows this browser opens,
+   * one that holds it for Accept or Reject at its screen shows the wait (ApprovalWaitHost), and one
+   * that will not take a stranger, or whose owner turned new-device requests off, goes on to the
+   * code dialog (startPairing).
    */
   async pairThisBrowserFrom (e: DirectoryEntry) {
-    const id = idOf(e)
-    if (!id || !panelCodePairing()) return
-    const heard = e.nearby ?? await permittedPrinterFor(id).catch(() => null) ??
-      await lookNearby({ endpointId: id, name: rememberedName(id) })
-    if (!heard) return
-    if (heard.endpointId && !isPrinter(heard, id)) {
-      this.notice = `That device isn't ${e.name}. Choose ${e.name} in the Bluetooth list.`
-      return
-    }
-    retryBluetooth(id)
-    chooseRouteMode(id, 'ble')
-    useBluetoothFor(id, heard.device)
-    await startPairing(id)
+    if (!idOf(e) || !panelCodePairing()) return
+    await this.connectOverBluetooth(e)
   }
 
   /**
