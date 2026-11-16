@@ -14,12 +14,27 @@
         >
           More
         </summary>
-        <a
-          class="heat__edit"
-          :href="materialsLink"
-          @click.prevent="$router.push(materialsLink)"
-        >Edit materials</a>
+        <div class="heat__menu">
+          <button
+            type="button"
+            class="heat__edit"
+            data-tid="heat-add-material"
+            @click="addMaterial"
+          >
+            Add a material
+          </button>
+          <a
+            class="heat__edit"
+            :href="materialsLink"
+            data-tid="heat-see-materials"
+            @click.prevent="$router.push(materialsLink)"
+          >See materials</a>
+        </div>
       </details>
+      <add-material-dialog
+        v-if="adding"
+        v-model="adding"
+      />
     </template>
 
     <div
@@ -43,7 +58,7 @@
         v-if="!materials.length"
         class="heat__none"
       >
-        No materials yet. Add them in Settings › Thermal presets.
+        No materials yet. Add them in Settings › Materials.
       </p>
     </div>
     <div
@@ -54,7 +69,17 @@
         :key="`${panelTarget}|${h.heater.name}`"
         class="heat__stepper"
       >
-        <span class="heat__stepper-name">{{ h.label }} <span class="crow__sub">{{ deg1(h.heater.temperature) }} · power {{ Math.round((h.heater.power || 0) * 100) }}%</span></span>
+        <span class="heat__stepper-name">
+          {{ h.label }}
+          <span class="heat__reading">
+            <b
+              class="heat__now"
+              data-tid="heat-now"
+            >{{ deg1(h.heater.temperature) }}</b>
+            <heater-sparkline :series="h.heater.key || h.heater.name" />
+          </span>
+          <span class="crow__sub">power {{ Math.round((h.heater.power || 0) * 100) }}%</span>
+        </span>
         <button
           type="button"
           class="heat__step"
@@ -122,7 +147,8 @@
           :disabled="!ready"
           @change="setHeater(otherHeater(sensor.name), $event)"
         />
-        <b class="crow__value">{{ deg1(sensor.temperature) }}</b>
+        <heater-sparkline :series="sensor.key || sensor.name" />
+        <b class="crow__value heat__other-now">{{ deg1(sensor.temperature) }}</b>
       </div>
     </control-task-fold>
   </control-card>
@@ -139,6 +165,8 @@ import type { Heater, Sensor } from '@/store/printer/types'
 import ControlTaskFold from './ControlTaskFold.vue'
 import ControlCard from './ControlCard.vue'
 import NumberField from './NumberField.vue'
+import HeaterSparkline from './HeaterSparkline.vue'
+const AddMaterialDialog = () => import('@/components/settings/presets/AddMaterialDialog.vue')
 
 interface Stepper {
   heater: Heater;
@@ -149,10 +177,17 @@ interface Stepper {
 /**
  * Materials, nudges and exact targets share one panel at every width.
  */
-@Component({ components: { ControlCard, NumberField, ControlTaskFold } })
+@Component({ components: { ControlCard, NumberField, ControlTaskFold, AddMaterialDialog, HeaterSparkline } })
 export default class ControlHeat extends Mixins(ControlMixin) {
   @Prop({ type: Boolean })
   readonly phone?: boolean
+
+  adding = false
+
+  addMaterial (event: Event) {
+    (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open')
+    this.adding = true
+  }
 
   get ready (): boolean {
     return this.controlReady
@@ -193,7 +228,7 @@ export default class ControlHeat extends Mixins(ControlMixin) {
 
 <style lang="scss" scoped>
   .heat__more { position: relative; }
-  .heat__more .heat__edit { position: absolute; right: 0; top: 100%; z-index: 10; min-width: 140px; padding: 12px; border: 1px solid var(--m3d-border); border-radius: 12px; background: var(--m3d-surface); }
+  .heat__more .heat__menu { display: flex; flex-direction: column; gap: 10px; position: absolute; right: 0; top: 100%; z-index: 10; min-width: 140px; padding: 12px; border: 1px solid var(--m3d-border); border-radius: 12px; background: var(--m3d-surface); }
   .heat__edit {
     color: var(--m3d-text-muted) !important;
     font-size: 13px;
@@ -273,10 +308,24 @@ export default class ControlHeat extends Mixins(ControlMixin) {
 
   .heat__stepper-name {
     flex: 1 1 auto;
+    min-width: 0;
     font-size: 14px;
     font-weight: 500;
     .crow__sub { display: block; font-size: 11px; }
   }
+
+  .heat__reading { display: flex; align-items: center; gap: 8px; }
+
+  // Larger and bolder, in the normal text colour (Jack: "more pronounced, but don't colour them").
+  .heat__now {
+    color: var(--m3d-text);
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+
+  .heat__other-now { color: var(--m3d-text); font-size: 15px; font-weight: 700; }
 
   .heat__stepper-value {
     min-width: 44px;

@@ -46,7 +46,7 @@ describe('explaining errors', () => {
   })
 
   it('names an unknown command', () => {
-    expect(explain('!! Unknown command:"PRINT_STRAT"')).toBe('Klipper doesn\'t know PRINT_STRAT. Check the spelling, or whether a macro by that name is installed.')
+    expect(explain('!! Unknown command:"PRINT_STRAT"')).toBe('Klipper doesn\'t know PRINT_STRAT. Check the spelling, or whether a command by that name is installed.')
   })
 
   it('leaves other lines alone', () => {

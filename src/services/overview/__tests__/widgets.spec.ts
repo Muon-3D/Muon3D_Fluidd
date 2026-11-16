@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { overviewTiles } from '@/components/widgets/overview/registry'
 import { addTile, defaultLayout, nudgeSize, readLayout, removeTile, resizeTile, sizeKeyOf, snapSize, type TileDefault } from '../layout'
-import { isMuonPrinter, muonHidden, searchWidgets, widgetCategories, widgetMeta, widgetsFor } from '../widgets'
+import { muonHidden, treatAsMuon, searchWidgets, widgetCategories, widgetMeta, widgetsFor } from '../widgets'
 
 const defs: TileDefault[] = overviewTiles
 const byId = (id: string) => overviewTiles.find(t => t.id === id)!
@@ -19,40 +19,51 @@ describe('the default layout', () => {
     expect(at('stage').span).toBeGreaterThan(at('job').span)
   })
 
-  it('has a row of four under them: hotend, bed, print mode and fans', () => {
-    expect(ids.slice(3, 7)).toEqual(['hotend', 'bed', 'mode', 'fans'])
-    for (const id of ids.slice(3, 7)) expect(at(id)).toMatchObject({ span: 3, rows: 1 })
+  it("has Jack's rows under them (KAN-2029): Print mode and Position side by side, Temperatures across, no Fans (KAN-1951)", () => {
+    expect(ids.slice(3, 6)).toEqual(['mode', 'position', 'graph'])
+    expect(at('mode')).toMatchObject({ span: 6, rows: 1 })
+    expect(at('position')).toMatchObject({ span: 6, rows: 1 })
+    expect(at('graph')).toMatchObject({ span: 12, rows: 1 })
   })
 
-  it('shows only jog and position of the movement widgets, with quick actions and the temperatures', () => {
-    expect(ids.slice(7)).toEqual(['jog', 'position', 'macros', 'graph'])
-    expect(ids).not.toContain('trackpad')
+  it('has the Trackpad, Jog on its right, and Quick commands under Jog down to the Trackpad floor (OV-19, OV-29)', () => {
+    expect(ids.slice(6)).toEqual(['trackpad', 'jog', 'macros'])
+    expect(at('trackpad')).toMatchObject({ span: 4, rows: 3 })
+    expect(at('jog')).toMatchObject({ span: 8, rows: 2 })
+    expect(at('macros')).toMatchObject({ span: 8, rows: 1 })
+    expect(at('trackpad').span + at('jog').span).toBe(12)
+    expect(at('macros').span).toBe(at('jog').span)
+    expect(at('jog').rows + at('macros').rows).toBe(at('trackpad').rows)
   })
 
   it('puts everything else away until it is added', () => {
-    expect(layout.hidden).toEqual(['trackpad', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(layout.hidden).toEqual(['hotend', 'bed', 'fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
     expect(ids.length + layout.hidden.length).toBe(overviewTiles.length)
   })
 
-  it('has the first four rows no wider than the 12 columns', () => {
-    expect(at('hotend').span + at('bed').span + at('mode').span + at('fans').span).toBe(12)
+  it('has the first rows no wider than the 12 columns', () => {
+    expect(at('mode').span + at('position').span).toBe(12)
     expect(at('stage').span + at('job').span).toBe(12)
   })
 })
 
 describe('the catalogue', () => {
-  it('has unique ids, a category from the list, and S, M or L sizes inside the grid', () => {
+  it('has unique ids, a category from the list, and S, M or L sizes (XS for Quick commands) inside the grid', () => {
     expect(new Set(widgetMeta.map(w => w.id)).size).toBe(widgetMeta.length)
     for (const w of widgetMeta) {
       expect(widgetCategories).toContain(w.category)
       expect(w.sizes.length).toBeGreaterThanOrEqual(2)
       for (const z of w.sizes) {
-        expect(['S', 'M', 'L']).toContain(z.key)
+        expect(w.id === 'macros' ? ['XS', 'S', 'M', 'L'] : ['S', 'M', 'L']).toContain(z.key)
         expect(z.span).toBeGreaterThanOrEqual(3); expect(z.span).toBeLessThanOrEqual(12)
         expect(z.rows).toBeGreaterThanOrEqual(1); expect(z.rows).toBeLessThanOrEqual(4)
       }
       expect(w.sizes.map(z => z.key)).toContain(w.size)
     }
+  })
+
+  it('gives Quick commands XS, S, M and L: icons in 3 columns, then 3 by 2, 8 and 12 (OV-29)', () => {
+    expect(byId('macros').sizes).toEqual([{ key: 'XS', span: 3, rows: 1 }, { key: 'S', span: 3, rows: 2 }, { key: 'M', span: 8, rows: 1 }, { key: 'L', span: 12, rows: 1 }])
   })
 
   it('gives S exactly 3 columns', () => {
@@ -65,7 +76,8 @@ describe('the catalogue', () => {
 
   it('has Movement, Jog and Position as three separate widgets', () => {
     expect(['trackpad', 'jog', 'position'].every(id => overviewTiles.some(t => t.id === id))).toBe(true)
-    expect(byId('trackpad').defaultOn).toBe(false)
+    expect(byId('trackpad').defaultOn).toBe(true)
+    expect(byId('macros').title).toBe('Quick commands')
   })
 
   it('draws every widget with a component, and defaults to the size it declares', () => {
@@ -136,12 +148,12 @@ describe('sizes in the layout', () => {
   })
 
   it('steps through the sizes with the arrows, and stops at the ends', () => {
-    const up = nudgeSize(layout, 'hotend', 1, 0, defs)
-    expect(up.tiles.find(t => t.id === 'hotend')).toMatchObject({ span: 6, rows: 1 })
-    const same = nudgeSize(up, 'hotend', 1, 0, defs)
-    expect(same.tiles.find(t => t.id === 'hotend')).toMatchObject({ span: 6, rows: 1 })
-    const down = nudgeSize(up, 'hotend', -1, 0, defs)
-    expect(down.tiles.find(t => t.id === 'hotend')).toMatchObject({ span: 3, rows: 1 })
+    const up = nudgeSize(layout, 'position', 1, 0, defs)
+    expect(up.tiles.find(t => t.id === 'position')).toMatchObject({ span: 8, rows: 1 })
+    const same = nudgeSize(up, 'position', 1, 0, defs)
+    expect(same.tiles.find(t => t.id === 'position')).toMatchObject({ span: 8, rows: 1 })
+    const down = nudgeSize(up, 'position', -1, 0, defs)
+    expect(down.tiles.find(t => t.id === 'position')).toMatchObject({ span: 6, rows: 1 })
     const tall = nudgeSize(layout, 'job', 0, 1, defs)
     expect(tall.tiles.find(t => t.id === 'job')).toMatchObject({ span: 4, rows: 2 })
   })
@@ -176,7 +188,7 @@ describe('migrating a saved layout', () => {
   it('maps the old Speed / flow tile to Print mode, in the same place', () => {
     const out = readLayout(saved([{ id: 'job', span: 5, rows: 1 }, { id: 'speed', span: 3, rows: 1 }, { id: 'graph', span: 12, rows: 1 }]), defs)!
     expect(out.tiles.map(t => t.id)).toEqual(['job', 'mode', 'graph'])
-    expect(out.tiles[1]).toEqual({ id: 'mode', span: 3, rows: 1 })
+    expect(out.tiles[1]).toEqual({ id: 'mode', span: 6, rows: 1 })
     expect(out.hidden).not.toContain('speed')
     expect(out.hidden).not.toContain('mode')
   })
@@ -225,12 +237,11 @@ describe('Muon printers', () => {
   const muonDefs = widgetsFor(defs as Array<TileDefault & { id: string }>, true)
 
   it('knows a Muon printer by its components, and treats an unknown list as Muon', () => {
-    expect(isMuonPrinter(['file_manager', 'muon_access'])).toBe(true)
-    expect(isMuonPrinter(['file_manager', 'muon_protection'])).toBe(true)
-    expect(isMuonPrinter(['file_manager', 'history'])).toBe(false)
-    expect(isMuonPrinter([])).toBe(true)
-    expect(isMuonPrinter(undefined)).toBe(true)
-    expect(isMuonPrinter(null)).toBe(true)
+    expect(treatAsMuon(true)).toBe(true)
+    expect(treatAsMuon(false)).toBe(false)
+    // Not known yet: counts as Muon, so Z offset never flashes up on one.
+    expect(treatAsMuon(null)).toBe(true)
+    expect(treatAsMuon(undefined)).toBe(true)
   })
 
   it('never offers Z offset on a Muon printer, and keeps it elsewhere', () => {

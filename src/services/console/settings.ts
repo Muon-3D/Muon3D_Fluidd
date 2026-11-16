@@ -20,6 +20,10 @@ export interface ConsoleConfig {
   suggest: boolean;
   enterSends: boolean;
   historyCount: number;
+  /** Long lines wrap; off, each stays on one line, cut short with "…". */
+  wrap: boolean;
+  /** When the printer reconnects, the Console starts empty; the log keeps the lines. */
+  clearOnReconnect: boolean;
   /** Each person's quick commands on this printer, by quickCommandsKey(account). */
   quickCommands: Record<string, QuickCommand[]>;
 }
@@ -34,6 +38,8 @@ export const defaultConsoleConfig = (): ConsoleConfig => ({
   suggest: true,
   enterSends: true,
   historyCount: Globals.CONSOLE_COMMAND_HISTORY,
+  wrap: true,
+  clearOnReconnect: false,
   quickCommands: {}
 })
 
@@ -48,6 +54,8 @@ export function consoleConfig (saved: Partial<ConsoleConfig> | null | undefined)
     suggest: typeof s.suggest === 'boolean' ? s.suggest : d.suggest,
     enterSends: typeof s.enterSends === 'boolean' ? s.enterSends : d.enterSends,
     historyCount: HISTORY_COUNTS.includes(s.historyCount as number) ? s.historyCount as number : d.historyCount,
+    wrap: typeof s.wrap === 'boolean' ? s.wrap : d.wrap,
+    clearOnReconnect: typeof s.clearOnReconnect === 'boolean' ? s.clearOnReconnect : d.clearOnReconnect,
     quickCommands: s.quickCommands && typeof s.quickCommands === 'object' ? s.quickCommands : {}
   }
 }
@@ -161,3 +169,14 @@ export const FILTER_TYPES: Array<{ value: ConsoleFilterType, label: string }> = 
   { value: 'starts-with', label: 'Start with' },
   { value: 'expression', label: 'Pattern' }
 ]
+
+/** What each Showing option looks like in the console, shown under it in Settings › Console. */
+export const PREVIEW_LONG_LINE = '// Klipper state: Ready. Probe at 112.0,108.5 is z=1.842, bed mesh "default" loaded, 25 points'
+
+export function timestampPreview (on: boolean): string {
+  return on ? '14:02:11  ok T:210.0 /210.0 B:60.0 /60.0' : 'ok T:210.0 /210.0 B:60.0 /60.0'
+}
+
+export function reconnectPreview (on: boolean): string {
+  return on ? 'Reconnected. The console starts empty; the log keeps the earlier lines.' : 'Reconnected. The earlier lines stay in the console.'
+}

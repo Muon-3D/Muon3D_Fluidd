@@ -93,7 +93,7 @@
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import { activationState } from '@/services/muon-cloud/activate'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, reachablePrinters } from '@/services/muon-cloud/state'
 import { consolePresence, type CloudPresence } from '@/services/muon-cloud/presence'
 import { startPairing } from '@/services/muon-ble/pairing'
 import { openPrinterAt, printerPagesState, resolveSlug } from '@/services/printer-pages'
@@ -118,7 +118,7 @@ export default class PrinterOpening extends Vue {
   get name (): string {
     const target = resolveSlug(this.slug)
     if (target?.kind === 'local') return target.instance.name || this.slug
-    if (target?.kind === 'cloud') return cloudState.printers.find(p => p.id === target.printerId)?.name ?? this.slug
+    if (target?.kind === 'cloud') return reachablePrinters().find(p => p.id === target.printerId)?.name ?? this.slug
     return this.slug
   }
 

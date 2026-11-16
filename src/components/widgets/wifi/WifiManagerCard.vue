@@ -31,6 +31,11 @@
     </header>
 
     <protected-notice class="wf__span" />
+    <permission-refusal-notice
+      class="wf__span"
+      :refusal="refusal"
+      @dismiss="refusal = null"
+    />
     <p
       v-if="remote"
       class="wf__note wf__span"
@@ -327,7 +332,7 @@
       max-width="420"
     >
       <div class="wf__dialog">
-        <h3>{{ $t('app.general.confirm.enter_password', { ssid: selectedNetwork?.ssid }) }}</h3>
+        <h3>Password for {{ selectedNetwork?.ssid }}</h3>
         <v-text-field
           v-model="password"
           :label="$t('app.general.label.password')"
@@ -351,7 +356,7 @@
             data-tid="wifi-connect"
             @click="connectToSelected"
           >
-            {{ $t('app.general.btn.connect') }}
+            Connect
           </button>
         </div>
       </div>
@@ -362,7 +367,9 @@
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import { useAuxApi } from '@/aux_api/useAuxApi'
-import { PANEL_ONLY_NOTE, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
+import { PANEL_ONLY_NOTE, classifyRefusal, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
+import type { RefusalKind } from '@/services/wifi/panel-only'
+import PermissionRefusalNotice from './PermissionRefusalNotice.vue'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import { EventBus } from '@/eventBus'
@@ -378,12 +385,23 @@ const HIDDEN_NAME = 'Hidden network'
 
 type AggWifi = DeviceWifi & { chanList?: string; freqList?: string }
 
-@Component({ components: { TonePill } })
+@Component({ components: { TonePill, PermissionRefusalNotice } })
 export default class WifiManagerCard extends Vue {
   @Prop({ type: Boolean }) readonly menuCollapsed?: boolean
 
   /** The rail's quick menu: the network it's on and the next few, to join with the same warnings. */
   @Prop({ type: Boolean }) readonly compact?: boolean
+
+  /** The printer's permission store refused the last action (KAN-2457): who may do it, not a panel-only printer. */
+  refusal: Extract<RefusalKind, { kind: 'permission' }> | null = null
+
+  /** Keeps a permission refusal for the notice; false for any other error. */
+  private takePermissionRefusal (err: unknown): boolean {
+    const r = classifyRefusal(err)
+    if (r.kind !== 'permission') return false
+    this.refusal = r
+    return true
+  }
 
   // Dialog & connection state
   disconnectConfirmDialog = false
@@ -630,7 +648,9 @@ export default class WifiManagerCard extends Vue {
       EventBus.$emit(this.$t('app.wifi.msg.connect.success') + ' ' + this.selectedNetwork.ssid, { type: 'success', timeout: 2000 })
       await this.fetchDevices()
     } catch (err: any) {
-      if (isPanelOnlyRefusal(err)) {
+      if (this.takePermissionRefusal(err)) {
+        // The store refused this caller; the notice says who may.
+      } else if (isPanelOnlyRefusal(err)) {
         // An owner can turn AUX_NETWORK_STRICT on, and then /wifi/connect is refused too.
         EventBus.$emit(panelOnlyMessage('join a network'), { type: 'error', timeout: 8000 })
       } else {
@@ -653,7 +673,9 @@ export default class WifiManagerCard extends Vue {
         await this.fetchDevices()
       }
     } catch (err: any) {
-      if (isPanelOnlyRefusal(err)) {
+      if (this.takePermissionRefusal(err)) {
+        // The store refused this caller: not a panel-only printer, so refusedHere stays as it was.
+      } else if (isPanelOnlyRefusal(err)) {
         // No open route does this job: it is the printer's screen now.
         refusedHere.disconnect = true
         EventBus.$emit(panelOnlyMessage('disconnect from a network'), { type: 'error', timeout: 8000 })

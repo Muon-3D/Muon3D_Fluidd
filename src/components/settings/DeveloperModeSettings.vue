@@ -4,93 +4,148 @@
     class="devm"
     data-tid="developer-mode"
   >
-    <header class="devm__head">
-      <div class="devm__titles">
-        <h2>Developer mode</h2>
-        <p>{{ stateLine }}</p>
-      </div>
-      <toggle-switch
-        v-if="mayAsk && state.enabled"
-        :value="!!state.enabled"
-        label="Developer mode"
-        :disabled="state.enabled === null || busy"
-        data-tid="developer-mode-switch"
-        @input="toggle"
-      />
-    </header>
-
-    <p class="devm__text">
-      Lets you change this printer's own configuration and macros. The Muon3D defaults stay as they are beside your copy, and turning it off goes back to them (your copy is kept for next time).
-    </p>
-
     <div
-      v-if="state.enabled === false"
-      class="devm__goto"
-      data-tid="developer-mode-go-to-printer"
+      class="devm__card"
+      :class="{ 'devm__card--on': state.enabled === true }"
+      data-tid="developer-mode-card"
     >
-      <frame-icon
-        name="gear"
-        small
-      />
-      <div>
-        <b>Go to the printer's screen to turn on developer mode</b>
-        <span>On the printer: System, then Protection, then Developer mode. It is read and confirmed there, because turning it on ends the warranty.</span>
+      <header class="devm__head">
+        <div class="devm__titles">
+          <span
+            class="devm__eyebrow"
+            data-tid="developer-mode-eyebrow"
+          >{{ eyebrow }}</span>
+          <h2>Developer mode</h2>
+          <p data-tid="developer-mode-state">
+            {{ stateLine }}
+          </p>
+        </div>
+        <toggle-switch
+          v-if="mayAsk && state.enabled"
+          :value="!!state.enabled"
+          label="Developer mode"
+          :disabled="state.enabled === null || busy"
+          data-tid="developer-mode-switch"
+          @input="toggle"
+        />
+      </header>
+      <p
+        class="devm__text"
+        data-tid="developer-mode-who-line"
+      >
+        {{ whoLine }}
+      </p>
+      <p
+        class="devm__warranty"
+        data-tid="developer-mode-warranty"
+      >
+        <frame-icon
+          name="alert"
+          small
+        />
+        <span>The first time it's turned on, the warranty ends, even if you turn it off again. After that it's an ordinary switch.</span>
+      </p>
+      <p class="devm__text">
+        Lets you change this printer's own configuration and macros. The Muon3D defaults stay as they are beside your copy, and turning it off goes back to them (your copy is kept for next time).
+      </p>
+
+      <div
+        v-if="state.enabled === false"
+        class="devm__goto"
+        data-tid="developer-mode-go-to-printer"
+      >
+        <frame-icon
+          name="gear"
+          small
+        />
+        <div>
+          <b>Go to the printer's screen to turn on developer mode</b>
+          <span v-if="state.everEnabled">You have accepted the terms on this printer before. Turning it on again is still done at the printer: System, then Protection, then Developer mode. The printer decides whether it takes it.</span>
+          <span v-else>On the printer: System, then Protection, then Developer mode. It is read and confirmed there, because turning it on ends the warranty.</span>
+        </div>
+      </div>
+
+      <p
+        v-if="notAsking && state.enabled"
+        class="devm__note"
+        data-tid="developer-mode-who"
+      >
+        {{ notAsking }}
+      </p>
+
+      <div
+        class="devm__fuse"
+        :class="`devm__fuse--${fuseTone}`"
+        data-tid="developer-mode-fuse"
+      >
+        <frame-icon
+          :name="fuseTone === 'warn' ? 'alert' : 'check'"
+          small
+        />
+        <span>{{ fuseText }}</span>
       </div>
     </div>
 
+    <h3 class="devm__h">
+      What it unlocks · {{ unlocks.length }}
+    </h3>
+    <nav
+      class="devm__list"
+      aria-label="What developer mode unlocks"
+      data-tid="developer-mode-unlocks"
+    >
+      <router-link
+        v-for="u in unlocks"
+        :key="u.id"
+        :to="unlockTo(u.to)"
+        class="devm__item"
+        :data-tid="`developer-unlock-${u.id}`"
+      >
+        <span class="devm__item-text">
+          <b>{{ u.title }}</b>
+          <small>{{ u.where }}</small>
+        </span>
+        <frame-icon
+          name="chevronRight"
+          small
+        />
+      </router-link>
+    </nav>
+
+    <h3 class="devm__h">
+      While it's on
+    </h3>
+    <div
+      class="devm__actions"
+      :class="{ 'devm__actions--off': !state.enabled }"
+      data-tid="developer-mode-while-on"
+    >
+      <button
+        type="button"
+        class="cbtn cbtn--ghost"
+        :disabled="busy || !state.enabled"
+        data-tid="developer-backup"
+        @click="backupConfig"
+      >
+        Back up the configuration
+      </button>
+      <button
+        type="button"
+        class="cbtn cbtn--ghost"
+        :disabled="busy || !state.enabled"
+        data-tid="developer-reset"
+        @click="restoreDefaults"
+      >
+        Start again from the Muon3D defaults
+      </button>
+      <small v-if="!state.enabled">Available once it is on.</small>
+    </div>
     <p
-      v-if="notAsking && state.enabled"
-      class="devm__note"
-      data-tid="developer-mode-who"
+      class="devm__text"
+      data-tid="developer-mode-non-muon"
     >
-      {{ notAsking }}
+      Not a Muon printer? There is no developer mode: everything here is simply on.
     </p>
-
-    <div
-      class="devm__fuse"
-      :class="`devm__fuse--${fuseTone}`"
-      data-tid="developer-mode-fuse"
-    >
-      <frame-icon
-        :name="fuseTone === 'warn' ? 'alert' : 'check'"
-        small
-      />
-      <span>{{ fuseText }}</span>
-    </div>
-
-    <template v-if="state.enabled">
-      <div class="devm__actions">
-        <router-link
-          :to="macrosTo"
-          class="cbtn"
-          data-tid="developer-edit-macros"
-        >
-          Edit macros
-        </router-link>
-        <router-link
-          :to="filesTo"
-          class="cbtn"
-        >
-          Open the config files
-        </router-link>
-        <button
-          type="button"
-          class="cbtn cbtn--ghost"
-          :disabled="busy"
-          @click="backupConfig"
-        >
-          Back up the config
-        </button>
-        <button
-          type="button"
-          class="cbtn cbtn--ghost"
-          :disabled="busy"
-          @click="restoreDefaults"
-        >
-          Start again from the Muon3D defaults
-        </button>
-      </div>
-    </template>
 
     <v-dialog
       v-model="disableDialog"
@@ -162,6 +217,8 @@ import {
 } from '@/services/dev-mode/request'
 import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
+import { printerNameParts } from '@/util/printer-name'
+import { UNLOCKS, type Unlock } from '@/services/dev-mode/guidance'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 
 /** How often the browser asks whether the printer's screen has been answered. */
@@ -225,10 +282,37 @@ export default class DeveloperModeSettings extends Vue {
     return whyNot(this.asking) ?? ''
   }
 
+  get printerName (): string {
+    return printerNameParts((this.$store?.getters['config/getDisplayName'] as string | undefined) ?? '').name || 'This printer'
+  }
+
+  get eyebrow (): string {
+    if (this.state.enabled === null) return ''
+    return this.state.enabled ? 'On' : 'Off'
+  }
+
   get stateLine (): string {
     if (this.state.enabled === null) return 'Asking the printer…'
     if (this.state.enabled) return 'On: the printer runs your copy of its configuration'
     return 'Off: the printer runs the Muon3D configuration'
+  }
+
+  /** Who can change it, in one line; the printer's own refusal text is shown separately. */
+  get whoLine (): string {
+    if (this.state.enabled === null) return ''
+    if (this.asking === null) return "Only the printer's owner can change developer mode. The first time it is turned on, the printer's own screen confirms it."
+    const account = this.asking.owner.account
+    const who = this.asking.owner.linked ? (account ? `Only ${account} (the owner)` : 'Only the owner') : 'Anyone, while nobody owns this printer,'
+    return `${who} can change it. The first time it's turned on, ${this.printerName}'s own screen confirms it.`
+  }
+
+  get unlocks (): Unlock[] {
+    return UNLOCKS
+  }
+
+  unlockTo (path: string): string {
+    const [base, hash] = path.split('#')
+    return `${scopedPath(base, activeSlug())}${hash ? `#${hash}` : ''}`
   }
 
   get fuseTone (): 'ok' | 'warn' | 'unknown' {
@@ -245,14 +329,6 @@ export default class DeveloperModeSettings extends Vue {
       return 'Turning it on is recorded on this printer for good, in a fuse that no update or reset clears. It can affect the warranty.'
     }
     return 'This printer doesn\'t say whether turning it on is recorded for good.'
-  }
-
-  get macrosTo (): string {
-    return `${scopedPath('/settings', activeSlug())}#macros`
-  }
-
-  get filesTo (): string {
-    return scopedPath('/configure', activeSlug())
   }
 
   /** The printer's own words for a failure, in preference to ours. */
@@ -443,6 +519,92 @@ export default class DeveloperModeSettings extends Vue {
     border-radius: 22px;
     background: var(--m3d-surface);
     color: var(--m3d-text);
+  }
+
+  .devm__card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 18px;
+    background: var(--m3d-surface-2);
+  }
+
+  .devm__card--on {
+    border: 1px solid var(--m3d-warning, #e8963c);
+  }
+
+  .devm__eyebrow {
+    display: block;
+    color: var(--m3d-text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .devm__warranty {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--m3d-surface);
+    color: var(--m3d-warning, #e8963c);
+    font-size: 13px;
+  }
+
+  .devm__h {
+    margin: 4px 0 -6px;
+    color: var(--m3d-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .devm__list {
+    display: flex;
+    flex-direction: column;
+    border-radius: 14px;
+    background: var(--m3d-surface-2);
+    overflow: hidden;
+  }
+
+  .devm__item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    color: var(--m3d-text);
+    text-decoration: none;
+
+    & + & {
+      border-top: 1px solid var(--m3d-border);
+    }
+  }
+
+  .devm__item-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+
+    b {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    small {
+      color: var(--m3d-text-muted);
+      font-size: 12px;
+    }
+  }
+
+  .devm__actions--off {
+    opacity: 0.6;
   }
 
   .devm__head {

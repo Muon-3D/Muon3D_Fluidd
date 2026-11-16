@@ -18,6 +18,8 @@
  *   notify_gcode_response handling.
  * - The account's Library (0.4.0, library.ts): given `library`, the welcome
  *   grants it. Its requests name no printer, so a switch never ends one.
+ * - The account (0.5.0, account.ts): given `account`, the welcome grants it to a frame that asks. The host calls
+ *   accountStatus() before the frame's src is set and on each change of the signed-in account.
  */
 import type { Store } from 'vuex'
 import {
@@ -32,6 +34,7 @@ import type { BridgePrinter, Density, HostLook, HostSetup, PrinterMaterial, Them
 import { createFluiddAdapter, type HttpClient } from './adapter'
 import { bridgePrinterFor, createIdentityCache, samePrinter, type FluiddSelection } from './selection'
 import { createStoreStatusFeed } from './statusFeed'
+import type { FluiddAccount } from './account'
 
 export interface SlicerHostOptions {
   frame: HTMLIFrameElement;
@@ -61,6 +64,11 @@ export interface SlicerHostOptions {
   onMaterial?: (key: string, material: PrinterMaterial) => void;
   /** The account's Library (library.ts): given, the welcome grants `library` (0.4.0). */
   library?: HostLibrary;
+  /**
+   * Control's sign-in (account.ts): given, the welcome grants `account` to a frame whose hello asks for it (0.5.0).
+   * The host tells the bridge who is signed in once before the frame's src is set, then on every change.
+   */
+  account?: FluiddAccount;
   hostVersion: string;
   onState?: (state: Record<string, unknown>) => void;
   log?: (entry: HostLogEntry) => void;
@@ -136,10 +144,16 @@ export function startSlicerHost (options: SlicerHostOptions): SlicerHost {
     setup: options.setup,
     onMaterial: options.onMaterial,
     library: options.library,
+    account: options.account,
     adapter,
     onState: options.onState,
     log: options.log
   })
+
+  // Who is signed in, told to the bridge before the frame can ask (a request before this is answered not-signed-in),
+  // and again on every change (account-events.ts calls this synchronously, before the session is cleared).
+  const stopAccount = options.account?.subscribe(status => bridge?.accountStatus(status))
+  if (options.account) bridge.accountStatus(options.account.current())
 
   // Console lines of the selected printer, as Fluidd's console takes them in.
   const stopGcode = options.store.subscribeAction((action) => {
@@ -160,6 +174,7 @@ export function startSlicerHost (options: SlicerHostOptions): SlicerHost {
       closed = true
       if (retry) clearTimeout(retry)
       stopGcode()
+      stopAccount?.()
       bridge?.close()
     }
   }

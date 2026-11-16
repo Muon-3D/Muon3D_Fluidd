@@ -70,6 +70,13 @@ describe('the print on the plate', () => {
     expect(f.nib?.[1][1]).toBeCloseTo(40)
   })
 
+  it('says whether the count of printed segments moved, so an unchanged one asks for no frame', () => {
+    const sync = new LiveSync()
+    expect(sync.setFileDone(0)).toBe(false)
+    expect(sync.setFileDone(3)).toBe(true)
+    expect(sync.setFileDone(3)).toBe(false)
+  })
+
   it('never takes back what is drawn when the head passes near an earlier line', () => {
     const sync = new LiveSync()
     sync.setPose(homed)

@@ -29,3 +29,10 @@ it('passes the stable selected console ID to personal folds and clears local sta
   expect(wrapper.findComponent(PersonalTaskFold).props('printerId')).toBe('printer-123')
   wrapper.destroy()
 })
+
+it('opens when a link asks for it (expand), as Health does for ?sensors=open', async () => {
+  const wrapper = mount(ControlTaskFold, { propsData: { foldKey: 'maintenance.sensors', title: 'Switches and sensors', summary: 'Endstops', expand: true }, mocks: { $store: panelStore() }, slots: { default: '<p>Runout</p>' } })
+  await Vue.nextTick()
+  expect(wrapper.find('button').attributes('aria-expanded')).toBe('true')
+  wrapper.destroy()
+})

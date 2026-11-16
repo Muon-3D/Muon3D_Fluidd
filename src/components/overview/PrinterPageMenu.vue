@@ -16,6 +16,7 @@
           data-tid="printer-page-menu-button"
           v-bind="attrs"
           v-on="on"
+          @click="look"
         >
           <frame-icon name="more" />
         </button>
@@ -67,10 +68,12 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import PrinterEntriesMixin from '@/mixins/printer-entries'
 import { activationState } from '@/services/muon-cloud/activate'
+import { lookForPrinters } from '@/services/muon-cloud/discovery'
+import { afterFirstPaint } from '@/services/startup/idle'
 import type { CardAction, DirectoryEntry } from '@/services/muon-cloud/directory'
 
-/** What the printer's own page offers from its menu: the card's Bluetooth ways in, and its access settings. */
-const PAGE_ACTIONS = ['connect-bluetooth', 'retry-bluetooth', 'access']
+/** What the printer's own page offers from its menu: the routes it is not on, Retry Bluetooth, and its access settings. */
+const PAGE_ACTIONS = ['connect-local', 'connect-cloud', 'connect-bluetooth', 'retry-bluetooth', 'access']
 
 /**
  * The three-dot menu on a printer's own page (KAN-1429). It lists the same
@@ -79,9 +82,19 @@ const PAGE_ACTIONS = ['connect-bluetooth', 'retry-bluetooth', 'access']
  */
 @Component({})
 export default class PrinterPageMenu extends Mixins(PrinterEntriesMixin) {
-  /** The linked printer this page is on. */
+  /** The printer this page is on: the account's, or one reached locally. */
   get entry (): DirectoryEntry | null {
-    return this.directory.cloud.find(e => e.active) ?? null
+    const d = this.directory
+    return d.cloud.find(e => e.active) ?? d.local.find(e => e.active) ?? null
+  }
+
+  /** The local network is searched when the menu opens, and on page load, not only once a session is open (KAN-2487). */
+  look () {
+    lookForPrinters().catch(() => {})
+  }
+
+  mounted () {
+    afterFirstPaint(() => this.look())
   }
 
   get actions (): CardAction[] {

@@ -92,7 +92,7 @@
         <h3>What it does</h3>
         <pre
           data-tid="macro-sheet-code"
-          aria-label="The macro's code, read-only"
+          aria-label="The command's code, read-only"
         >{{ code }}</pre>
       </div>
       <p
@@ -184,7 +184,7 @@ export default class MacroSheet extends Vue {
 
   get code (): string {
     const gcode = this.macro.config?.gcode
-    return typeof gcode === 'string' && gcode.trim() ? gcode.trim() : 'The printer hasn\'t said what this macro does.'
+    return typeof gcode === 'string' && gcode.trim() ? gcode.trim() : 'The printer hasn\'t said what this command does.'
   }
 
   get colour (): string | undefined {
@@ -193,8 +193,8 @@ export default class MacroSheet extends Vue {
 
   /** Why Edit in Files can't open, or nothing when it can. */
   get editLock (): string {
-    if (!this.editable) return 'Editing what a macro does needs developer mode on a Muon printer.'
-    if (!this.place) return 'This macro wasn\'t found in the config files.'
+    if (!this.editable) return 'Editing what a command does needs developer mode on a Muon printer.'
+    if (!this.place) return 'This command wasn\'t found in the config files.'
     return ''
   }
 

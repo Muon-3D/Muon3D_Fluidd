@@ -4,7 +4,8 @@ import JobTile from './tiles/JobTile.vue'
 import FilamentTile from './tiles/FilamentTile.vue'
 import HeaterTile from './tiles/HeaterTile.vue'
 import FansTile from './tiles/FansTile.vue'
-import SpeedTile from './tiles/SpeedTile.vue'
+import PrintModeTile from './tiles/PrintModeTile.vue'
+import MovementTile from './tiles/MovementTile.vue'
 import JogTile from './tiles/JogTile.vue'
 import PositionTile from './tiles/PositionTile.vue'
 import ZOffsetTile from './tiles/ZOffsetTile.vue'
@@ -41,10 +42,6 @@ interface Drawn { component: Component; props?: Record<string, unknown> }
 /** A card that already exists elsewhere, loaded when the widget is on the page. */
 const embed = (tile: string, loader: () => Promise<unknown>): Drawn => ({ component: EmbedTile, props: { tile, loader } })
 
-// TODO(control-v3): the Control rebuild adds the Movement trackpad as its own piece (components/control/ControlTrackpad
-// with services/control/position-predict); until that merges, the Movement widget shows Control's current Move card.
-// TODO(control-v3): Print mode (Quiet / Normal / Turbo) is the mode picker in components/control/ControlSpeed (modes from
-// printer.fan_modes). Until it merges, the widget shows the Speed / flow tile under the Print mode name.
 // TODO(care): Care needs a maintenance store; none exists, so it links to the Maintenance page.
 // TODO(library): Print next becomes a LibraryShelf (library/v2/LibraryShelf) once the shelf can run without the Library page.
 const drawn: Record<string, Drawn> = {
@@ -53,13 +50,13 @@ const drawn: Record<string, Drawn> = {
   filament: { component: FilamentTile },
   hotend: { component: HeaterTile, props: { kind: 'hotend' } },
   bed: { component: HeaterTile, props: { kind: 'bed' } },
-  mode: { component: SpeedTile, props: { heading: 'Print mode' } },
+  mode: { component: PrintModeTile },
   zoffset: { component: ZOffsetTile },
   jog: { component: JogTile },
   position: { component: PositionTile },
   macros: { component: MacrosTile },
   graph: { component: GraphTile },
-  trackpad: embed('trackpad', () => import('@/components/control/ControlMove.vue')),
+  trackpad: { component: MovementTile },
   fans: { component: FansTile },
   camera: embed('camera', () => import('@/components/widgets/camera/CameraCard.vue')),
   bedmesh: embed('bedmesh', () => import('@/components/widgets/bedmesh/BedMeshCard.vue')),
