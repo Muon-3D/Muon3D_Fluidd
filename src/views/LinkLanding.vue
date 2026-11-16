@@ -12,7 +12,6 @@
           length="6"
           type="number"
           data-tid="link-code"
-          @finish="link"
         />
         <p class="muon-link-landing__hint">
           The printer shows it while it is linking. Then you confirm on the printer with the knob.

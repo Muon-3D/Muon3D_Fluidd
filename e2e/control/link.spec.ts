@@ -67,6 +67,12 @@ test.describe('signed in', () => {
     await page.keyboard.type('47291')
     await expect(page.getByTestId('link-button')).toBeDisabled()
     expect(account.changes).toEqual([])
+    await page.keyboard.type('3')
+    await expect(page.getByTestId('link-button')).toBeEnabled()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    expect(account.changes).toEqual([])
+    await page.getByTestId('link-button').click()
+    await expect.poll(() => account.changes.filter(c => c.path === '/v1/links/claim').length).toBe(1)
   })
 
   test('/join: the invite, Not now and Accept; Accept posts the code once and waits for the owner', async ({ page }) => {

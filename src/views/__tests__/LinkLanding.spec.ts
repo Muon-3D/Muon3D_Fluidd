@@ -15,7 +15,7 @@ import LinkLanding from '../LinkLanding.vue'
 function open (code: string | undefined = '472913') {
   const push = vi.fn()
   const wrapper = mount(LinkLanding, {
-    stubs: { FrameIcon: true, VOtpInput: { props: ['value'], render (this: any, h: any) { return h('input', { attrs: { 'data-tid': 'link-code', value: this.value } }) } } },
+    stubs: { FrameIcon: true, VOtpInput: { name: 'VOtpInput', props: ['value'], render (this: any, h: any) { return h('input', { attrs: { 'data-tid': 'link-code', value: this.value } }) } } },
     mocks: { $route: { query: { code } }, $router: { push } }
   })
   return { wrapper, push }
@@ -33,6 +33,10 @@ describe('the link page', () => {
     const { wrapper } = open()
     expect(wrapper.find('h1').text()).toBe('Link a printer')
     expect((wrapper.vm as any).draft).toBe('472913')
+    expect(tid(wrapper, 'link-dialog').exists()).toBe(false)
+
+    wrapper.findComponent({ name: 'VOtpInput' }).vm.$emit('finish', '472913')
+    await wrapper.vm.$nextTick()
     expect(tid(wrapper, 'link-dialog').exists()).toBe(false)
 
     await tid(wrapper, 'link-button').trigger('click')
