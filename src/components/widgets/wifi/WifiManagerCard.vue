@@ -372,6 +372,7 @@ import type { RefusalKind } from '@/services/wifi/panel-only'
 import PermissionRefusalNotice from './PermissionRefusalNotice.vue'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
+import { wifiProbe } from '@/services/wifi/saved-probe'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
@@ -416,14 +417,13 @@ export default class WifiManagerCard extends Vue {
   // Wi-Fi scan data
   wifi_available_networks: DeviceWifi[] = []
   knownSsids = new Set<string>()
-  testedSsids = new Set<string>()
+  /** SSIDs the per-SSID fallback has asked about: the page session's, see saved-probe.ts. */
+  get testedSsids (): Set<string> { return wifiProbe.asked }
   wifiOrder: string[] = []
   private intervalId: ReturnType<typeof setInterval> | null = null
 
   refresh () {
     this.wifi_available_networks = []
-    this.knownSsids.clear()
-    this.testedSsids.clear()
     this.wifiOrder = []
   }
 
@@ -454,12 +454,38 @@ export default class WifiManagerCard extends Vue {
 
   // Lifecycle
   mounted () {
+    this.visibilityHandler = () => this.onVisibilityChange()
+    document.addEventListener('visibilitychange', this.visibilityHandler)
     this.fetchDevices()
-    this.intervalId = setInterval(() => this.fetchDevices(), 5000)
+    this.startPolling()
   }
 
   beforeDestroy () {
+    if (this.visibilityHandler) document.removeEventListener('visibilitychange', this.visibilityHandler)
+    this.stopPolling()
+  }
+
+  // The 5 s poll runs only while the tab is visible: every tick costs the
+  // printer an nmcli scan. Becoming visible refreshes once, then polls again.
+  private startPolling () {
+    if (this.intervalId || document.visibilityState === 'hidden') return
+    this.intervalId = setInterval(() => this.fetchDevices(), 5000)
+  }
+
+  private stopPolling () {
     if (this.intervalId) clearInterval(this.intervalId)
+    this.intervalId = null
+  }
+
+  private visibilityHandler: (() => void) | null = null
+
+  onVisibilityChange () {
+    if (document.visibilityState === 'hidden') {
+      this.stopPolling()
+    } else if (!this.intervalId) {
+      this.fetchDevices()
+      this.startPolling()
+    }
   }
 
   fetching: boolean = false
@@ -472,20 +498,7 @@ export default class WifiManagerCard extends Vue {
       const res = await this.auxApi.wifi.wifiScanWifiScanGet(true)
       this.wifi_available_networks = res.data
 
-      // Skip hidden SSIDs when probing for "known" status
-      for (const net of this.wifi_available_networks) {
-        const ssid = (net.ssid || '').trim() // NEW
-        if (!ssid) continue // NEW: hide hidden networks at source
-        if (!this.knownSsids.has(ssid) && !this.testedSsids.has(ssid)) {
-          try {
-            await this.auxApi.wifi.getDetailsWifiShowGet(ssid)
-            console.log('Known SSID:', ssid)
-            this.knownSsids.add(ssid)
-          } catch {
-            this.testedSsids.add(ssid)
-          }
-        }
-      }
+      await this.updateKnownSsids()
 
       // —— CHANGED: “first-come” ordering now tracked by SSID (after grouping) ——
       const groups = this.groupedNetworks // NEW
@@ -503,6 +516,35 @@ export default class WifiManagerCard extends Vue {
       if (e?.response?.status === 403) this.$store.dispatch('protection/onRefused')
     }
     this.fetching = false
+  }
+
+  /**
+   * Which scanned networks the printer has saved. One `GET /wifi/saved` per
+   * poll answers it for all of them. A printer without that route (404, once)
+   * is asked per SSID instead, at most once each for the page session.
+   */
+  async updateKnownSsids () {
+    if (!wifiProbe.savedUnsupported) {
+      try {
+        const res = await this.auxApi.wifi.wifiSavedWifiSavedGet()
+        this.knownSsids = new Set((res.data || []).map(p => (p.name || '').trim()))
+        return
+      } catch (e: any) {
+        if (e?.response?.status !== 404) return // transient: keep what we know
+        wifiProbe.savedUnsupported = true
+      }
+    }
+    for (const net of this.wifi_available_networks) {
+      const ssid = (net.ssid || '').trim()
+      if (!ssid || this.knownSsids.has(ssid) || wifiProbe.asked.has(ssid)) continue
+      wifiProbe.asked.add(ssid)
+      try {
+        await this.auxApi.wifi.getDetailsWifiShowGet(ssid)
+        this.knownSsids = new Set(this.knownSsids).add(ssid)
+      } catch {
+        // 404: not saved.
+      }
+    }
   }
 
   // NEW: one row per SSID with merged details
@@ -645,6 +687,7 @@ export default class WifiManagerCard extends Vue {
         ssid: this.selectedNetwork.ssid,
         password: this.password || undefined
       })
+      this.testedSsids.delete(this.selectedNetwork.ssid) // now saved: the fallback may ask once more
       EventBus.$emit(this.$t('app.wifi.msg.connect.success') + ' ' + this.selectedNetwork.ssid, { type: 'success', timeout: 2000 })
       await this.fetchDevices()
     } catch (err: any) {
