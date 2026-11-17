@@ -218,6 +218,29 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
       expect(events.slice(-3)).toEqual(['grant-asked', 'dial:grant-1', 'second:fetch'])
     })
 
+    it('uses the redial-only refresh when one is given, and dials on when it is skipped', async () => {
+      const events: string[] = []
+      const first = relay('first', events)
+      let dials = 0
+      const openRelay = vi.fn(async (s: AuthorizedManagedRelaySession): Promise<ManagedIrohRelay> => {
+        events.push(`dial:${s.sessionId}`)
+        return ++dials === 1 ? first : relay('second', events)
+      })
+      const reauthorize = vi.fn(async () => session('hard'))
+      const transport = new ManagedIrohPrinterTransport({
+        authorizedSession: session('grant-1'),
+        createEndpoint: async () => ({ openRelay, close: () => {} }),
+        reauthorize,
+        regrant: async () => { throw new Error('console does not see the printer online') }
+      })
+      await transport.fetch('/server/info')
+      first.lose()
+      await expect(transport.fetch('/server/info')).rejects.toThrow('connection lost')
+      await transport.fetch('/server/info')
+      expect(reauthorize).not.toHaveBeenCalled()
+      expect(events.slice(-2)).toEqual(['dial:grant-1', 'second:fetch'])
+    })
+
     it('still redials when the console refuses', async () => {
       const { events, first, transport } = lostThenRedial(async () => { throw new Error('503') })
       await transport.fetch('/server/info')

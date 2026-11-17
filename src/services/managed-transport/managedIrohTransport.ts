@@ -168,7 +168,7 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       if (this.failedDials >= REAUTHORIZE_AFTER_FAILURES && this.options.reauthorize) {
         this.session = await this.options.reauthorize()
         if (generation !== this.selectionGeneration) throw closed()
-      } else if (this.hadRelay && this.options.reauthorize) {
+      } else if (this.hadRelay && (this.options.regrant ?? this.options.reauthorize)) {
         // KAN-3636: a printer admits a signed-in owner only while it holds the
         // console's grant for this browser's key, and it forgets one when it
         // restarts or the grant lapses. A redial that goes out without asking
@@ -211,7 +211,7 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       return await Promise.race([
-        this.options.reauthorize!(),
+        (this.options.regrant ?? this.options.reauthorize)!(),
         new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), REGRANT_WAIT_MS) })
       ])
     } catch {
