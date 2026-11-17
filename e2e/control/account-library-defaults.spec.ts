@@ -22,7 +22,7 @@ test.describe('Library defaults for new things', () => {
   test('shows Only you and the suggested CC BY 4.0 before any choice, and saves nothing', async ({ page, open, account }) => {
     await open('/account/library')
     const section = page.getByTestId('library-defaults')
-    await expect(section.getByText('When you add something new').first()).toBeVisible()
+    await expect(page.getByText('When you add something new').first()).toBeVisible()
     await expect(section.getByRole('radio', { name: 'Only you' })).toHaveAttribute('aria-checked', 'true')
     await expect(section.getByRole('radio', { name: 'Anyone' })).toHaveAttribute('aria-checked', 'false')
     await expect(section.getByRole('radio', { name: 'People I choose' })).toBeDisabled()
@@ -64,19 +64,34 @@ test.describe('Library defaults for new things', () => {
     await expect(page.getByRole('radio', { name: 'Anyone' })).toBeDisabled()
     await expect(page.getByTestId('library-licence')).toBeDisabled()
     expect(libraryPuts(account)).toEqual([])
+    await expect(page.getByRole('radio', { name: 'Only you' })).toHaveAttribute('aria-checked', 'false')
+    await expect(page.getByTestId('library-storage')).toBeVisible()
+    await expect(page.getByRole('switch', { name: 'Save every slice' })).toBeEnabled()
+  })
+
+  test('an older preferences endpoint without Library defaults leaves Account usable', async ({ page, open, account }) => {
+    delete account.preferences!.library_defaults
+    await open('/account/library')
+    await expect(page.getByTestId('library-defaults-soon')).toContainText('Coming soon')
+    await expect(page.getByRole('radio', { name: 'Anyone' })).toBeDisabled()
+    await expect(page.getByTestId('library-licence')).toBeDisabled()
+    await expect(page.getByRole('radio', { name: 'Only you' })).toHaveAttribute('aria-checked', 'false')
+    await expect(page.getByTestId('library-storage')).toBeVisible()
+    expect(libraryPuts(account)).toEqual([])
   })
 
   test('a refused save shows the console error', async ({ page, open, account }) => {
     account.failOn = call => (call === 'PUT /v1/me/preferences' ? 400 : null)
     await open('/account/library')
     await page.getByRole('radio', { name: 'Anyone' }).click()
-    await expect(page.getByRole('alert')).toContainText('console')
+    await expect(page.getByRole('alert')).toContainText('The Muon3D service answered 400.')
+    await expect(page.getByRole('radio', { name: 'Only you' })).toHaveAttribute('aria-checked', 'true')
   })
 })
 
 test.describe('Your Library is being deleted', () => {
   test('Your data shows the banner, with the date and Keep my account, while the 14 days run', async ({ page, open, account }) => {
-    account.deletion = { requested_at: Math.floor(Date.UTC(2027, 0, 1) / 1000), delete_after: Math.floor(Date.UTC(2027, 0, 15, 12) / 1000) }
+    account.account.deletion = { requested_at: Math.floor(Date.UTC(2027, 0, 1) / 1000), delete_after: Math.floor(Date.UTC(2027, 0, 15, 12) / 1000) }
     await open('/account/privacy')
     const banner = page.getByTestId('deletion-banner')
     await expect(banner).toHaveCount(1)
@@ -86,10 +101,11 @@ test.describe('Your Library is being deleted', () => {
   })
 
   test('Keep my account undoes it, and the banner goes', async ({ page, open, account }) => {
-    account.deletion = { requested_at: Math.floor(Date.UTC(2027, 0, 1) / 1000), delete_after: Math.floor(Date.UTC(2027, 0, 15, 12) / 1000) }
+    account.account.deletion = { requested_at: Math.floor(Date.UTC(2027, 0, 1) / 1000), delete_after: Math.floor(Date.UTC(2027, 0, 15, 12) / 1000) }
     await open('/account/privacy')
     await page.getByRole('button', { name: 'Keep my account' }).click()
     await expect.poll(() => account.changes.map(c => c.call)).toContain('POST /v1/me/deletion/cancel')
+    await expect(page.getByTestId('deletion-banner')).toHaveCount(0)
   })
 
   test('no banner on Your data when the account is not being deleted', async ({ page, open }) => {

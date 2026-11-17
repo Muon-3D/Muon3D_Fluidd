@@ -191,7 +191,6 @@
           <deletion-banner
             v-if="deleting"
             library
-            data-tid="account-data-deleting"
           />
           <account-privacy :link-to="linkTo" />
           <router-link

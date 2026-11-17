@@ -121,7 +121,7 @@ export interface EmailPreferences {
   email_shared_with_you: boolean;
   email_community: boolean;
   email_news: boolean;
-  /** KAN-1886: absent reads as private, licence not chosen. */
+  /** Absent on a console without Library defaults. */
   library_defaults?: LibraryDefaults;
 }
 
@@ -149,16 +149,19 @@ export const LICENCES: Array<{ id: string, label: string }> = [
 
 /**
  * What the page shows: the saved choice, else the default and the suggestion
- * (marked as not chosen). A console that answers preferences without the
- * object reads as private and not chosen; no answer at all is unsupported.
+ * (marked as not chosen). The server supplies private/null for a missing row;
+ * a missing or unrecognized object means this console is unsupported.
  */
 export function libraryDefaultsView (preferences: { library_defaults?: LibraryDefaults } | null | undefined) {
   const saved = preferences?.library_defaults
+  const supported = !!saved && (saved.visibility === 'private' || saved.visibility === 'public') &&
+    (saved.licence === null || LICENCES.some(licence => licence.id === saved.licence))
+  const choice = supported ? saved : undefined
   return {
-    supported: !!preferences,
-    visibility: saved?.visibility ?? DEFAULT_LIBRARY_VISIBILITY,
-    licence: saved?.licence ?? SUGGESTED_LICENCE,
-    licenceChosen: !!saved?.licence
+    supported,
+    visibility: choice?.visibility ?? DEFAULT_LIBRARY_VISIBILITY,
+    licence: choice?.licence ?? SUGGESTED_LICENCE,
+    licenceChosen: !!choice?.licence
   }
 }
 

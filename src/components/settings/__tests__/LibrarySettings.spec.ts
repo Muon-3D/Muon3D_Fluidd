@@ -9,7 +9,7 @@ vi.mock('@/services/library/store', async (original) => ({
   turnLibraryOn: vi.fn(async () => {})
 }))
 
-const prefs = vi.hoisted(() => ({ read: vi.fn(async () => { throw new Error('404') }), save: vi.fn() }))
+const prefs = vi.hoisted(() => ({ read: vi.fn(async (): Promise<unknown> => { throw new Error('404') }), save: vi.fn() }))
 vi.mock('@/services/account/api', async (original) => ({
   ...await original() as object,
   accountApi: { preferences: prefs.read, setLibraryDefaults: prefs.save }
@@ -24,6 +24,8 @@ import LibraryPageMixin from '@/mixins/library-page'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  prefs.read.mockRejectedValue(new Error('404'))
+  prefs.save.mockReset()
   resetLibrary('fixture')
   Object.assign(libraryState, { checked: true, promiseVersion: '2026-10-13' })
 })
@@ -106,11 +108,12 @@ describe('Account â€º Library and storage', () => {
     libraryState.account = null
     const wrapper = mountOn()
     expect(wrapper.find('[data-tid="library-settings-signed-out"]').text()).toContain('Sign in to keep a Library')
+    expect(prefs.read).not.toHaveBeenCalled()
     wrapper.destroy()
   })
 })
 
-describe('Account › Library › When you add something new', () => {
+describe('Account â€º Library â€º When you add something new', () => {
   const stubs = { 'frame-icon': true, 'cloud-account-dialog': true, 'router-link': true }
   const settle = () => new Promise(resolve => setTimeout(resolve))
   const mountWith = async (preferences: unknown) => {
@@ -154,10 +157,57 @@ describe('Account › Library › When you add something new', () => {
 
   it('shows the console error when a save is refused', async () => {
     prefs.save.mockRejectedValue(new Error('That licence is not offered.'))
-    const wrapper = await mountWith({})
+    const wrapper = await mountWith({ library_defaults: { visibility: 'private', licence: null } })
     await wrapper.find('[data-tid="library-visibility-public"]').trigger('click')
     await settle()
     expect(wrapper.find('[role="alert"]').text()).toContain('licence')
+    wrapper.destroy()
+  })
+
+  it.each([{}, { library_defaults: { visibility: 'private', licence: 'MIT' } }])('does not enable defaults on an old or incompatible console %j', async (preferences) => {
+    const wrapper = await mountWith(preferences)
+    expect(wrapper.find('[data-tid="library-defaults-soon"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tid="library-visibility-private"]').attributes('aria-checked')).toBe('false')
+    await (wrapper.vm as any).saveDefaults({ visibility: 'public' })
+    expect(prefs.save).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-tid="library-storage"]').exists()).toBe(true)
+    wrapper.destroy()
+  })
+
+  it('restores the saved licence after a refused selection', async () => {
+    prefs.save.mockRejectedValue(new Error('That licence is not offered.'))
+    const wrapper = await mountWith({ library_defaults: { visibility: 'private', licence: 'CC-BY-4.0' } })
+    await wrapper.find('[data-tid="library-licence"]').setValue('CC0-1.0')
+    await settle()
+    expect((wrapper.find('[data-tid="library-licence"]').element as HTMLSelectElement).value).toBe('CC-BY-4.0')
+    expect(wrapper.find('[role="alert"]').text()).toContain('licence')
+    wrapper.destroy()
+  })
+
+  it('ignores a previous account read after the Library account changes', async () => {
+    let resolve!: (value: unknown) => void
+    prefs.read.mockReturnValueOnce(new Promise(_resolve => { resolve = _resolve }))
+    const wrapper = await mountWith({ library_defaults: { visibility: 'private', licence: null } })
+    libraryState.account = 'second'
+    await settle()
+    resolve({ library_defaults: { visibility: 'public', licence: 'CC0-1.0' } })
+    await settle()
+    expect(wrapper.find('[data-tid="library-visibility-private"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-tid="library-licence-suggested"]').exists()).toBe(true)
+    wrapper.destroy()
+  })
+
+  it('ignores a previous account save after the Library account changes', async () => {
+    let resolve!: (value: unknown) => void
+    prefs.save.mockReturnValueOnce(new Promise(_resolve => { resolve = _resolve }))
+    const wrapper = await mountWith({ library_defaults: { visibility: 'private', licence: null } })
+    await wrapper.find('[data-tid="library-visibility-public"]').trigger('click')
+    libraryState.account = 'second'
+    await settle()
+    resolve({ library_defaults: { visibility: 'public', licence: 'CC0-1.0' } })
+    await settle()
+    expect(wrapper.find('[data-tid="library-visibility-private"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-tid="library-licence-suggested"]').exists()).toBe(true)
     wrapper.destroy()
   })
 })

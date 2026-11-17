@@ -246,8 +246,8 @@
               type="button"
               role="radio"
               class="lib-set__seg-btn"
-              :class="{ 'lib-set__seg-btn--on': defaults.visibility === 'private' }"
-              :aria-checked="defaults.visibility === 'private' ? 'true' : 'false'"
+              :class="{ 'lib-set__seg-btn--on': defaults.supported && defaults.visibility === 'private' }"
+              :aria-checked="defaults.supported && defaults.visibility === 'private' ? 'true' : 'false'"
               :disabled="!defaults.supported || defaultsBusy"
               data-tid="library-visibility-private"
               @click="setVisibility('private')"
@@ -269,8 +269,8 @@
               type="button"
               role="radio"
               class="lib-set__seg-btn"
-              :class="{ 'lib-set__seg-btn--on': defaults.visibility === 'public' }"
-              :aria-checked="defaults.visibility === 'public' ? 'true' : 'false'"
+              :class="{ 'lib-set__seg-btn--on': defaults.supported && defaults.visibility === 'public' }"
+              :aria-checked="defaults.supported && defaults.visibility === 'public' ? 'true' : 'false'"
               :disabled="!defaults.supported || defaultsBusy"
               data-tid="library-visibility-public"
               @click="setVisibility('public')"
@@ -359,7 +359,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+import { Component, Vue, Watch } from 'vue-property-decorator'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
 import { accountApi, LICENCES, libraryDefaultsView, type EmailPreferences, type LibraryVisibility } from '@/services/account/api'
@@ -406,6 +406,7 @@ export default class LibrarySettings extends Vue {
   defaultsBusy = false
   defaultsError = ''
   licences = LICENCES
+  private defaultsGeneration = 0
 
   promiseTitle = PROMISE_TITLE
   promiseUrl = PROMISE_URL
@@ -417,7 +418,19 @@ export default class LibrarySettings extends Vue {
   created () {
     watchLibraryAccount()
     this.refresh()
-    this.loadDefaults()
+  }
+
+  @Watch('state.account', { immediate: true })
+  onDefaultsAccountChanged () {
+    this.defaultsGeneration++
+    this.accountPrefs = null
+    this.defaultsError = ''
+    this.defaultsBusy = false
+    if (this.signedIn) this.loadDefaults()
+  }
+
+  beforeDestroy () {
+    this.defaultsGeneration++
   }
 
   get defaults () {
@@ -429,19 +442,24 @@ export default class LibrarySettings extends Vue {
   }
 
   loadDefaults () {
-    // A console from before the field (or the endpoint) leaves the rows disabled: nothing is faked.
-    accountApi.preferences().then((p) => { this.accountPrefs = p }).catch(() => { this.accountPrefs = null })
+    const generation = this.defaultsGeneration
+    accountApi.preferences()
+      .then((p) => { if (generation === this.defaultsGeneration) this.accountPrefs = p })
+      .catch(() => { if (generation === this.defaultsGeneration) this.accountPrefs = null })
   }
 
   async saveDefaults (patch: { visibility?: LibraryVisibility, licence?: string }) {
+    if (!this.signedIn || !this.defaults.supported || this.defaultsBusy) return
+    const generation = this.defaultsGeneration
     this.defaultsBusy = true
     this.defaultsError = ''
     try {
-      this.accountPrefs = await accountApi.setLibraryDefaults(patch)
+      const preferences = await accountApi.setLibraryDefaults(patch)
+      if (generation === this.defaultsGeneration) this.accountPrefs = preferences
     } catch (error) {
-      this.defaultsError = describe(error)
+      if (generation === this.defaultsGeneration) this.defaultsError = describe(error)
     } finally {
-      this.defaultsBusy = false
+      if (generation === this.defaultsGeneration) this.defaultsBusy = false
     }
   }
 
@@ -450,10 +468,12 @@ export default class LibrarySettings extends Vue {
     return this.saveDefaults({ visibility })
   }
 
-  setLicence (event: Event) {
-    const licence = (event.target as HTMLSelectElement).value
+  async setLicence (event: Event) {
+    const input = event.target as HTMLSelectElement
+    const licence = input.value
     if (!licence) return
-    return this.saveDefaults({ licence })
+    await this.saveDefaults({ licence })
+    input.value = this.defaults.licenceChosen ? this.defaults.licence : ''
   }
 
   get state () {

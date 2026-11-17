@@ -31,8 +31,6 @@ export interface ConsoleState {
   preferences: Record<string, unknown> | null;
   /** Bodies PUT to `/v1/me/preferences`, in order. */
   preferencePatches: Array<Record<string, unknown>>;
-  /** Set while the account waits out its 14 days: `/v1/me` then carries `account.deletion.delete_after` (seconds). */
-  deletion?: { requested_at: number, delete_after: number };
   seen: string[];
   /** Per printer: its people (shares), pending email invites and invite links, for its owner. */
   shares: Record<string, unknown[]>;
@@ -136,7 +134,11 @@ export async function answerConsole (route: Route, state: ConsoleState) {
   }
   if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
   switch (url.pathname) {
-    case '/v1/me': return json(route, { account: { ...state.account, display_name: state.account.name, ...(state.deletion ? { deletion: state.deletion } : {}) }, endpoint_id: null })
+    case '/v1/me': return json(route, { account: { ...state.account, display_name: state.account.name }, endpoint_id: null })
+    case '/v1/me/deletion/cancel': {
+      state.account.deletion = null
+      return json(route, { ok: true, account: state.account })
+    }
     case '/v1/me/assertion': return json(route, { assertion: 'e2e-assertion', expires_at: Math.floor(Date.now() / 1000) + 3600 })
     case '/v1/printers': return json(route, { printers: state.printers })
     case '/v1/me/notices': return json(route, { notices: [], unread: 0, next: null })
