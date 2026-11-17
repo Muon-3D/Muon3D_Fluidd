@@ -6,8 +6,15 @@
     data-tid="deletion-banner"
   >
     <div class="deletion-banner__text">
-      <b>Deletion pending</b>
-      <span>Your account will be deleted on {{ day }}. Until then you can keep it.</span>
+      <template v-if="library">
+        <b>Your Library is being deleted.</b>
+        <span v-if="day">Everything in it goes on {{ day }}. Sign in before then to undo it, or request a copy first.</span>
+        <span v-else>Everything in it goes soon. Sign in before then to undo it, or request a copy first.</span>
+      </template>
+      <template v-else>
+        <b>Deletion pending</b>
+        <span>Your account will be deleted on {{ day }}. Until then you can keep it.</span>
+      </template>
     </div>
     <div class="deletion-banner__actions">
       <button
@@ -31,7 +38,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue } from 'vue-property-decorator'
+import { Component, Prop, Vue } from 'vue-property-decorator'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import { accountApi } from '@/services/account/api'
 import { describe, loadMe } from '@/services/account/state'
@@ -41,6 +48,9 @@ import '@/scss/muon3d-account.scss'
 
 @Component({})
 export default class DeletionBanner extends Vue {
+  /** The Library's wording, for Your data (KAN-1886): the account's 14 days are the Library's too. */
+  @Prop({ type: Boolean, default: false }) readonly library!: boolean
+
   busy = false
   error = ''
 
