@@ -460,6 +460,23 @@ const routes: Array<RouteConfig> = [
     name: 'Icons',
     component: Icons
   },
+  {
+    // /slicer is the network's, not Control's: the printer's nginx serves the
+    // Muon3D Slicer there (http://muon3d.local/slicer, the one address typed
+    // to slice and print on a printer). A link or push to it inside Control
+    // leaves for the server, in this tab, instead of landing on the 404 page.
+    // A first load of /slicer/ that got Control's index.html means this server
+    // has no slicer: show the 404, never navigate again (that would loop).
+    path: '/slicer/:rest*',
+    name: 'Slicer (the server)',
+    component: NotFound,
+    beforeEnter: (to, from, next) => {
+      const here = from.matched.length > 0 || from.name != null
+      if (!here && to.path !== '/slicer') return next()
+      next(false)
+      window.location.replace((to.path === '/slicer' ? '/slicer/' : to.path) + to.fullPath.slice(to.path.length).split('#')[0])
+    }
+  },
   ...LEGACY_PRINTER_PAGES.map(path => ({ path, redirect: toPrinterPage })),
   ...printerRoutes,
   {
