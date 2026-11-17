@@ -4,7 +4,8 @@
     :class="{ 'spark--fill': fill, 'spark--empty': !path }"
     :viewBox="`0 0 ${W} ${H}`"
     preserveAspectRatio="none"
-    aria-hidden="true"
+    role="img"
+    :aria-label="`${label || series} temperature history${path ? '' : ', no history yet'}`"
     data-tid="heater-spark"
     :data-series="series"
     :data-state="path ? 'line' : 'empty'"
@@ -47,6 +48,7 @@ import { chartLines, type ChartPoint } from '@/services/overview/model'
 export default class HeaterSparkline extends Vue {
   /** The charts store key: the Klipper object (`extruder`, `heater_bed`, `temperature_sensor chamber`). */
   @Prop({ type: String, required: true }) readonly series!: string
+  @Prop({ type: String, default: '' }) readonly label!: string
   /** How far back, in seconds. */
   @Prop({ type: Number, default: 300 }) readonly seconds!: number
   /** As wide as its box, rather than a fixed small size. */
