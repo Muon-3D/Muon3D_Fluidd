@@ -18,15 +18,24 @@ export interface GateState {
   manage: boolean | null;
   /** Developer mode on this printer, once asked. */
   dev: boolean | null;
-  checking: { manage: boolean, dev: boolean };
+  /** Each permission setting's value on this printer (hotspot_toggle: 'owner', ...), once asked. */
+  perms: Record<string, string> | null;
+  /** Whether this client is one of the people the owner shared the printer with, once asked. */
+  shared: boolean | null;
+  checking: { manage: boolean, dev: boolean, perms: boolean };
 }
+
+type Field = 'manage' | 'dev' | 'perms' | 'shared'
+type Answer<F extends Field> = GateState[F]
 
 export const gateState: GateState = Vue.observable({
   epoch: 0,
   key: null,
   manage: null,
   dev: null,
-  checking: { manage: false, dev: false }
+  perms: null,
+  shared: null,
+  checking: { manage: false, dev: false, perms: false }
 })
 
 /**
@@ -38,21 +47,26 @@ export function resetGates (): void {
   gateState.key = null
   gateState.manage = null
   gateState.dev = null
+  gateState.perms = null
+  gateState.shared = null
   gateState.checking.manage = false
   gateState.checking.dev = false
+  gateState.checking.perms = false
 }
 
 /** An answer held for `key`, or null (unknown) if it is another printer's. */
-export function valueFor (field: 'manage' | 'dev', key: string | null): boolean | null {
+export function valueFor<F extends Field> (field: F, key: string | null): Answer<F> | null {
   return key !== null && gateState.key === key ? gateState[field] : null
 }
 
 /** Stores an answer for `key`, dropping the other printer's first. */
-export function keep (field: 'manage' | 'dev', key: string, value: boolean | null): void {
+export function keep<F extends Field> (field: F, key: string, value: Answer<F>): void {
   if (gateState.key !== key) {
     gateState.key = key
     gateState.manage = null
     gateState.dev = null
+    gateState.perms = null
+    gateState.shared = null
   }
   gateState[field] = value
 }

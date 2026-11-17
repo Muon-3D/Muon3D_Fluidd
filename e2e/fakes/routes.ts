@@ -185,6 +185,7 @@ class Link {
     // QUIC's keep-alive: a segment to send every 2 s while the path is live.
     this.timer = setInterval(() => { if (!S().silent) this.wake() }, 2000)
     S().links.add(this)
+    S().linkEvents.push({ event: 'open', at: Date.now() })
   }
   wake () { const w = this.waiters.shift(); if (w) w() }
   async connected () { return ID }
@@ -202,6 +203,7 @@ class Link {
     this.closed = true
     clearInterval(this.timer)
     S().links.delete(this)
+    S().linkEvents.push({ event: 'close', at: Date.now() })
     this.waiters.splice(0).forEach(w => w())
   }
 }
@@ -287,6 +289,7 @@ export async function useAllRoutes (page: Page, account: ConsoleState) {
       routes: [] as string[],
       refused: [] as string[],
       links: new Set(),
+      linkEvents: [],
       live: new Set(),
       chooserAsks: 0
     }
@@ -376,7 +379,7 @@ export async function reachOnLan (page: Page, on = true) {
     // A sweep that is running (an open phone sheet starts one) ends by replacing the list: let it end first.
     for (let i = 0; i < 300 && state.scanning; i++) await new Promise(resolve => setTimeout(resolve, 100))
     state.found = on
-      ? [{ host: `localhost:${port}`, aliases: [`localhost:${port}`], apiUrl: `http://localhost:${port}`, name, endpointId: id }]
+      ? [{ host: `localhost:${port}`, aliases: [`localhost:${port}`], apiUrl: `http://localhost:${port}`, name, endpointId: id, link: { phase: 'unlinked' } }]
       : []
     // Fresh: no sweep replaces the list while the test runs.
     state.finishedAt = Date.now()

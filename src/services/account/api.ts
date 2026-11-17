@@ -282,6 +282,9 @@ export const accountApi = {
   withdrawInvite: (printerId: string, inviteId: string) =>
     json<{ ok: boolean }>('DELETE', `/v1/printers/${encodeURIComponent(printerId)}/invites/${encodeURIComponent(inviteId)}`),
   links: (printerId: string) => json<{ links: InviteLink[] }>('GET', `/v1/printers/${encodeURIComponent(printerId)}/links`),
+  /** `POST /v1/printers/:id/links` (muon-link-cloud invites.rs): the same call the phone app's "Share a link" makes. */
+  createLink: (printerId: string, link: { lifetime: '1h' | '1d' | '7d' | 'none', max_uses: 1 | 5 | 25 | null, role: string, approve_each: boolean }) =>
+    json<{ link: InviteLink }>('POST', `/v1/printers/${encodeURIComponent(printerId)}/links`, link),
   revokeLink: (printerId: string, linkId: string) =>
     json<{ ok: boolean }>('DELETE', `/v1/printers/${encodeURIComponent(printerId)}/links/${encodeURIComponent(linkId)}`),
   approvals: () => json<{ approvals: JoinApproval[] }>('GET', '/v1/approvals'),
