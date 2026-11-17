@@ -41,21 +41,21 @@ async function edit (page: Page) {
   await expect(page.getByTestId('edit-done')).toBeVisible()
 }
 
-test('the default layout: the printer left and wider, job and filament stacked on the right, then four tiles', async ({ page, open, isMobile }) => {
+test('the default layout: twin and heaters left, job, speed and position right', async ({ page, open, isMobile }) => {
   await open('/')
   await expect(page.getByTestId('overview-page')).toBeVisible()
-  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros'])
+  expect(await ids(page)).toEqual(['stage', 'job', 'rates', 'hotend', 'bed', 'position', 'filament', 'mode', 'graph', 'trackpad', 'jog', 'macros'])
   // Off by default, found in Add widget.
-  for (const id of ['hotend', 'bed', 'fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library']) await expect(cell(page, id)).toHaveCount(0)
+  for (const id of ['fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library']) await expect(cell(page, id)).toHaveCount(0)
   if (isMobile) return
   const stage = await box(cell(page, 'stage'))
   const job = await box(cell(page, 'job'))
-  const filament = await box(cell(page, 'filament'))
+  const speed = await box(cell(page, 'rates'))
   expect(stage.x).toBeLessThan(job.x)
   expect(stage.width).toBeGreaterThan(job.width * 1.5)
-  expect(Math.abs(job.x - filament.x)).toBeLessThan(2)
-  expect(filament.y).toBeGreaterThan(job.y)
-  const row = await Promise.all(['mode', 'position'].map(id => box(cell(page, id))))
+  expect(Math.abs(job.x - speed.x)).toBeLessThan(2)
+  expect(speed.y).toBeGreaterThan(job.y)
+  const row = await Promise.all(['hotend', 'bed', 'position'].map(id => box(cell(page, id))))
   for (const b of row) expect(Math.abs(b.y - row[0].y)).toBeLessThan(2)
   expect(row[0].y).toBeGreaterThan(stage.y + stage.height - 2)
   // The Movement trackpad, then Jog and Position as their own widgets.
@@ -112,14 +112,14 @@ test('a size that does not exist snaps to the nearest one the widget offers', as
   await edit(page)
   const grip = cell(page, 'position').getByTestId('tile-grip')
   const span = async () => (await cell(page, 'position').getAttribute('style'))?.match(/--span: (\d+)/)?.[1]
-  expect(await span()).toBe('6')
+  expect(await span()).toBe('4')
   // The arrows step through S, M and L only.
   await grip.focus()
   await grip.press('Shift+ArrowRight')
   expect(await span()).toBe('8')
   await grip.press('Shift+ArrowRight')
   expect(await span()).toBe('8')
-  // Dragging the corner to about 6.5 columns lands on M (6), not on 6.5. Measured once the tile has sprung to its size.
+  // Dragging the corner to about 4 columns lands on M (4), not on a fractional size. Measured once the tile has sprung to its size.
   await glided(page)
   await cell(page, 'position').evaluate(e => e.scrollIntoView({ block: 'center' }))
   const handle = cell(page, 'position').getByTestId('tile-resize')
@@ -127,9 +127,9 @@ test('a size that does not exist snaps to the nearest one the widget offers', as
   const column = (await box(page.getByTestId('overview-grid'))).width / 12
   await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2)
   await page.mouse.down()
-  await page.mouse.move(hb.x + hb.width / 2 - column * 1.5, hb.y + hb.height / 2, { steps: 6 })
+  await page.mouse.move(hb.x + hb.width / 2 - column * 4, hb.y + hb.height / 2, { steps: 6 })
   await page.mouse.up()
-  expect(await span()).toBe('6')
+  expect(await span()).toBe('4')
   // The printer view has no small size: asking for one gives its M.
   const stageGrip = cell(page, 'stage').getByTestId('tile-grip')
   await stageGrip.focus()
@@ -156,7 +156,7 @@ test('the layout persists after a reload, and Reset brings the default back', as
   await edit(page)
   await page.getByTestId('edit-reset').click()
   await page.getByTestId('edit-done').click()
-  expect(await ids(page)).toEqual(['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros'])
+  expect(await ids(page)).toEqual(['stage', 'job', 'rates', 'hotend', 'bed', 'position', 'filament', 'mode', 'graph', 'trackpad', 'jog', 'macros'])
 })
 
 test('the phone layout: one column, small widgets two to a row, the Add widget sheet from the bottom', async ({ page, open, isMobile }) => {

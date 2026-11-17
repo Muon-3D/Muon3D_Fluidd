@@ -12,6 +12,29 @@ const mountJob = (store: ReturnType<typeof tileStore>) => mount(JobTile, tileMou
 afterEach(() => resetSocket())
 
 describe('JobTile', () => {
+  it('adds a finish dial without taking away the job facts or actions', () => {
+    const w = mountJob(tileStore({ printing: true }))
+    expect(w.find('[data-tid="finish-clock"]').exists()).toBe(true)
+    for (const id of ['job-name', 'job-percent', 'job-elapsed', 'job-remaining', 'job-done', 'job-pause', 'job-stop']) expect(w.find(`[data-tid="${id}"]`).exists()).toBe(true)
+    w.destroy()
+  })
+
+  it.each([NaN, Infinity, 0])('does not draw an invented finish for ETA %s', eta => {
+    const store = tileStore({ printing: true })
+    Vue.set(store.getters, 'printer/getTimeEstimates', { eta })
+    const w = mountJob(store)
+    expect(w.find('[data-tid="finish-clock"]').exists()).toBe(false)
+    expect(w.find('[data-tid="job-done"]').text()).toBe('—')
+    w.destroy()
+  })
+
+  it.each(['socket/getConnectionState', 'printer/getKlippyReady', 'printer/getPrinterState'])('hides the finish when %s stops being reliable', key => {
+    const store = tileStore({ printing: true })
+    Vue.set(store.getters, key, key === 'printer/getPrinterState' ? 'paused' : false)
+    const w = mountJob(store)
+    expect(w.find('[data-tid="finish-clock"]').exists()).toBe(false)
+    w.destroy()
+  })
   it('renders with no data: nothing printing, and a way to the jobs', () => {
     const store = tileStore({ empty: true })
     const w = mountJob(store)

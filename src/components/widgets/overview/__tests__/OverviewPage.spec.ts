@@ -13,7 +13,7 @@ describe('the tile list', () => {
   it('has unique ids, a width on every screen, and the order the brief gives', () => {
     const ids = overviewTiles.map(t => t.id)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(ids).toEqual(['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros', 'hotend', 'bed', 'fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(ids).toEqual(['stage', 'job', 'rates', 'hotend', 'bed', 'position', 'filament', 'mode', 'graph', 'trackpad', 'jog', 'macros', 'fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
     for (const t of overviewTiles) {
       expect(t.span).toBeGreaterThan(0); expect(t.span).toBeLessThanOrEqual(12)
       expect([6, 12]).toContain(t.tablet); expect([1, 2]).toContain(t.phone)

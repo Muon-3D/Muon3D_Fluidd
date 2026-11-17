@@ -187,9 +187,9 @@ describe('Overview, edit mode', () => {
     await w.find('[data-tid="edit-open"]').trigger('click')
     expect(grip(w, 'job').attributes('aria-label')).toContain('Move Print job')
     await grip(w, 'job').trigger('keydown', { key: 'ArrowRight' })
-    expect(cells(w).slice(0, 3)).toEqual(['stage', 'filament', 'job'])
+    expect(cells(w).slice(0, 3)).toEqual(['stage', 'rates', 'job'])
     await grip(w, 'job').trigger('keydown', { key: 'ArrowLeft' })
-    expect(cells(w).slice(0, 3)).toEqual(['stage', 'job', 'filament'])
+    expect(cells(w).slice(0, 3)).toEqual(['stage', 'job', 'rates'])
     // Shift and the arrows step through the sizes the widget offers, never between them.
     await grip(w, 'job').trigger('keydown', { key: 'ArrowDown', shiftKey: true })
     expect(w.find('[data-cell="job"]').attributes('style')).toContain('--rows: 2')
@@ -276,7 +276,7 @@ describe('Overview, edit mode', () => {
     await w.find('[data-tid="edit-done"]').trigger('click')
     const local = saved()
     expect(local.hidden).toEqual([...defaults.hidden, 'macros'])
-    expect(local.tiles.map((t: { id: string }) => t.id).slice(3, 6)).toEqual(['mode', 'graph', 'position'])
+    expect(local.tiles.map((t: { id: string }) => t.id).slice(6, 9)).toEqual(['filament', 'graph', 'mode'])
     expect(store.dispatch).toHaveBeenCalledWith('config/saveByPath', {
       // Only this person's own key: never the whole map, which could wipe another person's layout.
       path: `uiSettings.overview.layouts.${serverLayoutKey(null, 'http://mock.local')}`,

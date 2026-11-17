@@ -7,27 +7,37 @@ const defs: TileDefault[] = overviewTiles
 const byId = (id: string) => overviewTiles.find(t => t.id === id)!
 
 describe('the default layout', () => {
+  it('keeps former M widths and their rendering in saved layouts without inserting new widgets', () => {
+    const saved = { tiles: ['hotend', 'bed', 'position'].map(id => ({ id, span: 6, rows: 1 })), hidden: [] }
+    const layout = readLayout(saved, defs)!
+    expect(layout.tiles).toEqual(saved.tiles)
+    for (const tile of layout.tiles) expect(sizeKeyOf(byId(tile.id), tile)).toBe('M')
+    expect(layout.hidden).toContain('rates')
+    expect(layout.tiles.some(t => t.id === 'stage')).toBe(false)
+  })
   const layout = defaultLayout(defs)
   const ids = layout.tiles.map(t => t.id)
   const at = (id: string) => layout.tiles.find(t => t.id === id)!
 
-  it('keeps the current Overview: the printer wider on the left, job and filament stacked on the right', () => {
-    expect(ids.slice(0, 3)).toEqual(['stage', 'job', 'filament'])
+  it('puts the twin on the left with job and speed down its right', () => {
+    expect(ids.slice(0, 3)).toEqual(['stage', 'job', 'rates'])
     expect(at('stage')).toMatchObject({ span: 8, rows: 2 })
     expect(at('job')).toMatchObject({ span: 4, rows: 1 })
-    expect(at('filament')).toMatchObject({ span: 4, rows: 1 })
+    expect(at('rates')).toMatchObject({ span: 4, rows: 1 })
     expect(at('stage').span).toBeGreaterThan(at('job').span)
   })
 
-  it("has Jack's rows under them (KAN-2029): Print mode and Position side by side, Temperatures across, no Fans (KAN-1951)", () => {
-    expect(ids.slice(3, 6)).toEqual(['mode', 'position', 'graph'])
+  it('puts nozzle and plate below the twin, with position on their right; keeps filament, mode and graph', () => {
+    expect(ids.slice(3, 9)).toEqual(['hotend', 'bed', 'position', 'filament', 'mode', 'graph'])
+    expect(at('hotend')).toMatchObject({ span: 4, rows: 1 })
+    expect(at('bed')).toMatchObject({ span: 4, rows: 1 })
     expect(at('mode')).toMatchObject({ span: 6, rows: 1 })
-    expect(at('position')).toMatchObject({ span: 6, rows: 1 })
+    expect(at('position')).toMatchObject({ span: 4, rows: 1 })
     expect(at('graph')).toMatchObject({ span: 12, rows: 1 })
   })
 
   it('has the Trackpad, Jog on its right, and Quick commands under Jog down to the Trackpad floor (OV-19, OV-29)', () => {
-    expect(ids.slice(6)).toEqual(['trackpad', 'jog', 'macros'])
+    expect(ids.slice(9)).toEqual(['trackpad', 'jog', 'macros'])
     expect(at('trackpad')).toMatchObject({ span: 4, rows: 3 })
     expect(at('jog')).toMatchObject({ span: 8, rows: 2 })
     expect(at('macros')).toMatchObject({ span: 8, rows: 1 })
@@ -37,12 +47,12 @@ describe('the default layout', () => {
   })
 
   it('puts everything else away until it is added', () => {
-    expect(layout.hidden).toEqual(['hotend', 'bed', 'fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(layout.hidden).toEqual(['fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
     expect(ids.length + layout.hidden.length).toBe(overviewTiles.length)
   })
 
   it('has the first rows no wider than the 12 columns', () => {
-    expect(at('mode').span + at('position').span).toBe(12)
+    expect(at('hotend').span + at('bed').span + at('position').span).toBe(12)
     expect(at('stage').span + at('job').span).toBe(12)
   })
 })
@@ -153,7 +163,7 @@ describe('sizes in the layout', () => {
     const same = nudgeSize(up, 'position', 1, 0, defs)
     expect(same.tiles.find(t => t.id === 'position')).toMatchObject({ span: 8, rows: 1 })
     const down = nudgeSize(up, 'position', -1, 0, defs)
-    expect(down.tiles.find(t => t.id === 'position')).toMatchObject({ span: 6, rows: 1 })
+    expect(down.tiles.find(t => t.id === 'position')).toMatchObject({ span: 4, rows: 1 })
     const tall = nudgeSize(layout, 'job', 0, 1, defs)
     expect(tall.tiles.find(t => t.id === 'job')).toMatchObject({ span: 4, rows: 2 })
   })
@@ -203,7 +213,7 @@ describe('migrating a saved layout', () => {
     const old = ['stage', 'job', 'filament', 'hotend', 'bed', 'fans', 'speed', 'jog', 'position', 'zoffset', 'macros', 'graph']
     const out = readLayout(saved(old.map(id => ({ id, span: 4, rows: 1 }))), defs)!
     expect(out.tiles.map(t => t.id)).toEqual(old.map(id => (id === 'speed' ? 'mode' : id)))
-    expect(out.hidden).toEqual(['trackpad', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(out.hidden).toEqual(['rates', 'trackpad', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
   })
 
   it('drops unknown ids quietly', () => {

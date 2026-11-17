@@ -15,15 +15,11 @@
       class="ot__value"
       data-tid="heater-value"
     >{{ valueText }}<small v-if="targetText">/ {{ targetText }}</small></span>
-    <span
+    <heat-stripe
       v-if="heater && !disconnected"
-      class="ot__bar"
-    ><i :style="{ width: `${Math.round(barFraction * 100)}%` }" /></span>
-    <heater-sparkline
-      v-if="size !== 'S' && heater && !disconnected"
       class="ht__spark"
       :series="seriesKey"
-      fill
+      :name="name"
     />
     <span
       v-if="size === 'M' && heater && !disconnected"
@@ -182,7 +178,7 @@ import type { Heater } from '@/store/printer/types'
 import TileShell from './TileShell.vue'
 import NumberField from '@/components/control/NumberField.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
-import HeaterSparkline from '@/components/control/HeaterSparkline.vue'
+import HeatStripe from '@/components/overview/HeatStripe.vue'
 
 type Kind = 'hotend' | 'bed'
 
@@ -191,18 +187,19 @@ type Kind = 'hotend' | 'bed'
  * a bar, and how close it is in words. Tapping it opens the full controls:
  * an exact target, the materials, show on graph, PID, and cool down.
  */
-@Component({ components: { TileShell, NumberField, ToggleSwitch, HeaterSparkline } })
+@Component({ components: { TileShell, NumberField, ToggleSwitch, HeatStripe } })
 export default class HeaterTile extends Mixins(OverviewMixin) {
   @Prop({ type: String, default: 'hotend' }) readonly kind!: Kind
+  @Prop({ type: String }) readonly label?: string
 
   open = false
 
   @Watch('panelTarget')
   closeOnSwitch () { this.open = false }
 
-  get name (): string { return this.kind === 'bed' ? 'Bed' : 'Hotend' }
+  get name (): string { return this.label || (this.kind === 'bed' ? 'Bed' : 'Hotend') }
   get heater (): Heater | null { return this.kind === 'bed' ? this.bed : this.nozzle }
-  get seriesKey (): string { return this.kind === 'bed' ? 'heater_bed' : 'extruder' }
+  get seriesKey (): string { return this.kind === 'bed' ? 'heater_bed' : (this.heater?.name || 'extruder') }
 
   /** The printer says the part is not there at all. */
   get disconnected (): boolean {

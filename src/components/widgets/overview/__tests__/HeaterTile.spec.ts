@@ -107,14 +107,15 @@ describe('HeaterTile', () => {
     w.destroy()
   })
 
-  it('has a sparkline at M, where there is room, and none at S', () => {
+  it('shows reported heat history at M and S', () => {
     const store = tileStore()
     Vue.set(store.getters, 'charts/getChartData', [0, 30, 60].map(s => ({ date: new Date(1_800_000_000_000 + s * 1000), extruder: 200 + s / 10, extruderTarget: 215 })))
     const m = mount(HeaterTile, { ...tileMount(store), propsData: { kind: 'hotend', size: 'M' } })
-    expect(m.find('[data-tid="heater-spark"]').attributes('data-state')).toBe('line')
+    expect(m.find('[data-tid="heat-stripe"] svg').attributes('aria-label')).toContain('last ten minutes')
+    expect(m.findAll('[data-state="heating"]').length).toBe(3)
     m.destroy()
     const s = mount(HeaterTile, { ...tileMount(store), propsData: { kind: 'hotend', size: 'S' } })
-    expect(s.find('[data-tid="heater-spark"]').exists()).toBe(false)
+    expect(s.findAll('[data-state="heating"]').length).toBe(3)
     s.destroy()
   })
 })

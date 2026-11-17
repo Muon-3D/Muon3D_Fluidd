@@ -12,6 +12,8 @@ export interface TileDefault {
   rows?: number;
   /** The sizes the widget offers. When given, a size is always one of these. */
   sizes?: SizeVariant[];
+  /** Previously offered sizes, accepted from saved layouts but not offered anew. */
+  legacySizes?: SizeVariant[];
   /** On the page in the default layout; true when not said. */
   defaultOn?: boolean;
   /** Saved ids that now mean this widget. */
@@ -47,8 +49,8 @@ export function snapSize (sizes: SizeVariant[], span: number, rows: number, cols
 }
 
 /** Which of the widget's sizes a placed tile is, if it is one. */
-export function sizeKeyOf (def: Pick<TileDefault, 'sizes'>, tile: { span: number; rows: number }): string | null {
-  return def.sizes?.find(s => s.span === tile.span && s.rows === tile.rows)?.key ?? null
+export function sizeKeyOf (def: Pick<TileDefault, 'sizes' | 'legacySizes'>, tile: { span: number; rows: number }): string | null {
+  return def.sizes?.find(s => s.span === tile.span && s.rows === tile.rows)?.key ?? def.legacySizes?.find(s => s.span === tile.span && s.rows === tile.rows)?.key ?? null
 }
 
 function place (id: string, span: unknown, rows: unknown, fallback: TileDefault, cols = MAX_SPAN): PlacedTile {
@@ -167,7 +169,8 @@ export function readLayout (raw: unknown, defs: TileDefault[]): OverviewLayout |
     seen.add(def.id)
     // A tile saved under an old id keeps its place but takes the new widget's own size.
     const renamed = e.id !== def.id
-    tiles.push(place(def.id, renamed ? undefined : e.span, renamed ? undefined : e.rows, def))
+    const legacy = !renamed && def.legacySizes?.find(s => s.span === e.span && s.rows === (e.rows ?? 1))
+    tiles.push(legacy ? { id: def.id, span: legacy.span, rows: legacy.rows } : place(def.id, renamed ? undefined : e.span, renamed ? undefined : e.rows, def))
   }
   const hidden: string[] = []
   const chosen: string[] = []

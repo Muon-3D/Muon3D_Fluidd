@@ -65,6 +65,7 @@ export default class OverviewMixin extends Mixins(ControlMixin, FilesMixin) {
   get secondsLeft (): number | null {
     if (!this.printerPrinting) return null
     const estimates = this.$store.getters['printer/getTimeEstimates'] as TimeEstimates
+    if (!estimates || !Number.isFinite(estimates.eta)) return null
     const left = (estimates.eta - Date.now()) / 1000
     return left > 0 ? left : null
   }
