@@ -151,7 +151,7 @@
         class="m1-parts__hint"
       >{{ dragHint }}</span>
       <m1-part-options
-        v-if="interactive"
+        v-if="holdsPart"
         :key="selected"
         :part="selected"
         @use-screen="select('screen')"
@@ -176,7 +176,7 @@ import M1PartOptions from './M1PartOptions.vue'
 import M1Screen from './M1Screen.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
 import { axisEdges, boundCorners } from '@/services/m1-3d/drag-bounds'
-import { wheelDetents } from '@/services/m1-3d/knob'
+import { KnobWheel } from '@/services/m1-3d/knob'
 import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
 import { modelAnimates } from '@/services/m1-3d/render-options'
@@ -306,6 +306,20 @@ export default class M1Parts extends Mixins(ControlMixin) {
     return this.stageState === 'idle' && this.controlReady && !this.busy
   }
 
+  /**
+   * This page's own Home is running. The printer reports busy while it homes, which would make the stage let go of the part
+   * (the camera leaves the top view, the options go): Home was pressed from the part's own panel, so the person stays on it
+   * (KAN-3593). A print or another client's work still lets go.
+   */
+  get homingHere (): boolean {
+    return this.controlReady && !this.printLocked && this.stageState === 'printing' && (this.homing() || this.homing('XY') || this.homing('Z'))
+  }
+
+  /** The part's view and options stay: the printer is idle, or is only running this page's own Home. */
+  get holdsPart (): boolean {
+    return this.interactive || this.homingHere
+  }
+
   /** The selected part can be dragged: the toolhead in X and Y, the plate in Z, once homed, on the accurate model (whose millimetres the drag is read in). */
   get movable (): 'toolhead' | 'plate' | null {
     const part = this.selected
@@ -317,7 +331,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   /** The toolhead selected: look straight down for clear axes, the plate out of the way. */
   get topView (): boolean {
-    return this.selected === 'toolhead' && this.interactive && !!this.viewer?.accurate
+    return this.selected === 'toolhead' && this.holdsPart && !!this.viewer?.accurate
   }
 
   get dragHint (): string {
@@ -548,10 +562,13 @@ export default class M1Parts extends Mixins(ControlMixin) {
   }
 
   /** With the printer's screen open, a scroll over the model turns its knob, as the knob on the printer would turn. Only the picture: nothing is sent. */
+  readonly knobWheel = new KnobWheel()
+
   onWheel (e: WheelEvent) {
     if (!this.screenOpen || !this.viewer) return
     e.preventDefault()
-    this.viewer.turnKnob(wheelDetents(e.deltaY, e.deltaMode))
+    const detents = this.knobWheel.turn(e.deltaY, e.deltaMode)
+    if (detents) this.viewer.turnKnob(detents)
   }
 
   onUp (e: PointerEvent) {
@@ -769,11 +786,11 @@ export default class M1Parts extends Mixins(ControlMixin) {
   }
 
   @Watch('shownPart')
-  @Watch('interactive')
+  @Watch('holdsPart')
   @Watch('viewer')
   show () {
     const part = this.shownPart
-    this.viewer?.setFocus(part, this.interactive ? 'active' : 'info', this.interactive && modelAnimates(modelSettings.animations, this.reducedMotion))
+    this.viewer?.setFocus(part, this.holdsPart ? 'active' : 'info', this.holdsPart && modelAnimates(modelSettings.animations, this.reducedMotion))
     if (this.bound && !part) this.bound.style.cursor = ''
     this.follow()
   }
@@ -843,7 +860,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
     gap: 2px;
     padding: 9px 14px;
     border-radius: 12px;
-    background: rgb(36 36 40 / 78%);
+    // Slightly see-through, so the round screen under the panel's edge still shows (KAN-3596).
+    background: rgb(36 36 40 / 62%);
     backdrop-filter: blur(20px);
     color: #f5f5f7;
     font-size: 13px;

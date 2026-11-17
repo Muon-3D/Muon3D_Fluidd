@@ -64,7 +64,7 @@ import type { Verb } from '@/services/panel-embed/protocol'
 import { PanelBridge } from '@/services/panel-embed/bridge'
 import { httpClientActions } from '@/api/httpClientActions'
 import { NOTIFY_ACTIONS } from '@/services/panel-embed/allow'
-import { wheelDetents } from '@/services/m1-3d/knob'
+import { KnobWheel } from '@/services/m1-3d/knob'
 
 /** The zoom in from the model's screen, and back out to it, ms. */
 const FLY_MS = 380
@@ -156,11 +156,14 @@ export default class M1Screen extends Mixins(ControlMixin) {
     return { '--ring-x': `${Math.round(r.x)}px`, '--ring-y': `${Math.round(r.y)}px`, '--ring-d': `${Math.round(r.r * 2)}px`, '--ring-k': `${(r.r * 2 / 480).toFixed(4)}` }
   }
 
+  readonly knobWheel = new KnobWheel()
+
   /** A scroll on the strip or the stage around the screen turns the model's knob (the picture only); the embedded screen's own scroll is its own. */
   onWheel (e: WheelEvent) {
     if (!this.ring) return
     e.preventDefault()
-    this.$emit('turn', wheelDetents(e.deltaY, e.deltaMode))
+    const detents = this.knobWheel.turn(e.deltaY, e.deltaMode)
+    if (detents) this.$emit('turn', detents)
   }
 
   async mounted () {
