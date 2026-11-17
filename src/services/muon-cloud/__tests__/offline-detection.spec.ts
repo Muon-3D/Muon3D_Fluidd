@@ -167,6 +167,7 @@ it('still surfaces failed reads over Bluetooth even if the radio is carrying pac
   vi.spyOn(bluetooth, 'bluetoothCarrying').mockReturnValue(true)
   await vi.advanceTimersByTimeAsync(3000)
   fake.down = true
-  await vi.advanceTimersByTimeAsync(6000)
+  // Two failed polls (6 s and 9 s) after a 2 s Bluetooth backoff: the second lands on the boundary of a 6 s advance, so give it a second to settle.
+  await vi.advanceTimersByTimeAsync(7000)
   expect(state.cloudState.status.boxwood).toMatchObject({ reachable: false, error: 'offline' })
 })
