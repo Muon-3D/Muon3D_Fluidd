@@ -332,12 +332,14 @@ export default class M1PartOptions extends Mixins(MaintenanceMixin, FilamentActi
   /** Why the head can't be moved by hand now, or ''. */
   get moveLock (): string {
     if (!this.controlReady) return this.controlLock
+    if (this.busy) return 'Wait for the printer to finish.'
     if (!this.isHomed('XY')) return 'Home the printer first.'
     return ''
   }
 
   get zLock (): string {
     if (!this.controlReady) return this.controlLock
+    if (this.busy) return 'Wait for the printer to finish.'
     if (!this.isHomed('Z')) return 'Home the printer first.'
     return ''
   }
