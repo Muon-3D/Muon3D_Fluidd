@@ -45,6 +45,7 @@ const createHttpClient = (store: Store<RootState>) => {
   // printer's answer itself (a developer-mode refusal names who may ask).
   const quietErrorRequests = [
     '/server/muon/dev_mode/request',
+    '/server/muon/identity/name',
     '/access/settings'
   ]
 

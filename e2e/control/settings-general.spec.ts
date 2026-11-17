@@ -193,6 +193,44 @@ test.describe('restore from a copy', () => {
   })
 })
 
+/** The printer's own rename route: records every body, answers with `status`. */
+async function renameRoute (page: Page, status = 200, error = 'muon_setup: protected') {
+  const sent: Array<Record<string, unknown>> = []
+  await page.route(/\/server\/muon\/identity\/name/, async route => {
+    sent.push(route.request().postDataJSON())
+    if (status === 200) await route.fulfill({ json: { result: { ...IDENTITY, name: String(sent.at(-1)!.name) } } })
+    else await route.fulfill({ status, json: { error } })
+  })
+  return sent
+}
+
+test.describe('renaming the printer from Control (KAN-3603)', () => {
+  test('a new name is the printer own: sent to its rename route, then kept as the Control label', async ({ page, open }) => {
+    const { db } = await setUp(page)
+    const sent = await renameRoute(page)
+    await open('/settings#general')
+    const name = page.getByTestId('setting-name').locator('input').or(page.locator('input[data-tid="setting-name"]')).first()
+    await name.fill('Elm Bench')
+    await name.press('Tab')
+    await expect.poll(() => sent).toEqual([{ name: 'Elm Bench' }])
+    await expect.poll(() => saves(db, 'uiSettings.general.instanceName')).toEqual(['Elm Bench'])
+    await expect(page.getByText('did not accept the new name')).toHaveCount(0)
+  })
+
+  test('a printer that refuses the rename keeps its name: the reason is shown and the Control label does not change', async ({ page, open }) => {
+    const { db } = await setUp(page)
+    const sent = await renameRoute(page, 403)
+    await open('/settings#general')
+    const name = page.getByTestId('setting-name').locator('input').or(page.locator('input[data-tid="setting-name"]')).first()
+    await name.fill('Elm Bench')
+    await name.press('Tab')
+    await expect(page.getByText('did not accept the new name: muon_setup: protected. Nothing changed.')).toBeVisible()
+    expect(sent).toEqual([{ name: 'Elm Bench' }])
+    expect(saves(db, 'uiSettings.general.instanceName')).toEqual([])
+    await expect(name).not.toHaveValue('Elm Bench')
+  })
+})
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 

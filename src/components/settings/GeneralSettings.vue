@@ -14,17 +14,20 @@
             Name
           </div>
           <div class="gs__s">
-            Shown in the top bar, on the printer's screen and to everyone it's shared with.
+            Shown in the top bar, on the printer's screen and to everyone it's shared with. Changing it here renames the printer itself, over any route.
           </div>
         </div>
         <div class="gs__ctl gs__ctl--wide">
           <v-text-field
             ref="instanceName"
+            :key="nameKey"
             outlined
             dense
             single-line
             hide-details="auto"
             :rules="[$rules.required]"
+            :error-messages="nameError"
+            :disabled="renaming"
             :value="instanceName"
             :default-value="$globals.APP_NAME"
             aria-label="Name"
@@ -603,8 +606,35 @@ export default class GeneralSettings extends Mixins(StateMixin) {
     return printerNameParts(this.$store.getters['config/getDisplayName'] as string ?? '').name || 'this printer'
   }
 
-  setInstanceName (value: string) {
-    if (this.instanceNameElement.valid) this.$store.dispatch('config/updateInstance', value)
+  nameKey = 0
+  nameError = ''
+  renaming = false
+
+  /**
+   * On a Muon printer the name is the printer's own (its identity, which the
+   * panel, the phone app and every other Control read), so it is written
+   * there first; Control's own label follows once the printer has it. If the
+   * printer refuses, nothing changes and the refusal is shown here.
+   */
+  async setInstanceName (value: string) {
+    if (!this.instanceNameElement.valid) return
+    const name = value.trim()
+    this.nameError = ''
+    if (this.$store.getters['server/isMuonPrinter'] === true) {
+      this.renaming = true
+      try {
+        await httpClientActions.serverMuonIdentityNamePost(name)
+      } catch (e) {
+        const data = (e as { response?: { status?: number, data?: unknown } }).response?.data as { error?: string | { message?: string } } | string | undefined
+        const why = typeof data === 'string' ? data : typeof data?.error === 'string' ? data.error : data?.error?.message
+        this.nameError = `${this.printerName} did not accept the new name${why ? `: ${why}` : '.'} Nothing changed.`
+        this.nameKey++
+        return
+      } finally {
+        this.renaming = false
+      }
+    }
+    this.$store.dispatch('config/updateInstance', name)
   }
 
   get model (): string {
