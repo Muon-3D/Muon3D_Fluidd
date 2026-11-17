@@ -52,7 +52,7 @@
           <span>Done at</span><b data-tid="job-done">{{ doneAt || '—' }}</b>
         </div>
       </div>
-      <first-layer-nudges v-if="size !== 'S'" />
+      <first-layer-nudges v-if="size !== 'S' && !devOnlyLocked" />
       <div class="jt__actions">
         <button
           type="button"

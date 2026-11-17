@@ -96,7 +96,7 @@
           >
             Turn motors off<span class="acct-menu__key">M84</span>
           </button>
-          <template v-if="muonPrinter === false">
+          <template v-if="!devOnlyLocked">
             <div class="acct-menu__rule" />
             <button
               type="button"
@@ -415,7 +415,7 @@
     </template>
 
     <control-z-offset
-      v-if="muonPrinter === false && showZOffset"
+      v-if="!devOnlyLocked && showZOffset"
       class="move__zoffset"
     />
   </control-card>

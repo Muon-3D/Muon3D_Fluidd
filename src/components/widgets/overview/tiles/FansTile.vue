@@ -61,7 +61,7 @@
           v-if="!sliders.length"
           class="ot__note"
         >
-          The fans here are run by the printer itself.
+          {{ devOnlyLocked ? 'Pick Quiet, Normal or Turbo in Print mode.' : 'The fans here are run by the printer itself.' }}
         </p>
         <p
           v-else-if="busy"
@@ -120,6 +120,8 @@ export default class FansTile extends Mixins(OverviewMixin) {
   }
 
   get sliders (): Fan[] {
+    // Raw percentage sliders are developer-mode only; Print mode (Quiet, Normal, Turbo) is the everyday control.
+    if (this.devOnlyLocked) return []
     return this.fans.filter(f => f.controllable && (f.type === 'fan' || f.type === 'fan_generic'))
   }
 

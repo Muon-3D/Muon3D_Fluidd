@@ -150,7 +150,7 @@ test('Heaters: with no history yet the sparkline is an empty line and the temper
 })
 
 test('Print mode: speed, flow and the part fan are adjusted together', async ({ page, open }) => {
-  const printer = await usePrinter(page, idle())
+  const printer = await usePrinter(page, idle({ muon_guard: { dev_mode: true } }))
   await open('/control')
   const tile = page.getByTestId('control-printmode')
   await expect(tile.getByText('Speed, flow and fans')).toBeVisible()

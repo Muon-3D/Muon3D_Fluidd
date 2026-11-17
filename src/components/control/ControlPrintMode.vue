@@ -105,7 +105,7 @@
         data-tid="advanced-flow"
         @change="setFlow"
       />
-      <template v-if="partFan">
+      <template v-if="partFan && !devOnlyLocked">
         <div class="pmode__row">
           <b>Part fan</b>
           <span data-tid="advanced-fan-value">{{ fanValue(partFan) ? `${fanValue(partFan)}%` : 'off' }}</span>

@@ -51,7 +51,7 @@
           class="crow__sub"
         > · {{ automaticLabel(fan) }}</span></span>
         <range-slider
-          v-if="isSettable(fan)"
+          v-if="isSettable(fan) && !devOnlyLocked"
           class="fans__slider"
           :value="fanValue(fan)"
           :label="fan.prettyName"

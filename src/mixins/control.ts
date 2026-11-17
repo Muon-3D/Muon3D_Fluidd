@@ -28,6 +28,7 @@ import {
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
+import DevGuardMixin from '@/mixins/dev-guard'
 import { endOwnMotion, handMoveSettling, headStatus, lockHandMove, noteOwnMotion, ownMotionActive, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
 import Vue from 'vue'
 import { EventBus } from '@/eventBus'
@@ -66,7 +67,7 @@ export const BED_FLOOR = 40
  * the G-code Fluidd's own cards send, so Control and the cards agree.
  */
 @Component
-export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMixin) {
+export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMixin, DevGuardMixin) {
   get controlReady (): boolean {
     return this.commandControlAvailable && this.klippyReady && this.klippyConnected
   }
