@@ -277,7 +277,8 @@ test.describe('Wi-Fi and network', () => {
     await expect(list.locator('[data-ssid="Workshop-2G"]')).toContainText('Connect')
     // The network it is on is above the list, in the same box, not repeated in it.
     await expect(list.locator('[data-ssid="Workshop"]')).toHaveCount(0)
-    await expect(page.getByTestId('wifi-available').getByRole('button', { name: 'Scan' })).toBeVisible()
+    // Scan sits in the Wi-Fi box header now (KAN-3607), not under the list.
+    await expect(page.getByTestId('wifi-box').getByRole('button', { name: 'Scan' })).toBeVisible()
 
     const hotspot = page.getByTestId('hotspot-card')
     await expect(hotspot).toContainText('Hotspot')
