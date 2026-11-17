@@ -13,7 +13,7 @@ async function go (page: import('@playwright/test').Page, isMobile: boolean, nam
     await page.getByTestId('tab-more').click()
     await page.getByTestId(more).click()
   } else {
-    await page.getByRole('link', { name, exact: true }).first().click()
+    await page.getByRole('link', { name: new RegExp(`^${name}( [A-Z] [A-Z])?$`) }).first().click()
   }
 }
 const drawn = (img: import('@playwright/test').Locator) => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)
@@ -56,8 +56,9 @@ test.describe('signed in', () => {
     await open(`${PRINTER}`)
     await go(page, isMobile, 'All printers', 'more-all-printers')
     await expect(page).toHaveURL(/\/$/)
-    // On All printers the Library is the header's own button.
-    await page.getByTestId('header-library').click()
+    // On All printers the Library is the rail's own link on a desktop and the header's button on a phone.
+    if (isMobile) await page.getByTestId('header-library').click()
+    else await go(page, false, 'Library', '')
     await expect(page.getByTestId('library-page')).toBeVisible()
     await expect(page).toHaveURL(/\/library$/)
     expect(new URL(page.url()).pathname).not.toContain('boxwood')
