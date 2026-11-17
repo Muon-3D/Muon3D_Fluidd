@@ -15,6 +15,7 @@
       :network="scanNetwork || ''"
       :bluetooth-search="bluetoothSearch"
       :bluetooth-off="bluetoothOff"
+      :bluetooth-insecure="bluetoothInsecure"
       :blocked-by-page="!!blockedByPage"
       @rescan="rescan"
       @look-nearby="onLookNearby"

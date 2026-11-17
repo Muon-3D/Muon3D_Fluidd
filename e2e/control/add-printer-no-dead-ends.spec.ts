@@ -211,4 +211,63 @@ test.describe('the top-bar Sign in on a printer with no internet', () => {
     await page.evaluate(() => window.dispatchEvent(new Event('online')))
     await expect(page.getByTestId('topbar-sign-in')).toBeVisible()
   })
+
+  test('a slow service (6 s) still shows Sign in', async ({ page }) => {
+    await page.route('https://console.e2e.test/v1/config', async route => {
+      await new Promise(resolve => setTimeout(resolve, 6000))
+      await route.fallback()
+    })
+    await openPrinters(page)
+    await page.waitForTimeout(8000)
+    await expect(page.getByTestId('topbar-sign-in')).toBeVisible()
+  })
+
+  test('comes back when the tab is focused again, with no online event', async ({ page }) => {
+    let up = false
+    await page.route('https://console.e2e.test/v1/config', route => up ? route.fallback() : route.abort('internetdisconnected'))
+    await openPrinters(page)
+    await expect(page.getByTestId('topbar-sign-in')).toHaveCount(0, { timeout: 15_000 })
+    up = true
+    // Focus alone inside the minute is throttled; a minute on, it asks again.
+    await page.evaluate(async () => {
+      const m = await import('/src/services/muon-cloud/reachable.ts' as string)
+      m.reachState.checkedAt = Date.now() - 61_000
+      window.dispatchEvent(new Event('focus'))
+    })
+    await expect(page.getByTestId('topbar-sign-in')).toBeVisible()
+  })
+})
+
+test.describe('the empty Welcome page keeps the Bluetooth row too', () => {
+  async function noPrinters (page: Page) {
+    await page.route('**/config.json', async route => {
+      const response = await route.fetch()
+      const config = await response.json()
+      config.blacklist = [...(config.blacklist ?? []), 'localhost', '127.0.0.1']
+      config.endpoints = []
+      await route.fulfill({ response, json: config })
+    })
+  }
+
+  test('Bluetooth off: Turn on Bluetooth search is there and asks the browser', async ({ page }) => {
+    await withBluetooth(page, { radio: false })
+    await noPrinters(page)
+    await openPrinters(page)
+    const welcome = page.getByTestId('printers-welcome')
+    await expect(welcome.getByTestId('bluetooth-off')).toBeVisible()
+    await expect(welcome.getByTestId('look-nearby')).toHaveText('Turn on Bluetooth search')
+    await welcome.getByTestId('look-nearby').click()
+    await expect.poll(() => asks(page)).toBe(1)
+  })
+
+  test('no Web Bluetooth: one plain line, no dead button', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: undefined })
+    })
+    await noPrinters(page)
+    await openPrinters(page)
+    const welcome = page.getByTestId('printers-welcome')
+    await expect(welcome.getByTestId('bluetooth-unavailable')).toContainText('Chrome or Edge')
+    await expect(welcome.getByTestId('look-nearby')).toHaveCount(0)
+  })
 })
