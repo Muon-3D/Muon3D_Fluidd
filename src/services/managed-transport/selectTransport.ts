@@ -14,6 +14,8 @@ import type {
 export interface PrinterTransportDependencies {
   local?: LocalPrinterTransportOptions;
   handoffSelectedPrinter?: (printerId: string) => Promise<AuthorizedManagedRelaySession>;
+  /** Like the handoff, for an ordinary redial: free to refuse when asking would only slow the dial. */
+  refreshSelectedPrinter?: (printerId: string) => Promise<AuthorizedManagedRelaySession>;
   createManagedEndpoint?: () => Promise<ManagedIrohEndpoint>;
   onManagedStatusChange?: (status: ManagedTransportStatus) => void;
 }
@@ -50,6 +52,13 @@ export async function createPrinterTransportForSelection (
     authorizedSession: await authorize(),
     createEndpoint: dependencies.createManagedEndpoint,
     reauthorize: authorize,
+    regrant: dependencies.refreshSelectedPrinter
+      ? async () => {
+        const session = await dependencies.refreshSelectedPrinter!(printerId)
+        assertAuthorizedSessionMatchesSelection(session, printerId)
+        return session
+      }
+      : undefined,
     onStatusChange: dependencies.onManagedStatusChange
   })
 }
