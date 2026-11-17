@@ -449,7 +449,11 @@ export default class WifiManagerCard extends Vue {
   @Watch('remote')
   onRemoteChanged () {
     this.routeProblem = null
+    // The per-SSID fallback is an Aux API route: what a remote route said about /wifi/saved says nothing about this one.
+    wifiProbe.savedUnsupported = false
+    this.stopPolling()
     this.fetchDevices()
+    this.startPolling()
   }
 
   auxApi = useAuxApi()
@@ -467,10 +471,12 @@ export default class WifiManagerCard extends Vue {
     this.stopPolling()
   }
 
-  // The 5 s poll runs only while the tab is visible: every tick costs the
-  // printer an nmcli scan. Becoming visible refreshes once, then polls again.
+  // The 5 s poll runs only while the tab is visible and on the printer's own
+  // network: every tick costs the printer an nmcli scan, and the panel never
+  // takes printer compute. Over Bluetooth or Muon3D it scans on open and on the
+  // Scan button only, and it stops once the route has said it can't help.
   private startPolling () {
-    if (this.intervalId || document.visibilityState === 'hidden') return
+    if (this.intervalId || document.visibilityState === 'hidden' || this.remote || this.routeProblem) return
     this.intervalId = setInterval(() => this.fetchDevices(), 5000)
   }
 
@@ -517,6 +523,7 @@ export default class WifiManagerCard extends Vue {
     } catch (e: any) {
       console.error('Wi-Fi scan failed', e)
       if (this.remote) this.routeProblem = managedNetworkProblem(e)
+      if (this.routeProblem) this.stopPolling()
       if (e?.response?.status === 403 && !this.routeProblem) this.$store.dispatch('protection/onRefused')
     }
     this.fetching = false
@@ -534,7 +541,7 @@ export default class WifiManagerCard extends Vue {
         this.knownSsids = new Set((res.data || []).map(p => (p.name || '').trim()))
         return
       } catch (e: any) {
-        if (e?.response?.status !== 404) return // transient: keep what we know
+        if (e?.response?.status !== 404 || this.remote) return // transient, or a remote route (no per-SSID route there): keep what we know
         wifiProbe.savedUnsupported = true
       }
     }

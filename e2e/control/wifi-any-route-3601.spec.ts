@@ -104,3 +104,32 @@ test("an owner's turned-off route says so", async ({ page }) => {
   await page.getByTestId('wifi-refresh').click()
   await expect(page.getByTestId('wifi-route-problem')).toContainText('turned off Wi-Fi changes over this connection')
 })
+
+// The panel never takes printer compute: every scan costs the printer an nmcli run.
+const scans = async (page: Page) => (await networkCalls(page)).calls.filter(c => c.startsWith('GET /wifi/scan')).length
+
+for (const route of ['ble', 'cloud'] as const) {
+  test(`over ${route === 'ble' ? 'Bluetooth' : 'Muon3D'}: the printer is scanned once on open, not every few seconds`, async ({ page }) => {
+    test.setTimeout(180_000)
+    await wifiOver(page, route)
+    await expect(page.getByTestId('wifi-box').getByTestId('wifi-connected-name')).toHaveText('Workshop')
+    const before = await scans(page)
+    expect(before).toBeGreaterThanOrEqual(1)
+    await page.waitForTimeout(12_000)
+    expect(await scans(page)).toBe(before)
+    // The Scan button still scans.
+    await page.getByTestId('wifi-refresh').click()
+    await expect.poll(() => scans(page)).toBe(before + 1)
+  })
+}
+
+test('after the owner has turned the route off, the card stops asking', async ({ page }) => {
+  test.setTimeout(180_000)
+  await wifiOver(page, 'ble')
+  await setNetworkMode(page, 'path_disabled')
+  await page.getByTestId('wifi-refresh').click()
+  await expect(page.getByTestId('wifi-route-problem')).toBeVisible()
+  const after = (await networkCalls(page)).calls.length
+  await page.waitForTimeout(12_000)
+  expect((await networkCalls(page)).calls.length).toBe(after)
+})
