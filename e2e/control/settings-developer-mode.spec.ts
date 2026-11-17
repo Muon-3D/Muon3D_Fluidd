@@ -3,11 +3,12 @@
  * printer, who may change it, what it unlocks (each linking to the page where
  * its locked row lives), and what is on offer while it is on.
  *
- * Gate rules these tests hold: Control never turns developer mode on (the first
- * turn-on is done at the printer's own screen, with the waiver), never sends a
- * change while it is off, and shows the printer's refusals in the printer's own
- * words. A request the printer refuses is answered by this test, as Moonraker
- * does: `dev-mode:<code>: <why>`.
+ * Rules these tests hold (Jack, 17 Nov): developer mode is turned on and off from
+ * Control over any route. Only the FIRST release of the warranty is confirmed on
+ * the printer's own screen: Control shows the terms, then "Confirm on the
+ * printer", and waits. After that a change does not wait. The printer's refusals
+ * are shown in its own words. A request the printer refuses is answered by this
+ * test, as Moonraker does: `dev-mode:<code>: <why>`.
  */
 import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
@@ -16,29 +17,54 @@ import { usePrinter } from './printer'
 const OWNER = 'jack@example.com'
 const REQUEST = '**/server/muon/dev_mode/request*'
 
-/** What the printer says about developer mode and about who may ask. */
-async function printerSays (page: Page, opts: { enabled: boolean, everEnabled?: boolean, mayAsk?: boolean, linked?: boolean, refuse?: string }) {
+const CHALLENGE = 'Zb3s0VJpXkq2c1yN8dRtLw4mPa7oQe6F'
+const WAIVER = { version: 'w-1', text: "The printer's own waiver terms." }
+
+/**
+ * What the printer says about developer mode and who may ask, and what it does
+ * with a change. `confirm()` is the person at the printer pressing the knob. A
+ * printer takes a later change at once (no challenge) unless `alwaysConfirm`.
+ */
+async function printerSays (page: Page, opts: { enabled: boolean, everEnabled?: boolean, mayAsk?: boolean, linked?: boolean, refuse?: string, alwaysConfirm?: boolean }) {
+  const printer = { enabled: opts.enabled, everEnabled: !!opts.everEnabled, confirmed: false }
   await page.route('**/server/aux/dev_mode*', route => route.fulfill({
-    json: { enabled: opts.enabled, guard_armed: true, ever_enabled: !!opts.everEnabled, otp_record_armed: false }
+    json: { enabled: printer.enabled, guard_armed: true, ever_enabled: printer.everEnabled, otp_record_armed: false }
   }))
   const posts: string[] = []
+  let polls = 0
   await page.route(REQUEST, route => {
     const request = route.request()
     if (request.method() === 'POST') {
-      posts.push(request.postData() ?? '')
-      return route.fulfill({
-        status: 403,
-        json: { error: { code: 403, message: opts.refuse ?? 'dev-mode:panel_only: This change is only taken on the printer\'s own screen.' } }
-      })
+      const raw = request.postData() ?? ''
+      posts.push(raw)
+      if (opts.refuse) {
+        return route.fulfill({ status: 403, json: { error: { code: 403, message: opts.refuse } } })
+      }
+      const body = JSON.parse(raw) as { enabled: boolean, challenge_id?: string }
+      if (!body.challenge_id) {
+        if (printer.everEnabled && !opts.alwaysConfirm) {
+          printer.enabled = body.enabled
+          return route.fulfill({ json: { result: { enabled: printer.enabled } } })
+        }
+        return route.fulfill({ json: { result: { challenge_id: CHALLENGE, expires_in_seconds: 120, enabled: body.enabled, instruction: 'Press the knob on the printer to confirm.', waiver: WAIVER } } })
+      }
+      if (!printer.confirmed) return route.fulfill({ status: 428, json: { error: { code: 428, message: "dev-mode:confirmation_required: Confirm this on the printer's panel first." } } })
+      printer.enabled = body.enabled
+      if (body.enabled) printer.everEnabled = true
+      return route.fulfill({ json: { result: { enabled: printer.enabled, released: true } } })
+    }
+    if (request.url().includes('challenge_id=')) {
+      polls++
+      return route.fulfill({ json: { result: { challenge_id: CHALLENGE, confirmed: printer.confirmed, refused: false, enabled: !printer.enabled } } })
     }
     return route.fulfill({
-      json: { result: { as_owner: opts.mayAsk !== false, owner: { linked: opts.linked !== false, account: OWNER }, may_ask: opts.mayAsk !== false, waiver: null } }
+      json: { result: { as_owner: opts.mayAsk !== false, owner: { linked: opts.linked !== false, account: OWNER }, may_ask: opts.mayAsk !== false, waiver: WAIVER } }
     })
   })
   // Anything sent to ask for a change, from any call.
   const sent: string[] = []
   page.on('request', r => { if (r.method() === 'POST' && /dev_mode/.test(r.url())) sent.push(r.url()) })
-  return { posts, sent }
+  return { posts, sent, printer, polls: () => polls, confirm: () => { printer.confirmed = true } }
 }
 
 const pane = (page: Page) => page.getByTestId('settings-pane')
@@ -76,34 +102,56 @@ test('every unlock links to the page where its row lives', async ({ page, open }
   await expect(page.getByTestId('page-title')).toHaveText('Macros')
 })
 
-test('off the first time: says to do it at the printer, offers no switch and sends nothing', async ({ page, open }) => {
-  const { posts, sent } = await printerSays(page, { enabled: false })
+test("turning it on the first time shows the terms, then waits for the printer's screen", async ({ page, open }) => {
+  const fake = await printerSays(page, { enabled: false })
   await openDeveloperMode(page, open)
   const p = pane(page)
   await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('Off')
-  const go = p.getByTestId('developer-mode-go-to-printer')
-  await expect(go).toContainText("Go to the printer's screen to turn on developer mode")
-  await expect(go).toContainText('System, then Protection, then Developer mode')
-  await expect(go).toContainText('ends the warranty')
-  await expect(p.getByTestId('developer-mode-switch')).toHaveCount(0)
-  await expect(p.getByRole('button', { name: 'Turn on' })).toHaveCount(0)
+  await expect(p.getByTestId('developer-mode-go-to-printer')).toHaveCount(0)
   await expect(p.getByTestId('developer-backup')).toBeDisabled()
-  await expect(p.getByTestId('developer-reset')).toBeDisabled()
-  await page.waitForTimeout(500)
-  expect(posts).toEqual([])
-  expect(sent).toEqual([])
+  await p.getByTestId('developer-mode-switch').click()
+  const dialog = page.getByTestId('developer-enable-dialog')
+  await expect(dialog.getByTestId('developer-terms')).toContainText("The printer's own waiver terms.")
+  // Nothing is asked of the printer until the terms are accepted.
+  await expect(dialog.getByTestId('developer-confirm')).toBeDisabled()
+  expect(fake.posts).toEqual([])
+  await dialog.getByTestId('developer-accept').check()
+  await dialog.getByTestId('developer-confirm').click()
+  await expect(dialog.getByTestId('developer-press-knob')).toContainText('Confirm on the printer')
+  expect(fake.posts.map(x => JSON.parse(x))).toEqual([{ enabled: true }])
+  // It waits: nothing is completed, and it is still off, until the knob is pressed.
+  await page.waitForTimeout(2500)
+  expect(fake.posts).toHaveLength(1)
+  expect(fake.printer.enabled).toBe(false)
+  fake.confirm()
+  await expect(dialog).toHaveCount(0)
+  expect(fake.posts.map(x => JSON.parse(x))).toEqual([
+    { enabled: true },
+    { enabled: true, challenge_id: CHALLENGE, waiver_acknowledged: true, waiver_version: 'w-1' }
+  ])
+  await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('On')
+  await expect(p.getByTestId('developer-backup')).toBeEnabled()
 })
 
-test('off after it was accepted before: still turned on at the printer, nothing sent', async ({ page, open }) => {
-  const { posts, sent } = await printerSays(page, { enabled: false, everEnabled: true })
+test('after it was accepted before, a turn-on goes straight through with no wait', async ({ page, open }) => {
+  const fake = await printerSays(page, { enabled: false, everEnabled: true })
   await openDeveloperMode(page, open)
-  const go = pane(page).getByTestId('developer-mode-go-to-printer')
-  await expect(go).toContainText('accepted the terms on this printer before')
-  await expect(go).toContainText('still done at the printer')
-  await expect(pane(page).getByTestId('developer-mode-switch')).toHaveCount(0)
-  await page.waitForTimeout(500)
-  expect(posts).toEqual([])
-  expect(sent).toEqual([])
+  const p = pane(page)
+  await p.getByTestId('developer-mode-switch').click()
+  const dialog = page.getByTestId('developer-enable-dialog')
+  // No terms again, no knob press.
+  await expect(dialog.getByTestId('developer-terms')).toHaveCount(0)
+  await dialog.getByTestId('developer-confirm').click()
+  await expect(dialog).toHaveCount(0)
+  await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('On')
+  expect(fake.posts.map(x => JSON.parse(x))).toEqual([{ enabled: true }])
+  expect(fake.polls()).toBe(0)
+  // And off again without waiting either.
+  await p.getByTestId('developer-mode-switch').click()
+  await page.getByTestId('developer-disable-dialog').getByTestId('developer-confirm').click()
+  await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('Off')
+  expect(fake.posts.map(x => JSON.parse(x))).toEqual([{ enabled: true }, { enabled: false }])
+  expect(fake.polls()).toBe(0)
 })
 
 test('someone who is not the owner sees it read-only, with the reason', async ({ page, open }) => {
@@ -116,14 +164,14 @@ test('someone who is not the owner sees it read-only, with the reason', async ({
   await expect(p.getByTestId('developer-mode-unlocks').getByRole('link')).toHaveCount(8)
 })
 
-test('a printer that only takes the change at its own screen says so, and nothing waits', async ({ page, open }) => {
-  const { posts } = await printerSays(page, { enabled: true })
+test('an older printer that only takes the change at its own screen says so, and nothing waits', async ({ page, open }) => {
+  const { posts } = await printerSays(page, { enabled: true, refuse: "dev-mode:panel_only: This change is only taken on the printer's own screen." })
   await openDeveloperMode(page, open)
   await pane(page).getByTestId('developer-mode-switch').click()
   const dialog = page.getByTestId('developer-disable-dialog')
   await expect(dialog).toBeVisible()
-  await dialog.getByTestId('developer-disable').click()
-  await expect(dialog).toContainText('The printer only takes this at its own screen. Go there: System, then Protection, then Developer mode.')
+  await dialog.getByTestId('developer-confirm').click()
+  await expect(dialog).toContainText('only takes this at its own screen')
   // Control asked to turn it off, once, and nothing opened a wait for a press.
   expect(posts).toHaveLength(1)
   expect(JSON.parse(posts[0])).toEqual({ enabled: false })
@@ -135,7 +183,7 @@ test("an owner-required refusal is shown in the printer's own words", async ({ p
   await openDeveloperMode(page, open)
   await pane(page).getByTestId('developer-mode-switch').click()
   const dialog = page.getByTestId('developer-disable-dialog')
-  await dialog.getByTestId('developer-disable').click()
+  await dialog.getByTestId('developer-confirm').click()
   await expect(dialog).toContainText('Only jack@example.com can change developer mode on this printer. Do it at the printer.')
 })
 
