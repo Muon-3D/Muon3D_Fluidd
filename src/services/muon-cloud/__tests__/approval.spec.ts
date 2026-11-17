@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { APPROVAL_WORDS, connectWithApproval, onApprovalWatch, type ApprovalWatch } from '../approval'
+import { APPROVAL_WORDS, connectWithApproval, noteAdmittedAtPanel, onApprovalWatch, type ApprovalWatch } from '../approval'
 import { notPairedMessage, PAIRING_COMING_SOON } from '../activate'
 
 describe('waiting for approval (connectAs, muon-link#126)', () => {
@@ -40,6 +40,20 @@ describe('waiting for approval (connectAs, muon-link#126)', () => {
     expect(await connectWithApproval({ connectAs: async () => 'session' }, 'p1', 'Control')).toBe('session')
     const settled = vi.fn()
     watch.pending.then(settled)
+    watch.outcome.then(settled)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(settled).not.toHaveBeenCalled()
+  })
+
+  it('a printer whose panel just accepted this browser confirms admission once, though it held nothing', async () => {
+    let watch!: ApprovalWatch
+    onApprovalWatch(w => { watch = w })
+    noteAdmittedAtPanel('p1')
+    await connectWithApproval({ connectAs: async () => 'session' }, 'p1', 'Control')
+    expect(await watch.outcome).toBe('admitted')
+    onApprovalWatch(w => { watch = w })
+    await connectWithApproval({ connectAs: async () => 'session' }, 'p1', 'Control')
+    const settled = vi.fn()
     watch.outcome.then(settled)
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(settled).not.toHaveBeenCalled()

@@ -34,6 +34,13 @@ const failureOf = (reason: unknown): ApprovalFailure | null =>
 
 /** Told of each wait that starts, so the page can show the dialog for it. */
 let listener: ((watch: ApprovalWatch) => void) | null = null
+
+/** Printers whose panel has just answered a pairing from this browser: their next dial confirms admission even if the printer holds nothing. */
+const pairedAtPanel = new Set<string>()
+export function noteAdmittedAtPanel (printerId: string): void {
+  pairedAtPanel.add(printerId)
+}
+
 export function onApprovalWatch (next: ((watch: ApprovalWatch) => void) | null): void {
   listener = next
 }
@@ -75,7 +82,8 @@ export async function connectWithApproval<Session> (
   let ended!: (outcome: ApprovalOutcome) => void
   let abandon!: (error: Error) => void
   let cancelled = false
-  let held = false
+  // Someone accepted this browser at the printer's panel a moment ago: say so, though the dial itself is not held.
+  let held = pairedAtPanel.delete(printerId)
   const watch: ApprovalWatch = {
     pending: new Promise<string>(resolve => { sawPending = resolve }),
     outcome: new Promise<ApprovalOutcome>(resolve => { ended = resolve }),

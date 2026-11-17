@@ -67,7 +67,7 @@ async function start (page: Page, account: Parameters<typeof useAllRoutes>[1], n
   }
   await nearby(page, nearbyList)
   await hostedPage(page)
-  await page.goto(`${HOSTED}/printers`)
+  await page.goto(`${HOSTED}/`)
   await ready(page)
 }
 
@@ -76,18 +76,18 @@ async function optionsOf (page: Page, name: string) {
 }
 
 test.describe('Connect locally from the hosted page', () => {
-  test('Boxwood on the same Wi-Fi: Connect locally moves THIS tab to its own page, with no popup', async ({ page, context, account }) => {
+  test('Boxwood on the same Wi-Fi: Connect locally moves THIS tab to its .local page, with no popup', async ({ page, context, account }) => {
     const pages: string[] = []
     context.on('page', p => pages.push(p.url()))
-    const asked = await printerPages(page, ['192.168.1.20'])
+    const asked = await printerPages(page, ['muon-boxwood-367a.local', '192.168.1.20'])
     await start(page, account, [{ id: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, linked: true, addrs: ['10.42.0.1', '192.168.1.20'] }], false)
     await optionsOf(page, ROUTE_PRINTER.name)
     await expect(item(page, 'Connect locally')).toBeVisible()
     await expect(page.getByText('Not found on this network')).toHaveCount(0)
     await item(page, 'Connect locally').click()
-    await expect(page).toHaveURL('http://192.168.1.20/')
+    await expect(page).toHaveURL('http://muon-boxwood-367a.local/')
     await expect(page.locator('#printer-own-control')).toBeVisible()
-    expect(asked).toEqual(['http://192.168.1.20/'])
+    expect(asked).toEqual(['http://muon-boxwood-367a.local/'])
     expect(pages).toEqual([])
     expect(context.pages()).toHaveLength(1)
   })
