@@ -90,11 +90,13 @@ test('the knob is a whole wheel: three full turns of scrolling show no gap', asy
   const box = await canvasBox(page)
   await page.mouse.move(box.x + 60, box.y + box.height * 0.5)
   // Three full turns: one notch is a 15 degree detent, so 72 notches.
-  for (let i = 0; i < 72; i++) await page.mouse.wheel(0, 100)
+  // At the pace the knob allows (8 detents a second), as a hand turning it would.
+  test.setTimeout(120_000)
+  for (let i = 0; i < 72; i++) { await page.mouse.wheel(0, 100); await page.waitForTimeout(130) }
   await expect.poll(async () => Number(await stage.getAttribute('data-knob')), { timeout: 15_000 }).toBeGreaterThan(18.8)
   await expect(stage).toHaveAttribute('data-knob-arc', /^(35[89]|360)(\.\d)?$/)
   // And back the other way, past the start.
-  for (let i = 0; i < 80; i++) await page.mouse.wheel(0, -100)
+  for (let i = 0; i < 80; i++) { await page.mouse.wheel(0, -100); await page.waitForTimeout(130) }
   await expect.poll(async () => Number(await stage.getAttribute('data-knob')), { timeout: 15_000 }).toBeLessThan(-0.5)
   await expect(stage).toHaveAttribute('data-knob-arc', /^(35[89]|360)(\.\d)?$/)
   expect(printer.gcode).toEqual([])

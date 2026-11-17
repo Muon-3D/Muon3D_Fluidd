@@ -137,7 +137,7 @@
             Restart now to update
           </button>
           <button
-            v-else
+            v-else-if="mayDo('update_install')"
             type="button"
             class="cbtn cbtn--primary soft__go"
             :disabled="!canAskInstall"

@@ -34,7 +34,7 @@ export interface RouteMenuFacts {
 
 /** Said when the account does not list the printer, so Muon3D cannot carry it. */
 export const NOT_ON_ACCOUNT = 'Not on your account'
-export const OFFLINE_IN_MUON3D = 'Offline in Muon3D'
+export const OFFLINE_IN_MUON3D = 'Not connected to Muon3D'
 export const NO_BLUETOOTH = 'This browser has no Bluetooth'
 export const BLUETOOTH_NEEDS_HTTPS = 'Bluetooth needs a secure page'
 export const NOT_IDENTIFIED = 'Not heard nearby yet'

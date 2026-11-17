@@ -1,7 +1,9 @@
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import { activeSlug } from '@/services/printer-pages'
-import { gateState, refreshCanManageAccess, refreshGateDevMode, valueFor } from '@/services/gates'
+import { gateState, refreshCanManageAccess, refreshGateDevMode, refreshGatePermissions, valueFor } from '@/services/gates'
+import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { mayUse } from '@/services/permissions/presets'
 
 /**
  * The gate answers a Settings page needs, in one place (see
@@ -41,6 +43,20 @@ export default class MuonGatesMixin extends Mixins(StateMixin) {
     return this.isMuonPrinter === true ? valueFor('manage', this.gatePrinter) : null
   }
 
+  /**
+   * Whether this client may use what a permission setting guards (`plate_clear`,
+   * `update_install`, `hotspot_toggle`, `wifi_change`, ...): the owner, or
+   * anyone the setting lets in. Unknown, and a setting the printer doesn't
+   * report, count as yes, so nothing is hidden on a guess; the printer
+   * enforces the value either way. Hide a control with this, never grey it.
+   */
+  mayDo (knob: string): boolean {
+    if (this.isMuonPrinter !== true) return true
+    if (this.canManageAccess !== false) return true
+    const perms = valueFor('perms', this.gatePrinter)
+    return mayUse(perms?.[knob], valueFor('shared', this.gatePrinter))
+  }
+
   /** Changes on a switch, a reset and when server.info lands: asks again. */
   get gateToken (): string {
     return `${gateState.epoch}|${this.gatePrinter}|${this.isMuonPrinter}`
@@ -58,6 +74,9 @@ export default class MuonGatesMixin extends Mixins(StateMixin) {
   askGates () {
     if (this.gatePrinter === null) return
     if (valueFor('dev', this.gatePrinter) === null) refreshGateDevMode()
+    if (this.isMuonPrinter === true && valueFor('perms', this.gatePrinter) === null) {
+      refreshGatePermissions(isManagedApiUrl((this.$store.state.config?.apiUrl as string | null | undefined)))
+    }
     if (this.isMuonPrinter === true &&
       this.$store.getters['server/componentSupport']('muon_access') &&
       valueFor('manage', this.gatePrinter) === null) {

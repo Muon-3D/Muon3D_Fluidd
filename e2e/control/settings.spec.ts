@@ -165,16 +165,15 @@ async function openDeveloperMode (page: import('@playwright/test').Page, open: (
   await expect(page.getByTestId('page-title')).toHaveText('Developer mode')
 }
 
-test('developer mode off: the page says to go to the printer\'s screen and offers no way to turn it on here', async ({ page, open }) => {
+test('developer mode off: the owner gets the switch here, and the page no longer sends them to the printer', async ({ page, open }) => {
   await page.route('**/server/aux/dev_mode*', route => route.fulfill({ json: { enabled: false, guard_armed: true } }))
+  await page.route('**/server/muon/dev_mode/request*', route => route.fulfill({
+    json: { result: { as_owner: true, owner: { linked: true, account: 'jack@example.com' }, may_ask: true, waiver: null } }
+  }))
   await openDeveloperMode(page, open)
   const pane = page.getByTestId('settings-pane')
-  const goto = pane.getByTestId('developer-mode-go-to-printer')
-  await expect(goto).toBeVisible()
-  await expect(goto).toContainText("Go to the printer's screen to turn on developer mode")
-  await expect(goto).toContainText('System, then Protection, then Developer mode')
-  await expect(pane.getByTestId('developer-mode-switch')).toHaveCount(0)
-  await expect(pane.getByRole('button', { name: 'Turn on' })).toHaveCount(0)
+  await expect(pane.getByTestId('developer-mode-switch')).toBeVisible()
+  await expect(pane.getByTestId('developer-mode-go-to-printer')).toHaveCount(0)
 })
 
 test('developer mode on: the message goes and the way out stays', async ({ page, open }) => {
