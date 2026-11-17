@@ -31,6 +31,21 @@ function relay () {
 const latin1 = (bytes: Uint8Array) => Array.from(bytes, b => String.fromCharCode(b)).join('')
 const bytesOf = (text: string) => Uint8Array.from(text, c => c.charCodeAt(0))
 
+it('uses the progress-capable WASM binding and reports its body writes', async () => {
+  const progress = vi.fn()
+  const fetch = vi.fn()
+  const fetchWithProgress = vi.fn(async (_method, _path, _headers, body, report) => {
+    report(0, body.length)
+    report(2, body.length)
+    report(body.length, body.length)
+    return { status: 201, headers: [], body: new Uint8Array() }
+  })
+  const printer = new IrohPrinter({ printerId: () => 'printer', fetch, fetchWithProgress } as any)
+  await printer.fetch('/server/files/upload', { method: 'POST', body: 'G28\n' }, progress)
+  expect(progress.mock.calls).toEqual([[0, 4], [2, 4], [4, 4]])
+  expect(fetch).not.toHaveBeenCalled()
+})
+
 /** Every byte value, and a line that starts like a delimiter but is not one. */
 const GCODE = new Uint8Array([
   ...new TextEncoder().encode('G28\r\n--not-the-boundary\r\n; ü\r\n'),

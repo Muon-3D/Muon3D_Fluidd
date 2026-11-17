@@ -54,7 +54,7 @@ export const actions: ActionTree<SocketState, RootState> = {
     resetGates()
     // Whatever the reason, the head position held now is from the old connection.
     headStatus.fresh = false
-    const modules = ['server', 'power', 'webcams', 'jobQueue', 'charts', 'socket', 'wait', 'gcodePreview']
+    const modules = ['server', 'power', 'webcams', 'jobQueue', 'charts', 'wait', 'gcodePreview']
 
     if (event.wasClean) {
       // Fluidd closed it, to switch printers or to stop. The next init resets
@@ -66,9 +66,9 @@ export const actions: ActionTree<SocketState, RootState> = {
 
     // Anything else: a Moonraker restart, a network drop, the printer going
     // away. The socket client is already trying again.
-    await dispatch('reset', modules, { root: true })
+    commit('setReset')
     commit('setSocketConnecting', true)
-    commit('setSocketOpen', false)
+    await dispatch('reset', modules, { root: true })
   },
 
   /**

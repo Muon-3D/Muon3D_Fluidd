@@ -73,7 +73,7 @@ import { afterFirstPaint } from '@/services/startup/idle'
 import type { CardAction, DirectoryEntry } from '@/services/muon-cloud/directory'
 
 /** What the printer's own page offers from its menu: the routes it is not on, Retry Bluetooth, and its access settings. */
-const PAGE_ACTIONS = ['connect-local', 'connect-cloud', 'connect-bluetooth', 'retry-bluetooth', 'pair-browser', 'access']
+const PAGE_ACTIONS = ['connect-local', 'connect-cloud', 'connect-bluetooth', 'retry-bluetooth', 'access']
 
 /**
  * The three-dot menu on a printer's own page (KAN-1429). It lists the same

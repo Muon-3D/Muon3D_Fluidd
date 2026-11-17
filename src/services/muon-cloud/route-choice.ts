@@ -178,10 +178,11 @@ export interface DropChoice {
  * reach the printer there; the cloud and another try at Bluetooth always, so
  * the sheet never dead-ends.
  */
-export function dropChoices (lanReachable: boolean): DropChoice[] {
+export function dropChoices (lanReachable: boolean, cloudUsable = true): DropChoice[] {
   const choices: DropChoice[] = []
   if (lanReachable) choices.push({ id: 'lan', label: 'Connect on local network' })
-  choices.push({ id: 'cloud', label: 'Connect via cloud' })
+  // Not on this account (not owned, not shared): Muon3D cannot carry it, so it is not offered (KAN-3592).
+  if (cloudUsable) choices.push({ id: 'cloud', label: 'Connect via cloud' })
   choices.push({ id: 'ble', label: 'Try Bluetooth again' })
   return choices
 }

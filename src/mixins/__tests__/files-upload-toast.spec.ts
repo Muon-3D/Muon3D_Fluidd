@@ -45,7 +45,7 @@ describe('upload over the cloud link: the user is told how it went', () => {
     vi.mocked(httpClientActions.serverFilesUploadPost).mockRejectedValue(new Error('sending stopped by peer: error 0'))
     const file = new File(['G28\n'], 'cube.gcode')
     await expect(uploader().uploadFiles([file], '', 'gcodes', false)).resolves.toEqual([])
-    expect(EventBus.$emit).toHaveBeenCalledWith('Upload of cube.gcode failed: sending stopped by peer: error 0', { type: 'error', timeout: -1 })
+    expect(EventBus.$emit).toHaveBeenCalledWith('Upload of cube.gcode failed: Connection cut during upload: sending stopped by peer: error 0', expect.objectContaining({ type: 'error', timeout: -1, action: { label: 'Try again', run: expect.any(Function) } }))
   })
 
   it('says nothing went wrong when the user cancelled', async () => {
@@ -53,6 +53,18 @@ describe('upload over the cloud link: the user is told how it went', () => {
     const file = new File(['G28\n'], 'cube.gcode')
     await uploader().uploadFiles([file], '', 'gcodes', false)
     expect(EventBus.$emit).not.toHaveBeenCalled()
+  })
+
+  it('retries the same file and captured folder after a failure', async () => {
+    vi.mocked(httpClientActions.serverFilesUploadPost).mockRejectedValueOnce(new Error('closed')).mockResolvedValue({} as any)
+    const file = new File(['G28\n'], 'cube.gcode')
+    const owner = uploader()
+    await owner.uploadFiles([file], 'parts/nested', 'gcodes', false)
+    const options = vi.mocked(EventBus.$emit).mock.calls.at(-1)?.[1]
+    options?.action?.run()
+    await vi.waitFor(() => expect(httpClientActions.serverFilesUploadPost).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(httpClientActions.serverFilesUploadPost).mock.calls.map(call => call.slice(0, 4)))
+      .toEqual([[file, 'parts/nested', 'gcodes', false], [file, 'parts/nested', 'gcodes', false]])
   })
 })
 
@@ -64,7 +76,7 @@ describe('uploadErrorText', () => {
     expect(uploadErrorText({ response: { status: 502, data: '' } })).toBe('the printer answered HTTP 502')
   })
   it('falls back to the transport error', () => {
-    expect(uploadErrorText(new Error('closed'))).toBe('closed')
+    expect(uploadErrorText(new Error('closed'))).toBe('Connection cut during upload: closed')
     expect(uploadErrorText(undefined)).toBe('unknown error')
   })
 })
