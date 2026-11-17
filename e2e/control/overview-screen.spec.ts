@@ -9,6 +9,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
 import { usePrinter, PRESETS, M1_NO_GO } from './printer'
+import { MOCK_PORT } from '../ports'
 
 // About the 3D stage: it needs WebGL, which the e2e fixtures turn off by default (KAN-2781).
 test.use({ webgl: true })
@@ -186,6 +187,22 @@ test('without a /panel/ build the screen says so, and frames nothing', async ({ 
   await expect(page.getByTestId('m1-screen-frame')).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('m1-screen')).toHaveCount(0)
+  expect(printer.gcode).toEqual([])
+})
+
+// KAN-3595: hosted Control (control.muon3d.com) serves no /panel/ of its own; the printer is asked, over its route.
+test('the page serves no /panel/ but the printer has it: no "needs an update"', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed(), STILL)
+  await page.route(url => url.pathname.startsWith('/panel/') && url.port !== String(MOCK_PORT), route => route.fulfill({ status: 404, body: '' }))
+  await page.route(url => url.pathname.startsWith('/panel/') && url.port === String(MOCK_PORT), route => route.fulfill({
+    status: 200, contentType: 'text/html', headers: { 'access-control-allow-origin': '*' }, body: '<!doctype html><body>screen</body>'
+  }))
+  await open('/')
+  await ready(page)
+  await clickScreen(page)
+  await expect(page.getByTestId('m1-screen')).toHaveAttribute('data-phase', 'open')
+  await expect(page.getByTestId('m1-screen-empty')).toHaveCount(0)
+  await expect(page.getByTestId('m1-screen-unreachable')).toHaveCount(0)
   expect(printer.gcode).toEqual([])
 })
 
