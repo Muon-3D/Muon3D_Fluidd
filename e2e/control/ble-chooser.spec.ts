@@ -37,8 +37,8 @@ async function withAccountPrinters (page: Page, printers: Array<ReturnType<typeo
  * chooses, or null for a dismissed chooser. Nothing but `requestDevice` is
  * remembered, and `getDevices` is undefined unless `granted`, where it lists the device.
  */
-async function withBluetooth (page: Page, pick: string | null, name = 'walnut-8987', granted = false) {
-  await page.addInitScript(({ pick, name, granted }) => {
+async function withBluetooth (page: Page, pick: string | null, name = 'walnut-8987', granted = false, advertisesAs: string | null = null) {
+  await page.addInitScript(({ pick, name, granted, advertisesAs }) => {
     const asked: unknown[] = []
     ;(window as any).__bluetoothAsks = asked
     const info = new Uint8Array(38)
@@ -53,7 +53,20 @@ async function withBluetooth (page: Page, pick: string | null, name = 'walnut-89
       disconnect: () => {},
       getPrimaryService: async () => ({ getCharacteristic: async () => characteristic })
     }
-    const device = Object.assign(new EventTarget(), { id: 'dev-1', name, gatt: server })
+    const device: any = Object.assign(new EventTarget(), { id: 'dev-1', name, gatt: server })
+    // `advertisesAs`: the device's advertisement names another printer's EndpointId, so the page drops the id it read (a stale key).
+    if (advertisesAs) {
+      device.watchAdvertisements = async () => {
+        const bytes = new Uint8Array(10)
+        bytes[0] = 1
+        for (let i = 0; i < 8; i++) bytes[2 + i] = parseInt(advertisesAs.slice(i * 2, i * 2 + 2), 16)
+        const event: any = new Event('advertisementreceived')
+        event.device = device
+        event.name = name
+        event.manufacturerData = new Map([[0xffff, new DataView(bytes.buffer)]])
+        device.dispatchEvent(event)
+      }
+    }
     // `granted`: this browser was allowed the printer earlier, so getDevices lists it and the page remembers it.
     if (granted && pick) localStorage.setItem('muon.ble.printers', JSON.stringify({ 'dev-1': { endpointId: pick, localName: name } }))
     Object.defineProperty(navigator, 'bluetooth', {
@@ -71,7 +84,7 @@ async function withBluetooth (page: Page, pick: string | null, name = 'walnut-89
         removeEventListener: () => {}
       }
     })
-  }, { pick, name, granted })
+  }, { pick, name, granted, advertisesAs })
 }
 
 const asks = (page: Page) => page.evaluate(() => (window as any).__bluetoothAsks as any[])
@@ -119,6 +132,17 @@ test.describe('Connect over Bluetooth on one printer', () => {
     await page.locator('button[aria-label="Options for Elm"]').click()
     await page.getByRole('menuitem', { name: 'Connect over Bluetooth' }).click()
     await expect(page.getByText("That device isn't Elm", { exact: false })).toBeVisible()
+  })
+
+  test('a chosen device that names no printer is refused, not connected as the printer that was clicked', async ({ page }) => {
+    // The chooser returns Elm's id, but the device then advertises another printer's: the page keeps no EndpointId for it.
+    await withBluetooth(page, ELM_ID, 'walnut-8987', false, NEW_ID)
+    await withAccountPrinters(page, [cloudPrinter(ELM_ID, 'Elm')])
+    await openPrinters(page)
+    await page.locator('button[aria-label="Options for Elm"]').click()
+    await page.getByRole('menuitem', { name: 'Connect over Bluetooth' }).click()
+    await expect(page.getByText("That device isn't Elm", { exact: false })).toBeVisible()
+    await expect(page).toHaveURL(/\/$/)
   })
 })
 

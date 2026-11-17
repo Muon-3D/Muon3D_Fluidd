@@ -401,19 +401,6 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     this.wasConnected = this.socketConnected
   }
 
-  /**
-   * Opening another printer is a first connect, not a reconnect (KAN-3590): the old printer's open
-   * socket must not make the new one's first seconds read "Reconnecting".
-   */
-  get openedPrinterId (): string | null {
-    return cloudState.activePrinterId
-  }
-
-  @Watch('openedPrinterId')
-  onActivePrinterChanged () {
-    this.wasConnected = false
-  }
-
   /** What the connection shows: the page, a bar over it, or a screen of its own (services/connection/view). */
   get connection (): ConnectionView {
     if (this.foreignPrinterRoute) return { page: true, stale: false, banner: null, screen: null }
@@ -909,7 +896,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     if (step.key === ALL_PRINTERS_KEY) {
       to = '/'
     } else if (step.key === LIBRARY_KEY) {
-      to = scopedPath('/library', activeSlug())
+      // The router sends it under a printer only from that printer's own pages.
+      to = '/library'
     } else if (step.key === ACCOUNT_KEY) {
       to = scopedPath('/account', activeSlug())
     } else if (activeSlug() || this.foreignPrinterRoute) {

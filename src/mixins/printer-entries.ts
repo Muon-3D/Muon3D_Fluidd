@@ -524,7 +524,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       // devices found". The pick is checked against this printer below.
       heard = await lookNearby()
       if (!heard) return
-      if (heard.endpointId && !isPrinter(heard, id)) {
+      // A device that names no printer (no EndpointId, no advertisement) is not this one either.
+      if (!isPrinter(heard, id)) {
         this.notice = `That device isn't ${e.name}. Choose ${e.name} in the Bluetooth list.`
         return
       }
