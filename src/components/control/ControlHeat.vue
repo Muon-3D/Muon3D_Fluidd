@@ -76,7 +76,10 @@
               class="heat__now"
               data-tid="heat-now"
             >{{ deg1(h.heater.temperature) }}</b>
-            <heater-sparkline :series="h.heater.key || h.heater.name" />
+            <heater-sparkline
+              :series="h.heater.key || h.heater.name"
+              :label="h.label"
+            />
           </span>
           <span class="crow__sub">power {{ Math.round((h.heater.power || 0) * 100) }}%</span>
         </span>
@@ -147,7 +150,10 @@
           :disabled="!ready"
           @change="setHeater(otherHeater(sensor.name), $event)"
         />
-        <heater-sparkline :series="sensor.key || sensor.name" />
+        <heater-sparkline
+          :series="sensor.key || sensor.name"
+          :label="sensor.prettyName || sensor.name"
+        />
         <b class="crow__value heat__other-now">{{ deg1(sensor.temperature) }}</b>
       </div>
     </control-task-fold>

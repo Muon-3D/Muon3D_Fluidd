@@ -44,3 +44,13 @@ it('discards an edited target when the selected printer changes', async () => {
   expect((field.element as HTMLInputElement).value).toBe('215')
   wrapper.destroy()
 })
+
+it('names every inline history after its heater or sensor without sending commands', async () => {
+  const store = panelStore()
+  const wrapper = mount(ControlHeat, { mocks: { $store: store, $waits: waits }, stubs: panelStubs })
+  expect(wrapper.findAll('svg[role="img"]').wrappers.map(w => w.attributes('aria-label'))).toEqual([
+    'Nozzle temperature history, no history yet', 'Bed temperature history, no history yet', 'CPU temperature history, no history yet'
+  ])
+  expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+  wrapper.destroy()
+})

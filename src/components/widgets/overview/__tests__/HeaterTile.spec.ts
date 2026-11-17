@@ -12,6 +12,15 @@ const enter = async (input: any, value: string) => { await input.setValue(value)
 afterEach(() => resetSocket())
 
 describe('HeaterTile', () => {
+  it.each(['M', 'L'])('names the %s-size history after its heater, retaining the current reading', size => {
+    const store = tileStore()
+    const w = mount(HeaterTile, { ...tileMount(store), propsData: { kind: 'hotend', size } })
+    expect(w.find('svg[role="img"]').attributes('aria-label')).toBe('Hotend temperature history, no history yet')
+    expect(w.find('[data-tid="heater-value"]').text()).toContain('214.6°')
+    expect(sent()).toEqual([])
+    w.destroy()
+  })
+
   it.each(['hotend', 'bed'] as const)('renders %s with no data as a dash, with nothing to press', kind => {
     const w = mountHeater(tileStore({ empty: true }), kind)
     expect(w.text()).toContain(kind === 'hotend' ? 'Hotend' : 'Bed')
