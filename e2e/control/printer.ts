@@ -56,6 +56,8 @@ export interface PrinterHandle {
   called: (method: string) => Json[]
   /** The G1 lines of every script sent, in order. */
   moves: () => string[]
+  /** Holds the answer to the next script matching `pattern` (a long G28) until the returned release is called. */
+  hold: (pattern: RegExp) => () => void
   /** The printer reports `status` now: it becomes the overlay and is pushed to the page at once. */
   report: (status: Json) => void
   /** The printer prints these lines to the console now (a notify_gcode_response each). */
@@ -111,11 +113,17 @@ function getDotted (root: Json, key: string): unknown {
 }
 
 export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[], database?: boolean, ticks?: boolean, apiUrl?: string, onSocketEvent?: (event: 'open' | 'close' | 'send', method?: string) => void } = {}): Promise<PrinterHandle> {
+  let held: { pattern: RegExp, until: Promise<void> } | null = null
   const handle: PrinterHandle = {
     state: { status, failOn: {}, results: {}, answers: {}, answer: {}, components: options.components },
     gcode: [],
     calls: [],
     called: (method: string) => handle.calls.filter(c => c.method === method).map(c => c.params),
+    hold: (pattern: RegExp) => {
+      let release = () => {}
+      held = { pattern, until: new Promise<void>(resolve => { release = resolve }) }
+      return release
+    },
     moves: () => handle.gcode.flatMap(s => s.split('\n')).filter(l => l.startsWith('G1 ')),
     report: (next: Json) => {
       handle.state.status = next
@@ -233,6 +241,12 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
       }
       if (msg.method === 'printer.gcode.script') {
         handle.gcode.push(String(msg.params?.script ?? ''))
+        if (held && held.pattern.test(String(msg.params?.script ?? ''))) {
+          const wait = held.until
+          held = null
+          wait.then(() => ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: 'ok' })))
+          return
+        }
         ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: 'ok' }))
         return
       }
