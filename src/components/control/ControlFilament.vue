@@ -40,6 +40,7 @@
               class="cbtn cbtn--primary"
               :disabled="!canHeat"
               :title="heatBlocked || ''"
+              aria-label="Heat nozzle for extruding"
               data-tid="extrude-heat"
               @click="heatForExtrude"
             >

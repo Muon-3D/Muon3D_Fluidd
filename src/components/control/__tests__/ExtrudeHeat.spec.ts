@@ -44,6 +44,47 @@ it('can be changed before heating', async () => {
   wrapper.destroy()
 })
 
+it('names the nozzle action and keeps both directions locked until Klipper permits extrusion', async () => {
+  const { store, wrapper } = mountIt('PETG')
+  const heat = wrapper.find('button[aria-label="Heat nozzle for extruding"]')
+  expect(heat.exists()).toBe(true)
+  for (const tid of ['extrude', 'retract']) expect(wrapper.find(`[data-tid="${tid}"]`).attributes('disabled')).toBeDefined()
+  await heat.trigger('click')
+  expect(sent()).toEqual(['SET_HEATER_TEMPERATURE HEATER=extruder TARGET=240'])
+  store.extruder.temperature = 240
+  await Vue.nextTick()
+  for (const tid of ['extrude', 'retract']) expect(wrapper.find(`[data-tid="${tid}"]`).attributes('disabled')).toBeDefined()
+  store.extruder.can_extrude = true
+  await Vue.nextTick()
+  for (const tid of ['extrude', 'retract']) expect(wrapper.find(`[data-tid="${tid}"]`).attributes('disabled')).toBeUndefined()
+  expect(sent()).toHaveLength(1)
+  wrapper.destroy()
+})
+
+it('keeps the named heat action unavailable offline, without an extruder or above its limit', async () => {
+  const { store, wrapper } = mountIt(null)
+  const heat = wrapper.find('button[aria-label="Heat nozzle for extruding"]')
+  expect(heat.exists()).toBe(true)
+  const vm = wrapper.vm as any
+  Vue.set(store.state.printer.printer.configfile.settings, 'extruder', { max_temp: 265 })
+  vm.heatDraft = 266
+  await Vue.nextTick()
+  expect(heat.attributes('disabled')).toBeDefined()
+  vm.heatForExtrude()
+  vm.heatDraft = null
+  store.getters['socket/getConnectionState'] = false
+  await Vue.nextTick()
+  expect(heat.attributes('disabled')).toBeDefined()
+  vm.heatForExtrude()
+  store.getters['socket/getConnectionState'] = true
+  store.getters['printer/getHeaters'] = []
+  await Vue.nextTick()
+  expect(heat.attributes('disabled')).toBeDefined()
+  vm.heatForExtrude()
+  expect(sent()).toEqual([])
+  wrapper.destroy()
+})
+
 it('uses the printer default material when nothing is loaded', async () => {
   const { wrapper } = mountIt(null)
   expect(wrapper.find('[data-tid="extrude-heat-note"]').text()).toBe('for PLA')
