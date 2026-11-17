@@ -2,7 +2,6 @@ import { Component, Mixins, Prop, Watch } from 'vue-property-decorator'
 import { printerPath } from '@/services/printer-pages'
 import { describeLibraryError } from '@/services/library/api'
 import { sendToPrinter, type SendMode, type StoredFileFacts } from '@/services/library/print-on'
-import { LIBRARY_URL } from '@/services/library/discover'
 import type { TargetRow } from '@/services/library/print-targets'
 import PrinterRowsMixin from './printer-rows'
 
@@ -106,11 +105,6 @@ export default class PrintOnMixin extends Mixins(PrinterRowsMixin) {
     const item = this.item
     if (!item) return
     this.$emit('close')
-    // Slice opens your own prints; a public one is re-sliced from its page.
-    if (this.shared) {
-      window.open(`${LIBRARY_URL}/p/${encodeURIComponent(this.shared.slug || item.id)}`, '_blank', 'noopener')
-      return
-    }
     this.$router.push({ path: printerPath(row.slug, 'slice'), query: { library: item.id } }).catch(() => {})
   }
 }

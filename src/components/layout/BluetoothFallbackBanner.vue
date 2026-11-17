@@ -160,7 +160,7 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
       id,
       name: e?.name ?? 'the printer',
       reason,
-      choices: dropChoices(this.lanReachable(e)),
+      choices: dropChoices(this.lanReachable(e), cloudState.printers.some(p => p.id.toLowerCase() === id.toLowerCase())),
       retrying: this.retrying
     }
   }
