@@ -220,3 +220,92 @@ test('a new Moonraker key is asked for first', async ({ page, open, account }) =
   await page.getByTestId('confirm-cancel').click()
   await expect(page.getByTestId('confirm')).toHaveCount(0)
 })
+
+test.describe('sharing and managing access, as the phone app does', () => {
+  test('the owner makes an invite link with the chosen lifetime, uses, role and approval, then copies it', async ({ page, open, account }) => {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+    await printerSays(page, 'owner')
+    inAccount(account, 'owner')
+    await openAccess(page, open)
+    await expect(page.getByTestId('pa-links')).toHaveCount(0)
+
+    await page.getByTestId('pa-invite').click()
+    await page.getByTestId('pa-invite-link-tab').click()
+    await page.getByTestId('pa-link-lasts-7d').click()
+    await page.getByTestId('pa-link-uses-5').click()
+    await page.getByTestId('pa-link-role-operator').click()
+    await page.getByTestId('pa-link-approve').check()
+    expect(printerChanges(account)).toEqual([])
+    await page.getByTestId('pa-link-make').click()
+
+    await expect(page.getByTestId('pa-link-made-url')).toHaveText('https://muon3d.com/j/E2E-7d-operator')
+    expect(account.changes.filter(c => c.call === `POST /v1/printers/${ID}/links`).map(c => c.body)).toEqual([
+      { lifetime: '7d', max_uses: 5, role: 'operator', approve_each: true }
+    ])
+    await page.getByTestId('pa-link-made-copy').click()
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('https://muon3d.com/j/E2E-7d-operator')
+    await page.getByRole('button', { name: 'Done' }).click()
+    // The new link is on the page's list, with who it lets in.
+    await expect(page.getByTestId('pa-link')).toHaveCount(1)
+    await expect(page.getByTestId('pa-link')).toContainText('Operator · 0 of 5 uses')
+    await expect(page.getByTestId('pa-link')).toContainText('you let each person in')
+  })
+
+  test('ending a link asks first: Cancel keeps it, End link revokes it', async ({ page, open, account }) => {
+    await printerSays(page, 'owner')
+    inAccount(account, 'owner')
+    account.links[ID] = [{ id: 'l1', printer_id: ID, role: 'viewer', approve_each: false, max_uses: null, uses: 2, expires_at: null, created_at: 1, url: 'https://muon3d.com/j/AAAA-BBBB' }]
+    await openAccess(page, open)
+    await page.getByTestId('pa-link-end').click()
+    await expect(page.getByTestId('confirm')).toContainText('End this invite link?')
+    await page.getByTestId('confirm-cancel').click()
+    await expect(page.getByTestId('confirm')).toHaveCount(0)
+    expect(printerChanges(account)).toEqual([])
+    await expect(page.getByTestId('pa-link')).toHaveCount(1)
+
+    await page.getByTestId('pa-link-end').click()
+    await page.getByTestId('confirm-ok').click()
+    await expect.poll(() => printerChanges(account)).toEqual([`DELETE /v1/printers/${ID}/links/l1`])
+    await expect(page.getByTestId('pa-links')).toHaveCount(0)
+  })
+
+  test('adding a person by email sends their role and end date, and they appear in the list', async ({ page, open, account }) => {
+    await printerSays(page, 'owner')
+    inAccount(account, 'owner')
+    await openAccess(page, open)
+    await page.getByTestId('pa-invite').click()
+    await page.getByTestId('pa-invite-email').fill('alex@example.test')
+    await page.getByTestId('pa-invite-operator').click()
+    await page.getByLabel('Access ends').fill('2030-01-15')
+    await page.getByTestId('pa-invite-send').click()
+    await expect(page.getByTestId('pa-person')).toContainText('alex@example.test')
+    const sent = account.changes.find(c => c.call === `POST /v1/printers/${ID}/shares`)?.body as { email: string, role: string, ends_at: number }
+    expect(sent.email).toBe('alex@example.test')
+    expect(sent.role).toBe('operator')
+    expect(new Date(sent.ends_at * 1000).getFullYear()).toBe(2030)
+  })
+
+  test("the owner changes a person's role and end date, and the console gets both", async ({ page, open, account }) => {
+    await printerSays(page, 'owner')
+    inAccount(account, 'owner')
+    account.shares[ID] = [{ id: 's1', printer_id: ID, email: 'harry@example.test', role: 'operator', ends_at: null, created_at: 1 }]
+    await openAccess(page, open)
+    await page.getByTestId('pa-person-role').click()
+    // Nothing to save until something changes.
+    await expect(page.getByTestId('pa-role-save')).toBeDisabled()
+    await page.getByTestId('pa-role-viewer').click()
+    await page.getByTestId('pa-role-until').fill('2030-02-20')
+    await page.getByTestId('pa-role-save').click()
+    await expect.poll(() => account.changes.find(c => c.call === `POST /v1/printers/${ID}/shares`)?.body).toMatchObject({ email: 'harry@example.test', role: 'viewer' })
+    const sent = account.changes.find(c => c.call === `POST /v1/printers/${ID}/shares`)?.body as { ends_at: number }
+    expect(new Date(sent.ends_at * 1000).getMonth()).toBe(1)
+    await expect(page.getByTestId('pa-person')).toContainText('Access ends')
+  })
+
+  test('a member is offered no way to share or add anyone', async ({ page, open, account }) => {
+    await printerSays(page, 'operator')
+    inAccount(account, 'operator')
+    await openAccess(page, open)
+    for (const tid of ['pa-invite', 'pa-link-make', 'pa-links', 'pa-person-remove', 'pa-link-end']) await expect(page.getByTestId(tid), tid).toHaveCount(0)
+  })
+})

@@ -37,7 +37,7 @@ describe('a developer-mode request, through Moonraker\'s one route for it (KAN-5
     printer.asOwner = false
     const asking = await whoMayAsk()
     expect(asking.mayAsk).toBe(false)
-    expect(whyNot(asking)).toBe(`Only ${OWNER} can change developer mode on this printer, from one of their own devices. Each change is confirmed on the printer's screen.`)
+    expect(whyNot(asking)).toBe(`Only ${OWNER} can change developer mode on this printer, from one of their own devices. The first time it is turned on, the printer's screen confirms it.`)
 
     printer.linked = null
     expect(whyNot(await whoMayAsk())).toMatch(/can't tell yet whether an account owns it/)

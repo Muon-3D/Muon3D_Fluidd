@@ -528,12 +528,13 @@ export default class Console extends Mixins(ControlMixin, FilesMixin, BrowserMix
   }
 
   get klippyTone (): 'ok' | 'warn' | 'err' | 'off' {
-    if (!this.socketConnected || !this.klippyConnected) return 'off'
+    if (!this.socketConnected) return this.socketConnecting ? 'warn' : 'off'
+    if (!this.klippyConnected) return 'off'
     return this.klippyReady ? 'ok' : 'warn'
   }
 
   get klippyLabel (): string {
-    if (!this.socketConnected) return 'Offline'
+    if (!this.socketConnected) return this.socketConnecting ? 'Reconnecting…' : 'Offline'
     if (!this.klippyConnected) return 'Klipper not connected'
     return this.klippyReady ? 'Klipper ready' : 'Klipper not ready'
   }

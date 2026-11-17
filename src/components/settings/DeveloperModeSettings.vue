@@ -21,7 +21,7 @@
           </p>
         </div>
         <toggle-switch
-          v-if="mayAsk && state.enabled"
+          v-if="mayAsk && state.enabled !== null"
           :value="!!state.enabled"
           label="Developer mode"
           :disabled="state.enabled === null || busy"
@@ -49,24 +49,8 @@
         Lets you change this printer's own configuration and macros. The Muon3D defaults stay as they are beside your copy, and turning it off goes back to them (your copy is kept for next time).
       </p>
 
-      <div
-        v-if="state.enabled === false"
-        class="devm__goto"
-        data-tid="developer-mode-go-to-printer"
-      >
-        <frame-icon
-          name="gear"
-          small
-        />
-        <div>
-          <b>Go to the printer's screen to turn on developer mode</b>
-          <span v-if="state.everEnabled">You have accepted the terms on this printer before. Turning it on again is still done at the printer: System, then Protection, then Developer mode. The printer decides whether it takes it.</span>
-          <span v-else>On the printer: System, then Protection, then Developer mode. It is read and confirmed there, because turning it on ends the warranty.</span>
-        </div>
-      </div>
-
       <p
-        v-if="notAsking && state.enabled"
+        v-if="notAsking && state.enabled !== null"
         class="devm__note"
         data-tid="developer-mode-who"
       >
@@ -148,17 +132,42 @@
     </p>
 
     <v-dialog
-      v-model="disableDialog"
+      v-model="changeDialog"
       max-width="480"
       :persistent="awaiting"
     >
       <div
         class="devm__dialog"
-        data-tid="developer-disable-dialog"
+        :data-tid="target ? 'developer-enable-dialog' : 'developer-disable-dialog'"
       >
-        <h3>Turn off developer mode</h3>
-        <p>{{ $t('app.general.dev_mode.disable-modal-1') }}</p>
-        <p>{{ $t('app.general.dev_mode.disable-modal-2') }}</p>
+        <h3>{{ target ? 'Turn on developer mode' : 'Turn off developer mode' }}</h3>
+        <template v-if="target">
+          <template v-if="firstRelease">
+            <p data-tid="developer-terms">
+              {{ waiverText || $t('app.general.dev_mode.modal-1') }}
+            </p>
+            <template v-if="!waiverText">
+              <p>{{ $t('app.general.dev_mode.modal-2') }}</p>
+              <p>{{ $t('app.general.dev_mode.modal-3') }}</p>
+            </template>
+            <label class="devm__accept">
+              <input
+                v-model="accepted"
+                type="checkbox"
+                :disabled="busy"
+                data-tid="developer-accept"
+              >
+              <span>{{ $t('app.general.dev_mode.modal-checkbox-message') }}</span>
+            </label>
+          </template>
+          <p v-else>
+            Your copy of the configuration comes back, and the printer runs it.
+          </p>
+        </template>
+        <template v-else>
+          <p>{{ $t('app.general.dev_mode.disable-modal-1') }}</p>
+          <p>{{ $t('app.general.dev_mode.disable-modal-2') }}</p>
+        </template>
         <div
           v-if="awaiting"
           class="devm__press"
@@ -166,7 +175,7 @@
         >
           <span class="devm__pulse" />
           <div>
-            <b>Confirm on the printer's screen</b>
+            <b>Confirm on the printer</b>
             <span v-if="consentInstruction">{{ consentInstruction }}</span>
             <span>{{ $t('app.general.dev_mode.consent-expires', { seconds: secondsRemaining }) }}</span>
           </div>
@@ -174,6 +183,7 @@
         <p
           v-if="errorMessage"
           class="devm__error"
+          data-tid="developer-error"
         >
           {{ errorMessage }}
         </p>
@@ -189,11 +199,11 @@
           <button
             type="button"
             class="cbtn cbtn--primary"
-            :disabled="loading || awaiting"
-            data-tid="developer-disable"
-            @click="confirmDisable"
+            :disabled="loading || awaiting || (target && firstRelease && !accepted)"
+            data-tid="developer-confirm"
+            @click="confirmChange"
           >
-            Turn off
+            {{ target ? 'Turn on' : 'Turn off' }}
           </button>
         </div>
       </div>
@@ -207,7 +217,7 @@ import consola from 'consola'
 import { useAuxApi } from '@/aux_api/useAuxApi'
 import { devModeState, refreshDevMode } from '@/services/dev-mode/state'
 import {
-  askToChange,
+  requestChange,
   completeChange,
   readAnswer,
   whoMayAsk,
@@ -230,12 +240,13 @@ const CONSENT_POLL_MS = 1500
  * fleet ships disarmed). With it on: edit macros, open the config, back it
  * up, or start again from the defaults.
  *
- * Turning it ON is not done from here (KAN-1739, KAN-1763): the printer
- * takes it only at its own screen, where the warranty release is read and
- * confirmed, so this page says to go there. Turning it OFF is still asked
- * for here and confirmed on the printer's screen (KAN-547), through
- * Moonraker's request route (services/dev-mode/request). On a linked printer
- * the switch is the owner's alone, so nobody else is shown it.
+ * Both ways are done from here, over any route (KAN-3604), through
+ * Moonraker's request route (services/dev-mode/request). Only the FIRST
+ * release of the warranty is confirmed on the printer's screen: Control reads
+ * the terms, takes the owner's acceptance, then shows "Confirm on the printer"
+ * and waits. Once it has been on before, the printer takes a change without
+ * a challenge and Control does not wait. On a linked printer the switch is
+ * the owner's alone, so nobody else is shown it.
  */
 @Component({ components: { ToggleSwitch } })
 export default class DeveloperModeSettings extends Vue {
@@ -245,10 +256,13 @@ export default class DeveloperModeSettings extends Vue {
   /** Who may ask, as the printer said; null until it has. */
   asking: DevModeAsking | null = null
   askingError = ''
-  disableDialog = false
+  changeDialog = false
+  /** What the open dialog is about: true turns it on, false turns it off. */
+  target = false
+  accepted = false
   loading = false
   /** The change waiting on the printer's screen. */
-  pending: { challengeId: string, enabled: boolean } | null = null
+  pending: { challengeId: string, enabled: boolean, waiverVersion?: string } | null = null
   consentInstruction = ''
   secondsRemaining = 0
   awaiting = false
@@ -360,14 +374,26 @@ export default class DeveloperModeSettings extends Vue {
   }
 
   toggle () {
-    if (!this.mayAsk || this.busy || !this.state.enabled) return
+    if (!this.mayAsk || this.busy || this.state.enabled === null) return
     this.errorMessage = ''
-    this.disableDialog = true
+    this.accepted = false
+    this.target = !this.state.enabled
+    this.changeDialog = true
+  }
+
+  /** The first release of the warranty: the only change that waits for the printer's screen. */
+  get firstRelease (): boolean {
+    return this.target && !this.state.everEnabled
+  }
+
+  /** The printer's own terms, when it sends them; Control's wording otherwise. */
+  get waiverText (): string {
+    return this.asking?.waiver?.text ?? ''
   }
 
   closeDialogs () {
     this.stopWaiting()
-    this.disableDialog = false
+    this.changeDialog = false
     this.errorMessage = ''
   }
 
@@ -380,8 +406,9 @@ export default class DeveloperModeSettings extends Vue {
     this.pending = null
   }
 
-  confirmDisable () {
-    return this.ask(false)
+  confirmChange () {
+    if (this.firstRelease && !this.accepted) return Promise.resolve()
+    return this.ask(this.target)
   }
 
   /**
@@ -393,9 +420,9 @@ export default class DeveloperModeSettings extends Vue {
   async ask (enabled: boolean) {
     this.errorMessage = ''
     this.loading = true
-    let challenge
+    let asked
     try {
-      challenge = await askToChange(enabled)
+      asked = await requestChange(enabled)
     } catch (err) {
       this.loading = false
       if (this.missingOwnerConfirmation(err)) {
@@ -406,7 +433,14 @@ export default class DeveloperModeSettings extends Vue {
       return
     }
     this.loading = false
-    this.pending = { challengeId: challenge.challengeId, enabled }
+    if (asked.kind === 'applied') {
+      // The printer took it with nothing to confirm: only the first release waits for its screen.
+      this.changeDialog = false
+      await refreshDevMode()
+      return
+    }
+    const challenge = asked.challenge
+    this.pending = { challengeId: challenge.challengeId, enabled, waiverVersion: (challenge.waiver ?? this.asking?.waiver)?.version }
     this.consentInstruction = challenge.instruction
     this.secondsRemaining = Math.max(0, Math.round(challenge.expiresInSeconds))
     this.awaiting = true
@@ -449,9 +483,10 @@ export default class DeveloperModeSettings extends Vue {
     try {
       await completeChange({
         enabled: pending.enabled,
-        challengeId: pending.challengeId
+        challengeId: pending.challengeId,
+        waiverVersion: pending.waiverVersion
       })
-      this.disableDialog = false
+      this.changeDialog = false
     } catch (err) {
       await this.refused(err)
     } finally {
@@ -466,12 +501,12 @@ export default class DeveloperModeSettings extends Vue {
     if (!(err instanceof DevModeRefused)) return
     if (err.code === 'no_change') {
       await refreshDevMode()
-      this.disableDialog = false
+      this.changeDialog = false
     } else if (err.code === 'owner_required' || err.code === 'owner_unknown') {
       await this.refreshAsking()
     } else if (err.code === 'panel_only') {
-      // The printer wants this change made at its own screen (KAN-1739).
-      this.errorMessage = 'The printer only takes this at its own screen. Go there: System, then Protection, then Developer mode.'
+      // An older MuonOS that wants this change made at its own screen (KAN-1739).
+      this.errorMessage = "This printer's software only takes this at its own screen: System, then Protection, then Developer mode. Control can't do it for it yet."
     }
   }
 
@@ -655,6 +690,13 @@ export default class DeveloperModeSettings extends Vue {
 
   .devm__fuse--unknown {
     color: var(--m3d-text-muted);
+  }
+
+  .devm__accept {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 14px;
   }
 
   .devm__goto {

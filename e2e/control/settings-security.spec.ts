@@ -2,7 +2,7 @@
  * Settings > Security (KAN-1926, KAN-2189): one row per setting the printer
  * reports, in the device contract's shape (four values, `claimed`, switches,
  * fixed rows). The owner can restrict each one; everyone else sees the value
- * read-only with why; a fixed row is "Printer only". A printer from before the
+ * read-only with why; a fixed row is "Confirmed at the printer". A printer from before the
  * contract (three values, no `claimed`) is still read. The printer's answers
  * are faked per test with page.route, so the shared mock never changes. (The
  * /muon-link route of a managed session is covered in the component test,
@@ -121,13 +121,13 @@ test('a claimed printer shows Owner and shared users as the default, and the val
   await expect(row(page, 'wifi_change').getByTestId('security-default')).toHaveText('Default: Owner and shared users. Now set to Anyone.')
 })
 
-test('the fixed row is under "Only at the printer", with no control; nothing is sent when it is clicked', async ({ page, open }) => {
+test('the fixed row is under "Confirmed at the printer", with no control; nothing is sent when it is clicked', async ({ page, open }) => {
   const { posts, switchPosts } = await printerWith(page)
   await open('/settings#security')
   const group = page.getByTestId('security-printer-only')
   await expect(group.getByTestId('security-printer-only-row')).toHaveCount(1)
   await expect(group).toContainText('The first time developer mode is turned on')
-  await expect(group.getByTestId('locked-row-label')).toHaveText('Printer only')
+  await expect(group.getByTestId('locked-row-label')).toHaveText('Confirmed at the printer')
   await expect(group.getByRole('combobox')).toHaveCount(0)
   await expect(group.getByRole('switch')).toHaveCount(0)
   await group.getByTestId('security-printer-only-row').click()
@@ -202,7 +202,7 @@ test('a change taken without the setting in the answer is read again from the pr
   await expect(select).toHaveValue('owner')
 })
 
-test('a printer from before the contract (three values, no claimed) is still read: developer mode stays printer only', async ({ page, open }) => {
+test('a printer from before the contract (three values, no claimed) is still read: developer mode stays confirmed at the printer', async ({ page, open }) => {
   await printerWith(page, { list: older })
   await open('/settings#security')
   await expect(page.getByTestId('security-claimed')).toHaveCount(0)
@@ -210,7 +210,7 @@ test('a printer from before the contract (three values, no claimed) is still rea
   await expect(row(page, 'wifi_change').getByRole('combobox')).toHaveValue('owner')
   await expect(row(page, 'lockdown').getByTestId('security-default')).toHaveCount(0)
   await expect(row(page, 'dev_mode')).toHaveCount(0)
-  await expect(page.getByTestId('security-printer-only')).toContainText('Printer only')
+  await expect(page.getByTestId('security-printer-only')).toContainText('Confirmed at the printer')
   await expect(page.getByTestId('security-printer-only').getByRole('combobox')).toHaveCount(0)
 })
 

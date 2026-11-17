@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { createServer } from 'node:http'
 import { once } from 'node:events'
+import { createHash } from 'node:crypto'
 import { WebSocket as NodeWebSocket, WebSocketServer } from 'ws'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { capabilitiesFor, createAdapter } from '../adapters'
@@ -178,6 +179,16 @@ afterEach(async () => {
 })
 
 describe('foreign adapters against local HTTP and WebSocket printers', () => {
+  it('sends a SHA256 checksum before the file to Moonraker', async () => {
+    const send = vi.fn(async () => new Response('{}'))
+    const adapter = createAdapter(recordFor('moonraker', '192.168.1.25'), null, { fetch: send, WebSocket: NodeWebSocket as any })
+    await adapter.upload!(new File(['G28\n'], 'part.gcode'), 'part.gcode', false)
+    const form = (send.mock.calls as any)[0][1].body as FormData
+    expect(form.get('checksum')).toBe(createHash('sha256').update('G28\n').digest('hex'))
+    expect([...form.keys()].slice(0, 2)).toEqual(['checksum', 'file'])
+    adapter.close()
+  })
+
   it('authenticates the OctoPrint push socket with an application key and passive login', async () => {
     const fixture = await fakePrinter('octoprint')
     const adapter = createAdapter(recordFor('octoprint', fixture.host), { apiKey: 'app-key' }, { fetch, WebSocket: fixture.WebSocket })

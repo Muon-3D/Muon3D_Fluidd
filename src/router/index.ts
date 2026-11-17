@@ -259,10 +259,16 @@ const toPrinterPage = (to: Route) => {
   return slug ? { path: `/${slug}${to.path}`, query: to.query, hash: to.hash } : '/'
 }
 
-/** The Library (and the account) under the printer Fluidd is on, when one is: /library is /boxwood-367a/library. */
+/**
+ * The Library under the printer Fluidd is on, when it is opened from one of
+ * that printer's own pages: /library is /boxwood-367a/library, so its rail and
+ * printer stay beside it. From anywhere else (All printers, the account, a
+ * direct address) it opens at its own route with no printer: the Library is
+ * the account's and needs none (KAN-3599).
+ */
 const toLibraryOfActivePrinter: NavigationGuard = (to, from, next) => {
   const slug = activeSlugNow()
-  if (slug) next({ path: `/${slug}${to.path}`, query: to.query, hash: to.hash })
+  if (slug && from.params.printer === slug) next({ path: `/${slug}${to.path}`, query: to.query, hash: to.hash })
   else next()
 }
 
@@ -453,6 +459,23 @@ const routes: Array<RouteConfig> = [
     path: '/icons',
     name: 'Icons',
     component: Icons
+  },
+  {
+    // /slicer is the network's, not Control's: the printer's nginx serves the
+    // Muon3D Slicer there (http://muon3d.local/slicer, the one address typed
+    // to slice and print on a printer). A link or push to it inside Control
+    // leaves for the server, in this tab, instead of landing on the 404 page.
+    // A first load of /slicer/ that got Control's index.html means this server
+    // has no slicer: show the 404, never navigate again (that would loop).
+    path: '/slicer/:rest*',
+    name: 'Slicer (the server)',
+    component: NotFound,
+    beforeEnter: (to, from, next) => {
+      const here = from.matched.length > 0 || from.name != null
+      if (!here && to.path !== '/slicer') return next()
+      next(false)
+      window.location.replace((to.path === '/slicer' ? '/slicer/' : to.path) + to.fullPath.slice(to.path.length).split('#')[0])
+    }
   },
   ...LEGACY_PRINTER_PAGES.map(path => ({ path, redirect: toPrinterPage })),
   ...printerRoutes,

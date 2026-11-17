@@ -26,7 +26,8 @@ import { scopedPath } from '@/router/printerPagePaths'
 @Component({ components: { PlateClearNotice } })
 export default class PlateClearBar extends Mixins(MuonGatesMixin) {
   get shows (): boolean {
-    return plateNoticeShows(this.$store.state.printer.printer, this.printerState)
+    // Hidden from someone the printer's plate_clear setting keeps out (KAN-3606).
+    return this.mayDo('plate_clear') && plateNoticeShows(this.$store.state.printer.printer, this.printerState)
   }
 
   get managed (): boolean {

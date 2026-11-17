@@ -31,6 +31,7 @@ import {
 } from './discovery'
 import { searchRows, type SearchRow } from './searchRows'
 import { consolePresence } from './presence'
+import { knownReachable, secureNameOf } from '@/services/secure-origin/hosted'
 import { faultSummary } from '@/services/machine-faults/faults'
 
 /**
@@ -123,6 +124,17 @@ export interface Directory {
   local: DirectoryEntry[];
   found: DirectoryEntry[];
   foreign?: DirectoryEntry[];
+}
+
+export function hasReachableRoute (printer: { endpointId?: string | null, apiUrl?: string }, src: Pick<DirectorySources, 'account' | 'status' | 'found' | 'cloudNearby' | 'nearby' | 'viaBluetooth' | 'now'>): boolean {
+  const id = printer.endpointId
+  const secureName = secureNameOf(src.account.find(p => p.id === id))
+  return !!(src.found.some(l =>
+    id && l.endpointId ? l.endpointId === id : !!printer.apiUrl && lanAddresses(l).includes(hostOf(printer.apiUrl))) ||
+    (secureName && knownReachable(secureName, src.now)) ||
+    (id && (src.status[id]?.reachable || src.account.some(p => p.id === id && p.online) ||
+      src.cloudNearby.some(p => p.printerId === id) || src.viaBluetooth?.(id) ||
+      src.nearby.some(p => isPrinter(p, id) && heardRecently(p, src.now)))))
 }
 
 /**
@@ -255,8 +267,10 @@ export function printerDirectory (src: DirectorySources): Directory {
 
   // The service says who shares this browser's network. On a page that cannot probe addresses it is the only
   // proof there is, and it holds before any session is open (KAN-2487).
-  const besideBrowser = (endpointId: string | null) =>
-    !!endpointId && src.cloudNearby.some(c => c.printerId.toLowerCase() === endpointId.toLowerCase())
+  const besideBrowser = (endpointId: string | null) => {
+    const name = secureNameOf(src.account.find(p => p.id === endpointId))
+    return !!endpointId && (src.cloudNearby.some(c => c.printerId.toLowerCase() === endpointId.toLowerCase()) || (!!name && knownReachable(name, now)))
+  }
 
   const nearbyFor = (endpointId: string | null) => {
     if (!endpointId) return undefined
@@ -404,6 +418,25 @@ export function printerDirectory (src: DirectorySources): Directory {
       row
     }
   })
+
+  for (const e of [...cloud, ...local, ...found]) {
+    const id = e.cloud?.id ?? e.endpointId
+    const carrying = !!id && !!src.viaBluetooth?.(id)
+    if (carrying) e.route = 'bluetooth'
+    if (e.health !== 'offline' && !(carrying && e.health === 'searching')) continue
+    if (!hasReachableRoute({ endpointId: id, apiUrl: e.saved[0]?.apiUrl ?? e.lan?.apiUrl }, src)) continue
+    const status = id ? src.status[id] : undefined
+    if (carrying || status?.reachable) {
+      e.health = status?.reachable ? cloudHealth(true, status) : 'online'
+      e.detail = `${status?.reachable ? cloudDetail(true, status) : 'Connected'}${carrying ? ' · via Bluetooth' : ''}`
+    } else if (heard(e.nearby)) {
+      e.health = 'nearby'
+      e.detail = NEARBY_DETAIL
+    } else {
+      e.health = 'available'
+      e.detail = e.lan || besideBrowser(id) ? 'On this network' : 'Available through Muon3D'
+    }
+  }
 
   const foreign = foreignEntries(src.foreign ?? [])
   return { cloud, local, found, foreign }

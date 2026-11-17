@@ -97,7 +97,8 @@ export function itemJson (i: FakeItem) {
     format: '3mf',
     name: i.name,
     size_bytes: 1000,
-    has_thumbnail: false,
+    has_thumbnail: true,
+    thumbnail_file_id: `${i.id}-t`,
     state: 'ready',
     rev: 1,
     created_at: i.updated_at,
@@ -178,6 +179,11 @@ export interface ModelServiceState {
   published: Array<{ item: string, body: Record<string, unknown> }>;
   /** Answer every request with this status (outage tests), or null. */
   failWith: number | null;
+  /**
+   * The deployed service of 17 Nov: it reads `/v1/community/collections/followed` as `/collections/:id`, and
+   * answers 400 bad_request ("The request could not be read…") before it asks who you are (KAN-3598).
+   */
+  followedReadAsId: boolean;
   /** Answer matching requests with a status instead ("GET /v1/public/discover"): one shelf down. */
   failOn: (request: string) => number | null;
   /** Hold every answer this long (loading states). */
@@ -215,6 +221,7 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     corsOrigins: null,
     published: [],
     failWith: null,
+    followedReadAsId: false,
     failOn: () => null,
     delayMs: 0,
     noSearch: false,
@@ -294,6 +301,11 @@ export async function serveModels (page: Page, state: ModelServiceState) {
     if (image) {
       const p = all.find(q => q.id === image[1])
       return route.fulfill({ status: p ? 200 : 404, contentType: 'image/svg+xml', body: picture(p?.colour ?? '#444') })
+    }
+    // Your own print's picture: a presigned address (here the service's own image route), not the bytes.
+    const ownThumb = path.match(/^\/v1\/items\/([^/]+)\/thumbnail-url$/)
+    if (ownThumb && method === 'GET') {
+      return json(route, { method: 'GET', url: `${MODELS}/v1/public/publications/${all[0]?.id}/images/thumb`, needs_auth: false, expires_at: '2030-01-01T00:00:00Z' })
     }
     if (path === '/v1/public/discover') {
       const trending = [...all].sort((a, b) => b.make_count - a.make_count).slice(0, 12).map(p => summary(p, all))
@@ -484,6 +496,9 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       return json(route, { saves: state.saves.filter(s => targets.some(t => t.id === s.target)).map(s => ({ target: { kind: 'publication', id: s.target }, save_id: s.id })) })
     }
     // Following (src/saves.rs): public collections, yours or someone else's; a private one is 404.
+    if (path === '/v1/community/collections/followed' && method === 'GET' && state.followedReadAsId) {
+      return json(route, { error: { code: 'bad_request', message: 'The request could not be read. Check the JSON body, the field types and the address.' } }, 400)
+    }
     if (path === '/v1/community/collections/followed' && method === 'GET') {
       const followed = state.follows.map(id => publicCollections().find(x => x.id === id)).filter((x): x is FakeCollection => !!x)
       return json(route, { collections: followed.map(collectionJson) })

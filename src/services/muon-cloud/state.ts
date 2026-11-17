@@ -297,13 +297,24 @@ async function handoff (printerId: string, signal: AbortSignal): Promise<Authori
   return sessionFrom(grant)
 }
 
+/**
+ * A fresh grant ahead of an ordinary redial (KAN-3636). Skipped while the
+ * console does not see the printer online: it could not deliver a grant, and
+ * the wait would only slow a dial that may reach it directly.
+ */
+async function refreshHandoff (printerId: string, signal: AbortSignal): Promise<AuthorizedManagedRelaySession> {
+  const printer = cloudState.printers.find(p => p.id === printerId)
+  if (!printer || consolePresence(printer) !== 'online') throw new Error('The console does not see this printer online')
+  return handoff(printerId, signal)
+}
+
 async function statusConnection (printerId: string): Promise<PrinterTransport> {
   let existing = statusConnections.get(printerId)
   if (!existing) {
     const signal = sessionAbort.signal
     existing = createPrinterTransportForSelection(
       { kind: 'managed-iroh', printerId },
-      { handoffSelectedPrinter: id => handoff(id, signal), createManagedEndpoint: managedEndpointFactory }
+      { handoffSelectedPrinter: id => handoff(id, signal), refreshSelectedPrinter: id => refreshHandoff(id, signal), createManagedEndpoint: managedEndpointFactory }
     )
     statusConnections.set(printerId, existing)
     const pending = existing
@@ -413,9 +424,9 @@ export async function borrowCloudPrinter (printerId: string): Promise<PrinterTra
   const sockets = new Set<PrinterSocket>()
   let closed = false
   return {
-    async fetch (path, init) {
+    async fetch (path, init, progress) {
       if (closed) throw new Error('Printer page closed')
-      const response = await shared.fetch(path, init)
+      const response = await shared.fetch(path, init, progress)
       if (closed) throw new Error('Printer page closed')
       return response
     },

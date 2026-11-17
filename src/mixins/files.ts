@@ -19,10 +19,16 @@ export function uploadErrorText (error: unknown): string {
     const message = typeof data === 'string'
       ? data.trim()
       : typeof data?.error?.message === 'string' ? data.error.message : ''
+    if (response.status === 422) return `Checksum mismatch: the printer could not verify the file${message ? `: ${message}` : ''} (HTTP 422)`
     if (message) return `${message} (HTTP ${response.status})`
     if (response.status) return `the printer answered HTTP ${response.status}`
   }
-  if (error instanceof Error && error.message) return error.message
+  if (error instanceof Error && error.message) {
+    if (/closed|lost|stopped by peer|network error|failed to fetch|connectionreset/i.test(error.message)) {
+      return `Connection cut during upload: ${error.message}`
+    }
+    return error.message
+  }
   if (typeof error === 'string' && error) return error
   return 'unknown error'
 }
@@ -252,6 +258,7 @@ export default class FilesMixin extends Vue {
           this.$store.dispatch('files/updateFileUpload', {
             filepath,
             loaded: event.loaded,
+            size: event.total ?? file.size,
             percent: event.progress ? Math.round(event.progress * 100) : 0,
             speed: event.rate ?? 0
           })
@@ -341,7 +348,17 @@ export default class FilesMixin extends Vue {
             (error as { name?: string, code?: string } | null)?.name === 'CanceledError' ||
             (error as { code?: string } | null)?.code === 'ERR_CANCELED'
           if (!cancelled) {
-            EventBus.$emit(`Upload of ${fileObject.name} failed: ${uploadErrorText(error)}`, { type: 'error', timeout: -1 })
+            EventBus.$emit(`Upload of ${fileObject.name} failed: ${uploadErrorText(error)}`, {
+              type: 'error',
+              timeout: -1,
+              action: {
+                label: 'Try again',
+                run: () => {
+                  if (canContinue()) this.uploadFiles([fileObject], fullPath, root, andPrint, canContinue).catch(consola.error)
+                  else EventBus.$emit('Reconnect to the same printer before trying this upload again.', { type: 'warning', timeout: 5000 })
+                }
+              }
+            })
           }
         }
       } else {

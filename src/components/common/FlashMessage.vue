@@ -7,13 +7,25 @@
     data-tid="flash-message"
   >
     {{ text }}
+    <template
+      v-if="action"
+      #action
+    >
+      <button
+        type="button"
+        data-tid="flash-action"
+        @click="retry"
+      >
+        {{ action.label }}
+      </button>
+    </template>
   </m3-toast>
 </template>
 
 <script lang="ts">
 import Vue from 'vue'
 import { Component, Prop, VModel } from 'vue-property-decorator'
-import type { FlashMessageTypes } from '@/types'
+import type { FlashMessageTypes, FlashMessage as Message } from '@/types'
 import M3Toast, { type ToastTone } from '@/components/ui/M3Toast.vue'
 
 /**
@@ -33,6 +45,14 @@ export default class FlashMessage extends Vue {
 
   @Prop({ type: Number, default: 1500 })
   readonly timeout!: number
+
+  @Prop({ type: Object })
+  readonly action?: Message['action']
+
+  retry () {
+    this.open = false
+    this.action?.run()
+  }
 
   get tone (): ToastTone {
     switch (this.type) {

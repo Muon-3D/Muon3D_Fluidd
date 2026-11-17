@@ -29,7 +29,7 @@ test('Pair this browser is offered on a printer heard nearby and opens the code 
   await heardNearby(page)
   await setPairingGate(page, true)
   // A printer heard nearby and linked to nobody lists its actions as buttons on its tile.
-  await page.getByRole('button', { name: 'Pair this browser' }).click()
+  await page.getByRole('button', { name: 'Pair over Bluetooth' }).click()
 
   const sheet = page.getByTestId('ble-sheet')
   await expect(sheet.getByTestId('pair-code-step')).toContainText('Check the code')
