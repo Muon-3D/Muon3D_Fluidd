@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ManagedIrohPrinterTransport } from '../index'
+import { REGRANT_WAIT_MS } from '../managedIrohTransport'
 import type { AuthorizedManagedRelaySession, ManagedIrohRelay } from '../index'
 
 function session (id: string): AuthorizedManagedRelaySession {
@@ -174,5 +175,56 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
     expect(reauthorize).toHaveBeenCalledTimes(1)
     expect(sessions).toEqual(['grant-1', 'grant-1', 'grant-2'])
     expect(log).toEqual(['fresh:fetch'])
+  })
+
+  // KAN-3636: the owner got the printer's "let this device in" prompt because a
+  // redial reached a printer that had forgotten the console's grant for the key.
+  describe('the owner is admitted by a grant, never by the panel', () => {
+    function lostThenRedial (reauthorize: () => Promise<AuthorizedManagedRelaySession>) {
+      const events: string[] = []
+      const first = relay('first', events)
+      let dials = 0
+      const openRelay = vi.fn(async (s: AuthorizedManagedRelaySession): Promise<ManagedIrohRelay> => {
+        events.push(`dial:${s.sessionId}`)
+        return ++dials === 1 ? first : relay('second', events)
+      })
+      const transport = new ManagedIrohPrinterTransport({
+        authorizedSession: session('grant-1'),
+        createEndpoint: async () => ({ openRelay, close: () => {} }),
+        reauthorize: async () => { events.push('grant-asked'); return reauthorize() }
+      })
+      return { events, first, transport, openRelay }
+    }
+
+    it('asks for a fresh grant before it redials, and dials with that grant', async () => {
+      const { events, first, transport } = lostThenRedial(async () => session('grant-2'))
+      await transport.fetch('/server/info')
+      // The first dial uses the handoff the transport was made with.
+      expect(events).toEqual(['dial:grant-1', 'first:fetch'])
+      first.lose()
+      await expect(transport.fetch('/server/info')).rejects.toThrow('connection lost')
+      await transport.fetch('/server/info')
+      expect(events.slice(2)).toEqual(['first:close', 'grant-asked', 'dial:grant-2', 'second:fetch'])
+    })
+
+    it('still redials with the grant it has when the console does not answer', async () => {
+      const { events, first, transport } = lostThenRedial(() => new Promise(() => {}))
+      await transport.fetch('/server/info')
+      first.lose()
+      await expect(transport.fetch('/server/info')).rejects.toThrow('connection lost')
+      const again = transport.fetch('/server/info')
+      await vi.advanceTimersByTimeAsync(REGRANT_WAIT_MS)
+      await again
+      expect(events.slice(-3)).toEqual(['grant-asked', 'dial:grant-1', 'second:fetch'])
+    })
+
+    it('still redials when the console refuses', async () => {
+      const { events, first, transport } = lostThenRedial(async () => { throw new Error('503') })
+      await transport.fetch('/server/info')
+      first.lose()
+      await expect(transport.fetch('/server/info')).rejects.toThrow('connection lost')
+      await transport.fetch('/server/info')
+      expect(events.slice(-2)).toEqual(['dial:grant-1', 'second:fetch'])
+    })
   })
 })
