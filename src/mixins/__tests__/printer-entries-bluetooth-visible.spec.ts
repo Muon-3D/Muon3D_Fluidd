@@ -123,7 +123,7 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
 })
 
 describe('Connect over Bluetooth for one printer lists only that printer (KAN-2470)', () => {
-  it("asks the chooser for every Muon printer, as the top-right button does (KAN-3589)", async () => {
+  it('asks the chooser for every Muon printer, as the top-right button does (KAN-3589)', async () => {
     nearby.lookNearby.mockResolvedValue(null)
     const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
