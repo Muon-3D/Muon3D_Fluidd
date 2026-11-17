@@ -34,6 +34,15 @@ const failureOf = (reason: unknown): ApprovalFailure | null =>
 
 /** Told of each wait that starts, so the page can show the dialog for it. */
 let listener: ((watch: ApprovalWatch) => void) | null = null
+
+/** Printers whose panel has just answered a pairing from this browser: their next dial confirms admission even if the printer holds nothing. */
+/** When each was noted: a note no dial uses within the window is stale and dies unused. */
+const pairedAtPanel = new Map<string, number>()
+export const PANEL_NOTE_MS = 120_000
+export function noteAdmittedAtPanel (printerId: string): void {
+  pairedAtPanel.set(printerId, Date.now())
+}
+
 export function onApprovalWatch (next: ((watch: ApprovalWatch) => void) | null): void {
   listener = next
 }
@@ -75,6 +84,10 @@ export async function connectWithApproval<Session> (
   let ended!: (outcome: ApprovalOutcome) => void
   let abandon!: (error: Error) => void
   let cancelled = false
+  // Someone accepted this browser at the printer's panel a moment ago: say so, though the dial itself is not held.
+  const notedAt = pairedAtPanel.get(printerId)
+  pairedAtPanel.delete(printerId)
+  let held = notedAt !== undefined && Date.now() - notedAt <= PANEL_NOTE_MS
   const watch: ApprovalWatch = {
     pending: new Promise<string>(resolve => { sawPending = resolve }),
     outcome: new Promise<ApprovalOutcome>(resolve => { ended = resolve }),
@@ -92,7 +105,11 @@ export async function connectWithApproval<Session> (
         printerId,
         name,
         'operator',
-        notice => { if (!cancelled) sawPending(notice.code) },
+        notice => {
+          if (cancelled) return
+          held = true
+          sawPending(notice.code)
+        },
         reason => {
           const failure = failureOf(reason)
           if (failure && !cancelled) ended(failure)
@@ -100,7 +117,9 @@ export async function connectWithApproval<Session> (
       ),
       abandoned
     ])
-    ended('admitted')
+    // Admitted straight away (an open printer, a known browser): nothing was waited for, so the page says nothing
+    // (KAN-3583: "<printer> let this device in" appeared on a printer that never asked).
+    if (held) ended('admitted')
     return session
   } catch (error) {
     const failure = failureOf((error as { reason?: unknown }).reason) ??

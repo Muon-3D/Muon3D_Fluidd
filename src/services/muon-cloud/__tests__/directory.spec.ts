@@ -278,6 +278,22 @@ describe('health', () => {
     expect(d.cloud[0].health).toBe('connecting')
   })
 
+  it('is Needs access, not Connecting for good, when the printer refused this browser (KAN-3585)', () => {
+    const d = directory({
+      account: [owned(BOXWOOD, 'Boxwood')],
+      status: { [BOXWOOD]: { reachable: false, error: 'refused', updatedAt: 1 } }
+    })
+    expect(d.cloud[0]).toMatchObject({ health: 'locked', detail: 'Needs access' })
+  })
+
+  it('a saved printer another account linked is linked to another, with no LAN probe (KAN-3586)', () => {
+    const d = directory({
+      saved: [saved('http://muon-sloe-b26d.local', { name: 'Sloe', endpointId: WALNUT })],
+      cloudNearby: [nearbyCloud(WALNUT.toUpperCase(), 'Sloe', true, ['192.168.1.78'])]
+    })
+    expect(d.local[0].linkedTo).toBe('other')
+  })
+
   it('is an error when Klipper is not ready', () => {
     const d = directory({
       found: [lan('Churchill', '192.168.137.40', CHURCHILL, { health: { state: 'error', message: 'Klipper shutdown', checkedAt: 1 } })]

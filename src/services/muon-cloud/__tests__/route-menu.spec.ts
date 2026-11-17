@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  bluetoothReason, NO_BLUETOOTH, NOT_ON_ACCOUNT, OFFLINE_IN_MUON3D, routeMenuItems, type RouteMenuFacts
+  bluetoothReason, NO_BLUETOOTH, OFFLINE_IN_MUON3D, routeMenuItems, type RouteMenuFacts
 } from '../route-menu'
 
 const facts = (over: Partial<RouteMenuFacts> = {}): RouteMenuFacts => ({
@@ -48,9 +48,9 @@ describe('route menu: greyed, with one line saying why', () => {
   it('Locally is open, with where it goes, while the printer answers on the network', () => {
     expect(item(facts({ live: 'ble' }), 'connect-local')).toMatchObject({ disabled: false, hint: '192.168.1.20' })
   })
-  it('Muon3D is greyed for a printer that is not on the account, whoever is signed in', () => {
+  it('Muon3D is not offered for a printer that is not on the account (KAN-3586)', () => {
     const f = facts({ cloud: { listed: false, online: false } })
-    expect(item(f, 'connect-cloud')).toMatchObject({ disabled: true, hint: NOT_ON_ACCOUNT })
+    expect(routeMenuItems(f).map(i => i.id)).not.toContain('connect-cloud')
   })
   it('Muon3D is greyed when the service says the printer is offline', () => {
     expect(item(facts({ cloud: { listed: true, online: false } }), 'connect-cloud')).toMatchObject({ disabled: true, hint: OFFLINE_IN_MUON3D })

@@ -5,7 +5,7 @@
  * An automatic move records no choice and never opens a tab; a person's click does.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import PrinterEntriesMixin, { setNavigate, setOpenTab } from '../printer-entries'
+import PrinterEntriesMixin, { setNavigate } from '../printer-entries'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { discoveryState } from '@/services/muon-cloud/discovery'
 import { chooseRouteMode, routeMode } from '@/services/muon-cloud/route-choice'
@@ -41,21 +41,20 @@ const component = () => ({
   connectCloud: vi.fn()
 })
 
-const tab = vi.fn(() => true)
+const tab = vi.fn()
 beforeEach(() => {
   forgetSecureReach()
   sessionStorage.clear()
   chooseRouteMode('p1', 'auto')
-  tab.mockReset().mockReturnValue(true)
-  setNavigate(vi.fn())
-  setOpenTab(tab)
+  tab.mockReset()
+  setNavigate(tab)
   discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
   discoveryState.cloudChecked = true
   vi.unstubAllGlobals()
 })
 
 describe('route hold on the hosted page', () => {
-  it('an automatic connectLocal on https opens no tab and records no choice', async () => {
+  it('an automatic connectLocal on https opens no page and records no choice', async () => {
     await methods.connectLocal.call(component(), entry(), true)
     expect(tab).not.toHaveBeenCalled()
     expect(routeMode('p1')).toBe('auto')
@@ -69,10 +68,12 @@ describe('route hold on the hosted page', () => {
     expect(routeMode('p1')).toBe('auto')
   })
 
-  it('an explicit Connect locally that opens a tab holds the local route', async () => {
+  it('an explicit Connect locally that leaves for the printer page leaves the held route as it was', async () => {
+    chooseRouteMode('p1', 'cloud')
     await methods.connectLocal.call(component(), entry())
     expect(tab).toHaveBeenCalledWith('http://192.168.1.20/')
-    expect(routeMode('p1')).toBe('lan')
+    // Held 'lan' would be undialable when the person comes back to this https page.
+    expect(routeMode('p1')).toBe('cloud')
   })
 
   it('tapping a printer heard over Bluetooth is an automatic move: it records no choice', async () => {

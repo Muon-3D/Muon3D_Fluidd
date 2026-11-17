@@ -20,6 +20,7 @@ import Vue from 'vue'
 import { browserEndpoint } from '@/services/muon-cloud/iroh'
 import { BLUETOOTH_NOT_CONNECTED_MESSAGE, bluetoothUnavailable } from './refusal'
 import { activateCloudPrinter } from '@/services/muon-cloud/activate'
+import { noteAdmittedAtPanel } from '@/services/muon-cloud/approval'
 import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
 import { registerEndpointBusy } from '@/services/muon-cloud/endpoint-hooks'
 import { bluetoothRouteFor, releaseBluetoothLink, wantsBluetoothFor } from './link'
@@ -259,6 +260,7 @@ export async function submitPairingCode (text: string): Promise<void> {
   pairingState.message = null
   pairingState.printerId = null
   dropCloudConnection(printerId)
+  noteAdmittedAtPanel(printerId)
   try {
     await activateCloudPrinter(printerId)
   } catch { /* activationState holds the reason */ }

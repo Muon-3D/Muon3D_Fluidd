@@ -70,7 +70,7 @@
           <div class="sway__text">
             <span class="sway__title">On this network</span>
             <span class="sway__about">
-              <template v-if="found">{{ found }} found. It's listed on the page, under Found nearby.</template>
+              <template v-if="found">{{ found }} found. It's listed on the page, under Other printers on your network.</template>
               <template v-else-if="searching">Looking{{ network ? ` on ${network}` : '' }}…</template>
               <template v-else>Nothing new found yet.</template>
             </span>

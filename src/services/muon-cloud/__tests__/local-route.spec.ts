@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { BLOCKED_BY_PAGE, isOpenableAddr, localRoute, NOT_ON_NETWORK, openableAddr, type LocalRouteInput } from '../local-route'
+import { BLOCKED_BY_PAGE, isOpenableAddr, localRoute, mdnsHostFromName, NOT_ON_NETWORK, openableAddr, type LocalRouteInput } from '../local-route'
 
 vi.mock('@/store', () => ({ default: { state: { config: {} } } }))
 
@@ -21,8 +21,30 @@ describe('what Connect locally does (KAN-2529)', () => {
       .toEqual({ kind: 'secure', name: 'abc.muonlan.net' })
   })
 
-  it('otherwise opens the printer\'s address in a new tab, skipping the hotspot range', () => {
-    expect(localRoute({ ...base, nearby: cloud(['10.42.0.1', '192.168.1.20']) })).toEqual({ kind: 'tab', addr: '192.168.1.20' })
+  it('otherwise opens the printer address in this tab, skipping the hotspot range', () => {
+    expect(localRoute({ ...base, nearby: cloud(['10.42.0.1', '192.168.1.20']) })).toEqual({ kind: 'page', host: '192.168.1.20' })
+  })
+
+  it('prefers the .local name over the address, and takes it when only the hotspot address is reported (KAN-3584)', () => {
+    const mdnsHost = 'muon-sloe-b26d.local'
+    expect(localRoute({ ...base, mdnsHost, nearby: cloud(['192.168.1.78']) })).toEqual({ kind: 'page', host: mdnsHost })
+    expect(localRoute({ ...base, mdnsHost, nearby: cloud(['10.42.0.1']) })).toEqual({ kind: 'page', host: mdnsHost })
+    expect(localRoute({ ...base, mdnsHost })).toEqual({ kind: 'none', reason: NOT_ON_NETWORK })
+  })
+
+  it('derives the name from the display name', () => {
+    expect(mdnsHostFromName('Sloe b26d')).toBe('muon-sloe-b26d.local')
+    expect(mdnsHostFromName('Boxwood · 367A')).toBe('muon-boxwood-367a.local')
+    expect(mdnsHostFromName('muon-sloe-b26d')).toBe('muon-sloe-b26d.local')
+    expect(mdnsHostFromName('Garage printer')).toBeNull()
+  })
+
+  it('does not invent a .local name for a renamed printer, and opens its listed address instead', () => {
+    expect(mdnsHostFromName('Living Room')).toBeNull()
+    expect(mdnsHostFromName('Print farm')).toBeNull()
+    expect(localRoute({ ...base, nearby: cloud(['192.168.1.20']), mdnsHost: mdnsHostFromName('Living Room') })).toEqual({ kind: 'page', host: '192.168.1.20' })
+    // A host name the printer itself reported is still used.
+    expect(localRoute({ ...base, nearby: cloud(['192.168.1.20']), mdnsHost: 'muon-boxwood-367a.local' })).toEqual({ kind: 'page', host: 'muon-boxwood-367a.local' })
   })
 
   it('takes a hotspot address only when the page is itself on the hotspot', () => {
