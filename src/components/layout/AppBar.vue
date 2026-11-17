@@ -11,7 +11,7 @@
   >
     <!-- A phone: the printer you're on, its alerts, and STOP. -->
     <template v-if="phone">
-      <printer-switch-button
+      <printer-strip
         v-if="printerFrame"
         phone
       />
@@ -78,7 +78,7 @@
         <span class="muon-wordmark">MUON3D</span>
       </router-link>
 
-      <printer-switch-button v-if="printerFrame" />
+      <printer-strip v-if="printerFrame" />
       <!-- No printer chosen: the places that need none, so the Library is one click from home. -->
       <nav
         v-else

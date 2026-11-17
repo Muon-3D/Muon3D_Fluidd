@@ -46,6 +46,22 @@ afterEach(() => {
 })
 
 describe('PrinterSwitcher', () => {
+  it('removes a closed list from the DOM without unmounting its dialogs or controller', async () => {
+    const w = shallowMount(PrinterSwitcher, { mocks, propsData: { visible: false, listVisible: false } })
+    expect(w.find('[data-tid="find-printer"]').exists()).toBe(false)
+    expect(w.find('[data-tid="all-printers"]').exists()).toBe(false)
+    expect(w.findAll('printer-card-stub')).toHaveLength(0)
+    await w.setData({ accountDialog: true })
+    expect(w.find('cloud-account-dialog-stub').exists()).toBe(true)
+    await w.setProps({ listVisible: true })
+    expect(w.find('[data-tid="all-printers"]').exists()).toBe(true)
+    await w.setProps({ listVisible: false })
+    expect(w.find('[data-tid="all-printers"]').exists()).toBe(false)
+    expect(w.find('cloud-account-dialog-stub').exists()).toBe(true)
+    expect(typeof w.vm.openListedEntry).toBe('function')
+    w.destroy()
+  })
+
   it('does not search the network while it is closed', () => {
     // Once opened it stays mounted, closed, in the header. Searching on
     // mount swept the network on every load, about 510 requests over 24 s.
@@ -123,6 +139,18 @@ describe('PrinterSwitcher', () => {
       expect(w.find('[data-tid="switcher-group-g1"]').findAll('printer-card-stub')).toHaveLength(2)
       expect(w.find('[data-tid="switcher-group-other"]').text()).toContain('Other printers')
       expect(w.find('[data-tid="switcher-group-other"]').findAll('printer-card-stub')).toHaveLength(1)
+      w.destroy()
+    })
+
+    it('excludes visible strip printers, separates shares and carries their state screens', async () => {
+      const shared = e('b', 'Beta')
+      Object.assign(shared.cloud!, { shared: true })
+      const w = await open({ cloud: [e('a', 'Alpha'), shared, e('c', 'Gamma')], local: [], found: [] })
+      await w.setProps({ excludeKeys: ['cloud:a'], separateShared: true, screenStateFor: () => 'heating' })
+      expect(w.find('[data-tid="switcher-shared"]').text()).toContain('Shared with you')
+      expect(w.find('[data-tid="switcher-group-other"]').findAll('printer-card-stub')).toHaveLength(1)
+      expect(w.findAll('printer-card-stub')).toHaveLength(2)
+      expect(w.findAll('printer-card-stub').wrappers.every(c => c.attributes('screenstate') === 'heating')).toBe(true)
       w.destroy()
     })
 

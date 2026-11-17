@@ -1,256 +1,299 @@
 <template>
   <div class="muon-switcher">
-    <div class="muon-switcher__find">
-      <label class="muon-switcher__field">
-        <frame-icon
-          name="search"
-          small
-        />
-        <input
-          v-model="query"
-          type="search"
-          placeholder="Find a printer"
-          aria-label="Find a printer"
-          data-tid="find-printer"
-        >
-      </label>
-      <span
-        v-if="searching"
-        class="muon-switcher__again"
-        :title="scanNetwork || 'Searching this network'"
-      >
-        <v-progress-circular
-          indeterminate
-          size="14"
-          width="2"
-        />
-      </span>
-      <button
-        v-else
-        type="button"
-        class="muon-switcher__again"
-        title="Search this network again"
-        aria-label="Search this network again"
-        data-tid="search-again"
-        @click="rescan"
-      >
-        <frame-icon
-          name="refresh"
-          small
-        />
-      </button>
-    </div>
-
-    <section
-      v-if="deletionPending || !account || !directory.cloud.length"
-      class="muon-switcher__group"
-    >
-      <div class="muon-switcher__heading">
-        <span class="muon-switcher__caps">Your printers</span>
+    <template v-if="listVisible">
+      <div class="muon-switcher__find">
+        <label class="muon-switcher__field">
+          <frame-icon
+            name="search"
+            small
+          />
+          <input
+            v-model="query"
+            type="search"
+            placeholder="Find a printer"
+            aria-label="Find a printer"
+            data-tid="find-printer"
+          >
+        </label>
         <span
-          v-if="account"
-          class="muon-switcher__hint"
-        >{{ account.email }}</span>
+          v-if="searching"
+          class="muon-switcher__again"
+          :title="scanNetwork || 'Searching this network'"
+        >
+          <v-progress-circular
+            indeterminate
+            size="14"
+            width="2"
+          />
+        </span>
+        <button
+          v-else
+          type="button"
+          class="muon-switcher__again"
+          title="Search this network again"
+          aria-label="Search this network again"
+          data-tid="search-again"
+          @click="rescan"
+        >
+          <frame-icon
+            name="refresh"
+            small
+          />
+        </button>
       </div>
-      <deletion-notice
-        v-if="deletionPending"
-        tid="switcher-deletion"
-      />
-      <div
-        v-else-if="account"
-        class="muon-switcher__empty"
-      >
-        No printers are linked to this account yet. Link one from its menu below.
-      </div>
-      <div
-        v-else
-        class="muon-switcher__empty"
-      >
-        <a
-          href="#"
-          data-tid="sign-in"
-          @click.prevent="accountDialog = true"
-        >Sign in</a> to reach your linked printers from anywhere.
-      </div>
-    </section>
 
-    <!-- Your account's printers, under the groups the account keeps. -->
-    <template v-else>
       <section
-        v-for="g in cloudGroups"
-        :key="g.id"
+        v-if="deletionPending || !account || !directory.cloud.length"
         class="muon-switcher__group"
-        :data-tid="`switcher-group-${g.id}`"
       >
         <div class="muon-switcher__heading">
-          <span class="muon-switcher__caps">{{ g.name }}</span>
+          <span class="muon-switcher__caps">Your printers</span>
           <span
-            v-if="g.hint"
-            class="muon-switcher__hint"
-          >{{ g.hint }}</span>
-          <span
-            v-else-if="account"
+            v-if="account"
             class="muon-switcher__hint"
           >{{ account.email }}</span>
         </div>
+        <deletion-notice
+          v-if="deletionPending"
+          tid="switcher-deletion"
+        />
+        <div
+          v-else-if="account"
+          class="muon-switcher__empty"
+        >
+          No printers are linked to this account yet. Link one from its menu below.
+        </div>
+        <div
+          v-else
+          class="muon-switcher__empty"
+        >
+          <a
+            href="#"
+            data-tid="sign-in"
+            @click.prevent="accountDialog = true"
+          >Sign in</a> to reach your linked printers from anywhere.
+        </div>
+      </section>
+
+      <!-- Your account's printers, under the groups the account keeps. -->
+      <template v-else>
+        <section
+          v-for="g in cloudGroups"
+          :key="g.id"
+          class="muon-switcher__group"
+          :data-tid="`switcher-group-${g.id}`"
+        >
+          <div class="muon-switcher__heading">
+            <span class="muon-switcher__caps">{{ g.name }}</span>
+            <span
+              v-if="g.hint"
+              class="muon-switcher__hint"
+            >{{ g.hint }}</span>
+            <span
+              v-else-if="account"
+              class="muon-switcher__hint"
+            >{{ account.email }}</span>
+          </div>
+          <printer-card
+            v-for="e in g.entries"
+            :key="e.key"
+            :entry="e"
+            :screen-state="screenStateFor ? screenStateFor(e) : undefined"
+            :actions="cloudActions(e)"
+            :busy="busyKey === e.key"
+            @open="openCloudEntry(e)"
+            @action="onAction(e, $event)"
+          />
+        </section>
+      </template>
+
+      <section
+        v-if="sharedEntries.length"
+        class="muon-switcher__group"
+        data-tid="switcher-shared"
+      >
+        <div class="muon-switcher__heading">
+          Shared with you
+        </div>
         <printer-card
-          v-for="e in g.entries"
+          v-for="e in sharedEntries"
           :key="e.key"
           :entry="e"
+          :screen-state="screenStateFor ? screenStateFor(e) : undefined"
           :actions="cloudActions(e)"
           :busy="busyKey === e.key"
           @open="openCloudEntry(e)"
           @action="onAction(e, $event)"
         />
       </section>
-    </template>
 
-    <section
-      v-if="showSection(localEntries.length)"
-      class="muon-switcher__group"
-      data-tid="switcher-saved"
-    >
-      <div class="muon-switcher__heading">
-        <span class="muon-switcher__caps">Saved in this browser</span>
-      </div>
-      <printer-card
-        v-for="e in localEntries"
-        :key="e.key"
-        :entry="e"
-        :actions="localActions(e)"
-        :busy="busyKey === e.key"
-        @open="openLocalEntry(e)"
-        @action="onAction(e, $event)"
-      />
-    </section>
-
-    <section
-      v-if="showSection(foundEntries.length)"
-      class="muon-switcher__group"
-      data-tid="switcher-found"
-    >
-      <div class="muon-switcher__heading">
-        <span class="muon-switcher__caps">Found on this network</span>
-        <span
-          v-if="searching"
-          class="muon-switcher__scan"
-        >
-          <v-progress-circular
-            indeterminate
-            size="11"
-            width="2"
-          />
-          {{ scanNetwork || 'searching' }}
-        </span>
-      </div>
-      <printer-card
-        v-for="e in foundEntries"
-        :key="e.key"
-        :entry="e"
-        :actions="foundActions(e)"
-        :busy="busyKey === e.key"
-        @open="openFoundEntry(e)"
-        @action="onAction(e, $event)"
-      />
-    </section>
-
-    <div
-      v-if="blockedByPage"
-      class="muon-switcher__note"
-      data-tid="blocked-by-page"
-    >
-      This browser won't let this page reach printers by their IP address, because the page was opened by
-      name. Add another printer by its name instead, as shown on its screen, such as muon-walnut-8987.
-      <template v-if="blockedByPage.ownUrl">
-        Or <a :href="blockedByPage.ownUrl">open this printer by its IP address</a>, which can reach them all.
-      </template>
-    </div>
-
-    <div
-      v-if="bluetoothSearch && !bluetoothOff"
-      class="muon-switcher__empty"
-      data-tid="look-nearby"
-    >
-      A printer that isn't on Wi-Fi yet?
-      <a
-        href="#"
-        @click.prevent="onLookNearby"
-      >Look nearby</a> over Bluetooth.
-    </div>
-    <div
-      v-else-if="bluetoothOff"
-      class="muon-switcher__empty"
-    >
-      Bluetooth is off, so new printers won't show.
-    </div>
-
-    <div
-      v-if="notice"
-      class="muon-switcher__note"
-    >
-      {{ notice }}
-      <a
-        v-if="noticeLink"
-        :href="noticeLink"
-        target="_blank"
-        rel="noopener"
-      >{{ noticeLink }}</a>
-    </div>
-    <div
-      v-if="nearby.error"
-      class="muon-switcher__note muon-switcher__note--error"
-    >
-      {{ nearby.error }}
-    </div>
-    <div
-      v-if="activationError"
-      class="muon-switcher__note muon-switcher__note--error"
-    >
-      {{ activationError }}
-      <a
-        v-if="pairingOffer"
-        href="#"
-        data-tid="pair-offer"
-        @click.prevent="pairThisBrowser"
-      >Pair this browser</a>
-      <span
-        v-if="pairingOffer"
-        data-tid="pair-hint"
-      >(Open System &gt; Add a device on the printer first.)</span>
-      <template v-if="activationFallback">
-        <a :href="activationFallback">Open the printer's own page</a> instead.
-      </template>
-    </div>
-
-    <div class="muon-switcher__foot">
-      <router-link
-        to="/"
-        class="muon-switcher__all"
-        data-tid="all-printers"
-        @click.native="$emit('click')"
+      <section
+        v-if="showSection(localEntries.length)"
+        class="muon-switcher__group"
+        data-tid="switcher-saved"
       >
-        <frame-icon
-          name="printers"
-          small
+        <div class="muon-switcher__heading">
+          <span class="muon-switcher__caps">Saved in this browser</span>
+        </div>
+        <printer-card
+          v-for="e in localEntries"
+          :key="e.key"
+          :entry="e"
+          :screen-state="screenStateFor ? screenStateFor(e) : undefined"
+          :actions="localActions(e)"
+          :busy="busyKey === e.key"
+          @open="openLocalEntry(e)"
+          @action="onAction(e, $event)"
         />
-        All printers
-        <template v-if="enableKeyboardShortcuts">
-          <kbd>G</kbd><kbd>P</kbd>
+      </section>
+
+      <section
+        v-if="otherEntries.length"
+        class="muon-switcher__group"
+        data-tid="switcher-other"
+      >
+        <div class="muon-switcher__heading">
+          Other printers
+        </div>
+        <printer-card
+          v-for="e in otherEntries"
+          :key="e.key"
+          :entry="e"
+          :screen-state="screenStateFor ? screenStateFor(e) : undefined"
+          :actions="[]"
+          @open="openListedEntry(e)"
+        />
+      </section>
+
+      <section
+        v-if="showSection(foundEntries.length)"
+        class="muon-switcher__group"
+        data-tid="switcher-found"
+      >
+        <div class="muon-switcher__heading">
+          <span class="muon-switcher__caps">Found on this network</span>
+          <span
+            v-if="searching"
+            class="muon-switcher__scan"
+          >
+            <v-progress-circular
+              indeterminate
+              size="11"
+              width="2"
+            />
+            {{ scanNetwork || 'searching' }}
+          </span>
+        </div>
+        <printer-card
+          v-for="e in foundEntries"
+          :key="e.key"
+          :entry="e"
+          :screen-state="screenStateFor ? screenStateFor(e) : undefined"
+          :actions="foundActions(e)"
+          :busy="busyKey === e.key"
+          @open="openFoundEntry(e)"
+          @action="onAction(e, $event)"
+        />
+      </section>
+
+      <div
+        v-if="blockedByPage"
+        class="muon-switcher__note"
+        data-tid="blocked-by-page"
+      >
+        This browser won't let this page reach printers by their IP address, because the page was opened by
+        name. Add another printer by its name instead, as shown on its screen, such as muon-walnut-8987.
+        <template v-if="blockedByPage.ownUrl">
+          Or <a :href="blockedByPage.ownUrl">open this printer by its IP address</a>, which can reach them all.
         </template>
-      </router-link>
-      <button
-        type="button"
-        class="muon-switcher__add"
-        data-tid="enter-address"
-        @click="instanceDialogOpen = true"
+      </div>
+
+      <div
+        v-if="bluetoothSearch && !bluetoothOff"
+        class="muon-switcher__empty"
+        data-tid="look-nearby"
       >
-        <frame-icon
-          name="plus"
-          small
-        />
-        Add a printer
-      </button>
-    </div>
+        A printer that isn't on Wi-Fi yet?
+        <a
+          href="#"
+          @click.prevent="onLookNearby"
+        >Look nearby</a> over Bluetooth.
+      </div>
+      <div
+        v-else-if="bluetoothOff"
+        class="muon-switcher__empty"
+      >
+        Bluetooth is off, so new printers won't show.
+      </div>
+
+      <div
+        v-if="notice"
+        class="muon-switcher__note"
+      >
+        {{ notice }}
+        <a
+          v-if="noticeLink"
+          :href="noticeLink"
+          target="_blank"
+          rel="noopener"
+        >{{ noticeLink }}</a>
+      </div>
+      <div
+        v-if="nearby.error"
+        class="muon-switcher__note muon-switcher__note--error"
+      >
+        {{ nearby.error }}
+      </div>
+      <div
+        v-if="activationError"
+        class="muon-switcher__note muon-switcher__note--error"
+      >
+        {{ activationError }}
+        <a
+          v-if="pairingOffer"
+          href="#"
+          data-tid="pair-offer"
+          @click.prevent="pairThisBrowser"
+        >Pair this browser</a>
+        <span
+          v-if="pairingOffer"
+          data-tid="pair-hint"
+        >(Open System &gt; Add a device on the printer first.)</span>
+        <template v-if="activationFallback">
+          <a :href="activationFallback">Open the printer's own page</a> instead.
+        </template>
+      </div>
+
+      <div class="muon-switcher__foot">
+        <router-link
+          to="/"
+          class="muon-switcher__all"
+          data-tid="all-printers"
+          @click.native="$emit('click')"
+        >
+          <frame-icon
+            name="printers"
+            small
+          />
+          All printers
+          <template v-if="enableKeyboardShortcuts">
+            <kbd>G</kbd><kbd>P</kbd>
+          </template>
+        </router-link>
+        <button
+          type="button"
+          class="muon-switcher__add"
+          data-tid="enter-address"
+          @click="instanceDialogOpen = true"
+        >
+          <frame-icon
+            name="plus"
+            small
+          />
+          Add a printer
+        </button>
+      </div>
+    </template>
 
     <add-instance-dialog
       v-if="instanceDialogOpen"
@@ -299,6 +342,8 @@ import PrinterCard from './PrinterCard.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { switcherGroups, switcherSectionShown, type SwitcherGroup } from '@/services/muon-cloud/switcher-groups'
 import AccessRequestDialog from '@/components/muon-access/AccessRequestDialog.vue'
+import { foreignSlugForId } from '@/services/printer-pages'
+import type { StripState } from '@/services/muon-cloud/printer-strip'
 
 /** How often the printers already known are asked again while the switcher is open. */
 const HEALTH_EVERY_MS = 15_000
@@ -315,6 +360,27 @@ export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
   @Prop({ type: Boolean, default: true })
   readonly visible!: boolean
 
+  @Prop({ type: Boolean, default: true }) readonly listVisible!: boolean
+
+  @Prop({ type: Array, default: () => [] }) readonly excludeKeys!: string[]
+  @Prop({ type: Array, default: () => [] }) readonly extraEntries!: DirectoryEntry[]
+  @Prop({ type: Boolean }) readonly separateShared!: boolean
+  @Prop({ type: Function }) readonly screenStateFor?: (entry: DirectoryEntry) => StripState
+
+  get sharedEntries (): DirectoryEntry[] {
+    return this.separateShared ? this.directory.cloud.filter(e => e.cloud?.shared && this.matches(e)) : []
+  }
+
+  get otherEntries (): DirectoryEntry[] {
+    return this.extraEntries.filter(this.matches)
+  }
+
+  openListedEntry (entry: DirectoryEntry) {
+    if (!entry.foreign) return this.openEntry(entry)
+    const slug = foreignSlugForId(entry.foreign.record.id)
+    if (slug) return this.$router.push(`/${slug}`).catch(() => {})
+  }
+
   /** "Find a printer": by name or address. */
   query = ''
   timer: (() => void) | null = null
@@ -325,6 +391,7 @@ export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
 
   /** By name, or by any address it answers at or was saved at (an offline printer has no host now). */
   matches (e: DirectoryEntry): boolean {
+    if (this.excludeKeys.includes(e.key)) return false
     const q = this.query.trim().toLowerCase()
     if (!q) return true
     const addresses = [e.host ?? '', ...e.saved.map(s => s.apiUrl)]
@@ -332,7 +399,7 @@ export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
   }
 
   get cloudEntries (): DirectoryEntry[] {
-    return this.directory.cloud.filter(this.matches)
+    return this.directory.cloud.filter(e => (!this.separateShared || !e.cloud?.shared) && this.matches(e))
   }
 
   /** The account's printers under its groups; the rest under Other printers. */
