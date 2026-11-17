@@ -13,7 +13,8 @@ import type {
   ManagedIrohRelay,
   PrinterSocket
 } from '@/services/managed-transport'
-import { bluetoothDropped, bluetoothRouteFor, noteBluetoothDropped, wantsBluetoothFor, type WasmBleLink } from '@/services/muon-ble/link'
+import { bluetoothCarrying, bluetoothDropped, bluetoothRouteFor, noteBluetoothDropped, wantsBluetoothFor, type WasmBleLink } from '@/services/muon-ble/link'
+import { assertBluetoothUploadSize, watchBluetoothUpload } from '@/services/muon-ble/upload'
 import { pinnedBluetoothError } from '@/services/muon-ble/refusal'
 import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, cloudTokensPersist } from './api'
 import { endpointBusy, notifyEndpointRebound, notifyEndpointReplacing } from './endpoint-hooks'
@@ -371,6 +372,8 @@ export class IrohPrinter implements ManagedIrohRelay {
     const signal = init?.signal
     if (signal?.aborted) throw abortError(signal)
     const method = (init?.method ?? 'GET').toUpperCase()
+    const upload = method === 'POST' && path.split('?')[0] === '/server/files/upload'
+    if (upload && bluetoothCarrying(this.printer.printerId())) assertBluetoothUploadSize(init?.body)
     const headers: string[] = []
     const source = new Headers(init?.headers ?? {})
     source.forEach((value, name) => {
@@ -402,9 +405,14 @@ export class IrohPrinter implements ManagedIrohRelay {
     }
     // Aborted while the body was read: nothing is sent.
     if (signal?.aborted) throw abortError(signal)
-    const work = this.printer.fetchWithProgress
-      ? this.printer.fetchWithProgress(method, path, headers, body, progress)
+    const overBluetooth = upload && bluetoothCarrying(this.printer.printerId())
+    if (overBluetooth) assertBluetoothUploadSize(init?.body, body.length)
+    const send = (report?: UploadProgress) => this.printer.fetchWithProgress
+      ? this.printer.fetchWithProgress(method, path, headers, body, report)
       : this.printer.fetch(method, path, headers, body)
+    const work = overBluetooth
+      ? watchBluetoothUpload(send, progress, () => this.printer.close(), signal)
+      : send(progress)
     const answer = await untilAborted(work, signal)
     const responseHeaders = new Headers()
     for (let i = 0; i + 1 < answer.headers.length; i += 2) {
