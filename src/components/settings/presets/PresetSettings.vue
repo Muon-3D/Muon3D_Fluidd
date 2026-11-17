@@ -8,26 +8,6 @@
       <h2 class="mats__title">
         Materials
       </h2>
-      <input
-        v-model="query"
-        type="search"
-        class="mats__search"
-        aria-label="Search materials"
-        placeholder="Search materials"
-        data-tid="materials-search"
-      >
-      <button
-        type="button"
-        class="cbtn cbtn--primary"
-        data-tid="material-add"
-        @click="adding = true"
-      >
-        <frame-icon
-          name="plus"
-          small
-        />
-        Add a material
-      </button>
     </header>
 
     <div
@@ -124,9 +104,23 @@
       class="m3-set mats__library"
       data-tid="material-library"
     >
-      <h3 class="mats__group-title">
-        Material library
-      </h3>
+      <div class="mats__libhead">
+        <h3 class="mats__group-title">
+          Material library
+        </h3>
+        <button
+          type="button"
+          class="cbtn cbtn--sm"
+          data-tid="material-make-own"
+          @click="makeOwn(null)"
+        >
+          <frame-icon
+            name="plus"
+            small
+          />
+          Make my own
+        </button>
+      </div>
       <library-offline
         v-if="libraryState === 'offline'"
         @retry="loadLibrary"
@@ -251,15 +245,38 @@
               class="mats__note"
               role="status"
             >
-              Nothing in the library matches. "Add a material" › Make my own instead.
-            </li>
-            <li
-              v-else-if="libraryResults.length > shownLibrary.length"
-              class="mats__note"
-            >
-              Showing {{ shownLibrary.length }} of {{ libraryResults.length }}. Search or pick a brand to narrow it down.
+              Nothing in the library matches. Use "Make my own" instead.
             </li>
           </ul>
+          <nav
+            v-if="pageCount > 1"
+            class="mats__pager"
+            aria-label="Library pages"
+            data-tid="library-pager"
+          >
+            <button
+              type="button"
+              class="cbtn cbtn--sm"
+              :disabled="page === 0"
+              data-tid="library-prev"
+              @click="page--"
+            >
+              Previous
+            </button>
+            <span
+              role="status"
+              data-tid="library-page"
+            >Page {{ page + 1 }} of {{ pageCount }} · {{ libraryResults.length }} materials</span>
+            <button
+              type="button"
+              class="cbtn cbtn--sm"
+              :disabled="page >= pageCount - 1"
+              data-tid="library-next"
+              @click="page++"
+            >
+              Next
+            </button>
+          </nav>
         </div>
       </div>
       <p class="mats__note">
@@ -290,10 +307,6 @@
       </router-link>
     </div>
 
-    <add-material-dialog
-      v-model="adding"
-      hide-see-all
-    />
     <preset-dialog
       v-if="editing"
       :key="editingKey"
@@ -305,9 +318,8 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import PresetDialog from './PresetDialog.vue'
-import AddMaterialDialog from './AddMaterialDialog.vue'
 import LibraryOffline from './LibraryOffline.vue'
 import MaterialLibraryMixin from '@/mixins/material-library'
 import BrowserMixin from '@/mixins/browser'
@@ -320,7 +332,7 @@ import { scopedPath } from '@/router/printerPagePaths'
 import { activeSlug } from '@/services/printer-pages'
 import { ownDraft } from './drafts'
 
-const SHOWN = 40
+const SHOWN = 20
 
 interface Group {
   id: 'yours' | 'printer';
@@ -335,15 +347,14 @@ interface Group {
  * that puts it in the filament picker, in drag order; then the material
  * library to add from. Everything here is kept on the printer.
  */
-@Component({ components: { PresetDialog, AddMaterialDialog, LibraryOffline } })
+@Component({ components: { PresetDialog, LibraryOffline } })
 export default class PresetSettings extends Mixins(MaterialLibraryMixin, BrowserMixin) {
-  query = ''
   libraryQuery = ''
   brand: string | null = null
   chosen: string[] = []
   chips = LIBRARY_CHIPS
   maxPins = MAX_PINS
-  adding = false
+  page = 0
   editing: TemperaturePreset | null = null
   editingKey = 0
   dragging: string | null = null
@@ -358,17 +369,11 @@ export default class PresetSettings extends Mixins(MaterialLibraryMixin, Browser
     return p.origin === 'own' || (!p.origin && !p.libraryId)
   }
 
-  matches (p: TemperaturePreset): boolean {
-    const words = this.query.toLowerCase().split(/\s+/).filter(Boolean)
-    const hay = `${p.name} ${p.source ?? ''} ${p.type ?? ''}`.toLowerCase()
-    return words.every(w => hay.includes(w))
-  }
-
   get groups (): Group[] {
-    const shown = byPins(this.printerPresets.filter(p => this.matches(p)), this.pins)
+    const shown = byPins(this.printerPresets, this.pins)
     return [
-      { id: 'yours', title: 'Your presets', presets: shown.filter(p => this.isOwn(p)), empty: this.query ? 'None of yours match.' : 'None yet. "Add a material" › Make my own, or change one below.' },
-      { id: 'printer', title: `On ${this.printerLabel}`, presets: shown.filter(p => !this.isOwn(p)), empty: 'None match.' }
+      { id: 'yours', title: 'Your presets', presets: shown.filter(p => this.isOwn(p)), empty: 'None yet. "Make my own" below, or change one of the materials on the printer.' },
+      { id: 'printer', title: `On ${this.printerLabel}`, presets: shown.filter(p => !this.isOwn(p)), empty: 'None.' }
     ]
   }
 
@@ -393,8 +398,8 @@ export default class PresetSettings extends Mixins(MaterialLibraryMixin, Browser
     this.editingKey++
   }
 
-  makeOwn (e: LibraryEntry) {
-    this.editing = ownDraft(this.presetFor(e), this.heaterNames)
+  makeOwn (e: LibraryEntry | null) {
+    this.editing = ownDraft(e ? this.presetFor(e) : null, this.heaterNames)
     this.editingKey++
   }
 
@@ -435,7 +440,20 @@ export default class PresetSettings extends Mixins(MaterialLibraryMixin, Browser
   }
 
   get shownLibrary (): LibraryEntry[] {
-    return this.libraryResults.slice(0, SHOWN)
+    const from = Math.min(this.page, this.pageCount - 1) * SHOWN
+    return this.libraryResults.slice(from, from + SHOWN)
+  }
+
+  get pageCount (): number {
+    return Math.max(1, Math.ceil(this.libraryResults.length / SHOWN))
+  }
+
+  /** A new search, brand or type starts again at page one. */
+  @Watch('libraryQuery')
+  @Watch('brand')
+  @Watch('chosen')
+  backToFirstPage () {
+    this.page = 0
   }
 
   toggleChip (id: string) {
@@ -485,6 +503,21 @@ export default class PresetSettings extends Mixins(MaterialLibraryMixin, Browser
     font: inherit;
   }
 
+  .mats__libhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .mats__pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+  }
   .mats__group-title {
     margin: 0 0 4px;
     color: var(--m3d-text-muted);
