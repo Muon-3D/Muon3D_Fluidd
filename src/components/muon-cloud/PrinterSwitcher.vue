@@ -192,8 +192,6 @@
       <a
         v-if="noticeLink"
         :href="noticeLink"
-        target="_blank"
-        rel="noopener"
       >{{ noticeLink }}</a>
     </div>
     <div

@@ -71,10 +71,9 @@ describe('menus follow the live route', () => {
 describe('routes for a printer you do not own', () => {
   const saved = entry({ key: 'local:http://x', section: 'local', cloud: undefined, linkedTo: 'other', host: '192.168.1.20' })
 
-  it('a saved printer off the account offers Local and Bluetooth, and Muon3D greyed as not on your account', () => {
+  it('a saved printer off the account offers Local and Bluetooth, and no Muon3D route (KAN-3586)', () => {
     const all = methods.localActions.call({ askAction: methods.askAction }, saved) as CardAction[]
-    expect(ids(all)).toEqual(['connect-local', 'connect-cloud', 'connect-bluetooth'])
-    expect(all.find(a => a.id === 'connect-cloud')).toMatchObject({ disabled: true, hint: 'Not on your account' })
+    expect(ids(all)).toEqual(['connect-local', 'connect-bluetooth'])
     expect(all.find(a => a.id === 'connect-bluetooth')?.disabled).toBe(false)
   })
 

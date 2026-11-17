@@ -55,13 +55,11 @@
         data-tid="found-secure"
       >
         <template v-if="openLinks.length">
-          Control doesn't scan your network from this secure page. Open a printer on your network in a new tab:
+          Control doesn't scan your network from this secure page. Open a printer on your network:
           <a
             v-for="link in openLinks"
             :key="link.url"
             :href="link.url"
-            target="_blank"
-            rel="noopener"
             data-tid="open-on-network"
           >{{ link.name }}: Open on this network</a>
         </template>
@@ -226,8 +224,8 @@
           v-if="foundShown.length"
           bench-id="found"
           kind="door"
-          title="Found nearby · not yours yet"
-          caption="They wait here until you add them. Nothing is sent to them."
+          title="Other printers on your network"
+          caption="Not on your account. Open one to use it, or add it to your account."
           :tiles="foundShown"
           :searching="searching"
           data-tid="found"
@@ -390,7 +388,7 @@
         <!-- Found nearby, not yours yet: hidden when nothing is found. -->
         <printers-section
           v-if="foundShown.length"
-          title="Found nearby · not yours yet"
+          title="Other printers on your network"
           :count="foundShown.length"
           data-tid="found"
         >
@@ -512,8 +510,6 @@
       <a
         v-if="noticeLink"
         :href="noticeLink"
-        target="_blank"
-        rel="noopener"
         data-tid="notice-link"
       >{{ noticeLink }}</a>
     </p>

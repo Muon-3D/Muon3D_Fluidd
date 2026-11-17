@@ -90,12 +90,12 @@ describe('the printer page menu (KAN-1429)', () => {
     w.destroy()
   })
 
-  it('on the local network offers Muon3D and Bluetooth, never Connect locally (KAN-2487)', async () => {
+  it('on the local network offers Bluetooth, never Connect locally, and no Muon3D route off the account (KAN-2487, KAN-3586)', async () => {
     nearbyState.support = 'supported'
     const w = mountMenu(entry({ section: 'local', active: 'local', cloud: undefined }))
     await open(w)
     expect(item('connect-local')).toBeNull()
-    expect(item('connect-cloud')?.textContent).toContain('Not on your account')
+    expect(item('connect-cloud')).toBeNull()
     expect(item('connect-bluetooth')?.className).not.toContain('v-list-item--disabled')
     w.destroy()
   })

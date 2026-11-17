@@ -242,7 +242,7 @@ test.describe('signed in', () => {
     await openPrinters(page)
     await toBench(page)
     const found = page.getByTestId('found')
-    await expect(found.getByRole('heading', { name: 'Found nearby · not yours yet' })).toBeVisible({ timeout: 30_000 })
+    await expect(found.getByRole('heading', { name: 'Other printers on your network' })).toBeVisible({ timeout: 30_000 })
     const larch = found.locator('[data-tid^="printer-tile-"]').first()
     await expect(larch).toContainText('Larch')
     // One button, shown without hovering, and drawn faintly.

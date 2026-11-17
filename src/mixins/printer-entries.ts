@@ -40,7 +40,7 @@ import { chooseRouteMode, type Route } from '@/services/muon-cloud/route-choice'
 import { bluetoothReason, routeMenuItems, type RouteMenuFacts } from '@/services/muon-cloud/route-menu'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { chooseRelay, clearRelayChoice, mayTrySecureName, reachSecureName, relayChosen, secureNameOf } from '@/services/secure-origin/hosted'
-import { localRoute, openableAddr, type LocalRoute } from '@/services/muon-cloud/local-route'
+import { localRoute, mdnsHostFromName, openableAddr, type LocalRoute } from '@/services/muon-cloud/local-route'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
 import { requestRefused } from '@/services/managed-transport/refusal'
 
@@ -53,6 +53,12 @@ export const RUN_TIMEOUT_MS = 60_000
 
 class RunTimeout extends Error {}
 
+/** The service's nearby entry for a printer id. The directory matches ids without case, so does this. */
+function nearbyOf (id: string) {
+  const want = id.toLowerCase()
+  return discoveryState.cloud.find(c => c.printerId.toLowerCase() === want)
+}
+
 /** How Connect locally would reach this printer from this page (KAN-2529). */
 function localRouteOf (e: DirectoryEntry): LocalRoute {
   const id = e.cloud?.id ?? e.endpointId
@@ -61,7 +67,8 @@ function localRouteOf (e: DirectoryEntry): LocalRoute {
     host: e.host,
     secureName: secureNameOf(e.cloud),
     pageHost: window.location.hostname,
-    nearby: id ? discoveryState.cloud.find(c => c.printerId === id) : undefined,
+    mdnsHost: e.lan?.mdnsHost ?? e.saved.find(s => s.mdnsHost)?.mdnsHost ?? mdnsHostFromName(e.cloud?.name ?? e.name),
+    nearby: id ? nearbyOf(id) : undefined,
     nearbyChecked: discoveryState.cloudChecked,
     blockedByPage: !!discoveryState.blockedByPage
   })
@@ -71,7 +78,7 @@ function localRouteOf (e: DirectoryEntry): LocalRoute {
 function localHint (route: LocalRoute, e: DirectoryEntry): string {
   switch (route.kind) {
     case 'secure': return 'Opens its secure address'
-    case 'tab': return "Opens the printer's own page in a new tab"
+    case 'page': return "Opens the printer's own page on your network, in this tab"
     case 'lan': return e.host ?? ''
     case 'none': return route.reason
   }
@@ -143,19 +150,6 @@ let navigate = (url: string) => window.location.assign(url)
 /** For tests: replaces how the page is sent to a printer's secure address. */
 export function setNavigate (fn: (url: string) => void) {
   navigate = fn
-}
-
-/** Opens the page in a new tab; false when the browser blocked it (no `noopener` flag, which would hide that). */
-let openTab = (url: string): boolean => {
-  const w = window.open(url, '_blank')
-  if (!w) return false
-  try { w.opener = null } catch { /* cross-origin already */ }
-  return true
-}
-
-/** For tests: replaces how the printer's own page is opened in a new tab. */
-export function setOpenTab (fn: (url: string) => boolean) {
-  openTab = fn
 }
 
 /** Counts runs, so one taken over by a chosen route does not clear the row of the one that took over. */
@@ -669,7 +663,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
 
   /**
    * Connect locally from the hosted page: the printer's secure address when it
-   * answers, else its own page in a new tab, else a reason. An explicit local
+   * answers, else its own page in this same tab, else a reason. An explicit local
    * choice, so it holds 'lan' (even when it only opens a tab), ends any held
    * "through Muon3D" or Bluetooth choice and never falls back to the relay by
    * itself. Never called for an automatic move.
@@ -695,22 +689,22 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       })
       if (reached) return true
       if (busy) return
-      const addr = openableAddr(discoveryState.cloud.find(c => c.printerId === (id ?? e.endpointId)), window.location.hostname)
-      if (addr) return this.connectLocalFromHostedPage(e, { kind: 'tab', addr })
+      const near = nearbyOf(id ?? e.endpointId ?? '')
+      const addr = openableAddr(near, window.location.hostname)
+      if (addr) return this.connectLocalFromHostedPage(e, { kind: 'page', host: addr })
       this.notice = `Couldn't reach ${e.name} at its secure address from this browser. ` +
         'It may be on another network, or this browser may have refused the local-network question.'
       return
     }
-    if (route.kind === 'tab') {
-      // A new tab leaves this page alone; the choice of the local route is still held.
-      const url = `http://${route.addr}/`
-      if (openTab(url)) {
-        this.notice = `Opened ${e.name}'s own page in a new tab.`
-      } else {
-        this.notice = `This browser blocked the new tab. Open ${e.name}'s own page from the link below.`
-        this.noticeLink = url
+    if (route.kind === 'page') {
+      // The same tab, always: a new one is not what a person who tapped Connect locally expects, and
+      // the choice of the local route is held, so coming back finds it.
+      if (id) {
+        clearRelayChoice(id)
+        stopUsingBluetoothFor(id)
       }
-      return
+      navigate(`http://${route.host}/`)
+      return true
     }
     if (route.kind === 'none') this.notice = route.reason
   }

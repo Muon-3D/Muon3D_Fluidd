@@ -191,7 +191,7 @@ export function cloudHealth (online: boolean, s: PrinterStatus | undefined, last
   if (presence !== 'online') return presence
   if (!s) return 'connecting'
   if (!s.reachable && s.error === 'reconnecting') return 'reconnecting'
-  if (!s.reachable) return s.error === 'offline' ? 'offline' : 'error'
+  if (!s.reachable) return s.error === 'offline' ? 'offline' : s.error === 'refused' ? 'locked' : 'error'
   if (s.state === 'printing') return 'printing'
   if (s.state === 'paused') return 'paused'
   if (s.state === 'error' || s.state?.startsWith('klipper')) return 'error'
@@ -205,6 +205,13 @@ function linkedFrom (lan: LanPrinter | undefined, email: string | null): LinkedT
   if (phase === 'linked') return account && email && account === email ? 'mine' : 'other'
   if (phase === 'unlinked' || phase === 'code' || phase === 'failed') return 'none'
   return 'unknown'
+}
+
+/** A printer off this account that the service lists as linked is another account's. */
+function cloudLinkedTo (nearby: CloudNearbyPrinter[], endpointId: string | null): LinkedTo {
+  const id = endpointId?.toLowerCase()
+  const c = id ? nearby.find(n => n.printerId.toLowerCase() === id) : undefined
+  return c?.linked ? 'other' : 'unknown'
 }
 
 function lanDetail (lan: LanPrinter): string {
@@ -351,7 +358,8 @@ export function printerDirectory (src: DirectorySources): Directory {
       detail,
       host: lan?.host ?? null,
       active,
-      linkedTo: linkedFrom(lan, src.email),
+      // No LAN probe on the hosted page: the service's nearby list still says whether someone has linked it.
+      linkedTo: lan ? linkedFrom(lan, src.email) : cloudLinkedTo(src.cloudNearby, endpointId),
       saved: [s],
       lan,
       nearby
@@ -407,7 +415,7 @@ export function cloudDetail (online: boolean, s: PrinterStatus | undefined, last
   if (presence !== 'online') return healthLabel(presence)
   if (!s) return 'Connecting through Muon3D…'
   if (!s.reachable && s.error === 'reconnecting') return 'Reconnecting…'
-  if (!s.reachable) return s.error === 'offline' ? 'Offline' : `Unreachable: ${s.error}`
+  if (!s.reachable) return s.error === 'offline' ? 'Offline' : s.error === 'refused' ? 'Needs access' : `Unreachable: ${s.error}`
   const state = (s.state ?? 'unknown').replace(/^\w/, c => c.toUpperCase())
   if (s.state === 'printing' || s.state === 'paused') {
     const percent = Math.round((s.progress ?? 0) * 100)

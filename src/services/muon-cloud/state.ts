@@ -356,6 +356,9 @@ async function pollOne (printer: CloudPrinter) {
     if (signal.aborted) return
     Vue.set(cloudState.status, printer.id, { ...cloudState.status[printer.id], reachable: false, error, updatedAt: Date.now() })
   }
+  // The printer answered and refused this browser: a result, not silence. Left unset the card said Connecting for good (KAN-3585).
+  // A status already read stays: a refusal never marks a working route down (offline-detection.spec.ts).
+  const refused = () => { if (!cloudState.status[printer.id]) unavailable('refused') }
   const presence = consolePresence(printer)
   if (presence !== 'online') unavailable(presence)
   if (presence === 'offline' || polling.has(printer.id)) return
@@ -371,7 +374,7 @@ async function pollOne (printer: CloudPrinter) {
       connection.fetch(STATUS_QUERY),
       new Promise<never>((_resolve, reject) => { silence = setTimeout(() => reject(new StatusSilence()), STATUS_TIMEOUT_MS) })
     ]).finally(() => clearTimeout(silence))
-    if (requestRefused({ status: response.status })) return
+    if (requestRefused({ status: response.status })) return refused()
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const s = (await response.json()).result.status
     if (signal.aborted) return
@@ -387,7 +390,7 @@ async function pollOne (printer: CloudPrinter) {
       updatedAt: Date.now()
     } as PrinterStatus)
   } catch (error) {
-    if (requestRefused(error)) return
+    if (requestRefused(error)) return refused()
     if (overBluetooth && !signal.aborted) noteBluetoothFailure(printer.id, error)
     const failed = (pollFailures.get(printer.id) ?? 0) + 1
     pollFailures.set(printer.id, failed)

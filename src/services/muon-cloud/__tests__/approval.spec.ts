@@ -34,6 +34,17 @@ describe('waiting for approval (connectAs, muon-link#126)', () => {
     expect(await watch.outcome).toBe('admitted')
   })
 
+  it('an open printer that admits at once never shows a wait or an outcome (KAN-3583)', async () => {
+    let watch!: ApprovalWatch
+    onApprovalWatch(w => { watch = w })
+    expect(await connectWithApproval({ connectAs: async () => 'session' }, 'p1', 'Control')).toBe('session')
+    const settled = vi.fn()
+    watch.pending.then(settled)
+    watch.outcome.then(settled)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(settled).not.toHaveBeenCalled()
+  })
+
   it.each(['refused', 'timed_out', 'disabled', 'busy', 'cooldown'] as const)('maps a %s rejection', async reason => {
     let watch!: ApprovalWatch
     onApprovalWatch(w => { watch = w })

@@ -75,6 +75,7 @@ export async function connectWithApproval<Session> (
   let ended!: (outcome: ApprovalOutcome) => void
   let abandon!: (error: Error) => void
   let cancelled = false
+  let held = false
   const watch: ApprovalWatch = {
     pending: new Promise<string>(resolve => { sawPending = resolve }),
     outcome: new Promise<ApprovalOutcome>(resolve => { ended = resolve }),
@@ -92,7 +93,11 @@ export async function connectWithApproval<Session> (
         printerId,
         name,
         'operator',
-        notice => { if (!cancelled) sawPending(notice.code) },
+        notice => {
+          if (cancelled) return
+          held = true
+          sawPending(notice.code)
+        },
         reason => {
           const failure = failureOf(reason)
           if (failure && !cancelled) ended(failure)
@@ -100,7 +105,9 @@ export async function connectWithApproval<Session> (
       ),
       abandoned
     ])
-    ended('admitted')
+    // Admitted straight away (an open printer, a known browser): nothing was waited for, so the page says nothing
+    // (KAN-3583: "<printer> let this device in" appeared on a printer that never asked).
+    if (held) ended('admitted')
     return session
   } catch (error) {
     const failure = failureOf((error as { reason?: unknown }).reason) ??

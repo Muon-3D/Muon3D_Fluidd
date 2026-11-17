@@ -4,9 +4,8 @@
  * KAN-2529: Connect locally from the hosted page.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import PrinterEntriesMixin, { setNavigate, setOpenTab } from '../printer-entries'
-import { chooseRelay, forgetSecureReach, relayChosen } from '@/services/secure-origin/hosted'
-import * as link from '@/services/muon-ble/link'
+import PrinterEntriesMixin, { setNavigate } from '../printer-entries'
+import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { discoveryState } from '@/services/muon-cloud/discovery'
 import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 
@@ -44,14 +43,11 @@ const action = (c: ReturnType<typeof component>, e: DirectoryEntry) =>
   (methods.cloudActions.call(c, e) as Array<{ id: string, disabled?: boolean, hint?: string }>).find(a => a.id === 'connect-local')!
 
 const nav = vi.fn()
-const tab = vi.fn(() => true)
 beforeEach(() => {
   forgetSecureReach()
   sessionStorage.clear()
   nav.mockReset()
-  tab.mockReset().mockReturnValue(true)
   setNavigate(nav)
-  setOpenTab(tab)
   discoveryState.cloud = []
   discoveryState.cloudChecked = true
   vi.unstubAllGlobals()
@@ -65,7 +61,6 @@ describe('Connect locally on the hosted page (KAN-2529)', () => {
     expect(action(c, e)).toMatchObject({ disabled: false, hint: 'Opens its secure address' })
     await methods.connectLocal.call(c, e)
     expect(nav).toHaveBeenCalledWith(`https://${NAME}/`)
-    expect(tab).not.toHaveBeenCalled()
   })
 
   it('with a secure name that does not answer: falls to the service address, else says why', async () => {
@@ -78,44 +73,40 @@ describe('Connect locally on the hosted page (KAN-2529)', () => {
     forgetSecureReach()
     discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
     await methods.connectLocal.call(c, entry(NAME))
-    expect(tab).toHaveBeenCalledWith('http://192.168.1.20/')
+    expect(nav).toHaveBeenCalledWith('http://192.168.1.20/')
   })
 
-  it('with only the service\'s addresses: enabled, and opens http://<addr>/ in a new tab (not the hotspot)', async () => {
+  it('with only the service\'s addresses: enabled, and navigates THIS tab to http://<addr>/ (not the hotspot), with no popup', async () => {
     discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['10.42.0.1', '192.168.1.20'] }]
     const c = component()
     const e = entry(null)
-    expect(action(c, e)).toMatchObject({ disabled: false, hint: "Opens the printer's own page in a new tab" })
+    expect(action(c, e)).toMatchObject({ disabled: false, hint: "Opens the printer's own page on your network, in this tab" })
     await methods.connectLocal.call(c, e)
-    expect(tab).toHaveBeenCalledWith('http://192.168.1.20/')
-    expect(nav).not.toHaveBeenCalled()
+    expect(nav).toHaveBeenCalledWith('http://192.168.1.20/')
   })
 
-  it('the new-tab path leaves this page route alone: no Bluetooth drop, no held choice cleared', async () => {
-    const stop = vi.spyOn(link, 'stopUsingBluetoothFor')
-    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
-    chooseRelay('p1')
+  it('opens the printer by its .local name in this tab when the name is known, never window.open', async () => {
+    const open = vi.fn()
+    vi.stubGlobal('open', open)
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Sloe b26d', model: 'M1', linked: true, localAddrs: ['192.168.1.78'] }]
+    const e = entry(null)
+    e.name = 'Sloe b26d'
+    e.cloud = { ...e.cloud, name: 'Sloe b26d' } as never
+    await methods.connectLocal.call(component(), e)
+    expect(nav).toHaveBeenCalledWith('http://muon-sloe-b26d.local/')
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('matches the printer id from the service without case, so a printer beside this browser is found (KAN-3581)', async () => {
+    discoveryState.cloud = [{ printerId: 'P1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
     await methods.connectLocal.call(component(), entry(null))
-    expect(tab).toHaveBeenCalled()
-    expect(stop).not.toHaveBeenCalled()
-    expect(relayChosen('p1')).toBe(true)
-    stop.mockRestore()
-  })
-
-  it('a blocked popup shows the address as a link and does not say it opened', async () => {
-    tab.mockReturnValue(false)
-    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
-    const c = component() as ReturnType<typeof component> & { noticeLink: string | null }
-    await methods.connectLocal.call(c, entry(null))
-    expect(c.notice).not.toMatch(/^Opened/)
-    expect(c.notice).toMatch(/blocked the new tab/)
-    expect(c.noticeLink).toBe('http://192.168.1.20/')
+    expect(nav).toHaveBeenCalledWith('http://192.168.1.20/')
   })
 
   it('a bad address from the console is never opened', async () => {
     discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['evil.example', 'a@evil'] }]
     await methods.connectLocal.call(component(), entry(null))
-    expect(tab).not.toHaveBeenCalled()
+    expect(nav).not.toHaveBeenCalled()
   })
 
   it('a busy row keeps "Still opening" instead of the unreachable notice', async () => {

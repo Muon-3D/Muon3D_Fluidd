@@ -60,8 +60,9 @@ export function routeMenuItems (f: RouteMenuFacts): RouteMenuItem[] {
       disabled: !f.local.usable
     })
   }
-  if (f.live !== 'cloud') {
-    const reason = !f.cloud.listed ? NOT_ON_ACCOUNT : !f.cloud.online ? OFFLINE_IN_MUON3D : undefined
+  // A printer that is not on this account has no Muon3D route to offer: hide it rather than grey it out (Jack, 17 Nov).
+  if (f.live !== 'cloud' && f.cloud.listed) {
+    const reason = !f.cloud.online ? OFFLINE_IN_MUON3D : undefined
     items.push({ id: 'connect-cloud', route: 'cloud', label: 'Connect through Muon3D', icon: '$cloud', hint: reason, disabled: !!reason })
   }
   if (f.live !== 'ble') {

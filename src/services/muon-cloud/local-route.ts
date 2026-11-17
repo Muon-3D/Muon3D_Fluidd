@@ -8,9 +8,11 @@
  *
  * 1. its own secure address (`secure_name`, KAN-2198), once a probe shows this
  *    browser reaches it;
- * 2. else `http://<address>/` in a new tab, from the addresses the Muon3D
- *    service says the printer holds on this browser's network (a top-level
- *    navigation is allowed where a fetch is not);
+ * 2. else the printer's own page in THIS tab (never a new one: Jack, 17 Nov),
+ *    `http://<name>.local/` when its name is known, else `http://<address>/`
+ *    from the addresses the Muon3D service says the printer holds on this
+ *    browser's network (a top-level navigation is allowed where a fetch is not;
+ *    the name is preferred because a bare address never loaded for Sloe);
  * 3. else nothing, and an honest reason.
  */
 import { isOwnHotspot, nearbyHost, type CloudNearbyPrinter } from './discovery'
@@ -23,7 +25,7 @@ export const BLOCKED_BY_PAGE = "This browser can't reach it from this page"
 
 export type LocalRoute =
   | { kind: 'secure', name: string }
-  | { kind: 'tab', addr: string }
+  | { kind: 'page', host: string }
   | { kind: 'lan' }
   | { kind: 'none', reason: string }
 
@@ -36,6 +38,8 @@ export interface LocalRouteInput {
   secureName: string | null;
   /** The name this page is served from. */
   pageHost: string;
+  /** The printer's `.local` name: one it was seen answering at, else the one its name implies. */
+  mdnsHost?: string | null;
   /** The service's nearby entry for this printer. */
   nearby: CloudNearbyPrinter | undefined;
   /** The service's nearby list has been read. */
@@ -83,11 +87,24 @@ export function localRoute (i: LocalRouteInput): LocalRoute {
   if (i.hosted) {
     if (i.secureName && i.secureName !== i.pageHost) return { kind: 'secure', name: i.secureName }
     const addr = openableAddr(i.nearby, i.pageHost)
-    if (addr) return { kind: 'tab', addr }
+    // Only a printer the service puts beside this browser: leaving this page for one that is elsewhere strands the person.
+    const named = i.nearby && i.mdnsHost && isOpenableAddr(i.mdnsHost) ? i.mdnsHost.toLowerCase() : null
+    const host = named ?? addr
+    if (host) return { kind: 'page', host }
     // The service's list was read and the printer is not beside this browser (or has
     // no usable address): not found. Not read yet: the page is why it cannot be told.
     return { kind: 'none', reason: i.nearbyChecked ? NOT_ON_NETWORK : BLOCKED_BY_PAGE }
   }
   if (i.host) return { kind: 'lan' }
   return { kind: 'none', reason: i.blockedByPage ? BLOCKED_BY_PAGE : NOT_ON_NETWORK }
+}
+
+/**
+ * The `.local` name a printer's display name implies: its hostname is
+ * `muon-<name>-<suffix>` ("Sloe b26d", "Boxwood · 367A", "muon-sloe-b26d").
+ * Null for a name that is not that shape (an owner's rename).
+ */
+export function mdnsHostFromName (name: string | null | undefined): string | null {
+  const m = /^\s*(?:muon[\s_-]+)?([a-z]+)[\s_·.-]+([0-9a-z]{4})\s*$/i.exec(name ?? '')
+  return m ? `muon-${m[1].toLowerCase()}-${m[2].toLowerCase()}.local` : null
 }
