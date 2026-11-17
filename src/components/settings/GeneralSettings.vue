@@ -14,17 +14,20 @@
             Name
           </div>
           <div class="gs__s">
-            Shown in the top bar, on the printer's screen and to everyone it's shared with.
+            Shown in the top bar, on the printer's screen and to everyone it's shared with. Changing it here renames the printer itself, over any route.
           </div>
         </div>
         <div class="gs__ctl gs__ctl--wide">
           <v-text-field
             ref="instanceName"
+            :key="nameKey"
             outlined
             dense
             single-line
             hide-details="auto"
             :rules="[$rules.required]"
+            :error-messages="nameError"
+            :disabled="renaming"
             :value="instanceName"
             :default-value="$globals.APP_NAME"
             aria-label="Name"
@@ -162,6 +165,35 @@
           data-tid="setting-times"
           @input="timeFormat = String($event)"
         />
+      </div>
+      <div
+        v-if="zoneShown"
+        class="gs__row"
+        data-tid="setting-timezone"
+      >
+        <div class="gs__grow">
+          <div class="gs__t">
+            Time zone
+          </div>
+          <div class="gs__s">
+            The printer's own clock, used for its screen and job times.
+          </div>
+        </div>
+        <div class="gs__ctl gs__ctl--wide">
+          <v-autocomplete
+            :key="zoneKey"
+            outlined
+            dense
+            hide-details="auto"
+            aria-label="Time zone"
+            data-tid="setting-timezone-select"
+            :items="zones"
+            :value="zone"
+            :disabled="zoneSaving"
+            :error-messages="zoneError"
+            @change="setZone"
+          />
+        </div>
       </div>
     </div>
 
@@ -566,6 +598,57 @@ export default class GeneralSettings extends Mixins(StateMixin) {
 
   mounted () {
     this.loadSerial()
+    this.loadZone()
+  }
+
+  zone: string | null = null
+  zoneShown = false
+  zoneError = ''
+  zoneSaving = false
+  zoneKey = 0
+
+  get zones (): string[] {
+    let all: string[] = []
+    try {
+      all = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? []
+    } catch { /* no Intl zone list */ }
+    if (!all.includes('UTC')) all = ['UTC', ...all]
+    return this.zone && !all.includes(this.zone) ? [this.zone, ...all] : all
+  }
+
+  /** A printer without the route (404) shows no row at all, not a broken one. */
+  async loadZone () {
+    if (this.$store.getters['server/isMuonPrinter'] !== true) return
+    try {
+      const response = await httpClientActions.serverMuonTimezoneGet()
+      const data = response.data as { zone?: unknown, result?: { zone?: unknown } }
+      const zone = data?.result?.zone ?? data?.zone
+      this.zone = typeof zone === 'string' ? zone : null
+      this.zoneShown = true
+    } catch {
+      this.zoneShown = false
+    }
+  }
+
+  async setZone (value: string) {
+    this.zoneError = ''
+    this.zoneSaving = true
+    try {
+      await httpClientActions.serverMuonTimezonePost(value)
+      this.zone = value
+    } catch (e) {
+      const res = (e as { response?: { status?: number, data?: unknown } }).response
+      if (res?.status === 404) {
+        this.zoneShown = false
+        return
+      }
+      const data = res?.data as { error?: string | { message?: string } } | string | undefined
+      const why = typeof data === 'string' ? data : typeof data?.error === 'string' ? data.error : data?.error?.message
+      this.zoneError = `${this.printerName} did not accept that time zone${why ? `: ${why.replace(/\.$/, '')}.` : '.'} Nothing changed.`
+      this.zoneKey++
+    } finally {
+      this.zoneSaving = false
+    }
   }
 
   async loadSerial () {
@@ -603,8 +686,35 @@ export default class GeneralSettings extends Mixins(StateMixin) {
     return printerNameParts(this.$store.getters['config/getDisplayName'] as string ?? '').name || 'this printer'
   }
 
-  setInstanceName (value: string) {
-    if (this.instanceNameElement.valid) this.$store.dispatch('config/updateInstance', value)
+  nameKey = 0
+  nameError = ''
+  renaming = false
+
+  /**
+   * On a Muon printer the name is the printer's own (its identity, which the
+   * panel, the phone app and every other Control read), so it is written
+   * there first; Control's own label follows once the printer has it. If the
+   * printer refuses, nothing changes and the refusal is shown here.
+   */
+  async setInstanceName (value: string) {
+    if (!this.instanceNameElement.valid) return
+    const name = value.trim()
+    this.nameError = ''
+    if (this.$store.getters['server/isMuonPrinter'] === true) {
+      this.renaming = true
+      try {
+        await httpClientActions.serverMuonIdentityNamePost(name)
+      } catch (e) {
+        const data = (e as { response?: { status?: number, data?: unknown } }).response?.data as { error?: string | { message?: string } } | string | undefined
+        const why = typeof data === 'string' ? data : typeof data?.error === 'string' ? data.error : data?.error?.message
+        this.nameError = `${this.printerName} did not accept the new name${why ? `: ${why.replace(/\.$/, '')}.` : '.'} Nothing changed.`
+        this.nameKey++
+        return
+      } finally {
+        this.renaming = false
+      }
+    }
+    this.$store.dispatch('config/updateInstance', name)
   }
 
   get model (): string {

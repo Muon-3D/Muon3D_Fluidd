@@ -86,11 +86,7 @@ test.describe('signed in', () => {
     await answerAtPrinter(page, 'accept')
     await admitted(page)
     await page.getByTestId('approval-close').click()
-    // The paired printer opens; a phone's printer header has no account button, so go back to All printers in the app.
-    if (isMobile) {
-      await page.getByTestId('tab-more').click()
-      await page.getByTestId('more-all-printers').click()
-    }
+    if (isMobile) await page.getByTestId('tab-more').click()
     await page.locator('[data-tid="account"]:visible').first().click()
     await expect(page.getByText('jack@example.test', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveCount(0)

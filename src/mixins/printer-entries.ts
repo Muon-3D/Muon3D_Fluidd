@@ -530,6 +530,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         return
       }
     }
+    if (!cloudState.printers.some(p => p.id === id)) rememberBluetoothOnly(id, heard.display || heard.localName || e.name)
     retryBluetooth(id)
     await this.connectCloud(e, heard.device, auto)
     if (activationState.pairing === id) {

@@ -1,5 +1,7 @@
 import consola from 'consola'
+import Vue from 'vue'
 import { currentPrinterAccess } from '@/services/muon-access/api'
+import { parsePermissions, permissionsPath } from '@/services/permissions/api'
 import { refreshDevMode } from '@/services/dev-mode/state'
 import { activeSlug } from '@/services/printer-pages'
 import { gateState, keep } from './state'
@@ -70,6 +72,41 @@ export async function refreshGateDevMode (): Promise<void> {
     if (gateState.epoch === epoch) {
       gateState.checking.dev = false
       if (activeSlug() !== key) refreshGateDevMode()
+    }
+  }
+}
+
+/**
+ * What each permission setting is on the active printer, and whether this
+ * client is one of the people it is shared with, so a page can hide what a
+ * non-owner may not do (KAN-3606). The printer enforces every value; this
+ * only keeps the controls out of sight. A failed read leaves it unknown, and
+ * unknown never hides anything.
+ */
+export async function refreshGatePermissions (managed: boolean): Promise<void> {
+  const key = activeSlug()
+  if (key === null || gateState.checking.perms) return
+  const epoch = gateState.epoch
+  gateState.checking.perms = true
+  try {
+    const response = await Vue.$httpClient.get(permissionsPath(managed), { validateStatus: () => true })
+    const list = response.status >= 200 && response.status < 300 ? parsePermissions(response.data) : null
+    let shared: boolean | null = null
+    try {
+      const level = (await currentPrinterAccess().get()).you.level
+      shared = level === 'member' || level === 'admin'
+    } catch {
+      // A printer without access settings has no shared people: unknown.
+    }
+    if (stale(epoch, key)) return
+    keep('perms', key, list ? Object.fromEntries(list.knobs.map(k => [k.id, k.value])) : null)
+    keep('shared', key, shared)
+  } catch (err) {
+    consola.debug('Permission settings are not known on this printer:', err)
+  } finally {
+    if (gateState.epoch === epoch) {
+      gateState.checking.perms = false
+      if (activeSlug() !== key) refreshGatePermissions(managed)
     }
   }
 }
