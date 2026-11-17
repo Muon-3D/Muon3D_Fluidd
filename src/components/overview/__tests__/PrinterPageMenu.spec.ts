@@ -123,34 +123,18 @@ describe('the printer page menu (KAN-1429)', () => {
   })
 })
 
-describe('Pair this browser on the printer page (KAN-1374)', () => {
-  it('is in the page menu for a linked and for a not-linked printer when the switch is on, and calls the pairing handler', async () => {
+describe('one Bluetooth item on the printer page (KAN-3588)', () => {
+  it('has Connect over Bluetooth and no Pair this browser', async () => {
     nearbyState.support = 'supported'
-    setPanelCodePairing(true)
-    const pairFrom = vi.fn()
-    const w = mountMenu(entry(), { pairThisBrowserFrom: pairFrom })
-    await open(w)
-    expect(item('pair-browser')?.textContent).toContain('Pair this browser')
-    item('pair-browser')!.click()
-    await Vue.nextTick()
-    expect(pairFrom).toHaveBeenCalledTimes(1)
-    expect((pairFrom.mock.calls[0][0] as DirectoryEntry).cloud?.id).toBe('walnut')
-    w.destroy()
-    document.body.innerHTML = ''
-
-    const local = mountMenu(entry({ section: 'local', active: 'local', cloud: undefined, linkedTo: 'none' as DirectoryEntry['linkedTo'] }))
-    await open(local)
-    expect(item('pair-browser')).not.toBeNull()
-    local.destroy()
-  })
-
-  it('is not in the page menu when the switch is off', async () => {
-    nearbyState.support = 'supported'
-    setPanelCodePairing(false)
-    const w = mountMenu(entry())
-    await open(w)
-    expect(item('connect-bluetooth')).not.toBeNull()
-    expect(item('pair-browser')).toBeNull()
-    w.destroy()
+    for (const on of [true, false]) {
+      setPanelCodePairing(on)
+      const w = mountMenu(entry())
+      await open(w)
+      expect(item('connect-bluetooth')).not.toBeNull()
+      expect(item('pair-browser')).toBeNull()
+      expect(document.body.textContent).not.toContain('Pair this browser')
+      w.destroy()
+      document.body.innerHTML = ''
+    }
   })
 })

@@ -37,6 +37,20 @@ describe('the Iroh HTTP binding', () => {
     expect(response.data).toEqual({ result: { ok: true } })
   })
 
+  it('forwards real body-byte progress as Axios upload events', async () => {
+    const client = axios.create()
+    const progress = vi.fn()
+    release = bindHttpClientToPrinterTransport(client, transportAnswering(async (_path, _init, report) => {
+      report?.(0, 100)
+      report?.(25, 100)
+      report?.(100, 100)
+      return new Response('{}')
+    }))
+    await client.post('/server/files/upload', 'body', { onUploadProgress: progress })
+    expect(progress.mock.calls.map(([event]) => [event.loaded, event.total, event.progress, event.bytes]))
+      .toEqual([[0, 100, 0, 0], [25, 100, 0.25, 25], [100, 100, 1, 75]])
+  })
+
   it.each([400, 403, 404, 500, 503])('rejects a %i, as axios settles one on the network', async (status) => {
     const client = axios.create({ baseURL: 'https://muon-cloud.invalid' })
     release = bindHttpClientToPrinterTransport(client, transportAnswering(answer(status, { error: { message: 'no' } })))
