@@ -40,7 +40,7 @@ export default class PrinterStatusMixin extends Mixins(StateMixin) {
   }
 
   get statusTone (): PrinterStatusTone {
-    if (!this.socketConnected) return this.printerReachable ? 'warn' : 'off'
+    if (!this.socketConnected) return this.socketConnecting || this.printerReachable ? 'warn' : 'off'
     if (!this.klippyReady) {
       if (!this.klippyState) return 'off'
       return ['error', 'shutdown'].includes(this.klippyState) ? 'fault' : 'warn'
@@ -103,7 +103,12 @@ export default class PrinterStatusMixin extends Mixins(StateMixin) {
   get statusText (): string {
     // Before the first answer the printer is being reached, not offline; and
     // an empty Klipper state means not yet reported, not "offline".
-    if (!this.socketConnected) return startup.heard && !this.printerReachable ? 'Offline' : 'Connecting…'
+    if (!this.socketConnected) {
+      // Reconnecting: a socket that answered before is being re-opened.
+      if (this.socketConnecting && startup.heard) return 'Reconnecting…'
+      // Connecting: before the first answer, or a reachable printer not yet up.
+      return startup.heard && !this.printerReachable ? 'Offline' : 'Connecting…'
+    }
     if (!this.klippyReady) return this.klippyState ? `Klipper ${this.klippyState}` : 'Connecting…'
 
     const state = printerStatusWord(this.printerState)
