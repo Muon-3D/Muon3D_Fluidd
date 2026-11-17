@@ -4,6 +4,7 @@ import {
 } from '../route-menu'
 
 const facts = (over: Partial<RouteMenuFacts> = {}): RouteMenuFacts => ({
+  mode: over.live ?? 'auto',
   live: null,
   local: { usable: true, hint: '192.168.1.20' },
   cloud: { listed: true, online: true },
@@ -14,6 +15,12 @@ const ids = (f: RouteMenuFacts) => routeMenuItems(f).map(i => i.id)
 const item = (f: RouteMenuFacts, id: string) => routeMenuItems(f).find(i => i.id === id)!
 
 describe('route menu: the routes you are not on (KAN-2487)', () => {
+  it.each(['lan', 'cloud', 'ble'] as const)('Auto on %s still offers every explicit route', live => {
+    expect(ids(facts({ mode: 'auto', live }))).toEqual(['connect-local', 'connect-cloud', 'connect-bluetooth'])
+  })
+  it('offers every route if its explicit choice is no longer carrying the session', () => {
+    expect(ids(facts({ mode: 'ble', live: null }))).toEqual(['connect-local', 'connect-cloud', 'connect-bluetooth'])
+  })
   it('on Bluetooth: Muon3D and Locally', () => {
     expect(ids(facts({ live: 'ble' }))).toEqual(['connect-local', 'connect-cloud'])
   })

@@ -30,7 +30,7 @@ import { announceAccount, confirmedAccountId, confirmToken, currentAccount, iden
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
 import { forgetOwnAvatar } from '@/services/account/avatar'
-import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { bluetoothCarrying, wantsBluetoothFor } from '@/services/muon-ble/link'
 import { isPrinterSecureOrigin } from '@/services/secure-origin'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { mayDialBluetooth, noteBluetoothFailure, noteBluetoothSuccess } from '@/services/muon-ble/retry'
@@ -359,11 +359,11 @@ async function pollOne (printer: CloudPrinter) {
   // The printer answered and refused this browser: a result, not silence. Left unset the card said Connecting for good (KAN-3585).
   // A status already read stays: a refusal never marks a working route down (offline-detection.spec.ts).
   const refused = () => { if (!cloudState.status[printer.id]) unavailable('refused') }
-  const presence = consolePresence(printer)
-  if (presence !== 'online') unavailable(presence)
-  if (presence === 'offline' || polling.has(printer.id)) return
-  // I-129: a Bluetooth route that keeps failing backs off, then stops.
   const overBluetooth = wantsBluetoothFor(printer.id)
+  const presence = bluetoothCarrying(printer.id) ? 'online' : consolePresence(printer)
+  if (presence !== 'online') unavailable(presence)
+  if ((presence === 'offline' && !overBluetooth) || polling.has(printer.id)) return
+  // I-129: a Bluetooth route that keeps failing backs off, then stops.
   if (!overBluetooth) noteBluetoothSuccess(printer.id)
   else if (!mayDialBluetooth(printer.id)) return
   polling.add(printer.id)
@@ -382,7 +382,7 @@ async function pollOne (printer: CloudPrinter) {
     if (overBluetooth) noteBluetoothSuccess(printer.id)
     const latest = cloudState.printers.find(p => p.id === printer.id)
     if (!latest) return
-    const presence = consolePresence(latest)
+    const presence = bluetoothCarrying(printer.id) ? 'online' : consolePresence(latest)
     Vue.set(cloudState.status, printer.id, {
       reachable: presence === 'online',
       error: presence === 'online' ? undefined : presence,
