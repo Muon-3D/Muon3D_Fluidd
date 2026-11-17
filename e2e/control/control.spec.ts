@@ -449,7 +449,7 @@ test.describe('Quick commands', () => {
     await expect(row).toBeVisible()
     await expect(row.locator('kbd')).toHaveText(/park_head/i)
     await expect(tile.getByRole('listitem').filter({ hasText: /load_filament/i })).toHaveCount(0)
-    await expect(tile.getByRole('listitem').filter({ hasText: 'Restart the firmware' })).toBeVisible()
+    await expect(tile.getByRole('listitem').filter({ hasText: 'Restart the firmware' })).toHaveCount(0)
     await row.click()
     await expect.poll(() => printer.gcode.map(g => g.toUpperCase())).toEqual(['PARK_HEAD'])
   })

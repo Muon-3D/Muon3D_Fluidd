@@ -61,31 +61,6 @@
       >
         No macros to show here. Quick actions and Filament have the everyday ones.
       </p>
-      <div
-        class="qc__rule"
-        role="separator"
-      />
-      <button
-        v-for="r in restarts"
-        :key="r.name"
-        type="button"
-        role="listitem"
-        class="qc__row qc__row--danger"
-        :class="{ 'qc__row--off': !!r.reason }"
-        :aria-disabled="r.reason ? 'true' : undefined"
-        :data-tid="`qc-${r.name}`"
-        @click="restartWith(r)"
-      >
-        <frame-icon
-          name="refresh"
-          small
-        />
-        <span class="qc__text">
-          <b>{{ r.label }}</b>
-          <small v-if="r.reason">{{ r.reason }}</small>
-        </span>
-        <kbd>{{ r.name }}</kbd>
-      </button>
     </div>
     <p
       v-if="commandRefusal"
@@ -148,9 +123,8 @@ import MacroRunMixin from '@/mixins/macro-run'
 import type { ShownMacro } from '@/mixins/macros'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
-import { restartReason } from '@/services/quick-actions/model'
 import {
-  RESTART_COMMANDS, coveredElsewhere, quickCommandIcon, quickCommandLabel, quickCommandReason
+  coveredElsewhere, quickCommandIcon, quickCommandLabel, quickCommandReason
 } from '@/services/control/quick-commands'
 import { quickCommandEligible } from '@/services/control/quick-command-picks'
 import ControlCard from './ControlCard.vue'
@@ -168,8 +142,7 @@ interface QuickCommand {
 /**
  * Quick commands: the printer's macros as rows in the top bar's Quick
  * actions style: an icon, a plain-words name, the macro as a muted hint,
- * the reason when it can't run, and the firmware restart in red below a
- * rule. What Quick actions or the Filament tile already do is left out
+ * the reason when it can't run. What Quick actions or the Filament tile already do is left out
  * (services/control/quick-commands). Hidden macros and groups follow
  * Settings › Macros. A macro that needs values opens the values form; a
  * restart asks first, as everywhere (TypedCommandsMixin).
@@ -183,7 +156,7 @@ export default class ControlQuickCommands extends Mixins(MacroRunMixin) {
     const byScore = (a: ShownMacro, b: ShownMacro) => b.score - a.score || a.name.localeCompare(b.name)
     return this.arrangedMacros
       // One rule with the Overview tile and the Macros page's tick list: never the print controls (quick-command-picks).
-      .filter(m => quickCommandEligible(m) && !coveredElsewhere(m.name) && !RESTART_COMMANDS.some(r => r.name === m.name.toUpperCase()))
+      .filter(m => quickCommandEligible(m) && !coveredElsewhere(m.name))
       .sort((a, b) => Number(!!b.userGroup) - Number(!!a.userGroup) || byScore(a, b))
       .map(m => ({
         name: m.name,
@@ -211,19 +184,10 @@ export default class ControlQuickCommands extends Mixins(MacroRunMixin) {
     return this.all ? this.commands : this.shownDefault
   }
 
-  get restarts () {
-    return RESTART_COMMANDS.map(r => ({ ...r, reason: restartReason(this.restartRefusal) }))
-  }
-
   runCommand (c: QuickCommand) {
     // Disabled in words, not by the browser, so the reason stays readable and focusable.
     if (c.reason) return
     this.run(c.macro)
-  }
-
-  restartWith (r: { name: string, reason: string }) {
-    if (r.reason) return
-    this.sendTypedGcode(r.name)
   }
 
   get arrangeLink (): string {
@@ -281,18 +245,6 @@ export default class ControlQuickCommands extends Mixins(MacroRunMixin) {
     cursor: default;
 
     b, .frame-icon { opacity: 0.55; }
-  }
-
-  .qc__rule {
-    height: 0;
-    margin: 0 18px;
-    border-top: 1px solid var(--m3d-border-strong);
-  }
-
-  .qc__rule + .qc__row { border-top: 0; }
-
-  .qc__row--danger {
-    b, .frame-icon { color: var(--m3d-danger); }
   }
 
   .qc__all,
