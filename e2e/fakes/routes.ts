@@ -58,12 +58,27 @@ class Socket {
     this.owner = owner
     this.queue = []
     this.waiting = []
+    this.directories = new Map()
     this.ws = new WebSocket(PRINTER.replace(/^http/, 'ws') + path)
     this.open = new Promise((resolve, reject) => {
       this.ws.onopen = resolve
       this.ws.onerror = () => reject(new Error('the gateway closed the websocket'))
     })
-    this.ws.onmessage = e => this.push(e.data)
+    this.ws.onmessage = e => {
+      const reply = JSON.parse(e.data)
+      const path = this.directories.get(reply.id)
+      this.directories.delete(reply.id)
+      if (path && Array.isArray(reply.result?.files)) {
+        for (const file of S().upload?.attempts ?? []) {
+          if (!file.completed || [file.root, file.path].filter(Boolean).join('/') !== path) continue
+          if (!reply.result.files.some(item => item.filename === file.name)) {
+            reply.result.files.push({ filename: file.name, size: file.size, modified: Date.now() / 1000 })
+          }
+        }
+        S().upload?.listings?.push({ path, files: reply.result.files.map(file => file.filename) })
+      }
+      this.push(JSON.stringify(reply))
+    }
     this.ws.onclose = () => { this.closed = true; this.push(null) }
   }
   push (item) {
@@ -75,6 +90,12 @@ class Socket {
     await this.open
     try {
       const msg = JSON.parse(data)
+      if (msg.method === 'server.files.get_directory') this.directories.set(msg.id, msg.params.path)
+      const uploaded = S().upload?.attempts.find(file => file.completed && [file.path, file.name].filter(Boolean).join('/') === msg.params?.filename)
+      if (msg.method === 'server.files.metadata' && uploaded) {
+        this.push(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { filename: msg.params.filename, size: uploaded.size, modified: Date.now() / 1000 } }))
+        return
+      }
       if (msg.method === 'machine.update.status') {
         S().refused.push('RPC ' + msg.method)
         this.push(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: 403, message: 'muon-link policy refused this request: not on the remote allowlist' } }))
@@ -125,7 +146,29 @@ class Printer {
   }
   printerId () { return this.id }
   comparison () { return 'E2E TST' }
+  async fetchWithProgress (method, path, headers, body, progress) {
+    const upload = S().upload
+    if (path !== '/server/files/upload' || !upload) return this.fetch(method, path, headers, body)
+    const h = new Headers()
+    for (let i = 0; i < headers.length; i += 2) h.append(headers[i], headers[i + 1])
+    const form = await new Response(body, { headers: h }).formData()
+    const file = form.get('file')
+    const attempt = { name: file.name, size: file.size, checksum: form.get('checksum'), path: form.get('path'), root: form.get('root'), completed: false }
+    upload.attempts.push(attempt)
+    progress?.(0, body.length)
+    for (let step = 1; step <= 4; step++) {
+      progress?.(Math.floor(body.length * step / 4), body.length)
+      if (step === 2 && upload.outcome === 'cut') throw new Error('sending stopped by peer: connection lost mid-transfer')
+      while (step < 4 && step >= upload.maxStep) await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    if (upload.outcome === 'mismatch') return { status: 422, headers: ['content-type', 'application/json'], body: text(JSON.stringify({ error: { message: 'SHA256 checksum does not match' } })) }
+    const item = { path: [attempt.path, file.name].filter(Boolean).join('/'), root: attempt.root, size: file.size, modified: Date.now() / 1000 }
+    attempt.completed = true
+    for (const socket of this.sockets) socket.push(JSON.stringify({ jsonrpc: '2.0', method: 'notify_filelist_changed', params: [{ action: 'create_file', item }] }))
+    return { status: 201, headers: ['content-type', 'application/json'], body: text(JSON.stringify({ result: { item, action: 'create_file' } })) }
+  }
   async fetch (method, path, headers, body) {
+    if (path === '/server/files/upload' && S().upload) return this.fetchWithProgress(method, path, headers, body)
     if (this.dead) throw new Error('connection lost')
     const bare = decodeURIComponent(path.split('?')[0])
     if (bare.startsWith('/muon-link/network/')) return networkAnswer(method, bare, path, body)
