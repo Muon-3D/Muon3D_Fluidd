@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, it } from 'vitest'
-import { MuonEndpoint, PrinterSession } from '../vendor/muon-link-web/022d090/muon_link_web.js'
+import { MuonEndpoint, PrinterSession } from '../vendor/muon-link-web/8d40fca/muon_link_web.js'
 
 it('ships the exact client and notices pinned by commit in the lockfile', async () => {
   const lock = JSON.parse(readFileSync(resolve('muon-link-web.lock.json'), 'utf8'))

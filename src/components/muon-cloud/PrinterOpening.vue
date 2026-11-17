@@ -91,7 +91,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Prop, Vue } from 'vue-property-decorator'
+import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import { activationState } from '@/services/muon-cloud/activate'
 import { cloudState, reachablePrinters } from '@/services/muon-cloud/state'
 import { consolePresence, type CloudPresence } from '@/services/muon-cloud/presence'
@@ -144,6 +144,19 @@ export default class PrinterOpening extends Vue {
 
   pair () {
     if (this.pairingOffer) startPairing(this.pairingOffer).catch(() => {})
+  }
+
+  /**
+   * The printer was switched on while this page said it could not open it
+   * (Jack, 17 Nov, KAN-3783): the account's printer list says online now, so
+   * open it again, with no refresh and no click. Only on the change to online,
+   * so a printer that is online and still fails to open is not retried in a loop.
+   */
+  @Watch('presence')
+  onPresence (now: CloudPresence, was: CloudPresence) {
+    if (now !== 'online' || was === 'online') return
+    if (!this.error || this.pairingOffer || resolveSlug(this.slug)?.kind !== 'cloud') return
+    this.retry()
   }
 
   retry () {

@@ -9,7 +9,6 @@ import {
   activateCloudPrinter,
   activateLocalPrinter,
   activationState,
-  panelCodePairing,
   SwitchSuperseded,
   MANAGED_API_URL
 } from '@/services/muon-cloud/activate'
@@ -32,12 +31,12 @@ import {
 } from '@/services/muon-cloud/directory'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
-import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, rememberedName, type NearbyPrinter } from '@/services/muon-ble/nearby'
+import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
 import { bluetoothCarrying, reconnectBluetooth, releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import { chooseRouteMode, type Route } from '@/services/muon-cloud/route-choice'
-import { bluetoothReason, routeMenuItems, type RouteMenuFacts } from '@/services/muon-cloud/route-menu'
+import { routeMenuItems, type RouteMenuFacts } from '@/services/muon-cloud/route-menu'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { chooseRelay, clearRelayChoice, mayTrySecureName, reachSecureName, relayChosen, secureNameOf } from '@/services/secure-origin/hosted'
 import { localRoute, openableAddr, type LocalRoute } from '@/services/muon-cloud/local-route'
@@ -117,22 +116,6 @@ export function pairHint (e: DirectoryEntry): string | undefined {
   const owned = unclaimed === false || e.linkedTo === 'mine' || e.linkedTo === 'other' || !!e.cloud?.shared
   if (owned) return "Open System > Add a device on the printer's screen first."
   return "Check the printer's screen. If nothing shows, open System > Add a device."
-}
-
-/**
- * Pair this browser with the printer by the code on its screen (KAN-1374). Offered for any
- * printer Control can name, linked or not, whenever the pairing switch is on (panelCodePairing).
- */
-function pairAction (e: DirectoryEntry): CardAction | null {
-  if (!panelCodePairing() || !idOf(e)) return null
-  const reason = bluetoothReason({ support: nearbyState.support, heard: !!e.nearby, identified: true })
-  return {
-    id: 'pair-browser',
-    label: 'Pair this browser',
-    icon: '$bluetooth',
-    hint: reason ?? pairHint(e),
-    disabled: !!reason
-  }
 }
 
 /** Printers whose "opened through Muon3D" notice has been shown on this page load. */
@@ -391,8 +374,6 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     if (e.cloud && bleRetryState.stopped[e.cloud.id]) {
       actions.push({ id: 'retry-bluetooth', label: 'Retry Bluetooth', icon: '$bluetooth', hint: bleRetryState.stopped[e.cloud.id] })
     }
-    const pair = pairAction(e)
-    if (pair) actions.push(pair)
     actions.push({
       id: 'access',
       label: 'Access and protection',
@@ -424,8 +405,6 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     }
     // Any route anyone can reach the printer by (KAN-2487): the account only decides the Muon3D one.
     actions.push(...routeActionsOf(e))
-    const pair = pairAction(e)
-    if (pair) actions.push(pair)
     if (e.active) {
       actions.push({ id: 'access', label: 'Access and protection', icon: '$printerAccess' })
     }
@@ -449,8 +428,6 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     // Bluetooth is the out-of-box way in to a printer nobody owns, or one that is someone else's (KAN-2487, I-285).
     const bluetooth = routeActionsOf(e).find(a => a.id === 'connect-bluetooth')
     if (bluetooth && (e.nearby || e.endpointId)) actions.push(bluetooth)
-    const pair = pairAction(e)
-    if (pair) actions.push(pair)
     return actions
   }
 
@@ -470,9 +447,6 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       case 'connect-bluetooth':
         if (!idOf(e)) return
         return this.connectOverBluetooth(e)
-      case 'pair-browser':
-        if (!idOf(e)) return
-        return this.pairThisBrowserFrom(e)
       case 'connect': return this.openFoundEntry(e)
       case 'pair-bluetooth': return this.pairNearby(e, true)
       case 'link': return this.link(e)
@@ -545,11 +519,13 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     if (!id) return
     let heard = chosen ?? e.nearby ?? await permittedPrinterFor(id).catch(() => null)
     if (!heard) {
-      // KAN-2470: the chooser lists only this printer (its EndpointId, else its short name).
-      // e.nearby is always empty here, so the name is the one remembered from an earlier choice (KAN-2516).
-      heard = await lookNearby({ endpointId: id, name: rememberedName(id) })
+      // KAN-3589: the same chooser as the top-right Bluetooth button (every Muon printer). The filter built
+      // from this printer's EndpointId (or remembered name) matched nothing in Chrome: "No compatible
+      // devices found". The pick is checked against this printer below.
+      heard = await lookNearby()
       if (!heard) return
-      if (heard.endpointId && !isPrinter(heard, id)) {
+      // A device that names no printer (no EndpointId, no advertisement) is not this one either.
+      if (!isPrinter(heard, id)) {
         this.notice = `That device isn't ${e.name}. Choose ${e.name} in the Bluetooth list.`
         return
       }
@@ -562,18 +538,6 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       activationState.approval = null
       await startPairing(id)
     }
-  }
-
-  /**
-   * Pair this browser from the menu (KAN-1374): the one entry point. It is Connect over Bluetooth
-   * (the picker if the printer has not been chosen yet), so a printer that knows this browser opens,
-   * one that holds it for Accept or Reject at its screen shows the wait (ApprovalWaitHost), and one
-   * that will not take a stranger, or whose owner turned new-device requests off, goes on to the
-   * code dialog (startPairing).
-   */
-  async pairThisBrowserFrom (e: DirectoryEntry) {
-    if (!idOf(e) || !panelCodePairing()) return
-    await this.connectOverBluetooth(e)
   }
 
   /**

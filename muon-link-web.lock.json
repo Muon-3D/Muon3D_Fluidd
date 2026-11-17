@@ -2,9 +2,9 @@
   "format": 1,
   "name": "muon-link-web",
   "source": "https://github.com/Muon-3D/muon-link",
-  "commit": "022d090bc6d7b40ba823212689bec5ac649f0a67",
-  "dir": "022d090",
-  "provenance": "built",
+  "commit": "8d40fca4068171599a43f12297798c077160262c",
+  "dir": "8d40fca",
+  "provenance": "ci-release",
   "license": "Apache-2.0",
   "wasmBindgen": "0.2.127",
   "toolchain": {
@@ -37,13 +37,13 @@
   ],
   "files": {
     "muon_link_web.js": "1bd3878e96e2c16291d92c006463d1f70f49120b7587122907dd7e2fa5557eb3",
-    "muon_link_web_bg.wasm": "7a2d3be6b8a6acb6f2efea56366c2934854b9f463fe1b762bb2f185d1f06ab35",
+    "muon_link_web_bg.wasm": "855c20f584c70d9afd5e15a962638d5e483152acc139d8bd6bfe4aa326e6b433",
     "muon_link_web.d.ts": "1c543261a17c9216e7813265f6a8c49693cb4f8f96ff7e9d36292de51606fe8b",
     "muon_link_web_bg.wasm.d.ts": "7dfc66e8342eb6012237c4385e30f0fb72113aa167663bac15221846944f7efb",
     "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "NOTICE": "a76657d3cb083b6ff6f89d7199c7dd49c7e8031fc9bc26684a2539b9d3322ccc",
-    "THIRD-PARTY-NOTICES.md": "1d231435448cef6bf5e9879e47a9264282a7901a510c1a51e22c70de7f4ec326",
-    "SOURCE.md": "35d3a6f59360cb372b9d93f19d3238c2d6e5c50993800fe5eedc34679bae9741"
+    "NOTICE": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "THIRD-PARTY-NOTICES.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "SOURCE.md": "235d2202ab8854060a4205309c6a1ccdab056c1557a5d4b473d73f07b93935da"
   },
   "bytes": {
     "muon_link_web.js": 78633,

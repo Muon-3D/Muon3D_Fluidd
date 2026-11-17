@@ -5,6 +5,7 @@ import { ApApi, UpdateApi, WifiApi, DevModeApi, Configuration } from '@/aux_api'
 import consola from 'consola'
 import store from '@/store'
 import { isBoundToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
+import { managedNetworkUrl } from '@/services/wifi/network-route'
 
 const auxAxios = axios.create()
 auxAxios.interceptors.response.use(resp => {
@@ -17,7 +18,8 @@ auxAxios.interceptors.response.use(resp => {
 /**
  * Refused before it leaves. Over Iroh, muon-link refuses every /server/aux/
  * request for every role, reads included (nmcli's readback exposes stored
- * keys), and the owner decided remote callers may not change Wi-Fi (07 §3).
+ * keys). The Wi-Fi routes muon-link answers itself are sent there instead
+ * (managedNetworkUrl); a request with no such route ends here.
  */
 export class RemoteAuxRefused extends Error {
   constructor () {
@@ -37,7 +39,17 @@ auxAxios.interceptors.request.use(async config => {
 
   // Over Iroh the Aux API is closed to this page: the cards make no call
   // there, and this keeps a stray one from being sent.
-  if (isBoundToPrinterTransport(httpClient)) throw new RemoteAuxRefused()
+  if (isBoundToPrinterTransport(httpClient)) {
+    // Wi-Fi over Bluetooth or Muon3D (KAN-3601): muon-link's own route, no /server/aux.
+    const managed = managedNetworkUrl(config.method, config.url)
+    if (!managed) throw new RemoteAuxRefused()
+    config.baseURL = undefined
+    config.url = managed
+    config.adapter = httpClient.defaults.adapter
+    const authorization = httpClient.defaults.headers.common.Authorization
+    if (authorization && !config.headers.has('Authorization')) config.headers.set('Authorization', authorization)
+    return config
+  }
 
   // Refresh a sign-in that is about to expire, as Vue.$httpClient's own
   // interceptor does. Fluidd talks mostly over its websocket, so without this
