@@ -1,6 +1,6 @@
 <template>
   <v-row
-    v-if="hasZOffsetApplyEndstop || hasZOffsetApplyProbe"
+    v-if="!devOnlyLocked && (hasZOffsetApplyEndstop || hasZOffsetApplyProbe)"
     align="start"
     justify="end"
   >
@@ -143,11 +143,12 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
+import DevGuardMixin from '@/mixins/dev-guard'
 import { zAdjustCommand } from '@/services/control/z-adjust'
 import type { GcodeCommands } from '@/store/printer/types'
 
 @Component({})
-export default class ZHeightAdjust extends Mixins(StateMixin) {
+export default class ZHeightAdjust extends Mixins(StateMixin, DevGuardMixin) {
   moveDistanceValue: number | null = null
 
   get zHomingOrigin (): number {

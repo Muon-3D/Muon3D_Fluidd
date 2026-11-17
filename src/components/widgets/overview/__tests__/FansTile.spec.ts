@@ -19,6 +19,16 @@ describe('FansTile', () => {
     w.destroy()
   })
 
+  it('on a Muon printer outside developer mode has no fan slider, and says where to go', async () => {
+    const store = tileStore()
+    Vue.set(store.getters, 'server/isMuonPrinter', true)
+    const w = mountFans(store)
+    await w.find('[data-tid="tile-door"]').trigger('click')
+    expect(w.findAll('input[type="range"]')).toHaveLength(0)
+    expect(w.text()).toContain('Quiet, Normal or Turbo')
+    w.destroy()
+  })
+
   it('shows the part fan and the others in a line', () => {
     const w = mountFans(tileStore())
     expect(w.find('[data-tid="fan-value"]').text()).toContain('80%')
@@ -27,7 +37,9 @@ describe('FansTile', () => {
   })
 
   it('sets a controllable fan from the popover; the one the printer runs by itself has no slider', async () => {
-    const w = mountFans(tileStore())
+    const store = tileStore()
+    Vue.set(store.getters, 'server/isMuonPrinter', false) // raw sliders are developer-mode only on a Muon printer
+    const w = mountFans(store)
     await w.find('[data-tid="tile-door"]').trigger('click')
     expect(w.findAll('input[type="range"]')).toHaveLength(1)
     const range = w.find('input[type="range"]')
@@ -40,6 +52,7 @@ describe('FansTile', () => {
   it('gates the sliders when the printer is not ready', async () => {
     const store = tileStore()
     Vue.set(store.getters, 'printer/getKlippyReady', false)
+    Vue.set(store.getters, 'server/isMuonPrinter', false)
     const w = mountFans(store)
     await w.find('[data-tid="tile-door"]').trigger('click')
     expect(w.find('input[type="range"]').attributes('disabled')).toBeDefined()
