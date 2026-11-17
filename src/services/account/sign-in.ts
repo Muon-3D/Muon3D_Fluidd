@@ -11,13 +11,17 @@
  * it when the code is spent; ending it here works on one without.
  */
 import { storedToken } from '@/services/muon-cloud/api'
-import { handoffUrl, prepareAuthorize } from '@/services/muon-cloud/centralLogin'
+import { handoffUrl, prepareAuthorize, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
 import { accountRequest } from './client'
 import { usePasskey } from './webauthn'
 import type { AccountDetails } from './api'
 
 /** How the console lists the page's session, for the moment it lives. */
 export const SIGN_IN_DEVICE = 'Muon3D sign-in'
+
+export function beginSignIn (returnTo: string): Promise<void> {
+  return startCentralSignIn({ silent: false, returnTo })
+}
 
 interface SessionAnswer {
   token: string;

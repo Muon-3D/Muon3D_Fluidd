@@ -31,6 +31,8 @@ import {
 } from './discovery'
 import { searchRows, type SearchRow } from './searchRows'
 import { consolePresence } from './presence'
+import { knownReachable, secureNameOf } from '@/services/secure-origin/hosted'
+import { faultSummary } from '@/services/machine-faults/faults'
 
 /**
  * What the status icon says:
@@ -124,6 +126,17 @@ export interface Directory {
   foreign?: DirectoryEntry[];
 }
 
+export function hasReachableRoute (printer: { endpointId?: string | null, apiUrl?: string }, src: Pick<DirectorySources, 'account' | 'status' | 'found' | 'cloudNearby' | 'nearby' | 'viaBluetooth' | 'now'>): boolean {
+  const id = printer.endpointId
+  const secureName = secureNameOf(src.account.find(p => p.id === id))
+  return !!(src.found.some(l =>
+    id && l.endpointId ? l.endpointId === id : !!printer.apiUrl && lanAddresses(l).includes(hostOf(printer.apiUrl))) ||
+    (secureName && knownReachable(secureName, src.now)) ||
+    (id && (src.status[id]?.reachable || src.account.some(p => p.id === id && p.online) ||
+      src.cloudNearby.some(p => p.printerId === id) || src.viaBluetooth?.(id) ||
+      src.nearby.some(p => isPrinter(p, id) && heardRecently(p, src.now)))))
+}
+
 /**
  * A saved printer's name: the one it was given, else its network name
  * (muon-boxwood-367a), else its address. Fluidd's own default, "fluidd", is
@@ -194,6 +207,7 @@ export function cloudHealth (online: boolean, s: PrinterStatus | undefined, last
   if (s.state === 'printing') return 'printing'
   if (s.state === 'paused') return 'paused'
   if (s.state === 'error' || s.state?.startsWith('klipper')) return 'error'
+  if (s.faults?.length) return 'error'
   return 'online'
 }
 
@@ -246,8 +260,10 @@ export function printerDirectory (src: DirectorySources): Directory {
 
   // The service says who shares this browser's network. On a page that cannot probe addresses it is the only
   // proof there is, and it holds before any session is open (KAN-2487).
-  const besideBrowser = (endpointId: string | null) =>
-    !!endpointId && src.cloudNearby.some(c => c.printerId.toLowerCase() === endpointId.toLowerCase())
+  const besideBrowser = (endpointId: string | null) => {
+    const name = secureNameOf(src.account.find(p => p.id === endpointId))
+    return !!endpointId && (src.cloudNearby.some(c => c.printerId.toLowerCase() === endpointId.toLowerCase()) || (!!name && knownReachable(name, now)))
+  }
 
   const nearbyFor = (endpointId: string | null) => {
     if (!endpointId) return undefined
@@ -318,7 +334,7 @@ export function printerDirectory (src: DirectorySources): Directory {
       continue
     }
     if (lan) claimedLan.add(lan)
-    const active = s.apiUrl === activeLocal ? 'local' : null
+    const active = endpointId && src.activeCloudId === endpointId ? 'cloud' : s.apiUrl === activeLocal ? 'local' : null
     const nearby = nearbyFor(endpointId)
     let health: PrinterHealth
     let detail: string
@@ -395,6 +411,25 @@ export function printerDirectory (src: DirectorySources): Directory {
     }
   })
 
+  for (const e of [...cloud, ...local, ...found]) {
+    const id = e.cloud?.id ?? e.endpointId
+    const carrying = !!id && !!src.viaBluetooth?.(id)
+    if (carrying) e.route = 'bluetooth'
+    if (e.health !== 'offline' && !(carrying && e.health === 'searching')) continue
+    if (!hasReachableRoute({ endpointId: id, apiUrl: e.saved[0]?.apiUrl ?? e.lan?.apiUrl }, src)) continue
+    const status = id ? src.status[id] : undefined
+    if (carrying || status?.reachable) {
+      e.health = status?.reachable ? cloudHealth(true, status) : 'online'
+      e.detail = `${status?.reachable ? cloudDetail(true, status) : 'Connected'}${carrying ? ' · via Bluetooth' : ''}`
+    } else if (heard(e.nearby)) {
+      e.health = 'nearby'
+      e.detail = NEARBY_DETAIL
+    } else {
+      e.health = 'available'
+      e.detail = e.lan || besideBrowser(id) ? 'On this network' : 'Available through Muon3D'
+    }
+  }
+
   const foreign = foreignEntries(src.foreign ?? [])
   return { cloud, local, found, foreign }
 }
@@ -411,7 +446,8 @@ export function cloudDetail (online: boolean, s: PrinterStatus | undefined, last
     const percent = Math.round((s.progress ?? 0) * 100)
     return `${state} · ${percent}%${s.filename ? ` · ${s.filename}` : ''}`
   }
-  return state
+  const fault = faultSummary(s.faults)
+  return fault ? `${fault} � ${state}` : state
 }
 
 /**

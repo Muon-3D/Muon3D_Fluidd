@@ -59,6 +59,12 @@
           name="chevronRight"
           small
         />
+        <v-icon
+          v-else-if="primary(tile).id === 'pair-bluetooth'"
+          small
+        >
+          $bluetooth
+        </v-icon>
         {{ primary(tile).label }}
       </button>
     </div>

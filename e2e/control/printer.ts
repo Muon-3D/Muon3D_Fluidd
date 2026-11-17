@@ -110,7 +110,7 @@ function getDotted (root: Json, key: string): unknown {
   return key.split('.').reduce<unknown>((v, p) => isObject(v) ? v[p] : undefined, root)
 }
 
-export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[], database?: boolean, ticks?: boolean } = {}): Promise<PrinterHandle> {
+export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[], database?: boolean, ticks?: boolean, apiUrl?: string, onSocketEvent?: (event: 'open' | 'close' | 'send', method?: string) => void } = {}): Promise<PrinterHandle> {
   const handle: PrinterHandle = {
     state: { status, failOn: {}, results: {}, answers: {}, answer: {}, components: options.components },
     gcode: [],
@@ -182,7 +182,8 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
   let pageSocket: Pick<WebSocketRoute, 'send' | 'close'> | null = null
   let silenceCurrent = () => {}
 
-  await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket(?:\\?.*)?$`), ws => {
+  const address = options.apiUrl ? new URL(options.apiUrl).host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : `[^/]+:${MOCK_PORT}`
+  await page.routeWebSocket(new RegExp(`^wss?://${address}/websocket(?:\\?.*)?$`), ws => {
     if (handle.state.offline) {
       ws.close().catch(() => {})
       return
@@ -191,13 +192,20 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     handle.socketOpens++
     let silent = false
     silenceCurrent = () => { silent = true }
+    options.onSocketEvent?.('open')
     const server = ws.connectToServer()
+    ws.onClose(() => {
+      options.onSocketEvent?.('close')
+      if (pageSocket === ws) pageSocket = null
+      server.close().catch(() => {})
+    })
 
     ws.onMessage(raw => {
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { server.send(raw); return }
       if (msg.id !== undefined && msg.method) asked.set(msg.id, msg.method)
       if (msg.method) handle.calls.push({ method: msg.method, params: msg.params ?? {} })
+      if (msg.method) options.onSocketEvent?.('send', msg.method)
       const answer = msg.method in handle.state.answers ? handle.state.answers[msg.method] : handle.state.answer[msg.method]
       if (msg.method in handle.state.answers || msg.method in handle.state.answer) {
         const result = typeof answer === 'function' ? (answer as (p: Json) => unknown)(msg.params ?? {}) : answer

@@ -38,8 +38,20 @@ describe('the route label follows the transport (I-133)', () => {
     expect(tile.remote).toBe(false)
   })
 
-  it('still follows the console when the transport is not Bluetooth', () => {
-    const e = directory(() => false).cloud[0]
+  it('still follows the console when the transport is not Bluetooth and no read reached it', () => {
+    const e = printerDirectory({
+      account: [boxwood],
+      status: { [ID]: { reachable: false, state: 'standby', updatedAt: 1 } as PrinterStatus },
+      email: 'jack@example.com',
+      saved: [],
+      found: [],
+      cloudNearby: [],
+      nearby: [],
+      activeCloudId: ID,
+      local: null,
+      searching: false,
+      viaBluetooth: () => false
+    }).cloud[0]
     expect(e.route).toBeUndefined()
     expect(e.health).toBe('offline')
   })
