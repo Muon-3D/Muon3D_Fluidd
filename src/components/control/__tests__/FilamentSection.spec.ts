@@ -9,6 +9,22 @@ vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'mock' }))
 afterEach(() => { socket.printerGcodeScript.mockClear() })
 const sent = () => socket.printerGcodeScript.mock.calls.map(c => c[0] as string)
 
+it.each([false, true])('names the shared filament group, compact=%s, without sending', compact => {
+  const { wrapper } = mountIt({ compact })
+  expect(wrapper.attributes('role')).toBe('group')
+  expect(wrapper.attributes('aria-label')).toBe('Filament information and actions')
+  expect(sent()).toEqual([])
+  wrapper.destroy()
+})
+
+it('retains the named group and disables filament actions when disconnected', () => {
+  const { wrapper } = mountIt({}, store => { store.getters['socket/getConnectionState'] = false })
+  expect(wrapper.attributes('aria-label')).toBe('Filament information and actions')
+  for (const action of ['change', 'load', 'unload']) expect(wrapper.find(`[data-tid="${action}-filament"]`).attributes('disabled')).toBeDefined()
+  expect(sent()).toEqual([])
+  wrapper.destroy()
+})
+
 const M1_MACROS = [{ name: 'M600', config: { gcode: 'PAUSE' } }, { name: 'LOAD_FILAMENT', config: { gcode: '' } }, { name: 'UNLOAD_FILAMENT', config: { gcode: '' } }]
 
 function mountIt (propsData: Record<string, unknown> = {}, prepare: (store: ReturnType<typeof panelStore>) => void = () => {}) {
