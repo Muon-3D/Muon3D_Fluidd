@@ -15,6 +15,7 @@ vi.mock('@/services/printer-pages', () => ({
 vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { account: null, activePrinterId: null } }))
 vi.mock('@/services/muon-cloud/directory', () => ({ hostOf: () => 'hazel.local' }))
 vi.mock('@/services/slicer-bridge/slicerUrl', () => ({ probeSlicer: () => Promise.resolve(false) }))
+vi.mock('@/services/design-bridge/designUrl', () => ({ probeDesign: () => Promise.resolve(false) }))
 vi.mock('../NetworkQuickMenu.vue', () => ({ default: { template: '<div />' } }))
 vi.mock('@/components/muon-cloud/CloudAccountMenu.vue', () => ({ default: { template: '<div />' } }))
 

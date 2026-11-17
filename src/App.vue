@@ -454,8 +454,9 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
       this.authenticated && this.socketConnected && !this.sliceRoute
   }
 
+  // Slice or Design: another app framed here, with its own bars.
   get sliceRoute (): boolean {
-    return this.$route.name === 'Slice' || this.$route.name === 'Slice (no printer)'
+    return ['Slice', 'Slice (no printer)', 'Design', 'Design (no printer)'].includes(String(this.$route.name))
   }
 
   /** A framed app that is the page (route meta fullPage: Slice): no padding or width limit, the height under the bar. */

@@ -1102,6 +1102,9 @@ app:
       stay: Stay in the slicer
     msg:
       no_slicer: The Muon3D Slicer is not available here yet.
+  design:
+    msg:
+      no_design: Design is not installed here.
   plate_check:
     title: Is the plate clear?
     why: >-
