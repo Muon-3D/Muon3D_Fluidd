@@ -120,8 +120,6 @@ import StateMixin from '@/mixins/state'
 import FilesMixin from '@/mixins/files'
 import BrowserMixin from '@/mixins/browser'
 import type { LinkPropertyHref, MetaPropertyName } from 'vue-meta'
-import FileSystemDownloadDialog from '@/components/widgets/filesystem/FileSystemDownloadDialog.vue'
-import SpoolSelectionDialog from '@/components/widgets/spoolman/SpoolSelectionDialog.vue'
 import type { FlashMessage } from '@/types'
 import { getFilesFromDataTransfer, hasFilesInDataTransfer } from './util/file-system-entry'
 import type { ThemeConfig } from '@/store/config/types'
@@ -188,8 +186,8 @@ import { Globals } from '@/globals'
     BluetoothPairDialog: () => import('@/components/muon-ble/BluetoothPairDialog.vue'),
     ApprovalWaitHost: () => import('@/components/muon-cloud/ApprovalWaitHost.vue'),
     JobReadyDialog,
-    SpoolSelectionDialog,
-    FileSystemDownloadDialog,
+    SpoolSelectionDialog: () => import('@/components/widgets/spoolman/SpoolSelectionDialog.vue'),
+    FileSystemDownloadDialog: () => import('@/components/widgets/filesystem/FileSystemDownloadDialog.vue'),
     ActionCommandPromptDialog,
     KeyboardShortcutsDialog
   }

@@ -371,7 +371,6 @@ import { ACCOUNT_SECTIONS, initialsOf, type AccountSectionId } from '@/services/
 import { accountState, loadApprovals } from '@/services/account/state'
 import { EventBus } from '@/eventBus'
 import { Globals } from '@/globals'
-import CloudAccountDialog from './CloudAccountDialog.vue'
 import LinkPrinterDialog from './LinkPrinterDialog.vue'
 import PhotoFace from '@/components/account/profile/PhotoFace.vue'
 import { forgetOwnAvatar, loadOwnAvatar, ownAvatar } from '@/services/account/avatar'
@@ -392,7 +391,15 @@ const NAMELESS_USERS = ['_TRUSTED_USER_', '_API__API_KEY_USER_USER_']
  * printer's login is "This printer": who can use it, its password, and
  * locking it in this browser.
  */
-@Component({ components: { CloudAccountDialog, LinkPrinterDialog, AppUserMenu, UserPasswordDialog, PhotoFace } })
+@Component({
+  components: {
+    CloudAccountDialog: () => import('./CloudAccountDialog.vue'),
+    LinkPrinterDialog,
+    AppUserMenu,
+    UserPasswordDialog,
+    PhotoFace
+  }
+})
 export default class CloudAccountMenu extends Vue {
   dialog = false
   linkDialog = false
@@ -464,7 +471,7 @@ export default class CloudAccountMenu extends Vue {
     return initialsOf(cloudState.account?.name || this.printerUser, cloudState.account?.email)
   }
 
-  /** Your photo (one fetch, shared with Account › Profile), or null: the initials stand in. */
+  /** Your photo (one fetch, shared with Account â€º Profile), or null: the initials stand in. */
   get photo (): string | null {
     return ownAvatar.url
   }

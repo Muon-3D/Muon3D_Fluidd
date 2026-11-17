@@ -252,7 +252,7 @@
       </button>
     </div>
 
-    <add-instance-dialog
+    <lazy-add-instance-dialog
       v-if="instanceDialogOpen"
       v-model="instanceDialogOpen"
       @resolve="openInstance"
@@ -293,12 +293,10 @@ import PrinterEntriesMixin from '@/mixins/printer-entries'
 import { discoverPrinters, discoveryState, lanAddresses, refreshKnownPrinters } from '@/services/muon-cloud/discovery'
 import { savedUpdates, type DirectoryEntry } from '@/services/muon-cloud/directory'
 import { startNearby, stopNearby } from '@/services/muon-ble/nearby'
-import CloudAccountDialog from './CloudAccountDialog.vue'
 import LinkPrinterDialog from './LinkPrinterDialog.vue'
 import PrinterCard from './PrinterCard.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { switcherGroups, switcherSectionShown, type SwitcherGroup } from '@/services/muon-cloud/switcher-groups'
-import AccessRequestDialog from '@/components/muon-access/AccessRequestDialog.vue'
 
 /** How often the printers already known are asked again while the switcher is open. */
 const HEALTH_EVERY_MS = 15_000
@@ -309,7 +307,17 @@ const HEALTH_EVERY_MS = 15_000
  * decides which group a printer is in, so a printer seen through the
  * account, a saved address and this network lists once.
  */
-@Component({ components: { CloudAccountDialog, LinkPrinterDialog, PrinterCard, BluetoothSetupDialog: () => import('@/components/muon-ble/BluetoothSetupDialog.vue'), AccessRequestDialog, DeletionNotice: () => import('@/components/account/DeletionNotice.vue') } })
+@Component({
+  components: {
+    LazyAddInstanceDialog: () => import('@/components/common/AddInstanceDialog.vue'),
+    CloudAccountDialog: () => import('./CloudAccountDialog.vue'),
+    LinkPrinterDialog,
+    AccessRequestDialog: () => import('@/components/muon-access/AccessRequestDialog.vue'),
+    PrinterCard,
+    BluetoothSetupDialog: () => import('@/components/muon-ble/BluetoothSetupDialog.vue'),
+    DeletionNotice: () => import('@/components/account/DeletionNotice.vue')
+  }
+})
 export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
   /** Whether the switcher is open. The health checks run only while it is. */
   @Prop({ type: Boolean, default: true })
