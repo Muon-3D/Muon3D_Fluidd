@@ -123,6 +123,12 @@ export default class Wifi extends Mixins(BrowserMixin) {
     display: none;
   }
 
+  .wifi-page--phone :deep(.wf__net .srow__s) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .wifi-page--phone :deep(.wf__net) {
     min-height: 56px;
     gap: 10px;

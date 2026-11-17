@@ -269,7 +269,7 @@ test.describe('Wi-Fi and network', () => {
 
     const now = page.getByTestId('wifi-connected')
     await expect(now.getByTestId('wifi-connected-name')).toHaveText('Workshop')
-    await expect(now).toContainText('Online')
+    await expect(page.getByTestId('wifi-box')).toContainText('Online')
     await expect(now).toContainText('192.168.1.42')
     await expect(now.getByRole('button', { name: 'Forget this network' })).toBeVisible()
 
