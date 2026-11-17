@@ -1031,7 +1031,7 @@ app:
     channel: Channel
     freqency: Freqency
     change: Change
-    remote_read_only: Wi-Fi can only be changed on the printer's own network.
+    remote_read_only: The hotspot can only be changed on the printer's own network.
     password:
       too-short: Too short
       too-long: Too long
