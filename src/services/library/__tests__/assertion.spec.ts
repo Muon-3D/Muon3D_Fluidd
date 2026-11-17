@@ -83,3 +83,46 @@ describe('a 401 from the model service', () => {
     expect(service.calls).toHaveLength(2)
   })
 })
+
+describe('the assertion cache keyed by account', () => {
+  function keyed () {
+    let account: string | null = 'acct-a'
+    const clock = 1_000_000_000
+    let n = 0
+    const fetch = vi.fn(async (): Promise<AssertionAnswer> => ({ assertion: `${account}-${++n}`, expires_at: (clock + 300_000) / 1000 }))
+    const assertions = createAssertionCache({ fetch, session: () => 'console-session', account: () => account, now: () => clock })
+    return { assertions, fetch, as: (next: string | null) => { account = next } }
+  }
+
+  it('hands the bridge the assertion with its expiry in milliseconds', async () => {
+    const { assertions } = keyed()
+    expect(await assertions.getWithExpiry()).toEqual({ assertion: 'acct-a-1', expiresAt: 1_000_300_000 })
+    expect(await assertions.get()).toBe('acct-a-1')
+  })
+
+  it('never answers account B with account A\'s assertion, even before anything clears it', async () => {
+    const { assertions, fetch, as } = keyed()
+    expect((await assertions.getWithExpiry()).assertion).toBe('acct-a-1')
+    as('acct-b')
+    expect((await assertions.getWithExpiry()).assertion).toBe('acct-b-2')
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('is not-signed-in with a console session but no account, and asks nothing', async () => {
+    const { assertions, fetch, as } = keyed()
+    as(null)
+    await expect(assertions.getWithExpiry()).rejects.toMatchObject({ code: 'not-signed-in' })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('clear forgets the kept assertion, and an ask that began before it never keeps its answer', async () => {
+    const { assertions, fetch } = keyed()
+    await assertions.getWithExpiry()
+    assertions.clear()
+    const late = assertions.getWithExpiry()
+    assertions.clear()
+    expect((await late).assertion).toBe('acct-a-2')
+    expect((await assertions.getWithExpiry()).assertion).toBe('acct-a-3')
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+})

@@ -90,24 +90,34 @@
             <frame-icon name="x" />
           </button>
         </div>
-        <p class="job-ready__about">
-          A model has to be sliced before it can print. Slice runs in this browser, served by
-          {{ printerName }}, so it works with no internet: open it, and add {{ models.length === 1 ? 'the model' : 'the models' }} with its Add model button.
+        <p
+          v-if="sliceable.length"
+          class="job-ready__about"
+        >
+          A model has to be sliced before it can print. Open Slice and
+          {{ sliceable.length === 1 ? 'it opens' : 'they open' }} there, ready to slice for {{ printerName }}.
+        </p>
+        <p
+          v-if="unsliceable.length"
+          class="job-ready__about"
+          data-tid="job-ready-unsliceable"
+        >
+          Slice can't open {{ unsliceable.join(', ') }}: it takes STL, OBJ and 3MF. Export {{ unsliceable.length === 1 ? 'it' : 'them' }} as one of those from your CAD program first.
         </p>
         <p class="job-ready__about job-ready__about--dim">
-          Slice doesn't take a dropped model from here yet, so it stays on this computer for you to add.
+          Nothing is sent to the printer until you slice and print.
         </p>
-        <router-link
-          v-if="slicer"
+        <button
+          v-if="slicer && sliceable.length"
+          type="button"
           class="cbtn cbtn--primary cbtn--wide"
-          :to="slicePath"
           data-tid="job-ready-open-slice"
-          @click.native="close"
+          @click="openInSlice"
         >
           Open Slice
-        </router-link>
+        </button>
         <p
-          v-else
+          v-else-if="sliceable.length"
           class="job-ready__about"
         >
           This printer doesn't serve Slice yet. slicer.muon3d.com slices the same way.
@@ -128,14 +138,17 @@
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import JobsMixin, { type JobFile } from '@/mixins/jobs'
 import { EventBus } from '@/eventBus'
-import { jobTitle, readyChecks, type ReadyCheck } from '@/services/jobs/model'
+import { isGcodeFile, jobTitle, parentFolder, readyChecks, type ReadyCheck } from '@/services/jobs/model'
+import { SocketActions } from '@/api/socketActions'
+import type { AppFileWithMeta, FileBrowserEntry } from '@/store/files/types'
 import { slicerPresence } from '@/services/slicer-bridge/slicerUrl'
+import { holdModels, isSlicerModel } from '@/services/slicer-bridge/handover'
 
 /**
  * After a file arrives, by drop or Upload. G-code: what it is, what to
  * know before it prints (what it was sliced for, its material, whether
- * the printer is free), and Print now or Add to queue. A model: it opens
- * in Slice, which this printer serves.
+ * the printer is free), and Print now or Add to queue. A model: Open Slice
+ * opens it in the slicer (services/slicer-bridge/handover.ts).
  */
 @Component({})
 export default class JobReadyDialog extends Mixins(JobsMixin) {
@@ -161,10 +174,41 @@ export default class JobReadyDialog extends Mixins(JobsMixin) {
     this.loadFiles()
   }
 
-  showModels (names: string[]) {
+  /** The model files dropped or picked: kept (not reactive) until Open Slice or the next drop. */
+  modelFiles: readonly File[] = []
+
+  showModels (files: File[]) {
     this.mode = 'model'
-    this.models = names
+    this.modelFiles = Object.freeze([...files])
+    this.models = files.map(f => f.name)
     this.open = true
+  }
+
+  /** The models the slicer opens (STL, OBJ, 3MF), and the ones it can't (STEP). */
+  get sliceable (): string[] {
+    return this.models.filter(isSlicerModel)
+  }
+
+  get unsliceable (): string[] {
+    return this.models.filter(name => !isSlicerModel(name))
+  }
+
+  /**
+   * Open Slice: the models it opens go with it (KAN-2191), and /slice hands
+   * them to the slicer once it is welcomed. Too many or too large to hand
+   * over: the person is told which, and stays here.
+   */
+  openInSlice () {
+    const problem = holdModels(this.modelFiles.filter(f => isSlicerModel(f.name)))
+    if (problem) {
+      EventBus.$emit(problem, { type: 'warning', timeout: 10000 })
+      return
+    }
+    this.modelFiles = []
+    this.close()
+    this.$router.push(this.slicePath).catch(() => {})
+    // Already on /slice: the open page takes them now.
+    EventBus.bus.$emit('models-held')
   }
 
   close () {
@@ -173,7 +217,19 @@ export default class JobReadyDialog extends Mixins(JobsMixin) {
 
   /** The file, once the printer lists it with what the slicer wrote. */
   get job (): JobFile | null {
-    return this.jobFiles.find(j => j.path === this.filename) ?? null
+    const entries = this.$store.getters['files/getDirectory'](this.jobDirectory) as FileBrowserEntry[] | undefined
+    const name = this.filename.slice(this.filename.lastIndexOf('/') + 1)
+    const file = entries?.find((entry): entry is AppFileWithMeta => entry.type === 'file' && entry.filename === name && isGcodeFile(entry.filename))
+    return file ? this.toJobFile(file) : null
+  }
+
+  get jobDirectory (): string {
+    const folder = parentFolder(this.filename)
+    return folder ? `${this.root}/${folder}` : this.root
+  }
+
+  loadFiles () {
+    SocketActions.serverFilesGetDirectory(this.root, this.jobDirectory)
   }
 
   @Watch('job')

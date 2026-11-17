@@ -11,7 +11,7 @@ vi.mock('@/services/muon-cloud/state', async () => {
   const Vue = (await import('vue')).default
   return { cloudState: Vue.observable({ account: { id: 'a1', name: 'Jack Smith', email: 'jack@example.test', created_at: 1 }, printers: [] }) }
 })
-vi.mock('@/services/muon-cloud/centralLogin', () => ({ centralLoginEnabled: () => true }))
+vi.mock('@/services/muon-cloud/centralLogin', () => ({ centralLoginEnabled: () => true, consoleServesPage: () => true }))
 vi.mock('@/services/account/state', () => ({ accountState: { approvals: [] }, loadApprovals: async () => {} }))
 vi.mock('@/services/account/sign-out', () => ({ beginSignOut: vi.fn() }))
 vi.mock('@/components/layout/AppUserMenu.vue', () => ({ default: { template: '<div />' } }))

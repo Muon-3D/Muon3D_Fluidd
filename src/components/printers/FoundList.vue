@@ -59,6 +59,12 @@
           name="chevronRight"
           small
         />
+        <v-icon
+          v-else-if="primary(tile).id === 'pair-bluetooth'"
+          small
+        >
+          $bluetooth
+        </v-icon>
         {{ primary(tile).label }}
       </button>
     </div>
@@ -95,7 +101,12 @@ export default class FoundList extends Vue {
   /** An action with no id when the printer offers nothing to do. */
   primary (tile: PrinterTile): CardAction {
     if (tile.state === 'new') return { id: 'set-up', label: 'Set it up', icon: '' }
-    if (tile.entry.row?.action === 'nearby-info') return { id: 'nearby-info', label: 'What is this?', icon: '' }
+    if (tile.entry.row?.action === 'nearby-info') {
+      // Set up already: this browser can pair with it over Bluetooth, signed in or not.
+      return tile.entry.row.nearby?.endpointId
+        ? { id: 'pair-bluetooth', label: 'Pair over Bluetooth', icon: '' }
+        : { id: 'nearby-info', label: 'What is this?', icon: '' }
+    }
     const open = this.actionsFor(tile).find(a => a.id === 'connect')
     return open ? { ...open, label: 'Open' } : { id: '', label: '', icon: '' }
   }

@@ -8,7 +8,7 @@
     @dragover="handleDragOver"
     @dragenter.self.prevent
     @dragleave.self.prevent="handleDragLeave"
-    @drop.self.prevent="handleDrop"
+    @drop.prevent="handleDrop"
   >
     <file-system-toolbar
       v-if="tile || selected.length <= 0"
@@ -435,7 +435,12 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
   get files (): FileBrowserEntry[] {
     const files = this.getAllFiles()
 
+    const showHidden = !!this.$store.state.config.uiSettings.fileSystem.showHiddenFiles
     const filteredFiles = files.filter(file => {
+      if (!showHidden && file.name.match(/^\.(?!\.$)/)) {
+        return false
+      }
+
       if (this.currentRoot === 'timelapse' && file.type === 'file' && file.extension === 'jpg') {
         return false
       }
@@ -809,12 +814,7 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
 
       if (!gcode) return
 
-      // Shown in place where a G-code viewer is on the page: the dashboard's card.
-      const route = this.$router.currentRoute.name
-      const inPlace = route === 'Dashboard' && this.$store.getters['layout/isEnabledInCurrentLayout']('gcode-preview-card')
-      if (!inPlace) {
-        this.$router.push({ path: scopedPath('/preview', activeSlug()) })
-      }
+      this.$router.push({ path: scopedPath('/preview', activeSlug()) })
 
       this.$store.dispatch('gcodePreview/loadGcode', {
         file,
@@ -1147,7 +1147,9 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
       !this.rootProperties.readonly &&
       event.dataTransfer
     ) {
+      event.stopPropagation()
       if (hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'files')) {
+        if (event.target !== event.currentTarget) return
         const files = getFileDataTransferDataFromDataTransfer(event.dataTransfer, 'files')
 
         for (const file of files.items) {

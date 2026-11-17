@@ -1,11 +1,13 @@
 import { mount } from '@vue/test-utils'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ControlZOffset from '../ControlZOffset.vue'
 import { panelStore, panelStubs, waits } from './panel-fixture'
+import { handMoveLock, headStatus, lockHandMove, scriptsInFlight } from '@/services/control/safe-move'
 
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn() }))
 vi.mock('@/api/socketActions', () => ({ SocketActions: socket }))
-afterEach(() => { socket.printerGcodeScript.mockClear() })
+beforeEach(() => { headStatus.fresh = true; scriptsInFlight.count = 0 })
+afterEach(() => { socket.printerGcodeScript.mockClear(); handMoveLock.target = null })
 
 const M1_BED_MESH = { no_go_region_1_min: [75, 0], no_go_region_1_max: [125, 34], no_go_boundary_tolerance: 10, no_go_traverse_z: 6 }
 const sent = () => socket.printerGcodeScript.mock.calls.map(c => c[0] as string)
@@ -43,4 +45,20 @@ it('nudges down away from the notch, and live while printing', async () => {
   await printing.wrapper.find('[data-tid="zoffset--0.01"]').trigger('click')
   expect(sent()).toEqual(['SET_GCODE_OFFSET Z_ADJUST=-0.01 MOVE=1'])
   printing.wrapper.destroy()
+})
+
+it('a nudge closer waits while a hand move is still on its way, with the toolhead Z not the G-code Z (KAN-1745)', async () => {
+  const s = show([160, 100, 5])
+  // A G-code Z offset in force: toolhead Z 5, G-code Z 4.8.
+  s.store.state.printer.printer.gcode_move.gcode_position = [160, 100, 4.8, 0]
+  lockHandMove([160, 100, 9.8], (s.wrapper.vm as any).panelTarget)
+  await s.wrapper.find('[data-tid="zoffset--0.05"]').trigger('click')
+  expect(socket.printerGcodeScript).not.toHaveBeenCalled()
+  await s.wrapper.find('[data-tid="zoffset-0.05"]').trigger('click')
+  expect(sent()).toEqual(['SET_GCODE_OFFSET Z_ADJUST=+0.05 MOVE=1'])
+  handMoveLock.target = null
+  socket.printerGcodeScript.mockClear()
+  await s.wrapper.find('[data-tid="zoffset--0.05"]').trigger('click')
+  expect(sent()).toEqual(['SET_GCODE_OFFSET Z_ADJUST=-0.05 MOVE=1'])
+  s.wrapper.destroy()
 })

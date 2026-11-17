@@ -37,7 +37,7 @@ describe('changeFilamentPlan', () => {
 
   it('mid-print with no change macro, it does nothing and says why', () => {
     const plan = changeFilamentPlan({ ...idle, printing: true }, null, 215)
-    expect(plan).toEqual({ kind: 'none', reason: 'This printer has no filament change macro (M600).' })
+    expect(plan).toEqual({ kind: 'none', reason: 'This printer has no filament change command (M600).' })
   })
 })
 

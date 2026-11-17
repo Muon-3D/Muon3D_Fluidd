@@ -120,7 +120,7 @@ describe('the rows a person sees', () => {
     const rows = capabilityRows({ motion: 'allowed', heat: 'ask', print: 'allowed' })
     expect(rows.map(r => [r.action, r.label, r.value])).toEqual([
       ['print', 'Print, pause and cancel', 'allowed'],
-      ['motion', 'Move and run macros', 'allowed'],
+      ['motion', 'Move and run quick commands', 'allowed'],
       ['heat', 'Heat the nozzle and bed', 'ask']
     ])
   })
@@ -128,7 +128,7 @@ describe('the rows a person sees', () => {
   it('keeps heating in the motion row on a printer from before the heat row', () => {
     const rows = capabilityRows({ motion: 'refused', console: 'refused' })
     expect(rows.map(r => [r.action, r.label])).toEqual([
-      ['motion', 'Move, heat and run macros'],
+      ['motion', 'Move, heat and run quick commands'],
       ['console', 'Use the console']
     ])
   })

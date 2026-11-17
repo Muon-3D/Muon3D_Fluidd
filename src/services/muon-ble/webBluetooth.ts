@@ -226,20 +226,61 @@ async function readInfoAfterPairing (device: BleDevice): Promise<BleInfo> {
   }
 }
 
+/** Which printer a chooser is for (KAN-2470). Neither field: every Muon printer. */
+export interface ChooserTarget {
+  /** The printer's Iroh EndpointId (64 hex); only its first 8 bytes are matched. */
+  endpointId?: string | null;
+  /** The advertised short name, `walnut-8987`, matched exactly. */
+  name?: string | null;
+}
+
+/**
+ * The 10 bytes an advertisement's manufacturer data starts with for this
+ * EndpointId, and the mask that ignores the two flag bytes: the layout
+ * `decodeAdvert` reads (bytes 2 to 9 are the EndpointId's first 8 bytes).
+ * `null` when the id is not at least 16 hex characters.
+ */
+export function advertMatch (endpointId: string): { dataPrefix: Uint8Array, mask: Uint8Array } | null {
+  const id = endpointId.trim().toLowerCase()
+  if (!/^[0-9a-f]{16}/.test(id)) return null
+  const dataPrefix = new Uint8Array(10)
+  const mask = new Uint8Array(10)
+  for (let i = 0; i < 8; i++) {
+    dataPrefix[2 + i] = parseInt(id.slice(i * 2, i * 2 + 2), 16)
+    mask[2 + i] = 0xff
+  }
+  return { dataPrefix, mask }
+}
+
+/**
+ * The options for `requestDevice`. One filter, always with the Muon service
+ * (a filter's fields are ANDed): with an EndpointId it also matches that
+ * printer's manufacturer data, whatever its flags say; with only a name, that
+ * name; with neither, every Muon printer.
+ */
+export function chooserOptions (target?: ChooserTarget | null): Record<string, unknown> {
+  const filter: Record<string, unknown> = { services: [MUON_BLE_SERVICE] }
+  const match = target?.endpointId ? advertMatch(target.endpointId) : null
+  if (match) {
+    filter.manufacturerData = [{ companyIdentifier: MUON_BLE_COMPANY_ID, dataPrefix: match.dataPrefix, mask: match.mask }]
+  } else if (target?.name) {
+    filter.name = target.name
+  }
+  return { filters: [filter], optionalManufacturerData: [MUON_BLE_COMPANY_ID] }
+}
+
 /**
  * Opens the browser's chooser for Muon3D printers and reads the chosen one's
- * `INFO`. Must run from a click, with nothing awaited before it.
+ * `INFO`. Must run from a click, with nothing awaited before it. With a
+ * target the chooser lists only that printer.
  *
  * Rejects with the browser's `NotFoundError` when the person closes the
  * chooser, which callers treat as "nothing chosen", not as a failure.
  */
-export async function choosePrinter (): Promise<ChosenPrinter> {
+export async function choosePrinter (target?: ChooserTarget | null): Promise<ChosenPrinter> {
   const bt = webBluetooth()
   if (!bt) throw new Error('This browser has no Web Bluetooth.')
-  const device = await bt.requestDevice({
-    filters: [{ services: [MUON_BLE_SERVICE] }],
-    optionalManufacturerData: [MUON_BLE_COMPANY_ID]
-  })
+  const device = await bt.requestDevice(chooserOptions(target))
   return { device, name: device.name ?? '', info: await readInfoAfterPairing(device) }
 }
 

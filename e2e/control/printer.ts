@@ -10,6 +10,9 @@
  *   so nothing reaches the shared mock and a test can assert exactly what
  *   Control asked the printer to do;
  * - can make any one method fail (`failOn`);
+ * - with `{ ticks: false }`, empties the shared mock's status ticks, so the
+ *   page holds still at the status it subscribed to (plus `report`s): for a
+ *   test of something else that a busy page would only slow down;
  * - with `{ database: true }`, keeps this page's Moonraker database writes
  *   (server.database.post_item, over the websocket or HTTP) to itself and
  *   lays them over what the shared mock reads back, so a setting survives a
@@ -102,7 +105,7 @@ function getDotted (root: Json, key: string): unknown {
   return key.split('.').reduce<unknown>((v, p) => isObject(v) ? v[p] : undefined, root)
 }
 
-export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[], database?: boolean } = {}): Promise<PrinterHandle> {
+export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[], database?: boolean, ticks?: boolean, apiUrl?: string, onSocketEvent?: (event: 'open' | 'close' | 'send', method?: string) => void } = {}): Promise<PrinterHandle> {
   const handle: PrinterHandle = {
     state: { status, failOn: {}, results: {}, answers: {}, answer: {}, components: options.components },
     gcode: [],
@@ -166,19 +169,27 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
   const infoRequests = new Set<unknown>()
   let pageSocket: { send: (message: string) => void, close: () => Promise<void> } | null = null
 
-  await page.routeWebSocket(new RegExp(`:${MOCK_PORT}/websocket\\?`), ws => {
+  const address = options.apiUrl ? new URL(options.apiUrl).host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : `[^/]+:${MOCK_PORT}`
+  await page.routeWebSocket(new RegExp(`^wss?://${address}/websocket(?:\\?.*)?$`), ws => {
     if (handle.state.offline) {
       ws.close().catch(() => {})
       return
     }
     pageSocket = ws
+    options.onSocketEvent?.('open')
     const server = ws.connectToServer()
+    ws.onClose(() => {
+      options.onSocketEvent?.('close')
+      if (pageSocket === ws) pageSocket = null
+      server.close().catch(() => {})
+    })
 
     ws.onMessage(raw => {
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { server.send(raw); return }
       if (msg.id !== undefined && msg.method) asked.set(msg.id, msg.method)
       if (msg.method) handle.calls.push({ method: msg.method, params: msg.params ?? {} })
+      if (msg.method) options.onSocketEvent?.('send', msg.method)
       const answer = msg.method in handle.state.answers ? handle.state.answers[msg.method] : handle.state.answer[msg.method]
       if (msg.method in handle.state.answers || msg.method in handle.state.answer) {
         const result = typeof answer === 'function' ? (answer as (p: Json) => unknown)(msg.params ?? {}) : answer
@@ -229,7 +240,10 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
       if (isObject(msg.result) && isObject(msg.result.status)) {
         msg.result.status = leaveOut(overlay(msg.result.status, over))
       } else if (msg.method === 'notify_status_update' && Array.isArray(msg.params) && isObject(msg.params[0])) {
-        msg.params[0] = leaveOut(overlayUpdate(msg.params[0], over))
+        // `{ ticks: false }`: the shared mock's ticks (a hot, mid-print M1, several a second) reach the page empty, so it
+        // keeps the status it subscribed to, and what the test reports. Still sent: a socket that hears nothing for 10 s
+        // is taken for a dead one.
+        msg.params[0] = options.ticks === false ? {} : leaveOut(overlayUpdate(msg.params[0], over))
       }
       ws.send(JSON.stringify(msg))
     })

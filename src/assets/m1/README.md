@@ -4,10 +4,10 @@ This is the accurate M1 printer for Control's 3D view (I-163 / KAN-1412), **exte
 
 | | |
 |---|---|
-| File | `m1-accurate.glb`, 2,559,428 bytes (2.4 MiB) |
+| File | `m1-accurate.glb`, 1,798,848 bytes (1.7 MiB) |
 | Compression | Draco (`KHR_draco_mesh_compression`, required). The decoder ships in `public/draco/` (three r185's `examples/jsm/libs/draco/gltf/`, 763 KB), which is where `accurate/gltf-load.ts` points `DRACO_PATH`. |
 | Other extensions | `KHR_materials_transmission` (the glass plate), `KHR_materials_emissive_strength` (LED, screen) |
-| Triangles | 681,041: Arm 220,479, X_Carriage 110,359, Base 109,104, Hose 98,661, Z_Stage 48,586, Y_Gantry 41,276, Belt 39,012, Knob 8,190, BuildPlate_Glass 4,640, Panel_Screen 732, Base_Decals 2. The glass is transmissive, so three draws the opaque scene twice. |
+| Triangles | 417,713 in total (KAN-2048 cut it from 681,041). The glass is transmissive, so three draws the opaque scene twice. |
 | Load | Fetch and decode took 0.29 s from localhost with three 0.185.1 and the loader setup in `gltf-load.ts` |
 
 **What follows the printer live:** only the toolhead (`M1_X_Carriage` and `M1_Y_Gantry`), the build plate (`M1_Z_Stage`), the hose, which moves with the head, and the cross-rail belt, which moves with the gantry. The arm, the knob and the other belts do **not** move live: they stay at their rest pose. The node list below names their joints for the rig, not for Control.
@@ -128,3 +128,7 @@ What's left of any inner part is only the surface that really shows through an o
 - **The glass silkscreen is a recreated stand-in.** The original PNG isn't packed in the source file.
 - **The arm fold isn't bound**, because `M1State.fold` has no binding role yet. `M1_Arm` is the fold node: it turns about its local (0, 0, −1) axis, 0° deployed to about 90° folded. The sign is unverified.
 - **Bug in `accurate/gltf-load.ts`.** It imports `{ default: MeshoptDecoder }`, but three r185's `meshopt_decoder.module.js` only has the named export `MeshoptDecoder`. It would get `undefined`. That's harmless for this Draco file, but it would break a meshopt-compressed one.
+
+## KAN-2048: no internal geometry
+
+`tools/m1-exterior-only.mjs` then `tools/m1-look-patch.mjs` produced the current file. A face stays when a ray from outside reaches it (orthographic and close-range perspective views, plus rays sent out from both faces of every triangle; the table under the feet is opaque) AND the side that ray reached opens onto outside air, or onto a port, vent or slot no deeper than a few millimetres. That is decided per part group on a voxel solid whose narrow openings are sealed (the base's and the toolhead's open undersides are closed). The inner surface of every shell, its ribs and inner walls, the inside of the hose and every internal part are dropped. A near-black, unlit `M1_Backing` surface sits just behind openings and seams, riding with its part, so a gap shows black. The look patch makes the filament motor indicator black and covers the slot right of the nozzle with a small heating-warning triangle. Node names, materials, skins and UVs of the remaining faces are unchanged.
