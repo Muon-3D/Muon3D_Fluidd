@@ -52,7 +52,7 @@ export default class MuonGatesMixin extends Mixins(StateMixin) {
    */
   mayDo (knob: string): boolean {
     if (this.isMuonPrinter !== true) return true
-    if (this.canManageAccess === true) return true
+    if (this.canManageAccess !== false) return true
     const perms = valueFor('perms', this.gatePrinter)
     return mayUse(perms?.[knob], valueFor('shared', this.gatePrinter))
   }

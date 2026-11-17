@@ -54,6 +54,6 @@ describe('presets', () => {
     expect(mayUse('owner_at_printer', true)).toBe(false)
     expect(mayUse('owner_and_shared', true)).toBe(true)
     expect(mayUse('owner_and_shared', false)).toBe(false)
-    expect(mayUse('owner_and_shared', null)).toBe(false)
+    expect(mayUse('owner_and_shared', null)).toBe(true)
   })
 })

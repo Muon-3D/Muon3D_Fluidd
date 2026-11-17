@@ -128,12 +128,12 @@ export function presetLabel (state: PresetState): string {
 /**
  * Whether a client that is not the owner may use something, from the value of
  * the setting that guards it. `shared` says whether this client is one of the
- * people the owner shared the printer with (null when unknown). A setting the
+ * people the owner shared the printer with (null when unknown, which counts as yes). A setting the
  * printer did not report never hides anything: the printer enforces it anyway.
  */
 export function mayUse (value: string | undefined, shared: boolean | null): boolean {
   if (value === undefined) return true
   if (value === 'anyone') return true
-  if (value === 'owner_and_shared') return shared === true
+  if (value === 'owner_and_shared') return shared !== false
   return false
 }

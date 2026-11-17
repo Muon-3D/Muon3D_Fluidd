@@ -42,10 +42,11 @@ function listOf (values: Values) {
 }
 
 /** The printer keeps its settings for this test across reloads, and says whether this browser may manage access. */
-async function printerWith (page: Page, values: Values, { owner = true, status = {} as Record<string, unknown> } = {}) {
+async function printerWith (page: Page, values: Values, { owner = true as boolean | 'unknown', status = {} as Record<string, unknown> } = {}) {
   await usePrinter(page, status, { components: MUON })
   await page.route(new RegExp(`:${MOCK_PORT}/server/muon/access/`), route => {
     const name = new URL(route.request().url()).pathname.split('/').pop() ?? ''
+    if (name === 'capabilities' && owner === 'unknown') return route.fulfill({ status: 500, json: { error: { code: 500, message: 'Unavailable' } } })
     if (name === 'capabilities') return route.fulfill({ json: { result: { actions: { protection: owner ? 'allowed' : 'refused' } } } })
     return route.fulfill({ status: 404, json: { error: { code: 404, message: 'Not Found' } } })
   })
@@ -137,5 +138,17 @@ test('a non-owner is shown the plate-clear notice when anyone may confirm it', a
 test('the owner is shown the plate-clear notice whatever the preset', async ({ page, open }) => {
   await printerWith(page, { ...OPEN, plate_clear: 'owner' }, { owner: true, status: NEEDS_CLEARING })
   await open('/')
+  await expect(page.getByTestId('plate-clear-notice')).toBeVisible()
+})
+
+test('the owner is still shown the plate-clear notice when the access lookup is unavailable', async ({ page, open }) => {
+  await printerWith(page, { ...OPEN, plate_clear: 'owner' }, { owner: 'unknown', status: NEEDS_CLEARING })
+  const read = page.waitForResponse('**/server/aux/permissions')
+  const asked = page.waitForResponse(/\/server\/muon\/access\/capabilities/)
+  await open('/')
+  await read
+  await asked
+  await expect(page.getByTestId('plate-clear-notice')).toBeVisible()
+  await page.waitForTimeout(500)
   await expect(page.getByTestId('plate-clear-notice')).toBeVisible()
 })
