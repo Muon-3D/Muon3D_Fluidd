@@ -58,6 +58,8 @@ export const nearbyState = Vue.observable({
   /** The chooser is open. */
   choosing: false,
   error: null as string | null,
+  /** What the browser said, kept for a small Details line; the plain sentence is `error`. */
+  errorDetail: null as string | null,
   /**
    * A clock the directory reads, so "heard in the last 30 s" lapses on screen
    * (KAN-2528). Kept up to date only while something was heard recently.
@@ -203,6 +205,16 @@ export function stopNearby () {
 export function clearNearby () {
   nearbyState.printers.splice(0)
   nearbyState.error = null
+  nearbyState.errorDetail = null
+}
+
+/** What went wrong with a Bluetooth search, in a sentence a person can act on. */
+export function plainBluetoothError (error: unknown): string {
+  const text = `${(error as Error)?.name ?? ''} ${(error as Error)?.message ?? error}`
+  if (/adapter|powered off|not available|turned off/i.test(text)) return 'Bluetooth looks off on this device. Turn it on, then try again.'
+  if (/NotAllowed|denied|permission|blocked/i.test(text)) return 'This browser was not allowed to use Bluetooth. Allow it for this site, then try again.'
+  if (/GATT|connect|disconnected|Network|timed? ?out/i.test(text)) return "Couldn't reach the printer over Bluetooth. Move closer to it, then try again."
+  return "Couldn't read the printer over Bluetooth. Try again."
 }
 
 /**
@@ -213,6 +225,7 @@ export function clearNearby () {
  */
 export async function lookNearby (target?: ChooserTarget | null): Promise<NearbyPrinter | null> {
   nearbyState.error = null
+  nearbyState.errorDetail = null
   nearbyState.choosing = true
   try {
     const chosen = await choosePrinter(target)
@@ -222,7 +235,8 @@ export async function lookNearby (target?: ChooserTarget | null): Promise<Nearby
     return printer
   } catch (error) {
     if (!chooserDismissed(error)) {
-      nearbyState.error = `Couldn't read the printer over Bluetooth: ${(error as Error)?.message ?? error}`
+      nearbyState.error = plainBluetoothError(error)
+      nearbyState.errorDetail = String((error as Error)?.message ?? error)
     }
     return null
   } finally {

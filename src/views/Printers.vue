@@ -517,12 +517,30 @@
         data-tid="notice-link"
       >{{ noticeLink }}</a>
     </p>
-    <p
+    <div
       v-if="nearby.error"
       class="note note--error"
+      data-tid="nearby-error"
     >
-      {{ nearby.error }}
-    </p>
+      <p class="note__line">
+        {{ nearby.error }}
+        <button
+          type="button"
+          class="note__retry"
+          data-tid="nearby-retry"
+          @click="onLookNearby"
+        >
+          Try again
+        </button>
+      </p>
+      <details
+        v-if="nearby.errorDetail"
+        class="note__details"
+      >
+        <summary>Details</summary>
+        <code>{{ nearby.errorDetail }}</code>
+      </details>
+    </div>
     <p
       v-if="activationError"
       class="note note--error"
@@ -537,6 +555,7 @@
       v-model="addSheetOpen"
       :bluetooth-search="bluetoothSearch"
       :bluetooth-off="bluetoothOff"
+      :bluetooth-insecure="bluetoothInsecure"
       :searching="searching"
       :network="scanNetwork || ''"
       :found="page.found.length"
