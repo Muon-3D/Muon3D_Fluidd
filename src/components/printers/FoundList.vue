@@ -19,6 +19,11 @@
         <span class="row__title">{{ tile.name }}</span>
         <span class="row__sub mono">{{ host(tile) }}</span>
         <span
+          v-if="host(tile)"
+          class="row__sub"
+          data-tid="found-ownership"
+        >Found on your network · Not in your account or shared with you.</span>
+        <span
           v-if="about(tile)"
           class="row__sub"
         >{{ about(tile) }}</span>
@@ -112,7 +117,7 @@ export default class FoundList extends Vue {
   }
 
   secondary (tile: PrinterTile): CardAction[] {
-    return this.actionsFor(tile).filter(a => a.id !== 'connect')
+    return this.actionsFor(tile).filter(a => ['link', 'ask', 'connect-bluetooth', 'pair-bluetooth', 'pair-browser'].includes(a.id))
   }
 
   about (tile: PrinterTile): string {
@@ -123,3 +128,10 @@ export default class FoundList extends Vue {
   }
 }
 </script>
+
+<style scoped lang="scss">
+@media (max-width: 699px) {
+  .rows .row { flex-wrap: wrap; }
+  .rows .row__text { flex-basis: calc(100% - 50px); }
+}
+</style>

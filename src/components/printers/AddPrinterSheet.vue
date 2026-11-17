@@ -6,6 +6,7 @@
     @input="$emit('input', $event)"
   >
     <div
+      v-if="value"
       class="sheet"
       data-tid="add-printer-sheet"
     >
@@ -23,10 +24,40 @@
         </button>
       </div>
       <p class="sheet__lead">
-        Three ways to find it. Pick the one that matches where the printer is.
+        Set up a new printer or add one that is already set up.
       </p>
 
       <div class="sheet__ways">
+        <div class="sway">
+          <span class="sway__icon"><frame-icon name="plus" /></span>
+          <div class="sway__text">
+            <span class="sway__title">Set up a new printer</span>
+            <span class="sway__about">Join the new printer's Muon- Wi-Fi first. Setup runs on the printer: Wi-Fi, its name and first calibration.</span>
+          </div>
+          <router-link
+            to="/setup"
+            class="sbtn sbtn--primary"
+            data-tid="add-new-printer"
+          >
+            Open setup
+          </router-link>
+        </div>
+
+        <div class="sway">
+          <span class="sway__icon"><frame-icon name="printers" /></span>
+          <div class="sway__text">
+            <span class="sway__title">Add an existing printer</span>
+            <span class="sway__about">Use the code on its screen to link it to your account. If someone shared an invite, open their invite link instead.</span>
+          </div>
+          <router-link
+            to="/link"
+            class="sbtn"
+            data-tid="add-existing-printer"
+          >
+            Link with a code
+          </router-link>
+        </div>
+
         <div
           v-if="bluetoothSearch && !bluetoothOff"
           class="sway"
@@ -92,7 +123,7 @@ import { Component, Prop, Vue } from 'vue-property-decorator'
 
 /**
  * Add printer (v3): one sheet with the ways in, so the page itself has one
- * primary button. Bluetooth, this network, or an address.
+ * primary button. Setup and linking use the existing routes.
  */
 @Component({})
 export default class AddPrinterSheet extends Vue {
