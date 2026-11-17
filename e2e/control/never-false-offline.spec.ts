@@ -104,7 +104,7 @@ test('a LAN-discovered printer header does not say Offline when its websocket dr
   await printer.offline()
   const header = isMobile ? page.getByRole('button', { name: 'Switch printer', exact: true }) : page.locator('.app-page-header')
   await expect(header).toBeVisible()
-  await expect(header).toContainText('Connecting')
+  await expect(header).toContainText('Reconnecting')
   await expect(header).not.toContainText('Offline')
 })
 
