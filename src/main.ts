@@ -54,6 +54,7 @@ import { retireProStorage } from './services/retired-storage'
 
 // Register global directives.
 import Blur from '@/directives/blur'
+import AgentHighlight from '@/directives/agentHighlight'
 import { restoreUiStyle } from '@/util/ui-style'
 import { followStartup } from '@/services/startup/heard'
 import { applyGlassIcons } from '@/util/glass-icons'
@@ -85,6 +86,7 @@ const prefetchFirstPages = () => {
 
 // Directives...
 Vue.directive('blur', Blur)
+Vue.directive('agent-highlight', AgentHighlight)
 
 // v-chart component asynchronously loaded from a split chunk
 Vue.component('EChart', () => import('./vue-echarts-chunk'))

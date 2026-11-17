@@ -217,11 +217,13 @@
     >
       {{ readError }}
     </p>
+    <account-connected-services />
   </div>
 </template>
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
+import AccountConnectedServices from './AccountConnectedServices.vue'
 import { accountApi } from '@/services/account/api'
 import { AccountError, isMissing } from '@/services/account/client'
 import type { AccountSectionId } from '@/services/account/model'
@@ -245,7 +247,7 @@ import {
  * shows that and changes nothing until the console has Bypass for apps
  * (KAN-961). Control's own entry has no Disconnect: that is signing out.
  */
-@Component
+@Component({ components: { AccountConnectedServices } })
 export default class AccountConnectedApps extends Vue {
   @Prop({ type: Function, default: (id: AccountSectionId) => `/account/${id}` })
   readonly linkTo!: (id: AccountSectionId) => string

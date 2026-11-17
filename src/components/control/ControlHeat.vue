@@ -67,6 +67,7 @@
       <div
         v-for="h in steppers"
         :key="`${panelTarget}|${h.heater.name}`"
+        v-agent-highlight="h.label === 'Nozzle' ? 'hotend' : 'bed'"
         class="heat__stepper"
       >
         <span class="heat__stepper-name">

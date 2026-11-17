@@ -1,5 +1,6 @@
 <template>
   <control-card
+    v-agent-highlight="'jog'"
     :title="trackpadOnly ? 'Trackpad' : 'Movement'"
     icon="control"
     :pill="pill"
@@ -14,6 +15,7 @@
         data-tid="move-homes"
       >
         <button
+          v-agent-highlight="'home'"
           type="button"
           class="move__hbtn"
           :class="{ 'move__hbtn--icon': trackpadOnly }"
@@ -38,6 +40,7 @@
         </button>
         <button
           v-if="!trackpadOnly"
+          v-agent-highlight="'home'"
           type="button"
           class="move__hbtn move__hbtn--z"
           :disabled="busy"
