@@ -1,25 +1,6 @@
-/** How Files shows one of the printer's folders (Moonraker's roots). */
-export interface RootGroup {
-  title: string;
-  note: string;
-  /** Logs are downloaded, not opened: they run to megabytes. */
-  download: boolean;
-}
-
-/**
- * MuonOS keeps each printer's own calibration and settings in
- * `calibration` (writable) and the shipped M1 config in `defaults` (read
- * only); `config` shows only in dev mode.
- */
-export function rootGroup (root: string): RootGroup {
-  switch (root) {
-    case 'calibration': return { title: 'This printer\'s settings', note: 'editable', download: false }
-    case 'defaults': return { title: 'Muon3D defaults', note: 'read only · they come with updates', download: false }
-    case 'config': return { title: 'The whole config', note: 'dev mode', download: false }
-    case 'logs': return { title: 'Logs', note: 'download to read', download: true }
-    case 'docs': return { title: 'Docs', note: 'read only', download: false }
-    default: return { title: root.charAt(0).toUpperCase() + root.slice(1).replace(/_/g, ' '), note: '', download: false }
-  }
+/** Logs are downloaded, not opened: they run to megabytes. */
+export function downloadsOnly (root: string): boolean {
+  return root === 'logs'
 }
 
 /** The order Files lists its folders in: the printer's own first. */
@@ -34,6 +15,11 @@ const TEXT = /\.(cfg|conf|txt|md|json|ya?ml|ini|py|sh|log|csv|toml)$/i
 /** Opened in the editor: text files under 2 MB. The rest download. */
 export function opensInEditor (name: string, size: number): boolean {
   return TEXT.test(name) && size <= 2_000_000
+}
+
+/** What a tap on a file does in Files: open it, or download it (logs, big files, non-text). */
+export function tapDownloads (root: string, name: string, size: number): boolean {
+  return downloadsOnly(root) || !opensInEditor(name, size)
 }
 
 /** What restarting after a save stops, and whether now's a good time. */
@@ -53,10 +39,4 @@ export function changedLines (saved: string, edited: string): number {
   let changed = Math.abs(a.length - b.length)
   for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) changed++
   return changed
-}
-
-/** A name a file or folder can take here: no slashes, not empty, not dot or dot-dot. */
-export function validName (name: string): boolean {
-  const n = name.trim()
-  return !!n && n !== '.' && n !== '..' && !/[\\/]/.test(n)
 }

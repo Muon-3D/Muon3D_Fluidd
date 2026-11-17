@@ -4,430 +4,154 @@
     :class="{ 'library--phone': isMobileViewport }"
     data-tid="library-page"
   >
-    <header class="library__head">
-      <div class="library__titles">
-        <h1>Library</h1>
-        <p v-if="view === 'discover'">
-          Prints to make, shared by the Muon3D community and tested on the M1.
-        </p>
-        <p v-else>
-          Everything you've sliced and saved, ready on any of your printers.
-        </p>
-        <a
-          href="https://library.muon3d.com/library"
-          target="_blank"
-          rel="noopener"
-          class="lib-btn lib-btn--sm lib-btn--ghost"
-          data-tid="library-full"
-        >Open full Library ↗</a>
-      </div>
-      <label
-        v-if="listing && view === 'mine'"
-        class="lib-field library__find"
-      >
-        <frame-icon
-          name="search"
-          small
-        />
-        <input
-          ref="search"
-          v-model="query"
-          type="search"
-          placeholder="Search your Library"
-          aria-label="Search your Library"
-          data-tid="library-find"
-        >
-        <span
-          v-if="!isMobileViewport"
-          class="lib-kbd"
-        >/</span>
-      </label>
-    </header>
+    <!-- Share a print (v3 page 11), in place of the Library while it is open. -->
+    <library-share-page
+      v-if="shareId !== null && signedIn && state.enabled"
+      :items="everything"
+      :item-id="shareId === 'new' ? '' : shareId"
+      @back="shareBack"
+    />
 
-    <!-- The same two places as library.muon3d.com: what's public, and what's yours. -->
-    <nav
-      v-if="mineShown"
-      class="library__views"
-      aria-label="Library"
-      data-tid="library-views"
+    <muon-library
+      v-else
+      context="page"
+      :printer-id="activePrinter ? activePrinter.id : null"
+      :printer-name="activePrinter ? activePrinter.name : null"
+      :printer-model="activePrinter && activePrinter.model ? activePrinter.model : 'M1'"
+      :tab="view === 'mine' ? 'yours' : 'discover'"
+      :continue-recent="continueRecent"
+      :continue-item="continueItem"
+      :signed-in="signedIn"
+      :settings-to="settingsTo"
+      :grid="grid"
+      :search="searchQuery"
+      :own-ready="state.checked && state.enabled"
+      :collection="collection"
+      :print-id="printId"
+      :auto-print="autoPrint"
+      @auto-printed="onAutoPrinted"
+      @update:tab="setView"
+      @update:grid="setGrid"
+      @grid-back="gridBack"
+      @update:collection="openCollection"
+      @collection-back="gridBack"
+      @collection-deleted="collectionDeleted"
+      @update:print="openPrint"
+      @share="openShare('new')"
+      @print-back="printBack"
+      @open-search="openSearch"
+      @sign-in="accountDialog = true"
+      @print="onLibraryPrint"
+      @print-item="printOn($event, activePrinter ? activePrinter.id : null)"
+      @print-run="onPrintRun"
+      @open-item="openItem"
+      @open-recent="openRecent"
+      @slice-item="openInSlice"
+      @go-slice="goSlice"
     >
-      <router-link
-        v-for="place in views"
-        :key="place.id"
-        :to="{ query: { view: place.id } }"
-        class="library__view"
-        :class="{ 'library__view--on': view === place.id }"
-        :aria-current="view === place.id ? 'page' : undefined"
-        :data-tid="`library-view-${place.id}`"
-      >
-        {{ place.label }}
-      </router-link>
-    </nav>
+      <template #yours>
+        <!-- Every state is one tile in the same place (Library v3, page 12): an icon, one line, one more, at most one button. -->
+        <library-state
+          v-if="!mineShown"
+          icon="library"
+          title="Sign in to see yours"
+          text="What you slice, save and print stays in your Muon3D account, on every printer."
+          action="Sign in"
+          primary
+          tid="library-signed-out"
+          @action="accountDialog = true"
+        />
 
-    <library-discover v-if="view === 'discover'" />
-
-    <template v-else>
-      <div
-        v-if="signedIn && state.enabled"
-        class="library__tabs"
-        role="tablist"
-        aria-label="Library sections"
-      >
-        <button
-          v-for="tab in sectionTabs"
-          :key="tab.id"
-          type="button"
-          role="tab"
-          class="library__tab"
-          :class="{ 'library__tab--on': section === tab.id }"
-          :aria-selected="section === tab.id ? 'true' : 'false'"
-          :data-tid="`library-section-${tab.id}`"
-          @click="selectSection(tab.id)"
-        >
-          {{ tab.label }}
-          <span
-            class="lib-pill"
-          >{{ tab.count }}</span>
-        </button>
-        <span class="library__grow" />
-        <span
-          v-if="listing && storage"
-          class="library__storage"
-          data-tid="library-summary"
-        >{{ storage }}</span>
-      </div>
-
-      <section
-        v-if="signedIn && state.error"
-        class="lib-empty lib-surface library__state"
-        role="alert"
-      >
-        <h2>Your Library didn't answer</h2>
-        <p>{{ state.error }}</p>
-        <div class="lib-empty__actions">
-          <button
-            type="button"
-            class="lib-btn"
-            @click="refresh"
-          >
-            Try again
-          </button>
-        </div>
-      </section>
-
-      <!-- Reading it, or turning it on for you (KAN-735: no turn-on step). -->
-      <section
-        v-if="!state.error && (!signedIn || !state.checked || consentDue || (state.enabled && !state.synced))"
-        class="lib-empty lib-surface library__state"
-      >
-        <p>
-          Reading your Library…
-        </p>
-      </section>
-
-      <!-- Off and not turned on for you: a deletion is pending, the promise is unknown, or consent failed. -->
-      <section
-        v-else-if="state.checked && !state.enabled && !state.error"
-        class="lib-empty lib-surface library__state"
-        data-tid="library-off"
-      >
-        <span class="lib-empty__icon lib-empty__icon--accent"><frame-icon
-          name="library"
-          large
-        /></span>
-        <h2>Your Library is off</h2>
-        <p>
-          Turn it on and we keep what you save: the project, the sliced file and a picture, in your account and nowhere
-          else. You can download or delete all of it whenever you like.
-        </p>
-        <p
-          v-if="purgeDay"
-          class="library__warn"
-        >
-          What was in it is deleted on {{ purgeDay }} unless you turn it back on.
-        </p>
-        <div class="lib-empty__actions">
-          <button
-            type="button"
-            class="lib-btn lib-btn--pri"
-            :disabled="busy || !promise"
-            data-tid="library-turn-on"
-            @click="turnOn"
-          >
-            Turn it on
-          </button>
-          <a
-            class="lib-btn lib-btn--ghost"
-            :href="promiseUrl"
-            target="_blank"
-            rel="noopener"
-          >What we keep</a>
-        </div>
-        <p v-if="!promise">
-          The Library has a promise this version of Control cannot show. Update Control before turning it on.
-        </p>
-      </section>
-
-      <!-- On, and nothing in it yet. -->
-      <section
-        v-else-if="section === 'all' && state.synced && !everything.length && !state.error"
-        class="lib-empty lib-surface library__state"
-        data-tid="library-empty"
-      >
-        <span class="lib-empty__icon"><frame-icon
-          name="slice"
-          large
-        /></span>
-        <h2>Nothing here yet</h2>
-        <p>Slice something and press Save. It appears here, ready to print on any of your printers.</p>
-        <div class="lib-empty__actions">
-          <router-link
-            to="/slice"
-            class="lib-btn lib-btn--pri"
-            data-tid="library-go-slice"
-          >
-            Open Slice
-          </router-link>
-          <a
-            href="https://library.muon3d.com/library"
-            target="_blank"
-            rel="noopener"
-            class="lib-btn lib-btn--ghost"
-          >Open full Library ↗</a>
-        </div>
-      </section>
-
-      <section
-        v-else-if="section !== 'all'"
-        class="library__section"
-        :data-tid="`library-${section}`"
-      >
-        <div
-          v-if="sectionBusy"
-          class="lib-empty lib-surface library__state"
-        >
-          Reading {{ section }}…
-        </div>
-        <div
-          v-else-if="sectionError"
-          class="lib-empty lib-surface library__state"
-          role="alert"
-        >
-          <h2>This section didn't answer</h2>
-          <p>{{ sectionError }}</p>
-          <button
-            class="lib-btn"
-            type="button"
-            @click="loadSection"
-          >
-            Try again
-          </button>
-        </div>
-        <div
-          v-else-if="section === 'printed' && runs.length"
-          class="library__runs lib-surface"
-        >
-          <article
-            v-for="run in runs"
-            :key="run.id"
-            class="library__run"
-            :data-outcome="run.outcome"
-          >
-            <div class="library__run-main">
-              <b>{{ run.item && run.item.name ? run.item.name : run.file_name || 'A print' }}</b>
-              <span>{{ run.printer_name }} · {{ relativeTime(run.started_at) }}</span>
-              <small v-if="!run.in_library">Not in your Library</small>
-            </div>
-            <span
-              class="lib-chip library__outcome"
-              :class="`library__outcome--${run.outcome}`"
-            >{{ run.outcome }}</span>
-            <router-link
-              v-if="canPrintAgain(run)"
-              class="lib-btn lib-btn--sm lib-btn--pri"
-              :to="printAgain(run)"
-            >
-              Print again
-            </router-link>
-            <a
-              v-else
-              class="lib-btn lib-btn--sm lib-btn--ghost"
-              href="https://library.muon3d.com/library/printed"
-              target="_blank"
-              rel="noopener"
-            >Open full Library ↗</a>
-          </article>
-        </div>
-        <div
-          v-else-if="section === 'saved' && savedItems.length"
-          class="library__grid"
-        >
-          <article
-            v-for="item in savedItems"
-            :key="item.id"
-            class="library__saved lib-surface"
-            :data-tid="`library-saved-${item.id}`"
-          >
-            <a
-              v-if="item.available && item.url"
-              :href="item.url"
-              target="_blank"
-              rel="noopener"
-            >
-              <img
-                v-if="item.thumbnailUrl"
-                :src="item.thumbnailUrl"
-                alt=""
-              >
-              <b>{{ item.title }}</b>
-            </a>
-            <div v-else>
-              <img
-                v-if="item.thumbnailUrl"
-                :src="item.thumbnailUrl"
-                alt=""
-              >
-              <b>{{ item.title }}</b>
-              <span>No longer available</span>
-            </div>
-            <small v-if="item.creator">{{ item.creator }}</small>
-          </article>
-        </div>
-        <div
-          v-else-if="sectionItems.length"
-          class="library__grid"
-        >
-          <library-card
-            v-for="item in sectionItems"
-            :key="item.id"
-            :item="item"
-            @print="printOn(item)"
-            @open="openInSlice(item)"
+        <template v-else>
+          <!-- Something you did didn't work (a delete, turning it on): said here, not at the foot of the page. -->
+          <library-state
+            v-if="error"
+            kind="callout"
+            :title="error"
+            tid="library-action-error"
           />
-        </div>
-        <div
-          v-else
-          class="lib-empty lib-surface library__state"
-          data-tid="library-section-empty"
-        >
-          <h2>Nothing here yet</h2>
-          <p>Use the full Library to discover and save models.</p>
-          <a
-            class="lib-btn lib-btn--ghost"
-            href="https://library.muon3d.com/library"
-            target="_blank"
-            rel="noopener"
-          >Open full Library ↗</a>
-        </div>
-      </section>
 
-      <template v-else-if="state.synced && everything.length > 0">
-        <section
-          v-if="recent.length"
-          class="library__recent"
-          aria-label="Pick up where you left off"
-        >
-          <div class="library__section-head">
-            <h2>Pick up where you left off</h2>
-            <span>From Slice and your printers</span>
-          </div>
-          <div class="library__recent-row">
-            <library-recent-card
-              v-for="item in recent"
-              :key="item.id"
-              :item="item"
-              :to="printTo(item)"
-              :fit="activeFit(item)"
-              :printer-name="activePrinter ? activePrinter.name : ''"
-              @print="printOn(item, $event && activePrinter ? activePrinter.id : null)"
-            />
-          </div>
-        </section>
+          <!-- It didn't answer before anything was read: the whole of Yours says so, with Try again. -->
+          <library-state
+            v-if="signedIn && state.error && !state.synced && !deleting"
+            kind="error"
+            icon="alert"
+            title="Your Library didn't answer"
+            :text="state.error"
+            action="Try again"
+            primary
+            tid="library-error"
+            @action="refresh"
+          />
+          <!-- It stopped answering later: what is shown stays, with Retry above it. -->
+          <library-state
+            v-else-if="signedIn && state.error && !deleting"
+            kind="callout"
+            :title="`Your Library didn't answer: ${state.error}`"
+            action="Retry"
+            tid="library-error"
+            @action="refresh"
+          />
 
-        <div class="library__bar">
+          <!-- The one real "off": a deletion is pending. -->
+          <library-state
+            v-else-if="state.checked && !state.enabled && purgeDay"
+            icon="lock"
+            title="Your Library is being deleted"
+            :text="`Everything in it goes on ${purgeDay}. Turn it back on before then to keep it.`"
+            :action="promise ? 'Keep my Library' : ''"
+            primary
+            tid="library-off"
+            @action="turnOnOnce"
+          />
+          <!-- Off for another reason (turning it on for you failed, or this Control can't show the promise). -->
+          <library-state
+            v-else-if="state.checked && !state.enabled && !consentDue"
+            icon="library"
+            :title="offTitle"
+            :text="offText"
+            :action="promise ? 'Turn it on' : ''"
+            primary
+            tid="library-off"
+            @action="turnOnOnce"
+          />
+
+          <!-- Being read, or being turned on for you (KAN-735): skeletons in the final layout, not a line of text. -->
           <div
-            class="library__chips"
-            role="group"
-            aria-label="Show"
+            v-else-if="!state.checked || consentDue"
+            class="mlib-shelf"
+            role="status"
+            data-tid="library-reading"
           >
-            <button
-              v-for="chip in chips"
-              :key="chip.id"
-              type="button"
-              class="lib-chip"
-              :class="{ 'lib-chip--on': filter === chip.id }"
-              :aria-pressed="filter === chip.id ? 'true' : 'false'"
-              :data-tid="`library-chip-${chip.id}`"
-              @click="filter = chip.id"
-            >
-              {{ chip.label }}<span
-                v-if="chip.count !== null"
-                class="lib-chip__n"
-              >{{ chip.count }}</span>
-            </button>
+            <span class="mlib-hidden">Reading your Library</span>
+            <div class="mlib-shelf__row">
+              <span
+                v-for="n in 5"
+                :key="n"
+                class="mlib-skeleton-card"
+              >
+                <span class="mlib-skeleton" />
+                <span class="mlib-skeleton mlib-skeleton--line" />
+              </span>
+            </div>
           </div>
-          <label class="library__sort">
-            <select
-              v-model="sort"
-              aria-label="Sort"
-              data-tid="library-sort"
-            >
-              <option value="recent">Recently changed</option>
-              <option value="name">By name</option>
-            </select>
-            <frame-icon
-              name="chevronDown"
-              small
-            />
-          </label>
-        </div>
-
-        <div
-          class="library__grid"
-          data-tid="library-grid"
-        >
-          <library-card
-            v-for="item in shown"
-            :key="item.id"
-            :item="item"
-            @print="printOn(item)"
-            @open="openInSlice(item)"
-            @rename="rename(item)"
-            @copy="copy(item)"
-            @download-gcode="downloadGcode(item, $event)"
-            @download-project="downloadProject(item)"
-            @delete="remove(item)"
-          />
-          <router-link
-            v-if="!query && filter === 'all'"
-            to="/slice"
-            class="library__add"
-            data-tid="library-add"
-          >
-            <frame-icon
-              name="slice"
-              large
-            />
-            <b>Add from Slice</b>
-            <span>Slice a model and press Save. Saving again keeps a new version of the same print.</span>
-          </router-link>
-        </div>
-        <p
-          v-if="!shown.length"
-          class="library__note"
-        >
-          {{ query ? `Nothing in your Library matches "${query}".` : 'Nothing here.' }}
-        </p>
+        </template>
       </template>
-    </template>
+    </muon-library>
 
+    <!-- On Yours an action's error is a callout in the page (above); elsewhere it shows here. -->
     <p
-      v-if="error"
+      v-if="error && !errorOnYours"
       class="library__note library__note--error"
       role="alert"
     >
       {{ error }}
     </p>
+
+    <cloud-account-dialog
+      v-if="accountDialog"
+      v-model="accountDialog"
+    />
 
     <print-on-dialog
       :item="printing"
@@ -451,58 +175,298 @@
 import Vue from 'vue'
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import BrowserMixin from '@/mixins/browser'
-import LibraryPageMixin, { type LibraryFilter } from '@/mixins/library-page'
+import LibraryPageMixin from '@/mixins/library-page'
 import { storedToken } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
-import LibraryCard from '@/components/library/LibraryCard.vue'
-import LibraryDiscover from '@/components/library/LibraryDiscover.vue'
-import LibraryRecentCard from '@/components/library/LibraryRecentCard.vue'
+import MuonLibrary, { type LibraryPrintRequest, type LibraryTab } from '@/components/library/v2/MuonLibrary.vue'
+import LibrarySharePage from '@/components/library/v2/LibrarySharePage.vue'
+import LibraryState from '@/components/library/v2/LibraryState.vue'
+import type { GridSource } from '@/services/library/shelves'
+import type { Dictionary } from 'vue-router/types/router'
 import PrintOnDialog from '@/components/library/PrintOnDialog.vue'
+import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
 import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
-import { describeLibraryError, LibraryError, savedRows, type LibraryItem, type LibraryRun, type LibrarySections, type SavedRow } from '@/services/library/api'
-import { libraryClient, libraryState, turnLibraryOn } from '@/services/library/store'
-
-type Section = 'all' | 'printed' | 'sliced' | 'saved'
+import { describeLibraryError, type LibraryItem, type LibraryRun } from '@/services/library/api'
+import { libraryState, turnLibraryOn } from '@/services/library/store'
+import { YOURS_GRIDS, type YoursGridSource } from '@/components/library/v2/LibraryYoursGrid.vue'
+import { readRecents, type RecentEntry } from '@/services/library/recents'
 
 /** Automatic consent, by account: asked once per app session, whichever page instance asked (KAN-735). */
 export const autoConsent = Vue.observable({ asked: {} as Record<string, 'pending' | 'done' | 'failed'> })
 
 /**
- * Your Library (`/library`): every print saved from Slice, and the models
- * the phone app keeps, in the account, whichever printer Fluidd is on. A
- * card opens the print's own page; its menu prints it, opens it in Slice,
- * renames, copies, downloads or deletes it. Off (deletion pending) or empty, the
- * page says what to do instead.
- *
- * Only the look is here: what the page does is mixins/library-page.ts, a
- * card is LibraryCard, Print on… is PrintOnDialog.
+ * The Library page (`/library`): Discover, or Yours (Library v3, page 2) —
+ * Continue, Collections, then your Sliced, Printed, Saved, Shared and Designs
+ * shelves, each with See all. MuonLibrary draws both; this page keeps the
+ * place in the address, says what to do when Yours cannot show (signed out,
+ * off, reading, an error), and does what a card asks: Print on…, Print again,
+ * Slice, or the print's own page.
  */
-@Component({ components: { LibraryCard, LibraryDiscover, LibraryRecentCard, PrintOnDialog, FileNameDialog } })
+@Component({ components: { MuonLibrary, LibrarySharePage, LibraryState, PrintOnDialog, FileNameDialog, CloudAccountDialog } })
 export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
-  section: Section = 'all'
-  sections: LibrarySections | null = null
-  runs: LibraryRun[] = []
-  sectionItems: LibraryItem[] = []
-  savedItems: SavedRow[] = []
-  sectionBusy = false
-  sectionError = ''
-  savedAvailable = true
-
-  readonly views = [
-    { id: 'discover' as const, label: 'Discover' },
-    { id: 'mine' as const, label: 'Your Library' }
-  ]
-
   /**
    * Discover or your own Library: as the address says, else yours once you're
    * signed in. While a saved session is still being restored it is yours too,
    * so a signed-in start doesn't flash Discover first.
    */
   get view (): 'discover' | 'mine' {
-    if (!this.mineShown) return 'discover'
     const asked = this.$route?.query.view
     if (asked === 'discover' || asked === 'mine') return asked
-    return 'mine'
+    return this.mineShown ? 'mine' : 'discover'
+  }
+
+  /**
+   * A See all page or search results, from the address (`?shelf=popular`,
+   * `?shelf=search&q=…`), or a Yours shelf's See all (`?view=mine&shelf=sliced`).
+   */
+  get grid (): GridSource | YoursGridSource | null {
+    const shelf = this.$route?.query.shelf
+    if (typeof shelf !== 'string') return null
+    if (this.view === 'mine') return YOURS_GRIDS.includes(shelf as YoursGridSource) ? shelf as YoursGridSource : null
+    return shelf === 'popular' || shelf === 'm1' || shelf === 'new' || shelf === 'search' ? shelf : null
+  }
+
+  /** A collection's page on Yours (`?view=mine&collection=<id>`). */
+  get collection (): string | null {
+    const id = this.$route?.query.collection
+    return this.view === 'mine' && typeof id === 'string' && id ? id : null
+  }
+
+  /** Share a print (`?share=<id>`, or `new` to choose one), over Yours. */
+  get shareId (): string | null {
+    const id = this.$route?.query.share
+    return typeof id === 'string' && id ? id : null
+  }
+
+  shareOpenedHere = false
+
+  openShare (id: string) {
+    this.shareOpenedHere = true
+    this.$router.push({ query: { view: 'mine', share: id } }).catch(() => {})
+  }
+
+  /** ‹ Yours on Share a print: back where it was opened, else Yours. */
+  shareBack () {
+    // From one of your prints (its Share…): to that print's page, whatever history holds.
+    if (this.$route.query.from === 'print' && this.shareId && this.shareId !== 'new') {
+      this.$router.replace(this.printTo({ id: this.shareId } as LibraryItem)).catch(() => {})
+      return
+    }
+    // Opened here: back where it was.
+    if (this.shareOpenedHere) {
+      this.shareOpenedHere = false
+      this.$router.back()
+      return
+    }
+    this.$router.replace({ query: { view: 'mine' } }).catch(() => {})
+  }
+
+  /** The Library is being deleted: that is what Yours says, whatever else did not answer. */
+  get deleting (): boolean {
+    return libraryState.checked && !libraryState.enabled && !!this.purgeDay
+  }
+
+  /**
+   * The Share page replaces the Library only for a signed-in person whose
+   * Library is on; otherwise `?share=` is ignored and Yours shows.
+   */
+  get shareShown (): boolean {
+    return this.shareId !== null && this.signedIn && libraryState.enabled
+  }
+
+  /**
+   * Yours' home (the callout's place) is on screen, as MuonLibrary draws it:
+   * not Share, a print's page (any state), a collection's page or a See all
+   * (both signed in only), and signed in, not the signed-out tile.
+   */
+  get yoursHome (): boolean {
+    if (this.view !== 'mine' || this.shareShown || this.printId) return false
+    if (this.collection && this.signedIn) return false
+    if (this.grid && this.signedIn && ((libraryState.checked && libraryState.enabled) || this.grid === 'saved')) return false
+    return this.mineShown
+  }
+
+  /** The action's error is the callout on Yours' home; everywhere else it is the foot note, so never twice and never lost. */
+  get errorOnYours (): boolean {
+    return this.yoursHome
+  }
+
+  /** Signing out takes an old error with it (the next person has not done anything yet). */
+  @Watch('signedIn')
+  onSignedIn (signedIn: boolean) {
+    if (!signedIn) this.error = ''
+  }
+
+  /** Why the Library is off, said as it is: turned off on purpose, or turning it on for you failed. */
+  get offTitle (): string {
+    if (!this.promise) return 'Update Control to use your Library'
+    return libraryState.withdrawn ? 'Your Library is off' : 'Your Library isn\'t on yet'
+  }
+
+  get offText (): string {
+    if (!this.promise) return 'Your Library has a promise this version of Control cannot show.'
+    return libraryState.withdrawn
+      ? 'Turn it on to keep what you slice and print, in your account and on every printer.'
+      : 'It turns on for you when you sign in, and this time it didn\'t. Turn it on to keep what you slice and print.'
+  }
+
+  /** Keep my Library / Turn it on: a second click while the first is working does nothing. */
+  turnOnOnce () {
+    if (this.busy) return
+    return this.turnOn()
+  }
+
+  /** A print's own page (`?print=<id>`), on Discover or Yours. */
+  get printId (): string | null {
+    const id = this.$route?.query.print
+    return typeof id === 'string' && id ? id : null
+  }
+
+  /**
+   * The site's Print button (`&do=print` beside `print=<id>`): the model's
+   * page opens Print on… once. A bare `print=` only shows the model.
+   */
+  get autoPrint (): boolean {
+    return !!this.printId && this.$route?.query.do === 'print'
+  }
+
+  /** Handled (opened, no file, or unavailable): `do` leaves the address, the model's page stays, so a reload or Back opens nothing. */
+  onAutoPrinted () {
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query }
+    delete query.do
+    this.$router.replace({ query }).catch(() => {})
+  }
+
+  /** Off the print's pages (Back, the switch, a grid, a collection): nothing of ours to go back through. */
+  @Watch('printId')
+  onPrintId (id: string | null) {
+    if (!id) this.printDepth = 0
+  }
+
+  /**
+   * How many print's pages this page pushed, one on another (a make opened
+   * from a print's page is one more): ‹ goes back through them, then to the
+   * place under them. Leaving the print's pages any other way starts it again.
+   */
+  printDepth = 0
+
+  /** Open page: the print's page, pushed so Back returns to where it was opened. */
+  openPrint (id: string) {
+    // The print already open adds no page, so nothing to go back through.
+    if (id === this.printId) return
+    // Another model is not the link's Print: `do` does not follow it.
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, print: id }
+    delete query.do
+    this.$router.push({ query })
+      .then(() => { this.printDepth++ })
+      .catch(() => {})
+  }
+
+  /** ‹ on a print's page: back where it came from, or (opened by its address) to the place under it. */
+  printBack () {
+    if (this.printDepth > 0) {
+      this.printDepth--
+      this.$router.back()
+      return
+    }
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query }
+    delete query.print
+    delete query.do
+    this.$router.replace({ query }).catch(() => {})
+  }
+
+  /** Deleted on its page: Yours replaces it in history, so Back cannot return to it. */
+  collectionDeleted () {
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view: 'mine' }
+    delete query.collection
+    if (this.gridOpenedHere) {
+      this.gridOpenedHere = false
+      this.$router.back()
+      return
+    }
+    this.$router.replace({ query }).catch(() => {})
+  }
+
+  /** A collection tile: its page, pushed so Back returns to Yours. */
+  openCollection (id: string) {
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view: 'mine', collection: id }
+    delete query.shelf
+    delete query.q
+    delete query.print
+    this.gridOpenedHere = true
+    this.$router.push({ query }).catch(() => {})
+  }
+
+  get searchQuery (): string {
+    const q = this.$route?.query.q
+    return typeof q === 'string' ? q : ''
+  }
+
+  /** Whether this page opened the grid itself (then ‹ Discover is the browser's Back). */
+  gridOpenedHere = false
+
+  /**
+   * A grid in the address. Opening one from Discover is pushed, so Back
+   * returns to the shelves; changing the grid's sort replaces, so it adds
+   * no history.
+   */
+  setGrid (grid: GridSource | YoursGridSource | null, q?: string) {
+    const rest = { ...this.$route.query }
+    delete rest.shelf
+    delete rest.q
+    delete rest.collection
+    delete rest.print
+    delete rest.category
+    const view = YOURS_GRIDS.includes(grid as YoursGridSource) ? 'mine' : 'discover'
+    const query = grid ? { ...rest, view, shelf: grid, ...(grid === 'search' ? { q: q ?? this.searchQuery } : {}) } : rest
+    if (this.grid && grid) {
+      this.$router.replace({ query }).catch(() => {})
+      return
+    }
+    if (grid) this.gridOpenedHere = true
+    this.$router.push({ query }).catch(() => {})
+  }
+
+  /** A search, from Discover or the results page itself. */
+  openSearch (q: string) {
+    this.setGrid('search', q)
+  }
+
+  /** ‹ Discover: back where it came from, or Discover when the grid was opened by its address. */
+  gridBack () {
+    if (this.gridOpenedHere) {
+      this.gridOpenedHere = false
+      this.$router.back()
+      return
+    }
+    this.setGrid(null)
+  }
+
+  /** Discover or Yours, kept in the address so Back and a shared link land on it. */
+  setView (tab: LibraryTab) {
+    const view = tab === 'yours' ? 'mine' : 'discover'
+    if (view === this.view && !this.grid && !this.collection && !this.printId) return
+    // A place starts at its top: no See all or search left in the address.
+    const query: Dictionary<string | (string | null)[]> = { ...this.$route.query, view }
+    delete query.shelf
+    delete query.q
+    delete query.collection
+    delete query.print
+    this.$router.replace({ query }).catch(() => {})
+  }
+
+  /**
+   * Print from a Discover card (Library v2): a public print with a G-code
+   * goes to Print on…, which checks each printer and the file's checksum.
+   */
+  onLibraryPrint (request: LibraryPrintRequest) {
+    if (!request.print) return
+    // The G-code comes over the share route, which reads as an account.
+    if (!this.signedIn) {
+      this.accountDialog = true
+      return
+    }
+    this.printOn(request.print.item as unknown as LibraryItem, request.printerId)
   }
 
   /** Your Library is there only signed in (or while a saved session is restored); signed out it's Discover alone (KAN-735). */
@@ -540,70 +504,6 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     }
   }
 
-  get sectionTabs (): Array<{ id: Section, label: string, count: number }> {
-    const counts = this.sections
-    return [
-      { id: 'all' as Section, label: 'All', count: counts?.all ?? this.everything.length },
-      { id: 'printed' as Section, label: 'Printed', count: counts?.printed ?? 0 },
-      { id: 'sliced' as Section, label: 'Sliced', count: counts?.sliced ?? 0 },
-      ...(this.savedAvailable ? [{ id: 'saved' as Section, label: 'Saved', count: counts?.saved ?? 0 }] : [])
-    ]
-  }
-
-  @Watch('state.enabled', { immediate: true })
-  onLibraryEnabled (enabled: boolean) {
-    if (enabled) this.loadSections()
-  }
-
-  async loadSections () {
-    try {
-      this.sections = await libraryClient().sections()
-    } catch (error) {
-      // The item list remains useful if an older service has no section summary.
-    }
-  }
-
-  selectSection (section: Section) {
-    this.section = section
-    if (section !== 'all') this.loadSection()
-  }
-
-  /** The newest load of a section: an older, slower answer must not overwrite it. */
-  private sectionLoad = 0
-
-  async loadSection () {
-    const load = ++this.sectionLoad
-    const section = this.section
-    this.sectionBusy = true
-    this.sectionError = ''
-    this.sectionItems = []
-    this.savedItems = []
-    this.runs = []
-    try {
-      if (this.section === 'printed') {
-        const page = await libraryClient().runs()
-        if (load !== this.sectionLoad) return
-        this.runs = Array.isArray(page.runs) ? page.runs : []
-      } else if (this.section === 'sliced') {
-        const page = await libraryClient().sliced()
-        if (load !== this.sectionLoad) return
-        this.sectionItems = Array.isArray(page.items) ? page.items.filter(item => item.state !== 'deleted' && !item.deleted_at) : []
-      } else if (this.section === 'saved') {
-        const saved = savedRows(await libraryClient().saved())
-        if (load !== this.sectionLoad) return
-        this.savedItems = saved
-      }
-    } catch (error) {
-      if (load !== this.sectionLoad) return
-      if (section === 'saved' && error instanceof LibraryError && error.status === 404) {
-        this.savedAvailable = false
-        this.section = 'all'
-      } else this.sectionError = describeLibraryError(error)
-    } finally {
-      if (load === this.sectionLoad) this.sectionBusy = false
-    }
-  }
-
   /** Only a run whose print is still in the Library, and whose version is known, can be printed again. */
   canPrintAgain (run: LibraryRun): boolean {
     return !!run.item_id && run.in_library && (run.version ?? run.item?.version ?? null) !== null
@@ -613,22 +513,42 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
     return { path: '/print', query: { library: run.item_id as string, version: String(run.version ?? run.item?.version) } }
   }
 
-  relativeTime (value: string): string {
-    const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
-    if (seconds < 60) return 'just now'
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-    return `${Math.floor(seconds / 86400)}d ago`
+  /** Printed's Print again: the print hand-off, for that version. */
+  onPrintRun (run: LibraryRun) {
+    if (this.canPrintAgain(run)) this.$router.push(this.printAgain(run)).catch(() => {})
   }
 
-  get chips (): Array<{ id: LibraryFilter, label: string, count: number | null }> {
-    const chips: Array<{ id: LibraryFilter, label: string, count: number | null }> = [
-      { id: 'all', label: 'All', count: this.everything.length },
-      { id: 'prints', label: 'Prints', count: this.prints.length }
-    ]
-    if (this.models.length) chips.push({ id: 'models', label: 'Models', count: this.models.length })
-    if (this.activePrinter) chips.push({ id: 'fits', label: `Fits ${this.activePrinter.name} now`, count: null })
-    return chips
+  /**
+   * Continue is what this device opened last (kept in this browser, not in the
+   * account). One of your own prints counts only signed in, and not once the
+   * synced Library no longer has it; a public model counts whoever is here.
+   */
+  get continueRecent (): RecentEntry | null {
+    return readRecents().find(entry => entry.kind === 'publication' ||
+      // A print of yours shows only once this account's list is read and holds it:
+      // never while it loads, after a failed read, or with Library saving off.
+      (this.signedIn && this.state.synced && !!this.everything.find(item => item.id === entry.id))) ?? null
+  }
+
+  /** The print behind Continue when it is one of yours, for Print again. */
+  get continueItem (): LibraryItem | null {
+    const entry = this.continueRecent
+    return entry && entry.kind === 'own' ? this.prints.find(item => item.id === entry.id) ?? null : null
+  }
+
+  /** Continue's Open: one of yours goes to its own page, a public model to its page here. */
+  openRecent (entry: RecentEntry) {
+    if (entry.kind === 'own') this.$router.push(this.printTo({ id: entry.id } as LibraryItem)).catch(() => {})
+    else this.openPrint(entry.id)
+  }
+
+  /** A Yours card's picture or Continue's Open: the print's own page. */
+  openItem (item: LibraryItem) {
+    this.$router.push(this.printTo(item)).catch(() => {})
+  }
+
+  goSlice () {
+    this.$router.push('/slice').catch(() => {})
   }
 }
 </script>
@@ -647,293 +567,6 @@ export default class Library extends Mixins(LibraryPageMixin, BrowserMixin) {
   .library--phone {
     gap: 16px;
     padding: 4px 0 24px;
-  }
-
-  .library__views {
-    display: flex;
-    gap: 6px;
-  }
-
-  .library__view {
-    padding: 8px 16px;
-    border-radius: 999px;
-    color: var(--m3d-text-muted) !important;
-    font-size: 14px;
-    font-weight: 600;
-    text-decoration: none;
-
-    &:hover {
-      background: var(--m3d-hover);
-      color: var(--m3d-text) !important;
-    }
-  }
-
-  .library__view--on {
-    background: var(--m3d-accent-soft);
-    color: var(--m3d-accent) !important;
-  }
-
-  .library__head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px 16px;
-  }
-
-  .library__titles {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-
-    h1 {
-      margin: 0;
-      font-family: var(--m3d-font-display);
-      font-size: 30px;
-      font-weight: 400;
-      letter-spacing: 0.01em;
-      line-height: 1.1;
-    }
-
-    p {
-      margin: 0;
-      color: var(--m3d-text-muted);
-      font-size: 14px;
-    }
-
-    a {
-      align-self: flex-start;
-    }
-  }
-
-  .library--phone .library__titles h1 {
-    font-size: 24px;
-  }
-
-  .library__find {
-    width: 340px;
-  }
-
-  .library--phone .library__find {
-    width: 100%;
-  }
-
-  .library__tabs {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0 24px;
-    border-bottom: 1px solid var(--m3d-border);
-  }
-
-  // Four tabs and the storage line do not fit a phone side by side: the
-  // storage line goes under the tabs instead of widening the page.
-  .library--phone .library__tabs {
-    gap: 0 16px;
-  }
-
-  .library--phone .library__grow {
-    display: none;
-  }
-
-  .library--phone .library__storage {
-    flex: 1 0 100%;
-    padding: 2px 0 10px;
-  }
-
-  .library__tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 44px;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    color: var(--m3d-text-subtle);
-    font-size: 15px;
-    font-weight: 600;
-    background: transparent;
-    cursor: pointer;
-  }
-
-  .library__tab--on {
-    border-bottom-color: var(--m3d-accent);
-    color: var(--m3d-text);
-  }
-
-  .library__grow {
-    flex: 1 1 auto;
-  }
-
-  .library__section,
-  .library__runs {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .library__runs {
-    padding: 4px 16px;
-  }
-
-  .library__run {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 0;
-    border-bottom: 1px solid var(--m3d-border);
-
-    &:last-child { border-bottom: 0; }
-  }
-
-  .library__run-main {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 3px;
-
-    b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    span, small { color: var(--m3d-text-subtle); }
-  }
-
-  .library__outcome { text-transform: capitalize; }
-  .library__outcome--finished { color: var(--m3d-success); }
-  .library__outcome--failed { color: var(--m3d-danger); }
-  .library__outcome--running { color: var(--m3d-accent); }
-
-  .library--phone .library__run {
-    grid-template-columns: minmax(0, 1fr) auto;
-
-    .lib-btn { grid-column: 1 / -1; }
-  }
-
-  .library__storage {
-    color: var(--m3d-text-subtle);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .library__state {
-    max-width: 560px;
-    width: 100%;
-    margin: 24px auto 0;
-  }
-
-  .library__warn {
-    color: var(--m3d-warning) !important;
-  }
-
-  .library__recent {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .library__section-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 4px 12px;
-
-    h2 {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 600;
-    }
-
-    span {
-      color: var(--m3d-text-subtle);
-      font-size: 13px;
-    }
-  }
-
-  .library__recent-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-    gap: 14px;
-  }
-
-  .library--phone .library__recent-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .library__bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .library__chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .library__sort {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--m3d-text-muted);
-    font-size: 13px;
-
-    select {
-      appearance: none;
-      padding-right: 2px;
-      border: 0;
-      outline: none;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      cursor: pointer;
-    }
-
-    option {
-      background: var(--m3d-surface);
-      color: var(--m3d-text);
-    }
-  }
-
-  .library__grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-    gap: 14px;
-  }
-
-  .library--phone .library__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-
-  .library__add {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    min-height: 240px;
-    padding: 18px;
-    border: 1.5px dashed var(--m3d-border-strong);
-    border-radius: 10px;
-    color: var(--m3d-text-subtle) !important;
-    text-align: center;
-    text-decoration: none;
-
-    b {
-      color: var(--m3d-text-muted);
-      font-size: 14px;
-    }
-
-    span {
-      font-size: 12px;
-    }
-
-    &:hover {
-      border-color: var(--m3d-accent-line);
-    }
   }
 
   .library__note {

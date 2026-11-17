@@ -4,7 +4,7 @@
 // Fluidd's host for Design (startDesignHost): the welcome grants Fluidd's
 // look and the account's Library, never a printer, and the Library's status
 // reaches the frame when it changes.
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { designCapabilities, startDesignHost } from '../host'
 import type { HostLibrary } from '@/services/slicer-bridge/vendor/printer-client/bridge/host'
 import type { HostLook, LibraryStatus } from '@/services/slicer-bridge/vendor/printer-client/bridge/protocol'
@@ -12,6 +12,9 @@ import type { HostLook, LibraryStatus } from '@/services/slicer-bridge/vendor/pr
 const ORIGIN = 'http://127.0.0.1:5173'
 const LOOK: HostLook = { theme: 'dark', tokens: {} }
 const STATUS: LibraryStatus = { signedIn: true, enabled: true, promise: null, preferences: { autosave: false, ask: true }, usedBytes: 0, quotaBytes: 1000 }
+const cleanups: Array<() => void> = []
+
+afterEach(() => cleanups.splice(0).forEach(close => close()))
 
 const library = (): HostLibrary => ({
   status: vi.fn(async () => STATUS),
@@ -65,7 +68,9 @@ function setup (options: { look?: HostLook, library?: HostLibrary } = { look: LO
     }
     throw new Error(`no ${name}`)
   }
-  return { host, frame, srcAfterListening, welcomes, send, answerTo, event, close: () => { p.close(); host.close() } }
+  const close = () => { p.close(); host.close() }
+  cleanups.push(close)
+  return { host, frame, srcAfterListening, welcomes, send, answerTo, event, close }
 }
 
 describe('Fluidd\'s host for Design', () => {

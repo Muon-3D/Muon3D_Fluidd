@@ -1,155 +1,268 @@
 <template>
   <div
     class="camera-page"
+    :class="{ 'camera-page--phone': isMobileViewport }"
     data-tid="camera-page"
     @keydown.esc="closeDetails"
   >
     <div
       v-if="camera"
-      ref="detailsBar"
-      class="camera-details-bar"
+      class="camera-grid"
     >
-      <button
-        ref="detailsTrigger"
-        type="button"
-        class="camera-details-trigger"
-        data-tid="camera-details-trigger"
-        :aria-expanded="detailsOpen ? 'true' : 'false'"
-        aria-controls="camera-details"
-        @click="toggleDetails"
+      <section
+        class="camera-tile camera-tile--stream"
+        data-tid="camera-tile"
       >
-        Stream info
-      </button>
-      <dl
-        v-show="detailsOpen"
-        id="camera-details"
-        ref="detailsPanel"
-        class="camera-details"
-        tabindex="-1"
-        aria-label="Stream information"
-      >
-        <div><dt>Service</dt><dd>{{ detail(camera.service) }}</dd></div>
-        <div><dt>Stream</dt><dd>{{ displayUrl(camera.stream_url) }}</dd></div>
-        <div><dt>Snapshot</dt><dd>{{ displayUrl(camera.snapshot_url) }}</dd></div>
-        <div><dt>Frame rate</dt><dd>{{ frameRate }}</dd></div>
-        <div><dt>Turned</dt><dd>{{ turnedText }}</dd></div>
-      </dl>
-    </div>
-
-    <div
-      v-if="camera"
-      ref="stage"
-      class="camera-stage"
-      data-tid="camera-stage"
-    >
-      <camera-item
-        ref="item"
-        :key="camera.uid"
-        :camera="camera"
-        fullscreen
-        class="camera-stage__item"
-      />
-
-      <div
-        class="camera-stage__live"
-        data-tid="camera-live"
-      >
-        <span class="camera-stage__dot" />
-        <strong>Live</strong>
-        <span v-if="facts && !isMobileViewport">{{ facts }}</span>
-      </div>
-
-      <div
-        v-if="hasLights || timelapseSupported"
-        class="camera-stage__side"
-      >
-        <button
-          v-if="hasLights"
-          type="button"
-          class="camera-stage__chip"
-          :aria-pressed="lightsOn ? 'true' : 'false'"
-          data-tid="camera-lights"
-          @click="setLights(!lightsOn)"
+        <div
+          v-if="cameras.length > 1 || isMobileViewport"
+          ref="detailsBar"
+          class="camera-tile__bar"
         >
-          <frame-icon
-            name="bulb"
-            small
+          <nav
+            v-if="cameras.length > 1"
+            class="camera-chips"
+            aria-label="Cameras"
+            data-tid="camera-chips"
+          >
+            <router-link
+              v-for="item in cameras"
+              :key="item.uid"
+              v-slot="{ href, navigate }"
+              :to="cameraTo(item)"
+              custom
+            >
+              <a
+                :href="href"
+                class="camera-chips__chip"
+                :class="{ 'camera-chips__chip--on': item.uid === camera.uid }"
+                :aria-current="item.uid === camera.uid ? 'page' : undefined"
+                @click="navigate"
+              >{{ item.name }}</a>
+            </router-link>
+          </nav>
+          <template v-if="isMobileViewport">
+            <button
+              ref="detailsTrigger"
+              type="button"
+              class="camera-tile__more"
+              aria-label="Stream info"
+              data-tid="camera-details-trigger"
+              :aria-expanded="detailsOpen ? 'true' : 'false'"
+              aria-controls="camera-details"
+              @click="toggleDetails"
+            >
+              <frame-icon name="more" />
+            </button>
+            <div
+              v-show="detailsOpen"
+              id="camera-details"
+              ref="detailsPanel"
+              class="camera-details camera-details--popover"
+              tabindex="-1"
+              aria-label="Stream information"
+            >
+              <b class="camera-details__name">{{ camera.name }}</b>
+              <dl class="camera-kv">
+                <div
+                  v-for="row in detailRows"
+                  :key="row.label"
+                >
+                  <dt>{{ row.label }}</dt><dd>{{ row.value }}</dd>
+                </div>
+              </dl>
+              <router-link
+                :to="settingsTo"
+                class="cbtn cbtn--wide"
+              >
+                Camera settings
+              </router-link>
+            </div>
+          </template>
+        </div>
+
+        <div
+          ref="stage"
+          class="camera-stage"
+          data-tid="camera-stage"
+          @error.capture="onStreamError"
+        >
+          <camera-item
+            ref="item"
+            :key="`${camera.uid}:${attempt}`"
+            :camera="camera"
+            fullscreen
+            class="camera-stage__item"
           />
-          {{ lightsOn ? 'Lights on' : 'Lights off' }}
-        </button>
-        <span
-          v-if="timelapseSupported"
-          class="camera-stage__chip camera-stage__chip--still"
+
+          <div
+            v-if="streamError"
+            class="camera-stage__error"
+            role="alert"
+            data-tid="camera-error"
+          >
+            <span class="camera-icon-square camera-icon-square--err">
+              <frame-icon name="alert" />
+            </span>
+            <b>Can't reach {{ camera.name || 'this camera' }}</b>
+            <span>The printer lists this camera, but its picture isn't coming through. Check it's plugged in, then try again.</span>
+            <button
+              type="button"
+              class="cbtn"
+              data-tid="camera-retry"
+              @click="retry"
+            >
+              <frame-icon
+                name="refresh"
+                small
+              />
+              Retry
+            </button>
+          </div>
+
+          <div
+            v-else
+            class="camera-stage__live"
+            data-tid="camera-live"
+          >
+            <span class="camera-stage__dot" />
+            <strong>Live</strong>
+            <span v-if="rateText">{{ rateText }}</span>
+          </div>
+
+          <div
+            v-if="hasLights"
+            class="camera-stage__side"
+          >
+            <button
+              type="button"
+              class="camera-stage__chip"
+              :aria-pressed="lightsOn ? 'true' : 'false'"
+              data-tid="camera-lights"
+              @click="setLights(!lightsOn)"
+            >
+              <frame-icon
+                name="bulb"
+                small
+              />
+              {{ lightsOn ? 'Lights on' : 'Lights off' }}
+            </button>
+          </div>
+
+          <div
+            v-if="!streamError"
+            class="camera-stage__glass"
+          >
+            <button
+              type="button"
+              class="camera-stage__pill"
+              data-tid="camera-stage-snapshot"
+              @click="snapshot"
+            >
+              <frame-icon
+                name="camera2"
+                small
+              />
+              Snapshot
+            </button>
+            <button
+              type="button"
+              class="camera-stage__pill"
+              data-tid="camera-stage-fullscreen"
+              @click="fillScreen"
+            >
+              <frame-icon
+                name="expand"
+                small
+              />
+              Full screen
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <aside
+        v-if="!isMobileViewport"
+        class="camera-tile camera-tile--info"
+        data-tid="camera-info"
+      >
+        <header class="camera-tile__head">
+          <frame-icon name="camera" />
+          <b>{{ camera.name || 'Camera' }}</b>
+        </header>
+        <dl
+          id="camera-details"
+          class="camera-kv"
+          aria-label="Stream information"
         >
-          Timelapse: {{ timelapseOn ? 'on' : 'off' }}
-        </span>
-      </div>
+          <div
+            v-for="row in detailRows"
+            :key="row.label"
+          >
+            <dt>{{ row.label }}</dt><dd>{{ row.value }}</dd>
+          </div>
+        </dl>
+        <p
+          v-if="hasLights && !lightsOn"
+          class="camera-tile__note"
+        >
+          Lights off makes the picture dark
+        </p>
+        <router-link
+          :to="settingsTo"
+          class="cbtn cbtn--wide"
+          data-tid="camera-settings"
+        >
+          Camera settings
+        </router-link>
+      </aside>
     </div>
 
     <div
       v-else
       class="camera-empty"
+      data-tid="camera-empty"
     >
-      <frame-icon name="camera" />
-      <p>This printer has no camera set up.</p>
+      <span class="camera-icon-square">
+        <frame-icon name="camera" />
+      </span>
+      <b>This printer has no camera set up</b>
+      <span>Plug one in, then add it in Settings › Cameras to watch your prints here.</span>
       <router-link
         :to="addTo"
-        class="cbtn"
+        class="cbtn cbtn--primary"
       >
         Add a camera
       </router-link>
     </div>
-
-    <template v-if="camera && isMobileViewport">
-      <p
-        v-if="facts"
-        class="camera-phone-facts"
-      >
-        {{ facts }}
-      </p>
-      <camera-actions class="camera-phone-actions" />
-    </template>
-
-    <p
-      v-if="camera"
-      class="camera-notes"
-    >
-      <span>
-        <template v-if="timelapseSupported">
-          Timelapses of finished prints are in
-          <router-link :to="timelapseTo">Jobs › Timelapse</router-link>.
-        </template>
-      </span>
-      <span
-        v-if="hasLights && !lightsOn"
-        class="camera-notes__aside"
-      >Lights off makes the picture dark</span>
-    </p>
   </div>
 </template>
 
 <script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import BrowserMixin from '@/mixins/browser'
 import OverviewMixin from '@/mixins/overview'
 import CameraItem from '@/components/widgets/camera/CameraItem.vue'
-import CameraActions from '@/components/camera/CameraActions.vue'
 import { jobTitle } from '@/services/jobs/model'
 import { EventBus } from '@/eventBus'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import { cameraFor, liveFacts, snapshotName, snapshotPlan } from '@/services/camera/model'
+import { cameraPage } from '@/services/camera/page-state'
 import type { WebcamConfig } from '@/store/webcams/types'
 
 /**
- * Camera (`/boxwood-367a/camera/front`): the picture as big as the page
- * allows, with what's printing over it and the lights beside it. Snapshot
- * saves a frame; Full screen (F) fills the screen. Stream info opens beside
- * the picture without exposing credentials carried in its addresses.
+ * Camera (`/boxwood-367a/camera/front`), v3: the picture full-bleed in a
+ * 9-column tile, with Snapshot and Full screen (F) on it and one chip per
+ * camera above it when there are several. Its stream info sits in a side
+ * tile (on a phone, in the tile's ··· menu), without the credentials its
+ * addresses may carry. What's printing is the header's second line.
  */
-@Component({ components: { CameraActions, CameraItem } })
+@Component({ components: { CameraItem } })
 export default class Camera extends Mixins(OverviewMixin, BrowserMixin) {
   detailsOpen = false
+  /** The stream's picture failed to load; Retry draws it again. */
+  streamError = false
+  attempt = 0
 
   get cameras (): WebcamConfig[] {
     return this.$store.getters['webcams/getEnabledWebcams'] as WebcamConfig[]
@@ -171,6 +284,61 @@ export default class Camera extends Mixins(OverviewMixin, BrowserMixin) {
     })
   }
 
+  /** "Live view of Boxwood · M1 bracket · 44% · 49m left", under the title. */
+  get headerLine (): string {
+    if (!this.camera) return ''
+    const facts = this.facts
+    return `Live view of ${this.printerName}${facts ? ` · ${facts}` : ''}`
+  }
+
+  @Watch('headerLine', { immediate: true })
+  onHeaderLine (line: string) {
+    cameraPage.subtitle = line
+  }
+
+  @Watch('camera')
+  onCameraChange () {
+    this.streamError = false
+  }
+
+  get detailRows (): Array<{ label: string, value: string }> {
+    const camera = this.camera
+    if (!camera) return []
+    return [
+      { label: 'Service', value: this.detail(camera.service) },
+      { label: 'Stream', value: this.displayUrl(camera.stream_url) },
+      { label: 'Snapshot', value: this.displayUrl(camera.snapshot_url) },
+      { label: 'Frame rate', value: this.frameRate },
+      { label: 'Turned', value: this.turnedText },
+      ...(this.timelapseSupported ? [{ label: 'Timelapse', value: this.timelapseOn ? 'On' : 'Off' }] : [])
+    ]
+  }
+
+  /** The rate the camera is set to stream at, beside Live. */
+  get rateText (): string {
+    const fps = this.camera?.target_fps
+    return fps ? `${fps} fps` : ''
+  }
+
+  cameraTo (camera: WebcamConfig): string {
+    return scopedPath(`/camera/${encodeURI(camera.uid)}`, activeSlug())
+  }
+
+  get settingsTo (): string {
+    return this.addTo
+  }
+
+  /** An image or video in the stage that couldn't load: the camera's address doesn't answer. */
+  onStreamError (event: Event) {
+    const target = event.target
+    if (target instanceof HTMLImageElement || target instanceof HTMLVideoElement) this.streamError = true
+  }
+
+  retry () {
+    this.streamError = false
+    this.attempt++
+  }
+
   get lightsOn (): boolean {
     return this.lightsValue > 0
   }
@@ -181,10 +349,6 @@ export default class Camera extends Mixins(OverviewMixin, BrowserMixin) {
 
   get timelapseOn (): boolean {
     return !!this.$store.state.timelapse?.settings?.enabled
-  }
-
-  get timelapseTo (): string {
-    return scopedPath('/timelapse', activeSlug())
   }
 
   get addTo (): string {
@@ -242,6 +406,7 @@ export default class Camera extends Mixins(OverviewMixin, BrowserMixin) {
   }
 
   beforeDestroy () {
+    cameraPage.subtitle = ''
     EventBus.bus.$off('camera-snapshot', this.snapshot)
     EventBus.bus.$off('camera-fullscreen', this.fillScreen)
     document.removeEventListener('click', this.onDocumentClick)
@@ -346,10 +511,140 @@ function frameOf (element: Element | undefined, turn: Parameters<typeof snapshot
 </script>
 
 <style lang="scss" scoped>
-  .camera-page {
+  .camera-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  .camera-tile {
+    position: relative;
+    border-radius: 22px;
+    background: var(--m3d-surface);
+  }
+
+  .camera-tile--stream {
+    grid-column: span 9;
+    overflow: hidden;
+  }
+
+  .camera-tile--info {
+    grid-column: span 3;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px;
+  }
+
+  .camera-tile__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+
+    .frame-icon {
+      color: var(--m3d-text-muted);
+    }
+  }
+
+  .camera-tile__bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 18px;
+  }
+
+  .camera-tile__more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin-left: auto;
+    border: 0;
+    border-radius: 10px;
+    background: var(--m3d-surface-raised, transparent);
+    color: var(--m3d-text);
+    cursor: pointer;
+  }
+
+  .camera-tile__note {
+    margin: 0;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+  }
+
+  .camera-chips {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .camera-chips__chip {
+    flex: none;
+    padding: 6px 14px;
+    border: 1px solid var(--m3d-border, rgba(127, 127, 127, 0.3));
+    border-radius: 999px;
+    color: var(--m3d-text-muted) !important;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .camera-chips__chip--on {
+    border-color: var(--m3d-accent);
+    background: var(--m3d-accent);
+    color: var(--m3d-on-accent, #00201e) !important;
+  }
+
+  .camera-kv {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+
+    > div {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    dt {
+      flex: none;
+      color: var(--m3d-text-muted);
+      font-size: 13px;
+    }
+
+    dd {
+      min-width: 0;
+      margin: 0;
+      font-size: 13px;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .camera-details--popover {
+    position: absolute;
+    z-index: 5;
+    top: calc(100% - 4px);
+    right: 12px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    width: min(340px, calc(100vw - 48px));
+    padding: 16px 18px;
+    border-radius: 18px;
+    background: var(--m3d-surface);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  }
+
+  .cbtn--wide {
+    justify-content: center;
   }
 
   .camera-stage {
@@ -357,59 +652,12 @@ function frameOf (element: Element | undefined, turn: Parameters<typeof snapshot
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 240px;
+    min-height: 420px;
     overflow: hidden;
-    border-radius: 22px;
-    background: var(--m3d-surface);
-  }
-
-  .camera-details-bar {
-    position: relative;
-    display: flex;
-    align-items: center;
-    min-height: 32px;
-  }
-
-  .camera-details-trigger {
-    padding: 6px 12px;
-    border: 1px solid var(--m3d-border, currentColor);
-    border-radius: 10px;
-    background: var(--m3d-surface);
-    color: var(--m3d-text);
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .camera-details {
-    position: absolute;
-    z-index: 5;
-    top: calc(100% + 6px);
-    right: 0;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(160px, 1fr));
-    gap: 12px;
-    width: min(520px, calc(100vw - 32px));
-    margin: 0;
-    padding: 16px 20px;
-    border-radius: 18px;
-    background: var(--m3d-surface);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
-
-    dt {
-      color: var(--m3d-text-muted);
-      font-size: 12px;
-    }
-
-    dd {
-      margin: 2px 0 0;
-      font-family: var(--m3d-font-mono, monospace);
-      font-size: 12px;
-      word-break: break-all;
-    }
+    background: #0b0d0e;
   }
 
   .camera-stage:fullscreen {
-    border-radius: 0;
     background: #000;
   }
 
@@ -417,7 +665,7 @@ function frameOf (element: Element | undefined, turn: Parameters<typeof snapshot
     width: 100%;
     background: transparent !important;
 
-    // The page's camera tabs provide its name; this page offers stream details.
+    // The tile's chips name the camera and its side tile describes the stream.
     :deep(.camera-name),
     :deep(.camera-frames),
     :deep(.camera-fullscreen) {
@@ -425,8 +673,11 @@ function frameOf (element: Element | undefined, turn: Parameters<typeof snapshot
     }
 
     :deep(.camera-image) {
-      max-height: calc(100vh - 260px);
+      display: block;
+      width: 100%;
+      max-height: calc(100vh - 230px);
       margin: 0 auto;
+      object-fit: contain;
     }
   }
 
@@ -435,24 +686,23 @@ function frameOf (element: Element | undefined, turn: Parameters<typeof snapshot
   }
 
   .camera-stage__live,
-  .camera-stage__side {
+  .camera-stage__side,
+  .camera-stage__glass {
     position: absolute;
-    top: 14px;
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
-    max-width: calc(100% - 28px);
-    padding: 8px 14px;
     border-radius: 14px;
-    background: rgba(20, 22, 24, 0.72);
+    background: rgba(20, 22, 24, 0.62);
     backdrop-filter: blur(10px);
     color: #fff;
     font-size: 13px;
   }
 
   .camera-stage__live {
+    top: 14px;
     left: 14px;
+    padding: 7px 12px;
 
     span:last-child:not(.camera-stage__dot) {
       color: rgba(255, 255, 255, 0.78);
@@ -460,7 +710,14 @@ function frameOf (element: Element | undefined, turn: Parameters<typeof snapshot
   }
 
   .camera-stage__side {
+    top: 14px;
     right: 14px;
+    padding: 4px;
+  }
+
+  .camera-stage__glass {
+    right: 14px;
+    bottom: 14px;
     padding: 4px;
   }
 
@@ -471,7 +728,8 @@ function frameOf (element: Element | undefined, turn: Parameters<typeof snapshot
     background: var(--m3d-danger, #ef4444);
   }
 
-  .camera-stage__chip {
+  .camera-stage__chip,
+  .camera-stage__pill {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -480,69 +738,69 @@ function frameOf (element: Element | undefined, turn: Parameters<typeof snapshot
     border-radius: 10px;
     background: transparent;
     color: #fff;
-    font-size: 13px;
+    font: inherit;
     font-weight: 600;
     cursor: pointer;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.12);
     }
   }
 
-  .camera-stage__chip--still {
-    cursor: default;
-
-    &:hover {
-      background: transparent;
-    }
-  }
-
-  .camera-phone-facts {
-    margin: 0;
-    font-size: 14px;
-  }
-
-  .camera-phone-actions :deep(.cbtn) {
-    flex: 1 1 0;
-  }
-
+  .camera-stage__error,
   .camera-empty {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 64px 16px;
-    border-radius: 22px;
-    background: var(--m3d-surface);
-    color: var(--m3d-text-muted);
+    gap: 10px;
     text-align: center;
 
-    p {
-      margin: 0;
+    span:not(.camera-icon-square) {
+      max-width: 420px;
+      color: var(--m3d-text-muted);
     }
   }
 
-  .camera-notes {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 6px 16px;
-    margin: 0;
+  .camera-stage__error {
+    position: absolute;
+    inset: 0;
+    justify-content: center;
+    padding: 24px;
+    background: var(--m3d-surface);
+  }
+
+  .camera-empty {
+    padding: 72px 16px;
+    border-radius: 22px;
+    background: var(--m3d-surface);
+  }
+
+  .camera-icon-square {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: var(--m3d-surface-raised, rgba(127, 127, 127, 0.15));
     color: var(--m3d-text-muted);
-    font-size: 13px;
+  }
 
-    a {
-      color: var(--m3d-accent) !important;
+  .camera-icon-square--err {
+    color: var(--m3d-danger, #ef4444);
+  }
+
+  .camera-page--phone {
+    .camera-grid {
+      display: block;
     }
-  }
 
-  .camera-notes__aside {
-    color: var(--m3d-text-subtle);
-  }
+    .camera-stage {
+      min-height: 220px;
+    }
 
-  @media (max-width: 600px) {
-    .camera-details {
-      grid-template-columns: 1fr;
+    .camera-stage__item :deep(.camera-image) {
+      max-height: calc(100vh - 300px);
     }
   }
 </style>

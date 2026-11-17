@@ -1,89 +1,87 @@
 <template>
-  <control-card
-    title="Mesh profiles"
+  <maintenance-tile
+    title="Profiles"
+    icon="mesh"
+    flush
     :locked="controlLock"
     data-tid="mesh-profiles"
   >
     <template #aside>
-      <span>{{ activeName ? `using ${activeName}` : 'none loaded' }}</span>
-    </template>
-
-    <div
-      v-if="profiles.length"
-      class="mprof__list"
-    >
-      <div
-        v-for="profile in profiles"
-        :key="profile.name"
-        class="crow"
-        :data-profile="profile.name"
-      >
-        <span class="crow__name">
-          {{ profile.name }}
-          <span class="crow__sub">· {{ profile.range.toFixed(3) }} mm{{ profile.adaptive ? ' · adaptive' : '' }}</span>
-        </span>
-        <span class="mprof__actions">
-          <span
-            v-if="profile.active"
-            class="mprof__pill"
-          >in use</span>
-          <button
-            v-else
-            type="button"
-            class="mprof__link"
-            :disabled="!controlReady"
-            @click="load(profile.name)"
-          >
-            Load
-          </button>
-          <button
-            v-if="!profile.adaptive"
-            type="button"
-            class="mprof__link mprof__link--danger"
-            :disabled="!controlReady"
-            :aria-label="`Remove ${profile.name}`"
-            @click="remove(profile.name)"
-          >
-            Remove
-          </button>
-        </span>
-      </div>
-    </div>
-    <p
-      v-else
-      class="mprof__note"
-    >
-      No saved profiles yet. Measure the bed, then save it under a name.
-    </p>
-
-    <div class="mprof__buttons">
       <button
         type="button"
-        class="cbtn cbtn--primary"
-        :disabled="!meshRow || !!checksBlocked"
-        :title="checksBlocked"
-        data-tid="mesh-measure"
-        @click="meshRow && runCheck(meshRow)"
-      >
-        {{ measuring ? 'Measuring…' : 'Measure the bed' }}
-      </button>
-      <button
-        type="button"
-        class="cbtn"
+        class="cbtn cbtn--ghost mprof__head-btn"
         :disabled="!controlReady || !activeName"
-        data-tid="mesh-save-as"
-        @click="saveOpen = true"
-      >
-        Save as…
-      </button>
-      <button
-        type="button"
-        class="cbtn cbtn--ghost"
-        :disabled="!controlReady || !activeName"
+        data-tid="mesh-clear"
         @click="clear"
       >
         Clear
       </button>
+      <button
+        type="button"
+        class="cbtn mprof__head-btn"
+        :disabled="!controlReady || !activeName"
+        data-tid="mesh-save-as"
+        @click="saveOpen = true"
+      >
+        <frame-icon
+          name="plus"
+          small
+        />
+        Save current
+      </button>
+    </template>
+
+    <ul
+      v-if="profiles.length"
+      class="mprof__list"
+    >
+      <li
+        v-for="profile in profiles"
+        :key="profile.name"
+        class="mprof__row"
+        :data-profile="profile.name"
+      >
+        <span class="mprof__text">
+          <span class="mprof__name">{{ profile.name }}</span>
+          <span class="mprof__sub">{{ profile.range.toFixed(3) }} mm spread{{ profile.adaptive ? ' · adaptive' : '' }}</span>
+        </span>
+        <tone-pill
+          v-if="profile.active"
+          tone="ok"
+          :dot="false"
+        >
+          Active
+        </tone-pill>
+        <button
+          v-else
+          type="button"
+          class="cbtn mprof__load"
+          :disabled="!controlReady"
+          :aria-label="`Load ${profile.name}`"
+          @click="load(profile.name)"
+        >
+          Load
+        </button>
+        <button
+          v-if="!profile.adaptive"
+          type="button"
+          class="mprof__remove"
+          :disabled="!controlReady"
+          :aria-label="`Remove ${profile.name}`"
+          title="Remove"
+          @click="remove(profile.name)"
+        >
+          <frame-icon name="trash" />
+        </button>
+      </li>
+    </ul>
+    <div
+      v-else
+      class="mprof__empty"
+    >
+      <span class="mprof__ico"><frame-icon name="mesh" /></span>
+      <b>No saved profiles yet</b>
+      <p>Calibrate the mesh, then save it under a name.</p>
     </div>
 
     <div
@@ -111,7 +109,7 @@
       :name="activeName === 'default' ? '' : activeName"
       @save="saveAs"
     />
-  </control-card>
+  </maintenance-tile>
 </template>
 
 <script lang="ts">
@@ -119,16 +117,17 @@ import { Component, Mixins, Watch } from 'vue-property-decorator'
 import MaintenanceMixin from '@/mixins/maintenance'
 import type { BedMeshProfileListEntry } from '@/store/mesh/types'
 import { meshProfileCommand, validProfileName } from '@/services/maintenance/model'
-import ControlCard from '@/components/control/ControlCard.vue'
+import MaintenanceTile from './MaintenanceTile.vue'
+import TonePill from '@/components/printers/TonePill.vue'
 import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
 
 /**
- * Saved mesh profiles with how uneven each is, loading and
- * removing them, measuring the bed (the same check as Maintenance, so it
- * counts there too), saving the mesh in use under a name, and saving to
- * printer.cfg when Klipper has results waiting.
+ * Saved mesh profiles with how uneven each is, loading and removing
+ * them, saving the mesh in use under a name, clearing it, and saving to
+ * printer.cfg when Klipper has results waiting. Measuring the bed is the
+ * header's Calibrate mesh.
  */
-@Component({ components: { ControlCard, FileNameDialog } })
+@Component({ components: { MaintenanceTile, TonePill, FileNameDialog } })
 export default class MeshProfiles extends Mixins(MaintenanceMixin) {
   saveOpen = false
 
@@ -138,10 +137,6 @@ export default class MeshProfiles extends Mixins(MaintenanceMixin) {
 
   get activeName (): string {
     return this.$store.state.printer.printer.bed_mesh?.profile_name ?? ''
-  }
-
-  get meshRow () {
-    return this.checks.find(c => c.id === 'bedMesh')
   }
 
   /** A measurement that finishes while this page is open counts on Maintenance too. */
@@ -187,54 +182,88 @@ export default class MeshProfiles extends Mixins(MaintenanceMixin) {
 </script>
 
 <style lang="scss" scoped>
-  .mprof__list {
-    display: flex;
-    flex-direction: column;
+  .mprof__head-btn {
+    height: 32px;
+  }
 
-    > .crow + .crow {
+  .mprof__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .mprof__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+    padding: 10px 18px;
+
+    + .mprof__row {
       border-top: 1px solid var(--m3d-border);
     }
   }
 
-  .mprof__actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 14px;
+  .mprof__text {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-width: 0;
   }
 
-  .mprof__pill {
-    padding: 2px 10px;
-    border-radius: 999px;
-    background: rgba(128, 214, 209, 0.16);
-    color: var(--m3d-accent);
-    font-size: 12px;
+  .mprof__name {
+    font-size: 14px;
     font-weight: 600;
+    overflow-wrap: anywhere;
   }
 
-  .mprof__link {
-    color: var(--m3d-accent);
+  .mprof__sub {
+    color: var(--m3d-text-muted);
     font-size: 13px;
-    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mprof__load {
+    flex: none;
+  }
+
+  .mprof__remove {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    color: var(--m3d-text-muted);
 
     &:disabled {
       opacity: 0.45;
     }
   }
 
-  .mprof__link--danger {
-    color: var(--m3d-danger);
-  }
-
-  .mprof__note {
-    margin: 0;
-    color: var(--m3d-text-muted);
-    font-size: 14px;
-  }
-
-  .mprof__buttons {
+  .mprof__empty {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: center;
     gap: 8px;
+    padding: 24px 18px;
+    text-align: center;
+
+    p {
+      margin: 0;
+      color: var(--m3d-text-muted);
+      font-size: 13px;
+    }
+  }
+
+  .mprof__ico {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text-muted);
   }
 
   .mprof__pending {
@@ -242,9 +271,10 @@ export default class MeshProfiles extends Mixins(MaintenanceMixin) {
     flex-wrap: wrap;
     align-items: center;
     gap: 10px 14px;
+    margin: 6px 18px 10px;
     padding: 12px 14px;
     border-radius: 14px;
-    background: rgba(255, 159, 10, 0.1);
+    background: color-mix(in srgb, var(--m3d-warning) 10%, transparent);
     color: var(--m3d-text);
     font-size: 13px;
 

@@ -1,4 +1,4 @@
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import TypedCommandsMixin from './typed-commands'
 import { cloudState } from '@/services/muon-cloud/state'
 import ToolheadMixin from './toolhead'
@@ -9,6 +9,7 @@ import {
   fanCommand,
   fanPercent,
   fileFilament,
+  filamentSensed,
   lightsOutput,
   loadedChoice,
   materialChoices,
@@ -22,12 +23,24 @@ import {
   savedMaterialColour,
   savedMaterialName,
   type Material,
+  hotendLimitReason,
   type MaterialChoice
 } from '@/services/control/model'
 import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
+import { endOwnMotion, handMoveSettling, headStatus, lockHandMove, noteOwnMotion, ownMotionActive, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
+import Vue from 'vue'
+import { EventBus } from '@/eventBus'
+import type { LoadedFilament } from '@/services/jobs/model'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
 import type { Move } from '@/store/gcodePreview/types'
+
+/**
+ * Ticks when a hand move starts and when its own-motion window ends
+ * (safe-move's ownMotion), so `busy` is worked out again at both moments.
+ */
+const motionClock = Vue.observable({ epoch: 0 })
+let motionTimer: ReturnType<typeof setTimeout> | null = null
 
 /** A print's peak flow, worked out once per parsed file, however many panels ask. */
 const peakFlows = new WeakMap<readonly Move[], number | null>()
@@ -60,6 +73,12 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
 
   adjustZ (by: number) {
     if (!this.controlReady || !this.isHomed('Z') || this.hasWait(this.$waits.onZAdjust)) return
+    // Idle, a nudge closer moves the head (MOVE=1): not while a hand move or a
+    // script is still in flight, or it runs from where they leave the head (KAN-1745).
+    if (!this.busy && by < 0) {
+      const wait = this.handMoveWait()
+      if (wait) { this.refuseMove(wait); return }
+    }
     const command = zAdjustCommand(by, true)
     if (command) this.sendGcode(command, this.$waits.onZAdjust)
   }
@@ -79,8 +98,62 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     return this.socketConnected ? 'Klipper is not ready' : 'Not connected to the printer'
   }
 
+  /**
+   * Whether this is a Muon printer (an M1), from the gate primitive
+   * `server/isMuonPrinter` (#296): true, false, or null until server.info
+   * has answered. Named apart from MuonGatesMixin's isMuonPrinter so the
+   * two mixins can sit together.
+   */
+  get muonPrinter (): boolean | null {
+    const v = this.$store.getters['server/isMuonPrinter'] as boolean | null | undefined
+    return v === undefined ? null : v
+  }
+
+  /**
+   * A real print is running or paused, by print_stats (Klipper's own record
+   * of a print), not by idle_timeout, which reads Printing for ANY G-code,
+   * a jog included (KAN-2120). Only this says "printing" to the person.
+   */
+  get printLocked (): boolean {
+    const state = String(this.$store.state.printer.printer.print_stats?.state ?? '').toLowerCase()
+    return state === 'printing' || state === 'paused' || this.printerPrinting || this.printerPaused
+  }
+
+  /**
+   * The printer is busy with this page's own hand move (a jog, the trackpad,
+   * Go to) and nothing else: KAN-2120. Moving stays open then, so a new
+   * target is planned from the commanded end position and queued behind it.
+   */
+  get busyWithOwnMove (): boolean {
+    // Read so this is worked out again when the move's window ends (the window itself isn't reactive).
+    const seen = motionClock.epoch >= 0
+    const commanded = this.$store.state.printer.printer.gcode_move?.gcode_position as number[] | undefined
+    return seen && !this.printLocked && this.printerState === 'busy' && ownMotionActive(this.panelTarget, Date.now(), commanded)
+  }
+
+  /**
+   * Moves, extrusion and motors are left alone: a real print, or the printer
+   * busy with something that isn't this page's own hand move (homing, a
+   * macro, another client). See printLocked and busyWithOwnMove.
+   */
   get busy (): boolean {
-    return this.printerPrinting || this.printerPaused || this.printerState === 'busy'
+    return this.printLocked || (this.printerState === 'busy' && !this.busyWithOwnMove)
+  }
+
+  /** The printer stopped being busy: the own-move window ends, so the next busy (a macro from anywhere) locks moving. */
+  @Watch('printerState')
+  onPrinterStateForOwnMove (now: string, before: string) {
+    if (before === 'busy' && now !== 'busy') {
+      endOwnMotion()
+      motionClock.epoch++
+    }
+  }
+
+  /** Why moving is locked, in words: "printing" only for a real print. '' when it isn't. */
+  get moveLockReason (): string {
+    if (this.printLocked) return 'Not while printing.'
+    if (this.busy) return 'The printer is busy. Moving comes back when it finishes.'
+    return ''
   }
 
   get toolhead () {
@@ -166,6 +239,27 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
   }
 
   /**
+   * Whether filament is in the printer, from a trustworthy filament sensor
+   * (a switch sensor, switched on; see filamentSensed): null when none
+   * reports, where only what someone said is loaded can tell.
+   */
+  get filamentSensed (): boolean | null {
+    return filamentSensed(this.$store.state.printer.printer)
+  }
+
+  /**
+   * Whether the printer has a material loaded, and which: the filament sensor
+   * says whether there is any, the recorded material says which. With no
+   * sensor reporting, a recorded material is what there is to go on. A
+   * material chosen as a preset (the heater targets) says nothing about this.
+   */
+  get loadedFilament (): LoadedFilament {
+    const name = this.loadedMaterial?.name ?? null
+    const sensed = this.filamentSensed
+    return { loaded: sensed ?? !!name, name }
+  }
+
+  /**
    * While a print runs and nobody has said what's loaded: what its file was
    * sliced for, which is what is feeding now. Shown as that, never saved as
    * the loaded record (14 Oct: Walnut printing showed "Not set").
@@ -205,9 +299,24 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     }
   }
 
+  /** The extruder's hard limit, from printer.cfg, or null when the printer didn't say. */
+  get extruderMaxTemp (): number | null {
+    const max = Number(this.$store.state.printer?.printer?.configfile?.settings?.extruder?.max_temp)
+    return Number.isFinite(max) && max > 0 ? max : null
+  }
+
+  /** Tells the person why nothing was sent, when the material is hotter than the hotend can go. True if it is. */
+  refuseTooHot (name: string | undefined, nozzle: number | null | undefined): boolean {
+    const reason = hotendLimitReason(name, nozzle, this.extruderMaxTemp)
+    if (!reason) return false
+    EventBus.$emit(reason, { type: 'error', timeout: 8000 })
+    return true
+  }
+
   /** Heats for a material: as its preset says when it has one, else to its temperatures. */
   heatFor (choice: MaterialChoice) {
     if (!this.controlReady) return
+    if (this.refuseTooHot(choice.name, choice.nozzle)) return
     const preset = choice.presetId === null ? undefined : this.presets.find(p => p.id === choice.presetId)
     if (preset) {
       presetCommands(preset).forEach(g => this.sendGcode(g))
@@ -225,6 +334,7 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
 
   applyMaterial (material: Material) {
     if (!this.controlReady) return
+    if (this.refuseTooHot(material.name, material.nozzle)) return
     const preset = this.presets.find(p => p.id === material.id)
     if (preset) presetCommands(preset).forEach(g => this.sendGcode(g))
   }
@@ -250,36 +360,246 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
     return axes.toUpperCase().split('').every(a => this.homedAxes.includes(a))
   }
 
+  /**
+   * On a Muon printer (or one not known yet) a Z saved reversed moves the
+   * normal way: reversing the M1's plate only crashed it. Another printer may
+   * need any axis reversed.
+   */
   inverted (axis: Axis): boolean {
+    if (axis.toLowerCase() === 'z' && this.$store.getters['server/isMuonPrinter'] !== false) return false
     return !!this.$store.state.config.uiSettings.general.axis?.[axis.toLowerCase()]?.inverted
   }
 
-  /** A step along one axis, cut short at the machine's limits. */
+  /**
+   * The no-go regions this printer declares in [bed_mesh], read live. Until
+   * the printer's config has loaded at all, the regions are unknown: treated
+   * as unreadable, so only raising the head is allowed.
+   */
+  get noGo (): NoGoConfig | null | 'invalid' {
+    const settings = this.$store.state.printer.printer.configfile?.settings
+    if (!settings || !Object.keys(settings).length) return 'invalid'
+    return readNoGo(settings.bed_mesh)
+  }
+
+  /**
+   * Toolhead minus G-code position, per axis: the mesh and G-code offsets now
+   * in force. Planning is done in toolhead (real) coordinates; a move is sent
+   * in G-code coordinates, so a planned place is sent minus this. Null when
+   * the G-code position isn't known.
+   */
+  get gcodeOffset (): [number, number, number] | null {
+    const gcode = this.$store.state.printer.printer.gcode_move?.gcode_position as number[] | undefined
+    if (!Array.isArray(gcode)) return null
+    const d = [0, 1, 2].map(i => Number(this.position[i]) - Number(gcode[i]))
+    return d.every(Number.isFinite) ? d as [number, number, number] : null
+  }
+
+  /**
+   * Why a hand move must wait, or '' if it can go: the head position isn't
+   * this connection's yet, a G-code script is still running (a move sent now
+   * would run from wherever it leaves the head), or the last hand move hasn't
+   * been reported. Read fresh, never cached.
+   *
+   * On every printer, not only one with no-go regions (KAN-1745): a jog is a
+   * relative move, and one planned from a position that lags can be refused
+   * by Klipper ("Move out of range"), which aborts the script before its
+   * RESTORE_GCODE_STATE and leaves the printer in G91 for the console and
+   * macros after it. Waiting for the last move to land keeps every jog inside
+   * the limits it was clamped to.
+   */
+  handMoveWait (): string {
+    if (!headStatus.fresh) return 'Wait for the printer to report where the head is.'
+    if (scriptsInFlight.count > 0) return 'Wait for the printer to finish what it is doing.'
+    if (handMoveSettling(this.$store.state.printer.printer.gcode_move?.gcode_position, this.panelTarget)) return 'Wait for the head to finish moving.'
+    return ''
+  }
+
+  /** Losing control (disconnect, Klippy not ready, sign-out) ends any wait: the next move plans afresh. */
+  @Watch('controlReady')
+  onControlReadyForHandMove (ready: boolean) {
+    if (!ready) {
+      releaseHandMove()
+      // Klippy gone (restart, shutdown, disconnect): it is subscribed afresh
+      // when it comes back, so wait for that status before planning. (Losing
+      // control for other reasons keeps the same subscription.)
+      if (!this.klippyReady || !this.klippyConnected) headStatus.fresh = false
+    }
+  }
+
+  /**
+   * Plan a move to `realTo` (toolhead coordinates) against the bed's no-go
+   * regions. Steps come back in G-code coordinates, ready to send.
+   */
+  planHandMove (realTo: [number, number, number]): MovePlan {
+    const noGo = this.noGo
+    const limits = { min: this.axisMin.slice(0, 3) as [number, number, number], max: this.axisMax.slice(0, 3) as [number, number, number] }
+    const from = { x: Number(this.position[0]), y: Number(this.position[1]), z: Number(this.position[2]) }
+    const to = { x: realTo[0], y: realTo[1], z: realTo[2] }
+    if (noGo === null) return planMove(from, to, null, limits)
+    const offset = this.gcodeOffset
+    if (!offset) return { ok: false, reason: 'The head position is not known.' }
+    const plan = planMove(from, to, noGo, limits, meshSpan(this.$store.state.printer.printer.bed_mesh), this.isHomed('Z'), this.isHomed('XY'))
+    if (!plan.ok) return plan
+    const toGcode = (p: Place): Place => {
+      const out: Place = {}
+      ;(['X', 'Y', 'Z'] as Axis[]).forEach((a, i) => { if (p[a] !== undefined) out[a] = Math.round((p[a] as number - offset[i]) * 1000) / 1000 })
+      return out
+    }
+    return { ...plan, steps: plan.steps.map(toGcode) }
+  }
+
+  refuseMove (reason: string) {
+    EventBus.$emit(reason, { type: 'warning' })
+  }
+
+  /** Make the next hand move wait for this one to land (on every printer: see handMoveWait). */
+  markHandMove (realTo: number[]) {
+    const offset = this.gcodeOffset
+    if (!offset) return
+    const now = Date.now()
+    const travel = this.travelMs(realTo)
+    const target = realTo.slice(0, 3).map((v, i) => Math.round((v - offset[i]) * 1000) / 1000)
+    lockHandMove(target, this.panelTarget, now, travel)
+    // Only a move sent while the printer wasn't busy opens the own-move window; one sent mid-move never extends it
+    // (it only moves the window's target, so the printer heading there still counts as this page's move).
+    const from = (this.$store.state.printer.printer.gcode_move?.gcode_position as number[] | undefined)?.slice(0, 3)
+    const ms = noteOwnMotion(this.panelTarget, now, travel, this.printerState !== 'busy', target, from)
+    motionClock.epoch++
+    if (ms > 0) {
+      if (motionTimer !== null) clearTimeout(motionTimer)
+      motionTimer = setTimeout(() => { motionTimer = null; motionClock.epoch++ }, ms + 20)
+    }
+  }
+
+  /**
+   * About how long a hand move to `realTo` takes, ms: across at the head's
+   * speed, up and down at the plate's, counting a lift to the notch's
+   * traverse height and back when the plan lifts.
+   */
+  travelMs (realTo: number[]): number {
+    const p = [0, 1, 2].map(i => Number(this.position[i]))
+    const xy = Math.hypot(realTo[0] - p[0], realTo[1] - p[1])
+    let z = Math.abs(realTo[2] - p[2])
+    const noGo = this.noGo
+    if (noGo && noGo !== 'invalid') {
+      const plan = this.planHandMove([realTo[0], realTo[1], realTo[2]])
+      if (plan.ok && plan.lifted) {
+        const over = Number(plan.steps[0].Z) + (this.gcodeOffset ?? [0, 0, 0])[2]
+        z = Math.abs(over - p[2]) + Math.abs(over - realTo[2])
+      }
+    }
+    const ms = (xy / this.xySpeed + z / this.zSpeed) * 1000
+    return Number.isFinite(ms) ? ms : 0
+  }
+
+  /** Send a planned move: lift, across, down, as one absolute script. */
+  sendPlannedMoves (steps: Place[]) {
+    const line = (p: Place) => {
+      const words = (['X', 'Y', 'Z'] as Axis[]).filter(a => p[a] !== undefined).map(a => `${a}${p[a]}`)
+      const rate = p.Z !== undefined ? this.zSpeed : this.xySpeed
+      return `G1 ${words.join(' ')} F${rate * 60}`
+    }
+    this.sendGcode(['SAVE_GCODE_STATE NAME=_ui_movement', 'G90', ...steps.map(line), 'RESTORE_GCODE_STATE NAME=_ui_movement'].join('\n'))
+  }
+
+  /** A step along one axis, cut short at the machine's limits, kept out of the bed's no-go regions. */
   moveBy (axis: Axis, distance: number) {
     if (!this.controlReady || this.busy || !this.isHomed(axis) || !Number.isFinite(distance)) return
     if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
+    const wait = this.handMoveWait()
+    if (wait) { this.refuseMove(wait); return }
     const i = 'XYZ'.indexOf(axis)
     const signed = this.inverted(axis) ? -distance : distance
     const target = clampTo(this.position[i] + signed, this.axisMin[i], this.axisMax[i])
     const by = Math.round((target - this.position[i]) * 1000) / 1000
     if (!by) return
-    this.sendMoveGcode(`${axis}${by}`, axis === 'Z' ? this.zSpeed : this.xySpeed)
+    const realTo = [0, 1, 2].map(j => Number(this.position[j])) as [number, number, number]
+    realTo[i] = target
+    const plan = this.planHandMove(realTo)
+    if (!plan.ok) { this.refuseMove(plan.reason); return }
+    if (plan.lifted) this.sendPlannedMoves(plan.steps)
+    else this.sendMoveGcode(`${axis}${by}`, axis === 'Z' ? this.zSpeed : this.xySpeed)
+    this.markHandMove(realTo)
   }
 
-  /** To a place, inside the machine. */
-  moveTo (place: { X?: number, Y?: number, Z?: number }) {
-    if (!this.controlReady || this.busy || ![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return
+  /**
+   * A diagonal step: X and Y at once, cut short at the machine's limits.
+   * Sent through moveTo, so it gets the same checks as every hand move
+   * (homed, not printing, the hand-move wait and the no-go planner).
+   */
+  moveByXY (dx: number, dy: number): boolean {
+    if (!this.controlReady || this.busy || !this.isHomed('XY') || !Number.isFinite(dx) || !Number.isFinite(dy)) return false
+    if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return false
+    const wait = this.handMoveWait()
+    if (wait) { this.refuseMove(wait); return false }
+    // Planned from the toolhead (commanded) position and sent as a relative
+    // step, as moveBy does, so a position that lags can't swallow a step.
+    const realTo = [0, 1, 2].map(j => Number(this.position[j])) as [number, number, number]
+    const by: number[] = [0, 0]
+    ;(['X', 'Y'] as Axis[]).forEach((axis, i) => {
+      const d = axis === 'X' ? dx : dy
+      const signed = this.inverted(axis) ? -d : d
+      const target = clampTo(this.position[i] + signed, this.axisMin[i], this.axisMax[i])
+      by[i] = Math.round((target - this.position[i]) * 1000) / 1000
+      realTo[i] = target
+    })
+    if (!by[0] && !by[1]) return false
+    const plan = this.planHandMove(realTo)
+    if (!plan.ok) { this.refuseMove(plan.reason); return false }
+    if (plan.lifted) this.sendPlannedMoves(plan.steps)
+    else this.sendMoveGcode(['X', 'Y'].filter((_, i) => by[i]).map(a => `${a}${by['XY'.indexOf(a)]}`).join(' '), this.xySpeed)
+    this.markHandMove(realTo)
+    return true
+  }
+
+  /**
+   * Why a move to a place in G-code coordinates would be refused now, or ''
+   * when moveTo would send it: the same gates and the same plan as moveTo,
+   * in words, not counting the hand-move wait. A live drag stops on it.
+   */
+  moveRefusal (place: { X?: number, Y?: number, Z?: number }): string {
+    if (!this.controlReady) return this.controlLock || 'Not connected to the printer'
+    if (this.printLocked) return 'Not while printing: moving the head would ruin the print.'
+    if (this.busy) return 'Wait for the printer to finish what it is doing.'
+    if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return 'Set the jog speeds in Settings first.'
+    const axes = (['X', 'Y', 'Z'] as Axis[]).filter(a => place[a] !== undefined)
+    if (!axes.length) return 'Nothing to move.'
+    for (const axis of axes) {
+      const i = 'XYZ'.indexOf(axis)
+      const value = place[axis] as number
+      if (!this.isHomed(axis)) return `Home ${axis} first.`
+      if (!Number.isFinite(value) || value < this.axisMin[i] || value > this.axisMax[i]) return 'That spot is outside the machine.'
+    }
+    const offset = this.gcodeOffset ?? [0, 0, 0]
+    const realTo = (['X', 'Y', 'Z'] as Axis[]).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
+    const plan = this.planHandMove(realTo)
+    return plan.ok ? '' : plan.reason
+  }
+
+  /** To a place given in G-code coordinates, inside the machine and out of the bed's no-go regions. True when it was sent. */
+  moveTo (place: { X?: number, Y?: number, Z?: number }): boolean {
+    if (!this.controlReady || this.busy || ![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return false
     const parts: string[] = []
     let rate = this.xySpeed
     for (const axis of ['X', 'Y', 'Z'] as Axis[]) {
       const value = place[axis]
       if (value === undefined) continue
       const i = 'XYZ'.indexOf(axis)
-      if (!this.isHomed(axis) || !Number.isFinite(value) || value < this.axisMin[i] || value > this.axisMax[i]) return
+      if (!this.isHomed(axis) || !Number.isFinite(value) || value < this.axisMin[i] || value > this.axisMax[i]) return false
       parts.push(`${axis}${value}`)
       if (axis === 'Z') rate = Math.min(rate, this.zSpeed)
     }
-    if (parts.length) this.sendMoveGcode(parts.join(' '), rate, true)
+    if (!parts.length) return false
+    const wait = this.handMoveWait()
+    if (wait) { this.refuseMove(wait); return false }
+    const offset = this.gcodeOffset ?? [0, 0, 0]
+    const realTo = (['X', 'Y', 'Z'] as Axis[]).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
+    const plan = this.planHandMove(realTo)
+    if (!plan.ok) { this.refuseMove(plan.reason); return false }
+    if (plan.lifted) this.sendPlannedMoves(plan.steps)
+    else this.sendMoveGcode(parts.join(' '), rate, true)
+    this.markHandMove(realTo)
+    return true
   }
 
   homeWait (axes = ''): string {

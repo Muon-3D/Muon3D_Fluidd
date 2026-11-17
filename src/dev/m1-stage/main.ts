@@ -14,14 +14,20 @@ const steps = [
   'filament-load',
   'autoload-grabbed',
   'autoload-done',
-  'filament-unload'
+  'filament-unload',
+  'column-unlock',
+  'column-remove',
+  'column-fit',
+  'column-lock'
 ]
 
 const printer: Record<string, any> = {
   bed_removal_detector: { bedRemoved: false, restoreTarget: 0 },
   'mcu toolhead': { non_critical_disconnected: false, mcu_version: 'v0.12.0' },
   'gcode_button toolhead_umbilical_unlock_button': { state: 'RELEASED' },
-  'filament_switch_sensor filament_sensor_toolhead': { filament_detected: false, enabled: true }
+  'filament_switch_sensor filament_sensor_toolhead': { filament_detected: false, enabled: true },
+  // The Z column as z_power reads it (m1_machine's conditions.column, where the printer runs it).
+  z_power: { z: 'locked' }
 }
 let prompt: PromptFacts = { open: false }
 
@@ -44,12 +50,22 @@ function printPath (): Toolpath {
   return { positions, ends, count: segment }
 }
 
+const query = new URLSearchParams(location.search)
+// ?theme=dark: the dark theme's stage colours (muon3d.scss --m3d-stage-*).
+if (query.get('theme') === 'dark') {
+  document.body.style.setProperty('--m3d-stage-hi', '#3a4247')
+  document.body.style.setProperty('--m3d-stage-mid', '#283034')
+  document.body.style.setProperty('--m3d-stage-lo', '#1b2023')
+  document.body.style.background = '#283034'
+}
+// ?pose=x,y,z: the head and the bed, in Klipper's millimetres.
+const [px, py, pz] = (query.get('pose') ?? '100,90,40').split(',').map(Number)
 const canvas = document.querySelector('canvas.m1-live__canvas') as HTMLCanvasElement
 const viewer = createViewer(canvas)
 const sync = new LiveSync()
-sync.setPose({ x: 100, y: 90, z: 40, led: true, progress: 0 })
+sync.setPose({ x: px, y: py, z: pz, led: true, progress: 0 })
 sync.setAccessories(accessoriesFrom(printer, prompt), performance.now(), true)
-if (new URLSearchParams(location.search).get('reduced') === '1') sync.accessories.reducedMotion = true
+if (query.get('reduced') === '1') sync.accessories.reducedMotion = true
 viewer.follow(sync)
 const path = printPath()
 viewer.setPrint(path, 0xc00a66)
@@ -99,6 +115,18 @@ function step (name: string): void {
     case 'filament-unload':
       printer['filament_switch_sensor filament_sensor_toolhead'].filament_detected = false
       break
+    case 'column-unlock':
+      printer.z_power.z = 'unlocked'
+      break
+    case 'column-remove':
+      printer.z_power.z = 'absent'
+      break
+    case 'column-fit':
+      printer.z_power.z = 'unlocked'
+      break
+    case 'column-lock':
+      printer.z_power.z = 'locked'
+      break
     default:
       throw new Error(`Unknown M1 stage step: ${name}`)
   }
@@ -113,8 +141,9 @@ declare global {
       step: (name: string) => void;
       steps: string[];
       sync: LiveSync;
+      viewer: typeof viewer;
     };
   }
 }
 
-window.m1Stage = { ready, step, steps, sync }
+window.m1Stage = { ready, step, steps, sync, viewer }

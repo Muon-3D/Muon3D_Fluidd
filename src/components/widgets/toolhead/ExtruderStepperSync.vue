@@ -26,10 +26,11 @@
       <app-named-switch
         :value="extruderStepper.enabled"
         :label="$t('app.general.label.stepper_enabled')"
-        :disabled="!klippyReady || printerPrinting"
+        :disabled="!klippyReady || printerPrinting || devOnlyLocked"
         :loading="hasWait(`${$waits.onStepperEnable}${extruderStepper.name}`)"
         @change="sendSetStepperEnable"
       />
+      <dev-only-note v-if="devOnlyLocked" />
     </v-col>
   </v-row>
 </template>
@@ -37,10 +38,12 @@
 <script lang="ts">
 import { Component, Mixins, Prop } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
+import DevGuardMixin from '@/mixins/dev-guard'
+import DevOnlyNote from './DevOnlyNote.vue'
 import type { KnownExtruder, ExtruderStepper } from '@/store/printer/types'
 
-@Component({})
-export default class ExtruderStepperSync extends Mixins(StateMixin) {
+@Component({ components: { DevOnlyNote } })
+export default class ExtruderStepperSync extends Mixins(StateMixin, DevGuardMixin) {
   @Prop({ type: Object, required: true })
   readonly extruderStepper!: ExtruderStepper
 
@@ -53,6 +56,8 @@ export default class ExtruderStepperSync extends Mixins(StateMixin) {
   }
 
   sendSetStepperEnable (value: boolean) {
+    // SET_STEPPER_ENABLE is developer-mode only (Klipper#112).
+    if (this.devOnlyLocked) return
     this.sendGcode(`SET_STEPPER_ENABLE STEPPER="${this.extruderStepper.key}" ENABLE=${+value}`, `${this.$waits.onStepperEnable}${this.extruderStepper.name}`)
   }
 }

@@ -1,3 +1,5 @@
+import type { EditorTextSize, SaveAndRestart } from '@/services/settings/editor'
+import type { ConsoleConfig } from '@/services/console/settings'
 import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { FileFilterType } from '../files/types'
 
@@ -7,12 +9,15 @@ export interface ConfigState {
   socketUrl: string;
   authKey: string;
   discovered: boolean;
-  layoutMode: boolean;
   containerColumnCount: number;
   instances: InstanceConfig[];
   lanInstances: InstanceConfig[];
   uiSettings: UiSettings;
   hostConfig: HostConfig;
+  /** Whose personal settings apply (quickCommandsKey of the signed-in account), once known. */
+  personalKey: string | null;
+  /** The printer-wide values of the personal settings, as loaded, under anyone's own. */
+  sharedPersonal: PersonalSettings | null;
 }
 
 export interface UiSettings {
@@ -26,6 +31,17 @@ export interface UiSettings {
   toolhead: ToolheadConfig;
   spoolman: SpoolmanConfig;
   maintenance: MaintenanceConfig;
+  overview: OverviewConfig;
+  console: ConsoleConfig;
+  /** Each person's Control layout on this printer, the same shape as Overview's. */
+  control: OverviewConfig;
+  /** Each person's own Look and Ask before on this printer, by quickCommandsKey(account). */
+  personal: Record<string, PersonalSettings>;
+}
+
+/** Each person's Overview layout on this printer, by key (see services/overview/layout), as saved by Edit mode. */
+export interface OverviewConfig {
+  layouts: Record<string, unknown>;
 }
 
 /** When each of Maintenance's checks last ran from Fluidd, in ms, by check (bedMesh, shaper, ...). */
@@ -102,6 +118,8 @@ export interface GeneralConfig {
   showUploadAndPrint: boolean;
   flipConsoleLayout: boolean;
   cameraFullscreenAction: CameraFullscreenAction;
+  /** Camera uids in the order they are listed and switched through; cameras not named go last, by name. */
+  cameraOrder: string[];
   topNavPowerToggle: null | string;
   showManualProbeDialogAutomatically: boolean;
   showBedScrewsAdjustDialogAutomatically: boolean;
@@ -111,6 +129,8 @@ export interface GeneralConfig {
   printProgressCalculation: PrintProgressCalculation[];
   printEtaCalculation: PrintEtaCalculation[];
   enableDiagnostics: boolean;
+  /** Overview shows a 3D view / Camera switch when a camera is configured. */
+  overviewCameraToggle: boolean;
   thumbnailSize: number;
   colorPickerValueRange: ColorPickerValueRange;
   /** The material loaded, for a printer without [save_variables] (the M1 keeps it there as muon_material). */
@@ -119,6 +139,8 @@ export interface GeneralConfig {
   loadedMaterialColour: string | null;
   /** Material picker favorites; null uses the common-material defaults, [] deliberately pins none. */
   pinnedMaterials: string[] | null;
+  /** The Quick commands shown on Overview and Control, chosen on the Macros page (KAN-2122); null is the automatic pick. */
+  quickCommands: string[] | null;
 }
 
 export type ToolheadControlStyle = 'cross' | 'bars' | 'circle'
@@ -131,22 +153,34 @@ export type PrintInProgressLayout = 'default' | 'compact'
 
 export type ColorPickerValueRange = 'absolute' | 'percentage'
 
-export type PrintProgressCalculation = 'file' | 'fileAbsolute' | 'slicer' | 'filament'
+export type PrintProgressCalculation = 'file' | 'fileAbsolute' | 'slicer' | 'filament' | 'layers'
 
 export type PrintEtaCalculation = 'file' | 'slicer'
 
-// 'flat' is the hairline graphite look; 'glass' is the Apple-style look:
-// neutral surfaces, system colours and a glass chrome
-// (src/scss/muon3d-glass.scss).
-export type UiStyle = 'flat' | 'glass'
+// Glass is the only interface style: neutral surfaces, system colours and a
+// glass chrome (src/scss/muon3d-glass.scss). A printer that saved 'flat' (the
+// retired style) is read as glass.
+export type UiStyle = 'glass'
 
 // Config stored in moonraker db
+/** Dark, Light, or Auto (follows the device's prefers-color-scheme). */
+export type ThemeMode = 'dark' | 'light' | 'auto'
+
 export interface ThemeConfig {
   color: string;
+  /** What is showing now; with mode 'auto', the device's choice. */
   isDark: boolean;
+  /** Missing on a theme saved before Auto: isDark says which. */
+  mode?: ThemeMode;
   logo: ThemeLogo;
   backgroundLogo: boolean;
   style: UiStyle;
+}
+
+/** The Look and Ask before settings someone changed for themselves on this printer. */
+export interface PersonalSettings {
+  theme?: Partial<Pick<ThemeConfig, 'color' | 'isDark' | 'mode'>>;
+  general?: Partial<Pick<GeneralConfig, 'confirmOnEstop' | 'confirmOnSaveConfigAndRestart' | 'confirmOnPowerDeviceChange' | 'showUploadAndPrint'>>;
 }
 
 // Config defined in host
@@ -170,6 +204,10 @@ export interface EditorConfig {
   autoEditExtensions: string[];
   restoreViewState: RestoreViewState,
   codeLens: boolean;
+  /** What Save and restart does in the editor (KAN-1994). */
+  saveAndRestart: SaveAndRestart;
+  /** The editor's text size (KAN-1995). */
+  textSize: EditorTextSize;
 }
 
 export interface Axis {
@@ -226,6 +264,17 @@ export interface TemperaturePreset {
   name: string;
   values: TemperaturePresetValues;
   gcode?: string;
+  /** default: one of the four every printer has; library: copied from the library; own: made or changed here. */
+  origin?: 'default' | 'library' | 'own';
+  libraryId?: string;
+  /** Where the numbers came from, e.g. "Polymaker PolyLite PLA". */
+  source?: string;
+  type?: string;
+  colour?: string;
+  /** Part-cooling fan, 0-100 %. */
+  partFan?: number;
+  /** The maker's published [min, max] ranges, in °C. */
+  maker?: { nozzle?: [number, number], bed?: [number, number] };
 }
 
 export interface TemperaturePresetValues {
@@ -248,6 +297,7 @@ export interface GcodePreviewConfig {
   retractionIconSize: number;
   drawOrigin: boolean;
   drawBackground: boolean;
+  /** Retired: animations are now this device's (m1-3d/device-settings); a saved `false` is carried over once. */
   showAnimations: boolean;
   minLayerHeight: number;
   autoLoadOnPrintStart: boolean;
@@ -255,6 +305,9 @@ export interface GcodePreviewConfig {
   autoFollowOnFileLoad: boolean;
   hideSinglePartBoundingBox: boolean;
   autoZoom: boolean;
+  /** What a preview starts out showing: travel moves and retractions (each file's Show menu can change it). */
+  showMoves: boolean;
+  showRetractions: boolean;
   flip: {
     horizontal: boolean;
     vertical: boolean;
@@ -262,6 +315,8 @@ export interface GcodePreviewConfig {
 }
 
 export interface FileSystemConfig {
+  /** Names starting with a dot show in file lists (Settings > Files and editor). Off by default. */
+  showHiddenFiles: boolean;
   activeFilters: Record<string, FileFilterType[]>;
   sortBy: Record<string, string | null>;
   sortDesc: Record<string, boolean | null>;

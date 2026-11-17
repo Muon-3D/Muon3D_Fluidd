@@ -2,6 +2,7 @@ import Vue from 'vue'
 import { Globals, Waits } from '@/globals'
 import type { NotifyOptions } from '@/plugins/socketClient'
 import { consola } from 'consola'
+import { trackScript } from '@/services/control/safe-move'
 import type { TimelapseWritableSettings } from '@/store/timelapse/types'
 import type { WebcamConfig } from '@/store/webcams/types'
 
@@ -353,7 +354,8 @@ export const SocketActions = {
   },
 
   async printerGcodeScript (gcode: string, wait?: string) {
-    baseEmit(
+    // Every script counts until answered: hand moves wait behind it (safe-move.ts).
+    return trackScript(baseEmit(
       'printer.gcode.script', {
         dispatch: 'console/onGcodeScript',
         params: {
@@ -361,7 +363,7 @@ export const SocketActions = {
         },
         wait
       }
-    )
+    ) as Promise<unknown> | undefined)
   },
 
   async printerGcodeHelp () {
@@ -606,7 +608,7 @@ export const SocketActions = {
    */
   async serverFilesGetDirectory (root: string, path: string) {
     const wait = `${Waits.onFileSystem}/${root}/${path}/`
-    baseEmit(
+    return baseEmit(
       'server.files.get_directory',
       {
         dispatch: 'files/onServerFilesGetDirectory',
@@ -628,9 +630,10 @@ export const SocketActions = {
     )
   },
 
+  /** Moves or renames a file; answers Moonraker's result, or nothing when it refused or the socket is not up. */
   async serverFilesMove (source: string, dest: string) {
     const wait = `${Waits.onFileSystem}/${source}/`
-    baseEmit(
+    return baseEmit(
       'server.files.move', {
         dispatch: 'void',
         wait,

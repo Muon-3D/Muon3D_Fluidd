@@ -8,6 +8,7 @@ import { Globals } from '@/globals'
 import { consola } from 'consola'
 import type { DiagnosticsCardContainer } from '@/store/diagnostics/types'
 import sandboxedEval from '@/plugins/sandboxedEval'
+import { headStatus } from '@/services/control/safe-move'
 
 // let retryTimeout: number
 
@@ -119,6 +120,8 @@ export const actions: ActionTree<PrinterState, RootState> = {
     // Accept notifications, and commit the first subscribe.
     commit('socket/setAcceptNotifications', true, { root: true })
     await dispatch('onNotifyStatusUpdate', status)
+    // The head position Control holds is now this connection's (safe-move.ts).
+    headStatus.fresh = true
 
     SocketActions.serverGcodeStore()
     SocketActions.printerGcodeHelp()

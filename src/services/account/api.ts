@@ -132,7 +132,10 @@ export interface PrinterShare {
   ends_at: number | null;
   created_at: number;
   accepted?: boolean;
+  /** Their profile name, when the console knows it. */
   name?: string;
+  /** Their public photo (`/v1/public/avatars/:id`); 404s while their profile isn't visible. */
+  avatar_url?: string | null;
 }
 
 export interface PrinterInvite {
@@ -165,7 +168,7 @@ export interface JoinApproval {
   link_id: string;
   role: string;
   state: 'pending' | 'allowed' | 'refused' | 'expired';
-  requester?: { name?: string, email: string };
+  requester?: { name?: string, email: string, avatar_url?: string | null };
   created_at: number;
   expires_at: number;
 }
@@ -241,7 +244,8 @@ export const accountApi = {
   /** The plan, credits left and when they renew (the console's proxy of the model service). */
   plan: () => json<PlanSummary>('GET', '/v1/me/plan'),
   /** Asks for the data export to be built and emailed. Takes the same confirmation as deleting the account. 202; 409 one is open; 429 once a day. */
-  requestExport: (reauth: Reauth = {}) => json<ExportRequest>('POST', '/v1/me/exports', { ...reauth }),
+  requestExport: (reauth: Reauth = {}, choice: { parts?: string[], format?: string } = {}) =>
+    json<ExportRequest>('POST', '/v1/me/exports', { ...choice, ...reauth }),
   /** The last few export requests: a list, or `{exports: []}`. */
   exports: () => json<ExportRequest[] | { exports: ExportRequest[] }>('GET', '/v1/me/exports'),
 

@@ -61,10 +61,18 @@ export const mutations: MutationTree<MacrosState> = {
     state.categories.push({ id: uuidv4(), name })
   },
 
+  setCategoryOrder (state, ids: string[]) {
+    state.categories = state.categories.map(c => {
+      const i = ids.indexOf(c.id)
+      return i < 0 ? c : { ...c, order: i }
+    })
+  },
+
   setEditCategory (state, payload: MacroCategory) {
     // Edit the category in the category list, and then update all macros.
     const i = state.categories.findIndex(category => category.id === payload.id)
     Vue.set(state.categories, i, {
+      ...state.categories[i],
       id: payload.id,
       name: payload.name
     })

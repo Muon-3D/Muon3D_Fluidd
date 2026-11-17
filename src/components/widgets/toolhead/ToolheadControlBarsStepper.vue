@@ -21,10 +21,11 @@
 <script lang="ts">
 import { Component, Mixins, Prop } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
+import DevGuardMixin from '@/mixins/dev-guard'
 import type { Stepper } from '@/store/printer/types'
 
 @Component({})
-export default class ToolheadControlBarsStepper extends Mixins(StateMixin) {
+export default class ToolheadControlBarsStepper extends Mixins(StateMixin, DevGuardMixin) {
   @Prop({ type: Object })
   readonly stepper!: Stepper
 
@@ -49,6 +50,7 @@ export default class ToolheadControlBarsStepper extends Mixins(StateMixin) {
   }
 
   sendForceMoveGcode (distance: number) {
+    if (this.devOnlyLocked) return
     this.sendGcode(`FORCE_MOVE STEPPER="${this.stepper.key}" DISTANCE=${distance} VELOCITY=${this.rate} ACCEL=${this.accel}`)
   }
 }

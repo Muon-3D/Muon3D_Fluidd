@@ -2,10 +2,10 @@ import Vue from 'vue'
 import { mount, shallowMount, type Wrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ControlMixin from '@/mixins/control'
-import Overview from '@/views/Overview.vue'
+import JobTile from '@/components/widgets/overview/tiles/JobTile.vue'
 import Jobs from '@/views/Jobs.vue'
 import Camera from '@/views/Camera.vue'
-import MaintenanceChecks from '@/components/maintenance/MaintenanceChecks.vue'
+import MaintenanceChecks from '@/components/maintenance/MaintenanceCalibration.vue'
 import SoftwareSettings from '@/components/settings/SoftwareSettings.vue'
 import CommandBar from '@/components/layout/CommandBar.vue'
 import { panelStore, panelStubs, waits } from '@/components/control/__tests__/panel-fixture'
@@ -35,6 +35,8 @@ vi.mock('@/services/updates/watch', () => ({
 }))
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'hazel', isForeignSlug: () => false, knownPrinters: () => [] }))
 vi.mock('@/services/muon-cloud/directory', () => ({ savedName: () => 'Hazel' }))
+// The dev-mode gates ask the printer over the network and import the router, which would stop this file's $route mocks.
+vi.mock('@/services/gates', () => ({ gateState: { epoch: 0 }, valueFor: () => null, refreshCanManageAccess: vi.fn(), refreshGateDevMode: vi.fn() }))
 vi.mock('@/services/slicer-bridge/slicerUrl', () => ({ slicerPresence: { state: 'absent' } }))
 vi.mock('@/services/design-bridge/designUrl', () => ({ designPresence: { state: 'absent' } }))
 
@@ -59,8 +61,12 @@ function base (component: any, options: Record<string, any> = {}): Fixture {
   const { computed = {}, stubs = {}, ...rest } = options
   const store = panelStore()
   store.getters['server/componentSupport'] = () => true
+  store.getters['history/getUniqueHistory'] = () => []
   store.getters['config/getDisplayName'] = 'Hazel'
   store.getters['files/getRootFiles'] = () => []
+  store.getters['files/getCurrentPathByRoot'] = () => ''
+  store.getters['files/getDirectory'] = () => undefined
+  store.getters['files/getRootProperties'] = () => ({})
   store.getters['macros/getVisibleMacros'] = []
   const confirm = vi.fn().mockResolvedValue(true)
   const wrapper = shallowMount(component, {
@@ -92,7 +98,7 @@ function controlHarness (): Fixture {
 }
 
 function overview (): Fixture {
-  const fixture = base(Overview, { stubs: { 'overview-stage': true, 'overview-this-print': true, 'overview-tiles': true, 'overview-temps': true, 'overview-live-tune': true, 'overview-console': true, 'overview-quick-actions': true, 'control-macros': true, 'router-link': true } })
+  const fixture = base(JobTile, { stubs: { 'first-layer-nudges': true, 'router-link': true } })
   fixture.store.getters['printer/getPrinterState'] = 'printing'
   fixture.store.state.printer.printer.print_stats = { filename: 'part.gcode', total_duration: 10 }
   return fixture
@@ -101,7 +107,7 @@ function overview (): Fixture {
 function jobs (): Fixture {
   const fixture = base(Jobs, {
     computed: { queue: () => [{ job_id: 'q1', filename: 'part.gcode' }], jobFiles: () => [], history: () => [], printerName: () => 'Hazel' },
-    stubs: { 'job-detail': true, 'jobs-table': true, 'job-viewer': true, 'seg-picker': true, 'tone-pill': true, 'control-task-fold': true, 'router-link': true }
+    stubs: { 'job-menu': true, 'file-name-dialog': true, 'v-dialog': true, 'tone-pill': true, 'frame-icon': true, 'router-link': true }
   })
   fixture.store.getters['server/componentSupport'] = () => true
   return fixture
@@ -141,8 +147,8 @@ function palette (): Fixture {
 }
 
 const rows: MatrixRow[] = [
-  { name: 'Overview / pause print', command: 'printerPrintPause', mount: overview, control: '[data-tid="overview-pause"]', invoke: f => (f.wrapper.vm as any).pauseCurrent() },
-  { name: 'Overview / stop print', command: 'printerPrintCancel', mount: overview, control: '[data-tid="overview-stop"]', confirm: true, invoke: f => (f.wrapper.vm as any).stopCurrent() },
+  { name: 'Overview / pause print', command: 'printerPrintPause', mount: overview, control: '[data-tid="job-pause"]', invoke: f => (f.wrapper.vm as any).pauseCurrent() },
+  { name: 'Overview / stop print', command: 'printerPrintCancel', mount: overview, control: '[data-tid="job-stop"]', confirm: true, invoke: f => (f.wrapper.vm as any).stopCurrent() },
   { name: 'Control Move / home', command: 'printerGcodeScript', mount: controlHarness, control: 'button', invoke: f => (f.wrapper.vm as any).home() },
   { name: 'Control Heat / set nozzle', command: 'printerGcodeScript', mount: controlHarness, control: 'button', invoke: f => (f.wrapper.vm as any).setHeater((f.wrapper.vm as any).nozzle, 220) },
   { name: 'Control Speed / speed factor', command: 'printerGcodeScript', mount: controlHarness, control: 'button', invoke: f => (f.wrapper.vm as any).setSpeed(90) },

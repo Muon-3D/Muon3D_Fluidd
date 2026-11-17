@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PrinterSocket } from '@/services/managed-transport'
 
-const tokens = vi.hoisted(() => ({ get: vi.fn() }))
-vi.mock('@/api/httpClientActions', () => ({ httpClientActions: { accessOneshotTokenGet: tokens.get } }))
-
 // eslint-disable-next-line import/first
 import { WebSocketClient } from '../socketClient'
+import { headStatus } from '@/services/control/safe-move'
+
+const tokens = vi.hoisted(() => ({ get: vi.fn() }))
+vi.mock('@/api/httpClientActions', () => ({ httpClientActions: { accessOneshotTokenGet: tokens.get } }))
 
 /** A socket the test drives: it opens, talks and closes when told to. */
 class FakeSocket implements PrinterSocket {
@@ -92,6 +93,16 @@ async function opened (client: WebSocketClient) {
 }
 
 describe('WebSocketClient reconnecting', () => {
+  it('policy refusals prove liveness and never reconnect a socket', async () => {
+    const { client } = lanClient()
+    const socket = await opened(client)
+    for (let i = 0; i < 120; i++) {
+      await vi.advanceTimersByTimeAsync(1000)
+      socket.emit('message', { data: JSON.stringify({ jsonrpc: '2.0', id: i, error: { code: 403, message: 'muon-link policy refused this request' } }) })
+    }
+    expect(socket.closedByClient).toBe(false)
+    expect(sockets).toHaveLength(1)
+  })
   it('purges unanswered requests and waits when reconnecting', async () => {
     const { client, store } = lanClient()
     const socket = await opened(client)
@@ -102,6 +113,30 @@ describe('WebSocketClient reconnecting', () => {
 
     expect(client.requests).toHaveLength(0)
     expect(store.commit).toHaveBeenCalledWith('wait/setRemoveWait', 'history')
+  })
+
+  it('settles the promise of every request it drops, so nothing waits on an answer forever', async () => {
+    // The in-flight G-code count (safe-move.ts) ends with these promises.
+    const { client } = lanClient()
+    const socket = await opened(client)
+    const answer = client.emit('printer.gcode.script', { params: { script: 'G28' } })
+    socket.emit('close', { code: 1006, reason: 'lost', wasClean: false })
+    await expect(answer).resolves.toBeUndefined()
+  })
+
+  it('gives every pending request its own id', async () => {
+    const { client } = lanClient()
+    await opened(client)
+    for (let i = 0; i < 50; i++) client.emit('server.info', {})
+    expect(new Set(client.requests.map(r => r.id)).size).toBe(50)
+  })
+
+  it('marks the head position stale when a transport is released (a printer switch)', async () => {
+    const { client } = lanClient()
+    await opened(client)
+    headStatus.fresh = true
+    client.releaseTransportSocket()
+    expect(headStatus.fresh).toBe(false)
   })
 
   it('retries a clean close it did not ask for, and tells the store it was not clean', async () => {
@@ -235,6 +270,28 @@ describe('WebSocketClient reconnecting', () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(reopen).toHaveBeenCalledTimes(1)
     expect(client.connection).toBe(second)
+  })
+
+  it('a new route starts its backoff from the first step, not where the old route left off (#370)', async () => {
+    // Auto mode failed over from a dead relay to Bluetooth: the relay's failed
+    // tries (1, 2, 4 s ...) must not slow the first retry on the new route.
+    const { client } = lanClient()
+    const relay = new FakeSocket()
+    const failing = vi.fn(async () => { throw new Error('relay is gone') })
+    client.adoptTransportSocket(relay, failing)
+    relay.emit('open')
+    relay.emit('close', { code: 1006, reason: '', wasClean: false })
+    await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000)
+    expect(failing).toHaveBeenCalledTimes(3)
+    expect(client.reconnectCount).toBe(4)
+
+    const ble = new FakeSocket()
+    const reopen = vi.fn(async () => new FakeSocket())
+    client.adoptTransportSocket(ble, reopen)
+    expect(client.reconnectCount).toBe(0)
+    ble.emit('close', { code: 1006, reason: '', wasClean: false })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(reopen).toHaveBeenCalledTimes(1)
   })
 
   it("drops a connect still waiting for its token once another printer's socket is adopted", async () => {

@@ -5,7 +5,14 @@
     class="slice-view"
     :class="{ 'slice-view--part': partOfPage }"
     data-test="slice-view"
+    data-tid="slice-view"
   >
+    <h1
+      class="d-sr-only"
+      data-tid="page-title"
+    >
+      Slice
+    </h1>
     <iframe
       v-if="url && present === 'present'"
       ref="frame"
@@ -17,13 +24,31 @@
       :sandbox="sandbox"
       @load="onFrameLoad"
     />
-    <v-alert
+    <div
       v-else-if="!url || present === 'absent'"
-      type="warning"
-      text
+      class="slice-view__missing"
+      data-tid="slice-missing"
     >
-      {{ $t('app.slicer.msg.no_slicer') }}
-    </v-alert>
+      <span class="slice-view__icon">
+        <frame-icon name="slice" />
+      </span>
+      <b>The slicer isn't here</b>
+      <span>{{ $t('app.slicer.msg.no_slicer') }}</span>
+      <button
+        v-if="url"
+        type="button"
+        class="cbtn"
+        data-tid="slice-retry"
+        @click="retryProbe"
+      >
+        <frame-icon
+          name="refresh"
+          small
+        />
+        Look again
+      </button>
+    </div>
+
     <div
       v-if="url && present !== 'absent' && !ready"
       class="slice-view__opening"
@@ -53,20 +78,26 @@ import { consola } from 'consola'
 import BrowserMixin from '@/mixins/browser'
 import ControlMixin from '@/mixins/control'
 import { readLook } from '@/services/slicer-bridge/look'
+import { listenForSlicerSignIn } from '@/services/slicer-bridge/signIn'
 import { hostSetup, type ActiveSpool } from '@/services/slicer-bridge/setup'
 import type { HostSetup, PrinterMaterial } from '@/services/slicer-bridge/vendor/printer-client/bridge/protocol'
 import PrintConfirmDialog, { type LoadedMaterial, type PrintConfirmRequest } from '@/components/slicer/PrintConfirmDialog.vue'
 import { startSlicerHost, type SlicerHost } from '@/services/slicer-bridge/host'
 import { readFluiddSelection } from '@/services/slicer-bridge/fluidd'
-import { CROSS_ORIGIN_SANDBOX, configuredSlicerUrl, probeSlicer, slicerPresence, type SlicerPresence } from '@/services/slicer-bridge/slicerUrl'
+import { CROSS_ORIGIN_SANDBOX, configuredSlicerUrl, probeSlicer, resetSlicerProbe, slicerPresence, type SlicerPresence } from '@/services/slicer-bridge/slicerUrl'
 import { isBoundToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
 import type { ConfirmAnswer, ConfirmRequest } from '@/services/slicer-bridge/vendor/printer-client/bridge/host'
 import { printerError } from '@/services/slicer-bridge/vendor/printer-client/errors/kinds'
 import { createFluiddLibrary } from '@/services/slicer-bridge/library'
+import { createFluiddAccount } from '@/services/slicer-bridge/account'
+import { addModelText, handOverModels, heldModels } from '@/services/slicer-bridge/handover'
 import { libraryStatus, refreshLibrary, watchLibraryAccount } from '@/services/library/store'
 import { EventBus } from '@/eventBus'
 import { isForeignSlug } from '@/services/printer-pages'
 import ForeignPrinterSlice from '@/components/foreign/ForeignPrinterSlice.vue'
+
+/** How long held models wait for the slicer's welcome (its features are watched for 30 s). */
+const HELD_MODELS_WAIT_MS = 35_000
 
 interface OpenDialog {
   request: ConfirmRequest;
@@ -91,11 +122,15 @@ export { CROSS_ORIGIN_SANDBOX }
  * The Fluidd integration (KAN-511, muon3d-slicer docs/fluidd-integration.md):
  * the slicer is told Fluidd's look and what the selected printer has loaded,
  * each again when it changes. The slicer receives no Control layout mode
- * (KAN-550, route meta
- * noMode). A slicer that draws itself
- * as a part of the page (its hello lists ui.look) gets a frame with no card
- * of its own; an older one keeps today's framed card. The rail stays either
- * way.
+ * (KAN-550, route meta noMode).
+ *
+ * The slicer is the page (route meta fullPage, App.vue): its frame fills the
+ * height under the bar and the width beside the rail, with no heading, chips
+ * or card of Control's own, so Slice in Control is the slicer as
+ * slicer.muon3d.com draws it (one slicer to maintain). The printer it slices
+ * for and what that printer has loaded are the slicer's Setup card; whether
+ * the printer is online is the bar's. A slicer that draws itself as a part of
+ * the page (its hello lists ui.look) gets a transparent frame.
  *
  * The account's Library (KAN-521, printer-client 0.4.0): the slicer saves
  * to it and opens from it through Fluidd (services/slicer-bridge/library.ts),
@@ -128,6 +163,8 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
   dirty = false
   closed = false
   stopWatching: (() => void) | null = null
+  stopSignIn: (() => void) | null = null
+  signInLeaving = false
 
   get foreignPrinter (): boolean {
     return isForeignSlug(this.$route?.params.printer)
@@ -139,6 +176,14 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
 
   get present (): SlicerPresence {
     return slicerPresence.state
+  }
+
+  /** Looks for the slicer again, as a fresh page would, and opens it if it's there now. */
+  async retryProbe () {
+    resetSlicerProbe()
+    if (!await probeSlicer(this.url)) return
+    await this.$nextTick()
+    this.startHost()
   }
 
   get sandbox (): string | undefined {
@@ -197,19 +242,49 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
   }
 
   async mounted () {
-    if (this.foreignPrinter) return
+    if (this.foreignPrinter) {
+      this.openHeldModels(true)
+      return
+    }
     window.addEventListener('beforeunload', this.handleBeforeUnload)
+    EventBus.bus.$on('models-held', this.handleModelsHeld)
     watchLibraryAccount()
     refreshLibrary().catch(() => {})
-    if (!await probeSlicer(this.url)) return
+    // Held models wait for the slicer's welcome only so long: then they're let go, with the Add model message.
+    this.heldTimer = window.setTimeout(() => this.openHeldModels(true), HELD_MODELS_WAIT_MS)
+    if (!await probeSlicer(this.url)) {
+      this.openHeldModels(true)
+      return
+    }
     await this.$nextTick()
     this.startHost()
+  }
+
+  heldTimer = 0
+
+  /** Open Slice while /slice is open: the page takes them now, or once the slicer is welcomed. */
+  handleModelsHeld () {
+    window.clearTimeout(this.heldTimer)
+    this.heldTimer = window.setTimeout(() => this.openHeldModels(true), HELD_MODELS_WAIT_MS)
+    this.openHeldModels()
   }
 
   startHost () {
     const url = this.url
     const frame = this.$refs.frame as HTMLIFrameElement | undefined
     if (this.foreignPrinter || !url || !frame || this.host || this.closed) return
+    let storage: Storage | undefined
+    try { storage = window.sessionStorage } catch { /* storage is optional */ }
+    this.stopSignIn = listenForSlicerSignIn({
+      target: window,
+      frame,
+      url,
+      storage,
+      address: () => `${window.location.pathname}${window.location.search}${window.location.hash}`,
+      accountStatus: status => this.host?.bridge.accountStatus(status),
+      reload: () => { frame.src = url.href },
+      leaving: value => { this.signInLeaving = value }
+    })
     this.host = startSlicerHost({
       frame,
       slicerUrl: url,
@@ -225,6 +300,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
       setup: (key) => (key === this.host?.printer()?.key ? this.currentSetup : null),
       onMaterial: (key, material) => { if (key === this.host?.printer()?.key) this.takeMaterial(material) },
       library: createFluiddLibrary({ browse: () => { this.$router.push('/library').catch(() => {}) } }),
+      account: createFluiddAccount(),
       hostVersion: String(import.meta.env.VERSION ?? ''),
       onState: (state) => { this.dirty = state.dirty === true },
       log: (entry) => consola.debug('[slicer bridge]', entry)
@@ -295,12 +371,34 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
     if (material.colour && material.colour.toUpperCase() !== this.loadedColour) this.setLoadedColour(material.colour)
   }
 
+  /**
+   * Open Slice on a dropped or picked model (KAN-2191): once the slicer is
+   * welcomed, the held files go to it (models.open) and are let go, so a
+   * reload doesn't add them again. A slicer that predates models.open, or
+   * none that said hello, is sent nothing, and the person is told to use its
+   * Add model. `giveUp`: no slicer is coming (none here, another printer's
+   * page, or none welcomed within HELD_MODELS_WAIT_MS): they are let go now,
+   * with that message, never left for a later visit to add unasked.
+   */
+  async openHeldModels (giveUp = false) {
+    const names = heldModels().map(f => f.name)
+    if (!names.length) return
+    if (!giveUp && (this.closed || !this.ready)) return
+    const result = await handOverModels(this.host?.bridge, giveUp || this.featuresSettled)
+    if (result !== 'none') window.clearTimeout(this.heldTimer)
+    if (result === 'not-taken') EventBus.$emit(addModelText(names), { type: 'warning', timeout: 10000 })
+  }
+
+  /** The slicer's hello was welcomed, or it never will be: no models.open is coming. */
+  featuresSettled = false
+
   /** Once the slicer's hello is welcomed, whether it draws itself as a part of the page; then it shows. */
   watchFeatures (tries = 120) {
     if (this.closed || !this.host) return
     const features = this.host.bridge.clientFeatures
     if (features.length || tries <= 0) {
       this.partOfPage = features.includes('ui.look')
+      this.featuresSettled = true
       this.showWhenPainted()
       return
     }
@@ -312,6 +410,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
     requestAnimationFrame(() => requestAnimationFrame(() => {
       this.ready = true
       this.openFromLibrary()
+      this.openHeldModels()
     }))
   }
 
@@ -323,8 +422,13 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
 
   beforeDestroy () {
     this.closed = true
+    this.stopSignIn?.()
     window.clearTimeout(this.readyTimer)
     window.removeEventListener('beforeunload', this.handleBeforeUnload)
+    EventBus.bus.$off('models-held', this.handleModelsHeld)
+    window.clearTimeout(this.heldTimer)
+    // Left before the slicer took them: let them go, never for a later visit to add.
+    this.openHeldModels(true)
     this.stopWatching?.()
     this.styleObserver?.disconnect()
     cancelAnimationFrame(this.setupFrame)
@@ -335,7 +439,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
   }
 
   async beforeRouteLeave (to: Route, from: Route, next: NavigationGuardNext) {
-    if (!this.dirty) return next()
+    if (!this.dirty || this.signInLeaving) return next()
     const leave = await this.$confirm(this.$tc('app.slicer.leave.text'), {
       title: this.$tc('app.slicer.leave.title'),
       buttonTrueText: this.$tc('app.slicer.leave.leave'),
@@ -347,7 +451,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
   }
 
   handleBeforeUnload (event: BeforeUnloadEvent) {
-    if (!this.dirty) return
+    if (!this.dirty || this.signInLeaving) return
     event.preventDefault()
     event.returnValue = ''
   }
@@ -389,11 +493,11 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
 </script>
 
 <style lang="scss" scoped>
+  // The page under the bar (App.vue fullPage): the frame fills it.
   .slice-view {
     position: relative;
-    height: calc(100vh - 56px - 32px);
-    height: calc(100dvh - 56px - 32px);
-    min-height: 360px;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .slice-view__frame {
@@ -401,19 +505,44 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
     width: 100%;
     height: 100%;
     border: 0;
-    border-radius: 12px;
     background: var(--v-background-base, transparent);
   }
 
-  // A slicer drawn as a part of the page: no card of its own, the page's own ground.
+  // A slicer drawn as a part of the page: the page's own ground shows through.
   .slice-view--part .slice-view__frame {
-    border-radius: 0;
     background: transparent;
   }
 
   // Hidden, not removed: the slicer loads and says hello behind the page's own "Opening".
   .slice-view__frame--waiting {
     visibility: hidden;
+  }
+
+  .slice-view__missing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 100%;
+    padding: 24px;
+    text-align: center;
+
+    span:not(.slice-view__icon) {
+      max-width: 420px;
+      color: var(--m3d-text-muted);
+    }
+  }
+
+  .slice-view__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    background: var(--m3d-fill);
+    color: var(--m3d-text-muted);
   }
 
   .slice-view__opening {
@@ -441,7 +570,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
     to { transform: rotate(360deg); }
   }
 
-  @media (prefers-reduced-motion: reduce) {
+  :root.m3d-reduced-motion {
     .slice-view__spinner {
       animation: none;
     }

@@ -3,6 +3,7 @@ import StateMixin from './state'
 import { appInit } from '@/init'
 import { activateCloudPrinter } from '@/services/muon-cloud/activate'
 import { cloudState } from '@/services/muon-cloud/state'
+import { remoteRouteLabel } from '@/services/muon-ble/link'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import { activeSlug } from '@/services/printer-pages'
 import { printerNameParts } from '@/util/printer-name'
@@ -44,7 +45,7 @@ export default class ReconnectMixin extends Mixins(StateMixin) {
 
   /** Where it is being reached: its address on this network, or the account. */
   get address (): string {
-    if (this.viaCloud) return 'Through Muon3D'
+    if (this.viaCloud) return remoteRouteLabel(cloudState.activePrinterId)
     try {
       return new URL(this.activeInstance?.apiUrl ?? '').host
     } catch {

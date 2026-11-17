@@ -15,6 +15,7 @@ describe('/design', () => {
     expect(route.matched[0].meta.printerIndependent).toBe(true)
     expect(route.matched[0].meta.keepOnPrinterSwitch).toBe(true)
     expect(route.matched[0].meta.noMode).toBe(true)
+    expect(route.matched[0].meta.fullPage).toBe(true)
     expect(route.matched[0].meta.fileDropRoot).toBeUndefined()
     const component = route.matched[0].components.default as { cid?: number }
     expect(typeof component).toBe('function')

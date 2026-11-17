@@ -14,7 +14,7 @@ function options () {
   return {
     store,
     mountOptions: {
-      mocks: { $store: store, $waits: {} },
+      mocks: { $store: store, $waits: {}, $confirm: vi.fn(async () => true) },
       stubs: { ...panelStubs, 'material-picker': true }
     }
   }
@@ -98,7 +98,7 @@ describe('ControlFilament extrusion and macro limits', () => {
     wrapper.destroy()
   })
 
-  it('blocks manual extrusion while busy and blocks load/unload macros while printing', () => {
+  it('blocks manual extrusion while busy and blocks load/unload macros while printing', async () => {
     const { store, mountOptions } = options()
     store.getters['macros/getMacros'] = [
       { name: 'M600', config: { gcode: '' } },
@@ -108,14 +108,14 @@ describe('ControlFilament extrusion and macro limits', () => {
     store.getters['printer/getPrinterState'] = 'printing'
     const wrapper = mount(ControlFilament, mountOptions)
     const vm = wrapper.vm as any
-    vm.extrude(1); vm.run(vm.loadMacro); vm.run(vm.unloadMacro)
+    vm.extrude(1); await vm.runFilamentPlan('load'); await vm.runFilamentPlan('unload')
     expect(sent()).toEqual([])
-    vm.run(vm.changeMacro)
+    await vm.changeFilament()
     expect(sent()).toEqual(['M600'])
     wrapper.destroy()
   })
 
-  it('blocks every filament action while a macro is running or control is absent', () => {
+  it('blocks every filament action while a macro is running or control is absent', async () => {
     for (const state of ['busy', 'no-control']) {
       const { store, mountOptions } = options()
       store.getters['macros/getMacros'] = [{ name: 'LOAD_FILAMENT', config: { gcode: '' } }]
@@ -123,7 +123,7 @@ describe('ControlFilament extrusion and macro limits', () => {
       else store.getters['auth/getAuthenticated'] = false
       const wrapper = mount(ControlFilament, mountOptions)
       const vm = wrapper.vm as any
-      vm.extrude(1); vm.run(vm.loadMacro)
+      vm.extrude(1); await vm.runFilamentPlan('load')
       expect(sent()).toEqual([])
       wrapper.destroy(); vi.clearAllMocks()
     }

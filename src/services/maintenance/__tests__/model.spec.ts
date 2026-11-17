@@ -111,7 +111,10 @@ describe('what a check runs', () => {
   })
 
   it('tunes the nozzle at the material\'s temperature, without homing', () => {
-    expect(checkCommand('pid', { commands: all, homed: false, nozzleTarget: 240.4 })).toBe('PID_CALIBRATE HEATER=extruder TARGET=240')
+    expect(checkCommand('pid', { commands: all, homed: false, nozzleTarget: 240.4, pidFallback: true })).toBe('PID_CALIBRATE HEATER=extruder TARGET=240')
+    // Without the developer-mode fallback, a printer with no tuning macro of its own runs nothing.
+    expect(checkCommand('pid', { commands: all, homed: false, nozzleTarget: 240.4 })).toBeNull()
+    expect(checkCommand('pid', { commands: { ...all, CALIBRATE_HEATING_HOTEND: {} }, homed: false, nozzleTarget: 240, pidFallback: false })).toBe('CALIBRATE_HEATING_HOTEND')
   })
 
   it("uses the printer's own heater tuning macro when it has one", () => {
@@ -171,5 +174,15 @@ describe('probe accuracy', () => {
   it('homes first when it hasn\'t, then goes there and probes', () => {
     expect(probeAccuracyScript(false, [100, 90])).toBe('G28\nG90\nG1 X100 Y90 F6000\nPROBE_ACCURACY')
     expect(probeAccuracyScript(true, [100, 90])).toBe('G90\nG1 X100 Y90 F6000\nPROBE_ACCURACY')
+    // The M1: cross to the middle at the notch's traverse height.
+    expect(probeAccuracyScript(true, [100, 90], 6)).toBe('G90\nG1 Z6 F600\nG1 X100 Y90 F6000\nPROBE_ACCURACY')
+  })
+})
+
+describe('probeAccuracyScript with a notch that has no height (Opus review of #399)', () => {
+  it('never sends the move to the middle without its lift: no height is an error, not a dropped lift', () => {
+    expect(probeAccuracyScript(true, [100, 90], 6.4)).toBe('G90\nG1 Z6.4 F600\nG1 X100 Y90 F6000\nPROBE_ACCURACY')
+    expect(() => probeAccuracyScript(true, [100, 90], Infinity)).toThrow()
+    expect(() => probeAccuracyScript(true, [100, 90], NaN)).toThrow()
   })
 })

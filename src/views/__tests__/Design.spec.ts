@@ -9,6 +9,7 @@ const EMBED_HTML = '<!doctype html><html><head><meta name="muon3d-embed-hosts" c
 const FLUIDD_HTML = '<!doctype html><html><head><title>Fluidd</title></head><body><div id="app"></div></body></html>'
 
 const flushPromises = () => new Promise(resolve => setTimeout(resolve, 0))
+const cleanups: Array<() => void> = []
 
 /** What this origin answers for /design/embed.html. */
 function serve (status: number, body: string) {
@@ -29,6 +30,7 @@ async function mountDesign (options: Record<string, unknown> = {}) {
     ...options,
     computed: { theme: () => 'dark', density: () => 'compact', ...(options.computed as object | undefined) }
   })
+  cleanups.push(() => wrapper.destroy())
   await flushPromises()
   await wrapper.vm.$nextTick()
   return { wrapper, push }
@@ -43,6 +45,7 @@ const hello = (frame: HTMLIFrameElement, features: string[]) => window.dispatchE
 describe('Design', () => {
   beforeEach(() => resetDesignProbe())
   afterEach(() => {
+    cleanups.splice(0).forEach(close => close())
     vi.unstubAllGlobals()
     resetDesignProbe()
   })
@@ -62,6 +65,8 @@ describe('Design', () => {
     serve(200, EMBED_HTML)
     const { wrapper } = await mountDesign()
     const frame = wrapper.find('iframe')
+    expect(wrapper.get('[data-tid="page-title"]').text()).toBe('Design')
+    expect(wrapper.get('[data-tid="page-title"]').classes()).toContain('d-sr-only')
     expect(frame.exists()).toBe(true)
     expect(frame.attributes('title')).toBe('Muon3D Design')
     expect(frame.attributes('sandbox')).toBeUndefined()

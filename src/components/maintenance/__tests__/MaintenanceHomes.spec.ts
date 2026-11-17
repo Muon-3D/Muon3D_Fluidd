@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import Maintenance from '@/views/Maintenance.vue'
 import ControlTuning from '@/components/control/ControlTuning.vue'
 import ControlOutputs from '@/components/control/ControlOutputs.vue'
+import ControlTaskFold from '@/components/control/ControlTaskFold.vue'
 import { panelStore, panelStubs, waits } from '@/components/control/__tests__/panel-fixture'
 
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn(), printerQueryEndstops: vi.fn() }))
@@ -12,6 +13,7 @@ vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'mock' }))
 
 function show (phone = false) {
   const store = panelStore()
+  Vue.set(store.state.printer.printer, 'muon_guard', { dev_mode: true })
   Vue.set(store.state.printer.printer, 'gcode', { commands: { BED_MESH_CALIBRATE: {}, PROBE_CALIBRATE: {}, SHAPER_CALIBRATE: {}, PID_CALIBRATE: {}, PROBE_ACCURACY: {} } })
   Object.assign(store.state.printer.printer.configfile.settings, {
     input_shaper: { shaper_type_x: 'mzv', shaper_freq_x: 47.4, shaper_type_y: 'ei', shaper_freq_y: 71.4 },
@@ -39,21 +41,33 @@ function show (phone = false) {
 }
 afterEach(() => { vi.clearAllMocks() })
 
-it.each([false, true])('opens Health results and diagnosis without a mode, phone=%s', async phone => {
+it.each([false, true])('shows Health as tiles with each result, no mode and no folds, phone=%s', async phone => {
   const { wrapper } = show(phone)
-  for (const id of ['bedMesh', 'firstLayer', 'shaper', 'pid', 'sensors']) {
-    const trigger = wrapper.find(`[id="maintenance.${id}-trigger"]`)
-    expect(trigger.exists()).toBe(true)
-    expect(trigger.attributes('aria-expanded')).toBe('false')
-    await trigger.trigger('click')
-    expect(trigger.attributes('aria-expanded')).toBe('true')
+  for (const tid of ['maintenance-checks', 'maintenance-calibration', 'maintenance-consumables', 'maintenance-wear']) expect(wrapper.find(`[data-tid="${tid}"]`).exists()).toBe(true)
+  expect(wrapper.find('[data-tid="maintenance-mesh"]').exists()).toBe(false)
+  for (const id of ['firstLayer', 'shaper', 'pid']) {
+    const toggle = wrapper.find(`[data-tid="cal-more-${id}"]`)
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
   }
   expect(wrapper.text()).toContain('0.075 mm')
   expect(wrapper.text()).toContain('17.485')
   expect(wrapper.find('[data-tid="control-shaper"]').isVisible()).toBe(true)
+  const sensors = wrapper.find('[id="maintenance.sensors-trigger"]')
+  expect(sensors.exists()).toBe(true)
+  expect(sensors.attributes('aria-expanded')).toBe('false')
+  await sensors.trigger('click')
+  expect(sensors.attributes('aria-expanded')).toBe('true')
   expect(wrapper.find('[data-tid="control-endstops"]').isVisible()).toBe(true)
-  expect(wrapper.find('[data-tid="check-nozzle"]').text()).toContain('Nothing to do')
-  expect(wrapper.find('[data-tid="check-nozzle"]').text()).toContain('212 h')
+  // Each row keeps its own open/closed choice under the key it always had.
+  const keys = wrapper.findAllComponents(ControlTaskFold).wrappers.map(w => (w.props() as any).foldKey)
+  expect(keys).toEqual(expect.arrayContaining(['maintenance.firstLayer', 'maintenance.shaper', 'maintenance.pid', 'maintenance.sensors']))
+  // A probe without a bed mesh keeps its Probe tile (Query probe, Z offset) on Health.
+  expect(wrapper.find('[data-tid="probe-card"]').exists()).toBe(true)
+  expect(wrapper.find('[data-tid="probe-query"]').exists()).toBe(true)
+  expect(wrapper.find('[data-tid="consumable-nozzle"]').text()).toContain('212 of 400 h')
+  expect(wrapper.find('[data-tid="maintenance-wear"]').text()).toContain('212 h')
   expect(wrapper.find('[data-tid="control-sensors"]').text()).toContain('always on')
   expect(wrapper.find('[data-tid="control-sensors"] [role="switch"]').exists()).toBe(false)
   wrapper.destroy()
@@ -63,7 +77,8 @@ it('keeps an input shaper editable when no measurement command is supported', as
   const { wrapper, store } = show()
   store.state.printer.printer.gcode.commands = {}
   await Vue.nextTick()
-  expect(wrapper.find('[id="maintenance.shaper-trigger"]').exists()).toBe(true)
+  expect(wrapper.find('[data-tid="cal-run-shaper"]').attributes('disabled')).toBeDefined()
+  await wrapper.find('[data-tid="cal-more-shaper"]').trigger('click')
   const tuning = wrapper.findComponent(ControlTuning)
   ;(tuning.vm as any).setShaper('x', { freq: 52.5 })
   expect(socket.printerGcodeScript.mock.calls.map(c => c[0])).toEqual(['SET_INPUT_SHAPER SHAPER_TYPE_X=mzv SHAPER_FREQ_X=52.5'])
@@ -72,6 +87,7 @@ it('keeps an input shaper editable when no measurement command is supported', as
 
 it('uses a reported shaper instead of config and refuses malformed, out-of-range and stale edits', async () => {
   const { wrapper, store } = show()
+  await wrapper.find('[data-tid="cal-more-shaper"]').trigger('click')
   const tuning = wrapper.findComponent(ControlTuning)
   const vm = tuning.vm as any
   vm.beginShaperReport()
@@ -111,8 +127,8 @@ it('shows unknown nozzle history and no invented calibration result on an unsupp
   store.getters['server/componentSupport'] = () => false
   store.getters['printer/getProbe'] = undefined
   await Vue.nextTick()
-  expect(wrapper.find('[data-tid="check-nozzle"]').exists()).toBe(true)
-  expect(wrapper.find('[data-tid="check-nozzle"]').text()).toContain('Hours unavailable')
+  expect(wrapper.find('[data-tid="consumable-nozzle"]').text()).toContain('Hours unavailable')
+  expect(wrapper.find('[data-tid="maintenance-calibration"]').text()).toContain('No calibration to run from here')
   expect(wrapper.text()).not.toContain('Good')
   expect(wrapper.find('[data-tid="maintenance-mesh"]').exists()).toBe(false)
   wrapper.destroy()
@@ -122,6 +138,7 @@ it('does not turn an empty offset report into zero', async () => {
   const { wrapper, store } = show()
   store.state.printer.printer.configfile.settings = { probe: { z_offset: '' } }
   await Vue.nextTick()
-  expect(wrapper.find('[data-tid="check-firstLayer"]').text()).not.toContain('0.000 mm')
+  await wrapper.find('[data-tid="cal-more-firstLayer"]').trigger('click')
+  expect(wrapper.find('[data-tid="cal-firstLayer"]').text()).not.toContain('0.000 mm')
   wrapper.destroy()
 })

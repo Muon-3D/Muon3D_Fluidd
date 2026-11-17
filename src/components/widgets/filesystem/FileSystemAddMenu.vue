@@ -11,6 +11,7 @@
           <v-btn
             v-bind="attrs"
             :disabled="disabled"
+            :aria-label="$t('app.general.btn.add')"
             fab
             small
             text

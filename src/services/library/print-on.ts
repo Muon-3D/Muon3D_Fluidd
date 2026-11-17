@@ -236,6 +236,12 @@ export async function sendToPrinter (options: {
   router: VueRouter;
   store: AnyStore;
   item: Pick<LibraryItem, 'id' | 'name' | 'version'>;
+  /**
+   * A public print (a Discover card): the G-code comes over the share
+   * route, checked against the size and SHA-256 its publication lists, and
+   * nothing is recorded in the person's own Library.
+   */
+  shared?: { expected: Record<string, StoredFileFacts>, slug?: string | null };
   setup: ItemSetup;
   target: PrintTarget;
   mode: SendMode;
@@ -245,7 +251,11 @@ export async function sendToPrinter (options: {
   const { router, store, item, setup, target, mode } = options
   const step = options.step ?? (() => {})
   step('Downloading the G-code…')
-  const { bytes, stored_sha256 } = await fetchGcode(item, setup, await ownFileFacts(item, setup))
+  const sharedFacts = options.shared?.expected[setup.file_id]
+  if (options.shared && !sharedFacts) throw new Error('That public print does not list a checksum for this G-code.')
+  const { bytes, stored_sha256 } = options.shared && sharedFacts
+    ? await downloadSharedGcode(item.id, setup.file_id, sharedFacts)
+    : await fetchGcode(item, setup, await ownFileFacts(item, setup))
   step(`Opening ${target.name}…`)
   await openPrinter(router, store, target)
 
@@ -270,6 +280,10 @@ export async function sendToPrinter (options: {
   }
 
   const printed = () => {
+    if (options.shared) {
+      rememberLibraryFile(path, { gcode_sha256: stored_sha256, publication_id: item.id })
+      return
+    }
     recordPrinted(item.id, {
       printer_name: target.name,
       setup: { printer_model: setup.printer_model, nozzle_mm: setup.nozzle_mm, material: setup.material },
@@ -294,7 +308,10 @@ export async function sendToPrinter (options: {
     return
   }
   try {
-    rememberLibraryFile(path, { gcode_sha256: stored_sha256, ...(typeof item.version === 'number' ? { item_id: item.id, version: item.version } : {}) })
+    rememberLibraryFile(path, {
+      gcode_sha256: stored_sha256,
+      ...(options.shared ? { publication_id: item.id } : typeof item.version === 'number' ? { item_id: item.id, version: item.version } : {})
+    })
     await httpClientActions.post('/printer/print/start', { filename: path }, { timeout: START_ANSWER_MS })
   } catch (error) {
     EventBus.$emit(`${target.name} didn't start ${item.name}. It's in its Jobs.`, { type: 'error', timeout: 0 })

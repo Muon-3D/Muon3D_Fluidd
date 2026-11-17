@@ -1,5 +1,6 @@
 import Vue from 'vue'
 import { checkSlicer, slicerUrl } from '@/services/slicer-bridge/slicerUrl'
+import { CONSOLE_ORIGINS } from '@/services/muon-cloud/api'
 
 /**
  * Where /design finds Muon3D Design: VUE_MUON_DESIGN_URL, the URL of its
@@ -9,9 +10,14 @@ import { checkSlicer, slicerUrl } from '@/services/slicer-bridge/slicerUrl'
  * https, no credentials, no hash.
  */
 export const DEFAULT_DESIGN_URL = '/design/embed.html'
+export const HOSTED_DESIGN_URL = 'https://design.muon3d.com/embed.html'
 
 export function designUrl (configured: string | undefined, base: string): URL | null {
-  return slicerUrl((configured ?? '').trim() || DEFAULT_DESIGN_URL, base)
+  const value = (configured ?? '').trim()
+  const url = slicerUrl(value || DEFAULT_DESIGN_URL, base)
+  return url && (!value || value === DEFAULT_DESIGN_URL) && CONSOLE_ORIGINS.includes(url.origin)
+    ? slicerUrl(HOSTED_DESIGN_URL, base)
+    : url
 }
 
 /** Design's embed.html as this build is configured. */

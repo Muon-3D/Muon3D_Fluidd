@@ -53,6 +53,10 @@ export default class DiagnosticsCard extends Mixins(BrowserMixin) {
   @Prop({ type: Boolean })
   readonly bare?: boolean
 
+  /** Seconds back the chart shows; unset, all the printer keeps. */
+  @Prop({ type: Number, default: 0 })
+  readonly window!: number
+
   get chartData () {
     return this.$store.state.charts.diagnostics || []
   }
@@ -155,7 +159,7 @@ export default class DiagnosticsCard extends Mixins(BrowserMixin) {
         max: 'dataMax',
         min: (value: any) => {
           const retention = this.$store.getters['charts/getChartRetention']
-          return value.max - (retention * 1000)
+          return value.max - ((this.window || retention) * 1000)
         },
         axisTick: {
           show: false

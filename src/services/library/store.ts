@@ -20,9 +20,11 @@ import {
   type Preferences,
   type PreferencesPatch,
   type PrintedEvent,
+  type StorageKind,
   type Version
 } from './api'
 import { modelsAssertion } from './assertion'
+import { forgetOwnRecents } from './recents'
 import { syncFeed } from './feed'
 import { libraryPromise } from './promise'
 import { cleanName, saveToLibrary, type SaveProgress, type SaveRequest } from './save'
@@ -41,6 +43,8 @@ export interface LibraryState {
   withdrawn: boolean;
   usedBytes: number | null;
   quotaBytes: number | null;
+  /** The used space split by kind, only when the service sends it. */
+  usedByKind: Partial<Record<StorageKind, number>> | null;
   preferences: Preferences | null;
   items: Record<string, LibraryItem>;
   rev: number;
@@ -62,6 +66,7 @@ function blank (account: string | null): LibraryState {
     withdrawn: false,
     usedBytes: null,
     quotaBytes: null,
+    usedByKind: null,
     preferences: null,
     items: {},
     rev: 0,
@@ -137,6 +142,17 @@ function takeInfo (info: LibraryInfo) {
   libraryState.purgeAfter = info.account?.purge_after ?? null
   libraryState.usedBytes = typeof info.used_bytes === 'number' ? info.used_bytes : null
   libraryState.quotaBytes = typeof info.quota_bytes === 'number' ? info.quota_bytes : null
+  libraryState.usedByKind = byKind(info.used_by_kind)
+}
+
+function byKind (split: unknown): Partial<Record<StorageKind, number>> | null {
+  if (!split || typeof split !== 'object') return null
+  const out: Partial<Record<StorageKind, number>> = {}
+  for (const kind of ['uploads', 'slices', 'designs'] as StorageKind[]) {
+    const bytes = (split as Record<string, unknown>)[kind]
+    if (typeof bytes === 'number' && Number.isFinite(bytes) && bytes >= 0) out[kind] = bytes
+  }
+  return Object.keys(out).length ? out : null
 }
 
 const signedInAccount = (): string | null => cloudState.account?.id ?? null
@@ -147,8 +163,10 @@ let watching = false
 export function watchLibraryAccount () {
   if (watching) return
   watching = true
-  watch(signedInAccount, (account) => {
+  watch(signedInAccount, (account, previous) => {
     if (account === libraryState.account) return
+    // Another account (or none): what the last one opened of its own is not this one's.
+    if (previous !== undefined && previous !== account) forgetOwnRecents()
     resetLibrary(account)
     if (account) refreshLibrary().catch(() => {})
   }, { immediate: true })
@@ -323,9 +341,11 @@ export async function recordPrinted (id: string, event: PrintedEvent): Promise<v
 export async function loadItem (id: string): Promise<LibraryItem | null> {
   const kept = libraryState.items[id]
   if (kept) return kept
+  const account = libraryState.account
   try {
     const item = await client.item(id)
-    keep(item)
+    // Signed out or another account meanwhile: not this Library's to keep.
+    if (libraryState.account === account) keep(item)
     return item
   } catch (error) {
     if (error instanceof LibraryError && error.code === 'not_found') return null

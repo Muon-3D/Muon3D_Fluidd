@@ -19,6 +19,7 @@ import {
 } from '@/services/managed-transport'
 import axios from 'axios'
 import { cloudState } from '@/services/muon-cloud/state'
+import { headStatus } from '@/services/control/safe-move'
 
 /** The longest wait between two tries to reconnect. */
 const MAX_RECONNECT_DELAY_MS = 30_000
@@ -48,6 +49,8 @@ export class WebSocketClient {
   reconnectCount = 0
   logPrefix = '[WEBSOCKET]'
   requests: Array<Request> = []
+  /** The next JSON-RPC id. Starts somewhere random so a reload doesn't reuse a recent one. */
+  private nextRequestId = 10000 + Math.floor(Math.random() * 80000)
   store: any | null = null
   pingTimeout: any
   deadTimeout: any
@@ -207,11 +210,16 @@ export class WebSocketClient {
     this.purgeRequests()
     this.closing = false
     this.cancelRetry()
+    // A new route (auto mode failing over, or a chosen route) starts its own backoff:
+    // the old route's failed tries say nothing about this one (#370).
+    this.reconnectCount = 0
     this.bindConnection(connection, reconnect ?? null)
   }
 
   /** Ends an adopted session without allowing its close event to reconnect. */
   releaseTransportSocket (closeConnection = true) {
+    // A printer switch or a released transport: the head position held is the old one's.
+    headStatus.fresh = false
     this.attempt++
     this.purgeRequests()
     this.cancelRetry()
@@ -311,6 +319,8 @@ export class WebSocketClient {
       this.store.commit('wait/setRemoveWait', request.wait)
     }
 
+    this.pong()
+
     if (d.error) {
       if (request) {
         Object.defineProperty(d.error, '__request__', { enumerable: false, value: request })
@@ -320,8 +330,6 @@ export class WebSocketClient {
       request?.resolve?.(undefined)
       return
     }
-
-    this.pong()
 
     if (request) {
       let result = (d.result) ? d.result : d.params
@@ -395,6 +403,9 @@ export class WebSocketClient {
         if (request.wait?.length) this.store.commit('wait/setRemoveWait', request.wait)
       }
     }
+    // Settle their promises too, so nothing waiting on an answer waits forever
+    // (the in-flight G-code count, safe-move.ts, ends with them).
+    for (const request of this.requests) request.resolve?.(undefined)
     this.requests = []
   }
 
@@ -456,11 +467,11 @@ export class WebSocketClient {
     }
 
     if (this.connection?.readyState === PRINTER_SOCKET_OPEN) {
-      // moonraker expects a unique id for us to reference back to when data is returned.
-      const getRandomNumber = (min: number, max: number) => {
-        return Math.floor(Math.random() * (max - min + 1)) + min
-      }
-      const id = getRandomNumber(10000, 99999)
+      // moonraker expects a unique id for us to reference back to when data is
+      // returned. Counted, not random: two pending requests must never share
+      // one, or one's answer would settle the other (a running G28 ending early
+      // for the in-flight G-code count, safe-move.ts).
+      const id = this.nextRequestId++
       const packet: SocketRequest = {
         id,
         method,

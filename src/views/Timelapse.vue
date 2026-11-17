@@ -5,36 +5,129 @@
     data-tid="timelapse-page"
   >
     <section
-      class="tl__videos"
-      data-tid="timelapse-videos"
+      v-if="!supported"
+      class="tl__tile tl__state"
+      data-tid="timelapse-unsupported"
     >
-      <div class="tl__head">
-        <h2>Timelapses</h2>
-        <span class="tl__sub">{{ items.length }} {{ items.length === 1 ? 'file' : 'files' }}</span>
-      </div>
+      <span class="tl__state-icon"><frame-icon name="camera2" /></span>
+      <b>Timelapse isn't set up on {{ printerShortName }}</b>
+      <p>Add moonraker-timelapse to the printer, and each print's video shows up here.</p>
+    </section>
+    <template v-else>
       <p
-        v-if="!loaded"
+        v-if="!socketConnected"
+        class="tl__offline"
+        data-tid="timelapse-offline"
+      >
+        {{ printerShortName }} is offline. The videos here can't be played, renamed or deleted until it's back.
+      </p>
+      <p
+        v-if="renameNote"
+        class="tl__offline"
+        role="alert"
+        data-tid="timelapse-rename-note"
+      >
+        {{ renameNote }}
+      </p>
+      <section
+        v-if="loadError"
+        class="tl__tile tl__state"
+        data-tid="timelapse-error"
+      >
+        <span class="tl__state-icon tl__state-icon--err"><frame-icon name="alert" /></span>
+        <b>Couldn't read the timelapse folder</b>
+        <p>{{ printerShortName }} didn't send the list of videos. Check it's online, then try again.</p>
+        <button
+          type="button"
+          class="cbtn cbtn--primary"
+          data-tid="timelapse-retry"
+          :disabled="!socketConnected"
+          @click="refresh"
+        >
+          Retry
+        </button>
+      </section>
+      <p
+        v-else-if="!loaded && socketConnected"
         class="tl__note"
       >
         Reading the timelapse folder…
       </p>
-      <p
-        v-else-if="!items.length"
-        class="tl__note"
+      <section
+        v-else-if="!items.length && !thisPrint"
+        class="tl__tile tl__state"
+        data-tid="timelapse-empty"
       >
-        No timelapses yet. Turn timelapse on, and each print's video lands here once it renders.
-      </p>
-      <div class="tl__grid">
+        <span class="tl__state-icon"><frame-icon name="camera2" /></span>
+        <b>No timelapses yet</b>
+        <p>Turn timelapse on in Settings, and each print's video lands here once it renders.</p>
+        <router-link
+          :to="settingsPath"
+          class="cbtn cbtn--primary"
+        >
+          Timelapse settings
+        </router-link>
+      </section>
+      <div
+        v-if="!loadError && (items.length || thisPrint)"
+        class="tl__grid"
+        data-tid="timelapse-videos"
+      >
+        <article
+          v-if="thisPrint"
+          class="tl__tile tl__item tl__item--now"
+          data-tid="timelapse-status"
+        >
+          <button
+            type="button"
+            class="tl__picture"
+            :aria-label="rendering ? 'This print, rendering' : 'Look through this print\'s frames'"
+            :disabled="rendering"
+            data-tid="timelapse-frames-open"
+            @click="framesOpen = true"
+          >
+            <img
+              v-if="frameCount"
+              :src="lastFrameUrl"
+              alt=""
+              :style="{ filter: rendering ? `saturate(${renderProgress}%)` : 'none' }"
+            >
+            <frame-icon
+              v-else
+              name="camera2"
+            />
+            <span
+              v-if="rendering"
+              class="tl__pill"
+              data-tid="timelapse-rendering"
+            >Rendering · {{ Math.round(renderProgress) }}%</span>
+            <span
+              v-if="rendering"
+              class="tl__bar"
+              role="progressbar"
+              :aria-valuenow="Math.round(renderProgress)"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            ><span :style="{ width: `${renderProgress}%` }" /></span>
+          </button>
+          <div class="tl__meta">
+            <div class="tl__name">
+              <b>This print</b>
+              <span>{{ rendering ? (renderLine || 'Rendering…') : `${frameCount} ${frameCount === 1 ? 'frame' : 'frames'} so far` }}</span>
+            </div>
+          </div>
+        </article>
         <article
           v-for="item in items"
           :key="item.name"
-          class="tl__item"
+          class="tl__tile tl__item"
           :data-file="item.name"
         >
           <button
             type="button"
             class="tl__picture"
             :aria-label="item.kind === 'video' ? `Play ${item.title}` : `Download ${item.title}`"
+            :disabled="!socketConnected"
             @click="item.kind === 'video' ? play(item.name) : download(item.name)"
           >
             <img
@@ -54,38 +147,82 @@
             >▶</span>
           </button>
           <div class="tl__meta">
-            <b :title="item.name">{{ item.title }}</b>
-            <span>{{ item.kind === 'frames' ? 'saved frames · ' : '' }}{{ item.when || date(item.modified) }} · {{ size(item.size) }}</span>
-          </div>
-          <div class="tl__actions">
-            <button
-              type="button"
-              class="tl__link"
-              @click="download(item.name)"
+            <div class="tl__name">
+              <b :title="item.name">{{ item.title }}</b>
+              <span>{{ item.kind === 'frames' ? 'saved frames · ' : '' }}{{ item.when || date(item.modified) }} · {{ size(item.size) }}</span>
+            </div>
+            <v-menu
+              offset-y
+              left
             >
-              Download
-            </button>
-            <button
-              type="button"
-              class="tl__link tl__link--danger"
-              data-tid="timelapse-delete"
-              @click="remove(item)"
-            >
-              Delete
-            </button>
+              <template #activator="{ on, attrs }">
+                <button
+                  type="button"
+                  class="tl__more"
+                  :aria-label="`More for ${item.title}`"
+                  data-tid="timelapse-item-more"
+                  v-bind="attrs"
+                  v-on="on"
+                >
+                  <frame-icon
+                    name="more"
+                    small
+                  />
+                </button>
+              </template>
+              <v-list dense>
+                <v-list-item
+                  :disabled="!socketConnected"
+                  data-tid="timelapse-download"
+                  @click="download(item.name)"
+                >
+                  <v-list-item-title>Download</v-list-item-title>
+                </v-list-item>
+                <v-list-item
+                  :disabled="!socketConnected"
+                  data-tid="timelapse-rename"
+                  @click="renaming = item"
+                >
+                  <v-list-item-title>Rename…</v-list-item-title>
+                </v-list-item>
+                <v-list-item
+                  :disabled="!socketConnected"
+                  data-tid="timelapse-delete"
+                  @click="remove(item)"
+                >
+                  <v-list-item-title class="tl__danger">
+                    Delete
+                  </v-list-item-title>
+                </v-list-item>
+              </v-list>
+            </v-menu>
           </div>
         </article>
       </div>
-    </section>
-
-    <div class="tl__side">
-      <control-card
-        title="This print"
-        data-tid="timelapse-status"
+    </template>
+    <file-name-dialog
+      v-if="renaming"
+      :value="!!renaming"
+      title="Rename the video"
+      label="Name"
+      :name="renaming.name"
+      @input="!$event && (renaming = null)"
+      @save="rename"
+    />
+    <v-dialog
+      :value="framesOpen"
+      max-width="720"
+      @input="framesOpen = $event"
+    >
+      <div
+        v-if="framesOpen"
+        class="tl__frames"
+        data-tid="timelapse-frames"
       >
-        <template #aside>
-          <span v-if="frameCount">{{ frameCount }} {{ frameCount === 1 ? 'frame' : 'frames' }}</span>
-        </template>
+        <div class="tl__frames-head">
+          <b>This print's frames</b>
+          <span>{{ frameCount }} {{ frameCount === 1 ? 'frame' : 'frames' }}</span>
+        </div>
         <div
           v-if="frameCount"
           class="tl__frame"
@@ -93,7 +230,6 @@
           <img
             :src="frameUrl"
             alt=""
-            :style="{ filter: rendering ? `saturate(${renderProgress}%)` : 'none' }"
           >
         </div>
         <camera-item
@@ -101,12 +237,6 @@
           :camera="camera"
           class="tl__camera"
         />
-        <p
-          v-else
-          class="tl__note"
-        >
-          No frames yet. With timelapse on, a picture is taken as each layer finishes.
-        </p>
         <div
           v-if="frameCount > 1"
           class="tl__slider"
@@ -122,86 +252,32 @@
             @change="pickFrame"
           />
         </div>
-        <p
-          v-if="renderLine"
-          class="tl__render"
-          data-tid="timelapse-rendering"
-        >
-          {{ renderLine }}
-        </p>
         <div class="tl__buttons">
           <button
             type="button"
             class="cbtn cbtn--primary"
-            :disabled="!frameCount || rendering"
-            data-tid="timelapse-render"
-            @click="openDialog(true)"
+            :disabled="!frameCount || rendering || !socketConnected"
+            data-tid="timelapse-frames-render"
+            @click="renderOpen = true"
           >
             Render now
           </button>
           <button
             type="button"
             class="cbtn"
-            :disabled="!frameCount || savingFrames"
-            data-tid="timelapse-save-frames"
+            :disabled="!frameCount || savingFrames || !socketConnected"
+            data-tid="timelapse-frames-save"
             @click="saveFrames"
           >
             Save the frames
           </button>
         </div>
-      </control-card>
-
-      <control-card
-        title="Settings"
-        data-tid="timelapse-settings"
-      >
-        <div class="tl__rows">
-          <div class="crow">
-            <span class="crow__name">
-              Take a timelapse
-              <span
-                v-if="blocked('enabled')"
-                class="crow__sub"
-              >· set in moonraker.conf</span>
-            </span>
-            <toggle-switch
-              :value="!!settings && settings.enabled"
-              label="Take a timelapse"
-              :disabled="blocked('enabled')"
-              @input="set({ enabled: $event })"
-            />
-          </div>
-          <div class="crow">
-            <span class="crow__name">
-              Render when the print ends
-              <span
-                v-if="blocked('autorender')"
-                class="crow__sub"
-              >· set in moonraker.conf</span>
-            </span>
-            <toggle-switch
-              :value="!!settings && settings.autorender"
-              label="Render when the print ends"
-              :disabled="blocked('autorender')"
-              @input="set({ autorender: $event })"
-            />
-          </div>
-        </div>
-        <button
-          type="button"
-          class="cbtn"
-          data-tid="timelapse-more-settings"
-          @click="openDialog(false)"
-        >
-          Camera, mode and rendering…
-        </button>
-      </control-card>
-    </div>
-
+      </div>
+    </v-dialog>
     <timelapse-render-settings-dialog
-      v-if="dialogOpen"
-      v-model="dialogOpen"
-      :renderable="dialogRenders"
+      v-if="renderOpen"
+      v-model="renderOpen"
+      renderable
     />
     <v-dialog
       :value="!!playing"
@@ -225,41 +301,87 @@
 </template>
 
 <script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import FilesMixin from '@/mixins/files'
 import BrowserMixin from '@/mixins/browser'
 import { SocketActions } from '@/api/socketActions'
 import type { AppFile, FileBrowserEntry } from '@/store/files/types'
-import type { RenderStatus, TimelapseLastFrame, TimelapseSettings, TimelapseWritableSettings } from '@/store/timelapse/types'
+import type { RenderStatus, TimelapseLastFrame, TimelapseSettings } from '@/store/timelapse/types'
 import type { WebcamConfig } from '@/store/webcams/types'
 import { fileSize, shortDate } from '@/services/jobs/model'
-import { frameFile, renderText, timelapseItems, type TimelapseItem } from '@/services/timelapse/model'
-import ControlCard from '@/components/control/ControlCard.vue'
+import { frameFile, renamedTimelapse, renderText, timelapseItems, type TimelapseItem } from '@/services/timelapse/model'
+import { timelapsePage } from '@/services/timelapse/page-state'
+import { activeSlug } from '@/services/printer-pages'
+import { scopedPath } from '@/router/printerPagePaths'
+import { printerNameParts } from '@/util/printer-name'
 import RangeSlider from '@/components/control/RangeSlider.vue'
-import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import CameraItem from '@/components/widgets/camera/CameraItem.vue'
+import FileNameDialog from '@/components/widgets/filesystem/FileNameDialog.vue'
 import TimelapseRenderSettingsDialog from '@/components/widgets/timelapse/TimelapseRenderSettingsDialog.vue'
 
 /**
- * Timelapse (Jobs, with moonraker-timelapse): the videos made so far, to
- * play, download or delete; this print's frames, to look through, render
- * or save; and the two settings people change, with the camera, mode and
- * rendering in Fluidd's own settings dialog.
+ * Timelapse (Jobs, with moonraker-timelapse): a page to watch. The videos
+ * made so far, to play, download, rename or delete, with this print first
+ * while it takes frames or renders. How timelapses are made is in
+ * Settings › Timelapse, linked from the header.
  */
-@Component({ components: { ControlCard, RangeSlider, ToggleSwitch, CameraItem, TimelapseRenderSettingsDialog } })
+@Component({ components: { RangeSlider, CameraItem, FileNameDialog, TimelapseRenderSettingsDialog } })
 export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMixin) {
   picked = 0
-  dialogOpen = false
-  dialogRenders = false
+  framesOpen = false
+  renderOpen = false
   playing: string | null = null
+  renaming: TimelapseItem | null = null
+  /** Why the last rename didn't happen; empty when it did, or before one. */
+  renameNote = ''
+  loadError = false
 
   frameValueText (value: number): string {
     return `Frame ${value} of ${this.frameCount}`
   }
 
-  mounted () {
-    SocketActions.serverFilesGetDirectory('timelapse', 'timelapse')
+  /** Moonraker reports its components again on reconnecting: through a drop, the page keeps what it last knew. */
+  wasSupported = false
+
+  get supported (): boolean {
+    const supported = this.$store.getters['server/componentSupport']('timelapse') as boolean
+    return supported || (!this.socketConnected && this.wasSupported)
+  }
+
+  get printerShortName (): string {
+    return printerNameParts(this.$store.getters['config/getDisplayName'] as string ?? '').name || 'The printer'
+  }
+
+  get settingsPath (): string {
+    return `${scopedPath('/settings', activeSlug())}#timelapse`
+  }
+
+  async refresh () {
+    if (!this.supported || !this.socketConnected) return
+    this.loadError = false
+    const result = await SocketActions.serverFilesGetDirectory('timelapse', 'timelapse')
+    if (result === undefined && this.socketConnected) this.loadError = true
+  }
+
+  @Watch('supported', { immediate: true })
+  onSupported (supported: boolean) {
+    if (supported) this.wasSupported = true
+    if (supported) this.refresh()
+  }
+
+  @Watch('socketConnected')
+  onConnected (connected: boolean) {
+    if (connected && (this.loadError || !this.loaded)) this.refresh()
+  }
+
+  @Watch('page.refreshTick')
+  onRefresh () {
+    this.refresh()
+  }
+
+  get page () {
+    return timelapsePage
   }
 
   // -- the folder -------------------------------------------------------------------
@@ -268,9 +390,13 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
     return !!this.$store.getters['files/getDirectory']('timelapse')
   }
 
-  get items (): TimelapseItem[] {
+  get folder (): AppFile[] {
     const entries = (this.$store.getters['files/getDirectory']('timelapse') as FileBrowserEntry[] | undefined) ?? []
-    return timelapseItems(entries.filter((e): e is AppFile => e.type === 'file'))
+    return entries.filter((e): e is AppFile => e.type === 'file')
+  }
+
+  get items (): TimelapseItem[] {
+    return timelapseItems(this.folder)
   }
 
   url (name: string): string {
@@ -291,6 +417,36 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
 
   download (name: string) {
     this.downloadFile(name, 'timelapse')
+  }
+
+  /**
+   * Renames a video and the picture saved beside it. A name the folder
+   * already holds is refused (a move would write over that file). The picture
+   * moves only once the video has, and nothing else moves after a refusal.
+   */
+  async rename (title: string) {
+    const item = this.renaming
+    this.renaming = null
+    this.renameNote = ''
+    if (!item) return
+    const next = renamedTimelapse(item, title)
+    if (!next) return
+    const held = new Set(this.folder.map(f => f.filename))
+    const taken = [next.name, next.thumbnail].find(name => !!name && held.has(name))
+    if (taken) {
+      this.renameNote = `There's already a file called ${taken} on ${this.printerShortName}. ${item.title} keeps its name; pick another.`
+      return
+    }
+    const moved = await SocketActions.serverFilesMove(`timelapse/${item.name}`, `timelapse/${next.name}`)
+    if (!moved) {
+      this.renameNote = `Couldn't rename ${item.title}: ${this.printerShortName} refused. It keeps its name, and so does its picture.`
+      return
+    }
+    // The picture saved beside a video keeps its name matching, so the video keeps its picture.
+    if (item.thumbnail && next.thumbnail) {
+      const picture = await SocketActions.serverFilesMove(`timelapse/${item.thumbnail}`, `timelapse/${next.thumbnail}`)
+      if (!picture) this.renameNote = `${next.name} is renamed, but ${this.printerShortName} wouldn't rename its picture, ${item.thumbnail}.`
+    }
   }
 
   async remove (item: TimelapseItem) {
@@ -315,12 +471,21 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
     return this.lastFrame?.uniqueCount ?? 0
   }
 
+  /** This print has a card of its own while it takes frames or renders. */
+  get thisPrint (): boolean {
+    return this.frameCount > 0 || this.rendering
+  }
+
   get shownFrame (): number {
     return this.picked || this.frameCount
   }
 
   pickFrame (n: number) {
     this.picked = n === this.frameCount ? 0 : n
+  }
+
+  get lastFrameUrl (): string {
+    return this.createFileUrl(this.lastFrame?.file ?? '', 'timelapse_frames')
   }
 
   get frameUrl (): string {
@@ -355,73 +520,34 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
   saveFrames () {
     SocketActions.machineTimelapseSaveFrames(this.$waits.onTimelapseSaveFrame)
   }
-
-  // -- settings ---------------------------------------------------------------------
-
-  blocked (setting: keyof TimelapseSettings): boolean {
-    return this.$store.getters['timelapse/isBlockedSetting'](setting) as boolean
-  }
-
-  set (change: Partial<TimelapseWritableSettings>) {
-    SocketActions.machineTimelapseSetSettings(change)
-  }
-
-  openDialog (renders: boolean) {
-    this.dialogRenders = renders
-    this.dialogOpen = true
-  }
 }
 </script>
 
 <style lang="scss" scoped>
   .tl {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 380px;
-    gap: 16px;
-    align-items: start;
-  }
-
-  .tl__videos {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    min-width: 0;
+    gap: 16px;
   }
 
-  .tl__head {
+  .tl__tile {
     display: flex;
-    align-items: baseline;
-    gap: 10px;
-
-    h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 700;
-    }
-  }
-
-  .tl__sub,
-  .tl__note {
-    color: var(--m3d-text-muted);
-    font-size: 14px;
-  }
-
-  .tl__note {
-    margin: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--m3d-border);
+    border-radius: 16px;
+    background: var(--m3d-surface);
   }
 
   .tl__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
   }
 
-  .tl__item {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    border-radius: 18px;
-    background: var(--m3d-surface);
+  .tl--phone .tl__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .tl__picture {
@@ -429,14 +555,20 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
     display: flex;
     align-items: center;
     justify-content: center;
-    aspect-ratio: 16 / 9;
-    background: #111;
-    color: var(--m3d-text-subtle);
+    aspect-ratio: 16 / 10;
+    width: 100%;
+    overflow: hidden;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text-muted);
 
     img {
       width: 100%;
       height: 100%;
       object-fit: cover;
+    }
+
+    &:disabled {
+      cursor: default;
     }
   }
 
@@ -448,21 +580,55 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgb(0 0 0 / 55%);
     color: #fff;
     font-size: 16px;
   }
 
+  .tl__pill {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--m3d-accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .tl__bar {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 4px;
+    background: rgb(0 0 0 / 30%);
+
+    span {
+      display: block;
+      height: 100%;
+      background: var(--m3d-accent);
+    }
+  }
+
   .tl__meta {
     display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 14px 14px;
+  }
+
+  .tl__name {
+    display: flex;
+    flex: 1;
     flex-direction: column;
     gap: 2px;
-    padding: 10px 14px 4px;
     min-width: 0;
 
     b {
       overflow: hidden;
-      font-size: 15px;
+      font-size: 14px;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
@@ -473,52 +639,103 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
     }
   }
 
-  .tl__actions {
-    display: flex;
-    gap: 14px;
-    padding: 6px 14px 12px;
+  .tl__more {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: var(--m3d-text-muted);
   }
 
-  .tl__link {
-    color: var(--m3d-accent);
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  .tl__link--danger {
+  .tl__danger {
     color: var(--m3d-danger);
   }
 
-  .tl__side {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    min-width: 0;
+  .tl__state {
+    align-items: center;
+    gap: 8px;
+    padding: 40px 18px;
+    text-align: center;
+
+    b {
+      font-size: 16px;
+    }
+
+    p {
+      margin: 0 0 8px;
+      color: var(--m3d-text-muted);
+      font-size: 14px;
+    }
   }
 
-  .tl__frame img,
-  .tl__camera {
+  .tl__state-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 4px;
+    border-radius: 12px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text-muted);
+  }
+
+  .tl__state-icon--err {
+    color: var(--m3d-danger);
+  }
+
+  .tl__note,
+  .tl__offline {
+    margin: 0;
+    color: var(--m3d-text-muted);
+    font-size: 14px;
+  }
+
+  .tl__offline {
+    padding: 12px 16px;
+    border: 1px solid var(--m3d-border);
+    border-radius: 12px;
+    background: var(--m3d-surface);
+  }
+
+  .tl__frames {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px;
+    border-radius: 16px;
+    background: var(--m3d-surface);
+  }
+
+  .tl__frames-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+
+    span {
+      color: var(--m3d-text-muted);
+      font-size: 13px;
+    }
+  }
+
+  .tl__frame img {
     display: block;
     width: 100%;
-    border-radius: 14px;
+    border-radius: 10px;
   }
 
   .tl__slider {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
 
     > span {
       color: var(--m3d-text-muted);
-      font-size: 12px;
+      font-size: 13px;
     }
-  }
-
-  .tl__render {
-    margin: 0;
-    color: var(--m3d-accent);
-    font-size: 14px;
-    font-weight: 600;
   }
 
   .tl__buttons {
@@ -527,28 +744,10 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
     gap: 8px;
   }
 
-  .tl__rows {
-    display: flex;
-    flex-direction: column;
-
-    > .crow + .crow {
-      border-top: 1px solid var(--m3d-border);
-    }
-  }
-
-  .tl__player {
+  .tl__player video {
+    display: block;
+    width: 100%;
+    max-height: 80vh;
     background: #000;
-
-    video {
-      display: block;
-      width: 100%;
-      max-height: 80vh;
-    }
-  }
-
-  @media (max-width: 1100px) {
-    .tl {
-      grid-template-columns: minmax(0, 1fr);
-    }
   }
 </style>

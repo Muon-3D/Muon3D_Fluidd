@@ -7,8 +7,28 @@
     <printer-stage
       state="printing"
       class="now__stage"
-      :height="variant === 'card' ? 300 : undefined"
+      :height="variant === 'card' ? 190 : undefined"
     >
+      <template v-if="variant === 'card'">
+        <tone-pill
+          class="now__pill now__pill--state"
+          :tone="tile.tone"
+        >
+          {{ stateText }}
+        </tone-pill>
+        <span
+          v-if="material"
+          class="now__pill now__pill--material"
+          data-tid="printing-now-material"
+        >
+          <i
+            v-if="material.colour"
+            class="now__dot"
+            :style="{ background: material.colour }"
+          />
+          {{ material.name || colourLabel }}
+        </span>
+      </template>
       <div
         v-if="thumbnail && variant === 'card'"
         class="now__part-small"
@@ -97,6 +117,7 @@
             :aria-label="paused ? 'Resume' : 'Pause'"
             :title="paused ? 'Resume' : 'Pause'"
             data-tid="printing-now-pause"
+            :disabled="busy"
             @click="$emit(paused ? 'resume' : 'pause')"
           >
             <v-icon small>
@@ -113,6 +134,7 @@
             aria-label="Stop print"
             title="Stop print"
             data-tid="printing-now-stop"
+            :disabled="busy"
             @click="$emit('stop')"
           >
             <v-icon small>
@@ -145,13 +167,14 @@ import type { PrinterTile, TileJob } from '@/services/printers-page/model'
 import { shortDuration } from '@/util/short-duration'
 import { colourName } from '@/services/control/model'
 import PrinterStage from './PrinterStage.vue'
+import TonePill from './TonePill.vue'
 
 /**
  * A printer printing now: wide when it is the only one, side by side when
  * several are. Pause and Stop are offered for the printer Fluidd is on,
  * whose controls this page holds; any other opens first.
  */
-@Component({ components: { PrinterStage } })
+@Component({ components: { PrinterStage, TonePill } })
 export default class PrintingNowCard extends Vue {
   @Prop({ type: Object, required: true })
   readonly tile!: PrinterTile
@@ -165,6 +188,10 @@ export default class PrintingNowCard extends Vue {
 
   @Prop({ type: Boolean })
   readonly controllable?: boolean
+
+  /** A pause, resume or stop was just sent: the buttons wait, so a double click sends once. */
+  @Prop({ type: Boolean })
+  readonly busy?: boolean
 
   get job (): TileJob | null {
     return this.tile.job
@@ -200,9 +227,23 @@ export default class PrintingNowCard extends Vue {
     return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
   }
 
+  /** The pill says the state from the label; a percent there is the big number below, so it reads Printing. */
+  get stateText (): string {
+    return /%$/.test(this.tile.label) ? 'Printing' : this.tile.label
+  }
+
+  get material () {
+    const m = this.job?.material
+    return m && (m.name || m.colour) ? m : null
+  }
+
+  get colourLabel (): string {
+    return this.material?.colour ? colourName(this.material.colour) : ''
+  }
+
   get chips (): string[] {
     const chips: string[] = []
-    const material = this.job?.material
+    const material = this.variant === 'wide' ? this.job?.material : null
     if (material?.name || material?.colour) {
       chips.push([material.name, material.colour ? colourName(material.colour) : ''].filter(Boolean).join(' · '))
     }
@@ -287,7 +328,9 @@ export default class PrintingNowCard extends Vue {
     }
 
     .now__percent {
-      font-size: 20px;
+      font-size: 30px;
+      font-weight: 700;
+      line-height: 1;
     }
 
     .now__figure {
@@ -316,6 +359,38 @@ export default class PrintingNowCard extends Vue {
     display: flex;
     flex-direction: column;
     min-width: 0;
+  }
+
+  .now__pill {
+    position: absolute;
+    top: 14px;
+    z-index: 1;
+  }
+
+  .now__pill--state {
+    left: 14px;
+    border-radius: 999px;
+    background: rgb(0 0 0 / 70%);
+  }
+
+  .now__pill--material {
+    right: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgb(0 0 0 / 55%);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .now__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 35%);
   }
 
   .now__who {

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { shallowMount } from '@vue/test-utils'
 import Console from '../Console.vue'
-import OverviewConsole from '@/components/overview/OverviewConsole.vue'
 import { SocketActions } from '@/api/socketActions'
 import { cloudState } from '@/services/muon-cloud/state'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
@@ -20,7 +19,7 @@ const configfile = {
   }
 }
 
-function show (component: typeof Console | typeof OverviewConsole, connected = true) {
+function show (component: typeof Console, connected = true) {
   return shallowMount(component, {
     mocks: {
       $store: {
@@ -43,7 +42,7 @@ afterEach(() => {
   printerTransportBinding.remote = false
 })
 
-describe.each([Console, OverviewConsole])('typed batch submission', component => {
+describe.each([Console])('typed batch submission', component => {
   it.each([
     'SET_FILAMENT_SENSOR SENSOR=loader ENABLE=0',
     'M105\nset_filament_sensor sensor="loader" enable=0 ; do not send any line',

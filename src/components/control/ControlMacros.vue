@@ -1,6 +1,7 @@
 <template>
   <control-card
-    title="Macros"
+    title="Quick commands"
+    icon="macro"
     :locked="controlLock"
     :note="klippyReady ? note : ''"
     data-tid="control-macros"
@@ -15,7 +16,7 @@
           v-model="query"
           type="search"
           placeholder="Find"
-          aria-label="Find a macro"
+          aria-label="Find a quick command"
         >
       </label>
       <a
@@ -46,7 +47,7 @@
     <component
       :is="query ? 'div' : 'control-task-fold'"
       fold-key="macros.all"
-      :title="`All ${arrangedMacros.length} macros`"
+      title="All commands"
       summary="By what they are for"
     >
       <template v-for="group in shownGroups">
@@ -99,13 +100,13 @@
       v-if="!shownGroups.length"
       class="macros__none"
     >
-      {{ query ? `No macro matches "${query}".` : 'This printer has no macros to show.' }}
+      {{ query ? `No quick command matches "${query}".` : 'This printer has no quick commands to show.' }}
     </p>
     <form
       v-if="selected"
       class="macros__values"
       data-tid="macro-send"
-      aria-label="Macro values"
+      aria-label="Quick command values"
       @submit.prevent="submitMacro"
     >
       <h3>{{ selected.title }}</h3>
@@ -115,7 +116,7 @@
         :key="field.name"
         class="macros__field"
       >
-        <span>{{ field.name }} · {{ field.optional ? `optional${field.defaultValue ? ` · default ${field.defaultValue}` : ' · uses the macro’s own value'}` : 'required' }}</span>
+        <span>{{ field.name }} · {{ field.optional ? `optional${field.defaultValue ? ` · default ${field.defaultValue}` : ' · uses the command’s own value'}` : 'required' }}</span>
         <textarea
           v-model="values[field.name]"
           rows="1"
@@ -150,13 +151,12 @@
 
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
-import ControlMixin from '@/mixins/control'
-import MacrosMixin, { type ShownMacro, type ShownMacroGroup } from '@/mixins/macros'
+import MacroRunMixin from '@/mixins/macro-run'
+import type { ShownMacro, ShownMacroGroup } from '@/mixins/macros'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import ControlCard from './ControlCard.vue'
 import ControlTaskFold from './ControlTaskFold.vue'
-import { macroFields, macroCommand, type MacroField } from '@/services/macros/values'
 
 /**
  * Every visible macro, in groups by what it is for (filament,
@@ -165,36 +165,8 @@ import { macroFields, macroCommand, type MacroField } from '@/services/macros/va
  * A macro that needs a value to run says so instead of running half-asked.
  */
 @Component({ components: { ControlCard, ControlTaskFold } })
-export default class ControlMacros extends Mixins(ControlMixin, MacrosMixin) {
+export default class ControlMacros extends Mixins(MacroRunMixin) {
   query = ''
-  selected: ShownMacro | null = null
-  values: Record<string, string> = {}
-  formTarget = ''
-  formGcode = ''
-  formError = ''
-
-  gcodeOf (name: string): string {
-    const settings = this.$store.state.printer.printer.configfile?.settings ?? {}
-    const entry = Object.entries(settings).find(([key]) => key.toUpperCase() === `GCODE_MACRO ${name.toUpperCase()}`)
-    return String((entry?.[1] as { gcode?: string } | undefined)?.gcode ?? '')
-  }
-
-  get fields (): MacroField[] { return macroFields(this.formGcode) }
-  get preview (): string | null { return this.selected ? macroCommand(this.selected.name, this.fields, this.values) : null }
-
-  async submitMacro () {
-    this.formError = ''
-    const current = this.arrangedMacros.find(m => m.name === this.selected?.name)
-    if (!current || this.panelTarget !== this.formTarget || this.gcodeOf(current.name) !== this.formGcode) {
-      this.formError = 'The printer or macro changed. Open the values again.'; return
-    }
-    if (!this.controlReady || (current.disabledWhilePrinting && this.busy)) {
-      this.formError = 'Not sent. Wait until you can control this printer and the macro is available.'; return
-    }
-    const command = this.preview
-    if (!command) { this.formError = 'Enter each required value. Use one number or word without spaces, quotes or command separators.'; return }
-    if (await this.sendTypedGcode(command)) this.selected = null
-  }
 
   get shownGroups (): ShownMacroGroup[] {
     const q = this.query.trim().toLowerCase()
@@ -208,26 +180,11 @@ export default class ControlMacros extends Mixins(ControlMixin, MacrosMixin) {
   get note (): string {
     const all = this.arrangedMacros.length
     const own = this.arrangedMacros.filter(m => m.group === 'printer').length
-    return `${all} ${all === 1 ? 'macro' : 'macros'}, ${own} run by the printer itself. Grouped automatically; a group set under Settings › Macros wins.`
+    return `${all} ${all === 1 ? 'quick command' : 'quick commands'}, ${own} run by the printer itself. Grouped automatically; a group set under Settings › Quick commands wins.`
   }
 
   get arrangeLink (): string {
     return `${scopedPath('/settings', activeSlug())}#macros`
-  }
-
-  tooltipOf (macro: ShownMacro): string {
-    return [macro.name, macro.description, macro.internal].filter(Boolean).join(' · ')
-  }
-
-  run (macro: ShownMacro) {
-    if (!this.controlReady || (macro.disabledWhilePrinting && this.busy)) return
-    this.commandRefusal = ''; this.formError = ''
-    if (!macro.params.length) { this.sendTypedGcode(macro.name); return }
-    this.selected = macro
-    this.formTarget = this.panelTarget
-    this.formGcode = this.gcodeOf(macro.name)
-    this.values = Object.fromEntries(this.fields.map(f => [f.name, '']))
-    this.$nextTick(() => (this.$el.querySelector('.macros__field textarea') as HTMLTextAreaElement | null)?.focus())
   }
 }
 </script>

@@ -2,8 +2,14 @@
   <div
     class="design-view"
     :class="{ 'design-view--part': partOfPage }"
-    data-test="design-view"
+    data-tid="design-view"
   >
+    <h1
+      class="d-sr-only"
+      data-tid="page-title"
+    >
+      Design
+    </h1>
     <iframe
       v-if="url && present === 'present'"
       ref="frame"
@@ -168,9 +174,8 @@ export default class Design extends Mixins(BrowserMixin) {
 <style lang="scss" scoped>
   .design-view {
     position: relative;
-    height: calc(100vh - 56px - 32px);
-    height: calc(100dvh - 56px - 32px);
-    min-height: 360px;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .design-view__frame {
@@ -178,7 +183,6 @@ export default class Design extends Mixins(BrowserMixin) {
     width: 100%;
     height: 100%;
     border: 0;
-    border-radius: 12px;
     background: var(--v-background-base, transparent);
   }
 

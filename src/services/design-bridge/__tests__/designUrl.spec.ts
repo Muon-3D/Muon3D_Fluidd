@@ -22,12 +22,24 @@ describe('designUrl', () => {
     expect(designUrl('  ', `${PAGE}/boxwood-367a/design`)?.href).toBe(EMBED.href)
   })
 
-  it('takes the hosted console\'s Design (VUE_MUON_DESIGN_URL in deploy-control.yml)', async () => {
+  it('takes an explicit hosted Design URL', async () => {
     const url = designUrl('https://design.muon3d.com/embed.html', 'https://app.muon3d.com/boxwood-367a/design')
     expect(url?.href).toBe('https://design.muon3d.com/embed.html')
     const fetch = answer(404, '')
     await expect(checkDesign(url, 'https://app.muon3d.com', fetch)).resolves.toBe(true)
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it.each(['https://control.muon3d.com', 'https://app.muon3d.com'])('uses hosted Design by default on %s', (origin) => {
+    expect(designUrl(undefined, `${origin}/design`)?.href).toBe('https://design.muon3d.com/embed.html')
+    expect(designUrl(DEFAULT_DESIGN_URL, `${origin}/printer/design`)?.href).toBe('https://design.muon3d.com/embed.html')
+    expect(designUrl('/custom/embed.html', `${origin}/design`)?.href).toBe(`${origin}/custom/embed.html`)
+  })
+
+  it('does not redirect unrecognised origins or invalid URLs to hosted Design', () => {
+    expect(designUrl(undefined, 'https://control.muon3d.com.attacker.example/design')?.href).toBe('https://control.muon3d.com.attacker.example/design/embed.html')
+    expect(designUrl('https://user:pw@design.example/embed.html', 'https://control.muon3d.com/design')).toBeNull()
+    expect(designUrl(undefined, 'not a URL')).toBeNull()
   })
 
   it('takes VUE_MUON_DESIGN_URL, http(s) only, with no credentials or hash', () => {

@@ -108,7 +108,7 @@ describe('personal Control choices', () => {
     const second = new ControlPreferenceStore(remote, localStorage)
     await second.select(alice)
     expect(second.state.folds).toEqual({ 'heat.other': true })
-    const future = new ControlPreferenceStore({ ...remote, read: async () => ({ version: 2, folds: { private: true } } as unknown as ControlPreferences) }, localStorage)
+    const future = new ControlPreferenceStore({ ...remote, read: async () => ({ version: 3, folds: { private: true } } as unknown as ControlPreferences) }, localStorage)
     await future.select(alice)
     expect(future.state.folds).toEqual({})
     expect(future.state.error).toContain('not saved')

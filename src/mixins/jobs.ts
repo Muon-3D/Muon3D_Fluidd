@@ -2,6 +2,9 @@ import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from './overview'
 import { SocketActions } from '@/api/socketActions'
 import type { AppFileWithMeta, FileBrowserEntry } from '@/store/files/types'
+import { cloudState } from '@/services/muon-cloud/state'
+import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { jobThumbnailPath, remoteJobThumbnail, thumbnailKey } from '@/services/jobs/thumbnail'
 import { jobFacts, jobTitle, isGcodeFile, printedBefore } from '@/services/jobs/model'
 
 /** A G-code file on the printer, as Jobs shows it. */
@@ -12,7 +15,14 @@ export interface JobFile {
   filename: string;
   title: string;
   facts: string;
-  thumbnail: string;
+  /**
+   * The picture's address. Read only where it is drawn: over the remote route
+   * each read opens a stream, so a file that isn't shown (filtered out, in
+   * another folder) never asks for its picture.
+   */
+  readonly thumbnail: string;
+  /** Names the picture's read over the remote route, so a row that is gone can drop it; '' when it has none. */
+  thumbnailKey: string;
   printed: boolean;
   printing: boolean;
   modified: number;
@@ -58,13 +68,16 @@ export default class JobsMixin extends Mixins(OverviewMixin) {
   toJobFile (f: AppFileWithMeta): JobFile {
     const printing = this.busy ? this.jobFile : ''
     const path = f.path ? `${f.path}/${f.filename}` : f.filename
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this
     return {
       key: path,
       path,
       filename: f.filename,
       title: jobTitle(f.filename),
       facts: jobFacts(f),
-      thumbnail: this.getThumbUrl(f, this.root, f.path, true, f.modified) || '',
+      get thumbnail () { return self.jobPictureUrl(f) },
+      thumbnailKey: this.jobPictureKey(f),
       printed: printedBefore(f as never),
       printing: !!printing && printing === path,
       modified: f.modified,
@@ -74,6 +87,35 @@ export default class JobsMixin extends Mixins(OverviewMixin) {
       print_start_time: (f as { print_start_time?: number | null }).print_start_time,
       file: f
     }
+  }
+
+  /**
+   * The picture of a job: an address on this network, or, over the remote
+   * route (where there is no address to link), the bytes read through the
+   * transport and shown from an object URL.
+   */
+  jobPictureUrl (f: AppFileWithMeta): string {
+    const path = jobThumbnailPath(f, f.path)
+    if (!path) return ''
+    const apiUrl = this.$store.state.config.apiUrl as string
+    if (!isManagedApiUrl(apiUrl)) return `${apiUrl}${path}?date=${f.modified || Date.now()}`
+    return remoteJobThumbnail(
+      this.remotePrinterKey,
+      path,
+      f.modified,
+      async p => (await this.$httpClient.get(p, { responseType: 'blob' })).data as Blob
+    )
+  }
+
+  /** The remote read's key for a file's picture, or '' when it has none or is read by address. */
+  jobPictureKey (f: AppFileWithMeta): string {
+    const path = jobThumbnailPath(f, f.path)
+    if (!path || !isManagedApiUrl(this.$store.state.config.apiUrl as string)) return ''
+    return thumbnailKey(this.remotePrinterKey, path, f.modified)
+  }
+
+  get remotePrinterKey (): string {
+    return `${cloudState.account?.id ?? ''}|${cloudState.activePrinterId ?? ''}`
   }
 
   get folders (): number {

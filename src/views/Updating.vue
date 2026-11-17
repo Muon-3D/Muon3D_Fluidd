@@ -1,8 +1,10 @@
 <template>
   <updating-screen
     :printer-name="printerName"
+    can-leave
     data-tid="updating-page"
     @done="back"
+    @leave="leave"
   />
 </template>
 
@@ -17,8 +19,10 @@ import { printerNameParts } from '@/util/printer-name'
 
 /**
  * The printer updating (/boxwood-367a/updating): where Install goes, and
- * where the bar on every other page leads while an install runs. While the
- * printer restarts, the connection screens show the same thing.
+ * where the bar on every other page leads while an install runs. It sits
+ * inside the frame, with a way back to Overview that leaves the install
+ * running. While the printer restarts, the connection screens show the
+ * same thing.
  */
 @Component({ components: { UpdatingScreen } })
 export default class Updating extends Mixins(StateMixin) {
@@ -28,6 +32,11 @@ export default class Updating extends Mixins(StateMixin) {
 
   mounted () {
     poll()
+  }
+
+  /** Back to Overview. The update carries on: the bar at the top follows it. */
+  leave () {
+    this.$router.push(scopedPath('/', activeSlug())).catch(() => undefined)
   }
 
   back () {

@@ -4,7 +4,7 @@ import CloudAccountMenu from '../CloudAccountMenu.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 
 vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { account: { id: 'sample', name: 'Sample Person', email: 'sample@example.test', created_at: 1 }, printers: [] } }))
-vi.mock('@/services/muon-cloud/centralLogin', () => ({ centralLoginEnabled: () => false }))
+vi.mock('@/services/muon-cloud/centralLogin', () => ({ centralLoginEnabled: () => false, consoleServesPage: () => false }))
 vi.mock('@/services/account/state', () => ({ accountState: { approvals: [] }, loadApprovals: async () => {} }))
 vi.mock('@/services/account/sign-out', () => ({ beginSignOut: vi.fn() }))
 vi.mock('@/components/layout/AppUserMenu.vue', () => ({ default: { template: '<div />' } }))
@@ -47,6 +47,22 @@ describe('ownership on a printer own page', () => {
     cloudState.printers = [{ id: 'p1', name: 'Sample M1', model: 'M1', version: 'mock', linked_at: 1, last_seen: 1, online: false, online_since: null, role: 'operator', shared: true }]
     const w = open('p1')
     expect(w.text()).not.toContain('You own it')
+    w.destroy()
+  })
+})
+
+describe('keyboard shortcuts live in the account menu', () => {
+  it('offers them on a printer own page and opens the shortcuts when pressed', async () => {
+    const { EventBus } = await import('@/eventBus')
+    const seen = vi.fn()
+    EventBus.bus.$on('keyboard-shortcuts', seen)
+    const w = open('p1')
+    const item = w.find('[data-tid="account-keys"]')
+    expect(item.exists()).toBe(true)
+    expect(item.text()).toContain('Keyboard shortcuts')
+    await item.trigger('click')
+    expect(seen).toHaveBeenCalledTimes(1)
+    EventBus.bus.$off('keyboard-shortcuts', seen)
     w.destroy()
   })
 })
