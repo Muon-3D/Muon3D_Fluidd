@@ -30,9 +30,12 @@ async function watchForReconnecting (page: Page) {
 }
 
 async function connectFromTopRight (page: Page) {
-  await useNearbyPrinters(page, PAIRED_BEFORE)
+  await useNearbyPrinters(page, PAIRED_BEFORE, { advertise: true })
   await page.goto('/')
   await ready(page)
+  // With nothing listed yet the page shows the welcome, which has no top-right button: hear the printer first, then use it.
+  await page.getByRole('button', { name: 'Look nearby' }).click()
+  await expect(page.getByTestId('connect-bluetooth')).toBeVisible()
   await page.getByTestId('connect-bluetooth').click()
   await expect(page).toHaveURL(/\/boxwood-367a(\/|$)/, { timeout: 30_000 })
 }
