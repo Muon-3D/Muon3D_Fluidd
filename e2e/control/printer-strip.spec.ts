@@ -13,7 +13,7 @@ test('current pill and +N expose only the rest, including shared and found print
   await foundPrinter(page)
   await open('/control')
   await fake(page, 'seedStrip')
-  if (await page.getByTestId('toast-close').count()) await page.getByTestId('toast-close').first().click()
+  await page.getByTestId('toast-close').first().click({ timeout: 500 }).catch(() => {})
   const strip = page.getByTestId('printer-strip')
   await expect(strip.getByTestId('printer-switch')).toHaveAttribute('aria-current', 'page')
   const visible = strip.getByTestId('strip-printer')
@@ -49,7 +49,6 @@ test('state colours match both schemes, labels remain readable, and foreign prin
     for (let i = 0; i < states.length; i++) {
       await fake(page, 'seedStrip')
       await fake(page, 'onlyState', i)
-      if (await page.getByTestId('toast-close').count()) await page.getByTestId('toast-close').first().click()
       if (isMobile && !await page.locator('.printer-strip__menu:visible').count()) await page.getByTestId('strip-overflow').click()
       const screen = isMobile ? page.locator('.printer-strip__menu:visible .muon-card').first().locator('.printer-screen') : page.getByTestId('strip-printer').locator('.printer-screen')
       await expect(screen).toHaveAttribute('data-state', states[i])
