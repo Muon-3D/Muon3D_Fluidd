@@ -46,3 +46,45 @@ it('sends SET_PRINT_MODE for a mode the printer reports, and nothing for the cur
   expect(sent()).toEqual(['SET_PRINT_MODE MODE=turbo'])
   s.wrapper.destroy()
 })
+
+it('groups speed, flow and the part fan behind one disclosure without sending on open', async () => {
+  const s = show(0.04)
+  s.store.getters['printer/getAllFans'] = [{ name: 'fan', type: 'fan', speed: 0.8 }]
+  await s.wrapper.find('[data-tid="advanced-toggle"]').trigger('click')
+  const group = s.wrapper.find('[role="group"][aria-labelledby="pmode-advanced-title"]')
+  expect(group.isVisible()).toBe(true)
+  expect(s.wrapper.find('#pmode-advanced-title').text()).toBe('Speed, flow and fans')
+  expect(sent()).toEqual([])
+  for (const [label, value] of [['Speed', '105'], ['Flow', '101'], ['Part fan', '85']]) {
+    const input = group.find(`input[aria-label="${label}"]`)
+    await input.setValue(value)
+    await input.trigger('change')
+  }
+  expect(sent()).toEqual(['M220 S105', 'M221 S101', 'M106 S217'])
+  s.wrapper.destroy()
+})
+
+it('keeps speed and flow together without inventing a part fan on hardware without one', async () => {
+  const s = show(0.04)
+  await s.wrapper.find('[data-tid="advanced-toggle"]').trigger('click')
+  const group = s.wrapper.find('[role="group"][aria-labelledby="pmode-advanced-title"]')
+  expect(group.find('input[aria-label="Speed"]').exists()).toBe(true)
+  expect(group.find('input[aria-label="Flow"]').exists()).toBe(true)
+  expect(group.find('input[aria-label="Part fan"]').exists()).toBe(false)
+  expect(sent()).toEqual([])
+  s.wrapper.destroy()
+})
+
+it('disables all three grouped controls when the connection is lost', async () => {
+  const s = show(0.04)
+  s.store.getters['printer/getAllFans'] = [{ name: 'fan', type: 'fan', speed: 0.8 }]
+  await s.wrapper.find('[data-tid="advanced-toggle"]').trigger('click')
+  s.store.getters['socket/getConnectionState'] = false
+  await s.wrapper.vm.$nextTick()
+  const group = s.wrapper.find('[role="group"][aria-labelledby="pmode-advanced-title"]')
+  for (const label of ['Speed', 'Flow', 'Part fan']) {
+    expect((group.find(`input[aria-label="${label}"]`).element as HTMLInputElement).disabled).toBe(true)
+  }
+  expect(sent()).toEqual([])
+  s.wrapper.destroy()
+})
