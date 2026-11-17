@@ -3,6 +3,8 @@
     class="fsec"
     :class="{ 'fsec--phone': phone, 'fsec--compact': compact }"
     data-tid="filament-section"
+    role="group"
+    aria-label="Filament information and actions"
   >
     <material-picker ref="picker">
       <template #activator="{ on, attrs, disabled }">
