@@ -167,9 +167,10 @@ describe('the empty state', () => {
     expect(w.find('[data-tid="enter-address"]').exists()).toBe(true)
   })
 
-  it('hides Look nearby when Bluetooth is off', () => {
+  it('keeps the Bluetooth row when Bluetooth is off, as Turn on Bluetooth search', () => {
     const w = shallowMount(PrintersWelcome, { propsData: { bluetoothSearch: true, bluetoothOff: true } })
-    expect(w.find('[data-tid="look-nearby"]').exists()).toBe(false)
+    expect(w.find('[data-tid="look-nearby"]').text()).toBe('Turn on Bluetooth search')
+    expect(w.find('[data-tid="bluetooth-off"]').exists()).toBe(true)
   })
 })
 
