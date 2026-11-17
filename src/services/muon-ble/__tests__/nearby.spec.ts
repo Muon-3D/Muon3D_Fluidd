@@ -135,7 +135,7 @@ describe('Look nearby for one printer (KAN-2470)', () => {
     expect(bt.requestDevice).not.toHaveBeenCalled()
     removeBluetooth()
     // Chrome 157 on desktop: getDevices is undefined.
-    const none = fakeBluetooth({})
+    const none = fakeBluetooth({ chosen: fakePrinter().device })
     expect(none.bt.getDevices).toBeUndefined()
     clearNearby()
     expect(await permittedPrinterFor(EID)).toBeNull()

@@ -123,19 +123,11 @@ describe('Connect over Bluetooth without Look nearby (I-129)', () => {
 })
 
 describe('Connect over Bluetooth for one printer lists only that printer (KAN-2470)', () => {
-  it("asks the chooser for this printer's EndpointId", async () => {
+  it("asks the chooser for every Muon printer, as the top-right button does (KAN-3589)", async () => {
     nearby.lookNearby.mockResolvedValue(null)
     const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
     await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
-    expect(nearby.lookNearby).toHaveBeenCalledWith({ endpointId: 'walnut', name: undefined })
-  })
-
-  it('names the printer as this browser last heard it, for the name filter (KAN-2516)', async () => {
-    nearby.lookNearby.mockResolvedValue(null)
-    nearby.rememberedName.mockReturnValueOnce('walnut-8987')
-    const c = { connectCloud: vi.fn(), notice: null, connectOverBluetooth: methods.connectOverBluetooth }
-    await methods.onAction.call(c, entry(true, false), 'connect-bluetooth')
-    expect(nearby.lookNearby).toHaveBeenCalledWith({ endpointId: 'walnut', name: 'walnut-8987' })
+    expect(nearby.lookNearby).toHaveBeenCalledWith()
   })
 
   it('a pick that is not this printer is refused after connect, whatever the filter said', async () => {

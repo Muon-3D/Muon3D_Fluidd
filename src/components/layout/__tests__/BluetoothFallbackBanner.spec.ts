@@ -23,6 +23,8 @@ const ON_ACCOUNT = { id: EID, name: 'Walnut', model: 'M1', version: '1.0.0', lin
 
 afterEach(() => {
   cloudState.printers.splice(0)
+  cloudState.account = null
+  chooseRouteMode(EID, 'auto')
   stopUsingBluetoothFor(EID)
   cloudState.activePrinterId = null
 })
@@ -66,7 +68,10 @@ describe('the Bluetooth fallback banner (KAN-1396)', () => {
   })
 
   it('offers the cloud and another try, and the local network only when it is reachable (KAN-2080)', () => {
+    cloudState.account = { id: 'a', email: 'a@b.c', name: 'A', created_at: 1 }
     cloudState.printers.push(ON_ACCOUNT)
+    // A chosen Bluetooth route: the sheet is for it (auto mode would move on to the cloud by itself).
+    chooseRouteMode(EID, 'ble')
     cloudState.activePrinterId = EID
     useBluetoothFor(EID, fakePrinter().device)
     noteBluetoothDropped(EID, 'Nothing came over Bluetooth for 15 seconds.')
