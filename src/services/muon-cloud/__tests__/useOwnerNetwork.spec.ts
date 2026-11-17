@@ -1,6 +1,7 @@
 import Vue from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { detectOwnerNetwork, resetOwnerNetwork, saveNetworkRules, useOwnerNetwork } from '../useOwnerNetwork'
+import { announceAccount, SIGNED_OUT } from '../account-events'
 
 const request = vi.fn()
 const failure = (status: number, data?: unknown) => Object.assign(new Error(`status ${status}`), { response: { status, data } })
@@ -13,6 +14,62 @@ beforeEach(() => {
 })
 
 describe('feature detection for the owner network routes', () => {
+  it('forgets the old account before another account can see its settings', async () => {
+    request.mockResolvedValue({ status: 200, data: SETTINGS })
+    await detectOwnerNetwork()
+    const network = useOwnerNetwork().network
+    expect(network.available).toBe(true)
+    announceAccount({ signedIn: true, id: 'another-account', name: 'Someone else' })
+    expect(network.available).toBe(false)
+    expect(network.settings).toBeNull()
+    announceAccount(SIGNED_OUT)
+  })
+  it('permits rule changes over the currently allowed relay', async () => {
+    request.mockResolvedValue({ status: 200, data: { ...SETTINGS, network_from_relay: 'allow', current_path: 'relay' } })
+    await detectOwnerNetwork()
+    expect(useOwnerNetwork().network.rulesReadOnly).toBe(false)
+  })
+
+  it('ignores an answer from before a reset without disturbing the new request', async () => {
+    let finish!: (value: unknown) => void
+    request.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const old = detectOwnerNetwork()
+    resetOwnerNetwork()
+    request.mockResolvedValueOnce({ status: 200, data: { ...SETTINGS, current_path: 'ble' } })
+    const fresh = detectOwnerNetwork()
+    finish({ status: 200, data: SETTINGS })
+    await Promise.all([old, fresh])
+    expect(useOwnerNetwork().network.currentPath).toBe('ble')
+    expect(useOwnerNetwork().network.available).toBe(true)
+  })
+
+  it('forgets cached settings when the bound HTTP adapter changes', async () => {
+    const defaults = { adapter: () => {} }
+    ;(Vue as unknown as { $httpClient: unknown }).$httpClient = { request, defaults }
+    request.mockResolvedValue({ status: 200, data: SETTINGS })
+    await detectOwnerNetwork()
+    const network = useOwnerNetwork().network
+    expect(network.available).toBe(true)
+    defaults.adapter = () => {}
+    expect(network.available).toBe(false)
+    expect(network.settings).toBeNull()
+    await detectOwnerNetwork()
+    expect(network.available).toBe(true)
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not apply a late save to another printer connection', async () => {
+    request.mockResolvedValueOnce({ status: 200, data: SETTINGS })
+    await detectOwnerNetwork()
+    let finish!: (value: unknown) => void
+    request.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const saving = saveNetworkRules({ fromBle: 'deny' })
+    const refused = expect(saving).rejects.toMatchObject({ kind: 'failed' })
+    ;(Vue as unknown as { $httpClient: unknown }).$httpClient = { request: vi.fn() }
+    finish({ status: 200, data: { ...SETTINGS, network_from_ble: 'deny' } })
+    await refused
+    expect(useOwnerNetwork().network.settings).toBeNull()
+  })
   it('is available when GET settings answers', async () => {
     request.mockResolvedValue({ status: 200, data: SETTINGS })
     const { network } = useOwnerNetwork()

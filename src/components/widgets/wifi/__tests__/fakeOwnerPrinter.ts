@@ -16,7 +16,9 @@ const failure = (status: number, data?: unknown) =>
 
 export class FakeOwnerPrinter {
   path = 'local'
-  rules = { network_from_ble: 'allow', network_from_direct: 'allow', network_from_relay: 'reauth' }
+  rules = { network_from_ble: 'allow', network_from_direct: 'allow', network_from_relay: 'allow' }
+  owner = true
+  confirmSeconds: number | null = null
   scan = [
     { ssid: 'Home', signal: 80, security: 'WPA2', in_use: true },
     { ssid: 'Cafe', signal: 55, security: 'Open', in_use: false },
@@ -40,14 +42,16 @@ export class FakeOwnerPrinter {
 
     if (method === 'GET' && path === '/settings') return ok({ ...this.rules, current_path: this.path })
     if (method === 'PUT' && path === '/settings') {
-      if (this.path === 'relay' || this.path === 'direct_wan') throw failure(403, { error: 'reauth_required' })
+      if (!this.owner) throw failure(403, { error: 'owner_only' })
+      if ((this.path === 'relay' || this.path === 'direct_wan') && this.rules.network_from_relay !== 'allow') throw failure(403, { error: 'reauth_required' })
       Object.assign(this.rules, data)
       return ok({ ...this.rules, current_path: this.path })
     }
     if (method === 'GET' && path === '/wifi/scan') return ok(this.scan)
     if (method === 'GET' && path === '/wifi/saved') return ok(this.saved)
     if (method === 'GET' && path === '/wifi/current') return ok(this.current)
-    if (method === 'POST' && path === '/wifi/connect') return ok({ status: 'connecting', ssid: data?.ssid })
+    if (method === 'POST' && path === '/wifi/connect') return ok({ status: 'connecting', ssid: data?.ssid, confirm_by: this.confirmSeconds ? '2026-11-06T12:34:56+00:00' : null, confirm_in_s: this.confirmSeconds })
+    if (method === 'POST' && path === '/confirm') return ok({ status: 'confirmed' })
     if (method === 'DELETE' && path.startsWith('/wifi/forget')) return ok({ status: 'forgotten' })
     if (method === 'POST' && path === '/hotspot/change') return ok({ challenge_id: 'chg_0123456789abcdef', expires_at: Date.now() / 1000 + 120 }, 202)
     if (method === 'GET' && path.startsWith('/hotspot/change/')) {

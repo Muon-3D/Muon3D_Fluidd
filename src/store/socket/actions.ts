@@ -10,6 +10,7 @@ import isKeyOf from '@/util/is-key-of'
 import { isProtectedSurface } from '@/store/protection/helpers'
 import { applyState as applySetupState } from '@/services/muon-setup/state'
 import { headStatus } from '@/services/control/safe-move'
+import { resetGates } from '@/services/gates/state'
 
 let retryTimeout: number
 
@@ -49,6 +50,8 @@ export const actions: ActionTree<SocketState, RootState> = {
    * Fired when the socket closes.
    */
   async onSocketClose ({ dispatch, commit }, event: { code?: number, reason?: string, wasClean: boolean }) {
+    // Every gate answer was the old connection's; a reconnect asks again.
+    resetGates()
     // Whatever the reason, the head position held now is from the old connection.
     headStatus.fresh = false
     const modules = ['server', 'power', 'webcams', 'jobQueue', 'charts', 'socket', 'wait', 'gcodePreview']

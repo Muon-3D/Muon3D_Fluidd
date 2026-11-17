@@ -71,7 +71,8 @@ describe('Library v3 Discover: filters', () => {
     vm.m1 = [card('1', { m1: true })]
     expect(vm.visibleShelves.map(s => s.id)).toEqual(['popular'])
     vm.fits = false
-    expect(vm.visibleShelves.map(s => s.id)).toEqual(['popular', 'm1'])
+    // New has nothing yet: it says so instead of vanishing.
+    expect(vm.visibleShelves.map(s => s.id)).toEqual(['popular', 'm1', 'new'])
   })
 
   it('says what hid everything, and Clear filter resets search, Fits and the category', async () => {
@@ -86,5 +87,33 @@ describe('Library v3 Discover: filters', () => {
     vm.clearFilter()
     expect([vm.query, vm.fits, vm.chip]).toEqual(['', false, 'all'])
     expect(vm.noMatch).toBe(false)
+  })
+})
+
+describe('Library v3: Print on… from a print\'s page', () => {
+  it('the link\'s arrival asks with no printer; a click keeps the open one', () => {
+    const vm = library({ printerId: 'p-1' }) as unknown as { printFromLook: (card: object, print: object | null, auto?: boolean) => void }
+    vm.printFromLook({ id: 'pub-1' }, null, true)
+    vm.printFromLook({ id: 'pub-1' }, null)
+    const requests = (wrapper as unknown as { emitted: (name: string) => Array<[{ printerId: string | null }]> }).emitted('print')
+    expect(requests.map(([request]) => request.printerId)).toEqual([null, 'p-1'])
+  })
+})
+
+describe('Library v3: community posts', () => {
+  it('the print\'s name is a button that opens it, not a placeholder link, and no link in a post is href="#"', async () => {
+    const vm = library() as unknown as Vm & { posts: Array<{ card: ShelfCard, verb: string }> }
+    await settle()
+    vm.posts = [{ card: card('7', { makeOf: { id: 'o', slug: 'original', title: 'Original' } }), verb: 'made' }]
+    await settle()
+    const by = wrapper!.find('.mlib-post__by')
+    expect(by.exists()).toBe(true)
+    expect(by.findAll('a').filter(a => a.attributes('href') === '#')).toHaveLength(0)
+    const open = by.find('button')
+    expect(open.text()).toBe('Print 7')
+    // The "from" link is a real one, to the original's page.
+    expect(by.find('a').attributes('href')).not.toBe('#')
+    await open.trigger('click')
+    expect(wrapper!.emitted('open-model')).toEqual([['7']])
   })
 })

@@ -1,4 +1,6 @@
 import type { M1Viewer } from './viewer'
+import { modelSettings } from './device-settings'
+import { modelDetail, modelGlass } from './render-options'
 
 /**
  * The live M1 between views. Building the model and its shaders takes a
@@ -12,6 +14,13 @@ import type { M1Viewer } from './viewer'
 export interface Held {
   viewer: M1Viewer;
   canvas: HTMLCanvasElement;
+  /** What it was built with (viewerKey); a change of that needs a new one. */
+  key: string;
+}
+
+/** What a viewer is built with: the detail (the model, the pixels, the shadow) and the glass. */
+export function viewerKey (): string {
+  return `${modelDetail(modelSettings.detail)}/${modelGlass(modelSettings.glass)}`
 }
 
 /** Whether this browser can draw WebGL at all, asked once. */
@@ -49,7 +58,7 @@ export function prebuild (): Promise<void> {
       const canvas = newCanvas()
       const viewer = createViewer(canvas)
       viewer.setActive(false)
-      park({ viewer, canvas })
+      park({ viewer, canvas, key: viewerKey() })
     })
     .catch(e => console.warn('[m1] the live M1 could not be built ahead; it is tried again when shown', e))
     .finally(() => {
@@ -76,7 +85,7 @@ export function takeParked (): Held | null {
   parked = null
   if (!held) return null
   const gl = held.canvas.getContext('webgl2') ?? held.canvas.getContext('webgl')
-  if (!gl || gl.isContextLost()) {
+  if (!gl || gl.isContextLost() || held.key !== viewerKey()) {
     held.viewer.dispose()
     return null
   }

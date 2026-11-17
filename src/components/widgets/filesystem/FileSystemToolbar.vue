@@ -1,5 +1,107 @@
 <template>
+  <div
+    v-if="tile"
+    class="fs-tools"
+    data-tid="files-tools"
+  >
+    <div class="fs-tools__row">
+      <label class="fs-tools__find">
+        <v-icon small>$magnify</v-icon>
+        <input
+          v-model="searchModel"
+          type="search"
+          :disabled="disabled"
+          placeholder="Filter"
+          aria-label="Filter files"
+          data-tid="files-filter"
+        >
+      </label>
+      <v-tooltip
+        v-if="lowOnSpace && !loading"
+        bottom
+      >
+        <template #activator="{ on, attrs }">
+          <v-icon
+            v-bind="attrs"
+            color="warning"
+            v-on="on"
+          >
+            $error
+          </v-icon>
+        </template>
+        <span>{{ $t('app.file_system.tooltip.low_on_space') }}</span>
+      </v-tooltip>
+      <v-tooltip
+        v-if="disabled && !loading"
+        bottom
+      >
+        <template #activator="{ on, attrs }">
+          <v-icon
+            v-bind="attrs"
+            color="error"
+            v-on="on"
+          >
+            $warning
+          </v-icon>
+        </template>
+        <span>{{ $t('app.file_system.tooltip.root_disabled', { root }) }}</span>
+      </v-tooltip>
+      <file-system-filter-menu
+        v-if="hasFilterTypes"
+        :root="root"
+        :disabled="disabled"
+        @change="$emit('filter', $event)"
+      />
+      <file-system-add-menu
+        v-if="!readonly"
+        :root="root"
+        :disabled="disabled"
+        @add-file="$emit('add-file')"
+        @add-dir="$emit('add-dir')"
+        @upload="handleUpload"
+      />
+      <v-btn
+        :disabled="disabled"
+        fab
+        small
+        text
+        aria-label="Refresh"
+        title="Refresh"
+        data-tid="files-refresh"
+        @click="$emit('refresh')"
+      >
+        <v-icon>$refresh</v-icon>
+      </v-btn>
+    </div>
+    <nav
+      class="file-path file-crumbs fs-tools__crumbs"
+      aria-label="Folder"
+      data-tid="files-crumbs"
+    >
+      <v-icon small>
+        $folder
+      </v-icon>
+      <template v-for="(crumb, index) in crumbs || []">
+        <span
+          v-if="index > 0"
+          :key="`${crumb.path}-sep`"
+          class="file-crumbs__sep"
+          aria-hidden="true"
+        >/</span>
+        <button
+          :key="crumb.path"
+          type="button"
+          class="file-crumbs__crumb"
+          :disabled="disabled || index === (crumbs || []).length - 1"
+          @click="$emit('crumb', crumb)"
+        >
+          {{ crumb.label }}
+        </button>
+      </template>
+    </nav>
+  </div>
   <v-toolbar
+    v-else
     dense
   >
     <v-toolbar-title class="d-none d-sm-block">
@@ -224,6 +326,11 @@ export default class FileSystemToolbar extends Mixins(StatesMixin) {
   @Prop({ type: Boolean })
   readonly loading?: boolean
 
+  // The v3 tile's own layout: filter, add, refresh, then the folder, with
+  // the roots left to the tile's header.
+  @Prop({ type: Boolean })
+  readonly tile?: boolean
+
   @PropSync('search', { type: String, default: '' })
     searchModel!: string
 
@@ -266,3 +373,43 @@ export default class FileSystemToolbar extends Mixins(StatesMixin) {
   }
 }
 </script>
+
+<style lang="scss" scoped>
+  .fs-tools {
+    padding: 0 18px 4px;
+  }
+
+  .fs-tools__row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 12px;
+  }
+
+  .fs-tools__find {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 12px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text-muted);
+
+    input {
+      flex: 1 1 auto;
+      min-width: 0;
+      color: var(--m3d-text);
+      font-size: 14px;
+      outline: none;
+    }
+  }
+
+  .fs-tools__crumbs {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-bottom: 10px;
+  }
+</style>

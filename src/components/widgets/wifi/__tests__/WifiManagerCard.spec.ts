@@ -3,12 +3,16 @@ import Vue from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WifiManagerCard from '../WifiManagerCard.vue'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import { refusedHere } from '@/services/wifi/panel-only'
 
 const wifiScan = vi.fn()
 const wifiDetails = vi.fn()
 const wifiConnect = vi.fn()
 const wifiCurrent = vi.fn()
+const wifiForget = vi.fn()
 const apDeviceStatus = vi.fn()
+const wifiDisconnect = vi.fn()
+const wifiSwitch = vi.fn()
 
 vi.mock('@/aux_api/useAuxApi', () => ({
   useAuxApi: () => ({
@@ -16,7 +20,10 @@ vi.mock('@/aux_api/useAuxApi', () => ({
       wifiScanWifiScanGet: wifiScan,
       getDetailsWifiShowGet: wifiDetails,
       wifiConnectWifiConnectPost: wifiConnect,
-      wifiCurrentWifiCurrentGet: wifiCurrent
+      wifiCurrentWifiCurrentGet: wifiCurrent,
+      wifiForgetWifiForgetDelete: wifiForget,
+      wifiDisconnectWifiDisconnectPost: wifiDisconnect,
+      wifiSwitchWifiUpPost: wifiSwitch
     },
     ap: {
       wifiStatusWifiApDeviceStatusGet: apDeviceStatus
@@ -42,13 +49,17 @@ const dispatch = vi.fn()
 /** `locked`: MuonOS network protection is on and this browser has no identity. */
 const mocks = (locked = false) => ({
   $t: (key: string) => key,
-  $route: { name: 'Dashboard' },
+  $route: { name: 'Overview' },
   $store: { getters: { 'protection/isLocked': locked }, dispatch }
 })
 
 /** Moonraker's refusal, as axios hands it to the card. */
 const refused = (message: string) => Object.assign(new Error('Request failed with status code 403'), {
   response: { status: 403, statusText: 'Forbidden', data: { error: { code: 403, message } } }
+})
+
+const panelOnly = () => Object.assign(new Error('Request failed with status code 403'), {
+  response: { status: 403, statusText: 'Forbidden', data: { detail: 'panel_only' } }
 })
 
 // A card polls on a real interval until destroyed. Without this, a wrapper
@@ -209,6 +220,22 @@ describe('WifiManagerCard for the printer owner over muon-link (KAN-1565)', () =
 
   const ownerSettings = { network_from_ble: 'allow', network_from_direct: 'allow', network_from_relay: 'reauth', current_path: 'ble' }
 
+  it('waits for protection to unlock before detecting managed network controls', async () => {
+    request.mockResolvedValue({ status: 200, data: ownerSettings })
+    printerTransportBinding.remote = true
+    const getters = Vue.observable({ 'protection/isLocked': true })
+    const wrapper = shallowMount(WifiManagerCard, { mocks: { ...mocks(true), $store: { getters, dispatch } } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(request).not.toHaveBeenCalled()
+    expect(wrapper.findComponent({ name: 'OwnerWifiRemote' }).exists()).toBe(false)
+    getters['protection/isLocked'] = false
+    await vi.advanceTimersByTimeAsync(0)
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(wrapper.findComponent({ name: 'OwnerWifiRemote' }).exists()).toBe(true)
+    expect(wifiScan).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
   it('shows the owner Wi-Fi and the rules in place of the read-only line', async () => {
     request.mockResolvedValue({ status: 200, data: ownerSettings })
     printerTransportBinding.remote = true
@@ -257,6 +284,122 @@ describe('WifiManagerCard for the printer owner over muon-link (KAN-1565)', () =
 
     expect(wrapper.findComponent({ name: 'OwnerWifiRemote' }).exists()).toBe(false)
     expect(wrapper.text()).toContain('app.wifi.remote_read_only')
+    wrapper.destroy()
+  })
+})
+
+describe('WifiManagerCard forgetting a network', () => {
+  const confirm = vi.fn()
+  const withConfirm = () => ({ ...mocks(false), $confirm: confirm, $store: { ...mocks(false).$store, state: { printer: { printer: { info: {} } } } } })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    wifiScan.mockResolvedValue({ data: [] })
+    wifiForget.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('asks first, saying the page may be lost and the printer drops off the network, and forgets nothing until yes', async () => {
+    confirm.mockResolvedValueOnce(false)
+    const wrapper = shallowMount(WifiManagerCard, { mocks: withConfirm() })
+    await vi.advanceTimersByTimeAsync(0)
+    await (wrapper.vm as any).forgetConfirm({ ssid: 'Workshop', in_use: true })
+
+    expect(confirm).toHaveBeenCalledTimes(1)
+    expect(confirm.mock.calls[0][0]).toMatch(/lose this page/)
+    expect(confirm.mock.calls[0][0]).toMatch(/drop off this network/)
+    expect(confirm.mock.calls[0][1]).toMatchObject({ danger: true })
+    expect(wifiForget).not.toHaveBeenCalled()
+
+    confirm.mockResolvedValueOnce(true)
+    await (wrapper.vm as any).forgetConfirm({ ssid: 'Workshop', in_use: true })
+    expect(wifiForget).toHaveBeenCalledWith('Workshop')
+    wrapper.destroy()
+  })
+
+  it('shows the network it is on even when its name is hidden, as connected', async () => {
+    wifiScan.mockResolvedValue({ data: [{ ssid: '', in_use: true, signal: 70, security: 'WPA2', chan: 36, freq: 5180, rate: 540 }, { ssid: '', in_use: false, signal: 40, security: 'WPA2', chan: 1, freq: 2412, rate: 65 }] })
+    const wrapper = shallowMount(WifiManagerCard, { mocks: withConfirm() })
+    await vi.advanceTimersByTimeAsync(0)
+    const card = wrapper.vm as any
+
+    expect(card.connectedNetwork?.ssid).toBe('Hidden network')
+    // The other hidden one is still left out.
+    expect(card.sortedNetworks).toHaveLength(1)
+    expect(card.isHidden(card.connectedNetwork)).toBe(true)
+    wrapper.destroy()
+  })
+
+  it('says the channel, speed and frequency in words a row can show', async () => {
+    const wrapper = shallowMount(WifiManagerCard, { mocks: withConfirm() })
+    const detail = (wrapper.vm as any).detail({ chan: 36, freq: 5180, rate: 540, chanList: '36', freqList: '5180' })
+    expect(detail).toBe('channel 36 · 540 Mbps · 5180 MHz')
+    wrapper.destroy()
+  })
+})
+
+describe('WifiManagerCard on a printer with MuonOS #492 (KAN-1799)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    refusedHere.disconnect = false
+    wifiScan.mockResolvedValue({ data: [] })
+    wifiConnect.mockResolvedValue({ data: {} })
+    wifiDisconnect.mockResolvedValue({ status: 200 })
+    hotspot.value = false
+  })
+
+  it('joins a saved network with /wifi/connect and no password, never /wifi/up', async () => {
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    const card = wrapper.vm as any
+    card.knownSsids.add('Workshop')
+    card.selectedNetwork = { ssid: 'Workshop', security: 'WPA2' }
+    card.password = 'left over from another network'
+
+    await card.promptOrConnect()
+
+    expect(wifiConnect).toHaveBeenCalledWith({ ssid: 'Workshop', password: undefined })
+    expect(wifiSwitch).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('says to do it at the printer, and swaps the button for that note, when disconnect is refused', async () => {
+    wifiDisconnect.mockRejectedValueOnce(panelOnly())
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    const card = wrapper.vm as any
+
+    await card.disconnect()
+    await wrapper.vm.$nextTick()
+
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining("Do this at the printer's screen"), { type: 'error', timeout: 8000 })
+    expect(card.disconnectIsPanelOnly).toBe(true)
+    expect(card.disconnectConfirmDialog).toBe(false)
+    wrapper.destroy()
+  })
+
+  it('says to do it at the printer when /wifi/connect is refused (strict mode)', async () => {
+    wifiConnect.mockRejectedValueOnce(panelOnly())
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    const card = wrapper.vm as any
+    card.selectedNetwork = { ssid: 'Workshop', security: 'WPA2' }
+
+    await card.connectToSelected()
+
+    expect(emit).toHaveBeenCalledWith(expect.stringContaining("Do this at the printer's screen"), { type: 'error', timeout: 8000 })
+    wrapper.destroy()
+  })
+
+  it('still reports any other failure of disconnect as before', async () => {
+    wifiDisconnect.mockRejectedValueOnce(Object.assign(new Error('boom'), { response: { status: 500, data: { detail: 'nmcli failed' } } }))
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+
+    await (wrapper.vm as any).disconnect()
+
+    expect(emit).toHaveBeenCalledWith('app.wifi.msg.disconnect.error nmcli failed', { type: 'error', timeout: 5000 })
+    expect((wrapper.vm as any).disconnectIsPanelOnly).toBe(false)
     wrapper.destroy()
   })
 })

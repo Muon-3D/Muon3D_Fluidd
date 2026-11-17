@@ -126,8 +126,9 @@ export function networkErrorOf (error: unknown): OwnerNetworkError {
   const code = codeOf(data)
   const make = (kind: NetworkErrorKind) => new OwnerNetworkError(kind, EXPLANATIONS[kind], status)
 
-  if (status === 404 && !code) return make('not_available')
+  if (status === 404 && (!code || code === 'not_found')) return make('not_available')
   if (status === 403) {
+    if (code === 'owner_only') return make('not_owner')
     if (code === 'reauth_required') return make('reauth_required')
     if (code === 'path_disabled') return make('path_disabled')
     if (code === 'forbidden') return make('not_owner')
@@ -160,7 +161,9 @@ async function call (
   body?: Record<string, unknown>
 ): Promise<{ status: number, data: unknown }> {
   try {
-    const response = await Vue.$httpClient.request({
+    const client = Vue.$httpClient
+    const response = await client.request({
+      adapter: client.defaults?.adapter,
       method,
       url: `${NETWORK_PREFIX}${path}`,
       data: body,
@@ -184,10 +187,10 @@ function settingsOf (data: unknown): NetworkSettings {
   const path = (body.current_path ?? rules.current_path) as NetworkPath
   if (!PATHS.includes(path)) throw new OwnerNetworkError('failed', EXPLANATIONS.failed)
   return {
-    // The device's defaults, if a rule is missing: allow, allow, reauth.
+    // The device's defaults, if a rule is missing.
     fromBle: ruleOf(rules.network_from_ble, 'allow'),
     fromLocal: ruleOf(rules.network_from_direct, 'allow'),
-    fromRelay: ruleOf(rules.network_from_relay, 'reauth'),
+    fromRelay: ruleOf(rules.network_from_relay, 'allow'),
     currentPath: path
   }
 }
@@ -270,6 +273,7 @@ export async function wifiCurrent (): Promise<{ ssid: string, signal: number } |
 }
 
 export interface WifiConnectOutcome {
+  confirmSeconds?: number;
   /** True when the printer could not join and put its old network back. */
   restored: boolean;
   /** The network the printer is on, when it says. */
@@ -280,8 +284,11 @@ export interface WifiConnectOutcome {
 export async function wifiConnect (ssid: string, password?: string): Promise<WifiConnectOutcome> {
   const body: Record<string, unknown> = { ssid }
   if (password) body.password = password
-  const data = (await call('POST', '/wifi/connect', body)).data as { status?: unknown, ssid?: unknown } | null
+  const data = (await call('POST', '/wifi/connect', body)).data as { status?: unknown, ssid?: unknown, confirm_by?: unknown, confirm_in_s?: unknown } | null
   return {
+    ...(typeof data?.confirm_by === 'string' && typeof data.confirm_in_s === 'number' && confirmRouteSupported(data.confirm_in_s)
+      ? { confirmSeconds: Math.ceil(data.confirm_in_s) }
+      : {}),
     restored: data?.status === 'restored',
     ssid: typeof data?.ssid === 'string' ? data.ssid : undefined
   }
@@ -412,8 +419,8 @@ export function warningFor ({ kind, path, onHotspot, isCurrentNetwork }: ChangeC
     return {
       mayDropLink: false,
       level: 'safe',
-      title: 'Someone must approve this at the printer',
-      message: 'This connection stays up. Nothing changes until someone presses the knob on the printer.'
+      title: 'Change the hotspot',
+      message: 'This connection stays up. The printer may ask someone to approve the change on its screen.'
     }
   }
 
@@ -447,14 +454,12 @@ export function warningFor ({ kind, path, onHotspot, isCurrentNetwork }: ChangeC
         mayDropLink: true,
         level: 'warn',
         title: 'This may drop your connection',
-        message: `${verb} will cut this connection until the printer is back online. If the new network does not work, the printer goes back to the old one on its own.`
+        message: `${verb} may cut this connection until the printer is back online. If it does not reconnect, you may need to change the network at the printer.`
       }
   }
 }
 
-/* ---- Confirm or revert (not defined yet) ---- */
-
-/** How long a person has to keep a change that could cut their link. */
+/** The default window on images that opt in to confirm-or-revert. */
 export const CONFIRM_SECONDS = 90
 
 export class ConfirmUnavailable extends Error {
@@ -464,25 +469,15 @@ export class ConfirmUnavailable extends Error {
   }
 }
 
-/**
- * Whether the printer has a route to confirm a change. It does not yet: the
- * Aux API's confirm route is not defined (muon-link NETWORK_ROUTES.md names
- * only the revert timer). While this is false the countdown never appears.
- *
- * TODO(KAN-1565): once the confirm route exists, detect it (or flip this) and
- * send the confirmation in `confirmNetworkChange`.
- */
-export function confirmRouteSupported (): boolean {
-  return false
+export function confirmRouteSupported (seconds?: number): boolean {
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0
 }
 
-/**
- * Tell the printer to keep the change it just made, so it does not revert.
- *
- * TODO(KAN-1565): the confirm route is not defined. Send it here when it is.
- */
 export async function confirmNetworkChange (): Promise<void> {
-  if (!confirmRouteSupported()) throw new ConfirmUnavailable()
-  // TODO(KAN-1565): the route and its body.
-  throw new ConfirmUnavailable()
+  try {
+    await call('POST', '/confirm')
+  } catch (error) {
+    if (networkErrorOf(error).kind === 'not_available') throw new ConfirmUnavailable()
+    throw error
+  }
 }

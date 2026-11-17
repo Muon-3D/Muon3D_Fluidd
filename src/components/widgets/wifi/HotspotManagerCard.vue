@@ -1,18 +1,38 @@
 <template>
   <section
     class="hs"
-    :class="{ 'hs--compact': compact }"
+    :class="{ 'hs--compact': compact, 'stile stile--6 hs--page': !compact }"
     data-tid="hotspot-card"
   >
     <header class="hs__head">
       <div class="hs__titles">
-        <h2>{{ compact ? 'Hotspot' : 'The printer\'s hotspot' }}</h2>
-        <p v-if="deviceStatus && apCredentials && !locked && !remote">
+        <h2>
+          <frame-icon
+            v-if="!compact"
+            name="bolt"
+            class="hs__ico"
+          />
+          Hotspot
+        </h2>
+        <p v-if="compact && deviceStatus && apCredentials && !locked && !remote">
           {{ apState ? 'On' : 'Off' }} · {{ apCredentials.ssid }}{{ apCredentials.security_enabled === false ? ' · open' : '' }}
         </p>
       </div>
+      <tone-pill
+        v-if="!compact && deviceStatus && apCredentials && !locked && !remote"
+        :tone="apState ? 'ok' : 'off'"
+        :dot="apState"
+        data-tid="hotspot-state"
+      >
+        {{ apState ? 'On' : 'Off' }}
+      </tone-pill>
+      <span
+        v-if="!remote && hotspotOffIsPanelOnly && apState"
+        class="hs__note"
+        data-tid="hotspot-off-panel"
+      >{{ panelOnlyNote }}</span>
       <toggle-switch
-        v-if="!remote"
+        v-else-if="!remote"
         :value="apState"
         label="Hotspot on"
         :disabled="locked || !apCredentials || !deviceStatus || toggling"
@@ -21,7 +41,19 @@
       />
     </header>
 
+    <p
+      v-if="!compact && !locked && !remote"
+      class="hs__note"
+      data-tid="hotspot-help"
+    >
+      A network the printer makes itself, for when there is no Wi-Fi. Turning it on drops the current connection.
+    </p>
+
     <protected-notice />
+    <permission-refusal-notice
+      :refusal="refusal"
+      @dismiss="refusal = null"
+    />
     <p
       v-if="remote && !ownerCanChange"
       class="hs__note"
@@ -29,9 +61,9 @@
       {{ $t('app.wifi.remote_read_only') }}
     </p>
 
-    <!-- KAN-1565: the owner changes the hotspot through muon-link when the Aux API is closed to this page. -->
     <owner-hotspot-remote
       v-if="remote && ownerCanChange"
+      :key="`hotspot-${owner.network.generation}`"
     />
 
     <div
@@ -195,18 +227,22 @@
 
 <script lang="ts">
 import { Vue, Component, Prop, Watch } from 'vue-property-decorator'
+import OwnerHotspotRemote from './OwnerHotspotRemote.vue'
+import { useOwnerNetwork } from '@/services/muon-cloud/useOwnerNetwork'
 import { useAuxApi } from '@/aux_api/useAuxApi'
+import { PANEL_ONLY_NOTE, classifyRefusal, fallsBack, hotspotChangeBody, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
+import type { RefusalKind } from '@/services/wifi/panel-only'
+import PermissionRefusalNotice from './PermissionRefusalNotice.vue'
 import type { APCredentials, Device } from '@/aux_api'
 import QrcodeVue from 'qrcode.vue'
 import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
+import TonePill from '@/components/printers/TonePill.vue'
 import i18n from '@/plugins/i18n'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import type { VForm } from '@/types'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
-import { useOwnerNetwork } from '@/services/muon-cloud/useOwnerNetwork'
-import OwnerHotspotRemote from './OwnerHotspotRemote.vue'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -239,9 +275,11 @@ const { onHotspot } = useHotspotCheck()
     }
   },
   components: {
+    OwnerHotspotRemote,
     QrcodeVue,
     ToggleSwitch,
-    OwnerHotspotRemote
+    TonePill,
+    PermissionRefusalNotice
   }
 })
 export default class HotspotManagerCard extends Vue {
@@ -265,27 +303,35 @@ export default class HotspotManagerCard extends Vue {
   // while locked is loaded now; the status poll only ever reads the state.
   @Watch('locked')
   onLockedChanged (locked: boolean) {
-    if (!locked) this.fetchConfig()
+    if (!locked) {
+      if (this.remote) this.owner.detect()
+      else this.fetchConfig()
+    }
   }
 
-  // Reached over Iroh: muon-link refuses every Aux request there, reads
-  // included, and the owner decided remote callers may not change Wi-Fi
-  // (setup spec 07 §3). The card makes no call and says so instead.
+  // Managed changes use muon-link; the local Aux API stays closed.
   get remote (): boolean {
     return printerTransportBinding.remote
   }
 
-  // KAN-1565: asked once for the page; the Wi-Fi card asks too and they share the answer.
   owner = useOwnerNetwork()
 
   get ownerCanChange (): boolean {
     return !this.locked && !this.compact && this.owner.network.available
   }
 
+  @Watch('owner.network.generation')
+  onOwnerScopeChanged () {
+    if (this.remote && !this.locked) this.owner.detect()
+  }
+
   @Watch('remote')
   onRemoteChanged (remote: boolean) {
-    if (!remote) this.fetchConfig()
-    else this.owner.detect()
+    if (remote && !this.locked) this.owner.detect()
+    else {
+      this.owner.reset()
+      if (!remote) this.fetchConfig()
+    }
   }
 
   showToggleWarningDialog: boolean = false
@@ -334,6 +380,16 @@ export default class HotspotManagerCard extends Vue {
   editing = false
   applying = false
 
+  /** The printer's permission store refused the last action (KAN-2457): who may do it, not a panel-only printer. */
+  refusal: Extract<RefusalKind, { kind: 'permission' }> | null = null
+
+  private takePermissionRefusal (err: unknown): boolean {
+    const r = classifyRefusal(err)
+    if (r.kind !== 'permission') return false
+    this.refusal = r
+    return true
+  }
+
   toggleEditing () {
     this.editing = !this.editing
     this.resetForm()
@@ -357,7 +413,7 @@ export default class HotspotManagerCard extends Vue {
   private requestedApStateUntil = 0
 
   async mounted () {
-    if (this.remote) this.owner.detect()
+    if (this.remote && !this.locked) this.owner.detect()
     await this.fetchConfig()
     if (!this.destroyed) {
       this.statusPollId = window.setInterval(() => {
@@ -451,7 +507,25 @@ export default class HotspotManagerCard extends Vue {
           ? this.form.password
           : null
       }
-      await this.auxApi.ap.apModifyWifiApModifyPost(payload)
+      const route = routeFor('hotspot-edit', refusedHere)
+      if (route.kind === 'call' && route.path === '/wifi/ap/change') {
+        await this.changeAtPrinter()
+        this.applying = false
+        this.toggleEditing()
+        return
+      }
+      try {
+        await this.auxApi.ap.apModifyWifiApModifyPost(payload)
+      } catch (e) {
+        // A printer with MuonOS #492 lets only its own screen use /wifi/ap/modify.
+        // An older one answers it; this runs only on a 403 or 404.
+        if (!fallsBack(e)) throw e
+        refusedHere.hotspotEdit = true
+        await this.changeAtPrinter()
+        this.applying = false
+        this.toggleEditing()
+        return
+      }
       // on success, commit new “original” snapshot
       // this.original = { ...this.form }
       await this.fetchConfig() // re-fetch to get the latest config
@@ -460,11 +534,41 @@ export default class HotspotManagerCard extends Vue {
       await this.changeHotspotState(true)
     } catch (e) {
       console.error('Failed to apply hotspot config', e)
+      if (this.takePermissionRefusal(e)) {
+        this.applying = false
+        this.toggleEditing()
+        return
+      }
       if ((e as any)?.response?.status === 403) this.$store.dispatch('protection/onRefused')
       EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.apply_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
     }
     this.applying = false
     this.toggleEditing() // close the form
+  }
+
+  /**
+   * POST /wifi/ap/change: the printer's screen asks the person standing there,
+   * and the new name or key applies when they confirm. Nothing changes here.
+   */
+  private async changeAtPrinter () {
+    const body = hotspotChangeBody(this.form, this.original.ssid)
+    if (!body) {
+      // /wifi/ap/change cannot make a hotspot open.
+      EventBus.$emit(panelOnlyMessage('make the hotspot open'), { type: 'error', timeout: 8000 })
+      return
+    }
+    try {
+      await this.auxApi.apChange(body)
+      EventBus.$emit('Press the knob on the printer to confirm. The hotspot changes when you do.', { type: 'primary', timeout: 10000 })
+    } catch (e) {
+      if (this.takePermissionRefusal(e)) {
+        // The store refused this caller; the notice says who may.
+      } else if (isPanelOnlyRefusal(e)) {
+        EventBus.$emit(panelOnlyMessage('change the hotspot'), { type: 'error', timeout: 8000 })
+      } else {
+        EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.apply_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
+      }
+    }
   }
 
   undoChanges () {
@@ -552,6 +656,12 @@ export default class HotspotManagerCard extends Vue {
 
   toggling: boolean = false
 
+  readonly panelOnlyNote = PANEL_ONLY_NOTE
+
+  get hotspotOffIsPanelOnly (): boolean {
+    return routeFor('hotspot-off', refusedHere).kind === 'panel'
+  }
+
   private async changeHotspotState (wantsOn?: boolean) {
     // guard: need credentials and not already toggling
     if (!this.apCredentials || this.toggling) return
@@ -575,6 +685,18 @@ export default class HotspotManagerCard extends Vue {
       this.requestedApState = null
       this.apState = this.deviceStatus?.state === 'connected'
       console.error('Hotspot toggle failed', e)
+      if (this.takePermissionRefusal(e)) return
+      if (!turnOn && isPanelOnlyRefusal(e)) {
+        // Turning the hotspot off has no open route: it is the printer's screen now.
+        refusedHere.hotspotOff = true
+        EventBus.$emit(panelOnlyMessage('turn the hotspot off'), { type: 'error', timeout: 8000 })
+        return
+      }
+      if (turnOn && isPanelOnlyRefusal(e)) {
+        // An owner can turn AUX_NETWORK_STRICT on, and then /wifi/ap/up is refused too.
+        EventBus.$emit(panelOnlyMessage('turn the hotspot on'), { type: 'error', timeout: 8000 })
+        return
+      }
       if ((e as any)?.response?.status === 403) this.$store.dispatch('protection/onRefused')
       EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.toggle_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
     } finally {
@@ -638,6 +760,23 @@ export default class HotspotManagerCard extends Vue {
     border-radius: 22px;
     background: var(--m3d-surface);
     color: var(--m3d-text);
+  }
+
+  .hs--page {
+    padding: 18px;
+    gap: 14px;
+  }
+
+  .hs__head {
+    .hs__titles h2 {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+  }
+
+  .hs__ico {
+    color: var(--m3d-text-muted);
   }
 
   .hs--compact {

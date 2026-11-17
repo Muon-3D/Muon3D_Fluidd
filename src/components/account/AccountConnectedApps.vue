@@ -8,8 +8,12 @@
         ref="heading"
         tabindex="-1"
       >
-        Connected apps
+        Apps and agents
       </h1>
+      <p>Connected apps and access tokens act as you, on the printers you choose, never above your role there. Revoking one here ends it on every printer.</p>
+      <h2 class="acct-apps__title">
+        Connected apps
+      </h2>
       <p>AI tools and other programs you signed in to with your Muon3D account. Each can do only what you approved. Disconnect one any time.</p>
     </div>
 

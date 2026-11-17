@@ -4,18 +4,7 @@ import type { MutationTree } from 'vuex'
 import { defaultState } from './state'
 import { Globals } from '@/globals'
 import type { ConsoleEntry, ConsoleFilter, ConsoleState, PromptDialogItemButton, PromptDialogItem } from './types'
-import escapeRegExp from '@/util/escape-regexp'
-
-const compileExpression = (filter: ConsoleFilter): RegExp => {
-  switch (filter.type) {
-    case 'starts-with':
-      return new RegExp(`^${escapeRegExp(filter.value)}.*`, 'i')
-    case 'expression':
-      return new RegExp(filter.value)
-    default:
-      return new RegExp(`.*${escapeRegExp(filter.value)}.*`, 'i')
-  }
-}
+import { compileFilter as compileExpression } from '@/services/console/settings'
 
 export const mutations: MutationTree<ConsoleState> = {
   /**

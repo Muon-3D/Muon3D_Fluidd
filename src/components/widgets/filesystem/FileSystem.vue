@@ -3,15 +3,16 @@
     class="filesystem-wrapper"
     :height="height"
     :max-height="maxHeight"
-    :class="{ 'no-pointer-events': dragState.overlay }"
+    :class="{ 'no-pointer-events': dragState.overlay, 'filesystem-wrapper--tile': tile }"
     flat
     @dragover="handleDragOver"
     @dragenter.self.prevent
     @dragleave.self.prevent="handleDragLeave"
-    @drop.self.prevent="handleDrop"
+    @drop.prevent="handleDrop"
   >
     <file-system-toolbar
-      v-if="selected.length <= 0"
+      v-if="tile || selected.length <= 0"
+      :tile="tile"
       :roots="availableRoots"
       :root="currentRoot"
       :name="name"
@@ -37,6 +38,7 @@
 
     <file-system-bulk-actions
       v-if="selected.length > 0"
+      :tile="tile"
       :root="currentRoot"
       :path="visiblePath"
       :count="selected.length"
@@ -93,9 +95,12 @@
       :filename="fileEditorDialogState.filename"
       :loading="fileEditorDialogState.loading"
       :readonly="fileEditorDialogState.readonly"
-      :path="currentPath"
-      :root="currentRoot"
+      :line="fileEditorDialogState.line"
+      :path="fileEditorDialogState.path || currentPath"
+      :root="fileEditorDialogState.root || currentRoot"
+      :strict-guard="tile"
       @save="handleSaveFileChanges"
+      @dirty="$emit('dirty', $event)"
     />
 
     <!-- A generic dialog to define the name of a file, or folder.
@@ -116,8 +121,9 @@
       absolute
     />
 
+    <!-- A save from the editor sheet is its own progress: this dialog would sit over the sheet and its X. -->
     <file-system-upload-dialog
-      v-if="currentUploads.length > 0"
+      v-if="currentUploads.length > 0 && !(tile && view.sheetOpen)"
       :value="currentUploads.length > 0"
       :files="currentUploads"
       @cancel="handleCancelUpload"
@@ -171,6 +177,8 @@ import consola from 'consola'
 import { EventBus } from '@/eventBus'
 import { activeSlug } from '@/services/printer-pages'
 import { pathCrumbs, type Crumb } from '@/services/files/manager'
+import { downloadsOnly, opensInEditor, tapDownloads } from '@/services/files/model'
+import { filesView } from '@/services/files/view'
 import { scopedPath } from '@/router/printerPagePaths'
 
 /**
@@ -216,6 +224,14 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
   @Prop({ type: Boolean })
   readonly bulkActions?: boolean
 
+  // The v3 tile: its own tools (the roots are the tile header's), no card of its own.
+  @Prop({ type: Boolean })
+  readonly tile?: boolean
+
+  // The root to show, when the tile header picks it.
+  @Prop({ type: String })
+  readonly activeRoot?: string
+
   // Maintains the path and root.
   currentRoot = ''
 
@@ -254,7 +270,10 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
     contents: '',
     filename: '',
     loading: false,
-    readonly: false
+    readonly: false,
+    line: 0,
+    path: '',
+    root: ''
   }
 
   // Maintains the name change dialog state.
@@ -416,7 +435,12 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
   get files (): FileBrowserEntry[] {
     const files = this.getAllFiles()
 
+    const showHidden = !!this.$store.state.config.uiSettings.fileSystem.showHiddenFiles
     const filteredFiles = files.filter(file => {
+      if (!showHidden && file.name.match(/^\.(?!\.$)/)) {
+        return false
+      }
+
       if (this.currentRoot === 'timelapse' && file.type === 'file' && file.extension === 'jpg') {
         return false
       }
@@ -513,6 +537,57 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
     items.push(...thumbnails)
   }
 
+  // Files' editor sheet is open in this tile or the other: no upload dialog over it.
+  view = filesView
+
+  @Watch('fileEditorDialogState.open')
+  onSheet (open: boolean) {
+    if (this.tile) this.view.sheetOpen = open
+  }
+
+  beforeDestroy () {
+    if (this.tile && this.fileEditorDialogState.open) this.view.sheetOpen = false
+  }
+
+  @Watch('activeRoot')
+  onActiveRoot (root?: string) {
+    if (!root || !this.availableRoots.includes(root)) return
+    if (root !== this.currentRoot) this.handleRootChange(root)
+    else this.loadFiles(this.currentPath)
+  }
+
+  /**
+   * Opens a file by where it is (`dir` below the root), at a line: the macros'
+   * Edit and `?open=` come here. The folder it is in is shown behind the editor.
+   */
+  async openPath (root: string, dir: string, name: string, line = 0) {
+    const path = dir ? `${root}/${dir}` : root
+    if (!this.availableRoots.includes(root)) {
+      // A folder this tile doesn't list (config with Developer mode off): the file is read, never changed.
+      await this.handleFileOpenDialog(this.fileAt(path, name, true), 'edit', line, { path, root, readonly: true })
+      return
+    }
+    if (this.currentRoot !== root) this.handleRootChange(root)
+    this.loadFiles(path)
+    await this.$nextTick()
+    await this.handleFileOpenDialog(this.fileAt(path, name, this.rootProperties.readonly), 'edit', line)
+  }
+
+  /** A file by where it is, for opening before the folder's listing has it. */
+  fileAt (path: string, name: string, readonly: boolean): AppFile {
+    const dot = name.lastIndexOf('.')
+    return {
+      type: 'file',
+      name,
+      filename: name,
+      extension: dot >= 0 ? name.slice(dot + 1).toLowerCase() : '',
+      path,
+      size: 0,
+      modified: 0,
+      permissions: readonly ? 'r' : 'rw'
+    } as AppFile
+  }
+
   // If the root changes, reset the path and load the root path files.
   handleRootChange (root: string) {
     if (root.length) {
@@ -586,6 +661,17 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
       item.type === 'file' &&
       event.type === 'click'
     ) {
+      if (
+        this.tile &&
+        !this.rootProperties.canView.includes(`.${item.extension}`) &&
+        tapDownloads(this.currentRoot, item.name, item.size)
+      ) {
+        // Logs, files over 2 MB and anything that isn't text download: they aren't loaded into the editor.
+        this.handleDownload(item)
+
+        return
+      }
+
       if (this.$store.state.config.uiSettings.editor.autoEditExtensions.includes(`.${item.extension}`)) {
         this.handleFileOpenDialog(item, 'edit')
 
@@ -672,7 +758,7 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
     this.goToFileDialogOpen = true
   }
 
-  async handleFileOpenDialog (file: AppFile, mode: 'edit' | 'view' | undefined = undefined) {
+  async handleFileOpenDialog (file: AppFile, mode: 'edit' | 'view' | undefined = undefined, line = 0, at?: { path: string, root: string, readonly: boolean }) {
     try {
       const viewOnly = mode
         ? mode === 'view'
@@ -681,7 +767,7 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
       // Grab the file. This should provide a dialog.
       const response = await this.getFile(
         file.filename,
-        this.currentPath,
+        at?.path ?? this.currentPath,
         file.size,
         {
           responseType: viewOnly ? 'arraybuffer' : 'text',
@@ -709,7 +795,10 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
           contents: response.data,
           filename: file.filename,
           loading: false,
-          readonly: file.permissions === 'r' || this.rootProperties.readonly
+          readonly: !!at?.readonly || file.permissions === 'r' || this.rootProperties.readonly,
+          line,
+          path: at?.path ?? '',
+          root: at?.root ?? ''
         }
       }
     } catch (error: unknown) {
@@ -725,12 +814,7 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
 
       if (!gcode) return
 
-      // Shown in place where a G-code viewer is on the page: the dashboard's card.
-      const route = this.$router.currentRoute.name
-      const inPlace = route === 'Dashboard' && this.$store.getters['layout/isEnabledInCurrentLayout']('gcode-preview-card')
-      if (!inPlace) {
-        this.$router.push({ path: scopedPath('/preview', activeSlug()) })
-      }
+      this.$router.push({ path: scopedPath('/preview', activeSlug()) })
 
       this.$store.dispatch('gcodePreview/loadGcode', {
         file,
@@ -787,7 +871,8 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
   }
 
   async handleSaveFileChanges (contents: string, restart: string) {
-    if (contents.length > 0) {
+    // An emptied file is saved too (the tile); the older cards still skip it.
+    if (contents.length > 0 || (this.tile && typeof contents === 'string')) {
       const file = new File([contents], this.fileEditorDialogState.filename)
       if (!restart && this.fileEditorDialogState.open) this.fileEditorDialogState.loading = true
 
@@ -957,9 +1042,15 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
     SocketActions.serverFilesPostDirectory(`${this.currentPath}/${name}`)
   }
 
-  handleAddFile (name: string) {
+  async handleAddFile (name: string) {
     const file = new File([], name)
-    this.uploadFile(file, this.visiblePath, this.currentRoot, false)
+    const root = this.currentRoot
+    const path = this.currentPath
+    await this.uploadFile(file, this.visiblePath, root, false)
+    // A file just made is opened to write in (a log or a picture isn't: it has nothing to write).
+    if (this.tile && !downloadsOnly(root) && opensInEditor(name, 0) && !this.rootProperties.readonly) {
+      await this.handleFileOpenDialog(this.fileAt(path, name, false), 'edit')
+    }
   }
 
   handleDownload (file: AppFile) {
@@ -1056,7 +1147,9 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
       !this.rootProperties.readonly &&
       event.dataTransfer
     ) {
+      event.stopPropagation()
       if (hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'files')) {
+        if (event.target !== event.currentTarget) return
         const files = getFileDataTransferDataFromDataTransfer(event.dataTransfer, 'files')
 
         for (const file of files.items) {
@@ -1077,6 +1170,10 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
 </script>
 
 <style lang="scss" scoped>
+  .filesystem-wrapper--tile {
+    background: transparent !important;
+  }
+
   .filesystem-wrapper,
   .file-system,
   .file-system :deep(.v-data-table) {

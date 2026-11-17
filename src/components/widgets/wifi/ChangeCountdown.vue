@@ -34,7 +34,7 @@ import { CONFIRM_SECONDS, confirmNetworkChange } from '@/services/muon-cloud/own
 
 /**
  * The 90 second confirm-or-revert countdown after a change that can drop the
- * link. A parent shows it only when `confirmRouteSupported()` (KAN-1565).
+ * link. A parent shows it only when the printer arms a confirmation window.
  */
 @Component
 export default class ChangeCountdown extends Vue {

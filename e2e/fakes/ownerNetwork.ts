@@ -20,6 +20,9 @@ export interface OwnerNetworkState {
   older: boolean
   /** 403 forbidden for every route: not the owner. */
   notOwner: boolean
+  ownerOnlySettings: boolean
+  confirmSeconds: number | null
+  confirmMissing: boolean
   /** Every route but settings answers 403 with this error code. */
   refuse: 'reauth_required' | 'path_disabled' | null
   scan: Array<Record<string, unknown>>
@@ -34,9 +37,12 @@ export interface OwnerNetworkState {
 export function ownerNetworkState (over: Partial<OwnerNetworkState> = {}): OwnerNetworkState {
   return {
     path: 'local',
-    rules: { network_from_ble: 'allow', network_from_direct: 'allow', network_from_relay: 'reauth' },
+    rules: { network_from_ble: 'allow', network_from_direct: 'allow', network_from_relay: 'allow' },
     older: false,
     notOwner: false,
+    ownerOnlySettings: false,
+    confirmSeconds: null,
+    confirmMissing: false,
     refuse: null,
     scan: [
       { ssid: 'Workshop', signal: 82, security: 'WPA2', in_use: true },
@@ -71,12 +77,13 @@ export async function useOwnerNetwork (page: Page, over: Partial<OwnerNetworkSta
     const body = request.postData()
     if (body) state.bodies.push({ route: path, body: JSON.parse(body) })
 
-    if (state.older) return route.fulfill({ status: 404, headers: CORS, contentType: 'text/plain', body: 'Not Found' })
+    if (state.older) return json(route, { error: 'not_found' }, 404)
     if (state.notOwner) return json(route, { error: 'forbidden' }, 403)
     const method = request.method()
     if (path === '/settings') {
       if (method === 'PUT') {
-        if (state.path === 'relay' || state.path === 'direct_wan') return json(route, { error: 'reauth_required' }, 403)
+        if (state.ownerOnlySettings) return json(route, { error: 'owner_only' }, 403)
+        if ((state.path === 'relay' || state.path === 'direct_wan') && state.rules.network_from_relay !== 'allow') return json(route, { error: 'reauth_required' }, 403)
         Object.assign(state.rules, JSON.parse(body ?? '{}'))
       }
       return json(route, { ...state.rules, current_path: state.path })
@@ -85,7 +92,8 @@ export async function useOwnerNetwork (page: Page, over: Partial<OwnerNetworkSta
     if (method === 'GET' && path === '/wifi/scan') return json(route, state.scan)
     if (method === 'GET' && path === '/wifi/saved') return json(route, state.saved)
     if (method === 'GET' && path === '/wifi/current') return json(route, state.current)
-    if (method === 'POST' && path === '/wifi/connect') return json(route, { status: 'connecting', ssid: JSON.parse(body ?? '{}').ssid })
+    if (method === 'POST' && path === '/wifi/connect') return json(route, { status: 'connecting', ssid: JSON.parse(body ?? '{}').ssid, confirm_by: state.confirmSeconds ? '2026-11-06T12:34:56+00:00' : null, confirm_in_s: state.confirmSeconds })
+    if (method === 'POST' && path === '/confirm') return state.confirmMissing ? json(route, { error: 'not_found' }, 404) : json(route, { status: 'confirmed' })
     if (method === 'DELETE' && path === '/wifi/forget') return json(route, { status: 'forgotten' })
     if (method === 'POST' && path === '/hotspot/change') return json(route, { challenge_id: 'chg_e2e_0123456789', expires_at: Date.now() / 1000 + 120 }, 202)
     if (method === 'GET' && path.startsWith('/hotspot/change/')) {

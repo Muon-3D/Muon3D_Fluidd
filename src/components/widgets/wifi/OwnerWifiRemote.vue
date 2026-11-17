@@ -139,6 +139,7 @@
 
       <change-countdown
         v-if="countdown"
+        :seconds="confirmSeconds"
         @kept="onCountdownEnd('Kept. The change is permanent.')"
         @expired="onCountdownEnd('Time is up. The printer is going back to how it was.')"
       />
@@ -195,6 +196,14 @@ export default class OwnerWifiRemote extends Vue {
   message = ''
   error = ''
   countdown = false
+  confirmSeconds = 0
+  private disposed = false
+
+  beforeDestroy () {
+    this.disposed = true
+    this.password = ''
+    this.pending = null
+  }
 
   mounted () {
     this.load()
@@ -244,6 +253,7 @@ export default class OwnerWifiRemote extends Vue {
     this.error = ''
     try {
       const [networks, saved, current] = await Promise.all([wifiScan(), wifiSaved(), wifiCurrent()])
+      if (this.disposed) return
       this.networks = networks
       this.savedNames = saved
       this.current = current
@@ -255,6 +265,7 @@ export default class OwnerWifiRemote extends Vue {
   }
 
   private handle (e: unknown) {
+    if (this.disposed) return
     const err = networkErrorOf(e)
     if (err.kind === 'reauth_required' || err.kind === 'path_disabled') {
       this.blocked = err.kind
@@ -298,14 +309,17 @@ export default class OwnerWifiRemote extends Vue {
     try {
       if (pending.kind === 'wifi_connect') {
         const outcome = await wifiConnect(pending.ssid, this.password || undefined)
+        if (this.disposed) return
         this.message = outcome.restored
           ? `Couldn't join ${pending.ssid}, so the printer went back to its old network.`
           : `Joining ${pending.ssid}…`
-        this.countdown = !outcome.restored && pending.warning.mayDropLink && confirmRouteSupported()
+        this.confirmSeconds = outcome.confirmSeconds ?? 0
+        this.countdown = !outcome.restored && pending.warning.mayDropLink && confirmRouteSupported(this.confirmSeconds)
       } else {
         await wifiForget(pending.ssid)
+        if (this.disposed) return
         this.message = `Forgot ${pending.ssid}.`
-        this.countdown = pending.warning.mayDropLink && confirmRouteSupported()
+        this.countdown = false
       }
       this.pending = null
       await this.load()

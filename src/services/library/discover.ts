@@ -11,6 +11,7 @@
  * publication summaries carry it from KAN-395 on.
  */
 import { MODELS_URL } from './api'
+import { modelsResourceUrl } from './transport'
 
 /** The standalone Library, where a public print has its page. */
 export const LIBRARY_URL: string = (import.meta.env.VITE_LIBRARY_URL || 'https://library.muon3d.com').replace(/\/+$/, '')
@@ -42,6 +43,10 @@ export interface DiscoverFeed {
   m1_ready: DiscoverCatalogue[];
   trending: DiscoverPublication[];
   new: DiscoverPublication[];
+  hero?: { headline: string, target_kind: string, target: DiscoverPublication } | null;
+  shelves?: Array<{ slug: string, title: string, description: string, items: Array<{ target_kind: string, target: DiscoverPublication }> }>;
+  new_this_week?: { window_seconds: number, items: DiscoverPublication[] };
+  made_for_m1?: { basis: string, items: DiscoverPublication[] };
 }
 
 /** One card, whichever shelf it came from: what LibraryDiscover draws. */
@@ -59,7 +64,7 @@ export interface DiscoverCard {
 export function safePicture (value: string | null | undefined): string | null {
   if (!value) return null
   try {
-    const url = new URL(value, MODELS_URL)
+    const url = new URL(modelsResourceUrl(value))
     return url.protocol === 'https:' || url.origin === new URL(MODELS_URL).origin ? url.href : null
   } catch {
     return null
@@ -150,5 +155,5 @@ export async function loadDiscover (fetcher: typeof fetch = fetch, signal?: Abor
   if (!body || !Array.isArray(body.m1_ready) || !Array.isArray(body.trending) || !Array.isArray(body.new)) {
     throw new Error(unreadable)
   }
-  return { m1_ready: body.m1_ready, trending: body.trending, new: body.new }
+  return { ...body, m1_ready: body.m1_ready, trending: body.trending, new: body.new }
 }

@@ -6,7 +6,9 @@
     <div class="acct-head acct-head--row">
       <div class="acct-head">
         <div class="acct-head__title">
-          <h1>Access tokens</h1>
+          <h2 class="acct-tokens__title">
+            Access tokens
+          </h2>
           <acct-more label="What a token is">
             A token lets a script, a CI job or an AI tool act as you, with fewer powers. It ends on its own, and you can revoke it any time.
           </acct-more>

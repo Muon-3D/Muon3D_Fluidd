@@ -33,11 +33,11 @@ describe('who can change the network', () => {
     expect(tid(w, 'owner-network-fromBle').exists()).toBe(false)
   })
 
-  it('shows the three choices, open as the device defaults: allow, allow, reauth', async () => {
+  it('shows all three paths allowed by the current device defaults', async () => {
     const w = await open('local')
     expect((tid(w, 'owner-network-fromBle').element as HTMLSelectElement).value).toBe('allow')
     expect((tid(w, 'owner-network-fromLocal').element as HTMLSelectElement).value).toBe('allow')
-    expect((tid(w, 'owner-network-fromRelay').element as HTMLSelectElement).value).toBe('reauth')
+    expect((tid(w, 'owner-network-fromRelay').element as HTMLSelectElement).value).toBe('allow')
     const labels = tid(w, 'owner-network-fromRelay').findAll('option').wrappers.map(o => o.text())
     expect(labels).toEqual(['Allow', 'Ask me to sign in again', 'Block'])
     expect(w.text()).toContain('Over Bluetooth')
@@ -60,8 +60,9 @@ describe('who can change the network', () => {
   })
 
   it('over the internet it is read-only, and says why', async () => {
+    printer.rules.network_from_relay = 'reauth'
     const w = await open('relay')
-    expect(tid(w, 'owner-network-readonly').text()).toContain('can only be changed from Bluetooth or from the printer\'s own network')
+    expect(tid(w, 'owner-network-readonly').text()).toContain('restricted by the printer\'s network rules')
     for (const key of ['fromBle', 'fromLocal', 'fromRelay']) {
       expect(tid(w, `owner-network-${key}`).attributes('disabled')).toBeDefined()
     }
@@ -69,8 +70,26 @@ describe('who can change the network', () => {
   })
 
   it('direct_wan is read-only too', async () => {
+    printer.rules.network_from_relay = 'deny'
     const w = await open('direct_wan')
     expect(tid(w, 'owner-network-readonly').exists()).toBe(true)
+  })
+
+  it('lets an owner change the rules over a permitted relay', async () => {
+    const w = await open('relay')
+    expect(tid(w, 'owner-network-readonly').exists()).toBe(false)
+    await tid(w, 'owner-network-fromBle').setValue('deny')
+    await flushPromises()
+    expect(printer.rules.network_from_ble).toBe('deny')
+  })
+
+  it('reading the settings is not proof of ownership; a refused PUT keeps the rules', async () => {
+    printer.owner = false
+    const w = await open('local')
+    await tid(w, 'owner-network-fromBle').setValue('deny')
+    await flushPromises()
+    expect(tid(w, 'owner-network-error').text()).toContain('owner')
+    expect(printer.rules.network_from_ble).toBe('allow')
   })
 
   it('a refused save says why in plain words', async () => {

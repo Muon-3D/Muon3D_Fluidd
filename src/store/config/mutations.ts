@@ -1,6 +1,6 @@
 import Vue from 'vue'
 import type { MutationTree } from 'vuex'
-import type { ConfigState, UiSettings, SaveByPath, InstanceConfig, InitConfig, UiStyle } from './types'
+import type { ConfigState, UiSettings, SaveByPath, InstanceConfig, InitConfig, UiStyle, PersonalSettings } from './types'
 import { defaultState } from './state'
 import { Globals } from '@/globals'
 import { cloneDeep, mergeWith, set } from 'lodash-es'
@@ -10,6 +10,7 @@ import type { AppTablePartialHeader } from '@/types/tableheaders'
 import type { FileFilterType } from '../files/types'
 import consola from 'consola'
 import { DEFAULT_UI_STYLE } from '@/util/ui-style'
+import { migrateLegacyAnimations } from '@/services/m1-3d/device-settings'
 
 export const mutations: MutationTree<ConfigState> = {
   /**
@@ -47,12 +48,12 @@ export const mutations: MutationTree<ConfigState> = {
           payload.theme.logo.src = logoSrc.substring(1)
         }
 
-        // A theme saved before styles existed has none, and is the default
-        // style; the style this browser restored for sign-in must not stick.
-        if (payload.theme.style == null) {
-          payload.theme.style = DEFAULT_UI_STYLE
-        }
+        // Glass is the only style. A theme saved before styles existed has
+        // none, and one saved as 'flat' (retired) reads as glass too.
+        payload.theme.style = DEFAULT_UI_STYLE
       }
+
+      migrateLegacyAnimations(payload.gcodePreview?.showAnimations)
 
       const mergedSettings = mergeWith(
         cloneDeep(state.uiSettings),
@@ -61,7 +62,23 @@ export const mutations: MutationTree<ConfigState> = {
       )
 
       Vue.set(state, 'uiSettings', mergedSettings)
+      // The printer-wide values are read again from what just loaded.
+      state.sharedPersonal = null
     }
+  },
+
+  setPersonalKey (state, payload: string | null) {
+    state.personalKey = payload
+  },
+
+  setSharedPersonal (state, payload: PersonalSettings | null) {
+    state.sharedPersonal = payload
+  },
+
+  /** The personal settings in effect: someone's own over the printer's. */
+  setPersonalValues (state, payload: Required<PersonalSettings>) {
+    Object.assign(state.uiSettings.theme, payload.theme)
+    Object.assign(state.uiSettings.general, payload.general)
   },
 
   /**
@@ -191,6 +208,9 @@ export const mutations: MutationTree<ConfigState> = {
       const i = state.uiSettings.dashboard.tempPresets.findIndex(preset => preset.id === payload.id)
       if (i >= 0) {
         Vue.set(state.uiSettings.dashboard.tempPresets, i, payload)
+      } else {
+        // A default the store added back is written the first time it changes.
+        state.uiSettings.dashboard.tempPresets.push(payload)
       }
     }
   },
@@ -200,7 +220,8 @@ export const mutations: MutationTree<ConfigState> = {
    */
   setRemovePreset (state, payload) {
     const i = state.uiSettings.dashboard.tempPresets.findIndex(preset => preset.id === payload.id)
-    state.uiSettings.dashboard.tempPresets.splice(i, 1)
+    // splice(-1, 1) would remove the last preset: a preset that is not there removes nothing.
+    if (i >= 0) state.uiSettings.dashboard.tempPresets.splice(i, 1)
   },
 
   setFileSystemActiveFilters (state, payload: { root: string, value: FileFilterType[] }) {
@@ -213,13 +234,6 @@ export const mutations: MutationTree<ConfigState> = {
 
   setFileSystemSortDesc (state, payload: { root: string, value: boolean | null }) {
     Vue.set(state.uiSettings.fileSystem.sortDesc, payload.root, payload.value)
-  },
-
-  /**
-   * Puts us into layout mode
-   */
-  setLayoutMode (state, payload) {
-    state.layoutMode = payload
   },
 
   setContainerColumnCount (state, payload: number) {

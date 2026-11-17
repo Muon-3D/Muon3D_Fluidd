@@ -45,22 +45,35 @@ describe('owner hotspot change over the printer connection', () => {
   it('asks, says "Press the knob on the printer to approve", then reports the outcome', async () => {
     const w = await open()
     await ask(w, { ssid: 'Muon-Lab', password: 'correct horse' })
-    expect(tid(w, 'owner-hotspot-warning').text()).toContain('Nothing changes until someone presses the knob')
+    expect(tid(w, 'owner-hotspot-warning').text()).toContain('may ask')
     expect(printer.sent('POST', '/hotspot/change')).toHaveLength(0)
 
     await tid(w, 'owner-hotspot-proceed').trigger('click')
     await settle()
     expect(printer.sent('POST', '/hotspot/change')[0].data).toEqual({ ssid: 'Muon-Lab', password: 'correct horse' })
-    expect(tid(w, 'owner-hotspot-waiting').text()).toContain('Press the knob on the printer to approve.')
+    expect(tid(w, 'owner-hotspot-waiting').text()).toBe('Applying the change…')
     expect(w.html()).not.toContain('correct horse')
 
     // waiting first, then applied.
     await vi.advanceTimersByTimeAsync(HOTSPOT_POLL_MS)
+    expect(tid(w, 'owner-hotspot-waiting').text()).toContain('Press the knob on the printer to approve.')
     expect(tid(w, 'owner-hotspot-waiting').exists()).toBe(true)
     await vi.advanceTimersByTimeAsync(HOTSPOT_POLL_MS)
     expect(printer.sent('GET', '/hotspot/change/chg_0123456789abcdef').length).toBeGreaterThanOrEqual(2)
     expect(tid(w, 'owner-hotspot-waiting').exists()).toBe(false)
     expect(tid(w, 'owner-hotspot-outcome').text()).toBe('The hotspot has its new name and password.')
+  })
+
+  it('does not invent knob approval or a revert countdown for an immediate change', async () => {
+    printer.changeStates = ['applied']
+    const w = await open()
+    await ask(w, { generate: true })
+    await tid(w, 'owner-hotspot-proceed').trigger('click')
+    await settle()
+    expect(w.text()).not.toContain('Nothing changes until')
+    await vi.advanceTimersByTimeAsync(HOTSPOT_POLL_MS)
+    expect(tid(w, 'owner-hotspot-outcome').text()).toContain('new name and password')
+    expect(w.find('[data-tid=change-countdown]').exists()).toBe(false)
   })
 
   it.each([

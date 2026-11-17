@@ -1,9 +1,11 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import ControlMixin from './control'
+import DevGuardMixin from './dev-guard'
 import { Waits } from '@/globals'
 import { activeSlug } from '@/services/printer-pages'
 import { running } from '@/services/maintenance/running'
 import { plateCheckNeeded } from '@/services/jobs/plate'
+import { meshFigures } from '@/services/maintenance/heatmap'
 import {
   checkCommand,
   checkProduced,
@@ -74,8 +76,8 @@ interface CheckInfo {
 const CHECKS: CheckInfo[] = [
   {
     id: 'bedMesh',
-    title: 'Level the bed',
-    description: 'Measures the plate so the first layer is even.',
+    title: 'Bed mesh calibrate',
+    description: 'Measures the plate at a grid of points.',
     icon: 'mesh',
     action: 'Run',
     wait: Waits.onMeshCalibrate,
@@ -92,7 +94,7 @@ const CHECKS: CheckInfo[] = [
   },
   {
     id: 'shaper',
-    title: 'Vibration tuning',
+    title: 'Resonance test',
     description: 'Lets it print fast without ripples. Run it again after moving the printer to a new table.',
     icon: 'pulse',
     action: 'Run',
@@ -119,7 +121,7 @@ const CHECKS: CheckInfo[] = [
  * halfway isn't recorded as done.
  */
 @Component({})
-export default class MaintenanceMixin extends Mixins(ControlMixin) {
+export default class MaintenanceMixin extends Mixins(ControlMixin, DevGuardMixin) {
   get maintenanceTarget (): string { return this.panelTarget }
 
   get gcodeCommands (): Record<string, unknown> {
@@ -139,7 +141,7 @@ export default class MaintenanceMixin extends Mixins(ControlMixin) {
 
   get checks (): CheckRow[] {
     const now = Date.now()
-    const context = { commands: this.gcodeCommands, homed: this.allHomed, nozzleTarget: this.tuneTemperature }
+    const context = { commands: this.gcodeCommands, homed: this.allHomed, nozzleTarget: this.tuneTemperature, pidFallback: !this.devOnlyLocked }
     return CHECKS
       .map(info => ({
         id: info.id,
@@ -215,6 +217,14 @@ export default class MaintenanceMixin extends Mixins(ControlMixin) {
     return meshSummary(this.mesh)
   }
 
+  /**
+   * Whether the printer holds a measured mesh. Klipper reports a cleared or
+   * never-loaded mesh as `[[]]` (one empty row), so this asks for a value, not a length.
+   */
+  get meshMeasured (): boolean {
+    return meshFigures(this.mesh) !== null
+  }
+
   /** Whether a mesh is loaded, so moves follow it. */
   get meshInUse (): boolean {
     return !!this.$store.state.printer.printer.bed_mesh?.profile_name
@@ -224,7 +234,7 @@ export default class MaintenanceMixin extends Mixins(ControlMixin) {
   get meshSize (): [number, number] | null {
     const settings = this.$store.state.printer.printer.configfile?.settings?.bed_mesh
     return probeCount(settings?.probe_count) ??
-      (this.mesh.length ? [this.mesh[0].length, this.mesh.length] : null)
+      (this.meshMeasured ? [this.mesh[0].length, this.mesh.length] : null)
   }
 
   get measuring (): boolean {
@@ -290,6 +300,13 @@ export default class MaintenanceMixin extends Mixins(ControlMixin) {
     if (!this.$store.getters['server/componentSupport']('history')) return null
     const seconds = this.$store.getters['history/getRollUp']?.total_print_time as number | undefined
     return seconds === undefined ? null : Math.round(seconds / 3600)
+  }
+
+  /** Prints on this printer's record, from the print history. */
+  get printCount (): number | null {
+    if (!this.$store.getters['server/componentSupport']('history')) return null
+    const jobs = this.$store.getters['history/getRollUp']?.total_jobs as number | undefined
+    return typeof jobs === 'number' ? jobs : null
   }
 
   get saveConfigPending (): boolean {

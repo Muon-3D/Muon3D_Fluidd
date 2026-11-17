@@ -44,8 +44,13 @@ export const devModeState: DevModeState = Vue.observable({
 
 type Status = DevModeStatus & { otp_record_armed?: boolean }
 
-/** Asks the printer again. Keeps the last known state when it can't be reached. */
-export async function refreshDevMode (): Promise<void> {
+/**
+ * Asks the printer again. Keeps the last known state when it can't be reached.
+ * Resolves to the value THIS request got, or null when it got none, so a
+ * caller that must not trust the shared state (it keeps another printer's
+ * value) can use the answer instead.
+ */
+export async function refreshDevMode (): Promise<boolean | null> {
   devModeState.checking = true
   try {
     const { data } = await useAuxApi().devMode.getDevModeStatusDevModeGet()
@@ -58,17 +63,22 @@ export async function refreshDevMode (): Promise<void> {
     devModeState.otpFuse = status.otp_fuse ?? null
     devModeState.everEnabled = !!status.ever_enabled
     devModeState.canManage = true
+    return status.enabled
   } catch (err) {
     consola.debug('Developer mode is not manageable from this client:', err)
     devModeState.canManage = false
     try {
       const response = await httpClientActions.serverMuonDevModeGet()
       const enabled = response.data?.result?.enabled
-      if (typeof enabled === 'boolean') devModeState.enabled = enabled
+      if (typeof enabled === 'boolean') {
+        devModeState.enabled = enabled
+        return enabled
+      }
     } catch (e) {
       consola.error('Failed to get developer mode status:', e)
     }
   } finally {
     devModeState.checking = false
   }
+  return null
 }

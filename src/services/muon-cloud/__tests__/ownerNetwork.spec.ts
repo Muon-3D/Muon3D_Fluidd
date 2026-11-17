@@ -49,7 +49,7 @@ describe('the owner network client: routes', () => {
 
   it('falls back to the device defaults for a rule it was not given', async () => {
     request.mockResolvedValue({ status: 200, data: { current_path: 'relay' } })
-    expect(await getNetworkSettings()).toMatchObject({ fromBle: 'allow', fromLocal: 'allow', fromRelay: 'reauth' })
+    expect(await getNetworkSettings()).toMatchObject({ fromBle: 'allow', fromLocal: 'allow', fromRelay: 'allow' })
   })
 
   it('treats an answer with no known path as a failure', async () => {
@@ -252,22 +252,50 @@ describe('what to say before a change', () => {
     }
   })
 
-  it('a hotspot change off the hotspot keeps the link, and says someone must approve', () => {
+  it('a hotspot change off the hotspot keeps the link, and allows optional approval', () => {
     const w = warningFor({ kind: 'hotspot_change', path: 'relay', onHotspot: false })
     expect(w).toMatchObject({ mayDropLink: false, level: 'safe' })
-    expect(w.message).toContain('knob')
+    expect(w.message).toContain('may ask')
   })
 })
 
-describe('the confirm-or-revert route (KAN-1565: not defined yet)', () => {
-  it('is 90 seconds, and the route is reported as absent', () => {
+describe('the optional confirm-or-revert window', () => {
+  it('does not offer a countdown without an armed window', () => {
     expect(CONFIRM_SECONDS).toBe(90)
     expect(confirmRouteSupported()).toBe(false)
   })
 
-  it('confirmNetworkChange sends nothing while the route is undefined', async () => {
+  it('confirms over the existing muon-link route without a request body', async () => {
+    request.mockResolvedValue({ status: 200, data: { status: 'confirmed' } })
+    await confirmNetworkChange()
+    expect(request.mock.calls[0][0]).toMatchObject({ method: 'POST', url: '/muon-link/network/confirm' })
+    expect(request.mock.calls[0][0].data).toBeUndefined()
+  })
+
+  it('reports an older printer missing the confirmation route gracefully', async () => {
+    request.mockRejectedValue(failure(404, { error: 'not_found' }))
     await expect(confirmNetworkChange()).rejects.toBeInstanceOf(ConfirmUnavailable)
-    expect(request).not.toHaveBeenCalled()
+  })
+
+  it('keeps a refused confirmation refused', async () => {
+    request.mockRejectedValue(failure(403, { error: 'forbidden' }))
+    await expect(confirmNetworkChange()).rejects.toMatchObject({ kind: 'not_owner' })
+  })
+
+  it('uses the server duration, not the printer wall clock', async () => {
+    request.mockResolvedValue({ status: 200, data: { ssid: 'Cafe', confirm_by: '1970-01-01T00:00:00Z', confirm_in_s: 43.2 } })
+    expect(await wifiConnect('Cafe')).toMatchObject({ confirmSeconds: 44 })
+    expect(confirmRouteSupported(44)).toBe(true)
+  })
+
+  it.each([null, 0, -1, Infinity, NaN, '90'])('does not invent a countdown from an invalid duration %s', async seconds => {
+    request.mockResolvedValue({ status: 200, data: { confirm_by: '2026-11-06T12:34:56+00:00', confirm_in_s: seconds } })
+    expect((await wifiConnect('Cafe')).confirmSeconds).toBeUndefined()
+  })
+
+  it('does not invent a window when confirm_by is null', async () => {
+    request.mockResolvedValue({ status: 200, data: { confirm_by: null, confirm_in_s: 90 } })
+    expect((await wifiConnect('Cafe')).confirmSeconds).toBeUndefined()
   })
 })
 

@@ -16,6 +16,7 @@ import {
   isPrintersOwnPage,
   learnActiveIdentity,
   openPrinterAt,
+  ownPageHome,
   preferSavedPrinterFor,
   printerPageNeedsLogin,
   printerPagesState,
@@ -184,6 +185,31 @@ describe("a printer's identity, answered after Fluidd moved to another printer",
     vi.spyOn(httpClientActions, 'get').mockResolvedValue({ data: { result: walnutIdentity } } as never)
     await expect(learnActiveIdentity()).resolves.toBe('walnut-8987')
     expect(activeSlug()).toBe('walnut-8987')
+  })
+})
+
+describe('a page that lands on the address made before the printer said who it is', () => {
+  it('is corrected to the real slug as it lands, even after the identity has already come', async () => {
+    store.state.config.apiUrl = 'http://192.168.9.9'
+    const before = activeSlug()!
+    const walnutIdentity = { name: 'walnut', suffix: '8987', derived_name: 'walnut', endpoint_id: 'a'.repeat(64) }
+    vi.spyOn(httpClientActions, 'get').mockResolvedValue({ data: { result: walnutIdentity } } as never)
+    await learnActiveIdentity()
+    expect(before).not.toBe('walnut-8987')
+
+    // The bare /slice redirected to the old address while the identity was in flight.
+    let landed: (to: unknown) => void = () => {}
+    const replace = vi.fn(() => Promise.resolve())
+    const router = {
+      afterEach: (hook: (to: unknown) => void) => { landed = hook },
+      currentRoute: { params: { printer: before }, fullPath: `/${before}/slice`, path: `/${before}/slice` },
+      replace
+    } as unknown as VueRouter
+    installPrinterPages(router, { activateLocalPrinter: vi.fn(async () => true), activateCloudPrinter: vi.fn(async () => {}) })
+    landed({ params: { printer: before } })
+    expect(replace).toHaveBeenCalledWith(expect.stringContaining('/walnut-8987/slice'))
+    store.state.config.apiUrl = ''
+    vi.restoreAllMocks()
   })
 })
 
@@ -360,5 +386,30 @@ describe('a printer opened by its address', () => {
     // 14 Oct: Boxwood opened through Muon3D showed the login page, whose
     // password went to /access/login, which muon-link refuses to every role.
     expect(printerPageNeedsLogin({ ...page, managed: true }, on)).toBe(false)
+  })
+})
+
+describe('ownPageHome (KAN-2008)', () => {
+  const own = { origin: 'http://192.168.137.81:8098', hostname: '192.168.137.81' }
+
+  it('sends the root of a printer own page straight to that printer, before any list can draw', () => {
+    expect(ownPageHome('/', 'http://192.168.137.81:8098', 'boxwood-367a', own)).toBe('/boxwood-367a')
+  })
+
+  it('leaves every other address alone', () => {
+    expect(ownPageHome('/boxwood-367a', 'http://192.168.137.81:8098', 'boxwood-367a', own)).toBeNull()
+    expect(ownPageHome('/library', 'http://192.168.137.81:8098', 'boxwood-367a', own)).toBeNull()
+  })
+
+  it('keeps the list for the shared name, the console and a printer that is not this page', () => {
+    const shared = { origin: 'http://muon3d.local', hostname: 'muon3d.local' }
+    expect(ownPageHome('/', 'http://muon3d.local', 'boxwood-367a', shared)).toBeNull()
+    expect(ownPageHome('/', 'http://192.168.137.95', 'boxwood-367a', own)).toBeNull()
+    expect(ownPageHome('/', MANAGED_API_URL, 'boxwood-367a', own)).toBeNull()
+  })
+
+  it('waits for the old behaviour when no printer slug is known', () => {
+    expect(ownPageHome('/', 'http://192.168.137.81:8098', null, own)).toBeNull()
+    expect(ownPageHome('/', '', 'boxwood-367a', own)).toBeNull()
   })
 })

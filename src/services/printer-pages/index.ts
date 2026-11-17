@@ -18,7 +18,7 @@ import type { Route } from 'vue-router'
 import store from '@/store'
 import type { InstanceConfig } from '@/store/config/types'
 import { httpClientActions } from '@/api/httpClientActions'
-import { cloudState } from '@/services/muon-cloud/state'
+import { cloudState, reachablePrinters } from '@/services/muon-cloud/state'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import { discoveryState, instanceFor, mdnsHostFor } from '@/services/muon-cloud/discovery'
 import { setActiveSlugSource, setForeignSlugSource } from '@/router/printerSlugSource'
@@ -89,7 +89,7 @@ function savedInstances (): InstanceConfig[] {
 /** Every printer this browser knows: saved ones, then account ones. */
 export function knownPrinters (): PrinterTarget[] {
   const local: PrinterTarget[] = savedInstances().map(instance => ({ kind: 'local', slug: slugForInstance(instance), instance }))
-  const cloud: PrinterTarget[] = cloudState.printers.map(p => ({
+  const cloud: PrinterTarget[] = reachablePrinters().map(p => ({
     kind: 'cloud',
     slug: slugForCloudPrinter(p),
     printerId: p.id
@@ -149,7 +149,7 @@ export function activeSlug (): string | null {
   if (isManagedApiUrl(apiUrl)) {
     const id = cloudState.activePrinterId
     if (!id) return null
-    const printer = cloudState.printers.find(p => p.id === id)
+    const printer = reachablePrinters().find(p => p.id === id)
     return printer ? slugForCloudPrinter(printer) : null
   }
   const instance = savedInstances().find(i => addressKey(i.apiUrl) === addressKey(apiUrl))
@@ -341,6 +341,10 @@ export function installPrinterPages (router: VueRouter, how: PrinterOpeners): vo
   router.afterEach((to) => {
     const slug = to.params.printer
     if (slug && !isActiveSlug(slug)) openPrinterAt(slug).catch(() => {})
+    // A page that landed on the address made before the printer said who it
+    // is (a bare /slice redirected while the identity was in flight) is
+    // corrected as soon as it lands, or when the identity arrives (init.ts).
+    else correctAddress(router)
   })
 }
 
@@ -390,6 +394,24 @@ export function isPrintersOwnPage (apiUrl: string, location: Pick<Location, 'ori
   } catch {
     return false
   }
+}
+
+/**
+ * Where `/` goes on a printer's own page, known before the first frame: the
+ * printer's page, so the list of every printer never draws first (KAN-2008).
+ * It used to wait for the account to restore (a call to the console) and for
+ * the printer's identity, and the page showed every saved, found and account
+ * printer by name for that long, then jumped to this one. Null when `/` is
+ * right: not the root, not the printer's own page, or no printer slug yet.
+ */
+export function ownPageHome (
+  pathname: string,
+  apiUrl: string,
+  slug: string | null,
+  location: Pick<Location, 'origin' | 'hostname'> = window.location
+): string | null {
+  if (pathname !== '/' || !slug || !isPrintersOwnPage(apiUrl, location)) return null
+  return printerPath(slug)
 }
 
 /** The page of the printer Fluidd is on, or Printers with none. */

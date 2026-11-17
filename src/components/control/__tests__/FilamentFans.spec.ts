@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { afterEach, expect, it, vi } from 'vitest'
 import ControlFilament from '../ControlFilament.vue'
 import ControlFans from '../ControlFans.vue'
+import FilamentSection from '../FilamentSection.vue'
 import { panelStore, panelStubs, waits } from './panel-fixture'
 
 const socket = vi.hoisted(() => ({ printerGcodeScript: vi.fn(), printerQueryEndstops: vi.fn() }))
@@ -63,7 +64,7 @@ it('keeps a runout-only sensor switch in Filament and refuses loader or unknown 
   const wrapper = mount(ControlFilament, { mocks: { $store: store, $waits: waits }, stubs: { ...panelStubs, MaterialPicker: true } })
   const toggle = wrapper.find('[aria-label="Runout on"]')
   expect(toggle.exists()).toBe(true); await toggle.trigger('click')
-  const vm = wrapper.vm as any
+  const vm = wrapper.findComponent(FilamentSection).vm as any
   vm.setRunout('loader', false)
   store.state.printer.printer.configfile = undefined; vm.setRunout('runout', false)
   store.getters['auth/getAuthenticated'] = false; vm.setRunout('runout', true)
@@ -74,13 +75,13 @@ it('keeps a runout-only sensor switch in Filament and refuses loader or unknown 
 it('retains filament macro availability as metadata and only permits the guided change while printing', async () => {
   const store = panelStore()
   store.getters['macros/getMacros'] = [{ name: 'm600', config: { gcode: 'PAUSE' } }, { name: 'load_filament', config: { gcode: 'M109 S210' } }]
-  const wrapper = mount(ControlFilament, { mocks: { $store: store, $waits: waits }, stubs: { ...panelStubs, MaterialPicker: true } })
+  const wrapper = mount(ControlFilament, { mocks: { $store: store, $waits: waits, $confirm: vi.fn(async () => true) }, stubs: { ...panelStubs, MaterialPicker: true } })
   const vm = wrapper.vm as any
   store.getters['auth/getAuthenticated'] = false; await wrapper.vm.$nextTick()
   expect(vm.changeMacro?.name).toBe('M600')
   store.getters['auth/getAuthenticated'] = true
   store.getters['printer/getPrinterState'] = 'printing'; await wrapper.vm.$nextTick()
-  vm.run(vm.loadMacro); vm.run(vm.changeMacro)
+  await vm.runFilamentPlan('load'); await vm.changeFilament()
   expect(socket.printerGcodeScript.mock.calls.map(c => c[0])).toEqual(['M600'])
   wrapper.destroy()
 })

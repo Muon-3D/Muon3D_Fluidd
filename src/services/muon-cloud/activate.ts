@@ -16,9 +16,12 @@ import { bindHttpClientToPrinterTransport } from '@/services/managed-session/htt
 import { type PrinterTransport } from '@/services/managed-transport'
 import { borrowCloudPrinter, cloudState, dropCloudConnection, printerName, setActiveCloudPrinter } from './state'
 import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
+import { noteRelayLost, noteUserOpen } from './route-choice'
+import { requestRefused } from '@/services/managed-transport/refusal'
 import { isOwnHotspot, pageReach } from './discovery'
-import { wantsBluetoothFor } from '@/services/muon-ble/link'
+import { releaseBluetoothLink, stopUsingBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
+import { onApprovalWatch, type ApprovalWatch } from './approval'
 
 export { MANAGED_API_URL, MANAGED_SOCKET_URL }
 
@@ -32,21 +35,41 @@ export const activationState = Vue.observable({
    * (KAN-1253). Set only by that refusal, never by the console, so the offer
    * to pair this browser appears for nothing else.
    */
-  pairing: null as string | null
+  pairing: null as string | null,
+  /** The wait for the printer's owner to accept this browser (I-170), when the printer is holding it. */
+  approval: null as ApprovalWatch | null,
+  /** The printer that wait is for, so Try again dials the same one. */
+  approvalFor: null as string | null
 })
 
+let panelCodePairingOverride: boolean | null = null
+
+/** For tests and the e2e fakes: forces the pairing switch on or off. `null` goes back to the build's own setting. */
+export function setPanelCodePairing (on: boolean | null) {
+  panelCodePairingOverride = on
+}
+
 /**
- * Pairing this browser by the printer's panel code needs printer-side approval that
- * has not shipped (I-170). Until it does, only development builds, and builds made
- * with VUE_MUON_PANEL_CODE_PAIRING=1, offer it. Read at call time so a test can set it.
+ * THE SWITCH for pairing this browser by the printer's panel code (KAN-1374).
+ *
+ * It decides whether Control offers pairing at all: both the always-there
+ * "Pair this browser" item in a printer's options menu and on its page menu,
+ * and the offer made after a printer refuses this browser over Bluetooth.
+ * Off, none of those appear and the "coming soon" line is shown instead.
+ *
+ * On by default: the printer side (System > Add a device, I-170) is live
+ * (muon-link #126, in MuonOS f50aa4b9, with the panel proxying /muon-link/pairing).
+ * Build with VUE_MUON_PANEL_CODE_PAIRING=0 to turn it off again. Read at call
+ * time so a test can set it (setPanelCodePairing).
  */
 export function panelCodePairing (): boolean {
-  return import.meta.env.DEV === true || import.meta.env.VUE_MUON_PANEL_CODE_PAIRING === '1'
+  if (panelCodePairingOverride !== null) return panelCodePairingOverride
+  return import.meta.env.VUE_MUON_PANEL_CODE_PAIRING !== '0'
 }
 
 export const PAIRING_COMING_SOON = "Pairing from the printer is coming soon. For now, this printer can't be added from here."
 
-const OPEN_ADD_A_DEVICE = "To pair this browser, first open Settings > Add a device on the printer's screen, then choose Pair this browser."
+const OPEN_ADD_A_DEVICE = "To pair this browser, first open System > Add a device on the printer's screen, then choose Pair this browser."
 
 const NOT_PAIRED_REASONS: Record<PairableRefusal, string> = {
   unknown: "This printer doesn't know this browser yet, so it won't let Control in over Bluetooth.",
@@ -59,7 +82,7 @@ export function notPairedMessage (refusal: PairableRefusal): string {
   return `${NOT_PAIRED_REASONS[refusal]} ${panelCodePairing() ? OPEN_ADD_A_DEVICE : PAIRING_COMING_SOON}`
 }
 
-let current: { transport: PrinterTransport, release: () => void } | null = null
+let current: { printerId: string, transport: PrinterTransport, release: () => void } | null = null
 let generation = 0
 
 /**
@@ -104,12 +127,18 @@ async function oneAtATime<T> (mine: number, work: () => Promise<T>): Promise<T> 
   return run
 }
 
-function releaseCurrent () {
+async function releaseCurrent (nextPrinterId?: string) {
   if (!current) return
-  Vue.$socket?.releaseTransportSocket(true)
-  current.release()
-  current.transport.close()
+  const previous = current
   current = null
+  Vue.$socket?.releaseTransportSocket(true)
+  previous.release()
+  previous.transport.close()
+  if (previous.printerId !== nextPrinterId) {
+    const hangingUp = releaseBluetoothLink(previous.printerId)
+    stopUsingBluetoothFor(previous.printerId)
+    await hangingUp
+  }
 }
 
 /**
@@ -141,10 +170,18 @@ export class RemoteOpenTimeout extends Error {
 export async function activateCloudPrinter (printerId: string) {
   const mine = ++generation
   const superseded = () => mine !== generation
+  noteUserOpen(printerId)
   activationState.switching = printerId
   activationState.error = null
   activationState.fallbackUrl = null
   activationState.pairing = null
+  activationState.approval?.cancel()
+  activationState.approval = null
+  onApprovalWatch(watch => {
+    if (superseded()) return
+    activationState.approval = watch
+    activationState.approvalFor = printerId
+  })
   // Set inside `open`, so typed here rather than narrowed to null.
   let transport = null as PrinterTransport | null
   const open = async () => {
@@ -159,9 +196,10 @@ export async function activateCloudPrinter (printerId: string) {
       if (superseded()) throw new SwitchSuperseded()
       await oneAtATime(mine, async () => {
         Vue.$socket?.releaseTransportSocket(true)
-        releaseCurrent()
+        await releaseCurrent(printerId)
+        if (superseded()) throw new SwitchSuperseded()
         const release = bindHttpClientToPrinterTransport(Vue.$httpClient, borrowed)
-        current = { transport: borrowed, release }
+        current = { printerId, transport: borrowed, release }
         setActiveCloudPrinter(printerId)
 
         const instance: InstanceConfig = {
@@ -199,6 +237,8 @@ export async function activateCloudPrinter (printerId: string) {
     ])
   } catch (error) {
     if (!superseded() && !(error instanceof SwitchSuperseded)) {
+      // The relay did not work for this printer: auto mode stays off it for a while (a refusal says nothing about a route).
+      if (!wantsBluetoothFor(printerId) && !requestRefused(error)) noteRelayLost(printerId)
       const refusal = wantsBluetoothFor(printerId) ? pairableRefusal(error) : null
       activationState.error = refusal ? notPairedMessage(refusal) : (error as Error).message
       activationState.pairing = refusal && panelCodePairing() ? printerId : null
@@ -206,7 +246,7 @@ export async function activateCloudPrinter (printerId: string) {
       const bound = !(error instanceof RemoteOpenTimeout) || (!!transport && current?.transport === transport)
       if (bound) {
         setActiveCloudPrinter(null)
-        releaseCurrent()
+        await releaseCurrent(printerId)
       }
       if (error instanceof RemoteOpenTimeout) {
         transport?.close()
@@ -250,8 +290,9 @@ export const LOCAL_OPEN_TIMEOUT_MS = 45_000
  * `activationState.fallbackUrl` is the printer's own page, which works in any
  * browser. False with no reason: another printer was opened meanwhile.
  */
-export async function activateLocalPrinter (instance: InstanceConfig): Promise<boolean> {
+export async function activateLocalPrinter (instance: InstanceConfig, printerId?: string | null): Promise<boolean> {
   const mine = ++generation
+  noteUserOpen(printerId, `address:${instance.apiUrl}`)
   let timer: ReturnType<typeof setTimeout> | undefined
   const timedOut = new Promise<false>(resolve => {
     timer = setTimeout(() => {
@@ -300,7 +341,8 @@ async function openLocalPrinter (instance: InstanceConfig, mine: number): Promis
       return false
     }
     return await oneAtATime(mine, async () => {
-      releaseCurrent()
+      await releaseCurrent()
+      if (superseded()) throw new SwitchSuperseded()
       setActiveCloudPrinter(null)
       forgetManagedInstance()
       Vue.$socket?.close()

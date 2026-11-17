@@ -63,7 +63,7 @@ describe('retired Pro mode', () => {
     const wrapper = shallowMount(MountedApp, {
       router,
       mocks: {
-        $store: { getters, state: { config: { uiSettings: { general: { enableKeyboardShortcuts: true } } }, printer: { printer: null } } }
+        $store: { getters, dispatch: () => Promise.resolve(), state: { config: { uiSettings: { general: { enableKeyboardShortcuts: true } } }, printer: { printer: null } } }
       }
     })
     setItem.mockClear()

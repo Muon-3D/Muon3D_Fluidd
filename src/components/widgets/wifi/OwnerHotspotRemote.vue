@@ -14,7 +14,7 @@
 
     <template v-else>
       <p class="ohr__note">
-        Change the hotspot's name or password. Someone has to press the knob on the printer to approve it.
+        Change the hotspot's name or password. The printer may ask someone to approve it on its screen.
       </p>
 
       <form
@@ -117,8 +117,13 @@
         role="status"
         data-tid="owner-hotspot-waiting"
       >
-        <b>Press the knob on the printer to approve.</b>
-        Nothing changes until someone does.
+        <template v-if="approvalRequired">
+          <b>Press the knob on the printer to approve.</b>
+          Nothing changes until someone does.
+        </template>
+        <template v-else>
+          Applying the change…
+        </template>
       </p>
 
       <p
@@ -137,23 +142,15 @@
       >
         {{ error }}
       </p>
-
-      <change-countdown
-        v-if="countdown"
-        @kept="onCountdownEnd('Kept. The change is permanent.')"
-        @expired="onCountdownEnd('Time is up. The printer is going back to how it was.')"
-      />
     </template>
   </div>
 </template>
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
-import ChangeCountdown from './ChangeCountdown.vue'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import { useOwnerNetwork } from '@/services/muon-cloud/useOwnerNetwork'
 import {
-  confirmRouteSupported,
   describeHotspotOutcome,
   HOTSPOT_POLL_MS,
   passwordProblemOf,
@@ -169,12 +166,7 @@ import {
 
 const { onHotspot } = useHotspotCheck()
 
-/**
- * Change the hotspot's name or password from afar (KAN-1565). The printer
- * answers 202 with a challenge and applies the change only after a knob press,
- * so this asks, says "Press the knob", and polls for the outcome.
- */
-@Component({ components: { ChangeCountdown } })
+@Component
 export default class OwnerHotspotRemote extends Vue {
   owner = useOwnerNetwork()
   ssid = ''
@@ -183,20 +175,23 @@ export default class OwnerHotspotRemote extends Vue {
   warning: ChangeWarning | null = null
   busy = false
   waiting = false
+  approvalRequired = false
   blocked: NetworkErrorKind | null = null
   outcome = ''
   error = ''
-  countdown = false
+  private disposed = false
   private timer: ReturnType<typeof setTimeout> | null = null
   private challengeId = ''
 
   beforeDestroy () {
+    this.disposed = true
+    this.password = ''
     this.stopPolling()
   }
 
   get notice (): string {
     if (this.blocked === 'reauth_required') {
-      return this.owner.network.rulesReadOnly
+      return this.owner.network.currentPath === 'relay' || this.owner.network.currentPath === 'direct_wan'
         ? 'Sign in again required to change the hotspot over the internet.'
         : 'Sign in again required to change the hotspot from here.'
     }
@@ -239,47 +234,51 @@ export default class OwnerHotspotRemote extends Vue {
 
   async send () {
     if (this.busy) return
-    const mayDropLink = this.warning?.mayDropLink ?? false
     this.busy = true
     this.error = ''
     try {
       const challenge = await hotspotChange(this.change)
+      if (this.disposed) return
       this.challengeId = challenge.id
       this.warning = null
       this.waiting = true
+      this.approvalRequired = false
       // The password is never kept past the request.
       this.password = ''
-      this.poll(mayDropLink, challenge.expiresAt)
+      this.poll(challenge.expiresAt)
     } catch (e) {
       this.handle(e)
     }
     this.busy = false
   }
 
-  private poll (mayDropLink: boolean, expiresAt: number | null) {
+  private poll (expiresAt: number | null) {
     this.timer = setTimeout(async () => {
+      if (this.disposed) return
       try {
         const state = await hotspotChangeState(this.challengeId)
+        if (this.disposed) return
         if (state === 'waiting') {
+          this.approvalRequired = true
           // The printer says "expired" itself; this only stops asking if it never does.
-          if (expiresAt !== null && Date.now() / 1000 > expiresAt + 30) return this.settle('expired', mayDropLink)
-          return this.poll(mayDropLink, expiresAt)
+          if (expiresAt !== null && Date.now() / 1000 > expiresAt + 30) return this.settle('expired')
+          return this.poll(expiresAt)
         }
-        this.settle(state, mayDropLink)
+        this.settle(state)
       } catch (e) {
+        if (this.disposed) return
         const err = networkErrorOf(e)
         // A dropped link or a slow printer is not an answer: keep asking.
-        if (err.kind === 'failed' || err.kind === 'aux_timeout' || err.kind === 'aux_unavailable') return this.poll(mayDropLink, expiresAt)
+        if (err.kind === 'failed' || err.kind === 'aux_timeout' || err.kind === 'aux_unavailable') return this.poll(expiresAt)
         this.waiting = false
         this.handle(e)
       }
     }, HOTSPOT_POLL_MS)
   }
 
-  private settle (state: Parameters<typeof describeHotspotOutcome>[0], mayDropLink: boolean) {
+  private settle (state: Parameters<typeof describeHotspotOutcome>[0]) {
     this.waiting = false
     this.outcome = describeHotspotOutcome(state)
-    this.countdown = state === 'applied' && mayDropLink && confirmRouteSupported()
     this.ssid = ''
     this.generate = false
   }
@@ -290,6 +289,7 @@ export default class OwnerHotspotRemote extends Vue {
   }
 
   private handle (e: unknown) {
+    if (this.disposed) return
     const err = networkErrorOf(e)
     if (err.kind === 'reauth_required' || err.kind === 'path_disabled') {
       this.blocked = err.kind
@@ -298,11 +298,6 @@ export default class OwnerHotspotRemote extends Vue {
     }
     this.error = err.message
     this.warning = null
-  }
-
-  onCountdownEnd (message: string) {
-    this.countdown = false
-    this.outcome = message
   }
 }
 </script>

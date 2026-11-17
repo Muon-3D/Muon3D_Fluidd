@@ -26,7 +26,7 @@
         class="ons__note ons__note--lock"
         data-tid="owner-network-readonly"
       >
-        You are connected over the internet, so these can only be changed from Bluetooth or from the printer's own network.
+        This connection is restricted by the printer's network rules. Change them over Bluetooth or on the printer's own network.
       </p>
 
       <label

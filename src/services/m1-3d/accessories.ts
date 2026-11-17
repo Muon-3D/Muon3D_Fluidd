@@ -1,5 +1,15 @@
 export type AutoLoad = 'idle' | 'loading' | 'grabbed' | 'failed'
 
+/**
+ * The Z column (the stem the bed rides on), as z_power's present pin reads
+ * it: fitted with its lever down, fitted with the lever up, or out. A
+ * printer that can't sense it reads as locked: the model shows it fitted.
+ */
+export type ColumnState = 'locked' | 'unlocked' | 'absent'
+
+/** Where the accessories were read from: Harry's combined state machine, or each sensor on its own. */
+export type AccessorySource = 'm1_machine' | 'sensors'
+
 export interface Accessories {
   plateOn: boolean;
   tubeAttached: boolean;
@@ -7,6 +17,16 @@ export interface Accessories {
   filamentLoaded: boolean;
   autoLoad: AutoLoad;
   spoolMounted: boolean;
+  column: ColumnState;
+  source: AccessorySource;
+}
+
+/** The fans as the printer reports them; shown only where the model has fan geometry. */
+export interface FanFacts {
+  /** The part fan (`fan.speed`), 0 to 1. */
+  partSpeed: number;
+  /** The hot-end fan's latched fault (m1_machine.conditions.fan_fault). */
+  fault: boolean;
 }
 
 export interface PromptFacts {
@@ -29,11 +49,74 @@ export function autoLoadFromPrompt (prompt: PromptFacts | null | undefined): Aut
   return 'idle'
 }
 
+/** z_power's column band ('absent', 'unlocked', 'locked'; null before its first sample, anything else between bands). */
+export function columnFrom (band: unknown): ColumnState {
+  if (band === 'absent') return 'absent'
+  // 'locked', 'reading' (no sample yet), 'none' (no sensing) and no z_power at all show the column fitted.
+  if (band === undefined || band === null || band === 'locked' || band === 'reading' || band === 'none') return 'locked'
+  // 'unlocked', and anything between bands (the lever part way): the column is there but not locked.
+  return 'unlocked'
+}
+
 /**
+ * The accessories from Harry's printer-state machine (Klipper's `m1_machine`,
+ * klippy/extras/m1_machine.py): one status that already combines z_power, the
+ * bed removal detector, the toolhead MCU and the filament switch, so the
+ * model shows what the printer itself has decided. A condition it reports as
+ * 'none' (the printer lacks that sensor) falls back to the sensor read.
+ */
+function fromMachine (
+  conditions: Record<string, any>,
+  sensors: Accessories
+): Accessories {
+  const plate = conditions.plate as string | undefined
+  const toolhead = conditions.toolhead as string | undefined
+  const filament = conditions.filament as string | undefined
+  const column = conditions.column as string | undefined
+  // 'unknown' is the detector's first window of readings: the plate is shown on until it reads absent.
+  const plateOn = plate === 'absent' ? false : plate === 'present' || plate === 'unknown' ? true : sensors.plateOn
+  const tubeAttached = toolhead === 'disconnected' ? false : toolhead === 'connected' ? true : sensors.tubeAttached
+  const filamentLoaded = filament === 'present' ? true : filament === 'absent' ? false : sensors.filamentLoaded
+  return {
+    ...sensors,
+    plateOn,
+    tubeAttached,
+    // m1_machine doesn't carry the unlock button; it is read on its own.
+    tubeUnlocking: tubeAttached && sensors.tubeUnlocking,
+    filamentLoaded,
+    column: column === undefined || column === 'none' ? sensors.column : columnFrom(column),
+    source: 'm1_machine'
+  }
+}
+
+/**
+ * The accessories the model shows. From `m1_machine` when the printer runs
+ * it; otherwise (printers on Klipper main today) from each sensor's own
+ * object, as before.
+ *
  * STUB (KAN-526): There is no sensor on the spool holder, so the spool is
  * assumed mounted until the firmware publishes a spool status object.
  */
 export function accessoriesFrom (
+  printer: Record<string, any>,
+  prompt: PromptFacts | null | undefined
+): Accessories {
+  const sensors = sensorAccessories(printer, prompt)
+  const conditions = printer.m1_machine?.conditions
+  return conditions && typeof conditions === 'object' ? fromMachine(conditions, sensors) : sensors
+}
+
+/** The fans: the part fan's speed, and the hot-end fan fault m1_machine latches (false without it). */
+export function fansFrom (printer: Record<string, any>): FanFacts {
+  const speed = Number(printer.fan?.speed)
+  return {
+    partSpeed: Number.isFinite(speed) ? Math.min(1, Math.max(0, speed)) : 0,
+    fault: printer.m1_machine?.conditions?.fan_fault === true
+  }
+}
+
+/** Each sensor's own object: what the model went by before m1_machine. */
+function sensorAccessories (
   printer: Record<string, any>,
   prompt: PromptFacts | null | undefined
 ): Accessories {
@@ -55,7 +138,10 @@ export function accessoriesFrom (
     tubeUnlocking,
     filamentLoaded,
     autoLoad: autoLoadFromPrompt(prompt),
-    spoolMounted: true
+    spoolMounted: true,
+    // z_power (Klipper's Z column and bed power path) where the printer has it; else fitted.
+    column: columnFrom(printer.z_power?.z),
+    source: 'sensors'
   }
 }
 
@@ -81,5 +167,7 @@ export function sameAccessories (a: Accessories | null, b: Accessories): boolean
     a.tubeUnlocking === b.tubeUnlocking &&
     a.filamentLoaded === b.filamentLoaded &&
     a.autoLoad === b.autoLoad &&
-    a.spoolMounted === b.spoolMounted
+    a.spoolMounted === b.spoolMounted &&
+    a.column === b.column &&
+    a.source === b.source
 }

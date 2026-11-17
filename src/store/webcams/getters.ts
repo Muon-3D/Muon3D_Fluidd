@@ -1,11 +1,12 @@
 import type { GetterTree } from 'vuex'
 import type { WebcamConfig, WebcamsState } from './types'
 import type { RootState } from '../types'
+import { orderCameras } from '@/services/camera/order'
 
 export const getters: GetterTree<WebcamsState, RootState> = {
-  getWebcams: (state) => {
-    return [...state.webcams]
-      .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+  getWebcams: (state, _getters, rootState) => {
+    // The saved order (Settings > Cameras); cameras it doesn't name go last, by name.
+    return orderCameras(state.webcams, rootState.config?.uiSettings?.general?.cameraOrder)
   },
 
   getEnabledWebcams: (state, getters) => {

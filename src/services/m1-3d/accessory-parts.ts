@@ -470,12 +470,39 @@ export function buildAccessories (
     showRing(ringS, ringOpacity)
   }
 
+  // -- the Z column -----------------------------------------------------------------
+  // The mast and the bed it carries: straight up out of its socket, then over and set down to the printer's left.
+  const mast = ud.mastYaw as THREE.Object3D | undefined
+  const mastRest = mast?.position.clone() ?? new THREE.Vector3()
+  const wholeBox = new THREE.Box3().setFromObject(model)
+  const mastBox = mast ? new THREE.Box3().setFromObject(mast) : new THREE.Box3()
+  const mastAside = new THREE.Vector3(wholeBox.min.x - 30 - mastBox.max.x, wholeBox.min.y - mastBox.min.y, 0)
+  const MAST_LIFT = 70
+  const mastLifted = new THREE.Vector3(0, MAST_LIFT, 0)
+  const mastShift = new THREE.Vector3()
+  let columnOff = 0
+  function applyColumn (frame: AccessoryFrame) {
+    if (!mast) return
+    const level = frame.column.level
+    columnOff = level
+    const up = MAST_LIFT / (MAST_LIFT + Math.abs(mastAside.x))
+    if (level <= up) mastShift.set(0, MAST_LIFT * (level / up), 0)
+    else {
+      const k = easeInOut((level - up) / (1 - up))
+      mastShift.lerpVectors(mastLifted, mastAside, k)
+      mastShift.y += 20 * Math.sin(Math.PI * k)
+    }
+    mast.position.copy(mastRest).add(mastShift)
+    mast.updateMatrixWorld(true)
+  }
+
   return {
     carrier,
     cargo,
-    plateOffBox,
-    plateOff: () => offAmount,
+    plateOffBox: plateOffBox.clone().union(mastBox.clone().translate(mastAside)),
+    plateOff: () => Math.max(offAmount, columnOff),
     apply (frame, partGone) {
+      applyColumn(frame)
       applyPlate(frame, partGone)
       applyTube(frame)
       applyFilament(frame)

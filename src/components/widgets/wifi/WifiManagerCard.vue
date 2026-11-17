@@ -1,10 +1,13 @@
 <template>
   <section
     class="wf"
-    :class="{ 'wf--compact': compact }"
+    :class="{ 'wf--compact': compact, 'wf--page': !compact }"
     data-tid="wifi-card"
   >
-    <header class="wf__head">
+    <header
+      v-if="compact"
+      class="wf__head"
+    >
       <div class="wf__titles">
         <h2>Wi-Fi</h2>
         <p v-if="!locked && !remote">
@@ -27,24 +30,211 @@
       </button>
     </header>
 
-    <protected-notice />
+    <protected-notice class="wf__span" />
+    <permission-refusal-notice
+      class="wf__span"
+      :refusal="refusal"
+      @dismiss="refusal = null"
+    />
     <p
       v-if="remote && !ownerCanChange"
-      class="wf__note"
+      class="wf__note wf__span"
     >
       {{ $t('app.wifi.remote_read_only') }}
     </p>
 
-    <!-- KAN-1565: the owner changes Wi-Fi through muon-link when the Aux API is closed to this page. -->
     <owner-wifi-remote
       v-if="remote && ownerCanChange"
+      :key="`wifi-${owner.network.generation}`"
+      class="wf__span"
     />
     <owner-network-settings
-      v-if="ownerCanChange"
+      v-if="remote && ownerCanChange"
+      :key="`rules-${owner.network.generation}`"
+      class="wf__span"
     />
 
+    <template v-if="!compact && !locked && !remote">
+      <section
+        class="stile stile--6 wf__connected"
+        data-tid="wifi-connected"
+      >
+        <header class="stile__head">
+          <frame-icon name="wifi" />
+          <h2>Connected</h2>
+          <span class="stile__aside">
+            <tone-pill :tone="connectedNetwork ? 'ok' : 'off'">{{ connectedNetwork ? 'Online' : 'Not connected' }}</tone-pill>
+          </span>
+        </header>
+        <template v-if="connectedNetwork">
+          <div class="wf__now">
+            <span class="srow__ico wf__now-ico"><frame-icon name="wifi" /></span>
+            <div class="wf__now-text">
+              <div
+                class="wf__now-name"
+                data-tid="wifi-connected-name"
+              >
+                {{ connectedNetwork.ssid }}
+              </div>
+              <div class="stile__note">
+                {{ [band(connectedNetwork), connectedNetwork.security || 'Open', `${signalText(connectedNetwork.signal)} signal`].filter(Boolean).join(' · ') }}
+              </div>
+            </div>
+          </div>
+          <dl class="wf__kv">
+            <div v-if="wifiIp">
+              <dt>IP address</dt>
+              <dd class="wf__mono">
+                {{ wifiIp }}
+              </dd>
+            </div>
+            <div>
+              <dt>Signal</dt>
+              <dd>{{ connectedNetwork.signal }}%</dd>
+            </div>
+            <div v-if="hostname">
+              <dt>Address</dt>
+              <dd>{{ hostname }}.local</dd>
+            </div>
+          </dl>
+          <div class="wf__now-acts">
+            <span
+              v-if="disconnectIsPanelOnly"
+              class="wf__note"
+              data-tid="wifi-disconnect-panel"
+            >{{ panelOnlyNote }}</span>
+            <button
+              v-else
+              type="button"
+              class="cbtn cbtn--sm"
+              data-tid="wifi-disconnect"
+              @click="disconnectConfirmDialog = true"
+            >
+              {{ $t('app.general.btn.disconnect') }}
+            </button>
+            <button
+              v-if="!isHidden(connectedNetwork)"
+              type="button"
+              class="cbtn cbtn--sm cbtn--danger"
+              data-tid="wifi-forget"
+              @click="forgetConfirm(connectedNetwork)"
+            >
+              Forget this network
+            </button>
+          </div>
+        </template>
+        <p
+          v-else
+          class="stile__note"
+        >
+          Not on a Wi-Fi network. Pick one from the list to join it.
+        </p>
+      </section>
+
+      <section
+        class="stile stile--8 wf__available"
+        data-tid="wifi-available"
+      >
+        <header class="stile__head">
+          <frame-icon name="wifi" />
+          <h2>Available networks</h2>
+          <span class="stile__aside">
+            <button
+              type="button"
+              class="cbtn cbtn--sm"
+              :disabled="fetching"
+              data-tid="wifi-refresh"
+              @click="fetchDevices"
+            >
+              <frame-icon
+                name="refresh"
+                small
+              />
+              Scan
+            </button>
+          </span>
+        </header>
+        <div
+          class="slist"
+          data-tid="wifi-networks"
+        >
+          <p
+            v-if="!wifi_available_networks.length"
+            class="stile__note wf__empty"
+          >
+            Looking for networks…
+          </p>
+          <div
+            v-for="network in shownNetworks"
+            :key="network.ssid"
+            class="srow wf__net"
+            :class="{ 'wf__row--on': network.in_use }"
+            :data-ssid="network.ssid"
+          >
+            <span class="srow__ico"><frame-icon :name="network.security ? 'lock' : 'wifi'" /></span>
+            <div
+              class="srow__text"
+              :title="networkFacts(network)"
+            >
+              <span class="srow__t">{{ network.ssid }}</span>
+              <span class="srow__s">{{ rowState(network) }}{{ band(network) ? ` · ${band(network)}` : '' }}</span>
+              <span
+                class="srow__s wf__detail"
+                data-tid="wifi-detail"
+              >{{ detail(network) }}</span>
+            </div>
+            <tone-pill
+              v-if="network.in_use"
+              tone="ok"
+            >
+              Connected
+            </tone-pill>
+            <span
+              v-else
+              class="srow__act"
+            >
+              <button
+                v-if="knownSsids.has(network.ssid)"
+                type="button"
+                class="cbtn cbtn--sm cbtn--ghost"
+                data-tid="wifi-forget"
+                @click="forgetConfirm(network)"
+              >
+                Forget
+              </button>
+              <button
+                type="button"
+                class="cbtn cbtn--sm"
+                data-tid="wifi-join"
+                @click="onNetworkClick(network)"
+              >
+                Connect
+              </button>
+            </span>
+            <svg
+              class="wf__bars"
+              viewBox="0 0 20 16"
+              role="img"
+              :aria-label="`${signalText(network.signal)} signal`"
+            >
+              <rect
+                v-for="bar in 4"
+                :key="bar"
+                :x="(bar - 1) * 5"
+                :y="16 - bar * 4"
+                width="3.5"
+                :height="bar * 4"
+                rx="1"
+                :class="{ 'wf__bar--on': bar <= signalLevel(network.signal) }"
+              />
+            </svg>
+          </div>
+        </div>
+      </section>
+    </template>
+
     <div
-      v-if="!locked && !remote"
+      v-if="compact && !locked && !remote"
       class="wf__list"
       data-tid="wifi-networks"
     >
@@ -88,32 +278,6 @@
             <span>{{ rowState(network) }}</span>
           </span>
         </button>
-        <span
-          v-if="!compact"
-          class="wf__facts"
-        >{{ band(network) }}</span>
-        <span
-          v-if="!compact && (network.in_use || knownSsids.has(network.ssid))"
-          class="wf__actions"
-        >
-          <button
-            v-if="network.in_use"
-            type="button"
-            class="wf__link"
-            data-tid="wifi-disconnect"
-            @click="disconnectConfirmDialog = true"
-          >
-            {{ $t('app.general.btn.disconnect') }}
-          </button>
-          <button
-            type="button"
-            class="wf__link wf__link--danger"
-            data-tid="wifi-forget"
-            @click="forget(network)"
-          >
-            {{ $t('app.general.btn.forget') }}
-          </button>
-        </span>
       </div>
     </div>
 
@@ -179,7 +343,7 @@
       max-width="420"
     >
       <div class="wf__dialog">
-        <h3>{{ $t('app.general.confirm.enter_password', { ssid: selectedNetwork?.ssid }) }}</h3>
+        <h3>Password for {{ selectedNetwork?.ssid }}</h3>
         <v-text-field
           v-model="password"
           :label="$t('app.general.label.password')"
@@ -203,7 +367,7 @@
             data-tid="wifi-connect"
             @click="connectToSelected"
           >
-            {{ $t('app.general.btn.connect') }}
+            Connect
           </button>
         </div>
       </div>
@@ -213,26 +377,46 @@
 
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
+import OwnerWifiRemote from './OwnerWifiRemote.vue'
+import OwnerNetworkSettings from './OwnerNetworkSettings.vue'
+import { useOwnerNetwork } from '@/services/muon-cloud/useOwnerNetwork'
 import { useAuxApi } from '@/aux_api/useAuxApi'
+import { PANEL_ONLY_NOTE, classifyRefusal, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
+import type { RefusalKind } from '@/services/wifi/panel-only'
+import PermissionRefusalNotice from './PermissionRefusalNotice.vue'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
+import { wifiProbe } from '@/services/wifi/saved-probe'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
-import { useOwnerNetwork } from '@/services/muon-cloud/useOwnerNetwork'
-import OwnerWifiRemote from './OwnerWifiRemote.vue'
-import OwnerNetworkSettings from './OwnerNetworkSettings.vue'
+import TonePill from '@/components/printers/TonePill.vue'
+import { interfaceIp, signalWord } from '@/services/system/model'
 
 const { onHotspot } = useHotspotCheck()
 
+/** What the network the printer is on is called when it does not broadcast its name. */
+const HIDDEN_NAME = 'Hidden network'
+
 type AggWifi = DeviceWifi & { chanList?: string; freqList?: string }
 
-@Component({ components: { OwnerWifiRemote, OwnerNetworkSettings } })
+@Component({ components: { OwnerWifiRemote, OwnerNetworkSettings, TonePill, PermissionRefusalNotice } })
 export default class WifiManagerCard extends Vue {
   @Prop({ type: Boolean }) readonly menuCollapsed?: boolean
 
   /** The rail's quick menu: the network it's on and the next few, to join with the same warnings. */
   @Prop({ type: Boolean }) readonly compact?: boolean
+
+  /** The printer's permission store refused the last action (KAN-2457): who may do it, not a panel-only printer. */
+  refusal: Extract<RefusalKind, { kind: 'permission' }> | null = null
+
+  /** Keeps a permission refusal for the notice; false for any other error. */
+  private takePermissionRefusal (err: unknown): boolean {
+    const r = classifyRefusal(err)
+    if (r.kind !== 'permission') return false
+    this.refusal = r
+    return true
+  }
 
   // Dialog & connection state
   disconnectConfirmDialog = false
@@ -247,14 +431,13 @@ export default class WifiManagerCard extends Vue {
   // Wi-Fi scan data
   wifi_available_networks: DeviceWifi[] = []
   knownSsids = new Set<string>()
-  testedSsids = new Set<string>()
+  /** SSIDs the per-SSID fallback has asked about: the page session's, see saved-probe.ts. */
+  get testedSsids (): Set<string> { return wifiProbe.asked }
   wifiOrder: string[] = []
   private intervalId: ReturnType<typeof setInterval> | null = null
 
   refresh () {
     this.wifi_available_networks = []
-    this.knownSsids.clear()
-    this.testedSsids.clear()
     this.wifiOrder = []
   }
 
@@ -269,29 +452,33 @@ export default class WifiManagerCard extends Vue {
     return this.$store.getters['protection/isLocked']
   }
 
-  // Reached over Iroh: muon-link refuses every Aux request there, reads
-  // included, and the owner decided remote callers may not change Wi-Fi
-  // (setup spec 07 §3). The card makes no call and says so instead.
+  // Managed changes use muon-link; the local Aux API stays closed.
   get remote (): boolean {
     return printerTransportBinding.remote
   }
 
-  // KAN-1565: asked once, only when the printer is reached through muon-link.
-  // An older muon-link (404) or a session that is not the owner (403) shows
-  // nothing new.
   owner = useOwnerNetwork()
 
   get ownerCanChange (): boolean {
     return !this.locked && !this.compact && this.owner.network.available
   }
 
+  @Watch('owner.network.generation')
+  onOwnerScopeChanged () {
+    if (this.remote && !this.locked) this.owner.detect()
+  }
+
+  @Watch('locked')
+  onNetworkUnlocked (locked: boolean) {
+    if (!locked && this.remote) this.owner.detect()
+  }
+
   @Watch('remote')
   onRemoteChanged (remote: boolean) {
-    if (!remote) {
+    if (remote && !this.locked) this.owner.detect()
+    else {
       this.owner.reset()
-      this.fetchDevices()
-    } else {
-      this.owner.detect()
+      if (!remote) this.fetchDevices()
     }
   }
 
@@ -299,13 +486,39 @@ export default class WifiManagerCard extends Vue {
 
   // Lifecycle
   mounted () {
-    if (this.remote) this.owner.detect()
+    if (this.remote && !this.locked) this.owner.detect()
+    this.visibilityHandler = () => this.onVisibilityChange()
+    document.addEventListener('visibilitychange', this.visibilityHandler)
     this.fetchDevices()
-    this.intervalId = setInterval(() => this.fetchDevices(), 5000)
+    this.startPolling()
   }
 
   beforeDestroy () {
+    if (this.visibilityHandler) document.removeEventListener('visibilitychange', this.visibilityHandler)
+    this.stopPolling()
+  }
+
+  // The 5 s poll runs only while the tab is visible: every tick costs the
+  // printer an nmcli scan. Becoming visible refreshes once, then polls again.
+  private startPolling () {
+    if (this.intervalId || document.visibilityState === 'hidden') return
+    this.intervalId = setInterval(() => this.fetchDevices(), 5000)
+  }
+
+  private stopPolling () {
     if (this.intervalId) clearInterval(this.intervalId)
+    this.intervalId = null
+  }
+
+  private visibilityHandler: (() => void) | null = null
+
+  onVisibilityChange () {
+    if (document.visibilityState === 'hidden') {
+      this.stopPolling()
+    } else if (!this.intervalId) {
+      this.fetchDevices()
+      this.startPolling()
+    }
   }
 
   fetching: boolean = false
@@ -318,20 +531,7 @@ export default class WifiManagerCard extends Vue {
       const res = await this.auxApi.wifi.wifiScanWifiScanGet(true)
       this.wifi_available_networks = res.data
 
-      // Skip hidden SSIDs when probing for "known" status
-      for (const net of this.wifi_available_networks) {
-        const ssid = (net.ssid || '').trim() // NEW
-        if (!ssid) continue // NEW: hide hidden networks at source
-        if (!this.knownSsids.has(ssid) && !this.testedSsids.has(ssid)) {
-          try {
-            await this.auxApi.wifi.getDetailsWifiShowGet(ssid)
-            console.log('Known SSID:', ssid)
-            this.knownSsids.add(ssid)
-          } catch {
-            this.testedSsids.add(ssid)
-          }
-        }
-      }
+      await this.updateKnownSsids()
 
       // —— CHANGED: “first-come” ordering now tracked by SSID (after grouping) ——
       const groups = this.groupedNetworks // NEW
@@ -351,12 +551,42 @@ export default class WifiManagerCard extends Vue {
     this.fetching = false
   }
 
+  /**
+   * Which scanned networks the printer has saved. One `GET /wifi/saved` per
+   * poll answers it for all of them. A printer without that route (404, once)
+   * is asked per SSID instead, at most once each for the page session.
+   */
+  async updateKnownSsids () {
+    if (!wifiProbe.savedUnsupported) {
+      try {
+        const res = await this.auxApi.wifi.wifiSavedWifiSavedGet()
+        this.knownSsids = new Set((res.data || []).map(p => (p.name || '').trim()))
+        return
+      } catch (e: any) {
+        if (e?.response?.status !== 404) return // transient: keep what we know
+        wifiProbe.savedUnsupported = true
+      }
+    }
+    for (const net of this.wifi_available_networks) {
+      const ssid = (net.ssid || '').trim()
+      if (!ssid || this.knownSsids.has(ssid) || wifiProbe.asked.has(ssid)) continue
+      wifiProbe.asked.add(ssid)
+      try {
+        await this.auxApi.wifi.getDetailsWifiShowGet(ssid)
+        this.knownSsids = new Set(this.knownSsids).add(ssid)
+      } catch {
+        // 404: not saved.
+      }
+    }
+  }
+
   // NEW: one row per SSID with merged details
   get groupedNetworks (): AggWifi[] {
     const bySsid = new Map<string, AggWifi & { _chans: Set<string>, _freqs: Set<string> }>()
     for (const n of this.wifi_available_networks) {
-      const ssid = (n.ssid || '').trim()
-      if (!ssid) continue // hide hidden networks altogether
+      // Hidden networks are left out, unless this is the one the printer is on: that is shown, as connected.
+      const ssid = (n.ssid || '').trim() || (n.in_use ? HIDDEN_NAME : '')
+      if (!ssid) continue
 
       const isSecured = !!(n.security && !/^\s*open\s*$/i.test(n.security))
       if (!bySsid.has(ssid)) {
@@ -399,7 +629,7 @@ export default class WifiManagerCard extends Vue {
   // Sorting
   get sortedNetworks (): AggWifi[] {
     const groups = this.groupedNetworks
-    const connectedSsid = this.wifi_available_networks.find(n => n.in_use)?.ssid?.trim() || null
+    const connectedSsid = groups.find(n => n.in_use)?.ssid ?? null
     const map = new Map(groups.map(n => [n.ssid, n]))
     const others = this.wifiOrder
       .filter(ssid => map.has(ssid) && ssid !== connectedSsid)
@@ -468,7 +698,10 @@ export default class WifiManagerCard extends Vue {
     if (!this.selectedNetwork) return
     const sec = this.selectedNetwork.security?.toLowerCase() || ''
     if (this.knownSsids.has(this.selectedNetwork.ssid)) {
-      await this.auxApi.wifi.wifiSwitchWifiUpPost(this.selectedNetwork.ssid)
+      // A saved network joins by POST /wifi/connect with no password. The old
+      // /wifi/up is panel-only on a printer with MuonOS #492.
+      this.password = ''
+      await this.connectToSelected()
       this.refresh()
       await this.fetchDevices()
     } else if (!sec || sec.includes('open')) {
@@ -487,14 +720,28 @@ export default class WifiManagerCard extends Vue {
         ssid: this.selectedNetwork.ssid,
         password: this.password || undefined
       })
+      this.testedSsids.delete(this.selectedNetwork.ssid) // now saved: the fallback may ask once more
       EventBus.$emit(this.$t('app.wifi.msg.connect.success') + ' ' + this.selectedNetwork.ssid, { type: 'success', timeout: 2000 })
       await this.fetchDevices()
     } catch (err: any) {
-      EventBus.$emit(`${this.$t('app.wifi.msg.connect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
+      if (this.takePermissionRefusal(err)) {
+        // The store refused this caller; the notice says who may.
+      } else if (isPanelOnlyRefusal(err)) {
+        // An owner can turn AUX_NETWORK_STRICT on, and then /wifi/connect is refused too.
+        EventBus.$emit(panelOnlyMessage('join a network'), { type: 'error', timeout: 8000 })
+      } else {
+        EventBus.$emit(`${this.$t('app.wifi.msg.connect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
+      }
     }
   }
 
   // Existing disconnect & forget
+  get disconnectIsPanelOnly (): boolean {
+    return routeFor('disconnect', refusedHere).kind === 'panel'
+  }
+
+  readonly panelOnlyNote = PANEL_ONLY_NOTE
+
   async disconnect () {
     try {
       const resp = await this.auxApi.wifi.wifiDisconnectWifiDisconnectPost()
@@ -502,7 +749,15 @@ export default class WifiManagerCard extends Vue {
         await this.fetchDevices()
       }
     } catch (err: any) {
-      EventBus.$emit(`${this.$t('app.wifi.msg.disconnect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
+      if (this.takePermissionRefusal(err)) {
+        // The store refused this caller: not a panel-only printer, so refusedHere stays as it was.
+      } else if (isPanelOnlyRefusal(err)) {
+        // No open route does this job: it is the printer's screen now.
+        refusedHere.disconnect = true
+        EventBus.$emit(panelOnlyMessage('disconnect from a network'), { type: 'error', timeout: 8000 })
+      } else {
+        EventBus.$emit(`${this.$t('app.wifi.msg.disconnect.error')} ${moonrakerErrorMessage(err)}`, { type: 'error', timeout: 5000 })
+      }
     }
     this.disconnectConfirmDialog = false
   }
@@ -516,6 +771,32 @@ export default class WifiManagerCard extends Vue {
 
   get connectedNetwork (): AggWifi | null {
     return this.sortedNetworks.find(n => n.in_use) ?? null
+  }
+
+  /** A hidden network has no name to forget or to join by, only to leave. */
+  isHidden (network: DeviceWifi): boolean {
+    return network.ssid === HIDDEN_NAME && !this.knownSsids.has(HIDDEN_NAME)
+  }
+
+  /** What the row says under its name, in sight: the channel, the speed and the frequency. */
+  detail (network: AggWifi): string {
+    const chan = network.chanList || network.chan
+    const freq = network.freqList || network.freq
+    return [chan ? `channel ${chan}` : '', network.rate ? `${network.rate} Mbps` : '', freq ? `${freq} MHz` : ''].filter(Boolean).join(' · ')
+  }
+
+  /** The IPv4 address of the Wi-Fi interface, from the computer's own report. */
+  get wifiIp (): string {
+    const network = (this.$store.getters['server/getSystemInfo'] as { network?: Record<string, { ip_addresses?: Array<{ family?: string, address?: string }> }> } | null)?.network
+    return interfaceIp(network, ['wlan', 'wl'])?.ip ?? ''
+  }
+
+  get hostname (): string {
+    return (this.$store.state.printer.printer.info?.hostname as string | undefined) ?? ''
+  }
+
+  signalText (signal: number): string {
+    return signalWord(signal)
   }
 
   signalLevel (signal: number): number {
@@ -545,6 +826,18 @@ export default class WifiManagerCard extends Vue {
     ].join(' · ')
   }
 
+  /**
+   * Forgetting asks first. For the network this page is reached over, it
+   * says what that costs: the page may be lost, and the printer leaves the network.
+   */
+  async forgetConfirm (network: DeviceWifi) {
+    const text = network.in_use
+      ? 'You may lose this page, and the printer will drop off this network. It will not rejoin it by itself until you join it again.'
+      : 'The printer will not join it by itself any more. You can join it again with its password.'
+    const yes = await this.$confirm(text, { title: `Forget ${network.ssid}?`, buttonTrueText: 'Forget', danger: true })
+    if (yes) await this.forget(network)
+  }
+
   async forget (network: DeviceWifi) {
     try {
       await this.auxApi.wifi.wifiForgetWifiForgetDelete(network.ssid)
@@ -568,6 +861,76 @@ export default class WifiManagerCard extends Vue {
     border-radius: 22px;
     background: var(--m3d-surface);
     color: var(--m3d-text);
+  }
+
+  // On the page the card is not a box: its tiles sit in the page's grid.
+  .wf--page {
+    display: contents;
+  }
+
+  .wf__now {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .wf__now-ico {
+    width: 48px;
+    height: 48px;
+    background: var(--m3d-accent-soft);
+    color: var(--m3d-accent);
+  }
+
+  .wf__now-name {
+    overflow-wrap: anywhere;
+    font-size: 24px;
+    font-weight: 700;
+  }
+
+  .wf__kv {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 16px;
+    margin: 0;
+
+    dt {
+      color: var(--m3d-text-muted);
+      font-size: 12px;
+    }
+
+    dd {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .wf__mono {
+    font-family: var(--m3d-font-mono, monospace);
+  }
+
+  .wf__now-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .wf__empty {
+    padding: 12px 0;
+  }
+
+  .wf__net .srow__act {
+    gap: 16px;
+  }
+
+  .wf__detail {
+    color: var(--m3d-text-subtle);
+  }
+
+  .wf__net .wf__bars {
+    width: 24px;
+    height: 20px;
   }
 
   .wf--compact {

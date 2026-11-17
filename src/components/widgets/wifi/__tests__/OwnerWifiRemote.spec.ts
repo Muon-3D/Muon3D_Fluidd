@@ -8,13 +8,6 @@ import { FakeOwnerPrinter, flushPromises } from './fakeOwnerPrinter'
 const hotspot = vi.hoisted(() => ({ value: false }))
 vi.mock('@/aux_api/useHotspotCheck', () => ({ useHotspotCheck: () => ({ onHotspot: hotspot }) }))
 
-// The confirm route is not defined yet; a test turns it on to see the countdown.
-const confirmRoute = vi.hoisted(() => ({ supported: false }))
-vi.mock('@/services/muon-cloud/ownerNetwork', async () => ({
-  ...(await vi.importActual<object>('@/services/muon-cloud/ownerNetwork')),
-  confirmRouteSupported: () => confirmRoute.supported
-}))
-
 let printer: FakeOwnerPrinter
 enableAutoDestroy(afterEach)
 
@@ -34,7 +27,6 @@ const button = (w: ReturnType<typeof mount>, ssid: string, name: string) =>
 beforeEach(() => {
   printer = new FakeOwnerPrinter()
   hotspot.value = false
-  confirmRoute.supported = false
   resetOwnerNetwork()
   ;(Vue as unknown as { $httpClient: unknown }).$httpClient = { request: printer.request }
 })
@@ -166,7 +158,7 @@ describe('owner Wi-Fi over the printer connection', () => {
     expect(tid(w, 'owner-wifi-error').text()).toBe('The printer took too long to answer. Try again in a moment.')
   })
 
-  it('never shows the countdown while the confirm route is undefined', async () => {
+  it('never shows the countdown without a server-armed window', async () => {
     const w = await open('local')
     await button(w, 'Cafe', 'Connect').trigger('click')
     await flushPromises()
@@ -175,8 +167,8 @@ describe('owner Wi-Fi over the printer connection', () => {
     expect(w.find('[data-tid=change-countdown]').exists()).toBe(false)
   })
 
-  it('shows the 90 second countdown after a change that can drop the link, once the route exists', async () => {
-    confirmRoute.supported = true
+  it('shows the 90 second countdown after a change that can drop the link, when the printer arms it', async () => {
+    printer.confirmSeconds = 90
     {
       const w = await open('local')
       await button(w, 'Cafe', 'Connect').trigger('click')

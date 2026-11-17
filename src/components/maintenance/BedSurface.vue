@@ -1,11 +1,16 @@
 <template>
-  <control-card
-    title="Surface"
+  <component
+    :is="bare ? 'div' : 'control-card'"
+    class="bsurf"
+    v-bind="bare ? {} : { title: 'Surface' }"
     data-tid="bed-surface"
   >
-    <template #aside>
-      <span v-if="loaded">{{ profileName }} · {{ range.toFixed(3) }} mm high to low</span>
-    </template>
+    <p
+      v-if="loaded"
+      class="bsurf__range"
+    >
+      {{ profileName }} · {{ range.toFixed(3) }} mm high to low
+    </p>
 
     <bed-mesh-chart
       v-if="loaded"
@@ -63,11 +68,11 @@
         Exaggerate
       </button>
     </div>
-  </control-card>
+  </component>
 </template>
 
 <script lang="ts">
-import { Component, Mixins } from 'vue-property-decorator'
+import { Component, Mixins, Prop } from 'vue-property-decorator'
 import StateMixin from '@/mixins/state'
 import BrowserMixin from '@/mixins/browser'
 import type { AppMeshes, MatrixType } from '@/store/mesh/types'
@@ -82,6 +87,10 @@ import BedMeshChart from '@/components/widgets/bedmesh/BedMeshChart.vue'
  */
 @Component({ components: { ControlCard, SegPicker, BedMeshChart } })
 export default class BedSurface extends Mixins(StateMixin, BrowserMixin) {
+  /** Without its own card, for a tile that already is one. */
+  @Prop({ type: Boolean })
+  readonly bare?: boolean
+
   get mesh (): AppMeshes {
     return this.$store.getters['mesh/getCurrentMeshData'] as AppMeshes
   }
@@ -174,6 +183,18 @@ export default class BedSurface extends Mixins(StateMixin, BrowserMixin) {
 </script>
 
 <style lang="scss" scoped>
+  .bsurf {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .bsurf__range {
+    margin: 0;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+  }
+
   .bsurf__chart {
     min-width: 0;
   }

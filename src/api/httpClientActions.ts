@@ -220,5 +220,11 @@ export const httpClientActions = {
         enabled: boolean
       }
     }>('/server/muon/dev_mode', options)
+  },
+
+  // The printer's name and serial suffix (and, where it reports one, its
+  // serial), as Muon's Moonraker publishes them.
+  serverMuonIdentityGet (options?: AxiosRequestConfig) {
+    return this.get<Record<string, unknown>>('/server/muon/identity', options)
   }
 }

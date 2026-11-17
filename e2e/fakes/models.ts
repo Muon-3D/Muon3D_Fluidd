@@ -1,5 +1,5 @@
 /**
- * A fake model service (models.muon3d.com) for e2e tests: the public Library
+ * A fake model service (library.muon3d.com/models) for e2e tests: the public Library
  * (publications, discover, a print's page and pictures) and the signed-in
  * one (your Library feed, saves, collections), held in memory per test.
  * Shapes follow muon3d-model-service src/public_v2.rs, src/saves.rs and the
@@ -14,7 +14,10 @@ export const GCODE_TEXT = '; e2e print\nG28\nG1 X10 Y10 E1\n'
 const GCODE_STORED = gzipSync(Buffer.from(GCODE_TEXT))
 const GCODE_SHA256 = createHash('sha256').update(GCODE_STORED).digest('hex')
 
-export const MODELS = 'https://models.muon3d.com'
+export const MODELS = 'https://library.muon3d.com/models'
+
+/** A one-pixel PNG: the photo the fake serves back. */
+export const PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
 export interface FakePublication {
   id: string;
@@ -108,16 +111,71 @@ export function itemJson (i: FakeItem) {
   }
 }
 
+/** Your community profile as `GET /v1/community/profile` answers it (muon3d-model-service community/store.rs). */
+export interface FakeCommunity {
+  handle: string | null;
+  /** RFC 3339: when the handle last changed (the 30-day limit). */
+  handle_changed_at: string | null;
+  public_name: string | null;
+  identity_public: boolean;
+  can_community: boolean;
+  can_public: boolean;
+  page_on: boolean;
+  bio: string | null;
+  avatar_url: string | null;
+  links: string[];
+  indexable: boolean;
+  /** Handles other people hold: `GET /v1/community/handles/:h` says taken, reserved or held. */
+  handles: Record<string, 'taken' | 'reserved' | 'held'>;
+}
+
+export function fakeCommunity (over: Partial<FakeCommunity> = {}): FakeCommunity {
+  return {
+    handle: 'jack',
+    handle_changed_at: null,
+    public_name: 'Jack',
+    identity_public: false,
+    can_community: true,
+    can_public: true,
+    page_on: true,
+    bio: null,
+    avatar_url: null,
+    links: [],
+    indexable: false,
+    handles: { taken: 'taken', muon3d: 'reserved' },
+    ...over
+  }
+}
+
 export interface ModelServiceState {
   publications: FakePublication[];
   saves: FakeSave[];
   collections: FakeCollection[];
+  /** Public collections other people made (`items` are publication ids), and which of them you follow. */
+  others: FakeCollection[];
+  follows: string[];
+  /** Following one more is refused 400 follow_limit (500 followed). */
+  followLimit: boolean;
   /** Your own Library: items, runs and shares (Yours). */
   items: FakeItem[];
   runs: FakeRun[];
   shares: FakeShare[];
-  /** Your Library turned off (consented before, withdrawn), so Control does not turn it on for you. */
-  libraryOff: boolean;
+  /** Your Library turned off (consented before, withdrawn), so Control does not turn it on for you; 'deleting' with a deletion date. */
+  libraryOff: boolean | 'deleting';
+  /** The Library's storage, as the service sends it on `GET /v1/library`; none by default. */
+  storage: { used_bytes: number, quota_bytes: number, used_by_kind?: Record<string, number> } | null;
+  /** Your public profile (Share a print needs one): set up, or not yet (403 community_setup_required). */
+  profile: 'ready' | 'none' | 'page-off';
+  /** The editable community profile (Account › Profile); null leaves the older `profile` answers above. */
+  community: FakeCommunity | null;
+  /** The bytes of the photo last uploaded, and its content type. */
+  avatar: { type: string, bytes: number, body: string } | null;
+  /** What the community profile routes were sent (writes): JSON bodies as parsed. */
+  communityWrites: Array<{ call: string, body: unknown }>;
+  /** The service cannot read the next photo (avatar_invalid). */
+  avatarInvalid: boolean;
+  /** What Publish sent, in order (`POST /v1/items/:id/publish` bodies). */
+  published: Array<{ item: string, body: Record<string, unknown> }>;
   /** Answer every request with this status (outage tests), or null. */
   failWith: number | null;
   /** Answer matching requests with a status instead ("GET /v1/public/discover"): one shelf down. */
@@ -128,6 +186,12 @@ export interface ModelServiceState {
   noSearch: boolean;
   /** Requests seen, for assertions ("method path"). */
   seen: string[];
+  /**
+   * The origins let in, exactly, as MODELS_CORS_ORIGINS does on the real
+   * service; any other origin gets no CORS headers, so the browser refuses
+   * the answer. null lets every origin in.
+   */
+  corsOrigins: string[] | null;
 }
 
 export function modelService (over: Partial<ModelServiceState> = {}): ModelServiceState {
@@ -135,10 +199,21 @@ export function modelService (over: Partial<ModelServiceState> = {}): ModelServi
     publications: Array.from({ length: 12 }, (_, i) => publication(i + 1)),
     saves: [],
     collections: [],
+    others: [],
+    follows: [],
+    followLimit: false,
     items: [],
     runs: [],
     shares: [],
     libraryOff: false,
+    storage: null,
+    profile: 'ready',
+    community: null,
+    avatar: null,
+    communityWrites: [],
+    avatarInvalid: false,
+    corsOrigins: null,
+    published: [],
     failWith: null,
     failOn: () => null,
     delayMs: 0,
@@ -195,14 +270,20 @@ function detail (p: FakePublication, all: FakePublication[]) {
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) })
 
-/** Serve `state` as models.muon3d.com for this page. */
+/** Serve `state` as the model service for this page. */
 export async function serveModels (page: Page, state: ModelServiceState) {
-  await page.route(`${MODELS}/**`, async route => {
+  // The service's own address (the Library site's origin, under /models) and a
+  // printer's same-origin proxy have the same shape: <origin>/models/<path>.
+  await page.route(url => url.pathname.startsWith('/models/'), async route => {
     const request = route.request()
     const url = new URL(request.url())
-    const path = url.pathname
+    const proxied = url.origin !== new URL(MODELS).origin
+    const path = url.pathname.slice('/models'.length)
     const method = request.method()
     state.seen.push(`${method} ${path}${url.search}`)
+    const origin = request.headers().origin
+    // Playwright's fulfill skips the browser's CORS check, so a refused origin is the TypeError fetch would give.
+    if (!proxied && state.corsOrigins && origin && !state.corsOrigins.includes(origin)) return route.abort('accessdenied')
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
     if (state.delayMs) await new Promise(resolve => setTimeout(resolve, state.delayMs))
     const failure = state.failWith ?? state.failOn(`${method} ${path}${url.search}`)
@@ -254,6 +335,17 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       return p ? json(route, detail(p, all)) : json(route, { error: { code: 'not_found' } }, 404)
     }
 
+    // Someone's public collection: a public read, no assertion (src/saves.rs public_collection).
+    const publicCollections = (): FakeCollection[] => [...state.others, ...state.collections.filter(x => x.visibility === 'public')].filter(x => x.visibility === 'public')
+    const publicCollection = path.match(/^\/v1\/public\/collections\/([^/]+)$/)
+    if (publicCollection && method === 'GET') {
+      const c = publicCollections().find(x => x.id === publicCollection[1])
+      if (!c) return json(route, { error: { code: 'not_found', message: 'Not found.' } }, 404)
+      // Someone else's saves are not yours: each item gets its own save id.
+      const mine = state.collections.includes(c)
+      const items = c.items.map(id => mine ? state.saves.find(s => s.id === id) : { id: `pub-${id}`, target: id }).filter((s): s is FakeSave => !!s).map(s => { const j = saveJson(s, all); return { save_id: j.id, target: j.target, card: j.card } })
+      return json(route, { ...collectionJson(c), item_count: items.length, items })
+    }
     // Signed in: the assertion the console handed out must come with it.
     if (!request.headers().authorization) return json(route, { error: { code: 'unauthorized' } }, 401)
     const share = path.match(/^\/v1\/shares\/([^/]+)\/files\/([^/]+)$/)
@@ -263,8 +355,9 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       return route.fulfill({ status: 200, contentType: 'application/octet-stream', headers: { 'access-control-allow-origin': '*' }, body: GCODE_STORED })
     }
     if (path === '/v1/library') {
-      if (state.libraryOff) return json(route, { enabled: false, account: { promise_version: '2026-10-01', consented_at: '2026-10-02T00:00:00Z' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
-      return json(route, { enabled: true, account: { promise_version: '2026-10-01' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 } })
+      // Off: the promise is the one this Control shows (src/services/library/promise.ts), so it may offer to turn it on.
+      if (state.libraryOff) return json(route, { enabled: false, account: { promise_version: '2026-09-26', consented_at: '2026-10-02T00:00:00Z', ...(state.libraryOff === 'deleting' ? { purge_after: '2026-11-27T00:00:00Z' } : {}) }, promise: { version: '2026-09-26' }, promise_version: '2026-09-26', storage: { used_bytes: 0, quota_bytes: 2e9 } })
+      return json(route, { enabled: true, account: { promise_version: '2026-10-01' }, promise: { version: '2026-10-01' }, storage: { used_bytes: 0, quota_bytes: 2e9 }, ...(state.storage ?? {}) })
     }
     const own = path.match(/^\/v1\/items\/([^/]+)(\/versions)?$/)
     if (own && !own[2] && method === 'DELETE') {
@@ -316,6 +409,59 @@ export async function serveModels (page: Page, state: ModelServiceState) {
       })
       return json(route, { runs, cursor: null })
     }
+    const c = state.community
+    if (c && path.startsWith('/v1/community/') && (path === '/v1/community/profile' || path.startsWith('/v1/community/profile/') || path.startsWith('/v1/community/handles/'))) {
+      if (method === 'PUT' && path !== '/v1/community/profile/avatar') state.communityWrites.push({ call: `${method} ${path}`, body: request.postDataJSON() })
+      const fail = (status: number, code: string, message: string) => json(route, { error: { code, message } }, status)
+      if (path === '/v1/community/profile' && method === 'GET') return json(route, c)
+      if (path === '/v1/community/profile' && method === 'PUT') {
+        const body = request.postDataJSON() as { bio?: string | null, page_on?: boolean }
+        if (body.bio !== undefined) c.bio = body.bio
+        if (body.page_on !== undefined) c.page_on = body.page_on
+        return json(route, c)
+      }
+      const asked = path.match(/^\/v1\/community\/handles\/([^/]+)$/)
+      if (asked && method === 'GET') return json(route, { handle: asked[1], status: c.handles[asked[1].toLowerCase()] ?? 'available' })
+      if (path === '/v1/community/profile/handle' && method === 'PUT') {
+        const { handle } = request.postDataJSON() as { handle: string }
+        if (c.handle_changed_at && Date.now() - Date.parse(c.handle_changed_at) < 30 * 86_400_000) return fail(429, 'handle_cooldown', 'A handle can change once every 30 days.')
+        const status = c.handles[handle.toLowerCase()]
+        if (status) return fail(409, `handle_${status}`, 'This handle is not available.')
+        c.handle = handle
+        c.handle_changed_at = new Date().toISOString()
+        return json(route, c)
+      }
+      if (path === '/v1/community/profile/avatar') {
+        if (method === 'PUT') {
+          const type = request.headers()['content-type'] ?? ''
+          const bytes = request.postDataBuffer()?.length ?? 0
+          // As the service refuses: raw JPEG, PNG or WebP only, at most 4 MiB.
+          if (!['image/png', 'image/jpeg', 'image/webp'].includes(type)) return fail(400, 'avatar_format', 'Choose JPEG, PNG or WebP.')
+          if (bytes > 4 * 1024 * 1024) return fail(400, 'avatar_too_large', 'Choose a photo of at most 4 MiB.')
+          if (state.avatarInvalid) return fail(400, 'avatar_invalid', 'The profile photo could not be read.')
+          state.avatar = { type, bytes, body: (request.postDataBuffer() ?? Buffer.alloc(0)).toString('base64') }
+          c.avatar_url = `${MODELS}/v1/public/avatars/00000000-0000-4000-8000-000000000001`
+          return json(route, c)
+        }
+        if (method === 'GET') return c.avatar_url || state.avatar ? route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: Buffer.from(PNG_1X1, 'base64') }) : json(route, { error: { code: 'not_found', message: 'No photo.' } }, 404)
+      }
+    }
+    if (path === '/v1/community/profile' && method === 'GET') {
+      // As the service answers: 200, with no handle yet, or the page off.
+      if (state.profile === 'none') return json(route, { handle: null, public_name: null, identity_public: false, can_community: true, can_public: true, page_on: false, bio: null })
+      return json(route, { handle: 'jack', public_name: 'Jack', identity_public: true, can_community: true, can_public: true, page_on: state.profile !== 'page-off', bio: null })
+    }
+    const publish = path.match(/^\/v1\/items\/([^/]+)\/publish$/)
+    if (publish && method === 'POST') {
+      if (state.profile === 'none') return json(route, { error: { code: 'community_setup_required', message: 'Set up your public profile first.' } }, 403)
+      const it = state.items.find(i => i.id === publish[1])
+      if (!it) return json(route, { error: { code: 'not_found' } }, 404)
+      const body = request.postDataJSON() as Record<string, unknown>
+      state.published.push({ item: it.id, body })
+      const id = `share-${state.shares.length + 1}`
+      state.shares.push({ id, item: it.id, title: String(body.title), audience: 'public' })
+      return json(route, { id, key: 'k', state: 'pending', audience: 'public', title: body.title, version: body.version }, 201)
+    }
     if (path === '/v1/community/shares' && method === 'GET') {
       return json(route, { shares: state.shares.map(sh => ({ id: sh.id, item: sh.item, title: sh.title, version: 1, audience: sh.audience, state: 'approved', expires_at: '2099-01-01T00:00:00Z' })) })
     }
@@ -336,6 +482,23 @@ export async function serveModels (page: Page, state: ModelServiceState) {
     if (path === '/v1/community/saves/lookup') {
       const targets = JSON.parse(url.searchParams.get('targets') ?? '[]') as Array<{ id: string }>
       return json(route, { saves: state.saves.filter(s => targets.some(t => t.id === s.target)).map(s => ({ target: { kind: 'publication', id: s.target }, save_id: s.id })) })
+    }
+    // Following (src/saves.rs): public collections, yours or someone else's; a private one is 404.
+    if (path === '/v1/community/collections/followed' && method === 'GET') {
+      const followed = state.follows.map(id => publicCollections().find(x => x.id === id)).filter((x): x is FakeCollection => !!x)
+      return json(route, { collections: followed.map(collectionJson) })
+    }
+    const followMatch = path.match(/^\/v1\/community\/collections\/([^/]+)\/follow$/)
+    if (followMatch && (method === 'PUT' || method === 'DELETE')) {
+      const id = followMatch[1]
+      if (method === 'DELETE') {
+        state.follows = state.follows.filter(x => x !== id)
+        return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
+      }
+      if (!publicCollections().some(x => x.id === id)) return json(route, { error: { code: 'not_found', message: 'Not found.' } }, 404)
+      if (state.followLimit && !state.follows.includes(id)) return json(route, { error: { code: 'follow_limit', message: 'You can follow up to 500 collections.' } }, 400)
+      if (!state.follows.includes(id)) state.follows.unshift(id)
+      return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } })
     }
     if (path === '/v1/community/collections' && method === 'GET') return json(route, { collections: state.collections.map(collectionJson) })
     if (path === '/v1/community/collections' && method === 'POST') {
