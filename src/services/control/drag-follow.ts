@@ -35,6 +35,8 @@ export interface DragFollowHost {
   waiting: () => boolean
   /** Send a planned move to `target`. True when it was sent. */
   send: (target: DragTarget) => boolean
+  /** Where the part is now, in the targets' coordinates: the first step is measured from it. */
+  from?: () => DragTarget | null
 }
 
 export interface DragFollowOptions {
@@ -45,9 +47,35 @@ export interface DragFollowOptions {
   /** How often to look again while a move is in flight, ms. */
   pollMs?: number
   now?: () => number
+  /** The longest one step may be, mm, for a target (0 or unset: no limit). */
+  maxStep?: (target: DragTarget) => number
 }
 
 export const DRAG_MIN_INTERVAL_MS = 150
+/** The longest step a drag sends, mm, so a step in flight (which Klipper cannot take back) is short. */
+export const DRAG_STEP_MM = 3
+const DRAG_STEP_MIN_MM = 0.5
+
+/** About what the part covers at `speed` mm/s in one interval, kept within 0.5 and DRAG_STEP_MM. */
+export function dragStepMm (speed: number): number {
+  if (!Number.isFinite(speed) || speed <= 0) return DRAG_STEP_MIN_MM
+  return Math.min(DRAG_STEP_MM, Math.max(DRAG_STEP_MIN_MM, speed * DRAG_MIN_INTERVAL_MS / 1000))
+}
+
+/** `to`, or the point `max` mm from `from` towards it if it is further. */
+export function stepToward (from: DragTarget | null, to: DragTarget, max: number): DragTarget {
+  if (!from || !(max > 0) || ('Z' in from) !== ('Z' in to)) return { ...to }
+  if ('Z' in to && 'Z' in from) {
+    const d = to.Z - from.Z
+    return Math.abs(d) <= max ? { ...to } : { Z: Math.round((from.Z + Math.sign(d) * max) * 1000) / 1000 }
+  }
+  const a = from as { X: number, Y: number }
+  const b = to as { X: number, Y: number }
+  const d = Math.hypot(b.X - a.X, b.Y - a.Y)
+  if (d <= max) return { ...b }
+  const k = max / d
+  return { X: Math.round((a.X + (b.X - a.X) * k) * 1000) / 1000, Y: Math.round((a.Y + (b.Y - a.Y) * k) * 1000) / 1000 }
+}
 const POLL_MS = 50
 
 const same = (a: DragTarget | null, b: DragTarget | null): boolean => {
@@ -64,6 +92,7 @@ export class DragFollow {
   private readonly minInterval: number
   private readonly pollMs: number
   private readonly now: () => number
+  private readonly maxStep: (target: DragTarget) => number
   private active = false
   private releasing = false
   private latest: DragTarget | null = null
@@ -78,6 +107,7 @@ export class DragFollow {
     this.minInterval = options.minIntervalMs ?? DRAG_MIN_INTERVAL_MS
     this.pollMs = options.pollMs ?? POLL_MS
     this.now = options.now ?? (() => Date.now())
+    this.maxStep = options.maxStep ?? (() => 0)
   }
 
   /** A drag is following (started, not yet finished, refused or cancelled). */
@@ -143,16 +173,21 @@ export class DragFollow {
     if (this.host.waiting()) { this.later(this.pollMs); return }
     const since = this.now() - this.sentAt
     if (since < this.minInterval) { this.later(this.minInterval - since); return }
-    const reason = this.host.refusal(target)
-    if (reason || !this.host.send(target)) {
+    // One short step from where the part is (or was last sent) towards the newest target. A target
+    // the other way replaces one not yet sent, so a reversal costs at most the step in flight.
+    const step = stepToward(this.sent ?? this.host.from?.() ?? null, target, this.maxStep(target))
+    const reason = this.host.refusal(step)
+    if (reason || !this.host.send(step)) {
       this.stop()
       this.onRefused(reason || 'The move was not sent.')
       return
     }
-    this.sent = target
+    this.sent = step
     this.sentAt = this.now()
     this.sends++
-    if (this.releasing) this.stop()
+    if (same(step, target)) {
+      if (this.releasing) this.stop()
+    } else this.later(this.pollMs)
   }
 }
 

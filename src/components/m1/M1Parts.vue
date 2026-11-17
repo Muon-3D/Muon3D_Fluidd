@@ -109,6 +109,19 @@
       >{{ dragText }}</text>
     </svg>
 
+    <!-- The plate selected and free to move: an up-and-down handle on it, every time, until a drag takes over. -->
+    <svg
+      v-if="movable === 'plate' && anchor && !drag"
+      class="m1-parts__handle"
+      data-tid="m1-plate-handle"
+      aria-hidden="true"
+    >
+      <g :transform="`translate(${anchor.x} ${anchor.y})`">
+        <circle r="15" />
+        <path d="M0 -9v18M-5 -4l5 -5 5 5M-5 4l5 5 5 -5" />
+      </g>
+    </svg>
+
     <svg
       v-if="selected && anchor && leader && !screenOpen"
       class="m1-parts__leader"
@@ -179,8 +192,24 @@ import { axisEdges, boundCorners } from '@/services/m1-3d/drag-bounds'
 import { wheelDetents } from '@/services/m1-3d/knob'
 import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
+import { DragFollow, controlDragHost, dragStepMm, type DragFollowHost, type DragTarget } from '@/services/control/drag-follow'
+import { JogStream, type JogStatus } from '@/services/control/jog-stream'
 import { modelAnimates } from '@/services/m1-3d/render-options'
 import { modelSettings } from '@/services/m1-3d/device-settings'
+
+/**
+ * Each stage's live drag, kept off the component so Vue doesn't watch it.
+ * On a printer with Klipper's muon_jog the drag streams to MUON_JOG
+ * (JogStream): the printer keeps no more than a few millimetres queued, so
+ * the part turns round at once. Without it, DragFollow: one planned move
+ * (moveTo and the no-go planner) at a time, each at most about what the part
+ * covers in 150 ms (3 mm), the newest target kept while one is in flight.
+ * Either way a refusal stops it and the label says why.
+ */
+const movers = new WeakMap<object, DragFollow | JogStream>()
+
+/** What a drag drives: the stream or the step follower. */
+type Mover = Pick<DragFollow, 'following' | 'start' | 'update' | 'release' | 'cancel'>
 
 /** A drag on the toolhead (X and Y) or the plate (Z), in the printer's toolhead millimetres. */
 const round = (p: { x: number, y: number }) => ({ x: Math.round(p.x), y: Math.round(p.y) })
@@ -248,6 +277,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
   readonly names = PART_NAMES
 
   hovered: PartId | null = null
+  /** The part under the pointer at the last pick, without the leave delay: what the cursor says. */
+  pointedAt: PartId | null = null
   selected: PartId | null = null
   /** The selected part's middle on the stage, and where the line meets the label. */
   anchor: { x: number, y: number } | null = null
@@ -274,6 +305,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
   motionQuery: MediaQueryList | null = null
 
   drag: PartDrag | null = null
+  /** The printer the follower's current drag began on (panelTarget); null before any. */
+  followPrinter: string | null = null
   /** The pointer a drag may come from: one that went down on the selected part with the main button. Null for anything else. */
   dragPointer: number | null = null
   dragPx: { from: { x: number, y: number }, to: { x: number, y: number } } | null = null
@@ -301,9 +334,72 @@ export default class M1Parts extends Mixins(ControlMixin) {
     if (this.dragPointer === null) this.viewer?.setOrbit(!locked)
   }
 
-  /** Parts offer their options only on an idle printer this person can control. */
+  /**
+   * Parts offer their options only on an idle printer this person can control.
+   * Klipper running a move with no print counts as idle here (the stage calls
+   * any busy printer 'printing'), so the selection and the view hold through it.
+   */
   get interactive (): boolean {
-    return this.stageState === 'idle' && this.controlReady && !this.busy
+    const idle = this.stageState === 'idle' || (this.stageState === 'printing' && this.moving)
+    return idle && this.controlReady && !this.printerPrinting && !this.printerPaused
+  }
+
+  /**
+   * Klipper says 'busy' while it runs a move (idle_timeout Printing, no
+   * print): the head is moving for us. The part stays selected and the view
+   * stays down; the next drag step waits for it to finish.
+   */
+  get moving (): boolean {
+    return this.printerState === 'busy'
+  }
+
+  /** The printer streams a drag (Klipper's [muon_jog] is configured). */
+  get jogStreams (): boolean {
+    return !!this.$store.state.printer.printer.configfile?.settings?.muon_jog
+  }
+
+  /** The printer's muon_jog status, or null. */
+  get jogStatus (): (JogStatus & { position?: number[] | null }) | null {
+    return this.$store.state.printer.printer.muon_jog ?? null
+  }
+
+  /** What a drag drives on this printer. */
+  get mover (): Mover | undefined {
+    return movers.get(this)
+  }
+
+  /**
+   * Where the head and plate are now, in toolhead millimetres: the printer's
+   * own estimate of the motion running (muon_jog, or motion_report), not
+   * toolhead.position, which is where the queue ends. A drag's line starts here.
+   */
+  get livePosition (): number[] {
+    const printer = this.$store.state.printer.printer
+    const ok = (p: unknown): p is number[] => Array.isArray(p) && p.length >= 3 && p.slice(0, 3).every(v => Number.isFinite(Number(v)))
+    const jog = this.jogStatus?.position
+    if (this.jogStatus?.active && ok(jog)) return jog.slice(0, 3).map(Number)
+    const live = printer.motion_report?.live_position
+    if (ok(live)) return live.slice(0, 3).map(Number)
+    return [0, 1, 2].map(i => Number(this.position[i]))
+  }
+
+  /** Why a streamed drag may not start or go on, or ''. MUON_JOG itself holds the limits, the notch and the contact guard. */
+  jogRefusal (target: DragTarget): string {
+    if (!this.controlReady) return 'Control is not connected to the printer.'
+    if (this.printerPrinting || this.printerPaused) return 'Not while printing.'
+    if ('Z' in target ? !this.isHomed('Z') : !this.isHomed('XY')) return 'Home it first.'
+    if (![this.xySpeed, this.zSpeed].every(v => Number.isFinite(v) && v > 0)) return 'Set a speed for hand moves first.'
+    for (const [axis, value] of Object.entries(target)) {
+      const i = 'XYZ'.indexOf(axis)
+      if (!Number.isFinite(value) || value < this.axisMin[i] || value > this.axisMax[i]) return 'That spot is outside the machine.'
+    }
+    return ''
+  }
+
+  /** Any drag still following stops; a stream tells the printer to stop. */
+  cancelFollow () {
+    this.mover?.cancel()
+    movers.delete(this)
   }
 
   /** The selected part can be dragged: the toolhead in X and Y, the plate in Z, once homed, on the accurate model (whose millimetres the drag is read in). */
@@ -318,6 +414,20 @@ export default class M1Parts extends Mixins(ControlMixin) {
   /** The toolhead selected: look straight down for clear axes, the plate out of the way. */
   get topView (): boolean {
     return this.selected === 'toolhead' && this.interactive && !!this.viewer?.accurate
+  }
+
+  /** The cursor over the stage: what a press there would do. */
+  get cursor (): string {
+    if (this.drag) return this.drag.part === 'plate' ? 'ns-resize' : 'grabbing'
+    const part = this.pointedAt
+    if (!part || !this.interactive) return ''
+    if (part === this.movable) return part === 'plate' ? 'ns-resize' : 'grab'
+    return 'pointer'
+  }
+
+  @Watch('cursor')
+  setCursor () {
+    if (this.bound) this.bound.style.cursor = this.cursor
   }
 
   get dragHint (): string {
@@ -348,9 +458,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
     const homed = ((printer.toolhead?.homed_axes as string | undefined) ?? '').length >= 3
     const mesh = (printer.bed_mesh?.profile_name as string | undefined) ?? ''
     const material = this.loadedMaterial
+    const at = (i: number, digits = 0) => Number(this.position[i]).toFixed(digits)
     return {
-      plate: `${deg(printer.heater_bed?.temperature)} · ${mesh ? 'mesh loaded' : 'no mesh'}`,
-      toolhead: `${deg(printer.extruder?.temperature)} · ${homed ? 'homed' : 'not homed'}`,
+      plate: `${deg(printer.heater_bed?.temperature)} · ${mesh ? 'mesh loaded' : 'no mesh'}${homed ? ` · Z ${at(2, 1)}` : ''}`,
+      toolhead: `${deg(printer.extruder?.temperature)} · ${homed ? `X ${at(0)} Y ${at(1)}` : 'not homed'}`,
       filament: material ? material.name : 'No material loaded',
       screen: "The printer's own screen"
     }
@@ -365,7 +476,51 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.bind(this.canvas)
   }
 
+  created () {
+    window.addEventListener('blur', this.onBlur)
+    document.addEventListener('visibilitychange', this.onHidden)
+  }
+
+  createMover (): Mover {
+    const active = this.mover
+    if (active) return active
+    const control = controlDragHost(this)
+    // A follower belongs to the printer it started on: anything it still owes (a release waiting for the
+    // last move to land) is refused, never sent, once Control is on another printer (Opus review of #340, B1).
+    const samePrinter = () => this.followPrinter === null || this.followPrinter === this.panelTarget
+    const host: DragFollowHost = {
+      ...control,
+      refusal: target => samePrinter() ? control.refusal(target) : 'The printer changed; that move was not sent.',
+      send: target => samePrinter() && control.send(target),
+      waiting: () => control.waiting() || this.moving
+    }
+    const from = (): DragTarget | null => {
+      const g = this.$store.state.printer.printer.gcode_move?.gcode_position as number[] | undefined
+      if (!Array.isArray(g)) return null
+      return this.movable === 'plate' ? { Z: Number(g[2]) } : { X: Number(g[0]), Y: Number(g[1]) }
+    }
+    const mover = this.jogStreams
+      ? new JogStream({
+        refusal: target => samePrinter() ? this.jogRefusal(target) : 'The printer changed; that move was not sent.',
+        send: script => {
+          if (!samePrinter() || !this.controlReady) return false
+          this.sendGcode(script)
+          return true
+        },
+        speed: axes => axes === 'Z' ? this.zSpeed : this.xySpeed
+      }, { onRefused: reason => this.onFollowRefused(reason) })
+      : new DragFollow({ ...host, from }, {
+        onRefused: reason => this.onFollowRefused(reason),
+        maxStep: target => dragStepMm('Z' in target ? this.zSpeed : this.xySpeed)
+      })
+    movers.set(this, mover)
+    return mover
+  }
+
   beforeDestroy () {
+    this.cancelFollow()
+    window.removeEventListener('blur', this.onBlur)
+    document.removeEventListener('visibilitychange', this.onHidden)
     this.bind(null)
     this.motionQuery?.removeEventListener?.('change', this.onMotionPref)
     document.removeEventListener('keydown', this.onEscape)
@@ -411,10 +566,13 @@ export default class M1Parts extends Mixins(ControlMixin) {
     // Capture lost mid-drag (focus gone, a context menu): the drag ends and sends nothing.
     canvas.addEventListener('lostpointercapture', this.onCancel)
     if (this.movable) canvas.style.touchAction = 'none'
+    canvas.style.cursor = this.cursor
+    this.viewer?.setOrbit(!this.cameraLocked)
   }
 
   /** Ends any drag and sends nothing. */
   onCancel () {
+    this.cancelFollow()
     this.down = null
     this.dragged = false
     this.drag = null
@@ -425,6 +583,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   }
 
   onDown (e: PointerEvent) {
+    this.cancelFollow()
     // A second finger, or any new press, ends a drag in progress without sending it.
     if (this.drag || this.dragPointer !== null) {
       this.onCancel()
@@ -476,7 +635,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
   /** The pointer is over this part (or none). */
   onPoint (part: PartId | null) {
-    if (this.bound) this.bound.style.cursor = part && this.interactive ? 'pointer' : ''
+    this.pointedAt = part
+    this.setCursor()
     if (part) {
       clearTimeout(this.leaveTimer)
       this.leaveTimer = 0
@@ -581,6 +741,37 @@ export default class M1Parts extends Mixins(ControlMixin) {
     else this.selected = null
   }
 
+  /** The window lost focus: a drag ends, sending nothing more. */
+  onBlur () {
+    this.cancelFollow()
+    if (this.drag || this.dragPointer !== null) this.onCancel()
+  }
+
+  /** The tab was hidden: the same. */
+  onHidden () {
+    if (document.visibilityState === 'hidden') this.onBlur()
+  }
+
+  /** A step was refused: following stops, the drag ends, and the label says why. */
+  onFollowRefused (reason: string) {
+    this.refused = `Not moved: ${reason}`
+    const pointer = this.dragPointer
+    this.drag = null
+    this.dragPx = null
+    this.dragPointer = null
+    if (pointer !== null) this.bound?.releasePointerCapture?.(pointer)
+  }
+
+  /** A plate drag that hasn't left the Z it started at: nothing to send. */
+  atStart (drag: PartDrag): boolean {
+    return 'Z' in drag.target && drag.target.Z === drag.startZ
+  }
+
+  /** The drag's place in G-code millimetres, what moveTo takes. */
+  placeFor (target: { X: number, Y: number } | { Z: number }) {
+    return releasePlace(target, this.gcodeOffset ?? [0, 0, 0], this.axisMin, this.axisMax)
+  }
+
   /** The drag's target under the pointer: the head on its plane, or the plate up or down from where it was. */
   dragTo (x: number, y: number) {
     const viewer = this.viewer
@@ -602,42 +793,74 @@ export default class M1Parts extends Mixins(ControlMixin) {
       const hit = viewer.onUpright(x, y, through)
       if (!hit) return
       if (!this.drag) {
+        // Read from the press, not from where the pointer passed the tap slop, so the plate goes as far as the pointer did.
+        const from = this.down ? viewer.onUpright(this.down.x, this.down.y, through) : null
         this.refused = ''
-        this.drag = { part, printer: this.panelTarget, target: { Z: z0 }, startZ: z0, startY: hit.y }
+        this.drag = { part, printer: this.panelTarget, target: { Z: z0 }, startZ: z0, startY: (from ?? hit).y }
       }
       const by = zForPlateTop(hit.y) - zForPlateTop(this.drag.startY ?? hit.y)
       this.drag = { ...this.drag, target: { Z: plateDragZ(z0, by, this.axisMin[2], this.axisMax[2]) } }
+    }
+    // The part follows as the pointer moves, to the printer the drag began on, once it has somewhere to go.
+    const follower = this.mover ?? this.createMover()
+    if (follower && this.drag.printer === this.panelTarget && (follower.following || !this.atStart(this.drag))) {
+      const place = this.placeFor(this.drag.target)
+      if (follower.following) follower.update(place)
+      else {
+        this.followPrinter = this.panelTarget
+        this.startMover(follower, place)
+      }
     }
     this.follow()
   }
 
   /**
-   * Letting go sends the target once, through moveTo: the same checks as
-   * every hand move (homed, idle, the hand-move wait and the no-go planner,
-   * lifting over the bed's notch when it must). moveTo takes G-code
-   * coordinates; the drag is read in the toolhead's.
+   * Letting go sends the last target, if it isn't where the part was last
+   * sent, through the same follower: moveTo with every hand move's checks
+   * (homed, idle, the hand-move wait and the no-go planner, lifting over the
+   * bed's notch when it must). moveTo takes G-code coordinates; the drag is
+   * read in the toolhead's.
    */
   release () {
     const drag = this.drag
     this.drag = null
     this.dragPx = null
+    const follower = this.mover
     // Only to the printer the drag began on, and only while that part can still be moved.
-    if (!drag || this.movable !== drag.part || drag.printer !== this.panelTarget) return
-    const place = releasePlace(drag.target, this.gcodeOffset ?? [0, 0, 0], this.axisMin, this.axisMax)
-    // Why it can't go, said in the label: moveTo toasts only the planner's refusals.
-    const wait = this.handMoveWait()
-    const sent = this.moveTo(place)
-    if (!sent) this.refused = `Not moved: ${wait || this.refusalFor(place)}`
+    if (!drag || !follower || this.movable !== drag.part || drag.printer !== this.panelTarget || (!follower.following && this.atStart(drag))) {
+      follower?.cancel()
+      return
+    }
+    const place = this.placeFor(drag.target)
+    if (follower.following) follower.update(place)
+    else {
+      this.followPrinter = this.panelTarget
+      this.startMover(follower, place)
+    }
+    follower.release()
   }
 
-  /** Why moveTo would turn this place down, in words. */
-  refusalFor (place: { X?: number, Y?: number, Z?: number }): string {
-    if (!this.controlReady) return this.controlLock
-    if (this.busy) return 'the printer is busy.'
-    const offset = this.gcodeOffset ?? [0, 0, 0]
-    const realTo = (['X', 'Y', 'Z'] as const).map((a, i) => place[a] !== undefined ? (place[a] as number) + offset[i] : Number(this.position[i])) as [number, number, number]
-    const plan = this.planHandMove(realTo)
-    return plan.ok ? 'that is outside what the printer can reach.' : plan.reason
+  /** A drag starts following; a stream is told which of the printer's jogs it is. */
+  startMover (follower: Mover, place: DragTarget) {
+    if (follower instanceof JogStream) follower.start(place, this.jogStatus)
+    else follower.start(place)
+  }
+
+  /** The printer's jog status: a jog it ended stops the drag; the line follows the part. */
+  @Watch('jogStatus')
+  onJogStatus (status: JogStatus | null) {
+    const mover = this.mover
+    if (mover instanceof JogStream) mover.observe(status)
+  }
+
+  @Watch('jogStreams')
+  onJogStreamsChanged () {
+    this.onCancel()
+  }
+
+  @Watch('livePosition')
+  onLivePosition () {
+    if (this.drag) this.placeDrag()
   }
 
   /** The drag's line and target, and the axes' marks, as drawn now. */
@@ -652,7 +875,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
         : headToWorld(t.X, t.Y)
       const to = viewer.project(world)
       // From the nozzle itself (not the part's middle, where the panel's own line starts): where the head is now, so the line closes as it comes in.
-      const [x, y, z] = this.position
+      const [x, y, z] = this.livePosition
       const from = viewer.project(drag.part === 'plate'
         ? { x: 0, y: plateTopForZ(z), z: 0 }
         : headToWorld(x, y))
@@ -708,6 +931,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   /** Another printer: a drag on this one ends, sending nothing. */
   @Watch('panelTarget')
   onPrinterChange () {
+    this.cancelFollow()
     if (this.drag || this.dragPointer !== null) this.onCancel()
   }
 
@@ -715,7 +939,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
   @Watch('movable')
   onMovable (part: 'toolhead' | 'plate' | null) {
     if (this.bound) this.bound.style.touchAction = part ? 'none' : ''
-    if (!part && (this.drag || this.dragPointer !== null)) this.onCancel()
+    this.cancelFollow()
+    if (this.drag || this.dragPointer !== null) this.onCancel()
   }
 
   select (part: PartId) {
@@ -758,7 +983,8 @@ export default class M1Parts extends Mixins(ControlMixin) {
     // Not while typing somewhere or inside a dialog: that Esc is theirs.
     const t = e.target as HTMLElement | null
     if (t && t !== document.body && !this.$el.contains(t) && (t.closest('input, textarea, select, [contenteditable], .v-dialog, [role="dialog"]'))) return
-    // Esc mid-drag drops the drag and sends nothing; otherwise it lets the part go.
+    // Esc drops the drag, and any release still waiting to send; otherwise it lets the part go.
+    this.cancelFollow()
     if (this.drag || this.dragPointer !== null) {
       this.onCancel()
       return
@@ -774,7 +1000,6 @@ export default class M1Parts extends Mixins(ControlMixin) {
   show () {
     const part = this.shownPart
     this.viewer?.setFocus(part, this.interactive ? 'active' : 'info', this.interactive && modelAnimates(modelSettings.animations, this.reducedMotion))
-    if (this.bound && !part) this.bound.style.cursor = ''
     this.follow()
   }
 
@@ -865,6 +1090,28 @@ export default class M1Parts extends Mixins(ControlMixin) {
 
     &--info b {
       color: #d8d8dc;
+    }
+  }
+
+  .m1-parts__handle {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+
+    circle {
+      fill: rgb(36 36 40 / 62%);
+      stroke: #80d6d1;
+      stroke-width: 1.5;
+    }
+
+    path {
+      fill: none;
+      stroke: #80d6d1;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
   }
 
