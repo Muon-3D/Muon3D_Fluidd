@@ -5,6 +5,7 @@ import FileSystemBrowser from '../FileSystemBrowser.vue'
 import { SocketActions } from '@/api/socketActions'
 import { EventBus } from '@/eventBus'
 import { Filters as filters } from '@/plugins/filters'
+import { Globals } from '@/globals'
 
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'm1', printerHomePath: () => '/m1', printerPath: (s: string) => `/${s}` }))
 
@@ -131,6 +132,28 @@ describe('file manager: bulk delete', () => {
 
 describe('file manager: upload', () => {
   afterEach(() => { vi.restoreAllMocks() })
+
+  it.each([true, false])('only copies an internal drop on the wrapper, not an already-handled row: %s', async (onWrapper) => {
+    const { vm, wrapper } = mountFiles()
+    const copy = vi.spyOn(SocketActions, 'serverFilesCopy').mockImplementation(vi.fn() as any)
+    const target = {}
+    await vm.handleDrop({
+      target,
+      currentTarget: onWrapper ? target : {},
+      stopPropagation: vi.fn(),
+      dataTransfer: { types: [Globals.FILE_DATA_TRANSFER_TYPES.files], getData: () => JSON.stringify({ path: 'gcodes/source', items: ['part.gcode'] }) }
+    })
+    expect(copy).toHaveBeenCalledTimes(onWrapper ? 1 : 0)
+    wrapper.destroy()
+  })
+
+  it('ignores an empty external drop', async () => {
+    const { vm, wrapper } = mountFiles()
+    const upload = vi.spyOn(vm, 'handleUpload')
+    await vm.handleDrop({ stopPropagation: vi.fn(), dataTransfer: { types: [], files: [], items: [] } })
+    expect(upload).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
 
   it('uploads into the folder it is in and shows it is busy meanwhile', async () => {
     const { vm, dispatch } = mountFiles({ path: 'gcodes/parts' })

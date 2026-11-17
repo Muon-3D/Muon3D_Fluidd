@@ -8,7 +8,7 @@
     @dragover="handleDragOver"
     @dragenter.self.prevent
     @dragleave.self.prevent="handleDragLeave"
-    @drop.self.prevent="handleDrop"
+    @drop.prevent="handleDrop"
   >
     <file-system-toolbar
       v-if="tile || selected.length <= 0"
@@ -1147,7 +1147,9 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
       !this.rootProperties.readonly &&
       event.dataTransfer
     ) {
+      event.stopPropagation()
       if (hasFileDataTransferTypeInDataTransfer(event.dataTransfer, 'files')) {
+        if (event.target !== event.currentTarget) return
         const files = getFileDataTransferDataFromDataTransfer(event.dataTransfer, 'files')
 
         for (const file of files.items) {

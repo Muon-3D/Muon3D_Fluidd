@@ -31,6 +31,7 @@ import {
 } from './discovery'
 import { searchRows, type SearchRow } from './searchRows'
 import { consolePresence } from './presence'
+import { faultSummary } from '@/services/machine-faults/faults'
 
 /**
  * What the status icon says:
@@ -194,6 +195,7 @@ export function cloudHealth (online: boolean, s: PrinterStatus | undefined, last
   if (s.state === 'printing') return 'printing'
   if (s.state === 'paused') return 'paused'
   if (s.state === 'error' || s.state?.startsWith('klipper')) return 'error'
+  if (s.faults?.length) return 'error'
   return 'online'
 }
 
@@ -318,7 +320,7 @@ export function printerDirectory (src: DirectorySources): Directory {
       continue
     }
     if (lan) claimedLan.add(lan)
-    const active = s.apiUrl === activeLocal ? 'local' : null
+    const active = endpointId && src.activeCloudId === endpointId ? 'cloud' : s.apiUrl === activeLocal ? 'local' : null
     const nearby = nearbyFor(endpointId)
     let health: PrinterHealth
     let detail: string
@@ -411,7 +413,8 @@ export function cloudDetail (online: boolean, s: PrinterStatus | undefined, last
     const percent = Math.round((s.progress ?? 0) * 100)
     return `${state} · ${percent}%${s.filename ? ` · ${s.filename}` : ''}`
   }
-  return state
+  const fault = faultSummary(s.faults)
+  return fault ? `${fault} � ${state}` : state
 }
 
 /**

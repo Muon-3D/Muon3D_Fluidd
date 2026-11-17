@@ -78,6 +78,7 @@ import { consola } from 'consola'
 import BrowserMixin from '@/mixins/browser'
 import ControlMixin from '@/mixins/control'
 import { readLook } from '@/services/slicer-bridge/look'
+import { listenForSlicerSignIn } from '@/services/slicer-bridge/signIn'
 import { hostSetup, type ActiveSpool } from '@/services/slicer-bridge/setup'
 import type { HostSetup, PrinterMaterial } from '@/services/slicer-bridge/vendor/printer-client/bridge/protocol'
 import PrintConfirmDialog, { type LoadedMaterial, type PrintConfirmRequest } from '@/components/slicer/PrintConfirmDialog.vue'
@@ -168,6 +169,8 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
   dirty = false
   closed = false
   stopWatching: (() => void) | null = null
+  stopSignIn: (() => void) | null = null
+  signInLeaving = false
 
   get foreignPrinter (): boolean {
     return isForeignSlug(this.$route?.params.printer)
@@ -276,6 +279,18 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
     const url = this.url
     const frame = this.$refs.frame as HTMLIFrameElement | undefined
     if (this.foreignPrinter || !url || !frame || this.host || this.closed) return
+    let storage: Storage | undefined
+    try { storage = window.sessionStorage } catch { /* storage is optional */ }
+    this.stopSignIn = listenForSlicerSignIn({
+      target: window,
+      frame,
+      url,
+      storage,
+      address: () => `${window.location.pathname}${window.location.search}${window.location.hash}`,
+      accountStatus: status => this.host?.bridge.accountStatus(status),
+      reload: () => { frame.src = url.href },
+      leaving: value => { this.signInLeaving = value }
+    })
     this.host = startSlicerHost({
       frame,
       slicerUrl: url,
@@ -413,6 +428,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
 
   beforeDestroy () {
     this.closed = true
+    this.stopSignIn?.()
     window.clearTimeout(this.readyTimer)
     window.removeEventListener('beforeunload', this.handleBeforeUnload)
     EventBus.bus.$off('models-held', this.handleModelsHeld)
@@ -429,7 +445,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
   }
 
   async beforeRouteLeave (to: Route, from: Route, next: NavigationGuardNext) {
-    if (!this.dirty) return next()
+    if (!this.dirty || this.signInLeaving) return next()
     const leave = await this.$confirm(this.$tc('app.slicer.leave.text'), {
       title: this.$tc('app.slicer.leave.title'),
       buttonTrueText: this.$tc('app.slicer.leave.leave'),
@@ -441,7 +457,7 @@ export default class Slice extends Mixins(ControlMixin, BrowserMixin) {
   }
 
   handleBeforeUnload (event: BeforeUnloadEvent) {
-    if (!this.dirty) return
+    if (!this.dirty || this.signInLeaving) return
     event.preventDefault()
     event.returnValue = ''
   }
