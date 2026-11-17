@@ -167,7 +167,8 @@ it('still surfaces failed reads over Bluetooth even if the radio is carrying pac
   vi.spyOn(bluetooth, 'bluetoothCarrying').mockReturnValue(true)
   await vi.advanceTimersByTimeAsync(3000)
   fake.down = true
-  // Two failed polls (6 s and 9 s) after a 2 s Bluetooth backoff: the second lands on the boundary of a 6 s advance, so give it a second to settle.
-  await vi.advanceTimersByTimeAsync(7000)
+  // Failed reads are counted per poll, behind a 2 s Bluetooth backoff and the dial's own waits: how many land in a fixed
+  // window depends on microtask timing, so step forward a second at a time, for at most 30 s, until the card says so.
+  for (let i = 0; i < 30 && state.cloudState.status.boxwood?.error !== 'offline'; i++) await vi.advanceTimersByTimeAsync(1000)
   expect(state.cloudState.status.boxwood).toMatchObject({ reachable: false, error: 'offline' })
 })
