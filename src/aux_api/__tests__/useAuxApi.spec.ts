@@ -61,7 +61,7 @@ describe('useAuxApi', () => {
     expect(call?.headers.get('Authorization')).toBe('Bearer local-token')
   })
 
-  it('sends nothing to a cloud printer over Iroh, reads included, and is back on the network once released', async () => {
+  it('sends the hotspot and the rest of /server/aux nowhere over Iroh, and is back on the network once released', async () => {
     const adapter = networkAdapter()
     const httpClient = useHttpClient(adapter)
     const fetch = vi.fn<Parameters<PrinterTransport['fetch']>, ReturnType<PrinterTransport['fetch']>>(async () => new Response(
@@ -72,9 +72,9 @@ describe('useAuxApi', () => {
     // What appInit is given for a cloud printer: a placeholder, never dialled.
     await pointAt('https://muon-cloud.invalid')
 
-    // muon-link refuses every /server/aux/ request over Iroh (07 §3).
-    await expect(useAuxApi().wifi.wifiCurrentWifiCurrentGet(true)).rejects.toBeInstanceOf(RemoteAuxRefused)
+    // muon-link refuses every /server/aux/ request over Iroh (07 §3): the hotspot has no muon-link route here.
     await expect(useAuxApi().ap.apDownWifiApDownPost()).rejects.toBeInstanceOf(RemoteAuxRefused)
+    await expect(useAuxApi().wifi.getDetailsWifiShowGet('Cafe')).rejects.toBeInstanceOf(RemoteAuxRefused)
     expect(fetch.mock.calls.map(([path]) => path).filter(path => path.startsWith('/server/aux'))).toEqual([])
     expect(adapter).not.toHaveBeenCalled()
 
@@ -82,6 +82,35 @@ describe('useAuxApi', () => {
     await pointAt('http://muon-walnut-8987.local')
     await useAuxApi().ap.apShowCredentialsWifiApShowGet()
     expect(adapter).toHaveBeenCalled()
+  })
+
+  it('sends Wi-Fi over Iroh to muon-link own routes, never to /server/aux (KAN-3601)', async () => {
+    const adapter = networkAdapter()
+    const httpClient = useHttpClient(adapter, 'Bearer cloud')
+    const fetch = vi.fn<Parameters<PrinterTransport['fetch']>, ReturnType<PrinterTransport['fetch']>>(async () => new Response(
+      JSON.stringify({ result: [] }),
+      { status: 200, headers: { 'content-type': 'application/json' } }
+    ))
+    const release = bindHttpClientToPrinterTransport(httpClient, { fetch, openWebSocket: vi.fn(), close: vi.fn() })
+    await pointAt('https://muon-cloud.invalid')
+
+    const wifi = useAuxApi().wifi
+    await wifi.wifiScanWifiScanGet(true)
+    await wifi.wifiSavedWifiSavedGet()
+    await wifi.wifiConnectWifiConnectPost({ ssid: 'Cafe', password: 'pw' })
+    await wifi.wifiForgetWifiForgetDelete('Café & Co')
+    await wifi.wifiDisconnectWifiDisconnectPost()
+
+    expect(fetch.mock.calls.map(([path, init]) => `${init?.method} ${path}`)).toEqual([
+      // The scan takes no query over muon-link: the Aux client's rescan flag is dropped.
+      'GET /muon-link/network/wifi/scan',
+      'GET /muon-link/network/wifi/saved',
+      'POST /muon-link/network/wifi/connect',
+      'DELETE /muon-link/network/wifi/forget?ssid=Caf%C3%A9%20%26%20Co',
+      'POST /muon-link/network/wifi/disconnect'
+    ])
+    expect(adapter).not.toHaveBeenCalled()
+    release()
   })
 
   it('refreshes a sign-in about to expire before copying it, as Fluidd\'s own client does', async () => {

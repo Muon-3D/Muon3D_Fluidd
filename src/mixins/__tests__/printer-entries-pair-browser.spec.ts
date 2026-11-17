@@ -1,7 +1,8 @@
 /**
- * KAN-1374: "Pair this browser" is in a printer's options menu, linked or not,
- * whenever the pairing switch (panelCodePairing) is on, and choosing it runs the
- * Bluetooth picker, then the existing code dialog (startPairing).
+ * KAN-3588 (was KAN-1374): there is one Bluetooth item in a printer's options menu, Connect over
+ * Bluetooth. "Pair this browser" is gone from the menu: when the printer asks for pairing, the code
+ * dialog (startPairing) opens from inside Connect over Bluetooth. KAN-3589: its chooser is the
+ * top-right button's (no filter on the printer).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { activationState, setPanelCodePairing } from '@/services/muon-cloud/activate'
@@ -26,7 +27,6 @@ type Methods = {
   localActions: (e: DirectoryEntry) => CardAction[]
   foundActions: (e: DirectoryEntry) => CardAction[]
   onAction: (this: unknown, e: DirectoryEntry, id: string) => Promise<unknown>
-  pairThisBrowserFrom: unknown
   connectOverBluetooth: unknown
 }
 const methods = (PrinterEntriesMixin as unknown as { options: { methods: Methods } }).options.methods
@@ -45,7 +45,7 @@ const base: DirectoryEntry = {
 }
 const linked = (): DirectoryEntry => ({ ...base, cloud: { id: 'walnut', online: true } as DirectoryEntry['cloud'] })
 const notLinked = (): DirectoryEntry => ({ ...base, key: 'local:walnut', section: 'local', linkedTo: 'none' as DirectoryEntry['linkedTo'], host: '192.168.1.20' })
-const pair = (a: CardAction[]) => a.find(x => x.id === 'pair-browser')
+const pair = (a: CardAction[]) => a.find(x => x.id === 'pair-browser' || /pair/i.test(x.label))
 
 beforeEach(() => {
   nearby.nearbyState.support = 'supported'
@@ -58,43 +58,21 @@ beforeEach(() => {
 })
 afterEach(() => setPanelCodePairing(null))
 
-describe('Pair this browser in the printer menu (KAN-1374)', () => {
-  it('is offered for a cloud-linked printer when the switch is on, with its hint', () => {
-    setPanelCodePairing(true)
-    const a = pair(methods.cloudActions(linked()))
-    expect(a?.label).toBe('Pair this browser')
-    // On this account, so it has an owner.
-    expect(a?.hint).toBe("Open System > Add a device on the printer's screen first.")
-    expect(a?.disabled).toBe(false)
-  })
-
-  it('says where to open the pairing window by who owns the printer: owned, in set-up, or unknown', () => {
-    setPanelCodePairing(true)
-    const heard = (unclaimed: boolean) => ({ device: {}, advert: { unclaimed, busy: false, endpointPrefix: '' } }) as unknown as DirectoryEntry['nearby']
-    const hint = (e: DirectoryEntry) => pair(methods.cloudActions(e))?.hint
-    expect(hint({ ...linked(), nearby: heard(false) })).toBe("Open System > Add a device on the printer's screen first.")
-    expect(hint({ ...linked(), linkedTo: 'unknown' })).toBe("Check the printer's screen. If nothing shows, open System > Add a device.")
-    // Still in first-run set-up: the printer opens its pairing window by itself, so no Add a device hint.
-    expect(hint({ ...linked(), linkedTo: 'unknown', nearby: heard(true) })).toBeUndefined()
-    expect(pair(methods.cloudActions({ ...linked(), linkedTo: 'unknown', nearby: heard(true) }))?.label).toBe('Pair this browser')
-  })
-
-  it('is offered for a printer that is not linked when the switch is on', () => {
-    setPanelCodePairing(true)
-    expect(pair(methods.localActions(notLinked()))).toBeDefined()
-  })
-
-  it('is not offered when the switch is off, linked or not', () => {
-    setPanelCodePairing(false)
-    expect(pair(methods.cloudActions(linked()))).toBeUndefined()
-    expect(pair(methods.localActions(notLinked()))).toBeUndefined()
+describe('one Connect over Bluetooth item in the printer menu (KAN-3588)', () => {
+  it('lists Connect over Bluetooth once and no Pair this browser, whatever the pairing switch says', () => {
+    for (const on of [true, false, null]) {
+      setPanelCodePairing(on)
+      for (const actions of [methods.cloudActions(linked()), methods.localActions(notLinked()), methods.foundActions({ ...linked(), section: 'found', nearby: { device: {} } as unknown as DirectoryEntry['nearby'] })]) {
+        expect(pair(actions)).toBeUndefined()
+      }
+      expect(methods.cloudActions(linked()).filter(a => a.id === 'connect-bluetooth')).toHaveLength(1)
+    }
   })
 
   /** What the host component is: the picker and connect are Connect over Bluetooth's own. */
   const host = (refused: boolean) => ({
     notice: null as string | null,
     connectCloud: vi.fn(async () => { activationState.pairing = refused ? 'walnut' : null }),
-    pairThisBrowserFrom: methods.pairThisBrowserFrom,
     connectOverBluetooth: methods.connectOverBluetooth
   })
 
@@ -104,8 +82,9 @@ describe('Pair this browser in the printer menu (KAN-1374)', () => {
     nearby.lookNearby.mockResolvedValue({ device, endpointId: 'walnut' })
     const c = host(true)
     activationState.approval = { cancel: vi.fn() } as never
-    await methods.onAction.call(c, linked(), 'pair-browser')
-    expect(nearby.lookNearby).toHaveBeenCalledOnce()
+    await methods.onAction.call(c, linked(), 'connect-bluetooth')
+    // The top-right button's chooser: no filter on this printer (KAN-3589).
+    expect(nearby.lookNearby).toHaveBeenCalledWith()
     expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), device, false)
     expect(pairing.startPairing).toHaveBeenCalledWith('walnut')
     expect(pairing.startPairing).toHaveBeenCalledTimes(1)
@@ -116,14 +95,14 @@ describe('Pair this browser in the printer menu (KAN-1374)', () => {
   it('does not open the code dialog when the printer admits the browser, or holds it for Accept or Reject', async () => {
     setPanelCodePairing(true)
     nearby.lookNearby.mockResolvedValue({ device: {}, endpointId: 'walnut' })
-    await methods.onAction.call(host(false), linked(), 'pair-browser')
+    await methods.onAction.call(host(false), linked(), 'connect-bluetooth')
     expect(pairing.startPairing).not.toHaveBeenCalled()
   })
 
   it('skips the picker for a printer already heard', async () => {
     setPanelCodePairing(true)
     const heard = { ...linked(), nearby: { device: { heard: true } } as unknown as DirectoryEntry['nearby'] }
-    await methods.onAction.call(host(true), heard, 'pair-browser')
+    await methods.onAction.call(host(true), heard, 'connect-bluetooth')
     expect(nearby.lookNearby).not.toHaveBeenCalled()
     expect(pairing.startPairing).toHaveBeenCalledWith('walnut')
   })
@@ -132,19 +111,19 @@ describe('Pair this browser in the printer menu (KAN-1374)', () => {
     setPanelCodePairing(true)
     const c = host(true)
     nearby.lookNearby.mockResolvedValue(null)
-    await methods.onAction.call(c, linked(), 'pair-browser')
+    await methods.onAction.call(c, linked(), 'connect-bluetooth')
     nearby.lookNearby.mockResolvedValue({ device: {}, endpointId: 'someone-else' })
-    await methods.onAction.call(c, linked(), 'pair-browser')
+    await methods.onAction.call(c, linked(), 'connect-bluetooth')
     expect(pairing.startPairing).not.toHaveBeenCalled()
     expect(c.connectCloud).not.toHaveBeenCalled()
     expect(c.notice).toContain("isn't Walnut")
   })
 
-  it('does nothing at all when the switch is off', async () => {
+  it('still connects when the old pairing switch is off (pairing is part of connecting)', async () => {
     setPanelCodePairing(false)
-    const c = host(true)
-    await methods.onAction.call(c, linked(), 'pair-browser')
-    expect(nearby.lookNearby).not.toHaveBeenCalled()
-    expect(pairing.startPairing).not.toHaveBeenCalled()
+    nearby.lookNearby.mockResolvedValue({ device: {}, endpointId: 'walnut' })
+    const c = host(false)
+    await methods.onAction.call(c, linked(), 'connect-bluetooth')
+    expect(c.connectCloud).toHaveBeenCalledTimes(1)
   })
 })

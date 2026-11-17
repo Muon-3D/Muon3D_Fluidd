@@ -1,8 +1,8 @@
 /**
  * KAN-2470: Connect over Bluetooth.
  *
- * - On one printer, Chrome's chooser lists only that printer (its filter ANDs the
- *   Muon service with that printer's EndpointId prefix in the manufacturer data).
+ * - On one printer, the menu's Connect over Bluetooth opens the same chooser as the top-right button
+ *   (KAN-3589: a filter on that printer's EndpointId matched nothing in Chrome), and is the only Bluetooth item.
  * - The big Connect over Bluetooth button on All printers lists only Muon printers
  *   (the service filter, nothing else); a dismissed chooser does nothing.
  * - Where there is no Web Bluetooth, one quiet line says Chrome or Edge is needed.
@@ -35,10 +35,10 @@ async function withAccountPrinters (page: Page, printers: Array<ReturnType<typeo
 /**
  * A fake Web Bluetooth. `pick` is the EndpointId of the printer the person
  * chooses, or null for a dismissed chooser. Nothing but `requestDevice` is
- * remembered, and `getDevices` is undefined, as on desktop Chrome 157.
+ * remembered, and `getDevices` is undefined unless `granted`, where it lists the device.
  */
-async function withBluetooth (page: Page, pick: string | null, name = 'walnut-8987') {
-  await page.addInitScript(({ pick, name }) => {
+async function withBluetooth (page: Page, pick: string | null, name = 'walnut-8987', granted = false, advertisesAs: string | null = null) {
+  await page.addInitScript(({ pick, name, granted, advertisesAs }) => {
     const asked: unknown[] = []
     ;(window as any).__bluetoothAsks = asked
     const info = new Uint8Array(38)
@@ -46,16 +46,33 @@ async function withBluetooth (page: Page, pick: string | null, name = 'walnut-89
     info[4] = 182
     if (pick) for (let i = 0; i < 32; i++) info[6 + i] = parseInt(pick.slice(i * 2, i * 2 + 2), 16)
     const characteristic = { readValue: async () => new DataView(info.buffer.slice(0)) }
+    ;(window as any).__bluetoothGetDevices = 0
     const server: any = {
       connected: true,
       connect: async () => server,
       disconnect: () => {},
       getPrimaryService: async () => ({ getCharacteristic: async () => characteristic })
     }
-    const device = Object.assign(new EventTarget(), { id: 'dev-1', name, gatt: server })
+    const device: any = Object.assign(new EventTarget(), { id: 'dev-1', name, gatt: server })
+    // `advertisesAs`: the device's advertisement names another printer's EndpointId, so the page drops the id it read (a stale key).
+    if (advertisesAs) {
+      device.watchAdvertisements = async () => {
+        const bytes = new Uint8Array(10)
+        bytes[0] = 1
+        for (let i = 0; i < 8; i++) bytes[2 + i] = parseInt(advertisesAs.slice(i * 2, i * 2 + 2), 16)
+        const event: any = new Event('advertisementreceived')
+        event.device = device
+        event.name = name
+        event.manufacturerData = new Map([[0xffff, new DataView(bytes.buffer)]])
+        device.dispatchEvent(event)
+      }
+    }
+    // `granted`: this browser was allowed the printer earlier, so getDevices lists it and the page remembers it.
+    if (granted && pick) localStorage.setItem('muon.ble.printers', JSON.stringify({ 'dev-1': { endpointId: pick, localName: name } }))
     Object.defineProperty(navigator, 'bluetooth', {
       configurable: true,
       value: {
+        getDevices: granted ? async () => { (window as any).__bluetoothGetDevices++; return [device] } : undefined,
         requestDevice: (options: unknown) => {
           asked.push(options)
           return pick
@@ -67,7 +84,7 @@ async function withBluetooth (page: Page, pick: string | null, name = 'walnut-89
         removeEventListener: () => {}
       }
     })
-  }, { pick, name })
+  }, { pick, name, granted, advertisesAs })
 }
 
 const asks = (page: Page) => page.evaluate(() => (window as any).__bluetoothAsks as any[])
@@ -75,23 +92,37 @@ const asks = (page: Page) => page.evaluate(() => (window as any).__bluetoothAsks
 test.describe('Connect over Bluetooth on one printer', () => {
   test.use({ signedIn: true })
 
-  test("the chooser is asked for only that printer's advertisement", async ({ page }) => {
+  test("the menu's Connect over Bluetooth asks the chooser exactly what the top-right button does (KAN-3589)", async ({ page }) => {
     await withBluetooth(page, null)
     await withAccountPrinters(page, [cloudPrinter(ELM_ID, 'Elm')])
     await openPrinters(page)
     await page.locator('button[aria-label="Options for Elm"]').click()
+    // One Bluetooth item: Pair this browser is gone, its pairing happens inside Connect over Bluetooth (KAN-3588).
+    await expect(page.getByRole('menuitem', { name: 'Connect over Bluetooth' })).toHaveCount(1)
+    await expect(page.getByRole('menuitem', { name: 'Pair this browser' })).toHaveCount(0)
     await page.getByRole('menuitem', { name: 'Connect over Bluetooth' }).click()
     await expect.poll(async () => (await asks(page)).length).toBe(1)
     const [options] = await asks(page)
-    expect(options.filters).toHaveLength(1)
-    const [filter] = options.filters
-    expect(filter.services).toEqual(['843ce1e6-c64c-4ac1-b06b-5afd8329b7f9'])
-    expect(filter.manufacturerData).toHaveLength(1)
-    const [m] = filter.manufacturerData
-    expect(m.companyIdentifier).toBe(0xffff)
-    // 10 bytes: two flag bytes ignored, then the EndpointId's first 8 bytes.
-    expect(Object.values(m.dataPrefix)).toEqual([0, 0, ...[0x3f, 0xa9, 0xc0, 0xde, 0x3f, 0xa9, 0xc0, 0xde]])
-    expect(Object.values(m.mask)).toEqual([0, 0, ...Array(8).fill(255)])
+    // The filter built from the printer's EndpointId (manufacturer data) listed nothing in Chrome:
+    // "No compatible devices found". The working request is the service filter alone.
+    expect(options.filters).toEqual([{ services: ['843ce1e6-c64c-4ac1-b06b-5afd8329b7f9'] }])
+    expect(options.optionalManufacturerData).toEqual([0xffff])
+    // The top-right button's request is the same one.
+    await page.getByTestId('connect-bluetooth').click()
+    await expect.poll(async () => (await asks(page)).length).toBe(2)
+    expect((await asks(page))[1]).toEqual(options)
+  })
+
+  test('a device this browser was already allowed is reused: no chooser (KAN-3591)', async ({ page }) => {
+    await withBluetooth(page, ELM_ID, 'walnut-8987', true)
+    await withAccountPrinters(page, [cloudPrinter(ELM_ID, 'Elm')])
+    await openPrinters(page)
+    await page.locator('button[aria-label="Options for Elm"]').click()
+    await page.getByRole('menuitem', { name: 'Connect over Bluetooth' }).click()
+    // The granted devices were consulted, one matched this printer, and the chooser never opened.
+    await expect.poll(async () => page.evaluate(() => (window as any).__bluetoothGetDevices)).toBeGreaterThan(0)
+    await page.waitForTimeout(1500)
+    expect(await asks(page)).toHaveLength(0)
   })
 
   test('a different printer picked anyway is refused with its name', async ({ page }) => {
@@ -101,6 +132,17 @@ test.describe('Connect over Bluetooth on one printer', () => {
     await page.locator('button[aria-label="Options for Elm"]').click()
     await page.getByRole('menuitem', { name: 'Connect over Bluetooth' }).click()
     await expect(page.getByText("That device isn't Elm", { exact: false })).toBeVisible()
+  })
+
+  test('a chosen device that names no printer is refused, not connected as the printer that was clicked', async ({ page }) => {
+    // The chooser returns Elm's id, but the device then advertises another printer's: the page keeps no EndpointId for it.
+    await withBluetooth(page, ELM_ID, 'walnut-8987', false, NEW_ID)
+    await withAccountPrinters(page, [cloudPrinter(ELM_ID, 'Elm')])
+    await openPrinters(page)
+    await page.locator('button[aria-label="Options for Elm"]').click()
+    await page.getByRole('menuitem', { name: 'Connect over Bluetooth' }).click()
+    await expect(page.getByText("That device isn't Elm", { exact: false })).toBeVisible()
+    await expect(page).toHaveURL(/\/$/)
   })
 })
 
