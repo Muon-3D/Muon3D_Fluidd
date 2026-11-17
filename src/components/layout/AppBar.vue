@@ -344,7 +344,7 @@ export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin
   }
 
   get showSaveConfigAndRestartForPendingChanges (): boolean {
-    if (!this.showSaveConfigAndRestart || !this.saveConfigPending) {
+    if (!this.showSaveConfigAndRestart || !this.saveConfigPending || this.currentPage === '/control') {
       return false
     }
 

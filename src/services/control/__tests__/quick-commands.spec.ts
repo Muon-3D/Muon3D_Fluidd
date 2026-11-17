@@ -26,12 +26,12 @@ describe('quickCommandLabel', () => {
 
 describe('coveredElsewhere', () => {
   it('leaves out what Quick actions and the Filament tile already do', () => {
-    for (const n of ['G28', 'PREHEAT_PLA', 'COOL_DOWN', 'M600', 'CHANGE_FILAMENT', 'BED_MESH_CALIBRATE', 'M84', 'RESTART', 'LOAD_FILAMENT', 'unload_filament', 'M701']) {
+    for (const n of ['G28', 'PREHEAT_PLA', 'COOL_DOWN', 'M600', 'CHANGE_FILAMENT', 'BED_MESH_CALIBRATE', 'M84', 'RESTART', 'FIRMWARE_RESTART', 'SAVE_CONFIG', 'LOAD_FILAMENT', 'unload_filament', 'M701']) {
       expect(coveredElsewhere(n)).toBe(true)
     }
   })
   it('keeps everything else', () => {
-    for (const n of ['PARK_HEAD', 'PURGE_LINE', 'CLEAN_NOZZLE', 'QUERY_PROBE', 'FIRMWARE_RESTART', 'HOME_Z_SAFE']) {
+    for (const n of ['PARK_HEAD', 'PURGE_LINE', 'CLEAN_NOZZLE', 'QUERY_PROBE', 'HOME_Z_SAFE']) {
       expect(coveredElsewhere(n)).toBe(false)
     }
   })

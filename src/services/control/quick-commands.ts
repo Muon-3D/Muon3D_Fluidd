@@ -1,8 +1,7 @@
 /**
  * Quick commands: Control's macros, as rows like the top bar's Quick actions
  * (layout/QuickActionsMenu.vue): an icon, a plain-words name, the macro name
- * as a muted hint, the reason when it can't run, and restarts in red below a
- * rule.
+ * as a muted hint, and the reason when it can't run.
  *
  * Left out because they already have a place (CONTROL-V4.md): what Quick
  * actions do (home, preheat, cool down, change filament, level the bed,
@@ -18,7 +17,7 @@ const COVERED = [
   /^M600$/, /^(CHANGE_FILAMENT|FILAMENT_CHANGE)$/,
   /^BED_MESH_CALIBRATE$/, /^(LEVEL_BED|BED_LEVEL|AUTO_LEVEL|AUTO_BED_LEVEL)$/,
   /^M84$/, /^M18$/, /^MOTORS_OFF$/, /^DISABLE_MOTORS$/,
-  /^RESTART$/,
+  /^(RESTART|FIRMWARE_RESTART|SAVE_CONFIG)$/,
   /^(LOAD|UNLOAD)_FILAMENT$/, /^M70[12]$/, /^FILAMENT_(LOAD|UNLOAD)$/
 ]
 
@@ -27,9 +26,6 @@ export function coveredElsewhere (name: string): boolean {
   const n = name.toUpperCase()
   return COVERED.some(re => re.test(n))
 }
-
-/** The restarts that sit below the rule, in red. RESTART is Quick actions' "Restart Klipper". */
-export const RESTART_COMMANDS = [{ name: 'FIRMWARE_RESTART', label: 'Restart the firmware' }]
 
 /** First words read as verbs that take "the": PARK_HEAD → "Park the head". */
 const VERB_THE = new Set(['park', 'clean', 'wipe', 'check', 'home', 'center', 'centre', 'raise', 'lower', 'heat', 'cool', 'test', 'calibrate', 'level', 'move', 'reset', 'prime', 'cut', 'measure', 'present'])

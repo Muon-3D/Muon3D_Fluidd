@@ -7,7 +7,7 @@ import { panelStore, panelStubs, waits } from './panel-fixture'
 vi.mock('@/api/socketActions', () => ({ SocketActions: { printerGcodeScript: vi.fn(), printerQueryEndstops: vi.fn() } }))
 vi.mock('@/services/printer-pages', () => ({ activeSlug: () => 'mock' }))
 
-const printerActions = ['motors-off', 'restart-klipper', 'restart-firmware', 'save-config']
+const printerActions = ['motors-off', 'restart-printer']
 
 it.each([false, true])('renders each printer action once across the Control page and header on phone=%s', phone => {
   const store = panelStore()
@@ -27,6 +27,9 @@ it.each([false, true])('renders each printer action once across the Control page
 
   for (const action of printerActions) {
     expect(page.findAll(`[data-tid="${action}"]`).length + header.findAll(`[data-tid="${action}"]`).length).toBe(1)
+  }
+  for (const action of ['restart-klipper', 'restart-firmware', 'save-config']) {
+    expect(page.findAll(`[data-tid="${action}"]`).length + header.findAll(`[data-tid="${action}"]`).length).toBe(0)
   }
 
   page.destroy()
@@ -82,6 +85,18 @@ it('lays the page out as D3 tiles, and Edit layout hides, reorders and saves per
   expect(Object.keys(localStorage).some(k => k.startsWith('muon.overview.layout.v3.'))).toBe(false)
   wrapper.destroy()
   localStorage.clear()
+})
+
+it('does not reintroduce technical restarts or configuration saves through picked Quick commands', () => {
+  const store = panelStore()
+  const settings = store.state.printer.printer.configfile.settings
+  const commands = ['RESTART', 'FIRMWARE_RESTART', 'SAVE_CONFIG', 'CLEAN_NOZZLE']
+  for (const name of commands) settings[`gcode_macro ${name}`] = { gcode: 'M118 hi' }
+  store.state.config.uiSettings.general.quickCommands = commands
+  const wrapper = mount(Control, { mocks: { $store: store, $waits: waits, $route: { params: { printer: 'mock' } } }, computed: { isMobileViewport: () => false }, stubs: { ...panelStubs, MaterialPicker: true } })
+  expect(wrapper.find('[data-tid="qc-CLEAN_NOZZLE"]').exists()).toBe(true)
+  for (const name of commands.slice(0, -1)) expect(wrapper.find(`[data-tid="qc-${name}"]`).exists()).toBe(false)
+  wrapper.destroy()
 })
 
 it('sends nothing from a tile while the layout is being edited', async () => {

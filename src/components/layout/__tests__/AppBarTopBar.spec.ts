@@ -33,7 +33,8 @@ function bar (computed: Record<string, unknown> = {}) {
       ...computed
     },
     mocks: {
-      $store: { state: { config: { uiSettings: { general: {} } } }, getters: {} },
+      $store: { state: { config: { uiSettings: { general: {} } } }, getters: { 'wait/hasWait': () => false } },
+      $waits: { onSaveConfig: 'save-config' },
       $route: { name: 'Overview', path: '/hazel-1234', params: { printer: 'hazel-1234' } },
       $globals: { HEADER_HEIGHT: 64, HEADER_HEIGHT_PHONE: 56 },
       $tc: (key: string) => key,
@@ -45,6 +46,21 @@ function bar (computed: Record<string, unknown> = {}) {
 }
 
 describe('the top bar', () => {
+  it('keeps pending Save config and restart off Control, but available on System', () => {
+    const pending = {
+      showSaveConfigAndRestart: () => true,
+      saveConfigPending: () => true,
+      saveConfigPendingItems: () => ({ extruder: { pressure_advance: '0.04' } }),
+      sectionsToIgnorePendingConfigurationChanges: () => []
+    }
+    const control = bar({ ...pending, currentPage: () => '/control' })
+    expect(control.find('appsaveconfigandrestartbtn-stub').exists()).toBe(false)
+    control.destroy()
+    const system = bar({ ...pending, currentPage: () => '/system' })
+    expect(system.find('appsaveconfigandrestartbtn-stub').exists()).toBe(true)
+    system.destroy()
+  })
+
   it('has no separate keyboard shortcuts button: the account menu holds them', () => {
     const w = bar()
     expect(w.find('[data-tid="keys"]').exists()).toBe(false)

@@ -34,28 +34,11 @@
           type="button"
           class="cbtn"
           :disabled="!!restartRefusal"
-          data-tid="restart-klipper"
-          @click="sendTypedGcode('RESTART')"
+          :title="restartRefusal || undefined"
+          data-tid="restart-printer"
+          @click="sendTypedGcode('FIRMWARE_RESTART', 'printer')"
         >
-          Restart Klipper
-        </button>
-        <button
-          type="button"
-          class="cbtn"
-          :disabled="!!restartRefusal"
-          data-tid="restart-firmware"
-          @click="sendTypedGcode('FIRMWARE_RESTART')"
-        >
-          Firmware restart
-        </button>
-        <button
-          type="button"
-          class="cbtn"
-          :disabled="!!restartRefusal || !savePending"
-          data-tid="save-config"
-          @click="saveConfig"
-        >
-          Save config and restart{{ savePending ? '' : ' · nothing to save' }}
+          Restart printer
         </button>
       </div>
     </component>
@@ -73,13 +56,10 @@
 import { Component, Mixins, Prop } from 'vue-property-decorator'
 import ControlMixin from '@/mixins/control'
 
-/** Cool down up front on a phone, and the restarts; homing and Motors off are in the Move tile. */
+/** Cool down up front on a phone, and one restart; technical restarts stay in System. */
 @Component({})
 export default class ControlActions extends Mixins(ControlMixin) {
   @Prop({ type: Boolean }) readonly phone?: boolean
-
-  get savePending (): boolean { return this.$store.state.printer.printer.configfile?.save_config_pending === true }
-  saveConfig () { if (this.savePending) return this.sendTypedGcode('SAVE_CONFIG') }
 }
 </script>
 
@@ -106,7 +86,8 @@ export default class ControlActions extends Mixins(ControlMixin) {
     z-index: 10;
     right: 0;
     top: 100%;
-    width: min(290px, 85vw);
+    width: max-content;
+    max-width: 85vw;
     padding: 10px;
     border: 1px solid var(--m3d-border);
     border-radius: 12px;

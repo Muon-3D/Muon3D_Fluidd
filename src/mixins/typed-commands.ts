@@ -36,19 +36,19 @@ export default class TypedCommandsMixin extends Mixins(StateMixin) {
     return ''
   }
 
-  async confirmCommandRestart (kind: 'restart' | 'save' = 'restart'): Promise<boolean> {
+  async confirmCommandRestart (kind: 'restart' | 'save' | 'printer' = 'restart'): Promise<boolean> {
     this.commandRefusal = this.restartRefusal
     if (this.commandRefusal) return false
     const target = this.commandTarget
-    const ok = await this.$confirm(kind === 'save' ? 'Saving keeps the new results in printer.cfg. Klipper restarts to use them. The printer must be idle.' : 'Klipper reloads its settings. The printer must be idle before it can restart.', {
-      title: kind === 'save' ? 'Save the results?' : 'Restart Klipper?', buttonTrueText: kind === 'save' ? 'Save and restart Klipper' : 'Restart', buttonFalseText: 'Keep running', danger: true
+    const ok = await this.$confirm(kind === 'save' ? 'Saving keeps the new results in printer.cfg. Klipper restarts to use them. The printer must be idle.' : kind === 'printer' ? "This restarts the printer's firmware and reloads its settings. The printer must be idle." : 'Klipper reloads its settings. The printer must be idle before it can restart.', {
+      title: kind === 'save' ? 'Save the results?' : kind === 'printer' ? 'Restart printer?' : 'Restart Klipper?', buttonTrueText: kind === 'save' ? 'Save and restart Klipper' : kind === 'printer' ? 'Restart printer' : 'Restart', buttonFalseText: 'Keep running', danger: true
     })
     if (!ok) return false
     this.commandRefusal = target !== this.commandTarget ? 'Not sent. The selected printer or account changed. Try again.' : this.restartRefusal
     return !this.commandRefusal
   }
 
-  async sendTypedGcode (gcode: string): Promise<boolean> {
+  async sendTypedGcode (gcode: string, restartKind: 'restart' | 'printer' = 'restart'): Promise<boolean> {
     this.commandRefusal = ''
     if (!gcode.trim()) return false
     if (!this.commandControlAvailable) {
@@ -66,7 +66,7 @@ export default class TypedCommandsMixin extends Mixins(StateMixin) {
       this.commandRefusal = 'Not sent. Klipper is not connected.'
       return false
     }
-    if (batch.restarts && !await this.confirmCommandRestart()) return false
+    if (batch.restarts && !await this.confirmCommandRestart(restartKind)) return false
     if (batch.savesConfig && (!this.klippyConnected || !this.klippyReady)) {
       this.commandRefusal = 'Not sent. Klipper must be running to save settings.'
       return false
