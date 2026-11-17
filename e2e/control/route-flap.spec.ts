@@ -69,6 +69,17 @@ async function lan (page: Page, on: boolean) {
   }, [MOCK_PORT, ROUTE_PRINTER.id, ROUTE_PRINTER.name, on] as const)
 }
 
+/**
+ * The relay failing is what makes Auto distrust it for 30 s. The real-time waits before the flaps (a slow runner takes
+ * many seconds to reach Bluetooth) must not use that window up, so the failure is noted again where the test relies on it.
+ */
+async function relayFailedJustNow (page: Page) {
+  await page.evaluate(async id => {
+    const m = await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'route-choice.ts'].join('/'))
+    m.noteRelayLost(id)
+  }, ROUTE_PRINTER.id)
+}
+
 async function recordLabels (page: Page) {
   await page.evaluate(async id => {
     const { cloudState } = await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'state.ts'].join('/'))
@@ -192,6 +203,7 @@ test('Auto ignores ten short LAN blips and distrusted relay returns, then upgrad
   await expect.poll(() => where(page), { timeout: 45_000 }).toMatchObject({ mode: 'auto', socketOpen: true, carrying: true })
   await expect(tile(page)).toContainText('Via Bluetooth')
   await recordLabels(page)
+  await relayFailedJustNow(page)
   await flap(page, account)
   const duringHold = await labels(page)
   expect(duringHold.length).toBeGreaterThan(0)
@@ -201,6 +213,8 @@ test('Auto ignores ten short LAN blips and distrusted relay returns, then upgrad
     const m = await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'route-choice.ts'].join('/'))
     return Date.now() - m.relayLostAt(id)
   }, ROUTE_PRINTER.id)).toBeLessThan(30_000)
+  // The relay is still down at the end of the flaps (the account says offline): keep it distrusted for the LAN's three settled seconds.
+  await relayFailedJustNow(page)
   await lan(page, true)
   await page.clock.resume()
   await expect.poll(() => where(page), { timeout: 45_000 }).toMatchObject({ activeCloud: null, socketOpen: true, mode: 'auto', apiUrl: `http://localhost:${MOCK_PORT}` })
