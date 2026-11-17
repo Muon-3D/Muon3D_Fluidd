@@ -89,8 +89,29 @@
             v-html="status.html"
           />
           <span v-else-if="status.detail">{{ status.detail }}</span>
+          <span
+            v-if="canRetry"
+            class="aid__retry-row"
+          >
+            <button
+              type="button"
+              class="cbtn cbtn--ghost"
+              data-tid="add-printer-retry"
+              @click="retry"
+            >
+              Try again
+            </button>
+          </span>
         </div>
       </div>
+
+      <p
+        v-if="addHint"
+        class="m3-dlg__note aid__why"
+        data-tid="add-printer-why"
+      >
+        {{ addHint }}
+      </p>
 
       <section
         v-if="found.length || searching"
@@ -153,6 +174,17 @@
         target="_blank"
         rel="noopener"
       >Open the manufacturer's setup guide</a>
+      <p class="m3-dlg__note">
+        The bridge is a Muon3D M1 that is already set up. No M1 yet? Add one first, then come back to this brand.
+      </p>
+      <button
+        type="button"
+        class="cbtn cbtn--primary"
+        data-tid="add-printer-bridge-m1"
+        @click="selectBrand('m1')"
+      >
+        Add your M1 first
+      </button>
     </section>
 
     <section
@@ -253,9 +285,17 @@
         v-if="probeMessage"
         class="m3-dlg__note"
         role="status"
+        data-tid="add-printer-probe"
       >
         {{ probeMessage }}
       </p>
+      <details
+        v-if="probeDetail"
+        class="m3-dlg__note aid__details"
+      >
+        <summary>Details</summary>
+        <code>{{ probeDetail }}</code>
+      </details>
       <div
         v-if="selectedKind === 'moonraker'"
         class="aid__setup"
@@ -287,6 +327,13 @@ cors_domains:
       >
         {{ probing ? 'Checking…' : 'Check printer' }}
       </button>
+      <p
+        v-if="!foreignVerified"
+        class="m3-dlg__note aid__why"
+        data-tid="add-printer-foreign-why"
+      >
+        {{ foreignHost.trim() ? 'Add printer turns on once Check printer finds it.' : 'Type the address above, then press Check printer.' }}
+      </p>
     </section>
 
     <template #actions>
@@ -361,6 +408,15 @@ export interface FoundChoice {
  */
 export type AddOutcome = 'idle' | 'checking' | 'invalid' | 'muon' | 'locked' | 'klipper' | 'cors' | 'blocked' | 'unreachable' | 'not-printer'
 
+/** What a failed check of a printer's address means, in a sentence. The raw text stays behind Details. */
+export function plainProbeError (raw: string): string {
+  if (/timed out/i.test(raw)) return 'The printer did not answer in time. Check it is switched on and on this network, then try again.'
+  const status = /HTTP (\d{3})/.exec(raw)?.[1]
+  if (status === '401' || status === '403') return 'The printer wants a key. Enter its API key above, then check again.'
+  if (status) return 'Something answered, but not as this kind of printer does. Check the address and the brand, then try again.'
+  return 'Could not reach the printer. Check the address matches the one on its screen, then try again.'
+}
+
 /**
  * Add a printer: its name or IP address, checked before it's added, or one
  * found on this network in one tap. A Muon printer answers by IP address,
@@ -403,6 +459,8 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
   probing = false
   foreignVerified = false
   probeMessage = ''
+  /** What the browser or printer said, for a small Details line. */
+  probeDetail = ''
   appKeyMessage = ''
 
   abortController?: AbortController = undefined
@@ -431,6 +489,7 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
   invalidateForeignProbe () {
     this.foreignVerified = false
     this.probeMessage = ''
+    this.probeDetail = ''
   }
 
   selectBrand (kind: ForeignKind | 'm1') {
@@ -453,6 +512,7 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
     this.probing = true
     this.foreignVerified = false
     this.probeMessage = ''
+    this.probeDetail = ''
     const address = this.foreignHost.trim()
     const kind = this.selectedKind
     const key = this.apiKey
@@ -498,7 +558,11 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
       this.foreignVerified = true
       this.probeMessage = 'Printer found.'
     } catch (error) {
-      if (current()) this.probeMessage = error instanceof Error ? error.message : 'Could not reach the printer.'
+      if (current()) {
+        const raw = error instanceof Error ? error.message : String(error)
+        this.probeMessage = plainProbeError(raw)
+        this.probeDetail = raw
+      }
     } finally {
       this.probing = false
     }
@@ -619,6 +683,27 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
     }
   }
 
+  /** The check can be asked again where asking again could change the answer. */
+  get canRetry (): boolean {
+    return this.outcome === 'unreachable' || this.outcome === 'not-printer' || this.outcome === 'cors'
+  }
+
+  /** Why Add is off, and what to do instead, while it is. */
+  get addHint (): string {
+    if (this.verified) {
+      return this.outcome === 'locked'
+        ? 'Not your printer? Add it and sign in on its page, or ask its owner to share it with you. You can also open its page without adding it.'
+        : ''
+    }
+    switch (this.outcome) {
+      case 'idle': return 'Add turns on once a printer answers at the address. Type its name or address above.'
+      case 'checking': return 'Add turns on when the check finishes.'
+      case 'invalid': return "Add is off because that isn't an address. Fix it above."
+      case 'blocked': return "Add is off because this browser stopped the check. Open the printer's own page instead, using the link above."
+      default: return "Add is off because no printer was found there. Try again, check the address, or ask the printer's owner for it."
+    }
+  }
+
   get addLabel (): string {
     if (this.outcome === 'klipper') return 'Set up as Klipper'
     if ((this.outcome === 'muon' || this.outcome === 'locked') && this.resolved) return `Add ${this.resolved.name}`
@@ -641,7 +726,17 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
   }
 
   @Debounce(750)
-  async handleUrlChange (value: string) {
+  handleUrlChange (value: string) {
+    return this.runCheck(value)
+  }
+
+  /** Asks the same check again, now: the answer may have changed (the printer was switched on, the network came back). */
+  retry () {
+    this.abortController?.abort()
+    return this.runCheck(this.url)
+  }
+
+  async runCheck (value: string) {
     if (value !== this.url || !value.trim()) return
     this.valid = this.validUrl(value)
     if (!this.valid) {
@@ -816,6 +911,10 @@ export default class AddInstanceDialog extends Mixins(StateMixin) {
 </script>
 
 <style lang="scss" scoped>
+  .aid__retry-row { display: block; margin-top: 6px; }
+  .aid__why { margin-top: 10px; }
+  .aid__details { margin-top: 6px; code { display: block; overflow-wrap: anywhere; } }
+
   .aid__brands {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

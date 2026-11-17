@@ -28,21 +28,40 @@
 
       <div class="sheet__ways">
         <div
-          v-if="bluetoothSearch && !bluetoothOff"
           class="sway"
+          data-tid="bluetooth-row"
         >
           <span class="sway__icon"><frame-icon name="bluetooth" /></span>
           <div class="sway__text">
             <span class="sway__title">Over Bluetooth</span>
-            <span class="sway__about">A new printer, or one that is close. Turn it on and keep it near.</span>
+            <span
+              v-if="bluetoothSearch && !bluetoothOff"
+              class="sway__about"
+            >A new printer, or one that is close. Turn it on and keep it near.</span>
+            <span
+              v-else-if="bluetoothSearch"
+              class="sway__about"
+              data-tid="bluetooth-off"
+            >Bluetooth looks off on this device. Turn it on, then search.</span>
+            <span
+              v-else-if="bluetoothInsecure"
+              class="sway__about"
+              data-tid="bluetooth-unavailable"
+            >Bluetooth search needs a secure page (https), and this page is on plain http. Use the network search or the printer's address instead.</span>
+            <span
+              v-else
+              class="sway__about"
+              data-tid="bluetooth-unavailable"
+            >This browser can't search over Bluetooth. Chrome or Edge can. Use the network search or the printer's address instead.</span>
           </div>
           <button
+            v-if="bluetoothSearch"
             type="button"
             class="sbtn sbtn--primary"
             data-tid="look-nearby"
             @click="$emit('look-nearby')"
           >
-            Look nearby
+            {{ bluetoothOff ? 'Turn on Bluetooth search' : 'Look nearby' }}
           </button>
         </div>
 
@@ -63,7 +82,7 @@
             data-tid="search-again"
             @click="$emit('rescan')"
           >
-            Search again
+            Search this network
           </button>
         </div>
 
@@ -104,6 +123,10 @@ export default class AddPrinterSheet extends Vue {
 
   @Prop({ type: Boolean })
   readonly bluetoothOff?: boolean
+
+  /** The page is not a secure context, so Web Bluetooth is unavailable here. */
+  @Prop({ type: Boolean })
+  readonly bluetoothInsecure?: boolean
 
   @Prop({ type: Boolean })
   readonly searching?: boolean
