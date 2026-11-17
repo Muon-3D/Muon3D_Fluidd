@@ -138,7 +138,9 @@
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import JobsMixin, { type JobFile } from '@/mixins/jobs'
 import { EventBus } from '@/eventBus'
-import { jobTitle, readyChecks, type ReadyCheck } from '@/services/jobs/model'
+import { isGcodeFile, jobTitle, parentFolder, readyChecks, type ReadyCheck } from '@/services/jobs/model'
+import { SocketActions } from '@/api/socketActions'
+import type { AppFileWithMeta, FileBrowserEntry } from '@/store/files/types'
 import { slicerPresence } from '@/services/slicer-bridge/slicerUrl'
 import { holdModels, isSlicerModel } from '@/services/slicer-bridge/handover'
 
@@ -215,7 +217,19 @@ export default class JobReadyDialog extends Mixins(JobsMixin) {
 
   /** The file, once the printer lists it with what the slicer wrote. */
   get job (): JobFile | null {
-    return this.jobFiles.find(j => j.path === this.filename) ?? null
+    const entries = this.$store.getters['files/getDirectory'](this.jobDirectory) as FileBrowserEntry[] | undefined
+    const name = this.filename.slice(this.filename.lastIndexOf('/') + 1)
+    const file = entries?.find((entry): entry is AppFileWithMeta => entry.type === 'file' && entry.filename === name && isGcodeFile(entry.filename))
+    return file ? this.toJobFile(file) : null
+  }
+
+  get jobDirectory (): string {
+    const folder = parentFolder(this.filename)
+    return folder ? `${this.root}/${folder}` : this.root
+  }
+
+  loadFiles () {
+    SocketActions.serverFilesGetDirectory(this.root, this.jobDirectory)
   }
 
   @Watch('job')
