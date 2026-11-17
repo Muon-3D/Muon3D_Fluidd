@@ -19,7 +19,10 @@ type Options = Parameters<typeof vueMount>[1]
 const mount = (c: typeof BluetoothFallbackBanner, options: Options = {}) =>
   vueMount(c, { ...options, mocks: { $store: store, $filters: { prettyCase: (s: string) => s } } })
 
+const ON_ACCOUNT = { id: EID, name: 'Walnut', model: 'M1', version: '1.0.0', linked_at: 1, last_seen: 1, online: true, online_since: 1, role: 'operator' } as unknown as (typeof cloudState.printers)[number]
+
 afterEach(() => {
+  cloudState.printers.splice(0)
   stopUsingBluetoothFor(EID)
   cloudState.activePrinterId = null
 })
@@ -53,7 +56,17 @@ describe('the Bluetooth fallback banner (KAN-1396)', () => {
     expect(text).not.toContain('using Muon3D instead')
   })
 
+  it('offers no cloud for a printer that is not on the account, and keeps Try Bluetooth again (KAN-3592)', () => {
+    cloudState.activePrinterId = EID
+    useBluetoothFor(EID, fakePrinter().device)
+    noteBluetoothDropped(EID, 'The Bluetooth link dropped.')
+    const w = mount(BluetoothFallbackBanner)
+    expect(w.find('[data-tid="bluetooth-dropped-cloud"]').exists()).toBe(false)
+    expect(w.find('[data-tid="bluetooth-dropped-ble"]').text()).toBe('Try Bluetooth again')
+  })
+
   it('offers the cloud and another try, and the local network only when it is reachable (KAN-2080)', () => {
+    cloudState.printers.push(ON_ACCOUNT)
     cloudState.activePrinterId = EID
     useBluetoothFor(EID, fakePrinter().device)
     noteBluetoothDropped(EID, 'Nothing came over Bluetooth for 15 seconds.')

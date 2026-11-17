@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, rememberedName, startNearby, stopNearby } from '../nearby'
+import { clearNearby, isPrinter, lookNearby, nearbyState, permittedPrinterFor, rememberedName, startNearby, stopNearby } from '../nearby'
 import { heardRecently } from '../heard'
 import { chooserOptions } from '../webBluetooth'
 import { advert, EID, fakeBluetooth, fakePrinter, OTHER_EID, removeBluetooth } from './fakes'
@@ -137,7 +137,11 @@ describe('Look nearby for one printer (KAN-2470)', () => {
     // Chrome 157 on desktop: getDevices is undefined.
     const none = fakeBluetooth({})
     expect(none.bt.getDevices).toBeUndefined()
+    clearNearby()
     expect(await permittedPrinterFor(EID)).toBeNull()
+    // Chosen on this page: reused even without getDevices (KAN-3591).
+    await lookNearby()
+    expect((await permittedPrinterFor(EID))?.deviceId).toBe('dev-walnut')
   })
 
   it('a remembered device that was never heard is not heard recently (KAN-2528)', async () => {
