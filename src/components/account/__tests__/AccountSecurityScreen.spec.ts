@@ -63,6 +63,8 @@ const settle = () => new Promise(resolve => setTimeout(resolve))
 describe('account sign-in security', () => {
   afterEach(() => {
     vi.clearAllMocks()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('does not remove a passkey when its destructive confirmation is cancelled', async () => {
@@ -107,6 +109,61 @@ describe('account sign-in security', () => {
     expect((wrapper.vm as any).dialog).toBe('')
     expect(wrapper.text()).toContain('Coming soon')
     expect(wrapper.find('[data-tid="recovery-codes"]').exists()).toBe(false)
+    wrapper.destroy()
+  })
+
+  it('saves the recovery codes locally and releases the download URL', async () => {
+    const { wrapper } = open()
+    const create = vi.fn((blob: Blob) => {
+      expect(blob).toBeInstanceOf(Blob)
+      return 'blob:recovery-codes'
+    })
+    const revoke = vi.fn()
+    vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: revoke })
+    const downloads: HTMLAnchorElement[] = []
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) { downloads.push(this) })
+    await wrapper.setData({ dialog: 'twoStep', codes: ['fixture-one', 'fixture-two'] })
+    await wrapper.find('[data-tid="recovery-codes-save"]').trigger('click')
+    expect(click).toHaveBeenCalledOnce()
+    expect(downloads[0].download).toBe('muon3d-recovery-codes.txt')
+    expect(downloads[0].href).toBe('blob:recovery-codes')
+    const blob = create.mock.calls[0][0]
+    const saved = await new Promise(resolve => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.readAsText(blob)
+    })
+    expect(blob.type).toBe('text/plain')
+    expect(saved).toBe('Muon3D recovery codes\nEach works once.\n\nfixture-one\nfixture-two\n')
+    await settle()
+    expect(revoke).toHaveBeenCalledWith('blob:recovery-codes')
+    wrapper.destroy()
+  })
+
+  it('does not download an empty recovery-code file', () => {
+    const { wrapper } = open()
+    const create = vi.fn()
+    vi.stubGlobal('URL', { createObjectURL: create, revokeObjectURL: vi.fn() })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    ;(wrapper.vm as any).saveCodes()
+    expect(create).not.toHaveBeenCalled()
+    expect(click).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-tid="recovery-codes-save"]').exists()).toBe(false)
+    wrapper.destroy()
+  })
+
+  it('keeps recovery codes available to copy when saving fails', async () => {
+    const { wrapper } = open()
+    const revoke = vi.fn()
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:recovery-codes', revokeObjectURL: revoke })
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => { throw new Error('Download refused') })
+    await wrapper.setData({ dialog: 'twoStep', codes: ['fixture-one'] })
+    await wrapper.find('[data-tid="recovery-codes-save"]').trigger('click')
+    expect(wrapper.find('.m3-dlg__error').text()).toBe("The codes couldn't be saved. Copy them instead.")
+    expect(wrapper.find('[data-tid="recovery-codes"]').text()).toContain('fixture-one')
+    expect(wrapper.find('[data-tid="recovery-codes-copy"]').exists()).toBe(true)
+    await settle()
+    expect(revoke).toHaveBeenCalledWith('blob:recovery-codes')
     wrapper.destroy()
   })
 })
