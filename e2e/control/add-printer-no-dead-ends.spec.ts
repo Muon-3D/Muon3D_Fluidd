@@ -177,11 +177,13 @@ test('a Bluetooth search that fails is a plain sentence with Try again, and the 
   await page.getByTestId('connect-bluetooth').click()
   const error = page.getByTestId('nearby-error')
   await expect(error).toContainText("Couldn't reach the printer over Bluetooth")
-  await expect(error).not.toContainText('GATT Server')
+  // The raw reason is folded away until Details is opened.
+  await expect(error.locator('code')).toBeHidden()
   await expect.poll(() => asks(page)).toBe(1)
   await page.getByTestId('nearby-retry').click()
   await expect.poll(() => asks(page)).toBe(2)
   await error.getByText('Details', { exact: true }).click()
+  await expect(error.locator('code')).toBeVisible()
   await expect(error).toContainText('GATT Server is disconnected')
 })
 
