@@ -7,6 +7,34 @@
  */
 
 export type ReadableStreamType = "bytes";
+/** Route API added in #144. Omitted route defaults to Auto, except legacy pins. */
+export type Route = 'auto' | 'bluetooth' | 'lan' | 'cloud';
+export type PathKind = Exclude<Route, 'auto'>;
+export type RouteEvent =
+| { type: 'using'; path: PathKind }
+| { type: 'route-unavailable'; route: Route; reason: string }
+| { type: 'route-back'; route: Route };
+
+export interface RoutedSession {
+    setRoute(route: Route): Promise<void>;
+    currentPath(): PathKind | undefined;
+    nextRouteEvent(): Promise<RouteEvent>;
+}
+
+export interface RoutedEndpoint {
+    connect(printerId: string, route?: Route): Promise<RoutedSession>;
+    connectAs(
+    printerId: string, name: string, requestedRole?: string,
+    onPending?: (pending: { code: string; expiresIn: number }) => void,
+    onClosed?: (reason?: string) => void,
+    onMismatch?: () => void,
+    route?: Route,
+    ): Promise<RoutedSession>;
+    /** @deprecated Use connect(printerId, route) / session.setRoute(route). */
+    pinBluetooth(printerId: string, pinned: boolean): void;
+}
+
+
 
 /**
  * One Web Bluetooth connection, joined to the page's endpoint.
@@ -137,7 +165,7 @@ export class MuonEndpoint {
      * Resolves once the handshake completes, which is not an admission. An
      * unpaired key finds out on its first request.
      */
-    connect(printer_id: string): Promise<any>;
+    connect(printer_id: string, route?: string | null): Promise<any>;
     /**
      * `connect` for a device that may be new to the printer (I-170). Tells the
      * printer who is asking and reports what happens while it is held for a
@@ -156,7 +184,7 @@ export class MuonEndpoint {
      * as suspect. `code` in `onPending` is always the locally derived one. All
      * three callbacks are optional.
      */
-    connectAs(printer_id: string, name: string, requestedRole?: string | null, onPending?: Function | null, onClosed?: Function | null, onMismatch?: Function | null): Promise<any>;
+    connectAs(printer_id: string, name: string, requestedRole?: string | null, onPending?: Function | null, onClosed?: Function | null, onMismatch?: Function | null, route?: string | null): Promise<any>;
     /**
      * Binds an endpoint that uses `relay_url` and nothing else.
      *
@@ -169,6 +197,7 @@ export class MuonEndpoint {
      */
     endpointId(): string;
     /**
+     * @deprecated Use connect's route parameter and session.setRoute instead.
      * Keeps the connection to `printer_id` on Bluetooth while a Bluetooth
      * link to it is up (`pinned`), or lets it move to the relay as soon as
      * that is found (the default, ADR 0032 D3). For a person who chose
@@ -254,6 +283,10 @@ export class PrinterSession {
      */
     comparison(): string;
     /**
+     * The live transport, or undefined while unavailable/closed.
+     */
+    currentPath(): string | undefined;
+    /**
      * One HTTP request on its own stream.
      *
      * `headers` is a flat list, `[name, value, name, value, ...]`. Resolves
@@ -261,6 +294,11 @@ export class PrinterSession {
      * `body` a `Uint8Array`. A policy `403` resolves; it is not a rejection.
      */
     fetch(method: string, path: string, headers: string[], body: Uint8Array): Promise<any>;
+    /**
+     * Fetch with body-byte progress: callback(sent, total), every 32 KiB.
+     * Counts QUIC writes, not publication; await the response for success.
+     */
+    fetchWithProgress(method: string, path: string, headers: string[], body: Uint8Array, progress?: Function | null): Promise<any>;
     /**
      * The next notice from the printer. For a connection the printer is
      * holding for approval, resolves to
@@ -273,6 +311,11 @@ export class PrinterSession {
      */
     nextNotice(): Promise<any>;
     /**
+     * Next {type: 'using', path}, {type: 'route-unavailable', route, reason},
+     * or {type: 'route-back', route}. Consume continuously; lag rejects.
+     */
+    nextRouteEvent(): Promise<any>;
+    /**
      * Upgrades `path` to a WebSocket.
      */
     openWebSocket(path: string): Promise<any>;
@@ -280,6 +323,10 @@ export class PrinterSession {
      * The printer's EndpointId, as the handshake proved it.
      */
     printerId(): string;
+    /**
+     * Reapply a route, closing old streams and redialling before resuming.
+     */
+    setRoute(route: string): Promise<any>;
 }
 
 /**
@@ -364,8 +411,8 @@ export interface InitOutput {
     readonly muonendpoint_addLink: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly muonendpoint_beginPairing: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly muonendpoint_close: (a: number) => number;
-    readonly muonendpoint_connect: (a: number, b: number, c: number) => number;
-    readonly muonendpoint_connectAs: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
+    readonly muonendpoint_connect: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly muonendpoint_connectAs: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => number;
     readonly muonendpoint_create: (a: number, b: number, c: number, d: number) => number;
     readonly muonendpoint_endpointId: (a: number, b: number) => void;
     readonly muonendpoint_pinBluetooth: (a: number, b: number, c: number, d: number, e: number) => void;
@@ -376,10 +423,14 @@ export interface InitOutput {
     readonly printersession_close: (a: number) => void;
     readonly printersession_closed: (a: number) => number;
     readonly printersession_comparison: (a: number, b: number) => void;
+    readonly printersession_currentPath: (a: number, b: number) => void;
     readonly printersession_fetch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => number;
+    readonly printersession_fetchWithProgress: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
     readonly printersession_nextNotice: (a: number) => number;
+    readonly printersession_nextRouteEvent: (a: number) => number;
     readonly printersession_openWebSocket: (a: number, b: number, c: number) => number;
     readonly printersession_printerId: (a: number, b: number) => void;
+    readonly printersession_setRoute: (a: number, b: number, c: number) => number;
     readonly signEndpointProof: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly socket_close: (a: number) => number;
     readonly socket_next: (a: number) => number;
@@ -399,15 +450,15 @@ export interface InitOutput {
     readonly intounderlyingsource_cancel: (a: number) => void;
     readonly intounderlyingsource_pull: (a: number, b: number) => number;
     readonly ring_core_0_17_14__bn_mul_mont: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly __wasm_bindgen_func_elem_9851: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_9853: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4159: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2435: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4956: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4027: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4380: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4412: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_9749: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_10038: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_10040: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4340: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_2597: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_5139: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4208: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4563: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4595: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9936: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

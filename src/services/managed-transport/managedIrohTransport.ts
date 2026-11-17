@@ -9,7 +9,8 @@ import type {
   ManagedTransportStatus,
   ManagedTransportUsage,
   PrinterSocket,
-  PrinterTransport
+  PrinterTransport,
+  UploadProgress
 } from './types'
 
 /** The longest wait between two dials of the same printer. */
@@ -65,20 +66,21 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
     return { ...this.currentStatus }
   }
 
-  fetch (path: string, init?: RequestInit): Promise<Response> {
-    return this.fetchWithUsage(path, init, 'Http')
+  fetch (path: string, init?: RequestInit, progress?: UploadProgress): Promise<Response> {
+    return this.fetchWithUsage(path, init, 'Http', progress)
   }
 
   async fetchWithUsage (
     path: string,
     init: RequestInit | undefined,
-    usage: ManagedTransportRequestUsage
+    usage: ManagedTransportRequestUsage,
+    progress?: UploadProgress
   ): Promise<Response> {
     this.assertOpen()
     this.updateStatus('connecting', usage)
     const relay = this.relay()
     try {
-      const response = await (await relay).fetch(path, init)
+      const response = await (await relay).fetch(path, init, progress)
       this.assertOpen()
       this.updateStatus('connected', 'IdleStatus')
       return response

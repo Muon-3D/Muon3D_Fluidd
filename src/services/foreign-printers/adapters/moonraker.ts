@@ -1,6 +1,7 @@
 import type { AdapterDeps, ForeignCapabilities, ForeignCredentials, ForeignFile, ForeignPrinterRecord } from '../types'
 import { clampProgress, fetchJson, httpUrl, SocketAdapter, temp } from './base'
 import { localCameraUrl } from '../address'
+import { uploadChecksum } from '@/utils/uploadChecksum'
 
 export const MOONRAKER_CAPABILITIES: ForeignCapabilities = {
   pauseResume: true,
@@ -145,6 +146,7 @@ export default class MoonrakerAdapter extends SocketAdapter {
 
   async upload (file: File | Blob, name: string, print: boolean): Promise<void> {
     const form = new FormData()
+    form.append('checksum', await uploadChecksum(file))
     form.append('file', file, name)
     form.append('root', 'gcodes')
     if (print) form.append('print', 'true')

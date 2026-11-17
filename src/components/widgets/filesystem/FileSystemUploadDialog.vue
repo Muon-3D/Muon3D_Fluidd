@@ -32,7 +32,7 @@
             <div v-if="!file.complete && file.percent === 100">
               {{ $t('app.file_system.msg.processing') }}
             </div>
-            <table v-if="file.percent > 0 && file.percent !== 100">
+            <table data-tid="files-upload-progress">
               <tr>
                 <td class="pr-2">
                   {{ $t('app.file_system.label.uploaded') }}:
