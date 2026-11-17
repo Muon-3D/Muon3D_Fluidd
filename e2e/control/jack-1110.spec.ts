@@ -299,8 +299,8 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
   })
 })
 
-/* KAN-2029: Jack's own default Overview, and that a person can build it again by hand. */
-const JACK_ORDER = ['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros']
+/* KAN-2029 / KAN-2234: the default Overview, and building it again by hand. */
+const DEFAULT_ORDER = ['stage', 'job', 'rates', 'hotend', 'bed', 'position', 'filament', 'mode', 'graph', 'trackpad', 'jog', 'macros']
 
 async function boxOf (page: Page, id: string) {
   const b = await page.locator(`[data-cell="${id}"]`).boundingBox()
@@ -309,23 +309,27 @@ async function boxOf (page: Page, id: string) {
 }
 const idsOf = (page: Page) => page.locator('[data-cell]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.cell as string))
 
-/** Row 1 Print mode and Position side by side; row 2 Temperatures across; then the Trackpad, Jog, and Quick commands under Jog (OV-19, OV-29). */
+/** KAN-2234's twin/heaters and right-hand readouts, retaining the Trackpad/Jog/Quick commands bench. */
 async function expectJackLayout (page: Page) {
-  expect(await idsOf(page)).toEqual(JACK_ORDER)
+  expect(await idsOf(page)).toEqual(DEFAULT_ORDER)
   const grid = (await page.locator('.overview__grid').boundingBox())!
   const [mode, position, graph, trackpad, jog, macros] = await Promise.all(['mode', 'position', 'graph', 'trackpad', 'jog', 'macros'].map(id => boxOf(page, id)))
   const stage = await boxOf(page, 'stage')
   const filament = await boxOf(page, 'filament')
-  // The printer, job and filament stay on top.
-  expect(mode.y).toBeGreaterThan(stage.y + stage.height - 2)
-  expect(mode.y).toBeGreaterThan(filament.y + filament.height - 2)
-  // Row 1: Print mode and Position side by side, filling the row.
-  expect(Math.abs(mode.y - position.y)).toBeLessThan(2)
-  expect(position.x).toBeGreaterThan(mode.x + mode.width - 2)
-  expect(Math.abs(mode.x - grid.x)).toBeLessThan(2)
+  const [job, rates, nozzle, plate] = await Promise.all(['job', 'rates', 'hotend', 'bed'].map(id => boxOf(page, id)))
+  for (const tile of [job, rates, position]) expect(tile.x).toBeGreaterThan(stage.x + stage.width - 2)
+  expect(Math.abs(job.y - stage.y)).toBeLessThan(2)
+  expect(rates.y).toBeGreaterThan(job.y + job.height - 2)
+  expect(nozzle.y).toBeGreaterThan(stage.y + stage.height - 2)
+  expect(Math.abs(nozzle.y - plate.y)).toBeLessThan(2)
+  expect(Math.abs(nozzle.y - position.y)).toBeLessThan(2)
+  expect(Math.abs(nozzle.x - grid.x)).toBeLessThan(2)
+  expect(plate.x).toBeGreaterThan(nozzle.x + nozzle.width - 2)
   expect(Math.abs(position.x + position.width - (grid.x + grid.width))).toBeLessThan(2)
-  // Row 2: Temperatures, all the way across.
-  expect(graph.y).toBeGreaterThan(Math.max(mode.y + mode.height, position.y + position.height) - 2)
+  expect(mode.y).toBeGreaterThan(plate.y + plate.height - 2)
+  expect(Math.abs(mode.y - filament.y)).toBeLessThan(2)
+  expect(mode.x).toBeGreaterThan(filament.x + filament.width - 2)
+  expect(graph.y).toBeGreaterThan(Math.max(mode.y + mode.height, filament.y + filament.height) - 2)
   expect(Math.abs(graph.x - grid.x)).toBeLessThan(2)
   expect(Math.abs(graph.width - grid.width)).toBeLessThan(2)
   // Then the Trackpad, Jog on its right, and Quick commands under Jog: out to the right edge and down to the Trackpad's floor (OV-19, OV-29).
@@ -340,14 +344,14 @@ async function expectJackLayout (page: Page) {
 
 test.describe('KAN-2029: the default layout', () => {
   test('a fresh printer shows the layout, by tile positions (desktop) and reading order (phone)', async ({ page, open, isMobile }) => {
-    await usePrinter(page, PRESETS.idleHomed())
+    await usePrinter(page, PRESETS.idleHomed(), { database: true })
     await open('/')
-    await expect(page.locator('[data-cell]')).toHaveCount(JACK_ORDER.length)
+    await expect(page.locator('[data-cell]')).toHaveCount(DEFAULT_ORDER.length)
     if (isMobile) {
       // Same reading order, top to bottom.
-      expect(await idsOf(page)).toEqual(JACK_ORDER)
+      expect(await idsOf(page)).toEqual(DEFAULT_ORDER)
       const ys: number[] = []
-      for (const id of JACK_ORDER) ys.push((await boxOf(page, id)).y)
+      for (const id of DEFAULT_ORDER) ys.push((await boxOf(page, id)).y)
       // Boxes are in the viewport's frame, so compare how the page scrolled to reach each one instead.
       const tops = await page.locator('[data-cell]').evaluateAll(els => els.map(e => e.getBoundingClientRect().top + window.scrollY))
       for (let i = 1; i < tops.length; i++) expect(tops[i]).toBeGreaterThanOrEqual(tops[i - 1] - 2)
@@ -418,18 +422,29 @@ test.describe('KAN-2029: the default layout', () => {
     await resizeTo('macros', 'L')
     await resizeTo('mode', 'S')
     await resizeTo('graph', 'S')
-    expect(await idsOf(page)).not.toEqual(JACK_ORDER)
+    const personalized = await idsOf(page)
+    expect(personalized).not.toEqual(DEFAULT_ORDER)
+    await page.getByTestId('edit-done').click()
+    await page.reload()
+    await ready(page)
+    expect(await idsOf(page)).toEqual(personalized)
+    for (const [id, size] of [['macros', 'L'], ['mode', 'S'], ['graph', 'S']]) expect(await sizeOf(id)).toBe(size)
+    await page.getByTestId('edit-open').click()
+    await expect(page.getByTestId('edit-done')).toBeVisible()
 
     // Rebuild: sizes first, then each place in turn gets the tile that belongs there.
     await resizeTo('graph', 'L')
     await resizeTo('mode', 'M')
     await resizeTo('macros', 'M')
-    for (let i = 0; i < JACK_ORDER.length; i++) {
+    for (let i = 0; i < DEFAULT_ORDER.length; i++) {
       const now = await idsOf(page)
-      if (now[i] !== JACK_ORDER[i]) await hold(JACK_ORDER[i], now[i])
+      if (now[i] !== DEFAULT_ORDER[i]) await hold(DEFAULT_ORDER[i], now[i])
     }
     await page.getByTestId('edit-done').click()
     await expect(page.getByTestId('edit-open')).toBeVisible()
+    await expectJackLayout(page)
+    await page.reload()
+    await ready(page)
     await expectJackLayout(page)
   })
 })

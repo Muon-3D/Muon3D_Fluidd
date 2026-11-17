@@ -49,7 +49,10 @@
           <span>Remaining</span><b data-tid="job-remaining">{{ remaining }}</b>
         </div>
         <div>
-          <span>Done at</span><b data-tid="job-done">{{ doneAt || '—' }}</b>
+          <span>Done at</span>
+          <div class="jt__finish">
+            <finish-clock :eta="finishEta" /><b data-tid="job-done">{{ doneAt || '—' }}</b>
+          </div>
         </div>
       </div>
       <first-layer-nudges v-if="size !== 'S'" />
@@ -161,6 +164,7 @@ import TileShell from './TileShell.vue'
 import TileDialog from './TileDialog.vue'
 import ObjectsList from './ObjectsList.vue'
 import FirstLayerNudges from '@/components/overview/FirstLayerNudges.vue'
+import FinishClock from '@/components/overview/FinishClock.vue'
 
 /**
  * The print running now, with nothing wasted under it: the part and its
@@ -168,9 +172,15 @@ import FirstLayerNudges from '@/components/overview/FirstLayerNudges.vue'
  * last jobs to print again. Live numbers, the plate objects, the queue and
  * history are behind the three dots.
  */
-@Component({ components: { TileShell, TileDialog, ObjectsList, FirstLayerNudges } })
+@Component({ components: { TileShell, TileDialog, ObjectsList, FirstLayerNudges, FinishClock } })
 export default class JobTile extends Mixins(OverviewMixin) {
   dialog: '' | 'live' | 'objects' = ''
+
+  get finishEta (): number | null {
+    if (!this.socketConnected || !this.klippyReady || this.printerPaused || !this.printerPrinting) return null
+    const eta = this.$store.getters['printer/getTimeEstimates']?.eta
+    return typeof eta === 'number' && Number.isFinite(eta) && eta > Date.now() ? eta : null
+  }
 
   get stateText (): string {
     if (this.printerPaused) return 'Paused'
@@ -264,6 +274,7 @@ export default class JobTile extends Mixins(OverviewMixin) {
 .jt__layer { color: var(--m3d-text-muted); font-size: 13px; }
 .jt__bar { height: 6px; }
 .jt__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+.jt__finish { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .jt__stats span { display: block; color: var(--m3d-text-subtle); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 .jt__stats b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .jt__actions { display: flex; gap: 8px; margin-top: 6px; }

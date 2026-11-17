@@ -19,6 +19,7 @@ export interface WidgetMeta {
   blurb: string;
   /** S is 3 columns, M is 4 to 6, L is 8 to 12 or two rows (Quick commands also has XS, 3 columns of icons). A widget may leave one out. */
   sizes: SizeVariant[];
+  legacySizes?: SizeVariant[];
   /** The size it has when added, and in the default layout. */
   size: 'S' | 'M' | 'L';
   defaultOn: boolean;
@@ -34,14 +35,15 @@ const L = (span: number, rows = 1): SizeVariant => ({ key: 'L', span, rows })
 
 /** In reading order, which is also the phone order. The default layout is the widgets with `defaultOn`, in this order. */
 export const widgetMeta: WidgetMeta[] = [
-  // The current Overview: the printer on the left, the job and filament stacked on its right.
+  // The twin and heaters on the left; job, speed and position down the right.
   { id: 'stage', title: 'Printer view', category: 'Printer', blurb: 'The live 3D view of the printer. It needs both rows, so it has no S.', sizes: [M(8, 2), L(12, 2)], size: 'M', defaultOn: true },
   { id: 'job', title: 'Print job', category: 'Print', blurb: 'What is printing, or last printed, with time left.', sizes: [S(), M(4), L(4, 2)], size: 'M', defaultOn: true },
+  { id: 'rates', title: 'Speed', category: 'Print', blurb: 'Live speed, flow and pressure advance.', sizes: [S(), M(4), L(6)], size: 'M', defaultOn: true },
+  { id: 'hotend', title: 'Nozzle', category: 'Temperature', blurb: 'Hotend temperature, target and ten minutes of heat.', sizes: [S(), M(4)], legacySizes: [M(6)], size: 'M', defaultOn: true },
+  { id: 'bed', title: 'Plate', category: 'Temperature', blurb: 'Bed temperature, target and ten minutes of heat.', sizes: [S(), M(4)], legacySizes: [M(6)], size: 'M', defaultOn: true },
+  { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(4), L(8)], legacySizes: [M(6)], size: 'M', defaultOn: true },
   { id: 'filament', title: 'Filament', category: 'Print', blurb: 'The spool in the printer, by type and colour.', sizes: [S(), M(4), L(4, 2)], size: 'M', defaultOn: true },
-  // Jack's own default (KAN-2029): the printer, job and filament on top; then Print mode and Position
-  // side by side, Temperatures all the way across, then the Trackpad, Jog, and Quick commands under Jog.
   { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(), M(6)], size: 'M', defaultOn: true, legacy: ['speed'] },
-  { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(6), L(8)], size: 'M', defaultOn: true },
   { id: 'graph', title: 'Temperatures', category: 'Temperature', blurb: 'The temperature graph. Hotend, bed and chamber show to begin with.', sizes: [S(), M(6), L(12)], size: 'L', defaultOn: true },
   // Jack's picks B (KAN-2077/2119): the Trackpad is a narrow, tall block on the left (4 columns, 3 rows); Jog is
   // the wide variant on its right (8 columns, 2 rows), and Quick commands sits directly under Jog, out to the right
@@ -49,9 +51,6 @@ export const widgetMeta: WidgetMeta[] = [
   { id: 'trackpad', title: 'Trackpad', category: 'Motion', blurb: 'Tap or drag the bed and let go: the head moves there.', sizes: [S(2), M(4, 3), L(6, 3)], size: 'M', defaultOn: true },
   { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Arrows for the head, Plate up and Plate down, and the step.', sizes: [S(2), M(4, 2), L(8, 2)], size: 'L', defaultOn: true },
   { id: 'macros', title: 'Quick commands', category: 'Tools', blurb: 'The commands you press most.', sizes: [XS(), S(2), M(8), L(12)], size: 'M', defaultOn: true },
-  // Off until added (the Temperatures graph already shows both).
-  { id: 'hotend', title: 'Hotend', category: 'Temperature', blurb: 'Hotend temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: false },
-  { id: 'bed', title: 'Bed', category: 'Temperature', blurb: 'Bed temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: false },
   { id: 'fans', title: 'Fans', category: 'Tools', blurb: 'Part cooling and the other fans.', sizes: [S(), M(4), L(6, 2)], size: 'S', defaultOn: false },
   // Off until added.
   // Never on a Muon printer (see muonHidden); in Add widget on the others.

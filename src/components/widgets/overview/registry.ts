@@ -5,6 +5,7 @@ import FilamentTile from './tiles/FilamentTile.vue'
 import HeaterTile from './tiles/HeaterTile.vue'
 import FansTile from './tiles/FansTile.vue'
 import PrintModeTile from './tiles/PrintModeTile.vue'
+import SpeedTile from './tiles/SpeedTile.vue'
 import MovementTile from './tiles/MovementTile.vue'
 import JogTile from './tiles/JogTile.vue'
 import PositionTile from './tiles/PositionTile.vue'
@@ -48,8 +49,9 @@ const drawn: Record<string, Drawn> = {
   stage: { component: StageTile },
   job: { component: JobTile },
   filament: { component: FilamentTile },
-  hotend: { component: HeaterTile, props: { kind: 'hotend' } },
-  bed: { component: HeaterTile, props: { kind: 'bed' } },
+  hotend: { component: HeaterTile, props: { kind: 'hotend', label: 'Nozzle' } },
+  bed: { component: HeaterTile, props: { kind: 'bed', label: 'Plate' } },
+  rates: { component: SpeedTile, props: { heading: 'Speed' } },
   mode: { component: PrintModeTile },
   zoffset: { component: ZOffsetTile },
   jog: { component: JogTile },
