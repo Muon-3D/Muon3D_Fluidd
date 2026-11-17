@@ -18,6 +18,15 @@ const title = (page: Page) => page.getByTestId('library-print-title')
 test.describe('signed in', () => {
   test.use({ signedIn: true })
 
+  test('a legacy shared print link opens the Library model and Print on…', async ({ page, models, open }) => {
+    const id = models.publications[P11].id
+    await open(`/print?publication=${id}`)
+    await expect(title(page)).toHaveText('Print 11')
+    await expect(dialog(page)).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(`/library\\?.*print=${id}`))
+    await expect(page).not.toHaveURL(/do=print/)
+  })
+
   test('do=print opens the model\'s page and Print on… once; do leaves the address, a reload opens nothing', async ({ page, models, open }) => {
     const id = models.publications[P11].id
     await open(`/library?view=discover&print=${id}&do=print`)

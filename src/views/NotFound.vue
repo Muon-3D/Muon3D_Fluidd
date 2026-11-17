@@ -1,28 +1,28 @@
 <template>
-  <v-row
-    :dense="$vuetify.breakpoint.smAndDown"
-    justify="center"
-    align="center"
+  <landing-card
+    page
+    icon="search"
+    tone="muted"
+    title="That page isn't here"
+    sub="The link may be old, or the page moved. Your printers are fine."
+    data-tid="not-found"
   >
-    <v-col>
-      <center>
-        <div class="text-h5">
-          {{ $t('app.general.title.not_found') }}
-        </div>
-        <app-btn
-          to="/"
-          class="mt-5"
-        >
-          {{ $t('app.general.btn.return_dashboard') }}
-        </app-btn>
-      </center>
-    </v-col>
-  </v-row>
+    <template #foot>
+      <router-link
+        to="/"
+        class="lib-btn lib-btn--pri"
+        data-tid="not-found-back"
+      >
+        Back to printers
+      </router-link>
+    </template>
+  </landing-card>
 </template>
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
+import LandingCard from '@/components/ui/LandingCard.vue'
 
-@Component({})
+@Component({ components: { LandingCard } })
 export default class NotFound extends Vue {}
 </script>

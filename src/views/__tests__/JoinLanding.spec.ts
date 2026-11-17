@@ -23,6 +23,8 @@ vi.mock('@/components/muon-cloud/CloudAccountDialog.vue', () => ({ default: { re
 // eslint-disable-next-line import/first
 import JoinLanding from '../JoinLanding.vue'
 // eslint-disable-next-line import/first
+import LandingCard from '@/components/ui/LandingCard.vue'
+// eslint-disable-next-line import/first
 import { CloudError } from '@/services/muon-cloud/api'
 
 const APPROVAL: Approval = {
@@ -38,10 +40,12 @@ const APPROVAL: Approval = {
   answered_at: null
 }
 
+const push = vi.fn()
+
 function mount (code: string | undefined = '7kq2m-9xdpf') {
   return shallowMount(JoinLanding, {
-    stubs: ['v-card', 'v-card-title', 'v-card-text', 'v-card-actions', 'v-spacer', 'v-alert', 'app-btn'],
-    mocks: { $route: { query: { code } }, $router: { push: vi.fn() } }
+    stubs: { LandingCard, FrameIcon: true },
+    mocks: { $route: { query: { code } }, $router: { push } }
   })
 }
 
@@ -63,6 +67,7 @@ beforeEach(() => {
   cloud.join.mockReset()
   cloud.approval.mockReset()
   cloud.refreshPrinters.mockClear()
+  push.mockClear()
 })
 
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks() })
@@ -93,6 +98,29 @@ describe('the join page', () => {
     expect(cloud.join).toHaveBeenCalledWith('7KQ2M9XDPF')
     expect(tid(wrapper, 'join-joined').text()).toContain("You've joined Walnut")
     expect(cloud.refreshPrinters).toHaveBeenCalled()
+  })
+
+  it('is one card: the invite, a ghost Not now and one primary, Accept invite', async () => {
+    const wrapper = mount()
+    expect(wrapper.find('h1').text()).toBe('Join a shared printer')
+    expect(tid(wrapper, 'join-invite').text()).toContain('7KQ2M-9XDPF')
+    expect(tid(wrapper, 'join-button').text()).toBe('Accept invite')
+    expect(tid(wrapper, 'join-button').classes()).toContain('lib-btn--pri')
+
+    await tid(wrapper, 'join-not-now').trigger('click')
+    expect(push).toHaveBeenCalledWith('/')
+    expect(cloud.join).not.toHaveBeenCalled()
+  })
+
+  it('becomes "You\'ve joined" with Open your printers after Accept', async () => {
+    cloud.join.mockResolvedValue({ state: 'joined', printer_id: 'p1', share: {} })
+    const wrapper = mount()
+    await tid(wrapper, 'join-button').trigger('click')
+    await flush(wrapper)
+    expect(wrapper.find('h1').text()).toBe("You've joined Walnut")
+    expect(tid(wrapper, 'join-button').exists()).toBe(false)
+    await tid(wrapper, 'join-open').trigger('click')
+    expect(push).toHaveBeenCalledWith('/')
   })
 
   it('waits for the owner to approve, then shows they did', async () => {
