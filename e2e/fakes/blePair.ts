@@ -218,7 +218,7 @@ export const MuonEndpoint = { async create () { return new Endpoint() } }
  * Nobody is signed in; `pick` is the printer the person chooses in the
  * browser's Bluetooth chooser.
  */
-export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: { advertise?: boolean, panel?: boolean, approval?: boolean } = {}) {
+export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: { advertise?: boolean, panel?: boolean, approval?: boolean, granted?: boolean } = {}) {
   const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' }
   await page.route(`${CONSOLE}/v1/config`, route => route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ relay_url: RELAY, orchestrator_id: 'e2e', authority_key: 'e2e' }) }))
   // Nobody is signed in: the console refuses a grant, as it does for a request with no session.
@@ -236,7 +236,7 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
   })
   // Nothing here is about the 3D model; the photoreal M1 stalls software WebGL.
   await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
-  await page.addInitScript(([printers, id, advertise, panel, approval]) => {
+  await page.addInitScript(([printers, id, advertise, panel, approval, granted]) => {
     const state: any = { events: [] as string[], printers, paired: [] as string[], bleLive: 0, heard: id, panel, approval }
     for (const p of printers as any[]) if (p.kind === 'paired') state.paired.push(p.id)
     ;(window as any).__e2ePair = state
@@ -291,7 +291,11 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
     }
     device.gatt = {
       get connected () { return connected },
-      connect: async () => { connected = true; return device.gatt },
+      connect: async () => {
+        if (state.radioOff) throw new DOMException('Bluetooth adapter not available.', 'NetworkError')
+        connected = true
+        return device.gatt
+      },
       disconnect: () => {
         if (!connected) return
         connected = false
@@ -306,13 +310,22 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
         }
       })
     }
-    let chosen = false
+    // `granted`: this browser was allowed the printer in an earlier visit (getDevices lists it before any chooser).
+    let chosen = !!granted
     const bt: any = new EventTarget()
     bt.requestDevice = async (options: unknown) => { asked.push(options); chosen = true; return device }
     bt.getDevices = async () => chosen ? [device] : []
     bt.getAvailability = async () => true
+    // The radio goes away: the link drops and nothing connects until it is back.
+    state.radio = (on: boolean) => {
+      state.radioOff = !on
+      if (!on) device.gatt.disconnect()
+      const event: any = new Event('availabilitychanged')
+      event.value = on
+      bt.dispatchEvent(event)
+    }
     Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: bt })
-  }, [PRINTERS, pick.id, !!options.advertise, !!options.panel, !!options.approval] as const)
+  }, [PRINTERS, pick.id, !!options.advertise, !!options.panel, !!options.approval, !!options.granted] as const)
 }
 
 export async function answerAtPrinter (page: Page, outcome: 'accept' | 'reject' | 'time out') {
