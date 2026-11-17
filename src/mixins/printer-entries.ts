@@ -67,7 +67,7 @@ function localRouteOf (e: DirectoryEntry): LocalRoute {
     host: e.host,
     secureName: secureNameOf(e.cloud),
     pageHost: window.location.hostname,
-    mdnsHost: e.lan?.mdnsHost ?? e.saved.find(s => s.mdnsHost)?.mdnsHost ?? mdnsHostFromName(e.cloud?.name ?? e.name),
+    mdnsHost: e.lan?.mdnsHost ?? e.saved?.find(s => s.mdnsHost)?.mdnsHost ?? mdnsHostFromName(e.cloud?.name ?? e.name),
     nearby: id ? nearbyOf(id) : undefined,
     nearbyChecked: discoveryState.cloudChecked,
     blockedByPage: !!discoveryState.blockedByPage
