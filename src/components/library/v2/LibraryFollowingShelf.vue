@@ -60,10 +60,24 @@
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import LibraryShelf from './LibraryShelf.vue'
-import { describeLibraryError, type CommunityCollection } from '@/services/library/api'
+import { describeLibraryError, LibraryError, type CommunityCollection } from '@/services/library/api'
 import { followedList, printCount } from '@/services/library/follow'
 import { libraryClient } from '@/services/library/store'
 import { cloudState } from '@/services/muon-cloud/state'
+
+/**
+ * The service answers a request it cannot read with a sentence about "the JSON
+ * body, the field types and the address" (400 bad_request). Following sends no
+ * body and no fields, so that means the service does not know the address (the
+ * deployed one reads `/collections/followed` as a collection's id): say so
+ * plainly, not in its sentence about our request.
+ */
+function followingError (error: unknown): string {
+  if (error instanceof LibraryError && error.status === 400 && error.code === 'bad_request') {
+    return 'Following is not available from the Library yet. Try again later.'
+  }
+  return describeLibraryError(error)
+}
 
 /**
  * Following, on Yours: the public collections you follow (their name and how
@@ -114,7 +128,7 @@ export default class LibraryFollowingShelf extends Vue {
       if (read !== this.reads) return
       this.collections = followedList(answer)
     } catch (error) {
-      if (read === this.reads) this.error = describeLibraryError(error)
+      if (read === this.reads) this.error = followingError(error)
     } finally {
       if (read === this.reads) this.loading = false
     }

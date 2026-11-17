@@ -1,5 +1,6 @@
 import Vue from 'vue'
 import type { AxiosRequestConfig, AxiosResponse } from 'axios'
+import { uploadChecksum } from '@/utils/uploadChecksum'
 
 export const httpClientActions = {
   get<T = unknown, R = AxiosResponse<T>, D = unknown> (url: string, options?: AxiosRequestConfig) {
@@ -180,9 +181,10 @@ export const httpClientActions = {
     }>(`/server/database/item?namespace=${namespace}&key=${key}`, options)
   },
 
-  serverFilesUploadPost (file: File, path: string, root: string, print?: boolean, options?: AxiosRequestConfig) {
+  async serverFilesUploadPost (file: File, path: string, root: string, print?: boolean, options?: AxiosRequestConfig) {
     const formData = new FormData()
 
+    formData.append('checksum', await uploadChecksum(file))
     formData.append('file', file, file.name)
     formData.append('path', path)
     formData.append('root', root)
@@ -226,5 +228,22 @@ export const httpClientActions = {
   // serial), as Muon's Moonraker publishes them.
   serverMuonIdentityGet (options?: AxiosRequestConfig) {
     return this.get<Record<string, unknown>>('/server/muon/identity', options)
+  },
+
+  // The owner's rename of the printer itself (not just this Control's label).
+  // An empty name brings back the name on the label. The printer decides who
+  // may: LAN and hotspot while it is Open, the owner over the relay.
+  // The printer's time zone, after set-up. An older image has no such route
+  // and answers 404; the page then hides the row.
+  serverMuonTimezoneGet (options?: AxiosRequestConfig) {
+    return this.get<Record<string, unknown>>('/server/muon/timezone', options)
+  },
+
+  serverMuonTimezonePost (zone: string, options?: AxiosRequestConfig) {
+    return this.post<Record<string, unknown>>('/server/muon/timezone', { zone }, options)
+  },
+
+  serverMuonIdentityNamePost (name: string, options?: AxiosRequestConfig) {
+    return this.post<Record<string, unknown>>('/server/muon/identity/name', { name }, options)
   }
 }

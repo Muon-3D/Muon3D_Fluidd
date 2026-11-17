@@ -22,7 +22,7 @@
  *   await open('/control')
  *   expect(printer.moves()).toEqual(['G1 Z6 F600', …])
  */
-import type { Page } from '@playwright/test'
+import type { Page, WebSocketRoute } from '@playwright/test'
 import { MOCK_PORT } from '../ports'
 
 type Json = Record<string, any>
@@ -56,6 +56,8 @@ export interface PrinterHandle {
   called: (method: string) => Json[]
   /** The G1 lines of every script sent, in order. */
   moves: () => string[]
+  /** Holds the answer to the next script matching `pattern` (a long G28) until the returned release is called. */
+  hold: (pattern: RegExp) => () => void
   /** The printer reports `status` now: it becomes the overlay and is pushed to the page at once. */
   report: (status: Json) => void
   /** The printer prints these lines to the console now (a notify_gcode_response each). */
@@ -68,6 +70,11 @@ export interface PrinterHandle {
   offline: () => Promise<void>
   /** The printer is reachable again: the page's next websocket connects. */
   online: () => void
+  /** Close only the current websocket; HTTP and the next websocket still work. */
+  dropSocket: () => Promise<void>
+  /** Stop messages on this websocket without a close event; the next one talks normally. */
+  stallSocket: () => void
+  socketOpens: number
 }
 
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -106,11 +113,17 @@ function getDotted (root: Json, key: string): unknown {
 }
 
 export async function usePrinter (page: Page, status: Json = {}, options: { components?: string[], database?: boolean, ticks?: boolean, apiUrl?: string, onSocketEvent?: (event: 'open' | 'close' | 'send', method?: string) => void } = {}): Promise<PrinterHandle> {
+  let held: { pattern: RegExp, until: Promise<void> } | null = null
   const handle: PrinterHandle = {
     state: { status, failOn: {}, results: {}, answers: {}, answer: {}, components: options.components },
     gcode: [],
     calls: [],
     called: (method: string) => handle.calls.filter(c => c.method === method).map(c => c.params),
+    hold: (pattern: RegExp) => {
+      let release = () => {}
+      held = { pattern, until: new Promise<void>(resolve => { release = resolve }) }
+      return release
+    },
     moves: () => handle.gcode.flatMap(s => s.split('\n')).filter(l => l.startsWith('G1 ')),
     report: (next: Json) => {
       handle.state.status = next
@@ -138,7 +151,14 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     },
     online: () => {
       handle.state.offline = false
-    }
+    },
+    dropSocket: async () => {
+      const socket = pageSocket
+      pageSocket = null
+      await socket?.close({ code: 1000, reason: 'Moonraker reaped this socket' })
+    },
+    stallSocket: () => silenceCurrent(),
+    socketOpens: 0
   }
   const written = (namespace: string): Json => (handle.database[namespace] ??= {})
 
@@ -167,7 +187,8 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
   let eventTime = 0
   const asked = new Map<unknown, string>()
   const infoRequests = new Set<unknown>()
-  let pageSocket: { send: (message: string) => void, close: () => Promise<void> } | null = null
+  let pageSocket: Pick<WebSocketRoute, 'send' | 'close'> | null = null
+  let silenceCurrent = () => {}
 
   const address = options.apiUrl ? new URL(options.apiUrl).host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : `[^/]+:${MOCK_PORT}`
   await page.routeWebSocket(new RegExp(`^wss?://${address}/websocket(?:\\?.*)?$`), ws => {
@@ -176,6 +197,9 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
       return
     }
     pageSocket = ws
+    handle.socketOpens++
+    let silent = false
+    silenceCurrent = () => { silent = true }
     options.onSocketEvent?.('open')
     const server = ws.connectToServer()
     ws.onClose(() => {
@@ -217,6 +241,12 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
       }
       if (msg.method === 'printer.gcode.script') {
         handle.gcode.push(String(msg.params?.script ?? ''))
+        if (held && held.pattern.test(String(msg.params?.script ?? ''))) {
+          const wait = held.until
+          held = null
+          wait.then(() => ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: 'ok' })))
+          return
+        }
         ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: 'ok' }))
         return
       }
@@ -224,6 +254,7 @@ export async function usePrinter (page: Page, status: Json = {}, options: { comp
     })
 
     server.onMessage(raw => {
+      if (silent) return
       let msg: Json
       try { msg = JSON.parse(String(raw)) } catch { ws.send(raw); return }
       const over = handle.state.status

@@ -58,12 +58,27 @@ class Socket {
     this.owner = owner
     this.queue = []
     this.waiting = []
+    this.directories = new Map()
     this.ws = new WebSocket(PRINTER.replace(/^http/, 'ws') + path + (path.includes('?') ? '&' : '?') + 'e2e_route=' + owner.route)
     this.open = new Promise((resolve, reject) => {
       this.ws.onopen = resolve
       this.ws.onerror = () => reject(new Error('the gateway closed the websocket'))
     })
-    this.ws.onmessage = e => this.push(e.data)
+    this.ws.onmessage = e => {
+      const reply = JSON.parse(e.data)
+      const path = this.directories.get(reply.id)
+      this.directories.delete(reply.id)
+      if (path && Array.isArray(reply.result?.files)) {
+        for (const file of S().upload?.attempts ?? []) {
+          if (!file.completed || [file.root, file.path].filter(Boolean).join('/') !== path) continue
+          if (!reply.result.files.some(item => item.filename === file.name)) {
+            reply.result.files.push({ filename: file.name, size: file.size, modified: Date.now() / 1000 })
+          }
+        }
+        S().upload?.listings?.push({ path, files: reply.result.files.map(file => file.filename) })
+      }
+      this.push(JSON.stringify(reply))
+    }
     this.ws.onclose = () => { this.closed = true; S().sessionEvents.push({ route: owner.route, event: 'socket-close', at: Date.now() }); this.push(null) }
   }
   push (item) {
@@ -75,6 +90,12 @@ class Socket {
     await this.open
     try {
       const msg = JSON.parse(data)
+      if (msg.method === 'server.files.get_directory') this.directories.set(msg.id, msg.params.path)
+      const uploaded = S().upload?.attempts.find(file => file.completed && [file.path, file.name].filter(Boolean).join('/') === msg.params?.filename)
+      if (msg.method === 'server.files.metadata' && uploaded) {
+        this.push(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { filename: msg.params.filename, size: uploaded.size, modified: Date.now() / 1000 } }))
+        return
+      }
       if (msg.method === 'machine.update.status') {
         S().refused.push('RPC ' + msg.method)
         this.push(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: 403, message: 'muon-link policy refused this request: not on the remote allowlist' } }))
@@ -91,6 +112,31 @@ class Socket {
   async close () { this.ws.close() }
 }
 
+// muon-link's own Wi-Fi routes (KAN-3601, muon-link docs/NETWORK_ROUTES.md), answered as it does
+// and recorded in window.__e2eRoute.network. A scan takes no query there, as on the real device.
+const json = (status, value) => ({ status, headers: ['content-type', 'application/json'], body: text(JSON.stringify(value)) })
+function networkAnswer (method, bare, path, body) {
+  const net = S().network
+  const tail = bare.slice('/muon-link/network'.length)
+  const query = path.includes('?') ? '?' + path.split('?')[1] : ''
+  net.calls.push(method + ' ' + tail + query)
+  if (net.mode === 'older') return { status: 404, headers: ['content-type', 'text/plain'], body: text('Not Found') }
+  if (net.mode === 'path_disabled') {
+    return json(403, { error: 'path_disabled', detail: { code: 'path_disabled', setting: 'network_from_relay', message: 'turned off' } })
+  }
+  if (method === 'GET' && tail === '/wifi/scan') {
+    if (query) return json(400, { error: 'bad_request', detail: 'this route takes no query' })
+    return json(200, net.scan)
+  }
+  if (method === 'GET' && tail === '/wifi/saved') return json(200, [{ name: 'Workshop' }, { name: 'Workshop-2G' }])
+  if (method === 'POST' && tail === '/wifi/connect') {
+    net.bodies.push(JSON.parse(new TextDecoder().decode(body)))
+    return json(200, { status: 'connected' })
+  }
+  if (method === 'DELETE' && tail === '/wifi/forget') return json(200, { status: 'forgotten' })
+  return json(404, { error: 'not_found' })
+}
+
 class Printer {
   constructor (id, route) {
     this.id = id
@@ -100,9 +146,32 @@ class Printer {
   }
   printerId () { return this.id }
   comparison () { return 'E2E TST' }
+  async fetchWithProgress (method, path, headers, body, progress) {
+    const upload = S().upload
+    if (path !== '/server/files/upload' || !upload) return this.fetch(method, path, headers, body)
+    const h = new Headers()
+    for (let i = 0; i < headers.length; i += 2) h.append(headers[i], headers[i + 1])
+    const form = await new Response(body, { headers: h }).formData()
+    const file = form.get('file')
+    const attempt = { name: file.name, size: file.size, checksum: form.get('checksum'), path: form.get('path'), root: form.get('root'), completed: false }
+    upload.attempts.push(attempt)
+    progress?.(0, body.length)
+    for (let step = 1; step <= 4; step++) {
+      progress?.(Math.floor(body.length * step / 4), body.length)
+      if (step === 2 && upload.outcome === 'cut') throw new Error('sending stopped by peer: connection lost mid-transfer')
+      while (step < 4 && step >= upload.maxStep) await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    if (upload.outcome === 'mismatch') return { status: 422, headers: ['content-type', 'application/json'], body: text(JSON.stringify({ error: { message: 'SHA256 checksum does not match' } })) }
+    const item = { path: [attempt.path, file.name].filter(Boolean).join('/'), root: attempt.root, size: file.size, modified: Date.now() / 1000 }
+    attempt.completed = true
+    for (const socket of this.sockets) socket.push(JSON.stringify({ jsonrpc: '2.0', method: 'notify_filelist_changed', params: [{ action: 'create_file', item }] }))
+    return { status: 201, headers: ['content-type', 'application/json'], body: text(JSON.stringify({ result: { item, action: 'create_file' } })) }
+  }
   async fetch (method, path, headers, body) {
+    if (path === '/server/files/upload' && S().upload) return this.fetchWithProgress(method, path, headers, body)
     if (this.dead) throw new Error('connection lost')
     const bare = decodeURIComponent(path.split('?')[0])
+    if (bare.startsWith('/muon-link/network/')) return networkAnswer(method, bare, path, body)
     if (bare === '/muon-link/plate/clear') {
       S().refused.push(method + ' ' + bare)
       return { status: 403, headers: ['content-type', 'application/json'], body: text(REFUSAL) }
@@ -260,7 +329,17 @@ export async function useAllRoutes (page: Page, account: ConsoleState) {
       links: new Set(),
       linkEvents: [],
       live: new Set(),
-      chooserAsks: 0
+      chooserAsks: 0,
+      network: {
+        mode: 'ok',
+        calls: [] as string[],
+        bodies: [] as unknown[],
+        scan: [
+          { in_use: true, ssid: 'Workshop', chan: 36, freq: 5180, rate: 540, signal: 78, security: 'WPA2' },
+          { in_use: false, ssid: 'Workshop-2G', chan: 6, freq: 2437, rate: 130, signal: 64, security: 'WPA2' },
+          { in_use: false, ssid: 'Cafe', chan: 1, freq: 2412, rate: 65, signal: 40, security: '' }
+        ]
+      }
     }
     ;(window as any).__e2eRoute = state
 
@@ -369,4 +448,17 @@ export function routeCounts (page: Page): Promise<RouteCounts> {
     const s = (window as any).__e2eRoute
     return { dials: s.dials, closes: s.closes, routes: [...s.routes], refused: [...s.refused], sessionEvents: [...s.sessionEvents], linkEvents: [...s.linkEvents] }
   })
+}
+
+/** What the page sent to muon-link's Wi-Fi routes, and the bodies of the joins (a test must never print a password). */
+export function networkCalls (page: Page): Promise<{ calls: string[], bodies: unknown[] }> {
+  return page.evaluate(() => {
+    const n = (window as any).__e2eRoute.network
+    return { calls: [...n.calls], bodies: [...n.bodies] }
+  })
+}
+
+/** How muon-link answers its Wi-Fi routes: normally, as an older one (404), or with the owner's rule turned off (403). */
+export function setNetworkMode (page: Page, mode: 'ok' | 'older' | 'path_disabled') {
+  return page.evaluate(m => { (window as any).__e2eRoute.network.mode = m }, mode)
 }

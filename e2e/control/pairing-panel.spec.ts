@@ -14,7 +14,7 @@ async function nearby (page: Page, approval = false) {
 }
 
 async function codeStep (page: Page) {
-  await page.getByRole('button', { name: 'Pair this browser', exact: true }).click()
+  await page.getByRole('button', { name: 'Pair over Bluetooth', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Check the code' })).toBeVisible()
   await expect(page.getByTestId('pair-sas')).toHaveAttribute('aria-label', COMPARE.split('').join(' '))
 }
@@ -48,7 +48,7 @@ test('owned printer: panel Reject says nothing was added and permits another try
   await answerAtPrinter(page, 'reject')
   await expect(page.getByText('The printer said no to this browser, so nothing was added.', { exact: true })).toBeVisible()
   expect(await pairedHere(page)).not.toContain(NOT_PAIRED_HERE.id)
-  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await page.getByTestId('ble-sheet').getByRole('button', { name: 'Try again', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Check the code' })).toBeVisible()
 })
 
@@ -73,12 +73,12 @@ test('expired panel window explains how to get a new code', async ({ page }) => 
   await expect(page.getByText(/pairing window closed after 2 minutes/)).toBeVisible()
   await expect(page.getByText(/Add a device.*try again/)).toBeVisible()
   expect(await pairedHere(page)).not.toContain(NOT_PAIRED_HERE.id)
-  await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible()
+  await expect(page.getByTestId('ble-sheet').getByRole('button', { name: 'Try again', exact: true })).toBeVisible()
 })
 
 test.describe('signed in', () => {
   test.use({ signedIn: true })
-  test('panel pairing keeps the account signed in', async ({ page }) => {
+  test('panel pairing keeps the account signed in', async ({ page, isMobile }) => {
     await nearby(page)
     await codeStep(page)
     await submit(page)
@@ -86,6 +86,7 @@ test.describe('signed in', () => {
     await answerAtPrinter(page, 'accept')
     await admitted(page)
     await page.getByTestId('approval-close').click()
+    if (isMobile) await page.getByTestId('tab-more').click()
     await page.locator('[data-tid="account"]:visible').first().click()
     await expect(page.getByText('jack@example.test', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveCount(0)

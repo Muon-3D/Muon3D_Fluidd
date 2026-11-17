@@ -9,7 +9,8 @@ import type {
   ManagedTransportStatus,
   ManagedTransportUsage,
   PrinterSocket,
-  PrinterTransport
+  PrinterTransport,
+  UploadProgress
 } from './types'
 
 /** The longest wait between two dials of the same printer. */
@@ -21,6 +22,13 @@ const MAX_DIAL_DELAY_MS = 30_000
  * that restarted has forgotten it, and only a new handoff gets back in.
  */
 const REAUTHORIZE_AFTER_FAILURES = 2
+
+/**
+ * How long a redial waits for a fresh grant before dialling with the one it
+ * has. The console answers only once the printer holds the grant, so a printer
+ * that is slow to answer must not hold a path that could be open (same Wi-Fi).
+ */
+export const REGRANT_WAIT_MS = 8_000
 
 /**
  * Contract-only browser adapter for an authorized managed relay session.
@@ -39,6 +47,8 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
   private relayPromise: Promise<ManagedIrohRelay> | null = null
   private selectionGeneration = 0
   private failedDials = 0
+  /** A relay has been up: the printer's grant for this key may since have lapsed or been forgotten. */
+  private hadRelay = false
   private nextDialAt = 0
   private readonly sockets = new Set<PrinterSocket>()
   private currentStatus: ManagedTransportStatus = {
@@ -56,20 +66,21 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
     return { ...this.currentStatus }
   }
 
-  fetch (path: string, init?: RequestInit): Promise<Response> {
-    return this.fetchWithUsage(path, init, 'Http')
+  fetch (path: string, init?: RequestInit, progress?: UploadProgress): Promise<Response> {
+    return this.fetchWithUsage(path, init, 'Http', progress)
   }
 
   async fetchWithUsage (
     path: string,
     init: RequestInit | undefined,
-    usage: ManagedTransportRequestUsage
+    usage: ManagedTransportRequestUsage,
+    progress?: UploadProgress
   ): Promise<Response> {
     this.assertOpen()
     this.updateStatus('connecting', usage)
     const relay = this.relay()
     try {
-      const response = await (await relay).fetch(path, init)
+      const response = await (await relay).fetch(path, init, progress)
       this.assertOpen()
       this.updateStatus('connected', 'IdleStatus')
       return response
@@ -159,6 +170,17 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       if (this.failedDials >= REAUTHORIZE_AFTER_FAILURES && this.options.reauthorize) {
         this.session = await this.options.reauthorize()
         if (generation !== this.selectionGeneration) throw closed()
+      } else if (this.hadRelay && (this.options.regrant ?? this.options.reauthorize)) {
+        // KAN-3636: a printer admits a signed-in owner only while it holds the
+        // console's grant for this browser's key, and it forgets one when it
+        // restarts or the grant lapses. A redial that goes out without asking
+        // again reaches the printer as a stranger: over the same Wi-Fi that is
+        // the "let this device in" prompt on the panel. So every redial asks
+        // first. Best effort: a console that is slow or down must not stop a
+        // direct path that may still work.
+        const fresh = await this.regrant()
+        if (generation !== this.selectionGeneration) throw closed()
+        if (fresh) this.session = fresh
       }
       let endpoint = this.endpoint
       if (!endpoint) {
@@ -176,6 +198,7 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       }
       this.failedDials = 0
       this.nextDialAt = 0
+      this.hadRelay = true
       return relay
     } catch (error) {
       if (generation === this.selectionGeneration) {
@@ -183,6 +206,20 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
         this.nextDialAt = Date.now() + Math.min(MAX_DIAL_DELAY_MS, 1000 * 2 ** (this.failedDials - 1))
       }
       throw error
+    }
+  }
+
+  private async regrant (): Promise<AuthorizedManagedRelaySession | null> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        (this.options.regrant ?? this.options.reauthorize)!(),
+        new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), REGRANT_WAIT_MS) })
+      ])
+    } catch {
+      return null
+    } finally {
+      clearTimeout(timer)
     }
   }
 

@@ -74,8 +74,8 @@ export const KNOWN_KNOBS: Record<string, { label: string, description: string }>
   wifi_change: { label: 'Join or forget Wi-Fi networks', description: 'From a phone or computer, not the printer.' },
   update_install: { label: 'Install updates', description: 'Including whether the printer asks for a knob press first.' },
   plate_clear: { label: 'Confirm the plate is clear', description: 'After a print, from Control or other software.' },
-  dev_mode: { label: 'Turn developer mode back on', description: "After the first time, which is at the printer's screen." },
-  dev_mode_first_entry: { label: 'The first time developer mode is turned on', description: "Confirmed on the printer's screen, with the warranty waiver. After that it is an ordinary setting." },
+  dev_mode: { label: 'Turn developer mode back on', description: 'From a phone or computer, over any route, once it has been turned on the first time.' },
+  dev_mode_first_entry: { label: 'The first time developer mode is turned on', description: "Asked from a phone or computer, with the warranty waiver, then confirmed on the printer's screen. After that it is an ordinary setting." },
   lockdown: { label: 'Lockdown', description: 'Turn Lockdown on or off.' }
 }
 

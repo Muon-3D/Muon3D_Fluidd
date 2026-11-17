@@ -5,6 +5,11 @@ import { printerStatusWord } from '@/util/printer-status-word'
 import { startup } from '@/services/startup/heard'
 import { Globals } from '@/globals'
 import { printerNameParts } from '@/util/printer-name'
+import { cloudState } from '@/services/muon-cloud/state'
+import { discoveryState } from '@/services/muon-cloud/discovery'
+import { hasReachableRoute } from '@/services/muon-cloud/directory'
+import { nearbyState } from '@/services/muon-ble/nearby'
+import { bluetoothCarrying } from '@/services/muon-ble/link'
 
 export type PrinterStatusTone = 'ok' | 'active' | 'warn' | 'fault' | 'off'
 
@@ -35,7 +40,7 @@ export default class PrinterStatusMixin extends Mixins(StateMixin) {
   }
 
   get statusTone (): PrinterStatusTone {
-    if (!this.socketConnected) return 'off'
+    if (!this.socketConnected) return this.socketConnecting || this.printerReachable ? 'warn' : 'off'
     if (!this.klippyReady) {
       if (!this.klippyState) return 'off'
       return ['error', 'shutdown'].includes(this.klippyState) ? 'fault' : 'warn'
@@ -82,10 +87,28 @@ export default class PrinterStatusMixin extends Mixins(StateMixin) {
     return slug ? printerNameParts(slug).name : this.displayName
   }
 
+  get printerReachable (): boolean {
+    const instance = this.$store.getters['config/getCurrentInstance']
+    return hasReachableRoute({ endpointId: cloudState.activePrinterId ?? instance?.endpointId, apiUrl: this.$store.state.config.apiUrl }, {
+      account: cloudState.printers,
+      status: cloudState.status,
+      found: discoveryState.found,
+      cloudNearby: discoveryState.cloud,
+      nearby: nearbyState.printers,
+      viaBluetooth: bluetoothCarrying,
+      now: nearbyState.now
+    })
+  }
+
   get statusText (): string {
     // Before the first answer the printer is being reached, not offline; and
     // an empty Klipper state means not yet reported, not "offline".
-    if (!this.socketConnected) return startup.heard ? 'Offline' : 'Connecting…'
+    if (!this.socketConnected) {
+      // Reconnecting: a socket that answered before is being re-opened.
+      if (this.socketConnecting && startup.heard) return 'Reconnecting…'
+      // Connecting: before the first answer, or a reachable printer not yet up.
+      return startup.heard && !this.printerReachable ? 'Offline' : 'Connecting…'
+    }
     if (!this.klippyReady) return this.klippyState ? `Klipper ${this.klippyState}` : 'Connecting…'
 
     const state = printerStatusWord(this.printerState)

@@ -12,16 +12,17 @@ vi.mock('@/services/muon-cloud/state', async () => {
   return { cloudState: Vue.observable({ ready: true, account: null, activePrinterId: null, printers: [], activePrinterId2: null }) }
 })
 
-interface Opts { ready?: boolean, connected?: boolean, state?: string, homed?: string, apiUrl?: string }
+interface Opts { ready?: boolean, connected?: boolean, state?: string, homed?: string, apiUrl?: string, socket?: boolean, connecting?: boolean }
 
 function show (o: Opts = {}) {
-  const { ready = true, connected = true, state = 'ready', homed = 'xyz', apiUrl = 'http://hazel.local' } = o
+  const { ready = true, connected = true, state = 'ready', homed = 'xyz', apiUrl = 'http://hazel.local', socket = true, connecting = false } = o
   return shallowMount(Console, {
     mocks: {
       $store: {
         state: { printer: { printer: { configfile: {}, toolhead: { homed_axes: homed } } }, console: { console: [], commandHistory: [] }, config: { apiUrl, uiSettings: { general: {} } } },
         getters: {
-          'socket/getConnectionState': true,
+          'socket/getConnectionState': socket,
+          'socket/getConnectingState': connecting,
           'socket/getApiConnected': true,
           'auth/getAuthenticated': true,
           'printer/getKlippyReady': ready,
@@ -52,6 +53,20 @@ afterEach(() => {
 })
 
 describe('Console quick commands', () => {
+  it('shows Reconnecting instead of Offline while reopening the websocket', () => {
+    const w = show({ socket: false, connecting: true })
+    expect((w.vm as Console).klippyLabel).toBe('Reconnecting…')
+    expect((w.vm as Console).klippyTone).toBe('warn')
+    w.destroy()
+  })
+
+  it('keeps Offline when a disconnected socket is not being reopened', () => {
+    const w = show({ socket: false })
+    expect((w.vm as Console).klippyLabel).toBe('Offline')
+    expect((w.vm as Console).klippyTone).toBe('off')
+    w.destroy()
+  })
+
   it('are not drawn while the account is still loading, then appear for the account', async () => {
     cloudState.ready = false
     const w = show()
