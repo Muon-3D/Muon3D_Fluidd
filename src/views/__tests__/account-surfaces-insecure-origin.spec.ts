@@ -45,11 +45,14 @@ function link (wrapper: Wrapper<Vue>): string | undefined {
 const router = () => ({ replace: vi.fn(() => Promise.resolve()), push: vi.fn(() => Promise.resolve()) })
 
 describe('account surfaces on a plain-HTTP printer page', () => {
-  it('the sign-in page shows the link and no form', async () => {
+  it.each(['sign-in', 'sign-up', 'code', 'forgot', 'sent'])('the sign-in page in %s mode shows the link and no form', async mode => {
     const SignIn = (await import('../SignIn.vue')).default
     const wrapper = mount(SignIn, { stubs: surfaceStubs, mocks: { $route: { path: '/sign-in', fullPath: '/sign-in', query: {} }, $router: router() } })
+    await wrapper.setData({ mode })
     await wrapper.vm.$nextTick()
     expect(fields(wrapper)).toBe(0)
+    expect(wrapper.find('[data-tid="sign-in-tab"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid="sign-in-printer"]').exists()).toBe(false)
     expect(link(wrapper)).toBe('https://control.muon3d.com/#/sign-in')
     expect(requests).toEqual([])
   })
