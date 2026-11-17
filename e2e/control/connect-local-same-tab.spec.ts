@@ -47,8 +47,10 @@ async function nearby (page: Page, printers: Array<{ id: string, name: string, l
 /** What the printer itself serves at its own address: a stub, and a record of what was asked for. */
 async function printerPages (page: Page, hosts: string[]) {
   const asked: string[] = []
+  // Nothing in a spec reaches a real printer: any private address not stubbed below is refused here.
+  await page.route(/^http:\/\/(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|[a-z0-9-]+\.local[/:])/i, route => route.abort('connectionrefused'))
   for (const host of hosts) {
-    await page.route(`http://${host}/**`, route => {
+    await page.route(new RegExp(`^http://${host.replace(/\./g, '\\.')}/`), route => {
       asked.push(route.request().url())
       return route.fulfill({ status: 200, contentType: 'text/html', body: '<title>printer</title><h1 id="printer-own-control">Printer</h1>' })
     })
@@ -56,8 +58,9 @@ async function printerPages (page: Page, hosts: string[]) {
   return asked
 }
 
-async function start (page: Page, account: Parameters<typeof useAllRoutes>[1], nearbyList: Parameters<typeof nearby>[1], saved: boolean) {
+async function start (page: Page, account: Parameters<typeof useAllRoutes>[1], nearbyList: Parameters<typeof nearby>[1], saved: boolean, renamedTo?: string) {
   await useAllRoutes(page, account)
+  if (renamedTo) account.printers[0].name = renamedTo
   if (saved) {
     await page.addInitScript(([id, name]) => {
       localStorage.setItem('appInstances', JSON.stringify([{
@@ -90,6 +93,19 @@ test.describe('Connect locally from the hosted page', () => {
     expect(asked).toEqual(['http://muon-boxwood-367a.local/'])
     expect(pages).toEqual([])
     expect(context.pages()).toHaveLength(1)
+    // Leaving for the printer's page chooses no route here: back on this page nothing is held that cannot be dialled.
+    await page.goBack()
+    await ready(page)
+    expect(await page.evaluate(() => sessionStorage.getItem('muon.route.modes') ?? '')).not.toContain('lan')
+  })
+
+  test('a renamed printer (Living Room) has no guessable .local name: Connect locally opens its listed host', async ({ page, account }) => {
+    const asked = await printerPages(page, ['muon-living-room.local', 'lounge-pi.local'])
+    await start(page, account, [{ id: ROUTE_PRINTER.id, name: 'Living Room', linked: true, addrs: ['lounge-pi.local'] }], false, 'Living Room')
+    await optionsOf(page, 'Living Room')
+    await item(page, 'Connect locally').click()
+    await expect(page).toHaveURL('http://lounge-pi.local/')
+    expect(asked).toEqual(['http://lounge-pi.local/'])
   })
 
   test('Sloe, not mine: it opens at its .local name in this tab, and offers no Link or Muon3D route', async ({ page, context, account }) => {
