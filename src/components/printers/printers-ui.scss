@@ -142,4 +142,25 @@
   }
 
   .note--error { background: color-mix(in srgb, var(--m3d-danger) 14%, transparent); }
+
+  .note__line { margin: 0; }
+
+  .note__retry {
+    margin-left: 8px;
+    padding: 2px 12px;
+    border-radius: 999px;
+    background: var(--m3d-fill-strong, var(--m3d-border-strong));
+    color: var(--m3d-text);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .note__details {
+    margin-top: 6px;
+    color: var(--m3d-text-muted);
+    font-size: 12px;
+
+    summary { cursor: pointer; }
+    code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+  }
 }

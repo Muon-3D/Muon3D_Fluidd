@@ -1,17 +1,19 @@
 <template>
   <div class="muon-account">
+    <!-- No Muon3D service reachable (a printer's hotspot has no internet): its sign-in could only fail. -->
     <app-btn
-      v-if="!account && !printerUser"
+      v-if="!account && !printerUser && cloudReachable"
       small
       outlined
       class="muon-account__sign-in"
+      data-tid="topbar-sign-in"
       @click="dialog = true"
     >
       Sign in
     </app-btn>
 
     <v-menu
-      v-else
+      v-else-if="account || printerUser"
       v-model="menu"
       bottom
       left
@@ -360,6 +362,7 @@
 import { Component, Vue, Watch } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
 import { cloudBaseUrl } from '@/services/muon-cloud/api'
+import { reachState, watchCloudReachable } from '@/services/muon-cloud/reachable'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import type { InstanceConfig } from '@/store/config/types'
 import { consoleServesPage } from '@/services/muon-cloud/centralLogin'
@@ -473,8 +476,20 @@ export default class CloudAccountMenu extends Vue {
     return cloudState.account?.id ?? ''
   }
 
+  stopWatching: (() => void) | null = null
+
+  get cloudReachable (): boolean {
+    return reachState.reachable
+  }
+
   created () {
     this.loadPhoto()
+    // Signed out: is there a Muon3D service to sign in to?
+    if (!this.account) this.stopWatching = watchCloudReachable()
+  }
+
+  beforeDestroy () {
+    this.stopWatching?.()
   }
 
   /** Another account or none: nothing of the last photo stays. */
