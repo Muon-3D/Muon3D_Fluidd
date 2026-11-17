@@ -39,6 +39,14 @@ describe('what Connect locally does (KAN-2529)', () => {
     expect(mdnsHostFromName('Garage printer')).toBeNull()
   })
 
+  it('does not invent a .local name for a renamed printer, and opens its listed address instead', () => {
+    expect(mdnsHostFromName('Living Room')).toBeNull()
+    expect(mdnsHostFromName('Print farm')).toBeNull()
+    expect(localRoute({ ...base, nearby: cloud(['192.168.1.20']), mdnsHost: mdnsHostFromName('Living Room') })).toEqual({ kind: 'page', host: '192.168.1.20' })
+    // A host name the printer itself reported is still used.
+    expect(localRoute({ ...base, nearby: cloud(['192.168.1.20']), mdnsHost: 'muon-boxwood-367a.local' })).toEqual({ kind: 'page', host: 'muon-boxwood-367a.local' })
+  })
+
   it('takes a hotspot address only when the page is itself on the hotspot', () => {
     expect(openableAddr(cloud(['10.42.0.1']), '10.42.0.1')).toBe('10.42.0.1')
     expect(openableAddr(cloud(['10.42.0.1']), 'control.muon3d.com')).toBeNull()

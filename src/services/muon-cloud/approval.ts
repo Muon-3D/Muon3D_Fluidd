@@ -36,9 +36,11 @@ const failureOf = (reason: unknown): ApprovalFailure | null =>
 let listener: ((watch: ApprovalWatch) => void) | null = null
 
 /** Printers whose panel has just answered a pairing from this browser: their next dial confirms admission even if the printer holds nothing. */
-const pairedAtPanel = new Set<string>()
+/** When each was noted: a note no dial uses within the window is stale and dies unused. */
+const pairedAtPanel = new Map<string, number>()
+export const PANEL_NOTE_MS = 120_000
 export function noteAdmittedAtPanel (printerId: string): void {
-  pairedAtPanel.add(printerId)
+  pairedAtPanel.set(printerId, Date.now())
 }
 
 export function onApprovalWatch (next: ((watch: ApprovalWatch) => void) | null): void {
@@ -83,7 +85,9 @@ export async function connectWithApproval<Session> (
   let abandon!: (error: Error) => void
   let cancelled = false
   // Someone accepted this browser at the printer's panel a moment ago: say so, though the dial itself is not held.
-  let held = pairedAtPanel.delete(printerId)
+  const notedAt = pairedAtPanel.get(printerId)
+  pairedAtPanel.delete(printerId)
+  let held = notedAt !== undefined && Date.now() - notedAt <= PANEL_NOTE_MS
   const watch: ApprovalWatch = {
     pending: new Promise<string>(resolve => { sawPending = resolve }),
     outcome: new Promise<ApprovalOutcome>(resolve => { ended = resolve }),

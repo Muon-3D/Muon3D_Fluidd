@@ -102,9 +102,10 @@ export function localRoute (i: LocalRouteInput): LocalRoute {
 /**
  * The `.local` name a printer's display name implies: its hostname is
  * `muon-<name>-<suffix>` ("Sloe b26d", "Boxwood · 367A", "muon-sloe-b26d").
- * Null for a name that is not that shape (an owner's rename).
+ * Null for a name that is not that shape: an owner's rename ("Living Room") has no such host, and the suffix
+ * is hex. A name the printer reports itself (`mdnsHost`) is always preferred over this guess.
  */
 export function mdnsHostFromName (name: string | null | undefined): string | null {
-  const m = /^\s*(?:muon[\s_-]+)?([a-z]+)[\s_·.-]+([0-9a-z]{4})\s*$/i.exec(name ?? '')
+  const m = /^\s*(?:muon[\s_-]+)?([a-z]+)[\s_·.-]+([0-9a-f]{4})\s*$/i.exec(name ?? '')
   return m ? `muon-${m[1].toLowerCase()}-${m[2].toLowerCase()}.local` : null
 }

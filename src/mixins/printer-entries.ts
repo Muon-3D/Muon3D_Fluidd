@@ -670,8 +670,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    */
   async connectLocalFromHostedPage (e: DirectoryEntry, route: LocalRoute): Promise<boolean | undefined> {
     const id = e.cloud?.id
-    const heldId = id ?? e.endpointId
-    if (heldId) chooseRouteMode(heldId, 'lan')
+    // The held route is left as it was: this tab is about to leave for the printer's own page, and a 'lan' held
+    // here would be undialable when the person comes back to this hosted page (KAN-3581).
     if (route.kind === 'secure') {
       let reached = false
       // Busy: run says "Still opening" itself, and that stays the answer.
@@ -697,8 +697,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       return
     }
     if (route.kind === 'page') {
-      // The same tab, always: a new one is not what a person who tapped Connect locally expects, and
-      // the choice of the local route is held, so coming back finds it.
+      // The same tab, always: a new one is not what a person who tapped Connect locally expects.
       if (id) {
         clearRelayChoice(id)
         stopUsingBluetoothFor(id)

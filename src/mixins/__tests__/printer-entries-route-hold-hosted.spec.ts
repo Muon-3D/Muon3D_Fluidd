@@ -68,10 +68,12 @@ describe('route hold on the hosted page', () => {
     expect(routeMode('p1')).toBe('auto')
   })
 
-  it('an explicit Connect locally that opens the page holds the local route', async () => {
+  it('an explicit Connect locally that leaves for the printer page leaves the held route as it was', async () => {
+    chooseRouteMode('p1', 'cloud')
     await methods.connectLocal.call(component(), entry())
     expect(tab).toHaveBeenCalledWith('http://192.168.1.20/')
-    expect(routeMode('p1')).toBe('lan')
+    // Held 'lan' would be undialable when the person comes back to this https page.
+    expect(routeMode('p1')).toBe('cloud')
   })
 
   it('tapping a printer heard over Bluetooth is an automatic move: it records no choice', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { APPROVAL_WORDS, connectWithApproval, noteAdmittedAtPanel, onApprovalWatch, type ApprovalWatch } from '../approval'
+import { APPROVAL_WORDS, connectWithApproval, noteAdmittedAtPanel, PANEL_NOTE_MS, onApprovalWatch, type ApprovalWatch } from '../approval'
 import { notPairedMessage, PAIRING_COMING_SOON } from '../activate'
 
 describe('waiting for approval (connectAs, muon-link#126)', () => {
@@ -57,6 +57,23 @@ describe('waiting for approval (connectAs, muon-link#126)', () => {
     watch.outcome.then(settled)
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(settled).not.toHaveBeenCalled()
+  })
+
+  it('a panel note no dial uses within two minutes is stale: the next dial says nothing', async () => {
+    vi.useFakeTimers()
+    try {
+      let watch!: ApprovalWatch
+      onApprovalWatch(w => { watch = w })
+      noteAdmittedAtPanel('p2')
+      vi.advanceTimersByTime(PANEL_NOTE_MS + 1)
+      await connectWithApproval({ connectAs: async () => 'session' }, 'p2', 'Control')
+      const settled = vi.fn()
+      watch.outcome.then(settled)
+      await vi.advanceTimersByTimeAsync(50)
+      expect(settled).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it.each(['refused', 'timed_out', 'disabled', 'busy', 'cooldown'] as const)('maps a %s rejection', async reason => {
