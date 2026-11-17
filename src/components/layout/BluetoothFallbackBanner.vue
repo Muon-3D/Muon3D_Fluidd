@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="reason || droppedSheet"
+    v-if="reason || droppedSheet || lostSheet"
     class="ble-fallback"
     role="status"
     aria-live="polite"
@@ -19,10 +19,28 @@
           data-tid="bluetooth-dropped-retrying"
         >Trying Bluetooth again…</span>
       </template>
+      <template v-else-if="lostSheet">
+        <strong data-tid="route-lost-title">{{ lostSheet.title }}</strong>
+        <span>Choose how to connect to {{ lostSheet.name }}.</span>
+      </template>
       <template v-else>
         <strong>Bluetooth didn't connect, using Muon3D instead</strong>
         <span>{{ reason }}</span>
       </template>
+    </div>
+    <div
+      v-if="lostSheet && !droppedSheet"
+      class="ble-fallback__actions"
+    >
+      <button
+        v-for="choice in lostSheet.choices"
+        :key="choice.id"
+        type="button"
+        :data-tid="`route-lost-${choice.id}`"
+        @click="chooseAfterLoss(choice.id)"
+      >
+        {{ choice.label }}
+      </button>
     </div>
     <div
       v-if="droppedSheet"
@@ -69,6 +87,7 @@ import {
   noteRelayLost,
   relayLostAt,
   relayTrusted,
+  chooseRouteMode,
   routeMode,
   userOpenTarget,
   type DropChoice,
@@ -82,6 +101,13 @@ export const AUTO_SETTLE_MS = 3_000
 export const AUTO_LOOK_MS = 1_000
 /** How often auto mode asks whether the printer answers on this network, when it is not on it. */
 export const AUTO_DISCOVER_MS = 30_000
+
+interface LostSheet {
+  id: string;
+  name: string;
+  title: string;
+  choices: Array<{ id: Route | 'auto', label: string }>;
+}
 
 interface DroppedSheet {
   id: string;
@@ -162,6 +188,77 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
       reason,
       choices: dropChoices(this.lanReachable(e), cloudState.printers.some(p => p.id.toLowerCase() === id.toLowerCase())),
       retrying: this.retrying
+    }
+  }
+
+  /**
+   * A route the person chose (local network or Muon3D) that was carrying the open printer is gone
+   * (KAN-1913): Control never moves the session on its own, so it says so and offers the others and Auto.
+   */
+  get lostSheet (): LostSheet | null {
+    const lost = this.heldLost
+    if (!lost || routeMode(lost.id) !== lost.route || this.droppedSheet) return null
+    const e = this.entryFor(lost.id)
+    const there = this.availability(lost.id)
+    const choices: LostSheet['choices'] = []
+    if (lost.route !== 'lan' && there.lan) choices.push({ id: 'lan', label: 'Connect on local network' })
+    if (lost.route !== 'cloud' && there.cloud) choices.push({ id: 'cloud', label: 'Connect via cloud' })
+    if (there.ble) choices.push({ id: 'ble', label: 'Connect over Bluetooth' })
+    choices.push({ id: 'auto', label: 'Use Auto' })
+    return { id: lost.id, name: e?.name ?? 'the printer', title: `${lost.route === 'lan' ? 'Local network' : 'Muon3D'} isn't reachable`, choices }
+  }
+
+  async chooseAfterLoss (choice: Route | 'auto') {
+    const sheet = this.lostSheet
+    if (!sheet) return
+    const e = this.entryFor(sheet.id)
+    if (!e) return
+    this.clearHeld()
+    if (choice === 'auto') {
+      // Auto takes it from here: the best route there is, after its usual settle.
+      chooseRouteMode(sheet.id, 'auto')
+      this.autoSeen = sheet.id
+      return
+    }
+    if (choice === 'lan') return this.connectLocal(e)
+    if (choice === 'cloud') return this.connectCloud(e, 'relay')
+    const device = e.nearby?.device
+    return device ? this.connectCloud(e, device) : this.connectOverBluetooth(e)
+  }
+
+  /** The chosen route (lan or cloud) the open printer was last seen on, and when it was first seen gone. */
+  heldSeen: { id: string, route: 'lan' | 'cloud' } | null = null
+  heldDownSince = 0
+  heldLost: { id: string, route: 'lan' | 'cloud' } | null = null
+
+  clearHeld () {
+    this.heldSeen = null
+    this.heldDownSince = 0
+    this.heldLost = null
+  }
+
+  /** Watches a held local or Muon3D route: seen carrying, then gone for longer than a blip, is a drop. */
+  trackHeld () {
+    const open = cloudState.activePrinterId ?? this.localOpenId
+    const seen = this.heldSeen
+    if (open && seen && open.toLowerCase() !== seen.id.toLowerCase()) this.clearHeld()
+    const id = open ?? this.heldSeen?.id ?? null
+    const mode = routeMode(id)
+    if (!id || (mode !== 'lan' && mode !== 'cloud')) return this.clearHeld()
+    const target = userOpenTarget()
+    // The person opened another printer: this one is theirs to leave.
+    if (!open && target && target !== id.toLowerCase() && !target.startsWith('address:')) return this.clearHeld()
+    const route = open ? this.currentRoute(id) : null
+    if (route === mode) {
+      this.heldSeen = { id, route: mode }
+      this.heldDownSince = 0
+      this.heldLost = null
+      return
+    }
+    if (!this.heldSeen || route !== null) return
+    if (!this.heldDownSince) this.heldDownSince = Date.now()
+    if (Date.now() - this.heldDownSince >= AUTO_SETTLE_MS && !this.busyKey && !activationState.switching && !this.retrying) {
+      this.heldLost = { ...this.heldSeen }
     }
   }
 
@@ -341,6 +438,7 @@ export default class BluetoothFallbackBanner extends Mixins(PrinterEntriesMixin)
   }
 
   autoTick () {
+    this.trackHeld()
     const id = this.autoId
     this.autoSeen = nextAutoSeen(this.autoSeen, {
       autoId: id,

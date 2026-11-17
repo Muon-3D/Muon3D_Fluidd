@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PrinterEntriesMixin, { setNavigate } from '../printer-entries'
 import { forgetSecureReach, relayChosen } from '@/services/secure-origin/hosted'
 import { useBluetoothFor, stopUsingBluetoothFor } from '@/services/muon-ble/link'
+import { chooseRouteMode } from '@/services/muon-cloud/route-choice'
 import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 
 type Fn = (this: unknown, ...a: unknown[]) => unknown
@@ -60,6 +61,18 @@ beforeEach(() => {
 })
 
 describe('opening an account printer on the hosted page', () => {
+  it.each([true, false])('a late secure probe (%s) cannot override an explicit Bluetooth choice', async reached => {
+    const e = entry()
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      chooseRouteMode(e.cloud!.id, 'ble')
+      return { ok: reached, text: async () => MARKER }
+    }))
+    const c = component()
+    await methods.openCloudEntry.call(c, e)
+    expect(nav).not.toHaveBeenCalled()
+    expect(c.connectCloud).not.toHaveBeenCalled()
+    expect(c.connectLocal).not.toHaveBeenCalled()
+  })
   it('goes to the secure address when it answers, and uses no other way in', async () => {
     vi.stubGlobal('fetch', marker())
     const c = component()

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PrinterEntriesMixin, { liveRouteOf } from '../printer-entries'
 import * as link from '@/services/muon-ble/link'
 import { nearbyState } from '@/services/muon-ble/nearby'
-import { routeMode } from '@/services/muon-cloud/route-choice'
+import { chooseRouteMode, routeMode } from '@/services/muon-cloud/route-choice'
 import { discoveryState } from '@/services/muon-cloud/discovery'
 import { printerDirectory, type CardAction, type DirectoryEntry } from '@/services/muon-cloud/directory'
 
@@ -38,6 +38,7 @@ afterEach(() => { vi.restoreAllMocks() })
 
 describe('menus follow the live route', () => {
   it('on Bluetooth: Connect locally and Muon3D, not Bluetooth', () => {
+    chooseRouteMode('p1', 'ble')
     vi.spyOn(link, 'bluetoothCarrying').mockReturnValue(true)
     const e = entry({ active: 'cloud', host: '192.168.1.20' })
     expect(liveRouteOf(e)).toBe('ble')
@@ -45,11 +46,13 @@ describe('menus follow the live route', () => {
   })
 
   it('on Muon3D: Connect locally and Bluetooth', () => {
+    chooseRouteMode('p1', 'cloud')
     vi.spyOn(link, 'bluetoothCarrying').mockReturnValue(false)
     expect(ids(methods.cloudActions(entry({ active: 'cloud' })))).toEqual(['connect-local', 'connect-bluetooth'])
   })
 
   it('on the local network: Muon3D and Bluetooth', () => {
+    chooseRouteMode('p1', 'lan')
     expect(ids(methods.cloudActions(entry({ active: 'local' })))).toEqual(['connect-cloud', 'connect-bluetooth'])
   })
 
