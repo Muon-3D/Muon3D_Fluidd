@@ -211,7 +211,7 @@ test('Pair this browser remembers the admitted printer name and navigates to it'
   await open(page)
   await page.getByRole('button', { name: 'Look nearby' }).click()
   await setPairingGate(page, true)
-  await page.getByRole('button', { name: 'Pair this browser', exact: true }).click()
+  await page.getByRole('button', { name: 'Pair over Bluetooth', exact: true }).click()
   const sheet = page.getByTestId('ble-sheet')
   await sheet.getByLabel('8-digit code from the printer').fill(PANEL_CODE)
   await sheet.getByTestId('pair-submit').click()
