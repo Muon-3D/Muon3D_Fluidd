@@ -7,6 +7,15 @@
 import { test, expect, PRINTER } from '../fixtures'
 import { ownItem } from '../fakes/models'
 
+/** Goes to a page by its nav link: the rail on a desktop, the More sheet's row on a phone. */
+async function go (page: import('@playwright/test').Page, isMobile: boolean, name: string, more: string) {
+  if (isMobile) {
+    await page.getByTestId('tab-more').click()
+    await page.getByTestId(more).click()
+  } else {
+    await page.getByRole('link', { name, exact: true }).first().click()
+  }
+}
 const drawn = (img: import('@playwright/test').Locator) => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)
 
 test.describe('signed in', () => {
@@ -43,11 +52,12 @@ test.describe('signed in', () => {
     for (const i of [0, 1]) await expect.poll(() => drawn(pictures.nth(i))).toBe(true)
   })
 
-  test('Library from All printers opens at /library with no printer, and the printer pages stay a click away', async ({ page, open }) => {
+  test('Library from All printers opens at /library with no printer, and the printer pages stay a click away', async ({ page, open, isMobile }) => {
     await open(`${PRINTER}`)
-    await page.getByTestId('rail-all-printers').click()
+    await go(page, isMobile, 'All printers', 'more-all-printers')
     await expect(page).toHaveURL(/\/$/)
-    await page.getByTestId('rail-library').click()
+    // On All printers the Library is the header's own button.
+    await page.getByTestId('header-library').click()
     await expect(page.getByTestId('library-page')).toBeVisible()
     await expect(page).toHaveURL(/\/library$/)
     expect(new URL(page.url()).pathname).not.toContain('boxwood')
@@ -55,7 +65,7 @@ test.describe('signed in', () => {
     await expect(page.getByTestId('library-page')).not.toContainText('Boxwood')
     // From a printer's own page, the Library stays beside that printer.
     await page.goto(`${PRINTER}/jobs`)
-    await page.getByTestId('rail-library').click()
+    await go(page, isMobile, 'Library', 'more-library')
     await expect(page).toHaveURL(new RegExp(`${PRINTER}/library$`))
   })
 })

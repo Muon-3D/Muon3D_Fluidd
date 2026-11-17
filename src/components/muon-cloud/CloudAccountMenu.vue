@@ -510,7 +510,8 @@ export default class CloudAccountMenu extends Vue {
   }
 
   get libraryTo (): string {
-    return scopedPath('/library', activeSlug())
+    // Shown with no printer open (Printers, the account): the Library there has none either (KAN-3599).
+    return '/library'
   }
 
   openKeys () {
