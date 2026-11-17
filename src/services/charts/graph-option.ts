@@ -1,4 +1,5 @@
 import type { SeriesDef } from './series'
+import { chartInk } from './theme'
 
 export interface GraphLine {
   def: SeriesDef
@@ -20,7 +21,7 @@ const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit
 
 /** The ECharts option for one draw. Pure: same input, same option. */
 export function buildGraphOption (input: GraphInput): Record<string, unknown> {
-  const text = input.dark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.55)'
+  const text = chartInk(input.dark).label
   const grid = input.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'
   const fontSize = input.phone ? 12 : 13
   const percent = input.lines.some(l => l.def.axis === 1)
