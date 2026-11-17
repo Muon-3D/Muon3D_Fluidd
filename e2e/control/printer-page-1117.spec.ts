@@ -30,17 +30,17 @@ test('Home on the toolhead\'s panel stays on the toolhead while the printer home
   const { parts } = await partsReady(page)
   await page.getByTestId('m1-part-toolhead').focus()
   await expect(parts).toHaveAttribute('data-selected', 'toolhead')
-  await expect(page.getByTestId('m1-home')).toBeVisible()
+  await expect(page.getByTestId('m1-pad-home')).toBeVisible()
 
   const release = printer.hold(/^G28/)
-  await page.getByTestId('m1-home').click()
+  await page.getByTestId('m1-pad-home').click()
   await expect.poll(() => printer.gcode.some(s => s.startsWith('G28'))).toBe(true)
   // The printer reports busy while it homes: the part, its panel and its options are still there.
   printer.report({ ...PRESETS.idleHomed(), idle_timeout: { state: 'Printing' } })
   await page.waitForTimeout(800)
   await expect(parts).toHaveAttribute('data-selected', 'toolhead')
   await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'toolhead')
-  await expect(page.getByTestId('m1-home')).toBeVisible()
+  await expect(page.getByTestId('m1-pad-home')).toBeVisible()
 
   release()
   printer.report({ ...PRESETS.idleHomed(), idle_timeout: { state: 'Ready' } })
