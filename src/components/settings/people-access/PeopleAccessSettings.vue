@@ -669,7 +669,7 @@
       @close="dialog = ''"
     >
       <p class="m3-dlg__text">
-        By email: it appears in their account, and you can take it back any time.
+        {{ inviteMode === 'email' ? 'By email: it appears in their account, and you can take it back any time.' : 'Share a link: anyone with it can join until it runs out, and you can end it any time.' }}
       </p>
       <span
         class="pa-seg pa-seg--dlg"
@@ -678,17 +678,107 @@
       >
         <button
           type="button"
-          class="pa-seg--on"
-          aria-pressed="true"
+          :class="{ 'pa-seg--on': inviteMode === 'email' }"
+          :aria-pressed="inviteMode === 'email' ? 'true' : 'false'"
+          data-tid="pa-invite-email-tab"
+          :disabled="busy"
+          @click="inviteMode = 'email'"
         >Email</button>
         <button
           type="button"
-          disabled
+          :class="{ 'pa-seg--on': inviteMode === 'link' }"
+          :aria-pressed="inviteMode === 'link' ? 'true' : 'false'"
           data-tid="pa-invite-link-tab"
-          title="Making invite links from Control isn't available yet"
-        >Link (not available yet)</button>
+          :disabled="busy"
+          @click="inviteMode = 'link'"
+        >Link</button>
       </span>
-      <label class="m3-field">
+      <template v-if="inviteMode === 'link'">
+        <div
+          v-if="madeLink"
+          class="m3-field"
+          data-tid="pa-link-made"
+        >
+          <span class="m3-field__label">Your link</span>
+          <b
+            class="pa-mono"
+            data-tid="pa-link-made-url"
+          >{{ madeLink.url }}</b>
+          <p class="pa__muted">
+            {{ linkLine(madeLink) }}
+          </p>
+          <button
+            type="button"
+            class="lib-btn lib-btn--sm"
+            data-tid="pa-link-made-copy"
+            @click="copy(madeLink.url || '')"
+          >
+            Copy link
+          </button>
+        </div>
+        <template v-else>
+          <div class="m3-field">
+            <span class="m3-field__label">Link lasts</span>
+            <div class="pa-opt">
+              <button
+                v-for="o in LINK_LASTS"
+                :key="o.value"
+                type="button"
+                :class="{ 'pa-opt--on': linkForm.lifetime === o.value }"
+                :aria-pressed="linkForm.lifetime === o.value ? 'true' : 'false'"
+                :data-tid="`pa-link-lasts-${o.value}`"
+                @click="linkForm.lifetime = o.value"
+              >
+                <b>{{ o.label }}</b>
+              </button>
+            </div>
+          </div>
+          <div class="m3-field">
+            <span class="m3-field__label">People who can use it</span>
+            <div class="pa-opt">
+              <button
+                v-for="o in LINK_USES"
+                :key="o.label"
+                type="button"
+                :class="{ 'pa-opt--on': linkForm.maxUses === o.value }"
+                :aria-pressed="linkForm.maxUses === o.value ? 'true' : 'false'"
+                :data-tid="`pa-link-uses-${o.value === null ? 'any' : o.value}`"
+                @click="linkForm.maxUses = o.value"
+              >
+                <b>{{ o.label }}</b>
+              </button>
+            </div>
+          </div>
+          <div class="m3-field">
+            <span class="m3-field__label">They can</span>
+            <div class="pa-opt">
+              <button
+                v-for="role in ['operator', 'viewer']"
+                :key="role"
+                type="button"
+                :class="{ 'pa-opt--on': linkForm.role === role }"
+                :aria-pressed="linkForm.role === role ? 'true' : 'false'"
+                :data-tid="`pa-link-role-${role}`"
+                @click="linkForm.role = role"
+              >
+                <b>{{ roleWord(role) }}</b><span>{{ role === 'operator' ? 'Print, heat and move' : 'Watch only' }}</span>
+              </button>
+            </div>
+          </div>
+          <label class="pa-check">
+            <input
+              v-model="linkForm.approveEach"
+              type="checkbox"
+              data-tid="pa-link-approve"
+            >
+            Approve each person: you let them in before they join
+          </label>
+        </template>
+      </template>
+      <label
+        v-if="inviteMode === 'email'"
+        class="m3-field"
+      >
         <span class="m3-field__label">Email</span>
         <span class="m3-field__box"><input
           v-model="form.email"
@@ -697,7 +787,10 @@
           data-tid="pa-invite-email"
         ></span>
       </label>
-      <div class="m3-field">
+      <div
+        v-if="inviteMode === 'email'"
+        class="m3-field"
+      >
         <span class="m3-field__label">They can</span>
         <div class="pa-opt">
           <button
@@ -713,7 +806,10 @@
           </button>
         </div>
       </div>
-      <label class="m3-field">
+      <label
+        v-if="inviteMode === 'email'"
+        class="m3-field"
+      >
         <span class="m3-field__label">Access ends <span class="pa__muted">(leave empty for never)</span></span>
         <span class="m3-field__box"><input
           v-model="form.until"
@@ -734,9 +830,10 @@
           class="cbtn cbtn--ghost"
           @click="dialog = ''"
         >
-          Cancel
+          {{ madeLink ? 'Done' : 'Cancel' }}
         </button>
         <button
+          v-if="inviteMode === 'email'"
           type="button"
           class="cbtn cbtn--primary"
           :disabled="!form.email.includes('@') || busy"
@@ -744,6 +841,16 @@
           @click="invite"
         >
           Send invite
+        </button>
+        <button
+          v-else-if="!madeLink"
+          type="button"
+          class="cbtn cbtn--primary"
+          :disabled="busy"
+          data-tid="pa-link-make"
+          @click="makeLink"
+        >
+          Make link
         </button>
       </template>
     </m3-dialog>
@@ -755,7 +862,7 @@
       @close="dialog = ''"
     >
       <p class="m3-dlg__text">
-        What {{ changing && changing.email }} can do on {{ accountPrinterName }}.
+        What {{ changing && changing.email }} can do on {{ accountPrinterName }}, and when it ends.
       </p>
       <div class="pa-opt">
         <button
@@ -770,6 +877,15 @@
           <b>{{ roleWord(role) }}</b><span>{{ role === 'operator' ? 'Print, heat and move' : 'Watch only' }}</span>
         </button>
       </div>
+      <label class="m3-field">
+        <span class="m3-field__label">Access ends <span class="pa__muted">(leave empty for never)</span></span>
+        <span class="m3-field__box"><input
+          v-model="form.until"
+          type="date"
+          aria-label="Access ends"
+          data-tid="pa-role-until"
+        ></span>
+      </label>
       <p
         v-if="dialogError"
         class="m3-dlg__error"
@@ -788,11 +904,11 @@
         <button
           type="button"
           class="cbtn cbtn--primary"
-          :disabled="busy || !changing || form.role === changing.role"
+          :disabled="busy || !changing || (form.role === changing.role && roleEnds(changing) === changing.endsAt)"
           data-tid="pa-role-save"
           @click="changeRole"
         >
-          Save role
+          Save
         </button>
       </template>
     </m3-dialog>
@@ -894,6 +1010,17 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
   dialog: '' | 'invite' | 'role' = ''
   dialogError = ''
   form = { email: '', role: 'viewer', until: '' }
+  inviteMode: 'email' | 'link' = 'email'
+  linkForm: { lifetime: '1h' | '1d' | '7d' | 'none', maxUses: 1 | 5 | 25 | null, role: string, approveEach: boolean } = { lifetime: '1d', maxUses: null, role: 'viewer', approveEach: false }
+  madeLink: InviteLink | null = null
+  readonly LINK_LASTS = [
+    { value: '1h', label: '1 hour' }, { value: '1d', label: '1 day' }, { value: '7d', label: '7 days' }, { value: 'none', label: 'Until I end it' }
+  ] as const
+
+  readonly LINK_USES = [
+    { value: 1, label: '1 person' }, { value: 5, label: '5 people' }, { value: 25, label: '25 people' }, { value: null, label: 'No limit' }
+  ] as const
+
   changing: PersonRow | null = null
   shares: PrinterShare[] = []
   invites: PrinterInvite[] = []
@@ -1118,7 +1245,7 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
       letter: this.letterOf(s.name || s.email),
       role: s.role,
       endsAt: s.ends_at ?? null,
-      line: [s.name ? s.email : '', s.ends_at ? `Access ends ${dayText(s.ends_at)}` : s.accepted === false ? 'Not signed in yet' : `Since ${dayText(s.created_at)}`].filter(Boolean).join(' · ')
+      line: [s.name ? s.email : '', s.ends_at ? `Access ends ${dayText(s.ends_at)}` : s.accepted === false ? 'Not signed in yet' : `Since ${dayText(s.created_at)}`].filter(Boolean).join(' Â· ')
     }))
   }
 
@@ -1256,15 +1383,48 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
 
   openInvite () {
     this.form = { email: '', role: 'viewer', until: '' }
+    this.inviteMode = 'email'
+    this.linkForm = { lifetime: '1d', maxUses: null, role: 'viewer', approveEach: false }
+    this.madeLink = null
     this.dialogError = ''
     this.dialog = 'invite'
+  }
+
+  /** A date input's day as the console's end of that day, or null for never. */
+  untilToEnds (until: string): number | null {
+    return until ? Math.floor(new Date(`${until}T23:59:59`).getTime() / 1000) : null
+  }
+
+  /** A date input's value for an end time, in the viewer's own day. */
+  dayInput (endsAt: number | null): string {
+    return endsAt ? new Date(endsAt * 1000).toLocaleDateString('en-CA') : ''
+  }
+
+  /** The end date in the role dialog: the person's own exact end unless the day was changed. */
+  roleEnds (row: PersonRow): number | null {
+    return this.form.until === this.dayInput(row.endsAt) ? row.endsAt : this.untilToEnds(this.form.until)
+  }
+
+  /** "Share a link", as the phone app does: the console makes it, and it is listed with a Copy. */
+  async makeLink () {
+    const p = this.cloudPrinter
+    if (!p) return
+    const f = this.linkForm
+    let made: InviteLink | null = null
+    const ok = await this.run(async () => {
+      made = (await accountApi.createLink(p.id, { lifetime: f.lifetime, max_uses: f.maxUses, role: f.role, approve_each: f.approveEach })).link
+    }, undefined, true)
+    if (ok && made) {
+      this.madeLink = made
+      this.refreshCloud()
+    }
   }
 
   async invite () {
     const p = this.cloudPrinter
     if (!p) return
     const email = this.form.email.trim()
-    const endsAt = this.form.until ? Math.floor(new Date(`${this.form.until}T23:59:59`).getTime() / 1000) : null
+    const endsAt = this.untilToEnds(this.form.until)
     if (await this.run(() => accountApi.share(p.id, email, this.form.role, endsAt), `${email} can use ${p.name}. We've emailed them.`, true)) {
       this.dialog = ''
       this.refreshCloud()
@@ -1274,6 +1434,7 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
   openRole (row: PersonRow) {
     this.changing = row
     this.form.role = row.role
+    this.form.until = this.dayInput(row.endsAt)
     this.dialogError = ''
     this.dialog = 'role'
   }
@@ -1283,7 +1444,8 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
     const row = this.changing
     if (!p || !row) return
     const role = this.form.role
-    if (await this.run(() => accountApi.share(p.id, row.email, role, row.endsAt), `${row.email} is ${role === 'viewer' ? 'a Viewer' : 'an Operator'} now.`, true)) {
+    const endsAt = this.roleEnds(row)
+    if (await this.run(() => accountApi.share(p.id, row.email, role, endsAt), `${row.email} is ${role === 'viewer' ? 'a Viewer' : 'an Operator'} now${endsAt ? `, until ${dayText(endsAt)}` : ''}.`, true)) {
       this.dialog = ''
       this.changing = null
       this.refreshCloud()
@@ -1333,6 +1495,13 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
   }
 
   async endLink (link: InviteLink) {
+    const key = this.printerKey
+    const sure = await this.$confirm('Nobody can join with it any more. People who already joined keep their access.', {
+      title: 'End this invite link?',
+      buttonTrueText: 'End link',
+      danger: true
+    })
+    if (!sure || key !== this.printerKey) return
     await this.run(() => accountApi.revokeLink(link.printer_id, link.id), 'That invite link no longer works. People who joined with it keep their access.')
     this.refreshCloud()
   }
@@ -1575,6 +1744,14 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
 
   .pa-mono {
     font-family: var(--m3d-font-mono);
+  }
+
+  .pa-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 13px;
   }
 
   .pa-gh {

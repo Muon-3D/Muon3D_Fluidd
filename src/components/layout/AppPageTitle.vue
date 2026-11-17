@@ -331,7 +331,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
   get pillText (): string {
     if (this.foreignStatus) return FOREIGN_STATE_LABELS[this.foreignStatus.state]
     // Shut down from System: it is off, not lost.
-    if (!this.socketConnected) return hostPower.offAt ? 'Off' : 'Offline'
+    if (!this.socketConnected) return hostPower.offAt ? 'Off' : this.statusText
     if (!this.klippyReady) return 'Not ready'
     return this.$filters.prettyCase(this.printerState || 'ready')
   }
