@@ -10,12 +10,12 @@
     >
       <div class="wf__titles">
         <h2>Wi-Fi</h2>
-        <p v-if="!locked && !remote">
+        <p v-if="!locked">
           {{ connectedNetwork ? `On ${connectedNetwork.ssid} · signal ${connectedNetwork.signal}%` : 'Not on a Wi-Fi network' }}
         </p>
       </div>
       <button
-        v-if="!locked && !remote"
+        v-if="!locked"
         type="button"
         class="wf__refresh"
         :disabled="fetching"
@@ -37,24 +37,45 @@
       @dismiss="refusal = null"
     />
     <p
-      v-if="remote"
+      v-if="routeProblem"
       class="wf__note wf__span"
+      role="status"
+      :data-problem="routeProblem.kind"
+      data-tid="wifi-route-problem"
     >
-      {{ $t('app.wifi.remote_read_only') }}
+      {{ routeProblem.message }}
     </p>
 
-    <template v-if="!compact && !locked && !remote">
-      <section
-        class="stile stile--6 wf__connected"
+    <section
+      v-if="!compact && !locked"
+      class="stile wf__box"
+      data-tid="wifi-box"
+    >
+      <header class="stile__head">
+        <frame-icon name="wifi" />
+        <h2>Wi-Fi</h2>
+        <span class="stile__aside">
+          <tone-pill :tone="connectedNetwork ? 'ok' : 'off'">{{ connectedNetwork ? 'Online' : 'Not connected' }}</tone-pill>
+          <button
+            type="button"
+            class="cbtn cbtn--sm"
+            :disabled="fetching"
+            data-tid="wifi-refresh"
+            @click="fetchDevices"
+          >
+            <frame-icon
+              name="refresh"
+              small
+            />
+            Scan
+          </button>
+        </span>
+      </header>
+
+      <div
+        class="wf__connected"
         data-tid="wifi-connected"
       >
-        <header class="stile__head">
-          <frame-icon name="wifi" />
-          <h2>Connected</h2>
-          <span class="stile__aside">
-            <tone-pill :tone="connectedNetwork ? 'ok' : 'off'">{{ connectedNetwork ? 'Online' : 'Not connected' }}</tone-pill>
-          </span>
-        </header>
         <template v-if="connectedNetwork">
           <div class="wf__now">
             <span class="srow__ico wf__now-ico"><frame-icon name="wifi" /></span>
@@ -118,31 +139,15 @@
         >
           Not on a Wi-Fi network. Pick one from the list to join it.
         </p>
-      </section>
+      </div>
 
-      <section
-        class="stile stile--8 wf__available"
+      <div
+        class="wf__available"
         data-tid="wifi-available"
       >
-        <header class="stile__head">
-          <frame-icon name="wifi" />
-          <h2>Available networks</h2>
-          <span class="stile__aside">
-            <button
-              type="button"
-              class="cbtn cbtn--sm"
-              :disabled="fetching"
-              data-tid="wifi-refresh"
-              @click="fetchDevices"
-            >
-              <frame-icon
-                name="refresh"
-                small
-              />
-              Scan
-            </button>
-          </span>
-        </header>
+        <h3 class="stile__group-title">
+          Available networks
+        </h3>
         <div
           class="slist"
           data-tid="wifi-networks"
@@ -154,10 +159,9 @@
             Looking for networks…
           </p>
           <div
-            v-for="network in shownNetworks"
+            v-for="network in otherNetworks"
             :key="network.ssid"
             class="srow wf__net"
-            :class="{ 'wf__row--on': network.in_use }"
             :data-ssid="network.ssid"
           >
             <span class="srow__ico"><frame-icon :name="network.security ? 'lock' : 'wifi'" /></span>
@@ -172,16 +176,7 @@
                 data-tid="wifi-detail"
               >{{ detail(network) }}</span>
             </div>
-            <tone-pill
-              v-if="network.in_use"
-              tone="ok"
-            >
-              Connected
-            </tone-pill>
-            <span
-              v-else
-              class="srow__act"
-            >
+            <span class="srow__act">
               <button
                 v-if="knownSsids.has(network.ssid)"
                 type="button"
@@ -219,11 +214,11 @@
             </svg>
           </div>
         </div>
-      </section>
-    </template>
+      </div>
+    </section>
 
     <div
-      v-if="compact && !locked && !remote"
+      v-if="compact && !locked"
       class="wf__list"
       data-tid="wifi-networks"
     >
@@ -373,6 +368,8 @@ import PermissionRefusalNotice from './PermissionRefusalNotice.vue'
 import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import { wifiProbe } from '@/services/wifi/saved-probe'
+import { managedNetworkProblem } from '@/services/wifi/network-route'
+import type { ManagedNetworkProblem } from '@/services/wifi/network-route'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
@@ -438,16 +435,21 @@ export default class WifiManagerCard extends Vue {
     return this.$store.getters['protection/isLocked']
   }
 
-  // Reached over Iroh: muon-link refuses every Aux request there, reads
-  // included, and the owner decided remote callers may not change Wi-Fi
-  // (setup spec 07 §3). The card makes no call and says so instead.
+  // Reached over Bluetooth or Muon3D (Iroh): the Aux client sends each Wi-Fi
+  // call to muon-link's own route instead (KAN-3601), so nothing here changes
+  // by route. What can differ is the answer: an older muon-link has no such
+  // route, or the owner turned the route off, and the note says which.
   get remote (): boolean {
     return printerTransportBinding.remote
   }
 
+  /** Why this connection can't change Wi-Fi, from the last answer; null when it can (or has not been asked). */
+  routeProblem: ManagedNetworkProblem | null = null
+
   @Watch('remote')
-  onRemoteChanged (remote: boolean) {
-    if (!remote) this.fetchDevices()
+  onRemoteChanged () {
+    this.routeProblem = null
+    this.fetchDevices()
   }
 
   auxApi = useAuxApi()
@@ -492,11 +494,12 @@ export default class WifiManagerCard extends Vue {
 
   // Fetch and mark known SSIDs
   async fetchDevices () {
-    if (this.fetching || this.locked || this.remote) return
+    if (this.fetching || this.locked) return
     this.fetching = true
     try {
       const res = await this.auxApi.wifi.wifiScanWifiScanGet(true)
       this.wifi_available_networks = res.data
+      this.routeProblem = null
 
       await this.updateKnownSsids()
 
@@ -513,7 +516,8 @@ export default class WifiManagerCard extends Vue {
       // ————————————————————————————————————————————————————————————————
     } catch (e: any) {
       console.error('Wi-Fi scan failed', e)
-      if (e?.response?.status === 403) this.$store.dispatch('protection/onRefused')
+      if (this.remote) this.routeProblem = managedNetworkProblem(e)
+      if (e?.response?.status === 403 && !this.routeProblem) this.$store.dispatch('protection/onRefused')
     }
     this.fetching = false
   }
@@ -691,7 +695,10 @@ export default class WifiManagerCard extends Vue {
       EventBus.$emit(this.$t('app.wifi.msg.connect.success') + ' ' + this.selectedNetwork.ssid, { type: 'success', timeout: 2000 })
       await this.fetchDevices()
     } catch (err: any) {
-      if (this.takePermissionRefusal(err)) {
+      const problem = this.remote ? managedNetworkProblem(err) : null
+      if (problem) {
+        this.routeProblem = problem
+      } else if (this.takePermissionRefusal(err)) {
         // The store refused this caller; the notice says who may.
       } else if (isPanelOnlyRefusal(err)) {
         // An owner can turn AUX_NETWORK_STRICT on, and then /wifi/connect is refused too.
@@ -716,7 +723,10 @@ export default class WifiManagerCard extends Vue {
         await this.fetchDevices()
       }
     } catch (err: any) {
-      if (this.takePermissionRefusal(err)) {
+      const problem = this.remote ? managedNetworkProblem(err) : null
+      if (problem) {
+        this.routeProblem = problem
+      } else if (this.takePermissionRefusal(err)) {
         // The store refused this caller: not a panel-only printer, so refusedHere stays as it was.
       } else if (isPanelOnlyRefusal(err)) {
         // No open route does this job: it is the printer's screen now.
@@ -734,6 +744,11 @@ export default class WifiManagerCard extends Vue {
   /** In the quick menu, the network it's on and the three strongest others. */
   get shownNetworks (): AggWifi[] {
     return this.compact ? this.sortedNetworks.slice(0, 4) : this.sortedNetworks
+  }
+
+  /** The page lists the networks it is not on: the one it is on has its own place above the list. */
+  get otherNetworks (): AggWifi[] {
+    return this.sortedNetworks.filter(n => !n.in_use)
   }
 
   get connectedNetwork (): AggWifi | null {
@@ -813,6 +828,9 @@ export default class WifiManagerCard extends Vue {
       await this.fetchDevices()
     } catch (e) {
       console.error('Forget failed', e)
+      const problem = this.remote ? managedNetworkProblem(e) : null
+      if (problem) this.routeProblem = problem
+      else if (!this.takePermissionRefusal(e)) EventBus.$emit(`Could not forget ${network.ssid}. ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
     }
   }
 }

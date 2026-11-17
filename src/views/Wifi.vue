@@ -16,17 +16,22 @@
     </p>
     <div class="stiles">
       <wifi-manager-card />
+      <section
+        class="stile wifi-ble"
+        data-tid="wifi-bluetooth"
+      >
+        <header class="stile__head">
+          <frame-icon name="bluetooth" />
+          <h2>Bluetooth</h2>
+        </header>
+        <p
+          class="stile__note"
+          data-tid="wifi-bluetooth-line"
+        >
+          {{ bluetoothLine }}
+        </p>
+      </section>
       <hotspot-manager-card />
-    </div>
-    <div
-      class="wifi-ble"
-      data-tid="wifi-bluetooth"
-    >
-      <frame-icon name="bluetooth" />
-      <span class="wifi-ble__text">
-        <b>Bluetooth</b>
-        <span data-tid="wifi-bluetooth-line">{{ bluetoothLine }}</span>
-      </span>
     </div>
   </div>
 </template>
@@ -42,11 +47,12 @@ import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import { bluetoothCarrying, remoteRouteLabel } from '@/services/muon-ble/link'
 
 /**
- * Wi-Fi and network (Settings): the network the printer is on, the
- * networks it hears (to join, leave or forget), its own hotspot (to turn
- * on or off and rename). The Wi-Fi and
- * hotspot parts talk to MuonOS's Aux API, and both say so instead when
- * network protection or a remote connection (Iroh) rules changes out.
+ * Wi-Fi and network (Settings): one Wi-Fi box (the network the printer
+ * is on and the ones it hears, to join, leave or forget), then Bluetooth, then
+ * its own hotspot (to turn on or off and rename). Wi-Fi works over any route:
+ * the Aux API on the printer's network, muon-link's own routes over Bluetooth
+ * and Muon3D (KAN-3601). The hotspot still says so when a remote connection
+ * rules changes out.
  */
 @Component({ components: { WifiManagerCard, HotspotManagerCard, FrameIcon } })
 export default class Wifi extends Mixins(BrowserMixin) {
@@ -92,63 +98,33 @@ export default class Wifi extends Mixins(BrowserMixin) {
     font-weight: 600;
   }
 
-  .wifi-ble {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-top: 12px;
-    padding: 14px 18px;
-    border-radius: 18px;
-    background: var(--m3d-surface);
-    color: var(--m3d-text);
-    font-size: 14px;
-  }
-
-  .wifi-ble__text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-
-    span {
-      color: var(--m3d-text-muted);
-      font-size: 13px;
-    }
-  }
-
-  // The cards' tiles sit in this grid, in the order the mockup has them:
-  // the notices, the network it is on and the hotspot, then the list.
+  // One column of boxes: the Wi-Fi box (the network it is on, and the others),
+  // then Bluetooth, then the hotspot (KAN-3607).
   .wifi-page :deep(.wf__span) {
     grid-column: span 12;
-    order: 0;
-  }
-
-  .wifi-page :deep(.wf__connected) {
-    order: 1;
   }
 
   .wifi-page :deep(.hs--page) {
-    order: 2;
+    grid-column: span 12;
   }
 
-  .wifi-page :deep(.wf__available) {
-    order: 3;
-  }
-
-  // The network it is on and the hotspot are one pair: the same height.
-  .wifi-page :deep(.wf__connected),
-  .wifi-page :deep(.hs--page) {
-    align-self: stretch;
-    min-height: var(--wifi-pair-min, 0);
-  }
-
-  // Stacked (narrow screens) the two sit in separate rows, so give both one floor.
-  @media (max-width: 1100px) {
-    .wifi-page {
-      --wifi-pair-min: 340px;
-    }
-  }
-
+  // On a phone the list is the page: no side detail, one short row per
+  // network, so scrolling it is one gesture and not a hunt.
   .wifi-page--phone .stiles {
     gap: 12px;
+  }
+
+  .wifi-page--phone :deep(.stile) {
+    padding: 14px;
+  }
+
+  .wifi-page--phone :deep(.wf__detail),
+  .wifi-page--phone :deep(.wf__net .wf__bars) {
+    display: none;
+  }
+
+  .wifi-page--phone :deep(.wf__net) {
+    min-height: 56px;
+    gap: 10px;
   }
 </style>

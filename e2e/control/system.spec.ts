@@ -275,7 +275,8 @@ test.describe('Wi-Fi and network', () => {
 
     const list = page.getByTestId('wifi-networks')
     await expect(list.locator('[data-ssid="Workshop-2G"]')).toContainText('Connect')
-    await expect(list.locator('[data-ssid="Workshop"]')).toContainText('Connected')
+    // The network it is on is above the list, in the same box, not repeated in it.
+    await expect(list.locator('[data-ssid="Workshop"]')).toHaveCount(0)
     await expect(page.getByTestId('wifi-available').getByRole('button', { name: 'Scan' })).toBeVisible()
 
     const hotspot = page.getByTestId('hotspot-card')
@@ -286,7 +287,7 @@ test.describe('Wi-Fi and network', () => {
     await expect(page.getByTestId('wifi-ethernet')).toHaveCount(0)
   })
 
-  test('has no Ethernet entry, and the Wi-Fi and Hotspot rows are one height (KAN-2044)', async ({ page, open }, testInfo) => {
+  test('has no Ethernet entry, and the Wi-Fi box, Bluetooth and Hotspot are stacked (KAN-2044, KAN-3607)', async ({ page, open }, testInfo) => {
     const printer = await usePrinter(page)
     printer.state.results['machine.system_info'] = SYSTEM_INFO
     await open('/wifi')
@@ -296,10 +297,10 @@ test.describe('Wi-Fi and network', () => {
     await expect(page.getByTestId('wifi-page').getByText('Ethernet')).toHaveCount(0)
     await expect(page.getByRole('menuitem', { name: /ethernet/i })).toHaveCount(0)
 
-    const wifi = await page.getByTestId('wifi-connected').boundingBox()
+    const wifi = await page.getByTestId('wifi-box').boundingBox()
     const hotspot = await page.getByTestId('hotspot-card').boundingBox()
     expect(wifi && hotspot).toBeTruthy()
-    expect(Math.abs(wifi!.height - hotspot!.height)).toBeLessThanOrEqual(1)
+    expect(hotspot!.y).toBeGreaterThanOrEqual(wifi!.y + wifi!.height - 1)
 
     await page.getByTestId('wifi-page').screenshot({ path: `e2e/control/screenshots/wifi-tidy-${testInfo.project.name}.png` })
   })

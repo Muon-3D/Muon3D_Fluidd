@@ -123,7 +123,7 @@ describe('WifiManagerCard under network protection (SEC-8)', () => {
   })
 })
 
-describe('WifiManagerCard over Iroh (07 §3)', () => {
+describe('WifiManagerCard over Iroh (KAN-3601)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
@@ -135,28 +135,42 @@ describe('WifiManagerCard over Iroh (07 §3)', () => {
     vi.useRealTimers()
   })
 
-  it('shows one line in place of the card, and asks the printer nothing', async () => {
-    printerTransportBinding.remote = true
-    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
-    await vi.advanceTimersByTimeAsync(11000)
-
-    expect(wrapper.text()).toContain('app.wifi.remote_read_only')
-    expect(wrapper.find('[data-tid=wifi-networks]').exists()).toBe(false)
-    expect(wifiScan).not.toHaveBeenCalled()
-    expect(wifiDetails).not.toHaveBeenCalled()
-    wrapper.destroy()
-  })
-
-  it('scans once the printer is reached on its own network again', async () => {
+  it('lists networks over Iroh like anywhere else: the Aux client sends the call to muon-link', async () => {
     printerTransportBinding.remote = true
     const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
     await vi.advanceTimersByTimeAsync(0)
+
+    expect(wifiScan).toHaveBeenCalled()
+    expect(wrapper.find('[data-tid=wifi-networks]').exists()).toBe(true)
+    expect(wrapper.find('[data-tid=wifi-route-problem]').exists()).toBe(false)
+    wrapper.destroy()
+  })
+
+  it('says an older muon-link cannot do it, and an owner who turned the route off', async () => {
+    printerTransportBinding.remote = true
+    wifiScan.mockRejectedValueOnce(Object.assign(new Error('404'), { response: { status: 404, data: 'Not Found' } }))
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(wrapper.find('[data-tid=wifi-route-problem]').attributes('data-problem')).toBe('not-available')
+
+    wifiScan.mockRejectedValueOnce(Object.assign(new Error('403'), { response: { status: 403, data: { error: 'path_disabled', detail: { code: 'path_disabled' } } } }))
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(wrapper.find('[data-tid=wifi-route-problem]').attributes('data-problem')).toBe('path-rule')
+    wrapper.destroy()
+  })
+
+  it('scans again, and drops the note, when the route changes', async () => {
+    printerTransportBinding.remote = true
+    wifiScan.mockRejectedValueOnce(Object.assign(new Error('404'), { response: { status: 404, data: 'Not Found' } }))
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(wrapper.find('[data-tid=wifi-route-problem]').exists()).toBe(true)
 
     printerTransportBinding.remote = false
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(wifiScan).toHaveBeenCalled()
-    expect(wrapper.text()).not.toContain('app.wifi.remote_read_only')
+    expect(wifiScan).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-tid=wifi-route-problem]').exists()).toBe(false)
     wrapper.destroy()
   })
 })
