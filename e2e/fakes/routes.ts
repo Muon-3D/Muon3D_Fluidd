@@ -91,6 +91,31 @@ class Socket {
   async close () { this.ws.close() }
 }
 
+// muon-link's own Wi-Fi routes (KAN-3601, muon-link docs/NETWORK_ROUTES.md), answered as it does
+// and recorded in window.__e2eRoute.network. A scan takes no query there, as on the real device.
+const json = (status, value) => ({ status, headers: ['content-type', 'application/json'], body: text(JSON.stringify(value)) })
+function networkAnswer (method, bare, path, body) {
+  const net = S().network
+  const tail = bare.slice('/muon-link/network'.length)
+  const query = path.includes('?') ? '?' + path.split('?')[1] : ''
+  net.calls.push(method + ' ' + tail + query)
+  if (net.mode === 'older') return { status: 404, headers: ['content-type', 'text/plain'], body: text('Not Found') }
+  if (net.mode === 'path_disabled') {
+    return json(403, { error: 'path_disabled', detail: { code: 'path_disabled', setting: 'network_from_relay', message: 'turned off' } })
+  }
+  if (method === 'GET' && tail === '/wifi/scan') {
+    if (query) return json(400, { error: 'bad_request', detail: 'this route takes no query' })
+    return json(200, net.scan)
+  }
+  if (method === 'GET' && tail === '/wifi/saved') return json(200, [{ name: 'Workshop' }, { name: 'Workshop-2G' }])
+  if (method === 'POST' && tail === '/wifi/connect') {
+    net.bodies.push(JSON.parse(new TextDecoder().decode(body)))
+    return json(200, { status: 'connected' })
+  }
+  if (method === 'DELETE' && tail === '/wifi/forget') return json(200, { status: 'forgotten' })
+  return json(404, { error: 'not_found' })
+}
+
 class Printer {
   constructor (id, route) {
     this.id = id
@@ -103,6 +128,7 @@ class Printer {
   async fetch (method, path, headers, body) {
     if (this.dead) throw new Error('connection lost')
     const bare = decodeURIComponent(path.split('?')[0])
+    if (bare.startsWith('/muon-link/network/')) return networkAnswer(method, bare, path, body)
     if (bare === '/muon-link/plate/clear') {
       S().refused.push(method + ' ' + bare)
       return { status: 403, headers: ['content-type', 'application/json'], body: text(REFUSAL) }
@@ -248,7 +274,17 @@ export async function useAllRoutes (page: Page, account: ConsoleState) {
       links: new Set(),
       linkEvents: [],
       live: new Set(),
-      chooserAsks: 0
+      chooserAsks: 0,
+      network: {
+        mode: 'ok',
+        calls: [] as string[],
+        bodies: [] as unknown[],
+        scan: [
+          { in_use: true, ssid: 'Workshop', chan: 36, freq: 5180, rate: 540, signal: 78, security: 'WPA2' },
+          { in_use: false, ssid: 'Workshop-2G', chan: 6, freq: 2437, rate: 130, signal: 64, security: 'WPA2' },
+          { in_use: false, ssid: 'Cafe', chan: 1, freq: 2412, rate: 65, signal: 40, security: '' }
+        ]
+      }
     }
     ;(window as any).__e2eRoute = state
 
@@ -355,4 +391,17 @@ export function routeCounts (page: Page): Promise<RouteCounts> {
     const s = (window as any).__e2eRoute
     return { dials: s.dials, closes: s.closes, routes: [...s.routes], refused: [...s.refused] }
   })
+}
+
+/** What the page sent to muon-link's Wi-Fi routes, and the bodies of the joins (a test must never print a password). */
+export function networkCalls (page: Page): Promise<{ calls: string[], bodies: unknown[] }> {
+  return page.evaluate(() => {
+    const n = (window as any).__e2eRoute.network
+    return { calls: [...n.calls], bodies: [...n.bodies] }
+  })
+}
+
+/** How muon-link answers its Wi-Fi routes: normally, as an older one (404), or with the owner's rule turned off (403). */
+export function setNetworkMode (page: Page, mode: 'ok' | 'older' | 'path_disabled') {
+  return page.evaluate(m => { (window as any).__e2eRoute.network.mode = m }, mode)
 }
