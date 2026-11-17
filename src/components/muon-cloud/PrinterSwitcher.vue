@@ -211,10 +211,6 @@
         data-tid="pair-offer"
         @click.prevent="pairThisBrowser"
       >Pair this browser</a>
-      <span
-        v-if="pairingOffer"
-        data-tid="pair-hint"
-      >(Open System &gt; Add a device on the printer first.)</span>
       <template v-if="activationFallback">
         <a :href="activationFallback">Open the printer's own page</a> instead.
       </template>

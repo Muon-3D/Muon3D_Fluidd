@@ -57,7 +57,7 @@ export function setPanelCodePairing (on: boolean | null) {
  * and the offer made after a printer refuses this browser over Bluetooth.
  * Off, none of those appear and the "coming soon" line is shown instead.
  *
- * On by default: the printer side (System > Add a device, I-170) is live
+ * On by default: the printer side (the pairing code, I-170) is live
  * (muon-link #126, in MuonOS f50aa4b9, with the panel proxying /muon-link/pairing).
  * Build with VUE_MUON_PANEL_CODE_PAIRING=0 to turn it off again. Read at call
  * time so a test can set it (setPanelCodePairing).
@@ -69,17 +69,17 @@ export function panelCodePairing (): boolean {
 
 export const PAIRING_COMING_SOON = "Pairing from the printer is coming soon. For now, this printer can't be added from here."
 
-const OPEN_ADD_A_DEVICE = "To pair this browser, first open System > Add a device on the printer's screen, then choose Pair this browser."
+const LOCKED_HELP = 'Ask its owner to share it with you, or enter the code shown on the printer.'
 
 const NOT_PAIRED_REASONS: Record<PairableRefusal, string> = {
-  unknown: "This printer doesn't know this browser yet, so it won't let Control in over Bluetooth.",
+  unknown: "This printer is locked, so it won't let Control in over Bluetooth.",
   expired: "This browser's access expired, so the printer won't let Control in over Bluetooth.",
   revoked: "This browser was removed from the printer, so it won't let Control in over Bluetooth."
 }
 
 /** What Control says when the printer will not let this browser in over Bluetooth, by reason. */
 export function notPairedMessage (refusal: PairableRefusal): string {
-  return `${NOT_PAIRED_REASONS[refusal]} ${panelCodePairing() ? OPEN_ADD_A_DEVICE : PAIRING_COMING_SOON}`
+  return `${NOT_PAIRED_REASONS[refusal]} ${panelCodePairing() ? LOCKED_HELP : PAIRING_COMING_SOON}`
 }
 
 let current: { printerId: string, transport: PrinterTransport, release: () => void } | null = null

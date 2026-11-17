@@ -39,13 +39,14 @@ afterEach(() => {
 })
 
 describe('the pairing dialog (KAN-1253)', () => {
-  it('tells the person to open Add a device on the printer, shows the six symbols and takes the eight digits', async () => {
+  it('says the printer is locked, shows the six symbols and takes the eight digits', async () => {
     state.phase = 'code'
     state.comparison = 'F6Q TDH'
     const wrapper = mount(BluetoothPairDialog, { stubs })
 
-    expect(wrapper.text()).toContain('System > Add a device')
-    expect(wrapper.text()).toContain('Control')
+    expect(wrapper.text()).toContain('is locked')
+    expect(wrapper.text()).toContain('Ask its owner to share it with you')
+    expect(wrapper.text()).not.toContain('Add a device')
     expect(wrapper.find('[data-tid="pair-sas"]').text().replace(/\s/g, '')).toBe('F6QTDH')
 
     await wrapper.find('[data-tid="pair-code"] input, input[data-tid="pair-code"]').setValue('1234 5678')
@@ -105,10 +106,10 @@ describe('the pairing dialog (KAN-1253)', () => {
     expect(service.cancelPairing).toHaveBeenCalledTimes(3)
   })
 
-  it('says to open Add a device on the printer while it connects, before the pairing starts', () => {
+  it('says nothing about Add a device while it connects', () => {
     state.phase = 'connecting'
     const wrapper = mount(BluetoothPairDialog, { stubs })
-    expect(wrapper.find('[data-tid="pair-connecting"]').text()).toContain('System > Add a device')
+    expect(wrapper.find('[data-tid="pair-connecting"]').text()).not.toContain('Add a device')
   })
 
   it('still shows the six symbols while it waits for the panel, so they can be compared', () => {
@@ -147,13 +148,14 @@ describe('the pairing dialog (KAN-1253)', () => {
 describe('the offer on a printer that refused this browser (KAN-1253)', () => {
   const options = { propsData: { slug: 'boxwood' }, stubs: { 'v-icon': slot, 'v-btn': { template: '<button @click="$emit(\'click\')"><slot /></button>' }, 'v-progress-circular': slot } }
 
-  it('shows "Pair this browser" with the reminder to open Add a device first, and starts pairing for that printer', async () => {
+  it('shows "Pair this browser" with no Add a device instruction, and starts pairing for that printer', async () => {
     source.activationState.error = 'Control is not paired with this printer yet.'
     source.activationState.pairing = 'boxwood'
     const wrapper = shallowMount(PrinterOpening, options)
     await wrapper.find('[data-tid="pair-offer"]').trigger('click')
     expect(wrapper.find('[data-tid="pair-offer"]').text()).toBe('Pair this browser')
-    expect(wrapper.find('[data-tid="pair-hint"]').text()).toContain('System > Add a device')
+    expect(wrapper.find('[data-tid="pair-hint"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Add a device')
     expect(service.startPairing).toHaveBeenCalledWith('boxwood')
   })
 

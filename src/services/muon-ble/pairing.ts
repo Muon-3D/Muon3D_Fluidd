@@ -1,9 +1,10 @@
 /**
  * Pairing this browser with a printer over Bluetooth (KAN-1253; SEC-7).
  *
- * A printer that is set up admits a stranger's key over Bluetooth for one
- * thing only: the `muon/pair/1` ceremony, and only while someone has opened a
- * pairing window at its panel (System > Add a device). So this page:
+ * A printer that is Open (`GET /pairing` says `entry: "open"`, D-166) lets any
+ * browser in over Bluetooth with no ceremony: this page then goes straight in.
+ * A protected printer admits a stranger's key for one thing only: the
+ * `muon/pair/1` ceremony, while the owner has a code out for it. So this page:
  *
  *   1. brings the Bluetooth link up (the route the person chose),
  *   2. `beginPairing` over it, and shows the six comparison symbols,
@@ -24,6 +25,7 @@ import { noteAdmittedAtPanel } from '@/services/muon-cloud/approval'
 import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
 import { registerEndpointBusy } from '@/services/muon-cloud/endpoint-hooks'
 import { bluetoothRouteFor, releaseBluetoothLink, wantsBluetoothFor } from './link'
+import { readPairingEntry, type PairingEntry } from './entry'
 
 /** The printer closes its window after 120 s (muon-link `WINDOW_TTL`). */
 export const PAIRING_WINDOW_MS = 120_000
@@ -53,6 +55,7 @@ interface PairingSession {
 }
 
 interface PairingEndpoint {
+  connect?: (printerId: string) => Promise<{ fetch: (method: string, path: string, headers: string[], body: Uint8Array) => Promise<{ status: number, body: Uint8Array }>, close?: () => void }>;
   beginPairing? (printerId: string, label: string): Promise<PairingSession>;
 }
 
@@ -90,7 +93,8 @@ function within<T> (promise: Promise<T>, ms: number, onTimeout: () => Error): Pr
   })
 }
 
-const NO_WINDOW = "Open System > Add a device on the printer's screen, then try again."
+export const LOCKED = 'This printer is locked. Ask its owner to share it with you, or enter the code shown on the printer.'
+const NO_WINDOW = 'This printer is locked. Ask its owner to share it with you.'
 const REASON_WORDS: Record<string, string> = {
   refused: 'The printer said no to this browser, so nothing was added.',
   timed_out: "Check the printer's screen, then try again.",
@@ -99,12 +103,12 @@ const REASON_WORDS: Record<string, string> = {
   cooldown: 'The printer is pausing new requests for a few minutes. Try again later.'
 }
 const BUSY = 'The printer is busy with another pairing. Wait for it to finish, or cancel it on the printer, then try again.'
-const DID_NOT_COMPLETE = 'The pairing did not complete. The code may have been wrong, or it took longer than about a minute and a half. After three wrong codes the printer pauses pairing for 15 minutes. Otherwise, on the printer, open Add a device for a new code and try again.'
+const DID_NOT_COMPLETE = 'The pairing did not complete. The code may have been wrong, or it took longer than about a minute and a half. After three wrong codes the printer pauses pairing for 15 minutes. Otherwise, ask for a new code on the printer and try again.'
 const ANOTHER_DEVICE = 'Another device is already pairing with this printer. Wait for it to finish, then try again.'
-const ENDED = 'The printer ended the pairing, so nothing was added. On its screen, open Add a device and try again.'
-const WINDOW_CLOSED = 'The pairing window closed after 2 minutes, so nothing was added. On the printer, open System > Add a device and try again.'
+const ENDED = 'The printer ended the pairing, so nothing was added. Try again.'
+const WINDOW_CLOSED = 'The pairing window closed after 2 minutes, so nothing was added. Try again.'
 /** Said whenever Control stops waiting for Confirm: the panel may still be about to write the record. */
-const MAY_HAVE_BEEN_ADDED = 'Control stopped waiting. If you pressed Confirm on the printer, Control may have been added. You can remove it under Add a device.'
+const MAY_HAVE_BEEN_ADDED = "Control stopped waiting. If you pressed Confirm on the printer, Control may have been added. You can remove it from the printer's list of devices."
 
 /** Control's own time limit ran out; `waiting` is true once the code was sent. */
 class Closed extends Error {
@@ -163,6 +167,38 @@ function fail (error: unknown) {
   pairingState.message = pairingMessage(error)
 }
 
+/**
+ * Asks the printer how it lets strangers in (D-166). Dialled as this browser:
+ * a protected printer refuses a stranger's key, and that refusal is the answer
+ * "protected" too. Only a printer that says `entry: "open"` skips the ceremony.
+ */
+async function entryOfPrinter (endpoint: PairingEndpoint, printerId: string): Promise<PairingEntry> {
+  if (typeof endpoint.connect !== 'function') return 'protected'
+  let printer
+  try {
+    printer = await endpoint.connect(printerId)
+  } catch {
+    return 'protected'
+  }
+  try {
+    return await readPairingEntry(printer)
+  } finally {
+    try { printer.close?.() } catch { /* already closed */ }
+  }
+}
+
+/** Goes into a printer that needs no pairing: the same hand-over as after a finished ceremony. */
+async function goIn (printerId: string) {
+  pairingState.phase = 'idle'
+  pairingState.message = null
+  pairingState.printerId = null
+  pairingState.comparison = ''
+  dropCloudConnection(printerId)
+  try {
+    await activateCloudPrinter(printerId)
+  } catch { /* activationState holds the reason */ }
+}
+
 /** Starts pairing with `printerId`, which the person already chose to open over Bluetooth. */
 export async function startPairing (printerId: string): Promise<void> {
   const mine = ++generation
@@ -189,6 +225,12 @@ export async function startPairing (printerId: string): Promise<void> {
         }
         await bluetoothRouteFor(endpoint, printerId)
         if (stale()) { letGo(); throw new Stale() }
+        // An Open printer needs no ceremony: the person just goes in.
+        if (await entryOfPrinter(endpoint, printerId) === 'open') {
+          if (stale()) { letGo(); throw new Stale() }
+          return 'open' as const
+        }
+        if (stale()) { letGo(); throw new Stale() }
         if (typeof endpoint.beginPairing !== 'function') throw new Error("this version of Control can't pair over Bluetooth")
         const begun = await endpoint.beginPairing(printerId, LABEL)
         if (stale()) {
@@ -202,6 +244,11 @@ export async function startPairing (printerId: string): Promise<void> {
       () => { abandoned = true; return new Error('The printer did not answer over Bluetooth in time.') }
     )
     if (mine !== generation) return
+    if (opened === 'open') {
+      clearTimer()
+      await goIn(printerId)
+      return
+    }
     session = opened
     pairingState.comparison = opened.comparison()
     pairingState.phase = 'code'
