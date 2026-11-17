@@ -25,7 +25,7 @@ test.beforeEach(async ({ page, account }) => {
   // Powered off: the console lists it offline, and the relay has no path to it.
   account.printers = [{ ...account.printers[0], state: 'offline', online: false, last_seen: 0, online_since: null }]
   await page.addInitScript(() => {
-    ;(window as any).__e2eRoute.cloud(false)
+    (window as any).__e2eRoute.cloud(false)
   })
 })
 

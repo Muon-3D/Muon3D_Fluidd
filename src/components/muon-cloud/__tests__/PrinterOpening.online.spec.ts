@@ -3,6 +3,10 @@ import { createLocalVue, shallowMount } from '@vue/test-utils'
 import Vue from 'vue'
 import Vuetify from 'vuetify'
 
+import PrinterOpening from '../PrinterOpening.vue'
+import { activationState } from '@/services/muon-cloud/activate'
+import { cloudState } from '@/services/muon-cloud/state'
+
 const openPrinterAt = vi.fn(() => Promise.resolve())
 vi.mock('@/services/printer-pages', () => ({
   openPrinterAt: (...a: unknown[]) => openPrinterAt(...(a as [])),
@@ -10,10 +14,6 @@ vi.mock('@/services/printer-pages', () => ({
   resolveSlug: () => ({ kind: 'cloud', printerId: 'p1' })
 }))
 vi.mock('@/services/muon-ble/pairing', () => ({ startPairing: vi.fn() }))
-
-import PrinterOpening from '../PrinterOpening.vue'
-import { activationState } from '@/services/muon-cloud/activate'
-import { cloudState } from '@/services/muon-cloud/state'
 
 Vue.use(Vuetify)
 const localVue = createLocalVue()
