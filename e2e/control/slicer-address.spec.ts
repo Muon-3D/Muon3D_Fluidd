@@ -30,7 +30,9 @@ test('/slice frames this printer\'s own /slicer/ copy, in this tab', async ({ pa
   const frame = page.getByTestId('slice-view').locator('iframe[title="Muon3D Slicer"]')
   await expect(frame).toBeVisible({ timeout: 20_000 })
   const origin = new URL(page.url()).origin
-  await expect(frame).toHaveAttribute('src', new RegExp(`^${origin.replace(/[.*+?^${}()|[\]\]/g, '\$&')}/slicer/embed\.html`))
+  const src = new URL((await frame.getAttribute('src'))!, page.url())
+  expect(src.origin).toBe(origin)
+  expect(src.pathname).toBe('/slicer/embed.html')
   expect(context.pages()).toHaveLength(1)
 })
 
