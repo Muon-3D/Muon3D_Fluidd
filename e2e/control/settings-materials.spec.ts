@@ -92,16 +92,9 @@ test.describe('Settings › Materials', () => {
     expect(saved.map(p => p.name)).toEqual([])
   })
 
-  test('search narrows the printer list and the library; brand and type filters stack', async ({ page, open }) => {
+  test('search narrows the library; brand and type filters stack', async ({ page, open }) => {
     await materialsPrinter(page)
     await openMaterials(page, open)
-    await pane(page).getByTestId('materials-search').fill('pet')
-    await expect(row(page, 'PETG')).toBeVisible()
-    await expect(row(page, 'PLA')).toHaveCount(0)
-    await pane(page).getByTestId('materials-search').fill('nothing like this')
-    await expect(pane(page).getByTestId('materials-printer')).toContainText('None match.')
-    await pane(page).getByTestId('materials-search').fill('')
-
     const library = page.getByTestId('material-library')
     await library.getByTestId('library-search').fill('polymaker petg')
     const results = library.getByTestId('library-results').locator('[data-tid^="library-row-"]')
@@ -139,10 +132,48 @@ test.describe('Settings › Materials', () => {
     await expect(row(page, 'PLA')).toBeVisible()
   })
 
-  test('Add a material: one popup with search, filters, maker ranges, and a hardened-nozzle question for carbon fibre', async ({ page, open }) => {
-    const printer = await materialsPrinter(page)
+  test('one search and no top Add: the page has a single search box (the library search) and a Make my own button', async ({ page, open }) => {
+    await materialsPrinter(page)
     await openMaterials(page, open)
-    await pane(page).getByTestId('material-add').click()
+    await expect(pane(page).getByTestId('materials-search')).toHaveCount(0)
+    await expect(pane(page).getByTestId('material-add')).toHaveCount(0)
+    await expect(pane(page).getByRole('searchbox')).toHaveCount(1)
+    await expect(pane(page).getByTestId('library-search')).toBeVisible()
+    await expect(page.getByTestId('add-material')).toHaveCount(0)
+    await pane(page).getByTestId('material-make-own').click()
+    const sheet = page.getByTestId('preset-sheet')
+    await expect(sheet).toBeVisible()
+    await expect(sheet.getByTestId('preset-name')).toHaveValue('')
+  })
+
+  test('the library pages inline: Next and Previous, no pop-up, and a new search starts at page one', async ({ page, open }) => {
+    await materialsPrinter(page)
+    await openMaterials(page, open)
+    const library = page.getByTestId('material-library')
+    const rows = library.getByTestId('library-results').locator('[data-tid^="library-row-"]')
+    const pager = library.getByTestId('library-pager')
+    await expect(pager).toBeVisible()
+    await expect(rows).toHaveCount(20)
+    await expect(library.getByTestId('library-prev')).toBeDisabled()
+    await expect(library.getByTestId('library-page')).toContainText('Page 1 of ')
+    const first = await rows.first().getAttribute('data-tid')
+    await library.getByTestId('library-next').click()
+    await expect(library.getByTestId('library-page')).toContainText('Page 2 of ')
+    await expect(rows.first()).not.toHaveAttribute('data-tid', first!)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await library.getByTestId('library-prev').click()
+    await expect(rows.first()).toHaveAttribute('data-tid', first!)
+    await library.getByTestId('library-next').click()
+    await library.getByTestId('library-search').fill('polylite pla')
+    await expect(library.getByTestId('library-pager')).toHaveCount(0)
+    await library.getByTestId('library-search').fill('')
+    await expect(library.getByTestId('library-page')).toContainText('Page 1 of ')
+  })
+
+  test('Add a material (from the filament picker): one popup with search, filters, maker ranges, and a hardened-nozzle question for carbon fibre', async ({ page, open }) => {
+    const printer = await materialsPrinter(page)
+    const picker = await openPicker(page, open)
+    await picker.getByTestId('material-picker-add').click()
     const popup = page.getByTestId('add-material')
     await expect(popup).toBeVisible()
     await expect(popup.getByTestId('add-material-own')).toContainText('Make my own')
@@ -158,6 +189,7 @@ test.describe('Settings › Materials', () => {
     await popup.getByTestId('add-material-add-polymaker-polylite-petg').click()
     await expect(popup.getByTestId('add-material-added-polymaker-polylite-petg')).toHaveText('Added')
     await popup.getByTestId('add-material-done').click()
+    await open(`${PRINTER}/settings#presets`)
     await expect(row(page, 'Polymaker PolyLite PETG')).toBeVisible()
   })
 
