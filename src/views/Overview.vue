@@ -271,7 +271,8 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue, Watch } from 'vue-property-decorator'
+import { Component, Mixins, Watch } from 'vue-property-decorator'
+import DevGuardMixin from '@/mixins/dev-guard'
 import { cloudState } from '@/services/muon-cloud/state'
 import PlateClearBar from '@/components/ui/PlateClearBar.vue'
 import MachineFaultBar from '@/components/ui/MachineFaultBar.vue'
@@ -303,7 +304,7 @@ const SPRING = 'overview-spring'
  * changed with Edit. While editing the tiles are inert: nothing is sent to the printer.
  */
 @Component({ components: { MachineFaultBar, PlateClearBar } })
-export default class Overview extends Vue {
+export default class Overview extends Mixins(DevGuardMixin) {
   layout: OverviewLayout = defaultLayout(overviewTiles)
   draft: OverviewLayout | null = null
   drag: Drag | null = null
@@ -321,9 +322,9 @@ export default class Overview extends Vue {
   readonly categories = widgetCategories
   private stopDrag: (() => void) | null = null
 
-  /** The widgets this printer has: a Muon printer never has Z offset. */
+  /** The widgets this printer has: a Muon printer has Z offset only in developer mode. */
   get defs (): OverviewTileDef[] {
-    return widgetsFor(overviewTiles, treatAsMuon(this.$store.getters['server/isMuonPrinter']))
+    return widgetsFor(overviewTiles, treatAsMuon(this.$store.getters['server/isMuonPrinter']) && this.devOnlyLocked)
   }
 
   get editing (): boolean { return this.draft !== null }

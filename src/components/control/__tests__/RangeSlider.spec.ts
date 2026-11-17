@@ -32,6 +32,7 @@ describe('RangeSlider callers', () => {
   it('announces fan and light values as percentages', async () => {
     const store = panelStore()
     store.getters['printer/getAllFans'] = [{ key: 'fan', name: 'fan', prettyName: 'Part fan', type: 'fan', speed: 0.5, controllable: true }]
+    store.getters['server/isMuonPrinter'] = false
     store.getters['printer/getPins'] = [{ key: 'output_pin caselight', name: 'caselight', prettyName: 'Lights', controllable: true, pwm: true, value: 0.25 }]
     const wrapper = mount(ControlFans, { mocks: { $store: store, $waits: waits }, stubs: panelStubs })
     await wrapper.find('#fans\\.all-trigger').trigger('click')
@@ -43,6 +44,7 @@ describe('RangeSlider callers', () => {
   it('announces the live-tune fan as a percentage', async () => {
     const store = panelStore()
     store.getters['printer/getAllFans'] = [{ key: 'fan', name: 'fan', prettyName: 'Part fan', type: 'fan', speed: 0.5, controllable: true }]
+    store.getters['server/isMuonPrinter'] = false
     const wrapper = mount(FansTile, {
       mocks: { $store: store, $waits: waits },
       stubs: { 'frame-icon': true }

@@ -410,7 +410,7 @@ test.describe('Print mode', () => {
   })
 
   test('Advanced sends M220, M221 and SET_PRESSURE_ADVANCE', async ({ page, open }) => {
-    const status = idle([150, 100, 10], 'xyz', { fan_modes: FAN_MODES })
+    const status = idle([150, 100, 10], 'xyz', { fan_modes: FAN_MODES, muon_guard: { dev_mode: true } })
     status.extruder = { pressure_advance: 0.04 }
     status.configfile = { settings: { ...status.configfile.settings, extruder: { pressure_advance: 0.04 } } }
     status.gcode_move = { ...status.gcode_move, speed_factor: 1, extrude_factor: 1 }

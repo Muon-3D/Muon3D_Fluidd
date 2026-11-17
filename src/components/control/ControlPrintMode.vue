@@ -105,7 +105,7 @@
         data-tid="advanced-flow"
         @change="setFlow"
       />
-      <template v-if="partFan">
+      <template v-if="partFan && !devOnlyLocked">
         <div class="pmode__row">
           <b>Part fan</b>
           <span data-tid="advanced-fan-value">{{ fanValue(partFan) ? `${fanValue(partFan)}%` : 'off' }}</span>
@@ -216,7 +216,8 @@
 </template>
 
 <script lang="ts">
-import { Component } from 'vue-property-decorator'
+import { Component, Mixins } from 'vue-property-decorator'
+import DevGuardMixin from '@/mixins/dev-guard'
 import ControlSpeed from './ControlSpeed.vue'
 import RangeSlider from './RangeSlider.vue'
 import { pressureAdvanceRange, printModeCommand, readPrintModes, type PrintModes } from '@/services/control/print-mode'
@@ -234,7 +235,7 @@ import { pressureAdvanceRange, printModeCommand, readPrintModes, type PrintModes
  * limits and retraction rows.
  */
 @Component({ components: { RangeSlider } })
-export default class ControlPrintMode extends ControlSpeed {
+export default class ControlPrintMode extends Mixins(ControlSpeed, DevGuardMixin) {
   advanced = false
 
   get modes (): PrintModes | null {

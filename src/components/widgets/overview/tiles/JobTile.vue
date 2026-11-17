@@ -52,7 +52,7 @@
           <span>Done at</span><b data-tid="job-done">{{ doneAt || '—' }}</b>
         </div>
       </div>
-      <first-layer-nudges v-if="size !== 'S'" />
+      <first-layer-nudges v-if="size !== 'S' && !devOnlyLocked" />
       <div class="jt__actions">
         <button
           type="button"
@@ -152,6 +152,7 @@
 </template>
 
 <script lang="ts">
+import DevGuardMixin from '@/mixins/dev-guard'
 import { Component, Mixins } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
 import { SocketActions } from '@/api/socketActions'
@@ -169,7 +170,7 @@ import FirstLayerNudges from '@/components/overview/FirstLayerNudges.vue'
  * history are behind the three dots.
  */
 @Component({ components: { TileShell, TileDialog, ObjectsList, FirstLayerNudges } })
-export default class JobTile extends Mixins(OverviewMixin) {
+export default class JobTile extends Mixins(OverviewMixin, DevGuardMixin) {
   dialog: '' | 'live' | 'objects' = ''
 
   get stateText (): string {
