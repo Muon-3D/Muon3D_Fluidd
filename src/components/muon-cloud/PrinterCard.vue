@@ -8,7 +8,13 @@
     @click="$emit('open')"
     @keydown.enter.self="$emit('open')"
   >
+    <printer-screen
+      v-if="screenState"
+      :state="screenState"
+      :foreign="!!entry.foreign"
+    />
     <printer-thumb
+      v-else
       :size="40"
       :state="thumbState"
     />
@@ -26,7 +32,7 @@
       </span>
       <span
         class="muon-card__detail"
-        :class="`is-${entry.health}`"
+        :class="screenState ? undefined : `is-${entry.health}`"
         :title="statusTitle"
       >
         <v-progress-circular
@@ -43,7 +49,7 @@
         >
           $bluetooth
         </v-icon>
-        <span class="muon-card__detail-text">{{ entry.detail }}</span>
+        <span class="muon-card__detail-text">{{ detail }}</span>
       </span>
       <span
         v-if="note"
@@ -105,6 +111,8 @@ import { Component, Prop, Vue } from 'vue-property-decorator'
 import { healthLabel, type CardAction, type DirectoryEntry } from '@/services/muon-cloud/directory'
 import { printerNameParts, type PrinterNameParts } from '@/util/printer-name'
 import type { ThumbState } from '@/components/ui/PrinterThumb.vue'
+import PrinterScreen from '@/components/layout/PrinterScreen.vue'
+import { STRIP_LABELS, type StripState } from '@/services/muon-cloud/printer-strip'
 
 export type { CardAction } from '@/services/muon-cloud/directory'
 
@@ -115,8 +123,9 @@ export type { CardAction } from '@/services/muon-cloud/directory'
  * answered with a fault, amber when it wants access. What can be done with
  * the printer is in its own menu.
  */
-@Component({})
+@Component({ components: { PrinterScreen } })
 export default class PrinterCard extends Vue {
+  @Prop({ type: String }) readonly screenState?: StripState
   @Prop({ type: Object, required: true })
   readonly entry!: DirectoryEntry
 
@@ -139,7 +148,14 @@ export default class PrinterCard extends Vue {
   }
 
   get statusTitle () {
-    return healthLabel(this.entry.health)
+    return this.screenState ? STRIP_LABELS[this.screenState] : healthLabel(this.entry.health)
+  }
+
+  get detail () {
+    if (this.screenState !== 'heating' && this.screenState !== 'ready') return this.entry.detail
+    const parts = this.entry.detail.split(' · ')
+    if (this.screenState === 'heating') return ['Heating', ...parts.filter(p => p !== 'Idle')].join(' · ')
+    return parts.map(p => p === 'Idle' ? 'Ready' : p).join(' · ')
   }
 
   get parts (): PrinterNameParts {

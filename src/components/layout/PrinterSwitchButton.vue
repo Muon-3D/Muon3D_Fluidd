@@ -1,7 +1,7 @@
 <template>
   <div
     class="printer-switch"
-    :class="{ 'printer-switch--phone': phone }"
+    :class="{ 'printer-switch--phone': phone, 'printer-switch--screen': screenState }"
   >
     <v-menu
       v-if="!phone"
@@ -21,11 +21,17 @@
           :class="{ 'printer-switch__button--open': open }"
           aria-label="Switch printer"
           data-tid="printer-switch"
+          :aria-current="screenState ? 'page' : undefined"
           v-bind="attrs"
           v-on="on"
         >
+          <printer-screen
+            v-if="screenState"
+            :state="screenState"
+            :foreign="!!foreignRecord || foreignScreen"
+          />
           <foreign-silhouette
-            v-if="foreignRecord"
+            v-else-if="foreignRecord"
             :form-factor="foreignRecord.formFactor"
             class="printer-switch__silhouette"
           />
@@ -49,7 +55,10 @@
               class="printer-switch__status"
               :class="`printer-switch__status--${switcherTone}`"
             >
-              <span class="printer-switch__dot" />
+              <span
+                v-if="!screenState"
+                class="printer-switch__dot"
+              />
               <span class="printer-switch__status-text">{{ statusLine }}</span>
             </span>
           </span>
@@ -72,10 +81,16 @@
         class="printer-switch__button"
         aria-label="Switch printer"
         data-tid="printer-switch"
+        :aria-current="screenState ? 'page' : undefined"
         @click="open = true"
       >
+        <printer-screen
+          v-if="screenState"
+          :state="screenState"
+          :foreign="!!foreignRecord || foreignScreen"
+        />
         <foreign-silhouette
-          v-if="foreignRecord"
+          v-else-if="foreignRecord"
           :form-factor="foreignRecord.formFactor"
           class="printer-switch__silhouette"
         />
@@ -104,7 +119,10 @@
             class="printer-switch__status"
             :class="`printer-switch__status--${switcherTone}`"
           >
-            <span class="printer-switch__dot" />
+            <span
+              v-if="!screenState"
+              class="printer-switch__dot"
+            />
             <span class="printer-switch__status-text">{{ statusLineShort }}</span>
           </span>
         </span>
@@ -140,16 +158,21 @@ import { emptyStatus } from '@/services/foreign-printers/adapters/base'
 import { FOREIGN_STATE_LABELS, FOREIGN_STATE_TONES, type ForeignStatus } from '@/services/foreign-printers/types'
 import type { PrinterStatusTone } from '@/mixins/printer-status'
 import ForeignSilhouette from '@/components/foreign/ForeignSilhouette.vue'
+import PrinterScreen from './PrinterScreen.vue'
+import type { StripState } from '@/services/muon-cloud/printer-strip'
 
 /**
  * The printer you're on, top left: its picture, name and what it's doing,
  * on one line. It opens every printer: a menu on a computer, a sheet on a
  * phone. It is never hidden behind three dots, and never near the E-STOP.
  */
-@Component({ components: { ForeignSilhouette, PrinterSwitcher } })
+@Component({ components: { ForeignSilhouette, PrinterSwitcher, PrinterScreen } })
 export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
   @Prop({ type: Boolean })
   readonly phone?: boolean
+
+  @Prop({ type: String }) readonly screenState?: StripState
+  @Prop({ type: Boolean }) readonly foreignScreen!: boolean
 
   open = false
 
@@ -350,6 +373,21 @@ export default class PrinterSwitchButton extends Mixins(PrinterStatusMixin) {
 
   .printer-switch__chevron {
     color: var(--m3d-text-muted);
+  }
+
+  .printer-switch--screen {
+    flex: 0 1 180px;
+    width: 180px;
+    min-width: 80px;
+
+    .printer-switch__button {
+      min-width: 0 !important;
+      border-radius: 24px;
+      padding: 0 8px 0 3px;
+      gap: 7px;
+      background: var(--m3d-surface);
+      box-shadow: inset 0 0 0 1px var(--m3d-border-strong) !important;
+    }
   }
 </style>
 

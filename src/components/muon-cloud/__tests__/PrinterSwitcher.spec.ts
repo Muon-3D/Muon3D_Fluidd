@@ -126,6 +126,18 @@ describe('PrinterSwitcher', () => {
       w.destroy()
     })
 
+    it('excludes visible strip printers, separates shares and carries their state screens', async () => {
+      const shared = e('b', 'Beta')
+      Object.assign(shared.cloud!, { shared: true })
+      const w = await open({ cloud: [e('a', 'Alpha'), shared, e('c', 'Gamma')], local: [], found: [] })
+      await w.setProps({ excludeKeys: ['cloud:a'], separateShared: true, screenStateFor: () => 'heating' })
+      expect(w.find('[data-tid="switcher-shared"]').text()).toContain('Shared with you')
+      expect(w.find('[data-tid="switcher-group-other"]').findAll('printer-card-stub')).toHaveLength(1)
+      expect(w.findAll('printer-card-stub')).toHaveLength(2)
+      expect(w.findAll('printer-card-stub').wrappers.every(c => c.attributes('screenstate') === 'heating')).toBe(true)
+      w.destroy()
+    })
+
     it('keeps the search, All printers and Add a printer', async () => {
       const w = await open({ cloud: [], local: [], found: [] })
       expect(w.find('[data-tid="find-printer"]').exists()).toBe(true)

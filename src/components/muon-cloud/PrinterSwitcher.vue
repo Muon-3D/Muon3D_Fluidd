@@ -97,6 +97,7 @@
           v-for="e in g.entries"
           :key="e.key"
           :entry="e"
+          :screen-state="screenStateFor ? screenStateFor(e) : undefined"
           :actions="cloudActions(e)"
           :busy="busyKey === e.key"
           @open="openCloudEntry(e)"
@@ -104,6 +105,26 @@
         />
       </section>
     </template>
+
+    <section
+      v-if="sharedEntries.length"
+      class="muon-switcher__group"
+      data-tid="switcher-shared"
+    >
+      <div class="muon-switcher__heading">
+        Shared with you
+      </div>
+      <printer-card
+        v-for="e in sharedEntries"
+        :key="e.key"
+        :entry="e"
+        :screen-state="screenStateFor ? screenStateFor(e) : undefined"
+        :actions="cloudActions(e)"
+        :busy="busyKey === e.key"
+        @open="openCloudEntry(e)"
+        @action="onAction(e, $event)"
+      />
+    </section>
 
     <section
       v-if="showSection(localEntries.length)"
@@ -117,10 +138,29 @@
         v-for="e in localEntries"
         :key="e.key"
         :entry="e"
+        :screen-state="screenStateFor ? screenStateFor(e) : undefined"
         :actions="localActions(e)"
         :busy="busyKey === e.key"
         @open="openLocalEntry(e)"
         @action="onAction(e, $event)"
+      />
+    </section>
+
+    <section
+      v-if="otherEntries.length"
+      class="muon-switcher__group"
+      data-tid="switcher-other"
+    >
+      <div class="muon-switcher__heading">
+        Other printers
+      </div>
+      <printer-card
+        v-for="e in otherEntries"
+        :key="e.key"
+        :entry="e"
+        :screen-state="screenStateFor ? screenStateFor(e) : undefined"
+        :actions="[]"
+        @open="openListedEntry(e)"
       />
     </section>
 
@@ -147,6 +187,7 @@
         v-for="e in foundEntries"
         :key="e.key"
         :entry="e"
+        :screen-state="screenStateFor ? screenStateFor(e) : undefined"
         :actions="foundActions(e)"
         :busy="busyKey === e.key"
         @open="openFoundEntry(e)"
@@ -299,6 +340,8 @@ import PrinterCard from './PrinterCard.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { switcherGroups, switcherSectionShown, type SwitcherGroup } from '@/services/muon-cloud/switcher-groups'
 import AccessRequestDialog from '@/components/muon-access/AccessRequestDialog.vue'
+import { foreignSlugForId } from '@/services/printer-pages'
+import type { StripState } from '@/services/muon-cloud/printer-strip'
 
 /** How often the printers already known are asked again while the switcher is open. */
 const HEALTH_EVERY_MS = 15_000
@@ -315,6 +358,25 @@ export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
   @Prop({ type: Boolean, default: true })
   readonly visible!: boolean
 
+  @Prop({ type: Array, default: () => [] }) readonly excludeKeys!: string[]
+  @Prop({ type: Array, default: () => [] }) readonly extraEntries!: DirectoryEntry[]
+  @Prop({ type: Boolean }) readonly separateShared!: boolean
+  @Prop({ type: Function }) readonly screenStateFor?: (entry: DirectoryEntry) => StripState
+
+  get sharedEntries (): DirectoryEntry[] {
+    return this.separateShared ? this.directory.cloud.filter(e => e.cloud?.shared && this.matches(e)) : []
+  }
+
+  get otherEntries (): DirectoryEntry[] {
+    return this.extraEntries.filter(this.matches)
+  }
+
+  openListedEntry (entry: DirectoryEntry) {
+    if (!entry.foreign) return this.openEntry(entry)
+    const slug = foreignSlugForId(entry.foreign.record.id)
+    if (slug) return this.$router.push(`/${slug}`).catch(() => {})
+  }
+
   /** "Find a printer": by name or address. */
   query = ''
   timer: (() => void) | null = null
@@ -325,6 +387,7 @@ export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
 
   /** By name, or by any address it answers at or was saved at (an offline printer has no host now). */
   matches (e: DirectoryEntry): boolean {
+    if (this.excludeKeys.includes(e.key)) return false
     const q = this.query.trim().toLowerCase()
     if (!q) return true
     const addresses = [e.host ?? '', ...e.saved.map(s => s.apiUrl)]
@@ -332,7 +395,7 @@ export default class PrinterSwitcher extends Mixins(PrinterEntriesMixin) {
   }
 
   get cloudEntries (): DirectoryEntry[] {
-    return this.directory.cloud.filter(this.matches)
+    return this.directory.cloud.filter(e => (!this.separateShared || !e.cloud?.shared) && this.matches(e))
   }
 
   /** The account's printers under its groups; the rest under Other printers. */
