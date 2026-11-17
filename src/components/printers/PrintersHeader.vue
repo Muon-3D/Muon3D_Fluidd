@@ -76,7 +76,9 @@
         :disabled="bluetoothOff"
         @click="$emit('connect-bluetooth')"
       >
-        <frame-icon name="bluetooth" />
+        <v-icon small>
+          $bluetooth
+        </v-icon>
       </button>
       <button
         type="button"

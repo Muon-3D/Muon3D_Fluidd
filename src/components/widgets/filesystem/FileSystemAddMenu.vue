@@ -145,7 +145,8 @@ export default class FileSystemAddMenu extends Mixins(StateMixin) {
   }
 
   get accepts () {
-    return this.rootProperties.accepts.join(',')
+    if (this.root === 'gcodes') return this.rootProperties.accepts.join(',')
+    return [...new Set([...this.rootProperties.accepts, '.gcode', '.3mf'])].join(',')
   }
 
   get printerReady () {

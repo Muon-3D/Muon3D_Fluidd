@@ -370,14 +370,17 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     }
     // The out-of-box path: a printer nobody has set up goes to its set-up (or its link), as from Look nearby.
     const nearbyEntry = this.directory.found.find(f => f.nearby?.deviceId === heard.deviceId)
+    const known = this.directory.local.find(l => l.nearby?.deviceId === heard.deviceId) ??
+      (nearbyEntry?.row?.action === 'open' ? nearbyEntry : undefined)
+    if (known) {
+      await this.pairNearbyPrinter(heard, known.key, true)
+      return
+    }
     if (nearbyEntry) {
       await this.openFoundEntry(nearbyEntry)
       return
     }
-    const known = this.directory.local.find(l => l.nearby?.deviceId === heard.deviceId)
-    this.notice = known
-      ? `${known.name} is saved in this browser and is nearby. Open it from its tile.`
-      : `${heard.display || heard.localName || 'That printer'} was found over Bluetooth. It is listed with the printers found nearby.`
+    this.notice = `${heard.display || heard.localName || 'That printer'} was found over Bluetooth. It is listed with the printers found nearby.`
   }
 
   // -- what each printer offers ----------------------------------------------

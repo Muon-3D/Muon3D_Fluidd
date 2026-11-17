@@ -493,6 +493,8 @@
       />
     </div>
 
+    <upload-progress />
+
     <input
       ref="upload"
       type="file"
@@ -586,6 +588,7 @@ import JobMenu, { type JobMenuAction } from '@/components/jobs/JobMenu.vue'
 import JobPicture from '@/components/jobs/JobPicture.vue'
 import { retryFailedThumbnails } from '@/services/jobs/thumbnail'
 import TonePill from '@/components/printers/TonePill.vue'
+import UploadProgress from '@/components/jobs/UploadProgress.vue'
 
 /** A row of the list: a folder, or a G-code file in the folder that's open. */
 interface ListRow {
@@ -618,7 +621,7 @@ interface ListRow {
  * a file is in its ··· menu. The search, the order, Upload and the
  * pages that used to be tabs are in the header (JobsActions).
  */
-@Component({ components: { FileNameDialog, JobMenu, JobPicture, TonePill } })
+@Component({ components: { FileNameDialog, JobMenu, JobPicture, TonePill, UploadProgress } })
 export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   path = ''
   selectedKey: string | null = null

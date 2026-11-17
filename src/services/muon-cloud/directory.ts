@@ -320,7 +320,7 @@ export function printerDirectory (src: DirectorySources): Directory {
       continue
     }
     if (lan) claimedLan.add(lan)
-    const active = s.apiUrl === activeLocal ? 'local' : null
+    const active = endpointId && src.activeCloudId === endpointId ? 'cloud' : s.apiUrl === activeLocal ? 'local' : null
     const nearby = nearbyFor(endpointId)
     let health: PrinterHealth
     let detail: string
