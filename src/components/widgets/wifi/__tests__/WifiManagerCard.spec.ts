@@ -154,8 +154,20 @@ describe('WifiManagerCard over Iroh (KAN-3601)', () => {
     expect(wrapper.find('[data-tid=wifi-route-problem]').attributes('data-problem')).toBe('not-available')
 
     wifiScan.mockRejectedValueOnce(Object.assign(new Error('403'), { response: { status: 403, data: { error: 'path_disabled', detail: { code: 'path_disabled' } } } }))
-    await vi.advanceTimersByTimeAsync(5000)
+    // No poll over a remote route (the panel never takes printer compute): the Scan button asks again.
+    await wrapper.find('[data-tid=wifi-refresh]').trigger('click')
+    await vi.advanceTimersByTimeAsync(0)
     expect(wrapper.find('[data-tid=wifi-route-problem]').attributes('data-problem')).toBe('path-rule')
+    wrapper.destroy()
+  })
+
+  it('does not poll for scans over a remote route', async () => {
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(WifiManagerCard, { mocks: mocks(false) })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(wifiScan).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(wifiScan).toHaveBeenCalledTimes(1)
     wrapper.destroy()
   })
 
