@@ -55,15 +55,31 @@
           </span>
         </div>
         <button
-          v-if="bluetoothSearch && !bluetoothOff"
+          v-if="bluetoothSearch"
           type="button"
           class="btn btn--primary btn--sm"
           data-tid="look-nearby"
           @click="$emit('look-nearby')"
         >
-          Look nearby
+          {{ bluetoothOff ? 'Turn on Bluetooth search' : 'Look nearby' }}
         </button>
       </div>
+      <p
+        v-if="!bluetoothSearch"
+        class="welcome__bt-note"
+        data-tid="bluetooth-unavailable"
+      >
+        {{ bluetoothInsecure
+          ? "Bluetooth search needs a secure page (https), and this page is on plain http. Join the printer's Wi-Fi and use the address instead."
+          : "This browser can't search over Bluetooth. Chrome or Edge can." }}
+      </p>
+      <p
+        v-else-if="bluetoothOff"
+        class="welcome__bt-note"
+        data-tid="bluetooth-off"
+      >
+        Bluetooth looks off on this device. Turn it on, then search.
+      </p>
       <div class="row">
         <span class="row__icon"><frame-icon name="search" /></span>
         <div class="row__text">
@@ -135,6 +151,9 @@ export default class PrintersWelcome extends Vue {
   readonly bluetoothOff?: boolean
 
   @Prop({ type: Boolean })
+  readonly bluetoothInsecure?: boolean
+
+  @Prop({ type: Boolean })
   readonly blockedByPage?: boolean
 }
 </script>
@@ -202,5 +221,11 @@ export default class PrintersWelcome extends Vue {
 
   .welcome__wrap {
     white-space: normal;
+  }
+  .welcome__bt-note {
+    margin: 0;
+    padding: 0 14px;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
   }
 </style>

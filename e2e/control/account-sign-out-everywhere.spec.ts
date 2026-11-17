@@ -30,10 +30,18 @@ function fakeConsole () {
 }
 
 async function browser (context: BrowserContext, shared: ReturnType<typeof fakeConsole>, token: string) {
+  // Signed in once per tab, as a person is. An init script runs on EVERY load, so a plain seed would sign the tab back in
+  // on the signed-out page (the sign-out cleared the tokens, and /logout and /signed-out are loads): the page then saw a
+  // signed-in account for a moment and went home ("/") before the console's 401 reached it. sessionStorage lives as long
+  // as the tab, across those loads, so it marks the tab as seeded.
   await context.addInitScript(([url, access, refresh]) => {
-    localStorage.setItem('muon.cloud.url', url)
-    localStorage.setItem('muon.cloud.token', access)
-    localStorage.setItem('muon.cloud.refresh', refresh)
+    try {
+      if (sessionStorage.getItem('e2e.seeded')) return
+      sessionStorage.setItem('e2e.seeded', '1')
+      localStorage.setItem('muon.cloud.url', url)
+      localStorage.setItem('muon.cloud.token', access)
+      localStorage.setItem('muon.cloud.refresh', refresh)
+    } catch { /* an opaque document (a fulfilled redirect) has no storage: nothing to seed */ }
   }, [ORIGIN, token, `refresh-${token}`])
   await context.route('**/config.json', async route => {
     const response = await route.fetch()
@@ -99,6 +107,15 @@ async function openSecurity (page: Page) {
 
 test.setTimeout(180_000)
 
+/**
+ * Signing out is a whole page load, not a route change: the console's /logout comes back to `/`, which boots Control
+ * again and then goes on to /signed-out, and a session that ended elsewhere does `location.assign('/signed-out')`. On a
+ * 2-core runner that boot re-fetches and transforms every module of the page, and /signed-out's own are compiled by
+ * vite for the first time in the run, so it can take well over the default 15 s. The final state is what is asserted;
+ * only the wait for it is longer.
+ */
+const PAGE_LOAD = { timeout: 90_000 }
+
 test('a password change in one browser signs out both, and each says so', async ({ page, browser: launcher }) => {
   const shared = fakeConsole()
   shared.alive.add('access-a').add('access-b')
@@ -118,12 +135,12 @@ test('a password change in one browser signs out both, and each says so', async 
     await page.getByRole('button', { name: 'Change password' }).last().click()
 
     // A: to the signed-out page, with the reason.
-    await expect(page.getByTestId('signed-out-page')).toBeVisible()
-    await expect(page.getByTestId('signed-out-line')).toHaveText('Your password was changed. Sign in again.')
+    await expect(page.getByTestId('signed-out-page')).toBeVisible(PAGE_LOAD)
+    await expect(page.getByTestId('signed-out-line')).toHaveText('Your password was changed. Sign in again.', PAGE_LOAD)
 
     // B: nobody looked at it, no focus, no click: the stream told it, and it says why.
-    await expect(other.getByTestId('signed-out-page')).toBeVisible()
-    await expect(other.getByTestId('signed-out-line')).toHaveText('You were signed out because your password changed.')
+    await expect(other.getByTestId('signed-out-page')).toBeVisible(PAGE_LOAD)
+    await expect(other.getByTestId('signed-out-line')).toHaveText('You were signed out because your password changed.', PAGE_LOAD)
   } finally {
     await contextB.close()
   }
