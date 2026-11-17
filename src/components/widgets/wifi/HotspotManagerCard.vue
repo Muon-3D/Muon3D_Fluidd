@@ -55,11 +55,16 @@
       @dismiss="refusal = null"
     />
     <p
-      v-if="remote"
+      v-if="remote && !ownerCanChange"
       class="hs__note"
     >
       {{ $t('app.wifi.remote_read_only') }}
     </p>
+
+    <owner-hotspot-remote
+      v-if="remote && ownerCanChange"
+      :key="`hotspot-${owner.network.generation}`"
+    />
 
     <div
       v-if="!locked && !remote && !compact"
@@ -222,6 +227,8 @@
 
 <script lang="ts">
 import { Vue, Component, Prop, Watch } from 'vue-property-decorator'
+import OwnerHotspotRemote from './OwnerHotspotRemote.vue'
+import { useOwnerNetwork } from '@/services/muon-cloud/useOwnerNetwork'
 import { useAuxApi } from '@/aux_api/useAuxApi'
 import { PANEL_ONLY_NOTE, classifyRefusal, fallsBack, hotspotChangeBody, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
 import type { RefusalKind } from '@/services/wifi/panel-only'
@@ -268,6 +275,7 @@ const { onHotspot } = useHotspotCheck()
     }
   },
   components: {
+    OwnerHotspotRemote,
     QrcodeVue,
     ToggleSwitch,
     TonePill,
@@ -295,19 +303,35 @@ export default class HotspotManagerCard extends Vue {
   // while locked is loaded now; the status poll only ever reads the state.
   @Watch('locked')
   onLockedChanged (locked: boolean) {
-    if (!locked) this.fetchConfig()
+    if (!locked) {
+      if (this.remote) this.owner.detect()
+      else this.fetchConfig()
+    }
   }
 
-  // Reached over Iroh: muon-link refuses every Aux request there, reads
-  // included, and the owner decided remote callers may not change Wi-Fi
-  // (setup spec 07 §3). The card makes no call and says so instead.
+  // Managed changes use muon-link; the local Aux API stays closed.
   get remote (): boolean {
     return printerTransportBinding.remote
   }
 
+  owner = useOwnerNetwork()
+
+  get ownerCanChange (): boolean {
+    return !this.locked && !this.compact && this.owner.network.available
+  }
+
+  @Watch('owner.network.generation')
+  onOwnerScopeChanged () {
+    if (this.remote && !this.locked) this.owner.detect()
+  }
+
   @Watch('remote')
   onRemoteChanged (remote: boolean) {
-    if (!remote) this.fetchConfig()
+    if (remote && !this.locked) this.owner.detect()
+    else {
+      this.owner.reset()
+      if (!remote) this.fetchConfig()
+    }
   }
 
   showToggleWarningDialog: boolean = false
@@ -389,6 +413,7 @@ export default class HotspotManagerCard extends Vue {
   private requestedApStateUntil = 0
 
   async mounted () {
+    if (this.remote && !this.locked) this.owner.detect()
     await this.fetchConfig()
     if (!this.destroyed) {
       this.statusPollId = window.setInterval(() => {

@@ -37,11 +37,22 @@
       @dismiss="refusal = null"
     />
     <p
-      v-if="remote"
+      v-if="remote && !ownerCanChange"
       class="wf__note wf__span"
     >
       {{ $t('app.wifi.remote_read_only') }}
     </p>
+
+    <owner-wifi-remote
+      v-if="remote && ownerCanChange"
+      :key="`wifi-${owner.network.generation}`"
+      class="wf__span"
+    />
+    <owner-network-settings
+      v-if="remote && ownerCanChange"
+      :key="`rules-${owner.network.generation}`"
+      class="wf__span"
+    />
 
     <template v-if="!compact && !locked && !remote">
       <section
@@ -366,6 +377,9 @@
 
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
+import OwnerWifiRemote from './OwnerWifiRemote.vue'
+import OwnerNetworkSettings from './OwnerNetworkSettings.vue'
+import { useOwnerNetwork } from '@/services/muon-cloud/useOwnerNetwork'
 import { useAuxApi } from '@/aux_api/useAuxApi'
 import { PANEL_ONLY_NOTE, classifyRefusal, isPanelOnlyRefusal, panelOnlyMessage, refusedHere, routeFor } from '@/services/wifi/panel-only'
 import type { RefusalKind } from '@/services/wifi/panel-only'
@@ -386,7 +400,7 @@ const HIDDEN_NAME = 'Hidden network'
 
 type AggWifi = DeviceWifi & { chanList?: string; freqList?: string }
 
-@Component({ components: { TonePill, PermissionRefusalNotice } })
+@Component({ components: { OwnerWifiRemote, OwnerNetworkSettings, TonePill, PermissionRefusalNotice } })
 export default class WifiManagerCard extends Vue {
   @Prop({ type: Boolean }) readonly menuCollapsed?: boolean
 
@@ -438,22 +452,41 @@ export default class WifiManagerCard extends Vue {
     return this.$store.getters['protection/isLocked']
   }
 
-  // Reached over Iroh: muon-link refuses every Aux request there, reads
-  // included, and the owner decided remote callers may not change Wi-Fi
-  // (setup spec 07 §3). The card makes no call and says so instead.
+  // Managed changes use muon-link; the local Aux API stays closed.
   get remote (): boolean {
     return printerTransportBinding.remote
   }
 
+  owner = useOwnerNetwork()
+
+  get ownerCanChange (): boolean {
+    return !this.locked && !this.compact && this.owner.network.available
+  }
+
+  @Watch('owner.network.generation')
+  onOwnerScopeChanged () {
+    if (this.remote && !this.locked) this.owner.detect()
+  }
+
+  @Watch('locked')
+  onNetworkUnlocked (locked: boolean) {
+    if (!locked && this.remote) this.owner.detect()
+  }
+
   @Watch('remote')
   onRemoteChanged (remote: boolean) {
-    if (!remote) this.fetchDevices()
+    if (remote && !this.locked) this.owner.detect()
+    else {
+      this.owner.reset()
+      if (!remote) this.fetchDevices()
+    }
   }
 
   auxApi = useAuxApi()
 
   // Lifecycle
   mounted () {
+    if (this.remote && !this.locked) this.owner.detect()
     this.visibilityHandler = () => this.onVisibilityChange()
     document.addEventListener('visibilitychange', this.visibilityHandler)
     this.fetchDevices()
