@@ -78,7 +78,7 @@ test('expired panel window explains how to get a new code', async ({ page }) => 
 
 test.describe('signed in', () => {
   test.use({ signedIn: true })
-  test('panel pairing keeps the account signed in', async ({ page }) => {
+  test('panel pairing keeps the account signed in', async ({ page, isMobile }) => {
     await nearby(page)
     await codeStep(page)
     await submit(page)
@@ -86,6 +86,7 @@ test.describe('signed in', () => {
     await answerAtPrinter(page, 'accept')
     await admitted(page)
     await page.getByTestId('approval-close').click()
+    if (isMobile) await page.getByTestId('tab-more').click()
     await page.locator('[data-tid="account"]:visible').first().click()
     await expect(page.getByText('jack@example.test', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toHaveCount(0)

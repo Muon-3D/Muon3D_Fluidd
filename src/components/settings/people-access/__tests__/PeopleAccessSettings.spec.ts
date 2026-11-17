@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   sendInvite: vi.fn(async () => ({})),
   withdrawInvite: vi.fn(async () => ({ ok: true })),
   revokeLink: vi.fn(async () => ({ ok: true })),
+  createLink: vi.fn(async () => ({ link: { id: 'l9', printer_id: 'prn-1', role: 'viewer', approve_each: false, max_uses: null, expires_at: null, created_at: 1, url: 'https://muon3d.com/j/NEW' } })),
   answerApproval: vi.fn(async () => ({}))
 }))
 const unlinkPrinter = vi.hoisted(() => vi.fn(async () => ({})))
@@ -301,12 +302,12 @@ describe('People and access on the printer', () => {
     w.destroy()
   })
 
-  it('invites by email with Viewer as the default, and says making links is not available yet', async () => {
+  it('invites by email with Viewer as the default, and has a Link tab', async () => {
     asOwner()
     const w = open()
     await settle(); await settle()
     await w.find('[data-tid="pa-invite"]').trigger('click')
-    expect(w.find('[data-tid="pa-invite-link-tab"]').attributes('disabled')).toBe('disabled')
+    expect(w.find('[data-tid="pa-invite-link-tab"]').attributes('disabled')).toBeUndefined()
     expect(w.find('[data-tid="pa-invite-viewer"]').attributes('aria-pressed')).toBe('true')
     await w.find('[data-tid="pa-invite-email"]').setValue('alex@example.test')
     await w.find('[data-tid="pa-invite-send"]').trigger('click')
