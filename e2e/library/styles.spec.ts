@@ -56,7 +56,7 @@ test('Discover is styled: shelves in a row, cards on their surface', async ({ pa
 })
 
 test('a link drawn as a button reads as one: its text on its own colour, not underlined', async ({ page, models, open }) => {
-  // A print with no G-code: the quick look's one primary is a link, Slice it on library.muon3d.com.
+  // A print with no G-code: the quick look's one primary is a link, Slice it.
   models.publications[10].gcode = false
   await open('/library?view=discover')
   await page.getByTestId('library-shelf-popular').getByRole('button', { name: 'Quick look at Print 11' }).first().click()

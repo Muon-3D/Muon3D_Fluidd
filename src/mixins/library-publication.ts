@@ -255,6 +255,12 @@ export default class LibraryPublicationMixin extends Vue {
     ]
   }
 
+  /** Slice it: the slicer in this tab (/slice), opened with this print. */
+  get sliceTo () {
+    const version = this.publication?.version
+    return { path: '/slice', query: { library: this.publication?.id || this.card.id, ...(version ? { version: String(version) } : {}) } }
+  }
+
   go () {
     if (this.card.kind === 'catalogue') {
       window.open(this.card.href, '_blank', 'noopener')
