@@ -259,6 +259,7 @@ test.describe('sharing and managing access, as the phone app does', () => {
     await page.getByTestId('pa-link-end').click()
     await expect(page.getByTestId('confirm')).toContainText('End this invite link?')
     await page.getByTestId('confirm-cancel').click()
+    await expect(page.getByTestId('confirm')).toHaveCount(0)
     expect(printerChanges(account)).toEqual([])
     await expect(page.getByTestId('pa-link')).toHaveCount(1)
 
