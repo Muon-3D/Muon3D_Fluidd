@@ -896,7 +896,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     if (step.key === ALL_PRINTERS_KEY) {
       to = '/'
     } else if (step.key === LIBRARY_KEY) {
-      to = scopedPath('/library', activeSlug())
+      // The router sends it under a printer only from that printer's own pages.
+      to = '/library'
     } else if (step.key === ACCOUNT_KEY) {
       to = scopedPath('/account', activeSlug())
     } else if (activeSlug() || this.foreignPrinterRoute) {

@@ -30,6 +30,27 @@
       >
         Your printer needs an update to show its screen here
       </p>
+      <p
+        v-else-if="unreachable"
+        class="m1-screen__empty"
+        data-tid="m1-screen-unreachable"
+      >
+        The printer's screen can't be reached over this connection right now
+      </p>
+      <div
+        v-else-if="served && hosted"
+        class="m1-screen__empty"
+        data-tid="m1-screen-hosted"
+      >
+        <p>The printer's screen opens from the printer's own Control page, not from here.</p>
+        <a
+          v-if="localUrl"
+          class="m1-screen__local"
+          :href="localUrl"
+          target="_self"
+          data-tid="m1-screen-local"
+        >Connect locally</a>
+      </div>
       <iframe
         v-else-if="served"
         ref="frame"
@@ -62,9 +83,12 @@ import { findFilamentMacro } from '@/services/quick-actions/model'
 import type { Macro } from '@/store/macros/types'
 import type { Verb } from '@/services/panel-embed/protocol'
 import { PanelBridge } from '@/services/panel-embed/bridge'
+import Vue from 'vue'
 import { httpClientActions } from '@/api/httpClientActions'
+import { panelOnPrinter, type PanelOnPrinter } from '@/services/panel-embed/served'
 import { NOTIFY_ACTIONS } from '@/services/panel-embed/allow'
-import { wheelDetents } from '@/services/m1-3d/knob'
+import { mdnsHostFor } from '@/services/muon-cloud/discovery'
+import { KnobWheel } from '@/services/m1-3d/knob'
 
 /** The zoom in from the model's screen, and back out to it, ms. */
 const FLY_MS = 380
@@ -72,14 +96,9 @@ const FLY_MS = 380
 const BEZEL_PX = 340
 const STRIP_PX = 64
 
-/** Whether this Control serves the printer screen's embed build at /panel/. */
-async function panelServed (): Promise<boolean> {
-  try {
-    const r = await fetch('/panel/index.html', { method: 'HEAD', cache: 'no-store' })
-    return r.ok && (r.headers.get('content-type') ?? '').includes('text/html')
-  } catch {
-    return false
-  }
+/** Whether the printer has the screen's embed build, asked over the route Control uses for it (not of this page's origin). */
+function panelServed (): Promise<PanelOnPrinter> {
+  return panelOnPrinter(url => Vue.$httpClient.get(url, { responseType: 'text', transformResponse: [v => v], validateStatus: () => true }))
 }
 
 /** Each view's bridge, kept out of Vue's reach: Vue must not walk it or its port. */
@@ -121,6 +140,8 @@ export default class M1Screen extends Mixins(ControlMixin) {
   phase: 'in' | 'open' | 'out' = 'in'
   /** /panel/ is served here: null until known. */
   served: boolean | null = null
+  /** The printer did not answer over this route: neither the screen nor "needs an update" can be said. */
+  unreachable = false
   flyTimer = 0
   flight: Record<string, string> = {}
   stopActions: (() => void) | null = null
@@ -156,11 +177,14 @@ export default class M1Screen extends Mixins(ControlMixin) {
     return { '--ring-x': `${Math.round(r.x)}px`, '--ring-y': `${Math.round(r.y)}px`, '--ring-d': `${Math.round(r.r * 2)}px`, '--ring-k': `${(r.r * 2 / 480).toFixed(4)}` }
   }
 
+  readonly knobWheel = new KnobWheel()
+
   /** A scroll on the strip or the stage around the screen turns the model's knob (the picture only); the embedded screen's own scroll is its own. */
   onWheel (e: WheelEvent) {
     if (!this.ring) return
     e.preventDefault()
-    this.$emit('turn', wheelDetents(e.deltaY, e.deltaMode))
+    const detents = this.knobWheel.turn(e.deltaY, e.deltaMode)
+    if (detents) this.$emit('turn', detents)
   }
 
   async mounted () {
@@ -173,8 +197,31 @@ export default class M1Screen extends Mixins(ControlMixin) {
     }))
     const served = await panelServed()
     if (this.phase === 'out' || (this as unknown as { _isDestroyed?: boolean })._isDestroyed) return
-    this.served = served
-    if (served) this.$nextTick(() => this.connect())
+    this.served = served === 'unknown' ? null : served === 'yes'
+    this.unreachable = served === 'unknown'
+    if (served === 'yes' && this.hosted) this.findLocalUrl().catch(() => {})
+    else if (served === 'yes') this.$nextTick(() => this.connect())
+  }
+
+  /**
+   * This page is the hosted Control (control.muon3d.com): it serves no /panel/ of its own, so the frame would load a 404.
+   * Over Bluetooth or Muon3D the hosted page can't carry the panel yet (KAN-3635).
+   */
+  get hosted (): boolean {
+    return !!this.$store.state.config.hostConfig?.hosted
+  }
+
+  /** The printer's own Control page on its network, where the screen is served: opened in this tab. Null until known, or unknown. */
+  localUrl: string | null = null
+
+  async findLocalUrl () {
+    try {
+      const res = await Vue.$httpClient.get('/server/muon/identity')
+      const host = mdnsHostFor(res.data)
+      if (host && !(this as unknown as { _isDestroyed?: boolean })._isDestroyed) this.localUrl = `http://${host}/`
+    } catch {
+      // No name: the message stands without a link.
+    }
   }
 
   /** Esc, Done or a click outside: fly back out to the model, then close. */
@@ -377,6 +424,14 @@ export default class M1Screen extends Mixins(ControlMixin) {
     color: #3a3a3c;
     font-size: 14px;
     font-weight: 600;
+
+    p { margin: 0 0 10px; }
+  }
+
+  .m1-screen__local {
+    color: #0a6c74;
+    font-weight: 700;
+    text-decoration: underline;
   }
 
   .m1-screen__strip {

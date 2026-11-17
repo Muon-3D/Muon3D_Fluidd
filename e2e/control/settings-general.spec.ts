@@ -193,6 +193,94 @@ test.describe('restore from a copy', () => {
   })
 })
 
+/** The printer's own rename route: records every body, answers with `status`. */
+async function renameRoute (page: Page, status = 200, error = 'muon_setup: protected') {
+  const sent: Array<Record<string, unknown>> = []
+  await page.route(/\/server\/muon\/identity\/name/, async route => {
+    sent.push(route.request().postDataJSON())
+    if (status === 200) await route.fulfill({ json: { result: { ...IDENTITY, name: String(sent.at(-1)!.name) } } })
+    else await route.fulfill({ status, json: { error } })
+  })
+  return sent
+}
+
+test.describe('renaming the printer from Control (KAN-3603)', () => {
+  test('a new name is the printer own: sent to its rename route, then kept as the Control label', async ({ page, open }) => {
+    const { db } = await setUp(page)
+    const sent = await renameRoute(page)
+    await open('/settings#general')
+    const name = page.getByTestId('setting-name').locator('input').or(page.locator('input[data-tid="setting-name"]')).first()
+    await name.fill('Elm Bench')
+    await name.press('Tab')
+    await expect.poll(() => sent).toEqual([{ name: 'Elm Bench' }])
+    await expect.poll(() => saves(db, 'uiSettings.general.instanceName')).toEqual(['Elm Bench'])
+    await expect(page.getByText('did not accept the new name')).toHaveCount(0)
+  })
+
+  test('a printer that refuses the rename keeps its name: the reason is shown and the Control label does not change', async ({ page, open }) => {
+    const { db } = await setUp(page)
+    const sent = await renameRoute(page, 403)
+    await open('/settings#general')
+    const name = page.getByTestId('setting-name').locator('input').or(page.locator('input[data-tid="setting-name"]')).first()
+    await name.fill('Elm Bench')
+    await name.press('Tab')
+    await expect(page.getByText('did not accept the new name: muon_setup: protected. Nothing changed.')).toBeVisible()
+    expect(sent).toEqual([{ name: 'Elm Bench' }])
+    expect(saves(db, 'uiSettings.general.instanceName')).toEqual([])
+    await expect(name).not.toHaveValue('Elm Bench')
+  })
+})
+
+/** The printer's time zone route: reads `zone`, records writes, answers per `mode`. */
+async function zoneRoute (page: Page, mode: 'ok' | 'refuse' | 'missing') {
+  const sent: Array<Record<string, unknown>> = []
+  await page.route(/\/server\/muon\/timezone/, async route => {
+    if (mode === 'missing') { await route.fulfill({ status: 404, json: { error: 'Not Found' } }); return }
+    if (route.request().method() === 'GET') { await route.fulfill({ json: { result: { zone: 'Europe/London' } } }); return }
+    sent.push(route.request().postDataJSON())
+    if (mode === 'refuse') await route.fulfill({ status: 403, json: { error: 'only the owner can change the time zone' } })
+    else await route.fulfill({ json: { result: { zone: String(sent.at(-1)!.zone) } } })
+  })
+  return sent
+}
+
+async function pickZone (page: Page, zone: string) {
+  await page.getByTestId('setting-timezone-select').fill(zone)
+  await page.getByRole('option', { name: zone, exact: true }).click()
+}
+
+test.describe('time zone from Control (KAN-3603)', () => {
+  test('the zone the printer reports is shown and a new one is sent to it', async ({ page, open }) => {
+    await setUp(page)
+    const sent = await zoneRoute(page, 'ok')
+    await open('/settings#general')
+    await expect(page.getByTestId('setting-timezone')).toBeVisible()
+    await expect(page.getByTestId('setting-timezone-select')).toHaveValue('Europe/London')
+    await pickZone(page, 'Europe/Paris')
+    await expect.poll(() => sent).toEqual([{ zone: 'Europe/Paris' }])
+    await expect(page.getByText('did not accept that time zone')).toHaveCount(0)
+  })
+
+  test('a refusal is shown under the field and the zone does not change', async ({ page, open }) => {
+    await setUp(page)
+    const sent = await zoneRoute(page, 'refuse')
+    await open('/settings#general')
+    await expect(page.getByTestId('setting-timezone')).toBeVisible()
+    await pickZone(page, 'Europe/Paris')
+    await expect(page.getByText('did not accept that time zone: only the owner can change the time zone. Nothing changed.')).toBeVisible()
+    expect(sent).toEqual([{ zone: 'Europe/Paris' }])
+    await expect(page.getByTestId('setting-timezone-select')).toHaveValue('Europe/London')
+  })
+
+  test('a printer without the route (404) shows no Time zone row', async ({ page, open }) => {
+    await setUp(page)
+    await zoneRoute(page, 'missing')
+    await open('/settings#general')
+    await expect(page.getByTestId('setting-times')).toBeVisible()
+    await expect(page.getByTestId('setting-timezone')).toHaveCount(0)
+  })
+})
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 
