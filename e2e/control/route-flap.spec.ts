@@ -266,3 +266,36 @@ test('explicit LAN surfaces a drop and never takes cloud or Bluetooth through te
   expect((await routeCounts(page)).sessionEvents.filter(event => event.event === 'socket-open')).toEqual(before.sessionEvents.filter(event => event.event === 'socket-open'))
   expect(await where(page)).toMatchObject({ mode: 'lan', apiUrl: `http://localhost:${MOCK_PORT}`, activeCloud: null })
 })
+
+/** Holds the local network, then takes the printer's local path away: the page must say so and let the person pick. */
+async function loseHeldLan (page: Page) {
+  await openAuto(page)
+  await lan(page, true)
+  await choose(page, 'Connect locally', false)
+  await expect.poll(() => where(page), { timeout: 45_000 }).toMatchObject({ activeCloud: null, socketOpen: true, mode: 'lan' })
+  await expect(page.getByTestId('route-lost-title')).toHaveCount(0)
+  // Let the open settle, so the count below is what the drop itself does.
+  await page.waitForTimeout(6_000)
+  const before = await routeCounts(page)
+  await lan(page, false)
+  await expect(page.getByTestId('route-lost-title')).toHaveText("Local network isn't reachable", { timeout: 30_000 })
+  // Held means held: the drop is said out loud, and nothing moved the session meanwhile.
+  const after = await routeCounts(page)
+  expect({ dials: after.dials, routes: after.routes.slice(before.routes.length), ev: after.sessionEvents.slice(before.sessionEvents.length) }).toEqual({ dials: before.dials, routes: [], ev: [] })
+  await expect(page.getByTestId('route-lost-lan')).toHaveCount(0)
+  await expect(page.getByTestId('route-lost-auto')).toBeVisible()
+}
+
+test('a held LAN that dies says "Local network isn\'t reachable" and Connect via cloud then connects', async ({ page }) => {
+  await loseHeldLan(page)
+  await page.getByTestId('route-lost-cloud').click()
+  await expect.poll(() => where(page), { timeout: 45_000 }).toMatchObject({ activeCloud: ROUTE_PRINTER.id, socketOpen: true, mode: 'cloud' })
+  await expect(page.getByTestId('route-lost-title')).toHaveCount(0)
+})
+
+test('a held LAN that dies: Use Auto hands it back and Auto connects through Muon3D', async ({ page }) => {
+  await loseHeldLan(page)
+  await page.getByTestId('route-lost-auto').click()
+  await expect.poll(() => where(page), { timeout: 60_000 }).toMatchObject({ activeCloud: ROUTE_PRINTER.id, socketOpen: true, mode: 'auto' })
+  await expect(page.getByTestId('route-lost-title')).toHaveCount(0)
+})
