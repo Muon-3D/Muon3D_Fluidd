@@ -31,7 +31,8 @@ describe('a trackpad\'s wheel (KAN-3597)', () => {
   it('turns one detent per mouse notch, as before', () => {
     const wheel = new KnobWheel()
     let total = 0
-    for (let i = 0; i < 72; i++) total += wheel.turn(100, 0, i * 5)
+    // One notch every 125 ms, the pace the cap allows.
+    for (let i = 0; i < 72; i++) total += wheel.turn(100, 0, i * 125)
     expect(total).toBe(72)
   })
 
@@ -66,5 +67,18 @@ describe('a trackpad\'s wheel (KAN-3597)', () => {
     let total = 0
     for (let i = 0; i < 30; i++) total += wheel.turn(-8, 0, i * 16)
     expect(total).toBe(-2)
+  })
+
+  it('caps single large events too: 30 events of 150 px in a second are no more than 8 detents', () => {
+    const wheel = new KnobWheel()
+    let total = 0
+    for (let i = 0; i < 30; i++) total += wheel.turn(150, 0, i * 30)
+    expect(total).toBeLessThanOrEqual(MAX_STEPS_PER_SECOND)
+    expect(total).toBeGreaterThan(0)
+    // And line-mode flicks (3 lines is 48 px each) in both directions.
+    const other = new KnobWheel()
+    let net = 0
+    for (let i = 0; i < 40; i++) net += Math.abs(other.turn(i % 2 ? -3 : 3, 1, i * 20))
+    expect(net).toBeLessThanOrEqual(MAX_STEPS_PER_SECOND)
   })
 })

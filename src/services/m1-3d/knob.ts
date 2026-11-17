@@ -22,7 +22,7 @@ export const TRACKPAD_EVENT_PX = 40
 export const TRACKPAD_STEP_PX = 120
 /** A trackpad's travel not yet worth a step is let go after this long without scrolling. */
 export const TRACKPAD_IDLE_MS = 250
-/** However far a trackpad swipe or its momentum goes, no more than this many steps in one second. */
+/** However far a wheel, a swipe or its momentum goes, no more than this many detents in one second. */
 export const MAX_STEPS_PER_SECOND = 8
 
 /**
@@ -34,7 +34,8 @@ export const MAX_STEPS_PER_SECOND = 8
 export class KnobWheel {
   private carry = 0
   private lastAt = -Infinity
-  private recent: number[] = []
+  /** What was turned lately: when, and how many detents (magnitude). */
+  private recent: Array<{ at: number, detents: number }> = []
 
   turn (deltaY: number, deltaMode = 0, now = performance.now()): number {
     const px = deltaMode === 1 ? deltaY * 16 : deltaMode === 2 ? deltaY * 400 : deltaY
@@ -43,7 +44,7 @@ export class KnobWheel {
     this.lastAt = now
     if (Math.abs(px) >= TRACKPAD_EVENT_PX) {
       this.carry = 0
-      return wheelDetents(px)
+      return this.limit(wheelDetents(px), now)
     }
     this.carry += px
     const steps = Math.trunc(this.carry / TRACKPAD_STEP_PX)
@@ -52,13 +53,17 @@ export class KnobWheel {
     return this.limit(steps, now)
   }
 
-  /** A trackpad's steps, no more than MAX_STEPS_PER_SECOND in any second, so momentum cannot spin it. */
-  private limit (steps: number, now: number): number {
-    this.recent = this.recent.filter(t => now - t < 1000)
-    const n = Math.min(Math.abs(steps), MAX_STEPS_PER_SECOND - this.recent.length)
-    if (n <= 0) return 0
-    for (let i = 0; i < n; i++) this.recent.push(now)
-    return Math.sign(steps) * n
+  /**
+   * No more than MAX_STEPS_PER_SECOND detents in any second, for a notch and a trackpad's step alike: a fast swipe's
+   * momentum arrives as single events of 40 to 200 px, which are not small, and must not spin the knob either.
+   */
+  private limit (detents: number, now: number): number {
+    this.recent = this.recent.filter(r => now - r.at < 1000)
+    const used = this.recent.reduce((sum, r) => sum + r.detents, 0)
+    const allowed = Math.min(Math.abs(detents), Math.max(0, MAX_STEPS_PER_SECOND - used))
+    if (allowed <= 0) return 0
+    this.recent.push({ at: now, detents: allowed })
+    return Math.sign(detents) * allowed
   }
 }
 
