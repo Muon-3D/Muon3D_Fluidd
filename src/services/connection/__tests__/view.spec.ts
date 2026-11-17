@@ -42,6 +42,8 @@ describe('what the connection shows', () => {
   it('gives a printer never reached a screen of its own: connecting, then unreachable', () => {
     expect(connectionView({ ...dropped, wasConnected: false })).toMatchObject({ page: false, screen: 'connecting' })
     expect(connectionView({ ...dropped, wasConnected: false, socketConnecting: false })).toMatchObject({ page: false, screen: 'unreachable' })
+    // KAN-1461: still trying, but every try has failed: say so rather than spin.
+    expect(connectionView({ ...dropped, wasConnected: false, unreachable: true })).toMatchObject({ page: false, screen: 'unreachable' })
   })
 
   it('shows the login page when the printer answers and wants one', () => {

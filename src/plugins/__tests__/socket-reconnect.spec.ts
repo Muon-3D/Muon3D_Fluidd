@@ -37,7 +37,7 @@ class FakeSocket implements PrinterSocket {
 
 function fakeStore () {
   const state = {
-    socket: { disconnecting: false, connecting: false, open: false, stalled: false },
+    socket: { disconnecting: false, connecting: false, open: false, stalled: false, failure: null as null | { reason: string, unreachable: boolean } },
     files: { download: false }
   }
   return {
@@ -49,6 +49,7 @@ function fakeStore () {
     commit: vi.fn((name: string, payload?: any) => {
       if (name === 'socket/setSocketOpen') state.socket.open = payload
       if (name === 'socket/setSocketStalled') state.socket.stalled = payload
+      if (name === 'socket/setSocketFailure') state.socket.failure = payload
     })
   }
 }
@@ -275,7 +276,7 @@ describe('WebSocketClient reconnecting', () => {
   it('a new route starts its backoff from the first step, not where the old route left off (#370)', async () => {
     // Auto mode failed over from a dead relay to Bluetooth: the relay's failed
     // tries (1, 2, 4 s ...) must not slow the first retry on the new route.
-    const { client } = lanClient()
+    const { client, store } = lanClient()
     const relay = new FakeSocket()
     const failing = vi.fn(async () => { throw new Error('relay is gone') })
     client.adoptTransportSocket(relay, failing)
@@ -284,11 +285,13 @@ describe('WebSocketClient reconnecting', () => {
     await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000)
     expect(failing).toHaveBeenCalledTimes(3)
     expect(client.reconnectCount).toBe(4)
+    expect(store.state.socket.failure?.unreachable).toBe(true)
 
     const ble = new FakeSocket()
     const reopen = vi.fn(async () => new FakeSocket())
     client.adoptTransportSocket(ble, reopen)
     expect(client.reconnectCount).toBe(0)
+    expect(store.state.socket.failure).toBeNull()
     ble.emit('close', { code: 1006, reason: '', wasClean: false })
     await vi.advanceTimersByTimeAsync(1000)
     expect(reopen).toHaveBeenCalledTimes(1)
@@ -329,6 +332,64 @@ describe('WebSocketClient reconnecting', () => {
 /** What axios rejects with when the printer answers `status`. */
 const answered = (status: number) => ({ isAxiosError: true, message: `HTTP ${status}`, response: { status } })
 const socketUrls = () => (WebSocket as unknown as { mock: { calls: unknown[][] } }).mock.calls.map(call => call[0])
+
+// KAN-1461: a printer whose socket refused every try was "Connecting" for good.
+describe('WebSocketClient when the printer cannot be reached', () => {
+  it('says why after three failed tries in a row, and keeps trying', async () => {
+    const { client, store } = lanClient()
+    await client.connect()
+    sockets[0].emit('close', { code: 1006, reason: '', wasClean: false })
+    expect(store.state.socket.failure).toEqual({ reason: "it didn't accept the connection", unreachable: false })
+    await vi.advanceTimersByTimeAsync(1000)
+    sockets[1].emit('close', { code: 1006, reason: '', wasClean: false })
+    expect(store.state.socket.failure?.unreachable).toBe(false)
+    await vi.advanceTimersByTimeAsync(2000)
+    sockets[2].emit('close', { code: 1006, reason: '', wasClean: false })
+    expect(store.state.socket.failure).toEqual({ reason: "it didn't accept the connection", unreachable: true })
+    expect(client.retryPending).toBe(true)
+  })
+
+  it('says the token request went unanswered, or what it answered', async () => {
+    const { client, store } = lanClient()
+    tokens.get.mockRejectedValue(new Error('Network Error'))
+    await client.connect()
+    expect(store.state.socket.failure?.reason).toBe("it didn't answer")
+    tokens.get.mockRejectedValue(Object.assign(new Error('Request failed'), { isAxiosError: true, response: { status: 502 } }))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(store.state.socket.failure?.reason).toBe('it answered with an error (HTTP 502)')
+  })
+
+  it('Try again shows it connecting, and one more failure says so again', async () => {
+    const { client, store } = lanClient()
+    tokens.get.mockRejectedValue(new Error('Network Error'))
+    await client.connect()
+    await vi.advanceTimersByTimeAsync(1000 + 2000)
+    expect(store.state.socket.failure?.unreachable).toBe(true)
+
+    client.retryNow()
+    expect(store.state.socket.failure?.unreachable).toBe(false)
+    expect(tokens.get).toHaveBeenCalledTimes(4)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.state.socket.failure?.unreachable).toBe(true)
+  })
+
+  it('forgets the failure once a socket opens', async () => {
+    const { client, store } = lanClient()
+    await client.connect()
+    sockets[0].emit('close', { code: 1006, reason: '', wasClean: false })
+    expect(store.state.socket.failure).not.toBeNull()
+    await vi.advanceTimersByTimeAsync(1000)
+    sockets[1].emit('open')
+    expect(store.state.socket.failure).toBeNull()
+  })
+
+  it('does not count a drop after the socket was open as a failed try', async () => {
+    const { client, store } = lanClient()
+    const socket = await opened(client)
+    socket.emit('close', { code: 1006, reason: '', wasClean: false })
+    expect(store.state.socket.failure).toBeNull()
+  })
+})
 
 describe('WebSocketClient without a one-shot token', () => {
   // 27 Oct, bench: behind the muon-link Bluetooth bridge the printer refuses

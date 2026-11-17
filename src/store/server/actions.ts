@@ -119,7 +119,11 @@ export const actions: ActionTree<ServerState, RootState> = {
     if (payload.klippy_state !== 'ready') {
       // If klippy is not connected, we'll continue to
       // retry the init process.
-      if (state.klippy_retries === 0) dispatch('initComponents', payload)
+      if (state.klippy_retries === 0) {
+        // Reconnected, or told Klipper went, mid-print: it is not printing still.
+        commit('printer/setPrintUnknown', undefined, { root: true })
+        dispatch('initComponents', payload)
+      }
       commit('setKlippyRetries', state.klippy_retries + 1)
       clearTimeout(retryTimeout)
       retryTimeout = window.setTimeout(() => {
