@@ -119,6 +119,45 @@ export async function answerConsole (route: Route, state: ConsoleState) {
     }
     return json(route, state.identity)
   }
+  // Invite links: made and ended like the console does, so the page's list follows.
+  const linkRoute = url.pathname.match(/^\/v1\/printers\/([^/]+)\/links(?:\/([^/]+))?$/)
+  if (linkRoute && request.method() === 'POST' && !linkRoute[2]) {
+    const id = decodeURIComponent(linkRoute[1])
+    const body = request.postDataJSON() as { lifetime: string, max_uses: number | null, role: string, approve_each: boolean }
+    const secs: Record<string, number> = { '1h': 3600, '1d': 86_400, '7d': 604_800 }
+    const made = {
+      id: `link-${(state.links[id]?.length ?? 0) + 1}`,
+      printer_id: id,
+      role: body.role,
+      approve_each: !!body.approve_each,
+      max_uses: body.max_uses ?? null,
+      uses: 0,
+      expires_at: secs[body.lifetime] ? 1_790_000_000 + secs[body.lifetime] : null,
+      created_at: 1_790_000_000,
+      url: `https://muon3d.com/j/E2E-${body.lifetime}-${body.role}`
+    }
+    state.links[id] = [...(state.links[id] ?? []), made]
+    return json(route, { link: made }, 201)
+  }
+  if (linkRoute && linkRoute[2] && request.method() === 'DELETE') {
+    const id = decodeURIComponent(linkRoute[1])
+    state.links[id] = (state.links[id] as Array<{ id: string }> | undefined)?.filter(l => l.id !== linkRoute[2]) ?? []
+    return json(route, { ok: true })
+  }
+  const shareRoute = url.pathname.match(/^\/v1\/printers\/([^/]+)\/shares$/)
+  if (shareRoute && request.method() === 'POST') {
+    const id = decodeURIComponent(shareRoute[1])
+    const body = request.postDataJSON() as { email: string, role: string, ends_at: number | null }
+    const made = { id: `share-${body.email}`, printer_id: id, email: body.email, role: body.role, ends_at: body.ends_at ?? null, created_at: 1 }
+    state.shares[id] = [...((state.shares[id] as Array<{ email: string }> | undefined) ?? []).filter(x => x.email !== body.email), made]
+    return json(route, { share: made })
+  }
+  const shareGone = url.pathname.match(/^\/v1\/printers\/([^/]+)\/shares\/([^/]+)$/)
+  if (shareGone && request.method() === 'DELETE') {
+    const id = decodeURIComponent(shareGone[1])
+    state.shares[id] = (state.shares[id] as Array<{ id: string }> | undefined)?.filter(x => x.id !== shareGone[2]) ?? []
+    return json(route, { ok: true })
+  }
   const list = url.pathname.match(PRINTER_LIST)
   if (list && request.method() === 'GET') {
     const [, id, kind] = list

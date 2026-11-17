@@ -85,6 +85,12 @@ export interface ManagedIrohTransportOptions {
   createEndpoint: () => Promise<ManagedIrohEndpoint>;
   /** A fresh handoff, for when dials keep failing with the one it has. */
   reauthorize?: () => Promise<AuthorizedManagedRelaySession>;
+  /**
+   * A fresh handoff ahead of an ordinary redial (best effort: it may refuse or
+   * be skipped, and the redial then goes out with the session it has). Falls
+   * back to `reauthorize`.
+   */
+  regrant?: () => Promise<AuthorizedManagedRelaySession>;
   onStatusChange?: (status: ManagedTransportStatus) => void;
 }
 

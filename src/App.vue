@@ -54,6 +54,8 @@
 
         <bluetooth-fallback-banner />
 
+        <upload-progress />
+
         <secure-address-banner />
 
         <update-banner v-if="showUpdateBanner" />
@@ -143,6 +145,7 @@ import {
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import PrinterOpening from './components/muon-cloud/PrinterOpening.vue'
 import ConnectionBanner from './components/layout/ConnectionBanner.vue'
+import UploadProgress from './components/jobs/UploadProgress.vue'
 import ConnectingScreen from './components/layout/ConnectingScreen.vue'
 import UpdatingScreen from './components/updates/UpdatingScreen.vue'
 import UpdateBanner from './components/updates/UpdateBanner.vue'
@@ -182,6 +185,7 @@ import { Globals } from '@/globals'
     SecureAddressBanner: () => import('@/components/layout/SecureAddressBanner.vue'),
     DeletionNotice: () => import('@/components/account/DeletionNotice.vue'),
     ConnectionBanner,
+    UploadProgress,
     ConnectingScreen,
     UpdatingScreen,
     UpdateBanner,
@@ -898,7 +902,8 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
     if (step.key === ALL_PRINTERS_KEY) {
       to = '/'
     } else if (step.key === LIBRARY_KEY) {
-      to = scopedPath('/library', activeSlug())
+      // The router sends it under a printer only from that printer's own pages.
+      to = '/library'
     } else if (step.key === ACCOUNT_KEY) {
       to = scopedPath('/account', activeSlug())
     } else if (activeSlug() || this.foreignPrinterRoute) {

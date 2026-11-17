@@ -259,10 +259,16 @@ const toPrinterPage = (to: Route) => {
   return slug ? { path: `/${slug}${to.path}`, query: to.query, hash: to.hash } : '/'
 }
 
-/** The Library (and the account) under the printer Fluidd is on, when one is: /library is /boxwood-367a/library. */
+/**
+ * The Library under the printer Fluidd is on, when it is opened from one of
+ * that printer's own pages: /library is /boxwood-367a/library, so its rail and
+ * printer stay beside it. From anywhere else (All printers, the account, a
+ * direct address) it opens at its own route with no printer: the Library is
+ * the account's and needs none (KAN-3599).
+ */
 const toLibraryOfActivePrinter: NavigationGuard = (to, from, next) => {
   const slug = activeSlugNow()
-  if (slug) next({ path: `/${slug}${to.path}`, query: to.query, hash: to.hash })
+  if (slug && from.params.printer === slug) next({ path: `/${slug}${to.path}`, query: to.query, hash: to.hash })
   else next()
 }
 

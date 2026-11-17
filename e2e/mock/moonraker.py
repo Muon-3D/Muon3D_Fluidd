@@ -14,6 +14,7 @@ import sys
 import time
 
 from aiohttp import web, WSMsgType
+import lan_uploads
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 7125
 T0 = time.time()
@@ -271,6 +272,9 @@ def rpc(method, params):
 async def ws_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
+    upload_state = lan_uploads.SESSIONS.get(request.query.get('e2e_upload_session'))
+    if upload_state is not None:
+        upload_state['sockets'].add(ws)
 
     async def pusher():
         while not ws.closed:
@@ -298,9 +302,14 @@ async def ws_handler(request):
         if reason:
             await ws.send_json({'jsonrpc': '2.0', 'id': req.get('id'), 'error': {'code': 403, 'message': reason}})
             continue
-        result = rpc(req.get('method', ''), req.get('params') or {})
+        if upload_state is not None and req.get('method') == 'server.files.get_directory':
+            result = lan_uploads.directory(upload_state, (req.get('params') or {}).get('path', 'gcodes'))
+        else:
+            result = rpc(req.get('method', ''), req.get('params') or {})
         await ws.send_json({'jsonrpc': '2.0', 'id': req.get('id'), 'result': result})
     task.cancel()
+    if upload_state is not None:
+        upload_state['sockets'].discard(ws)
     return ws
 
 
@@ -472,6 +481,8 @@ async def _answer(request, handler):
 
 app = web.Application(middlewares=[cors])
 app.router.add_get('/websocket', ws_handler)
+app.router.add_route('*', '/e2e/uploads/{session}', lan_uploads.control)
+app.router.add_post('/server/files/upload', lan_uploads.upload)
 app.router.add_route('*', '/server/database/item', http_db)
 app.router.add_route('*', '/server/aux/{tail:.*}', http_aux)
 app.router.add_route('*', '/{tail:.*}', http_generic)
