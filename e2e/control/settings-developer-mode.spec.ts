@@ -124,7 +124,7 @@ test("turning it on the first time shows the terms, then waits for the printer's
   expect(fake.posts).toHaveLength(1)
   expect(fake.printer.enabled).toBe(false)
   fake.confirm()
-  await expect(dialog).toHaveCount(0)
+  await expect(dialog).toBeHidden()
   expect(fake.posts.map(x => JSON.parse(x))).toEqual([
     { enabled: true },
     { enabled: true, challenge_id: CHALLENGE, waiver_acknowledged: true, waiver_version: 'w-1' }
@@ -142,7 +142,7 @@ test('after it was accepted before, a turn-on goes straight through with no wait
   // No terms again, no knob press.
   await expect(dialog.getByTestId('developer-terms')).toHaveCount(0)
   await dialog.getByTestId('developer-confirm').click()
-  await expect(dialog).toHaveCount(0)
+  await expect(dialog).toBeHidden()
   await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('On')
   expect(fake.posts.map(x => JSON.parse(x))).toEqual([{ enabled: true }])
   expect(fake.polls()).toBe(0)

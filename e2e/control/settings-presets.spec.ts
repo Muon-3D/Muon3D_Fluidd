@@ -121,8 +121,10 @@ const NEEDS_CLEARING = {
 
 test('a non-owner is not shown the plate-clear notice when the printer keeps it to the owner', async ({ page, open }) => {
   await printerWith(page, { ...OPEN, plate_clear: 'owner' }, { owner: false, status: NEEDS_CLEARING })
+  const read = page.waitForResponse('**/server/aux/permissions')
   await open('/')
-  await expect(page.getByTestId('page-title')).toBeVisible()
+  await read
+  await page.waitForTimeout(500)
   await expect(page.getByTestId('plate-clear-notice')).toHaveCount(0)
 })
 
