@@ -84,6 +84,7 @@
 </template>
 
 <script lang="ts">
+import DevGuardMixin from '@/mixins/dev-guard'
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
 import type { TileMenuItem } from '@/services/overview/tiles'
@@ -99,7 +100,7 @@ import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
  * output, and the power devices, are behind the three dots.
  */
 @Component({ components: { TileShell, TileDialog, RangeSlider, ToggleSwitch, ControlFans: () => import('@/components/control/ControlFans.vue') } })
-export default class FansTile extends Mixins(OverviewMixin) {
+export default class FansTile extends Mixins(OverviewMixin, DevGuardMixin) {
   open = false
   dialog = false
 

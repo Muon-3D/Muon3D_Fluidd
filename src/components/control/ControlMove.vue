@@ -433,6 +433,7 @@ import type { MovePlan } from '@/services/control/safe-move'
 import ControlCard from './ControlCard.vue'
 import ControlTrackpad from './ControlTrackpad.vue'
 import ControlPositionReadout from './ControlPositionReadout.vue'
+import DevGuardMixin from '@/mixins/dev-guard'
 import ControlZOffset from './ControlZOffset.vue'
 import SegPicker, { type SegOption } from './SegPicker.vue'
 import NumberField from './NumberField.vue'
@@ -494,7 +495,7 @@ const followers = new WeakMap<object, DragFollow>()
  * through services/control/drag-follow, one planned move at a time.
  */
 @Component({ components: { ControlCard, ControlTrackpad, ControlPositionReadout, ControlZOffset, SegPicker, NumberField } })
-export default class ControlMove extends Mixins(ControlMixin) {
+export default class ControlMove extends Mixins(ControlMixin, DevGuardMixin) {
   @Prop({ type: Boolean })
   readonly phone?: boolean
 

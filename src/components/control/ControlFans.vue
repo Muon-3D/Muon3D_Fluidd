@@ -81,6 +81,7 @@
 </template>
 
 <script lang="ts">
+import DevGuardMixin from '@/mixins/dev-guard'
 import { Component, Mixins, Prop } from 'vue-property-decorator'
 import ControlMixin from '@/mixins/control'
 import type { Fan, Led, OutputPin } from '@/store/printer/types'
@@ -97,7 +98,7 @@ type FanMode = 'auto' | 'on' | 'off'
  * Part fan and lights up front; automatic fans, brightness and outputs one step away.
  */
 @Component({ components: { ControlCard, SegPicker, ToggleSwitch, RangeSlider, ControlTaskFold, ControlOutputs } })
-export default class ControlFans extends Mixins(ControlMixin) {
+export default class ControlFans extends Mixins(ControlMixin, DevGuardMixin) {
   @Prop({ type: Boolean })
   readonly phone?: boolean
 
