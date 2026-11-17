@@ -10,7 +10,7 @@ vi.mock('@/mixins/printer-entries', async () => {
   return { default: Vue.extend({ data: () => ({ busyKey: null, notice: null }), computed: { socketConnected: () => false, directory: () => ({ cloud: [], local: [], found: [] }) } }) }
 })
 vi.mock('@/components/layout/PrinterSwitchButton.vue', () => ({ default: { name: 'PrinterSwitchButton', props: ['screenState', 'phone'], template: '<button />' } }))
-vi.mock('@/components/muon-cloud/PrinterSwitcher.vue', () => ({ default: { name: 'PrinterSwitcher', methods: { openListedEntry: picker.open }, template: '<div />' } }))
+vi.mock('@/components/muon-cloud/PrinterSwitcher.vue', () => ({ default: { name: 'PrinterSwitcher', props: ['listVisible'], methods: { openListedEntry: picker.open }, template: '<div />' } }))
 vi.mock('@/services/muon-cloud/state', () => ({ cloudState: { status: {} } }))
 vi.mock('@/services/foreign-printers/live', () => ({ liveForeign: { records: [], status: {} } }))
 vi.mock('@/services/printer-pages', () => ({ foreignRecordForSlug: () => undefined }))
@@ -41,6 +41,18 @@ it('does not invent another printer or overflow when the list is empty and clean
   expect(w.findComponent({ name: 'PrinterSwitchButton' }).props('screenState')).toBeDefined()
   w.destroy()
   expect(disconnect).toHaveBeenCalledOnce()
+})
+
+it('only renders the overflow list while open, keeping its controller available for round-screen picks', async () => {
+  const w = show()
+  const picker = () => w.findComponent({ name: 'PrinterSwitcher' })
+  expect(picker().props('listVisible')).toBe(false)
+  await w.setData({ open: true })
+  expect(picker().props('listVisible')).toBe(true)
+  await w.setData({ open: false })
+  expect(picker().props('listVisible')).toBe(false)
+  expect(picker().exists()).toBe(true)
+  w.destroy()
 })
 
 it('delegates opening to the existing picker and releases a refused selection', async () => {

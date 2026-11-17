@@ -57,6 +57,7 @@
         <printer-switcher
           ref="picker"
           :visible="open"
+          :list-visible="open"
           :exclude-keys="excluded"
           :extra-entries="foreign"
           :screen-state-for="state"

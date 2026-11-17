@@ -120,9 +120,9 @@ store.commit('config/setRestoredUiStyle', restoredUiStyle)
 applyGlassIcons(vuetify.framework.icons.values as unknown as Record<string, unknown>, restoredUiStyle === 'glass')
 
 followMotionSetting()
-followStartup(store)
 
 const mountApp = () => {
+  followStartup(store)
   Vue.config.productionTip = false
   new Vue({
     i18n,

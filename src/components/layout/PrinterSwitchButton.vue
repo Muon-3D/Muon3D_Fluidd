@@ -71,6 +71,7 @@
       </template>
       <printer-switcher
         :visible="open"
+        :list-visible="open"
         @click="open = false"
       />
     </v-menu>
@@ -135,6 +136,7 @@
         <div class="printer-switch__sheet-body">
           <printer-switcher
             :visible="open"
+            :list-visible="open"
             @click="open = false"
           />
         </div>

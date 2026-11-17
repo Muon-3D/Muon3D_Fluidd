@@ -46,6 +46,22 @@ afterEach(() => {
 })
 
 describe('PrinterSwitcher', () => {
+  it('removes a closed list from the DOM without unmounting its dialogs or controller', async () => {
+    const w = shallowMount(PrinterSwitcher, { mocks, propsData: { visible: false, listVisible: false } })
+    expect(w.find('[data-tid="find-printer"]').exists()).toBe(false)
+    expect(w.find('[data-tid="all-printers"]').exists()).toBe(false)
+    expect(w.findAll('printer-card-stub')).toHaveLength(0)
+    await w.setData({ accountDialog: true })
+    expect(w.find('cloud-account-dialog-stub').exists()).toBe(true)
+    await w.setProps({ listVisible: true })
+    expect(w.find('[data-tid="all-printers"]').exists()).toBe(true)
+    await w.setProps({ listVisible: false })
+    expect(w.find('[data-tid="all-printers"]').exists()).toBe(false)
+    expect(w.find('cloud-account-dialog-stub').exists()).toBe(true)
+    expect(typeof w.vm.openListedEntry).toBe('function')
+    w.destroy()
+  })
+
   it('does not search the network while it is closed', () => {
     // Once opened it stays mounted, closed, in the header. Searching on
     // mount swept the network on every load, about 510 requests over 24 s.

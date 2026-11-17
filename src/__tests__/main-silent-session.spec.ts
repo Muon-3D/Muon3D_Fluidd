@@ -9,7 +9,8 @@ const boot = vi.hoisted(() => ({
   check: vi.fn(() => new Promise<void>(() => {})),
   initCloud: vi.fn(async () => null),
   navigate: vi.fn(async () => {}),
-  retire: vi.fn()
+  retire: vi.fn(),
+  followStartup: vi.fn()
 }))
 vi.mock('vue', () => ({
   default: class {
@@ -46,7 +47,7 @@ vi.mock('@/directives/blur', () => ({ default: {} }))
 vi.mock('@/util/ui-style', () => ({ restoreUiStyle: () => 'glass' }))
 vi.mock('@/util/glass-icons', () => ({ applyGlassIcons: vi.fn() }))
 vi.mock('@/services/m1-3d/device-settings', () => ({ followMotionSetting: vi.fn() }))
-vi.mock('@/services/startup/heard', () => ({ followStartup: vi.fn() }))
+vi.mock('@/services/startup/heard', () => ({ followStartup: boot.followStartup }))
 vi.mock('@/services/muon-cloud/activate', () => ({ forgetManagedInstance: vi.fn(), activateCloudPrinter: vi.fn(), activateLocalPrinter: vi.fn() }))
 vi.mock('@/services/printer-pages', () => ({ preferSavedPrinterFor: vi.fn(), installPrinterPages: vi.fn() }))
 vi.mock('@/services/startup/snapshot', () => ({ readSnapshot: vi.fn(), renderCachedState: vi.fn() }))
@@ -64,4 +65,19 @@ it('initializes and mounts the app while the silent check is unresolved, without
   expect(boot.navigate).not.toHaveBeenCalled()
   expect(boot.initCloud).toHaveBeenCalledWith(boot.check.mock.results[0].value)
   expect(boot.retire).toHaveBeenCalledOnce()
+})
+
+it('starts the quiet deadline after bootstrap, immediately before mounting the first frame', async () => {
+  vi.resetModules()
+  vi.clearAllMocks()
+  let resume!: (config: Awaited<ReturnType<typeof boot.appInit>>) => void
+  boot.appInit.mockReturnValueOnce(new Promise(resolve => { resume = resolve }))
+  await import('@/main')
+  expect(boot.appInit).toHaveBeenCalledOnce()
+  expect(boot.followStartup).not.toHaveBeenCalled()
+  expect(boot.mount).not.toHaveBeenCalled()
+  resume({ apiConfig: { socketUrl: '' } })
+  await vi.waitFor(() => expect(boot.mount).toHaveBeenCalledOnce())
+  expect(boot.followStartup).toHaveBeenCalledOnce()
+  expect(boot.followStartup.mock.invocationCallOrder[0]).toBeLessThan(boot.mount.mock.invocationCallOrder[0])
 })
