@@ -644,7 +644,7 @@ export default class GeneralSettings extends Mixins(StateMixin) {
       }
       const data = res?.data as { error?: string | { message?: string } } | string | undefined
       const why = typeof data === 'string' ? data : typeof data?.error === 'string' ? data.error : data?.error?.message
-      this.zoneError = `${this.printerName} did not accept that time zone${why ? `: ${why}` : '.'} Nothing changed.`
+      this.zoneError = `${this.printerName} did not accept that time zone${why ? `: ${why.replace(/\.$/, '')}.` : '.'} Nothing changed.`
       this.zoneKey++
     } finally {
       this.zoneSaving = false
@@ -707,7 +707,7 @@ export default class GeneralSettings extends Mixins(StateMixin) {
       } catch (e) {
         const data = (e as { response?: { status?: number, data?: unknown } }).response?.data as { error?: string | { message?: string } } | string | undefined
         const why = typeof data === 'string' ? data : typeof data?.error === 'string' ? data.error : data?.error?.message
-        this.nameError = `${this.printerName} did not accept the new name${why ? `: ${why}` : '.'} Nothing changed.`
+        this.nameError = `${this.printerName} did not accept the new name${why ? `: ${why.replace(/\.$/, '')}.` : '.'} Nothing changed.`
         this.nameKey++
         return
       } finally {
