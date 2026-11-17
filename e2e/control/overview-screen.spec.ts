@@ -269,3 +269,29 @@ test('with no max_temp known for a heater, the screen cannot heat it', async ({ 
   for (const r of results) expect(r).toMatchObject({ ok: false, error: { message: 'This printer has not said how hot that heater may go.' } })
   expect(printer.gcode.some(l => l.includes('SET_HEATER_TEMPERATURE'))).toBe(false)
 })
+
+// Hosted Control serves no /panel/: with the printer saying it has the screen, a frame would load a 404 page.
+// The person is sent to the printer's own Control, in this tab (KAN-3635 is the hosted panel over Bluetooth and Muon3D).
+test('on hosted Control the screen is not framed: it says so and links to the printer\'s own page', async ({ page, open }) => {
+  const printer = await usePrinter(page, PRESETS.idleHomed(), STILL)
+  await page.route(url => url.pathname.startsWith('/panel/') && url.port === String(MOCK_PORT), route => route.fulfill({
+    status: 200, contentType: 'text/html', headers: { 'access-control-allow-origin': '*' }, body: '<!doctype html><body>screen</body>'
+  }))
+  await open('/')
+  await ready(page)
+  // This page is what control.muon3d.com is: the served config says hosted.
+  await page.evaluate(async () => {
+    const { default: store } = await import(/* @vite-ignore */ ['', 'src', 'store', 'index.ts'].join('/'))
+    store.state.config.hostConfig.hosted = true
+  })
+  await clickScreen(page)
+  await expect(page.getByTestId('m1-screen')).toHaveAttribute('data-phase', 'open')
+  await expect(page.getByTestId('m1-screen-hosted')).toContainText("opens from the printer's own Control page")
+  const link = page.getByTestId('m1-screen-local')
+  await expect(link).toHaveText('Connect locally')
+  await expect(link).toHaveAttribute('href', 'http://muon-boxwood-367a.local/')
+  await expect(link).toHaveAttribute('target', '_self')
+  await expect(page.getByTestId('m1-screen-frame')).toHaveCount(0)
+  await expect(page.getByTestId('m1-screen-empty')).toHaveCount(0)
+  expect(printer.gcode).toEqual([])
+})

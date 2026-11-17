@@ -37,6 +37,20 @@
       >
         The printer's screen can't be reached over this connection right now
       </p>
+      <div
+        v-else-if="served && hosted"
+        class="m1-screen__empty"
+        data-tid="m1-screen-hosted"
+      >
+        <p>The printer's screen opens from the printer's own Control page, not from here.</p>
+        <a
+          v-if="localUrl"
+          class="m1-screen__local"
+          :href="localUrl"
+          target="_self"
+          data-tid="m1-screen-local"
+        >Connect locally</a>
+      </div>
       <iframe
         v-else-if="served"
         ref="frame"
@@ -73,6 +87,7 @@ import Vue from 'vue'
 import { httpClientActions } from '@/api/httpClientActions'
 import { panelOnPrinter, type PanelOnPrinter } from '@/services/panel-embed/served'
 import { NOTIFY_ACTIONS } from '@/services/panel-embed/allow'
+import { mdnsHostFor } from '@/services/muon-cloud/discovery'
 import { KnobWheel } from '@/services/m1-3d/knob'
 
 /** The zoom in from the model's screen, and back out to it, ms. */
@@ -184,7 +199,29 @@ export default class M1Screen extends Mixins(ControlMixin) {
     if (this.phase === 'out' || (this as unknown as { _isDestroyed?: boolean })._isDestroyed) return
     this.served = served === 'unknown' ? null : served === 'yes'
     this.unreachable = served === 'unknown'
-    if (served === 'yes') this.$nextTick(() => this.connect())
+    if (served === 'yes' && this.hosted) this.findLocalUrl().catch(() => {})
+    else if (served === 'yes') this.$nextTick(() => this.connect())
+  }
+
+  /**
+   * This page is the hosted Control (control.muon3d.com): it serves no /panel/ of its own, so the frame would load a 404.
+   * Over Bluetooth or Muon3D the hosted page can't carry the panel yet (KAN-3635).
+   */
+  get hosted (): boolean {
+    return !!this.$store.state.config.hostConfig?.hosted
+  }
+
+  /** The printer's own Control page on its network, where the screen is served: opened in this tab. Null until known, or unknown. */
+  localUrl: string | null = null
+
+  async findLocalUrl () {
+    try {
+      const res = await Vue.$httpClient.get('/server/muon/identity')
+      const host = mdnsHostFor(res.data)
+      if (host && !(this as unknown as { _isDestroyed?: boolean })._isDestroyed) this.localUrl = `http://${host}/`
+    } catch {
+      // No name: the message stands without a link.
+    }
   }
 
   /** Esc, Done or a click outside: fly back out to the model, then close. */
@@ -387,6 +424,14 @@ export default class M1Screen extends Mixins(ControlMixin) {
     color: #3a3a3c;
     font-size: 14px;
     font-weight: 600;
+
+    p { margin: 0 0 10px; }
+  }
+
+  .m1-screen__local {
+    color: #0a6c74;
+    font-weight: 700;
+    text-decoration: underline;
   }
 
   .m1-screen__strip {
