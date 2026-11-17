@@ -189,14 +189,15 @@
             />
             {{ printerName ? `Print on ${printerName}` : 'Print on…' }}
           </button>
-          <a
+          <router-link
             v-else-if="!busy"
-            :href="card.href"
-            target="_blank"
-            rel="noopener"
+            :to="sliceTo"
             class="mlib-btn mlib-btn--primary mlook__go"
             data-tid="library-quick-look-slice"
-          >Slice it on library.muon3d.com ↗</a>
+            @click.native="$emit('close')"
+          >
+            Slice it
+          </router-link>
         </div>
         <div
           class="mlook__secondary"
