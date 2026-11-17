@@ -231,6 +231,56 @@ test.describe('renaming the printer from Control (KAN-3603)', () => {
   })
 })
 
+/** The printer's time zone route: reads `zone`, records writes, answers per `mode`. */
+async function zoneRoute (page: Page, mode: 'ok' | 'refuse' | 'missing') {
+  const sent: Array<Record<string, unknown>> = []
+  await page.route(/\/server\/muon\/timezone/, async route => {
+    if (mode === 'missing') { await route.fulfill({ status: 404, json: { error: 'Not Found' } }); return }
+    if (route.request().method() === 'GET') { await route.fulfill({ json: { result: { zone: 'Europe/London' } } }); return }
+    sent.push(route.request().postDataJSON())
+    if (mode === 'refuse') await route.fulfill({ status: 403, json: { error: 'only the owner can change the time zone' } })
+    else await route.fulfill({ json: { result: { zone: String(sent.at(-1)!.zone) } } })
+  })
+  return sent
+}
+
+async function pickZone (page: Page, zone: string) {
+  await page.getByTestId('setting-timezone-select').locator('input').fill(zone)
+  await page.getByRole('option', { name: zone, exact: true }).click()
+}
+
+test.describe('time zone from Control (KAN-3603)', () => {
+  test('the zone the printer reports is shown and a new one is sent to it', async ({ page, open }) => {
+    await setUp(page)
+    const sent = await zoneRoute(page, 'ok')
+    await open('/settings#general')
+    await expect(page.getByTestId('setting-timezone')).toBeVisible()
+    await expect(page.getByTestId('setting-timezone-select')).toContainText('Europe/London')
+    await pickZone(page, 'Europe/Paris')
+    await expect.poll(() => sent).toEqual([{ zone: 'Europe/Paris' }])
+    await expect(page.getByText('did not accept that time zone')).toHaveCount(0)
+  })
+
+  test('a refusal is shown under the field and the zone does not change', async ({ page, open }) => {
+    await setUp(page)
+    const sent = await zoneRoute(page, 'refuse')
+    await open('/settings#general')
+    await expect(page.getByTestId('setting-timezone')).toBeVisible()
+    await pickZone(page, 'Europe/Paris')
+    await expect(page.getByText('did not accept that time zone: only the owner can change the time zone. Nothing changed.')).toBeVisible()
+    expect(sent).toEqual([{ zone: 'Europe/Paris' }])
+    await expect(page.getByTestId('setting-timezone-select')).toContainText('Europe/London')
+  })
+
+  test('a printer without the route (404) shows no Time zone row', async ({ page, open }) => {
+    await setUp(page)
+    await zoneRoute(page, 'missing')
+    await open('/settings#general')
+    await expect(page.getByTestId('setting-times')).toBeVisible()
+    await expect(page.getByTestId('setting-timezone')).toHaveCount(0)
+  })
+})
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 

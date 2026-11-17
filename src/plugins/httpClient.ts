@@ -46,6 +46,7 @@ const createHttpClient = (store: Store<RootState>) => {
   const quietErrorRequests = [
     '/server/muon/dev_mode/request',
     '/server/muon/identity/name',
+    '/server/muon/timezone',
     '/access/settings'
   ]
 

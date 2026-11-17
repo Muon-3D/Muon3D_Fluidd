@@ -166,6 +166,35 @@
           @input="timeFormat = String($event)"
         />
       </div>
+      <div
+        v-if="zoneShown"
+        class="gs__row"
+        data-tid="setting-timezone"
+      >
+        <div class="gs__grow">
+          <div class="gs__t">
+            Time zone
+          </div>
+          <div class="gs__s">
+            The printer's own clock, used for its screen and job times.
+          </div>
+        </div>
+        <div class="gs__ctl gs__ctl--wide">
+          <v-autocomplete
+            :key="zoneKey"
+            outlined
+            dense
+            hide-details="auto"
+            aria-label="Time zone"
+            data-tid="setting-timezone-select"
+            :items="zones"
+            :value="zone"
+            :disabled="zoneSaving"
+            :error-messages="zoneError"
+            @change="setZone"
+          />
+        </div>
+      </div>
     </div>
 
     <h2 class="gs__gt">
@@ -569,6 +598,57 @@ export default class GeneralSettings extends Mixins(StateMixin) {
 
   mounted () {
     this.loadSerial()
+    this.loadZone()
+  }
+
+  zone: string | null = null
+  zoneShown = false
+  zoneError = ''
+  zoneSaving = false
+  zoneKey = 0
+
+  get zones (): string[] {
+    let all: string[] = []
+    try {
+      all = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? []
+    } catch { /* no Intl zone list */ }
+    if (!all.includes('UTC')) all = ['UTC', ...all]
+    return this.zone && !all.includes(this.zone) ? [this.zone, ...all] : all
+  }
+
+  /** A printer without the route (404) shows no row at all, not a broken one. */
+  async loadZone () {
+    if (this.$store.getters['server/isMuonPrinter'] !== true) return
+    try {
+      const response = await httpClientActions.serverMuonTimezoneGet()
+      const data = response.data as { zone?: unknown, result?: { zone?: unknown } }
+      const zone = data?.result?.zone ?? data?.zone
+      this.zone = typeof zone === 'string' ? zone : null
+      this.zoneShown = true
+    } catch {
+      this.zoneShown = false
+    }
+  }
+
+  async setZone (value: string) {
+    this.zoneError = ''
+    this.zoneSaving = true
+    try {
+      await httpClientActions.serverMuonTimezonePost(value)
+      this.zone = value
+    } catch (e) {
+      const res = (e as { response?: { status?: number, data?: unknown } }).response
+      if (res?.status === 404) {
+        this.zoneShown = false
+        return
+      }
+      const data = res?.data as { error?: string | { message?: string } } | string | undefined
+      const why = typeof data === 'string' ? data : typeof data?.error === 'string' ? data.error : data?.error?.message
+      this.zoneError = `${this.printerName} did not accept that time zone${why ? `: ${why}` : '.'} Nothing changed.`
+      this.zoneKey++
+    } finally {
+      this.zoneSaving = false
+    }
   }
 
   async loadSerial () {
