@@ -16,8 +16,18 @@ it.each([true, false])('hashes empty, binary and multi-chunk files with WebCrypt
 it('propagates a failed file read instead of uploading without a checksum', async () => {
   vi.stubGlobal('crypto', webcrypto)
   const file = new Blob(['G28'])
-  vi.spyOn(file, 'arrayBuffer').mockRejectedValue(new Error('read failed'))
+  vi.spyOn(file, 'slice').mockReturnValue({ arrayBuffer: () => Promise.reject(new Error('read failed')) } as unknown as Blob)
   await expect(uploadChecksum(file)).rejects.toThrow('read failed')
+})
+
+it('never reads the whole file into memory at once', async () => {
+  vi.stubGlobal('crypto', webcrypto)
+  const file = new Blob([Buffer.alloc(2_100_001, 7)])
+  const whole = vi.spyOn(file, 'arrayBuffer')
+  const slice = vi.spyOn(file, 'slice')
+  await uploadChecksum(file)
+  expect(whole).not.toHaveBeenCalled()
+  expect(slice).toHaveBeenCalledTimes(3)
 })
 
 it('places the checksum before the file on every standard Moonraker upload', async () => {
