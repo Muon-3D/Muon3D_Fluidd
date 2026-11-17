@@ -114,16 +114,15 @@ function routeFactsOf (e: DirectoryEntry): RouteMenuFacts {
 }
 
 /**
- * What to tell the person to do at the printer first. A printer with an owner opens its pairing window
- * from System > Add a device; one still in first-run set-up opens it by itself, so it gets no hint.
- * Where Control cannot tell the two apart, the line covers both.
+ * What to tell the person about a locked printer. An Open printer needs nothing (D-166), and one still in
+ * first-run set-up gets no hint. Only what the person can act on is said.
  */
 export function pairHint (e: DirectoryEntry): string | undefined {
   const unclaimed = (e.nearby ?? e.row?.nearby)?.advert?.unclaimed
   if (unclaimed === true) return undefined
   const owned = unclaimed === false || e.linkedTo === 'mine' || e.linkedTo === 'other' || !!e.cloud?.shared
-  if (owned) return "Open System > Add a device on the printer's screen first."
-  return "Check the printer's screen. If nothing shows, open System > Add a device."
+  if (owned) return "Ask the printer's owner to share it with you, or enter the code shown on it."
+  return undefined
 }
 
 /** Printers whose "opened through Muon3D" notice has been shown on this page load. */

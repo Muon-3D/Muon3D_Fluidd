@@ -55,6 +55,49 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
     expect(pairingState.comparison).toBe('F6Q TDH')
   })
 
+  describe('an Open printer (D-166)', () => {
+    const answer = (body: unknown) => ({
+      fetch: vi.fn(async () => ({ status: 200, body: new TextEncoder().encode(JSON.stringify(body)) })),
+      close: vi.fn()
+    })
+
+    it('goes straight in with no code step when GET /pairing says entry is open', async () => {
+      const open = answer({ accepting: true, entry: 'open' })
+      held.endpoint.connect = vi.fn(async () => open)
+
+      await startPairing(EID)
+
+      expect(held.endpoint.connect).toHaveBeenCalledWith(EID)
+      expect(open.fetch).toHaveBeenCalledWith('GET', '/muon-link/pairing', [], expect.anything())
+      expect(open.close).toHaveBeenCalled()
+      expect(beginPairing).not.toHaveBeenCalled()
+      expect(pairingState.phase).toBe('idle')
+      expect(activate.activateCloudPrinter).toHaveBeenCalledWith(EID)
+    })
+
+    it.each([
+      ['protected', { entry: 'protected' }],
+      ['no entry at all', { accepting: true }]
+    ])('keeps the code step when the printer says %s', async (_name, body) => {
+      held.endpoint.connect = vi.fn(async () => answer(body))
+
+      await startPairing(EID)
+
+      expect(beginPairing).toHaveBeenCalled()
+      expect(pairingState.phase).toBe('code')
+      expect(activate.activateCloudPrinter).not.toHaveBeenCalled()
+    })
+
+    it('keeps the code step when the printer refuses this browser (a stranger on a protected printer)', async () => {
+      held.endpoint.connect = vi.fn(async () => { throw refused('unauthorised') })
+
+      await startPairing(EID)
+
+      expect(beginPairing).toHaveBeenCalled()
+      expect(pairingState.phase).toBe('code')
+    })
+  })
+
   it('sends the eight digits, and after the panel confirms it reconnects over the same link', async () => {
     session.submitCode.mockResolvedValue({ role: 'operator', fingerprint: 'ab' })
     await startPairing(EID)
@@ -97,13 +140,13 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
   })
 
   describe('what the printer says when it refuses (all of them close with 0x040a)', () => {
-    it('"no pairing window is open": tells the person to open Add a device', async () => {
+    it('"no pairing window is open": says the printer is locked and to ask its owner', async () => {
       beginPairing.mockRejectedValue(refused('no pairing window is open'))
 
       await startPairing(EID)
 
       expect(pairingState.phase).toBe('error')
-      expect(pairingState.message).toBe("Open System > Add a device on the printer's screen, then try again.")
+      expect(pairingState.message).toBe('This printer is locked. Ask its owner to share it with you.')
     })
 
     it.each([
@@ -217,7 +260,8 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
 
     expect(pairingState.phase).toBe('error')
     expect(pairingState.message).toMatch(/may have been added/)
-    expect(pairingState.message).toMatch(/under Add a device/)
+    expect(pairingState.message).not.toMatch(/Add a device/)
+    expect(pairingState.message).toMatch(/list of devices/)
     expect(pairingState.message).not.toMatch(/nothing was added/i)
     expect(activate.activateCloudPrinter).not.toHaveBeenCalled()
     expect(linksOpen()).toBe(0)

@@ -20,9 +20,6 @@
         line="Pairing this browser"
         busy="Connecting…"
       />
-      <p class="muon-ble-pair__body">
-        It needs a pairing window open first: on its screen, open <strong>System &gt; Add a device</strong>.
-      </p>
       <template #footer>
         <app-btn
           text
@@ -39,7 +36,7 @@
       v-else-if="state.phase === 'code'"
       flat
       title="Check the code"
-      :sub="`Add Control on ${printerName}: on its screen, open System > Add a device. It shows an 8-digit code.`"
+      :sub="`${printerName} is locked. Ask its owner to share it with you, or enter the code shown on the printer.`"
       data-tid="pair-code-step"
     >
       <p class="muon-ble-pair__label">
@@ -162,8 +159,7 @@ import BluetoothPrinterRow from './BluetoothPrinterRow.vue'
 
 /**
  * Pairs this browser with a printer over Bluetooth (KAN-1253; SEC-7). The
- * person opens Add a device on the printer, reads the code off its screen and
- * confirms there. Control never asks for a role: the printer's panel does.
+ * printer is locked: the person reads the code off its screen and confirms there. Control never asks for a role: the printer's panel does.
  * Laid out as the Bluetooth sheet: find the printer, then check the code.
  */
 @Component({ components: { BluetoothSheet, BluetoothCodeBoxes, BluetoothPrinterRow, SetupStepCard } })
@@ -202,9 +198,14 @@ export default class BluetoothPairDialog extends Vue {
     cancelPairing()
   }
 
-  retry () {
+  async retry () {
     const id = pairingState.printerId
-    if (id) return startPairing(id)
+    if (!id) return
+    await startPairing(id)
+    // The printer turned out to be open: no code, straight in.
+    if (pairingState.phase === 'idle' && cloudState.activePrinterId === id) {
+      await this.$router.push(printerHomePath()).catch(() => {})
+    }
   }
 }
 </script>

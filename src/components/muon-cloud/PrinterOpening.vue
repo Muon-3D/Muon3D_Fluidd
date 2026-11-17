@@ -47,11 +47,6 @@
         >
           Open its own page
         </v-btn>
-        <span
-          v-if="pairingOffer"
-          class="printer-opening__hint"
-          data-tid="pair-hint"
-        >Open System &gt; Add a device on the printer first.</span>
         <v-btn
           v-if="pairingOffer"
           color="primary"

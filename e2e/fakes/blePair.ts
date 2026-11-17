@@ -26,7 +26,9 @@ import { CONSOLE } from './console'
 import { MOCK_PORT } from '../ports'
 
 export type Kind = 'new' | 'paired' | 'set-up'
-export interface NearbyFake { id: string, advertised: string, kind: Kind }
+/** What the printer's `GET /pairing` says (D-166). Left out, as an older printer does, it reads as protected. */
+export type Entry = 'open' | 'protected'
+export interface NearbyFake { id: string, advertised: string, kind: Kind, entry?: Entry }
 
 /** A printer nobody has set up: Control can set it up over Bluetooth. */
 export const NEW_PRINTER: NearbyFake = { id: 'a1b2c3d4'.repeat(8), advertised: 'muon-hazel-1111', kind: 'new' }
@@ -34,7 +36,11 @@ export const NEW_PRINTER: NearbyFake = { id: 'a1b2c3d4'.repeat(8), advertised: '
 export const PAIRED_BEFORE: NearbyFake = { id: '3fa9c0de'.repeat(8), advertised: 'muon-boxwood-367a', kind: 'paired' }
 /** Set up, and this browser was never paired with it: it refuses until its panel pairs this browser. */
 export const NOT_PAIRED_HERE: NearbyFake = { id: '9b1e44a0'.repeat(8), advertised: 'muon-sloe-5522', kind: 'set-up' }
-export const PRINTERS = [NEW_PRINTER, PAIRED_BEFORE, NOT_PAIRED_HERE]
+/** Set up and Open (D-166): any browser is admitted over Bluetooth as an Operator guest, with no code and no prompt. */
+export const OPEN_PRINTER: NearbyFake = { id: '5c7d1e22'.repeat(8), advertised: 'muon-alder-6601', kind: 'set-up', entry: 'open' }
+/** Set up and locked down: a stranger is refused and needs the code. */
+export const PROTECTED_PRINTER: NearbyFake = { id: '6d8e2f33'.repeat(8), advertised: 'muon-birch-7702', kind: 'set-up', entry: 'protected' }
+export const PRINTERS = [NEW_PRINTER, PAIRED_BEFORE, NOT_PAIRED_HERE, OPEN_PRINTER, PROTECTED_PRINTER]
 /** What the person types: the eight digits the printer's panel shows. */
 export const PANEL_CODE = '12345678'
 /** The six characters both screens show. */
@@ -100,6 +106,10 @@ class Printer {
       if (kind !== 'new') return { status: 403, headers: ['content-type', 'application/json'], body: text({ error: 'set up already' }) }
       return { status: 200, headers: ['content-type', 'application/json'], body: text({ result: SETUP_STATE }) }
     }
+    if (path.startsWith('/muon-link/pairing')) {
+      const entry = S().printers.find(p => p.id === this.id)?.entry
+      return { status: 200, headers: ['content-type', 'application/json'], body: text(entry ? { accepting: entry === 'open', entry } : { accepting: false }) }
+    }
     const h = new Headers()
     for (let i = 0; i + 1 < headers.length; i += 2) h.append(headers[i], headers[i + 1])
     const answer = await fetch(PRINTER + path, { method, headers: h, body: method === 'GET' || method === 'HEAD' || !body.length ? undefined : body })
@@ -163,7 +173,8 @@ class Endpoint {
   async connect (id) {
     if (this.closed) throw new Error('the endpoint is closed')
     const kind = S().printers.find(p => p.id === id)?.kind
-    if (kind === 'set-up' && !S().paired.includes(id)) {
+    const entry = S().printers.find(p => p.id === id)?.entry
+    if (kind === 'set-up' && entry !== 'open' && !S().paired.includes(id)) {
       log('refused ' + nameOf(id))
       // NET-17 close code 0x040a: the key is fine, the printer holds no standing for it.
       throw Object.assign(new Error('the printer refused this key'), { kind: 'refused', code: 0x040a })

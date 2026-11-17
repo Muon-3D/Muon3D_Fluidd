@@ -71,7 +71,7 @@ test('expired panel window explains how to get a new code', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'Confirm on the printer' })).toBeVisible()
   await answerAtPrinter(page, 'time out')
   await expect(page.getByText(/pairing window closed after 2 minutes/)).toBeVisible()
-  await expect(page.getByText(/Add a device.*try again/)).toBeVisible()
+  await expect(page.locator('body')).not.toContainText('Add a device')
   expect(await pairedHere(page)).not.toContain(NOT_PAIRED_HERE.id)
   await expect(page.getByTestId('ble-sheet').getByRole('button', { name: 'Try again', exact: true })).toBeVisible()
 })
