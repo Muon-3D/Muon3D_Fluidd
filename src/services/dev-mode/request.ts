@@ -4,8 +4,9 @@ import Vue from 'vue'
  * A developer-mode change, asked for through Moonraker's one route for it,
  * `/server/muon/dev_mode/request` (KAN-547).
  *
- * Jack's rule: every change, on and off, is confirmed on the printer's
- * screen. A printer nobody owns takes a request from anyone; a linked
+ * Jack's rule (17 Nov): the first release of the warranty is confirmed on the
+ * printer's screen; after that it is an ordinary setting, from Control over any
+ * route. A printer nobody owns takes a request from anyone; a linked
  * printer only from its owning account, which is one of the owner's own
  * devices (the phone app, or a browser enrolled as theirs), from anywhere.
  * The printer decides: its Aux API refuses everyone else and names the
@@ -146,17 +147,41 @@ export async function whoMayAsk (): Promise<DevModeAsking> {
   }
 }
 
-/** Puts the question on the printer's screen. */
-export async function askToChange (enabled: boolean): Promise<DevModeChallenge> {
+/** What the printer did with a request: opened a question at its screen, or just took it. */
+export type DevModeRequested =
+  | { kind: 'challenge', challenge: DevModeChallenge }
+  | { kind: 'applied', enabled: boolean }
+
+/**
+ * Asks for a change. Only the first release of the warranty needs the person
+ * at the printer (KAN-3604), so the printer decides: it opens a challenge
+ * (`challenge_id`) that waits for its screen, or it takes the change at once
+ * and answers `{enabled}` with no challenge. Control follows what it says and
+ * never assumes either.
+ */
+export async function requestChange (enabled: boolean): Promise<DevModeRequested> {
   const body = await send('POST', { enabled })
-  if (typeof body.challenge_id !== 'string') throw new Error('the printer opened no request')
-  return {
-    challengeId: checkedId(body.challenge_id),
-    enabled: typeof body.enabled === 'boolean' ? body.enabled : enabled,
-    expiresInSeconds: typeof body.expires_in_seconds === 'number' ? body.expires_in_seconds : 0,
-    instruction: typeof body.instruction === 'string' ? body.instruction : '',
-    waiver: waiverOf(body.waiver)
+  if (typeof body.challenge_id !== 'string') {
+    if (typeof body.enabled === 'boolean') return { kind: 'applied', enabled: body.enabled }
+    throw new Error('the printer opened no request')
   }
+  return {
+    kind: 'challenge',
+    challenge: {
+      challengeId: checkedId(body.challenge_id),
+      enabled: typeof body.enabled === 'boolean' ? body.enabled : enabled,
+      expiresInSeconds: typeof body.expires_in_seconds === 'number' ? body.expires_in_seconds : 0,
+      instruction: typeof body.instruction === 'string' ? body.instruction : '',
+      waiver: waiverOf(body.waiver)
+    }
+  }
+}
+
+/** Puts the question on the printer's screen; throws when the printer took the change without one. */
+export async function askToChange (enabled: boolean): Promise<DevModeChallenge> {
+  const asked = await requestChange(enabled)
+  if (asked.kind !== 'challenge') throw new Error('the printer opened no request')
+  return asked.challenge
 }
 
 /** Whether the person at the printer has answered. */
@@ -184,5 +209,5 @@ export function whyNot (asking: DevModeAsking | null): string | null {
     return "The printer can't tell yet whether an account owns it, so only its owner can change developer mode. Try again in a minute."
   }
   const who = asking.owner.account ?? "the printer's owner"
-  return `Only ${who} can change developer mode on this printer, from one of their own devices. Each change is confirmed on the printer's screen.`
+  return `Only ${who} can change developer mode on this printer, from one of their own devices. The first time it is turned on, the printer's screen confirms it.`
 }

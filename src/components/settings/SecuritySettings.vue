@@ -18,6 +18,50 @@
     </header>
 
     <div
+      v-if="presetNow !== null"
+      class="sec__presets"
+      data-tid="security-presets"
+    >
+      <div class="sec__titles">
+        <h3>How open this printer is</h3>
+        <p data-tid="security-preset-current">
+          {{ presetWords }}
+        </p>
+        <p
+          v-if="presetBlurb"
+          data-tid="security-preset-blurb"
+        >
+          {{ presetBlurb }}
+        </p>
+      </div>
+      <can-manage-access>
+        <span
+          class="sec__seg"
+          role="group"
+          aria-label="Open, Protected or Locked-down"
+        >
+          <button
+            v-for="p in presets"
+            :key="p.id"
+            type="button"
+            :class="{ 'sec__seg--on': presetNow === p.id }"
+            :aria-pressed="presetNow === p.id ? 'true' : 'false'"
+            :disabled="saving !== ''"
+            :data-tid="`security-preset-${p.id}`"
+            @click="applyPreset(p.id)"
+          >{{ p.label }}</button>
+        </span>
+      </can-manage-access>
+      <p
+        v-if="presetNote"
+        class="sec__note sec__note--warn"
+        data-tid="security-preset-note"
+      >
+        {{ presetNote }}
+      </p>
+    </div>
+
+    <div
       v-if="printerPage"
       class="sec__row"
       data-tid="security-auto-switch"
@@ -152,8 +196,8 @@
       class="sec__block"
       data-tid="security-printer-only"
     >
-      <h3>Only at the printer</h3>
-      <p>These are never changed from a phone or a computer, by anyone, on any route.</p>
+      <h3>Confirmed at the printer</h3>
+      <p>These need the person at the printer to confirm on its screen, whoever asks and whatever route they use.</p>
       <div
         v-for="k in fixedRows"
         :key="k.id"
@@ -169,8 +213,8 @@
         </div>
         <locked-row
           lock="muon"
-          label="Printer only"
-          reason-text="Done at the printer."
+          label="Confirmed at the printer"
+          reason-text="Confirmed on the printer's screen."
         />
       </div>
     </div>
@@ -198,6 +242,9 @@ import {
   changeOutcome, outcomeNote, parsePermissions, permissionsPath, switchOutcome, switchPath, valueLabel,
   type PermissionKnob, type PermissionSwitch
 } from '@/services/permissions/api'
+import { PRESETS, currentPreset, planFor, presetLabel, type PresetId } from '@/services/permissions/presets'
+import { keep } from '@/services/gates/state'
+import { activeSlug } from '@/services/printer-pages'
 
 /**
  * Settings > Security (KAN-1926, KAN-2189): one row for each setting the
@@ -217,6 +264,8 @@ export default class SecuritySettings extends Mixins(MuonGatesMixin) {
   saving = ''
   notes: Record<string, string> = {}
   readonly valueLabel = valueLabel
+  readonly presets = PRESETS
+  presetNote = ''
   /** This browser's choice, not the printer's: it means nothing on a page the console serves. */
   printerPage = couldHaveSecureAddress()
   autoSwitch = switchesAutomatically()
@@ -236,6 +285,50 @@ export default class SecuritySettings extends Mixins(MuonGatesMixin) {
     const defaults = this.rows.map(k => k.defaultValue).filter(d => !!d)
     if (!defaults.length || new Set(defaults).size !== 1) return ''
     return defaults[0] === 'anyone' ? 'Anyone may do each of these by default.' : `${valueLabel(defaults[0])} by default.`
+  }
+
+  /** Which preset the printer's settings are, worked out from them each time. */
+  get presetNow () {
+    return currentPreset(this.knobs)
+  }
+
+  get presetWords (): string {
+    return this.presetNow ? presetLabel(this.presetNow) : ''
+  }
+
+  get presetBlurb (): string {
+    if (this.presetNow === 'custom') return 'The settings below are not one of the three presets.'
+    return PRESETS.find(p => p.id === this.presetNow)?.blurb ?? ''
+  }
+
+  /**
+   * Sets every setting the preset names that differs, one after another, then
+   * reads the printer's list again: what it kept is what shows. A setting the
+   * printer needs a knob press for, or refuses, is said below.
+   */
+  async applyPreset (id: PresetId) {
+    if (this.saving || !this.knobs) return
+    const plan = planFor(id, this.knobs)
+    this.presetNote = ''
+    if (!plan.length) return
+    this.saving = 'preset'
+    const notes: string[] = []
+    try {
+      for (const change of plan) {
+        const r = await this.$httpClient.post(permissionsPath(this.managed), change, { validateStatus: () => true })
+        const o = changeOutcome(r.status, r.data)
+        if (o.kind === 'knob' || o.kind === 'refused') {
+          const label = this.knobs.find(k => k.id === change.id)?.label ?? change.id
+          notes.push(`${label}: ${outcomeNote(o)}`)
+        }
+      }
+    } catch {
+      notes.push("The printer didn't answer. Try again.")
+    } finally {
+      this.saving = ''
+      await this.load()
+      this.presetNote = notes.join(' ')
+    }
   }
 
   get claimedLine (): string {
@@ -260,7 +353,7 @@ export default class SecuritySettings extends Mixins(MuonGatesMixin) {
     return printerNameParts(this.$store.getters['config/getDisplayName'] as string).name
   }
 
-  /** The settings a session may change or look at, in the printer's order; the fixed ones are under "Only at the printer". */
+  /** The settings a session may change or look at, in the printer's order; the fixed ones are under "Confirmed at the printer". */
   get rows (): PermissionKnob[] {
     return (this.knobs || []).filter(k => !k.fixed)
   }
@@ -281,6 +374,9 @@ export default class SecuritySettings extends Mixins(MuonGatesMixin) {
       this.knobs = list ? list.knobs : null
       this.switches = list ? list.switches : []
       this.claimed = list ? list.claimed : null
+      // The rest of Control hides what a non-owner may not do from these same values.
+      const key = activeSlug()
+      if (key !== null && list) keep('perms', key, Object.fromEntries(list.knobs.map(k => [k.id, k.value])))
     } catch {
       this.knobs = null
     } finally {
@@ -378,6 +474,48 @@ export default class SecuritySettings extends Mixins(MuonGatesMixin) {
       color: var(--m3d-text-muted);
       font-size: 13px;
     }
+  }
+
+  .sec__presets {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--m3d-surface-2);
+  }
+
+  .sec__seg {
+    display: inline-flex;
+    border: 1px solid var(--m3d-border-strong);
+    border-radius: 12px;
+    overflow: hidden;
+
+    button {
+      min-height: 40px;
+      padding: 0 14px;
+      border: 0;
+      background: transparent;
+      color: var(--m3d-text);
+      font-size: 14px;
+      cursor: pointer;
+
+      & + button {
+        border-left: 1px solid var(--m3d-border-strong);
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+    }
+  }
+
+  .sec__seg--on {
+    background: var(--m3d-accent, #3b82f6) !important;
+    color: var(--m3d-on-accent, #fff) !important;
   }
 
   .sec__row {

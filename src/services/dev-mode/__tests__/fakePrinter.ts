@@ -29,6 +29,9 @@ export class FakePrinter {
   refused = false
   /** MuonOS KAN-1739: Aux opens a challenge only for the printer's own panel. */
   panelOnly = false
+  /** MuonOS after Jack's 17 Nov rule: only the first release of the warranty waits for the panel. */
+  laterWithoutConfirm = false
+  everEnabled = false
   waiver: typeof WAIVER | null = WAIVER
   /** The waiver version the printer would accept at redeem. */
   currentWaiver = WAIVER.version
@@ -84,6 +87,11 @@ export class FakePrinter {
       if (args.enabled === this.devMode) {
         throw moonrakerError(409, `dev-mode:no_change: Developer mode is already ${this.devMode ? 'on' : 'off'}.`)
       }
+      if (this.laterWithoutConfirm && this.everEnabled) {
+        this.devMode = args.enabled
+        this.opened.push({ enabled: args.enabled })
+        return { data: { result: { enabled: this.devMode } } }
+      }
       this.opened.push({ enabled: args.enabled })
       return {
         data: {
@@ -107,6 +115,7 @@ export class FakePrinter {
       throw moonrakerError(409, 'dev-mode:waiver_out_of_date: The waiver shown is not the current one. Show the current waiver and ask again.')
     }
     this.devMode = args.enabled
+    if (args.enabled) this.everEnabled = true
     return { data: { result: { enabled: this.devMode, released: true } } }
   }
 }
