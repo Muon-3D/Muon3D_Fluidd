@@ -193,6 +193,8 @@ export default class AppTabBar extends Mixins(FrameMixin) {
     position: absolute;
     bottom: 100%;
     left: 10px;
+    /* A badge, not a button: a tap on it goes to whatever is under it. */
+    pointer-events: none;
   }
 
   .app-tab-bar__tab {

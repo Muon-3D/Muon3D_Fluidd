@@ -1,5 +1,5 @@
 import Vue from 'vue'
-import { isHotspotOrigin } from '@/aux_api/useHotspotCheck'
+import { HOTSPOT_ADDRESS, isHotspotOrigin } from '@/aux_api/useHotspotCheck'
 
 /**
  * Who is on the printer's own hotspot (KAN-4297). The printer's
@@ -79,6 +79,24 @@ export function networkRouteLabel (
 ): 'Through hotspot' | 'On this network' {
   const onAp = typeof requesterOnAp === 'boolean' ? requesterOnAp : isHotspotOrigin(hostname)
   return onAp ? 'Through hotspot' : 'On this network'
+}
+
+/**
+ * The route label for one printer card. Only the printer Control is on directly (`active === 'local'`) can have been
+ * reached through its own hotspot; every other local card, saved or found, is "On this network". With no answer
+ * from the printer, the hotspot address counts only when it is that printer's own address (or the card has none).
+ */
+export function entryRouteLabel (
+  active: 'cloud' | 'local' | null | undefined,
+  host: string | null | undefined,
+  requesterOnAp: boolean | null | undefined = hotspotState.stations?.requesterOnAp,
+  pageHostname?: string
+): 'Through hotspot' | 'On this network' {
+  if (active !== 'local') return 'On this network'
+  if (typeof requesterOnAp === 'boolean') return networkRouteLabel(requesterOnAp)
+  const hostName = host ? host.replace(/:\d+$/, '') : null
+  const own = !hostName || hostName === HOTSPOT_ADDRESS
+  return own ? networkRouteLabel(null, pageHostname) : 'On this network'
 }
 
 /** "12 min", "45 s", "2 h 5 min": how long a device has been on the hotspot. */

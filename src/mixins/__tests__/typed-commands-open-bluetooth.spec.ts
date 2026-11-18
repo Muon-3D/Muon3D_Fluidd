@@ -46,7 +46,7 @@ describe('what an Open printer grants (D-166)', () => {
   it('records nothing from a refused, failed or protected answer', async () => {
     expect(await readGrantedRole(ID, reply({ entry: 'protected' }))).toBeNull()
     expect(await readGrantedRole(ID, reply({ entry: 'open' }, 403))).toBeNull()
-    expect(await readGrantedRole(ID, async () => { throw new Error('gone') })).toBeNull()
+    expect(await readGrantedRole(ID, async () => { throw new Error('gone') }, { delaysMs: [0] })).toBeNull()
   })
 })
 
