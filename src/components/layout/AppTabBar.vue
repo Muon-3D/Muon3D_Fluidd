@@ -34,6 +34,8 @@
         />
         <span class="app-tab-bar__label">More</span>
       </button>
+
+      <hotspot-count class="app-tab-bar__hotspot" />
     </nav>
 
     <v-bottom-sheet
@@ -135,6 +137,7 @@ import FrameMixin from '@/mixins/frame'
 import type { Section, SectionId } from '@/router/printerSections'
 import { probeSlicer } from '@/services/slicer-bridge/slicerUrl'
 import CloudAccountMenu from '@/components/muon-cloud/CloudAccountMenu.vue'
+import HotspotCount from './HotspotCount.vue'
 
 /** The pages used while printing get a tab each; the rest are in More. */
 const TAB_SECTIONS: SectionId[] = ['overview', 'jobs', 'control', 'slice']
@@ -143,7 +146,7 @@ const TAB_SECTIONS: SectionId[] = ['overview', 'jobs', 'control', 'slice']
  * The phone's pages: tabs for the ones used while printing, More for the
  * rest as a sheet that slides up. STOP is in the top bar, not here.
  */
-@Component({ components: { CloudAccountMenu } })
+@Component({ components: { CloudAccountMenu, HotspotCount } })
 export default class AppTabBar extends Mixins(FrameMixin) {
   more = false
 
@@ -183,6 +186,17 @@ export default class AppTabBar extends Mixins(FrameMixin) {
     -webkit-backdrop-filter: blur(28px) saturate(1.9);
     backdrop-filter: blur(28px) saturate(1.9);
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Bottom-left, over the bar's corner: the phone has no rail to hold it. */
+  .app-tab-bar__hotspot {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 10px;
+    padding: 4px 10px;
+    border: 1px solid var(--m3d-border);
+    border-radius: 999px;
+    background: var(--m3d-glass-thick, var(--m3d-surface));
   }
 
   .app-tab-bar__tab {

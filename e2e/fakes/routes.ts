@@ -128,6 +128,10 @@ function networkAnswer (method, bare, path, body) {
     if (query) return json(400, { error: 'bad_request', detail: 'this route takes no query' })
     return json(200, net.scan)
   }
+  if (method === 'GET' && tail === '/wifi/ap/stations') {
+    // Who is on the hotspot (KAN-4297): a printer that predates it has no such route.
+    return net.stations ? json(200, net.stations) : json(404, { error: 'not_found' })
+  }
   if (method === 'GET' && tail === '/wifi/saved') return json(200, [{ name: 'Workshop' }, { name: 'Workshop-2G' }])
   if (method === 'POST' && tail === '/wifi/connect') {
     net.bodies.push(JSON.parse(new TextDecoder().decode(body)))
@@ -332,6 +336,8 @@ export async function useAllRoutes (page: Page, account: ConsoleState) {
       chooserAsks: 0,
       network: {
         mode: 'ok',
+        /** muon-link's answer for GET /wifi/ap/stations; null is a printer that has no such route (404). */
+        stations: null as unknown,
         calls: [] as string[],
         bodies: [] as unknown[],
         scan: [
@@ -461,4 +467,9 @@ export function networkCalls (page: Page): Promise<{ calls: string[], bodies: un
 /** How muon-link answers its Wi-Fi routes: normally, as an older one (404), or with the owner's rule turned off (403). */
 export function setNetworkMode (page: Page, mode: 'ok' | 'older' | 'path_disabled') {
   return page.evaluate(m => { (window as any).__e2eRoute.network.mode = m }, mode)
+}
+
+/** What the printer says about its hotspot over muon-link's routes (Bluetooth and Muon3D); null answers 404. */
+export function setStations (page: Page, stations: unknown) {
+  return page.evaluate(v => { (window as any).__e2eRoute.network.stations = v }, stations)
 }

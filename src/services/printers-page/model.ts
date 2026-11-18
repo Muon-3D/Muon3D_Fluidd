@@ -1,6 +1,7 @@
 import type { Directory, DirectoryEntry } from '@/services/muon-cloud/directory'
 import type { PrinterStatus } from '@/services/muon-cloud/state'
 import { printerNameParts } from '@/util/printer-name'
+import { networkRouteLabel } from '@/services/hotspot/model'
 import type { ForeignStatus } from '@/services/foreign-printers/types'
 
 /** What a printer is doing, in the words the page uses. */
@@ -216,7 +217,7 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
   if ((state === 'printing' || state === 'paused') && job?.file) {
     detail = jobName(job.file) ?? e.detail
   } else if (state === 'ready') {
-    detail = viaBluetooth ? 'Via Bluetooth' : remote ? 'Remote, through Muon3D' : 'On this network'
+    detail = viaBluetooth ? 'Via Bluetooth' : remote ? 'Remote, through Muon3D' : e.active === 'local' ? networkRouteLabel() : 'On this network'
   } else if (state === 'unreachable') {
     detail = "Online, but this browser can't reach it"
   } else {

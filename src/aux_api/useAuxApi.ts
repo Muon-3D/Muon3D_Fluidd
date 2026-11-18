@@ -154,6 +154,8 @@ export function useAuxApi () {
     wifi: wifiApiProxy,
     /** POST /wifi/ap/change: the hotspot's name or key, applied once the person at the printer confirms. */
     apChange: (body: { ssid?: string, password?: string }) => auxAxios.post(`${basePathRef.value}/wifi/ap/change`, body),
+    /** GET /wifi/ap/stations: whether the hotspot is up and who is on it (KAN-4297). */
+    apStations: () => auxAxios.get(`${basePathRef.value}/wifi/ap/stations`, { timeout: 5000 }),
     devMode: _cachedDevModeClient,
     isReachable
   }

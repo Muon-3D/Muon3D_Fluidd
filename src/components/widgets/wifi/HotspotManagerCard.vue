@@ -163,6 +163,36 @@
       </div>
     </div>
 
+    <div
+      v-if="!compact && !locked && stations && stations.up"
+      class="hs__people"
+      data-tid="hotspot-devices"
+    >
+      <h3 data-tid="hotspot-devices-count">
+        {{ deviceLine }}
+      </h3>
+      <ul
+        v-if="stations.clients && stations.clients.length"
+        class="hs__list"
+        data-tid="hotspot-clients"
+      >
+        <li
+          v-for="(c, i) in stations.clients"
+          :key="`${c.mac}-${i}`"
+          class="hs__client"
+          data-tid="hotspot-client"
+        >
+          <b>{{ c.name || 'Unnamed device' }}</b>
+          <span
+            v-if="c.you"
+            class="hs__you"
+            data-tid="hotspot-client-you"
+          >This device</span>
+          <span class="hs__client-meta">{{ clientMeta(c) }}</span>
+        </li>
+      </ul>
+    </div>
+
     <v-dialog
       v-model="showToggleWarningDialog"
       max-width="420"
@@ -236,6 +266,9 @@ import type { VForm } from '@/types'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import { connectedFor, hotspotState } from '@/services/hotspot/model'
+import type { HotspotClient, HotspotStations } from '@/services/hotspot/model'
+import { startHotspotPoll } from '@/services/hotspot/poller'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -388,7 +421,30 @@ export default class HotspotManagerCard extends Vue {
   private requestedApState: boolean | null = null
   private requestedApStateUntil = 0
 
+  private stopHotspotPoll: (() => void) | null = null
+
+  /** Who is on the hotspot, from the shared poll (KAN-4297). */
+  get stations (): HotspotStations | null {
+    return hotspotState.stations
+  }
+
+  get deviceLine (): string {
+    const n = this.stations?.count ?? 0
+    return n === 0 ? 'No devices connected' : `${n} ${n === 1 ? 'device' : 'devices'} connected`
+  }
+
+  /** "10.42.0.12 · aa:bb:cc:••:••:ef · connected 12 min · -52 dBm". */
+  clientMeta (c: HotspotClient): string {
+    return [
+      c.ip,
+      c.mac,
+      c.connectedSeconds !== null ? `connected ${connectedFor(c.connectedSeconds)}` : null,
+      c.signalDbm !== null ? `${c.signalDbm} dBm` : null
+    ].filter(Boolean).join(' · ')
+  }
+
   async mounted () {
+    this.stopHotspotPoll = startHotspotPoll()
     await this.fetchConfig()
     if (!this.destroyed) {
       this.statusPollId = window.setInterval(() => {
@@ -399,6 +455,8 @@ export default class HotspotManagerCard extends Vue {
 
   beforeDestroy () {
     this.destroyed = true
+    this.stopHotspotPoll?.()
+    this.stopHotspotPoll = null
     if (this.statusPollId !== null) {
       window.clearInterval(this.statusPollId)
       this.statusPollId = null
@@ -792,6 +850,49 @@ export default class HotspotManagerCard extends Vue {
     margin: 0;
     color: var(--m3d-text-muted);
     font-size: 14px;
+  }
+
+  .hs__people {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+  }
+
+  .hs__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .hs__client {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    font-size: 14px;
+  }
+
+  .hs__you {
+    color: var(--m3d-accent);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .hs__client-meta {
+    flex-basis: 100%;
+    overflow-wrap: anywhere;
+    color: var(--m3d-text-muted);
+    font-family: var(--m3d-font-mono);
+    font-size: 12px;
   }
 
   .hs__body {

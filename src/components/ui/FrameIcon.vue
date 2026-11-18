@@ -61,6 +61,7 @@ const ICONS: Record<string, Shape[]> = {
   // Quick actions: the lightning bolt, drawn at the frame's stroke weight like the rest.
   bolt: [{ d: 'M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z' }],
   wifi: [{ d: 'M5 12.6a11 11 0 0 1 14 0M1.4 9a16 16 0 0 1 21.2 0M8.5 16.1a6 6 0 0 1 7 0M12 20h.01' }],
+  tethering: [{ c: [12, 12, 2] }, { d: 'M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19.1 4.9a10 10 0 0 1 0 14.2M4.9 19.1a10 10 0 0 1 0-14.2' }],
   cloud: [{ d: 'M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z' }],
   plus: [{ d: 'M5 12h14M12 5v14' }],
   bluetooth: [{ d: 'm7 7 10 10-5 5V2l5 5L7 17' }],

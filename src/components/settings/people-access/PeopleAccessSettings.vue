@@ -949,6 +949,7 @@ import { cloudApi, type CloudPrinter } from '@/services/muon-cloud/api'
 import { cloudState, refreshPrinters } from '@/services/muon-cloud/state'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import { remoteRouteLabel } from '@/services/muon-ble/link'
+import { networkRouteLabel } from '@/services/hotspot/model'
 import { accountApi, type InviteLink, type JoinApproval, type PrinterInvite, type PrinterShare } from '@/services/account/api'
 import { accountState, describe, loadApprovals } from '@/services/account/state'
 import { isMissing } from '@/services/account/client'
@@ -1214,7 +1215,7 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
 
   /** How this browser reached the printer, as the rest of Control words it. */
   get routeText (): string {
-    return this.remote ? remoteRouteLabel(cloudState.activePrinterId) : 'On this network'
+    return this.remote ? remoteRouteLabel(cloudState.activePrinterId) : networkRouteLabel()
   }
 
   get canDoLine (): string {
