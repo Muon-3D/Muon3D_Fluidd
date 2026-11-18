@@ -6,8 +6,8 @@ describe('which access card Settings shows', () => {
     expect(accessCards(true, ['authorization', 'muon_access'])).toEqual({ peopleAccess: true, auth: false, loading: false })
   })
 
-  it('a Muon printer on an older MuonOS (no muon_access) keeps the API key card', () => {
-    expect(accessCards(true, ['authorization', 'muon_protection'])).toEqual({ peopleAccess: false, auth: true, loading: false })
+  it('a Muon printer on an older MuonOS (no muon_access) gets no Moonraker key or users card either (KAN-4340)', () => {
+    expect(accessCards(true, ['authorization', 'muon_protection'])).toEqual({ peopleAccess: false, auth: false, loading: false })
   })
 
   it('a non-Muon printer keeps the old card', () => {

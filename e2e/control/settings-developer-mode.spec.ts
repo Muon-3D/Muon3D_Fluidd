@@ -25,15 +25,25 @@ const WAIVER = { version: 'w-1', text: "The printer's own waiver terms." }
  * with a change. `confirm()` is the person at the printer pressing the knob. A
  * printer takes a later change at once (no challenge) unless `alwaysConfirm`.
  */
-async function printerSays (page: Page, opts: { enabled: boolean, everEnabled?: boolean, mayAsk?: boolean, linked?: boolean, refuse?: string, alwaysConfirm?: boolean }) {
+async function printerSays (page: Page, opts: { enabled: boolean, everEnabled?: boolean, mayAsk?: boolean, linked?: boolean, refuse?: string, alwaysConfirm?: boolean, postOnly?: 405 | 403 }) {
   const printer = { enabled: opts.enabled, everEnabled: !!opts.everEnabled, confirmed: false }
-  await page.route('**/server/aux/dev_mode*', route => route.fulfill({
-    json: { enabled: printer.enabled, guard_armed: true, ever_enabled: printer.everEnabled, otp_record_armed: false }
-  }))
+  await page.route('**/server/aux/dev_mode*', route => opts.postOnly === 403
+    // Over Bluetooth or the relay muon-link keeps /server/aux/ closed to every role.
+    ? route.fulfill({ status: 403, json: { error: { code: 403, message: 'Forbidden' } } })
+    : route.fulfill({ json: { enabled: printer.enabled, guard_armed: true, ever_enabled: printer.everEnabled, otp_record_armed: false } }))
+  // The read-only state every route can read (Moonraker's /server/muon/dev_mode).
+  await page.route('**/server/muon/dev_mode', route => route.fulfill({ json: { result: { enabled: printer.enabled } } }))
   const posts: string[] = []
   let polls = 0
   await page.route(REQUEST, route => {
     const request = route.request()
+    if (opts.postOnly && request.method() !== 'POST') {
+      // What train 17 ships: Moonraker registers the route for POST alone (aux_api_proxy.py), so a GET is
+      // Tornado's 405 on the printer's own page; over Bluetooth muon-link's policy.rs has no GET rule for it, so 403.
+      return route.fulfill(opts.postOnly === 405
+        ? { status: 405, contentType: 'text/html', body: '<html><title>405: Method Not Allowed</title><body>405: Method Not Allowed</body></html>' }
+        : { status: 403, json: { error: { code: 403, message: 'Forbidden' } } })
+    }
     if (request.method() === 'POST') {
       const raw = request.postData() ?? ''
       posts.push(raw)
@@ -46,6 +56,8 @@ async function printerSays (page: Page, opts: { enabled: boolean, everEnabled?: 
           printer.enabled = body.enabled
           return route.fulfill({ json: { result: { enabled: printer.enabled } } })
         }
+        // Train 17's Moonraker answers the id and nothing else.
+        if (opts.postOnly) return route.fulfill({ json: { result: { challenge_id: CHALLENGE } } })
         return route.fulfill({ json: { result: { challenge_id: CHALLENGE, expires_in_seconds: 120, enabled: body.enabled, instruction: 'Press the knob on the printer to confirm.', waiver: WAIVER } } })
       }
       if (!printer.confirmed) return route.fulfill({ status: 428, json: { error: { code: 428, message: "dev-mode:confirmation_required: Confirm this on the printer's panel first." } } })
@@ -64,7 +76,14 @@ async function printerSays (page: Page, opts: { enabled: boolean, everEnabled?: 
   // Anything sent to ask for a change, from any call.
   const sent: string[] = []
   page.on('request', r => { if (r.method() === 'POST' && /dev_mode/.test(r.url())) sent.push(r.url()) })
-  return { posts, sent, printer, polls: () => polls, confirm: () => { printer.confirmed = true } }
+  return {
+    posts,
+    sent,
+    printer,
+    polls: () => polls,
+    // On a POST-only printer the person at the screen redeems it: no second POST comes from Control.
+    confirm: () => { printer.confirmed = true; if (opts.postOnly) { printer.enabled = true; printer.everEnabled = true } }
+  }
 }
 
 const pane = (page: Page) => page.getByTestId('settings-pane')
@@ -194,4 +213,50 @@ test('a printer that is not a Muon has no developer mode page', async ({ page, o
   await expect(page.getByRole('navigation', { name: 'Developer mode' })).toHaveCount(0)
   await open('/settings#developer')
   await expect(page.getByTestId('developer-mode-card')).toHaveCount(0)
+})
+
+// KAN-4351: train 17's route takes POST only. Jack saw "Method Not Allowed" on the printer's own page and
+// 403 over Bluetooth, and no way to turn developer mode on: Control asked with a GET first.
+for (const [status, route] of [[405, "the printer's own page"], [403, 'Bluetooth']] as const) {
+  test(`${route}: a POST-only printer still gets developer mode turned on and off`, async ({ page, open }) => {
+    const fake = await printerSays(page, { enabled: false, everEnabled: true, postOnly: status })
+    await openDeveloperMode(page, open)
+    const p = pane(page)
+    // No error text from the GET, and the switch is there: the printer decides when it is asked.
+    await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('Off')
+    await expect(p.getByTestId('developer-mode-who')).toHaveCount(0)
+    await expect(p.getByText('Method Not Allowed')).toHaveCount(0)
+    await expect(p.getByTestId('developer-mode-switch')).toBeVisible()
+    await p.getByTestId('developer-mode-switch').click()
+    const enable = page.getByTestId('developer-enable-dialog')
+    // Over Bluetooth /server/aux/ is closed, so Control can't read that it was released before and shows the terms;
+    // the printer still takes the change with no challenge.
+    if (status === 403) await enable.getByTestId('developer-accept').check()
+    await enable.getByTestId('developer-confirm').click()
+    await expect(enable).toBeHidden()
+    await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('On')
+    await p.getByTestId('developer-mode-switch').click()
+    await page.getByTestId('developer-disable-dialog').getByTestId('developer-confirm').click()
+    await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('Off')
+    expect(fake.posts.map(x => JSON.parse(x))).toEqual([{ enabled: true }, { enabled: false }])
+  })
+}
+
+test('a POST-only printer: the first release waits for the screen by watching the state, and asks once', async ({ page, open }) => {
+  const fake = await printerSays(page, { enabled: false, postOnly: 405 })
+  await openDeveloperMode(page, open)
+  const p = pane(page)
+  await p.getByTestId('developer-mode-switch').click()
+  const dialog = page.getByTestId('developer-enable-dialog')
+  await dialog.getByTestId('developer-accept').check()
+  await dialog.getByTestId('developer-confirm').click()
+  // The id came with no wait time or words: Control says what to do and does not give up at once.
+  await expect(dialog.getByTestId('developer-press-knob')).toContainText('Confirm')
+  await page.waitForTimeout(2500)
+  await expect(dialog.getByTestId('developer-press-knob')).toBeVisible()
+  fake.confirm()
+  await expect(dialog).toBeHidden()
+  await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('On')
+  // One request only: a second POST would open a second challenge on the printer.
+  expect(fake.posts.map(x => JSON.parse(x))).toEqual([{ enabled: true }])
 })
