@@ -68,7 +68,14 @@ test('offline, a guest on an Open printer can upload and print over Bluetooth', 
   })
   await expect(page.locator('body')).not.toContainText(UNREACHABLE)
   await expect(page.getByTestId('jobs-upload')).toBeEnabled()
-  // Print shows for the selected file: on the phone layout nothing is selected until one is tapped.
-  if (await page.getByTestId('jobs-print').count() === 0) await page.getByTestId('jobs-row').first().click()
-  await expect(page.getByTestId('jobs-print').first()).toBeEnabled()
+  // Print is for the selected file; the mock's file that is printing right now reads "Printing now" and is
+  // rightly disabled, so some other file must be startable by a guest.
+  const rows = page.getByTestId('jobs-row')
+  await expect(rows.first()).toBeVisible()
+  let startable = false
+  for (let i = 0; i < await rows.count() && !startable; i++) {
+    await rows.nth(i).click()
+    startable = await page.getByTestId('jobs-print').first().isEnabled().catch(() => false)
+  }
+  expect(startable).toBe(true)
 })
