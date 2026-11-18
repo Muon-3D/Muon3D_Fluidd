@@ -19,6 +19,7 @@ import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
 import { noteRelayLost, noteUserOpen } from './route-choice'
 import { requestRefused } from '@/services/managed-transport/refusal'
 import { isOwnHotspot, pageReach } from './discovery'
+import { forgetGrantedRole, readGrantedRole } from '@/services/muon-ble/granted-role'
 import { releaseBluetoothLink, stopUsingBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
 import { onApprovalWatch, type ApprovalWatch } from './approval'
@@ -135,6 +136,7 @@ async function releaseCurrent (nextPrinterId?: string) {
   previous.release()
   previous.transport.close()
   if (previous.printerId !== nextPrinterId) {
+    forgetGrantedRole(previous.printerId)
     const hangingUp = releaseBluetoothLink(previous.printerId)
     stopUsingBluetoothFor(previous.printerId)
     await hangingUp
@@ -175,6 +177,7 @@ export async function activateCloudPrinter (printerId: string) {
   activationState.error = null
   activationState.fallbackUrl = null
   activationState.pairing = null
+  forgetGrantedRole(printerId)
   activationState.approval?.cancel()
   activationState.approval = null
   onApprovalWatch(watch => {
@@ -192,7 +195,12 @@ export async function activateCloudPrinter (printerId: string) {
       // Over Bluetooth, the printer decides on the first request whether it
       // knows this key. Asking here, ahead of the page's own load, lets that
       // refusal arrive as itself.
-      if (wantsBluetoothFor(printerId)) await borrowed.fetch('/server/info')
+      if (wantsBluetoothFor(printerId)) {
+        await borrowed.fetch('/server/info')
+        // KAN-4309: an Open printer admitted this browser as an Operator guest. An account's own printer has its role from the console.
+        if (!cloudState.printers.some(p => p.id === printerId)) await readGrantedRole(printerId, path => borrowed.fetch(path))
+        else forgetGrantedRole(printerId)
+      }
       if (superseded()) throw new SwitchSuperseded()
       await oneAtATime(mine, async () => {
         Vue.$socket?.releaseTransportSocket(true)

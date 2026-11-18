@@ -12,7 +12,7 @@ const cloud = vi.hoisted(() => ({
   dropCloudConnection: vi.fn(),
   setActiveCloudPrinter: vi.fn(),
   printerName: vi.fn(() => 'Boxwood · 367A'),
-  cloudState: { activePrinterId: null }
+  cloudState: { activePrinterId: null, printers: [] as { id: string }[] }
 }))
 vi.mock('../state', () => cloud)
 vi.mock('../discovery', () => ({ pageReach: vi.fn(async () => 'reached'), isOwnHotspot: vi.fn(() => false) }))
