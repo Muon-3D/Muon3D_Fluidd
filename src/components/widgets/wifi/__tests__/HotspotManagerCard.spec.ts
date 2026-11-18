@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HotspotManagerCard from '../HotspotManagerCard.vue'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 import { refusedHere } from '@/services/wifi/panel-only'
+import { hotspotState, normalizeStations } from '@/services/hotspot/model'
 
 const apShowCredentials = vi.fn()
 const apDeviceStatus = vi.fn()
@@ -11,6 +12,7 @@ const apModify = vi.fn()
 const apUp = vi.fn()
 const apDown = vi.fn()
 const apChange = vi.fn()
+const apStations = vi.fn()
 
 vi.mock('@/aux_api/useAuxApi', () => ({
   useAuxApi: () => ({
@@ -21,7 +23,8 @@ vi.mock('@/aux_api/useAuxApi', () => ({
       apUpWifiApUpPost: apUp,
       apDownWifiApDownPost: apDown
     },
-    apChange
+    apChange,
+    apStations
   })
 }))
 
@@ -66,6 +69,9 @@ describe('HotspotManagerCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     hotspot.value = false
+    hotspotState.stations = null
+    apStations.mockReset()
+    apStations.mockRejectedValue({ response: { status: 404 } })
     apModify.mockResolvedValue({ data: { status: 'modified', ssid: 'Muon-M1' } })
     apUp.mockResolvedValue({ data: { status: 'activation-requested' } })
     apDown.mockResolvedValue({ data: { status: 'deactivation-requested' } })
@@ -85,6 +91,41 @@ describe('HotspotManagerCard', () => {
         security_enabled: true
       }
     })
+  })
+
+  it('lists who is on the hotspot when the printer says (KAN-4297)', async () => {
+    const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    hotspotState.stations = normalizeStations({
+      up: true,
+      count: 2,
+      auto_off_at: null,
+      clients: [
+        { name: 'Jack phone', ip: '10.42.0.7', mac: 'aa:bb:cc:••:••:ef', connected_s: 720, signal_dbm: -52, you: true },
+        { name: null, ip: '10.42.0.9', mac: '11:22:33:••:••:99', connected_s: 30, signal_dbm: null, you: false }
+      ]
+    })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-tid="hotspot-devices-count"]').text()).toBe('2 devices connected')
+    const rows = wrapper.findAll('[data-tid="hotspot-client"]')
+    expect(rows).toHaveLength(2)
+    expect(rows.at(0).text()).toContain('Jack phone')
+    expect(rows.at(0).text()).toContain('This device')
+    expect(rows.at(0).text()).toContain('10.42.0.7 · aa:bb:cc:••:••:ef · connected 12 min · -52 dBm')
+    expect(rows.at(1).text()).toContain('Unnamed device')
+    expect(rows.at(1).text()).not.toContain('This device')
+  })
+
+  it('shows only the count on a printer that sends no client list, and nothing when the hotspot is down', async () => {
+    const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    hotspotState.stations = normalizeStations({ up: true, count: 1, auto_off_at: null })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-tid="hotspot-devices-count"]').text()).toBe('1 device connected')
+    expect(wrapper.find('[data-tid="hotspot-clients"]').exists()).toBe(false)
+    hotspotState.stations = normalizeStations({ up: false, count: 0, auto_off_at: null })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-tid="hotspot-devices"]').exists()).toBe(false)
   })
 
   it('reflects an unsecured hotspot reported by the API', async () => {

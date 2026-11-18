@@ -170,6 +170,7 @@ import { jobsPage } from '@/services/jobs/page-state'
 import TonePill from '@/components/printers/TonePill.vue'
 import PrinterStatusMixin from '@/mixins/printer-status'
 import { cloudState } from '@/services/muon-cloud/state'
+import { networkRouteLabel } from '@/services/hotspot/model'
 import { jobName } from '@/services/printers-page/model'
 import { printerNameParts } from '@/util/printer-name'
 import type { TileTone } from '@/services/printers-page/model'
@@ -376,7 +377,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
     if (this.overviewHome) {
       if (this.foreignRecord) return ''
       const file = this.$store.state.printer.printer.print_stats?.filename as string | undefined
-      const route = cloudState.activePrinterId ? remoteRouteLabel(cloudState.activePrinterId) : 'On this network'
+      const route = cloudState.activePrinterId ? remoteRouteLabel(cloudState.activePrinterId) : networkRouteLabel()
       if ((this.printerPrinting || this.printerPaused) && file) {
         const duration = this.$store.state.printer.printer.print_stats?.total_duration as number | undefined
         const started = duration ? new Date(Date.now() - duration * 1000) : null

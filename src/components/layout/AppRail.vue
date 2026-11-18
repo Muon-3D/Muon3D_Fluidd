@@ -109,6 +109,7 @@
             v-if="!compact && routeDetail"
             class="app-rail__route-detail"
           >{{ routeDetail }}</span>
+          <hotspot-count />
         </span>
       </network-quick-menu>
     </nav>
@@ -122,10 +123,12 @@ import BrowserMixin from '@/mixins/browser'
 import { ALL_PRINTERS_KEY, LIBRARY_KEY, type Section } from '@/router/printerSections'
 import { cloudState } from '@/services/muon-cloud/state'
 import { remoteRouteLabel } from '@/services/muon-ble/link'
+import { networkRouteLabel } from '@/services/hotspot/model'
 import { hostOf } from '@/services/muon-cloud/directory'
 import { probeSlicer } from '@/services/slicer-bridge/slicerUrl'
 import AppRailLink from './AppRailLink.vue'
 import NetworkQuickMenu from './NetworkQuickMenu.vue'
+import HotspotCount from './HotspotCount.vue'
 
 /**
  * The pages of the printer you're on, named, with their keys. Console and
@@ -133,7 +136,7 @@ import NetworkQuickMenu from './NetworkQuickMenu.vue'
  * browser reaches the printer, which opens to its Wi-Fi and hotspot
  * (NetworkQuickMenu). Below the lg breakpoint it keeps the icons.
  */
-@Component({ components: { AppRailLink, NetworkQuickMenu } })
+@Component({ components: { AppRailLink, NetworkQuickMenu, HotspotCount } })
 export default class AppRail extends Mixins(FrameMixin, BrowserMixin) {
   allPrintersKey = ALL_PRINTERS_KEY
   libraryKey = LIBRARY_KEY
@@ -173,7 +176,7 @@ export default class AppRail extends Mixins(FrameMixin, BrowserMixin) {
   }
 
   get routeTitle (): string {
-    return this.remote ? remoteRouteLabel(cloudState.activePrinterId) : 'On this network'
+    return this.remote ? remoteRouteLabel(cloudState.activePrinterId) : networkRouteLabel()
   }
 
   get routeDetail (): string {
