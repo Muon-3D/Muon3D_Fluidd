@@ -450,7 +450,7 @@ export default class DeveloperModeSettings extends Vue {
     if (!pending) return
     let answer
     try {
-      answer = await readAnswer(pending.challengeId)
+      answer = await readAnswer(pending.challengeId, pending.enabled)
       this.pollFailures = 0
     } catch (err) {
       this.pollFailures++
@@ -464,6 +464,12 @@ export default class DeveloperModeSettings extends Vue {
     }
     if (!answer.confirmed) return
     this.stopWaiting()
+    if (answer.applied) {
+      // A printer that takes the change alone: it is done, and asking again would open a second request.
+      this.changeDialog = false
+      await refreshDevMode()
+      return
+    }
     this.loading = true
     try {
       await completeChange({

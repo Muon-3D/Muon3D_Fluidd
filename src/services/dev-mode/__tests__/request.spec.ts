@@ -2,6 +2,7 @@ import Vue from 'vue'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   askToChange,
+  requestChange,
   completeChange,
   readAnswer,
   refusalOf,
@@ -97,6 +98,32 @@ describe('a developer-mode request, through Moonraker\'s one route for it (KAN-5
       .toMatchObject({ code: 'refused', message: 'muon-link refused this request' })
     const network = new Error('Network Error')
     expect(refusalOf(network)).toBe(network)
+  })
+
+  it('on a POST-only printer (train 17), a refused GET is not a no: the printer decides when asked (KAN-4351)', async () => {
+    for (const [status, data] of [[405, '<html>405: Method Not Allowed</html>'], [403, { error: { code: 403, message: 'Forbidden' } }]] as const) {
+      printer.get.mockRejectedValueOnce(Object.assign(new Error(`status ${status}`), { response: { status, data } }))
+      expect(await whoMayAsk()).toMatchObject({ mayAsk: true, owner: { linked: null, account: null }, waiver: null })
+    }
+    // A refusal the printer explained is still its answer.
+    printer.get.mockRejectedValueOnce(moonrakerError(403, 'dev-mode:owner_required: Only the owner.'))
+    expect(await whoMayAsk().catch(e => e)).toMatchObject({ code: 'owner_required' })
+  })
+
+  it('on a POST-only printer, an id with no wait time or words still waits and says what to do', async () => {
+    printer.post.mockResolvedValueOnce({ data: { result: { challenge_id: CHALLENGE } } } as never)
+    const challenge = await askToChange(true)
+    expect(challenge.expiresInSeconds).toBeGreaterThan(0)
+    expect(challenge.instruction).not.toBe('')
+  })
+
+  it('an answer with no challenge_id is done (admin build): no wait; an id is a wait (customer build)', async () => {
+    printer.post.mockResolvedValueOnce({ data: { result: { enabled: true } } } as never)
+    expect(await requestChange(true)).toEqual({ kind: 'applied', enabled: true })
+    printer.post.mockResolvedValueOnce({ data: { result: { enabled: false } } } as never)
+    expect(await requestChange(false)).toEqual({ kind: 'applied', enabled: false })
+    printer.post.mockResolvedValueOnce({ data: { result: { challenge_id: CHALLENGE } } } as never)
+    expect(await requestChange(true)).toMatchObject({ kind: 'challenge', challenge: { challengeId: CHALLENGE } })
   })
 
   it('never sends an id that could name another route', async () => {

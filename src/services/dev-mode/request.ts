@@ -1,4 +1,5 @@
 import Vue from 'vue'
+import { httpClientActions } from '@/api/httpClientActions'
 
 /**
  * A developer-mode change, asked for through Moonraker's one route for it,
@@ -14,11 +15,19 @@ import Vue from 'vue'
  * it is the only route a remote session may use: muon-link keeps
  * `/server/aux/` closed to every one of them.
  *
- * Four calls, one route:
+ * What MuonOS train 17 ships is POST only (Moonraker aux_api_proxy.py registers
+ * `["POST"]`, and muon-link's policy.rs admits POST alone, for an Operator):
+ *  - `POST {enabled}`: the change itself. Off is taken at once; on is taken at
+ *    once after the first release, and before it opens a challenge on the
+ *    printer's screen (`{challenge_id}`).
+ * Newer printers also answer two GETs on the same route, and Control uses them
+ * when they are there:
  *  - `GET` with nothing: who may ask, and the waiver turning on agrees to;
- *  - `POST {enabled}`: put the question on the printer's screen;
  *  - `GET {challenge_id}`: has the person there answered;
  *  - `POST {enabled, challenge_id, ...}`: make the change, once confirmed.
+ * A GET on a POST-only route is a 405 locally and a 403 over Bluetooth or the
+ * relay (muon-link's default for a path it has no GET rule for). Neither means
+ * "no": Control then lets the printer decide when it is asked (KAN-4351).
  *
  * Moonraker answers a refusal as `dev-mode:<code>: <why>`, so the code is
  * read here and the words are the printer's own.
@@ -57,6 +66,8 @@ export interface DevModeChallenge {
 export interface DevModeAnswer {
   confirmed: boolean;
   refused: boolean;
+  /** The printer did it itself (a POST-only printer): there is nothing left to complete. */
+  applied?: boolean;
 }
 
 export interface DevModeCompletion {
@@ -85,6 +96,7 @@ export class DevModeRequestUnavailable extends Error {
 
 /** A challenge id as the Aux API makes them. Anything else is never sent. */
 const CHALLENGE_ID = /^[A-Za-z0-9_-]{16,128}$/
+const DEFAULT_WAIT_SECONDS = 120
 const REFUSAL = /^dev-mode:([a-z_]+):\s*([\s\S]*)$/
 
 function messageOf (data: unknown): string | undefined {
@@ -132,9 +144,32 @@ function checkedId (challengeId: string): string {
   return challengeId
 }
 
+/**
+ * A printer whose route is POST only: 405 on a plain connection, 403 over
+ * Bluetooth or the relay (a 404 is a printer without the route, and is said). The GET is not
+ * refusing the person; there is just no such question to ask.
+ */
+export function noSuchQuestion (error: unknown): boolean {
+  return error instanceof DevModeRefused && error.code === 'refused' && (error.status === 403 || error.status === 405)
+}
+
+/** What Control assumes when the printer can't be asked: the printer decides when it is asked to change. */
+const LET_THE_PRINTER_DECIDE: DevModeAsking = {
+  asOwner: false,
+  owner: { linked: null, account: null },
+  mayAsk: true,
+  waiver: null
+}
+
 /** Who may ask on this printer, and what turning on agrees to. Asks nothing of its screen. */
 export async function whoMayAsk (): Promise<DevModeAsking> {
-  const body = await send('GET')
+  let body: Record<string, unknown>
+  try {
+    body = await send('GET')
+  } catch (error) {
+    if (noSuchQuestion(error)) return LET_THE_PRINTER_DECIDE
+    throw error
+  }
   const owner = (body.owner ?? {}) as { linked?: unknown, account?: unknown }
   return {
     asOwner: body.as_owner === true,
@@ -170,8 +205,9 @@ export async function requestChange (enabled: boolean): Promise<DevModeRequested
     challenge: {
       challengeId: checkedId(body.challenge_id),
       enabled: typeof body.enabled === 'boolean' ? body.enabled : enabled,
-      expiresInSeconds: typeof body.expires_in_seconds === 'number' ? body.expires_in_seconds : 0,
-      instruction: typeof body.instruction === 'string' ? body.instruction : '',
+      // A POST-only printer answers the id alone: say what to do, and wait a while.
+      expiresInSeconds: typeof body.expires_in_seconds === 'number' ? body.expires_in_seconds : DEFAULT_WAIT_SECONDS,
+      instruction: typeof body.instruction === 'string' && body.instruction ? body.instruction : "Confirm this on the printer's screen.",
       waiver: waiverOf(body.waiver)
     }
   }
@@ -184,11 +220,28 @@ export async function askToChange (enabled: boolean): Promise<DevModeChallenge> 
   return asked.challenge
 }
 
-/** Whether the person at the printer has answered. */
-export async function readAnswer (challengeId: string): Promise<DevModeAnswer> {
-  const body = await send('GET', { challenge_id: checkedId(challengeId) })
+/**
+ * Whether the person at the printer has answered. A printer that can't be asked
+ * (POST only) is watched instead: the change is done when it reads as made.
+ */
+export async function readAnswer (challengeId: string, enabled?: boolean): Promise<DevModeAnswer> {
+  let body: Record<string, unknown>
+  try {
+    body = await send('GET', { challenge_id: checkedId(challengeId) })
+  } catch (error) {
+    if (!noSuchQuestion(error) || typeof enabled !== 'boolean') throw error
+    const state = await readState()
+    return { confirmed: state === enabled, refused: false, applied: state === enabled }
+  }
   if (typeof body.confirmed !== 'boolean') throw new Error('the printer gave no answer')
   return { confirmed: body.confirmed, refused: body.refused === true }
+}
+
+/** The read-only state, `/server/muon/dev_mode` (a Viewer may read it over any route). */
+async function readState (): Promise<boolean | null> {
+  const response = await httpClientActions.serverMuonDevModeGet()
+  const enabled = response.data?.result?.enabled
+  return typeof enabled === 'boolean' ? enabled : null
 }
 
 /** Makes the confirmed change. Turning on acknowledges the waiver shown. */
