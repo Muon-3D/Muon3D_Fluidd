@@ -68,5 +68,7 @@ test('offline, a guest on an Open printer can upload and print over Bluetooth', 
   })
   await expect(page.locator('body')).not.toContainText(UNREACHABLE)
   await expect(page.getByTestId('jobs-upload')).toBeEnabled()
+  // Print shows for the selected file: on the phone layout nothing is selected until one is tapped.
+  if (await page.getByTestId('jobs-print').count() === 0) await page.getByTestId('jobs-row').first().click()
   await expect(page.getByTestId('jobs-print').first()).toBeEnabled()
 })
