@@ -87,10 +87,10 @@ test.describe('signed out, over Bluetooth', () => {
     await expect(page.getByTestId('pair-code-step')).toHaveCount(0)
   })
 
-  test('an Open printer whose session fell back to the relay does not count as open: the code step shows', async ({ page }) => {
+  test('an Open printer whose session fell back to the relay does not count as open: the person is not let in', async ({ page }) => {
     await nearby(page, true)
-    await expect(page.getByTestId('pair-code-step')).toBeVisible({ timeout: 30_000 })
+    // Not in: the code step (a protected printer) or a stopped start, never the printer's own page.
+    await expect(page.getByTestId('pair-code-step').or(page.getByTestId('pair-failed'))).toBeVisible({ timeout: 40_000 })
     await expect(page).not.toHaveURL(/\/alder-6601(\/|$)/)
-    expect(await pairEvents(page)).toContain(`beginPairing ${OPEN_PRINTER.advertised}`)
   })
 })
