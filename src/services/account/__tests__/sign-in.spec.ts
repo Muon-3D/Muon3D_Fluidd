@@ -91,26 +91,17 @@ describe('the console\'s sign-in page', () => {
     await expect(verifyEmailAnswer('confirm-token')).resolves.toEqual({ email: 'first@example.test', signedOut: false })
   })
 
-  it('ends the page\'s own session once the handoff is in hand, so it never shows in Devices', async () => {
+  it('never signs the page\'s own session out: that would void the handoff code before it is spent (KAN-4021)', async () => {
     fetchMock
       .mockResolvedValueOnce(answer(200, { code: 'h1', url: `${BASE}/handoff?code=h1`, expires_at: 0 }))
-      .mockResolvedValueOnce(answer(200, { ok: true }))
     const next = await finishSignIn('page-session', '/authorize?client_id=fluidd&state=s')
-    const [handoffCall, signOutCall] = fetchMock.mock.calls
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [handoffCall] = fetchMock.mock.calls
     expect(handoffCall[0]).toBe(`${BASE}/v1/handoff`)
     expect(handoffCall[1].headers.authorization).toBe('Bearer page-session')
-    expect(signOutCall[0]).toBe(`${BASE}/v1/auth/sign-out`)
-    expect(signOutCall[1].method).toBe('POST')
-    expect(signOutCall[1].headers.authorization).toBe('Bearer page-session')
+    expect(fetchMock.mock.calls.some((c: unknown[]) => String(c[0]).includes('/v1/auth/sign-out'))).toBe(false)
     expect(next).toContain('code=h1')
     expect(decodeURIComponent(next)).toContain('/authorize?client_id=fluidd&state=s')
-  })
-
-  it('still goes on when ending the page\'s session fails: the console ends it in 30 days', async () => {
-    fetchMock
-      .mockResolvedValueOnce(answer(200, { code: 'h1', url: `${BASE}/handoff?code=h1`, expires_at: 0 }))
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-    await expect(finishSignIn('page-session', '/authorize?client_id=fluidd')).resolves.toContain('code=h1')
   })
 
   it('refuses a handoff URL on an attacker-controlled origin', async () => {
