@@ -5,7 +5,7 @@ import { stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '../li
 const held = vi.hoisted(() => ({ endpoint: null as any }))
 /** Whether the session really travels over Bluetooth (the radio truth), or has fallen back to the relay. */
 const radio = vi.hoisted(() => ({ carrying: true }))
-vi.mock('../link', async importOriginal => ({ ...(await importOriginal<typeof import('../link')>()), bluetoothCarrying: () => radio.carrying }))
+vi.mock('../link', async importOriginal => ({ ...(await importOriginal<typeof import('../link')>()), bluetoothCarrying: () => radio.carrying, bluetoothFellBack: () => (radio.carrying ? null : 'The printer answered through Muon3D, not over Bluetooth.') }))
 vi.mock('@/services/muon-cloud/iroh', () => ({ browserEndpoint: vi.fn(async () => held.endpoint) }))
 const activate = vi.hoisted(() => ({ activateCloudPrinter: vi.fn(async () => true), activationState: { switching: null, error: null, fallbackUrl: null, pairing: null } }))
 vi.mock('@/services/muon-cloud/activate', () => activate)

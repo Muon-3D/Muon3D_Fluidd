@@ -24,7 +24,7 @@ import { activateCloudPrinter } from '@/services/muon-cloud/activate'
 import { noteAdmittedAtPanel } from '@/services/muon-cloud/approval'
 import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
 import { registerEndpointBusy } from '@/services/muon-cloud/endpoint-hooks'
-import { bluetoothCarrying, bluetoothRouteFor, releaseBluetoothLink, wantsBluetoothFor } from './link'
+import { NOT_ON_BLUETOOTH_MS, bluetoothCarrying, bluetoothFellBack, bluetoothRouteFor, releaseBluetoothLink, wantsBluetoothFor } from './link'
 import { readPairingEntry, type PairingEntry } from './entry'
 
 /** The printer closes its window after 120 s (muon-link `WINDOW_TTL`). */
@@ -166,17 +166,15 @@ function fail (error: unknown) {
   pairingState.message = pairingMessage(error)
 }
 
-/** How long the radio gets to be heard carrying the session before it is called a relay fallback. */
-export const CARRIER_WAIT_MS = 2500
-
 /**
  * True once the session really travels over Bluetooth (the radio truth, KAN-2531). That is only known a
- * moment after the first answer, so it is given a short while; a relay fallback never gets there.
+ * moment after the first answer, so it is given the time Control itself allows before it calls the session
+ * "not on Bluetooth" (a relay fallback); a fallback never gets there.
  */
 async function carriedByBluetooth (printerId: string): Promise<boolean> {
-  const until = Date.now() + CARRIER_WAIT_MS
+  const until = Date.now() + NOT_ON_BLUETOOTH_MS + 1000
   while (!bluetoothCarrying(printerId)) {
-    if (Date.now() >= until) return false
+    if (bluetoothFellBack(printerId) || Date.now() >= until) return false
     await new Promise(resolve => setTimeout(resolve, 100))
   }
   return true

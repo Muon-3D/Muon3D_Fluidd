@@ -94,6 +94,8 @@ class Printer {
     this.endpoint = endpoint
     this.sockets = new Set()
     S().bleLive++
+    // silentRadio: the link came up (its handshake crossed the radio), then the printer answers through the relay only.
+    if (S().silentRadio) S().radioSilent = true
   }
   printerId () { return this.id }
   comparison () { return COMPARE }
@@ -294,7 +296,7 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
       writeValueWithoutResponse: async (segment: BufferSource) => {
         if (!connected) throw new DOMException('GATT Server is disconnected.', 'NetworkError')
         setTimeout(() => {
-          if (!connected || state.bleLive <= 0 || state.silentRadio) return
+          if (!connected || state.bleLive <= 0 || state.radioSilent) return
           tx.value = new DataView(new Uint8Array(segment as ArrayBuffer).slice().buffer)
           tx.dispatchEvent(new Event('characteristicvaluechanged'))
         }, 5)
