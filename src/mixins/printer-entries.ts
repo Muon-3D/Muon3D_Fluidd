@@ -113,18 +113,6 @@ function routeFactsOf (e: DirectoryEntry): RouteMenuFacts {
   }
 }
 
-/**
- * What to tell the person about a locked printer. An Open printer needs nothing (D-166), and one still in
- * first-run set-up gets no hint. Only what the person can act on is said.
- */
-export function pairHint (e: DirectoryEntry): string | undefined {
-  const unclaimed = (e.nearby ?? e.row?.nearby)?.advert?.unclaimed
-  if (unclaimed === true) return undefined
-  const owned = unclaimed === false || e.linkedTo === 'mine' || e.linkedTo === 'other' || !!e.cloud?.shared
-  if (owned) return "Ask the printer's owner to share it with you, or enter the code shown on it."
-  return undefined
-}
-
 /** Printers whose "opened through Muon3D" notice has been shown on this page load. */
 const toldRelay = new Set<string>()
 
@@ -382,6 +370,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
 
   /** Someone else's printer, or one that refused this browser: ask its panel to let this browser in. */
   askAction (e: DirectoryEntry): CardAction | null {
+    // An Open printer (D-166) lets anyone in: there is nothing to ask for.
+    if (e.lan?.entry === 'open') return null
     if (e.linkedTo !== 'other' && e.health !== 'locked') return null
     return {
       id: 'ask',
