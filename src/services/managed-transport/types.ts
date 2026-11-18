@@ -72,6 +72,8 @@ export interface ManagedIrohRelay {
   fetch(path: string, init?: RequestInit, progress?: UploadProgress): Promise<Response>;
   openWebSocket(path: string): Promise<PrinterSocket>;
   close(): void;
+  /** True once the relay closed itself; the transport then dials a new one. */
+  readonly closed?: boolean;
 }
 
 /** Contract supplied by a future browser Iroh integration, not an Iroh proof. */

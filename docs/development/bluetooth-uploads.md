@@ -8,12 +8,20 @@ nav_order: 20
 # Bluetooth uploads
 
 `MAX_BLUETOOTH_UPLOAD_BYTES` in `src/services/muon-ble/upload.ts` limits a
-file to **512 KiB (524,288 bytes)** when `bluetoothCarrying(printerId)` says
-Bluetooth is the current path. Multipart overhead does not count against the
-file limit. Selecting Bluetooth is not sufficient; Auto is subject to the same
-current-path check. LAN and cloud-relay uploads are not limited by this policy.
-The check runs before encoding a file and again before calling WASM, so a route
-change during encoding is checked too.
+file to **16 MiB** when `bluetoothCarrying(printerId)` says Bluetooth is the
+current path. The limit is Control's own: muon-link-device and Moonraker accept
+uploads up to 1 GiB, so nothing printer-side caps it. 16 MiB is what a phone
+browser holds safely, because the body is encoded in memory and copied a few
+times before WASM. Multipart overhead does not count against the file limit.
+Selecting Bluetooth is not sufficient; Auto is subject to the same
+current-path check. LAN, hotspot and cloud-relay uploads are not limited by this
+policy. The check runs before encoding a file and again before calling WASM.
+
+A file whose estimate (size / 5 KiB/s) is over 5 minutes still uploads, with a
+warning, a progress bar, a time left and a Cancel button. Cancel closes the
+session so the radio stops sending. Over the limit the upload is refused with:
+"This file is large for Bluetooth (about N min). Join the printer's hotspot and
+upload from there for a faster transfer."
 
 ## Derivation without hardware
 

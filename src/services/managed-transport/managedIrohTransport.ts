@@ -45,6 +45,7 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
   private session: AuthorizedManagedRelaySession
   private endpoint: ManagedIrohEndpoint | null = null
   private relayPromise: Promise<ManagedIrohRelay> | null = null
+  private readonly dialled = new WeakMap<Promise<ManagedIrohRelay>, ManagedIrohRelay>()
   private selectionGeneration = 0
   private failedDials = 0
   /** A relay has been up: the printer's grant for this key may since have lapsed or been forgotten. */
@@ -146,9 +147,13 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
   }
 
   private relay (): Promise<ManagedIrohRelay> {
+    // A relay that closed itself (a cancelled Bluetooth upload closes the
+    // session) is dead: dial a new one now, so the very next call works.
+    if (this.relayPromise && this.dialled.get(this.relayPromise)?.closed) this.relayPromise = null
     if (!this.relayPromise) {
       const dial = this.dial(this.selectionGeneration)
       this.relayPromise = dial
+      dial.then(relay => { this.dialled.set(dial, relay) }, () => {})
       // A failed dial is not kept: the next request dials again.
       dial.catch(() => {
         if (this.relayPromise === dial) this.relayPromise = null

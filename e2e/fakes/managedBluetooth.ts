@@ -101,6 +101,8 @@ export async function managedBluetooth (origin: string, options: { operator?: bo
           return { status: 201, headers: ['content-type', 'application/json'], body: new TextEncoder().encode(JSON.stringify({ result: { item, action: 'create_file' } })) }
         },
         fetch: async (method: string, path: string, headers: string[], body: Uint8Array) => {
+          // A closed session is dead, as the real one is: the transport must dial a new one.
+          if (closed) throw new Error('Bluetooth connection closed')
           if (path.startsWith('/server/muon/identity')) {
             counts.identities++
             return { status: 403, headers: ['content-type', 'application/json'], body: new TextEncoder().encode(JSON.stringify({ error: policyMessage })) }
