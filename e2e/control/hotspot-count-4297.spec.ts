@@ -35,14 +35,17 @@ test.describe('this network', () => {
 
   test('the count shows, with its tooltip, and the poll stays light', async ({ page, open }) => {
     const hits = { n: 0 }
+    await page.clock.install()
     await stationsOnLan(page, { up: true, count: 2, auto_off_at: null }, hits)
     await open('/')
     await expect(count(page)).toBeVisible()
     await expect(count(page).getByTestId('hotspot-count-n')).toHaveText('2')
     await expect(count(page)).toHaveAttribute('title', "2 devices on the printer's hotspot")
     // About every 10 s, never a burst.
-    await page.waitForTimeout(3000)
-    expect(hits.n).toBeLessThanOrEqual(2)
+    // A known number of intervals on a fake clock gives a known number of asks.
+    const before = hits.n
+    await page.clock.runFor(10_000 * 3 + 500)
+    await expect.poll(() => hits.n - before).toBe(3)
   })
 
   test('a hotspot that is up with nobody on it says 0', async ({ page, open }) => {
