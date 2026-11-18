@@ -14,7 +14,7 @@ const cloud = vi.hoisted(() => ({
   dropCloudConnection: vi.fn(),
   setActiveCloudPrinter: vi.fn(),
   printerName: vi.fn(() => 'Boxwood'),
-  cloudState: { activePrinterId: null }
+  cloudState: { activePrinterId: null, printers: [] as { id: string }[] }
 }))
 vi.mock('../state', () => cloud)
 vi.mock('../discovery', () => ({ pageReach: vi.fn(async () => 'reached'), isOwnHotspot: vi.fn(() => false) }))
@@ -123,7 +123,10 @@ describe('offering to pair this browser (KAN-1253)', () => {
 
     await activateCloudPrinter(EID)
 
-    expect(radio.fetch).toHaveBeenCalledTimes(1)
+    // One ask for the page's own sake, then the pairing read for an Open printer's granted role (KAN-4309).
+    const paths = (radio.fetch.mock.calls as unknown[][]).map(c => c[0])
+    expect(paths.filter(p => p === '/server/info')).toHaveLength(1)
+    expect(paths).toHaveLength(2)
   })
 
   it.each([401, 403])('never offers it for the console saying %i', async status => {
