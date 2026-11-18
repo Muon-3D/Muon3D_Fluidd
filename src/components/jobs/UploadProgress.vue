@@ -19,7 +19,21 @@
       <div role="status">
         {{ file.percent }}% · {{ $filters.getReadableFileSizeString(file.loaded) }} / {{ $filters.getReadableFileSizeString(file.size) }}
         <span v-if="file.percent === 100"> · Verifying and saving…</span>
+        <span
+          v-else-if="remaining(file)"
+          data-tid="upload-eta"
+        > · {{ remaining(file) }}</span>
       </div>
+      <button
+        v-if="file.percent < 100"
+        type="button"
+        class="upload-progress__cancel"
+        data-tid="upload-cancel"
+        :aria-label="`Cancel uploading ${file.filepath}`"
+        @click="cancel(file)"
+      >
+        Cancel
+      </button>
     </div>
   </section>
 </template>
@@ -30,8 +44,28 @@ import type { FilesUpload } from '@/store/files/types'
 
 @Component
 export default class UploadProgress extends Vue {
+  // When each file's bytes first started moving (not reactive on purpose).
+  private started: Record<string, { at: number, loaded: number }> = {}
+
   get uploads (): FilesUpload[] {
     return this.$store.state.files.uploads.filter((file: FilesUpload) => !file.cancelled)
+  }
+
+  /** "about 3 min left", from the bytes moved so far; nothing until it is a fair guess. */
+  remaining (file: FilesUpload): string {
+    if (!file.loaded) return ''
+    const start = this.started[file.filepath] ??= { at: Date.now(), loaded: file.loaded }
+    const elapsed = (Date.now() - start.at) / 1000
+    const moved = file.loaded - start.loaded
+    if (elapsed < 5 || moved <= 0) return ''
+    const seconds = Math.ceil((file.size - file.loaded) / (moved / elapsed))
+    if (seconds < 20) return ''
+    return seconds < 90 ? `about ${seconds} s left` : `about ${Math.ceil(seconds / 60)} min left`
+  }
+
+  cancel (file: FilesUpload) {
+    this.$store.dispatch('files/updateFileUpload', { filepath: file.filepath, cancelled: true })
+    file.abortController?.abort()
   }
 }
 </script>
@@ -51,5 +85,6 @@ export default class UploadProgress extends Vue {
   overflow-wrap: anywhere;
 }
 .upload-progress__file + .upload-progress__file { margin-top: 12px; }
+.upload-progress__cancel { margin-top: 4px; padding: 4px 12px; border: 1px solid var(--m3d-border-strong); border-radius: 8px; color: inherit; }
 progress { display: block; width: 100%; margin: 8px 0; accent-color: var(--m3d-accent); }
 </style>

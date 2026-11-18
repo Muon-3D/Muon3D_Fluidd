@@ -14,7 +14,8 @@ import type {
   PrinterSocket
 } from '@/services/managed-transport'
 import { bluetoothCarrying, bluetoothDropped, bluetoothRouteFor, noteBluetoothDropped, wantsBluetoothFor, type WasmBleLink } from '@/services/muon-ble/link'
-import { assertBluetoothUploadSize, watchBluetoothUpload } from '@/services/muon-ble/upload'
+import { assertBluetoothUploadSize, bluetoothLargeFileMessage, bluetoothUploadFileSize, isLongBluetoothUpload, watchBluetoothUpload } from '@/services/muon-ble/upload'
+import { EventBus } from '@/eventBus'
 import { pinnedBluetoothError } from '@/services/muon-ble/refusal'
 import { CloudError, INSECURE_ORIGIN_MESSAGE, cloudBaseUrl, cloudSessionAllowed, cloudTokensPersist } from './api'
 import { endpointBusy, notifyEndpointRebound, notifyEndpointReplacing } from './endpoint-hooks'
@@ -407,6 +408,10 @@ export class IrohPrinter implements ManagedIrohRelay {
     if (signal?.aborted) throw abortError(signal)
     const overBluetooth = upload && bluetoothCarrying(this.printer.printerId())
     if (overBluetooth) assertBluetoothUploadSize(init?.body, body.length)
+    if (overBluetooth) {
+      const size = bluetoothUploadFileSize(init?.body, body.length)
+      if (isLongBluetoothUpload(size)) EventBus.$emit(bluetoothLargeFileMessage(size), { type: 'warning', timeout: 12000 })
+    }
     const send = (report?: UploadProgress) => this.printer.fetchWithProgress
       ? this.printer.fetchWithProgress(method, path, headers, body, report)
       : this.printer.fetch(method, path, headers, body)
