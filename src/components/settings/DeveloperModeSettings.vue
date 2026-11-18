@@ -6,7 +6,6 @@
   >
     <div
       class="devm__card"
-      :class="{ 'devm__card--on': state.enabled === true }"
       data-tid="developer-mode-card"
     >
       <header class="devm__head">
@@ -90,7 +89,7 @@
         >
           <button
             type="button"
-            class="cbtn cbtn--ghost devm__small"
+            class="cbtn devm__small"
             :disabled="busy"
             data-tid="developer-backup"
             @click="backupConfig"
@@ -99,7 +98,7 @@
           </button>
           <button
             type="button"
-            class="cbtn cbtn--ghost devm__small"
+            class="cbtn devm__small"
             :disabled="busy"
             data-tid="developer-reset"
             @click="restoreDefaults"
@@ -556,10 +555,6 @@ export default class DeveloperModeSettings extends Vue {
     background: var(--m3d-surface-2);
   }
 
-  .devm__card--on {
-    border: 1px solid var(--m3d-warning, #e8963c);
-  }
-
   .devm__warranty {
     display: flex;
     align-items: flex-start;
@@ -597,7 +592,12 @@ export default class DeveloperModeSettings extends Vue {
     color: var(--m3d-success, #57c08a) !important;
   }
 
+  .devm__head :deep(.toggle--on) {
+    background: var(--m3d-success);
+  }
+
   .devm__small {
+    background: var(--m3d-fill);
     min-height: 0;
     padding: 7px 14px;
     font-size: 13px;
