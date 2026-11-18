@@ -3,7 +3,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { IrohPrinter } from '../iroh'
 import { chooseRouteMode } from '../route-choice'
 import { bluetoothCarrying } from '@/services/muon-ble/link'
-import { BLUETOOTH_UPLOAD_TOO_BIG, MAX_BLUETOOTH_UPLOAD_BYTES } from '@/services/muon-ble/upload'
+import { bluetoothLargeFileMessage, MAX_BLUETOOTH_UPLOAD_BYTES } from '@/services/muon-ble/upload'
 import { ManagedIrohPrinterTransport } from '@/services/managed-transport'
 
 vi.mock('@/services/muon-ble/link', async importOriginal => ({
@@ -26,7 +26,7 @@ it.each([
   body.append('file', new Blob([new Uint8Array(MAX_BLUETOOTH_UPLOAD_BYTES + 1)]))
   const work = printer.fetch('/server/files/upload', { method: 'POST', body })
   if (carrying) {
-    await expect(work).rejects.toThrow(BLUETOOTH_UPLOAD_TOO_BIG)
+    await expect(work).rejects.toThrow(bluetoothLargeFileMessage(MAX_BLUETOOTH_UPLOAD_BYTES + 1))
     expect(fetchWithProgress).not.toHaveBeenCalled()
   } else {
     await expect(work).resolves.toHaveProperty('status', 201)
@@ -38,7 +38,7 @@ it('rechecks the current route after encoding, before the first byte is sent', a
   vi.mocked(bluetoothCarrying).mockReturnValueOnce(false).mockReturnValue(true)
   const fetchWithProgress = vi.fn()
   const printer = new IrohPrinter({ printerId: () => 'printer', fetchWithProgress } as any)
-  await expect(printer.fetch('/server/files/upload?print=false', { method: 'POST', body: new Uint8Array(MAX_BLUETOOTH_UPLOAD_BYTES + 1) })).rejects.toThrow(BLUETOOTH_UPLOAD_TOO_BIG)
+  await expect(printer.fetch('/server/files/upload?print=false', { method: 'POST', body: new Uint8Array(MAX_BLUETOOTH_UPLOAD_BYTES + 1) })).rejects.toThrow(bluetoothLargeFileMessage(MAX_BLUETOOTH_UPLOAD_BYTES + 1))
   expect(fetchWithProgress).not.toHaveBeenCalled()
 })
 
@@ -52,7 +52,7 @@ it('a local size refusal leaves the shared managed connection available', async 
   })
   const body = new FormData()
   body.append('file', new Blob([new Uint8Array(MAX_BLUETOOTH_UPLOAD_BYTES + 1)]))
-  await expect(transport.fetch('/server/files/upload', { method: 'POST', body })).rejects.toMatchObject({ kind: 'refused', message: BLUETOOTH_UPLOAD_TOO_BIG })
+  await expect(transport.fetch('/server/files/upload', { method: 'POST', body })).rejects.toMatchObject({ kind: 'refused', message: bluetoothLargeFileMessage(MAX_BLUETOOTH_UPLOAD_BYTES + 1) })
   expect(transport.status.connection).toBe('connected')
   expect(close).not.toHaveBeenCalled()
 })
