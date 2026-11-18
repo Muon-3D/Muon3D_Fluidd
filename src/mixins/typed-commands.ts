@@ -5,6 +5,8 @@ import { inspectTypedGcode } from '@/services/console/typed-gcode'
 import { cloudState } from '@/services/muon-cloud/state'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { grantedRoleFor } from '@/services/muon-ble/granted-role'
+import { remoteRouteLabel } from '@/services/muon-ble/link'
 
 /** Typed entry points share this preflight/send path; panel-generated G-code stays in StateMixin. */
 @Component
@@ -25,7 +27,11 @@ export default class TypedCommandsMixin extends Mixins(StateMixin) {
     const remote = isManagedApiUrl(this.$store.state.config.apiUrl)
     if (remote !== printerTransportBinding.remote) return false
     if (!remote) return true // Existing LAN authentication; Moonraker remains the authority.
-    return cloudState.printers.find(p => p.id === cloudState.activePrinterId)?.role === 'operator'
+    const held = cloudState.printers.find(p => p.id === cloudState.activePrinterId)
+    if (held) return held.role === 'operator'
+    // No account holds it: an Open printer's Operator guest over Bluetooth (D-166, KAN-4309). Never over the relay.
+    const id = cloudState.activePrinterId
+    return !!id && remoteRouteLabel(id) === 'Via Bluetooth' && grantedRoleFor(id) === 'operator'
   }
 
   get restartRefusal (): string {
