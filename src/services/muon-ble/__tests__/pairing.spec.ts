@@ -3,6 +3,9 @@ import { EID, fakeEndpoint, fakePrinter } from './fakes'
 import { stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '../link'
 
 const held = vi.hoisted(() => ({ endpoint: null as any }))
+/** Whether the session really travels over Bluetooth (the radio truth), or has fallen back to the relay. */
+const radio = vi.hoisted(() => ({ carrying: true }))
+vi.mock('../link', async importOriginal => ({ ...(await importOriginal<typeof import('../link')>()), bluetoothCarrying: () => radio.carrying, bluetoothFellBack: () => (radio.carrying ? null : 'The printer answered through Muon3D, not over Bluetooth.') }))
 vi.mock('@/services/muon-cloud/iroh', () => ({ browserEndpoint: vi.fn(async () => held.endpoint) }))
 const activate = vi.hoisted(() => ({ activateCloudPrinter: vi.fn(async () => true), activationState: { switching: null, error: null, fallbackUrl: null, pairing: null } }))
 vi.mock('@/services/muon-cloud/activate', () => activate)
@@ -29,6 +32,7 @@ let printer: ReturnType<typeof fakePrinter>
 const linksOpen = () => ble.links.filter(l => !l.isClosed()).length
 
 beforeEach(() => {
+  radio.carrying = true
   ble = fakeEndpoint()
   session = { comparison: vi.fn(() => 'F6Q TDH'), submitCode: vi.fn(), free: vi.fn() }
   beginPairing = vi.fn(async () => session)
@@ -73,6 +77,18 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
       expect(beginPairing).not.toHaveBeenCalled()
       expect(pairingState.phase).toBe('idle')
       expect(activate.activateCloudPrinter).toHaveBeenCalledWith(EID)
+    })
+
+    it('does not count as open when the session fell back to the cloud relay: strangers never get in that way (KAN-3993)', async () => {
+      const open = answer({ accepting: true, entry: 'open' })
+      held.endpoint.connect = vi.fn(async () => open)
+      radio.carrying = false
+
+      await startPairing(EID)
+
+      expect(activate.activateCloudPrinter).not.toHaveBeenCalled()
+      expect(beginPairing).toHaveBeenCalledTimes(1)
+      expect(pairingState.phase).toBe('code')
     })
 
     it.each([

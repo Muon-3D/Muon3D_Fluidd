@@ -80,6 +80,18 @@ describe('routes for a printer you do not own', () => {
     expect(all.find(a => a.id === 'connect-bluetooth')?.disabled).toBe(false)
   })
 
+  it('"Ask for access" is shown for a protected printer linked to another account (KAN-3993)', () => {
+    const all = methods.localActions.call({ askAction: methods.askAction }, saved) as CardAction[]
+    expect(all.map(a => a.id)).toContain('ask')
+  })
+
+  it('an Open printer linked to another account has no "Ask for access": anyone can go in (KAN-3993, D-166)', () => {
+    const open = { ...saved, lan: { entry: 'open' } as DirectoryEntry['lan'] }
+    const all = methods.localActions.call({ askAction: methods.askAction }, open) as CardAction[]
+    expect(all.map(a => a.id)).not.toContain('ask')
+    expect(ids(all)).toEqual(['connect-local', 'connect-bluetooth'])
+  })
+
   it('a printer found nearby that nobody owns offers Bluetooth', () => {
     const found = entry({ section: 'found', cloud: undefined, linkedTo: 'none', nearby: { device: {} } as DirectoryEntry['nearby'] })
     const all = methods.foundActions.call({ askAction: methods.askAction }, found) as CardAction[]

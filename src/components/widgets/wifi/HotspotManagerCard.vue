@@ -13,6 +13,12 @@
             class="hs__ico"
           />
           Hotspot
+          <span
+            v-if="!compact && !locked && stations && stations.up"
+            class="hs__badge"
+            :class="{ 'hs__badge--zero': stations.count === 0 }"
+            data-tid="hotspot-badge"
+          ><i />{{ stations.count }} connected</span>
         </h2>
         <p v-if="compact && deviceStatus && apCredentials && !locked && !remote">
           {{ apState ? 'On' : 'Off' }} · {{ apCredentials.ssid }}{{ apCredentials.security_enabled === false ? ' · open' : '' }}
@@ -168,27 +174,90 @@
       class="hs__people"
       data-tid="hotspot-devices"
     >
-      <h3 data-tid="hotspot-devices-count">
+      <p
+        v-if="autoOffLine"
+        class="hs__autooff"
+        data-tid="hotspot-auto-off"
+      >
+        <frame-icon
+          name="clock"
+          small
+        />
+        <span><b>{{ autoOffLine }}</b> when nobody is using it</span>
+      </p>
+      <h3
+        v-if="!hasClients"
+        class="hs__empty"
+        data-tid="hotspot-devices-count"
+      >
         {{ deviceLine }}
       </h3>
       <ul
-        v-if="stations.clients && stations.clients.length"
+        v-else
         class="hs__list"
         data-tid="hotspot-clients"
       >
+        <li
+          class="hs__client hs__client--head"
+          aria-hidden="true"
+        >
+          <span />
+          <span>Device</span>
+          <span>IP</span>
+          <span>MAC</span>
+          <span>Connected</span>
+          <span>Signal</span>
+        </li>
         <li
           v-for="(c, i) in stations.clients"
           :key="`${c.mac}-${i}`"
           class="hs__client"
           data-tid="hotspot-client"
         >
-          <b>{{ c.name || 'Unnamed device' }}</b>
+          <span class="hs__dev-ico"><frame-icon :name="c.name ? 'phone' : 'help'" /></span>
+          <span class="hs__name">
+            <b :class="{ 'hs__unnamed': !c.name }">{{ c.name || 'Unnamed device' }}</b>
+            <span
+              v-if="c.you"
+              class="hs__you"
+              data-tid="hotspot-client-you"
+            >This device</span>
+          </span>
           <span
-            v-if="c.you"
-            class="hs__you"
-            data-tid="hotspot-client-you"
-          >This device</span>
-          <span class="hs__client-meta">{{ clientMeta(c) }}</span>
+            class="hs__cell hs__mono hs__ip"
+            data-tid="hotspot-client-ip"
+          >{{ c.ip }}</span>
+          <span
+            class="hs__cell hs__mono hs__mac"
+            data-tid="hotspot-client-mac"
+          >{{ c.mac }}</span>
+          <span
+            class="hs__cell hs__conn"
+            data-tid="hotspot-client-connected"
+          >{{ c.connectedSeconds !== null ? `connected ${connectedFor(c.connectedSeconds)}` : '' }}</span>
+          <span
+            class="hs__cell hs__sig"
+            data-tid="hotspot-client-signal"
+          >
+            <svg
+              v-if="c.signalDbm !== null"
+              class="hs__bars"
+              viewBox="0 0 20 16"
+              aria-hidden="true"
+            >
+              <rect
+                v-for="bar in 4"
+                :key="bar"
+                :x="(bar - 1) * 5"
+                :y="16 - bar * 4"
+                width="3.5"
+                :height="bar * 4"
+                rx="1"
+                :class="{ 'hs__bar--on': bar <= dbmLevel(c.signalDbm) }"
+              />
+            </svg>
+            <span v-if="c.signalDbm !== null">{{ c.signalDbm }} dBm</span>
+          </span>
         </li>
       </ul>
     </div>
@@ -266,8 +335,8 @@ import type { VForm } from '@/types'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
 import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
-import { connectedFor, hotspotState } from '@/services/hotspot/model'
-import type { HotspotClient, HotspotStations } from '@/services/hotspot/model'
+import { autoOffIn, connectedFor, dbmLevel, hotspotState } from '@/services/hotspot/model'
+import type { HotspotStations } from '@/services/hotspot/model'
 import { startHotspotPoll } from '@/services/hotspot/poller'
 
 const { onHotspot } = useHotspotCheck()
@@ -433,14 +502,21 @@ export default class HotspotManagerCard extends Vue {
     return n === 0 ? 'No devices connected' : `${n} ${n === 1 ? 'device' : 'devices'} connected`
   }
 
-  /** "10.42.0.12 · aa:bb:cc:••:••:ef · connected 12 min · -52 dBm". */
-  clientMeta (c: HotspotClient): string {
-    return [
-      c.ip,
-      c.mac,
-      c.connectedSeconds !== null ? `connected ${connectedFor(c.connectedSeconds)}` : null,
-      c.signalDbm !== null ? `${c.signalDbm} dBm` : null
-    ].filter(Boolean).join(' · ')
+  /** The printer sent the list (a printer that predates it sends the count only). */
+  get hasClients (): boolean {
+    return !!this.stations?.clients?.length
+  }
+
+  get autoOffLine (): string | null {
+    return autoOffIn(this.stations?.autoOffAt ?? null)
+  }
+
+  connectedFor (seconds: number | null): string {
+    return connectedFor(seconds)
+  }
+
+  dbmLevel (dbm: number | null): number {
+    return dbmLevel(dbm)
   }
 
   async mounted () {
@@ -852,47 +928,197 @@ export default class HotspotManagerCard extends Vue {
     font-size: 14px;
   }
 
+  .hs__badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--m3d-success) 16%, transparent);
+    color: var(--m3d-success);
+    font-size: 12px;
+    font-weight: 700;
+
+    i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentcolor;
+    }
+  }
+
+  .hs__badge--zero {
+    background: var(--m3d-fill, var(--m3d-surface-2));
+    color: var(--m3d-text-muted);
+  }
+
   .hs__people {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
+  }
 
-    h3 {
-      margin: 0;
-      font-size: 14px;
+  .hs__autooff {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    color: var(--m3d-text-muted);
+    font-size: 13px;
+
+    b {
+      color: var(--m3d-text);
       font-weight: 600;
     }
+
+    .frame-icon {
+      color: var(--m3d-warning);
+    }
+  }
+
+  .hs__empty {
+    margin: 0;
+    padding: 14px;
+    border-radius: 14px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text-muted);
+    font-size: 14px;
+    font-weight: 500;
   }
 
   .hs__list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
   .hs__client {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.3fr) 118px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 8px 0;
+    font-size: 14px;
+
+    & + & {
+      border-top: 1px solid var(--m3d-border);
+    }
+  }
+
+  .hs__client--head {
+    min-height: 24px;
+    padding: 0;
+    color: var(--m3d-text-subtle);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+
+    & + & {
+      border-top: 0;
+    }
+
+    & + .hs__client {
+      border-top: 0;
+    }
+  }
+
+  .hs__dev-ico {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--m3d-surface-2);
+    color: var(--m3d-text-muted);
+  }
+
+  .hs__name {
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
-    gap: 2px 10px;
-    font-size: 14px;
+    align-items: center;
+    gap: 4px 8px;
+    min-width: 0;
+
+    b {
+      overflow-wrap: anywhere;
+      font-size: 15px;
+      font-weight: 600;
+    }
+  }
+
+  .hs__unnamed {
+    color: var(--m3d-text-muted);
+    font-weight: 500 !important;
   }
 
   .hs__you {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--m3d-accent-soft);
     color: var(--m3d-accent);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
   }
 
-  .hs__client-meta {
-    flex-basis: 100%;
+  .hs__cell {
+    min-width: 0;
     overflow-wrap: anywhere;
     color: var(--m3d-text-muted);
+    font-size: 13px;
+  }
+
+  .hs__mono {
     font-family: var(--m3d-font-mono);
     font-size: 12px;
+  }
+
+  .hs__sig {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+
+  .hs__bars {
+    flex: none;
+    width: 20px;
+    height: 16px;
+
+    rect {
+      fill: var(--m3d-border-strong);
+    }
+
+    .hs__bar--on {
+      fill: var(--m3d-text);
+    }
+  }
+
+  // On a phone a device is a card of three short lines, not a table.
+  @media (max-width: 760px) {
+    .hs__client--head {
+      display: none;
+    }
+
+    .hs__client {
+      grid-template-columns: 36px 1fr auto;
+      grid-template-areas:
+        'ico name name'
+        '. ip mac'
+        '. conn sig';
+      gap: 4px 12px;
+      padding: 12px 0;
+    }
+
+    .hs__dev-ico { grid-area: ico; align-self: start; }
+    .hs__name { grid-area: name; }
+    .hs__ip { grid-area: ip; }
+    .hs__mac { grid-area: mac; text-align: right; }
+    .hs__conn { grid-area: conn; }
+    .hs__sig { grid-area: sig; justify-self: end; }
   }
 
   .hs__body {

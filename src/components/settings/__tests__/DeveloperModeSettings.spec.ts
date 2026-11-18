@@ -63,14 +63,44 @@ describe('developer mode in Settings', () => {
     api.getDevModeStatusDevModeGet.mockImplementation(async () => status({ enabled: printer.devMode, ever_enabled: printer.everEnabled }))
   })
 
-  it('reads whether the printer would record it for good', async () => {
+  it('is an admin build only when the printer says its guard is disarmed', async () => {
     await refreshDevMode()
     expect(devModeState).toMatchObject({ enabled: false, canManage: true, guardArmed: true, otpArmed: false })
-    expect(component().fuseText).toMatch(/fuse is disarmed, so you can turn developer mode on and off freely/)
+    expect(component().adminBuild).toBe(false)
 
-    api.getDevModeStatusDevModeGet.mockResolvedValue(status({ otp_record_armed: true }))
+    api.getDevModeStatusDevModeGet.mockResolvedValue(status({ guard_armed: false }))
     await refreshDevMode()
-    expect(component().fuseTone).toBe('warn')
+    expect(component().adminBuild).toBe(true)
+
+    // An answer that doesn't say counts as a release build, and a fuse that records is never an admin build.
+    api.getDevModeStatusDevModeGet.mockResolvedValue(status({ guard_armed: undefined }))
+    await refreshDevMode()
+    expect(component().adminBuild).toBe(false)
+    api.getDevModeStatusDevModeGet.mockResolvedValue(status({ guard_armed: false, otp_record_armed: true }))
+    await refreshDevMode()
+    expect(component().adminBuild).toBe(false)
+  })
+
+  it('gives an SSH address on an admin build with it on, from the printer own name, and nowhere else', async () => {
+    const withHost = (hostname: unknown) => {
+      const vm = component()
+      vm.$store = { state: { printer: { printer: { info: { hostname } } } } }
+      return vm
+    }
+    api.getDevModeStatusDevModeGet.mockResolvedValue(status({ enabled: true, guard_armed: false }))
+    await refreshDevMode()
+    expect(withHost('m1-4f2a').sshAddress).toBe('ssh root@m1-4f2a.local')
+    expect(withHost('').sshAddress).toBe('')
+    expect(withHost(undefined).sshAddress).toBe('')
+    expect(withHost('a b; rm -rf').sshAddress).toBe('')
+
+    api.getDevModeStatusDevModeGet.mockResolvedValue(status({ enabled: true, guard_armed: true }))
+    await refreshDevMode()
+    expect(withHost('m1-4f2a').sshAddress).toBe('')
+
+    api.getDevModeStatusDevModeGet.mockResolvedValue(status({ enabled: false, guard_armed: false }))
+    await refreshDevMode()
+    expect(withHost('m1-4f2a').sshAddress).toBe('')
   })
 
   it('does not take a page that answers with HTML for an answer', async () => {

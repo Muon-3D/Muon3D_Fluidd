@@ -84,34 +84,39 @@
 
       <div class="app-rail__spacer" />
 
-      <network-quick-menu
-        :title="routeTitle"
-        :detail="routeDetail"
-        :remote="remote"
-        :compact="compact"
-      >
-        <span class="app-rail__route">
-          <span class="app-rail__route-title">
-            <frame-icon
-              :name="remote ? 'cloud' : 'wifi'"
-              small
-              :class="remote ? 'app-rail__route-icon--remote' : 'app-rail__route-icon'"
-            />
-            <span v-if="!compact">{{ routeTitle }}</span>
-            <frame-icon
-              v-if="!compact"
-              name="chevronUp"
-              small
-              class="app-rail__route-more"
-            />
+      <div class="app-rail__net">
+        <hotspot-count
+          class="app-rail__hotspot"
+          :compact="compact"
+        />
+        <network-quick-menu
+          :title="routeTitle"
+          :detail="routeDetail"
+          :remote="remote"
+          :compact="compact"
+        >
+          <span class="app-rail__route">
+            <span class="app-rail__route-title">
+              <frame-icon
+                :name="remote ? 'cloud' : 'wifi'"
+                small
+                :class="remote ? 'app-rail__route-icon--remote' : 'app-rail__route-icon'"
+              />
+              <span v-if="!compact">{{ routeTitle }}</span>
+              <frame-icon
+                v-if="!compact"
+                name="chevronUp"
+                small
+                class="app-rail__route-more"
+              />
+            </span>
+            <span
+              v-if="!compact && routeDetail"
+              class="app-rail__route-detail"
+            >{{ routeDetail }}</span>
           </span>
-          <span
-            v-if="!compact && routeDetail"
-            class="app-rail__route-detail"
-          >{{ routeDetail }}</span>
-          <hotspot-count />
-        </span>
-      </network-quick-menu>
+        </network-quick-menu>
+      </div>
     </nav>
   </v-navigation-drawer>
 </template>
@@ -244,6 +249,19 @@ export default class AppRail extends Mixins(FrameMixin, BrowserMixin) {
     margin: 12px 8px;
     color: var(--m3d-text-muted);
     font-size: 12px;
+  }
+
+  .app-rail__net {
+    display: flex;
+    flex-direction: column;
+    // The tab sits flush on the item's left edge, so that corner is square.
+    &:has(.app-rail__hotspot) .app-rail__route {
+      border-top-left-radius: 0;
+    }
+  }
+
+  .app-rail__hotspot {
+    align-self: flex-start;
   }
 
   .app-rail__route {

@@ -109,7 +109,7 @@ export default class Wifi extends Mixins(BrowserMixin) {
     grid-column: span 12;
   }
 
-  // On a phone the list is the page: no side detail, one short row per
+  // On a phone the list is the page: no side detail (the bars stay), one short row per
   // network, so scrolling it is one gesture and not a hunt.
   .wifi-page--phone .stiles {
     gap: 12px;
@@ -119,9 +119,13 @@ export default class Wifi extends Mixins(BrowserMixin) {
     padding: 14px;
   }
 
-  .wifi-page--phone :deep(.wf__detail),
-  .wifi-page--phone :deep(.wf__net .wf__bars) {
+  .wifi-page--phone :deep(.wf__detail) {
     display: none;
+  }
+
+  .wifi-page--phone :deep(.wf__net .wf__bars) {
+    width: 20px;
+    height: 16px;
   }
 
   .wifi-page--phone :deep(.wf__net .srow__s) {
