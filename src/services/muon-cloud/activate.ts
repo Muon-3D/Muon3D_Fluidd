@@ -19,7 +19,7 @@ import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
 import { noteRelayLost, noteUserOpen } from './route-choice'
 import { requestRefused } from '@/services/managed-transport/refusal'
 import { isOwnHotspot, pageReach } from './discovery'
-import { forgetGrantedRole, readGrantedRole } from '@/services/muon-ble/granted-role'
+import { forgetGrantedRole, grantedRoleFor, readGrantedRole } from '@/services/muon-ble/granted-role'
 import { releaseBluetoothLink, stopUsingBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
 import { onApprovalWatch, type ApprovalWatch } from './approval'
@@ -224,7 +224,14 @@ export async function activateCloudPrinter (printerId: string) {
           socket.close()
           throw new SwitchSuperseded()
         }
-        Vue.$socket.adoptTransportSocket(socket, () => borrowed.openWebSocket('/websocket'))
+        Vue.$socket.adoptTransportSocket(socket, async () => {
+          const reopened = await borrowed.openWebSocket('/websocket')
+          // A grant that never came (every read failed) is asked for again once the printer is back.
+          if (wantsBluetoothFor(printerId) && !grantedRoleFor(printerId) && !cloudState.printers.some(p => p.id === printerId) && !superseded()) {
+            readGrantedRole(printerId, path => borrowed.fetch(path), { keep: true }).catch(() => {})
+          }
+          return reopened
+        })
       })
     } catch (error) {
       // Replaced before it was bound: nothing else will close it.

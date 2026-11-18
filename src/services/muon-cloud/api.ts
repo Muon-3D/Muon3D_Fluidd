@@ -600,7 +600,7 @@ export async function refreshSession (): Promise<boolean> {
  * `stillMine`, when given, is asked before a 401 is retried with another token: a request made for one account must
  * never be sent again with the next account's (KAN-2249: a layout PUT in flight across a sign-out).
  */
-async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true, stillMine?: () => boolean): Promise<T> {
+async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true, stillMine?: () => boolean, timeoutMs?: number): Promise<T> {
   // KAN-2192: no bearer and no password leaves a plain-HTTP page, whoever asks.
   if (!cloudSessionAllowed() && (token || !INSECURE_ORIGIN_CALLS.includes(`${method} ${path}`))) refuseOnInsecureOrigin()
   const startedAt = deletionRevision()
@@ -608,14 +608,20 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
   let response: Response
+  // A request that hangs (offline hotspot, a captive network) is the same as one that cannot connect: status 0.
+  const controller = timeoutMs ? new AbortController() : null
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null
   try {
     response = await fetch(`${cloudBaseUrl()}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body)
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller?.signal
     })
   } catch {
     throw new CloudError('The Muon3D service could not be reached.', 0)
+  } finally {
+    if (timer !== null) clearTimeout(timer)
   }
   // A central-login access token lasts 15 minutes. Refresh once and retry;
   // only for the stored session, never for a token passed in.
@@ -625,12 +631,12 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
     // response or spending the new refresh token again.
     const currentToken = storedToken()
     if (currentToken && token !== currentToken) {
-      return request<T>(method, path, body, storedToken(), false)
+      return request<T>(method, path, body, storedToken(), false, undefined, timeoutMs)
     }
     if (currentToken) {
       const outcome = await refreshOutcome()
       // Asked again: the account can change while the refresh is on its way.
-      if (outcome === 'ok' && (!stillMine || stillMine())) return request<T>(method, path, body, storedToken(), false)
+      if (outcome === 'ok' && (!stillMine || stillMine())) return request<T>(method, path, body, storedToken(), false, undefined, timeoutMs)
       // The console did not answer: that is not a sign-out, so do not look like one.
       if (outcome === 'unreachable') throw new CloudError('The Muon3D service could not be reached.', 0)
     }
@@ -676,6 +682,9 @@ export function forgetSessionId () {
   knownSession = null
 }
 
+/** How long `/v1/me` may take before the console counts as unreachable (offline: a status 0 error, no toast). */
+export const ME_TIMEOUT_MS = 8000
+
 export const cloudApi = {
   config: () => request<CloudConfig>('GET', '/v1/config'),
   signIn: (email: string, password: string) =>
@@ -686,7 +695,7 @@ export const cloudApi = {
   signUp: (email: string, password: string, name: string, declaredAge?: number) =>
     request<{ token: string, account: CloudAccount }>('POST', '/v1/auth/sign-up', { email, password, name, declared_age: declaredAge }),
   signOut: () => request<{ ok: boolean }>('POST', '/v1/auth/sign-out'),
-  me: async () => noteSessionId(await request<MeAnswer>('GET', '/v1/me')),
+  me: async () => noteSessionId(await request<MeAnswer>('GET', '/v1/me', undefined, storedToken(), true, undefined, ME_TIMEOUT_MS)),
   /** `me` that never refreshes: for use while a refresh is itself in progress (it would wait for itself). */
   meWithoutRefresh: async () => noteSessionId(await request<MeAnswer>('GET', '/v1/me', undefined, storedToken(), false)),
   /**
