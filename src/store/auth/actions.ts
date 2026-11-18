@@ -18,12 +18,20 @@ export const actions: ActionTree<AuthState, RootState> = {
   /**
    * Inits moonraker component
    */
-  async init ({ commit, rootState }) {
+  async init ({ commit, rootState, rootGetters }) {
     // A cloud printer is reached through muon-link's gateway, which refuses
     // Moonraker's user and credential endpoints to every remote role: a single
     // remote call there can lock the printer's own panel out. Asking anyway
     // only raised a "Server error" toast each time the printer was opened.
     if (isManagedApiUrl(rootState.config.apiUrl)) return
+
+    // A Muon printer answers to muon-link and the Muon cloud for who may use it
+    // (Settings > People and access). Its safety policy refuses Moonraker's user
+    // and API-key endpoints, because changing them could lock the panel out, so
+    // asking only raised errors. Stock Moonraker hosts are asked as before.
+    // `true` only: while server.info has not answered (null) the host is not
+    // known to be a Muon, and init runs after it has.
+    if (rootGetters['server/isMuonPrinter'] === true) return
 
     // Load current user.
     await httpClientActions.accessCurrentUserGet()

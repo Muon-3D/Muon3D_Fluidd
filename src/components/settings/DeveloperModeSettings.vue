@@ -315,6 +315,7 @@ export default class DeveloperModeSettings extends Vue {
   get whoLine (): string {
     if (this.state.enabled === null) return ''
     if (this.asking === null) return "Only the printer's owner can change developer mode. The first time it is turned on, the printer's own screen confirms it."
+    if (this.asking.owner.linked === null && !this.asking.owner.account) return `The printer decides who can change it. The first time it's turned on, ${this.printerName}'s own screen confirms it.`
     const account = this.asking.owner.account
     const who = this.asking.owner.linked ? (account ? `Only ${account} (the owner)` : 'Only the owner') : 'Anyone, while nobody owns this printer,'
     return `${who} can change it. The first time it's turned on, ${this.printerName}'s own screen confirms it.`
@@ -465,7 +466,7 @@ export default class DeveloperModeSettings extends Vue {
     if (!pending) return
     let answer
     try {
-      answer = await readAnswer(pending.challengeId)
+      answer = await readAnswer(pending.challengeId, pending.enabled)
       this.pollFailures = 0
     } catch (err) {
       this.pollFailures++
@@ -479,6 +480,12 @@ export default class DeveloperModeSettings extends Vue {
     }
     if (!answer.confirmed) return
     this.stopWaiting()
+    if (answer.applied) {
+      // A printer that takes the change alone: it is done, and asking again would open a second request.
+      this.changeDialog = false
+      await refreshDevMode()
+      return
+    }
     this.loading = true
     try {
       await completeChange({

@@ -12,10 +12,10 @@ vi.mock('@/api/httpClientActions', () => ({ httpClientActions: http }))
 const router = vi.hoisted(() => ({ currentRoute: { path: '/boxwood-367a' }, push: vi.fn() }))
 vi.mock('@/router', () => ({ default: router }))
 
-const init = (apiUrl: string) => {
+const init = (apiUrl: string, isMuonPrinter: boolean | null = false) => {
   const commit = vi.fn()
   const run = actions.init as (context: object) => Promise<void>
-  return { commit, done: run({ commit, rootState: { config: { apiUrl } } }) }
+  return { commit, done: run({ commit, rootState: { config: { apiUrl } }, rootGetters: { 'server/isMuonPrinter': isMuonPrinter } }) }
 }
 
 beforeEach(() => {
@@ -46,6 +46,29 @@ describe('auth/init', () => {
     expect(commit).toHaveBeenCalledWith('setCurrentUser', { username: 'jack' })
     expect(commit).toHaveBeenCalledWith('setUsers', [])
     expect(commit).toHaveBeenCalledWith('setApiKey', 'key')
+  })
+})
+
+describe('auth/init on a Muon printer (KAN-4340)', () => {
+  it("asks a Muon printer on the LAN for none of Moonraker's user and API-key endpoints", async () => {
+    const { commit, done } = init('http://boxwood.local', true)
+    await done
+
+    expect(http.accessCurrentUserGet).not.toHaveBeenCalled()
+    expect(http.accessUsersListGet).not.toHaveBeenCalled()
+    expect(http.accessApiKeyGet).not.toHaveBeenCalled()
+    expect(commit).not.toHaveBeenCalled()
+  })
+
+  it('keeps asking a host that is not a Muon, and one not yet known to be', async () => {
+    for (const known of [false, null]) {
+      vi.clearAllMocks()
+      http.accessCurrentUserGet.mockResolvedValue({ data: { result: { username: 'jack' } } })
+      http.accessUsersListGet.mockResolvedValue({ data: { result: { users: [] } } })
+      http.accessApiKeyGet.mockResolvedValue({ data: { result: 'key' } })
+      await init('http://klipper.local', known).done
+      expect(http.accessUsersListGet).toHaveBeenCalledOnce()
+    }
   })
 })
 
