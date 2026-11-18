@@ -48,11 +48,11 @@ describe('cloudApi.me() timeout', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  // Negative control: other console calls keep their old behaviour (no abort signal).
-  it('does not put a timeout on other calls', async () => {
+  // Other console calls have the longer default bound (12 s, KAN-4369), so none hangs offline.
+  it('puts the longer default timeout on other calls', async () => {
     const fetchMock = vi.fn<[string, RequestInit?], Promise<Response>>(async () => new Response('{"printers":[]}', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     await cloudApi.printers()
-    expect(fetchMock.mock.calls[0][1]?.signal).toBeUndefined()
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal)
   })
 })
