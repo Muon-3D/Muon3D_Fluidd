@@ -61,6 +61,29 @@ describe('useAuxApi', () => {
     expect(call?.headers.get('Authorization')).toBe('Bearer local-token')
   })
 
+  it('reads the hotspot stations as a plain HTTP GET on a direct route, never over the websocket (KAN-4297)', async () => {
+    // Moonraker adds the caller's address (requester_on_ap, `you`) only to plain HTTP requests.
+    const adapter = vi.fn<Parameters<AxiosAdapter>, ReturnType<AxiosAdapter>>(async (config) => ({
+      data: JSON.stringify({ result: { up: true, count: 1, auto_off_at: null } }),
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config
+    }))
+    useHttpClient(adapter, 'Bearer local-token')
+    await pointAt('http://muon-walnut-8987.local')
+    const socket = vi.fn()
+    vi.stubGlobal('WebSocket', socket)
+
+    const response = await useAuxApi().apStations()
+
+    expect(response.data).toEqual({ up: true, count: 1, auto_off_at: null })
+    const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
+    expect(config.method).toBe('get')
+    expect(config.url).toBe('http://muon-walnut-8987.local/server/aux/wifi/ap/stations')
+    expect(socket).not.toHaveBeenCalled()
+  })
+
   it('sends the hotspot and the rest of /server/aux nowhere over Iroh, and is back on the network once released', async () => {
     const adapter = networkAdapter()
     const httpClient = useHttpClient(adapter)

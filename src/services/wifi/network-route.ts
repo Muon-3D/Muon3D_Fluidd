@@ -9,7 +9,7 @@
  * MuonOS docs/connectivity/PERMISSIONS.md; an open printer says "anyone").
  *
  * Only the Wi-Fi routes that contract lists are mapped. The hotspot's routes
- * and the per-SSID `GET /wifi/show` are not, and stay refused there.
+ * (bar the read-only stations list) and the per-SSID `GET /wifi/show` are not, and stay refused there.
  */
 
 export const MANAGED_NETWORK_PREFIX = '/muon-link/network'
@@ -26,7 +26,9 @@ const ROUTES: Array<{ method: Method, path: string, ssid?: true }> = [
   { method: 'DELETE', path: '/wifi/forget', ssid: true },
   { method: 'POST', path: '/wifi/up', ssid: true },
   { method: 'POST', path: '/wifi/device/up' },
-  { method: 'POST', path: '/wifi/device/down' }
+  { method: 'POST', path: '/wifi/device/down' },
+  // Who is on the hotspot (KAN-4297): a read only, so the count shows over any route. An older muon-link answers 404 and the count stays hidden.
+  { method: 'GET', path: '/wifi/ap/stations' }
 ]
 
 /**

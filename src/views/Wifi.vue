@@ -45,6 +45,7 @@ import FrameIcon from '@/components/ui/FrameIcon.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import { bluetoothCarrying, remoteRouteLabel } from '@/services/muon-ble/link'
+import { networkRouteLabel } from '@/services/hotspot/model'
 
 /**
  * Wi-Fi and network (Settings): one Wi-Fi box (the network the printer
@@ -62,7 +63,7 @@ export default class Wifi extends Mixins(BrowserMixin) {
   }
 
   get routeText (): string {
-    return this.remote ? remoteRouteLabel(cloudState.activePrinterId) : 'On this network'
+    return this.remote ? remoteRouteLabel(cloudState.activePrinterId) : networkRouteLabel()
   }
 
   get routeLine (): string {

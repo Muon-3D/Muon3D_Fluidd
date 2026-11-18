@@ -8,7 +8,8 @@ describe('managedNetworkUrl (KAN-3601)', () => {
     ['POST', 'https://muon-cloud.invalid/server/aux/wifi/connect', '/muon-link/network/wifi/connect'],
     ['POST', '/server/aux/wifi/disconnect', '/muon-link/network/wifi/disconnect'],
     ['DELETE', '/server/aux/wifi/forget?ssid=Home%20Net', '/muon-link/network/wifi/forget?ssid=Home%20Net'],
-    ['POST', '/server/aux/wifi/up?ssid=a%26b', '/muon-link/network/wifi/up?ssid=a%26b']
+    ['POST', '/server/aux/wifi/up?ssid=a%26b', '/muon-link/network/wifi/up?ssid=a%26b'],
+    ['GET', '/server/aux/wifi/ap/stations', '/muon-link/network/wifi/ap/stations']
   ])('%s %s goes to %s', (method, url, expected) => {
     expect(managedNetworkUrl(method, url)).toBe(expected)
   })
