@@ -56,7 +56,7 @@ interface PairingSession {
 }
 
 interface PairingEndpoint {
-  connect?: (printerId: string) => Promise<{ fetch: (method: string, path: string, headers: string[], body: Uint8Array) => Promise<{ status: number, body: Uint8Array }>, close?: () => void }>;
+  connect?: (printerId: string, route?: 'bluetooth') => Promise<{ fetch: (method: string, path: string, headers: string[], body: Uint8Array) => Promise<{ status: number, body: Uint8Array }>, close?: () => void }>;
   beginPairing? (printerId: string, label: string): Promise<PairingSession>;
 }
 
@@ -192,7 +192,8 @@ async function entryOfPrinter (endpoint: PairingEndpoint, printerId: string): Pr
   if (typeof endpoint.connect !== 'function') return 'protected'
   let printer
   try {
-    printer = await endpoint.connect(printerId)
+    // Only reached for a printer the person chose to open over Bluetooth: hold that route.
+    printer = await endpoint.connect(printerId, 'bluetooth')
   } catch {
     return 'protected'
   }

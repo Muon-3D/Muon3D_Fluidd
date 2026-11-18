@@ -71,7 +71,7 @@ describe('pairing this browser over Bluetooth (KAN-1253)', () => {
 
       await startPairing(EID)
 
-      expect(held.endpoint.connect).toHaveBeenCalledWith(EID)
+      expect(held.endpoint.connect).toHaveBeenCalledWith(EID, 'bluetooth')
       expect(open.fetch).toHaveBeenCalledWith('GET', '/muon-link/pairing', [], expect.anything())
       expect(open.close).toHaveBeenCalled()
       expect(beginPairing).not.toHaveBeenCalled()

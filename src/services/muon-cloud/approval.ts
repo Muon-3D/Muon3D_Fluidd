@@ -54,7 +54,9 @@ export interface ApprovingEndpoint<Session> {
     name: string,
     requestedRole: 'operator' | 'viewer',
     onPending: (notice: { code: string, expiresIn?: number }) => void,
-    onClosed: (reason?: string) => void
+    onClosed: (reason?: string) => void,
+    onMismatch?: undefined,
+    route?: 'bluetooth'
   ) => Promise<Session>;
 }
 
@@ -77,7 +79,9 @@ export interface ApprovingEndpoint<Session> {
 export async function connectWithApproval<Session> (
   endpoint: ApprovingEndpoint<Session>,
   printerId: string,
-  name: string
+  name: string,
+  /** Held explicitly when given (Bluetooth): the dial must not fall back to "auto", which includes the relay. */
+  route?: 'bluetooth'
 ): Promise<Session | null> {
   if (typeof endpoint.connectAs !== 'function') return null
   let sawPending!: (symbols: string) => void
@@ -100,21 +104,19 @@ export async function connectWithApproval<Session> (
   abandoned.catch(() => {})
   listener?.(watch)
   try {
+    const onPending = (notice: { code: string, expiresIn?: number }) => {
+      if (cancelled) return
+      held = true
+      sawPending(notice.code)
+    }
+    const onClosed = (reason?: string) => {
+      const failure = failureOf(reason)
+      if (failure && !cancelled) ended(failure)
+    }
     const session = await Promise.race([
-      endpoint.connectAs(
-        printerId,
-        name,
-        'operator',
-        notice => {
-          if (cancelled) return
-          held = true
-          sawPending(notice.code)
-        },
-        reason => {
-          const failure = failureOf(reason)
-          if (failure && !cancelled) ended(failure)
-        }
-      ),
+      route
+        ? endpoint.connectAs(printerId, name, 'operator', onPending, onClosed, undefined, route)
+        : endpoint.connectAs(printerId, name, 'operator', onPending, onClosed),
       abandoned
     ])
     // Admitted straight away (an open printer, a known browser): nothing was waited for, so the page says nothing

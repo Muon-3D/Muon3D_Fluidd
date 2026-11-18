@@ -46,9 +46,9 @@ async function openOverBluetooth (page: Page) {
 const relaysUsed = (page: Page) => page.evaluate(() => (window as any).__e2ePair.relays as string[])
 
 test('offline after a reload, an Open printer opens over Bluetooth on the cached relay', async ({ page }) => {
-  await offlineNearby(page, 'https://relay.cached.test/')
+  await offlineNearby(page, 'https://relay2.muon3d.com/')
   await openOverBluetooth(page)
-  expect(await relaysUsed(page)).toEqual(['https://relay.cached.test/'])
+  expect(await relaysUsed(page)).toEqual(['https://relay2.muon3d.com/'])
 })
 
 test('offline on a first load with nothing cached, Bluetooth uses the built-in relay', async ({ page }) => {
@@ -63,6 +63,7 @@ test('offline, a guest on an Open printer can upload and print over Bluetooth', 
   await openOverBluetooth(page)
   // In-app, so the Bluetooth session stays up (a page load would end it).
   await page.evaluate(async () => {
+    // eslint-disable-next-line import/no-absolute-path
     const { default: router } = await import(/* @vite-ignore */ '/src/router/index.ts')
     await router.push(`${window.location.pathname.replace(/\/$/, '').replace(/\/[^/]*$/, '')}/alder-6601/jobs`)
   })

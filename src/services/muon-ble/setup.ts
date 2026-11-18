@@ -60,7 +60,7 @@ interface SessionPrinter {
 }
 
 interface SetupEndpoint {
-  connect (printerId: string): Promise<SessionPrinter>;
+  connect (printerId: string, route?: 'bluetooth'): Promise<SessionPrinter>;
 }
 
 export interface ConnectForSetupOptions {
@@ -142,7 +142,7 @@ export async function connectForSetup (printer: NearbyPrinter, options: ConnectF
     await link.disconnect()
   }
   try {
-    session = await (endpoint as unknown as SetupEndpoint).connect(link.printerId)
+    session = await (endpoint as unknown as SetupEndpoint).connect(link.printerId, 'bluetooth')
     if (typeof session.comparison !== 'function') {
       await hangUp()
       return { ok: false, reason: 'unsupported', message: "This page's connection has no code to check yet." }

@@ -65,7 +65,7 @@ interface WasmPrinter {
 interface WasmEndpoint {
   endpointId (): string;
   secretKey (): Uint8Array;
-  connect (printerId: string): Promise<WasmPrinter>;
+  connect (printerId: string, route?: 'auto' | 'bluetooth' | 'lan' | 'cloud'): Promise<WasmPrinter>;
   /** muon-link#126: waits for approval at the printer. Absent in older packages. */
   connectAs?: ApprovingEndpoint<WasmPrinter>['connectAs'];
   /** Takes a Web Bluetooth link to a printer (muon-link#31 on; ADR 0032 D3). */
@@ -451,7 +451,9 @@ export async function dialPrinter (endpoint: WasmEndpoint, printerId: string): P
     noteBluetoothDropped(printerId, message)
     throw new Error(`Couldn't reach the printer over Bluetooth: ${message}`)
   }
-  const printer = await connectWithApproval(endpoint, printerId, 'Muon3D Control') ?? await endpoint.connect(printerId)
+  // An explicit Bluetooth choice is held as the route: "auto" includes the relay, which offline stalls.
+  const route = wantsBluetoothFor(printerId) ? 'bluetooth' as const : undefined
+  const printer = await connectWithApproval(endpoint, printerId, 'Muon3D Control', route) ?? await (route ? endpoint.connect(printerId, route) : endpoint.connect(printerId))
   if (link) {
     if (!link.isOpen()) {
       printer.close?.()
