@@ -81,9 +81,15 @@ export async function verifyEmailAnswer (token: string): Promise<{ email: string
 
 /**
  * Turns the page's session into the console's browser session: asks for
- * the handoff, ends the page's session, and answers where to go: the
- * console's `/handoff`, which carries on to `next` (an `/authorize?...`),
- * or, with none, to an `/authorize` for this page that lands on `returnTo`.
+ * the handoff and answers where to go: the console's `/handoff`, which
+ * carries on to `next` (an `/authorize?...`), or, with none, to an
+ * `/authorize` for this page that lands on `returnTo`.
+ *
+ * It never signs the page's session out itself. A handoff code is good only
+ * while the session that made it is alive (KAN-1389), so a sign-out here voids
+ * the code before the browser spends it, and every sign-in lands back on the
+ * sign-in page with `handoff_expired` (KAN-4021). The console ends the page's
+ * session when it spends the code, whether or not the code was still good.
  */
 export async function finishSignIn (token: string, next: string | null, returnTo = '/'): Promise<string> {
   let carryOn = next
@@ -92,6 +98,5 @@ export async function finishSignIn (token: string, next: string | null, returnTo
     carryOn = `${url.pathname}${url.search}`
   }
   const handoff = await accountRequest<{ code: string, url: string, expires_at: number }>('POST', '/v1/handoff', undefined, { token })
-  await accountRequest('POST', '/v1/auth/sign-out', undefined, { token }).catch(() => {})
   return handoffUrl(handoff.url, carryOn)
 }
