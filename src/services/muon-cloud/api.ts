@@ -9,6 +9,7 @@
 import { confirmedAccountId, currentAccount, rotateConfirmed } from './account-events'
 import { clearDeletion, deletionRevision, observeDeletion } from './deletion'
 import { isPrinterSecureOrigin } from '@/services/secure-origin'
+import { rememberRelayUrl } from './relay'
 export { deletionState } from './deletion'
 
 export const TOKEN_KEY = 'muon.cloud.token'
@@ -600,6 +601,8 @@ export async function refreshSession (): Promise<boolean> {
  * `stillMine`, when given, is asked before a 401 is retried with another token: a request made for one account must
  * never be sent again with the next account's (KAN-2249: a layout PUT in flight across a sign-out).
  */
+const CLOUD_REQUEST_TIMEOUT_MS = 12_000
+
 async function request<T> (method: string, path: string, body?: unknown, token: string | null = storedToken(), retry = true, stillMine?: () => boolean): Promise<T> {
   // KAN-2192: no bearer and no password leaves a plain-HTTP page, whoever asks.
   if (!cloudSessionAllowed() && (token || !INSECURE_ORIGIN_CALLS.includes(`${method} ${path}`))) refuseOnInsecureOrigin()
@@ -608,14 +611,20 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
   if (token) headers.authorization = `Bearer ${token}`
   if (body !== undefined) headers['content-type'] = 'application/json'
   let response: Response
+  // A console that never answers (no internet behind a hotspot) must not hang the caller.
+  const timeout = new AbortController()
+  const timer = setTimeout(() => timeout.abort(), CLOUD_REQUEST_TIMEOUT_MS)
   try {
     response = await fetch(`${cloudBaseUrl()}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body)
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: timeout.signal
     })
   } catch {
     throw new CloudError('The Muon3D service could not be reached.', 0)
+  } finally {
+    clearTimeout(timer)
   }
   // A central-login access token lasts 15 minutes. Refresh once and retry;
   // only for the stored session, never for a token passed in.
@@ -677,7 +686,11 @@ export function forgetSessionId () {
 }
 
 export const cloudApi = {
-  config: () => request<CloudConfig>('GET', '/v1/config'),
+  config: async () => {
+    const config = await request<CloudConfig>('GET', '/v1/config')
+    rememberRelayUrl(config.relay_url)
+    return config
+  },
   signIn: (email: string, password: string) =>
     request<{ token: string, account: CloudAccount }>('POST', '/v1/auth/sign-in', { email, password }),
   /** The code that finishes a two-step sign-in: an authenticator code or a recovery code, with the `mfa_token` the password step answered. */

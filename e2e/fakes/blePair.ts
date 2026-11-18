@@ -221,7 +221,7 @@ class Endpoint {
   async close () { this.closed = true; for (const l of this.links) l.close() }
 }
 
-export const MuonEndpoint = { async create () { return new Endpoint() } }
+export const MuonEndpoint = { async create (relay) { (S().relays ??= []).push(relay); return new Endpoint() } }
 `
 }
 

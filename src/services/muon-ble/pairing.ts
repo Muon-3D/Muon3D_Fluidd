@@ -23,6 +23,7 @@ import { BLUETOOTH_NOT_CONNECTED_MESSAGE, bluetoothUnavailable } from './refusal
 import { activateCloudPrinter } from '@/services/muon-cloud/activate'
 import { noteAdmittedAtPanel } from '@/services/muon-cloud/approval'
 import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
+import { relayUrlForBluetooth } from '@/services/muon-cloud/relay'
 import { registerEndpointBusy } from '@/services/muon-cloud/endpoint-hooks'
 import { bluetoothRouteFor, releaseBluetoothLink, wantsBluetoothFor } from './link'
 import { readPairingEntry, type PairingEntry } from './entry'
@@ -211,8 +212,8 @@ export async function startPairing (printerId: string): Promise<void> {
     await hangingUp
     if (mine !== generation) return
     if (!wantsBluetoothFor(printerId)) throw new Error('Choose Connect over Bluetooth for this printer first.')
-    const relay = cloudState.config?.relay_url
-    if (!relay) throw new Error('Control has not reached Muon3D yet, so it has no address to start from.')
+    // Bluetooth never needs the cloud: cloud value, else cached, else built in.
+    const relay = relayUrlForBluetooth(cloudState.config?.relay_url)
     const endpoint = await browserEndpoint(relay) as unknown as PairingEndpoint
     let abandoned = false
     const opened = await within(
