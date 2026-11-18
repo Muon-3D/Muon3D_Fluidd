@@ -99,6 +99,19 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
     expect(openRelay).toHaveBeenCalledTimes(1)
     expect(log).toEqual(['shared:fetch', 'shared:fetch'])
   })
+  it('dials a new relay when the cached one closed itself (cancelled Bluetooth upload)', async () => {
+    const log: string[] = []
+    const first: ManagedIrohRelay & { closed: boolean } = Object.assign(relay('first', log), { closed: false })
+    const second = relay('second', log)
+    const relays = [first, second]
+    const openRelay = vi.fn(async () => relays.shift()!)
+    const transport = new ManagedIrohPrinterTransport({ authorizedSession: session('grant'), createEndpoint: async () => ({ openRelay, close () {} }) })
+    await transport.fetch('/server/info')
+    first.closed = true
+    await transport.fetch('/server/info')
+    expect(openRelay).toHaveBeenCalledTimes(2)
+    expect(log).toEqual(['first:fetch', 'second:fetch'])
+  })
   it('keeps the connection when the printer stops one upload stream (STOP_SENDING)', async () => {
     // Harry, 11 Nov: an upload over the cloud route failed with "sending
     // stopped by peer: error 0", and dropping the relay then failed the

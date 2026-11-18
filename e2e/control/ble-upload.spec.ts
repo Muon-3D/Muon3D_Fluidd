@@ -74,13 +74,19 @@ test('Cancel stops a long Bluetooth upload and closes the radio session', async 
   await page.getByTestId('jobs-upload-input').setInputFiles({ name: 'bluetooth-cancel.gcode', mimeType: 'text/x-gcode', buffer: Buffer.alloc(2 * 1024 * 1024, 'G') })
   const panel = page.getByTestId('upload-progress')
   await expect(panel.getByRole('progressbar')).toHaveAttribute('value', /[1-9]\d?/)
-  await panel.getByTestId('upload-cancel').click()
+  // Cancel and read in one tick, before any reconnect can paper over a dead cached session.
+  const status = await page.evaluate(async () => {
+    (document.querySelector('[data-tid="upload-cancel"]') as HTMLElement).click()
+    return (await (window as any).managedBle.query()).status
+  })
+  expect(status).toBe(200)
   await expect(panel).toBeHidden()
   await expect.poll(() => page.evaluate(() => (window as any).managedBle.counts.closes)).toBeGreaterThan(0)
   expect(await page.evaluate(() => (window as any).managedBle.upload.attempts)).toEqual([
     expect.objectContaining({ name: 'bluetooth-cancel.gcode', completed: false })
   ])
   await expect(page.getByTestId('flash-message')).not.toContainText('failed')
+  // The closed session must not linger as the cached relay: the very next read works on a fresh session, with no failed first attempt.
   await expect(page.getByTestId('jobs-row').filter({ hasText: 'Bluetooth cancel' })).toHaveCount(0)
 })
 

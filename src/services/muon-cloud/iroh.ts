@@ -358,6 +358,9 @@ function closeMultipart (body: Uint8Array, type: string): Uint8Array {
 
 export class IrohPrinter implements ManagedIrohRelay {
   private readonly printer: WasmPrinter
+  private ended = false
+
+  get closed () { return this.ended }
 
   constructor (printer: WasmPrinter) {
     this.printer = printer
@@ -416,7 +419,7 @@ export class IrohPrinter implements ManagedIrohRelay {
       ? this.printer.fetchWithProgress(method, path, headers, body, report)
       : this.printer.fetch(method, path, headers, body)
     const work = overBluetooth
-      ? watchBluetoothUpload(send, progress, () => this.printer.close(), signal)
+      ? watchBluetoothUpload(send, progress, () => { this.ended = true; this.printer.close() }, signal)
       : send(progress)
     const answer = await untilAborted(work, signal)
     const responseHeaders = new Headers()

@@ -121,10 +121,15 @@ describe('Bluetooth upload progress watchdog', () => {
     expect(stop).not.toHaveBeenCalled()
   })
 
-  it('an abort after completion stops nothing', async () => {
+  it('an abort after completion stops nothing, and finishing after done() never stops', async () => {
     const stop = vi.fn()
     const controller = new AbortController()
-    await watchBluetoothUpload(async () => 1, undefined, stop, controller.signal)
+    let done!: (v: number) => void
+    const work = watchBluetoothUpload(() => new Promise<number>(resolve => { done = resolve }), undefined, stop, controller.signal)
+    await Promise.resolve()
+    done(1)
+    await work
+    expect(stop).not.toHaveBeenCalled()
     controller.abort()
     expect(stop).not.toHaveBeenCalled()
   })
