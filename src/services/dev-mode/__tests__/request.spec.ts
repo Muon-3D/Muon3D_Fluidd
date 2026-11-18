@@ -99,6 +99,23 @@ describe('a developer-mode request, through Moonraker\'s one route for it (KAN-5
     expect(refusalOf(network)).toBe(network)
   })
 
+  it('on a POST-only printer (train 17), a refused GET is not a no: the printer decides when asked (KAN-4351)', async () => {
+    for (const [status, data] of [[405, '<html>405: Method Not Allowed</html>'], [403, { error: { code: 403, message: 'Forbidden' } }]] as const) {
+      printer.get.mockRejectedValueOnce(Object.assign(new Error(`status ${status}`), { response: { status, data } }))
+      expect(await whoMayAsk()).toMatchObject({ mayAsk: true, owner: { linked: null, account: null }, waiver: null })
+    }
+    // A refusal the printer explained is still its answer.
+    printer.get.mockRejectedValueOnce(moonrakerError(403, 'dev-mode:owner_required: Only the owner.'))
+    expect(await whoMayAsk().catch(e => e)).toMatchObject({ code: 'owner_required' })
+  })
+
+  it('on a POST-only printer, an id with no wait time or words still waits and says what to do', async () => {
+    printer.post.mockResolvedValueOnce({ data: { result: { challenge_id: CHALLENGE } } } as never)
+    const challenge = await askToChange(true)
+    expect(challenge.expiresInSeconds).toBeGreaterThan(0)
+    expect(challenge.instruction).not.toBe('')
+  })
+
   it('never sends an id that could name another route', async () => {
     for (const bad of ['../dev_mode', 'a/b', 'a%2Fb', '', 'x?y=1', 'short']) {
       await expect(readAnswer(bad)).rejects.toThrow('not a challenge id')
