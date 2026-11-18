@@ -188,17 +188,13 @@ export default class AppTabBar extends Mixins(FrameMixin) {
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Bottom-left, over the bar's corner: the phone has no rail to hold it. */
+  /* Bottom-left, over the bar's corner: the phone has no rail to hold it. The same green tab. */
   .app-tab-bar__hotspot {
     position: absolute;
-    bottom: calc(100% + 6px);
+    bottom: 100%;
     left: 10px;
     /* A badge, not a button: a tap on it goes to whatever is under it. */
     pointer-events: none;
-    padding: 4px 10px;
-    border: 1px solid var(--m3d-border);
-    border-radius: 999px;
-    background: var(--m3d-glass-thick, var(--m3d-surface));
   }
 
   .app-tab-bar__tab {

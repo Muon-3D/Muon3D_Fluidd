@@ -109,3 +109,25 @@ export function connectedFor (seconds: number | null): string {
   const rest = minutes % 60
   return rest ? `${hours} h ${rest} min` : `${hours} h`
 }
+
+/** Signal bars (1 to 4) for a client's strength in dBm. */
+export function dbmLevel (dbm: number | null): 1 | 2 | 3 | 4 {
+  if (dbm === null) return 1
+  if (dbm >= -55) return 4
+  if (dbm >= -65) return 3
+  if (dbm >= -75) return 2
+  return 1
+}
+
+/**
+ * "Turns off in 25 min" from the printer's `auto_off_at` (epoch seconds), or
+ * null when there is none, or it is already past.
+ */
+export function autoOffIn (autoOffAt: number | null, nowMs: number = Date.now()): string | null {
+  if (autoOffAt === null) return null
+  const at = autoOffAt > 1e12 ? autoOffAt : autoOffAt * 1000
+  const seconds = Math.round((at - nowMs) / 1000)
+  if (seconds <= 0) return null
+  const minutes = Math.max(1, Math.round(seconds / 60))
+  return `Turns off in ${connectedFor(minutes * 60)}`
+}

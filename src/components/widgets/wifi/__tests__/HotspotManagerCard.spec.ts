@@ -106,14 +106,32 @@ describe('HotspotManagerCard', () => {
       ]
     })
     await wrapper.vm.$nextTick()
-    expect(wrapper.find('[data-tid="hotspot-devices-count"]').text()).toBe('2 devices connected')
+    expect(wrapper.find('[data-tid="hotspot-badge"]').text()).toBe('2 connected')
     const rows = wrapper.findAll('[data-tid="hotspot-client"]')
     expect(rows).toHaveLength(2)
     expect(rows.at(0).text()).toContain('Jack phone')
     expect(rows.at(0).text()).toContain('This device')
-    expect(rows.at(0).text()).toContain('10.42.0.7 · aa:bb:cc:••:••:ef · connected 12 min · -52 dBm')
+    expect(rows.at(0).find('[data-tid="hotspot-client-ip"]').text()).toBe('10.42.0.7')
+    expect(rows.at(0).find('[data-tid="hotspot-client-mac"]').text()).toBe('aa:bb:cc:••:••:ef')
+    expect(rows.at(0).find('[data-tid="hotspot-client-connected"]').text()).toBe('connected 12 min')
+    expect(rows.at(0).find('[data-tid="hotspot-client-signal"]').text()).toBe('-52 dBm')
     expect(rows.at(1).text()).toContain('Unnamed device')
     expect(rows.at(1).text()).not.toContain('This device')
+  })
+
+  it('renders a client name as plain text, never as markup', async () => {
+    const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    hotspotState.stations = normalizeStations({
+      up: true,
+      count: 1,
+      auto_off_at: null,
+      clients: [{ name: '<img src=x onerror=alert(1)>', ip: '10.42.0.7', mac: 'aa:bb:cc:••:••:ef', connected_s: 5, signal_dbm: -60, you: false }]
+    })
+    await wrapper.vm.$nextTick()
+    const row = wrapper.find('[data-tid="hotspot-client"]')
+    expect(row.find('img').exists()).toBe(false)
+    expect(row.text()).toContain('<img src=x onerror=alert(1)>')
   })
 
   it('shows only the count on a printer that sends no client list, and nothing when the hotspot is down', async () => {
@@ -121,6 +139,7 @@ describe('HotspotManagerCard', () => {
     await new Promise(resolve => setTimeout(resolve, 0))
     hotspotState.stations = normalizeStations({ up: true, count: 1, auto_off_at: null })
     await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-tid="hotspot-badge"]').text()).toBe('1 connected')
     expect(wrapper.find('[data-tid="hotspot-devices-count"]').text()).toBe('1 device connected')
     expect(wrapper.find('[data-tid="hotspot-clients"]').exists()).toBe(false)
     hotspotState.stations = normalizeStations({ up: false, count: 0, auto_off_at: null })

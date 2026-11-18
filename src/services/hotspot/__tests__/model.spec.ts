@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectedFor, hotspotCountTitle, entryRouteLabel, hotspotDeviceCount, networkRouteLabel, normalizeStations } from '../model'
+import { autoOffIn, connectedFor, dbmLevel, entryRouteLabel, hotspotCountTitle, hotspotDeviceCount, networkRouteLabel, normalizeStations } from '../model'
 
 describe('normalizeStations (KAN-4297)', () => {
   it('reads the v2 answer that exists today', () => {
@@ -85,5 +85,23 @@ describe('entryRouteLabel: only the printer reached through its own hotspot says
 
   it("the printer's own answer wins over the address", () => {
     expect(entryRouteLabel('local', '10.42.0.1', false, '10.42.0.1')).toBe('On this network')
+  })
+})
+
+describe('autoOffIn', () => {
+  const now = 1_700_000_000_000
+  it.each([
+    [1_700_000_000 + 25 * 60, 'Turns off in 25 min'],
+    [(now + 90 * 60_000), 'Turns off in 1 h 30 min'],
+    [1_700_000_000 - 5, null],
+    [null, null]
+  ])('%s is %j', (at, text) => {
+    expect(autoOffIn(at as number | null, now)).toBe(text)
+  })
+})
+
+describe('dbmLevel', () => {
+  it.each([[-52, 4], [-60, 3], [-70, 2], [-80, 1], [null, 1]])('%s dBm is %s bars', (dbm, bars) => {
+    expect(dbmLevel(dbm as number | null)).toBe(bars)
   })
 })

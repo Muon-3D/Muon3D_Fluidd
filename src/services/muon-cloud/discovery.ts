@@ -89,6 +89,8 @@ export interface LanPrinter {
    */
   mdnsHost?: string | null;
   link: LanLinkStatus;
+  /** What the printer says of how it lets strangers in (D-166); only the exact word "open" counts. */
+  entry?: 'open' | 'protected';
   /** How it answered the last health check, when it was asked. */
   health?: LanHealth;
 }
@@ -433,7 +435,8 @@ export async function probe (host: string, timeout = PROBE_TIMEOUT_MS, signal?: 
   const endpointId = typeof identity.endpoint_id === 'string' && identity.endpoint_id ? identity.endpoint_id : null
   const mdnsHost = mdnsHostFor(identity)
   const [link, health] = await Promise.all([lanLinkStatus(apiUrl), printerHealth(apiUrl)])
-  return { host, apiUrl, name, endpointId, mdnsHost, link, health: health ?? undefined }
+  const entry = identity.entry === 'open' ? 'open' as const : undefined
+  return { host, apiUrl, name, endpointId, mdnsHost, link, ...(entry ? { entry } : {}), health: health ?? undefined }
 }
 
 /**

@@ -49,8 +49,9 @@ test('on a phone the page scrolls as one page: nothing sideways, no scroller ins
     }).length)
   expect(inner).toBe(0)
 
-  // A network row is one short line pair: the channel line and the signal bars are left for the desktop.
+  // A network row is one short line pair: the channel line is left for the desktop, the signal bars stay (KAN-4354).
   const row = page.getByTestId('wifi-networks').locator('[data-ssid="Office"]')
   await expect(row.getByTestId('wifi-detail')).toBeHidden()
+  await expect(row.locator('.wf__bars')).toBeVisible()
   expect((await row.boundingBox())!.height).toBeLessThanOrEqual(72)
 })

@@ -74,6 +74,7 @@
 
       <div
         class="wf__connected"
+        :class="{ 'wf__connected--on': !!connectedNetwork }"
         data-tid="wifi-connected"
       >
         <template v-if="connectedNetwork">
@@ -145,8 +146,13 @@
         class="wf__available"
         data-tid="wifi-available"
       >
-        <h3 class="stile__group-title">
-          Available networks
+        <h3 class="stile__group-title wf__group-title">
+          <span>Other networks</span>
+          <span
+            v-if="otherNetworks.length"
+            class="wf__found"
+            data-tid="wifi-found"
+          >{{ otherNetworks.length }} found</span>
         </h3>
         <div
           class="slist"
@@ -176,6 +182,23 @@
                 data-tid="wifi-detail"
               >{{ detail(network) }}</span>
             </div>
+            <svg
+              class="wf__bars"
+              viewBox="0 0 20 16"
+              role="img"
+              :aria-label="`${signalText(network.signal)} signal`"
+            >
+              <rect
+                v-for="bar in 4"
+                :key="bar"
+                :x="(bar - 1) * 5"
+                :y="16 - bar * 4"
+                width="3.5"
+                :height="bar * 4"
+                rx="1"
+                :class="{ 'wf__bar--on': bar <= signalLevel(network.signal) }"
+              />
+            </svg>
             <span class="srow__act">
               <button
                 v-if="knownSsids.has(network.ssid)"
@@ -195,23 +218,6 @@
                 Connect
               </button>
             </span>
-            <svg
-              class="wf__bars"
-              viewBox="0 0 20 16"
-              role="img"
-              :aria-label="`${signalText(network.signal)} signal`"
-            >
-              <rect
-                v-for="bar in 4"
-                :key="bar"
-                :x="(bar - 1) * 5"
-                :y="16 - bar * 4"
-                width="3.5"
-                :height="bar * 4"
-                rx="1"
-                :class="{ 'wf__bar--on': bar <= signalLevel(network.signal) }"
-              />
-            </svg>
           </div>
         </div>
       </div>
@@ -914,6 +920,26 @@ export default class WifiManagerCard extends Vue {
 
   .wf__net .srow__act {
     gap: 16px;
+  }
+
+  // The connected network is the tinted top row of the same card; the others sit under it.
+  .wf__connected--on {
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--m3d-accent) 12%, var(--m3d-surface-2));
+  }
+
+  .wf__group-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .wf__found {
+    color: var(--m3d-text-subtle);
+    font-size: 12px;
+    font-weight: 500;
   }
 
   .wf__detail {
