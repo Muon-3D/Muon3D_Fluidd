@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectedFor, hotspotCountTitle, hotspotDeviceCount, networkRouteLabel, normalizeStations } from '../model'
+import { autoOffIn, connectedFor, dbmLevel, hotspotCountTitle, hotspotDeviceCount, networkRouteLabel, normalizeStations } from '../model'
 
 describe('normalizeStations (KAN-4297)', () => {
   it('reads the v2 answer that exists today', () => {
@@ -64,5 +64,23 @@ describe('networkRouteLabel', () => {
 describe('connectedFor', () => {
   it.each([[5, '5 s'], [720, '12 min'], [7500, '2 h 5 min'], [7200, '2 h'], [null, ''], [-1, '']])('%s is %j', (s, text) => {
     expect(connectedFor(s as number | null)).toBe(text)
+  })
+})
+
+describe('autoOffIn', () => {
+  const now = 1_700_000_000_000
+  it.each([
+    [1_700_000_000 + 25 * 60, 'Turns off in 25 min'],
+    [(now + 90 * 60_000), 'Turns off in 1 h 30 min'],
+    [1_700_000_000 - 5, null],
+    [null, null]
+  ])('%s is %j', (at, text) => {
+    expect(autoOffIn(at as number | null, now)).toBe(text)
+  })
+})
+
+describe('dbmLevel', () => {
+  it.each([[-52, 4], [-60, 3], [-70, 2], [-80, 1], [null, 1]])('%s dBm is %s bars', (dbm, bars) => {
+    expect(dbmLevel(dbm as number | null)).toBe(bars)
   })
 })

@@ -41,6 +41,8 @@ test.describe('this network', () => {
     await expect(count(page)).toBeVisible()
     await expect(count(page).getByTestId('hotspot-count-n')).toHaveText('2')
     await expect(count(page)).toHaveAttribute('title', "2 devices on the printer's hotspot")
+    // The green "2 connected" tab on top of the connection item (a bare number on a phone's chip is still the count).
+    await expect(count(page)).toContainText('2')
     // About every 10 s, never a burst.
     // A known number of intervals on a fake clock gives a known number of asks.
     const before = hits.n
@@ -48,10 +50,12 @@ test.describe('this network', () => {
     await expect.poll(() => hits.n - before).toBe(3)
   })
 
-  test('a hotspot that is up with nobody on it says 0', async ({ page, open }) => {
+  test('a hotspot that is up with nobody on it draws no green tab, and the card says 0', async ({ page, open }) => {
     await stationsOnLan(page, { up: true, count: 0, auto_off_at: null })
-    await open('/')
-    await expect(count(page).getByTestId('hotspot-count-n')).toHaveText('0')
+    await open('/wifi')
+    await expect(page.getByTestId('hotspot-badge')).toHaveText('0 connected')
+    await expect(page.getByTestId('hotspot-devices-count')).toHaveText('No devices connected')
+    await expect(count(page)).toHaveCount(0)
   })
 
   test('it is hidden when the hotspot is down', async ({ page, open }) => {
@@ -96,12 +100,15 @@ test.describe('this network', () => {
     })
     await open('/wifi')
     const card = page.getByTestId('hotspot-card')
-    await expect(card.getByTestId('hotspot-devices-count')).toHaveText('2 devices connected')
+    await expect(card.getByTestId('hotspot-badge')).toHaveText('2 connected')
     const rows = card.getByTestId('hotspot-client')
     await expect(rows).toHaveCount(2)
     await expect(rows.nth(0)).toContainText('Jack phone')
     await expect(rows.nth(0)).toContainText('This device')
-    await expect(rows.nth(0)).toContainText('10.42.0.7 · aa:bb:cc:••:••:ef · connected 12 min · -52 dBm')
+    await expect(rows.nth(0).getByTestId('hotspot-client-ip')).toHaveText('10.42.0.7')
+    await expect(rows.nth(0).getByTestId('hotspot-client-mac')).toHaveText('aa:bb:cc:••:••:ef')
+    await expect(rows.nth(0).getByTestId('hotspot-client-connected')).toHaveText('connected 12 min')
+    await expect(rows.nth(0).getByTestId('hotspot-client-signal')).toHaveText('-52 dBm')
     await expect(rows.nth(1)).toContainText('Unnamed device')
     await expect(rows.nth(1)).not.toContainText('This device')
   })
@@ -110,6 +117,7 @@ test.describe('this network', () => {
     await stationsOnLan(page, { up: true, count: 3, auto_off_at: null })
     await open('/wifi')
     const card = page.getByTestId('hotspot-card')
+    await expect(card.getByTestId('hotspot-badge')).toHaveText('3 connected')
     await expect(card.getByTestId('hotspot-devices-count')).toHaveText('3 devices connected')
     await expect(card.getByTestId('hotspot-clients')).toHaveCount(0)
   })
