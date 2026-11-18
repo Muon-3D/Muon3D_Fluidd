@@ -25,10 +25,10 @@ const WAIVER = { version: 'w-1', text: "The printer's own waiver terms." }
  * with a change. `confirm()` is the person at the printer pressing the knob. A
  * printer takes a later change at once (no challenge) unless `alwaysConfirm`.
  */
-async function printerSays (page: Page, opts: { enabled: boolean, everEnabled?: boolean, mayAsk?: boolean, linked?: boolean, refuse?: string, alwaysConfirm?: boolean }) {
+async function printerSays (page: Page, opts: { enabled: boolean, everEnabled?: boolean, guardArmed?: boolean, mayAsk?: boolean, linked?: boolean, refuse?: string, alwaysConfirm?: boolean }) {
   const printer = { enabled: opts.enabled, everEnabled: !!opts.everEnabled, confirmed: false }
   await page.route('**/server/aux/dev_mode*', route => route.fulfill({
-    json: { enabled: printer.enabled, guard_armed: true, ever_enabled: printer.everEnabled, otp_record_armed: false }
+    json: { enabled: printer.enabled, guard_armed: opts.guardArmed !== false, ever_enabled: printer.everEnabled, otp_record_armed: false }
   }))
   const posts: string[] = []
   let polls = 0
@@ -75,40 +75,29 @@ async function openDeveloperMode (page: Page, open: (path: string) => Promise<un
   await expect(pane(page).getByTestId('developer-mode-card')).toBeVisible()
 }
 
-test('the owner sees the state, who can change it, and what it unlocks', async ({ page, open }) => {
+test('the owner sees the state, what it is, the warranty line, and how to turn it off', async ({ page, open }) => {
   await printerSays(page, { enabled: true, everEnabled: true })
   await openDeveloperMode(page, open)
   const p = pane(page)
-  await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('On')
-  await expect(p.getByTestId('developer-mode-state')).toContainText('runs your copy of its configuration')
-  await expect(p.getByTestId('developer-mode-who-line')).toContainText(`Only ${OWNER} (the owner) can change it`)
-  await expect(p.getByTestId('developer-mode-warranty')).toContainText('warranty ends')
+  await expect(p.getByTestId('developer-mode-state')).toHaveText('On')
+  await expect(p.getByTestId('developer-mode-what')).toContainText('running your copy of its configuration')
+  await expect(p.getByTestId('developer-mode-warranty')).toContainText('warranty ended')
+  await expect(p.getByTestId('developer-mode-off-how')).toContainText('Turn it off with the switch')
   await expect(p.getByTestId('developer-mode-switch')).toBeVisible()
-  await expect(p.getByTestId('developer-mode-go-to-printer')).toHaveCount(0)
-  await expect(p.getByText('What it unlocks · 8')).toBeVisible()
-  await expect(p.getByTestId('developer-mode-unlocks').getByRole('link')).toHaveCount(8)
+  await expect(p.getByTestId('developer-mode-unlocks')).toHaveCount(0)
   await expect(p.getByTestId('developer-backup')).toBeEnabled()
   await expect(p.getByTestId('developer-reset')).toBeEnabled()
-})
-
-test('every unlock links to the page where its row lives', async ({ page, open }) => {
-  await printerSays(page, { enabled: false })
-  await openDeveloperMode(page, open)
-  await expect(pane(page).getByTestId('developer-unlock-config')).toHaveAttribute('href', /\/configure$/)
-  await expect(pane(page).getByTestId('developer-unlock-updates')).toHaveAttribute('href', /\/settings#versions$/)
-  await pane(page).getByTestId('developer-unlock-macros').click()
-  await expect(page).toHaveURL(/\/settings#macros$/)
-  // Jack, OV-30 (11 Nov, later than KAN-1970): the management page is called Macros; it holds the Quick commands section.
-  await expect(page.getByTestId('page-title')).toHaveText('Macros')
 })
 
 test("turning it on the first time shows the terms, then waits for the printer's screen", async ({ page, open }) => {
   const fake = await printerSays(page, { enabled: false })
   await openDeveloperMode(page, open)
   const p = pane(page)
-  await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('Off')
-  await expect(p.getByTestId('developer-mode-go-to-printer')).toHaveCount(0)
-  await expect(p.getByTestId('developer-backup')).toBeDisabled()
+  await expect(p.getByTestId('developer-mode-state')).toHaveText('Off')
+  await expect(p.getByTestId('developer-mode-warranty')).toContainText('the warranty ends')
+  // Back up and Start again are there only while it is on.
+  await expect(p.getByTestId('developer-backup')).toHaveCount(0)
+  await expect(p.getByTestId('developer-reset')).toHaveCount(0)
   await p.getByTestId('developer-mode-switch').click()
   const dialog = page.getByTestId('developer-enable-dialog')
   await expect(dialog.getByTestId('developer-terms')).toContainText("The printer's own waiver terms.")
@@ -129,7 +118,7 @@ test("turning it on the first time shows the terms, then waits for the printer's
     { enabled: true },
     { enabled: true, challenge_id: CHALLENGE, waiver_acknowledged: true, waiver_version: 'w-1' }
   ])
-  await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('On')
+  await expect(p.getByTestId('developer-mode-state')).toHaveText('On')
   await expect(p.getByTestId('developer-backup')).toBeEnabled()
 })
 
@@ -143,13 +132,13 @@ test('after it was accepted before, a turn-on goes straight through with no wait
   await expect(dialog.getByTestId('developer-terms')).toHaveCount(0)
   await dialog.getByTestId('developer-confirm').click()
   await expect(dialog).toBeHidden()
-  await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('On')
+  await expect(p.getByTestId('developer-mode-state')).toHaveText('On')
   expect(fake.posts.map(x => JSON.parse(x))).toEqual([{ enabled: true }])
   expect(fake.polls()).toBe(0)
   // And off again without waiting either.
   await p.getByTestId('developer-mode-switch').click()
   await page.getByTestId('developer-disable-dialog').getByTestId('developer-confirm').click()
-  await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('Off')
+  await expect(p.getByTestId('developer-mode-state')).toHaveText('Off')
   expect(fake.posts.map(x => JSON.parse(x))).toEqual([{ enabled: true }, { enabled: false }])
   expect(fake.polls()).toBe(0)
 })
@@ -158,10 +147,9 @@ test('someone who is not the owner sees it read-only, with the reason', async ({
   await printerSays(page, { enabled: true, mayAsk: false })
   await openDeveloperMode(page, open)
   const p = pane(page)
-  await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('On')
+  await expect(p.getByTestId('developer-mode-state')).toHaveText('On')
   await expect(p.getByTestId('developer-mode-switch')).toHaveCount(0)
   await expect(p.getByTestId('developer-mode-who')).toContainText(`Only ${OWNER} can change developer mode on this printer`)
-  await expect(p.getByTestId('developer-mode-unlocks').getByRole('link')).toHaveCount(8)
 })
 
 test('an older printer that only takes the change at its own screen says so, and nothing waits', async ({ page, open }) => {
@@ -194,4 +182,66 @@ test('a printer that is not a Muon has no developer mode page', async ({ page, o
   await expect(page.getByRole('navigation', { name: 'Developer mode' })).toHaveCount(0)
   await open('/settings#developer')
   await expect(page.getByTestId('developer-mode-card')).toHaveCount(0)
+})
+
+/** Words a person can read on the card: no SSH address (a value, not copy). */
+async function visibleWords (page: Page) {
+  const card = page.getByTestId('developer-mode-card')
+  let text = await card.innerText()
+  const address = page.getByTestId('developer-mode-ssh-address')
+  if (await address.count()) text = text.replace(await address.innerText(), '')
+  return text.split(/\s+/).filter(Boolean).length
+}
+
+async function withHostname (page: Page, hostname: string) {
+  const printer = await usePrinter(page, {})
+  printer.state.answers['printer.info'] = { state: 'ready', state_message: 'Printer is ready', hostname }
+}
+
+for (const build of [{ name: 'release', guardArmed: true }, { name: 'admin', guardArmed: false }]) {
+  for (const enabled of [false, true]) {
+    test(`${build.name} build, developer mode ${enabled ? 'on' : 'off'}: 50 to 90 words`, async ({ page, open }) => {
+      await printerSays(page, { enabled, everEnabled: true, guardArmed: build.guardArmed })
+      await withHostname(page, 'm1-4f2a')
+      await openDeveloperMode(page, open)
+      await expect(pane(page).getByTestId('developer-mode-state')).toHaveText(enabled ? 'On' : 'Off')
+      const words = await visibleWords(page)
+      expect(words).toBeGreaterThanOrEqual(50)
+      expect(words).toBeLessThanOrEqual(90)
+    })
+  }
+}
+
+test('a release build never shows SSH, off or on', async ({ page, open }) => {
+  await printerSays(page, { enabled: true, everEnabled: true, guardArmed: true })
+  await withHostname(page, 'm1-4f2a')
+  await openDeveloperMode(page, open)
+  await expect(pane(page).getByTestId('developer-mode-ssh')).toHaveCount(0)
+  await expect(pane(page).getByText(/ssh/i)).toHaveCount(0)
+  await expect(pane(page).getByTestId('developer-mode-warranty')).toBeVisible()
+})
+
+test('an admin build with it on shows the SSH address with Copy, and no warranty line', async ({ page, open }) => {
+  await printerSays(page, { enabled: true, everEnabled: true, guardArmed: false })
+  await withHostname(page, 'm1-4f2a')
+  await openDeveloperMode(page, open)
+  const p = pane(page)
+  await expect(p.getByTestId('developer-mode-ssh-address')).toHaveText('ssh root@m1-4f2a.local')
+  await expect(p.getByTestId('developer-mode-ssh-copy')).toBeVisible()
+  await expect(p.getByTestId('developer-mode-warranty')).toHaveCount(0)
+})
+
+test('an admin build with it off shows no SSH yet', async ({ page, open }) => {
+  await printerSays(page, { enabled: false, everEnabled: true, guardArmed: false })
+  await withHostname(page, 'm1-4f2a')
+  await openDeveloperMode(page, open)
+  await expect(pane(page).getByTestId('developer-mode-ssh')).toHaveCount(0)
+})
+
+test('an admin build that does not give its name shows no SSH (fails closed)', async ({ page, open }) => {
+  await printerSays(page, { enabled: true, everEnabled: true, guardArmed: false })
+  await withHostname(page, '')
+  await openDeveloperMode(page, open)
+  await expect(pane(page).getByTestId('developer-mode-state')).toHaveText('On')
+  await expect(pane(page).getByTestId('developer-mode-ssh')).toHaveCount(0)
 })
