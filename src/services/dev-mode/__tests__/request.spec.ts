@@ -2,6 +2,7 @@ import Vue from 'vue'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   askToChange,
+  requestChange,
   completeChange,
   readAnswer,
   refusalOf,
@@ -114,6 +115,15 @@ describe('a developer-mode request, through Moonraker\'s one route for it (KAN-5
     const challenge = await askToChange(true)
     expect(challenge.expiresInSeconds).toBeGreaterThan(0)
     expect(challenge.instruction).not.toBe('')
+  })
+
+  it('an answer with no challenge_id is done (admin build): no wait; an id is a wait (customer build)', async () => {
+    printer.post.mockResolvedValueOnce({ data: { result: { enabled: true } } } as never)
+    expect(await requestChange(true)).toEqual({ kind: 'applied', enabled: true })
+    printer.post.mockResolvedValueOnce({ data: { result: { enabled: false } } } as never)
+    expect(await requestChange(false)).toEqual({ kind: 'applied', enabled: false })
+    printer.post.mockResolvedValueOnce({ data: { result: { challenge_id: CHALLENGE } } } as never)
+    expect(await requestChange(true)).toMatchObject({ kind: 'challenge', challenge: { challengeId: CHALLENGE } })
   })
 
   it('never sends an id that could name another route', async () => {
