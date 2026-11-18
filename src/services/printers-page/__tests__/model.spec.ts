@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 import type { CloudPrinter } from '@/services/muon-cloud/api'
 import type { ForeignPrinterRecord, ForeignStatus } from '@/services/foreign-printers/types'
+import { hotspotState } from '@/services/hotspot/model'
 import { groupSummary, heatingTemp, jobName, printersPage, type PageSources, type PrinterTile, type TileJob } from '../model'
 
 function entry (key: string, fields: Partial<DirectoryEntry>): DirectoryEntry {
@@ -221,6 +222,41 @@ describe('the Printers page', () => {
     }))
     expect(page.printingNow[0].job?.layer).toBe(27)
     expect(page.printingNow[0].label).toBe('99%')
+  })
+
+  it('says "Through hotspot" only on the local printer that is reached through its hotspot, not on every local card', () => {
+    hotspotState.stations = { up: true, count: 1, autoOffAt: null, requesterOnAp: true, clients: null }
+    try {
+      const page = printersPage(sources({
+        directory: {
+          cloud: [],
+          local: [
+            entry('local:a', { name: 'muon-boxwood-367a', active: 'local', host: '10.42.0.1' }),
+            entry('local:b', { name: 'muon-walnut-8987', host: '192.168.1.40' })
+          ],
+          found: []
+        }
+      }))
+      const tiles = page.groups.flatMap(g => g.tiles).concat(page.printingNow)
+      const detail = (name: string) => tiles.find(t => t.name === name)?.detail
+      expect(detail('Boxwood')).toBe('Through hotspot')
+      expect(detail('Walnut')).toBe('On this network')
+    } finally {
+      hotspotState.stations = null
+    }
+  })
+
+  it('a page served from the hotspot address does not label a printer at another address', () => {
+    vi.stubGlobal('location', { ...window.location, hostname: '10.42.0.1' })
+    try {
+      const page = printersPage(sources({
+        directory: { cloud: [], local: [entry('local:b', { name: 'muon-walnut-8987', active: 'local', host: '192.168.1.40' })], found: [] }
+      }))
+      const tile = page.groups.flatMap(g => g.tiles).concat(page.printingNow).find(t => t.name === 'Walnut')
+      expect(tile?.detail).toBe('On this network')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('counts who needs you: paused and faulted printers', () => {

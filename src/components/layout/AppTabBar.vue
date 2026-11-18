@@ -193,6 +193,8 @@ export default class AppTabBar extends Mixins(FrameMixin) {
     position: absolute;
     bottom: calc(100% + 6px);
     left: 10px;
+    /* A badge, not a button: a tap on it goes to whatever is under it. */
+    pointer-events: none;
     padding: 4px 10px;
     border: 1px solid var(--m3d-border);
     border-radius: 999px;

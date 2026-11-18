@@ -36,14 +36,42 @@ export function forgetGrantedRole (printerId: string) {
   Vue.delete(granted.roles, printerId.toLowerCase())
 }
 
-/** Asks the connected printer what it granted, and records it; anything unreadable records nothing. */
-export async function readGrantedRole (printerId: string, fetchPath: (path: string) => Promise<Response>): Promise<GrantedRole | null> {
-  forgetGrantedRole(printerId)
-  let role: GrantedRole | null = null
-  try {
-    const answer = await fetchPath(PAIRING_PATH)
-    if (answer.ok) role = grantedRoleOf(await answer.json())
-  } catch { /* an unreadable answer grants nothing */ }
-  if (role) Vue.set(granted.roles, printerId.toLowerCase(), role)
-  return role
+/** Waits before the 2nd and 3rd reads of the grant: short, because the person is looking at a read-only phone. */
+export const GRANT_RETRY_DELAYS_MS = [400, 1200]
+
+export interface ReadGrantOptions {
+  /** Waits between tries; tests pass zeros. */
+  delaysMs?: number[]
+  /** A re-read after a reconnect: a grant already held stays unless the printer answers that it grants none. */
+  keep?: boolean
+}
+
+/**
+ * Asks the connected printer what it granted, and records it. A transient failure (nothing came back, a 5xx or an
+ * unreadable body) is tried again after a short wait; a printer's own answer, a refusal included, is final. Anything
+ * unreadable at the end records nothing: only an `entry: "open"` answer ever grants a role.
+ */
+export async function readGrantedRole (printerId: string, fetchPath: (path: string) => Promise<Response>, options: ReadGrantOptions = {}): Promise<GrantedRole | null> {
+  const delays = options.delaysMs ?? GRANT_RETRY_DELAYS_MS
+  if (!options.keep) forgetGrantedRole(printerId)
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    let role: GrantedRole | null = null
+    let final = false
+    try {
+      const answer = await fetchPath(PAIRING_PATH)
+      if (answer.ok) {
+        role = grantedRoleOf(await answer.json())
+        final = true
+      } else if (answer.status < 500) {
+        final = true
+      }
+    } catch { /* an unreadable answer grants nothing, and is asked again */ }
+    if (final) {
+      if (role) Vue.set(granted.roles, printerId.toLowerCase(), role)
+      else forgetGrantedRole(printerId)
+      return role
+    }
+    if (attempt < delays.length) await new Promise(resolve => setTimeout(resolve, delays[attempt]))
+  }
+  return grantedRoleFor(printerId)
 }

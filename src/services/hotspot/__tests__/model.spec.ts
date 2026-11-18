@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectedFor, hotspotCountTitle, hotspotDeviceCount, networkRouteLabel, normalizeStations } from '../model'
+import { connectedFor, hotspotCountTitle, entryRouteLabel, hotspotDeviceCount, networkRouteLabel, normalizeStations } from '../model'
 
 describe('normalizeStations (KAN-4297)', () => {
   it('reads the v2 answer that exists today', () => {
@@ -64,5 +64,26 @@ describe('networkRouteLabel', () => {
 describe('connectedFor', () => {
   it.each([[5, '5 s'], [720, '12 min'], [7500, '2 h 5 min'], [7200, '2 h'], [null, ''], [-1, '']])('%s is %j', (s, text) => {
     expect(connectedFor(s as number | null)).toBe(text)
+  })
+})
+
+describe('entryRouteLabel: only the printer reached through its own hotspot says so', () => {
+  it('labels the active local printer when the printer says the request came from its hotspot', () => {
+    expect(entryRouteLabel('local', '10.0.0.5', true)).toBe('Through hotspot')
+  })
+
+  it('does not label a local card that is not the one Control is on, whatever the page address', () => {
+    expect(entryRouteLabel(null, '10.0.0.7', true, '10.42.0.1')).toBe('On this network')
+    expect(entryRouteLabel(null, '10.42.0.1', null, '10.42.0.1')).toBe('On this network')
+  })
+
+  it("uses the page address only for that printer's own page", () => {
+    expect(entryRouteLabel('local', '10.42.0.1:80', null, '10.42.0.1')).toBe('Through hotspot')
+    expect(entryRouteLabel('local', null, null, '10.42.0.1')).toBe('Through hotspot')
+    expect(entryRouteLabel('local', '192.168.1.40', null, '10.42.0.1')).toBe('On this network')
+  })
+
+  it("the printer's own answer wins over the address", () => {
+    expect(entryRouteLabel('local', '10.42.0.1', false, '10.42.0.1')).toBe('On this network')
   })
 })
