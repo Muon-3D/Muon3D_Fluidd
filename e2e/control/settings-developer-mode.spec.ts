@@ -228,8 +228,12 @@ for (const [status, route] of [[405, "the printer's own page"], [403, 'Bluetooth
     await expect(p.getByText('Method Not Allowed')).toHaveCount(0)
     await expect(p.getByTestId('developer-mode-switch')).toBeVisible()
     await p.getByTestId('developer-mode-switch').click()
-    await page.getByTestId('developer-enable-dialog').getByTestId('developer-confirm').click()
-    await expect(page.getByTestId('developer-enable-dialog')).toBeHidden()
+    const enable = page.getByTestId('developer-enable-dialog')
+    // Over Bluetooth /server/aux/ is closed, so Control can't read that it was released before and shows the terms;
+    // the printer still takes the change with no challenge.
+    if (status === 403) await enable.getByTestId('developer-accept').check()
+    await enable.getByTestId('developer-confirm').click()
+    await expect(enable).toBeHidden()
     await expect(p.getByTestId('developer-mode-eyebrow')).toHaveText('On')
     await p.getByTestId('developer-mode-switch').click()
     await page.getByTestId('developer-disable-dialog').getByTestId('developer-confirm').click()
