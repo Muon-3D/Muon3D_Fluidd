@@ -111,7 +111,7 @@ export function searchSettingsSections (sections: SettingsSection[], query: stri
 export interface AccessCards {
   /** The new People and access page (a Muon printer with `muon_access`). */
   peopleAccess: boolean;
-  /** Moonraker's API key and users card: a non-Muon printer, or a Muon one whose MuonOS predates `muon_access`. */
+  /** Moonraker's API key and users card: a non-Muon host only. A Muon printer refuses those endpoints (KAN-4340), so it never shows it. */
   auth: boolean;
   /** Muon or not isn't known yet (server.info hasn't loaded): a muted loading line, never the wrong card. */
   loading: boolean;
@@ -122,7 +122,7 @@ export function accessCards (isMuonPrinter: boolean | null, components: string[]
   const access = components.includes('muon_access')
   return {
     peopleAccess: isMuonPrinter && access,
-    auth: components.includes('authorization') && (!isMuonPrinter || !access),
+    auth: components.includes('authorization') && !isMuonPrinter,
     loading: false
   }
 }
