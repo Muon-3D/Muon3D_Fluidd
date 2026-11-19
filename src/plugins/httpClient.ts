@@ -6,6 +6,7 @@ import { Globals } from '@/globals'
 import type { Store } from 'vuex'
 import type { RootState } from '@/store/types'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
+import { policyRefusedText } from '@/services/managed-transport/refusal'
 
 const createHttpClient = (store: Store<RootState>) => {
   // Create a base instance with sane defaults.
@@ -122,7 +123,7 @@ const createHttpClient = (store: Store<RootState>) => {
       error.response.status === 403 &&
       isManagedApiUrl(store.state.config.apiUrl) &&
       (error.config?.method ?? 'get').toLowerCase() === 'get' &&
-      /muon-link policy refused/.test(message ?? '')
+      (/muon-link policy refused/.test(message ?? '') || policyRefusedText(message))
     ) {
       consola.debug('Refused through Muon3D', url, message)
       return Promise.reject(error)

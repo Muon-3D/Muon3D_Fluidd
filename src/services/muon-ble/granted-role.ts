@@ -14,6 +14,7 @@
  */
 import Vue from 'vue'
 import { entryOf, PAIRING_PATH } from './entry'
+import { policyRefusedText } from '@/services/managed-transport/refusal'
 
 export type GrantedRole = 'operator' | 'viewer'
 
@@ -44,6 +45,11 @@ export interface ReadGrantOptions {
   delaysMs?: number[]
   /** A re-read after a reconnect: a grant already held stays unless the printer answers that it grants none. */
   keep?: boolean
+  /**
+   * The printer has already answered this session (it let it in over Bluetooth). Then muon-link's Owner-only policy
+   * refusing the pairing read means "you are an Open printer's guest, not its owner": the guest's Operator role, no more.
+   */
+  admitted?: boolean
 }
 
 /**
@@ -64,6 +70,7 @@ export async function readGrantedRole (printerId: string, fetchPath: (path: stri
         final = true
       } else if (answer.status < 500) {
         final = true
+        if (options.admitted && answer.status === 403 && policyRefusedText(await answer.text().catch(() => ''))) role = 'operator'
       }
     } catch { /* an unreadable answer grants nothing, and is asked again */ }
     if (final) {

@@ -57,6 +57,7 @@ const SETUP_STATE = ${SETUP_STATE}
 const COMPARE = ${JSON.stringify(COMPARE)}
 const PANEL_CODE = ${JSON.stringify(PANEL_CODE)}
 const S = () => window.__e2ePair
+const POLICY = 'muon-link policy refused this request: not on the remote allowlist; unlisted endpoints are Owner-only by default'
 const log = line => S().events.push(line)
 const nameOf = id => S().printers.find(p => p.id === id)?.advertised ?? id
 
@@ -79,7 +80,20 @@ class Socket {
     if (next) next(item)
     else this.queue.push(item)
   }
-  async send (data) { await this.open; this.ws.send(data) }
+  async send (data) {
+    await this.open
+    // A non-owner on an Open printer: muon-link's policy answers these itself, as a JSON-RPC error.
+    if (S().ownerOnly) {
+      let request = null
+      try { request = JSON.parse(data) } catch {}
+      if (request && S().ownerOnlyMethods.includes(request.method)) {
+        S().refusedMethods.push(request.method)
+        this.push(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: 403, message: POLICY } }))
+        return
+      }
+    }
+    this.ws.send(data)
+  }
   next () {
     if (this.queue.length) return Promise.resolve(this.queue.shift())
     if (this.closed) return Promise.resolve(null)
@@ -105,6 +119,10 @@ class Printer {
       // A printer that is set up lets a stranger read nothing of its setup.
       if (kind !== 'new') return { status: 403, headers: ['content-type', 'application/json'], body: text({ error: 'set up already' }) }
       return { status: 200, headers: ['content-type', 'application/json'], body: text({ result: SETUP_STATE }) }
+    }
+    if (S().ownerOnly && ['/muon-link/pairing', '/server/muon/identity', '/server/muon/access', '/server/aux/permissions'].some(p => path.startsWith(p))) {
+      S().refusedPaths.push(path)
+      return { status: 403, headers: ['content-type', 'application/json'], body: text({ error: POLICY }) }
     }
     if (path.startsWith('/muon-link/pairing')) {
       const entry = S().printers.find(p => p.id === this.id)?.entry
@@ -229,7 +247,7 @@ export const MuonEndpoint = { async create (relay) { (S().relays ??= []).push(re
  * Nobody is signed in; `pick` is the printer the person chooses in the
  * browser's Bluetooth chooser.
  */
-export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: { advertise?: boolean, panel?: boolean, approval?: boolean, granted?: boolean } = {}) {
+export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: { advertise?: boolean, panel?: boolean, approval?: boolean, granted?: boolean, ownerOnly?: boolean } = {}) {
   const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' }
   await page.route(`${CONSOLE}/v1/config`, route => route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ relay_url: RELAY, orchestrator_id: 'e2e', authority_key: 'e2e' }) }))
   // Nobody is signed in: the console refuses a grant, as it does for a request with no session.
@@ -247,8 +265,8 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
   })
   // Nothing here is about the 3D model; the photoreal M1 stalls software WebGL.
   await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
-  await page.addInitScript(([printers, id, advertise, panel, approval, granted]) => {
-    const state: any = { events: [] as string[], printers, paired: [] as string[], bleLive: 0, heard: id, panel, approval }
+  await page.addInitScript(([printers, id, advertise, panel, approval, granted, ownerOnly]) => {
+    const state: any = { events: [] as string[], printers, paired: [] as string[], bleLive: 0, heard: id, panel, approval, ownerOnly, refusedPaths: [] as string[], refusedMethods: [] as string[], ownerOnlyMethods: ['server.config', 'server.muon.get_protection', 'machine.update.status'] }
     for (const p of printers as any[]) if (p.kind === 'paired') state.paired.push(p.id)
     ;(window as any).__e2ePair = state
     try { for (const k of JSON.parse(sessionStorage.getItem('e2ePaired') ?? '[]')) if (!state.paired.includes(k)) state.paired.push(k) } catch {}
@@ -336,7 +354,7 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
       bt.dispatchEvent(event)
     }
     Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: bt })
-  }, [PRINTERS, pick.id, !!options.advertise, !!options.panel, !!options.approval, !!options.granted] as const)
+  }, [PRINTERS, pick.id, !!options.advertise, !!options.panel, !!options.approval, !!options.granted, !!options.ownerOnly] as const)
 }
 
 export async function answerAtPrinter (page: Page, outcome: 'accept' | 'reject' | 'time out') {
@@ -367,4 +385,9 @@ export function setPairingGate (page: Page, on: boolean | null) {
     const m = await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'activate.ts'].join('/'))
     m.setPanelCodePairing(value)
   }, on)
+}
+
+/** What muon-link's Owner-only policy refused this browser, once `ownerOnly` is on: HTTP paths and JSON-RPC methods. */
+export function ownerOnlyRefusals (page: Page): Promise<{ paths: string[], methods: string[] }> {
+  return page.evaluate(() => ({ paths: [...(window as any).__e2ePair.refusedPaths], methods: [...(window as any).__e2ePair.refusedMethods] }))
 }

@@ -207,6 +207,28 @@ describe('a refusal on the socket', () => {
     expect(ctx.dispatch).not.toHaveBeenCalled()
   })
 
+  describe('muon-link Owner-only policy, for an Open printer guest', () => {
+    const POLICY = 'muon-link policy refused this request: not on the remote allowlist; unlisted endpoints are Owner-only by default'
+    const policyRefusal = (method: string) => {
+      const payload = { code: 403, message: POLICY }
+      Object.defineProperty(payload, '__request__', { enumerable: false, value: { id: 1, method } })
+      return payload
+    }
+
+    it.each(['server.config', 'server.muon.get_protection', 'machine.update.status'])('%s: not available to this user, no toast and no re-ask', async (method) => {
+      const ctx = context(true)
+      await call(socketActions.onSocketError, ctx, policyRefusal(method))
+      expect(emit).not.toHaveBeenCalled()
+      expect(ctx.dispatch).not.toHaveBeenCalled()
+    })
+
+    it('control: the same refusal of something the person asked for is still toasted', async () => {
+      const ctx = context(true)
+      await call(socketActions.onSocketError, ctx, policyRefusal('printer.gcode.script'))
+      expect(emit).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('leaves a 403 on anything unprotected to the existing path', async () => {
     const ctx = context(true)
     await call(socketActions.onSocketError, ctx, refusal('printer.gcode.script'))
