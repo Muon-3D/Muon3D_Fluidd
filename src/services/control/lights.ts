@@ -50,6 +50,8 @@ export interface LightsCapabilities {
   speedMin: number;
   /** The most settings sent per second. */
   writesPerSecond: number;
+  /** SAT=0..100 (0 is white at BRIGHT): whether the printer's macro takes it. */
+  saturation: boolean;
 }
 
 /** What the LED_MODE macro can do. */
@@ -59,7 +61,19 @@ export const LED_MODE_CAPABILITIES: LightsCapabilities = {
   effects: EFFECT_CATALOGUE.filter(e => ['solid', 'gradient', 'rainbow', 'breathe', 'chase', 'status'].includes(e.id)),
   frames: false,
   speedMin: 5,
-  writesPerSecond: 3
+  writesPerSecond: 3,
+  saturation: false
+}
+
+/**
+ * What this printer's LED_MODE can do, from its own report. SAT (white) is there when the macro
+ * keeps a `sat` variable, as it does for hue, brightness and speed (KAN-4899). Zones (STRIP=)
+ * stay off until the shape of its per-strip report is confirmed.
+ */
+export function ledModeCapabilities (printer: Record<string, any> | undefined | null): LightsCapabilities {
+  const vars = printer?.['gcode_macro LED_MODE'] as Record<string, unknown> | undefined
+  const saturation = !!vars && typeof vars === 'object' && vars.sat !== undefined
+  return saturation === LED_MODE_CAPABILITIES.saturation ? LED_MODE_CAPABILITIES : { ...LED_MODE_CAPABILITIES, saturation }
 }
 
 export interface LightState {
@@ -71,6 +85,8 @@ export interface LightState {
   brightness: number;
   /** 5-100 on LED_MODE. */
   speed: number;
+  /** 0-100, 100 when not said; 0 is white. Only a printer with SAT takes it. */
+  saturation?: number;
 }
 
 export const DEFAULT_LIGHT: LightState = { on: true, effect: 'solid', colors: ['#f7b24a', '#f7b24a'], brightness: 80, speed: 55 }
@@ -140,7 +156,7 @@ export const asLedColour = (hex: string): string => hueToHex(hexToHue(hex))
 // ---- LED_MODE ---------------------------------------------------------------
 
 /** The variables of the `gcode_macro LED_MODE` object (led_modes.cfg:17-23). */
-export interface LedModeVars { mode?: unknown; h?: unknown; h2?: unknown; bright?: unknown; speed?: unknown }
+export interface LedModeVars { mode?: unknown; h?: unknown; h2?: unknown; bright?: unknown; speed?: unknown; sat?: unknown }
 
 /**
  * The state LED_MODE reports. `null` when the printer has no LED_MODE (not an
@@ -160,7 +176,8 @@ export function readLedMode (vars: LedModeVars | undefined | null, resume: Effec
     effect,
     colors: [hueToHex(h), hueToHex(h2)].slice(0, caps.maxColours),
     brightness: Math.round(clamp(num(vars.bright, 60), 0, 100)),
-    speed: Math.round(clamp(num(vars.speed, 50), caps.speedMin, 100))
+    speed: Math.round(clamp(num(vars.speed, 50), caps.speedMin, 100)),
+    ...(caps.saturation ? { saturation: Math.round(clamp(num(vars.sat, 100), 0, 100)) } : {})
   }
 }
 
@@ -179,7 +196,8 @@ export function ledModeCommand (state: LightState, caps: LightsCapabilities = LE
   const h2 = effect.colours > 1 ? hueParam(state.colors[1], first) : h
   const bright = Math.round(clamp(num(state.brightness, 80), 0, 100))
   const speed = Math.round(clamp(num(state.speed, 50), caps.speedMin, 100))
-  return `LED_MODE MODE=${effect.id} H=${h} H2=${h2} BRIGHT=${bright} SPEED=${speed}`
+  const sat = caps.saturation && effect.colours > 0 ? ` SAT=${Math.round(clamp(num(state.saturation, 100), 0, 100))}` : ''
+  return `LED_MODE MODE=${effect.id} H=${h} H2=${h2} BRIGHT=${bright} SPEED=${speed}${sat}`
 }
 
 /** `state` with `patch` laid on it, kept inside what the backend allows. */
@@ -190,6 +208,8 @@ export function patchLight (state: LightState, patch: Partial<LightState>, caps:
   while (next.colors.length < Math.min(2, caps.maxColours)) next.colors.push(next.colors[next.colors.length - 1])
   next.brightness = Math.round(clamp(num(next.brightness, 80), 0, 100))
   next.speed = Math.round(clamp(num(next.speed, 50), caps.speedMin, 100))
+  if (caps.saturation) next.saturation = Math.round(clamp(num(next.saturation, 100), 0, 100))
+  else delete next.saturation
   return next
 }
 
@@ -245,6 +265,8 @@ export interface LightPreset {
   name: string;
   effect: EffectId;
   colors: string[];
+  /** 0-100; only set when below 100 (a white look). */
+  saturation?: number;
   builtin?: boolean;
 }
 
@@ -255,16 +277,19 @@ export interface LightPreset {
  * honest). The colours are hues; `hueToHex` gives what the strips show.
  */
 export const BUILTIN_PRESETS: LightPreset[] = [
+  { id: 'b2', name: 'Printer status', effect: 'status', colors: [hueToHex(140)], builtin: true },
   { id: 'b0', name: 'Warm white', effect: 'solid', colors: [hueToHex(36)], builtin: true },
   { id: 'b1', name: 'Cool focus', effect: 'solid', colors: [hueToHex(205)], builtin: true },
-  { id: 'b2', name: 'Printer status', effect: 'status', colors: [hueToHex(140)], builtin: true },
   { id: 'b3', name: 'Aurora', effect: 'breathe', colors: [hueToHex(170)], builtin: true },
   { id: 'b4', name: 'Sunset', effect: 'gradient', colors: [hueToHex(28), hueToHex(340)], builtin: true },
   { id: 'b5', name: 'Rainbow', effect: 'rainbow', colors: [hueToHex(0), hueToHex(240)], builtin: true }
 ]
 
+/** The preset that comes first and wears the Default badge. */
+export const DEFAULT_PRESET_ID = 'b2'
+
 /** The favourites a person starts with, in order: the ones that exist. */
-export const DEFAULT_FAVOURITES = ['b3', 'b2', 'u0', 'b4', 'b0', 'b1', 'b5']
+export const DEFAULT_FAVOURITES = ['b2', 'b3', 'u0', 'b4', 'b0', 'b1', 'b5']
 
 export const MAX_FAVOURITES = 7
 export const MAX_BOXES = 8
@@ -282,7 +307,8 @@ export function cleanPreset (raw: unknown, caps: LightsCapabilities = LED_MODE_C
   if (!effect) return null
   const colors = Array.isArray(p.colors) ? p.colors.filter((c): c is string => typeof c === 'string' && !!parseHex(c)).slice(0, caps.maxColours).map(c => asLedColour(c)) : []
   if (!colors.length) return null
-  return { id: p.id, name: p.name.slice(0, PRESET_NAME_MAX), effect: effect.id, colors }
+  const sat = typeof p.saturation === 'number' && Number.isFinite(p.saturation) && p.saturation < 100 ? Math.round(clamp(p.saturation, 0, 100)) : undefined
+  return { id: p.id, name: p.name.slice(0, PRESET_NAME_MAX), effect: effect.id, colors, ...(sat !== undefined ? { saturation: sat } : {}) }
 }
 
 /** Built-in presets, then the person's own. */
@@ -309,6 +335,9 @@ export function presetBoxes (presets: LightPreset[], favourites: string[] | null
     if (p && !picked.includes(p) && picked.length < MAX_FAVOURITES) picked.push(p)
   }
   for (const p of presets) if (picked.length < MAX_FAVOURITES && !picked.includes(p)) picked.push(p)
+  // Printer status comes first whenever it is there.
+  const first = picked.findIndex(p => p.id === DEFAULT_PRESET_ID)
+  if (first > 0) picked.unshift(...picked.splice(first, 1))
   return [...picked.map(preset => ({ preset })), { preset: null, more: presets.length - MAX_FAVOURITES }]
 }
 
@@ -330,7 +359,7 @@ export function cleanFavourites (raw: unknown, presets: LightPreset[]): string[]
 
 /** The state a preset sets: its effect and colours, with the brightness and speed already on. */
 export function presetState (preset: LightPreset, current: LightState, caps: LightsCapabilities = LED_MODE_CAPABILITIES): LightState {
-  return patchLight(current, { on: true, effect: preset.effect, colors: preset.colors }, caps)
+  return patchLight(current, { on: true, effect: preset.effect, colors: preset.colors, saturation: preset.saturation ?? 100 }, caps)
 }
 
 export function newPresetId (existing: LightPreset[]): string {
@@ -364,6 +393,14 @@ function mix (a: string, b: string, t: number): string {
 
 export const LED_OFF = '#3a3a3c'
 
+/** A colour with its saturation brought down to `saturation` (0-100): 0 is white. */
+export function desaturate (hex: string, saturation: number | undefined): string {
+  const rgb = parseHex(hex)
+  if (!rgb || saturation === undefined || saturation >= 100) return hex
+  const k = clamp(saturation, 0, 100) / 100
+  return `#${rgb.map(v => hex2(Math.round(255 + (v - 255) * k))).join('')}`
+}
+
 /**
  * One strip as it looks at `seconds` into the effect: 40 dots. The same maths
  * as the macro's led_effect (breathe period (105 - speed) / 20 s, chase and
@@ -373,8 +410,8 @@ export const LED_OFF = '#3a3a3c'
 export function previewStrip (state: LightState, seconds: number): LedDot[] {
   const n = LEDS_PER_STRIP
   const dots: LedDot[] = []
-  const c1 = state.colors[0] ?? DEFAULT_LIGHT.colors[0]
-  const c2 = state.colors[1] ?? c1
+  const c1 = desaturate(state.colors[0] ?? DEFAULT_LIGHT.colors[0], state.saturation)
+  const c2 = desaturate(state.colors[1] ?? state.colors[0] ?? DEFAULT_LIGHT.colors[0], state.saturation)
   const speed = clamp(state.speed, 5, 100)
   for (let i = 0; i < n; i++) {
     const t = i / (n - 1)
@@ -425,11 +462,15 @@ export interface LightsTransport {
 export interface LightsLibrary { presets: LightPreset[]; favourites: string[] }
 
 export interface LightsBackend {
-  readonly capabilities: LightsCapabilities;
+  capabilities: LightsCapabilities;
   /** The state the printer reports, from its objects. null: no lights here. */
   read: (printer: Record<string, any> | undefined, resume?: EffectId) => LightState | null;
-  /** The G-code or call a state becomes, for the API card. */
-  describe: (state: LightState) => string;
+  /** What the printer can do, from its own report. */
+  capabilitiesFor: (printer: Record<string, any> | undefined) => LightsCapabilities;
+  /** The call a state becomes, for the API card, at this printer's address (`base`, no trailing slash). */
+  describe: (state: LightState, base?: string) => string;
+  /** The call that reads the lights back. */
+  describeRead: (base?: string) => string;
   /** Sends the state now. Rate limiting is the caller's (createLatestWriter). */
   apply: (state: LightState) => void | Promise<unknown>;
   loadLibrary: () => Promise<LightsLibrary>;
@@ -448,18 +489,24 @@ export const LEGACY_LIGHTS_NAMESPACE = 'muon_lights'
 
 /** Today's backend: the LED_MODE macro through Moonraker, and the library in Moonraker's database. */
 export class LedModeBackend implements LightsBackend {
-  readonly capabilities = LED_MODE_CAPABILITIES
+  capabilities = LED_MODE_CAPABILITIES
   private transport: LightsTransport
 
   constructor (transport: LightsTransport) { this.transport = transport }
 
+  capabilitiesFor (printer: Record<string, any> | undefined) { return ledModeCapabilities(printer) }
+
   read (printer: Record<string, any> | undefined, resume: EffectId = 'solid'): LightState | null {
+    this.capabilities = this.capabilitiesFor(printer)
     return readLedMode(printer?.['gcode_macro LED_MODE'], resume, this.capabilities)
   }
 
-  describe (state: LightState): string {
-    return `POST /printer/gcode/script\n${JSON.stringify({ script: ledModeCommand(state, this.capabilities) })}`
+  describe (state: LightState, base = ''): string {
+    return `POST ${base}/printer/gcode/script
+${JSON.stringify({ script: ledModeCommand(state, this.capabilities) })}`
   }
+
+  describeRead (base = ''): string { return `GET ${base}/printer/objects/query?gcode_macro%20LED_MODE` }
 
   apply (state: LightState) { return this.transport.gcode(ledModeCommand(state, this.capabilities)) }
 
@@ -481,7 +528,7 @@ export class LedModeBackend implements LightsBackend {
 
   saveLibrary (presets: LightPreset[], favourites: string[]) {
     return this.transport.dbWrite(LIGHTS_NAMESPACE, LIGHTS_KEY, {
-      presets: presets.filter(p => !p.builtin).map(p => ({ id: p.id, name: p.name, effect: p.effect, colors: p.colors })),
+      presets: presets.filter(p => !p.builtin).map(p => ({ id: p.id, name: p.name, effect: p.effect, colors: p.colors, ...(p.saturation !== undefined ? { saturation: p.saturation } : {}) })),
       favourites: favourites.slice(0, MAX_FAVOURITES)
     })
   }

@@ -88,12 +88,6 @@
         class="lp__mast lp__line"
         stroke-width="1"
       />
-      <circle
-        cx="136.6"
-        cy="31"
-        r="2.25"
-        class="lp__dot"
-      />
       <g :opacity="spill">
         <rect
           x="130"
@@ -151,35 +145,6 @@
         :points="geo.stripR"
         class="lp__strip"
       />
-      <text
-        x="126"
-        y="303"
-        class="lp__ink lp__label"
-        text-anchor="middle"
-      >Left · 40</text>
-      <text
-        x="194"
-        y="303"
-        class="lp__ink lp__label"
-        text-anchor="middle"
-      >Right · 40</text>
-      <text
-        x="84"
-        y="191"
-        class="lp__ink lp__small"
-        text-anchor="middle"
-      >Display</text>
-      <text
-        x="176"
-        y="48"
-        class="lp__ink lp__small"
-      >Spine</text>
-      <text
-        x="160"
-        y="317"
-        class="lp__ink lp__small"
-        text-anchor="middle"
-      >M1 from above</text>
       <g :opacity="luminance">
         <g
           :filter="`url(#lp-glow-${uid})`"
@@ -215,7 +180,7 @@
 <script lang="ts">
 import { Component, Mixins } from 'vue-property-decorator'
 import PreviewClock from './preview-clock'
-import { LEDS_PER_STRIP } from '@/services/control/lights'
+import { LEDS_PER_STRIP, desaturate } from '@/services/control/lights'
 
 let seed = 0
 
@@ -239,19 +204,21 @@ const stadium = (w: number, l: number, n = 8): number[][] => {
   for (let j = 0; j <= n; j++) { const b = Math.PI + j * Math.PI / n; o.push([w * Math.cos(b), w - l + w * Math.sin(b)]) }
   return o
 }
-const quad = (x0: number, x1: number): number[][] => [[x0, -109], [x1, -109], [x1, 109], [x0, 109]]
+// The strips stop short of the ends of the slot, so every LED and its glow sit inside it at any width.
+const STRIP = 96
+const quad = (x0: number, x1: number): number[][] => [[x0, -STRIP], [x1, -STRIP], [x1, STRIP], [x0, STRIP]]
 const GEO = {
   body: pts(body),
   wheel: pts(body.filter(p => p[2] === 2)),
   slot: pts(stadium(15, 112)),
-  groove: pts(stadium(3.5, 107)),
+  groove: pts(stadium(3.5, 100)),
   stripL: pts(quad(-11, -2.6)),
   stripR: pts(quad(2.6, 11))
 }
 
 /** Where each LED sits: two strips of 40, top to bottom (which end is LED 1 is not yet measured). */
 const LEDS = ['left', 'right'].flatMap((strip, zi) => Array.from({ length: LEDS_PER_STRIP }, (_, i) => {
-  const p = T([(zi ? 1 : -1) * 6.8, 109 - 218 * (i + 0.5) / LEDS_PER_STRIP])
+  const p = T([(zi ? 1 : -1) * 6.8, (STRIP - 3) - 2 * (STRIP - 3) * (i + 0.5) / LEDS_PER_STRIP])
   return { key: `${strip}${i}`, i, x: Number(p[0].toFixed(1)), y: Number(p[1].toFixed(1)) }
 }))
 
@@ -264,7 +231,7 @@ export default class LightsPlan extends Mixins(PreviewClock) {
 
   get spill (): number { return this.light.on ? Math.round((0.2 + 0.32 * this.light.brightness / 100) * 100) / 100 : 0 }
 
-  get tint (): string { return this.light.on ? (this.light.effect === 'rainbow' ? '#5a8bff' : this.light.effect === 'status' ? '#30d158' : this.light.colors[0]) : '#000' }
+  get tint (): string { return this.light.on ? (this.light.effect === 'rainbow' ? '#5a8bff' : this.light.effect === 'status' ? '#30d158' : desaturate(this.light.colors[0], this.light.saturation)) : '#000' }
 }
 </script>
 
@@ -276,19 +243,13 @@ export default class LightsPlan extends Mixins(PreviewClock) {
 .lp__line { stroke: rgba(30, 55, 90, 0.6); }
 .lp__fan { fill: rgba(30, 55, 90, 0.12); }
 .lp__mast { fill: #2b323c; }
-.lp__dot { fill: rgba(30, 55, 90, 0.6); }
 .lp__slot { fill: #262d37; }
 .lp__strip { fill: #1d2127; }
-.lp__ink { fill: #4a4b50; font-family: inherit; }
-.lp__label { font-size: 9px; font-weight: 600; }
-.lp__small { font-size: 8px; }
 .theme--dark .lp { background: radial-gradient(ellipse at 50% 45%, #17171a, #0b0b0c); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
 .theme--dark .lp__body { fill: rgba(255, 255, 255, 0.045); stroke: rgba(170, 200, 240, 0.6); }
 .theme--dark .lp__wheel { stroke: #0b0d10; }
 .theme--dark .lp__line { stroke: rgba(170, 200, 240, 0.6); }
 .theme--dark .lp__fan { fill: rgba(170, 200, 240, 0.12); }
 .theme--dark .lp__mast { fill: #1b2027; }
-.theme--dark .lp__dot { fill: rgba(170, 200, 240, 0.6); }
 .theme--dark .lp__slot { fill: #06080b; }
-.theme--dark .lp__ink { fill: #a1a1a6; }
 </style>

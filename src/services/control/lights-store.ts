@@ -90,6 +90,9 @@ export class LightsStore {
     } catch { refused() }
   }
 
+  /** What this printer's lights can do, from its own report. */
+  capsFor (printer: Record<string, any> | undefined) { return this.backend.capabilitiesFor(printer) }
+
   /** What the lights are: the change in flight, else what the printer reports. null: this printer has no lights to set. */
   current (printer: Record<string, any> | undefined): LightState | null {
     return this.state.pending ?? this.backend.read(printer, this.state.resume)
@@ -112,6 +115,7 @@ export class LightsStore {
 
   /** Changes the lights: at once on screen, and to the printer at no more than three a second, the latest winning. */
   set (printer: Record<string, any> | undefined, patch: Partial<LightState>) {
+    this.backend.read(printer, this.state.resume)
     const base = this.current(printer) ?? DEFAULT_LIGHT
     const next = patchLight(base, patch, this.backend.capabilities)
     this.state.error = ''
@@ -157,7 +161,8 @@ export class LightsStore {
     if (!state?.on) return null
     const caps = this.backend.capabilities
     const colours = (s: { effect: EffectId; colors: string[] }) => s.colors.slice(0, Math.max(1, effectFor(caps, s.effect).colours)).join(',')
-    return this.presets.find(p => p.effect === state.effect && colours(p) === colours(state))?.id ?? null
+    const sat = (s: { saturation?: number }) => s.saturation ?? 100
+    return this.presets.find(p => p.effect === state.effect && colours(p) === colours(state) && sat(p) === sat(state))?.id ?? null
   }
 
   /** Saves the lights as a preset (its effect and colours), and stars it when there is room. Resolves to the preset, or null when it could not be saved. */
@@ -176,7 +181,8 @@ export class LightsStore {
       id: newPresetId(library.presets),
       name: name.trim().slice(0, PRESET_NAME_MAX) || `Custom ${saved.length + 1}`,
       effect: info.id,
-      colors: state.colors.slice(0, Math.max(1, info.colours))
+      colors: state.colors.slice(0, Math.max(1, info.colours)),
+      ...(state.saturation !== undefined && state.saturation < 100 ? { saturation: state.saturation } : {})
     }
     const presets = [...library.presets, preset]
     const favourites = library.favourites.length < MAX_FAVOURITES ? [...library.favourites, preset.id] : library.favourites

@@ -14,7 +14,9 @@ function backend (over: Partial<LightsBackend> = {}): LightsBackend {
   return {
     capabilities: LED_MODE_CAPABILITIES,
     read: () => null,
+    capabilitiesFor: () => LED_MODE_CAPABILITIES,
     describe: s => JSON.stringify(s),
+    describeRead: () => 'read',
     apply: async () => undefined,
     loadLibrary: async () => library,
     saveLibrary: async () => undefined,

@@ -19,7 +19,7 @@ import {
 export default class LightsMixin extends Mixins(ControlMixin) {
   get lights (): LightsStore { return lightsStore }
 
-  get caps (): LightsCapabilities { return lightsStore.backend.capabilities }
+  get caps (): LightsCapabilities { return lightsStore.capsFor(this.printerObjects) }
 
   get printerObjects (): Record<string, any> { return this.$store.state.printer.printer }
 
