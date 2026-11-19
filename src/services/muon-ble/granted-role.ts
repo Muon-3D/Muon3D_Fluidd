@@ -13,7 +13,7 @@
  * is never above Operator: an explicit `role` in the answer can only lower it.
  */
 import Vue from 'vue'
-import { entryOf, PAIRING_PATH } from './entry'
+import { entryOf, openByProtection, PAIRING_PATH, PROTECTION_PATH } from './entry'
 import { policyRefusedText } from '@/services/managed-transport/refusal'
 
 export type GrantedRole = 'operator' | 'viewer'
@@ -46,10 +46,23 @@ export interface ReadGrantOptions {
   /** A re-read after a reconnect: a grant already held stays unless the printer answers that it grants none. */
   keep?: boolean
   /**
-   * The printer has already answered this session (it let it in over Bluetooth). Then muon-link's Owner-only policy
-   * refusing the pairing read means "you are an Open printer's guest, not its owner": the guest's Operator role, no more.
+   * True once the printer has let this browser in and the session really travels over Bluetooth (`bluetoothCarrying`),
+   * not merely that the person chose Bluetooth. Only then may muon-link's Owner-only policy refusing the pairing read
+   * mean "an Open printer's guest, not its owner". It is not enough alone: a Viewer admitted by a paired key on a
+   * Protected printer is refused the same way, so the printer must also say it is Open (`/server/muon/protection`,
+   * level 0). A printer that refuses that read too (older muon-link) grants nothing: read-only.
    */
-  admitted?: boolean
+  admitted?: boolean | (() => boolean | Promise<boolean>)
+}
+
+/** An Operator guest only where the printer itself says it is Open; any other answer or a refusal is no grant. */
+async function openGuestRole (fetchPath: (path: string) => Promise<Response>): Promise<GrantedRole | null> {
+  try {
+    const answer = await fetchPath(PROTECTION_PATH)
+    return answer.ok && openByProtection(await answer.json()) ? 'operator' : null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -70,7 +83,10 @@ export async function readGrantedRole (printerId: string, fetchPath: (path: stri
         final = true
       } else if (answer.status < 500) {
         final = true
-        if (options.admitted && answer.status === 403 && policyRefusedText(await answer.text().catch(() => ''))) role = 'operator'
+        if (answer.status === 403 && policyRefusedText(await answer.text().catch(() => ''))) {
+          const admitted = typeof options.admitted === 'function' ? await options.admitted() : options.admitted
+          if (admitted) role = await openGuestRole(fetchPath)
+        }
       }
     } catch { /* an unreadable answer grants nothing, and is asked again */ }
     if (final) {
