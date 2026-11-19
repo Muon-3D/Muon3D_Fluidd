@@ -106,6 +106,8 @@ export const actions: ActionTree<SocketState, RootState> = {
       consola.debug('Not available to this user:', method, payload.message)
       return
     }
+    // The Lighting screen shows a refused LED_MODE change in place, so it is not a toast as well.
+    if (method === 'printer.gcode.script' && String(payload.__request__?.params?.script ?? '').startsWith('LED_MODE')) return
     if (
       payload.code === 403 &&
       method &&

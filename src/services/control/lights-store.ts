@@ -26,7 +26,11 @@ import {
 
 /** Today's I/O: G-code over the printer's socket (not echoed to the console), the library over Moonraker's HTTP database. */
 export const moonrakerTransport: LightsTransport = {
-  gcode: script => SocketActions.printerGcodeScript(script),
+  // A refused script resolves to undefined (the socket reports the error itself): that is a refusal here.
+  gcode: async script => {
+    const answer = await SocketActions.printerGcodeScript(script)
+    if (answer === undefined) throw new Error('The printer did not take the script')
+  },
   dbRead: async namespace => {
     const response = await httpClientActions.serverDatabaseItemGet<Record<string, unknown>>(namespace)
     const value = response.data?.result?.value
@@ -37,6 +41,13 @@ export const moonrakerTransport: LightsTransport = {
 
 /** How long a change waits for the printer to report it before the screen goes back to what the printer says. */
 export const SETTLE_MS = 2500
+
+export const CHANGE_REFUSED = 'The printer refused that change.'
+export const SAVE_REFUSED = 'The printer refused that save. It may not let this account keep presets.'
+export const SAVE_UNREACHED = 'Could not save. Check the printer is reachable and try again.'
+
+/** A refusal is an answer (a status or an error from the printer); anything else never got there. */
+export const saveFailure = (error: unknown): string => (error as { response?: unknown } | null)?.response ? SAVE_REFUSED : SAVE_UNREACHED
 
 /**
  * What the Lighting screen and its widgets share: the change the person just
@@ -64,7 +75,19 @@ export class LightsStore {
 
   constructor (backend: LightsBackend, writer?: LatestWriter<LightState>) {
     this.backend = backend
-    this.writer = writer ?? createLatestWriter(state => { this.sent++; return backend.apply(state) }, backend.capabilities.writesPerSecond)
+    this.writer = writer ?? createLatestWriter(state => this.send(state), backend.capabilities.writesPerSecond)
+  }
+
+  /** One setting to the printer. A refusal (or a throw) is caught here: the screen says so and goes back to what the printer reports. */
+  private send (state: LightState) {
+    this.sent++
+    const refused = () => {
+      this.state.error = CHANGE_REFUSED
+      this.clearPending()
+    }
+    try {
+      Promise.resolve(this.backend.apply(state)).catch(refused)
+    } catch { refused() }
   }
 
   /** What the lights are: the change in flight, else what the printer reports. null: this printer has no lights to set. */
@@ -91,6 +114,7 @@ export class LightsStore {
   set (printer: Record<string, any> | undefined, patch: Partial<LightState>) {
     const base = this.current(printer) ?? DEFAULT_LIGHT
     const next = patchLight(base, patch, this.backend.capabilities)
+    this.state.error = ''
     this.state.pending = next
     if (next.on) this.state.resume = next.effect
     if (this.settleTimer) clearTimeout(this.settleTimer)
@@ -160,11 +184,10 @@ export class LightsStore {
     this.state.library = { presets, favourites }
     this.state.error = ''
     try {
-      await this.backend.savePresets(presets)
-      if (favourites !== library.favourites) await this.backend.saveFavourites(favourites)
-    } catch {
+      await this.backend.saveLibrary(presets, favourites)
+    } catch (error) {
       this.state.library = before
-      this.state.error = 'Could not save the preset. Check the printer is reachable and try again.'
+      this.state.error = saveFailure(error)
       return null
     }
     return preset
@@ -179,11 +202,11 @@ export class LightsStore {
     this.state.library = { ...library, favourites: clean }
     this.state.error = ''
     try {
-      await this.backend.saveFavourites(clean)
+      await this.backend.saveLibrary(library.presets, clean)
       return true
-    } catch {
+    } catch (error) {
       this.state.library = before
-      this.state.error = 'Could not save your favourites. Check the printer is reachable and try again.'
+      this.state.error = saveFailure(error)
       return false
     }
   }

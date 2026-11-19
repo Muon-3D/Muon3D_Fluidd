@@ -303,16 +303,45 @@ describe('the LED_MODE backend', () => {
     expect(new LedModeBackend(t).read({})).toBeNull()
   })
 
-  it('keeps presets and favourites in the muon_lights namespace, and not the built-ins', async () => {
+  it('keeps presets and favourites in the fluidd namespace under lights.library, and not the built-ins', async () => {
     const { t, db } = transport()
     const backend = new LedModeBackend(t)
-    await backend.savePresets([...BUILTIN_PRESETS, { id: 'u0', name: 'Mine', effect: 'solid', colors: ['#ff0000'] }])
-    await backend.saveFavourites(['b0', 'u0'])
-    expect(Object.keys(db)).toEqual(['muon_lights'])
-    expect(db.muon_lights.presets).toEqual([{ id: 'u0', name: 'Mine', effect: 'solid', colors: ['#ff0000'] }])
-    const library = await backend.loadLibrary()
+    await backend.saveLibrary([...BUILTIN_PRESETS, { id: 'u0', name: 'Mine', effect: 'solid', colors: ['#ff0000'] }], ['b0', 'u0'])
+    expect(Object.keys(db)).toEqual(['fluidd'])
+    expect(db.fluidd['lights.library']).toEqual({ presets: [{ id: 'u0', name: 'Mine', effect: 'solid', colors: ['#ff0000'] }], favourites: ['b0', 'u0'] })
+    // The fake stores a dotted key flat; Moonraker nests it, so read it back the way Moonraker would.
+    const nested = { ...t, dbRead: async (ns: string) => ns === 'fluidd' ? { lights: { library: db.fluidd['lights.library'] } } : {} }
+    const library = await new LedModeBackend(nested).loadLibrary()
     expect(library.presets.map(p => p.id)).toContain('u0')
     expect(library.favourites).toEqual(['b0', 'u0'])
+  })
+
+  it('moves a library found in the old muon_lights namespace to the new one, once', async () => {
+    const { t, db } = transport()
+    db.muon_lights = { presets: [{ id: 'u0', name: 'Old', effect: 'solid', colors: ['#ff0000'] }], favourites: ['b0', 'u0'] }
+    const library = await new LedModeBackend(t).loadLibrary()
+    expect(library.presets.map(p => p.id)).toContain('u0')
+    expect(library.favourites).toEqual(['b0', 'u0'])
+    expect(db.fluidd['lights.library']).toEqual({ presets: [{ id: 'u0', name: 'Old', effect: 'solid', colors: [asLedColour('#ff0000')] }], favourites: ['b0', 'u0'] })
+  })
+
+  it('negative control: with a library in the new place it neither reads nor moves the old one', async () => {
+    const { t, db } = transport()
+    db.muon_lights = { presets: [{ id: 'u9', name: 'Old', effect: 'solid', colors: ['#ff0000'] }], favourites: ['u9'] }
+    const read = vi.fn(async (ns: string) => ns === 'fluidd' ? { lights: { library: { presets: [{ id: 'u1', name: 'New', effect: 'solid', colors: ['#00ff00'] }], favourites: ['u1'] } } } : (db[ns] ?? {}))
+    const write = vi.fn(t.dbWrite)
+    const library = await new LedModeBackend({ ...t, dbRead: read, dbWrite: write }).loadLibrary()
+    expect(library.presets.map(p => p.id)).toContain('u1')
+    expect(library.presets.map(p => p.id)).not.toContain('u9')
+    expect(read).not.toHaveBeenCalledWith('muon_lights')
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('a refused migration write still returns the old library', async () => {
+    const { t, db } = transport()
+    db.muon_lights = { presets: [{ id: 'u0', name: 'Old', effect: 'solid', colors: ['#ff0000'] }], favourites: ['u0'] }
+    const library = await new LedModeBackend({ ...t, dbWrite: async () => { throw Object.assign(new Error('no'), { response: { status: 403 } }) } }).loadLibrary()
+    expect(library.presets.map(p => p.id)).toContain('u0')
   })
 
   it('starts with the default favourites when nothing is saved, and survives a failed read', async () => {

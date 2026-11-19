@@ -25,12 +25,15 @@ async function lightsPrinter (page: Page, options: { presets?: number; favourite
     database: true,
     onSocketEvent: (event, method) => { if (stamps && event === 'send' && method === 'printer.gcode.script') stamps.push(Date.now()) }
   })
-  printer.database.muon_lights = {}
-  if (options.presets) printer.database.muon_lights.presets = saved(options.presets)
-  if (options.favourites) printer.database.muon_lights.favourites = options.favourites
+  // The library lives in Control's own namespace, where muon-link lets a guest write: fluidd, lights.library.
+  const library: Record<string, unknown> = {}
+  if (options.presets) library.presets = saved(options.presets)
+  if (options.favourites) library.favourites = options.favourites
+  printer.database.fluidd = { lights: { library } }
   return printer
 }
 
+const stored = (printer: { database: Record<string, any> }) => printer.database.fluidd.lights.library as Record<string, any>
 const cell = (page: Page, id: string) => page.locator(`[data-cell="${id}"]`)
 
 async function addLightingWidget (page: Page, size: 'S' | 'M' | 'L') {
@@ -184,9 +187,9 @@ test.describe('presets and favourites', () => {
 
     await page.getByTestId('presets-done').click()
     await expect(page.getByTestId('presets-popup')).toHaveCount(0)
-    await expect.poll(() => (printer.database.muon_lights.favourites as string[] | undefined)?.length).toBe(7)
-    expect(printer.database.muon_lights.favourites).not.toContain('b0')
-    expect(printer.database.muon_lights.favourites).toContain('u1')
+    await expect.poll(() => (stored(printer).favourites as string[] | undefined)?.length).toBe(7)
+    expect(stored(printer).favourites).not.toContain('b0')
+    expect(stored(printer).favourites).toContain('u1')
   })
 
   test('Cancel keeps the favourites as they were', async ({ page, open }) => {
@@ -197,7 +200,7 @@ test.describe('presets and favourites', () => {
     await expect(page.getByTestId('presets-count')).toHaveText('Favourites 6 of 7')
     await page.getByTestId('presets-cancel').click()
     await expect(page.getByTestId('preset-b0')).toBeVisible()
-    expect(printer.database.muon_lights.favourites).toEqual(['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'u0'])
+    expect(stored(printer).favourites).toEqual(['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'u0'])
   })
 
   test('a preset box sends its LED_MODE line', async ({ page, open }) => {
@@ -216,10 +219,10 @@ test.describe('presets and favourites', () => {
     await page.getByTestId('preset-save').click()
     await expect(page.getByTestId('preset-note')).toHaveText('Saved, and added to your presets.')
     await expect(page.getByTestId('lighting-presets')).toContainText('Night shift')
-    const stored = printer.database.muon_lights.presets as Array<{ name: string; effect: string }>
-    expect(stored).toHaveLength(1)
-    expect(stored[0]).toMatchObject({ name: 'Night shift', effect: 'breathe' })
-    expect(printer.database.muon_lights.favourites).toHaveLength(2)
+    const mine = stored(printer).presets as Array<{ name: string; effect: string }>
+    expect(mine).toHaveLength(1)
+    expect(mine[0]).toMatchObject({ name: 'Night shift', effect: 'breathe' })
+    expect(stored(printer).favourites).toHaveLength(2)
   })
 })
 
@@ -326,5 +329,65 @@ test.describe('the Lighting widget', () => {
     await expect(tile.getByTestId('lighting-unavailable')).toBeVisible()
     await expect(tile.getByTestId('lighting-power')).toHaveCount(0)
     expect(ledScripts(printer.gcode)).toEqual([])
+  })
+})
+
+test.describe('what the printer refuses', () => {
+  const refuse = (page: Page) => page.route(/\/server\/database\/item/, route => route.request().method() === 'POST'
+    ? route.fulfill({ status: 403, json: { error: { code: 403, message: 'Forbidden' } } })
+    : route.fallback())
+
+  test('a refused save says so plainly, not that the printer may be unreachable', async ({ page, open }) => {
+    await lightsPrinter(page)
+    await refuse(page)
+    await open('/lighting')
+    await page.getByTestId('preset-name').fill('Night shift')
+    await page.getByTestId('preset-save').click()
+    await expect(page.getByTestId('lighting-error')).toContainText('The printer refused that save')
+    await expect(page.getByTestId('lighting-error')).not.toContainText(/reachable/i)
+    await expect(page.getByTestId('lighting-presets')).not.toContainText('Night shift')
+  })
+
+  test('negative control: with saves allowed there is no message', async ({ page, open }) => {
+    await lightsPrinter(page)
+    await open('/lighting')
+    await page.getByTestId('preset-name').fill('Night shift')
+    await page.getByTestId('preset-save').click()
+    await expect(page.getByTestId('lighting-presets')).toContainText('Night shift')
+    await expect(page.getByTestId('lighting-error')).toHaveCount(0)
+  })
+
+  test('a refused change shows an inline message and raises no error', async ({ page, open }) => {
+    const errors: string[] = []
+    page.on('pageerror', e => errors.push(e.message))
+    const printer = await lightsPrinter(page)
+    await open('/lighting')
+    await page.getByTestId('effect-gradient').click()
+    await expect.poll(() => ledScripts(printer.gcode).length).toBe(1)
+    await expect(page.getByTestId('lighting-error')).toHaveCount(0)
+    printer.state.failOn['printer.gcode.script'] = 'Forbidden'
+    await page.getByTestId('effect-chase').click()
+    await expect(page.getByTestId('lighting-error')).toHaveText('The printer refused that change.')
+    expect(errors).toEqual([])
+  })
+})
+
+test.describe('the library moves to the fluidd namespace', () => {
+  test('one time: a library in the old muon_lights namespace is read, and written to the new key', async ({ page, open }) => {
+    const printer = await lightsPrinter(page)
+    printer.database.fluidd = {}
+    printer.database.muon_lights = { presets: saved(6), favourites: ['b3', 'b2', 'u0', 'b4', 'b0', 'b1', 'b5'] }
+    await open('/lighting')
+    await expect(page.getByTestId('presets-more')).toContainText('+5')
+    await expect.poll(() => (printer.database.fluidd.lights?.library?.presets ?? []).length).toBe(6)
+  })
+
+  test('negative control: with a library in the new place the old one is ignored', async ({ page, open }) => {
+    const printer = await lightsPrinter(page, { presets: 2 })
+    printer.database.muon_lights = { presets: saved(6) }
+    await open('/lighting')
+    await expect(page.getByTestId('preset-grid').getByRole('button')).toHaveCount(8)
+    await expect(page.getByTestId('presets-more')).toHaveCount(0)
+    expect(stored(printer).presets).toHaveLength(2)
   })
 })

@@ -433,12 +433,18 @@ export interface LightsBackend {
   /** Sends the state now. Rate limiting is the caller's (createLatestWriter). */
   apply: (state: LightState) => void | Promise<unknown>;
   loadLibrary: () => Promise<LightsLibrary>;
-  savePresets: (saved: LightPreset[]) => Promise<unknown>;
-  saveFavourites: (ids: string[]) => Promise<unknown>;
+  /** Keeps the presets of your own and the favourites, in one write. */
+  saveLibrary: (presets: LightPreset[], favourites: string[]) => Promise<unknown>;
 }
 
-/** Moonraker's database namespace for the lighting library. */
-export const LIGHTS_NAMESPACE = 'muon_lights'
+/**
+ * Where the library lives: Control's own `fluidd` namespace, under `lights.library`. That is one of the two
+ * namespaces muon-link lets a guest or operator write over Bluetooth and the relay, so their saves work too.
+ */
+export const LIGHTS_NAMESPACE = 'fluidd'
+export const LIGHTS_KEY = 'lights.library'
+/** Where the first build kept it. Read once, then moved. */
+export const LEGACY_LIGHTS_NAMESPACE = 'muon_lights'
 
 /** Today's backend: the LED_MODE macro through Moonraker, and the library in Moonraker's database. */
 export class LedModeBackend implements LightsBackend {
@@ -458,14 +464,25 @@ export class LedModeBackend implements LightsBackend {
   apply (state: LightState) { return this.transport.gcode(ledModeCommand(state, this.capabilities)) }
 
   async loadLibrary (): Promise<LightsLibrary> {
-    const stored: Record<string, unknown> = await this.transport.dbRead(LIGHTS_NAMESPACE).catch(() => ({}))
+    const fluidd: Record<string, unknown> = await this.transport.dbRead(LIGHTS_NAMESPACE).catch(() => ({}))
+    const lights = fluidd.lights as { library?: unknown } | undefined
+    let stored = lights?.library as Record<string, unknown> | undefined
+    let migrate = false
+    if (!stored || typeof stored !== 'object') {
+      // One time: a library kept in the first build's namespace moves to the new one.
+      const old: Record<string, unknown> = await this.transport.dbRead(LEGACY_LIGHTS_NAMESPACE).catch(() => ({}))
+      if (old && (Array.isArray(old.presets) || Array.isArray(old.favourites))) { stored = old; migrate = true } else stored = {}
+    }
     const presets = allPresets(stored.presets, this.capabilities)
-    return { presets, favourites: cleanFavourites(stored.favourites, presets) }
+    const library = { presets, favourites: cleanFavourites(stored.favourites, presets) }
+    if (migrate) await this.saveLibrary(presets, library.favourites).catch(() => undefined)
+    return library
   }
 
-  savePresets (saved: LightPreset[]) {
-    return this.transport.dbWrite(LIGHTS_NAMESPACE, 'presets', saved.filter(p => !p.builtin).map(p => ({ id: p.id, name: p.name, effect: p.effect, colors: p.colors })))
+  saveLibrary (presets: LightPreset[], favourites: string[]) {
+    return this.transport.dbWrite(LIGHTS_NAMESPACE, LIGHTS_KEY, {
+      presets: presets.filter(p => !p.builtin).map(p => ({ id: p.id, name: p.name, effect: p.effect, colors: p.colors })),
+      favourites: favourites.slice(0, MAX_FAVOURITES)
+    })
   }
-
-  saveFavourites (ids: string[]) { return this.transport.dbWrite(LIGHTS_NAMESPACE, 'favourites', ids.slice(0, MAX_FAVOURITES)) }
 }
