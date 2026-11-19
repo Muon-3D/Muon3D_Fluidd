@@ -48,7 +48,7 @@ export interface NearbyPrinter {
   heardAt: number;
 }
 
-export type NearbySupport = 'supported' | 'insecure' | 'unsupported'
+export type NearbySupport = 'supported' | 'ios' | 'insecure' | 'iframe' | 'unsupported'
 
 export const nearbyState = Vue.observable({
   support: 'unsupported' as NearbySupport,

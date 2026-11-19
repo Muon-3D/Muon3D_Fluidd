@@ -5,7 +5,7 @@
  *   (KAN-3589: a filter on that printer's EndpointId matched nothing in Chrome), and is the only Bluetooth item.
  * - The big Connect over Bluetooth button on All printers lists only Muon printers
  *   (the service filter, nothing else); a dismissed chooser does nothing.
- * - Where there is no Web Bluetooth, one quiet line says Chrome or Edge is needed.
+ * - Where there is no Web Bluetooth, one quiet line says why.
  *
  * Runs on the desktop (1440x900) and phone (390x844) projects. A fake
  * `navigator.bluetooth` records what the page asked of `requestDevice`.
@@ -184,6 +184,6 @@ test('without Web Bluetooth there is no button, only one quiet line', async ({ p
   })
   await openPrinters(page)
   await expect(page.getByTestId('connect-bluetooth')).toHaveCount(0)
-  await expect(page.getByTestId('bluetooth-needs-chrome')).toContainText('Chrome or Edge')
+  await expect(page.getByTestId('bluetooth-needs-chrome')).toContainText("This browser can't use Bluetooth")
   await expect(page.getByTestId('add-printer')).toBeVisible()
 })

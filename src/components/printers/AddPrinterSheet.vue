@@ -42,17 +42,12 @@
               v-else-if="bluetoothSearch"
               class="sway__about"
               data-tid="bluetooth-off"
-            >Bluetooth looks off on this device. Turn it on, then search.</span>
-            <span
-              v-else-if="bluetoothInsecure"
-              class="sway__about"
-              data-tid="bluetooth-unavailable"
-            >Bluetooth search needs a secure page (https), and this page is on plain http. Use the network search or the printer's address instead.</span>
+            ><bluetooth-why-text :why="bluetoothWhy" /></span>
             <span
               v-else
               class="sway__about"
               data-tid="bluetooth-unavailable"
-            >This browser can't search over Bluetooth. Chrome or Edge can. Use the network search or the printer's address instead.</span>
+            ><bluetooth-why-text :why="bluetoothWhy" /></span>
           </div>
           <button
             v-if="bluetoothSearch"
@@ -108,12 +103,14 @@
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
+import BluetoothWhyText from './BluetoothWhyText.vue'
+import type { BluetoothWhy } from '@/services/muon-ble/unavailable'
 
 /**
  * Add printer (v3): one sheet with the ways in, so the page itself has one
  * primary button. Bluetooth, this network, or an address.
  */
-@Component({})
+@Component({ components: { BluetoothWhyText } })
 export default class AddPrinterSheet extends Vue {
   @Prop({ type: Boolean })
   readonly value?: boolean
@@ -124,9 +121,9 @@ export default class AddPrinterSheet extends Vue {
   @Prop({ type: Boolean })
   readonly bluetoothOff?: boolean
 
-  /** The page is not a secure context, so Web Bluetooth is unavailable here. */
-  @Prop({ type: Boolean })
-  readonly bluetoothInsecure?: boolean
+  /** Why Bluetooth cannot be used here, said plainly. */
+  @Prop({ type: Object, default: null })
+  readonly bluetoothWhy!: BluetoothWhy | null
 
   @Prop({ type: Boolean })
   readonly searching?: boolean

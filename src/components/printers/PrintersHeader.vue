@@ -97,7 +97,7 @@
         class="phead__quiet"
         data-tid="bluetooth-needs-chrome"
       >
-        Connecting over Bluetooth needs Chrome or Edge{{ bluetoothInsecure ? ' on a secure page' : '' }}.
+        <bluetooth-why-text :why="bluetoothWhy" />
       </p>
     </div>
   </header>
@@ -105,13 +105,15 @@
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
+import BluetoothWhyText from './BluetoothWhyText.vue'
+import type { BluetoothWhy } from '@/services/muon-ble/unavailable'
 
 /**
  * The page header (v3 section 2): the title, one muted line saying what is
  * here, then the page's actions: search, Grid / List, and the one primary,
  * Add printer.
  */
-@Component({})
+@Component({ components: { BluetoothWhyText } })
 export default class PrintersHeader extends Vue {
   @Prop({ type: String, default: '' })
   readonly summary!: string
@@ -135,9 +137,9 @@ export default class PrintersHeader extends Vue {
   @Prop({ type: Boolean })
   readonly bluetoothOff?: boolean
 
-  /** The page is not a secure context, which is why Bluetooth is missing. */
-  @Prop({ type: Boolean })
-  readonly bluetoothInsecure?: boolean
+  /** Why Bluetooth cannot be used here, said plainly. */
+  @Prop({ type: Object, default: null })
+  readonly bluetoothWhy!: BluetoothWhy | null
 
   onInput (event: Event) {
     this.$emit('update:search', (event.target as HTMLInputElement).value)

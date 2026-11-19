@@ -69,16 +69,14 @@
         class="welcome__bt-note"
         data-tid="bluetooth-unavailable"
       >
-        {{ bluetoothInsecure
-          ? "Bluetooth search needs a secure page (https), and this page is on plain http. Join the printer's Wi-Fi and use the address instead."
-          : "This browser can't search over Bluetooth. Chrome or Edge can." }}
+        <bluetooth-why-text :why="bluetoothWhy" />
       </p>
       <p
         v-else-if="bluetoothOff"
         class="welcome__bt-note"
         data-tid="bluetooth-off"
       >
-        Bluetooth looks off on this device. Turn it on, then search.
+        <bluetooth-why-text :why="bluetoothWhy" />
       </p>
       <div class="row">
         <span class="row__icon"><frame-icon name="search" /></span>
@@ -127,13 +125,15 @@
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
+import BluetoothWhyText from './BluetoothWhyText.vue'
+import type { BluetoothWhy } from '@/services/muon-ble/unavailable'
 
 /**
  * The empty state (v3 section 6): a centred icon square, one bold line for
  * what is missing, one muted line for how to fix it, and the ways to find
  * the first printer.
  */
-@Component({})
+@Component({ components: { BluetoothWhyText } })
 export default class PrintersWelcome extends Vue {
   @Prop({ type: Boolean })
   readonly signedIn?: boolean
@@ -150,8 +150,9 @@ export default class PrintersWelcome extends Vue {
   @Prop({ type: Boolean })
   readonly bluetoothOff?: boolean
 
-  @Prop({ type: Boolean })
-  readonly bluetoothInsecure?: boolean
+  /** Why Bluetooth cannot be used here, said plainly. */
+  @Prop({ type: Object, default: null })
+  readonly bluetoothWhy!: BluetoothWhy | null
 
   @Prop({ type: Boolean })
   readonly blockedByPage?: boolean
