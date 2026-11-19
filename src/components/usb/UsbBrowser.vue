@@ -430,6 +430,9 @@ import { bytesWords, isRunning, percentOf, reasonWords } from '@/services/usb/wo
 
 const PAGE = 100
 
+/** Above this a download asks first: it is held in the browser's memory until saved. */
+const LARGE_DOWNLOAD = 100 * 1024 * 1024
+
 const CONFLICTS: Array<{ value: UsbConflict, title: string, hint: string }> = [
   { value: 'rename', title: 'Keep both.', hint: 'The new one gets a number added to its name.' },
   { value: 'skip', title: 'Skip it.', hint: 'Leave the file that is there.' },
@@ -643,6 +646,17 @@ export default class UsbBrowser extends Mixins(BrowserMixin) {
     if (!stick) return
     this.notice = ''
     const files = this.downloadable.slice()
+    // A download is held in this tab's memory until it is saved: a big file can make a phone's browser
+    // close the page, so ask first above LARGE_DOWNLOAD (KAN-4815 review).
+    const big = files.filter(f => (f.size ?? 0) > LARGE_DOWNLOAD)
+    if (big.length) {
+      const largest = big.reduce((a, b) => ((b.size ?? 0) > (a.size ?? 0) ? b : a))
+      const text = big.length === 1
+        ? `${largest.name} is ${this.bytes(largest.size)}. It downloads into this browser's memory first, which can be slow or fail on a phone. Download it anyway?`
+        : `${big.length} of these files are large (up to ${this.bytes(largest.size)}). They download into this browser's memory first, which can be slow or fail on a phone. Download them anyway?`
+      const sure = await this.$confirm(text, { title: 'Large download', buttonTrueText: 'Download' })
+      if (!sure) return
+    }
     this.downloadAbort = new AbortController()
     try {
       for (const file of files) {
