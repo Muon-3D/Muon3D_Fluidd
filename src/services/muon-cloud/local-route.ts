@@ -13,7 +13,10 @@
  *    from the addresses the Muon3D service says the printer holds on this
  *    browser's network (a top-level navigation is allowed where a fetch is not;
  *    the name is preferred because a bare address never loaded for Sloe);
- * 3. else nothing, and an honest reason.
+ * 3. else, an address the printer itself reported (`printerSaid`, KAN-4898) even when the service's
+ *    list does not show it (that list needs the printer's relay link): marked `unconfirmed`, so the
+ *    caller says where it is going before leaving the page;
+ * 4. else nothing, and an honest reason.
  */
 import { isOwnHotspot, nearbyHost, type CloudNearbyPrinter } from './discovery'
 
@@ -25,7 +28,7 @@ export const BLOCKED_BY_PAGE = "This browser can't reach it from this page"
 
 export type LocalRoute =
   | { kind: 'secure', name: string }
-  | { kind: 'page', host: string }
+  | { kind: 'page', host: string, unconfirmed?: true }
   | { kind: 'lan' }
   | { kind: 'none', reason: string }
 
@@ -40,6 +43,13 @@ export interface LocalRouteInput {
   pageHost: string;
   /** The printer's `.local` name: one it was seen answering at, else the one its name implies. */
   mdnsHost?: string | null;
+  /**
+   * An address the printer itself told Control (KAN-4898): the `.local` name from its identity (over Bluetooth,
+   * a connection held earlier, or a saved printer), else a LAN address it reported. Never a guess from the display
+   * name. It is offered even when the service's nearby list does not show the printer (that list needs the
+   * printer's relay link, which drops), but the route is then `unconfirmed`.
+   */
+  printerSaid?: string | null;
   /** The service's nearby entry for this printer. */
   nearby: CloudNearbyPrinter | undefined;
   /** The service's nearby list has been read. */
@@ -91,6 +101,11 @@ export function localRoute (i: LocalRouteInput): LocalRoute {
     const named = i.nearby && i.mdnsHost && isOpenableAddr(i.mdnsHost) ? i.mdnsHost.toLowerCase() : null
     const host = named ?? addr
     if (host) return { kind: 'page', host }
+    // The printer said where it is, but the service does not put it beside this browser: offer it, marked unconfirmed.
+    const said = typeof i.printerSaid === 'string' ? i.printerSaid.toLowerCase() : null
+    if (said && isOpenableAddr(said) && !(isOwnHotspot(said) && !isOwnHotspot(i.pageHost))) {
+      return { kind: 'page', host: said, unconfirmed: true }
+    }
     // The service's list was read and the printer is not beside this browser (or has
     // no usable address): not found. Not read yet: the page is why it cannot be told.
     return { kind: 'none', reason: i.nearbyChecked ? NOT_ON_NETWORK : BLOCKED_BY_PAGE }
