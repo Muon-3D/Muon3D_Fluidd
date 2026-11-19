@@ -13,13 +13,16 @@ export function requestRefused (error: unknown): boolean {
  * printer is down or protected.
  */
 export function policyRefusedText (text: unknown): boolean {
-  return typeof text === 'string' && /remote allowlist|owner-only|only the owner is forwarded/i.test(text)
+  return typeof text === 'string' && /not on the remote allowlist|unlisted endpoints are owner-only by default|only the owner is forwarded/i.test(text)
 }
 
 /** A JSON-RPC or HTTP error that is muon-link's Owner-only policy refusal (any code, the words decide). */
 export function policyRefusal (error: unknown): boolean {
   const e = error as { message?: unknown, error?: unknown, response?: { data?: unknown } } | null
   if (!e) return false
+  // Only a 403 is a policy refusal; a 401 is a missing or bad sign-in, whatever its body says.
+  const status = (e as { response?: { status?: number }, status?: number, code?: number }).response?.status ?? (e as { status?: number }).status ?? (e as { code?: number }).code
+  if (typeof status === 'number' && status !== 403) return false
   const data = e.response?.data as { error?: unknown } | string | undefined
   return [e.message, typeof e.error === 'string' ? e.error : (e.error as { message?: unknown } | undefined)?.message,
     typeof data === 'string' ? data : typeof data?.error === 'string' ? data.error : (data?.error as { message?: unknown } | undefined)?.message]

@@ -22,7 +22,22 @@
           v-if="about(tile)"
           class="row__sub"
         >{{ about(tile) }}</span>
+        <span
+          v-if="steps(tile)"
+          class="row__sub"
+          :data-tid="`found-steps-${tile.key}`"
+          role="status"
+        >Connecting over Bluetooth… {{ steps(tile) }}</span>
       </div>
+      <button
+        v-if="steps(tile)"
+        type="button"
+        class="btn btn--sm"
+        data-tid="found-cancel"
+        @click="$emit('cancel', tile)"
+      >
+        Cancel
+      </button>
       <tone-pill
         v-if="tile.state !== 'new' && tile.state !== 'ready'"
         :tone="tile.tone"
@@ -94,6 +109,10 @@ export default class FoundList extends Vue {
   @Prop({ type: String, default: null })
   readonly busyKey!: string | null
 
+  /** The Bluetooth connect steps for a tile, or null when it is not connecting that way. */
+  @Prop({ type: Function, default: () => null })
+  readonly stepsFor!: (tile: PrinterTile) => string | null
+
   host (tile: PrinterTile): string {
     return tile.entry.lan?.host ?? tile.entry.host ?? ''
   }
@@ -109,6 +128,11 @@ export default class FoundList extends Vue {
     }
     const open = this.actionsFor(tile).find(a => a.id === 'connect')
     return open ? { ...open, label: 'Open' } : { id: '', label: '', icon: '' }
+  }
+
+  /** The steps of a Bluetooth connect in flight on this row, the current one marked; null when none is. */
+  steps (tile: PrinterTile): string | null {
+    return this.busyKey === tile.key ? this.stepsFor(tile) : null
   }
 
   secondary (tile: PrinterTile): CardAction[] {

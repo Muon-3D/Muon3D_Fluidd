@@ -25,7 +25,8 @@ import { noteAdmittedAtPanel } from '@/services/muon-cloud/approval'
 import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
 import { relayUrlForBluetooth } from '@/services/muon-cloud/relay'
 import { registerEndpointBusy } from '@/services/muon-cloud/endpoint-hooks'
-import { NOT_ON_BLUETOOTH_MS, bluetoothCarrying, bluetoothFellBack, bluetoothRouteFor, releaseBluetoothLink, wantsBluetoothFor } from './link'
+import { carriedByBluetooth } from './carried'
+import { bluetoothRouteFor, releaseBluetoothLink, wantsBluetoothFor } from './link'
 import { readPairingEntry, type PairingEntry } from './entry'
 
 /** The printer closes its window after 120 s (muon-link `WINDOW_TTL`). */
@@ -168,20 +169,6 @@ function fail (error: unknown) {
 }
 
 /**
- * True once the session really travels over Bluetooth (the radio truth, KAN-2531). That is only known a
- * moment after the first answer, so it is given the time Control itself allows before it calls the session
- * "not on Bluetooth" (a relay fallback); a fallback never gets there.
- */
-async function carriedByBluetooth (printerId: string): Promise<boolean> {
-  const until = Date.now() + NOT_ON_BLUETOOTH_MS + 1000
-  while (!bluetoothCarrying(printerId)) {
-    if (bluetoothFellBack(printerId) || Date.now() >= until) return false
-    await new Promise(resolve => setTimeout(resolve, 100))
-  }
-  return true
-}
-
-/**
  * Asks the printer how it lets strangers in (D-166). Dialled as this browser:
  * a protected printer refuses a stranger's key, and that refusal is the answer
  * "protected" too. Only a printer that says `entry: "open"` skips the ceremony,
@@ -198,7 +185,7 @@ async function entryOfPrinter (endpoint: PairingEndpoint, printerId: string): Pr
     return 'protected'
   }
   try {
-    const entry = await readPairingEntry(printer)
+    const entry = await readPairingEntry(printer, { carried: () => carriedByBluetooth(printerId) })
     if (entry !== 'open') return entry
     return await carriedByBluetooth(printerId) ? 'open' : 'protected'
   } finally {

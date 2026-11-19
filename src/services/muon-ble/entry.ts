@@ -9,6 +9,8 @@
  * protected: a missing field is never read as open.
  */
 import { policyRefusedText } from '@/services/managed-transport/refusal'
+import { parseProtectionStatus } from '@/store/protection/helpers'
+import { LEVEL_OPEN } from '@/store/protection/types'
 
 export type PairingEntry = 'open' | 'protected'
 
@@ -25,16 +27,36 @@ interface Answerable {
   fetch (method: string, path: string, headers: string[], body: Uint8Array): Promise<{ status: number, body: Uint8Array }>;
 }
 
+/** Moonraker's protection answer (`GET /server/muon/protection`), bare or wrapped in `result`: true only for exactly level 0. */
+export const PROTECTION_PATH = '/server/muon/protection'
+export function openByProtection (body: unknown): boolean {
+  const inner = (body as { result?: unknown } | null)?.result ?? body
+  return parseProtectionStatus(inner)?.level === LEVEL_OPEN
+}
+
+export interface ReadEntryOptions {
+  /**
+   * Whether the printer really let this browser in over Bluetooth (the radio carries the session). Without it a policy
+   * refusal never reads as open: only a session that is admitted and carried over the radio can be an Open printer's guest.
+   */
+  carried?: () => boolean | Promise<boolean>;
+}
+
 /**
  * Reads `GET /pairing` over an open session. Any failure reads as protected, except one: muon-link's Owner-only
- * policy refusing a session it has already admitted. A protected printer refuses a stranger's key before any request,
- * so a policy refusal here means the printer let this browser in as an Open printer's guest (it is not the owner, so
- * it may not read the pairing state). The caller still checks the link is Bluetooth.
+ * policy refusing a 403 on a session it has already admitted over Bluetooth. That alone is not enough, because a
+ * Viewer admitted by a paired key on a Protected printer is refused the same way; so the printer must also say it is
+ * Open (`GET /server/muon/protection`, level 0). A refusal without both reads as protected.
  */
-export async function readPairingEntry (session: Answerable): Promise<PairingEntry> {
+export async function readPairingEntry (session: Answerable, options: ReadEntryOptions = {}): Promise<PairingEntry> {
   try {
     const answer = await session.fetch('GET', PAIRING_PATH, [], new Uint8Array())
-    if (answer.status === 403 && policyRefusedText(new TextDecoder().decode(answer.body))) return 'open'
+    if (answer.status === 403 && policyRefusedText(new TextDecoder().decode(answer.body))) {
+      if (!options.carried || !(await options.carried())) return 'protected'
+      const level = await session.fetch('GET', PROTECTION_PATH, [], new Uint8Array())
+      if (level.status < 200 || level.status >= 300) return 'protected'
+      return openByProtection(JSON.parse(new TextDecoder().decode(level.body))) ? 'open' : 'protected'
+    }
     if (answer.status < 200 || answer.status >= 300) return 'protected'
     return entryOf(JSON.parse(new TextDecoder().decode(answer.body)))
   } catch {
