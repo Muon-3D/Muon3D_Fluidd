@@ -19,6 +19,7 @@ import Vue from 'vue'
 import { onEndpointReplacing } from '@/services/muon-cloud/endpoint-hooks'
 import {
   decodeInfo,
+  gattDroppedMessage,
   MUON_BLE_INFO,
   MUON_BLE_RX,
   MUON_BLE_SERVICE,
@@ -284,7 +285,8 @@ export async function openBleLink (
       try {
         return await setUpGatt()
       } catch (error) {
-        if (abandoned || attempt >= GATT_RETRY_MS.length || !gattWentDown(error, gatt)) throw error
+        if (abandoned || !gattWentDown(error, gatt)) throw error
+        if (attempt >= GATT_RETRY_MS.length) throw new Error(gattDroppedMessage(device.name))
         log(`bluetooth: GATT setup ${attempt + 1} lost the connection (${(error as Error)?.message ?? error}); trying again`)
         try { gatt.disconnect() } catch { /* already gone */ }
         await sleep(GATT_RETRY_MS[attempt])

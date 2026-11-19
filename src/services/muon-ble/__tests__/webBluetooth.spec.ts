@@ -9,6 +9,8 @@ import {
   decodeAdvert,
   decodeInfo,
   displayName,
+  gattDroppedMessage,
+  readInfo,
   MUON_BLE_COMPANY_ID,
   MUON_BLE_SERVICE,
   rememberedDevices
@@ -197,5 +199,34 @@ describe('choosePrinter with a target', () => {
     await choosePrinter()
     expect(requests).toEqual([chooserOptions()])
     expect((requests[0] as any).filters[0].manufacturerData).toBeUndefined()
+  })
+})
+
+describe('readInfo when the GATT server drops between connect and the service lookup', () => {
+  const dropOnce = (times: number) => {
+    const p = fakePrinter()
+    const server = p.device.gatt
+    const lookup = server.getPrimaryService
+    let left = times
+    server.getPrimaryService = async (uuid: string) => {
+      if (left-- > 0) throw new DOMException('GATT Server is disconnected. Cannot retrieve services. (Re)connect first with device.gatt.connect.', 'NetworkError')
+      return lookup(uuid)
+    }
+    p.device.name = 'muon-sloe-5522'
+    return p
+  }
+
+  it('connects again and reads INFO after one drop', async () => {
+    const p = dropOnce(1)
+    expect((await readInfo(p.device, [0, 0, 0])).endpointId).toBe(EID)
+    expect(p.calls.filter(c => c === 'connect')).toHaveLength(2)
+  })
+
+  it('after every attempt fails, says it in plain words, never the DOMException', async () => {
+    const p = dropOnce(9)
+    const error = await readInfo(p.device, [0, 0, 0]).catch(e => e)
+    expect(error.message).toBe(gattDroppedMessage('muon-sloe-5522'))
+    expect(error.message).toBe("Sloe's Bluetooth connection dropped. Move closer and try again; if it keeps happening, turn this computer's Bluetooth off and on.")
+    expect(p.calls.filter(c => c === 'connect')).toHaveLength(4)
   })
 })

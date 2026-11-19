@@ -63,7 +63,7 @@
       >Y</span>
     </div>
 
-    <!-- Looking down: where the head can go (its corners), and the bed's notch, quietly. -->
+    <!-- Looking down: where the head can go (its corners), and the notch while the plate is low enough that the head can't cross it. -->
     <svg
       v-if="topView && boundsPx"
       class="m1-parts__bounds"
@@ -81,6 +81,15 @@
         data-tid="m1-notch"
         :d="d"
       />
+      <text
+        v-if="boundsPx.notch.length && boundsPx.label"
+        class="m1-parts__bounds-label"
+        data-tid="m1-notch-label"
+        :x="boundsPx.label.x"
+        :y="boundsPx.label.y"
+        text-anchor="middle"
+        dominant-baseline="middle"
+      >No-go: front notch</text>
     </svg>
 
     <!-- While dragging: a target on the cursor, and a live line from where the part is to it. -->
@@ -175,7 +184,7 @@ import ControlMixin from '@/mixins/control'
 import M1PartOptions from './M1PartOptions.vue'
 import M1Screen from './M1Screen.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
-import { axisEdges, boundCorners } from '@/services/m1-3d/drag-bounds'
+import { axisEdges, boundCorners, noGoShown } from '@/services/m1-3d/drag-bounds'
 import { KnobWheel } from '@/services/m1-3d/knob'
 import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
@@ -279,7 +288,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   dragPx: { from: { x: number, y: number }, to: { x: number, y: number } } | null = null
   axisMarks: { x: Array<{ v: number, px: number, at: number }>, y: Array<{ v: number, px: number, at: number }> } | null = null
   /** Looking down: the corners of where the head can go, and the bed's notch, as drawn now. */
-  boundsPx: { corners: string, notch: string[] } | null = null
+  boundsPx: { corners: string, notch: string[], label: { x: number, y: number } | null } | null = null
   /** Why the last drag's move was refused, said in the label until the next drag. */
   refused = ''
   /** The printer's own screen, open over the stage. */
@@ -307,17 +316,18 @@ export default class M1Parts extends Mixins(ControlMixin) {
   }
 
   /**
-   * This page's own Home is running. The printer reports busy while it homes, which would make the stage let go of the part
-   * (the camera leaves the top view, the options go): Home was pressed from the part's own panel, so the person stays on it
-   * (KAN-3593). A print or another client's work still lets go.
+   * The printer reports busy but it is not a print: this page's own Home or jog, a macro, another client. The printer
+   * reports busy while the head moves, which would make the stage let go of the part (the camera leaves the top view, the
+   * options go): the person chose that view, so it stays until they change it (KAN-3593 for Home, KAN-4816 for any move:
+   * the own-move window can end or miss while the head is still moving). A real print still lets go.
    */
-  get homingHere (): boolean {
-    return this.controlReady && !this.printLocked && this.stageState === 'printing' && (this.homing() || this.homing('XY') || this.homing('Z'))
+  get busyHere (): boolean {
+    return this.controlReady && !this.printLocked && this.stageState === 'printing'
   }
 
   /** The part's view and options stay: the printer is idle, or is only running this page's own Home. */
   get holdsPart (): boolean {
-    return this.interactive || this.homingHere
+    return this.interactive || this.busyHere
   }
 
   /** The selected part can be dragged: the toolhead in X and Y, the plate in Z, once homed, on the accurate model (whose millimetres the drag is read in). */
@@ -693,10 +703,14 @@ export default class M1Parts extends Mixins(ControlMixin) {
       // Written only when a mark moves, so an idle top-down view doesn't render every frame.
       if (JSON.stringify(next) !== JSON.stringify(this.axisMarks)) this.axisMarks = next
       const noGo = this.noGo
-      const regions = noGo && noGo !== 'invalid' ? noGo.regions : []
+      const known = noGo && noGo !== 'invalid' ? noGo : null
+      // Drawn only at heights where the head can't go there (KAN-4817); at the traverse height and above it is hidden.
+      const regions = known && noGoShown(this.position[2], known.traverseZ, this.isHomed('Z')) ? known.regions : []
+      const mid = regions[0] ? screen((regions[0].min[0] + regions[0].max[0]) / 2, (regions[0].min[1] + regions[0].max[1]) / 2) : null
       const bounds = {
         corners: boundCorners(lo, hi, screen),
-        notch: regions.map(r => boundCorners(r.min, r.max, screen, true)).filter(Boolean)
+        notch: regions.map(r => boundCorners(r.min, r.max, screen, true)).filter(Boolean),
+        label: mid && Number.isFinite(mid.x) && Number.isFinite(mid.y) ? { x: Math.round(mid.x), y: Math.round(mid.y) } : null
       }
       if (JSON.stringify(bounds) !== JSON.stringify(this.boundsPx)) this.boundsPx = bounds
     } else {
@@ -1010,10 +1024,19 @@ export default class M1Parts extends Mixins(ControlMixin) {
   }
 
   .m1-parts__bounds-notch {
-    fill: rgb(255 159 10 / 8%);
-    stroke: rgb(255 159 10 / 45%);
-    stroke-width: 1;
-    stroke-dasharray: 3 3;
+    fill: rgb(255 69 58 / 32%);
+    stroke: rgb(255 69 58 / 90%);
+    stroke-width: 1.5;
+  }
+
+  .m1-parts__bounds-label {
+    fill: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    paint-order: stroke;
+    stroke: rgb(120 20 15 / 85%);
+    stroke-width: 3px;
+    pointer-events: none;
   }
 
   .m1-parts__fact {

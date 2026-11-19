@@ -80,3 +80,39 @@ test('offline, a guest on an Open printer can upload and print over Bluetooth', 
   }
   expect(startable).toBe(true)
 })
+
+// Jack's walk, 19 Nov: signed in as a non-owner, DevTools Network set to Offline, Sloe (Open, set up, linked to
+// another account, muon-link #160). Search nearby, pick Sloe, then Connect over Bluetooth said "can't reach Muon3D",
+// and the row offered Set it up beside it. The page here is signed in; only the network is gone.
+test.describe('signed in, browser Offline: Search nearby then Connect over Bluetooth', () => {
+  test.use({ signedIn: true })
+
+  // An advertisement says whether a printer is set up; with none heard the row cannot know, and tries it as new.
+  for (const advertise of [true]) {
+    test(`a set-up Open printer offers Connect, never Set it up, and opens (advertisement ${advertise ? 'heard' : 'not heard'})`, async ({ page }) => {
+      await useNearbyPrinters(page, OPEN_PRINTER, { advertise, ownerOnly: 'after-160' })
+      // DevTools Offline as the page sees it: navigator.onLine is false and the cloud answers nothing. The dev
+      // server stays reachable (a true offline context would also block the app's own lazy chunks here).
+      await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false }))
+      await page.route(`${CONSOLE}/**`, route => route.abort('internetdisconnected'))
+      await page.route('https://relay.*/**', route => route.abort('internetdisconnected'))
+      await page.goto('/')
+      await ready(page)
+      expect(await page.evaluate(() => navigator.onLine)).toBe(false)
+      await setPairingGate(page, true)
+      await page.getByRole('button', { name: 'Look nearby' }).click()
+      const row = page.getByTestId('found-list')
+      await expect(row).toBeVisible()
+      // The printer's own word on whether it is set up decides. A missing answer is never "new".
+      await expect(page.getByTestId('found-set-up')).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Set it up' })).toHaveCount(0)
+      const connect = page.getByTestId('found-connect-bluetooth').or(page.getByTestId('found-pair-bluetooth'))
+      await expect(connect.first()).toBeVisible()
+      await connect.first().click()
+      await expect.poll(() => pairEvents(page), { timeout: 15_000 }).toContain(`connect ${OPEN_PRINTER.advertised}`)
+      await expect(page).toHaveURL(/\/alder-6601(\/|$)/)
+      await expect(page.locator('body')).not.toContainText(UNREACHABLE)
+      await expect(page.locator('body')).not.toContainText('could not be reached')
+    })
+  }
+})

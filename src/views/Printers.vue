@@ -410,7 +410,9 @@
             :tiles="foundShown"
             :actions-for="foundActionsFor"
             :busy-key="busyKey"
+            :steps-for="connectSteps"
             @action="onFoundRow"
+            @cancel="onFoundCancel"
           />
         </printers-section>
 
@@ -605,6 +607,8 @@ import PrinterEntriesMixin from '@/mixins/printer-entries'
 import BrowserMixin from '@/mixins/browser'
 import FilesMixin from '@/mixins/files'
 import { cloudPrinterConnection, cloudState, saveLayout } from '@/services/muon-cloud/state'
+import { activationState } from '@/services/muon-cloud/activate'
+import { bluetoothCarrying, wantsBluetoothFor } from '@/services/muon-ble/link'
 import { discoverPrinters, discoveryState, lanAddresses, lanFetch, lanOpenLinks, pageIsSecure, refreshCloudNearby, refreshKnownPrinters, refreshLanStatus } from '@/services/muon-cloud/discovery'
 import { afterFirstPaint } from '@/services/startup/idle'
 import { loadedRecord } from '@/services/muon-cloud/status'
@@ -958,6 +962,18 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
 
   onFoundRow (tile: PrinterTile, id: string) {
     return this.onFoundAction(tile.entry, id)
+  }
+
+  connectSteps (tile: PrinterTile): string | null {
+    const id = tile.entry.endpointId ?? tile.entry.nearby?.endpointId ?? ''
+    if (!id || !wantsBluetoothFor(id)) return null
+    const at = bluetoothCarrying(id) ? 2 : activationState.switching === id ? 1 : 0
+    const names = [`Finding ${tile.name}`, 'Connecting', 'Opening']
+    return names.map((n, i) => i === at ? `[${n}]` : n).join(' > ')
+  }
+
+  onFoundCancel (tile: PrinterTile) {
+    this.cancelOpen(tile.entry)
   }
 
   onOfflineRow (tile: PrinterTile, id: string) {

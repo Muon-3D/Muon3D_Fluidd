@@ -32,28 +32,29 @@ async function openAsNonOwner (page: Page, ownerOnly: boolean | 'after-160') {
   })
 }
 
-test('a signed-in non-owner on an Open printer, refused every Owner-only read, still gets a working Jobs page', async ({ page }) => {
+test('on a printer that refuses every Owner-only read, protection included, a signed-in non-owner is not guessed to be an Operator', async ({ page }) => {
+  // Before muon-link #160 a Viewer on a Protected printer is refused exactly like an Open printer's guest, and nothing
+  // else says which one this is. Control stays read-only rather than show Operator controls it may not be allowed.
   await openAsNonOwner(page, true)
   await expect(page.getByTestId('pair-code-step')).toHaveCount(0)
-  await expect(page.getByTestId('jobs-readonly')).toHaveCount(0, { timeout: 30_000 })
-  await expect(page.getByTestId('jobs-upload')).toBeEnabled({ timeout: 30_000 })
-  await expect(page.locator('body')).not.toContainText("isn't taking commands")
-  // The refusals really happened, so this is not a printer that answered everything.
+  await expect(page.getByTestId('jobs-readonly')).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('jobs-upload')).toBeDisabled()
   const refused = await ownerOnlyRefusals(page)
   expect(refused.paths.some(p => p.startsWith('/muon-link/pairing'))).toBe(true)
-  expect(refused.methods).toEqual(expect.arrayContaining(['server.config', 'machine.update.status']))
-  // No error toast for what is simply not this person's to read.
+  expect(refused.paths.some(p => p.startsWith('/server/muon/protection'))).toBe(true)
   await expect(page.locator('body')).not.toContainText('Owner-only')
-
-  const upload = page.waitForRequest(r => r.method() === 'POST' && r.url().includes('/server/files/upload'), { timeout: 30_000 })
-  await page.getByTestId('jobs-upload-input').setInputFiles({ name: 'guest.gcode', mimeType: 'text/x-gcode', buffer: Buffer.from('G28\nG1 X10\n') })
-  await upload
 })
 
-test('after muon-link #160 (identity, protection, capabilities, update status allowed; server.config, access/get, pairing, permissions still refused) the page works too', async ({ page }) => {
+test('a signed-in non-owner on an Open printer (muon-link #160: protection readable; server.config, access/get, pairing, permissions refused) gets a working Jobs page with Upload', async ({ page }) => {
   await openAsNonOwner(page, 'after-160')
   await expect(page.getByTestId('jobs-readonly')).toHaveCount(0, { timeout: 30_000 })
   await expect(page.getByTestId('jobs-upload')).toBeEnabled({ timeout: 30_000 })
+  await expect(page.getByTestId('pair-code-step')).toHaveCount(0)
+  await expect(page.locator('body')).not.toContainText("isn't taking commands")
+  await expect(page.locator('body')).not.toContainText('Owner-only')
+  const upload = page.waitForRequest(r => r.method() === 'POST' && r.url().includes('/server/files/upload'), { timeout: 30_000 })
+  await page.getByTestId('jobs-upload-input').setInputFiles({ name: 'guest.gcode', mimeType: 'text/x-gcode', buffer: Buffer.from('G28\nG1 X10\n') })
+  await upload
   const refused = await ownerOnlyRefusals(page)
   expect(refused.paths.some(p => p.startsWith('/muon-link/pairing'))).toBe(true)
   expect(refused.methods).toContain('server.config')

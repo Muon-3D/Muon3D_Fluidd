@@ -120,7 +120,7 @@ class Printer {
       if (kind !== 'new') return { status: 403, headers: ['content-type', 'application/json'], body: text({ error: 'set up already' }) }
       return { status: 200, headers: ['content-type', 'application/json'], body: text({ result: SETUP_STATE }) }
     }
-    if (S().ownerOnly && (S().ownerOnly === 'after-160' ? path.startsWith('/muon-link/pairing') || path.startsWith('/server/muon/access/get') || path.startsWith('/server/aux/permissions') : ['/muon-link/pairing', '/server/muon/identity', '/server/muon/access', '/server/aux/permissions'].some(p => path.startsWith(p)))) {
+    if (S().ownerOnly && (S().ownerOnly === 'after-160' ? path.startsWith('/muon-link/pairing') || path.startsWith('/server/muon/access/get') || path.startsWith('/server/aux/permissions') : ['/muon-link/pairing', '/server/muon/identity', '/server/muon/protection', '/server/muon/access', '/server/aux/permissions'].some(p => path.startsWith(p)))) {
       S().refusedPaths.push(path)
       return { status: 403, headers: ['content-type', 'application/json'], body: text({ error: POLICY }) }
     }

@@ -43,6 +43,14 @@ describe('one list: this network and nearby', () => {
     expect(row).toMatchObject({ meta: 'nearby', action: 'set-up' })
   })
 
+  it('offers Set it up only when the advertisement says unclaimed', () => {
+    const prefix = WALNUT.slice(0, 16)
+    const [fresh] = rows({ nearby: [heard({ advert: { unclaimed: true, busy: false, endpointPrefix: prefix } })] })
+    const [done] = rows({ nearby: [heard({ advert: { unclaimed: false, busy: false, endpointPrefix: prefix } })] })
+    expect(fresh.action).toBe('set-up')
+    expect(done.action).toBe('nearby-info')
+  })
+
   it('says when another device holds the printer', () => {
     const [row] = rows({ nearby: [heard({ advert: { unclaimed: true, busy: true, endpointPrefix: WALNUT.slice(0, 16) } })] })
     expect(row.meta).toBe('New · nearby · busy with another device')

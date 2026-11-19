@@ -9,6 +9,7 @@ import {
   activateCloudPrinter,
   activateLocalPrinter,
   activationState,
+  cancelActivation,
   SwitchSuperseded,
   MANAGED_API_URL
 } from '@/services/muon-cloud/activate'
@@ -488,6 +489,18 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       // A run that was taken over leaves the row to the run that took over.
       if (mine === runCounter) this.busyKey = null
     }
+  }
+
+  /** Cancel on a Bluetooth connect in flight: the open is replaced, the link dropped, the row freed. */
+  cancelOpen (e: DirectoryEntry) {
+    const id = idOf(e)
+    cancelActivation()
+    if (id) {
+      stopUsingBluetoothFor(id)
+      releaseBluetoothLink(id).catch(() => {})
+    }
+    ++runCounter
+    this.busyKey = null
   }
 
   /** Opens any printer the way its group does: the account's, a saved one, or one found here. */

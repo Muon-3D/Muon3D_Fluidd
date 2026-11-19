@@ -691,6 +691,12 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     }
   }
 
+  /* The place of the head or bed isn't known (not homed): they sit where they were last drawn, faded a little. */
+  .m1-live :deep(.m1-live__canvas[data-place='unknown']) {
+    opacity: 0.72;
+    transition: opacity 0.4s ease;
+  }
+
   .m1-live--still :deep(.m1-live__canvas) {
     transition: none;
   }
