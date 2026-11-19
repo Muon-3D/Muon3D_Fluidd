@@ -1,3 +1,4 @@
+import { sha256Hex } from './sha256'
 import { classifyPanelResponse, type PanelOnPrinter } from './served'
 
 /**
@@ -20,13 +21,19 @@ import { classifyPanelResponse, type PanelOnPrinter } from './served'
 export interface PanelCopy {
   etag: string
   html: string
+  /** SHA-256 of `html`, checked before a kept copy is served. */
+  sha256: string
 }
 
-/** Where kept copies live; the default is memory plus (best effort) localStorage. */
+/**
+ * Where kept copies live, one per printer (`key`: the printer Control is
+ * connected to, from what Control holds, never from what the printer says).
+ * A printer's ETag proves nothing about another printer's page, so a copy is
+ * only ever offered back to the printer it came from.
+ */
 export interface PanelCopies {
-  /** The newest copy kept, or null. */
-  latest: () => PanelCopy | null
-  keep: (copy: PanelCopy) => void
+  get: (key: string) => PanelCopy | null
+  keep: (key: string, copy: PanelCopy) => void
 }
 
 export interface PanelRequest {
@@ -44,23 +51,29 @@ export type PanelBundle =
 export const PANEL_URL = '/panel/index.html'
 /** More than this is not the screen. */
 export const PANEL_MAX_CHARS = 8 * 1024 * 1024
-const STORAGE_KEY = 'muon.panel-copy.v1'
+const STORAGE_KEY = 'muon.panel-copies.v2'
+/** Printers kept, newest last: the screen is a few hundred KB each. */
+const MAX_PRINTERS = 3
 
-let memory: PanelCopy | null = null
+const memory = new Map<string, PanelCopy>()
+
+function stored (): Record<string, PanelCopy> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as unknown
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, PanelCopy> : {}
+  } catch { return {} }
+}
 
 export const defaultCopies: PanelCopies = {
-  latest: () => {
-    if (memory) return memory
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      const copy = raw ? JSON.parse(raw) as Partial<PanelCopy> : null
-      if (copy && typeof copy.etag === 'string' && typeof copy.html === 'string') memory = { etag: copy.etag, html: copy.html }
-    } catch { /* storage is a convenience */ }
-    return memory
+  get: key => {
+    const copy = memory.get(key) ?? stored()[key]
+    return copy && typeof copy.etag === 'string' && typeof copy.html === 'string' && typeof copy.sha256 === 'string' ? copy : null
   },
-  keep: copy => {
-    memory = copy
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(copy)) } catch { /* too big or blocked: memory only */ }
+  keep: (key, copy) => {
+    memory.delete(key)
+    memory.set(key, copy)
+    while (memory.size > MAX_PRINTERS) memory.delete(memory.keys().next().value as string)
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(memory))) } catch { /* too big or blocked: memory only */ }
   }
 }
 
@@ -72,10 +85,13 @@ function etagOf (headers: Record<string, unknown> | undefined): string {
 
 export async function loadPanelBundle (
   get: PanelFetch,
+  key: string,
   onProgress: (loaded: number, total: number) => void = () => {},
   copies: PanelCopies = defaultCopies
 ): Promise<PanelBundle> {
-  const kept = copies.latest()
+  // Only this printer's own copy, and only if it is still the bytes that were kept.
+  const own = copies.get(key)
+  const kept = own && sha256Hex(own.html) === own.sha256 ? own : null
   const headers: Record<string, string> = { Accept: 'text/html' }
   if (kept?.etag) headers['If-None-Match'] = kept.etag
   let response
@@ -84,12 +100,15 @@ export async function loadPanelBundle (
   } catch {
     return { state: 'unknown' }
   }
-  if (response.status === 304) return kept ? { state: 'yes', html: kept.html, fromCopy: true } : { state: 'unknown' }
+  if (response.status === 304) {
+    // No validator is sent without this printer's own verified copy, so a 304 with none is not believed.
+    return kept ? { state: 'yes', html: kept.html, fromCopy: true } : { state: 'unknown' }
+  }
   const verdict = classifyPanelResponse(response)
   if (verdict !== 'yes') return { state: verdict }
   const html = response.data
   if (typeof html !== 'string' || !html.includes('<') || html.length > PANEL_MAX_CHARS) return { state: 'unknown' }
   const etag = etagOf(response.headers)
-  if (etag) copies.keep({ etag, html })
+  if (etag) copies.keep(key, { etag, html, sha256: sha256Hex(html) })
   return { state: 'yes', html, fromCopy: false }
 }

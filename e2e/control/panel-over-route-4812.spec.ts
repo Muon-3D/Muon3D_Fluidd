@@ -88,10 +88,10 @@ test('hosted Control over Bluetooth: the screen loads from the printer, a jog mo
 
   await expect.poll(() => stubResults(page).then(rs => rs.map(r => r.id).sort()), { timeout: 60_000 }).toEqual([1, 2, 3, 4])
   const byId = Object.fromEntries((await stubResults(page)).map(r => [r.id, r]))
-  // The jog and a plain G-code line went to the printer; the raw move did not (it skips the no-go planner).
+  // The jog and a plain G-code line went to the printer; the raw move did not (moves are the jog verb, through the no-go planner).
   expect(byId[1].ok).toBe(true)
   expect(byId[2].ok).toBe(true)
-  expect(byId[3]).toMatchObject({ ok: false, error: { message: 'Use the move buttons for that. Control runs moves through its no-go zones.' } })
+  expect(byId[3]).toMatchObject({ ok: false, error: { message: "Control doesn't run that G-code from the screen. Use the screen's own buttons." } })
   await expect.poll(() => printer.gcode.flatMap(g => g.split('\n')).filter(l => l.startsWith('G1 ') || l.startsWith('M106'))).toEqual(['G1 X10 F7800', 'M106 S128'])
   // An owner-only action is refused, named in plain words, and never sent.
   expect(byId[4]).toMatchObject({ ok: false, error: { message: 'Do this on the printer itself' } })

@@ -85,6 +85,7 @@ import type { Verb } from '@/services/panel-embed/protocol'
 import { PanelBridge } from '@/services/panel-embed/bridge'
 import Vue from 'vue'
 import { httpClientActions } from '@/api/httpClientActions'
+import { cloudState } from '@/services/muon-cloud/state'
 import { loadPanelBundle, type PanelBundle } from '@/services/panel-embed/bundle'
 import { NOTIFY_ACTIONS, gcodeRefusal, refusalNote } from '@/services/panel-embed/allow'
 import { KnobWheel } from '@/services/m1-3d/knob'
@@ -99,14 +100,14 @@ const STRIP_PX = 64
  * The printer's screen, asked of the printer itself over the route Control uses for it (LAN, Bluetooth, relay), never of
  * this page's origin: hosted Control serves no /panel/. Kept by ETag, so a 304 costs no bundle.
  */
-function panelBundle (onProgress: (loaded: number, total: number) => void): Promise<PanelBundle> {
+function panelBundle (key: string, onProgress: (loaded: number, total: number) => void): Promise<PanelBundle> {
   return loadPanelBundle((url, request) => Vue.$httpClient.get(url, {
     responseType: 'text',
     transformResponse: [v => v],
     validateStatus: () => true,
     headers: request.headers,
     onDownloadProgress: e => request.onProgress(e.loaded, e.total ?? 0)
-  }), onProgress)
+  }), key, onProgress)
 }
 
 /** Each view's bridge, kept out of Vue's reach: Vue must not walk it or its port. */
@@ -204,7 +205,7 @@ export default class M1Screen extends Mixins(ControlMixin) {
       if (this.phase === 'in') this.phase = 'open'
     }))
     this.loading = true
-    const bundle = await panelBundle((loaded, total) => { this.loadPercent = total > 0 ? Math.min(100, Math.round(loaded / total * 100)) : null })
+    const bundle = await panelBundle(this.printerKey, (loaded, total) => { this.loadPercent = total > 0 ? Math.min(100, Math.round(loaded / total * 100)) : null })
     this.loading = false
     if (this.phase === 'out' || (this as unknown as { _isDestroyed?: boolean })._isDestroyed) return
     this.served = bundle.state === 'unknown' ? null : bundle.state === 'yes'
@@ -213,6 +214,11 @@ export default class M1Screen extends Mixins(ControlMixin) {
       this.html = bundle.html
       this.$nextTick(() => this.connect())
     }
+  }
+
+  /** Which printer this is, from what Control holds (its address, and the printer id on a managed route), never from what a printer says. */
+  get printerKey (): string {
+    return `${this.$store.state.config.apiUrl ?? ''}|${cloudState.activePrinterId ?? ''}`
   }
 
   /** The screen's page, fetched from the printer. */
@@ -352,9 +358,6 @@ export default class M1Screen extends Mixins(ControlMixin) {
       case 'printer.gcode.script':
         if (!this.controlReady) return this.controlLock
         return this.busy ? 'Not while the printer is busy.' : gcodeRefusal(params?.script)
-      case 'printer.restart':
-      case 'printer.firmware_restart':
-        return this.controlReady ? '' : this.controlLock
       case 'server.job_queue.post_job':
       case 'server.job_queue.start':
       case 'server.job_queue.pause':

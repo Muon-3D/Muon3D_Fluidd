@@ -12,7 +12,7 @@ import type { Verb, AuxMethod } from './protocol'
  * follow what that gate gives an Operator, which is also what an Open
  * printer's Bluetooth guest is (Jack, 17 Nov: an open printer is fully usable
  * from Control over any route): reads, printing (start, pause, resume,
- * cancel), the queue, the emergency stop, and Klipper restarts; with the
+ * cancel), the queue and the emergency stop; with the
  * structured verbs (jog, home, heat, fan, filament) for the panel's own
  * buttons. What stays on the printer is what the gate keeps to the Owner:
  * protection and access, linking an account, updates, power, Wi-Fi, and the
@@ -24,15 +24,13 @@ export const RPC_FORWARD: ReadonlySet<string> = new Set([
   'printer.info',
   'printer.objects.list',
   'printer.objects.query',
-  // Raw G-code is Operator in muon-link, so it goes, but only through Control's
-  // own check (gcodeRefusal in M1Screen): no moves, which would skip the no-go
-  // planner (use the jog verb), and none of the commands that rewrite the
-  // printer's setup (SAVE_CONFIG, SET_KINEMATIC_POSITION, restarts).
+  // Raw G-code is Operator in muon-link, so it goes, but only for the few
+  // command words in GCODE_WORDS (an exact list, checked in M1Screen). Moves,
+  // homing and heating are the jog, home and heat verbs. Restarts (RPC and
+  // G-code alike) stay on the printer: they would end a print.
   'printer.gcode.script',
   'printer.gcode.help',
   'printer.query_endstops.status',
-  'printer.restart',
-  'printer.firmware_restart',
   'printer.print.start',
   'printer.print.pause',
   'printer.print.resume',
@@ -101,7 +99,7 @@ const PLAIN: ReadonlyArray<readonly [RegExp, string]> = [
   [/link|account|cloud/i, 'Linking an account'],
   [/update|install|upgrade|recover/i, 'Installing an update'],
   [/wifi|network|hotspot|\bap\b/i, 'Changing the Wi-Fi'],
-  [/reboot|shutdown|power|services|sudo/i, 'Restarting or powering off the printer'],
+  [/reboot|shutdown|power|services|sudo|restart/i, 'Restarting or powering off the printer'],
   [/gcode/i, 'Running G-code'],
   [/identity|rename/i, 'Renaming the printer']
 ]
@@ -142,18 +140,42 @@ export function auxVerdict (method: unknown, path: unknown): 'forward' | 'refuse
 export const AUX_METHODS: readonly AuxMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
 /**
- * Why a raw G-code script from the screen is not run, '' when it may: one
- * short string, no moves (a hand-written move skips the no-go planner; the jog
- * verb is the way), and none of the commands that rewrite the printer's setup.
+ * The only command words a raw G-code script from the screen may use: fans,
+ * the speed and flow factors, lights and pins, and the screen's own saved
+ * variables (muon_*). Everything else is refused, so there is no list of bad
+ * words to get around. Moves, homing and heating are the jog, home and heat
+ * verbs (the no-go planner and the heater limits); a user macro, a probe, a
+ * calibration or a hand-written move never goes through here.
  */
+export const GCODE_WORDS: ReadonlySet<string> = new Set([
+  'M106', 'M107', 'M220', 'M221', 'SET_FAN_SPEED', 'SET_LED', 'SET_PIN', 'SAVE_VARIABLE'
+])
+
+const GCODE_REFUSED = "Control doesn't run that G-code from the screen. Use the screen's own buttons."
+
+/** A line's command word: comment and line number and checksum off, upper case, "G 1" and "G01" as G1; '' for a blank line. */
+export function gcodeWord (line: string): string {
+  let cmd = line.split(';')[0].split('*')[0].trim().toUpperCase()
+  cmd = cmd.replace(/^N\s*\d+\s*/, '')
+  const coded = /^([A-Z])\s*0*(\d+)(?![A-Z0-9_])/.exec(cmd)
+  if (coded) return coded[1] + coded[2]
+  return /^[A-Z_][A-Z0-9_]*/.exec(cmd)?.[0] ?? (cmd ? cmd.split(/\s/)[0] : '')
+}
+
+/** Why a raw G-code script from the screen is not run, '' when it may: every line's command word must be in GCODE_WORDS. */
 export function gcodeRefusal (script: unknown): string {
   if (typeof script !== 'string' || !script.trim() || script.length > 500) return 'That is not a G-code line Control can run.'
-  for (const line of script.split('\n')) {
-    const cmd = line.split(';')[0].trim().toUpperCase()
-    if (!cmd) continue
-    if (/^G0*[0-3](\D|$)/.test(cmd) || /^(FORCE_MOVE|SET_KINEMATIC_POSITION|SAVE_CONFIG|SET_GCODE_OFFSET|(FIRMWARE_)?RESTART|SDCARD_|M112|M999)(\W|$)/.test(cmd)) {
-      return 'Use the move buttons for that. Control runs moves through its no-go zones.'
+  const lines = script.split(/[\r\n]+/)
+  if (lines.length > 8) return GCODE_REFUSED
+  for (const line of lines) {
+    const word = gcodeWord(line)
+    if (!word) {
+      if (line.split(';')[0].trim()) return GCODE_REFUSED
+      continue
     }
+    if (!GCODE_WORDS.has(word)) return GCODE_REFUSED
+    // The screen's own saved variables only (the material colour and the like), never another.
+    if (word === 'SAVE_VARIABLE' && !/^SAVE_VARIABLE\s+VARIABLE=MUON_[A-Z0-9_]+\s+VALUE=/.test(line.split(';')[0].trim().toUpperCase())) return GCODE_REFUSED
   }
   return ''
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PanelBridge, type BridgeHost } from '../bridge'
-import { auxVerdict, gcodeRefusal, readVerb, refusalNote, rpcVerdict, ON_PRINTER } from '../allow'
+import { auxVerdict, gcodeRefusal, gcodeWord, readVerb, refusalNote, rpcVerdict, ON_PRINTER } from '../allow'
 import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION } from '../protocol'
 
 describe('allowlist', () => {
@@ -9,10 +9,10 @@ describe('allowlist', () => {
   })
 
   // muon-link GATE-7 (crates/muon-link-device/src/policy.rs): what an Operator, and so an Open printer's guest, may do.
-  it('forwards the Operator surface: print, queue, restarts, G-code, the reads the screen needs', () => {
+  it('forwards the Operator surface: print, queue, listed G-code, the reads the screen needs', () => {
     for (const m of [
       'printer.print.start', 'printer.print.pause', 'printer.print.resume', 'printer.print.cancel', 'printer.emergency_stop',
-      'printer.gcode.script', 'printer.restart', 'printer.firmware_restart', 'printer.query_endstops.status',
+      'printer.gcode.script', 'printer.query_endstops.status',
       'server.job_queue.status', 'server.job_queue.post_job', 'server.job_queue.start', 'server.job_queue.pause', 'server.job_queue.jump',
       'server.files.list', 'server.files.roots', 'server.files.thumbnails', 'server.history.list', 'server.temperature_store', 'server.gcode_store'
     ]) expect(rpcVerdict(m)).toBe('forward')
@@ -25,14 +25,21 @@ describe('allowlist', () => {
     }
   })
 
-  it('runs plain G-code but not moves or anything that rewrites the printer setup', () => {
-    expect(gcodeRefusal('M106 S128')).toBe('')
-    expect(gcodeRefusal('SET_HEATER_TEMPERATURE HEATER=extruder TARGET=200\nM104 S0 ; off')).toBe('')
-    for (const bad of ['G1 X100', 'g0 Z5', 'G28 ; fine\nG2 X1 Y1 I1', 'SAVE_CONFIG', 'SET_KINEMATIC_POSITION X=0', 'FIRMWARE_RESTART', 'RESTART', 'M112', 'FORCE_MOVE STEPPER=x DISTANCE=1 VELOCITY=1']) {
-      expect(gcodeRefusal(bad)).not.toBe('')
+  it('runs only an exact list of command words, and refuses every way around it', () => {
+    for (const ok of ['M106 S128', 'M107', 'm106 s1 ; fan', 'SET_FAN_SPEED FAN=chamber SPEED=0.5', 'M220 S100\nM221 S100', "SAVE_VARIABLE VARIABLE=muon_material_colour VALUE='\"#fff\"'"]) {
+      expect(gcodeRefusal(ok)).toBe('')
     }
-    expect(gcodeRefusal('G28')).toBe('')
+    const bypasses = [
+      'N1 G1 X100', 'G 1 X100', 'G01 X1', 'g0 Z5', 'G28', 'G92 X0', 'G2 X1 Y1 I1', 'M104 S300', 'M140 S200', 'M109 S250', 'SET_HEATER_TEMPERATURE HEATER=extruder TARGET=500',
+      'MANUAL_STEPPER STEPPER=x MOVE=10', 'STEPPER_BUZZ STEPPER=stepper_x', 'PROBE', 'PROBE_ACCURACY', 'BED_MESH_CALIBRATE', 'QUAD_GANTRY_LEVEL', 'Z_TILT_ADJUST',
+      'SHAPER_CALIBRATE', 'TEST_RESONANCES AXIS=X', 'SAVE_CONFIG', 'SET_KINEMATIC_POSITION X=0', 'FORCE_MOVE STEPPER=x DISTANCE=1 VELOCITY=1', 'SET_GCODE_OFFSET Z=-5',
+      'FIRMWARE_RESTART', 'RESTART', 'M112', 'M999', 'LOAD_FILAMENT', 'MY_MOVING_MACRO', 'M106 S1\nG1 X5', 'M106 S1\n\nN9 G 1 Y1', 'M106;\nG1 X1',
+      'SAVE_VARIABLE VARIABLE=other VALUE=1', 'SAVE_VARIABLE VARIABLE=muon_x VALUE=1\nSAVE_VARIABLE VARIABLE=bed_offset VALUE=1', 'G1X10', '%', 'M106 S1\n'.repeat(9)
+    ]
+    for (const bad of bypasses) expect(gcodeRefusal(bad), bad).not.toBe('')
     for (const bad of [undefined, 5, '', '  ', 'M106 S1'.repeat(100)]) expect(gcodeRefusal(bad)).not.toBe('')
+    expect(gcodeWord('N12 G 1 X5 *71')).toBe('G1')
+    expect(gcodeWord('  ; only a comment')).toBe('')
   })
 
   it('names a refused action in plain words, never a method', () => {
@@ -50,7 +57,7 @@ describe('allowlist', () => {
   })
 
   it('refuses setup, access, power and anything unknown', () => {
-    for (const m of ['server.muon.setup.network', 'server.muon.access.answer', 'server.muon.protection', 'machine.reboot', 'machine.services.restart', 'machine.update.full', 'server.aux.proxy', 'server.files.delete_file', 'server.database.post_item', '', 42, undefined]) {
+    for (const m of ['server.muon.setup.network', 'server.muon.access.answer', 'server.muon.protection', 'machine.reboot', 'machine.services.restart', 'machine.update.full', 'server.aux.proxy', 'server.files.delete_file', 'server.database.post_item', 'printer.restart', 'printer.firmware_restart', '', 42, undefined]) {
       expect(rpcVerdict(m)).toBe('refuse')
     }
   })

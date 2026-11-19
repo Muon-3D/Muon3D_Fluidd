@@ -127,8 +127,8 @@ test('the screen opens the printer\'s own screen; only allowed calls reach the p
   const results = await stubResults(page)
   const byId = Object.fromEntries(results.map(r => [r.id, r]))
   expect(byId[1].ok).toBe(true)
-  // Raw G-code is Operator in muon-link, so it is not owner-only; but a hand-written move skips the no-go planner.
-  expect(byId[2]).toMatchObject({ ok: false, error: { message: 'Use the move buttons for that. Control runs moves through its no-go zones.' } })
+  // Raw G-code is Operator in muon-link, so it is not owner-only; but only an exact list of command words runs; a hand-written move does not (the jog verb is the way).
+  expect(byId[2]).toMatchObject({ ok: false, error: { message: "Control doesn't run that G-code from the screen. Use the screen's own buttons." } })
   expect(byId[3]).toMatchObject({ ok: false, error: { message: 'Do this on the printer itself' } })
   // A jog by name runs as Control's own jog (moveBy, through the planner); a made-up verb does not.
   expect(byId[4].ok).toBe(true)
