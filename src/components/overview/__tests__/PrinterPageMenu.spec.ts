@@ -88,7 +88,7 @@ describe('the printer page menu (KAN-1429)', () => {
     const w = mountMenu(entry())
     await open(w)
     expect(item('connect-bluetooth')?.className).toContain('v-list-item--disabled')
-    expect(item('connect-bluetooth')?.textContent).toContain('This browser has no Bluetooth')
+    expect(item('connect-bluetooth')?.textContent).toContain("This browser can't use Bluetooth")
     w.destroy()
   })
 

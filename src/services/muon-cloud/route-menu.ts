@@ -1,3 +1,4 @@
+import { WHY_UNSUPPORTED } from '@/services/muon-ble/unavailable'
 import type { NearbySupport } from '@/services/muon-ble/nearby'
 import type { Route, RouteMode } from './route-choice'
 
@@ -30,21 +31,18 @@ export interface RouteMenuFacts {
   /** The Muon3D route: the printer is on this account's list, and the service says it is online. */
   cloud: { listed: boolean, online: boolean };
   /** Bluetooth: this browser has it, or the printer was heard, and the printer can be told apart. */
-  ble: { support: NearbySupport, heard: boolean, identified: boolean };
+  ble: { support: NearbySupport, heard: boolean, identified: boolean, why?: string | null };
 }
 
 /** Said when the account does not list the printer, so Muon3D cannot carry it. */
 export const NOT_ON_ACCOUNT = 'Not on your account'
 export const OFFLINE_IN_MUON3D = 'Not connected to Muon3D'
-export const NO_BLUETOOTH = 'This browser has no Bluetooth'
-export const BLUETOOTH_NEEDS_HTTPS = 'Bluetooth needs a secure page'
 export const NOT_IDENTIFIED = 'Not heard nearby yet'
 
 /** Why Bluetooth cannot be used now, or null when it can. */
 export function bluetoothReason (ble: RouteMenuFacts['ble']): string | null {
   if (ble.heard) return null
-  if (ble.support === 'unsupported') return NO_BLUETOOTH
-  if (ble.support === 'insecure') return BLUETOOTH_NEEDS_HTTPS
+  if (ble.support !== 'supported') return ble.why ?? WHY_UNSUPPORTED
   return ble.identified ? null : NOT_IDENTIFIED
 }
 

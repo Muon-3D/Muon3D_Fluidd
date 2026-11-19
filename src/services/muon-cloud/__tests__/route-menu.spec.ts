@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  bluetoothReason, NO_BLUETOOTH, OFFLINE_IN_MUON3D, routeMenuItems, type RouteMenuFacts
+  bluetoothReason, OFFLINE_IN_MUON3D, routeMenuItems, type RouteMenuFacts
 } from '../route-menu'
+import { WHY_UNSUPPORTED } from '@/services/muon-ble/unavailable'
 
 const facts = (over: Partial<RouteMenuFacts> = {}): RouteMenuFacts => ({
   mode: over.live ?? 'auto',
@@ -57,7 +58,7 @@ describe('route menu: greyed, with one line saying why', () => {
   })
   it('Bluetooth is greyed where the browser has none, unless the printer was heard', () => {
     const none = facts({ ble: { support: 'unsupported', heard: false, identified: true } })
-    expect(item(none, 'connect-bluetooth')).toMatchObject({ disabled: true, hint: NO_BLUETOOTH })
+    expect(item(none, 'connect-bluetooth')).toMatchObject({ disabled: true, hint: WHY_UNSUPPORTED })
     expect(bluetoothReason({ support: 'unsupported', heard: true, identified: true })).toBeNull()
   })
   it('Bluetooth is open for a printer you do not own, signed in or not', () => {

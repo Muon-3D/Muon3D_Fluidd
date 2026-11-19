@@ -16,6 +16,8 @@
  * where the browser supports that.
  */
 
+import { bluetoothWhy } from './unavailable'
+
 /** The service every Muon printer advertises (Iroh_BLE `SERVICE_UUID`). */
 export const MUON_BLE_SERVICE = '843ce1e6-c64c-4ac1-b06b-5afd8329b7f9'
 /** `INFO`, read once: version, capabilities, segment size, EndpointId. */
@@ -96,7 +98,7 @@ export interface WebBluetooth extends EventTarget {
 
 export type BluetoothSupport =
   | { supported: true }
-  | { supported: false, reason: 'insecure' | 'unsupported' }
+  | { supported: false, reason: 'ios' | 'insecure' | 'iframe' | 'unsupported' }
 
 /** A printer read through the chooser. */
 export interface ChosenPrinter {
@@ -113,8 +115,8 @@ export function webBluetooth (): WebBluetooth | null {
 
 /** Whether this browser can look for a printer over Bluetooth at all. */
 export function bluetoothSupport (): BluetoothSupport {
-  if (typeof window !== 'undefined' && window.isSecureContext === false) return { supported: false, reason: 'insecure' }
-  if (!webBluetooth()) return { supported: false, reason: 'unsupported' }
+  const why = bluetoothWhy()
+  if (why && why.kind !== 'radio-off') return { supported: false, reason: why.kind }
   return { supported: true }
 }
 

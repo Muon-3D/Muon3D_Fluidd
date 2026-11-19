@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shallowMount } from '@vue/test-utils'
+import { mount, shallowMount } from '@vue/test-utils'
 import PrintersHeader from '../PrintersHeader.vue'
 import PrintersSection from '../PrintersSection.vue'
 import FoundList from '../FoundList.vue'
@@ -26,9 +26,9 @@ describe('the page header', () => {
     await yes.find('[data-tid="connect-bluetooth"]').trigger('click')
     expect(yes.emitted('connect-bluetooth')).toHaveLength(1)
     expect(yes.find('[data-tid="bluetooth-needs-chrome"]').exists()).toBe(false)
-    const no = shallowMount(PrintersHeader, { propsData: { bluetoothSearch: false } })
+    const no = mount(PrintersHeader, { propsData: { bluetoothSearch: false } })
     expect(no.find('[data-tid="connect-bluetooth"]').exists()).toBe(false)
-    expect(no.find('[data-tid="bluetooth-needs-chrome"]').text()).toMatch(/Chrome or Edge/)
+    expect(no.find('[data-tid="bluetooth-needs-chrome"]').text()).toMatch(/can't use Bluetooth/)
   })
 
   it('has one primary button, and says Add when it is pressed', async () => {

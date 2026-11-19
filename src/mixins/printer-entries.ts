@@ -31,6 +31,7 @@ import {
 } from '@/services/muon-cloud/directory'
 import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
+import { bluetoothWhy as whyNoBluetooth, type BluetoothWhy } from '@/services/muon-ble/unavailable'
 import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
@@ -109,7 +110,7 @@ function routeFactsOf (e: DirectoryEntry): RouteMenuFacts {
     live: liveRouteOf(e),
     local: { usable: route.kind !== 'none', hint: localHint(route, e) },
     cloud: { listed: !!e.cloud, online: !!e.cloud?.online },
-    ble: { support: nearbyState.support, heard: !!e.nearby, identified: !!idOf(e) }
+    ble: { support: nearbyState.support, heard: !!e.nearby, identified: !!idOf(e), why: whyNoBluetooth()?.text ?? null }
   }
 }
 
@@ -209,8 +210,9 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return nearbyState.support === 'supported'
   }
 
-  get bluetoothInsecure () {
-    return nearbyState.support === 'insecure'
+  /** Why Bluetooth cannot be used here, said plainly, or null when it can (KAN-4802). */
+  get bluetoothWhy (): BluetoothWhy | null {
+    return whyNoBluetooth(undefined, this.bluetoothOff)
   }
 
   get bluetoothOff () {
