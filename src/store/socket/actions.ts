@@ -11,6 +11,10 @@ import { isProtectedSurface } from '@/store/protection/helpers'
 import { applyState as applySetupState } from '@/services/muon-setup/state'
 import { headStatus } from '@/services/control/safe-move'
 import { resetGates } from '@/services/gates/state'
+import { policyRefusedText } from '@/services/managed-transport/refusal'
+
+/** Background reads the page makes for itself; Owner-only for a guest, so "not available to you" and no toast. */
+export const GUEST_UNAVAILABLE_METHODS = ['server.config', 'server.muon.get_protection', 'machine.update.status']
 
 let retryTimeout: number
 
@@ -96,6 +100,12 @@ export const actions: ActionTree<SocketState, RootState> = {
     // Only where Moonraker has `muon_protection`: an older image floored
     // `/machine/update` outright, and its refusal is still worth a toast.
     const method: string | undefined = payload.__request__?.method
+    // muon-link's Owner-only policy refusing a read this person may not make (an Open printer's guest is no owner):
+    // the feature is "not available to you", not an error. Nothing to toast, and nothing to ask the printer again.
+    if (method && GUEST_UNAVAILABLE_METHODS.includes(method) && policyRefusedText(payload.message)) {
+      consola.debug('Not available to this user:', method, payload.message)
+      return
+    }
     if (
       payload.code === 403 &&
       method &&

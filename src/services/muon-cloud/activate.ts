@@ -198,7 +198,7 @@ export async function activateCloudPrinter (printerId: string) {
       if (wantsBluetoothFor(printerId)) {
         await borrowed.fetch('/server/info')
         // KAN-4309: an Open printer admitted this browser as an Operator guest. An account's own printer has its role from the console.
-        if (!cloudState.printers.some(p => p.id === printerId)) await readGrantedRole(printerId, path => borrowed.fetch(path))
+        if (!cloudState.printers.some(p => p.id === printerId)) await readGrantedRole(printerId, path => borrowed.fetch(path), { admitted: true })
         else forgetGrantedRole(printerId)
       }
       if (superseded()) throw new SwitchSuperseded()
@@ -228,7 +228,7 @@ export async function activateCloudPrinter (printerId: string) {
           const reopened = await borrowed.openWebSocket('/websocket')
           // A grant that never came (every read failed) is asked for again once the printer is back.
           if (wantsBluetoothFor(printerId) && !grantedRoleFor(printerId) && !cloudState.printers.some(p => p.id === printerId) && !superseded()) {
-            readGrantedRole(printerId, path => borrowed.fetch(path), { keep: true }).catch(() => {})
+            readGrantedRole(printerId, path => borrowed.fetch(path), { keep: true, admitted: true }).catch(() => {})
           }
           return reopened
         })
