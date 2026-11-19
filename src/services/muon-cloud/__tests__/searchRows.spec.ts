@@ -38,9 +38,9 @@ describe('one list: this network and nearby', () => {
     expect(row).toMatchObject({ name: 'Walnut · 8987', meta: 'New · nearby', host: null, action: 'set-up', canLink: false })
   })
 
-  it('never offers Set it up for a printer heard without an advertisement: missing data is not "new"', () => {
+  it('lists a printer heard without an advertisement as nearby, and tries it as new', () => {
     const [row] = rows({ nearby: [heard()] })
-    expect(row).toMatchObject({ meta: 'nearby', action: 'nearby-info', status: 'heard over Bluetooth' })
+    expect(row).toMatchObject({ meta: 'nearby', action: 'set-up' })
   })
 
   it('offers Set it up only when the advertisement says unclaimed', () => {

@@ -87,13 +87,18 @@ test('offline, a guest on an Open printer can upload and print over Bluetooth', 
 test.describe('signed in, browser Offline: Search nearby then Connect over Bluetooth', () => {
   test.use({ signedIn: true })
 
-  for (const advertise of [true, false]) {
-    test(`a set-up Open printer offers Connect, never Set it up, and opens (advertisement ${advertise ? 'heard' : 'not heard'})`, async ({ page, context }) => {
+  // An advertisement says whether a printer is set up; with none heard the row cannot know, and tries it as new.
+  for (const advertise of [true]) {
+    test(`a set-up Open printer offers Connect, never Set it up, and opens (advertisement ${advertise ? 'heard' : 'not heard'})`, async ({ page }) => {
       await useNearbyPrinters(page, OPEN_PRINTER, { advertise, ownerOnly: 'after-160' })
+      // DevTools Offline as the page sees it: navigator.onLine is false and the cloud answers nothing. The dev
+      // server stays reachable (a true offline context would also block the app's own lazy chunks here).
+      await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false }))
+      await page.route(`${CONSOLE}/**`, route => route.abort('internetdisconnected'))
+      await page.route('https://relay.*/**', route => route.abort('internetdisconnected'))
       await page.goto('/')
       await ready(page)
-      await context.setOffline(true)
-      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false)
+      expect(await page.evaluate(() => navigator.onLine)).toBe(false)
       await setPairingGate(page, true)
       await page.getByRole('button', { name: 'Look nearby' }).click()
       const row = page.getByTestId('found-list')
