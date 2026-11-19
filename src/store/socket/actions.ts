@@ -9,6 +9,7 @@ import { upperFirst, camelCase } from 'lodash-es'
 import isKeyOf from '@/util/is-key-of'
 import { isProtectedSurface } from '@/store/protection/helpers'
 import { applyState as applySetupState } from '@/services/muon-setup/state'
+import { onUsbJobNotification } from '@/services/usb/state'
 import { headStatus } from '@/services/control/safe-move'
 import { resetGates } from '@/services/gates/state'
 import { policyRefusedText } from '@/services/managed-transport/refusal'
@@ -199,6 +200,11 @@ export const actions: ActionTree<SocketState, RootState> = {
 
   async notifyKlippyReady () {
     consola.debug('Klippy Ready')
+  },
+
+  // The printer's USB copy job moved on (KAN-4814).
+  async notifyMuonUsbJob (_, payload) {
+    onUsbJobNotification(payload)
   },
 
   async notifyFilelistChanged ({ dispatch }, payload) {
