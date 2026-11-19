@@ -13,6 +13,7 @@ import MacrosTile from './tiles/MacrosTile.vue'
 import GraphTile from './tiles/GraphTile.vue'
 import EmbedTile from './tiles/EmbedTile.vue'
 import LinkTile from './tiles/LinkTile.vue'
+import LightingTile from './tiles/LightingTile.vue'
 import { widgetMeta, widgetSize, type WidgetMeta } from '@/services/overview/widgets'
 
 /**
@@ -58,6 +59,7 @@ const drawn: Record<string, Drawn> = {
   graph: { component: GraphTile },
   trackpad: { component: MovementTile },
   fans: { component: FansTile },
+  lighting: { component: LightingTile },
   camera: embed('camera', () => import('@/components/widgets/camera/CameraCard.vue')),
   bedmesh: embed('bedmesh', () => import('@/components/widgets/bedmesh/BedMeshCard.vue')),
   console: embed('console', () => import('@/components/widgets/console/ConsoleCard.vue')),
