@@ -15,7 +15,7 @@
  * `/server/muon/link[/…]`, with no websocket, and muon-link hangs it up when
  * setup completes.
  */
-import { cloudApi } from '@/services/muon-cloud/api'
+import { relayUrlForBluetooth } from '@/services/muon-cloud/relay'
 import { browserEndpoint, IrohPrinter } from '@/services/muon-cloud/iroh'
 import { cloudState } from '@/services/muon-cloud/state'
 import { registerEndpointBusy } from '@/services/muon-cloud/endpoint-hooks'
@@ -60,7 +60,7 @@ interface SessionPrinter {
 }
 
 interface SetupEndpoint {
-  connect (printerId: string): Promise<SessionPrinter>;
+  connect (printerId: string, route?: 'bluetooth'): Promise<SessionPrinter>;
 }
 
 export interface ConnectForSetupOptions {
@@ -69,10 +69,12 @@ export interface ConnectForSetupOptions {
   log?: (line: string) => void;
 }
 
+const ENDPOINT_START_MS = 15_000
+
 async function consoleEndpoint (): Promise<unknown> {
   // A stranger's endpoint needs no account: only the relay the console names.
-  if (!cloudState.config) cloudState.config = await cloudApi.config()
-  return browserEndpoint(cloudState.config.relay_url)
+  // Bluetooth setup never needs the cloud: cloud value, else cached, else built in.
+  return browserEndpoint(relayUrlForBluetooth(cloudState.config?.relay_url))
 }
 
 const errorKind = (error: unknown) => (error as { kind?: string } | null)?.kind
@@ -101,7 +103,15 @@ export async function connectForSetup (printer: NearbyPrinter, options: ConnectF
   const name = printer.display || printer.localName || 'The printer'
   let endpoint: unknown
   try {
-    endpoint = await (options.endpoint ?? consoleEndpoint)()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      endpoint = await Promise.race([
+        (options.endpoint ?? consoleEndpoint)(),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('starting took too long')), ENDPOINT_START_MS) })
+      ])
+    } finally {
+      clearTimeout(timer)
+    }
   } catch (error) {
     return { ok: false, reason: 'unreachable', message: `Couldn't start this page's connection: ${message(error)}` }
   }
@@ -132,7 +142,7 @@ export async function connectForSetup (printer: NearbyPrinter, options: ConnectF
     await link.disconnect()
   }
   try {
-    session = await (endpoint as unknown as SetupEndpoint).connect(link.printerId)
+    session = await (endpoint as unknown as SetupEndpoint).connect(link.printerId, 'bluetooth')
     if (typeof session.comparison !== 'function') {
       await hangUp()
       return { ok: false, reason: 'unsupported', message: "This page's connection has no code to check yet." }

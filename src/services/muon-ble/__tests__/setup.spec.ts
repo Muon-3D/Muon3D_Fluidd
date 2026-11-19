@@ -54,7 +54,7 @@ describe('connectForSetup', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(endpoint.addLink).toHaveBeenCalledTimes(1)
-    expect(endpoint.connect).toHaveBeenCalledWith(EID)
+    expect(endpoint.connect).toHaveBeenCalledWith(EID, 'bluetooth')
     expect(result.session.code).toBe('F6QTDH')
     expect(result.session.state.rev).toBe(newState.rev)
     expect(gateway.requests.map(r => `${r.method} ${r.path}`)).toEqual(['GET /server/muon/setup'])

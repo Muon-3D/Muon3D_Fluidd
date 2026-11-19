@@ -23,6 +23,7 @@ import { BLUETOOTH_NOT_CONNECTED_MESSAGE, bluetoothUnavailable } from './refusal
 import { activateCloudPrinter } from '@/services/muon-cloud/activate'
 import { noteAdmittedAtPanel } from '@/services/muon-cloud/approval'
 import { cloudState, dropCloudConnection } from '@/services/muon-cloud/state'
+import { relayUrlForBluetooth } from '@/services/muon-cloud/relay'
 import { registerEndpointBusy } from '@/services/muon-cloud/endpoint-hooks'
 import { NOT_ON_BLUETOOTH_MS, bluetoothCarrying, bluetoothFellBack, bluetoothRouteFor, releaseBluetoothLink, wantsBluetoothFor } from './link'
 import { readPairingEntry, type PairingEntry } from './entry'
@@ -55,7 +56,7 @@ interface PairingSession {
 }
 
 interface PairingEndpoint {
-  connect?: (printerId: string) => Promise<{ fetch: (method: string, path: string, headers: string[], body: Uint8Array) => Promise<{ status: number, body: Uint8Array }>, close?: () => void }>;
+  connect?: (printerId: string, route?: 'bluetooth') => Promise<{ fetch: (method: string, path: string, headers: string[], body: Uint8Array) => Promise<{ status: number, body: Uint8Array }>, close?: () => void }>;
   beginPairing? (printerId: string, label: string): Promise<PairingSession>;
 }
 
@@ -191,7 +192,8 @@ async function entryOfPrinter (endpoint: PairingEndpoint, printerId: string): Pr
   if (typeof endpoint.connect !== 'function') return 'protected'
   let printer
   try {
-    printer = await endpoint.connect(printerId)
+    // Only reached for a printer the person chose to open over Bluetooth: hold that route.
+    printer = await endpoint.connect(printerId, 'bluetooth')
   } catch {
     return 'protected'
   }
@@ -228,8 +230,8 @@ export async function startPairing (printerId: string): Promise<void> {
     await hangingUp
     if (mine !== generation) return
     if (!wantsBluetoothFor(printerId)) throw new Error('Choose Connect over Bluetooth for this printer first.')
-    const relay = cloudState.config?.relay_url
-    if (!relay) throw new Error('Control has not reached Muon3D yet, so it has no address to start from.')
+    // Bluetooth never needs the cloud: cloud value, else cached, else built in.
+    const relay = relayUrlForBluetooth(cloudState.config?.relay_url)
     const endpoint = await browserEndpoint(relay) as unknown as PairingEndpoint
     let abandoned = false
     const opened = await within(

@@ -97,7 +97,7 @@ describe('Connect over Bluetooth with the cloud saying the printer is offline (K
 
     expect(response.status).toBe(200)
     expect(ble.endpoint.addLink).toHaveBeenCalledTimes(1)
-    expect(connect).toHaveBeenCalledWith(EID)
+    expect(connect).toHaveBeenCalledWith(EID, 'bluetooth')
     expect(sessions[0].grantless).toBe(true)
   })
 

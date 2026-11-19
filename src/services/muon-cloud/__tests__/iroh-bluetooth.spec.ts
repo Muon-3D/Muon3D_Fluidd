@@ -28,6 +28,21 @@ describe('dialPrinter', () => {
     useBluetoothFor(EID, printer.device)
     await dialPrinter(ep, EID)
     expect(order).toEqual(['link', `connect ${EID.slice(0, 8)}`])
+    // The explicit choice is held: "auto" would include the relay.
+    expect(ep.connect).toHaveBeenCalledWith(EID, 'bluetooth')
+  })
+
+  it('holds the Bluetooth route on connectAs too, and leaves other opens on auto', async () => {
+    const printer = fakePrinter()
+    const connectAs = vi.fn(async (id: string) => ({ printerId: () => id }))
+    const ble = fakeEndpoint()
+    const ep = { ...endpoint(async id => ({ printerId: () => id }), ble), connectAs }
+    useBluetoothFor(EID, printer.device)
+    await dialPrinter(ep, EID)
+    expect(connectAs.mock.calls[0].slice(5)).toEqual([undefined, 'bluetooth'])
+    const other = { ...endpoint(async id => ({ printerId: () => id })), connectAs: vi.fn(async (id: string) => ({ printerId: () => id })) }
+    await dialPrinter(other, 'f'.repeat(64))
+    expect(other.connectAs.mock.calls[0]).toHaveLength(5)
   })
 
   it('dials through the relay alone for any other printer', async () => {

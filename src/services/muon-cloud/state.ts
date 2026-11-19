@@ -26,6 +26,7 @@ import { centralLoginEnabled, clearSilentAttempt, holdSilentSignIn, redirectUri,
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
 import { consolePresence } from './presence'
+import { relayUrlForBluetooth } from './relay'
 import { announceAccount, confirmedAccountId, confirmToken, currentAccount, identityOf, SIGNED_OUT } from './account-events'
 import { STATUS_QUERY, statusFrom, type PrinterStatus } from './status'
 import { deletionState } from './deletion'
@@ -193,9 +194,6 @@ export function requestAccess (printerId: string): Promise<AccessHandoff> {
  */
 export const BLUETOOTH_GRANT_GRACE_MS = 4_000
 
-/** How long a Bluetooth open waits for the console's config (the relay URL) when none is cached. */
-export const BLUETOOTH_CONFIG_WAIT_MS = 4_000
-
 /**
  * The same wait for a printer the console calls online. Its key may rely on
  * a grant the console pushes, so the grant is worth waiting for. Bounded below
@@ -235,10 +233,12 @@ async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promis
     const wait = BLUETOOTH_GRANT_GRACE_MS
     // Whatever goes wrong asking (any CloudError status, ensureEndpoint, an
     // abort) means no grant, never a failed connect.
-    const asked = askConsole(printerId, own.signal).catch((): null => null)
+    // Known offline: do not ask at all.
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+    const asked = offline ? Promise.resolve<null>(null) : askConsole(printerId, own.signal).catch((): null => null)
     grant = await Promise.race([
       asked,
-      new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), wait) })
+      new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), offline ? 0 : wait) })
     ])
   } finally {
     clearTimeout(timer)
@@ -251,22 +251,9 @@ async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promis
   const refusedNow = deletionRefusal()
   if (refusedNow) throw refusedNow
   if (grant) return sessionFrom(grant)
-  let relayUrl = cloudState.config?.relay_url
-  if (!relayUrl) {
-    // Bounded and swallowed: a stalled or failing console must not hold the radio.
-    let configTimer: ReturnType<typeof setTimeout> | undefined
-    try {
-      const config = await Promise.race([
-        cloudApi.config(),
-        new Promise<null>(resolve => { configTimer = setTimeout(() => resolve(null), BLUETOOTH_CONFIG_WAIT_MS) })
-      ])
-      if (config) relayUrl = (cloudState.config = config).relay_url
-    } catch { /* no console either: the error below says so */ } finally {
-      clearTimeout(configTimer)
-    }
-  }
+  // The radio never waits on the console for the relay: cloud value, else cached, else built in.
+  const relayUrl = relayUrlForBluetooth(cloudState.config?.relay_url)
   signal.throwIfAborted()
-  if (!relayUrl) throw new Error('Muon3D could not be reached, and this page does not know its relay yet. Open Control once with a connection, then try Bluetooth again.')
   return {
     contractVersion: 'managed-iroh/v1',
     sessionId: `bluetooth-${printerId}`,
