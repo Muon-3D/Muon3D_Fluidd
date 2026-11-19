@@ -1,5 +1,5 @@
 import Vue from 'vue'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   askToChange,
   requestChange,
@@ -14,9 +14,13 @@ import {
 } from '../request'
 import { CHALLENGE, FakePrinter, OWNER, WAIVER, moonrakerError } from './fakePrinter'
 
+const http = vi.hoisted(() => ({ serverMuonDevModeGet: vi.fn() }))
+vi.mock('@/api/httpClientActions', () => ({ httpClientActions: http }))
+
 let printer: FakePrinter
 
 beforeEach(() => {
+  vi.clearAllMocks()
   printer = new FakePrinter()
   ;(Vue as unknown as { $httpClient: unknown }).$httpClient = printer
 })
@@ -49,19 +53,39 @@ describe('a developer-mode request, through Moonraker\'s one route for it (KAN-5
     expect(whyNot(open)).toBeNull()
   })
 
-  it('opens, follows and completes a change, each through the same route', async () => {
-    printer.devMode = true
-    const challenge = await askToChange(false)
-    expect(printer.post).toHaveBeenLastCalledWith(DEV_MODE_REQUEST_PATH, { enabled: false })
-    expect(challenge).toMatchObject({ challengeId: CHALLENGE, enabled: false, expiresInSeconds: 120 })
+  it('opens, follows and completes the first release, each through the same route', async () => {
+    const challenge = await askToChange(true)
+    expect(printer.post).toHaveBeenLastCalledWith(DEV_MODE_REQUEST_PATH, { enabled: true })
+    expect(challenge).toMatchObject({ challengeId: CHALLENGE, enabled: true, expiresInSeconds: 120 })
 
     expect(await readAnswer(CHALLENGE)).toEqual({ confirmed: false, refused: false })
     expect(printer.get).toHaveBeenLastCalledWith(DEV_MODE_REQUEST_PATH, { params: { challenge_id: CHALLENGE } })
 
     printer.confirm()
     expect(await readAnswer(CHALLENGE)).toEqual({ confirmed: true, refused: false })
-    expect(await completeChange({ enabled: false, challengeId: CHALLENGE })).toEqual({ enabled: false })
-    // Turning off takes no waiver (DEV-5).
+    expect(await completeChange({ enabled: true, challengeId: CHALLENGE, waiverVersion: WAIVER.version })).toEqual({ enabled: true })
+    expect(printer.devMode).toBe(true)
+  })
+
+  it('after the first release every switch is taken at once, on and off, with no challenge (#502)', async () => {
+    printer.everEnabled = true
+    expect(await requestChange(true)).toEqual({ kind: 'applied', enabled: true })
+    expect(await requestChange(false)).toEqual({ kind: 'applied', enabled: false })
+    expect(printer.polled).toEqual([])
+    // Off is direct even on a printer that has not recorded a release, and an admin build is always direct.
+    printer.devMode = true
+    expect(await requestChange(false)).toEqual({ kind: 'applied', enabled: false })
+    const admin = new FakePrinter()
+    admin.adminBuild = true
+    ;(Vue as unknown as { $httpClient: unknown }).$httpClient = admin
+    expect(await requestChange(true)).toEqual({ kind: 'applied', enabled: true })
+    expect(admin.completed).toEqual([])
+  })
+
+  it('turning off takes no waiver (DEV-5)', async () => {
+    printer.devMode = true
+    printer.confirm()
+    await completeChange({ enabled: false, challengeId: CHALLENGE })
     expect(printer.completed).toEqual([{ enabled: false, challenge_id: CHALLENGE }])
     expect(printer.devMode).toBe(false)
   })
@@ -133,5 +157,52 @@ describe('a developer-mode request, through Moonraker\'s one route for it (KAN-5
     }
     expect(printer.get).not.toHaveBeenCalled()
     expect(printer.post).not.toHaveBeenCalled()
+  })
+
+  it('a POST-only printer: the answer read falls back to the state, which is the change done only when it reads as asked', async () => {
+    http.serverMuonDevModeGet.mockResolvedValue({ data: { result: { enabled: false } } })
+    printer.get.mockRejectedValueOnce(Object.assign(new Error('405'), { response: { status: 405, data: '<html>405</html>' } }))
+    expect(await readAnswer(CHALLENGE, true)).toEqual({ confirmed: false, refused: false, applied: false })
+
+    printer.get.mockRejectedValueOnce(Object.assign(new Error('403'), { response: { status: 403, data: { error: { code: 403, message: 'Forbidden' } } } }))
+    http.serverMuonDevModeGet.mockResolvedValue({ data: { result: { enabled: true } } })
+    expect(await readAnswer(CHALLENGE, true)).toEqual({ confirmed: true, refused: false, applied: true })
+
+    // The state can't be read either: nothing is said to be done.
+    http.serverMuonDevModeGet.mockResolvedValue({ data: { result: {} } })
+    printer.get.mockRejectedValueOnce(Object.assign(new Error('405'), { response: { status: 405, data: '' } }))
+    expect(await readAnswer(CHALLENGE, true)).toMatchObject({ confirmed: false, applied: false })
+  })
+
+  it('with no state to compare to, or for any other failure, the answer read does not fall back', async () => {
+    printer.get.mockRejectedValueOnce(Object.assign(new Error('405'), { response: { status: 405, data: '' } }))
+    await expect(readAnswer(CHALLENGE)).rejects.toMatchObject({ status: 405 })
+    expect(http.serverMuonDevModeGet).not.toHaveBeenCalled()
+    printer.get.mockRejectedValueOnce(moonrakerError(500, 'boom'))
+    await expect(readAnswer(CHALLENGE, true)).rejects.toMatchObject({ status: 500 })
+    printer.get.mockRejectedValueOnce(moonrakerError(403, 'dev-mode:owner_required: Only the owner.'))
+    await expect(readAnswer(CHALLENGE, true)).rejects.toMatchObject({ code: 'owner_required' })
+    expect(http.serverMuonDevModeGet).not.toHaveBeenCalled()
+  })
+
+  it('a 500 or 401 on the who-may-ask GET is not treated as allowed', async () => {
+    for (const status of [500, 401]) {
+      printer.get.mockRejectedValueOnce(Object.assign(new Error(`status ${status}`), { response: { status, data: { error: { code: status, message: 'nope' } } } }))
+      const error = await whoMayAsk().catch(e => e)
+      expect(error).toBeInstanceOf(DevModeRefused)
+      expect(error).toMatchObject({ status, code: 'refused' })
+    }
+    printer.get.mockRejectedValueOnce(new Error('Network Error'))
+    await expect(whoMayAsk()).rejects.toThrow('Network Error')
+  })
+
+  it("a GET 405 on who-may-ask, then the printer's own 403 on the POST, shows the printer's refusal", async () => {
+    printer.asOwner = false
+    printer.get.mockRejectedValueOnce(Object.assign(new Error('405'), { response: { status: 405, data: '<html>405</html>' } }))
+    expect((await whoMayAsk()).mayAsk).toBe(true)
+    const error = await requestChange(true).catch(e => e)
+    expect(error).toBeInstanceOf(DevModeRefused)
+    expect(error).toMatchObject({ code: 'owner_required', status: 403 })
+    expect(error.message).toMatch(new RegExp(`^Only ${OWNER} can change developer mode`))
   })
 })

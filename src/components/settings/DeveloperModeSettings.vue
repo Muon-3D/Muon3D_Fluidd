@@ -254,6 +254,8 @@ export default class DeveloperModeSettings extends Vue {
   countdownTimer: number | null = null
   /** Asks in a row the printer didn't answer. */
   pollFailures = 0
+  /** A read of the printer's answer is on its way: a slow link must not stack another behind it. */
+  reading = false
 
   mounted () {
     refreshDevMode()
@@ -461,8 +463,9 @@ export default class DeveloperModeSettings extends Vue {
    */
   async pollConsent () {
     const pending = this.pending
-    if (!pending || this.loading) return
+    if (!pending || this.loading || this.reading) return
     let answer
+    this.reading = true
     try {
       answer = pending.challengeId
         ? await readAnswer(pending.challengeId, pending.enabled)
@@ -472,6 +475,8 @@ export default class DeveloperModeSettings extends Vue {
       this.pollFailures++
       if (this.pollFailures >= 4) this.errorMessage = `The printer isn't saying whether its screen was answered: ${this.describe(err)}`
       return
+    } finally {
+      this.reading = false
     }
     if (answer.refused) {
       this.stopWaiting()
