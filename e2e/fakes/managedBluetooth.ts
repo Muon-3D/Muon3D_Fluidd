@@ -149,7 +149,7 @@ export async function managedBluetooth (origin: string, options: { operator?: bo
                 notify(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { filename: request.params.filename, size: uploaded.size, modified: Date.now() / 1000 } }))
                 return
               }
-              if (['server.config', 'machine.update.status', 'printer.gcode.script'].includes(request.method)) {
+              if (['server.config', 'machine.update.status', ...(options.operator ? [] : ['printer.gcode.script'])].includes(request.method)) {
                 counts.policyRefusals++
                 counts.refusedMethods.push(request.method)
                 queue.push(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: 403, message: policyMessage } }))

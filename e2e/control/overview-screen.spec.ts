@@ -127,7 +127,8 @@ test('the screen opens the printer\'s own screen; only allowed calls reach the p
   const results = await stubResults(page)
   const byId = Object.fromEntries(results.map(r => [r.id, r]))
   expect(byId[1].ok).toBe(true)
-  expect(byId[2]).toMatchObject({ ok: false, error: { message: 'Do this on the printer itself' } })
+  // Raw G-code is Operator in muon-link, so it is not owner-only; but a hand-written move skips the no-go planner.
+  expect(byId[2]).toMatchObject({ ok: false, error: { message: 'Use the move buttons for that. Control runs moves through its no-go zones.' } })
   expect(byId[3]).toMatchObject({ ok: false, error: { message: 'Do this on the printer itself' } })
   // A jog by name runs as Control's own jog (moveBy, through the planner); a made-up verb does not.
   expect(byId[4].ok).toBe(true)
@@ -230,7 +231,7 @@ test('a confirmation that must be done on the printer stays blocked: tagged, and
   for (const id of [10, 11]) {
     expect(results.find(r => r.id === id)).toMatchObject({ ok: false, error: { message: 'Do this on the printer itself' } })
   }
-  await expect(page.getByTestId('m1-screen-refused')).toContainText('Confirm on the printer')
+  await expect(page.getByTestId('m1-screen-refused')).toContainText('is done on the printer itself')
   const sent = JSON.stringify([printer.calls, printer.gcode])
   expect(sent).not.toMatch(/consent|dev_mode/)
   expect(printer.gcode).toEqual([])
@@ -270,28 +271,22 @@ test('with no max_temp known for a heater, the screen cannot heat it', async ({ 
   expect(printer.gcode.some(l => l.includes('SET_HEATER_TEMPERATURE'))).toBe(false)
 })
 
-// Hosted Control serves no /panel/: with the printer saying it has the screen, a frame would load a 404 page.
-// The person is sent to the printer's own Control, in this tab (KAN-3635 is the hosted panel over Bluetooth and Muon3D).
-test('on hosted Control the screen is not framed: it says so and links to the printer\'s own page', async ({ page, open }) => {
+// Hosted Control serves no /panel/ of its own: the screen is fetched from the printer over its route and framed from memory
+// (KAN-4812, KAN-3635). No "Connect locally" detour.
+test('on hosted Control the screen loads from the printer and is framed, with no Connect locally', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed(), STILL)
-  await page.route(url => url.pathname.startsWith('/panel/') && url.port === String(MOCK_PORT), route => route.fulfill({
-    status: 200, contentType: 'text/html', headers: { 'access-control-allow-origin': '*' }, body: '<!doctype html><body>screen</body>'
-  }))
+  await servePanel(page)
   await open('/')
   await ready(page)
-  // This page is what control.muon3d.com is: the served config says hosted.
   await page.evaluate(async () => {
     const { default: store } = await import(/* @vite-ignore */ ['', 'src', 'store', 'index.ts'].join('/'))
     store.state.config.hostConfig.hosted = true
   })
   await clickScreen(page)
   await expect(page.getByTestId('m1-screen')).toHaveAttribute('data-phase', 'open')
-  await expect(page.getByTestId('m1-screen-hosted')).toContainText("opens from the printer's own Control page")
-  const link = page.getByTestId('m1-screen-local')
-  await expect(link).toHaveText('Connect locally')
-  await expect(link).toHaveAttribute('href', 'http://muon-boxwood-367a.local/')
-  await expect(link).toHaveAttribute('target', '_self')
-  await expect(page.getByTestId('m1-screen-frame')).toHaveCount(0)
-  await expect(page.getByTestId('m1-screen-empty')).toHaveCount(0)
-  expect(printer.gcode).toEqual([])
+  await expect(page.getByTestId('m1-screen-frame')).toBeVisible()
+  await expect(page.getByTestId('m1-screen-local')).toHaveCount(0)
+  await expect(page.getByTestId('m1-screen-hosted')).toHaveCount(0)
+  await expect.poll(() => stubResults(page).then(rs => rs.length)).toBe(5)
+  expect(printer.gcode.flatMap(g => g.split('\n')).filter(l => l.startsWith('G1 '))).toEqual(['G1 X10 F7800'])
 })

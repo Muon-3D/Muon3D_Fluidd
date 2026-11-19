@@ -1,11 +1,47 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PanelBridge, type BridgeHost } from '../bridge'
-import { auxVerdict, readVerb, rpcVerdict, ON_PRINTER } from '../allow'
+import { auxVerdict, gcodeRefusal, readVerb, refusalNote, rpcVerdict, ON_PRINTER } from '../allow'
 import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION } from '../protocol'
 
 describe('allowlist', () => {
   it('forwards reads and the print controls Control already has', () => {
     for (const m of ['printer.info', 'printer.objects.query', 'printer.print.pause', 'printer.emergency_stop']) expect(rpcVerdict(m)).toBe('forward')
+  })
+
+  // muon-link GATE-7 (crates/muon-link-device/src/policy.rs): what an Operator, and so an Open printer's guest, may do.
+  it('forwards the Operator surface: print, queue, restarts, G-code, the reads the screen needs', () => {
+    for (const m of [
+      'printer.print.start', 'printer.print.pause', 'printer.print.resume', 'printer.print.cancel', 'printer.emergency_stop',
+      'printer.gcode.script', 'printer.restart', 'printer.firmware_restart', 'printer.query_endstops.status',
+      'server.job_queue.status', 'server.job_queue.post_job', 'server.job_queue.start', 'server.job_queue.pause', 'server.job_queue.jump',
+      'server.files.list', 'server.files.roots', 'server.files.thumbnails', 'server.history.list', 'server.temperature_store', 'server.gcode_store'
+    ]) expect(rpcVerdict(m)).toBe('forward')
+  })
+
+  it('reads fan and the other verbs by name, field by field', () => {
+    expect(readVerb({ verb: 'fan', fan: 'part', percent: 40.4 })).toEqual({ verb: 'fan', fan: 'part', percent: 40 })
+    for (const bad of [{ fan: 'part', percent: 101 }, { fan: 'part', percent: -1 }, { fan: 'a b', percent: 5 }, { fan: 7, percent: 5 }, { fan: 'part' }]) {
+      expect(readVerb({ verb: 'fan', ...bad })).toBeNull()
+    }
+  })
+
+  it('runs plain G-code but not moves or anything that rewrites the printer setup', () => {
+    expect(gcodeRefusal('M106 S128')).toBe('')
+    expect(gcodeRefusal('SET_HEATER_TEMPERATURE HEATER=extruder TARGET=200\nM104 S0 ; off')).toBe('')
+    for (const bad of ['G1 X100', 'g0 Z5', 'G28 ; fine\nG2 X1 Y1 I1', 'SAVE_CONFIG', 'SET_KINEMATIC_POSITION X=0', 'FIRMWARE_RESTART', 'RESTART', 'M112', 'FORCE_MOVE STEPPER=x DISTANCE=1 VELOCITY=1']) {
+      expect(gcodeRefusal(bad)).not.toBe('')
+    }
+    expect(gcodeRefusal('G28')).toBe('')
+    for (const bad of [undefined, 5, '', '  ', 'M106 S1'.repeat(100)]) expect(gcodeRefusal(bad)).not.toBe('')
+  })
+
+  it('names a refused action in plain words, never a method', () => {
+    expect(refusalNote('POST /dev_mode/enter')).toBe("Developer mode is done on the printer itself. Control can't do it for you.")
+    expect(refusalNote('server.muon.protection')).toContain('Changing who can use the printer')
+    expect(refusalNote('POST /update/install')).toContain('Installing an update')
+    expect(refusalNote('POST /wifi/connect')).toContain('Changing the Wi-Fi')
+    expect(refusalNote('machine.reboot')).toContain('Restarting or powering off')
+    expect(refusalNote('something.odd')).toBe("That is done on the printer itself. Control can't do it for you.")
   })
 
   it('answers subscribe and identify itself', () => {
@@ -14,7 +50,7 @@ describe('allowlist', () => {
   })
 
   it('refuses setup, access, power and anything unknown', () => {
-    for (const m of ['printer.gcode.script', 'server.muon.setup.network', 'server.muon.access.answer', 'server.muon.protection', 'machine.reboot', 'machine.services.restart', 'machine.update.full', 'server.aux.proxy', 'printer.restart', '', 42, undefined]) {
+    for (const m of ['server.muon.setup.network', 'server.muon.access.answer', 'server.muon.protection', 'machine.reboot', 'machine.services.restart', 'machine.update.full', 'server.aux.proxy', 'server.files.delete_file', 'server.database.post_item', '', 42, undefined]) {
       expect(rpcVerdict(m)).toBe('refuse')
     }
   })
@@ -83,6 +119,22 @@ describe('PanelBridge', () => {
     expect(post).toHaveBeenCalledTimes(2)
     expect(closed).toHaveBeenCalled()
     expect((bridge as unknown as { port: MessagePort }).port).not.toBe(first)
+  })
+
+  it('treats a srcdoc frame (opaque origin) as its own window only, and never one that shares the page origin', () => {
+    const { frame } = setup()
+    frame.setAttribute('sandbox', 'allow-scripts')
+    frame.srcdoc = '<!doctype html><body>screen</body>'
+    const post = vi.spyOn(frame.contentWindow as Window, 'postMessage')
+    hello(frame, 'null', window)
+    hello(frame, window.location.origin)
+    expect(post).not.toHaveBeenCalled()
+    hello(frame)
+    expect(post).toHaveBeenCalledTimes(1)
+    post.mockClear()
+    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin')
+    hello(frame)
+    expect(post).not.toHaveBeenCalled()
   })
 
   it("forwards an allowed call on Control's connection and refuses the rest without sending", async () => {

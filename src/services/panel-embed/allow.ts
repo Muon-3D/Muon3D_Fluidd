@@ -1,17 +1,22 @@
 import type { Verb, AuxMethod } from './protocol'
 
 /**
- * What the embedded printer screen (MuonUI's embed build at /panel/) may ask
- * Control to send on its behalf (control-mockups/v3/overview-3d/SCREEN-PLAN.md,
- * Jack 6 Nov, Opus-reviewed). Exact names only: anything not listed is refused
- * with ON_PRINTER and never reaches the printer.
+ * What the embedded printer screen (MuonUI's embed build, loaded from the
+ * printer over the active route) may ask Control to send on its behalf
+ * (control-mockups/v3/overview-3d/SCREEN-PLAN.md). Exact names only: anything
+ * not listed is refused with ON_PRINTER and never reaches the printer.
  *
  * Every call goes out on Control's own connection, so it can never do more
- * than Control can. The lists are narrower still: until KAN-1764/1765/1766
- * close (aux PANEL_ONLY passing LAN callers, an unguarded hotspot route, and
- * presence gates for OTA and Wi-Fi), nothing that changes the network, the
- * printer's setup, its access, its power or its software goes through here.
- * Those stay on the printer itself.
+ * than Control can, and the printer's own gate (muon-link GATE-7,
+ * crates/muon-link-device/src/policy.rs) still judges each one. The lists
+ * follow what that gate gives an Operator, which is also what an Open
+ * printer's Bluetooth guest is (Jack, 17 Nov: an open printer is fully usable
+ * from Control over any route): reads, printing (start, pause, resume,
+ * cancel), the queue, the emergency stop, and Klipper restarts; with the
+ * structured verbs (jog, home, heat, fan, filament) for the panel's own
+ * buttons. What stays on the printer is what the gate keeps to the Owner:
+ * protection and access, linking an account, updates, power, Wi-Fi, and the
+ * developer-mode warranty release.
  */
 
 /** JSON-RPC methods forwarded as they are. */
@@ -19,9 +24,15 @@ export const RPC_FORWARD: ReadonlySet<string> = new Set([
   'printer.info',
   'printer.objects.list',
   'printer.objects.query',
-  // Not printer.gcode.script: raw G-code would skip the no-go planner and could
-  // run SAVE_CONFIG, SET_KINEMATIC_POSITION or any macro (Opus review, 6 Nov).
-  // The panel's own move/heat buttons are refused until structured verbs exist.
+  // Raw G-code is Operator in muon-link, so it goes, but only through Control's
+  // own check (gcodeRefusal in M1Screen): no moves, which would skip the no-go
+  // planner (use the jog verb), and none of the commands that rewrite the
+  // printer's setup (SAVE_CONFIG, SET_KINEMATIC_POSITION, restarts).
+  'printer.gcode.script',
+  'printer.gcode.help',
+  'printer.query_endstops.status',
+  'printer.restart',
+  'printer.firmware_restart',
   'printer.print.start',
   'printer.print.pause',
   'printer.print.resume',
@@ -33,8 +44,14 @@ export const RPC_FORWARD: ReadonlySet<string> = new Set([
   'server.files.list',
   'server.files.get_directory',
   'server.files.metadata',
+  'server.files.roots',
+  'server.files.thumbnails',
   'server.history.list',
   'server.job_queue.status',
+  'server.job_queue.post_job',
+  'server.job_queue.start',
+  'server.job_queue.pause',
+  'server.job_queue.jump',
   'server.temperature_store'
 ])
 
@@ -75,8 +92,29 @@ export const NOTIFY_ACTIONS: Readonly<Record<string, string>> = {
   'socket/notifyKlippyDisconnected': 'notify_klippy_disconnected'
 }
 
-/** What a refused call says, on the screen and in the error. */
+/** What a refused call says in the error the screen gets (the screen tags it "Confirm on the printer"). */
 export const ON_PRINTER = 'Do this on the printer itself'
+
+const PLAIN: ReadonlyArray<readonly [RegExp, string]> = [
+  [/dev_?mode|developer|warranty/i, 'Developer mode'],
+  [/protection|access|consent|passcode|pairing/i, 'Changing who can use the printer'],
+  [/link|account|cloud/i, 'Linking an account'],
+  [/update|install|upgrade|recover/i, 'Installing an update'],
+  [/wifi|network|hotspot|\bap\b/i, 'Changing the Wi-Fi'],
+  [/reboot|shutdown|power|services|sudo/i, 'Restarting or powering off the printer'],
+  [/gcode/i, 'Running G-code'],
+  [/identity|rename/i, 'Renaming the printer']
+]
+
+/**
+ * What a refused call was, in plain words, for the note on the screen:
+ * `what` is the method, or "METHOD /path" for an Aux call. Never raw names.
+ */
+export function refusalNote (what: string): string {
+  const hit = PLAIN.find(([re]) => re.test(what))
+  const name = hit ? hit[1] : 'That'
+  return `${name} is done on the printer itself. Control can't do it for you.`
+}
 
 export type Verdict = 'forward' | 'local' | 'refuse'
 
@@ -103,6 +141,23 @@ export function auxVerdict (method: unknown, path: unknown): 'forward' | 'refuse
 
 export const AUX_METHODS: readonly AuxMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
+/**
+ * Why a raw G-code script from the screen is not run, '' when it may: one
+ * short string, no moves (a hand-written move skips the no-go planner; the jog
+ * verb is the way), and none of the commands that rewrite the printer's setup.
+ */
+export function gcodeRefusal (script: unknown): string {
+  if (typeof script !== 'string' || !script.trim() || script.length > 500) return 'That is not a G-code line Control can run.'
+  for (const line of script.split('\n')) {
+    const cmd = line.split(';')[0].trim().toUpperCase()
+    if (!cmd) continue
+    if (/^G0*[0-3](\D|$)/.test(cmd) || /^(FORCE_MOVE|SET_KINEMATIC_POSITION|SAVE_CONFIG|SET_GCODE_OFFSET|(FIRMWARE_)?RESTART|SDCARD_|M112|M999)(\W|$)/.test(cmd)) {
+      return 'Use the move buttons for that. Control runs moves through its no-go zones.'
+    }
+  }
+  return ''
+}
+
 /** The most one jog may move, mm; the panel's own steps are 0.1 to 50. */
 export const JOG_LIMIT_MM = 50
 
@@ -125,6 +180,11 @@ export function readVerb (raw: unknown): Verb | null {
     case 'heat':
       if ((r.heater === 'extruder' || r.heater === 'heater_bed') && finite(r.target) && r.target >= 0) {
         return { verb: 'heat', heater: r.heater, target: Math.round(r.target) }
+      }
+      return null
+    case 'fan':
+      if (typeof r.fan === 'string' && /^[A-Za-z0-9_]{1,40}$/.test(r.fan) && finite(r.percent) && r.percent >= 0 && r.percent <= 100) {
+        return { verb: 'fan', fan: r.fan, percent: Math.round(r.percent) }
       }
       return null
     case 'filament':

@@ -13,13 +13,16 @@ export type PanelOnPrinter = 'yes' | 'no' | 'unknown'
 
 export type PanelGet = (url: string) => Promise<{ status: number, headers?: Record<string, unknown> }>
 
+export function classifyPanelResponse (response: { status: number, headers?: Record<string, unknown> }): PanelOnPrinter {
+  const type = String(response.headers?.['content-type'] ?? '')
+  if (response.status >= 200 && response.status < 300) return type.includes('text/html') ? 'yes' : 'no'
+  if (response.status === 404 || response.status === 410) return 'no'
+  return 'unknown'
+}
+
 export async function panelOnPrinter (get: PanelGet): Promise<PanelOnPrinter> {
   try {
-    const response = await get('/panel/index.html')
-    const type = String(response.headers?.['content-type'] ?? '')
-    if (response.status >= 200 && response.status < 300) return type.includes('text/html') ? 'yes' : 'no'
-    if (response.status === 404 || response.status === 410) return 'no'
-    return 'unknown'
+    return classifyPanelResponse(await get('/panel/index.html'))
   } catch {
     return 'unknown'
   }

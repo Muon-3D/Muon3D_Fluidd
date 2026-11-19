@@ -2,14 +2,16 @@ import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION, type BridgeRequest, type Bridg
 import { NOTIFY_FORWARD, ON_PRINTER, auxVerdict, readVerb, rpcVerdict } from './allow'
 
 /**
- * Control's end of the embedded printer screen (MuonUI's embed build, framed
- * at /panel/ on Control's own origin; SCREEN-PLAN.md). The embed has no
+ * Control's end of the embedded printer screen (MuonUI's embed build, fetched
+ * from the printer over the active route and framed from memory as `srcdoc`
+ * in a sandbox; SCREEN-PLAN.md). The embed has no
  * network of its own: it asks over one MessagePort, and this answers with
  * Control's own connection, after the allowlist (allow.ts).
  *
  * - The port is handed over once, only to the frame this bridge was made for
- *   (event.source), only from Control's own origin, posted to that origin
- *   (never '*').
+ *   (event.source), only from the sandbox's opaque origin ("null": a srcdoc or blob frame
+ *   without allow-same-origin has no other), and posted to that window alone
+ *   (an opaque origin can't be named as a target).
  * - No call adds headers or credentials of its own: it is Control's
  *   connection, as Control would send it.
  * - Anything not on the allowlist is answered with an error saying to do it
@@ -60,6 +62,8 @@ export class PanelBridge {
     if (!data || data.type !== HELLO_TYPE || data.version !== PROTOCOL_VERSION) return
     const target = this.frame.contentWindow
     if (!target || e.source !== target || e.origin !== 'null') return
+    // A frame that could reach Control's own origin is not one to hand a port to.
+    if ((this.frame.getAttribute('sandbox') ?? '').split(' ').includes('allow-same-origin')) return
     this.port?.close()
     this.watched = undefined
     const channel = new MessageChannel()
