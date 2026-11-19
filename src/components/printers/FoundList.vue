@@ -22,7 +22,22 @@
           v-if="about(tile)"
           class="row__sub"
         >{{ about(tile) }}</span>
+        <span
+          v-if="steps(tile)"
+          class="row__sub"
+          :data-tid="`found-steps-${tile.key}`"
+          role="status"
+        >Connecting over Bluetooth… {{ steps(tile) }}</span>
       </div>
+      <button
+        v-if="steps(tile)"
+        type="button"
+        class="btn btn--sm"
+        data-tid="found-cancel"
+        @click="$emit('cancel', tile)"
+      >
+        Cancel
+      </button>
       <tone-pill
         v-if="tile.state !== 'new' && tile.state !== 'ready'"
         :tone="tile.tone"
@@ -76,6 +91,8 @@ import { Component, Prop, Vue } from 'vue-property-decorator'
 import type { CardAction } from '@/services/muon-cloud/directory'
 import type { PrinterTile } from '@/services/printers-page/model'
 import TonePill from './TonePill.vue'
+import { activationState } from '@/services/muon-cloud/activate'
+import { bluetoothCarrying, wantsBluetoothFor } from '@/services/muon-ble/link'
 
 /**
  * Printers found on this network that are not yours yet: one row each, with
@@ -109,6 +126,16 @@ export default class FoundList extends Vue {
     }
     const open = this.actionsFor(tile).find(a => a.id === 'connect')
     return open ? { ...open, label: 'Open' } : { id: '', label: '', icon: '' }
+  }
+
+  /** The steps of a Bluetooth connect in flight on this row, the current one marked; null when none is. */
+  steps (tile: PrinterTile): string | null {
+    if (this.busyKey !== tile.key) return null
+    const id = tile.entry.endpointId ?? tile.entry.nearby?.endpointId ?? ''
+    if (!id || !wantsBluetoothFor(id)) return null
+    const at = bluetoothCarrying(id) ? 2 : activationState.switching === id ? 1 : 0
+    const names = [`Finding ${tile.name}`, 'Connecting', 'Opening']
+    return names.map((n, i) => i === at ? `[${n}]` : n).join(' > ')
   }
 
   secondary (tile: PrinterTile): CardAction[] {

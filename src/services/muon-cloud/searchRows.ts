@@ -152,13 +152,13 @@ export function searchRows (sources: SearchSources): SearchRow[] {
       name: heardAs(p),
       host: null,
       meta: nearbyNote(p, setUp === null ? null : setUp ? 'Set up' : 'New'),
-      status: setUp ? 'set up, and not on this network' : 'not set up yet',
+      status: setUp === null ? 'heard over Bluetooth' : setUp ? 'set up, and not on this network' : 'not set up yet',
       linked: false,
       canLink: false,
       nearby: p,
-      // Unknown (no advertisement) is tried as new: the printer refuses a
-      // stranger once it is set up, and the setup flow says so.
-      action: setUp ? 'nearby-info' : 'set-up'
+      // Set up is decided by the printer's own advertisement only. No advertisement (a chooser pick) says nothing,
+      // and a missing answer never means "new": Set it up is offered only for a printer that says it is not set up.
+      action: setUp === false ? 'set-up' : 'nearby-info'
     })
   }
   return rows

@@ -411,6 +411,7 @@
             :actions-for="foundActionsFor"
             :busy-key="busyKey"
             @action="onFoundRow"
+            @cancel="onFoundCancel"
           />
         </printers-section>
 
@@ -958,6 +959,10 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
 
   onFoundRow (tile: PrinterTile, id: string) {
     return this.onFoundAction(tile.entry, id)
+  }
+
+  onFoundCancel (tile: PrinterTile) {
+    this.cancelOpen(tile.entry)
   }
 
   onOfflineRow (tile: PrinterTile, id: string) {

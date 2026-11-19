@@ -38,9 +38,17 @@ describe('one list: this network and nearby', () => {
     expect(row).toMatchObject({ name: 'Walnut · 8987', meta: 'New · nearby', host: null, action: 'set-up', canLink: false })
   })
 
-  it('lists a printer heard without an advertisement as nearby, and tries it as new', () => {
+  it('never offers Set it up for a printer heard without an advertisement: missing data is not "new"', () => {
     const [row] = rows({ nearby: [heard()] })
-    expect(row).toMatchObject({ meta: 'nearby', action: 'set-up' })
+    expect(row).toMatchObject({ meta: 'nearby', action: 'nearby-info', status: 'heard over Bluetooth' })
+  })
+
+  it('offers Set it up only when the advertisement says unclaimed', () => {
+    const prefix = WALNUT.slice(0, 16)
+    const [fresh] = rows({ nearby: [heard({ advert: { unclaimed: true, busy: false, endpointPrefix: prefix } })] })
+    const [done] = rows({ nearby: [heard({ advert: { unclaimed: false, busy: false, endpointPrefix: prefix } })] })
+    expect(fresh.action).toBe('set-up')
+    expect(done.action).toBe('nearby-info')
   })
 
   it('says when another device holds the printer', () => {

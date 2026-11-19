@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { borrowCloudPrinter, cloudState } from '../state'
 import { CloudError, storeToken } from '../api'
 import { deletionState } from '../deletion'
+import { resetCloudOutage } from '../outage'
 import { stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
 import { EID, fakeEndpoint, fakePrinter } from '@/services/muon-ble/__tests__/fakes'
 
@@ -60,6 +61,7 @@ const accessCalls = (calls: string[]) => calls.filter(c => c === `POST /v1/print
 
 describe('Connect over Bluetooth with the cloud saying the printer is offline (KAN-1253)', () => {
   beforeEach(() => {
+    resetCloudOutage()
     const saved = new Map<string, string>()
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => saved.get(key) ?? null,
@@ -99,6 +101,36 @@ describe('Connect over Bluetooth with the cloud saying the printer is offline (K
     expect(ble.endpoint.addLink).toHaveBeenCalledTimes(1)
     expect(connect).toHaveBeenCalledWith(EID, 'bluetooth')
     expect(sessions[0].grantless).toBe(true)
+  })
+
+  describe.each([[true], [false]])('a printer off the account with the service unreachable (navigator.onLine %s)', (onLine) => {
+    it('opens over Bluetooth with no cloud call awaited, so it is immediate', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      vi.stubGlobal('navigator', { ...navigator, onLine })
+      cloudState.printers = []
+      const rejecting = vi.fn(async () => { throw new TypeError('Failed to fetch') })
+      vi.stubGlobal('fetch', rejecting)
+      useBluetoothFor(EID, fakePrinter().device)
+
+      const started = Date.now()
+      const transport = await borrowCloudPrinter(EID)
+      expect((await transport.fetch('/printer/info')).status).toBe(200)
+
+      expect(Date.now() - started).toBeLessThan(1_000)
+      expect(rejecting).not.toHaveBeenCalled()
+      expect(sessions[0].grantless).toBe(true)
+    })
+
+    it('and an account printer reaches it after one failed ask, never surfacing the status-0 error', async () => {
+      vi.stubGlobal('navigator', { ...navigator, onLine })
+      cloudState.printers = [printer(true)]
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
+      useBluetoothFor(EID, fakePrinter().device)
+
+      const transport = await borrowCloudPrinter(EID)
+      expect((await transport.fetch('/printer/info')).status).toBe(200)
+      expect(sessions[0].grantless).toBe(true)
+    }, 15_000)
   })
 
   it('takes the cloud grant for an online printer, and links Bluetooth as well', async () => {

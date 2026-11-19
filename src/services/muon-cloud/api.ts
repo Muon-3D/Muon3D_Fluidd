@@ -10,6 +10,7 @@ import { confirmedAccountId, currentAccount, rotateConfirmed } from './account-e
 import { clearDeletion, deletionRevision, observeDeletion } from './deletion'
 import { isPrinterSecureOrigin } from '@/services/secure-origin'
 import { rememberRelayUrl } from './relay'
+import { noteCloudReached, noteCloudUnreachable } from './outage'
 export { deletionState } from './deletion'
 
 export const TOKEN_KEY = 'muon.cloud.token'
@@ -319,6 +320,7 @@ async function tokenRequest (form: Record<string, string>, signal?: AbortSignal)
       signal
     })
   } catch {
+    noteCloudUnreachable()
     throw new CloudError('The Muon3D service could not be reached.', 0)
   }
   let data: any = {}
@@ -623,10 +625,12 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
       signal: controller?.signal
     })
   } catch {
+    noteCloudUnreachable()
     throw new CloudError('The Muon3D service could not be reached.', 0)
   } finally {
     if (timer !== null) clearTimeout(timer)
   }
+  noteCloudReached()
   // A central-login access token lasts 15 minutes. Refresh once and retry;
   // only for the stored session, never for a token passed in.
   if (response.status === 401 && retry && token !== null && (!stillMine || stillMine())) {

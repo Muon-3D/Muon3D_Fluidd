@@ -80,3 +80,34 @@ test('offline, a guest on an Open printer can upload and print over Bluetooth', 
   }
   expect(startable).toBe(true)
 })
+
+// Jack's walk, 19 Nov: signed in as a non-owner, DevTools Network set to Offline, Sloe (Open, set up, linked to
+// another account, muon-link #160). Search nearby, pick Sloe, then Connect over Bluetooth said "can't reach Muon3D",
+// and the row offered Set it up beside it. The page here is signed in; only the network is gone.
+test.describe('signed in, browser Offline: Search nearby then Connect over Bluetooth', () => {
+  test.use({ signedIn: true })
+
+  for (const advertise of [true, false]) {
+    test(`a set-up Open printer offers Connect, never Set it up, and opens (advertisement ${advertise ? 'heard' : 'not heard'})`, async ({ page, context }) => {
+      await useNearbyPrinters(page, OPEN_PRINTER, { advertise, ownerOnly: 'after-160' })
+      await page.goto('/')
+      await ready(page)
+      await context.setOffline(true)
+      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false)
+      await setPairingGate(page, true)
+      await page.getByRole('button', { name: 'Look nearby' }).click()
+      const row = page.getByTestId('found-list')
+      await expect(row).toBeVisible()
+      // The printer's own word on whether it is set up decides. A missing answer is never "new".
+      await expect(page.getByTestId('found-set-up')).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Set it up' })).toHaveCount(0)
+      const connect = page.getByTestId('found-connect-bluetooth').or(page.getByTestId('found-pair-bluetooth'))
+      await expect(connect.first()).toBeVisible()
+      await connect.first().click()
+      await expect.poll(() => pairEvents(page), { timeout: 15_000 }).toContain(`connect ${OPEN_PRINTER.advertised}`)
+      await expect(page).toHaveURL(/\/alder-6601(\/|$)/)
+      await expect(page.locator('body')).not.toContainText(UNREACHABLE)
+      await expect(page.locator('body')).not.toContainText('could not be reached')
+    })
+  }
+})

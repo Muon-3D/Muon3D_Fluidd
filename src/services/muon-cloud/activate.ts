@@ -23,6 +23,7 @@ import { forgetGrantedRole, grantedRoleFor, readGrantedRole } from '@/services/m
 import { carriedByBluetooth } from '@/services/muon-ble/carried'
 import { releaseBluetoothLink, stopUsingBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
 import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
+import { cloudUnreachable } from './outage'
 import { onApprovalWatch, type ApprovalWatch } from './approval'
 
 export { MANAGED_API_URL, MANAGED_SOCKET_URL }
@@ -166,6 +167,12 @@ export class RemoteOpenTimeout extends Error {
   }
 }
 
+/** The person cancelled an open in flight: it finds itself replaced at its next step and the page is left as it was. */
+export function cancelActivation () {
+  ++generation
+  activationState.switching = null
+}
+
 /**
  * Points Fluidd at a cloud printer. Rejects with `SwitchSuperseded` when
  * another printer is opened before this one is on.
@@ -199,7 +206,9 @@ export async function activateCloudPrinter (printerId: string) {
       if (wantsBluetoothFor(printerId)) {
         await borrowed.fetch('/server/info')
         // KAN-4309: an Open printer admitted this browser as an Operator guest. An account's own printer has its role from the console.
-        if (!cloudState.printers.some(p => p.id === printerId)) await readGrantedRole(printerId, path => borrowed.fetch(path), { admitted: () => carriedByBluetooth(printerId) })
+        const offAccount = !cloudState.printers.some(p => p.id === printerId)
+        const sure = offAccount || cloudUnreachable()
+        if (offAccount) await readGrantedRole(printerId, path => borrowed.fetch(path), { admitted: () => carriedByBluetooth(printerId, sure) })
         else forgetGrantedRole(printerId)
       }
       if (superseded()) throw new SwitchSuperseded()
@@ -229,7 +238,7 @@ export async function activateCloudPrinter (printerId: string) {
           const reopened = await borrowed.openWebSocket('/websocket')
           // A grant that never came (every read failed) is asked for again once the printer is back.
           if (wantsBluetoothFor(printerId) && !grantedRoleFor(printerId) && !cloudState.printers.some(p => p.id === printerId) && !superseded()) {
-            readGrantedRole(printerId, path => borrowed.fetch(path), { keep: true, admitted: () => carriedByBluetooth(printerId) }).catch(() => {})
+            readGrantedRole(printerId, path => borrowed.fetch(path), { keep: true, admitted: () => carriedByBluetooth(printerId, true) }).catch(() => {})
           }
           return reopened
         })
