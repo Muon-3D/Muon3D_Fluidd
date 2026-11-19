@@ -6,6 +6,9 @@ export interface Known { headX: boolean, headZ: boolean, z: boolean }
 /** Time constant, ms: about 95% of the way in 3 x this, so a jump to a new place takes ~200 ms. */
 export const PLACE_TAU_MS = 70
 
+/** One nominal frame, ms: the step the first frame after an idle stage takes. */
+const FRAME_MS = 16
+
 /** Closer than this (model units, 0 to 1 over a rail) is arrived. */
 const ARRIVED = 0.0005
 
@@ -23,7 +26,9 @@ export class PlacementSmoother {
 
   /** The place to draw at `now` (ms), given the latest target and which axes of it are known. */
   step (target: ModelPlacement, known: Known, now: number): ModelPlacement {
-    const dt = this.last === null ? 0 : Math.min(250, Math.max(0, now - this.last))
+    // A pause (idle stage, hidden tab, slow frame) must not turn into one big step: the first frame after idle
+    // counts as one normal frame, and no frame counts for more than ~3 frames' worth.
+    const dt = this.last === null ? FRAME_MS : Math.min(50, Math.max(0, now - this.last))
     this.last = now
     const k = 1 - Math.exp(-dt / PLACE_TAU_MS)
     let moving = false
@@ -38,6 +43,8 @@ export class PlacementSmoother {
       }
     }
     this.moving = moving
+    // Idle: forget the clock, so the next update after a pause starts gliding from a zero step instead of snapping.
+    if (!moving) this.last = null
     return { ...this.shown }
   }
 

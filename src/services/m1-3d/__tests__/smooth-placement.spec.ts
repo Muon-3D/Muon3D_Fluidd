@@ -20,6 +20,18 @@ describe('PlacementSmoother', () => {
     expect(s.moving).toBe(false)
   })
 
+  it('does not snap after the stage has been idle: a new target long after arriving starts from a small step', () => {
+    const s = new PlacementSmoother()
+    s.step({ headX: 0.2, headZ: 0.2, z: 0.2 }, all, 0)
+    run(s, { headX: 0.2, headZ: 0.2, z: 0.2 }, all, 16, 1500)
+    expect(s.moving).toBe(false)
+    // Five seconds idle, then the printer reports a far place.
+    const first = s.step({ headX: 0.9, headZ: 0.9, z: 0.9 }, all, 6600)
+    expect(first.headX).toBeGreaterThan(0.2)
+    expect(first.headX).toBeLessThan(0.4)
+    expect(s.moving).toBe(true)
+  })
+
   it('does not jump: the first frame toward a far target covers only part of the way', () => {
     const s = new PlacementSmoother()
     s.step(RESTING, all, 0)
