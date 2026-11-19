@@ -190,8 +190,36 @@ export function displayName (localName: string | null | undefined): string | nul
   return `${word[0].toUpperCase()}${word.slice(1)} · ${m[2].toLowerCase()}`
 }
 
-/** Reads a device's `INFO` over a GATT connection this function opens and closes. */
-export async function readInfo (device: BleDevice): Promise<BleInfo> {
+/** Pauses before the 2nd to 4th GATT connect + service lookup when the server drops under it. */
+export const GATT_DROP_RETRY_MS = [300, 800, 1500]
+
+/** True for the browser's own wording of a GATT server that went down (NetworkError, "GATT Server is disconnected"). */
+export function isGattDrop (error: unknown): boolean {
+  const e = error as { name?: string, message?: string } | null
+  return e?.name === 'NetworkError' || /disconnected|\(re\)connect|retrieve services/i.test(e?.message ?? '')
+}
+
+/** What the person is told when the connection keeps dropping: never the browser's DOMException text. */
+export function gattDroppedMessage (advertised: string | null | undefined): string {
+  const name = displayName(advertised)?.split(/\s/)[0] ?? 'The printer'
+  return `${name}'s Bluetooth connection dropped. Move closer and try again; ` +
+    "if it keeps happening, turn this computer's Bluetooth off and on."
+}
+
+/** Reads a device's `INFO` over a GATT connection this function opens and closes; a dropped server is retried. */
+export async function readInfo (device: BleDevice, pausesMs: number[] = GATT_DROP_RETRY_MS): Promise<BleInfo> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await readInfoOnce(device)
+    } catch (error) {
+      if (!isGattDrop(error)) throw error
+      if (attempt >= pausesMs.length) throw new Error(gattDroppedMessage(device.name))
+      await new Promise(resolve => setTimeout(resolve, pausesMs[attempt]))
+    }
+  }
+}
+
+async function readInfoOnce (device: BleDevice): Promise<BleInfo> {
   const gatt = device.gatt
   if (!gatt) throw new Error('The printer offered no GATT connection.')
   const server = await gatt.connect()
