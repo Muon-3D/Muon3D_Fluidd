@@ -1,4 +1,5 @@
 import { THREE, m1, type M1Root } from './load'
+import { PlacementSmoother } from './smooth-placement'
 import { placeModel, type Calibration, type ModelPlacement, type ModelPose } from './pose'
 import type { Toolpath } from './toolpath'
 import type { LiveSync } from './live-sync'
@@ -983,6 +984,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
 
   let sync: LiveSync | null = null
   let lastPlacement = ''
+  /** What is drawn of the head and the bed: moves toward the printer's place, never jumps (and keeps its place while unknown). */
+  const smoother = new PlacementSmoother()
   /** The filament's colour as last given: a model adopted after it came (the GLB loads after the page sets it) wears it too. */
   let colourShown: number | null = null
   /** What the screen and the strips last showed, so the printer's unchanged reports draw nothing. */
@@ -1029,7 +1032,12 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       lastCrossfade = accessories.crossfade
     }
     rig.setSpool(accessories.spool)
-    const placement = rig.place(f.pose)
+    const target = rig.place(f.pose)
+    const placement = smoother.step(target, { headX: f.pose.x !== null, headZ: f.pose.y !== null, z: f.pose.z !== null }, now)
+    const unknown = f.pose.x === null || f.pose.y === null || f.pose.z === null
+    // Subtly faded while the place is unknown (not homed): the part sits where it was last drawn.
+    const placeState = unknown ? 'unknown' : 'known'
+    if (canvas.dataset.place !== placeState) canvas.dataset.place = placeState
     const { x: poseX, y: poseY } = f.pose
     nozzleKnown = rig.kind === 'accurate' && poseX !== null && poseY !== null
     if (nozzleKnown) {
@@ -1054,7 +1062,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     showTrace()
     rig.apply(accessories, f.partGone)
     drawnAccessories = accessories
-    return f.moving || accessories.animating
+    return f.moving || accessories.animating || smoother.moving
   }
 
   /**
