@@ -362,6 +362,7 @@ export default class AppPageTitle extends Mixins(FrameMixin, BrowserMixin, Print
       if (this.printerPaused && file) return `${head} · ${jobName(file)} is paused, so axes are locked`
       return head
     }
+    if (this.currentPage === '/lighting') return 'The M1 light strips · Left and Right, 40 LEDs each'
     if (this.currentSection?.id === 'console') return 'Send G-code and read what Klipper says back'
     if (this.timelapseHome && this.$store.getters['server/componentSupport']('timelapse')) return this.timelapseSubtitle
     if (this.previewPage) return this.previewSubtitle

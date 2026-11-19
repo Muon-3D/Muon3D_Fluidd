@@ -22,6 +22,7 @@ const Tune = () => import('@/views/Tune.vue')
 const Control = () => import('@/views/Control.vue')
 const Maintenance = () => import('@/views/Maintenance.vue')
 const Diagnostics = () => import('@/views/Diagnostics.vue')
+const Lighting = () => import('@/views/Lighting.vue')
 const History = () => import('@/views/History.vue')
 const Timelapse = () => import('@/views/Timelapse.vue')
 const Configure = () => import('@/views/Configure.vue')
@@ -107,6 +108,12 @@ const printerRoutes: Array<RouteConfig> = [
     path: `${P}/control`,
     name: 'Control',
     component: Control,
+    ...defaultRouteConfig
+  },
+  {
+    path: `${P}/lighting`,
+    name: 'Lighting',
+    component: Lighting,
     ...defaultRouteConfig
   },
   {

@@ -59,6 +59,7 @@ export const widgetMeta: WidgetMeta[] = [
   { id: 'camera', title: 'Camera', category: 'Printer', blurb: 'The webcam.', sizes: [S(), M(6, 2), L(12, 2)], size: 'M', defaultOn: false },
   { id: 'bedmesh', title: 'Bed mesh', category: 'Print', blurb: 'The bed mesh, as numbers.', sizes: [S(), M(6, 2), L(8, 2)], size: 'M', defaultOn: false },
   { id: 'console', title: 'Console', category: 'Tools', blurb: 'The last lines of the console.', sizes: [M(6, 2), L(12, 2)], size: 'M', defaultOn: false },
+  { id: 'lighting', title: 'Lighting', category: 'Tools', blurb: 'The M1 lights: on and off, colour, effect, brightness and presets.', sizes: [S(), M(6), L(6, 2)], size: 'M', defaultOn: false },
   { id: 'system', title: 'Power and system', category: 'Tools', blurb: 'CPU, memory, disk and uptime.', sizes: [S(), M(4, 2), L(6, 2)], size: 'M', defaultOn: false },
   { id: 'care', title: 'Care', category: 'Tools', blurb: 'The next maintenance task due.', sizes: [S(), M(4), L(6, 2)], size: 'M', defaultOn: false },
   { id: 'library', title: 'Print next', category: 'Library', blurb: 'A Library shelf, so an idle printer always offers its next print.', sizes: [M(6), L(12)], size: 'L', defaultOn: false }
