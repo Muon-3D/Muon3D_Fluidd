@@ -20,7 +20,8 @@ test.use({ webgl: true })
  * software path (as CI draws), which is too slow for these tests.
  */
 const GPU = process.platform === 'win32' && !process.env.E2E_NO_GPU
-test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
+// Only on a GPU host: an empty launchOptions override still puts the file in its own worker bucket, and Playwright shards bucket by bucket (KAN-4847).
+if (GPU) test.use({ launchOptions: { args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] } })
 test.skip(({ isMobile }) => isMobile, 'pointer drags are the desktop path; the phone has the buttons')
 // Tried 6 Nov: even with the plain glass, software WebGL stalls the page once a drag redraws every
 // frame, so the drag tests run only where the GPU draws. CI covers the release maths in drag-map.spec.ts
