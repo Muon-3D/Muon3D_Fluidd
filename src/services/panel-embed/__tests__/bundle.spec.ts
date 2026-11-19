@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { loadPanelBundle, PANEL_URL, type PanelCopies, type PanelCopy, type PanelFetch } from '../bundle'
+import { loadPanelBundle, PANEL_URL, PANEL_URL_MOONRAKER, type PanelCopies, type PanelCopy, type PanelFetch } from '../bundle'
 import { sha256Hex } from '../sha256'
 import { createHash } from 'node:crypto'
 
@@ -29,7 +29,7 @@ describe('loading the screen from the printer, over the route (KAN-4812)', () =>
     const c = copies()
     const got = await loadPanelBundle(via(ok()), 'A', () => {}, c)
     expect(got).toEqual({ state: 'yes', html, fromCopy: false })
-    expect(asked.map(a => a.url)).toEqual([PANEL_URL])
+    expect(asked.map(a => a.url)).toEqual([PANEL_URL_MOONRAKER])
     expect(asked[0].headers['If-None-Match']).toBeUndefined()
     expect(c.kept.A).toEqual(copyOf(html))
   })
@@ -69,9 +69,21 @@ describe('loading the screen from the printer, over the route (KAN-4812)', () =>
     expect(none.kept.A).toBeUndefined()
   })
 
+  it('asks the Moonraker endpoint first, then the nginx one; both missing is "needs an update"', async () => {
+    const byUrl = (answers: Record<string, Awaited<ReturnType<PanelFetch>>>): PanelFetch => async (url, request) => { asked.push({ url, headers: request.headers }); return answers[url] }
+    expect(await loadPanelBundle(byUrl({ [PANEL_URL_MOONRAKER]: { status: 404 }, [PANEL_URL]: ok() }), 'A', () => {}, copies())).toMatchObject({ state: 'yes' })
+    expect(asked.map(a => a.url)).toEqual([PANEL_URL_MOONRAKER, PANEL_URL])
+    asked = []
+    expect(await loadPanelBundle(byUrl({ [PANEL_URL_MOONRAKER]: ok(), [PANEL_URL]: { status: 404 } }), 'A', () => {}, copies())).toMatchObject({ state: 'yes' })
+    expect(asked.map(a => a.url)).toEqual([PANEL_URL_MOONRAKER])
+    expect(await loadPanelBundle(byUrl({ [PANEL_URL_MOONRAKER]: { status: 403 }, [PANEL_URL]: { status: 404 } }), 'A', () => {}, copies())).toEqual({ state: 'no' })
+    expect(await loadPanelBundle(byUrl({ [PANEL_URL_MOONRAKER]: { status: 404 }, [PANEL_URL]: { status: 502 } }), 'A', () => {}, copies())).toEqual({ state: 'unknown' })
+  })
+
   it('says "no" only when the printer has none, and makes no claim when the route gives no answer', async () => {
     expect(await loadPanelBundle(via({ status: 404 }), 'A', () => {}, copies())).toEqual({ state: 'no' })
-    expect(await loadPanelBundle(via({ status: 403 }), 'A', () => {}, copies())).toEqual({ state: 'unknown' })
+    expect(await loadPanelBundle(via({ status: 403 }), 'A', () => {}, copies())).toEqual({ state: 'no' })
+    expect(await loadPanelBundle(via({ status: 502 }), 'A', () => {}, copies())).toEqual({ state: 'unknown' })
     expect(await loadPanelBundle(via(new Error('offline')), 'A', () => {}, copies())).toEqual({ state: 'unknown' })
     expect(await loadPanelBundle(via({ status: 200, headers: { 'content-type': 'text/html' }, data: 'plain' }), 'A', () => {}, copies())).toEqual({ state: 'unknown' })
   })

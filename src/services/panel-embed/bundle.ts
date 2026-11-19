@@ -48,6 +48,9 @@ export type PanelBundle =
   | { state: 'yes', html: string, fromCopy: boolean }
   | { state: Exclude<PanelOnPrinter, 'yes'> }
 
+/** Where the printer serves it through Moonraker: the one place Bluetooth and the relay gateway reach (it never reaches nginx). */
+export const PANEL_URL_MOONRAKER = '/server/muon/panel/index.html'
+/** Where nginx serves it on the LAN. */
 export const PANEL_URL = '/panel/index.html'
 /** More than this is not the screen. */
 export const PANEL_MAX_CHARS = 8 * 1024 * 1024
@@ -94,12 +97,19 @@ export async function loadPanelBundle (
   const kept = own && sha256Hex(own.html) === own.sha256 ? own : null
   const headers: Record<string, string> = { Accept: 'text/html' }
   if (kept?.etag) headers['If-None-Match'] = kept.etag
-  let response
-  try {
-    response = await get(PANEL_URL, { headers, onProgress })
-  } catch {
-    return { state: 'unknown' }
+  let response: Awaited<ReturnType<PanelFetch>> | undefined
+  for (const url of [PANEL_URL_MOONRAKER, PANEL_URL]) {
+    try {
+      response = await get(url, { headers, onProgress })
+    } catch {
+      return { state: 'unknown' }
+    }
+    // Not there (404, 410) or not reachable on this route (403, the gateway's refusal): try the next place.
+    if (![403, 404, 410].includes(response.status)) break
   }
+  if (!response) return { state: 'unknown' }
+  // Neither place has it on this route: the printer needs an update.
+  if ([403, 404, 410].includes(response.status)) return { state: 'no' }
   if (response.status === 304) {
     // No validator is sent without this printer's own verified copy, so a 304 with none is not believed.
     return kept ? { state: 'yes', html: kept.html, fromCopy: true } : { state: 'unknown' }

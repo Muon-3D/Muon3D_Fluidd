@@ -53,9 +53,9 @@ async function openHostedOverBluetooth (page: Page, open: (path: string) => Prom
   const printer = await usePrinter(page, PRESETS.idleHomed(), { ticks: false })
   printer.state.answers['printer.info'] = { state: 'ready', state_message: 'Printer is ready', hostname: 'm1' }
   const asked: string[] = []
-  // The page's own origin serves no /panel/ (hosted Control); only the printer, over its route, has it.
+  // The page's own origin serves no /panel/ (hosted Control); only the printer, over its route (the Moonraker endpoint, as the gateway reaches it), has it.
   await page.route(url => url.pathname.startsWith('/panel/') && url.port !== String(MOCK_PORT), route => { asked.push(route.request().url()); return route.fulfill({ status: 404, body: '' }) })
-  await page.route(url => url.pathname.startsWith('/panel/') && url.port === String(MOCK_PORT), route => stubBody === null
+  await page.route(url => (url.pathname.startsWith('/panel/') || url.pathname === '/server/muon/panel/index.html') && url.port === String(MOCK_PORT), route => stubBody === null
     ? route.fulfill({ status: 404, body: '' })
     : route.fulfill({ status: 200, contentType: 'text/html', headers: { 'access-control-allow-origin': '*', etag: '"stub-1"' }, body: stubBody }))
   await open('/')
