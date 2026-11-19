@@ -86,7 +86,7 @@ class Socket {
     if (S().ownerOnly) {
       let request = null
       try { request = JSON.parse(data) } catch {}
-      if (request && S().ownerOnlyMethods.includes(request.method)) {
+      if (request && (S().ownerOnly === 'after-160' ? ['server.config'] : S().ownerOnlyMethods).includes(request.method)) {
         S().refusedMethods.push(request.method)
         this.push(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: 403, message: POLICY } }))
         return
@@ -120,7 +120,7 @@ class Printer {
       if (kind !== 'new') return { status: 403, headers: ['content-type', 'application/json'], body: text({ error: 'set up already' }) }
       return { status: 200, headers: ['content-type', 'application/json'], body: text({ result: SETUP_STATE }) }
     }
-    if (S().ownerOnly && ['/muon-link/pairing', '/server/muon/identity', '/server/muon/access', '/server/aux/permissions'].some(p => path.startsWith(p))) {
+    if (S().ownerOnly && (S().ownerOnly === 'after-160' ? path.startsWith('/muon-link/pairing') || path.startsWith('/server/muon/access/get') || path.startsWith('/server/aux/permissions') : ['/muon-link/pairing', '/server/muon/identity', '/server/muon/access', '/server/aux/permissions'].some(p => path.startsWith(p)))) {
       S().refusedPaths.push(path)
       return { status: 403, headers: ['content-type', 'application/json'], body: text({ error: POLICY }) }
     }
@@ -247,7 +247,7 @@ export const MuonEndpoint = { async create (relay) { (S().relays ??= []).push(re
  * Nobody is signed in; `pick` is the printer the person chooses in the
  * browser's Bluetooth chooser.
  */
-export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: { advertise?: boolean, panel?: boolean, approval?: boolean, granted?: boolean, ownerOnly?: boolean } = {}) {
+export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: { advertise?: boolean, panel?: boolean, approval?: boolean, granted?: boolean, /** true: muon-link as on 71ac6d6a (every Owner-only read refused). 'after-160': muon-link PR #160 (identity, protection, access capabilities, update status allowed again). */ ownerOnly?: boolean | 'after-160' } = {}) {
   const headers = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' }
   await page.route(`${CONSOLE}/v1/config`, route => route.fulfill({ status: 200, contentType: 'application/json', headers, body: JSON.stringify({ relay_url: RELAY, orchestrator_id: 'e2e', authority_key: 'e2e' }) }))
   // Nobody is signed in: the console refuses a grant, as it does for a request with no session.
@@ -354,7 +354,7 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
       bt.dispatchEvent(event)
     }
     Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: bt })
-  }, [PRINTERS, pick.id, !!options.advertise, !!options.panel, !!options.approval, !!options.granted, !!options.ownerOnly] as const)
+  }, [PRINTERS, pick.id, !!options.advertise, !!options.panel, !!options.approval, !!options.granted, options.ownerOnly ?? false] as const)
 }
 
 export async function answerAtPrinter (page: Page, outcome: 'accept' | 'reject' | 'time out') {

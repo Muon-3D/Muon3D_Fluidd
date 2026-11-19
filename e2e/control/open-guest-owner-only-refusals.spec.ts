@@ -15,7 +15,7 @@ import { OPEN_PRINTER, ownerOnlyRefusals, pairEvents, setPairingGate, useNearbyP
 
 test.use({ signedIn: true, serviceWorkers: 'block' })
 
-async function openAsNonOwner (page: Page, ownerOnly: boolean) {
+async function openAsNonOwner (page: Page, ownerOnly: boolean | 'after-160') {
   await useNearbyPrinters(page, OPEN_PRINTER, { advertise: true, ownerOnly })
   // Signed in (the fixture's account), and Alder is not among its printers.
   await page.goto('/')
@@ -48,6 +48,17 @@ test('a signed-in non-owner on an Open printer, refused every Owner-only read, s
   const upload = page.waitForRequest(r => r.method() === 'POST' && r.url().includes('/server/files/upload'), { timeout: 30_000 })
   await page.getByTestId('jobs-upload-input').setInputFiles({ name: 'guest.gcode', mimeType: 'text/x-gcode', buffer: Buffer.from('G28\nG1 X10\n') })
   await upload
+})
+
+test('after muon-link #160 (identity, protection, capabilities, update status allowed; server.config, access/get, pairing, permissions still refused) the page works too', async ({ page }) => {
+  await openAsNonOwner(page, 'after-160')
+  await expect(page.getByTestId('jobs-readonly')).toHaveCount(0, { timeout: 30_000 })
+  await expect(page.getByTestId('jobs-upload')).toBeEnabled({ timeout: 30_000 })
+  const refused = await ownerOnlyRefusals(page)
+  expect(refused.paths.some(p => p.startsWith('/muon-link/pairing'))).toBe(true)
+  expect(refused.methods).toContain('server.config')
+  expect(refused.methods).not.toContain('machine.update.status')
+  expect(refused.paths.some(p => p.startsWith('/server/muon/identity'))).toBe(false)
 })
 
 test('control: with no refusals the same person gets the same page (the fake itself is not the cause)', async ({ page }) => {
