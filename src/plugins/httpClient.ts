@@ -113,7 +113,8 @@ const createHttpClient = (store: Store<RootState>) => {
     }
 
     const url = error.config?.url || ''
-    const quiet = quietErrorRequests.includes(url)
+    // The USB routes answer in the page itself (a stick that is gone, no space...).
+    const quiet = quietErrorRequests.includes(url) || url.startsWith('/server/muon/usb/')
 
     // A cloud printer's gateway refuses what a remote session may never
     // reach (Moonraker's users, the Aux API, updates). A read refused that
