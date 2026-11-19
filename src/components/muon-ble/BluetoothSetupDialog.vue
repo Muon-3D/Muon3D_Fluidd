@@ -267,6 +267,7 @@ import BluetoothPrinterRow from './BluetoothPrinterRow.vue'
 import SetupWifiSteps from '@/components/muon-setup/SetupWifiSteps.vue'
 import { connectForSetup, type BleSetupFailure, type BleSetupSession } from '@/services/muon-ble/setup'
 import type { NearbyPrinter } from '@/services/muon-ble/nearby'
+import { afterSetupRefusal } from '@/services/muon-ble/setupOffer'
 import { createSetupClient, type SetupClient } from '@/services/muon-setup/client'
 import { applyState, resetSetupState, setLocal, setupState } from '@/services/muon-setup/state'
 
@@ -355,6 +356,8 @@ export default class BluetoothSetupDialog extends Vue {
       return
     }
     if (!result.ok) {
+      // Picked with no advertisement and the printer says it is set up: pair, don't dead-end (KAN-4828).
+      if (afterSetupRefusal(this.printer, result.reason) === 'pair') return this.pairInstead()
       this.failure = result.reason
       this.phase = 'failed'
       return
