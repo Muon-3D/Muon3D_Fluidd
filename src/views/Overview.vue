@@ -729,6 +729,16 @@ export default class Overview extends Mixins(DevGuardMixin) {
 
 @media (max-width: 1099px) {
   .overview__cell { grid-column: span var(--tablet); grid-row: auto; }
+  /* I-542 mock: on desktop the Quick commands sit under the Trackpad, so they come after Lighting in the list. Stacked, they follow the Trackpad. */
+  .overview__cell--stage { order: 1; }
+  .overview__cell--job { order: 2; }
+  .overview__cell--filament { order: 3; }
+  .overview__cell--statusline { order: 4; }
+  .overview__cell--graph { order: 5; }
+  .overview__cell--trackpad { order: 6; }
+  .overview__cell--macros { order: 7; }
+  .overview__cell--jog { order: 8; }
+  .overview__cell--lighting { order: 9; }
 }
 @media (max-width: 599px) {
   .overview__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

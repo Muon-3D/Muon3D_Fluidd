@@ -163,7 +163,9 @@ export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
 /* OV-29: the tile reaches its floor; the buttons share the height. */
 .mt > .ot__door { flex: 1 1 auto; }
 .mt__chips { display: grid; flex: 1 1 auto; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); grid-auto-rows: minmax(64px, 1fr); gap: 10px; }
-.mt--L .mt__chips { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.mt--L .mt__chips { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); grid-auto-rows: minmax(76px, 1fr); }
+.mt--L .mt__label { font-size: 14px; }
+.mt--L .mt__chip .frame-icon { width: 26px; height: 26px; }
 .mt--M .mt__chips { grid-template-columns: repeat(8, minmax(0, 1fr)); }
 .mt--S .mt__chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .mt--XS .mt__chips { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(40px, 1fr); gap: 6px; }

@@ -147,8 +147,7 @@ export default class PositionTile extends Mixins(OverviewMixin) {
 
   get menu (): TileMenuItem[] {
     return [
-      { id: 'motors', label: 'Turn motors off', disabled: !this.controlReady || this.busy, action: () => this.motorsOff() },
-      { id: 'endstops', label: 'Endstops…', to: this.pagePath('/maintenance') }
+      { id: 'motors', label: 'Turn motors off', disabled: !this.controlReady || this.busy, action: () => this.motorsOff() }
     ]
   }
 }

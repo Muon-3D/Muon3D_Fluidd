@@ -14,6 +14,7 @@ import GraphTile from './tiles/GraphTile.vue'
 import EmbedTile from './tiles/EmbedTile.vue'
 import LinkTile from './tiles/LinkTile.vue'
 import LightingTile from './tiles/LightingTile.vue'
+import StatusLineTile from './tiles/StatusLineTile.vue'
 import { widgetMeta, widgetSize, type WidgetMeta } from '@/services/overview/widgets'
 
 /**
@@ -51,6 +52,7 @@ const drawn: Record<string, Drawn> = {
   filament: { component: FilamentTile },
   hotend: { component: HeaterTile, props: { kind: 'hotend' } },
   bed: { component: HeaterTile, props: { kind: 'bed' } },
+  statusline: { component: StatusLineTile },
   mode: { component: PrintModeTile },
   zoffset: { component: ZOffsetTile },
   jog: { component: JogTile },
