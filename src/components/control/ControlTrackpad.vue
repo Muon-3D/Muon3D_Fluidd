@@ -72,7 +72,7 @@ import { X_RIGHT, Y_BACK } from '@/services/machine/orientation'
 
 /** Percentages of the trackpad: every drawing scales with it, desktop or phone. */
 const PERCENT = { width: 100, height: 100 }
-const MAX_HEIGHT = 360
+const MAX_HEIGHT = 540
 const pct = (r: Rect) => ({ left: `${r.left}%`, top: `${r.top}%`, width: `${r.width}%`, height: `${r.height}%` })
 
 /** How far a pointer moves before a press becomes a drag, px. */

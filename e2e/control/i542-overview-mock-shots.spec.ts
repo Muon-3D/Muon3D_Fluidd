@@ -14,7 +14,14 @@ test.use({ webgl: true })
 const GPU = process.platform === 'win32'
 test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
 
+// Real names from the M1 config (Muon3D_Klipper core/M1/macros), the ones a person would press.
+const M1_MACROS = ['CUT_FILAMENT', 'PURGE_LINE', 'ANTI_OOZE_NOZZLE_DOCK', 'BUZZ_EXTRUDER', 'PARK_PRINTER', 'Z_PARK', 'CENTER', 'FRONT', 'CHOME',
+  'CALIBRATE_HEATING_BED', 'CALIBRATE_HEATING_HOTEND', 'CALIBRATE_PROBE', 'PID_CALIBRATE', 'FINETUNE_RESONANCE', 'RESET_CALIBRATION', 'RESET_MESH_CALIBRATION', 'BED_MESH_CLEAR',
+  'LED_READY', 'LED_INFO', 'TEST_SPEED', 'STEPLOSS_TEST']
+const MACROS = Object.fromEntries(M1_MACROS.map(n => [`gcode_macro ${n}`, { gcode: '' }]))
+
 const STATE = {
+  configfile: { settings: MACROS },
   fan_modes: { mode: 'normal', modes: ['quiet', 'normal', 'turbo'] },
   'gcode_macro LED_MODE': { mode: 'solid', h: 30, h2: 240, bright: 80, speed: 55 },
   extruder: { temperature: 214.8, target: 220 },
@@ -25,10 +32,17 @@ async function show (page: Page, open: (p: string) => Promise<void>, homed = 'xy
   const printer = await usePrinter(page, overlay(PRESETS.idleHomed({ position: [112.5, 86, 24.5], homed }), STATE), { ticks: false })
   printer.state.results['printer.gcode.help'] = { SET_PRINT_MODE: 'Select the print mode', LED_MODE: 'LEDs', M84: 'Motors off' }
   await open('/')
-  await expect(page.locator('[data-tile="statusline"]')).toBeVisible()
+  await expect(page.locator('[data-tile="motors"]')).toBeVisible()
   await expect(page.locator('[data-tile="trackpad"]')).toBeVisible()
   await page.waitForTimeout(2500)
   return printer
+}
+
+/** The one row of widgets with the Filament tile above it and the Temperatures below, as a person scrolled to it sees it. */
+async function row (page: Page, name: string) {
+  const a = (await page.locator('[data-tile="hotend"]').boundingBox())!
+  const b = (await page.locator('[data-tile="motors"]').boundingBox())!
+  await page.screenshot({ path: `${OUT}/${name}`, fullPage: true, clip: { x: 240, y: a.y - 120, width: b.x + b.width - 240 + 24, height: a.height + 240 } })
 }
 
 test('desktop 1440', async ({ page, open, isMobile }) => {
@@ -54,7 +68,7 @@ test('not homed with Home buttons', async ({ page, open, isMobile }) => {
   test.skip(isMobile)
   await show(page, open, 'xy')
   await expect(page.getByTestId('axis-not-homed')).toHaveCount(1)
-  await page.screenshot({ path: `${OUT}/04-not-homed-1440.png`, clip: { x: 0, y: 0, width: 1440, height: 900 } })
+  await row(page, '04-not-homed-1440.png')
 })
 
 test('axis box in edit mode', async ({ page, open, isMobile }) => {
@@ -62,5 +76,5 @@ test('axis box in edit mode', async ({ page, open, isMobile }) => {
   await show(page, open)
   await page.getByTestId('axis-edit-x').click()
   await page.getByTestId('axis-input-x').fill('140')
-  await page.screenshot({ path: `${OUT}/05-edit-axis-1440.png`, clip: { x: 0, y: 0, width: 1440, height: 900 } })
+  await row(page, '05-edit-axis-1440.png')
 })

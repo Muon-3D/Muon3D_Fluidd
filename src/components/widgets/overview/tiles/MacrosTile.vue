@@ -119,7 +119,7 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import MacroRunMixin from '@/mixins/macro-run'
 import OverviewMixin from '@/mixins/overview'
-import { QUICK_COMMANDS_MAX, type ShownMacro } from '@/mixins/macros'
+import { type ShownMacro } from '@/mixins/macros'
 import type { TileMenuItem } from '@/services/overview/tiles'
 import { macroIcon } from '@/services/macros/icon'
 import TileShell from './TileShell.vue'
@@ -142,7 +142,7 @@ export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
 
   /** How many show besides All commands: XS 5, S 3, M 7, L 11 (a full row each with All commands). */
   get count (): number {
-    return ({ XS: 5, S: 3, M: 7, L: QUICK_COMMANDS_MAX } as Record<string, number>)[this.size] ?? 7
+    return ({ XS: 5, S: 3, M: 7, L: 30 } as Record<string, number>)[this.size] ?? 7
   }
 
   get chips (): ShownMacro[] { return this.quickCommandList(this.count) }
@@ -163,7 +163,7 @@ export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
 /* OV-29: the tile reaches its floor; the buttons share the height. */
 .mt > .ot__door { flex: 1 1 auto; }
 .mt__chips { display: grid; flex: 1 1 auto; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); grid-auto-rows: minmax(64px, 1fr); gap: 10px; }
-.mt--L .mt__chips { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); grid-auto-rows: minmax(76px, 1fr); }
+.mt--L .mt__chips { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); grid-auto-rows: minmax(72px, 1fr); }
 .mt--L .mt__label { font-size: 14px; }
 .mt--L .mt__chip .frame-icon { width: 26px; height: 26px; }
 .mt--M .mt__chips { grid-template-columns: repeat(8, minmax(0, 1fr)); }

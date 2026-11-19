@@ -438,7 +438,7 @@ export default class Overview extends Mixins(DevGuardMixin) {
     // A tile left at its own width keeps its own tablet width; a resized one takes half or the whole row.
     const tablet = tile.span > 6 ? 12 : 6
     // On a phone a small widget sits two to a row; anything wider has a row of its own.
-    return { '--span': String(tile.span), '--rows': String(tile.rows), '--tablet': String(tablet), '--phone': String(tile.span <= 3 ? 1 : 2) }
+    return { '--span': String(tile.span), '--rows': String(tile.rows), '--tablet': String(tablet), '--phone': String(tile.span <= 3 && !['mode', 'motors', 'position'].includes(tile.id) ? 1 : 2) }
   }
 
   titleOf (id: string): string { return this.defs.find(d => d.id === id)?.title ?? id }
@@ -733,12 +733,16 @@ export default class Overview extends Mixins(DevGuardMixin) {
   .overview__cell--stage { order: 1; }
   .overview__cell--job { order: 2; }
   .overview__cell--filament { order: 3; }
-  .overview__cell--statusline { order: 4; }
-  .overview__cell--graph { order: 5; }
-  .overview__cell--trackpad { order: 6; }
-  .overview__cell--macros { order: 7; }
-  .overview__cell--jog { order: 8; }
-  .overview__cell--lighting { order: 9; }
+  .overview__cell--hotend { order: 4; }
+  .overview__cell--bed { order: 5; }
+  .overview__cell--position { order: 6; }
+  .overview__cell--mode { order: 7; }
+  .overview__cell--motors { order: 8; }
+  .overview__cell--graph { order: 9; }
+  .overview__cell--trackpad { order: 10; }
+  .overview__cell--macros { order: 11; }
+  .overview__cell--jog { order: 12; }
+  .overview__cell--lighting { order: 13; }
 }
 @media (max-width: 599px) {
   .overview__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
