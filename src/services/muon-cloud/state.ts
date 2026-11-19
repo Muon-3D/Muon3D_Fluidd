@@ -236,7 +236,10 @@ async function bluetoothHandoff (printerId: string, signal: AbortSignal): Promis
     // abort) means no grant, never a failed connect.
     // No cloud call at all when the service is out of reach (browser offline, or its last request got no answer),
     // and none for a printer off this account: nothing holds a grant for it, so there is nothing to wait for.
-    const offline = cloudUnreachable() || !cloudState.printers.some(p => p.id === printerId)
+    // Off the account only once the list has loaded (an owner's printer must not be taken for a stranger's while it
+    // loads or failed to); offline the list never loads, and the printer admits an owner by key.
+    const offAccount = cloudState.ready && !cloudState.printers.some(p => p.id === printerId)
+    const offline = cloudUnreachable() || offAccount
     const asked = offline ? Promise.resolve<null>(null) : askConsole(printerId, own.signal).catch((): null => null)
     grant = await Promise.race([
       asked,

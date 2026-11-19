@@ -108,6 +108,7 @@ describe('Connect over Bluetooth with the cloud saying the printer is offline (K
       vi.useFakeTimers({ shouldAdvanceTime: true })
       vi.stubGlobal('navigator', { ...navigator, onLine })
       cloudState.printers = []
+      cloudState.ready = true
       const rejecting = vi.fn(async () => { throw new TypeError('Failed to fetch') })
       vi.stubGlobal('fetch', rejecting)
       useBluetoothFor(EID, fakePrinter().device)
@@ -131,6 +132,18 @@ describe('Connect over Bluetooth with the cloud saying the printer is offline (K
       expect((await transport.fetch('/printer/info')).status).toBe(200)
       expect(sessions[0].grantless).toBe(true)
     }, 15_000)
+  })
+
+  it("online with the printer list not loaded yet, still asks for the grant: it may be the account's own", async () => {
+    vi.stubGlobal('navigator', { ...navigator, onLine: true })
+    cloudState.printers = []
+    cloudState.ready = false
+    const calls = cloud(granted)
+    useBluetoothFor(EID, fakePrinter().device)
+
+    const transport = await borrowCloudPrinter(EID)
+    expect((await transport.fetch('/printer/info')).status).toBe(200)
+    expect(accessCalls(calls)).toBe(1)
   })
 
   it('takes the cloud grant for an online printer, and links Bluetooth as well', async () => {

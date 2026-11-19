@@ -329,6 +329,7 @@ async function tokenRequest (form: Record<string, string>, signal?: AbortSignal)
   } catch {
     throw new CloudError('The Muon3D service sent an unreadable answer.', response.status)
   }
+  noteCloudReached()
   if (!response.ok || typeof data.access_token !== 'string') {
     // KAN-2509: a refused refresh of an ended session says why (`reason`, the console's wire string).
     const body = typeof data.reason === 'string' ? { reason: data.reason } : {}
