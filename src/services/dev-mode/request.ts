@@ -5,9 +5,10 @@ import { httpClientActions } from '@/api/httpClientActions'
  * A developer-mode change, asked for through Moonraker's one route for it,
  * `/server/muon/dev_mode/request` (KAN-547).
  *
- * Jack's rule (17 Nov): the first release of the warranty is confirmed on the
- * printer's screen; after that it is an ordinary setting, from Control over any
- * route. A printer nobody owns takes a request from anyone; a linked
+ * Jack's rule (19 Nov): developer mode can be switched from anywhere on an
+ * open printer (only the owner's account once it is locked down). Only the
+ * FIRST release of the warranty is signed on the printer's screen; every later
+ * switch is direct, and a 428 means the release must be signed first. A printer nobody owns takes a request from anyone; a linked
  * printer only from its owning account, which is one of the owner's own
  * devices (the phone app, or a browser enrolled as theirs), from anywhere.
  * The printer decides: its Aux API refuses everyone else and names the
@@ -78,7 +79,7 @@ export interface DevModeCompletion {
 
 /** A refusal the printer explained, with its code (owner_required, no_change, ...). */
 export class DevModeRefused extends Error {
-  constructor (readonly code: string, message: string, readonly status: number) {
+  constructor (readonly code: string, message: string, readonly status: number, readonly body?: unknown) {
     super(message)
     this.name = 'DevModeRefused'
   }
@@ -111,10 +112,10 @@ export function refusalOf (error: unknown): Error {
   if (!response) return error instanceof Error ? error : new Error(String(error))
   const message = messageOf(response.data)
   const match = message ? REFUSAL.exec(message) : null
-  if (match) return new DevModeRefused(match[1], match[2].trim(), response.status)
+  if (match) return new DevModeRefused(match[1], match[2].trim(), response.status, response.data)
   // Moonraker's own 404: no such route on this printer.
   if (response.status === 404) return new DevModeRequestUnavailable()
-  return new DevModeRefused('refused', message || `The printer refused (HTTP ${response.status}).`, response.status)
+  return new DevModeRefused('refused', message || `The printer refused (HTTP ${response.status}).`, response.status, response.data)
 }
 
 function unwrap (data: unknown): Record<string, unknown> {
@@ -182,9 +183,30 @@ export async function whoMayAsk (): Promise<DevModeAsking> {
   }
 }
 
-/** What the printer did with a request: opened a question at its screen, or just took it. */
+/**
+ * The warranty release must be signed on the printer's screen first: HTTP 428
+ * (Precondition Required), or its `confirmation_required` code. Never an error
+ * to show: it means "wait for the person at the printer".
+ */
+export function confirmationRequired (error: unknown): boolean {
+  return error instanceof DevModeRefused && (error.status === 428 || error.code === 'confirmation_required')
+}
+
+/** A challenge id the printer put in a 428's body, if it did. */
+function challengeIdIn (body: unknown): string | null {
+  const inner = body && typeof body === 'object' && 'result' in body ? (body as { result: unknown }).result : body
+  const id = (inner as { challenge_id?: unknown } | null)?.challenge_id
+  return typeof id === 'string' && CHALLENGE_ID.test(id) ? id : null
+}
+
+/**
+ * What the printer did with a request: opened a question at its screen, wants
+ * it confirmed there without naming one (`waiting`, from a 428), or took it
+ * (`applied`, which Control only believes after re-reading the state).
+ */
 export type DevModeRequested =
   | { kind: 'challenge', challenge: DevModeChallenge }
+  | { kind: 'waiting', enabled: boolean }
   | { kind: 'applied', enabled: boolean }
 
 /**
@@ -195,7 +217,16 @@ export type DevModeRequested =
  * never assumes either.
  */
 export async function requestChange (enabled: boolean): Promise<DevModeRequested> {
-  const body = await send('POST', { enabled })
+  let body: Record<string, unknown>
+  try {
+    body = await send('POST', { enabled })
+  } catch (error) {
+    if (!confirmationRequired(error)) throw error
+    // 428: the change needs the printer's screen. Follow the challenge if it named one, else watch the state.
+    const id = challengeIdIn((error as DevModeRefused).body)
+    if (!id) return { kind: 'waiting', enabled }
+    body = { challenge_id: id }
+  }
   if (typeof body.challenge_id !== 'string') {
     if (typeof body.enabled === 'boolean') return { kind: 'applied', enabled: body.enabled }
     throw new Error('the printer opened no request')
@@ -230,15 +261,23 @@ export async function readAnswer (challengeId: string, enabled?: boolean): Promi
     body = await send('GET', { challenge_id: checkedId(challengeId) })
   } catch (error) {
     if (!noSuchQuestion(error) || typeof enabled !== 'boolean') throw error
-    const state = await readState()
-    return { confirmed: state === enabled, refused: false, applied: state === enabled }
+    return watchState(enabled)
   }
   if (typeof body.confirmed !== 'boolean') throw new Error('the printer gave no answer')
   return { confirmed: body.confirmed, refused: body.refused === true }
 }
 
+/**
+ * A change with no challenge to poll: it is done when the state reads as asked.
+ * Also how an `{enabled}` reply with no challenge is checked, not trusted.
+ */
+export async function watchState (enabled: boolean): Promise<DevModeAnswer> {
+  const state = await readState()
+  return { confirmed: state === enabled, refused: false, applied: state === enabled }
+}
+
 /** The read-only state, `/server/muon/dev_mode` (a Viewer may read it over any route). */
-async function readState (): Promise<boolean | null> {
+export async function readState (): Promise<boolean | null> {
   const response = await httpClientActions.serverMuonDevModeGet()
   const enabled = response.data?.result?.enabled
   return typeof enabled === 'boolean' ? enabled : null

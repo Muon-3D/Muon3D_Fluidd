@@ -258,7 +258,7 @@ describe('developer mode in Settings', () => {
     printer.refused = true
     await vm.pollConsent()
     expect(vm.awaiting).toBe(false)
-    expect(vm.errorMessage).toMatch(/Turned down at the printer/)
+    expect(vm.errorMessage).toMatch(/It was declined on the printer's screen\. Nothing changed\./)
     expect(printer.completed).toEqual([])
     vm.stopWaiting()
   })
@@ -324,7 +324,7 @@ describe('developer mode in Settings', () => {
     await w.find('[data-tid="developer-confirm"]').trigger('click')
     await settle()
     expect(printer.opened).toEqual([{ enabled: true }])
-    expect(w.find('[data-tid="developer-press-knob"]').text()).toContain('Confirm on the printer')
+    expect(w.find('[data-tid="developer-press-knob"]').text()).toContain("Sign the warranty release on the printer's screen to turn on developer mode for the first time.")
     await vm.pollConsent()
     expect(printer.completed).toEqual([])
     expect(printer.devMode).toBe(false)
@@ -356,5 +356,86 @@ describe('developer mode in Settings', () => {
     expect(vm.changeDialog).toBe(false)
     expect(vm.awaiting).toBe(false)
     w.destroy()
+  })
+
+  async function firstTurnOn () {
+    await refreshDevMode()
+    const vm = component()
+    await vm.refreshAsking()
+    await vm.toggle()
+    vm.accepted = true
+    return vm
+  }
+
+  it('nobody signs in time: says so in plain words and nothing changed', async () => {
+    const vm = await firstTurnOn()
+    await vm.confirmChange()
+    expect(vm.awaiting).toBe(true)
+    vm.secondsRemaining = 1
+    // The countdown started by ask() ticks each second: let it run out.
+    await new Promise(resolve => setTimeout(resolve, 1200))
+    expect(vm.awaiting).toBe(false)
+    expect(vm.errorMessage).toBe("Nobody confirmed on the printer's screen in time. Nothing changed.")
+    expect(printer.devMode).toBe(false)
+    expect(printer.completed).toEqual([])
+    vm.stopWaiting()
+  })
+
+  it('a 428 on the first turn-on starts the signing wait, and shows it only once the state reads as on', async () => {
+    printer.precondition = 'bare'
+    http.serverMuonDevModeGet.mockImplementation(async () => ({ data: { result: { enabled: printer.devMode } } }))
+    const vm = await firstTurnOn()
+    await vm.confirmChange()
+    expect(vm.awaiting).toBe(true)
+    expect(vm.errorMessage).toBe('')
+    await vm.pollConsent()
+    expect(vm.awaiting).toBe(true)
+    expect(devModeState.enabled).toBe(false)
+    printer.devMode = true
+    await vm.pollConsent()
+    expect(vm.awaiting).toBe(false)
+    expect(devModeState.enabled).toBe(true)
+    expect(printer.completed).toEqual([])
+    vm.stopWaiting()
+  })
+
+  it('a 428 that names a challenge is followed like any other', async () => {
+    printer.precondition = 'challenge'
+    const vm = await firstTurnOn()
+    await vm.confirmChange()
+    expect(vm.awaiting).toBe(true)
+    expect(vm.pending.challengeId).toBe(CHALLENGE)
+    printer.confirm()
+    await vm.pollConsent()
+    expect(printer.completed).toHaveLength(1)
+    expect(printer.devMode).toBe(true)
+    vm.stopWaiting()
+  })
+
+  it('a later switch is direct, on and off: no wait, and the new state shows after the printer reports it', async () => {
+    printer.everEnabled = true
+    printer.laterWithoutConfirm = true
+    await refreshDevMode()
+    const vm = component()
+    await vm.refreshAsking()
+    for (const target of [true, false]) {
+      await vm.toggle()
+      await vm.confirmChange()
+      expect(vm.awaiting).toBe(false)
+      expect(devModeState.enabled).toBe(target)
+    }
+    expect(printer.opened).toEqual([{ enabled: true }, { enabled: false }])
+  })
+
+  it('does not say it changed when the printer replies applied but the state disagrees', async () => {
+    printer.everEnabled = true
+    await refreshDevMode()
+    const vm = component()
+    await vm.refreshAsking()
+    await vm.toggle()
+    printer.post.mockImplementationOnce(async () => ({ data: { result: { enabled: false } } }))
+    await vm.confirmChange()
+    expect(devModeState.enabled).toBe(false)
+    expect(vm.errorMessage).toBe("Couldn't confirm the printer made the change. Nothing changed.")
   })
 })

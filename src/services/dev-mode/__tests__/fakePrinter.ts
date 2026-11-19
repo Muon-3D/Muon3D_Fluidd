@@ -14,9 +14,9 @@ export const OWNER = 'jack@example.com'
 export const CHALLENGE = 'Zb3s0VJpXkq2c1yN8dRtLw4mPa7oQe6F'
 export const WAIVER = { version: 'w-1', text: "The printer's waiver" }
 
-export function moonrakerError (status: number, message: string) {
+export function moonrakerError (status: number, message: string, extra?: Record<string, unknown>) {
   return Object.assign(new Error(`Request failed with status code ${status}`), {
-    response: { status, data: { error: { code: status, message } } }
+    response: { status, data: { ...extra, error: { code: status, message } } }
   })
 }
 
@@ -32,6 +32,8 @@ export class FakePrinter {
   /** MuonOS after Jack's 17 Nov rule: only the first release of the warranty waits for the panel. */
   laterWithoutConfirm = false
   everEnabled = false
+  /** A bare POST of the first release is answered 428; `with` names a challenge in its body. */
+  precondition: false | 'bare' | 'challenge' = false
   waiver: typeof WAIVER | null = WAIVER
   /** The waiver version the printer would accept at redeem. */
   currentWaiver = WAIVER.version
@@ -84,6 +86,9 @@ export class FakePrinter {
     if (!this.mayAsk) this.refuse()
     if (!('challenge_id' in args)) {
       if (this.panelOnly) throw moonrakerError(403, "dev-mode:panel_only: Developer mode is entered at the printer's own panel.")
+      if (this.precondition && args.enabled && !this.everEnabled) {
+        throw moonrakerError(428, "dev-mode:confirmation_required: Sign the warranty release on the printer's screen first.", this.precondition === 'challenge' ? { result: { challenge_id: CHALLENGE } } : undefined)
+      }
       if (args.enabled === this.devMode) {
         throw moonrakerError(409, `dev-mode:no_change: Developer mode is already ${this.devMode ? 'on' : 'off'}.`)
       }

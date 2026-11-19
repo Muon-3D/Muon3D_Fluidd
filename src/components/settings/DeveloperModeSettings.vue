@@ -153,7 +153,8 @@
         >
           <span class="devm__pulse" />
           <div>
-            <b>Confirm on the printer</b>
+            <b v-if="target && firstRelease">Sign the warranty release on the printer's screen to turn on developer mode for the first time.</b>
+            <b v-else>Confirm on the printer's screen</b>
             <span v-if="consentInstruction">{{ consentInstruction }}</span>
             <span>{{ $t('app.general.dev_mode.consent-expires', { seconds: secondsRemaining }) }}</span>
           </div>
@@ -198,6 +199,8 @@ import {
   requestChange,
   completeChange,
   readAnswer,
+  watchState,
+  confirmationRequired,
   whoMayAsk,
   whyNot,
   DevModeRefused,
@@ -207,19 +210,24 @@ import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 
 /** How often the browser asks whether the printer's screen has been answered. */
 const CONSENT_POLL_MS = 1500
+const DEFAULT_WAIT_SECONDS = 120
+const TIMED_OUT = "Nobody confirmed on the printer's screen in time. Nothing changed."
+const DECLINED = "It was declined on the printer's screen. Nothing changed."
 
 /**
  * Settings › Developer mode: whether it's on, a way out, and whether turning
  * it on ends the warranty (release builds), and, on an admin build only, the
  * SSH address. With it on: back up the config or start again from the defaults.
  *
- * Both ways are done from here, over any route (KAN-3604), through
+ * Both ways are done from here, over any route (KAN-3604, KAN-4772), through
  * Moonraker's request route (services/dev-mode/request). Only the FIRST
- * release of the warranty is confirmed on the printer's screen: Control reads
- * the terms, takes the owner's acceptance, then shows "Confirm on the printer"
- * and waits. Once it has been on before, the printer takes a change without
- * a challenge and Control does not wait. On a linked printer the switch is
- * the owner's alone, so nobody else is shown it.
+ * release of the warranty is signed on the printer's screen (Jack, 19 Nov):
+ * Control reads the terms, takes the acceptance, then shows "Sign the warranty
+ * release on the printer's screen" with a countdown, and shows nothing changed
+ * until the printer says confirmed or a re-read of the state shows it. Every
+ * later switch, on or off, is direct (admin builds always are). A 428 means the
+ * release must be signed first and starts that wait. On an Open printer anyone
+ * may ask; on a Protected one the switch is the owner's alone.
  */
 @Component({ components: { ToggleSwitch } })
 export default class DeveloperModeSettings extends Vue {
@@ -365,7 +373,7 @@ export default class DeveloperModeSettings extends Vue {
     this.changeDialog = true
   }
 
-  /** The first release of the warranty: the only change that waits for the printer's screen. */
+  /** The first release of the warranty: the terms are read and accepted before asking. */
   get firstRelease (): boolean {
     return this.target && !this.state.everEnabled
   }
@@ -416,24 +424,31 @@ export default class DeveloperModeSettings extends Vue {
       }
       return
     }
-    this.loading = false
     if (asked.kind === 'applied') {
-      // The printer took it with nothing to confirm: only the first release waits for its screen.
-      this.changeDialog = false
-      await refreshDevMode()
+      // An older admin build that takes it alone: believe it only when the state reads as asked.
+      await this.checkApplied(enabled, asked.enabled)
+      this.loading = false
       return
     }
-    const challenge = asked.challenge
-    this.pending = { challengeId: challenge.challengeId, enabled, waiverVersion: (challenge.waiver ?? this.asking?.waiver)?.version }
-    this.consentInstruction = challenge.instruction
-    this.secondsRemaining = Math.max(0, Math.round(challenge.expiresInSeconds))
+    this.loading = false
+    if (asked.kind === 'waiting') {
+      // 428: the printer wants its screen, and named no challenge. Watch the state.
+      this.pending = { challengeId: '', enabled }
+      this.consentInstruction = ''
+      this.secondsRemaining = DEFAULT_WAIT_SECONDS
+    } else {
+      const challenge = asked.challenge
+      this.pending = { challengeId: challenge.challengeId, enabled, waiverVersion: (challenge.waiver ?? this.asking?.waiver)?.version }
+      this.consentInstruction = challenge.instruction
+      this.secondsRemaining = Math.max(0, Math.round(challenge.expiresInSeconds))
+    }
     this.awaiting = true
     this.pollFailures = 0
     this.countdownTimer = window.setInterval(() => {
       this.secondsRemaining = Math.max(0, this.secondsRemaining - 1)
       if (this.secondsRemaining === 0) {
         this.stopWaiting()
-        this.errorMessage = this.$t('app.general.dev_mode.consent-expired') as string
+        this.errorMessage = TIMED_OUT
       }
     }, 1000)
     this.pollTimer = window.setInterval(() => { this.pollConsent().catch(() => undefined) }, CONSENT_POLL_MS)
@@ -446,10 +461,12 @@ export default class DeveloperModeSettings extends Vue {
    */
   async pollConsent () {
     const pending = this.pending
-    if (!pending) return
+    if (!pending || this.loading) return
     let answer
     try {
-      answer = await readAnswer(pending.challengeId, pending.enabled)
+      answer = pending.challengeId
+        ? await readAnswer(pending.challengeId, pending.enabled)
+        : await watchState(pending.enabled)
       this.pollFailures = 0
     } catch (err) {
       this.pollFailures++
@@ -458,13 +475,13 @@ export default class DeveloperModeSettings extends Vue {
     }
     if (answer.refused) {
       this.stopWaiting()
-      this.errorMessage = 'Turned down at the printer. Nothing changed.'
+      this.errorMessage = DECLINED
       return
     }
     if (!answer.confirmed) return
-    this.stopWaiting()
     if (answer.applied) {
-      // A printer that takes the change alone: it is done, and asking again would open a second request.
+      // The printer made the change itself: it is done, and asking again would open a second request.
+      this.stopWaiting()
       this.changeDialog = false
       await refreshDevMode()
       return
@@ -476,12 +493,29 @@ export default class DeveloperModeSettings extends Vue {
         challengeId: pending.challengeId,
         waiverVersion: pending.waiverVersion
       })
+      this.stopWaiting()
       this.changeDialog = false
     } catch (err) {
+      // Not confirmed yet after all (428): keep waiting rather than saying anything went wrong.
+      if (confirmationRequired(err)) {
+        this.loading = false
+        return
+      }
+      this.stopWaiting()
       await this.refused(err)
     } finally {
       this.loading = false
       await refreshDevMode()
+    }
+  }
+
+  /** The printer took the change at once: show it when its reply, or a re-read of the state, says so. */
+  async checkApplied (enabled: boolean, replied: boolean) {
+    const state = await refreshDevMode()
+    if (replied === enabled || state === enabled) {
+      this.changeDialog = false
+    } else {
+      this.errorMessage = "Couldn't confirm the printer made the change. Nothing changed."
     }
   }
 
