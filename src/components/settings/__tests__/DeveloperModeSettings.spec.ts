@@ -63,6 +63,15 @@ describe('developer mode in Settings', () => {
     api.getDevModeStatusDevModeGet.mockImplementation(async () => status({ enabled: printer.devMode, ever_enabled: printer.everEnabled }))
   })
 
+  async function firstTurnOn () {
+    await refreshDevMode()
+    const vm = component()
+    await vm.refreshAsking()
+    await vm.toggle()
+    vm.accepted = true
+    return vm
+  }
+
   it('is an admin build only when the printer says its guard is disarmed', async () => {
     await refreshDevMode()
     expect(devModeState).toMatchObject({ enabled: false, canManage: true, guardArmed: true, otpArmed: false })
@@ -194,7 +203,7 @@ describe('developer mode in Settings', () => {
     expect(api.setDevModeDevModePost).not.toHaveBeenCalled()
   })
 
-  it('turns off only once the printer\'s screen is answered', async () => {
+  it("turns off at once, with nothing to confirm on the printer's screen (#502)", async () => {
     printer.devMode = true
     await refreshDevMode()
     const vm = component()
@@ -204,48 +213,39 @@ describe('developer mode in Settings', () => {
 
     await vm.confirmChange()
     expect(printer.opened).toEqual([{ enabled: false }])
-    expect(vm.awaiting).toBe(true)
-    await vm.pollConsent()
     expect(printer.completed).toEqual([])
-    expect(printer.devMode).toBe(true)
-
-    printer.confirm()
-    await vm.pollConsent()
-    expect(printer.completed).toEqual([{ enabled: false, challenge_id: CHALLENGE }])
     expect(printer.devMode).toBe(false)
+    expect(vm.awaiting).toBe(false)
     expect(vm.changeDialog).toBe(false)
     expect(api.setDevModeDevModePost).not.toHaveBeenCalled()
   })
 
-  it('says "Confirm on the printer\'s screen" until the printer answers', async () => {
-    printer.devMode = true
+  it('asks for the warranty release at the printer until it is signed, on the first turn-on', async () => {
     const w = mounted()
     await settle()
     const vm = w.vm as any
     await vm.toggle()
     await w.vm.$nextTick()
-    expect(w.find('[data-tid="developer-disable-dialog"]').exists()).toBe(true)
+    expect(w.find('[data-tid="developer-enable-dialog"]').exists()).toBe(true)
     expect(w.find('[data-tid="developer-press-knob"]').exists()).toBe(false)
 
+    await w.find('[data-tid="developer-accept"]').setChecked(true)
     await w.find('[data-tid="developer-confirm"]').trigger('click')
     await settle()
-    expect(w.find('[data-tid="developer-press-knob"]').text()).toContain('Confirm on the printer')
-    expect(w.find('[data-tid="developer-press-knob"]').text()).toContain('Press the knob on the printer to turn Developer Mode off.')
+    expect(w.find('[data-tid="developer-press-knob"]').text()).toContain('Sign the warranty release on the printer')
+    expect(w.find('[data-tid="developer-press-knob"]').text()).toContain('Press the knob on the printer to confirm.')
 
     printer.confirm()
     await vm.pollConsent()
     await settle()
     expect(w.find('[data-tid="developer-press-knob"]').exists()).toBe(false)
-    expect(w.find('[data-tid="developer-disable-dialog"]').exists()).toBe(false)
+    expect(w.find('[data-tid="developer-enable-dialog"]').exists()).toBe(false)
+    expect(printer.devMode).toBe(true)
     w.destroy()
   })
 
   it('stops waiting when it is turned down at the printer, and says so when the printer stops answering', async () => {
-    printer.devMode = true
-    await refreshDevMode()
-    const vm = component()
-    await vm.refreshAsking()
-    await vm.toggle()
+    const vm = await firstTurnOn()
     await vm.confirmChange()
 
     const answer = printer.get.getMockImplementation()!
@@ -294,11 +294,7 @@ describe('developer mode in Settings', () => {
   })
 
   it('a printer that only takes the change at its own screen is said so, and nothing waits', async () => {
-    printer.devMode = true
-    await refreshDevMode()
-    const vm = component()
-    await vm.refreshAsking()
-    await vm.toggle()
+    const vm = await firstTurnOn()
     printer.panelOnly = true
     await vm.confirmChange()
     expect(vm.errorMessage).toContain('only takes this at its own screen')
@@ -339,7 +335,6 @@ describe('developer mode in Settings', () => {
 
   it('a later turn-on, after the warranty release, does not wait for the printer', async () => {
     printer.everEnabled = true
-    printer.laterWithoutConfirm = true
     await refreshDevMode()
     const w = mounted()
     await settle()
@@ -357,15 +352,6 @@ describe('developer mode in Settings', () => {
     expect(vm.awaiting).toBe(false)
     w.destroy()
   })
-
-  async function firstTurnOn () {
-    await refreshDevMode()
-    const vm = component()
-    await vm.refreshAsking()
-    await vm.toggle()
-    vm.accepted = true
-    return vm
-  }
 
   it('nobody signs in time: says so in plain words and nothing changed', async () => {
     const vm = await firstTurnOn()
@@ -414,7 +400,6 @@ describe('developer mode in Settings', () => {
 
   it('a later switch is direct, on and off: no wait, and the new state shows after the printer reports it', async () => {
     printer.everEnabled = true
-    printer.laterWithoutConfirm = true
     await refreshDevMode()
     const vm = component()
     await vm.refreshAsking()
@@ -437,5 +422,75 @@ describe('developer mode in Settings', () => {
     await vm.confirmChange()
     expect(devModeState.enabled).toBe(false)
     expect(vm.errorMessage).toBe("Couldn't confirm the printer made the change. Nothing changed.")
+  })
+
+  const answersRead = () => printer.get.mock.calls.filter(call => call[1]?.params?.challenge_id).length
+
+  it('skips a poll tick while a read of the answer is still in flight, so a slow link cannot stack them', async () => {
+    const vm = await firstTurnOn()
+    await vm.confirmChange()
+    expect(vm.awaiting).toBe(true)
+
+    const answer = printer.get.getMockImplementation()!
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    printer.get.mockImplementation(async (...args: Parameters<typeof answer>) => { await gate; return answer(...args) })
+    const before = answersRead()
+    const ticks = [vm.pollConsent(), vm.pollConsent(), vm.pollConsent()]
+    await settle()
+    expect(answersRead() - before).toBe(1)
+    expect(vm.reading).toBe(true)
+
+    release()
+    await Promise.all(ticks)
+    expect(vm.reading).toBe(false)
+    await vm.pollConsent()
+    expect(answersRead() - before).toBe(2)
+    vm.stopWaiting()
+  })
+
+  it('a failed read frees the guard, so the next tick asks again', async () => {
+    const vm = await firstTurnOn()
+    await vm.confirmChange()
+    const answer = printer.get.getMockImplementation()!
+    printer.get.mockImplementationOnce(async () => { throw new Error('Network Error') })
+    await vm.pollConsent()
+    expect(vm.reading).toBe(false)
+    printer.get.mockImplementation(answer)
+    const before = answersRead()
+    await vm.pollConsent()
+    expect(answersRead() - before).toBe(1)
+    vm.stopWaiting()
+  })
+
+  it('a printer that did the change itself while waiting (applied during the poll) is done: nothing is completed a second time', async () => {
+    printer.precondition = 'challenge'
+    http.serverMuonDevModeGet.mockImplementation(async () => ({ data: { result: { enabled: printer.devMode } } }))
+    const vm = await firstTurnOn()
+    await vm.confirmChange()
+    expect(vm.pending.challengeId).toBe(CHALLENGE)
+    // A POST-only printer: the answer can't be read, so the state is watched.
+    printer.get.mockImplementation(async () => { throw Object.assign(new Error('405'), { response: { status: 405, data: '<html>405</html>' } }) })
+    await vm.pollConsent()
+    expect(vm.awaiting).toBe(true)
+    expect(printer.completed).toEqual([])
+
+    printer.devMode = true
+    await vm.pollConsent()
+    expect(vm.awaiting).toBe(false)
+    expect(vm.changeDialog).toBe(false)
+    expect(devModeState.enabled).toBe(true)
+    expect(printer.completed).toEqual([])
+    expect(printer.post).toHaveBeenCalledTimes(1)
+  })
+
+  it('an admin build takes even the first turn-on at once (#502)', async () => {
+    printer.adminBuild = true
+    const vm = await firstTurnOn()
+    await vm.confirmChange()
+    expect(vm.awaiting).toBe(false)
+    expect(printer.completed).toEqual([])
+    expect(printer.devMode).toBe(true)
+    expect(devModeState.enabled).toBe(true)
   })
 })

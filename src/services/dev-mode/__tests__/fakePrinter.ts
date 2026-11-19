@@ -29,9 +29,9 @@ export class FakePrinter {
   refused = false
   /** MuonOS KAN-1739: Aux opens a challenge only for the printer's own panel. */
   panelOnly = false
-  /** MuonOS after Jack's 17 Nov rule: only the first release of the warranty waits for the panel. */
-  laterWithoutConfirm = false
-  everEnabled = false
+  /** Rule #502 (19 Nov): only the first release of the warranty waits for the screen; admin builds never do. */
+  adminBuild = false
+  private released = false
   /** A bare POST of the first release is answered 428; `with` names a challenge in its body. */
   precondition: false | 'bare' | 'challenge' = false
   waiver: typeof WAIVER | null = WAIVER
@@ -43,6 +43,15 @@ export class FakePrinter {
 
   readonly get = vi.fn(async (path: string, options?: { params?: Record<string, unknown> }) => this.answer('GET', path, options?.params ?? {}))
   readonly post = vi.fn(async (path: string, body?: Record<string, unknown>) => this.answer('POST', path, body ?? {}))
+
+  /** The release is signed once developer mode has ever been on, so a printer that is on has signed it. */
+  get everEnabled (): boolean {
+    return this.released || this.devMode
+  }
+
+  set everEnabled (value: boolean) {
+    this.released = value
+  }
 
   confirm () {
     this.confirmed = true
@@ -92,8 +101,10 @@ export class FakePrinter {
       if (args.enabled === this.devMode) {
         throw moonrakerError(409, `dev-mode:no_change: Developer mode is already ${this.devMode ? 'on' : 'off'}.`)
       }
-      if (this.laterWithoutConfirm && this.everEnabled) {
+      // Off, every later on, and any switch on an admin build are taken at once.
+      if (!args.enabled || this.everEnabled || this.adminBuild) {
         this.devMode = args.enabled
+        if (args.enabled) this.released = true
         this.opened.push({ enabled: args.enabled })
         return { data: { result: { enabled: this.devMode } } }
       }
