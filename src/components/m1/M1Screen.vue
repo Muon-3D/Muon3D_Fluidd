@@ -100,7 +100,7 @@ const STRIP_PX = 64
  * The printer's screen, asked of the printer itself over the route Control uses for it (LAN, Bluetooth, relay), never of
  * this page's origin: hosted Control serves no /panel/. Kept by ETag, so a 304 costs no bundle.
  */
-function panelBundle (key: string, onProgress: (loaded: number, total: number) => void): Promise<PanelBundle> {
+function panelBundle (key: string | null, onProgress: (loaded: number, total: number) => void): Promise<PanelBundle> {
   return loadPanelBundle((url, request) => Vue.$httpClient.get(url, {
     responseType: 'text',
     transformResponse: [v => v],
@@ -217,8 +217,10 @@ export default class M1Screen extends Mixins(ControlMixin) {
   }
 
   /** Which printer this is, from what Control holds (its address, and the printer id on a managed route), never from what a printer says. */
-  get printerKey (): string {
-    return `${this.$store.state.config.apiUrl ?? ''}|${cloudState.activePrinterId ?? ''}`
+  get printerKey (): string | null {
+    // Only a printer id Control itself holds counts; on the LAN there is none, so nothing is kept for it.
+    const id = cloudState.activePrinterId
+    return id ? `${this.$store.state.config.apiUrl ?? ''}|${id}` : null
   }
 
   /** The screen's page, fetched from the printer. */

@@ -141,14 +141,14 @@ export const AUX_METHODS: readonly AuxMethod[] = ['GET', 'POST', 'PUT', 'PATCH',
 
 /**
  * The only command words a raw G-code script from the screen may use: fans,
- * the speed and flow factors, lights and pins, and the screen's own saved
+ * the speed and flow factors, lights, and the screen's own saved
  * variables (muon_*). Everything else is refused, so there is no list of bad
  * words to get around. Moves, homing and heating are the jog, home and heat
  * verbs (the no-go planner and the heater limits); a user macro, a probe, a
  * calibration or a hand-written move never goes through here.
  */
 export const GCODE_WORDS: ReadonlySet<string> = new Set([
-  'M106', 'M107', 'M220', 'M221', 'SET_FAN_SPEED', 'SET_LED', 'SET_PIN', 'SAVE_VARIABLE'
+  'M106', 'M107', 'M220', 'M221', 'SET_FAN_SPEED', 'SET_LED', 'SAVE_VARIABLE'
 ])
 
 const GCODE_REFUSED = "Control doesn't run that G-code from the screen. Use the screen's own buttons."
@@ -160,6 +160,19 @@ export function gcodeWord (line: string): string {
   const coded = /^([A-Z])\s*0*(\d+)(?![A-Z0-9_])/.exec(cmd)
   if (coded) return coded[1] + coded[2]
   return /^[A-Z_][A-Z0-9_]*/.exec(cmd)?.[0] ?? (cmd ? cmd.split(/\s/)[0] : '')
+}
+
+/**
+ * SAVE_VARIABLE for the screen's own variables only. Klipper keeps the last of a repeated
+ * parameter, so every key is found: exactly one VARIABLE and one VALUE, nothing else, and
+ * the variable is muon_ plus [a-z0-9_].
+ */
+function saveVariableOk (line: string): boolean {
+  const rest = line.split(';')[0].trim().replace(/^SAVE_VARIABLE/i, '')
+  const keys = Array.from(rest.matchAll(/([^\s=]+)\s*=/g), m => m[1].toUpperCase())
+  if (keys.length !== 2 || keys.filter(k => k === 'VARIABLE').length !== 1 || keys.filter(k => k === 'VALUE').length !== 1) return false
+  const name = /VARIABLE\s*=\s*(\S+)/i.exec(rest)?.[1] ?? ''
+  return /^muon_[a-z0-9_]+$/i.test(name)
 }
 
 /** Why a raw G-code script from the screen is not run, '' when it may: every line's command word must be in GCODE_WORDS. */
@@ -175,7 +188,7 @@ export function gcodeRefusal (script: unknown): string {
     }
     if (!GCODE_WORDS.has(word)) return GCODE_REFUSED
     // The screen's own saved variables only (the material colour and the like), never another.
-    if (word === 'SAVE_VARIABLE' && !/^SAVE_VARIABLE\s+VARIABLE=MUON_[A-Z0-9_]+\s+VALUE=/.test(line.split(';')[0].trim().toUpperCase())) return GCODE_REFUSED
+    if (word === 'SAVE_VARIABLE' && !saveVariableOk(line)) return GCODE_REFUSED
   }
   return ''
 }

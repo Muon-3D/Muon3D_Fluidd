@@ -53,6 +53,14 @@ describe('loading the screen from the printer, over the route (KAN-4812)', () =>
     expect(c.kept.B.html).toBe(html)
   })
 
+  it('with no verified printer id nothing is offered, served or kept: always fresh', async () => {
+    const c = copies({ A: copyOf(html) })
+    expect(await loadPanelBundle(via({ status: 304 }), null, () => {}, c)).toEqual({ state: 'unknown' })
+    expect(asked[0].headers['If-None-Match']).toBeUndefined()
+    expect(await loadPanelBundle(via(ok()), null, () => {}, c)).toEqual({ state: 'yes', html, fromCopy: false })
+    expect(Object.keys(c.kept)).toEqual(['A'])
+  })
+
   it('a kept copy that no longer matches its hash is not served or offered', async () => {
     const tampered = { ...copyOf(html), html: '<html>changed</html>' }
     const c = copies({ A: tampered })

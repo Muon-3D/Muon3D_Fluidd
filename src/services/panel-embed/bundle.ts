@@ -14,9 +14,10 @@ import { classifyPanelResponse, type PanelOnPrinter } from './served'
  *
  * The page is kept by its ETag. The next open asks "If-None-Match" and, when
  * the printer says 304, uses the kept copy, so a Bluetooth link is not asked
- * for several hundred KB each time the screen opens. A conditional answer
- * means "the printer's current build is the kept one", whichever printer it
- * is, so the kept copy is per build, not per printer.
+ * for several hundred KB each time the screen opens. The kept copy belongs to one
+ * printer (its id, as Control holds it) and is hash-checked; it is never offered
+ * to another. With no verified printer id (the LAN has none) nothing is kept,
+ * no validator is sent, and the page is fetched fresh every time.
  */
 export interface PanelCopy {
   etag: string
@@ -88,12 +89,12 @@ function etagOf (headers: Record<string, unknown> | undefined): string {
 
 export async function loadPanelBundle (
   get: PanelFetch,
-  key: string,
+  key: string | null,
   onProgress: (loaded: number, total: number) => void = () => {},
   copies: PanelCopies = defaultCopies
 ): Promise<PanelBundle> {
   // Only this printer's own copy, and only if it is still the bytes that were kept.
-  const own = copies.get(key)
+  const own = key ? copies.get(key) : null
   const kept = own && sha256Hex(own.html) === own.sha256 ? own : null
   const headers: Record<string, string> = { Accept: 'text/html' }
   if (kept?.etag) headers['If-None-Match'] = kept.etag
@@ -119,6 +120,6 @@ export async function loadPanelBundle (
   const html = response.data
   if (typeof html !== 'string' || !html.includes('<') || html.length > PANEL_MAX_CHARS) return { state: 'unknown' }
   const etag = etagOf(response.headers)
-  if (etag) copies.keep(key, { etag, html, sha256: sha256Hex(html) })
+  if (etag && key) copies.keep(key, { etag, html, sha256: sha256Hex(html) })
   return { state: 'yes', html, fromCopy: false }
 }
