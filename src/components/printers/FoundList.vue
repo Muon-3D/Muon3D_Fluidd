@@ -60,7 +60,7 @@
           small
         />
         <v-icon
-          v-else-if="primary(tile).id === 'pair-bluetooth'"
+          v-else-if="primary(tile).id === 'pair-bluetooth' || primary(tile).icon === '$bluetooth'"
           small
         >
           $bluetooth
@@ -100,6 +100,7 @@ export default class FoundList extends Vue {
 
   /** An action with no id when the printer offers nothing to do. */
   primary (tile: PrinterTile): CardAction {
+    if (tile.entry.row?.action === 'set-up' && tile.entry.row.checkFirst) return { id: 'set-up', label: 'Connect over Bluetooth', icon: '$bluetooth' }
     if (tile.state === 'new') return { id: 'set-up', label: 'Set it up', icon: '' }
     if (tile.entry.row?.action === 'nearby-info') {
       // Set up already: this browser can pair with it over Bluetooth, signed in or not.

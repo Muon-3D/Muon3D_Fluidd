@@ -86,7 +86,7 @@ function stateOf (e: DirectoryEntry, status: Record<string, PrinterStatus>): Til
     const state = e.foreign.status?.state ?? 'connecting'
     return state === 'idle' ? 'ready' : state === 'offline' ? 'offline' : state
   }
-  if (e.section === 'found' && e.row?.action === 'set-up') return 'new'
+  if (e.section === 'found' && e.row?.action === 'set-up') return e.row.checkFirst ? 'nearby' : 'new'
   // Online at the service, but this browser could not reach it: the way in
   // failed, not the printer, so it is not one that needs you.
   // Only when its health came from that way in: a printer Fluidd is on

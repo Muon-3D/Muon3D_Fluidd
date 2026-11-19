@@ -29,6 +29,8 @@ import { isPrinter, type NearbyPrinter } from '@/services/muon-ble/nearby'
 export type RowAction = 'open' | 'open-cloud' | 'open-bluetooth' | 'set-up' | 'nearby-info'
 
 export interface SearchRow {
+  /** A nearby printer with no advertisement: ask the printer whether it is set up before offering setup. */
+  checkFirst?: boolean;
   key: string;
   name: string;
   /** Its address on this network, when known. */
@@ -152,13 +154,15 @@ export function searchRows (sources: SearchSources): SearchRow[] {
       name: heardAs(p),
       host: null,
       meta: nearbyNote(p, setUp === null ? null : setUp ? 'Set up' : 'New'),
-      status: setUp ? 'set up, and not on this network' : 'not set up yet',
+      status: setUp ? 'set up, and not on this network' : setUp === null ? 'nearby' : 'not set up yet',
       linked: false,
       canLink: false,
       nearby: p,
       // Unknown (no advertisement) is tried as new: the printer refuses a
       // stranger once it is set up, and the setup flow says so.
-      action: setUp ? 'nearby-info' : 'set-up'
+      action: setUp ? 'nearby-info' : 'set-up',
+      // No advertisement (a chooser pick): not known to be new, so Connect over Bluetooth first (KAN-4828).
+      ...(setUp === null ? { checkFirst: true } : {})
     })
   }
   return rows
