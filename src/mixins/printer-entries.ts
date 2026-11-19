@@ -18,6 +18,7 @@ import {
   discoveryState,
   instanceFor,
   instanceForHost,
+  isOwnHotspot,
   lanAddresses,
   refreshKnownPrinters
 } from '@/services/muon-cloud/discovery'
@@ -41,7 +42,7 @@ import { chooseRouteMode, routeMode, type Route } from '@/services/muon-cloud/ro
 import { routeMenuItems, type RouteMenuFacts } from '@/services/muon-cloud/route-menu'
 import type { BleDevice } from '@/services/muon-ble/webBluetooth'
 import { chooseRelay, clearRelayChoice, mayTrySecureName, reachSecureName, relayChosen, secureNameOf } from '@/services/secure-origin/hosted'
-import { localRoute, mdnsHostFromName, openableAddr, type LocalRoute } from '@/services/muon-cloud/local-route'
+import { isOpenableAddr, localRoute, mdnsHostFromName, openableAddr, type LocalRoute } from '@/services/muon-cloud/local-route'
 import { lanPrinterAccess, type AccessAsk, type AccessClient } from '@/services/muon-access/api'
 import { requestRefused } from '@/services/managed-transport/refusal'
 
@@ -60,6 +61,20 @@ function nearbyOf (id: string) {
   return discoveryState.cloud.find(c => c.printerId.toLowerCase() === want)
 }
 
+/**
+ * An address the printer itself told this browser (KAN-4898): its `.local` name from identity (live over Bluetooth
+ * or LAN, or kept with a saved printer), else a LAN address it was saved or seen at. Never the guess from its display name.
+ */
+function printerSaidAddr (e: DirectoryEntry): string | null {
+  const said = [
+    e.lan?.mdnsHost,
+    ...(e.saved ?? []).map(s => s.mdnsHost),
+    e.host,
+    ...(e.saved ?? []).map(s => hostOf(s.apiUrl))
+  ]
+  return said.find(a => isOpenableAddr(a) && !isOwnHotspot(a)) ?? null
+}
+
 /** How Connect locally would reach this printer from this page (KAN-2529). */
 function localRouteOf (e: DirectoryEntry): LocalRoute {
   const id = e.cloud?.id ?? e.endpointId
@@ -69,6 +84,7 @@ function localRouteOf (e: DirectoryEntry): LocalRoute {
     secureName: secureNameOf(e.cloud),
     pageHost: window.location.hostname,
     mdnsHost: e.lan?.mdnsHost ?? e.saved?.find(s => s.mdnsHost)?.mdnsHost ?? mdnsHostFromName(e.cloud?.name ?? e.name),
+    printerSaid: printerSaidAddr(e),
     nearby: id ? nearbyOf(id) : undefined,
     nearbyChecked: discoveryState.cloudChecked,
     blockedByPage: !!discoveryState.blockedByPage
@@ -79,7 +95,9 @@ function localRouteOf (e: DirectoryEntry): LocalRoute {
 function localHint (route: LocalRoute, e: DirectoryEntry): string {
   switch (route.kind) {
     case 'secure': return 'Opens its secure address'
-    case 'page': return "Opens the printer's own page on your network, in this tab"
+    case 'page': return route.unconfirmed
+      ? "Opens the printer's own page in this tab. Needs this browser on the printer's Wi-Fi"
+      : "Opens the printer's own page on your network, in this tab"
     case 'lan': return e.host ?? ''
     case 'none': return route.reason
   }
@@ -117,6 +135,9 @@ function routeFactsOf (e: DirectoryEntry): RouteMenuFacts {
 
 /** Printers whose "opened through Muon3D" notice has been shown on this page load. */
 const toldRelay = new Set<string>()
+
+/** How long "Opening <host>…" shows before the tab leaves for an address only the printer vouched for (KAN-4898). */
+const UNCONFIRMED_LEAVE_MS = 1800
 
 let navigate = (url: string) => window.location.assign(url)
 
@@ -677,6 +698,13 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       if (id) {
         clearRelayChoice(id)
         stopUsingBluetoothFor(id)
+      }
+      if (route.unconfirmed) {
+        // The printer said this address, the service did not confirm it is beside this browser, and a https page can't
+        // probe an http address (mixed content, local-network check). So say where this tab is going, and give the
+        // message a moment to be read before leaving: if it doesn't load, the person knows what to do.
+        this.notice = `Opening ${route.host}. If it doesn't load, join the same Wi-Fi as ${e.name}.`
+        await new Promise(resolve => setTimeout(resolve, UNCONFIRMED_LEAVE_MS))
       }
       navigate(`http://${route.host}/`)
       return true

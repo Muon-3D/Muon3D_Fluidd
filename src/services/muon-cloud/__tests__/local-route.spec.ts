@@ -32,7 +32,23 @@ describe('what Connect locally does (KAN-2529)', () => {
     expect(localRoute({ ...base, mdnsHost })).toEqual({ kind: 'none', reason: NOT_ON_NETWORK })
   })
 
+  it('offers an address the printer itself reported when the service list does not show it (KAN-4898)', () => {
+    expect(localRoute({ ...base, printerSaid: 'muon-sloe-b26d.local' }))
+      .toEqual({ kind: 'page', host: 'muon-sloe-b26d.local', unconfirmed: true })
+    expect(localRoute({ ...base, printerSaid: '192.168.1.78' })).toEqual({ kind: 'page', host: '192.168.1.78', unconfirmed: true })
+    // The service's own confirmation still wins, and is not marked unconfirmed.
+    expect(localRoute({ ...base, printerSaid: '192.168.1.78', mdnsHost: 'muon-sloe-b26d.local', nearby: cloud(['192.168.1.78']) }))
+      .toEqual({ kind: 'page', host: 'muon-sloe-b26d.local' })
+  })
+
+  it('never offers a guess, a hotspot address or an unsafe one without the service (KAN-4898)', () => {
+    expect(localRoute({ ...base, mdnsHost: mdnsHostFromName('Sloe · B26D'), printerSaid: null })).toEqual({ kind: 'none', reason: NOT_ON_NETWORK })
+    expect(localRoute({ ...base, printerSaid: '10.42.0.1' })).toEqual({ kind: 'none', reason: NOT_ON_NETWORK })
+    expect(localRoute({ ...base, printerSaid: 'evil.example' })).toEqual({ kind: 'none', reason: NOT_ON_NETWORK })
+  })
+
   it('derives the name from the display name', () => {
+    expect(mdnsHostFromName('Sloe · B26D')).toBe('muon-sloe-b26d.local')
     expect(mdnsHostFromName('Sloe b26d')).toBe('muon-sloe-b26d.local')
     expect(mdnsHostFromName('Boxwood · 367A')).toBe('muon-boxwood-367a.local')
     expect(mdnsHostFromName('muon-sloe-b26d')).toBe('muon-sloe-b26d.local')
