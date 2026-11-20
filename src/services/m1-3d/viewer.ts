@@ -13,12 +13,12 @@ import { createFrameLoop } from './frame-loop'
 import { FrameWatch, wantsCheapGlass } from './glass-cost'
 import { glassChoice } from './render-options'
 import { liveRenderOptions, modelSettings } from './device-settings'
-import { ACCURATE_RIG, placeAccurate } from './accurate/klipper-map'
+import { placeAccurate } from './accurate/klipper-map'
 import type { AccurateRig } from './accurate/rig'
 import { LEAN_LIMIT, NO_LEAN, PART_IDS, leanToward, partMeshes, partOf, type Lean, type PartId } from './parts'
 import { PartLight, type LightMode } from './part-light'
 import { buildPickProxy, placePickProxy, wantsPickProxy } from './pick-proxy'
-import { headToWorld } from './drag-map'
+import { placementToNozzle } from './drag-map'
 import { HEAD_MARGIN, easePan, panNeeded } from './head-follow'
 import { KNOB_PRESS_MM, KNOB_PRESS_MS, knobGoal, knobPressDepth } from './knob'
 import { buildKnobWheelGeometry, knobArcDegrees, knobDrawAngle, measureKnobArc } from './knob-wheel'
@@ -1041,11 +1041,9 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     const { x: poseX, y: poseY } = f.pose
     nozzleKnown = rig.kind === 'accurate' && poseX !== null && poseY !== null
     if (nozzleKnown) {
-      // The head stops at its end stops, as the model's does.
-      const w = headToWorld(poseX as number, poseY as number)
-      const [x0, x1] = ACCURATE_RIG.travelX
-      const [z0, z1] = ACCURATE_RIG.travelZ
-      nozzleAt.set(Math.min(x1, Math.max(x0, w.x)), w.y, Math.min(z1, Math.max(z0, w.z)))
+      // The marker follows the drawn (smoothed) head, not the raw pose, so it glides with the model and stops at its end stops.
+      const w = placementToNozzle(placement)
+      nozzleAt.set(w.x, w.y, w.z)
     }
     const led = strips ? strips.lit : f.pose.led
     const placed = `${placement.headX.toFixed(5)},${placement.headZ.toFixed(5)},${placement.z.toFixed(5)},${led}`
