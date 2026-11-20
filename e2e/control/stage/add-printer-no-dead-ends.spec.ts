@@ -8,7 +8,7 @@
  * requests are routed or aborted by the test, and Web Bluetooth is a fake.
  */
 import type { Page } from '@playwright/test'
-import { test, expect, ready } from '../fixtures'
+import { test, expect, ready } from '../../fixtures'
 
 const HOST = '192.168.88.9'
 

@@ -9,8 +9,8 @@
  * these skip without it (as overview-3d-scene-1111.spec.ts does).
  */
 import type { Locator, Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
-import { usePrinter, PRESETS } from './printer'
+import { test, expect } from '../../fixtures'
+import { usePrinter, PRESETS } from '../printer'
 
 // About the 3D stage: it needs WebGL, which the e2e fixtures turn off by default (KAN-2781).
 test.use({ webgl: true })

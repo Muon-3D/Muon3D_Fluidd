@@ -9,8 +9,8 @@
  * (Where the strand ends is a unit test: accurate-spool.spec.ts.)
  */
 import type { Locator, Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
-import { overlay, usePrinter, PRESETS } from './printer'
+import { test, expect } from '../../fixtures'
+import { overlay, usePrinter, PRESETS } from '../printer'
 
 // About the 3D stage: it needs WebGL, which the e2e fixtures turn off by default (KAN-2781).
 test.use({ webgl: true })

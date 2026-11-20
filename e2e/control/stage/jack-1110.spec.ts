@@ -7,8 +7,8 @@
  * - KAN-1955: Home all is the first thing under the trackpad's header.
  */
 import type { Page } from '@playwright/test'
-import { test, expect, ready } from '../fixtures'
-import { overlay, usePrinter, PRESETS } from './printer'
+import { test, expect, ready } from '../../fixtures'
+import { overlay, usePrinter, PRESETS } from '../printer'
 
 const M1_FILAMENT = {
   'gcode_macro M600': {},
