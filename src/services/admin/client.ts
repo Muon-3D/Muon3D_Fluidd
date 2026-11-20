@@ -20,6 +20,8 @@ export function adminAvailable (page = window.location.href, console = cloudBase
   return !framed && ['https://control.muon3d.com', 'https://app.muon3d.com'].includes(origin) && console === origin
 }
 
+const FLEET_NOT_ON = 'Fleet sign-in is not turned on yet.'
+
 async function send<T> (origin: string, path: string, token: string, body: unknown): Promise<T> {
   let response: Response
   try {
@@ -37,6 +39,7 @@ async function send<T> (origin: string, path: string, token: string, body: unkno
   try { data = JSON.parse(await response.text()) } catch { throw new AdminError('Staff tools sent an unreadable answer.', response.status) }
   if (!response.ok) {
     const expired = response.status === 401 || data.staff_reauth_required === true
+    if (response.status === 400 && /not turned on/i.test(String(data?.error ?? data?.message ?? data?.detail ?? ''))) throw new AdminError(FLEET_NOT_ON, 400)
     throw new AdminError(expired
       ? 'Confirm staff access again.'
       : response.status === 403
@@ -80,9 +83,44 @@ export const lookupAccount = (query: string, reason: string): Promise<Lookup> =>
 export async function readAudit (source: 'console' | 'community', before: number | null, reason: string): Promise<AuditPage> {
   if (source === 'console') return await consoleRequest('/v1/admin/audit/read', { before, reason })
   // Local to this call only: never a URL, storage entry or refresh token.
-  const proof = await consoleRequest<{ assertion: string; expires_at: number }>('/v1/me/staff/assertion', { audience: MODELS_AUDIENCE })
+  const proof = await staffAssertion(MODELS_AUDIENCE)
+  return await send<AuditPage>(MODELS_SERVICE_URL, '/v1/admin/audit/read', proof, { before, reason })
+}
+
+/** Mints a short-lived staff assertion for one audience. Callers keep it in a local only: never log, store or put it in a query. */
+async function staffAssertion (audience: string): Promise<string> {
+  const proof = await consoleRequest<{ assertion: string; expires_at: number }>('/v1/me/staff/assertion', { audience })
   if (proof.expires_at * 1000 <= Date.now()) throw new AdminError('Staff confirmation expired.', 401, true)
-  return await send<AuditPage>(MODELS_SERVICE_URL, '/v1/admin/audit/read', proof.assertion, { before, reason })
+  return proof.assertion
+}
+
+export const FLEET_AUDIENCE = 'https://fleet.muon3d.com'
+export const fleetSignInUrl = (assertion: string): string => `${FLEET_AUDIENCE}/sign-in#assertion=${encodeURIComponent(assertion)}`
+
+/** One plain sentence for any failure of openFleet. */
+export function fleetFailure (error: unknown): string {
+  if (error instanceof DOMException && error.name === 'NotAllowedError') return 'The passkey was cancelled, so Fleet was not opened.'
+  if (error instanceof DOMException && (error.name === 'NotSupportedError' || error.name === 'SecurityError')) return 'Passkeys are unavailable in this browser, so Fleet was not opened.'
+  if (error instanceof AdminError) {
+    if (error.message === FLEET_NOT_ON) return error.message
+    if (error.status === 403) return 'Your account is not Muon staff, so Fleet was not opened.'
+    if (error.status === 0) return 'Fleet could not be reached. Check your connection and try again.'
+    if (error.expired) return 'Staff confirmation expired. Try again.'
+  }
+  return 'Fleet could not be opened. Try again.'
+}
+
+/**
+ * Staff-only hand-off to Fleet. Unless a passkey confirmation is already fresh,
+ * confirm with the passkey, mint an assertion for the Fleet audience, then send
+ * this same tab to Fleet's sign-in with the assertion in the fragment.
+ */
+export async function openFleet (opts: { confirmed?: boolean; onStage?: (stage: 'passkey' | 'opening') => void; navigate?: (url: string) => void } = {}): Promise<void> {
+  const navigate = opts.navigate ?? ((url: string) => window.location.assign(url))
+  if (!opts.confirmed) { opts.onStage?.('passkey'); await confirmStaff() }
+  opts.onStage?.('opening')
+  const assertion = await staffAssertion(FLEET_AUDIENCE)
+  navigate(fleetSignInUrl(assertion))
 }
 
 export interface StaffCommand { command: string; action: string; target: string; version: number; reason: string; details: Record<string, unknown> }

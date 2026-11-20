@@ -79,6 +79,26 @@
           </p>
         </section>
         <template v-else>
+          <section class="admin-card">
+            <h2>Fleet</h2>
+            <p>Open the Muon fleet console in this tab. Only staff accounts can do this.</p>
+            <button
+              type="button"
+              class="cbtn cbtn--primary"
+              data-tid="admin-open-fleet"
+              :disabled="fleetStage !== ''"
+              @click="openFleetTab"
+            >
+              {{ fleetStage === 'passkey' ? 'Confirming with your passkey…' : fleetStage === 'opening' ? 'Opening Fleet…' : 'Open Fleet' }}
+            </button>
+            <p
+              v-if="fleetMessage"
+              role="alert"
+              data-tid="admin-fleet-error"
+            >
+              {{ fleetMessage }}
+            </p>
+          </section>
           <p class="admin-notice">
             Searches and audit reads are recorded with your account and reason.
           </p>
@@ -238,7 +258,7 @@
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
-import { adminAvailable, confirmStaff, lookupAccount, readAudit, AdminError, type AdminAccount, type AuditEntry } from '@/services/admin/client'
+import { adminAvailable, confirmStaff, openFleet, fleetFailure, lookupAccount, readAudit, AdminError, type AdminAccount, type AuditEntry } from '@/services/admin/client'
 import { storedToken } from '@/services/muon-cloud/api'
 import AdminModeration from '@/components/admin/AdminModeration.vue'
 import AdminAccountActions from '@/components/admin/AdminAccountActions.vue'
@@ -253,6 +273,8 @@ export default class Admin extends Vue {
   reason = ''
   message = ''
   busy = false
+  fleetStage: '' | 'passkey' | 'opening' = ''
+  fleetMessage = ''
   confirmOpen = false
   expires = 0
   account: AdminAccount | null = null
@@ -283,6 +305,15 @@ export default class Admin extends Vue {
       : error instanceof DOMException && (error.name === 'NotSupportedError' || error.name === 'SecurityError')
         ? 'Passkeys are unavailable in this browser. No staff access was opened.'
         : error instanceof Error ? error.message : 'Staff tools could not be reached. Try again.'
+  }
+
+  async openFleetTab () {
+    if (this.fleetStage) return
+    this.fleetMessage = ''
+    try {
+      // The staff passkey confirmation is good for two minutes; reuse it while it is fresh.
+      await openFleet({ confirmed: this.expires * 1000 - Date.now() > 15000, onStage: stage => { this.fleetStage = stage } })
+    } catch (error) { this.fleetMessage = fleetFailure(error) } finally { this.fleetStage = '' }
   }
 
   openConfirm () {

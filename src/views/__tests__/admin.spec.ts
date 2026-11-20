@@ -8,6 +8,8 @@ vi.mock('@/services/admin/client', () => ({
   confirmStaff: vi.fn(),
   lookupAccount: vi.fn(),
   readAudit: vi.fn(),
+  openFleet: vi.fn(),
+  fleetFailure: vi.fn(),
   AdminError: class extends Error { expired = true }
 }))
 const mountPage = () => mount(Admin, { stubs: { RouterLink: { template: '<a><slot /></a>' } } })
@@ -136,5 +138,33 @@ describe('staff read-only page', () => {
     expect(w.text()).not.toContain('private@example.test'); expect((w.vm as any).query).toBe(''); expect((w.vm as any).reason).toBe('')
     expect(w.find('[data-tid=admin-lookup]').exists()).toBe(false)
     w.destroy(); localStorage.clear()
+  })
+})
+
+describe('Open Fleet button', () => {
+  it('is hidden until staff access is confirmed, then opens Fleet reusing the fresh passkey', async () => {
+    vi.mocked(api.confirmStaff).mockResolvedValue({ actor: 'staff', staff_expires_at: Date.now() / 1000 + 120 })
+    vi.mocked(api.openFleet).mockResolvedValue()
+    const w = mountPage()
+    expect(w.find('[data-tid=admin-open-fleet]').exists()).toBe(false)
+    await confirm(w)
+    const button = w.get('[data-tid=admin-open-fleet]')
+    expect(button.text()).toBe('Open Fleet')
+    await button.trigger('click'); await settle()
+    expect(api.openFleet).toHaveBeenCalledWith(expect.objectContaining({ confirmed: true }))
+    w.destroy()
+  })
+  it('shows the stage text and one plain sentence on failure', async () => {
+    vi.mocked(api.confirmStaff).mockResolvedValue({ actor: 'staff', staff_expires_at: Date.now() / 1000 + 120 })
+    vi.mocked(api.fleetFailure).mockReturnValue('Fleet sign-in is not turned on yet.')
+    vi.mocked(api.openFleet).mockImplementation(async (o: any) => { o.onStage('passkey'); await Promise.resolve(); throw new Error('x') })
+    const w = mountPage()
+    await confirm(w)
+    await w.get('[data-tid=admin-open-fleet]').trigger('click')
+    expect(w.get('[data-tid=admin-open-fleet]').text()).toBe('Confirming with your passkey…')
+    await settle()
+    expect(w.get('[data-tid=admin-fleet-error]').text()).toBe('Fleet sign-in is not turned on yet.')
+    expect(w.get('[data-tid=admin-open-fleet]').text()).toBe('Open Fleet')
+    w.destroy()
   })
 })
