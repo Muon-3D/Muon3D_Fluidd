@@ -620,6 +620,7 @@ import { saveSnapshotPrinters, snapshotPrinter } from '@/services/startup/snapsh
 import {
   needsYou,
   printersPage,
+  RouteLabelHold,
   type PrintersPage,
   type PrinterTile,
   type TileGroup,
@@ -675,6 +676,9 @@ function readView (): View {
  * you're signed in; then what is offline. With nothing yet, it welcomes
  * and helps find the first printer.
  */
+/** Outside the component's reactive data: it is written while the page is computed. */
+const routeHold = new RouteLabelHold()
+
 @Component({
   components: {
     DeletionNotice: () => import('@/components/account/DeletionNotice.vue'),
@@ -812,7 +816,8 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
       groups: this.account && !this.deletionPending ? cloudState.layout.groups : [],
       status: cloudState.status,
       activeJob: this.activeJob,
-      signedIn: !!this.account
+      signedIn: !!this.account,
+      routeHold
     })
   }
 
