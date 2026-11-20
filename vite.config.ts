@@ -10,7 +10,7 @@ import content from '@originjs/vite-plugin-content'
 import monacoEditorPluginModule from 'vite-plugin-monaco-editor'
 import checker from 'vite-plugin-checker'
 import version from './vite.config.inject-version'
-import startup, { shellOnly } from './vite.config.startup'
+import startup, { offlineSet } from './vite.config.startup'
 import dns from 'dns/promises'
 import { realpathSync } from 'fs'
 import { muonLinkWeb } from './tools/muon-link-web'
@@ -60,13 +60,12 @@ export default defineConfig(async ({ command, mode }) => {
       ],
       injectManifest: {
         globPatterns: [
-          '**/*.{js,css,html,ttf,woff,woff2,wasm}'
+          '**/*.{js,css,html,ttf,woff,woff2,wasm,glb,jpg,jpeg,png,svg,webp,ico,json}'
         ],
-        // The cloud client loads on demand; /setup must not download it
-        // in the background merely to install the service worker.
-        globIgnores: ['**/muon_link_web*'],
+        // The Bluetooth client's wasm (3 MB) is in the set: without it a
+        // laptop with no internet cannot pair over Bluetooth at all (KAN-5101).
         maximumFileSizeToCacheInBytes: 4 * 1024 ** 2,
-        manifestTransforms: [shellOnly(path.resolve(__dirname, 'dist'))]
+        manifestTransforms: [offlineSet()]
       },
       manifest: {
         name: 'Muon3D',
