@@ -249,14 +249,14 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
     const was = await springs(page)
     await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
     await page.mouse.down()
-    // Three and a bit columns narrower: 4.6 is not a size Quick commands offers, so it snaps to the nearest (8 to 3).
+    // Three and a bit columns narrower: 8.6 is not a size Quick commands offers, so it snaps to the nearest (12 to 8).
     await page.mouse.move(handle.x + handle.width / 2 - column * 3.4, handle.y + handle.height / 2, { steps: 10 })
-    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('style', /--span: 3;/)
+    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('style', /--span: 8;/)
     await expect.poll(async () => (await springs(page)) - was).toBeGreaterThan(0)
     await page.mouse.up()
     await settle(page)
-    // With #398's sizes, span 3 is XS (one row of icon-only buttons, OV-29); S is also three across but two rows.
-    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'XS')
+    // Span 8 by one row is M.
+    await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', 'M')
   })
 
   test('stress: 20 random drags leave a valid layout, which is the one saved', async ({ page, open }) => {
@@ -300,7 +300,7 @@ test.describe('KAN-1956 / KAN-1957 / KAN-1958: edit mode', () => {
 })
 
 /* KAN-2029: Jack's own default Overview, and that a person can build it again by hand. */
-const JACK_ORDER = ['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros']
+const JACK_ORDER = ['stage', 'job', 'filament', 'hotend', 'bed', 'position', 'mode', 'graph', 'trackpad', 'jog', 'lighting', 'macros']
 
 async function boxOf (page: Page, id: string) {
   const b = await page.locator(`[data-cell="${id}"]`).boundingBox()
@@ -309,33 +309,41 @@ async function boxOf (page: Page, id: string) {
 }
 const idsOf = (page: Page) => page.locator('[data-cell]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.cell as string))
 
-/** Row 1 Print mode and Position side by side; row 2 Temperatures across; then the Trackpad, Jog, and Quick commands under Jog (OV-19, OV-29). */
+/**
+ * I-542 (Jack approved v2): the printer, job and filament on top; one row of Hotend, Bed, Position and Print mode;
+ * Temperatures across; the Trackpad with Jog and Lighting stacked on its right; Quick commands the full width.
+ */
 async function expectJackLayout (page: Page) {
   expect(await idsOf(page)).toEqual(JACK_ORDER)
   const grid = (await page.locator('.overview__grid').boundingBox())!
-  const [mode, position, graph, trackpad, jog, macros] = await Promise.all(['mode', 'position', 'graph', 'trackpad', 'jog', 'macros'].map(id => boxOf(page, id)))
+  const [hotend, bed, position, mode, graph, trackpad, jog, lighting, macros] = await Promise.all(['hotend', 'bed', 'position', 'mode', 'graph', 'trackpad', 'jog', 'lighting', 'macros'].map(id => boxOf(page, id)))
   const stage = await boxOf(page, 'stage')
   const filament = await boxOf(page, 'filament')
   // The printer, job and filament stay on top.
-  expect(mode.y).toBeGreaterThan(stage.y + stage.height - 2)
-  expect(mode.y).toBeGreaterThan(filament.y + filament.height - 2)
-  // Row 1: Print mode and Position side by side, filling the row.
-  expect(Math.abs(mode.y - position.y)).toBeLessThan(2)
-  expect(position.x).toBeGreaterThan(mode.x + mode.width - 2)
-  expect(Math.abs(mode.x - grid.x)).toBeLessThan(2)
-  expect(Math.abs(position.x + position.width - (grid.x + grid.width))).toBeLessThan(2)
-  // Row 2: Temperatures, all the way across.
-  expect(graph.y).toBeGreaterThan(Math.max(mode.y + mode.height, position.y + position.height) - 2)
+  expect(hotend.y).toBeGreaterThan(stage.y + stage.height - 2)
+  expect(hotend.y).toBeGreaterThan(filament.y + filament.height - 2)
+  // One row of their own widgets, filling the row.
+  for (const b of [bed, position, mode]) expect(Math.abs(hotend.y - b.y)).toBeLessThan(2)
+  expect(Math.abs(hotend.x - grid.x)).toBeLessThan(2)
+  expect(bed.x).toBeGreaterThan(hotend.x + hotend.width - 2)
+  expect(position.x).toBeGreaterThan(bed.x + bed.width - 2)
+  expect(mode.x).toBeGreaterThan(position.x + position.width - 2)
+  expect(Math.abs(mode.x + mode.width - (grid.x + grid.width))).toBeLessThan(2)
+  // Temperatures, all the way across.
+  expect(graph.y).toBeGreaterThan(hotend.y + hotend.height - 2)
   expect(Math.abs(graph.x - grid.x)).toBeLessThan(2)
   expect(Math.abs(graph.width - grid.width)).toBeLessThan(2)
-  // Then the Trackpad, Jog on its right, and Quick commands under Jog: out to the right edge and down to the Trackpad's floor (OV-19, OV-29).
+  // The Trackpad, Jog on its right with Lighting under it, ending level with the Trackpad; the row above splits at the same column.
   expect(trackpad.y).toBeGreaterThan(graph.y + graph.height - 2)
   expect(jog.x).toBeGreaterThan(trackpad.x + trackpad.width - 2)
   expect(Math.abs(jog.y - trackpad.y)).toBeLessThan(2)
-  expect(Math.abs(macros.x - jog.x)).toBeLessThan(2)
-  expect(Math.abs(macros.x + macros.width - (grid.x + grid.width))).toBeLessThan(2)
-  expect(macros.y).toBeGreaterThan(jog.y + jog.height - 2)
-  expect(Math.abs(macros.y + macros.height - (trackpad.y + trackpad.height))).toBeLessThan(2)
+  expect(lighting.y).toBeGreaterThan(jog.y + jog.height - 2)
+  expect(Math.abs(lighting.y + lighting.height - (trackpad.y + trackpad.height))).toBeLessThan(2)
+  expect(Math.abs(mode.x - jog.x)).toBeLessThan(2)
+  // Quick commands, the full width under all of it.
+  expect(macros.y).toBeGreaterThan(trackpad.y + trackpad.height - 2)
+  expect(Math.abs(macros.x - grid.x)).toBeLessThan(2)
+  expect(Math.abs(macros.width - grid.width)).toBeLessThan(2)
 }
 
 test.describe('KAN-2029: the default layout', () => {
@@ -362,7 +370,7 @@ test.describe('KAN-2029: the default layout', () => {
     // The widths and heights (columns, rows) of the sizes each tile offers.
     const SIZES: Record<string, Record<string, [number, number]>> = {
       graph: { S: [3, 1], M: [6, 1], L: [12, 1] },
-      mode: { S: [3, 1], M: [6, 1] },
+      mode: { S: [5, 1], M: [6, 1] },
       macros: { S: [3, 1], M: [8, 1], L: [12, 1] }
     }
     // This test is about where tiles go, not the 3D view: with no WebGL the stage draws its fallback at the same size,
@@ -415,15 +423,15 @@ test.describe('KAN-2029: the default layout', () => {
     // Scramble it: Position to the end, Temperatures to the front, a few sizes changed.
     await hold('position', 'macros')
     await hold('graph', 'stage')
-    await resizeTo('macros', 'L')
-    await resizeTo('mode', 'S')
+    await resizeTo('macros', 'M')
+    await resizeTo('mode', 'M')
     await resizeTo('graph', 'S')
     expect(await idsOf(page)).not.toEqual(JACK_ORDER)
 
     // Rebuild: sizes first, then each place in turn gets the tile that belongs there.
     await resizeTo('graph', 'L')
-    await resizeTo('mode', 'M')
-    await resizeTo('macros', 'M')
+    await resizeTo('mode', 'S')
+    await resizeTo('macros', 'L')
     for (let i = 0; i < JACK_ORDER.length; i++) {
       const now = await idsOf(page)
       if (now[i] !== JACK_ORDER[i]) await hold(JACK_ORDER[i], now[i])
@@ -479,8 +487,10 @@ test.describe('the Trackpad panel', () => {
     const printer = await usePrinter(page, PRESETS.idleHomed())
     await open('/')
     await expect(page.locator('[data-cell="jog"]')).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Home all' })).toHaveCount(1)
-    await page.getByRole('button', { name: 'Home all' }).click()
+    // Quick commands also lead with a Home all (I-542), so the Trackpad's own is found in the Trackpad.
+    const home = page.locator('[data-tile="trackpad"]').getByRole('button', { name: 'Home all' })
+    await expect(home).toHaveCount(1)
+    await home.click()
     await expect.poll(() => printer.gcode).toContain('G28')
     expect(printer.gcode.filter(g => /^G28 /.test(g))).toEqual([])
   })

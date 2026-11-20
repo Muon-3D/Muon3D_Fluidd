@@ -201,7 +201,7 @@ test.describe('off-account nearby printers', () => {
     const bluetooth = printer.getByRole('button', { name: 'Connect over Bluetooth', exact: true })
     await expect(bluetooth).toBeEnabled()
     await bluetooth.click()
-    await expect(page.getByText("This printer is locked", { exact: false })).toBeVisible()
+    await expect(page.getByText('This printer is locked', { exact: false })).toBeVisible()
   })
 })
 

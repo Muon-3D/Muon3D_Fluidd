@@ -27,7 +27,7 @@ describe('saving and loading the Overview layout', () => {
 
   it('returns the copy to send to the printer settings', () => {
     const record = saveLayout(ctx, mine, memory(), 123)
-    expect(record).toEqual({ version: 1, savedAt: 123, ...mine })
+    expect(record).toEqual({ version: 2, savedAt: 123, ...mine })
   })
 
   it('follows the person to another browser through the printer settings', () => {
@@ -56,7 +56,7 @@ describe('saving and loading the Overview layout', () => {
   })
 
   it('cleans a saved copy that names tiles it should not', () => {
-    const storage = memory({ [layoutKey('acc-1', 'boxwood')]: JSON.stringify({ version: 1, savedAt: 1, tiles: [{ id: 'ghost', span: 4 }, { id: 'job', span: 40, rows: 9 }], hidden: [] }) })
+    const storage = memory({ [layoutKey('acc-1', 'boxwood')]: JSON.stringify({ version: 2, savedAt: 1, tiles: [{ id: 'ghost', span: 4 }, { id: 'job', span: 40, rows: 9 }], hidden: [] }) })
     expect(loadLayout(ctx, undefined, storage, defs)).toEqual({ tiles: [{ id: 'job', span: 12, rows: 4 }], hidden: ['stage', 'bed'] })
   })
 

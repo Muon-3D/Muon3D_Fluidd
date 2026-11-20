@@ -14,18 +14,18 @@ test.beforeEach(async ({ page, account }) => {
   await page.goto('/')
   await ready(page)
   await page.evaluate(async id => {
-    const { chooseRouteMode } = await import(/* @vite-ignore */ '/src/services/muon-cloud/route-choice.ts')
-    const { activateCloudPrinter } = await import(/* @vite-ignore */ '/src/services/muon-cloud/activate.ts')
+    const { chooseRouteMode } = await import(/* @vite-ignore */ '../../../../../../../../src/services/muon-cloud/route-choice.ts')
+    const { activateCloudPrinter } = await import(/* @vite-ignore */ '../../../../../../../../src/services/muon-cloud/activate.ts')
     chooseRouteMode(id, 'cloud')
     await activateCloudPrinter(id)
   }, ROUTE_PRINTER.id)
   await expect.poll(async () => (await routeCounts(page)).routes.at(-1)).toBe('cloud')
   await expect.poll(() => page.evaluate(async () => {
-    const actions = await import(/* @vite-ignore */ '/e2e/fakes/routeActions.ts')
+    const actions = await import(/* @vite-ignore */ '../../../../../../../../e2e/fakes/routeActions.ts')
     return actions.where()
   })).toMatchObject({ switching: null, socketOpen: true, activeCloud: ROUTE_PRINTER.id })
   await page.evaluate(async path => {
-    const { default: router } = await import(/* @vite-ignore */ '/src/router/index.ts')
+    const { default: router } = await import(/* @vite-ignore */ '../../../../../../../../src/router/index.ts')
     await router.push(`${path}/jobs`)
     ;(window as any).__e2eRoute.upload = { outcome: 'ok', maxStep: 4, attempts: [], listings: [] }
   }, PRINTER)
@@ -66,7 +66,7 @@ test('a mid-transfer cut publishes neither the file nor any temporary entry, eve
   await expect(page.getByTestId('jobs-row')).toHaveCount(5)
   const names = await page.getByTestId('jobs-row').locator('b').allTextContents()
   const filenames = await page.evaluate(async () => {
-    const { default: store } = await import(/* @vite-ignore */ '/src/store/index.ts')
+    const { default: store } = await import(/* @vite-ignore */ '../../../../../../../../src/store/index.ts')
     return store.state.files.pathFiles.gcodes.files.map((file: any) => file.filename)
   })
   await page.evaluate(() => { (window as any).__e2eRoute.upload.outcome = 'cut' })
@@ -76,7 +76,7 @@ test('a mid-transfer cut publishes neither the file nor any temporary entry, eve
   const count = await page.evaluate(async () => {
     const state = (window as any).__e2eRoute.upload
     const count = state.listings.length
-    const { SocketActions } = await import(/* @vite-ignore */ '/src/api/socketActions.ts')
+    const { SocketActions } = await import(/* @vite-ignore */ '../../../../../../../../src/api/socketActions.ts')
     await SocketActions.serverFilesGetDirectory('gcodes', 'gcodes')
     return count
   })

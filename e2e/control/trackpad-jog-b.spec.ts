@@ -37,7 +37,7 @@ async function withLayout (page: Page, printer: PrinterHandle, tiles: Array<{ id
     Storage.prototype.getItem = function (this: Storage, key: string) {
       return key.startsWith('muon.overview.layout.v3') ? json : get.call(this, key)
     }
-  }, JSON.stringify({ version: 1, savedAt: 1, tiles, hidden: [] }))
+  }, JSON.stringify({ version: 2, savedAt: 1, tiles, hidden: [] }))
 }
 
 /** Drag on the pad from one fraction of it to another, without lifting; returns the readout shown under the pointer. */
@@ -255,7 +255,8 @@ test.describe('CT-03: one Home control, a full G28', () => {
     const printer = await usePrinter(page, PRESETS.idleHomed())
     await open('/')
     await expect(page.locator('[data-cell="jog"]')).toBeVisible()
-    const homes = page.getByRole('button', { name: 'Home all' })
+    // Quick commands also lead with Home all (I-542), so the Trackpad's own is found in the Trackpad.
+    const homes = trackpadTile(page).getByRole('button', { name: 'Home all' })
     await expect(homes).toHaveCount(1)
     const head = await trackpadTile(page).getByTestId('move-homes').boundingBox()
     const pad = await trackpadTile(page).getByTestId('move-trackpad').boundingBox()
@@ -281,7 +282,7 @@ test.describe('CT-03: one Home control, a full G28', () => {
 })
 
 test.describe('OV-27 / KAN-2119: Jog B at every size', () => {
-  for (const [size, span, rows] of [['S', 3, 2], ['M', 4, 2], ['L', 8, 2]] as const) {
+  for (const [size, span, rows] of [['S', 3, 2], ['M', 4, 2], ['L', 5, 1]] as const) {
     test(`${size}: the cross pad, Plate up and Plate down, one step row, nothing blank under it`, async ({ page, open }) => {
       const printer = await usePrinter(page, PRESETS.idleHomed())
       await withLayout(page, printer, [{ id: 'trackpad', span: 4, rows: 3 }, { id: 'jog', span, rows }])

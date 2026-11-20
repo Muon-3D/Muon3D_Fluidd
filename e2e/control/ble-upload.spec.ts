@@ -11,9 +11,9 @@ test.beforeEach(async ({ page, open }) => {
   await usePrinter(page, PRESETS.idleHomed(), { ticks: false })
   await open('/system')
   await page.evaluate(async ({ port, prefix }) => {
-    const fixture = await import(/* @vite-ignore */ '/e2e/fakes/managedBluetooth.ts')
+    const fixture = await import(/* @vite-ignore */ '../../../../../../../../e2e/fakes/managedBluetooth.ts')
     ;(window as any).managedBle = await fixture.managedBluetooth(`http://localhost:${port}`, { operator: true })
-    const { default: router } = await import(/* @vite-ignore */ '/src/router/index.ts')
+    const { default: router } = await import(/* @vite-ignore */ '../../../../../../../../src/router/index.ts')
     await router.push(`${prefix}/jobs`)
   }, { port: MOCK_PORT, prefix: PRINTER })
   await expect.poll(() => page.evaluate(() => (window as any).managedBle.label())).toBe('Via Bluetooth')

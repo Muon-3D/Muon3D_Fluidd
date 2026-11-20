@@ -271,7 +271,7 @@
       data-tid="lighting-unavailable"
     >
       <b>Not available on this printer</b>
-      <span>{{ size === 'S' ? 'No lights to set.' : 'The M1 light strips are set through its LED_MODE macro, which this printer has not reported.' }}</span>
+      <span>{{ size === 'S' ? 'No lights to set.' : 'The M1 light strips are set through its LED_MODE command, which this printer has not reported.' }}</span>
     </div>
   </tile-shell>
 </template>

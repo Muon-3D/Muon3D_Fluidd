@@ -97,7 +97,7 @@ test('S, M and L draw different things, not the same thing scaled', async ({ pag
   test.skip(isMobile, 'Sizes are changed on the desktop grid.')
   await usePrinter(page, PRESETS.idleHomed(), { database: true })
   await open('/')
-  await addWidget(page, 'hotend')
+  // Hotend is on the page by default (I-542: the row of their own widgets).
   const hotend = cell(page, 'hotend')
   await expect(hotend).toHaveAttribute('data-size', 'S')
   await expect(hotend.getByTestId('heater-inline-presets')).toHaveCount(0)
@@ -146,7 +146,7 @@ test.describe('springs', () => {
     await grip.focus()
     const was = await started(page)
     await grip.press('Shift+ArrowRight')
-    await expect(cell(page, 'position')).toHaveAttribute('style', /--span: 8/)
+    await expect(cell(page, 'position')).toHaveAttribute('style', /--span: 4/)
     // The resized one and the ones it pushed along.
     await expect.poll(async () => (await started(page)) - was).toBeGreaterThan(1)
     // Each one finishes (waited for, not timed: a busy runner may not draw a frame for seconds).
@@ -163,7 +163,7 @@ test.describe('springs', () => {
     const grip = cell(page, 'position').getByTestId('tile-grip')
     await grip.focus()
     await grip.press('Shift+ArrowRight')
-    await expect(cell(page, 'position')).toHaveAttribute('style', /--span: 8/)
+    await expect(cell(page, 'position')).toHaveAttribute('style', /--span: 4/)
     await page.waitForTimeout(100)
     expect(await started(page)).toBe(0)
     expect(await animating(page)).toBe(0)
@@ -215,7 +215,7 @@ test('phone: the default layout has Movement, the print mode and the filament bo
   test.skip(!isMobile, 'Phone only.')
   await usePrinter(page, PRESETS.idleHomed())
   await open('/')
-  await expect.poll(() => ids(page)).toEqual(['stage', 'job', 'filament', 'mode', 'position', 'graph', 'trackpad', 'jog', 'macros'])
+  await expect.poll(() => ids(page)).toEqual(['stage', 'job', 'filament', 'hotend', 'bed', 'position', 'mode', 'graph', 'trackpad', 'jog', 'lighting', 'macros'])
   await expect(page.locator('[data-tile="trackpad"]')).toBeVisible()
   await expect(page.getByTestId('mode-unavailable')).toBeVisible()
   await expect(page.getByTestId('overview-load-filament')).toBeVisible()
@@ -312,7 +312,7 @@ test('Position X, Y and Z bubbles do not touch, at S, M and L', async ({ page, o
 test('Control: the X, Y and Z readout bubbles do not touch', async ({ page, open }) => {
   await usePrinter(page, PRESETS.idleHomed())
   await open('/control')
-  const readout = page.getByTestId("move-position")
+  const readout = page.getByTestId('move-position')
   await expect(readout).toBeVisible()
   apart(await boxesOf(page, '[data-tid="move-position"] [data-tid^="pos-"]'))
 })

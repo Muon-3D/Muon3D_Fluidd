@@ -35,23 +35,25 @@ const L = (span: number, rows = 1): SizeVariant => ({ key: 'L', span, rows })
 /** In reading order, which is also the phone order. The default layout is the widgets with `defaultOn`, in this order. */
 export const widgetMeta: WidgetMeta[] = [
   // The current Overview: the printer on the left, the job and filament stacked on its right.
-  { id: 'stage', title: 'Printer view', category: 'Printer', blurb: 'The live 3D view of the printer. It needs both rows, so it has no S.', sizes: [M(8, 2), L(12, 2)], size: 'M', defaultOn: true },
-  { id: 'job', title: 'Print job', category: 'Print', blurb: 'What is printing, or last printed, with time left.', sizes: [S(), M(4), L(4, 2)], size: 'M', defaultOn: true },
-  { id: 'filament', title: 'Filament', category: 'Print', blurb: 'The spool in the printer, by type and colour.', sizes: [S(), M(4), L(4, 2)], size: 'M', defaultOn: true },
+  { id: 'stage', title: 'Printer view', category: 'Printer', blurb: 'The live 3D view of the printer. It needs both rows, so it has no S.', sizes: [M(7, 2), L(12, 2)], size: 'M', defaultOn: true },
+  { id: 'job', title: 'Print job', category: 'Print', blurb: 'What is printing, or last printed, with time left.', sizes: [S(), M(5), L(5, 2)], size: 'M', defaultOn: true },
+  { id: 'filament', title: 'Filament', category: 'Print', blurb: 'The spool in the printer, by type and colour.', sizes: [S(), M(5), L(5, 2)], size: 'M', defaultOn: true },
   // Jack's own default (KAN-2029): the printer, job and filament on top; then Print mode and Position
   // side by side, Temperatures all the way across, then the Trackpad, Jog, and Quick commands under Jog.
-  { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(), M(6)], size: 'M', defaultOn: true, legacy: ['speed'] },
-  { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(6), L(8)], size: 'M', defaultOn: true },
+  // I-542 mock: one row of their own widgets under the printer view: Hotend, Bed, Position, Print mode, Motors off (2+2+3 columns over the Trackpad, 5 over Jog and Lighting: everything splits at column 7).
+  { id: 'hotend', title: 'Hotend', category: 'Temperature', blurb: 'Hotend temperature and target.', sizes: [S(1, 2), M(6)], size: 'S', defaultOn: true },
+  { id: 'bed', title: 'Bed', category: 'Temperature', blurb: 'Bed temperature and target.', sizes: [S(1, 2), M(6)], size: 'S', defaultOn: true },
+  { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(4), L(8)], size: 'S', defaultOn: true },
+  { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(1, 5), M(6)], size: 'S', defaultOn: true, legacy: ['speed'] },
   { id: 'graph', title: 'Temperatures', category: 'Temperature', blurb: 'The temperature graph. Hotend, bed and chamber show to begin with.', sizes: [S(), M(6), L(12)], size: 'L', defaultOn: true },
   // Jack's picks B (KAN-2077/2119): the Trackpad is a narrow, tall block on the left (4 columns, 3 rows); Jog is
   // the wide variant on its right (8 columns, 2 rows), and Quick commands sits directly under Jog, out to the right
   // edge and down to the Trackpad's floor (8 columns, 1 row; OV-19, OV-29).
-  { id: 'trackpad', title: 'Trackpad', category: 'Motion', blurb: 'Tap or drag the bed and let go: the head moves there.', sizes: [S(2), M(4, 3), L(6, 3)], size: 'M', defaultOn: true },
-  { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Arrows for the head, Plate up and Plate down, and the step.', sizes: [S(2), M(4, 2), L(8, 2)], size: 'L', defaultOn: true },
-  { id: 'macros', title: 'Quick commands', category: 'Tools', blurb: 'The commands you press most.', sizes: [XS(), S(2), M(8), L(12)], size: 'M', defaultOn: true },
+  { id: 'trackpad', title: 'Trackpad', category: 'Motion', blurb: 'Tap or drag the bed and let go: the head moves there.', sizes: [S(2), M(4, 3), L(7, 2)], size: 'L', defaultOn: true },
+  { id: 'jog', title: 'Jog', category: 'Motion', blurb: 'Arrows for the head, Plate up and Plate down, and the step.', sizes: [S(2), M(4, 2), L(5, 1)], size: 'L', defaultOn: true },
+  { id: 'lighting', title: 'Lighting', category: 'Tools', blurb: 'The M1 lights: on and off, colour, effect, brightness and presets.', sizes: [S(), M(6), L(5, 1)], size: 'L', defaultOn: true },
+  { id: 'macros', title: 'Quick commands', category: 'Tools', blurb: 'The commands you press most.', sizes: [XS(), S(2), M(8), L(12, 1)], size: 'L', defaultOn: true },
   // Off until added (the Temperatures graph already shows both).
-  { id: 'hotend', title: 'Hotend', category: 'Temperature', blurb: 'Hotend temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: false },
-  { id: 'bed', title: 'Bed', category: 'Temperature', blurb: 'Bed temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: false },
   { id: 'fans', title: 'Fans', category: 'Tools', blurb: 'Part cooling and the other fans.', sizes: [S(), M(4), L(6, 2)], size: 'S', defaultOn: false },
   // Off until added.
   // Never on a Muon printer (see muonHidden); in Add widget on the others.
@@ -59,7 +61,6 @@ export const widgetMeta: WidgetMeta[] = [
   { id: 'camera', title: 'Camera', category: 'Printer', blurb: 'The webcam.', sizes: [S(), M(6, 2), L(12, 2)], size: 'M', defaultOn: false },
   { id: 'bedmesh', title: 'Bed mesh', category: 'Print', blurb: 'The bed mesh, as numbers.', sizes: [S(), M(6, 2), L(8, 2)], size: 'M', defaultOn: false },
   { id: 'console', title: 'Console', category: 'Tools', blurb: 'The last lines of the console.', sizes: [M(6, 2), L(12, 2)], size: 'M', defaultOn: false },
-  { id: 'lighting', title: 'Lighting', category: 'Tools', blurb: 'The M1 lights: on and off, colour, effect, brightness and presets.', sizes: [S(), M(6), L(6, 2)], size: 'M', defaultOn: false },
   { id: 'system', title: 'Power and system', category: 'Tools', blurb: 'CPU, memory, disk and uptime.', sizes: [S(), M(4, 2), L(6, 2)], size: 'M', defaultOn: false },
   { id: 'care', title: 'Care', category: 'Tools', blurb: 'The next maintenance task due.', sizes: [S(), M(4), L(6, 2)], size: 'M', defaultOn: false },
   { id: 'library', title: 'Print next', category: 'Library', blurb: 'A Library shelf, so an idle printer always offers its next print.', sizes: [M(6), L(12)], size: 'L', defaultOn: false }
