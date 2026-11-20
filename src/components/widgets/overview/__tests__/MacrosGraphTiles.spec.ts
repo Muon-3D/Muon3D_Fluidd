@@ -49,6 +49,19 @@ describe('MacrosTile', () => {
     w.destroy()
   })
 
+  it('the full-width default set: while printing, what moves or calibrates waits; filament and Lights off stay', async () => {
+    const store = tileStore({ printing: true })
+    withMacros(store, [])
+    Vue.set(store.getters, 'printer/getAvailableCommands', { BED_MESH_CALIBRATE: {}, LOAD_FILAMENT: {}, LED_MODE: {} })
+    const w = mount(MacrosTile, tileMount(store, { propsData: { size: 'L' }, stubs: { ...tileMount(store).stubs, 'control-macros': true } }))
+    await w.vm.$nextTick()
+    expect(w.find('[data-macro="home"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-macro="mesh"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-macro="load"]').attributes('disabled')).toBeUndefined()
+    expect(w.find('[data-macro="lights-off"]').attributes('disabled')).toBeUndefined()
+    w.destroy()
+  })
+
   it('opens every macro in a dialog and keeps the console behind the three dots', async () => {
     const store = tileStore()
     withMacros(store, macroList)

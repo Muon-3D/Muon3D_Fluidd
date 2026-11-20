@@ -1,12 +1,20 @@
 import { defaultLayout, layoutKey, readLayout, serverLayoutKey, type OverviewLayout, type TileDefault } from './layout'
 
 /** What is written, in the browser and in the printer's settings. */
-export interface SavedLayout extends OverviewLayout { version: 1; savedAt: number }
+/**
+ * Version 2 (I-542) is the page with Hotend, Bed, Position and Print mode in one row and
+ * Quick commands across the bottom. A copy saved before it (version 1) predates that row,
+ * so it is not read: the new default shows once, with a notice (see `staleLayout`), and
+ * the person's next save, or "Keep this layout", writes the new version.
+ */
+export const LAYOUT_VERSION = 2
+export interface SavedLayout extends OverviewLayout { version: typeof LAYOUT_VERSION; savedAt: number }
 /** Whose layout, on which printer, and of which page ('overview' when not said). */
 export interface LayoutContext { accountId: string | null; printerId: string | null; page?: string }
 type Storage_ = Pick<Storage, 'getItem' | 'setItem'>
 
 function checked (raw: unknown, defs: TileDefault[]): { layout: OverviewLayout; savedAt: number } | null {
+  if ((raw as { version?: unknown } | null)?.version !== LAYOUT_VERSION) return null
   const layout = readLayout(raw, defs)
   if (!layout) return null
   const at = (raw as { savedAt?: unknown }).savedAt
@@ -36,9 +44,18 @@ export function loadLayout (context: LayoutContext, serverLayouts: unknown, stor
   return (server ?? local)?.layout ?? defaultLayout(defs)
 }
 
+/** True when this person has a layout saved before version 2 and none since: the page shows the new default and says so. */
+export function staleLayout (context: LayoutContext, serverLayouts: unknown, storage: Storage_, defs: TileDefault[]): boolean {
+  const fromServer = serverLayouts && typeof serverLayouts === 'object' ? (serverLayouts as Record<string, unknown>)[serverLayoutKey(context.accountId, context.printerId)] : undefined
+  if (checked(fromServer, defs) || fromBrowser(layoutKey(context.accountId, context.printerId, context.page), storage, defs)) return false
+  let local: unknown
+  try { const text = storage.getItem(layoutKey(context.accountId, context.printerId, context.page)); local = text ? JSON.parse(text) : undefined } catch { local = undefined }
+  return [fromServer, local].some(r => !!r && typeof r === 'object' && Array.isArray((r as { tiles?: unknown }).tiles))
+}
+
 /** Keeps the layout in this browser and returns the copy to send to the printer's settings. */
 export function saveLayout (context: LayoutContext, layout: OverviewLayout, storage: Storage_, now: number = Date.now()): SavedLayout {
-  const record: SavedLayout = { version: 1, savedAt: now, tiles: layout.tiles.map(t => ({ ...t })), hidden: [...layout.hidden] }
+  const record: SavedLayout = { version: LAYOUT_VERSION, savedAt: now, tiles: layout.tiles.map(t => ({ ...t })), hidden: [...layout.hidden] }
   try { storage.setItem(layoutKey(context.accountId, context.printerId, context.page), JSON.stringify(record)) } catch { /* the printer still keeps it */ }
   return record
 }

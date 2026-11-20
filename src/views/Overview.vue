@@ -56,6 +56,23 @@
       {{ narrow ? 'Drag the grip to move a widget, or the × to put it away. Add widget brings one back, at the size you pick.' : 'Drag the grip to move a widget and the corner to resize it; it snaps to a size the widget offers. Saved for you, on this printer.' }}
     </p>
 
+    <p
+      v-if="migrated && !editing"
+      class="overview__notice"
+      role="status"
+      data-tid="layout-migrated"
+    >
+      <span>The Overview has a new layout: the temperatures, position and print mode in one row, a bigger trackpad and Quick commands across the bottom. Edit to rearrange it.</span>
+      <button
+        type="button"
+        class="overview__btn"
+        data-tid="layout-keep"
+        @click="keepNew"
+      >
+        Keep this layout
+      </button>
+    </p>
+
     <machine-fault-bar />
 
     <plate-clear-bar />
@@ -283,7 +300,7 @@ import {
 } from '@/services/overview/layout'
 import { reducedMotion, springCurve, springKeyframes } from '@/services/overview/spring'
 import { searchWidgets, treatAsMuon, widgetCategories, widgetsFor, type WidgetCategory } from '@/services/overview/widgets'
-import { loadLayout, saveLayout, type LayoutContext } from '@/services/overview/layout-store'
+import { loadLayout, saveLayout, staleLayout, type LayoutContext } from '@/services/overview/layout-store'
 
 /** A tile as drawn: what the registry says it is, at the size the layout gives it. */
 type DrawnTile = OverviewTileDef & PlacedTile & { sizeKey: string }
@@ -310,6 +327,8 @@ export default class Overview extends Mixins(DevGuardMixin) {
   drag: Drag | null = null
   /** Below 1100 px (tablet and phone) tiles can be moved and hidden but not resized: sizes are the desktop grid. */
   narrow = false
+  /** A layout saved before the I-542 row existed was set aside; the new default shows until it is kept or edited. */
+  migrated = false
   status = ''
   private narrowQuery: MediaQueryList | null = null
   /** Where each tile was before the layout changed, so it can glide to where it is now. */
@@ -413,6 +432,7 @@ export default class Overview extends Mixins(DevGuardMixin) {
   load () {
     if (this.editing) return
     this.layout = loadLayout(this.context, this.savedLayouts, localStorage, this.defs)
+    this.migrated = staleLayout(this.context, this.savedLayouts, localStorage, this.defs)
   }
 
   created () {
@@ -438,12 +458,23 @@ export default class Overview extends Mixins(DevGuardMixin) {
     // A tile left at its own width keeps its own tablet width; a resized one takes half or the whole row.
     const tablet = tile.span > 6 ? 12 : 6
     // On a phone a small widget sits two to a row; anything wider has a row of its own.
-    return { '--span': String(tile.span), '--rows': String(tile.rows), '--tablet': String(tablet), '--phone': String(tile.span <= 3 ? 1 : 2) }
+    return { '--span': String(tile.span), '--rows': String(tile.rows), '--tablet': String(tablet), '--phone': String(tile.span <= 3 && !['mode', 'position'].includes(tile.id) ? 1 : 2) }
   }
 
   titleOf (id: string): string { return this.defs.find(d => d.id === id)?.title ?? id }
 
   /* Edit mode */
+
+  /** Writes the new default as this person's own, so the notice goes and the layout stays. */
+  keepNew () {
+    const record = saveLayout(this.context, this.layout, localStorage)
+    this.$store.dispatch('config/saveByPath', {
+      path: `uiSettings.overview.layouts.${serverLayoutKey(this.context.accountId, this.context.printerId)}`,
+      value: record,
+      server: true
+    })
+    this.migrated = false
+  }
 
   startEdit () {
     this.draft = { tiles: this.layout.tiles.map(t => ({ ...t })), hidden: [...this.layout.hidden] }
@@ -474,6 +505,7 @@ export default class Overview extends Mixins(DevGuardMixin) {
       this.layout = { tiles: record.tiles, hidden: record.hidden }
     }
     this.draft = null
+    this.migrated = false
     this.status = 'Overview saved.'
   }
 
@@ -654,6 +686,7 @@ export default class Overview extends Mixins(DevGuardMixin) {
   &--primary { background: var(--m3d-accent); color: var(--m3d-on-accent, #00201e); &:hover { background: var(--m3d-accent); filter: brightness(1.06); } }
 }
 
+.overview__notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0; padding: 12px 16px; border-radius: 18px; background: var(--m3d-accent-soft, var(--m3d-fill)); color: var(--m3d-text); font-size: 14px; }
 .overview__hint { margin: 0; color: var(--m3d-text-muted); font-size: 13px; }
 .overview__chip {
   min-height: 36px; padding: 0 14px; border-radius: 999px; background: var(--m3d-fill); color: var(--m3d-text); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;

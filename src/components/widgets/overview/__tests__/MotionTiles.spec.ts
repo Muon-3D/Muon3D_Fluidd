@@ -18,7 +18,9 @@ describe('PositionTile', () => {
   it('renders with no data as dashes and not homed', () => {
     const w = m(PositionTile, tileStore({ empty: true }))
     expect(w.text()).toContain('Position')
-    expect(w.findAll('[data-tid="axis"]').wrappers.map(a => a.find('b').text())).toEqual(['—', '—', '—'])
+    // Nothing is homed, so every axis says so and has its own Home (I-542) instead of a number.
+    expect(w.findAll('[data-tid="axis-not-homed"]')).toHaveLength(3)
+    expect(w.findAll('[data-tid^="home-"]')).toHaveLength(3)
     expect(w.find('[data-tid="tile-state"]').text()).toBe('Not homed')
     w.destroy()
   })
@@ -30,25 +32,31 @@ describe('PositionTile', () => {
     w.destroy()
   })
 
-  it('homes Z only from the popover (Home all is on the Trackpad), and refuses while printing', async () => {
-    const w = m(PositionTile, tileStore())
-    await w.find('[data-tid="tile-door"]').trigger('click')
-    expect(w.find('[data-tid="home-xy"]').exists()).toBe(false)
-    expect(w.find('[data-tid="home-all"]').exists()).toBe(false)
+  it('gives only an axis that is not homed its own Home, and refuses while printing', async () => {
+    const homedAll = m(PositionTile, tileStore())
+    expect(homedAll.find('[data-tid="home-z"]').exists()).toBe(false)
+    homedAll.destroy()
+    const store = tileStore()
+    store.state.printer.printer.toolhead.homed_axes = 'xy'
+    const w = m(PositionTile, store)
+    expect(w.find('[data-tid="home-x"]').exists()).toBe(false)
     await w.find('[data-tid="home-z"]').trigger('click')
     expect(sent()).toEqual(['G28 Z'])
     w.destroy()
     resetSocket()
-    const busy = m(PositionTile, tileStore({ printing: true }))
-    await busy.find('[data-tid="tile-door"]').trigger('click')
+    const busyStore = tileStore({ printing: true })
+    busyStore.state.printer.printer.toolhead.homed_axes = 'xy'
+    const busy = m(PositionTile, busyStore)
     expect(busy.find('[data-tid="home-z"]').attributes('disabled')).toBeDefined()
     busy.destroy()
   })
 
-  it('keeps endstops and limits behind the three dots', async () => {
+  it('has Motors off as a small icon in the header, and no endstops menu', async () => {
     const w = m(PositionTile, tileStore())
-    await w.find('[data-tid="tile-more"]').trigger('click')
-    expect(w.findAll('[data-menu]').wrappers.map(i => i.attributes('data-menu'))).toEqual(['motors', 'endstops'])
+    expect(w.find('[data-tid="tile-more"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('Endstops')
+    await w.find('[data-tid="motors-off"]').trigger('click')
+    expect(sent()).toEqual(['M84'])
     w.destroy()
   })
 })

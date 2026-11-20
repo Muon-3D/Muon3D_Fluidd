@@ -34,7 +34,7 @@ async function onlyQuickCommands (page: Page, printer: PrinterHandle, span: numb
     Storage.prototype.getItem = function (this: Storage, key: string) {
       return key.startsWith('muon.overview.layout.v3') ? json : get.call(this, key)
     }
-  }, JSON.stringify({ version: 1, savedAt: 1, tiles: [{ id: 'macros', span, rows }], hidden: [] }))
+  }, JSON.stringify({ version: 2, savedAt: 1, tiles: [{ id: 'macros', span, rows }], hidden: [] }))
 }
 
 test.describe('OV-29: Quick commands grows with its size', () => {
@@ -45,7 +45,15 @@ test.describe('OV-29: Quick commands grows with its size', () => {
       await open('/')
       await expect(page.locator('[data-cell="macros"]')).toHaveAttribute('data-size', size)
       const chips = tile(page).locator('[data-tid="macro-chip"]')
-      const expected = { XS: 5, S: 3, M: 7, L: 11 }[size]
+      if (size === 'L') {
+        // L is the full-width, two-row tile (I-542): its set follows the printer's names, not a count (see overview-i542.spec.ts).
+        await expect(tile(page).locator('[data-macro="home"]')).toHaveCount(1)
+        // A phone has room for three; Purge line is the fourth in the priority order.
+        await expect(tile(page).locator('[data-macro="purge"]')).toHaveCount(isMobile ? 0 : 1)
+        await expect(tile(page).getByTestId('macros-all')).toBeVisible()
+        return
+      }
+      const expected = { XS: 5, S: 3, M: 7 }[size]
       await expect(chips).toHaveCount(expected)
       if (size === 'XS') {
         // Icon-only: no names drawn, each still named for a screen reader and on hover.
@@ -68,16 +76,19 @@ test.describe('OV-29: Quick commands grows with its size', () => {
     })
   }
 
-  test('in the default layout it sits under Jog, out to the right edge and down to the Trackpad floor', async ({ page, open, isMobile }) => {
+  test('in the default layout it takes the full width under the Trackpad, Jog and Lighting', async ({ page, open, isMobile }) => {
     test.skip(isMobile, 'The phone stacks tiles one under another.')
     await usePrinter(page, withCommands())
     await open('/')
     const box = (id: string) => page.locator(`[data-cell="${id}"]`).evaluate(e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y + window.scrollY, w: r.width, h: r.height } })
     const grid = await page.locator('.overview__grid').evaluate(e => { const r = e.getBoundingClientRect(); return { x: r.x, w: r.width } })
-    const [m, j, t] = [await box('macros'), await box('jog'), await box('trackpad')]
+    const [m, j, t, l] = [await box('macros'), await box('jog'), await box('trackpad'), await box('lighting')]
+    expect(Math.abs(m.x - grid.x)).toBeLessThan(2)
     expect(Math.abs(m.x + m.w - (grid.x + grid.w))).toBeLessThan(2)
-    expect(Math.abs(m.x - j.x)).toBeLessThan(2)
-    expect(Math.abs(m.y + m.h - (t.y + t.h))).toBeLessThan(2)
+    expect(m.y).toBeGreaterThanOrEqual(t.y + t.h - 2)
+    // The Trackpad column ends level with Jog and Lighting stacked on its right.
+    expect(Math.abs(t.y + t.h - (l.y + l.h))).toBeLessThan(2)
+    expect(j.y).toBeLessThan(l.y)
   })
 })
 

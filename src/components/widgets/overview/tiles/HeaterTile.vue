@@ -271,6 +271,7 @@ export default class HeaterTile extends Mixins(OverviewMixin) {
 
 <style lang="scss">
 .ht .ot__state { margin-right: 0; }
+.ht--S .ot__state { display: none; }
 .ht .ot__value { color: var(--m3d-text); font-weight: 700; }
 .ht__spark { display: block; margin-top: 6px; }
 @media (max-width: 599px) { .ht .ot__state { display: none; } }

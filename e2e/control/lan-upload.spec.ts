@@ -16,7 +16,7 @@ async function lan (page: Page, options = {}) {
   const url = `${MOCK}/e2e/uploads/${id}`
   expect((await page.request.post(url, { data: options })).ok()).toBe(true)
   await page.addInitScript(({ id, port }) => {
-    ;(window as any).__lanDirectoryReplies = []
+    (window as any).__lanDirectoryReplies = []
     const NativeSocket = window.WebSocket
     window.WebSocket = class extends NativeSocket {
       constructor (url: string | URL, protocols?: string | string[]) {
@@ -31,7 +31,7 @@ async function lan (page: Page, options = {}) {
     }
     const open = XMLHttpRequest.prototype.open
     XMLHttpRequest.prototype.open = function (...args: any[]) {
-      ;(open as any).apply(this, args)
+      (open as any).apply(this, args)
       if (String(args[1]).includes('/server/files/upload')) this.setRequestHeader('X-E2E-Upload-Session', id)
     } as typeof open
   }, { id, port: MOCK_PORT })
@@ -112,7 +112,8 @@ for (const surface of ['Jobs', 'Files'] as const) {
 for (const how of ['button', 'drop'] as const) {
   test(`Jobs ${how}: 3MF is handed to Open in slicer, never POSTed to Moonraker`, async ({ page, open }) => {
     const backend = await lan(page)
-    await page.route('**/slicer/embed.html*', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta name="muon3d-embed-hosts" content="self"><div id="received"></div><script>
+    await page.route('**/slicer/embed.html*', route => route.fulfill({
+      contentType: 'text/html', body: `<!doctype html><meta name="muon3d-embed-hosts" content="self"><div id="received"></div><script>
       const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join(''); let welcomed = false;
       addEventListener('message', e => {
         if (welcomed || e.source !== parent || e.data.type !== 'welcome' || e.data.nonce !== nonce || !e.ports[0]) return;
@@ -120,7 +121,8 @@ for (const how of ['button', 'drop'] as const) {
         e.ports[0].onmessage = m => { if (m.data.event === 'models.open') document.getElementById('received').textContent = JSON.stringify(m.data.data.files.map(f => ({ name: f.name, bytes: Array.from(new Uint8Array(f.bytes)) }))); };
       });
       setInterval(() => { if (!welcomed) parent.postMessage({ protocol: 'printer-bridge', type: 'hello', versions: [1], app: 'lan-slicer', appVersion: '1', nonce, features: ['models.open'] }, location.origin); }, 100);
-      </script>` }))
+      </script>`
+    }))
     await open('/jobs')
     await folder(page, 'Jobs')
     await send(page, 'Jobs', how, 'model.3mf', MODEL)
@@ -190,14 +192,14 @@ test('Jobs: a mid-transfer LAN cut leaves no file or temporary entry, including 
   expect(state.attempts[0].size).toBeLessThan(1024 * 1024)
   const count = await page.evaluate(() => (window as any).__lanDirectoryReplies.length)
   await page.evaluate(async () => {
-    const { SocketActions } = await import(/* @vite-ignore */ '/src/api/socketActions.ts')
+    const { SocketActions } = await import(/* @vite-ignore */ '../../../../../../../../src/api/socketActions.ts')
     await SocketActions.serverFilesGetDirectory('gcodes', 'gcodes/parts')
   })
   await expect.poll(() => page.evaluate(() => (window as any).__lanDirectoryReplies.length)).toBeGreaterThan(count)
   expect(await page.evaluate(() => (window as any).__lanDirectoryReplies.at(-1))).toEqual([])
   await expect(page.getByTestId('jobs-empty')).toBeVisible()
   const files = await page.evaluate(async () => {
-    const { default: store } = await import(/* @vite-ignore */ '/src/store/index.ts')
+    const { default: store } = await import(/* @vite-ignore */ '../../../../../../../../src/store/index.ts')
     return store.state.files.pathFiles['gcodes/parts'].files
   })
   expect(files).toEqual([])

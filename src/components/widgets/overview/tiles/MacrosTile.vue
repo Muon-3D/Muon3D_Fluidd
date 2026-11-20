@@ -7,28 +7,29 @@
     :class="['mt', `mt--${size}`]"
   >
     <div
-      v-if="chips.length"
+      v-if="tiles.length"
       class="mt__chips"
       :class="{ 'mt__chips--icons': iconOnly }"
+      :style="grid"
       data-tid="macro-chips"
     >
       <button
-        v-for="m in chips"
-        :key="m.name"
+        v-for="c in tiles"
+        :key="c.key"
         type="button"
         class="mt__chip"
-        :disabled="!controlReady || (m.disabledWhilePrinting && busy)"
-        :title="tooltipOf(m)"
-        :aria-label="iconOnly ? m.title : undefined"
-        :data-macro="m.name"
+        :disabled="c.disabled"
+        :title="c.tip"
+        :aria-label="iconOnly ? c.title : undefined"
+        :data-macro="c.key"
         data-tid="macro-chip"
-        @click="run(m)"
+        @click="c.go()"
       >
-        <frame-icon :name="iconOf(m)" />
+        <frame-icon :name="c.icon" />
         <span
           v-if="!iconOnly"
           class="mt__label"
-        >{{ m.title }}</span>
+        >{{ c.title }}</span>
       </button>
       <button
         type="button"
@@ -52,7 +53,7 @@
       No quick commands on this printer.
     </p>
     <p
-      v-if="!controlReady && chips.length"
+      v-if="!controlReady && tiles.length"
       class="ot__lock"
     >
       {{ controlLock }}
@@ -119,7 +120,8 @@
 import { Component, Mixins } from 'vue-property-decorator'
 import MacroRunMixin from '@/mixins/macro-run'
 import OverviewMixin from '@/mixins/overview'
-import { QUICK_COMMANDS_MAX, type ShownMacro } from '@/mixins/macros'
+import { type ShownMacro } from '@/mixins/macros'
+import { QUICK_BUSY_BLOCKED, defaultQuick, quickSlots } from '@/services/overview/quick-defaults'
 import type { TileMenuItem } from '@/services/overview/tiles'
 import { macroIcon } from '@/services/macros/icon'
 import TileShell from './TileShell.vue'
@@ -142,10 +144,56 @@ export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
 
   /** How many show besides All commands: XS 5, S 3, M 7, L 11 (a full row each with All commands). */
   get count (): number {
-    return ({ XS: 5, S: 3, M: 7, L: QUICK_COMMANDS_MAX } as Record<string, number>)[this.size] ?? 7
+    return ({ XS: 5, S: 3, M: 7, L: 30 } as Record<string, number>)[this.size] ?? 7
   }
 
   get chips (): ShownMacro[] { return this.quickCommandList(this.count) }
+
+  /** The tile's width, kept up to date (a ResizeObserver), so how many commands fit in a row follows it. */
+  width = 1000
+  private watcher: ResizeObserver | null = null
+
+  mounted () {
+    const el = this.$el as HTMLElement
+    const measure = () => { const w = el.clientWidth - 36; if (w > 0) this.width = w }
+    measure()
+    if (typeof ResizeObserver === 'function') {
+      this.watcher = new ResizeObserver(measure)
+      this.watcher.observe(el)
+    }
+  }
+
+  beforeDestroy () { this.watcher?.disconnect() }
+
+  /** Names the printer has, upper case: its macros and the commands it lists. */
+  get have (): Set<string> {
+    const commands = Object.keys((this.$store.getters['printer/getAvailableCommands'] as Record<string, unknown>) ?? {})
+    return new Set([...this.arrangedMacros.map(m => m.name), ...commands].map(n => n.toUpperCase()))
+  }
+
+  /** L is the full-width row: exactly two rows, as many as fit, the last place always All commands. A person's own picks (Settings, Macros) win over the default set. */
+  get slots (): { perRow: number; shown: number } {
+    const total = this.quickCommandPicks === null ? defaultQuick(this.have).length : this.quickCommandList(30).length
+    return quickSlots(this.width, total)
+  }
+
+  get grid (): Record<string, string> | undefined {
+    return this.size === 'L' ? { '--per': String(this.slots.perRow) } : undefined
+  }
+
+  /** What the buttons are: for L the default set (or the picks) cut to the width, else the old automatic pick. */
+  get tiles (): Array<{ key: string, title: string, icon: string, tip: string, disabled: boolean, go: () => void }> {
+    const ready = this.controlReady
+    const ofMacro = (m: ShownMacro) => ({ key: m.name, title: m.title, icon: this.iconOf(m), tip: this.tooltipOf(m), disabled: !ready || (m.disabledWhilePrinting && this.busy), go: () => this.run(m) })
+    if (this.size !== 'L') return this.chips.map(ofMacro)
+    if (this.quickCommandPicks !== null) return this.quickCommandList(this.slots.shown).map(ofMacro)
+    return defaultQuick(this.have).slice(0, this.slots.shown).map(d => {
+      const macro = this.arrangedMacros.find(m => m.name === d.found)
+      const send = d.gcode ?? d.found
+      const go = d.id === 'home' ? () => this.home() : macro && !d.gcode ? () => this.run(macro) : () => { this.sendTypedGcode(send) }
+      return { key: d.id, title: d.title, icon: d.icon, tip: d.gcode ? `${d.title} (${d.gcode})` : d.found, disabled: !ready || (this.busy && (QUICK_BUSY_BLOCKED.has(d.id) || !!macro?.disabledWhilePrinting)), go }
+    })
+  }
 
   /** The icon for a macro: by what its name says it does, else the bolt. */
   iconOf (m: ShownMacro): string { return macroIcon(m.name) }
@@ -163,7 +211,9 @@ export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
 /* OV-29: the tile reaches its floor; the buttons share the height. */
 .mt > .ot__door { flex: 1 1 auto; }
 .mt__chips { display: grid; flex: 1 1 auto; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); grid-auto-rows: minmax(64px, 1fr); gap: 10px; }
-.mt--L .mt__chips { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.mt--L .mt__chips { grid-template-columns: repeat(var(--per, 8), minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(76px, 1fr)); }
+.mt--L .mt__label { font-size: 14px; }
+.mt--L .mt__chip .frame-icon { width: 26px; height: 26px; }
 .mt--M .mt__chips { grid-template-columns: repeat(8, minmax(0, 1fr)); }
 .mt--S .mt__chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .mt--XS .mt__chips { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(40px, 1fr); gap: 6px; }
@@ -179,7 +229,7 @@ export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
 .mt__chip--more { background: transparent; box-shadow: inset 0 0 0 1px var(--m3d-border-strong); }
 .mt__chip--more .mt__label { color: var(--m3d-text-muted); }
 @media (max-width: 599px) {
-  .mt--L .mt__chips, .mt--M .mt__chips { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .mt--M .mt__chips { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   .mt--XS .mt__chips { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .mt__chip { padding: 8px 4px; }
   .mt__label { font-size: 11.5px; }

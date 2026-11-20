@@ -28,7 +28,7 @@
     "test": "npm run test:unit",
     "test:unit": "vitest --environment jsdom",
     "test:e2e": "playwright test -c e2e/playwright.config.ts",
-    "type-check": "vue-tsc --noEmit -p tsconfig.vitest.json --composite false",
+    "type-check": "node --max-old-space-size=6144 ./node_modules/vue-tsc/bin/vue-tsc.js --noEmit -p tsconfig.vitest.json --composite false",
     "circular-check": "skott --displayMode=file-tree --showCircularDependencies --tsconfig=./tsconfig.app.json",
     "check:setup-budget": "node tools/check-setup-budget.cjs",
     "theme:convert": "cd tools; node convertTheme.cjs",
