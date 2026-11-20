@@ -1,5 +1,3 @@
-import fs from 'fs'
-import path from 'path'
 import type { Plugin } from 'vite'
 
 /**
@@ -88,35 +86,30 @@ const vitePluginStartup = (): Plugin => {
 export default vitePluginStartup
 
 /**
- * Keeps the service worker's precache to the app shell (KAN-525): index.html,
- * the entry scripts and styles it names, the two pages the first frame
- * draws (Printers and Overview, found by filename prefix) and the chunks
- * they all statically import (the same walk tools/check-setup-budget.cjs
- * does), and the fonts. Lazy chunks — Monaco and its workers, the viewer,
- * charts, wasm — are left to the runtime cache in sw.ts, so a fresh install
- * downloads only the shell.
+ * What the service worker precaches (KAN-5101, over KAN-525's shell-only
+ * set). KAN-525 kept the install to the app shell; the lazy chunks, the viewer,
+ * the M1 model, its decoders and the images were left to a runtime cache that
+ * only fills on first use, so a laptop that goes offline after one visit found
+ * the pages half drawn: unstyled, with no model (Jack, 19 Nov, Army demo).
+ *
+ * Now the whole app is the offline set: every script, stylesheet, font,
+ * image, wasm, the M1 .glb and the draco decoder it loads. What is left out is
+ * what the app does not need to draw a page offline: the Monaco code editor
+ * (about 8 MB, config editing only; it stays a runtime cache), the printed
+ * licence texts, and the version probes (release_info.json, build-info.json,
+ * which must always come from the network) and config.json (its own
+ * stale-while-revalidate rule in sw.ts).
+ *
+ * The cost is paid in the background: the worker is registered after the first
+ * paint, in idle time (RegisterServiceWorker.vue), so no first load waits for it.
  */
-export const shellOnly = (distDir: string) => (entries: Array<{ url: string }>) => {
-  const keep = new Set(['index.html'])
-  const queue = [...fs.readFileSync(path.join(distDir, 'index.html'), 'utf8')
-    .matchAll(/(?:src|href)="(?:\.)?\/(assets\/[^"]+\.(?:js|css))"/g)]
-    .map(m => m[1])
-  for (const file of fs.readdirSync(path.join(distDir, 'assets'))) {
-    if (/^(?:Printers|Overview)-[^/]+\.(?:js|css)$/.test(file)) queue.push(`assets/${file}`)
-  }
-  while (queue.length) {
-    const file = queue.shift() as string
-    if (keep.has(file)) continue
-    keep.add(file)
-    if (!file.endsWith('.js')) continue
-    const code = fs.readFileSync(path.join(distDir, file), 'utf8')
-    for (const m of code.matchAll(/(?:\bimport|\bexport)\s*(?:[\w$*{}\s,]*?\bfrom\s*)?["']\.\/([^"']+\.js)["']/g)) {
-      queue.push(`assets/${m[1]}`)
-    }
-  }
+const MONACO = /^(?:monacoeditorwork\/|assets\/(?:setupMonaco|onigasm|codicon|jsonMode|cssMode|htmlMode|tsMode))/
+const NEVER = /^(?:licenses\/|LICENSE|licences\.html|robots\.txt|build-info\.json|release_info\.json|config\.json|manifest\.webmanifest|sw\.js)/
+const OFFLINE_ROOTS = /^(?:index\.html$|assets\/|fonts\/|draco\/|img\/|logo_[^/]+\.svg$|favicon\.ico$|editor\.theme\.json$)/
 
-  const manifest = entries.filter(e => (
-    keep.has(e.url) || /^fonts\/.+\.woff2$/.test(e.url) || /^assets\/.+\.woff2$/.test(e.url)
-  ))
-  return { manifest, warnings: [] as string[] }
-}
+export const isOffline = (url: string) => OFFLINE_ROOTS.test(url) && !MONACO.test(url) && !NEVER.test(url) && !url.endsWith('.map')
+
+export const offlineSet = () => (entries: Array<{ url: string }>) => ({
+  manifest: entries.filter(e => isOffline(e.url)),
+  warnings: [] as string[]
+})

@@ -26,12 +26,14 @@ import M3Toast from '@/components/ui/M3Toast.vue'
 import { activationState } from '@/services/muon-cloud/activate'
 import { applyUpdateWhenIdle } from '@/util/service-worker-update'
 import { watchForNewBuild } from '@/util/build-update'
+import { appPainted } from '@/services/startup/idle'
 import { serviceWorkerAllowed, serviceWorkerMustGo, unregisterServiceWorkers } from '@/util/service-worker-policy'
 
 @Component({ components: { M3Toast } })
 export default class RegisterServiceWorker extends Vue {
   updateSW: ((reloadPage?: boolean) => Promise<void>) | null = null
   needRefresh = false
+  gone = false
   stopWatching: () => void = () => {}
 
   onOfflineReady () {
@@ -72,6 +74,7 @@ export default class RegisterServiceWorker extends Vue {
   }
 
   beforeDestroy () {
+    this.gone = true
     this.stopWatching()
   }
 
@@ -93,6 +96,18 @@ export default class RegisterServiceWorker extends Vue {
       return
     }
     try {
+      // KAN-5101: installing the worker downloads the whole offline set (the
+      // viewer, the 3D model, every page). That is background work: it starts
+      // only once the first page has painted and the browser is idle, never
+      // while the first load is still fetching. /setup mounts without the app,
+      // so the wait is capped.
+      await Promise.race([appPainted(), new Promise(resolve => setTimeout(resolve, 8000))])
+      await new Promise<void>(resolve => {
+        const ric = (window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback
+        if (ric) ric(() => resolve(), { timeout: 4000 })
+        else setTimeout(resolve, 1000)
+      })
+      if (this.gone) return
       const { registerSW } = await import('virtual:pwa-register')
 
       this.updateSW = registerSW({
