@@ -23,10 +23,14 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 15_000 },
   // CI runs --shard=N/6 (14 Nov, KAN-2755: shard 1 of 4 reached the 37 min limit), which cuts the test list into six runs of equal COUNT
-  // in file order (skipped tests count too), not equal time. The slow specs
-  // that load the 3D stage or the editors live in control/heavy/ so they sort
-  // into the first slice and no shard gets all of them. Re-balance by moving a
-  // file in or out of that folder, or add a shard, when a shard drifts toward its 37 min limit.
+  // in file order (skipped tests count too), not equal time. Playwright first buckets tests by their worker options
+  // (a worker-scoped test.use such as launchOptions puts a whole file in a bucket of its own, and every file with the same
+  // override joins it), so those files land in ONE shard whatever their path (KAN-4847: nine 3D specs made shard 3 run
+  // 35 of its 37 min, and any slow runner then cut the Library specs at the end of it). Don't put a worker-scoped override
+  // in a spec for every environment; guard it to the host that needs it. Within a bucket the order is the path, so
+  // the slowest specs live in control/heavy/ and control/stage/, which sort into the first and last slices of
+  // a project. Estimated from the last full run: 28.8, 29.0, 29.5, 25.8, 28.2 and 29.8 min a shard. Re-balance by moving a
+  // file between those folders, or add a shard, when a shard drifts toward its 37 min limit.
   fullyParallel: true,
   workers: process.env.CI ? 2 : 3,
   // Two retries in CI (14 Nov): on the 2-core runner one or two heavy tests a run time out on both of two tries
