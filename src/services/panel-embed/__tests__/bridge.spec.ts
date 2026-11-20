@@ -1,11 +1,56 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PanelBridge, type BridgeHost } from '../bridge'
-import { auxVerdict, readVerb, rpcVerdict, ON_PRINTER } from '../allow'
+import { auxVerdict, gcodeRefusal, gcodeWord, readVerb, refusalNote, rpcVerdict, ON_PRINTER } from '../allow'
 import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION } from '../protocol'
 
 describe('allowlist', () => {
   it('forwards reads and the print controls Control already has', () => {
     for (const m of ['printer.info', 'printer.objects.query', 'printer.print.pause', 'printer.emergency_stop']) expect(rpcVerdict(m)).toBe('forward')
+  })
+
+  // muon-link GATE-7 (crates/muon-link-device/src/policy.rs): what an Operator, and so an Open printer's guest, may do.
+  it('forwards the Operator surface: print, queue, listed G-code, the reads the screen needs', () => {
+    for (const m of [
+      'printer.print.start', 'printer.print.pause', 'printer.print.resume', 'printer.print.cancel', 'printer.emergency_stop',
+      'printer.gcode.script', 'printer.query_endstops.status',
+      'server.job_queue.status', 'server.job_queue.post_job', 'server.job_queue.start', 'server.job_queue.pause', 'server.job_queue.jump',
+      'server.files.list', 'server.files.roots', 'server.files.thumbnails', 'server.history.list', 'server.temperature_store', 'server.gcode_store'
+    ]) expect(rpcVerdict(m)).toBe('forward')
+  })
+
+  it('reads fan and the other verbs by name, field by field', () => {
+    expect(readVerb({ verb: 'fan', fan: 'part', percent: 40.4 })).toEqual({ verb: 'fan', fan: 'part', percent: 40 })
+    for (const bad of [{ fan: 'part', percent: 101 }, { fan: 'part', percent: -1 }, { fan: 'a b', percent: 5 }, { fan: 7, percent: 5 }, { fan: 'part' }]) {
+      expect(readVerb({ verb: 'fan', ...bad })).toBeNull()
+    }
+  })
+
+  it('runs only an exact list of command words, and refuses every way around it', () => {
+    for (const ok of ['M106 S128', 'M107', 'm106 s1 ; fan', 'SET_FAN_SPEED FAN=chamber SPEED=0.5', 'M220 S100\nM221 S100', "SAVE_VARIABLE VARIABLE=muon_material_colour VALUE='\"#fff\"'"]) {
+      expect(gcodeRefusal(ok)).toBe('')
+    }
+    const bypasses = [
+      'N1 G1 X100', 'G 1 X100', 'G01 X1', 'g0 Z5', 'G28', 'G92 X0', 'G2 X1 Y1 I1', 'M104 S300', 'M140 S200', 'M109 S250', 'SET_HEATER_TEMPERATURE HEATER=extruder TARGET=500',
+      'MANUAL_STEPPER STEPPER=x MOVE=10', 'STEPPER_BUZZ STEPPER=stepper_x', 'PROBE', 'PROBE_ACCURACY', 'BED_MESH_CALIBRATE', 'QUAD_GANTRY_LEVEL', 'Z_TILT_ADJUST',
+      'SHAPER_CALIBRATE', 'TEST_RESONANCES AXIS=X', 'SAVE_CONFIG', 'SET_KINEMATIC_POSITION X=0', 'FORCE_MOVE STEPPER=x DISTANCE=1 VELOCITY=1', 'SET_GCODE_OFFSET Z=-5',
+      'FIRMWARE_RESTART', 'RESTART', 'M112', 'M999', 'LOAD_FILAMENT', 'MY_MOVING_MACRO', 'M106 S1\nG1 X5', 'M106 S1\n\nN9 G 1 Y1', 'M106;\nG1 X1',
+      'SAVE_VARIABLE VARIABLE=other VALUE=1', 'SET_PIN PIN=relay VALUE=1', 'SET_PIN PIN=led VALUE=0',
+      'SAVE_VARIABLE VARIABLE=muon_x VALUE=1 VARIABLE=bed_offset', 'SAVE_VARIABLE VARIABLE=bed_offset VARIABLE=muon_x VALUE=1', 'SAVE_VARIABLE VARIABLE=muon_x VALUE=1 EXTRA=2',
+      'SAVE_VARIABLE VARIABLE=muon_x VALUE=1 VALUE=2', 'SAVE_VARIABLE VARIABLE=muon_x', 'SAVE_VARIABLE VARIABLE=muon_X-y VALUE=1', 'SAVE_VARIABLE VARIABLE=muon_ VALUE=1', 'SAVE_VARIABLE VARIABLE=muon_x VALUE=1\nSAVE_VARIABLE VARIABLE=bed_offset VALUE=1', 'G1X10', '%', 'M106 S1\n'.repeat(9)
+    ]
+    for (const bad of bypasses) expect(gcodeRefusal(bad), bad).not.toBe('')
+    for (const bad of [undefined, 5, '', '  ', 'M106 S1'.repeat(100)]) expect(gcodeRefusal(bad)).not.toBe('')
+    expect(gcodeWord('N12 G 1 X5 *71')).toBe('G1')
+    expect(gcodeWord('  ; only a comment')).toBe('')
+  })
+
+  it('names a refused action in plain words, never a method', () => {
+    expect(refusalNote('POST /dev_mode/enter')).toBe("Developer mode is done on the printer itself. Control can't do it for you.")
+    expect(refusalNote('server.muon.protection')).toContain('Changing who can use the printer')
+    expect(refusalNote('POST /update/install')).toContain('Installing an update')
+    expect(refusalNote('POST /wifi/connect')).toContain('Changing the Wi-Fi')
+    expect(refusalNote('machine.reboot')).toContain('Restarting or powering off')
+    expect(refusalNote('something.odd')).toBe("That is done on the printer itself. Control can't do it for you.")
   })
 
   it('answers subscribe and identify itself', () => {
@@ -14,7 +59,7 @@ describe('allowlist', () => {
   })
 
   it('refuses setup, access, power and anything unknown', () => {
-    for (const m of ['printer.gcode.script', 'server.muon.setup.network', 'server.muon.access.answer', 'server.muon.protection', 'machine.reboot', 'machine.services.restart', 'machine.update.full', 'server.aux.proxy', 'printer.restart', '', 42, undefined]) {
+    for (const m of ['server.muon.setup.network', 'server.muon.access.answer', 'server.muon.protection', 'machine.reboot', 'machine.services.restart', 'machine.update.full', 'server.aux.proxy', 'server.files.delete_file', 'server.database.post_item', 'printer.restart', 'printer.firmware_restart', '', 42, undefined]) {
       expect(rpcVerdict(m)).toBe('refuse')
     }
   })
@@ -83,6 +128,22 @@ describe('PanelBridge', () => {
     expect(post).toHaveBeenCalledTimes(2)
     expect(closed).toHaveBeenCalled()
     expect((bridge as unknown as { port: MessagePort }).port).not.toBe(first)
+  })
+
+  it('treats a srcdoc frame (opaque origin) as its own window only, and never one that shares the page origin', () => {
+    const { frame } = setup()
+    frame.setAttribute('sandbox', 'allow-scripts')
+    frame.srcdoc = '<!doctype html><body>screen</body>'
+    const post = vi.spyOn(frame.contentWindow as Window, 'postMessage')
+    hello(frame, 'null', window)
+    hello(frame, window.location.origin)
+    expect(post).not.toHaveBeenCalled()
+    hello(frame)
+    expect(post).toHaveBeenCalledTimes(1)
+    post.mockClear()
+    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin')
+    hello(frame)
+    expect(post).not.toHaveBeenCalled()
   })
 
   it("forwards an allowed call on Control's connection and refuses the rest without sending", async () => {

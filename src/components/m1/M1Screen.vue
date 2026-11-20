@@ -38,28 +38,28 @@
         The printer's screen can't be reached over this connection right now
       </p>
       <div
-        v-else-if="served && hosted"
+        v-else-if="loading"
         class="m1-screen__empty"
-        data-tid="m1-screen-hosted"
+        data-tid="m1-screen-loading"
+        role="status"
       >
-        <p>The printer's screen opens from the printer's own Control page, not from here.</p>
-        <a
-          v-if="localUrl"
-          class="m1-screen__local"
-          :href="localUrl"
-          target="_self"
-          data-tid="m1-screen-local"
-        >Connect locally</a>
+        <p>Loading the printer's screen{{ loadPercent === null ? '' : ` (${loadPercent}%)` }}</p>
+        <progress
+          class="m1-screen__progress"
+          data-tid="m1-screen-progress"
+          max="100"
+          :value="loadPercent === null ? undefined : loadPercent"
+        />
       </div>
       <iframe
-        v-else-if="served"
+        v-else-if="served && html"
         ref="frame"
         class="m1-screen__frame"
-        src="/panel/"
+        :srcdoc="html"
         sandbox="allow-scripts"
         title="The printer's screen"
         data-tid="m1-screen-frame"
-        referrerpolicy="same-origin"
+        referrerpolicy="no-referrer"
       />
     </div>
     <button
@@ -85,9 +85,9 @@ import type { Verb } from '@/services/panel-embed/protocol'
 import { PanelBridge } from '@/services/panel-embed/bridge'
 import Vue from 'vue'
 import { httpClientActions } from '@/api/httpClientActions'
-import { panelOnPrinter, type PanelOnPrinter } from '@/services/panel-embed/served'
-import { NOTIFY_ACTIONS } from '@/services/panel-embed/allow'
-import { mdnsHostFor } from '@/services/muon-cloud/discovery'
+import { cloudState } from '@/services/muon-cloud/state'
+import { loadPanelBundle, type PanelBundle } from '@/services/panel-embed/bundle'
+import { NOTIFY_ACTIONS, gcodeRefusal, refusalNote } from '@/services/panel-embed/allow'
 import { KnobWheel } from '@/services/m1-3d/knob'
 
 /** The zoom in from the model's screen, and back out to it, ms. */
@@ -96,9 +96,18 @@ const FLY_MS = 380
 const BEZEL_PX = 340
 const STRIP_PX = 64
 
-/** Whether the printer has the screen's embed build, asked over the route Control uses for it (not of this page's origin). */
-function panelServed (): Promise<PanelOnPrinter> {
-  return panelOnPrinter(url => Vue.$httpClient.get(url, { responseType: 'text', transformResponse: [v => v], validateStatus: () => true }))
+/**
+ * The printer's screen, asked of the printer itself over the route Control uses for it (LAN, Bluetooth, relay), never of
+ * this page's origin: hosted Control serves no /panel/. Kept by ETag, so a 304 costs no bundle.
+ */
+function panelBundle (key: string | null, onProgress: (loaded: number, total: number) => void): Promise<PanelBundle> {
+  return loadPanelBundle((url, request) => Vue.$httpClient.get(url, {
+    responseType: 'text',
+    transformResponse: [v => v],
+    validateStatus: () => true,
+    headers: request.headers,
+    onDownloadProgress: e => request.onProgress(e.loaded, e.total ?? 0)
+  }), key, onProgress)
 }
 
 /** Each view's bridge, kept out of Vue's reach: Vue must not walk it or its port. */
@@ -195,34 +204,31 @@ export default class M1Screen extends Mixins(ControlMixin) {
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (this.phase === 'in') this.phase = 'open'
     }))
-    const served = await panelServed()
+    this.loading = true
+    const bundle = await panelBundle(this.printerKey, (loaded, total) => { this.loadPercent = total > 0 ? Math.min(100, Math.round(loaded / total * 100)) : null })
+    this.loading = false
     if (this.phase === 'out' || (this as unknown as { _isDestroyed?: boolean })._isDestroyed) return
-    this.served = served === 'unknown' ? null : served === 'yes'
-    this.unreachable = served === 'unknown'
-    if (served === 'yes' && this.hosted) this.findLocalUrl().catch(() => {})
-    else if (served === 'yes') this.$nextTick(() => this.connect())
-  }
-
-  /**
-   * This page is the hosted Control (control.muon3d.com): it serves no /panel/ of its own, so the frame would load a 404.
-   * Over Bluetooth or Muon3D the hosted page can't carry the panel yet (KAN-3635).
-   */
-  get hosted (): boolean {
-    return !!this.$store.state.config.hostConfig?.hosted
-  }
-
-  /** The printer's own Control page on its network, where the screen is served: opened in this tab. Null until known, or unknown. */
-  localUrl: string | null = null
-
-  async findLocalUrl () {
-    try {
-      const res = await Vue.$httpClient.get('/server/muon/identity')
-      const host = mdnsHostFor(res.data)
-      if (host && !(this as unknown as { _isDestroyed?: boolean })._isDestroyed) this.localUrl = `http://${host}/`
-    } catch {
-      // No name: the message stands without a link.
+    this.served = bundle.state === 'unknown' ? null : bundle.state === 'yes'
+    this.unreachable = bundle.state === 'unknown'
+    if (bundle.state === 'yes') {
+      this.html = bundle.html
+      this.$nextTick(() => this.connect())
     }
   }
+
+  /** Which printer this is, from what Control holds (its address, and the printer id on a managed route), never from what a printer says. */
+  get printerKey (): string | null {
+    // Only a printer id Control itself holds counts; on the LAN there is none, so nothing is kept for it.
+    const id = cloudState.activePrinterId
+    return id ? `${this.$store.state.config.apiUrl ?? ''}|${id}` : null
+  }
+
+  /** The screen's page, fetched from the printer. */
+  html = ''
+  /** While the page comes over the route (a Bluetooth link takes a while). */
+  loading = false
+  /** How much of it has come, 0 to 100, or null when the route can't say. */
+  loadPercent: number | null = null
 
   /** Esc, Done or a click outside: fly back out to the model, then close. */
   close () {
@@ -244,7 +250,7 @@ export default class M1Screen extends Mixins(ControlMixin) {
     if (!frame) return
     bridges.set(this, new PanelBridge(frame, {
       rpc: async (method, params) => {
-        const why = this.rpcRefusal(method)
+        const why = this.rpcRefusal(method, params)
         if (why) { this.say(why); throw new Error(why) }
         const result = await this.$socket.emit(method, { params })
         if (result === undefined) throw new Error('The printer refused that.')
@@ -259,7 +265,7 @@ export default class M1Screen extends Mixins(ControlMixin) {
         return why
       }
     }, {
-      onRefused: () => this.say("Confirm on the printer. Control can't do that one for you.")
+      onRefused: what => this.say(refusalNote(what))
     }))
     // Moonraker's notifications, as Control's socket passes them to the store, passed on.
     this.stopActions = this.$store.subscribeAction(action => {
@@ -322,6 +328,12 @@ export default class M1Screen extends Mixins(ControlMixin) {
         this.setHeater(heater, v.target)
         return ''
       }
+      case 'fan': {
+        const fan = v.fan === 'part' ? this.partFan : this.fans.find(f => f.type === 'fan_generic' && f.name === v.fan)
+        if (!fan) return 'That fan is not on this printer.'
+        this.setFan(fan, v.percent)
+        return ''
+      }
       case 'filament': {
         const macros = ((this.$store.getters['macros/getMacros'] as Macro[]) ?? []).filter(m => typeof m.name === 'string')
         const macro = v.action === 'load'
@@ -341,10 +353,18 @@ export default class M1Screen extends Mixins(ControlMixin) {
    * E-STOP button (AppBar estopReady): signed in, connected, Klipper ready.
    * Reads pass.
    */
-  rpcRefusal (method: string): string {
+  rpcRefusal (method: string, params?: Record<string, unknown>): string {
     switch (method) {
       case 'printer.emergency_stop':
         return this.authenticated && this.socketConnected && this.klippyReady ? '' : this.controlLock || this.notReadyReason
+      case 'printer.gcode.script':
+        if (!this.controlReady) return this.controlLock
+        return this.busy ? 'Not while the printer is busy.' : gcodeRefusal(params?.script)
+      case 'server.job_queue.post_job':
+      case 'server.job_queue.start':
+      case 'server.job_queue.pause':
+      case 'server.job_queue.jump':
+        return this.controlReady ? '' : this.controlLock
       case 'printer.print.start':
         if (!this.controlReady) return this.controlLock
         return this.busy ? 'Not while the printer is busy.' : ''
@@ -428,10 +448,11 @@ export default class M1Screen extends Mixins(ControlMixin) {
     p { margin: 0 0 10px; }
   }
 
-  .m1-screen__local {
-    color: #0a6c74;
-    font-weight: 700;
-    text-decoration: underline;
+  .m1-screen__progress {
+    width: 180px;
+    max-width: 100%;
+    height: 8px;
+    accent-color: #0a6c74;
   }
 
   .m1-screen__strip {

@@ -114,12 +114,16 @@ export function isBridgeNotify (m: unknown): m is BridgeNotify {
  * Control runs it with its own gated methods: a jog through the no-go
  * planner and the hand-move wait, home, a heater target within its limits,
  * load or unload as Control's Filament card runs them. Raw G-code is never
- * accepted.
+ * accepted
+ * as a verb: a raw script goes as an rpc `printer.gcode.script`, which
+ * Control checks (no moves, nothing that rewrites the printer's setup).
+ * `fan` is `'part'` (the part-cooling fan) or a fan_generic's name, 0 to 100.
  */
 export type Verb =
   | { verb: 'jog', axis: 'X' | 'Y' | 'Z', by: number }
   | { verb: 'home', axes: '' | 'XY' | 'Z' }
   | { verb: 'heat', heater: 'extruder' | 'heater_bed', target: number }
+  | { verb: 'fan', fan: string, percent: number }
   | { verb: 'filament', action: 'load' | 'unload' }
 
 export type VerbRequest = { id: number, kind: 'verb' } & Verb
