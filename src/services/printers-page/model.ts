@@ -79,6 +79,36 @@ export interface PageSources {
   activeJob: TileJob | null;
   signedIn: boolean;
   foreign?: DirectoryEntry[];
+  /** Keeps a ready tile's route line steady through a route handoff (KAN-4994). Optional: without it each call stands alone. */
+  routeHold?: RouteLabelHold;
+  /** The time, ms, for the hold; defaults to now. */
+  now?: number;
+}
+
+/** How long a route line is held while its replacement is not yet carrying, ms. */
+export const ROUTE_HOLD_MS = 3000
+
+/**
+ * The route line of each ready tile, remembered while a route is carrying, so that a handoff
+ * (Bluetooth to the LAN, say) does not flash a line for a route that is not open: for a moment the
+ * old route has gone, the new one has no address yet, and the entry's cloud record alone would read
+ * "Remote, through Muon3D" though no relay session opens (KAN-4994). The previous line is held until
+ * the new route carries, or ROUTE_HOLD_MS passes with nothing carrying.
+ */
+export class RouteLabelHold {
+  private seen = new Map<string, { label: string, at: number }>()
+
+  /** The line to show: `label` when `carrying`, else the held one while it is fresh. */
+  line (key: string, label: string, carrying: boolean, now: number): string {
+    if (carrying) {
+      this.seen.set(key, { label, at: now })
+      return label
+    }
+    const was = this.seen.get(key)
+    if (was && now - was.at < ROUTE_HOLD_MS) return was.label
+    this.seen.delete(key)
+    return label
+  }
 }
 
 function stateOf (e: DirectoryEntry, status: Record<string, PrinterStatus>): TileState {
@@ -217,7 +247,10 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
   if ((state === 'printing' || state === 'paused') && job?.file) {
     detail = jobName(job.file) ?? e.detail
   } else if (state === 'ready') {
-    detail = viaBluetooth ? 'Via Bluetooth' : remote ? 'Remote, through Muon3D' : entryRouteLabel(e.active, e.host)
+    const line = viaBluetooth ? 'Via Bluetooth' : remote ? 'Remote, through Muon3D' : entryRouteLabel(e.active, e.host)
+    // A route is carrying when Bluetooth is bound, the LAN has an address, or the relay or a local socket is the one Fluidd is on.
+    const carrying = viaBluetooth || !!e.host || e.active !== null
+    detail = src.routeHold ? src.routeHold.line(e.key, line, carrying, src.now ?? Date.now()) : line
   } else if (state === 'unreachable') {
     detail = "Online, but this browser can't reach it"
   } else {

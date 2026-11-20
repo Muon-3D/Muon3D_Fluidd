@@ -3,7 +3,7 @@ import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 import type { CloudPrinter } from '@/services/muon-cloud/api'
 import type { ForeignPrinterRecord, ForeignStatus } from '@/services/foreign-printers/types'
 import { hotspotState } from '@/services/hotspot/model'
-import { groupSummary, heatingTemp, jobName, printersPage, type PageSources, type PrinterTile, type TileJob } from '../model'
+import { groupSummary, heatingTemp, jobName, printersPage, ROUTE_HOLD_MS, RouteLabelHold, type PageSources, type PrinterTile, type TileJob } from '../model'
 
 function entry (key: string, fields: Partial<DirectoryEntry>): DirectoryEntry {
   return {
@@ -483,5 +483,34 @@ describe('heatingTemp', () => {
     }))
     expect(page.printingNow[0].job).toMatchObject({ nozzle: 180, nozzleTarget: 220, bed: 60, bedTarget: 60 })
     expect(heatingTemp(page.printingNow[0].job)).toBe(180)
+  })
+})
+
+describe('route line through a Bluetooth to LAN handoff (KAN-4994)', () => {
+  const lineOf = (e: DirectoryEntry, routeHold: RouteLabelHold, now: number) => {
+    const page = printersPage(sources({ directory: { cloud: [e], local: [], found: [] }, signedIn: true, routeHold, now }))
+    return page.groups.flatMap(g => g.tiles).find(t => t.key === e.key)?.detail ?? page.offline.concat(page.other).find(t => t.key === e.key)?.detail
+  }
+  const bluetooth = () => cloudEntry('p1', 'Boxwood', { host: null, route: 'bluetooth' })
+  // Bluetooth has gone, the LAN has no address yet, and the cloud record alone would read as remote.
+  const between = () => cloudEntry('p1', 'Boxwood', { host: null })
+  const onLan = () => cloudEntry('p1', 'Boxwood', { host: '10.0.0.5', active: 'local' })
+
+  it('holds the Bluetooth line, not "Remote, through Muon3D", until the LAN is carrying', () => {
+    const hold = new RouteLabelHold()
+    expect(lineOf(bluetooth(), hold, 0)).toBe('Via Bluetooth')
+    expect(lineOf(between(), hold, 50)).toBe('Via Bluetooth')
+    expect(lineOf(onLan(), hold, 100)).not.toBe('Via Bluetooth')
+    expect(lineOf(onLan(), hold, 100)).not.toBe('Remote, through Muon3D')
+  })
+
+  it('does not hold forever: with nothing carrying after the hold, its own line shows', () => {
+    const hold = new RouteLabelHold()
+    lineOf(bluetooth(), hold, 0)
+    expect(lineOf(between(), hold, ROUTE_HOLD_MS + 1)).toBe('Remote, through Muon3D')
+  })
+
+  it('without a hold, a printer that was never carried shows its own line', () => {
+    expect(lineOf(between(), new RouteLabelHold(), 0)).toBe('Remote, through Muon3D')
   })
 })
