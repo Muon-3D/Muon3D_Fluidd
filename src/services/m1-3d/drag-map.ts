@@ -24,6 +24,18 @@ export function headToWorld (x: number, y: number): WorldPoint {
   return { x: x - r.plateHalfX, y: r.tipY, z: Y_TOWARD_FRONT ? y - r.plateHalfZ : r.plateHalfZ - y }
 }
 
+/**
+ * The world point of the nozzle tip for a drawn head place (the smoothed
+ * placement, 0 to 1 over each rail, as placeAccurate gives it), so a marker
+ * on the nozzle glides with the head instead of snapping to the raw pose.
+ * The inverse of placeAccurate's rail states, in the head's world X and Z.
+ */
+export function placementToNozzle (p: { headX: number, headZ: number }): WorldPoint {
+  const rail = (state: number, [lo, hi]: readonly [number, number], rest: number) =>
+    Math.min(hi, Math.max(lo, rest + state * ((hi - lo) / 2)))
+  return { x: rail(p.headX, r.travelX, r.nozzleX), y: r.tipY, z: rail(p.headZ, r.travelZ, r.nozzleZ) }
+}
+
 /** Klipper (X, Y) for a world point on the nozzle's plane. */
 export function worldToHead (p: { x: number, z: number }): { X: number, Y: number } {
   return { X: p.x + r.plateHalfX, Y: Y_TOWARD_FRONT ? p.z + r.plateHalfZ : r.plateHalfZ - p.z }

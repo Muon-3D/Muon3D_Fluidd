@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ACCURATE_RIG, placeAccurate } from '../accurate/klipper-map'
-import { clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '../drag-map'
+import { PlacementSmoother } from '../smooth-placement'
+import { clampMm, headToWorld, placementToNozzle, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '../drag-map'
 
 describe('drag-map', () => {
   it('reads back the Klipper X and Y it drew', () => {
@@ -24,6 +25,36 @@ describe('drag-map', () => {
       expect(w.x).toBeCloseTo(nozzle(x, y).x, 6)
       expect(w.z).toBeCloseTo(nozzle(x, y).z, 6)
     }
+  })
+
+  it('places the nozzle marker from the drawn head, so it glides with the model rather than snapping to the raw pose', () => {
+    // Steady state: the drawn place is the pose's own, and the marker is where the pose says.
+    for (const [x, y] of [[50, 40], [100, 100], [150, 150]]) {
+      const w = placementToNozzle(placeAccurate({ x, y, z: 10, led: false, progress: 0 }))
+      expect(w.x).toBeCloseTo(headToWorld(x, y).x, 6)
+      expect(w.z).toBeCloseTo(headToWorld(x, y).z, 6)
+      expect(w.y).toBe(headToWorld(x, y).y)
+    }
+    // A jump to a far place: the first smoothed frame is between the two, as the head is; the raw pose is already there.
+    const known = { headX: true, headZ: true, z: true }
+    const near = placeAccurate({ x: 20, y: 20, z: 10, led: false, progress: 0 })
+    const far = placeAccurate({ x: 180, y: 160, z: 10, led: false, progress: 0 })
+    const smoother = new PlacementSmoother()
+    smoother.step(near, known, 0)
+    const drawn = placementToNozzle(smoother.step(far, known, 16))
+    const from = placementToNozzle(near)
+    const to = placementToNozzle(far)
+    expect(drawn.x).toBeGreaterThan(from.x)
+    expect(drawn.x).toBeLessThan(to.x)
+    expect(drawn.z).toBeGreaterThan(from.z)
+    expect(drawn.z).toBeLessThan(to.z)
+  })
+
+  it('keeps the nozzle marker inside the end stops', () => {
+    const r = ACCURATE_RIG
+    const w = placementToNozzle({ headX: 1.05, headZ: -1.05 })
+    expect(w.x).toBe(r.travelX[1])
+    expect(w.z).toBe(r.travelZ[0])
   })
 
   it('has Klipper +X to the right and +Y toward the front (model +Z), as the jog pad does', () => {
