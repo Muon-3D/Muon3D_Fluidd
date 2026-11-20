@@ -60,6 +60,10 @@
               ><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.7 1-5.9-4.3-4.1 5.9-.8z" /></svg>
             </span>
           </button>
+          <span
+            v-if="p.id === defaultId"
+            class="lpp__badge"
+          >Default</span>
           <span class="lpp__name">{{ p.name }}</span>
         </div>
       </div>
@@ -87,7 +91,7 @@
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
-import { MAX_FAVOURITES, toggleFavourite, type LightPreset } from '@/services/control/lights'
+import { DEFAULT_PRESET_ID, MAX_FAVOURITES, toggleFavourite, type LightPreset } from '@/services/control/lights'
 import { presetGradient } from './preset-look'
 
 /**
@@ -102,6 +106,7 @@ export default class LightsPresetsPopup extends Vue {
   draft: string[] = []
   hint = ''
   max = MAX_FAVOURITES
+  defaultId = DEFAULT_PRESET_ID
 
   isFav (id: string): boolean { return this.draft.includes(id) }
 
@@ -139,6 +144,7 @@ export default class LightsPresetsPopup extends Vue {
 .lpp__star { position: absolute; top: 0; right: 0; width: 44px; height: 44px; padding: 0; border: 0; background: none; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .lpp__star span { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: rgba(0, 0, 0, 0.5); }
 .lpp__name { display: block; margin: 0 6px 6px; padding: 4px 8px; border-radius: 9px; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lpp__badge { position: absolute; top: 8px; left: 8px; padding: 1px 7px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 10.5px; font-weight: 700; }
 .lpp__actions { display: flex; justify-content: flex-end; gap: 10px; }
 .lpp__btn { min-height: 44px; padding: 0 22px; border: 0; border-radius: 12px; background: var(--m3d-fill); color: var(--m3d-text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .lpp__btn--primary { padding: 0 24px; background: var(--m3d-accent); color: var(--m3d-on-accent, #0b2523); }

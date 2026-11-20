@@ -70,7 +70,6 @@
               <h2>Live preview</h2><span>{{ previewName }}</span>
             </div>
             <lights-plan :light="shown" />
-            <span class="lighting__small">Plan view from above: two parallel strips of 40 LEDs run diagonally down through the cavity in the middle of the printer body. They move together for now.</span>
           </section>
 
           <section
@@ -80,39 +79,7 @@
             <div class="lighting__head">
               <h2>Presets</h2><span>Applies to both strips</span>
             </div>
-            <div
-              class="lighting__boxes"
-              data-tid="preset-grid"
-            >
-              <template v-for="(box, i) in lights.boxes">
-                <button
-                  v-if="box.preset"
-                  :key="box.preset.id"
-                  type="button"
-                  class="lighting__box"
-                  :class="{ 'lighting__box--on': box.preset.id === presetId }"
-                  :style="{ background: gradient(box.preset) }"
-                  :aria-pressed="box.preset.id === presetId ? 'true' : 'false'"
-                  :disabled="!canSet"
-                  :data-tid="`preset-${box.preset.id}`"
-                  @click="pick(box.preset)"
-                >
-                  <span class="lighting__bar-name">{{ box.preset.name }}</span>
-                </button>
-                <button
-                  v-else
-                  :key="`more${i}`"
-                  type="button"
-                  class="lighting__box lighting__box--more"
-                  data-tid="presets-more"
-                  @click="openMore"
-                >
-                  <b>+{{ box.more }}</b>
-                  <span>More</span>
-                </button>
-              </template>
-            </div>
-            <div class="lighting__save">
+            <div class="lighting__save lighting__save--top">
               <label>
                 Name for a new preset
                 <input
@@ -131,13 +98,58 @@
                 data-tid="preset-save"
                 @click="savePreset"
               >
-                Save as preset
+                Save current colour as a preset
               </button>
             </div>
             <span
               class="lighting__small"
               data-tid="preset-note"
             >{{ saveNote }}</span>
+            <button
+              type="button"
+              class="lighting__browse"
+              data-tid="presets-browse"
+              @click="openMore"
+            >
+              All presets ({{ lights.presets.length }})
+            </button>
+            <div
+              class="lighting__boxes"
+              data-tid="preset-grid"
+            >
+              <template v-for="(box, i) in lights.boxes">
+                <button
+                  v-if="box.preset"
+                  :key="box.preset.id"
+                  type="button"
+                  class="lighting__box"
+                  :class="{ 'lighting__box--on': box.preset.id === presetId }"
+                  :style="{ background: gradient(box.preset) }"
+                  :aria-pressed="box.preset.id === presetId ? 'true' : 'false'"
+                  :disabled="!canSet"
+                  :data-tid="`preset-${box.preset.id}`"
+                  @click="pick(box.preset)"
+                >
+                  <span
+                    v-if="box.preset.id === defaultId"
+                    class="lighting__badge"
+                    data-tid="preset-default"
+                  >Default</span>
+                  <span class="lighting__bar-name">{{ box.preset.name }}</span>
+                </button>
+                <button
+                  v-else
+                  :key="`more${i}`"
+                  type="button"
+                  class="lighting__box lighting__box--more"
+                  data-tid="presets-more"
+                  @click="openMore"
+                >
+                  <b>+{{ box.more }}</b>
+                  <span>More</span>
+                </button>
+              </template>
+            </div>
           </section>
         </div>
 
@@ -187,14 +199,27 @@
                   v-for="(h, i) in hues"
                   :key="h.hue"
                   type="button"
-                  :aria-label="`Colour ${i + 1} of 10`"
+                  :aria-label="`Colour ${i + 1} of ${hues.length}`"
                   :disabled="!canSet"
                   :data-tid="`swatch-${i}`"
-                  @click="setColour(h.hex)"
+                  @click="setHue(h.hex)"
                 >
                   <span
                     :style="{ background: h.hex }"
-                    :class="{ 'lighting__sw--on': usedColours[slot] === h.hex }"
+                    :class="{ 'lighting__sw--on': isHue(h.hue, slot) }"
+                  />
+                </button>
+                <button
+                  v-if="caps.saturation"
+                  type="button"
+                  aria-label="White"
+                  :disabled="!canSet"
+                  data-tid="swatch-white"
+                  @click="setWhite"
+                >
+                  <span
+                    class="lighting__white"
+                    :class="{ 'lighting__sw--on': isWhite }"
                   />
                 </button>
               </div>
@@ -222,7 +247,6 @@
                 class="lighting__gradient"
                 :style="{ background: lookGradient }"
               />
-              <span class="lighting__small">The strips show colour only, no white. A colour is sent as its hue.</span>
             </template>
             <span
               v-else
@@ -300,15 +324,20 @@
               <h2>API</h2>
               <div
                 role="tablist"
-                aria-label="API layer"
+                aria-label="API call"
               >
                 <button
+                  v-for="t in apiTabs"
+                  :key="t.id"
                   type="button"
                   role="tab"
-                  aria-selected="true"
                   class="lighting__tab"
+                  :class="{ 'lighting__tab--on': apiTab === t.id }"
+                  :aria-selected="apiTab === t.id ? 'true' : 'false'"
+                  :data-tid="`api-tab-${t.id}`"
+                  @click="apiTab = t.id"
                 >
-                  Settings
+                  {{ t.label }}
                 </button>
               </div>
               <button
@@ -320,13 +349,17 @@
                 {{ copied ? 'Copied' : 'Copy' }}
               </button>
             </div>
+            <span
+              class="lighting__small"
+              data-tid="api-address"
+            >This printer: {{ apiBase }}</span>
             <pre
               class="lighting__code"
               data-tid="api-text"
             >{{ apiText }}</pre>
             <ul class="lighting__limits">
               <li>Settings go out at most 3 times a second; the latest wins.</li>
-              <li>Brightness 0–100, speed 5–100. Colours are sent as a hue, 0–360.</li>
+              <li>Brightness 0–100, speed 5–100.</li>
               <li>Per-LED frames come with the printer update.</li>
             </ul>
           </section>
@@ -351,7 +384,7 @@ import LightsMixin from '@/components/lighting/lights-mixin'
 import LightsPlan from '@/components/lighting/LightsPlan.vue'
 import LightsPresetsPopup from '@/components/lighting/LightsPresetsPopup.vue'
 import { presetGradient } from '@/components/lighting/preset-look'
-import { hueToHex, type LightPreset } from '@/services/control/lights'
+import { DEFAULT_PRESET_ID, desaturate, hexToHue, hueToHex, type LightPreset } from '@/services/control/lights'
 import { lightsStore } from '@/services/control/lights-store'
 
 /**
@@ -369,7 +402,11 @@ export default class Lighting extends Mixins(BrowserMixin, LightsMixin) {
   savedNote = false
   slot = 0
   copied = false
-  hues = Array.from({ length: 10 }, (_, i) => ({ hue: i * 36, hex: hueToHex(i * 36) }))
+  apiTab: 'set' | 'read' = 'set'
+  apiTabs: Array<{ id: 'set' | 'read'; label: string }> = [{ id: 'set', label: 'Settings' }, { id: 'read', label: 'Read' }]
+  defaultId = DEFAULT_PRESET_ID
+  /** Fifteen hues, 24 degrees apart. */
+  hues = Array.from({ length: 15 }, (_, i) => ({ hue: i * 24, hex: hueToHex(i * 24) }))
 
   get summary (): string {
     if (!this.shown.on) return 'Lights off'
@@ -380,14 +417,14 @@ export default class Lighting extends Mixins(BrowserMixin, LightsMixin) {
 
   get colourNote (): string {
     const n = this.effect.colours
-    return n === 0 ? 'chosen by the effect' : `both strips · ${n} of ${this.caps.maxColours}`
+    return n === 0 ? 'chosen by the effect' : `both strips · ${n} ${n === 1 ? 'colour' : 'colours'}`
   }
 
   get lookGradient (): string {
     const s = this.shown
     if (s.effect === 'rainbow') return 'linear-gradient(90deg,#ff5a5a,#ffd24a 30%,#4ae38a 55%,#4aa8ff 80%,#a06bff)'
     if (s.effect === 'status') return 'linear-gradient(90deg,#80d6d1,#30d158)'
-    const c = this.usedColours
+    const c = this.usedColours.map(x => desaturate(x, this.shown.saturation))
     return c.length > 1 ? `linear-gradient(90deg,${c.join(',')})` : c[0]
   }
 
@@ -395,7 +432,32 @@ export default class Lighting extends Mixins(BrowserMixin, LightsMixin) {
     return this.savedNote ? 'Saved, and added to your presets.' : 'Saves the current colours and effect as a custom preset.'
   }
 
-  get apiText (): string { return lightsStore.backend.describe(this.shown) }
+  /** This printer's own address, as Control is connected to it. */
+  get apiBase (): string { return String(this.$store.state.config.apiUrl || '').replace(/\/+$/, '') }
+
+  get apiText (): string {
+    return this.apiTab === 'read' ? lightsStore.backend.describeRead(this.apiBase) : lightsStore.backend.describe(this.shown, this.apiBase)
+  }
+
+  get isWhite (): boolean { return (this.shown.saturation ?? 100) === 0 }
+
+  isHue (hue: number, slot: number): boolean {
+    if (this.isWhite) return false
+    const d = Math.abs(hexToHue(this.usedColours[Math.min(slot, this.usedColours.length - 1)] ?? '') - hue)
+    return Math.min(d, 360 - d) <= 1
+  }
+
+  setHue (hex: string) {
+    this.change({ colors: this.coloursWith(hex), on: true, saturation: 100 })
+  }
+
+  setWhite () { this.change({ on: true, saturation: 0 }) }
+
+  coloursWith (hex: string): string[] {
+    const colours = this.shown.colors.slice()
+    colours[Math.min(this.slot, this.effect.colours - 1)] = hex
+    return colours
+  }
 
   gradient (p: LightPreset): string { return presetGradient(p) }
 
@@ -403,13 +465,11 @@ export default class Lighting extends Mixins(BrowserMixin, LightsMixin) {
 
   onSpeed (event: Event) { this.change({ speed: Number((event.target as HTMLInputElement).value) }) }
 
-  setColour (hex: string) { this.setColourAt(this.slot, hex) }
-
   setColourAt (i: number, source: string | Event) {
     const hex = typeof source === 'string' ? source : (source.target as HTMLInputElement).value
     const colours = this.shown.colors.slice()
     colours[Math.min(i, this.effect.colours - 1)] = hex
-    this.change({ colors: colours, on: true })
+    this.change({ colors: colours, on: true, saturation: 100 })
   }
 
   openMore () {
@@ -499,7 +559,12 @@ export default class Lighting extends Mixins(BrowserMixin, LightsMixin) {
 .lighting__card--api { padding: 16px 20px 18px; gap: 10px; }
 .lighting__api-head { display: flex; align-items: center; gap: 8px; }
 .lighting__api-head h2 { flex: 1; color: var(--m3d-text-muted); font-size: 14px; }
-.lighting__tab { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--m3d-accent-soft); color: var(--m3d-accent); font: inherit; font-size: 12.5px; font-weight: 600; }
+.lighting__tab { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: none; color: var(--m3d-text-muted); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.lighting__tab--on { background: var(--m3d-accent-soft); color: var(--m3d-accent); }
+.lighting__white { background: #fff; }
+.lighting__badge { align-self: flex-start; margin: 5px 0 auto 5px; padding: 1px 7px; border-radius: 999px; background: rgb(0 0 0 / 55%); color: #fff; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; }
+.lighting__browse { align-self: flex-start; min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--m3d-accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.lighting__save--top { padding-top: 0; border-top: 0; }
 .lighting__ghost { min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--m3d-fill); color: var(--m3d-text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .lighting__code { margin: 0; padding: 12px; border-radius: 12px; background: var(--m3d-fill-2); color: var(--m3d-text); font-family: var(--m3d-font-mono, ui-monospace, Menlo, Consolas, monospace); font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; }
 .lighting__limits { margin: 0; padding: 0 0 0 16px; display: flex; flex-direction: column; gap: 3px; color: var(--m3d-text-muted); font-size: 12px; }

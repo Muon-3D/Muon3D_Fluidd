@@ -282,7 +282,7 @@ import OverviewMixin from '@/mixins/overview'
 import LightsMixin from '@/components/lighting/lights-mixin'
 import LightsStrip from '@/components/lighting/LightsStrip.vue'
 import TileShell from './TileShell.vue'
-import { hueToHex, previewStrip, type EffectId, type LightPreset } from '@/services/control/lights'
+import { desaturate, hueToHex, previewStrip, type EffectId, type LightPreset } from '@/services/control/lights'
 
 /**
  * The lights on the Overview (KAN-4767), at three sizes. Small is the colour
@@ -326,8 +326,8 @@ export default class LightingTile extends Mixins(OverviewMixin, LightsMixin) {
   get orbStyle () {
     const s = this.shown
     if (!s.on) return { background: '#2c2c2e', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.1)' }
-    const a = s.effect === 'rainbow' ? '#ff5a5a' : s.effect === 'status' ? '#30d158' : s.colors[0]
-    const b = s.effect === 'rainbow' ? '#5a8bff' : s.effect === 'status' ? '#30d158' : (this.effect.colours > 1 ? s.colors[1] : s.colors[0])
+    const a = s.effect === 'rainbow' ? '#ff5a5a' : s.effect === 'status' ? '#30d158' : desaturate(s.colors[0], s.saturation)
+    const b = s.effect === 'rainbow' ? '#5a8bff' : s.effect === 'status' ? '#30d158' : desaturate(this.effect.colours > 1 ? s.colors[1] : s.colors[0], s.saturation)
     return {
       background: `radial-gradient(circle at 35% 28%, rgba(255,255,255,.55), rgba(255,255,255,0) 40%), linear-gradient(135deg, ${a}, ${b})`,
       boxShadow: `0 0 30px 4px ${a}73, inset 0 0 0 1px rgba(255,255,255,.22)`,

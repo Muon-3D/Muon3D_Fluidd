@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  DEFAULT_PRESET_ID,
+  desaturate,
+  ledModeCapabilities,
   BUILTIN_PRESETS,
   FAVOURITES_FULL,
   LED_MODE_CAPABILITIES,
@@ -228,14 +231,15 @@ describe('presets: favourites and More', () => {
   it('with twelve shows seven favourites and +5 More', () => {
     const boxes = presetBoxes(make(12), ['b3', 'b2', 'u0', 'b4', 'b0', 'b1', 'b5'])
     expect(boxes).toHaveLength(8)
-    expect(boxes.slice(0, 7).map(b => b.preset?.id)).toEqual(['b3', 'b2', 'u0', 'b4', 'b0', 'b1', 'b5'])
+    expect(boxes.slice(0, 7).map(b => b.preset?.id)).toEqual(['b2', 'b3', 'u0', 'b4', 'b0', 'b1', 'b5'])
     expect(boxes[7]).toEqual({ preset: null, more: 5 })
   })
 
   it('tops favourites up from the list when there are fewer than seven', () => {
     const boxes = presetBoxes(make(12), ['b3'])
     expect(boxes).toHaveLength(8)
-    expect(boxes[0].preset?.id).toBe('b3')
+    expect(boxes[0].preset?.id).toBe('b2')
+    expect(boxes[1].preset?.id).toBe('b3')
     expect(new Set(boxes.slice(0, 7).map(b => b.preset?.id)).size).toBe(7)
   })
 
@@ -347,7 +351,7 @@ describe('the LED_MODE backend', () => {
   it('starts with the default favourites when nothing is saved, and survives a failed read', async () => {
     const { t } = transport()
     const library = await new LedModeBackend(t).loadLibrary()
-    expect(library.favourites).toEqual(['b3', 'b2', 'b4', 'b0', 'b1', 'b5'])
+    expect(library.favourites).toEqual(['b2', 'b3', 'b4', 'b0', 'b1', 'b5'])
     const broken = await new LedModeBackend({ ...t, dbRead: async () => { throw new Error('offline') } }).loadLibrary()
     expect(broken.presets.map(p => p.id)).toEqual(BUILTIN_PRESETS.map(p => p.id))
   })
@@ -355,5 +359,78 @@ describe('the LED_MODE backend', () => {
   it('describes the call for the API card', () => {
     const { t } = transport()
     expect(new LedModeBackend(t).describe(state())).toBe('POST /printer/gcode/script\n{"script":"LED_MODE MODE=solid H=0 H2=0 BRIGHT=80 SPEED=55"}')
+  })
+})
+
+describe('white (SAT), when the printer supports it', () => {
+  const withSat = { 'gcode_macro LED_MODE': { mode: 'solid', h: 0, h2: 240, bright: 80, speed: 55, sat: 100 } }
+  const without = { 'gcode_macro LED_MODE': { mode: 'solid', h: 0, h2: 240, bright: 80, speed: 55 } }
+
+  it('is supported when the macro keeps a sat variable, and not when it does not', () => {
+    expect(ledModeCapabilities(withSat).saturation).toBe(true)
+    expect(ledModeCapabilities(without).saturation).toBe(false)
+    expect(ledModeCapabilities(undefined).saturation).toBe(false)
+    expect(ledModeCapabilities({}).saturation).toBe(false)
+  })
+
+  it('sends SAT=0 for white and SAT=100 for a colour, so white never sticks', () => {
+    const caps = ledModeCapabilities(withSat)
+    expect(ledModeCommand(state({ saturation: 0 }), caps)).toBe('LED_MODE MODE=solid H=0 H2=0 BRIGHT=80 SPEED=55 SAT=0')
+    expect(ledModeCommand(state({ saturation: 100 }), caps)).toBe('LED_MODE MODE=solid H=0 H2=0 BRIGHT=80 SPEED=55 SAT=100')
+    expect(ledModeCommand(state(), caps)).toContain('SAT=100')
+  })
+
+  it('negative control: without SAT support no SAT is ever sent, and white is dropped from the state', () => {
+    const caps = ledModeCapabilities(without)
+    expect(ledModeCommand(state({ saturation: 0 }), caps)).not.toContain('SAT')
+    expect(patchLight(state(), { saturation: 0 }, caps).saturation).toBeUndefined()
+    expect(readLedMode(without['gcode_macro LED_MODE'], 'solid', caps)?.saturation).toBeUndefined()
+  })
+
+  it('reads sat back, and only sends it for an effect that has colours', () => {
+    const caps = ledModeCapabilities(withSat)
+    expect(readLedMode({ ...withSat['gcode_macro LED_MODE'], sat: 0 }, 'solid', caps)?.saturation).toBe(0)
+    expect(ledModeCommand(state({ effect: 'rainbow', saturation: 0 }), caps)).not.toContain('SAT')
+    expect(ledModeCommand(state({ on: false }), caps)).toBe('LED_MODE MODE=off')
+  })
+
+  it('keeps sat inside 0-100', () => {
+    const caps = ledModeCapabilities(withSat)
+    expect(patchLight(state(), { saturation: -5 }, caps).saturation).toBe(0)
+    expect(patchLight(state(), { saturation: 400 }, caps).saturation).toBe(100)
+  })
+
+  it('draws white as white in the preview, and a colour as itself', () => {
+    expect(desaturate('#ff0000', 0)).toBe('#ffffff')
+    expect(desaturate('#ff0000', 100)).toBe('#ff0000')
+    expect(previewStrip(state({ saturation: 0 }), 0)[0].fill).toBe('#ffffff')
+    expect(previewStrip(state({ saturation: 100 }), 0)[0].fill).toBe('#ff0000')
+  })
+
+  it('a preset keeps its white look through saving, and a printer without SAT shows it as its colour', async () => {
+    const backend = new LedModeBackend({ gcode: () => undefined, dbRead: async () => ({ lights: { library: { presets: [{ id: 'u0', name: 'White', effect: 'solid', colors: ['#ff0000'], saturation: 0 }] } } }), dbWrite: async () => undefined })
+    const library = await backend.loadLibrary()
+    expect(library.presets.find(p => p.id === 'u0')?.saturation).toBe(0)
+  })
+})
+
+describe('the API card text', () => {
+  it('names this printer by its own address, for both the set and the read call', () => {
+    const backend = new LedModeBackend({ gcode: () => undefined, dbRead: async () => ({}), dbWrite: async () => undefined })
+    expect(backend.describe(state(), 'http://boxwood.local')).toBe('POST http://boxwood.local/printer/gcode/script\n{"script":"LED_MODE MODE=solid H=0 H2=0 BRIGHT=80 SPEED=55"}')
+    expect(backend.describeRead('http://boxwood.local')).toBe('GET http://boxwood.local/printer/objects/query?gcode_macro%20LED_MODE')
+  })
+})
+
+describe('presets order', () => {
+  it('Printer status is first, and the default', () => {
+    expect(BUILTIN_PRESETS[0].id).toBe(DEFAULT_PRESET_ID)
+    expect(BUILTIN_PRESETS[0].name).toBe('Printer status')
+  })
+
+  it('stays first in the grid even when the favourites list has it elsewhere (negative control: another favourite keeps its place)', () => {
+    const many = [...BUILTIN_PRESETS, ...Array.from({ length: 6 }, (_, i) => ({ id: `u${i}`, name: `M${i}`, effect: 'solid' as const, colors: ['#ff0000'] }))]
+    expect(presetBoxes(many, ['b3', 'u0', 'b2'])[0].preset?.id).toBe('b2')
+    expect(presetBoxes(many, ['b3', 'u0', 'b0', 'b1', 'b4', 'b5', 'u1'])[0].preset?.id).toBe('b3')
   })
 })

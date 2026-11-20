@@ -11,6 +11,7 @@ import type { Page } from '@playwright/test'
 import { test, expect } from '../fixtures'
 import { overlay, usePrinter, PRESETS } from './printer'
 import { hexToHue, hueToHex, BUILTIN_PRESETS } from '../../src/services/control/lights'
+import { MOCK_PORT } from '../ports'
 
 /** Solid red, 80%: hues 0 and 240 round-trip exactly. */
 const LED = { 'gcode_macro LED_MODE': { mode: 'solid', h: 0, h2: 240, bright: 80, speed: 55 } }
@@ -70,9 +71,9 @@ test.describe('the Lighting page, under Control', () => {
     await page.getByTestId('effect-gradient').click()
     await expect.poll(() => ledScripts(printer.gcode).at(-1)).toBe('LED_MODE MODE=gradient H=0 H2=240 BRIGHT=80 SPEED=55')
 
-    // Swatch 4 is hue 108 (10 hues, 36 apart), for the first colour.
+    // Swatch 4 is hue 72 (15 hues, 24 apart), for the first colour.
     await page.getByTestId('swatch-3').click()
-    const h = hexToHue(hueToHex(108))
+    const h = hexToHue(hueToHex(72))
     await expect.poll(() => ledScripts(printer.gcode).at(-1), { timeout: 5000 }).toBe(`LED_MODE MODE=gradient H=${h} H2=240 BRIGHT=80 SPEED=55`)
 
     await page.getByTestId('lighting-master').click()
@@ -96,7 +97,9 @@ test.describe('the Lighting page, under Control', () => {
     await expect(page.getByTestId('lighting-colour').locator('input[type=color]')).toHaveCount(2)
     await expect(page.getByRole('button', { name: /Add colour/i })).toHaveCount(0)
     // The API card has Settings only, and says frames come with the printer update.
-    await expect(page.getByTestId('lighting-api').getByRole('tab')).toHaveText(['Settings'])
+    await expect(page.getByTestId('lighting-api').getByRole('tab')).toHaveText(['Settings', 'Read'])
+    await expect(page.getByTestId('swatch-white')).toHaveCount(0)
+    await expect(page.getByText(/no white/i)).toHaveCount(0)
     await expect(page.getByTestId('lighting-api')).toContainText('Per-LED frames come with the printer update')
     await expect(page.getByTestId('api-text')).toContainText('LED_MODE MODE=gradient')
   })
@@ -284,7 +287,7 @@ test.describe('the Lighting widget', () => {
     // Next preset from the first one, turning the lights back on.
     await tile.getByTestId('lighting-next').click()
     const first = BUILTIN_PRESETS[0]
-    await expect.poll(() => ledScripts(printer.gcode).at(-1)).toBe(`LED_MODE MODE=solid H=${hexToHue(first.colors[0])} H2=${hexToHue(first.colors[0])} BRIGHT=80 SPEED=55`)
+    await expect.poll(() => ledScripts(printer.gcode).at(-1)).toBe(`LED_MODE MODE=${first.effect} H=${hexToHue(first.colors[0])} H2=${hexToHue(first.colors[0])} BRIGHT=80 SPEED=55`)
     await expect(tile.getByTestId('lighting-power')).toHaveAttribute('aria-pressed', 'true')
   })
 
@@ -389,5 +392,136 @@ test.describe('the library moves to the fluidd namespace', () => {
     await expect(page.getByTestId('preset-grid').getByRole('button')).toHaveCount(8)
     await expect(page.getByTestId('presets-more')).toHaveCount(0)
     expect(stored(printer).presets).toHaveLength(2)
+  })
+})
+
+const SAT_LED = { 'gcode_macro LED_MODE': { mode: 'solid', h: 0, h2: 240, bright: 80, speed: 55, sat: 100 } }
+
+test.describe('the preview, stripped back', () => {
+  test('has no labels, no stray dot and no caption', async ({ page, open }) => {
+    await lightsPrinter(page)
+    await open('/lighting')
+    const plan = page.getByTestId('lights-plan')
+    await expect(plan).toBeVisible()
+    for (const text of ['Spine', 'Display', 'Left · 40', 'Right · 40', 'M1 from above']) await expect(plan).not.toContainText(text)
+    await expect(plan.locator('text')).toHaveCount(0)
+    await expect(plan.locator('.lp__dot')).toHaveCount(0)
+    await expect(page.getByText('Plan view from above')).toHaveCount(0)
+  })
+
+  test('both strips and every LED with its glow sit inside the slot, at this width', async ({ page, open }) => {
+    await lightsPrinter(page)
+    await open('/lighting')
+    await expect(page.getByTestId('lights-plan')).toBeVisible()
+    const result = await page.getByTestId('lights-plan').evaluate(plan => {
+      const slot = plan.querySelector('.lp__slot') as unknown as SVGGeometryElement
+      const inside = (x: number, y: number) => slot.isPointInFill(new DOMPoint(x, y))
+      const outside: string[] = []
+      for (const strip of Array.from(plan.querySelectorAll('.lp__strip')) as SVGPolygonElement[]) {
+        for (const p of Array.from(strip.points)) if (!inside(p.x, p.y)) outside.push(`strip ${p.x},${p.y}`)
+      }
+      const dots = Array.from(plan.querySelectorAll('[data-tid="lights-dot"]')) as SVGCircleElement[]
+      for (const d of dots) {
+        const cx = d.cx.baseVal.value
+        const cy = d.cy.baseVal.value
+        const r = 4.6
+        for (const [x, y] of [[cx - r, cy - r], [cx + r, cy - r], [cx - r, cy + r], [cx + r, cy + r]]) if (!inside(x, y)) outside.push(`led ${cx},${cy}`)
+      }
+      // The check can fail: a point beyond the end of the slot is outside.
+      const canFail = !inside(160, 150 - 120)
+      return { outside, dots: dots.length, canFail }
+    })
+    expect(result.dots).toBe(80)
+    expect(result.canFail).toBe(true)
+    expect(result.outside).toEqual([])
+  })
+})
+
+test.describe('white', () => {
+  test('a printer with SAT shows White and sends SAT=0, then SAT=100 for a colour', async ({ page, open }) => {
+    const printer = await lightsPrinter(page, { status: overlay(PRESETS.idleHomed(), SAT_LED) })
+    await open('/lighting')
+    await expect(page.getByTestId('swatch-white')).toBeVisible()
+    await page.getByTestId('swatch-white').click()
+    await expect.poll(() => ledScripts(printer.gcode).at(-1)).toBe('LED_MODE MODE=solid H=0 H2=0 BRIGHT=80 SPEED=55 SAT=0')
+    await expect(page.getByText(/no white|colour only/i)).toHaveCount(0)
+    await page.getByTestId('swatch-5').click()
+    await expect.poll(() => ledScripts(printer.gcode).at(-1), { timeout: 5000 }).toBe(`LED_MODE MODE=solid H=${hexToHue(hueToHex(120))} H2=${hexToHue(hueToHex(120))} BRIGHT=80 SPEED=55 SAT=100`)
+  })
+
+  test('negative control: a printer without SAT shows no White and sends no SAT', async ({ page, open }) => {
+    const printer = await lightsPrinter(page)
+    await open('/lighting')
+    await expect(page.getByTestId('swatch-5')).toBeVisible()
+    await expect(page.getByTestId('swatch-white')).toHaveCount(0)
+    await page.getByTestId('swatch-5').click()
+    await expect.poll(() => ledScripts(printer.gcode).length).toBeGreaterThan(0)
+    expect(ledScripts(printer.gcode).at(-1)).not.toContain('SAT')
+  })
+
+  test('there are more colours than before', async ({ page, open }) => {
+    await lightsPrinter(page)
+    await open('/lighting')
+    await expect(page.getByTestId('lighting-colour').locator('[data-tid^="swatch-"]')).toHaveCount(15)
+  })
+})
+
+test.describe('presets, reorganised', () => {
+  test('Save current colour as a preset is at the top of the card, above the presets', async ({ page, open }) => {
+    await lightsPrinter(page)
+    await open('/lighting')
+    const save = await page.getByTestId('preset-save').boundingBox()
+    const grid = await page.getByTestId('preset-grid').boundingBox()
+    expect(save!.y).toBeLessThan(grid!.y)
+    await expect(page.getByTestId('preset-save')).toHaveText('Save current colour as a preset')
+  })
+
+  test('Printer status comes first and wears a Default badge; no other preset does', async ({ page, open }) => {
+    await lightsPrinter(page, { presets: 6 })
+    await open('/lighting')
+    await expect(page.getByTestId('preset-grid').getByRole('button').first()).toContainText('Printer status')
+    await expect(page.getByTestId('preset-default')).toHaveCount(1)
+    await expect(page.getByTestId('preset-b2').getByTestId('preset-default')).toHaveText('Default')
+  })
+
+  test('All presets opens a list that scrolls when there are many', async ({ page, open }) => {
+    await lightsPrinter(page, { presets: 24 })
+    await open('/lighting')
+    await page.getByTestId('presets-browse').click()
+    await expect(page.getByTestId('presets-popup')).toBeVisible()
+    await expect(page.locator('[data-tid^="preset-tile-"]')).toHaveCount(30)
+    expect(await page.locator('[role="dialog"]').evaluate(el => el.scrollHeight > el.clientHeight + 4)).toBe(true)
+  })
+
+  test('negative control: with a few presets the list does not scroll', async ({ page, open }) => {
+    await lightsPrinter(page, { presets: 2 })
+    await open('/lighting')
+    await page.getByTestId('presets-browse').click()
+    await expect(page.locator('[data-tid^="preset-tile-"]')).toHaveCount(8)
+    expect(await page.locator('[role="dialog"]').evaluate(el => el.scrollHeight > el.clientHeight + 4)).toBe(false)
+  })
+})
+
+test.describe('the API card', () => {
+  test('Settings and Read are real tabs, and the text carries this printer own address', async ({ page, open }) => {
+    await lightsPrinter(page)
+    await open('/lighting')
+    const api = page.getByTestId('lighting-api')
+    const base = `http://localhost:${MOCK_PORT}`
+    await expect(api.getByTestId('api-address')).toContainText(base)
+    await expect(api.getByTestId('api-text')).toContainText(`POST ${base}/printer/gcode/script`)
+    await expect(api.getByTestId('api-tab-set')).toHaveAttribute('aria-selected', 'true')
+    await api.getByTestId('api-tab-read').click()
+    await expect(api.getByTestId('api-tab-read')).toHaveAttribute('aria-selected', 'true')
+    await expect(api.getByTestId('api-text')).toContainText(`GET ${base}/printer/objects/query?gcode_macro%20LED_MODE`)
+    await expect(api.getByTestId('api-text')).not.toContainText('POST')
+    await api.getByTestId('api-tab-set').click()
+    await expect(api.getByTestId('api-text')).toContainText('POST')
+  })
+
+  test('has no API key lock', async ({ page, open }) => {
+    await lightsPrinter(page)
+    await open('/lighting')
+    await expect(page.getByTestId('lighting-api').getByText(/api key|lock/i)).toHaveCount(0)
   })
 })
