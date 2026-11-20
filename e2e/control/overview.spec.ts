@@ -15,7 +15,8 @@ import { usePrinter, PRESETS } from './printer'
  * the simple model, as in overview-parts.spec.ts.
  */
 const GPU = process.platform === 'win32'
-test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
+// Only on a GPU host: an empty launchOptions override still puts the file in its own worker bucket, and Playwright shards bucket by bucket (KAN-4847).
+if (GPU) test.use({ launchOptions: { args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] } })
 test.beforeEach(async ({ page }) => {
   // An idle printer: the mid-print mock keeps the stage drawing a live toolpath every frame, which on a CI runner
   // without a GPU leaves the page too busy to take a click (the layout is the same either way).

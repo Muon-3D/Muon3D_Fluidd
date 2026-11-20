@@ -15,9 +15,8 @@ test.use({ webgl: true })
 // E2E_M1_SIMPLE=1 tries the simple model's path on Windows too.
 const GPU = process.platform === 'win32' && process.env.E2E_M1_SIMPLE !== '1'
 
-test.use({
-  launchOptions: GPU ? { args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] } : {}
-})
+// Only on a GPU host: an empty launchOptions override still puts the file in its own worker bucket, and Playwright shards bucket by bucket (KAN-4847).
+if (GPU) test.use({ launchOptions: { args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] } })
 
 test.beforeEach(async ({ page }) => {
   if (!GPU) await page.addInitScript(() => localStorage.setItem('m1model', 'simple'))
