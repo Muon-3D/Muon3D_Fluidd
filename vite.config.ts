@@ -210,7 +210,9 @@ export default defineConfig(async ({ command, mode }) => {
   // - no HMR, so an edit while tests run doesn't reload them either.
   ...(e2e ? {
     cacheDir: `.vite-e2e/${process.env.E2E_PORT || '8090'}`,
-    optimizeDeps: { entries: ['index.html', 'src/**/*.vue'] }
+    // Workers are entries too: no page imports parseGcode.worker.ts, so its shlex was only found when the
+    // first test opened a file, which re-optimised and reloaded every open page (KAN-4976).
+    optimizeDeps: { entries: ['index.html', 'src/**/*.vue', 'src/workers/*.ts'] }
   } : {}),
 
   build: {
