@@ -38,21 +38,21 @@
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
 import {
-  AUTO_SWITCH_WITHIN_MS,
   asksToStay,
   couldHaveSecureAddress,
   declinedSwitch,
   findSecureOrigin,
   secureUrl,
   setSwitchesAutomatically,
+  switchDecision,
   switchesAutomatically
 } from '@/services/secure-origin'
 
 /**
  * On the printer's plain-HTTP page, once this browser has proved that the
  * printer's secure address answers (KAN-2198): one calm line offering to move
- * there. A browser that has switched before moves by itself, but only when
- * the proof came soon after load, and never once `?secure=off` was used.
+ * there. A browser moves by itself unless a person chose "stay here" (KAN-5110), but only when
+ * the proof came soon after load and no upload is running, and never once `?secure=off` was used.
  * Nothing shows, and nothing is asked of the network, on any other page.
  */
 @Component({})
@@ -72,7 +72,10 @@ export default class SecureAddressBanner extends Vue {
     const origin = await findSecureOrigin()
     // The app may have replaced this banner while the probes ran.
     if (!origin || this.gone) return
-    if (switchesAutomatically() && Date.now() - started <= AUTO_SWITCH_WITHIN_MS) {
+    const uploads: { complete?: boolean, cancelled?: boolean }[] = this.$store?.state?.files?.uploads ?? []
+    const busy = uploads.some(u => !u.complete && !u.cancelled)
+    if (switchDecision({ auto: switchesAutomatically(), elapsedMs: Date.now() - started, busy }) === 'switch') {
+      // Same tab, and only an origin the probe just proved.
       window.location.replace(secureUrl(origin))
       return
     }

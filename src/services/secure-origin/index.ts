@@ -164,12 +164,15 @@ export function secureUrl (origin: string, location: Pick<Location, 'pathname' |
   return `${origin}${location.pathname}${location.search}${location.hash}`
 }
 
-/** Whether this browser moves to the secure address by itself. On after the first switch; a person can turn it off. */
+/**
+ * Whether this browser moves to the secure address by itself (KAN-5110). On for anyone who has never chosen:
+ * a printer with a proven secure name is used by default. Off only once a person said "stay here" or turned it off.
+ */
 export function switchesAutomatically (): boolean {
   try {
-    return localStorage.getItem(AUTO_KEY) === '1'
+    return localStorage.getItem(AUTO_KEY) !== '0'
   } catch {
-    return false
+    return true
   }
 }
 
@@ -177,7 +180,16 @@ export function setSwitchesAutomatically (on: boolean) {
   try {
     if (on) localStorage.setItem(AUTO_KEY, '1')
     else localStorage.setItem(AUTO_KEY, '0')
-  } catch { /* no storage: ask each time */ }
+  } catch { /* no storage: the default stands */ }
+}
+
+/**
+ * What to do with a proven secure origin: `switch` this tab to it, or `offer` it in the banner. Moves by itself
+ * only when automatic switching is on, the proof came soon after load (a later move would yank the page from
+ * under someone mid-task), and nothing is in flight (a print upload).
+ */
+export function switchDecision (i: { auto: boolean, elapsedMs: number, busy: boolean }): 'switch' | 'offer' {
+  return i.auto && !i.busy && i.elapsedMs <= AUTO_SWITCH_WITHIN_MS ? 'switch' : 'offer'
 }
 
 /**
