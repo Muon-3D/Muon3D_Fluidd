@@ -162,7 +162,6 @@ export default class PositionTile extends Mixins(OverviewMixin) {
     this.cancel()
     if (Math.abs(value - this.position[i]) >= 0.005) this.moveTo(axis === 'X' ? { X: value } : axis === 'Y' ? { Y: value } : { Z: value })
   }
-
 }
 </script>
 
