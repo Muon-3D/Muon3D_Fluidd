@@ -126,6 +126,39 @@ test.describe('Connect locally from the hosted page', () => {
     expect(pages).toEqual([])
   })
 
+  // KAN-4898: Sloe's relay keeps dropping, so the service's nearby list (same public IP + relay link) is empty,
+  // yet the printer told Control its name (identity, read over Bluetooth and kept with the saved printer).
+  test('Sloe with an empty nearby list: Connect locally offers the name the printer reported, and says where it goes', async ({ page, context, account }) => {
+    const pages: string[] = []
+    context.on('page', p => pages.push(p.url()))
+    const asked = await printerPages(page, ['muon-sloe-b26d.local'])
+    await start(page, account, [], true)
+    await optionsOf(page, SLOE.name)
+    await expect(item(page, 'Connect locally')).toBeVisible()
+    const entry = page.locator('.v-list-item', { hasText: 'Connect locally' })
+    await expect(entry).toContainText("Opens the printer's own page in this tab")
+    await expect(entry).not.toContainText('Not found on this network')
+    await item(page, 'Connect locally').click()
+    // Not vouched for by the service, so it says where the tab is going and what to do if it does not load.
+    await expect(page.getByText("Opening muon-sloe-b26d.local. If it doesn't load, join the same Wi-Fi as Sloe b26d.")).toBeVisible()
+    await expect(page).toHaveURL('http://muon-sloe-b26d.local/')
+    expect(asked).toEqual(['http://muon-sloe-b26d.local/'])
+    expect(pages).toEqual([])
+  })
+
+  test('negative control: nothing the printer said and an empty nearby list stays Not found, and the page stays', async ({ page, account }) => {
+    // Sloe's display name implies muon-sloe-b26d.local, but that is a guess: it is never offered on its own.
+    const asked = await printerPages(page, ['muon-sloe-b26d.local'])
+    await start(page, account, [], false)
+    await expect(page).toHaveURL(`${HOSTED}/`)
+    await optionsOf(page, ROUTE_PRINTER.name)
+    await expect(item(page, 'Connect locally')).toBeVisible()
+    await expect(page.locator('.v-list-item', { hasText: 'Connect locally' })).toContainText('Not found on this network')
+    await item(page, 'Connect locally').click({ force: true }).catch(() => undefined)
+    await expect(page).toHaveURL(`${HOSTED}/`)
+    expect(asked).toEqual([])
+  })
+
   test('the page words the not-yours section plainly', async ({ page, account }) => {
     await start(page, account, [{ id: SLOE.id, name: SLOE.name, linked: true, addrs: ['192.168.1.78'] }], false)
     await expect(page.getByText('not yours yet')).toHaveCount(0)

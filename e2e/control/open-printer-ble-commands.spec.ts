@@ -32,7 +32,6 @@ async function openOverBluetooth (page: Page, printer: NearbyFake, slug: string)
   } else {
     // One this browser was paired with before: chosen in Chrome's chooser, then Pair over Bluetooth opens it with no code.
     await page.getByTestId('found-set-up').click()
-    await page.getByTestId('setup-ble-failed').getByTestId('ble-pair-instead').click()
   }
   await expect.poll(() => pairEvents(page), { timeout: 30_000 }).toContain(`connect ${printer.advertised}`)
   await expect(page).toHaveURL(new RegExp(`/${slug}(/|$)`))

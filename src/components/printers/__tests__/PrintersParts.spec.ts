@@ -87,6 +87,12 @@ describe('the found list', () => {
     const none = shallowMount(FoundList, { propsData: { tiles: [found()], actionsFor: () => [] } })
     expect(none.find('.btn--primary').exists()).toBe(false)
   })
+
+  it('offers Connect over Bluetooth, not Set it up, for a chooser pick with no advertisement (KAN-4828)', () => {
+    const pick = shallowMount(FoundList, { propsData: { tiles: [found({ state: 'nearby', entry: { row: { action: 'set-up', checkFirst: true, nearby: {} } } })], actionsFor: () => [] } })
+    expect(pick.find('[data-tid="found-set-up"]').text()).toContain('Connect over Bluetooth')
+    expect(pick.text()).not.toContain('Set it up')
+  })
 })
 
 describe('a printer found over Bluetooth that is set up already (KAN-2123)', () => {

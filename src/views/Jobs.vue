@@ -94,7 +94,39 @@
       {{ printerName }} isn't taking commands right now, so Print, Upload, Rename and Delete are off. You can still look through its files.
     </p>
 
-    <div class="jobs__grid">
+    <nav
+      v-if="usbShown"
+      class="jobs__source"
+      aria-label="Where the files are"
+      data-tid="jobs-source"
+    >
+      <button
+        type="button"
+        :aria-pressed="!usbOpen"
+        data-tid="jobs-source-printer"
+        @click="usbOpen = false"
+      >
+        {{ printerName }}
+      </button>
+      <button
+        type="button"
+        :aria-pressed="usbOpen"
+        data-tid="jobs-source-usb"
+        @click="usbOpen = true"
+      >
+        USB
+      </button>
+    </nav>
+
+    <usb-browser
+      v-if="usbOpen && usbShown"
+      :control-ready="controlReady"
+    />
+
+    <div
+      v-else
+      class="jobs__grid"
+    >
       <section
         class="jobs__list"
         data-tid="jobs-list"
@@ -586,6 +618,8 @@ import JobMenu, { type JobMenuAction } from '@/components/jobs/JobMenu.vue'
 import JobPicture from '@/components/jobs/JobPicture.vue'
 import { retryFailedThumbnails } from '@/services/jobs/thumbnail'
 import TonePill from '@/components/printers/TonePill.vue'
+import UsbBrowser from '@/components/usb/UsbBrowser.vue'
+import { usb, watchUsb } from '@/services/usb/state'
 
 /** A row of the list: a folder, or a G-code file in the folder that's open. */
 interface ListRow {
@@ -618,7 +652,7 @@ interface ListRow {
  * a file is in its ··· menu. The search, the order, Upload and the
  * pages that used to be tabs are in the header (JobsActions).
  */
-@Component({ components: { FileNameDialog, JobMenu, JobPicture, TonePill } })
+@Component({ components: { FileNameDialog, JobMenu, JobPicture, TonePill, UsbBrowser } })
 export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   path = ''
   selectedKey: string | null = null
@@ -631,6 +665,9 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   /** Why the folder's listing failed, until it is asked for again. */
   loadError = ''
   unsubscribe: (() => void) | null = null
+  /** The USB stick's files are open in place of the printer's (KAN-4815). */
+  usbOpen = false
+  stopUsbWatch: (() => void) | null = null
 
   readonly listDuration = listDuration
   readonly fileSize = fileSize
@@ -639,7 +676,16 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
 
   get query (): string { return jobsPage.query }
 
+  /** The printer has the USB routes, and a stick is in (or was just ejected), or the person is already looking at it. */
+  get usbShown (): boolean {
+    if (!usb.supported) return false
+    return this.usbOpen || !!usb.status?.sticks.length || !!usb.status?.ejected.length
+  }
+
   mounted () {
+    // A printer without the USB routes answers 404 and the page never shows USB.
+    this.stopUsbWatch = watchUsb()
+    this.usbOpen = this.$route?.query?.view === 'usb'
     // Pictures that gave up while Jobs was last open get another go.
     retryFailedThumbnails()
     const saved = (this.$store.getters['files/getCurrentPathByRoot'](this.root) as string | undefined) ?? ''
@@ -663,6 +709,7 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   }
 
   beforeDestroy () {
+    this.stopUsbWatch?.()
     this.unsubscribe?.()
     resetJobsPage()
     jobsPage.files = 0
@@ -1321,6 +1368,27 @@ export default class Jobs extends Mixins(JobsMixin, BrowserMixin) {
   }
 
   // -- Up next ----------------------------------------------------------------
+
+  .jobs__source {
+    display: inline-flex;
+    align-self: flex-start;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--m3d-fill);
+
+    button {
+      padding: 6px 16px;
+      border-radius: 999px;
+      color: var(--m3d-text-muted);
+      font-size: 14px;
+      font-weight: 600;
+
+      &[aria-pressed='true'] {
+        background: var(--m3d-surface);
+        color: var(--m3d-text);
+      }
+    }
+  }
 
   .jobs__next {
     display: flex;

@@ -65,7 +65,10 @@ export const SECTIONS: Section[] = [
     label: 'Control',
     icon: 'control',
     key: 'c',
-    pages: [{ path: '/control', label: 'Control' }]
+    pages: [
+      { path: '/control', label: 'Control' },
+      { path: '/lighting', label: 'Lighting' }
+    ]
   },
   {
     id: 'slice',

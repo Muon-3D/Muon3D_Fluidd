@@ -37,7 +37,7 @@ describe('the default layout', () => {
   })
 
   it('puts everything else away until it is added', () => {
-    expect(layout.hidden).toEqual(['hotend', 'bed', 'fans', 'zoffset', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(layout.hidden).toEqual(['hotend', 'bed', 'fans', 'zoffset', 'camera', 'bedmesh', 'console', 'lighting', 'system', 'care', 'library'])
     expect(ids.length + layout.hidden.length).toBe(overviewTiles.length)
   })
 
@@ -203,7 +203,7 @@ describe('migrating a saved layout', () => {
     const old = ['stage', 'job', 'filament', 'hotend', 'bed', 'fans', 'speed', 'jog', 'position', 'zoffset', 'macros', 'graph']
     const out = readLayout(saved(old.map(id => ({ id, span: 4, rows: 1 }))), defs)!
     expect(out.tiles.map(t => t.id)).toEqual(old.map(id => (id === 'speed' ? 'mode' : id)))
-    expect(out.hidden).toEqual(['trackpad', 'camera', 'bedmesh', 'console', 'system', 'care', 'library'])
+    expect(out.hidden).toEqual(['trackpad', 'camera', 'bedmesh', 'console', 'lighting', 'system', 'care', 'library'])
   })
 
   it('drops unknown ids quietly', () => {

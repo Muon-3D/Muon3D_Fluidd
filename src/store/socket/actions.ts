@@ -9,6 +9,7 @@ import { upperFirst, camelCase } from 'lodash-es'
 import isKeyOf from '@/util/is-key-of'
 import { isProtectedSurface } from '@/store/protection/helpers'
 import { applyState as applySetupState } from '@/services/muon-setup/state'
+import { onUsbJobNotification } from '@/services/usb/state'
 import { headStatus } from '@/services/control/safe-move'
 import { resetGates } from '@/services/gates/state'
 import { policyRefusedText } from '@/services/managed-transport/refusal'
@@ -106,6 +107,8 @@ export const actions: ActionTree<SocketState, RootState> = {
       consola.debug('Not available to this user:', method, payload.message)
       return
     }
+    // The Lighting screen shows a refused LED_MODE change in place, so it is not a toast as well.
+    if (method === 'printer.gcode.script' && String(payload.__request__?.params?.script ?? '').startsWith('LED_MODE')) return
     if (
       payload.code === 403 &&
       method &&
@@ -199,6 +202,11 @@ export const actions: ActionTree<SocketState, RootState> = {
 
   async notifyKlippyReady () {
     consola.debug('Klippy Ready')
+  },
+
+  // The printer's USB copy job moved on (KAN-4814).
+  async notifyMuonUsbJob (_, payload) {
+    onUsbJobNotification(payload)
   },
 
   async notifyFilelistChanged ({ dispatch }, payload) {

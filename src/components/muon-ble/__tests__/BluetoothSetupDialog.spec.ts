@@ -45,13 +45,16 @@ const flush = async (wrapper: { vm: { $nextTick: () => Promise<void> } }) => {
   await wrapper.vm.$nextTick()
 }
 
-function mount (connector: () => Promise<BleSetupResult>) {
+function mount (connector: () => Promise<BleSetupResult>, printer: NearbyPrinter = WALNUT) {
   return shallowMount(BluetoothSetupDialog, {
-    propsData: { value: true, printer: WALNUT, connector },
+    propsData: { value: true, printer, connector },
     stubs: { SetupStepCard, BluetoothCodeBoxes, BluetoothSheet: { template: '<div><slot /></div>' } },
     mocks: { $t: (k: string) => k }
   })
 }
+
+// Its advertisement said set up, so the page shows the refusal itself (a chooser pick, with none, pairs at once).
+const ADVERTISED: NearbyPrinter = { ...WALNUT, advert: { unclaimed: false } as any }
 
 const tid = (wrapper: ReturnType<typeof mount>, id: string) => wrapper.find(`[data-tid="${id}"]`)
 
@@ -126,7 +129,7 @@ describe('setup over Bluetooth from the hosted page', () => {
     ['set-up', 'Walnut is set up already', false],
     ['unsupported', "can't set printers up over Bluetooth yet", false]
   ] as const)('says why a session did not start: %s', async (reason, title, canRetry) => {
-    const wrapper = mount(async () => ({ ok: false, reason, message: '' }))
+    const wrapper = mount(async () => ({ ok: false, reason, message: '' }), ADVERTISED)
     await flush(wrapper)
     expect(tid(wrapper, 'setup-ble-failed').text()).toContain(title)
     expect(tid(wrapper, 'ble-retry').exists()).toBe(canRetry)
@@ -134,12 +137,20 @@ describe('setup over Bluetooth from the hosted page', () => {
   })
 
   it('offers to pair with a printer that is set up already, and hands it over (signed in or not)', async () => {
-    const wrapper = mount(async () => ({ ok: false, reason: 'set-up', message: '' }))
+    const wrapper = mount(async () => ({ ok: false, reason: 'set-up', message: '' }), ADVERTISED)
     await flush(wrapper)
     const pair = tid(wrapper, 'ble-pair-instead')
     expect(pair.exists()).toBe(true)
     expect(pair.text()).toContain('Pair over Bluetooth')
     await (wrapper.vm as any).pairInstead()
+    expect(wrapper.emitted('pair')?.[0]).toEqual([ADVERTISED])
+    expect(wrapper.emitted('input')?.[0]).toEqual([false])
+  })
+
+  it('pairs at once when a chooser pick (no advertisement) turns out to be set up (KAN-4828)', async () => {
+    const wrapper = mount(async () => ({ ok: false, reason: 'set-up', message: '' }))
+    await flush(wrapper)
+    expect(tid(wrapper, 'setup-ble-failed').exists()).toBe(false)
     expect(wrapper.emitted('pair')?.[0]).toEqual([WALNUT])
     expect(wrapper.emitted('input')?.[0]).toEqual([false])
   })

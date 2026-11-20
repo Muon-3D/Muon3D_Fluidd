@@ -41,7 +41,12 @@ async function lookNearby (page: Page, printer: NearbyFake, advertise = false) {
   await ready(page)
   await page.getByRole('button', { name: 'Look nearby' }).click()
   await expect.poll(async () => (await page.evaluate(() => (window as any).__bluetoothAsks)).length).toBe(1)
-  if (!advertise) await page.getByTestId('found-set-up').click()
+  if (!advertise) {
+    // A chooser pick has no advertisement: the tile says Connect over Bluetooth, never Set it up (KAN-4828).
+    await expect(page.getByTestId('found-set-up')).toHaveText('Connect over Bluetooth')
+    await expect(page.getByRole('button', { name: 'Set it up' })).toHaveCount(0)
+    await page.getByTestId('found-set-up').click()
+  }
 }
 
 test('a printer that has never been set up opens the Bluetooth sheet and its code check, signed out', async ({ page, isMobile }) => {
@@ -62,12 +67,11 @@ test('a printer that has never been set up opens the Bluetooth sheet and its cod
 
 test('a printer that is set up and was never paired here is paired over Bluetooth, signed out, and opens', async ({ page, isMobile }) => {
   await lookNearby(page, NOT_PAIRED_HERE)
-  const setup = page.getByTestId('setup-ble-failed')
-  await expect(setup).toContainText('is set up already')
-  await expect(setup.getByTestId('ble-pair-instead')).toHaveText('Pair over Bluetooth')
+  // The printer says it is set up once linked: straight to pairing, no dead end and no Set it up (KAN-4828).
+  await expect(page.getByTestId('setup-ble-failed')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Set it up' })).toHaveCount(0)
   await expectNeverAskedToSignIn(page)
 
-  await setup.getByTestId('ble-pair-instead').click()
   const sheet = page.getByTestId('ble-sheet')
   await expect(sheet.getByTestId('pair-code-step')).toContainText('Check the code')
   await expect(sheet.getByTestId('ble-sheet-step')).toHaveText('Step 2 of 2')
@@ -99,9 +103,6 @@ test('a printer that is set up and was never paired here is paired over Bluetoot
 
 test('a printer this browser was paired with before opens from Pair over Bluetooth with no code, signed out', async ({ page }) => {
   await lookNearby(page, PAIRED_BEFORE)
-  const setup = page.getByTestId('setup-ble-failed')
-  await expect(setup.getByTestId('ble-pair-instead')).toBeVisible()
-  await setup.getByTestId('ble-pair-instead').click()
 
   await expect.poll(() => pairEvents(page), { timeout: 30_000 }).toContain('connect muon-boxwood-367a')
   await expect(page.getByTestId('ble-sheet')).toBeHidden()

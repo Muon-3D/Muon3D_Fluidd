@@ -166,10 +166,12 @@ export function settleMs (travelMs = 0): number {
 export const scriptsInFlight = { count: 0 }
 
 export function trackScript (answer: Promise<unknown> | undefined) {
-  if (!answer) return
+  if (!answer) return answer
   scriptsInFlight.count++
   const done = () => { scriptsInFlight.count = Math.max(0, scriptsInFlight.count - 1) }
   answer.then(done, done)
+  // The printer's answer: undefined when it refused or never got the script, the result when it ran.
+  return answer
 }
 
 /**
