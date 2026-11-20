@@ -19,6 +19,8 @@ import {
   probe,
   secureUrl,
   setSwitchesAutomatically,
+  switchDecision,
+  AUTO_SWITCH_WITHIN_MS,
   switchesAutomatically
 } from '..'
 
@@ -235,15 +237,27 @@ describe('the switch', () => {
     expect(asksToStay({ search: '', hash: '#/secure=off' })).toBe(false)
   })
 
-  it('asks the first time, remembers a yes, and remembers a no', () => {
-    expect(switchesAutomatically()).toBe(false)
+  it('switches automatically for anyone who has never chosen (KAN-5110)', () => {
+    expect(switchesAutomatically()).toBe(true)
     expect(declinedSwitch()).toBe(false)
+  })
+
+  it('remembers a yes, and a no sticks: Stay here and the toggle off both end automatic switching', () => {
     setSwitchesAutomatically(true)
     expect(switchesAutomatically()).toBe(true)
     expect(declinedSwitch()).toBe(false)
     setSwitchesAutomatically(false)
     expect(switchesAutomatically()).toBe(false)
     expect(declinedSwitch()).toBe(true)
+  })
+
+  it('switches only on time, with auto on and nothing in flight; otherwise offers', () => {
+    const on = { auto: true, elapsedMs: 100, busy: false }
+    expect(switchDecision(on)).toBe('switch')
+    expect(switchDecision({ ...on, elapsedMs: AUTO_SWITCH_WITHIN_MS })).toBe('switch')
+    expect(switchDecision({ ...on, elapsedMs: AUTO_SWITCH_WITHIN_MS + 1 })).toBe('offer')
+    expect(switchDecision({ ...on, auto: false })).toBe('offer')
+    expect(switchDecision({ ...on, busy: true })).toBe('offer')
   })
 })
 

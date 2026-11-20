@@ -22,30 +22,30 @@ function mounted () {
 beforeEach(() => localStorage.clear())
 
 describe('automatic switch setting on a printer page', () => {
-  it('shows the row, off until a person turns it on', async () => {
+  it('shows the row, on until a person turns it off (KAN-5110)', async () => {
     const wrapper = mounted()
     await settle()
     const row = wrapper.find('[data-tid="security-auto-switch"]')
     expect(row.exists()).toBe(true)
     expect(row.text()).toContain('Switch to the secure address automatically')
     expect(row.text()).toContain('On this browser. When this printer has a secure address that works here, Control opens it by itself.')
-    expect(row.find('button').attributes('aria-checked')).toBe('false')
+    expect(row.find('button').attributes('aria-checked')).toBe('true')
   })
 
   it('writes the browser-local choice both ways', async () => {
     const wrapper = mounted()
     await settle()
     await wrapper.find('[data-tid="security-auto-switch"] button').trigger('click')
-    expect(localStorage.getItem('muon.secureOrigin.auto')).toBe('1')
-    expect(wrapper.find('[data-tid="security-auto-switch"] button').attributes('aria-checked')).toBe('true')
-    await wrapper.find('[data-tid="security-auto-switch"] button').trigger('click')
     expect(localStorage.getItem('muon.secureOrigin.auto')).toBe('0')
+    expect(wrapper.find('[data-tid="security-auto-switch"] button').attributes('aria-checked')).toBe('false')
+    await wrapper.find('[data-tid="security-auto-switch"] button').trigger('click')
+    expect(localStorage.getItem('muon.secureOrigin.auto')).toBe('1')
   })
 
   it('shows the saved choice', async () => {
-    localStorage.setItem('muon.secureOrigin.auto', '1')
+    localStorage.setItem('muon.secureOrigin.auto', '0')
     const wrapper = mounted()
     await settle()
-    expect(wrapper.find('[data-tid="security-auto-switch"] button').attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-tid="security-auto-switch"] button').attributes('aria-checked')).toBe('false')
   })
 })
