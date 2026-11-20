@@ -74,6 +74,20 @@ export const AUX_GET: ReadonlySet<string> = new Set([
   '/wifi/ap/device/status'
 ])
 
+/**
+ * The printer's live panel state (KAN-4812 part 3). Control makes these two calls
+ * itself, on its own connection and only for the framed screen; the embed names
+ * no path, only a `navigate` message with a screen id (readNavigate).
+ *
+ * - read: GET state. muon-link: Viewer and above.
+ * - Operator: POST navigate, which includes an Open printer's guest (D-166).
+ *
+ * muon-link needs a rule for each (lead-sw adds them next to #160's); until it
+ * has them the printer's gate refuses them and the screen stays independent.
+ */
+export const PANEL_STATE_PATH = '/server/muon/panel/state'
+export const PANEL_NAVIGATE_PATH = '/server/muon/panel/navigate'
+
 /** Moonraker notifications passed on to the embed: status and Klippy's state, nothing else (no console, history or other users' events). */
 export const NOTIFY_FORWARD: ReadonlySet<string> = new Set([
   'notify_status_update',
@@ -81,6 +95,9 @@ export const NOTIFY_FORWARD: ReadonlySet<string> = new Set([
   'notify_klippy_shutdown',
   'notify_klippy_disconnected'
 ])
+
+/** The panel-state notification Control reads itself and re-sends as a `panel-state` message, never as a raw notify. */
+export const PANEL_STATE_NOTIFY = 'notify_muon_panel_state'
 
 /** Control's store actions for those notifications, mapped exactly (no case conversion). */
 export const NOTIFY_ACTIONS: Readonly<Record<string, string>> = {
