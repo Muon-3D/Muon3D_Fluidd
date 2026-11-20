@@ -51,14 +51,3 @@ export function boundCorners (lo: [number, number], hi: [number, number], projec
     return `M${pt(toward(prev))}L${pt(p)}L${pt(toward(next))}`
   }).join('')
 }
-
-/**
- * Is the no-go zone drawn? Only while the head truly can't go there: the notch is a box from Z 0 up to the printer's
- * traverse height (no_go_traverse_z, 6 mm on the M1: muon.m1-geometry v3), and the head clears it from that height up.
- * The plate moves, not the head, so the height is the head's Z in Klipper's own terms (toolhead position). Until Z is
- * homed its height is unknown, so the zone stays drawn; a printer that gives no traverse height keeps it drawn too.
- */
-export function noGoShown (z: number | undefined, traverseZ: number, zHomed: boolean): boolean {
-  if (!zHomed || z === undefined || !Number.isFinite(z)) return true
-  return z < traverseZ
-}
