@@ -21,7 +21,7 @@ export interface PlacedTile { id: string; span: number; rows: number }
 export interface OverviewLayout { tiles: PlacedTile[]; hidden: string[] }
 
 /** Columns wide of the 12-column grid, and rows tall. */
-export const MIN_SPAN = 1
+export const MIN_SPAN = 2
 export const MAX_SPAN = 12
 export const MIN_ROWS = 1
 export const MAX_ROWS = 4

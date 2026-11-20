@@ -13,7 +13,7 @@ const heavy = { 'overview-stage': true, 'thermal-graph': true, 'first-layer-nudg
 const allIds = overviewTiles.map(t => t.id)
 const defaults = defaultLayout(widgetsFor(overviewTiles, true))
 const onIds = defaults.tiles.map(t => t.id)
-const mine = { version: 1, savedAt: 5, tiles: [{ id: 'bed', span: 6, rows: 1 }, { id: 'stage', span: 12, rows: 2 }], hidden: allIds.filter(i => i !== 'bed' && i !== 'stage') }
+const mine = { version: 2, savedAt: 5, tiles: [{ id: 'bed', span: 6, rows: 1 }, { id: 'stage', span: 12, rows: 2 }], hidden: allIds.filter(i => i !== 'bed' && i !== 'stage') }
 
 function open (options: { printing?: boolean; layouts?: Record<string, unknown> } = {}) {
   const store = tileStore({ printing: options.printing })
@@ -54,11 +54,11 @@ describe('Overview, normal mode', () => {
   })
 
   it('drops unknown tiles in a saved layout and puts missing ones away', () => {
-    localStorage.setItem(layoutKey(null, 'http://mock.local'), JSON.stringify({ version: 1, savedAt: 1, tiles: [{ id: 'ghost', span: 3 }, { id: 'jog', span: 40, rows: 9 }], hidden: [] }))
+    localStorage.setItem(layoutKey(null, 'http://mock.local'), JSON.stringify({ version: 2, savedAt: 1, tiles: [{ id: 'ghost', span: 3 }, { id: 'jog', span: 40, rows: 9 }], hidden: [] }))
     const { w } = open()
     expect(cells(w)).toEqual(['jog'])
-    // 40 by 9 is no size; the nearest the Jog widget offers is its L.
-    expect(w.find('[data-cell="jog"]').attributes('style')).toContain('--span: 8')
+    // 40 by 9 is no size; rows weigh most, so the nearest the Jog widget offers is its M, 4 by 2.
+    expect(w.find('[data-cell="jog"]').attributes('style')).toContain('--span: 4')
     w.destroy()
   })
 })
@@ -232,8 +232,8 @@ describe('Overview, edit mode', () => {
     window.dispatchEvent(new MouseEvent('pointermove', { clientX: -300, clientY: 0 }))
     window.dispatchEvent(new MouseEvent('pointerup', { clientX: -300, clientY: 0 }))
     await w.vm.$nextTick()
-    // 4 columns less 3 is 1: the nearest size Quick commands offers is its narrowest, 3.
-    expect(w.find('[data-cell="macros"]').attributes('style')).toContain('--span: 3;')
+    // 12 columns less 3 is 9: the nearest size Quick commands offers is its M, 8.
+    expect(w.find('[data-cell="macros"]').attributes('style')).toContain('--span: 8;')
     w.destroy()
   })
 
@@ -243,12 +243,12 @@ describe('Overview, edit mode', () => {
     const rect = (width: number, height: number) => ({ x: 0, y: 0, left: 0, top: 0, right: width, bottom: height, width, height, toJSON: () => ({}) })
     vi.spyOn(w.find('[data-tid="overview-grid"]').element, 'getBoundingClientRect').mockReturnValue(rect(1184, 800))
     vi.spyOn(w.find('[data-cell="stage"]').element, 'getBoundingClientRect').mockReturnValue(rect(780, 320))
-    // The printer view has no 4 by 1; dragging it small lands on its M, 8 by 2.
+    // The printer view has no 4 by 1; dragging it small lands on its M, 7 by 2.
     await w.find('[data-cell="stage"] [data-tid="tile-resize"]').trigger('pointerdown', { button: 0, clientX: 0, clientY: 0 })
     window.dispatchEvent(new MouseEvent('pointermove', { clientX: -400, clientY: -170 }))
     window.dispatchEvent(new MouseEvent('pointerup', { clientX: -400, clientY: -170 }))
     await w.vm.$nextTick()
-    expect(w.find('[data-cell="stage"]').attributes('style')).toContain('--span: 8')
+    expect(w.find('[data-cell="stage"]').attributes('style')).toContain('--span: 7')
     expect(w.find('[data-cell="stage"]').attributes('style')).toContain('--rows: 2')
     w.destroy()
   })
@@ -262,7 +262,7 @@ describe('Overview, edit mode', () => {
     expect(w.findAll('[data-tid="tile-grip"]')).toHaveLength(onIds.length)
     expect(w.findAll('[data-tid="tile-remove"]')).toHaveLength(onIds.length)
     await grip(w, 'mode').trigger('keydown', { key: 'ArrowRight', shiftKey: true })
-    expect(w.find('[data-cell="mode"]').attributes('style')).toContain('--span: 6')
+    expect(w.find('[data-cell="mode"]').attributes('style')).toContain('--span: 5')
     w.destroy()
     vi.unstubAllGlobals()
   })
@@ -276,7 +276,7 @@ describe('Overview, edit mode', () => {
     await w.find('[data-tid="edit-done"]').trigger('click')
     const local = saved()
     expect(local.hidden).toEqual([...defaults.hidden, 'macros'])
-    expect(local.tiles.map((t: { id: string }) => t.id).slice(3, 6)).toEqual(['mode', 'graph', 'position'])
+    expect(local.tiles.map((t: { id: string }) => t.id).slice(3, 8)).toEqual(['hotend', 'bed', 'position', 'graph', 'mode'])
     expect(store.dispatch).toHaveBeenCalledWith('config/saveByPath', {
       // Only this person's own key: never the whole map, which could wipe another person's layout.
       path: `uiSettings.overview.layouts.${serverLayoutKey(null, 'http://mock.local')}`,
@@ -306,7 +306,7 @@ describe('Overview, edit mode', () => {
     await w.find('[data-tid="edit-open"]').trigger('click')
     await w.find('[data-tid="edit-reset"]').trigger('click')
     expect(cells(w)).toEqual(onIds)
-    expect(w.find('[data-cell="mode"]').attributes('style')).toContain('--span: 6')
+    expect(w.find('[data-cell="mode"]').attributes('style')).toContain('--span: 5')
     await w.find('[data-tid="edit-done"]').trigger('click')
     expect(saved().tiles).toEqual(defaultLayout(overviewTiles).tiles)
     expect(store.dispatch).toHaveBeenCalledTimes(1)

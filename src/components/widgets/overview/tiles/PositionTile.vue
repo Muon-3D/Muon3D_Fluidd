@@ -5,9 +5,24 @@
     icon="expand"
     :state="homedText"
     :tone="homed ? 'ok' : 'warm'"
-    :menu="menu"
     :class="['po', `po--${size}`]"
   >
+    <template #head>
+      <button
+        type="button"
+        class="po__motors"
+        :disabled="!controlReady || busy"
+        aria-label="Motors off"
+        title="Turn the motors off (M84)"
+        data-tid="motors-off"
+        @click="motorsOff"
+      >
+        <frame-icon
+          name="motorsOff"
+          small
+        />
+      </button>
+    </template>
     <span class="po__xyz">
       <span
         v-for="(a, i) in axes"
@@ -85,13 +100,13 @@
 <script lang="ts">
 import { Component, Mixins, Watch } from 'vue-property-decorator'
 import OverviewMixin from '@/mixins/overview'
-import type { TileMenuItem } from '@/services/overview/tiles'
 import TileShell from './TileShell.vue'
 
 /**
- * Where the head is, live, and whether it is homed. Tapping opens homing
- * and a go-to-here form (Control, the same checks). Motors off and the
- * endstops are behind the three dots.
+ * Where the head is, live, and whether it is homed. Press an axis to type a
+ * number (it goes through moveTo: the same checks as the Trackpad); an axis that is
+ * not homed says so and has its own small Home. Motors off is the small icon in the
+ * header. The endstops are not in a menu here any more.
  */
 @Component({ components: { TileShell } })
 export default class PositionTile extends Mixins(OverviewMixin) {
@@ -148,11 +163,6 @@ export default class PositionTile extends Mixins(OverviewMixin) {
     if (Math.abs(value - this.position[i]) >= 0.005) this.moveTo(axis === 'X' ? { X: value } : axis === 'Y' ? { Y: value } : { Z: value })
   }
 
-  get menu (): TileMenuItem[] {
-    return [
-      { id: 'motors', label: 'Turn motors off', disabled: !this.controlReady || this.busy, action: () => this.motorsOff() }
-    ]
-  }
 }
 </script>
 
@@ -176,5 +186,9 @@ export default class PositionTile extends Mixins(OverviewMixin) {
 .po__home:focus-visible { outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent)); outline-offset: 2px; }
 .po--S .po__val small { display: none; }
 .po--S .po__val b, .po--S .po__input { font-size: 16px; }
+.po__motors { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 9px; background: var(--m3d-fill); color: var(--m3d-text-muted); cursor: pointer; }
+.po__motors:hover:not(:disabled) { color: var(--m3d-text); filter: brightness(1.15); }
+.po__motors:disabled { opacity: 0.45; cursor: default; }
+.po__motors:focus-visible { outline: 2px solid var(--m3d-focus-ring, var(--m3d-accent)); outline-offset: 2px; }
 .po__err { color: var(--m3d-danger); font-size: 12px; font-weight: 600; }
 </style>

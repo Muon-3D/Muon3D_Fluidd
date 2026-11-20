@@ -1,5 +1,5 @@
 /**
- * I-542: screenshots of the Overview mockup (status line, trackpad + Quick commands, Jog + Lighting).
+ * I-542: screenshots of the built Overview (one row of widgets, Trackpad, Jog + Lighting, two-row Quick commands).
  * Not a regression test: it only runs with I542_SHOTS=<folder> and writes pictures there.
  *   I542_SHOTS=... E2E_PORT=8542 E2E_MOCK_PORT=7542 npx playwright test -c e2e/playwright.config.ts control/i542
  */
@@ -15,9 +15,8 @@ const GPU = process.platform === 'win32'
 test.use({ launchOptions: { args: GPU ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] : [] } })
 
 // Real names from the M1 config (Muon3D_Klipper core/M1/macros), the ones a person would press.
-const M1_MACROS = ['CUT_FILAMENT', 'PURGE_LINE', 'ANTI_OOZE_NOZZLE_DOCK', 'BUZZ_EXTRUDER', 'PARK_PRINTER', 'Z_PARK', 'CENTER', 'FRONT', 'CHOME',
-  'CALIBRATE_HEATING_BED', 'CALIBRATE_HEATING_HOTEND', 'CALIBRATE_PROBE', 'PID_CALIBRATE', 'FINETUNE_RESONANCE', 'RESET_CALIBRATION', 'RESET_MESH_CALIBRATION', 'BED_MESH_CLEAR',
-  'LED_READY', 'LED_INFO', 'TEST_SPEED', 'STEPLOSS_TEST']
+const M1_MACROS = ['LOAD_FILAMENT', 'UNLOAD_FILAMENT', 'PURGE_LINE', 'CLEAN_NOZZLE', 'CUT_FILAMENT', 'PARK_PRINTER', 'CENTER', 'LED_MODE', 'CALIBRATE_HEATING_HOTEND', 'CALIBRATE_HEATING_BED', 'CALIBRATE_PROBE', 'Z_PARK',
+  'BUZZ_EXTRUDER', 'STEPLOSS_TEST', 'TEST_SPEED', 'LED_INFO', 'LED_READY', 'CHOME', 'FINETUNE_RESONANCE', 'RESET_CALIBRATION']
 const MACROS = Object.fromEntries(M1_MACROS.map(n => [`gcode_macro ${n}`, { gcode: '' }]))
 
 const STATE = {
@@ -30,9 +29,9 @@ const STATE = {
 
 async function show (page: Page, open: (p: string) => Promise<void>, homed = 'xyz') {
   const printer = await usePrinter(page, overlay(PRESETS.idleHomed({ position: [112.5, 86, 24.5], homed }), STATE), { ticks: false })
-  printer.state.results['printer.gcode.help'] = { SET_PRINT_MODE: 'Select the print mode', LED_MODE: 'LEDs', M84: 'Motors off' }
+  printer.state.results['printer.gcode.help'] = { SET_PRINT_MODE: 'Select the print mode', LED_MODE: 'LEDs', M84: 'Motors off', BED_MESH_CALIBRATE: 'Mesh' }
   await open('/')
-  await expect(page.locator('[data-tile="motors"]')).toBeVisible()
+  await expect(page.locator('[data-tile="position"]')).toBeVisible()
   await expect(page.locator('[data-tile="trackpad"]')).toBeVisible()
   await page.waitForTimeout(2500)
   return printer
@@ -41,7 +40,7 @@ async function show (page: Page, open: (p: string) => Promise<void>, homed = 'xy
 /** The one row of widgets with the Filament tile above it and the Temperatures below, as a person scrolled to it sees it. */
 async function row (page: Page, name: string) {
   const a = (await page.locator('[data-tile="hotend"]').boundingBox())!
-  const b = (await page.locator('[data-tile="motors"]').boundingBox())!
+  const b = (await page.locator('[data-cell="mode"]').boundingBox())!
   await page.screenshot({ path: `${OUT}/${name}`, fullPage: true, clip: { x: 240, y: a.y - 120, width: b.x + b.width - 240 + 24, height: a.height + 240 } })
 }
 

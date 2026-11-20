@@ -84,7 +84,7 @@ describe('resizing tiles', () => {
   it('nudges by steps and clamps', () => {
     expect(nudgeSize(defaultLayout(defs), 'hotend', 1, 1).tiles[2]).toEqual({ id: 'hotend', span: 4, rows: 2 })
     expect(nudgeSize(defaultLayout(defs), 'graph', 1, 0).tiles[4].span).toBe(12)
-    expect(nudgeSize(defaultLayout(defs), 'hotend', -1, -1).tiles[2]).toEqual({ id: 'hotend', span: 3, rows: 1 })
+    expect(nudgeSize(defaultLayout(defs), 'hotend', -1, -1).tiles[2]).toEqual({ id: 'hotend', span: 2, rows: 1 })
   })
 })
 
