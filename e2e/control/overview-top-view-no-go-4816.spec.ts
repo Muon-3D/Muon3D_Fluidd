@@ -3,8 +3,8 @@
  *
  * 1. Moving the toolhead must not kick the person out of the top-down view they chose: the printer reports busy while the
  *    head moves, which used to make the stage let the part go.
- * 2. The no-go zone (the M1's front notch, Z 0 to the traverse height) is drawn only where the head really can't go at
- *    the current height: shown low, hidden once Z is at the traverse height or above.
+ * 2. The no-go zone (the M1's front notch) is drawn in the top view whatever the height, as it was before #506 (KAN-5119:
+ *    it is more to do with the nozzle than the toolhead). The Z gate and the red label of #506 are gone.
  *
  * Every script the page sends is answered by usePrinter, so nothing reaches a real printer. Like the other top-down
  * specs this needs the accurate model, which only the GPU draws (software WebGL stalls on it), so it is skipped in CI.
@@ -58,24 +58,26 @@ test('a real print still lets the top-down view go (negative control for the hol
   await expect(page.getByTestId('m1-parts')).toHaveAttribute('data-view', 'free')
 })
 
-test('the no-go zone shows only at heights where the head cannot go', async ({ page, open }) => {
+test('the no-go zone shows in the top view at any height (KAN-5119)', async ({ page, open }) => {
   const printer = await usePrinter(page, PRESETS.idleHomed({ position: [100, 100, 100] }))
   await open('/')
   await ready(page)
-  // Z at the top: nothing to avoid, so no zone and no label.
+  // Z high: the notch is drawn, quietly, with no label.
   await expect(page.getByTestId('m1-bounds')).toBeAttached()
-  await expect(page.getByTestId('m1-notch')).toHaveCount(0)
-  await expect(page.getByTestId('m1-notch-label')).toHaveCount(0)
-
-  // Z low: the notch is drawn, with its label.
-  printer.report(at([100, 100, 2]))
   await expect(page.getByTestId('m1-notch')).toHaveCount(1)
-  await expect(page.getByTestId('m1-notch-label')).toHaveText('No-go: front notch')
+  await expect(page.getByTestId('m1-notch-label')).toHaveCount(0)
+  if (process.env.SHOTS) await page.getByTestId('m1-parts').screenshot({ path: `${process.env.SHOTS}/zone-high-${test.info().project.name}.png` })
+
+  // Z low: the same zone, unchanged.
+  printer.report(at([100, 100, 2]))
+  await page.waitForTimeout(300)
+  await expect(page.getByTestId('m1-notch')).toHaveCount(1)
+  await expect(page.getByTestId('m1-notch-label')).toHaveCount(0)
   if (process.env.SHOTS) await page.getByTestId('m1-parts').screenshot({ path: `${process.env.SHOTS}/zone-low-${test.info().project.name}.png` })
 
-  // Back up to the traverse height: gone again.
+  // At the traverse height: still there.
   printer.report(at([100, 100, 6]))
-  await expect(page.getByTestId('m1-notch')).toHaveCount(0)
-  if (process.env.SHOTS) await page.getByTestId('m1-parts').screenshot({ path: `${process.env.SHOTS}/zone-top-${test.info().project.name}.png` })
+  await page.waitForTimeout(300)
+  await expect(page.getByTestId('m1-notch')).toHaveCount(1)
   expect(printer.gcode).toEqual([])
 })

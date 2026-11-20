@@ -63,7 +63,7 @@
       >Y</span>
     </div>
 
-    <!-- Looking down: where the head can go (its corners), and the notch while the plate is low enough that the head can't cross it. -->
+    <!-- Looking down: where the head can go (its corners), and the bed's notch, quietly. -->
     <svg
       v-if="topView && boundsPx"
       class="m1-parts__bounds"
@@ -81,15 +81,6 @@
         data-tid="m1-notch"
         :d="d"
       />
-      <text
-        v-if="boundsPx.notch.length && boundsPx.label"
-        class="m1-parts__bounds-label"
-        data-tid="m1-notch-label"
-        :x="boundsPx.label.x"
-        :y="boundsPx.label.y"
-        text-anchor="middle"
-        dominant-baseline="middle"
-      >No-go: front notch</text>
     </svg>
 
     <!-- While dragging: a target on the cursor, and a live line from where the part is to it. -->
@@ -184,7 +175,7 @@ import ControlMixin from '@/mixins/control'
 import M1PartOptions from './M1PartOptions.vue'
 import M1Screen from './M1Screen.vue'
 import { PART_IDS, PART_NAMES, type PartId } from '@/services/m1-3d/parts'
-import { axisEdges, boundCorners, noGoShown } from '@/services/m1-3d/drag-bounds'
+import { axisEdges, boundCorners } from '@/services/m1-3d/drag-bounds'
 import { KnobWheel } from '@/services/m1-3d/knob'
 import { HEAD_PLANE_Y, clampMm, headToWorld, plateDragZ, plateTopForZ, releasePlace, ticks, worldToHead, zForPlateTop } from '@/services/m1-3d/drag-map'
 import type { M1Viewer } from '@/services/m1-3d/viewer'
@@ -288,7 +279,7 @@ export default class M1Parts extends Mixins(ControlMixin) {
   dragPx: { from: { x: number, y: number }, to: { x: number, y: number } } | null = null
   axisMarks: { x: Array<{ v: number, px: number, at: number }>, y: Array<{ v: number, px: number, at: number }> } | null = null
   /** Looking down: the corners of where the head can go, and the bed's notch, as drawn now. */
-  boundsPx: { corners: string, notch: string[], label: { x: number, y: number } | null } | null = null
+  boundsPx: { corners: string, notch: string[] } | null = null
   /** Why the last drag's move was refused, said in the label until the next drag. */
   refused = ''
   /** The printer's own screen, open over the stage. */
@@ -703,14 +694,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
       // Written only when a mark moves, so an idle top-down view doesn't render every frame.
       if (JSON.stringify(next) !== JSON.stringify(this.axisMarks)) this.axisMarks = next
       const noGo = this.noGo
-      const known = noGo && noGo !== 'invalid' ? noGo : null
-      // Drawn only at heights where the head can't go there (KAN-4817); at the traverse height and above it is hidden.
-      const regions = known && noGoShown(this.position[2], known.traverseZ, this.isHomed('Z')) ? known.regions : []
-      const mid = regions[0] ? screen((regions[0].min[0] + regions[0].max[0]) / 2, (regions[0].min[1] + regions[0].max[1]) / 2) : null
+      const regions = noGo && noGo !== 'invalid' ? noGo.regions : []
       const bounds = {
         corners: boundCorners(lo, hi, screen),
-        notch: regions.map(r => boundCorners(r.min, r.max, screen, true)).filter(Boolean),
-        label: mid && Number.isFinite(mid.x) && Number.isFinite(mid.y) ? { x: Math.round(mid.x), y: Math.round(mid.y) } : null
+        notch: regions.map(r => boundCorners(r.min, r.max, screen, true)).filter(Boolean)
       }
       if (JSON.stringify(bounds) !== JSON.stringify(this.boundsPx)) this.boundsPx = bounds
     } else {
@@ -1024,19 +1011,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
   }
 
   .m1-parts__bounds-notch {
-    fill: rgb(255 69 58 / 32%);
-    stroke: rgb(255 69 58 / 90%);
-    stroke-width: 1.5;
-  }
-
-  .m1-parts__bounds-label {
-    fill: #fff;
-    font-size: 11px;
-    font-weight: 600;
-    paint-order: stroke;
-    stroke: rgb(120 20 15 / 85%);
-    stroke-width: 3px;
-    pointer-events: none;
+    fill: rgb(255 159 10 / 8%);
+    stroke: rgb(255 159 10 / 45%);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
   }
 
   .m1-parts__fact {

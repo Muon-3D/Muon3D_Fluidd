@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { axisEdges, boundCorners, noGoShown, type Project } from '../drag-bounds'
+import { axisEdges, boundCorners, type Project } from '../drag-bounds'
 
 // Looking down with X to the right and Y toward the bottom of the screen (Y 0 at the back, the top).
 const down: Project = (x, y) => ({ x: 100 + x, y: 50 + y })
@@ -21,21 +21,5 @@ describe('drag-bounds', () => {
   it('outlines the notch closed, and draws nothing for a corner off the screen', () => {
     expect(boundCorners([75, 0], [125, 34], down, true)).toBe('M175 50L225 50L225 84L175 84Z')
     expect(boundCorners([0, 0], [10, 10], () => null)).toBe('')
-  })
-})
-
-// KAN-4817: the notch is a box Z 0..6 (muon.m1-geometry v3); the head clears it from the traverse height up.
-describe('noGoShown', () => {
-  it('shows the zone while Z is inside the box\'s height', () => {
-    for (const z of [0, 0.2, 3, 5.99]) expect(noGoShown(z, 6, true)).toBe(true)
-  })
-  it('hides the zone from the traverse height up', () => {
-    for (const z of [6, 6.01, 10, 120, 250]) expect(noGoShown(z, 6, true)).toBe(false)
-  })
-  it('keeps it shown while Z is unhomed or unknown, or the printer gives no height', () => {
-    expect(noGoShown(100, 6, false)).toBe(true)
-    expect(noGoShown(undefined, 6, true)).toBe(true)
-    expect(noGoShown(Number.NaN, 6, true)).toBe(true)
-    expect(noGoShown(100, Infinity, true)).toBe(true)
   })
 })
