@@ -8,9 +8,9 @@
  * answered and recorded by usePrinter, so nothing reaches the shared mock
  * printer, and each test asserts the exact G-code sent.
  */
-import { test, expect } from '../fixtures'
+import { test, expect } from '../../fixtures'
 import type { Page } from '@playwright/test'
-import { usePrinter, PRESETS, type PrinterHandle } from './printer'
+import { usePrinter, PRESETS, type PrinterHandle } from '../printer'
 
 type Json = Record<string, any>
 

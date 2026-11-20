@@ -8,9 +8,9 @@
  * - FM-07 (KAN-1697): a jump to Health opens "Switches and sensors".
  * - FM-05 guard (KAN-1964): idle Change filament sends nothing, on both pages.
  */
-import { test, expect } from '../fixtures'
+import { test, expect } from '../../fixtures'
 import type { Page } from '@playwright/test'
-import { overlay, usePrinter, PRESETS, type PrinterHandle } from './printer'
+import { overlay, usePrinter, PRESETS, type PrinterHandle } from '../printer'
 
 // The photoreal M1 stalls software WebGL for seconds a frame (see overview-parts.spec.ts).
 test.beforeEach(async ({ page }) => {

@@ -25,14 +25,20 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 15_000 },
   // CI runs --shard=N/6 (14 Nov, KAN-2755: shard 1 of 4 reached the 37 min limit), which cuts the test list into six runs of equal COUNT
-  // in file order (skipped tests count too), not equal time. Playwright first buckets tests by their worker options
+  // in file order (skipped tests count too), not equal time: shards 1-3 are the desktop project and 4-6 the phone project, each
+  // in path order. Playwright first buckets tests by their worker options
   // (a worker-scoped test.use such as launchOptions puts a whole file in a bucket of its own, and every file with the same
-  // override joins it), so those files land in ONE shard whatever their path (KAN-4847: nine 3D specs made shard 3 run
-  // 35 of its 37 min, and any slow runner then cut the Library specs at the end of it). Don't put a worker-scoped override
-  // in a spec for every environment; guard it to the host that needs it. Within a bucket the order is the path, so
-  // the slowest specs live in control/heavy/ and control/stage/, which sort into the first and last slices of
-  // a project. Estimated from the last full run: 28.8, 29.0, 29.5, 25.8, 28.2 and 29.8 min a shard. Re-balance by moving a
-  // file between those folders, or add a shard, when a shard drifts toward its 37 min limit.
+  // override joins it), so those files land at the END of their project, in shard 3 and 6, whatever their path (KAN-4847: nine 3D specs made shard 3 run
+  // 35 of its 37 min, and any slow runner then cut the Library specs at the end of it; KAN-5192: the two panel-4812 specs and the
+  // i542 shots did it again with an unconditional launchOptions). Don't put a worker-scoped override
+  // in a spec for every environment; guard it to the host that needs it, as m1-live-states and overview do with GPU.
+  // Within a bucket the order is the path, so a folder name is a position: control/a-first/ sorts into the first slice of a
+  // project, control/heavy/ and control/stage/ into the middle and later ones, control/p-mid/ just before the p files, and
+  // control/zz-last/ into the last slice. The folder says where the specs run, not that they are heavy: the slow specs are spread over
+  // them so no shard gets more than its share. Estimated on 20 Nov 2026 (KAN-5192) from the CI run on cb78e856, wall minutes a shard:
+  // before 28.7, 30.3, 24.8, 18.0, 29.9, 30.2 (with the unconditional launchOptions: 28.7, 26.9, 28.2, 18.0, 26.4, 33.7, and
+  // 38 on shard 3 in the failing runs); after 28.1, 28.1, 27.8, 21.7, 28.1, 28.1. Re-balance by moving a file between those
+  // folders (keep imports relative), or add a shard (the .github matrix and the 6 in the CI command), when a shard drifts toward its 37 min limit.
   fullyParallel: true,
   workers: process.env.CI ? 2 : 3,
   // Two retries in CI (14 Nov): on the 2-core runner one or two heavy tests a run time out on both of two tries

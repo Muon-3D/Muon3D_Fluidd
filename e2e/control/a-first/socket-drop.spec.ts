@@ -1,7 +1,7 @@
-import { test, expect, ready, PRINTER } from '../fixtures'
-import { MOCK_PORT } from '../ports'
-import { ROUTE_PRINTER, useAllRoutes } from '../fakes/routes'
-import { PRESETS, usePrinter } from './printer'
+import { test, expect, ready, PRINTER } from '../../fixtures'
+import { MOCK_PORT } from '../../ports'
+import { ROUTE_PRINTER, useAllRoutes } from '../../fakes/routes'
+import { PRESETS, usePrinter } from '../printer'
 
 test.use({ serviceWorkers: 'block' })
 

@@ -11,9 +11,9 @@
  * - the other printers saved in this browser (localStorage).
  */
 import type { Page } from '@playwright/test'
-import { test, expect, ready } from '../fixtures'
-import { CONSOLE } from '../fakes/console'
-import { usePrinter } from './printer'
+import { test, expect, ready } from '../../fixtures'
+import { CONSOLE } from '../../fakes/console'
+import { usePrinter } from '../printer'
 
 const FOUND_HOST = '192.168.77.5'
 

@@ -6,8 +6,8 @@
  * settings database is useDatabase's, so nothing reaches the shared mock.
  */
 import type { Page } from '@playwright/test'
-import { test, expect, PRINTER } from '../fixtures'
-import { usePrinter, useDatabase, PRESETS } from './printer'
+import { test, expect, PRINTER } from '../../fixtures'
+import { usePrinter, useDatabase, PRESETS } from '../printer'
 
 const PERSONAL = 'uiSettings.personal.anonymous'
 /** The mock's /server/muon/identity, with a serial as a printer that reports one would. */

@@ -8,8 +8,8 @@
  * streams, and the thumbnail's error state is what shows.
  */
 import type { Page } from '@playwright/test'
-import { test, expect } from '../fixtures'
-import { usePrinter, type PrinterHandle } from './printer'
+import { test, expect } from '../../fixtures'
+import { usePrinter, type PrinterHandle } from '../printer'
 
 type Json = Record<string, any>
 

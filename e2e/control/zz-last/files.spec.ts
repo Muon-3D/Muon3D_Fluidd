@@ -6,8 +6,8 @@
  * shared mock is untouched; every RPC the page sends is asserted.
  */
 import type { Page } from '@playwright/test'
-import { test, expect, PRINTER } from '../fixtures'
-import { usePrinter, PRESETS, type PrinterHandle } from './printer'
+import { test, expect, PRINTER } from '../../fixtures'
+import { usePrinter, PRESETS, type PrinterHandle } from '../printer'
 
 const NOW = Date.now() / 1000
 const file = (filename: string, size = 2048) => ({ filename, modified: NOW - 3600, size, permissions: 'rw' })

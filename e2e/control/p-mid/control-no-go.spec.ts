@@ -8,8 +8,8 @@
  * is refused and says why; with the plate lower, moves are free. Nothing here reaches the shared mock printer: the
  * page's G-code is answered and recorded by usePrinter.
  */
-import { test, expect } from '../fixtures'
-import { usePrinter, PRESETS } from './printer'
+import { test, expect } from '../../fixtures'
+import { usePrinter, PRESETS } from '../printer'
 
 async function chooseStep (page: import('@playwright/test').Page, mm: string) {
   const move = page.getByTestId('control-move')

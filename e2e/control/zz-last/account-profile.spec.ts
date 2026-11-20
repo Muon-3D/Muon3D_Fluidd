@@ -10,10 +10,10 @@
  * at Control's own address, as account-access.spec.ts does.
  */
 import type { Page } from '@playwright/test'
-import { test, expect, ready } from '../fixtures'
-import { answerConsole, type ConsoleState } from '../fakes/console'
-import { fakeCommunity, PNG_1X1, type ModelServiceState } from '../fakes/models'
-import { VITE_PORT } from '../ports'
+import { test, expect, ready } from '../../fixtures'
+import { answerConsole, type ConsoleState } from '../../fakes/console'
+import { fakeCommunity, PNG_1X1, type ModelServiceState } from '../../fakes/models'
+import { VITE_PORT } from '../../ports'
 
 test.use({ signedIn: true })
 

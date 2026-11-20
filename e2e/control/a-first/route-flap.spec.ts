@@ -1,8 +1,8 @@
 import type { Page, WebSocketRoute } from '@playwright/test'
-import { test, expect, ready } from '../fixtures'
-import { MOCK_PORT } from '../ports'
-import { routeCounts, ROUTE_PRINTER, useAllRoutes } from '../fakes/routes'
-import { PRESETS, usePrinter } from './printer'
+import { test, expect, ready } from '../../fixtures'
+import { MOCK_PORT } from '../../ports'
+import { routeCounts, ROUTE_PRINTER, useAllRoutes } from '../../fakes/routes'
+import { PRESETS, usePrinter } from '../printer'
 
 test.use({ signedIn: true, serviceWorkers: 'block' })
 
