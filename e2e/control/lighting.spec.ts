@@ -37,8 +37,11 @@ async function lightsPrinter (page: Page, options: { presets?: number; favourite
 const stored = (printer: { database: Record<string, any> }) => printer.database.fluidd.lights.library as Record<string, any>
 const cell = (page: Page, id: string) => page.locator(`[data-cell="${id}"]`)
 
+/** Lighting is on the Overview by default at L (I-542): L is already there; a smaller one is put away and added again at that size. */
 async function addLightingWidget (page: Page, size: 'S' | 'M' | 'L') {
+  if (size === 'L') { await expect(page.locator('[data-tile="lighting"]')).toBeVisible(); return }
   await page.getByTestId('edit-open').click()
+  await cell(page, 'lighting').getByTestId('tile-remove').click()
   await page.getByTestId('widget-sheet-open').click()
   await page.getByTestId(`widget-size-lighting-${size}`).click()
   await page.getByTestId('widget-add-lighting').click()

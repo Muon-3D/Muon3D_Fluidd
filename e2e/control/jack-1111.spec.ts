@@ -23,16 +23,16 @@ test.describe('KAN-2076: Quick commands', () => {
     await expect(cell(page, 'macros')).toBeVisible()
   })
 
-  test('sits under Jog, out to the right edge and down to the Trackpad floor, and each button has an icon over its name', async ({ page, isMobile }) => {
+  test('takes the full width under the Trackpad, Jog and Lighting, and each button has an icon over its name', async ({ page, isMobile }) => {
     const grid = await box(page.locator('.overview__grid'))
     const macros = await pageBox(page, 'macros')
-    // OV-19 / OV-29 (12 Nov): under Jog, edge to edge on the right, its bottom level with the Trackpad's.
+    // I-542: edge to edge, both sides, under everything above it.
     expect(Math.abs(macros.x + macros.width - (grid.x + grid.width))).toBeLessThan(2)
+    expect(Math.abs(macros.x - grid.x)).toBeLessThan(2)
     if (!isMobile) {
-      const [jog, trackpad] = [await pageBox(page, 'jog'), await pageBox(page, 'trackpad')]
-      expect(Math.abs(macros.x - jog.x)).toBeLessThan(2)
-      expect(macros.y).toBeGreaterThan(jog.y + jog.height - 2)
-      expect(Math.abs(macros.y + macros.height - (trackpad.y + trackpad.height))).toBeLessThan(2)
+      const [lighting, trackpad] = [await pageBox(page, 'lighting'), await pageBox(page, 'trackpad')]
+      expect(macros.y).toBeGreaterThan(lighting.y + lighting.height - 2)
+      expect(macros.y).toBeGreaterThan(trackpad.y + trackpad.height - 2)
     }
 
     const chips = page.locator('[data-tile="macros"] [data-tid="macro-chip"]')
