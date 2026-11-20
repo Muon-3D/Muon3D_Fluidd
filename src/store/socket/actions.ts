@@ -305,5 +305,14 @@ export const actions: ActionTree<SocketState, RootState> = {
    */
   async notifyMuonSetupChanged (_, payload) {
     applySetupState(payload)
+  },
+
+  /**
+   * The printer's own screen moved (KAN-4812). Nothing in the store keeps it:
+   * the open printer-screen view subscribes to this action and passes it to
+   * the framed screen. Declared so the notification is not an unknown action.
+   */
+  async notifyMuonPanelState () {
+    // Read by the open screen's bridge.
   }
 }

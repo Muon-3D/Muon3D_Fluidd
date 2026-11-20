@@ -12,6 +12,11 @@
     <div class="m1-screen__strip">
       <span class="m1-screen__live"><span class="m1-screen__dot" />Live</span>
       <span class="m1-screen__what">Using {{ printerName }}'s screen</span>
+      <span
+        v-if="liveSupported === false"
+        class="m1-screen__livenote"
+        data-tid="m1-screen-live-note"
+      >Live screen needs a printer update.</span>
       <span class="m1-screen__hint">Esc or click outside to leave</span>
       <button
         type="button"
@@ -87,7 +92,7 @@ import Vue from 'vue'
 import { httpClientActions } from '@/api/httpClientActions'
 import { cloudState } from '@/services/muon-cloud/state'
 import { loadPanelBundle, type PanelBundle } from '@/services/panel-embed/bundle'
-import { NOTIFY_ACTIONS, gcodeRefusal, refusalNote } from '@/services/panel-embed/allow'
+import { NOTIFY_ACTIONS, PANEL_NAVIGATE_PATH, PANEL_STATE_PATH, gcodeRefusal, refusalNote } from '@/services/panel-embed/allow'
 import { KnobWheel } from '@/services/m1-3d/knob'
 
 /** The zoom in from the model's screen, and back out to it, ms. */
@@ -156,6 +161,8 @@ export default class M1Screen extends Mixins(ControlMixin) {
   stopActions: (() => void) | null = null
   refusedLast = false
   refusedText = ''
+  /** The printer publishes its panel state (live screen): null until known, false on an older image (the screen stays independent). */
+  liveSupported: boolean | null = null
 
   get printerName (): string {
     return (this.$store.getters['config/getDisplayName'] as string | undefined) || 'the printer'
@@ -263,15 +270,29 @@ export default class M1Screen extends Mixins(ControlMixin) {
         const why = this.runVerb(v)
         if (why) this.say(why)
         return why
+      },
+      // The printer's live panel state, over the same route as everything else: any status comes back as data.
+      panelGet: async () => {
+        const r = await httpClientActions.get(PANEL_STATE_PATH, { validateStatus: () => true })
+        return { status: r.status, body: r.data }
+      },
+      panelPost: async body => {
+        const r = await httpClientActions.post(PANEL_NAVIGATE_PATH, body, { validateStatus: () => true })
+        return { status: r.status, body: r.data }
       }
     }, {
-      onRefused: what => this.say(refusalNote(what))
+      onRefused: what => this.say(refusalNote(what)),
+      onSupport: supported => { this.liveSupported = supported }
     }))
+    // Only the websocket's own push while it works; a state poll only while it is down or silent.
+    if (this.wsDown) bridges.get(this)?.setPolling(true)
     // Moonraker's notifications, as Control's socket passes them to the store, passed on.
     this.stopActions = this.$store.subscribeAction(action => {
       const bridge = bridges.get(this)
       if (!bridge) return
-      if (action.type === 'printer/onFastNotifyStatusUpdate') {
+      if (action.type === 'socket/notifyMuonPanelState') {
+        bridge.panelNotify(action.payload)
+      } else if (action.type === 'printer/onFastNotifyStatusUpdate') {
         const { key, payload } = action.payload as { key: string, payload: unknown }
         bridge.notify('notify_status_update', [{ [key]: payload }])
       } else if (action.type in NOTIFY_ACTIONS) {
@@ -292,6 +313,20 @@ export default class M1Screen extends Mixins(ControlMixin) {
   @Watch('connectionKey')
   onConnectionChange () {
     this.$emit('close')
+  }
+
+  /** The websocket is down or has gone quiet: the one time the panel state is polled (2 s). Back up: one re-read, then pushes only. */
+  get wsDown (): boolean {
+    const s = this.$store.state.socket
+    return !s.open || !!s.stalled
+  }
+
+  @Watch('wsDown')
+  onWsDown (down: boolean) {
+    const bridge = bridges.get(this)
+    if (!bridge) return
+    bridge.setPolling(down)
+    if (!down) bridge.syncPanel().catch(() => undefined)
   }
 
   get connectionKey (): string {
@@ -502,6 +537,11 @@ export default class M1Screen extends Mixins(ControlMixin) {
     @media (max-width: 600px) {
       display: none;
     }
+  }
+
+  .m1-screen__livenote {
+    color: #ffd60a;
+    font-size: 12px;
   }
 
   .m1-screen__done {

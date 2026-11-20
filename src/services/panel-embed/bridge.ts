@@ -1,4 +1,4 @@
-import { HELLO_TYPE, PORT_TYPE, PROTOCOL_VERSION, type BridgeRequest, type BridgeResponse, type Verb } from './protocol'
+import { HELLO_TYPE, PORT_TYPE, SUPPORTED_VERSIONS, readNavigate, readPanelState, type BridgeRequest, type BridgeResponse, type PanelState, type Verb } from './protocol'
 import { NOTIFY_FORWARD, ON_PRINTER, auxVerdict, readVerb, rpcVerdict } from './allow'
 
 /**
@@ -28,11 +28,29 @@ export interface BridgeHost {
   connectionId: () => number | null;
   /** Runs a checked verb with Control's own gated methods: '' when it was sent, else why not (in words). */
   verb: (v: Verb) => string;
+  /**
+   * GET the printer's panel state over the active route: the HTTP status and decoded body, never throws for a
+   * status (only for no answer at all). Absent: this host has no live screen.
+   */
+  panelGet?: () => Promise<{ status: number, body: unknown }>;
+  /** POST a navigate request the same way. */
+  panelPost?: (body: { screen: string, params?: Record<string, unknown>, if_seq?: number }) => Promise<{ status: number, body: unknown }>;
 }
 
 export interface BridgeEvents {
   /** A call was refused (method or path, as asked). */
   onRefused?: (what: string) => void;
+  /** Whether this printer has a live panel state: false once it said it has none (an older image). */
+  onSupport?: (supported: boolean) => void;
+}
+
+/** How often the state is asked for while the websocket is down, ms (no polling while it works). */
+export const PANEL_POLL_MS = 2000
+
+/** What a busy panel says, in words: the modal's id as plain text. */
+export function busyReason (state: PanelState | null): string {
+  const what = state?.modal?.id.replace(/[-_]+/g, ' ').trim()
+  return what ? `The printer's screen is busy with ${what}` : "The printer's screen is busy"
 }
 
 export class PanelBridge {
@@ -40,6 +58,13 @@ export class PanelBridge {
   /** The objects the embed subscribed to (null = all), for forwarding status updates. */
   private watched: Set<string> | undefined = undefined
   refused = 0
+  /** The embed's protocol version (it said so in its hello); the panel state goes only to version 2 and up. */
+  private version = 1
+  /** The last panel state Control knows, and whether this printer has one at all. */
+  private panel: PanelState | null = null
+  private support: 'unknown' | 'yes' | 'no' = 'unknown'
+  private pollTimer: ReturnType<typeof setInterval> | null = null
+  private syncing: Promise<void> | null = null
   private readonly onWindowMessage = (e: MessageEvent) => this.hello(e)
 
   constructor (
@@ -59,18 +84,21 @@ export class PanelBridge {
    */
   private hello (e: MessageEvent) {
     const data = e.data as { type?: unknown, version?: unknown } | null
-    if (!data || data.type !== HELLO_TYPE || data.version !== PROTOCOL_VERSION) return
+    if (!data || data.type !== HELLO_TYPE || typeof data.version !== 'number' || !SUPPORTED_VERSIONS.includes(data.version)) return
     const target = this.frame.contentWindow
     if (!target || e.source !== target || e.origin !== 'null') return
     // A frame that could reach Control's own origin is not one to hand a port to.
     if ((this.frame.getAttribute('sandbox') ?? '').split(' ').includes('allow-same-origin')) return
     this.port?.close()
     this.watched = undefined
+    this.version = data.version
     const channel = new MessageChannel()
     this.port = channel.port1
     this.port.onmessage = m => { this.handle(m.data).catch(() => undefined) }
     // An opaque origin can't be named as a target; the window itself is the binding.
     target.postMessage({ type: PORT_TYPE }, '*', [channel.port2])
+    // The port queues until the embed listens; a version 2 embed gets the screen the panel is on.
+    if (this.version >= 2) this.syncPanel().catch(() => undefined)
   }
 
   private reply (r: BridgeResponse) {
@@ -124,7 +152,111 @@ export class PanelBridge {
       else this.reply({ id, ok: true, result: null })
       return
     }
+    if (req.kind === 'navigate') return this.navigate(id, req)
     this.refuse(id, 'unknown request')
+  }
+
+  private push () {
+    if (this.version < 2 || !this.port) return
+    const supported = this.support !== 'no'
+    this.port.postMessage({ kind: 'panel-state', supported, state: supported ? this.panel : null })
+  }
+
+  private adopt (state: PanelState) {
+    this.panel = state
+    this.support = 'yes'
+    this.events.onSupport?.(true)
+    this.push()
+  }
+
+  private unsupported () {
+    this.panel = null
+    if (this.support === 'no') return
+    this.support = 'no'
+    this.events.onSupport?.(false)
+    this.push()
+  }
+
+  /**
+   * Reads the panel state from the printer and passes it on. A printer without the endpoint (404 or 405) is
+   * remembered as having no live screen; a read that fails any other way changes nothing and is tried again.
+   * One read at a time.
+   */
+  syncPanel (): Promise<void> {
+    if (!this.host.panelGet) return Promise.resolve()
+    this.syncing ??= (async () => {
+      try {
+        const res = await this.host.panelGet!()
+        if (res.status === 404 || res.status === 405) return this.unsupported()
+        if (res.status < 200 || res.status >= 300) return
+        const body = res.body as { result?: unknown } | null
+        const state = readPanelState(body && typeof body === 'object' && 'result' in body ? body.result : body)
+        if (state) this.adopt(state)
+      } catch {
+        // No answer: keep what we have.
+      } finally {
+        this.syncing = null
+      }
+    })()
+    return this.syncing
+  }
+
+  /** The printer's own notification of a new panel state: it is ordered, so a different seq is the newer one. */
+  panelNotify (raw: unknown) {
+    const state = readPanelState(raw)
+    if (!state || this.support === 'no') return
+    if (this.panel && state.seq === this.panel.seq) return
+    this.adopt(state)
+  }
+
+  /** While the websocket is down, ask for the state every PANEL_POLL_MS; stop when it is back. */
+  setPolling (on: boolean) {
+    if (!on || this.support === 'no' || !this.host.panelGet) {
+      if (this.pollTimer) clearInterval(this.pollTimer)
+      this.pollTimer = null
+      return
+    }
+    if (this.pollTimer) return
+    this.pollTimer = setInterval(() => { this.syncPanel().catch(() => undefined) }, PANEL_POLL_MS)
+  }
+
+  /**
+   * The embed asks the panel to move. Sent with the seq Control last saw, so the printer can tell a stale view
+   * (409: re-read and push the truth) and can refuse while a modal is open or the panel is busy (423, in words).
+   */
+  private async navigate (id: number, raw: unknown) {
+    const fail = (message: string, status: number) => this.reply({ id, ok: false, error: { message, status } })
+    const nav = readNavigate(raw)
+    if (!nav) return this.refuse(id, 'malformed navigate')
+    if (!this.host.panelPost || this.support === 'no') return fail('Live screen needs a printer update.', 404)
+    try {
+      const res = await this.host.panelPost({ ...nav, ...(this.panel ? { if_seq: this.panel.seq } : {}) })
+      if (res.status >= 200 && res.status < 300) {
+        // The printer answers 200 {seq}; the new screen itself arrives as the state notification.
+        const body = res.body as { result?: unknown } | null
+        const out = (body && typeof body === 'object' && 'result' in body ? body.result : body) as { seq?: unknown } | null
+        return this.reply({ id, ok: true, result: { seq: typeof out?.seq === 'number' ? out.seq : null } })
+      }
+      if (res.status === 409) {
+        await this.syncPanel()
+        return fail("The printer's screen has moved on.", 409)
+      }
+      if (res.status === 423) {
+        // The state the printer was in when it said no: a notification may not have reached us yet.
+        await this.syncPanel()
+        return fail(busyReason(this.panel), 423)
+      }
+      if (res.status === 404 || res.status === 405) {
+        this.unsupported()
+        return fail('Live screen needs a printer update.', 404)
+      }
+      if (res.status === 504) return fail("The printer's screen isn't responding", 504)
+      if (res.status === 403 && (res.body as { reason?: unknown } | null)?.reason === 'owner_only') return fail("Only the printer's owner can open that screen", 403)
+      if (res.status === 401 || res.status === 403) return fail(ON_PRINTER, res.status)
+      return fail('The printer would not change screen.', res.status)
+    } catch {
+      return fail("The printer's screen isn't responding", 504)
+    }
   }
 
   /** subscribe and identify, answered from what Control already has. */
@@ -160,6 +292,7 @@ export class PanelBridge {
   }
 
   dispose () {
+    this.setPolling(false)
     window.removeEventListener('message', this.onWindowMessage)
     this.port?.close()
     this.port = null
