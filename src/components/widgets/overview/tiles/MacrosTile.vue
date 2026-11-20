@@ -121,7 +121,7 @@ import { Component, Mixins } from 'vue-property-decorator'
 import MacroRunMixin from '@/mixins/macro-run'
 import OverviewMixin from '@/mixins/overview'
 import { type ShownMacro } from '@/mixins/macros'
-import { defaultQuick, quickSlots } from '@/services/overview/quick-defaults'
+import { QUICK_BUSY_BLOCKED, defaultQuick, quickSlots } from '@/services/overview/quick-defaults'
 import type { TileMenuItem } from '@/services/overview/tiles'
 import { macroIcon } from '@/services/macros/icon'
 import TileShell from './TileShell.vue'
@@ -191,7 +191,7 @@ export default class MacrosTile extends Mixins(MacroRunMixin, OverviewMixin) {
       const macro = this.arrangedMacros.find(m => m.name === d.found)
       const send = d.gcode ?? d.found
       const go = d.id === 'home' ? () => this.home() : macro && !d.gcode ? () => this.run(macro) : () => { this.sendTypedGcode(send) }
-      return { key: d.id, title: d.title, icon: d.icon, tip: d.gcode ? `${d.title} (${d.gcode})` : d.found, disabled: !ready || (d.id === 'home' && this.busy), go }
+      return { key: d.id, title: d.title, icon: d.icon, tip: d.gcode ? `${d.title} (${d.gcode})` : d.found, disabled: !ready || (this.busy && (QUICK_BUSY_BLOCKED.has(d.id) || !!macro?.disabledWhilePrinting)), go }
     })
   }
 

@@ -34,6 +34,13 @@ export const QUICK_DEFAULTS: QuickDefault[] = [
   { id: 'zpark', title: 'Z park', icon: 'home', names: ['Z_PARK'] }
 ]
 
+/**
+ * Defaults that move the head or plate, or calibrate, so they wait while a print
+ * runs (busy): sent mid-print they would home, probe or heat in the middle of the
+ * job. Filament load/unload/cut and Lights off stay available.
+ */
+export const QUICK_BUSY_BLOCKED: ReadonlySet<string> = new Set(['home', 'purge', 'clean', 'park', 'center', 'mesh', 'pid-hotend', 'pid-bed', 'probe', 'zpark'])
+
 /** Left out of the default on purpose (test, dev and one-off macros): they stay under All commands. */
 export const QUICK_LEFT_OUT = ['BUZZ_EXTRUDER', 'STEPLOSS_TEST', 'TEST_SPEED', 'LED_INFO', 'LED_READY', 'CHOME', 'FINETUNE_RESONANCE', 'RESET_CALIBRATION']
 
