@@ -11,7 +11,7 @@ on:
     inputs:
       days:
         description: Delete artifacts older than this many days
-        default: '3'
+        default: '1'
       dry_run:
         description: List what would be deleted without deleting it
         type: boolean
@@ -35,7 +35,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.days || '3' }}
+          DAYS: ${{ github.event_name == 'workflow_dispatch' && inputs.days || '1' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
         run: |
           set -euo pipefail
