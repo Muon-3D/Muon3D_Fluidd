@@ -620,7 +620,7 @@ export const SocketActions = {
 
   async serverFilesListRoot (root: string) {
     const wait = `${Waits.onFileSystem}/${root}/`
-    baseEmit(
+    return baseEmit(
       'server.files.list',
       {
         dispatch: 'files/onServerFilesListRoot',
