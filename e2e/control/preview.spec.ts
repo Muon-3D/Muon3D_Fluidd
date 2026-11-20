@@ -37,8 +37,14 @@ async function previewPrinter (page: Page, served: { fail?: boolean } = {}): Pro
 }
 
 async function openFile (page: Page, name = 'calibration_cube.gcode') {
-  await page.getByTestId('preview-empty').getByTestId('preview-open').click()
-  await page.getByTestId('preview-open-list').locator(`[data-file="${name}"]`).click()
+  const file = page.getByTestId('preview-open-list').locator(`[data-file="${name}"]`)
+  // A menu that was opened can be closed under the click: vite re-optimising a dependency reloads the page, and the
+  // printer's file list arrives after the button is enabled. So wait for the list itself, and open the menu again if it went (KAN-4976).
+  await expect(async () => {
+    if (!await file.isVisible()) await page.getByTestId('preview-empty').getByTestId('preview-open').click()
+    await expect(file).toBeVisible({ timeout: 5_000 })
+  }).toPass({ timeout: 60_000 })
+  await file.click()
 }
 
 test('Jobs\' ··· opens the preview, and a file opened there draws on the canvas with the layer slider under it', async ({ page, open }, testInfo) => {
