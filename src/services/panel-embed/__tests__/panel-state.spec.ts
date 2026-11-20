@@ -55,6 +55,24 @@ describe('panel state over the bridge (KAN-4812)', () => {
     expect(host.panelGet).not.toHaveBeenCalled()
   })
 
+  it('polls while the websocket is down without pushing the same screen again', async () => {
+    const { host, out } = setup()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(out).toHaveLength(1)
+    bridge!.setPolling(true)
+    await vi.advanceTimersByTimeAsync(PANEL_POLL_MS * 3)
+    expect((host.panelGet as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(3)
+    expect(out).toHaveLength(1)
+    bridge!.setPolling(false)
+  })
+
+  it('never polls the printer for a version 1 embed, even with the websocket down', async () => {
+    const { host } = setup({}, 1)
+    bridge!.setPolling(true)
+    await vi.advanceTimersByTimeAsync(PANEL_POLL_MS * 3)
+    expect(host.panelGet).not.toHaveBeenCalled()
+  })
+
   it('navigates with the last seq, and answers with the printer\'s seq', async () => {
     const { host, out } = setup()
     await vi.advanceTimersByTimeAsync(0)

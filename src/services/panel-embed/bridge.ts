@@ -64,6 +64,8 @@ export class PanelBridge {
   private panel: PanelState | null = null
   private support: 'unknown' | 'yes' | 'no' = 'unknown'
   private pollTimer: ReturnType<typeof setInterval> | null = null
+  /** The websocket is down, so the state should be polled: honoured only once a version 2 embed is here. */
+  private pollWanted = false
   private syncing: Promise<void> | null = null
   private readonly onWindowMessage = (e: MessageEvent) => this.hello(e)
 
@@ -98,7 +100,13 @@ export class PanelBridge {
     // An opaque origin can't be named as a target; the window itself is the binding.
     target.postMessage({ type: PORT_TYPE }, '*', [channel.port2])
     // The port queues until the embed listens; a version 2 embed gets the screen the panel is on.
-    if (this.version >= 2) this.syncPanel().catch(() => undefined)
+    if (this.version >= 2) {
+      // A fresh embed gets what is known now; the read below only pushes again when the screen has moved.
+      if (this.panel || this.support === 'no') this.push()
+      this.syncPanel().catch(() => undefined)
+      // The websocket was already down when this embed said hello: start the fallback poll now.
+      if (this.pollWanted) this.setPolling(true)
+    }
   }
 
   private reply (r: BridgeResponse) {
@@ -191,7 +199,8 @@ export class PanelBridge {
         if (res.status < 200 || res.status >= 300) return
         const body = res.body as { result?: unknown } | null
         const state = readPanelState(body && typeof body === 'object' && 'result' in body ? body.result : body)
-        if (state) this.adopt(state)
+        // The same screen as last time (a poll with nothing new): nothing to push.
+        if (state && !(this.support === 'yes' && this.panel && state.seq === this.panel.seq)) this.adopt(state)
       } catch {
         // No answer: keep what we have.
       } finally {
@@ -211,7 +220,9 @@ export class PanelBridge {
 
   /** While the websocket is down, ask for the state every PANEL_POLL_MS; stop when it is back. */
   setPolling (on: boolean) {
-    if (!on || this.support === 'no' || !this.host.panelGet) {
+    this.pollWanted = on
+    // A version 1 embed (or none yet) has no use for the state: never read it for one.
+    if (!on || this.version < 2 || this.support === 'no' || !this.host.panelGet) {
       if (this.pollTimer) clearInterval(this.pollTimer)
       this.pollTimer = null
       return
