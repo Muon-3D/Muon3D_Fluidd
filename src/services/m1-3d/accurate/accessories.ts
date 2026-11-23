@@ -53,10 +53,29 @@ const FALL_MM_S2 = 700
 const FALL_MS = 650
 /** Where the falling print lets go, in the return-with-print clip: as the plate turns past the vertical. */
 const DROP_AT = 0.33
-/** The hose's end: pulled this far out of the head, then let down this far, toward the chassis. */
+/** The hose's end, with its connector: pulled this far straight out of the head, then carried over the deck's edge to the table. */
 const PULL_MM = 22
-const DROP_MM = 46
-const BACK_MM = 34
+/** It comes to rest on the table this far out from the chassis fitting, and this far along the wall toward the head's side. */
+const REST_OUT_MM = 90
+const REST_SIDE_MM = 40
+/** Its middle sits this far above the table, the connector's radius. */
+const REST_LIFT_MM = 12
+/** The carry rises this far above the higher of its two ends, so it clears the deck's edge. */
+const CARRY_LIFT_MM = 45
+/**
+ * The tube connector: the dark sleeve the hose plugs into on the toolhead
+ * (the GLB's `M1_X_Carriage_15`, one mesh with the socket inside the
+ * carriage). Its axis runs along the scene's Z, away from the carriage, and
+ * the part past the carriage body's end face (Z 86 to 87 in the scene's
+ * millimetres, measured off the GLB) is the connector; it goes out with the
+ * hose, and the socket behind it stays.
+ */
+export const ACCURATE_CONNECTOR_MESH = 'M1_X_Carriage_15'
+/** The carriage's backing mesh (the fill behind its open faces) has the same sleeve in it: it is cut the same way. */
+export const ACCURATE_CONNECTOR_BACKING = 'M1_Backing_M1_X_Carriage'
+export const CONNECTOR_NODE = 'M1_TubeConnector'
+export const CONNECTOR_AXIS: Readonly<THREE.Vector3> = new THREE.Vector3(0, 0, 1)
+export const CONNECTOR_FROM_Z = 86.5
 /** The unlock button held: the hose's end eases out this much. */
 const UNLOCK_MM = 3
 /** The column comes this far straight up out of its socket before it is carried aside. */
@@ -75,6 +94,52 @@ function arc (a: THREE.Vector3, b: THREE.Vector3, lift: number, k: number, out: 
 }
 
 /**
+ * Cuts the tube connector (the faces past the carriage body's end face) out
+ * of the toolhead's sleeve mesh into a mesh of its own, a sibling of it, so it
+ * can move with the hose's end. Both share the sleeve's vertex data; only
+ * the triangle lists differ. Returns the connector, or null if no face lies
+ * past the end face.
+ */
+export function splitConnector (root: THREE.Object3D, sleeve: THREE.Mesh): THREE.Mesh | null {
+  const geometry = sleeve.geometry
+  const index = geometry.index
+  const position = geometry.getAttribute('position')
+  if (!index || !position || !sleeve.parent) return null
+  root.updateMatrixWorld(true)
+  const toScene = new THREE.Matrix4().copy(root.matrixWorld).invert().multiply(sleeve.matrixWorld)
+  const at = new THREE.Vector3()
+  const z = new Float32Array(position.count)
+  for (let i = 0; i < position.count; i++) z[i] = at.fromBufferAttribute(position, i).applyMatrix4(toScene).z
+  const src = index.array
+  const Index = src.constructor as Uint16ArrayConstructor | Uint32ArrayConstructor
+  const stays: number[] = []
+  const goes: number[] = []
+  for (let i = 0; i < src.length; i += 3) {
+    const a = src[i]; const b = src[i + 1]; const c = src[i + 2]
+    const to = (z[a] + z[b] + z[c]) / 3 >= CONNECTOR_FROM_Z ? goes : stays
+    to.push(a, b, c)
+  }
+  if (!goes.length) return null
+  const part = new THREE.BufferGeometry()
+  for (const name of Object.keys(geometry.attributes)) part.setAttribute(name, geometry.getAttribute(name))
+  part.setIndex(new THREE.BufferAttribute(new Index(goes), 1))
+  geometry.setIndex(new THREE.BufferAttribute(new Index(stays), 1))
+  geometry.computeBoundingSphere()
+  geometry.computeBoundingBox()
+  part.computeBoundingSphere()
+  part.computeBoundingBox()
+  const connector = new THREE.Mesh(part, sleeve.material)
+  connector.name = `${CONNECTOR_NODE}:${sleeve.name}`
+  connector.castShadow = sleeve.castShadow
+  connector.receiveShadow = sleeve.receiveShadow
+  connector.position.copy(sleeve.position)
+  connector.quaternion.copy(sleeve.quaternion)
+  connector.scale.copy(sleeve.scale)
+  sleeve.parent.add(connector)
+  return connector
+}
+
+/**
  * Builds the moving accessories on the loaded GLB at its rest pose. `cargo`
  * (the print and what else hangs from the plate) is moved into the plate's
  * carrier, so it rides with the bed, the column and the plate itself.
@@ -87,7 +152,7 @@ export function buildAccurateAccessories (root: THREE.Object3D, cargo: THREE.Obj
   const plate = find(n.plate)
   const hoseHead = find(n.hoseHead)
   const hoseBase = find(n.hoseBase)
-  const missing = Object.values(n).filter(name => !find(name))
+  const missing: string[] = Object.values(n).filter(name => !find(name))
 
   root.updateMatrixWorld(true)
   const whole = new THREE.Box3().setFromObject(root)
@@ -237,12 +302,21 @@ export function buildAccurateAccessories (root: THREE.Object3D, cargo: THREE.Obj
     const restLocal = hoseHead.position.clone()
     const baseWorld = hoseBase.getWorldPosition(new THREE.Vector3())
     const restWorld = hoseHead.getWorldPosition(new THREE.Vector3())
-    // Out of the head along the hose, back toward the chassis.
-    const out = new THREE.Vector3().subVectors(baseWorld, restWorld).setY(0).normalize()
+    // The connector rides with the hose's end, so nothing of it stays seated in the toolhead.
+    const sleeve = root.getObjectByName(ACCURATE_CONNECTOR_MESH) as THREE.Mesh | undefined
+    const connector = sleeve?.isMesh ? splitConnector(root, sleeve) : null
+    if (!connector) missing.push(ACCURATE_CONNECTOR_MESH)
+    const backing = root.getObjectByName(ACCURATE_CONNECTOR_BACKING) as THREE.Mesh | undefined
+    const backingPart = backing?.isMesh ? splitConnector(root, backing) : null
+    const parts = [connector, backingPart].filter((m): m is THREE.Mesh => !!m)
+    // Detached, the end lies on the table in front of the chassis fitting, clear of the base: out from the wall, and along it toward the head's side.
+    const wallOut = new THREE.Vector3().subVectors(baseWorld, (baseNode ? new THREE.Box3().setFromObject(baseNode) : whole).getCenter(tmpA)).setY(0).normalize()
+    const along = new THREE.Vector3(-wallOut.z, 0, wallOut.x)
+    if (along.dot(tmpB.subVectors(restWorld, baseWorld)) < 0) along.negate()
+    const restAt = baseWorld.clone().addScaledVector(wallOut, REST_OUT_MM).addScaledVector(along, REST_SIDE_MM)
+    restAt.y = floorY + REST_LIFT_MM
     const pulledFrom = new THREE.Vector3()
     const end = new THREE.Vector3()
-    // Detached, the end lies where it was let go, below and back from the head's rest.
-    const restAt = restWorld.clone().addScaledVector(out, PULL_MM + BACK_MM).add(new THREE.Vector3(0, -DROP_MM, 0))
     applyTube = frame => {
       const { clip, attached, t, unlocking } = frame.tube
       // The end in its boot, wherever the head is now.
@@ -259,9 +333,18 @@ export function buildAccurateAccessories (root: THREE.Object3D, cargo: THREE.Obj
         away = 1 - easeInOut(seg(t, 0, 0.65))
         pull = PULL_MM * (1 - easeInOut(seg(t, 0.65, 1)))
       }
-      const pulled = seated.addScaledVector(out, pull)
-      end.lerpVectors(pulled, restAt, away)
+      // Straight out along the connector's own axis, then carried over the deck's edge to the table.
+      const pulled = seated.addScaledVector(CONNECTOR_AXIS, pull)
+      if (away <= 0) end.copy(pulled)
+      else arc(pulled, restAt, CARRY_LIFT_MM, away, end)
       hoseHead.position.copy(head.worldToLocal(end))
+      // The connector goes where the hose's end goes: the same shift, in the carriage's own frame.
+      const still = pull === 0 && away <= 0
+      for (const part of parts) {
+        const home = part === connector ? sleeve! : backing!
+        if (still) part.position.copy(home.position)
+        else part.position.copy(home.position).add(hoseHead.position).sub(restLocal)
+      }
     }
   }
 
