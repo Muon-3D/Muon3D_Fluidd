@@ -41,7 +41,7 @@ function madeUpYear () {
         start_time: start,
         end_time: start + hours * 3600,
         print_duration: hours * 3600,
-        total_duration: hours * 3600,
+        total_duration: hours * 3600 + 120,
         filament_used: Math.round(hours * (9 + rand() * 9) / 3 * 1000),
         exists: true,
         metadata: { size: 1_000_000, filament_type: 'PLA', filament_total: 1000, filament_weight_total: 3 }

@@ -38,16 +38,16 @@ test('shows the year as a grid, with the totals and streaks in words', async ({ 
 
   // The totals count only this year's prints (j7 is a year and a day old).
   await expect(page.getByTestId('year-prints')).toHaveText('5')
-  await expect(page.getByTestId('year-hours')).toHaveText('17 h 30 min')
-  await expect(page.getByTestId('year-filament')).toHaveText('420 g')
+  await expect(page.getByTestId('year-hours')).toHaveText('16 h 30 min')
+  await expect(page.getByTestId('year-filament')).toHaveText('408 g')
   await expect(page.getByTestId('year-longest')).toHaveText('3 days')
   await expect(page.getByTestId('year-current')).toHaveText('3 days')
   await expect(page.getByTestId('year-zone')).toContainText('Europe/London')
 
   // Each day says its date and its numbers.
   await expect(cell(page, '2026-11-10')).toHaveAttribute('aria-label', 'Tue 10 Nov 2026: 2 prints, 3 h 30 min, 18 g of filament')
-  await expect(cell(page, '2026-11-09')).toHaveAttribute('aria-label', 'Mon 9 Nov 2026: no prints')
-  await expect(cell(page, '2026-11-08')).toHaveAttribute('aria-label', 'Sun 8 Nov 2026: 0 prints, 1 h, 12 g of filament')
+  await expect(cell(page, '2026-11-09')).toHaveAttribute('aria-label', 'Mon 9 Nov 2026: no finished prints')
+  await expect(cell(page, '2026-11-08')).toHaveAttribute('aria-label', 'Sun 8 Nov 2026: no finished prints')
 
   // The year was asked for by `since`: a year back, to the Monday.
   await expect.poll(() => asked.some(p => p.since === Date.parse('2025-11-10T00:00:00Z') / 1000)).toBe(true)
@@ -55,35 +55,35 @@ test('shows the year as a grid, with the totals and streaks in words', async ({ 
 
 test('Hours, Prints and Filament change the grid and the ring together', async ({ page, open }) => {
   await openYear(page, open)
-  const ring = page.getByTestId('year-ring')
+  const ring = page.getByTestId('year-ring-text')
   const total = page.getByTestId('year-ring-total')
   const tenth = cell(page, '2026-11-10')
 
   // Hours is the first choice: 3.5 h is the second shade.
   await expect(page.getByRole('radio', { name: 'Hours' })).toHaveAttribute('aria-checked', 'true')
   await expect(tenth).toHaveAttribute('data-level', '2')
-  await expect(total).toHaveText('18 h')
-  await expect(ring).toHaveAttribute('aria-label', /17 h 30 min of printing/)
+  await expect(total).toHaveText('17 h')
+  await expect(ring).toContainText('16 h 30 min of printing')
 
   await page.getByRole('radio', { name: 'Prints' }).click()
   await expect(page.getByRole('radio', { name: 'Prints' })).toHaveAttribute('aria-checked', 'true')
   await expect(tenth).toHaveAttribute('data-level', '3') // two prints
   await expect(cell(page, '2026-11-11')).toHaveAttribute('data-level', '2') // one print
   await expect(total).toHaveText('5')
-  await expect(ring).toHaveAttribute('aria-label', /5 finished prints/)
+  await expect(ring).toContainText('5 finished prints')
 
   await page.getByRole('radio', { name: 'Filament' }).click()
   await expect(tenth).toHaveAttribute('data-level', '1') // 18 g
   await expect(cell(page, '2026-11-11')).toHaveAttribute('data-level', '3') // 60 g
   await expect(cell(page, '2026-08-01')).toHaveAttribute('data-level', '4') // 300 g
   await expect(total).toHaveText('0.4 kg')
-  await expect(ring).toHaveAttribute('aria-label', /420 g of filament/)
+  await expect(ring).toContainText('408 g of filament')
 
   // The ring's bands change with it: only the sector for 1 Aug is the brightest.
   await expect(page.locator('.yr__sector.lv4')).toHaveCount(1)
 
   await page.getByRole('radio', { name: 'Hours' }).click()
-  await expect(total).toHaveText('18 h')
+  await expect(total).toHaveText('17 h')
   await expect(tenth).toHaveAttribute('data-level', '2')
 })
 
@@ -142,6 +142,10 @@ test('fits the screen, with the grid scrolling and today in view', async ({ page
   expect(today!.x).toBeGreaterThanOrEqual(0)
   expect(today!.x + today!.width).toBeLessThanOrEqual(box.width)
 
+  // The today marker's outer ring is inside the scroll box, not clipped at its right edge.
+  const scroller = (await page.locator('.yr__scroller').boundingBox())!
+  expect(today!.x + today!.width + 3).toBeLessThanOrEqual(scroller.x + scroller.width)
+
   // The ring is whole and inside the screen.
   const ring = await page.getByTestId('year-ring').boundingBox()
   expect(ring!.x).toBeGreaterThanOrEqual(0)
@@ -151,6 +155,10 @@ test('fits the screen, with the grid scrolling and today in view', async ({ page
   if (box.width <= 400) {
     const scrolls = await page.locator('.yr__scroller').evaluate(el => el.scrollWidth > el.clientWidth)
     expect(scrolls).toBe(true)
+    // The weekday names stay in view while the grid is scrolled to today.
+    const mon = (await page.locator('.yr__dow').first().boundingBox())!
+    expect(mon.x).toBeGreaterThanOrEqual(scroller.x - 1)
+    expect(mon.x).toBeLessThan(scroller.x + 30)
   }
 })
 
@@ -170,4 +178,75 @@ test('with the flag on but no history, nothing is drawn', async ({ page, open })
   await open('/history')
   await expect(page.getByTestId('history-page')).toBeVisible()
   await expect(page.getByTestId('year-glance')).toHaveCount(0)
+})
+
+test('the ring has one text equivalent, and its sectors are not controls', async ({ page, open }) => {
+  await openYear(page, open)
+  await expect(page.getByTestId('year-ring')).toHaveAttribute('aria-hidden', 'true')
+  await expect(page.getByTestId('year-ring-text')).toContainText('The spool:')
+  await expect(page.getByTestId('year-glance').getByRole('img')).toHaveCount(0)
+  // Nothing about a sector changes on hover (the lab only gives it a tooltip).
+  const opacity = await page.locator('.yr__sector').first().evaluate(el => getComputedStyle(el).opacity)
+  await page.locator('.yr__sector').first().hover({ force: true })
+  expect(await page.locator('.yr__sector').first().evaluate(el => getComputedStyle(el).opacity)).toBe(opacity)
+})
+
+test('shows a loading state, never the last 50 prints as the year', async ({ page, open }) => {
+  await page.clock.setFixedTime(new Date(NOW))
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  // The list History shows has one print; the year's request is never answered.
+  printer.state.answer['server.history.list'] = (params: Record<string, unknown>) => params.since ? undefined : { count: 1, jobs: [YEAR_JOBS[0]] }
+  await open('/history')
+  await expect(page.getByTestId('history-page')).toBeVisible()
+  await expect(page.getByTestId('year-loading')).toBeVisible()
+  await expect(page.getByTestId('year-grid')).toHaveCount(0)
+  await expect(page.getByTestId('year-prints')).toHaveCount(0)
+  await expect(page.getByTestId('year-metric')).toHaveCount(0)
+})
+
+test('a failed request says so and Retry loads the year', async ({ page, open }) => {
+  await page.clock.setFixedTime(new Date(NOW))
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  let broken = true
+  printer.state.answer['server.history.list'] = (params: Record<string, unknown>) => {
+    if (!params.since) return { count: 1, jobs: [YEAR_JOBS[0]] }
+    return broken ? {} : { count: YEAR_JOBS.length, jobs: YEAR_JOBS }
+  }
+  await open('/history')
+  await expect(page.getByTestId('year-error')).toContainText("Couldn't load")
+  await expect(page.getByTestId('year-grid')).toHaveCount(0)
+  broken = false
+  await page.getByTestId('year-retry').click()
+  await expect(page.getByTestId('year-prints')).toHaveText('5')
+  await expect(page.getByTestId('year-error')).toHaveCount(0)
+})
+
+test('an empty year says so, with Retry', async ({ page, open }) => {
+  await page.clock.setFixedTime(new Date(NOW))
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  printer.state.answer['server.history.list'] = (params: Record<string, unknown>) => params.since ? { count: 0, jobs: [] } : { count: 1, jobs: [YEAR_JOBS[0]] }
+  await open('/history')
+  await expect(page.getByTestId('year-empty')).toContainText('No prints in the last year')
+  await expect(page.getByTestId('year-retry')).toBeVisible()
+  await expect(page.getByTestId('year-grid')).toHaveCount(0)
+})
+
+test('says when there are more prints than it shows', async ({ page, open }) => {
+  await page.clock.setFixedTime(new Date(NOW))
+  const printer = await usePrinter(page, PRESETS.idleHomed())
+  printer.state.answer['server.history.list'] = (params: Record<string, unknown>) => ({ count: params.since ? 6200 : 1, jobs: params.since ? YEAR_JOBS : [YEAR_JOBS[0]] })
+  await open('/history')
+  await expect(page.getByTestId('year-zone')).toContainText('Showing the latest 5000 prints.')
+})
+
+test('the year is loaded once, not again each time History is opened', async ({ page, open }) => {
+  const { asked } = await openYear(page, open)
+  const since = () => asked.filter(p => p.since).length
+  await expect.poll(since).toBe(1)
+  const go = (path: string) => page.evaluate((to) => (document.getElementById('app') as unknown as { __vue__: { $router: { push: (p: string) => Promise<unknown> } } }).__vue__.$router.push(to).then(() => undefined), path)
+  await go('/boxwood-367a/jobs')
+  await expect(page.getByTestId('year-glance')).toHaveCount(0)
+  await go('/boxwood-367a/history')
+  await expect(page.getByTestId('year-prints')).toHaveText('5')
+  expect(since()).toBe(1)
 })

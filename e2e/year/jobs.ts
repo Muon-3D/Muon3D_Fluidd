@@ -2,8 +2,9 @@
  * A mocked history for the year grid: fixed moments, so the days and totals
  * are the same on every run. "Now" is Thu 12 Nov 2026 12:00 UTC, in London.
  *
- * Finished prints: 5 (j1, j2, j3, j4, j6). Hours (total_duration): 2 + 1 + 3 + 0.5
- * + 1 (the stopped one) + 10 = 17.5. Filament: 30 + 60 + 15 + 3 + 12 + 300 = 420 g.
+ * Finished prints: 5 (j1, j2, j3, j4, j6); the stopped one (j5) counts for nothing. Hours
+ * (print_duration, not the longer total_duration): 2 + 1 + 3 + 0.5 + 10 = 16.5.
+ * Filament: 30 + 60 + 15 + 3 + 300 = 408 g over 136 m.
  * Streaks: 10, 11 and 12 Nov, so longest 3 and current 3.
  */
 export const NOW = '2026-11-12T12:00:00Z'
@@ -20,7 +21,7 @@ function job (id: string, file: string, status: string, startIso: string, second
     start_time: start,
     end_time: start + seconds,
     print_duration: seconds,
-    total_duration: seconds,
+    total_duration: seconds + 120,
     filament_used: mm,
     exists: true,
     metadata: META

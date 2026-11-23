@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  buildYear, dayKey, dayLabelText, formatGrams, formatHours, level, metricValue, monthLabels, moveCell, ringText, spoolPath, summaryText, yearTotals,
+  buildYear, dayKey, dayLabelText, formatGrams, formatHours, level, metricValue, monthLabels, moveCell, ringText, spoolPath, yearSince, yearTotals,
   type YearJob
 } from '../year'
 
@@ -25,7 +25,7 @@ function job (id: string, startIso: string, over: Partial<YearJob> = {}): YearJo
     filename: `${id}.gcode`,
     status: 'completed',
     start_time: Date.parse(startIso) / 1000,
-    total_duration: 3600,
+    print_duration: 3600,
     filament_used: 1000,
     metadata: META,
     ...over
@@ -138,47 +138,53 @@ describe('which day a print falls on', () => {
 describe('what a day adds up to', () => {
   const now = new Date(2026, 10, 12, 15)
 
-  it('counts finished prints, and the hours and grams of everything that ran', () => {
+  it('counts finished prints only: stopped and failed ones are listed but add nothing', () => {
     inZone('Europe/London')
     const year = buildYear([
-      job('a', '2026-11-10T08:00:00Z', { total_duration: 7200, filament_used: 2000 }),
-      job('b', '2026-11-10T14:00:00Z', { total_duration: 1800, filament_used: 500 }),
-      job('c', '2026-11-10T20:00:00Z', { status: 'cancelled', total_duration: 900, filament_used: 250 }),
-      job('d', '2026-11-10T21:00:00Z', { status: 'error', total_duration: 0, filament_used: 0 })
+      job('a', '2026-11-10T08:00:00Z', { print_duration: 7200, filament_used: 2000 }),
+      job('b', '2026-11-10T14:00:00Z', { print_duration: 1800, filament_used: 500 }),
+      job('c', '2026-11-10T20:00:00Z', { status: 'cancelled', print_duration: 900, filament_used: 250 }),
+      job('d', '2026-11-10T21:00:00Z', { status: 'error', print_duration: 0, filament_used: 0 })
     ], now)
     const day = year.days.find(d => d.key === '2026-11-10')!
-    expect(day.n).toBe(3 - 1) // a and b finished; c was stopped, d failed
-    expect(day.hours).toBeCloseTo(2 + 0.5 + 0.25)
-    expect(day.grams).toBeCloseTo(6 + 1.5 + 0.75)
-    expect(day.mm).toBe(2750)
+    expect(day.n).toBe(2) // a and b finished; c was stopped, d failed
+    expect(day.hours).toBeCloseTo(2 + 0.5)
+    expect(day.grams).toBeCloseTo(6 + 1.5)
+    expect(day.mm).toBe(2500)
     expect(metricValue(day, 'prints')).toBe(2)
-    expect(metricValue(day, 'hours')).toBeCloseTo(2.75)
-    expect(metricValue(day, 'filament')).toBeCloseTo(8.25)
+    expect(metricValue(day, 'hours')).toBeCloseTo(2.5)
+    expect(metricValue(day, 'filament')).toBeCloseTo(7.5)
     expect(day.prints.map(p => p.id)).toEqual(['a', 'b', 'c', 'd'])
     expect(day.prints.map(p => p.finished)).toEqual([true, true, false, false])
+  })
+
+  it('measures hours by print_duration, as History does, not the longer total_duration', () => {
+    inZone('Europe/London')
+    const year = buildYear([{ ...job('a', '2026-11-10T08:00:00Z', { print_duration: 3600 }), total_duration: 9000 } as YearJob], now)
+    expect(yearTotals(year.days).hours).toBeCloseTo(1)
   })
 
   it('totals the year', () => {
     inZone('Europe/London')
     const year = buildYear([
       job('a', '2026-11-10T08:00:00Z'),
-      job('b', '2026-11-11T08:00:00Z', { total_duration: 5400, filament_used: 4000 }),
+      job('b', '2026-11-11T08:00:00Z', { print_duration: 5400, filament_used: 4000 }),
       job('c', '2026-05-01T08:00:00Z', { status: 'cancelled' })
     ], now)
     const t = yearTotals(year.days)
     expect(t.prints).toBe(2)
-    expect(t.hours).toBeCloseTo(1 + 1.5 + 1)
-    expect(t.grams).toBeCloseTo(3 + 12 + 3)
-    expect(t.mm).toBe(6000)
+    expect(t.hours).toBeCloseTo(1 + 1.5)
+    expect(t.grams).toBeCloseTo(3 + 12)
+    expect(t.mm).toBe(5000)
     expect(t.activeDays).toBe(2)
   })
 
   it('shades by the metric', () => {
     inZone('Europe/London')
     const year = buildYear([
-      job('a', '2026-11-10T08:00:00Z', { total_duration: 1 * 3600 }),
-      job('b', '2026-11-11T08:00:00Z', { total_duration: 5 * 3600, filament_used: 30_000 }),
-      job('c', '2026-11-11T18:00:00Z', { total_duration: 5 * 3600, filament_used: 30_000 })
+      job('a', '2026-11-10T08:00:00Z', { print_duration: 1 * 3600 }),
+      job('b', '2026-11-11T08:00:00Z', { print_duration: 5 * 3600, filament_used: 30_000 }),
+      job('c', '2026-11-11T18:00:00Z', { print_duration: 5 * 3600, filament_used: 30_000 })
     ], now)
     const tenth = year.days.find(d => d.key === '2026-11-10')!
     const eleventh = year.days.find(d => d.key === '2026-11-11')!
@@ -246,25 +252,19 @@ describe('the words', () => {
 
   it('labels a day with its date and its numbers', () => {
     inZone('Europe/London')
-    const year = buildYear([job('a', '2026-11-10T08:00:00Z', { total_duration: 11520, filament_used: 13_800 })], new Date(2026, 10, 12))
+    const year = buildYear([job('a', '2026-11-10T08:00:00Z', { print_duration: 11520, filament_used: 13_800 })], new Date(2026, 10, 12))
     expect(dayLabelText(year.days.find(d => d.key === '2026-11-10')!)).toBe('Tue 10 Nov 2026: 1 print, 3 h 12 min, 41 g of filament')
-    expect(dayLabelText(year.days.find(d => d.key === '2026-11-09')!)).toBe('Mon 9 Nov 2026: no prints')
+    expect(dayLabelText(year.days.find(d => d.key === '2026-11-09')!)).toBe('Mon 9 Nov 2026: no finished prints')
   })
 
-  it('says the totals, the streaks and the time zone', () => {
-    inZone('Europe/London')
-    const now = new Date(2026, 10, 12)
-    const year = buildYear([job('a', '2026-11-11T08:00:00Z'), job('b', '2026-11-12T08:00:00Z')], now)
-    const text = summaryText(yearTotals(year.days), year.timeZone)
-    expect(text).toContain('2 finished prints on 2 days')
-    expect(text).toContain('2 h')
-    expect(text).toContain('Longest streak 2 days, current streak 2 days')
-    expect(text).toContain('Europe/London')
+  it('asks for jobs since the first Monday, midnight local', () => {
+    inZone('America/New_York')
+    expect(yearSince(new Date(2026, 10, 12, 15))).toBe(Date.UTC(2025, 10, 10, 5) / 1000) // 00:00 EST is 05:00 UTC
   })
 
   it('puts the metric in the middle of the ring', () => {
     inZone('Europe/London')
-    const year = buildYear([job('a', '2026-11-11T08:00:00Z', { total_duration: 7200, filament_used: 300_000 })], new Date(2026, 10, 12))
+    const year = buildYear([job('a', '2026-11-11T08:00:00Z', { print_duration: 7200, filament_used: 300_000 })], new Date(2026, 10, 12))
     const t = yearTotals(year.days)
     expect(ringText(t, 'hours')).toEqual({ big: '2 h', sub: 'of printing' })
     expect(ringText(t, 'prints')).toEqual({ big: '1', sub: 'prints this year' })

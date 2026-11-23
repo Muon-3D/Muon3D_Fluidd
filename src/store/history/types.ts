@@ -6,6 +6,12 @@ export interface HistoryState {
   job_totals: HistoryRollUp;
   /** The last year of jobs, kept apart from `jobs` for the year grid (flag VITE_CONTROL_YEAR_SPOOL). */
   yearJobs?: HistoryItem[];
+  /** Where the year's request is: not asked, in flight, here, or failed. */
+  yearStatus?: 'idle' | 'loading' | 'ready' | 'error';
+  /** How many jobs the reply said there are (it carries at most YEAR_LIMIT). */
+  yearCount?: number;
+  /** The local day (YYYY-MM-DD) the year was loaded on. */
+  yearDay?: string;
 }
 
 export interface HistoryItem {

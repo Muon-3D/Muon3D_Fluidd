@@ -6,10 +6,14 @@ import { filamentGrams, historyStatus } from './model'
  * the last cell today. Everything here is plain data in, plain data out.
  *
  * - A day is the local day (this device's time zone) the print STARTED in.
- * - A day's prints are the prints that finished. Its hours (total_duration)
- *   and filament count every print that ran, stopped or failed ones included.
+ * - Everything counts finished prints only: a day's prints, its hours (the
+ *   print_duration, as History's rollup measures it) and its filament. Stopped
+ *   and failed prints are listed on their day but add nothing.
  * - A streak is consecutive days with at least one finished print.
  */
+
+/** The most jobs asked for in one go; a reply that says there are more is shown as the latest of them. */
+export const YEAR_LIMIT = 5000
 
 export type YearMetric = 'hours' | 'prints' | 'filament'
 
@@ -25,7 +29,7 @@ export interface YearJob {
   filename: string;
   status: string;
   start_time: number;
-  total_duration: number;
+  print_duration: number;
   filament_used: number;
   metadata?: unknown;
 }
@@ -122,16 +126,22 @@ export function buildYear (jobs: YearJob[], now: Date = new Date()): Year {
     if (!day) continue
     const mm = Number(job.filament_used) || 0
     const grams = filamentGrams(mm, job.metadata as never).grams
-    const hours = Math.max(0, Number(job.total_duration) || 0) / 3600
+    const hours = Math.max(0, Number(job.print_duration) || 0) / 3600
     const finished = kind === 'finished'
     day.prints.push({ id: job.job_id, filename: job.filename, finished, hours, grams, mm, startedAt })
-    if (finished) day.n++
+    if (!finished) continue
+    day.n++
     day.hours += hours
     day.grams += grams
     day.mm += mm
   }
   for (const day of days) day.prints.sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
   return { days, weeks: days[days.length - 1].week + 1, since: Math.floor(first.getTime() / 1000), timeZone: deviceTimeZone() }
+}
+
+/** Unix seconds of the first day of the year ending on `now`: ask the printer for jobs since then. */
+export function yearSince (now: Date = new Date()): number {
+  return buildYear([], now).since
 }
 
 /**
@@ -193,7 +203,7 @@ export function dayText (date: Date): string {
 /** What a cell says to a screen reader and on hover: the date and the day's three numbers. */
 export function dayLabelText (day: YearDay): string {
   const when = dayText(day.date)
-  if (!day.prints.length) return `${when}: no prints`
+  if (!day.n) return `${when}: no finished prints`
   return `${when}: ${plural(day.n, 'print')}, ${formatHours(day.hours)}, ${formatGrams(day.grams)} of filament`
 }
 
@@ -204,14 +214,6 @@ export function ringText (totals: YearTotals, metric: YearMetric): { big: string
     case 'prints': return { big: String(totals.prints), sub: 'prints this year' }
     default: return { big: `${(totals.grams / 1000).toFixed(1)} kg`, sub: `${Math.round(totals.mm / 1000)} m of filament` }
   }
-}
-
-/** The grid and the ring in words: the totals and the streaks. */
-export function summaryText (totals: YearTotals, timeZone: string): string {
-  return `In the last year: ${plural(totals.prints, 'finished print')} on ${plural(totals.activeDays, 'day')}, ` +
-    `${formatHours(totals.hours)} of printing, ${formatGrams(totals.grams)} of filament. ` +
-    `Longest streak ${plural(totals.longestStreak, 'day')}, current streak ${plural(totals.currentStreak, 'day')}. ` +
-    `Days follow this device's time zone (${timeZone}).`
 }
 
 /** The month names along the top of the grid, each over the first Monday's column in that month. */
