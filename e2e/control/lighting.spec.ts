@@ -20,11 +20,9 @@ const ledScripts = (gcode: string[]) => gcode.filter(s => s.startsWith('LED_MODE
 
 const saved = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `u${i}`, name: `Mine ${i}`, effect: 'gradient', colors: [hueToHex(10 + i * 20), hueToHex(200 + i * 10)] }))
 
-async function lightsPrinter (page: Page, options: { presets?: number; favourites?: string[]; status?: Record<string, unknown>; stamps?: number[] } = {}) {
-  const stamps = options.stamps
+async function lightsPrinter (page: Page, options: { presets?: number; favourites?: string[]; status?: Record<string, unknown> } = {}) {
   const printer = await usePrinter(page, options.status ?? idle(), {
-    database: true,
-    onSocketEvent: (event, method) => { if (stamps && event === 'send' && method === 'printer.gcode.script') stamps.push(Date.now()) }
+    database: true
   })
   // The library lives in Control's own namespace, where muon-link lets a guest write: fluidd, lights.library.
   const library: Record<string, unknown> = {}
@@ -116,8 +114,19 @@ test.describe('the Lighting page, under Control', () => {
   })
 
   test('a dragged slider reaches the printer at no more than three a second, the latest last', async ({ page, open }) => {
-    const stamps: number[] = []
-    const printer = await lightsPrinter(page, { stamps })
+    const printer = await lightsPrinter(page)
+    // Registered after the printer's socket mock, so it wraps the mocked page-side WebSocket.
+    // Stamp each script at the browser's own send. Stamping in the mock's handler (node side) lets delivery jitter
+    // through Playwright on a loaded runner squeeze two sends together, which the page never did.
+    await page.addInitScript(() => {
+      const w = window as unknown as { __gcodeStamps: number[] }
+      w.__gcodeStamps = []
+      const send = WebSocket.prototype.send
+      WebSocket.prototype.send = function (data: any) {
+        try { if (typeof data === 'string' && JSON.parse(data).method === 'printer.gcode.script') w.__gcodeStamps.push(performance.now()) } catch { /* not JSON: not ours */ }
+        return send.call(this, data)
+      }
+    })
     await open('/lighting')
     const events = await page.getByTestId('brightness').evaluate(async el => {
       const input = el as HTMLInputElement
@@ -136,6 +145,8 @@ test.describe('the Lighting page, under Control', () => {
     // Negative control: unthrottled, every one of the 41 changes would have gone.
     expect(sent.length).toBeGreaterThan(1)
     expect(sent.length).toBeLessThan(events / 5)
+    const stamps = await page.evaluate(() => (window as unknown as { __gcodeStamps: number[] }).__gcodeStamps)
+    expect(stamps.length).toBeGreaterThanOrEqual(sent.length)
     for (const t of stamps) expect(stamps.filter(u => u >= t && u < t + 1000).length).toBeLessThanOrEqual(3)
   })
 
