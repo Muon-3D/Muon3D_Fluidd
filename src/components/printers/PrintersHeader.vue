@@ -67,6 +67,19 @@
         </button>
       </div>
       <button
+        type="button"
+        class="btn"
+        data-tid="scan-printers"
+        :disabled="scanning"
+        @click="$emit('scan')"
+      >
+        <frame-icon
+          name="search"
+          small
+        />
+        {{ scanning ? 'Scanning…' : 'Scan for printers' }}
+      </button>
+      <button
         v-if="bluetoothSearch"
         type="button"
         class="btn btn--primary btn--icon"
@@ -136,6 +149,10 @@ export default class PrintersHeader extends Vue {
 
   @Prop({ type: Boolean })
   readonly bluetoothOff?: boolean
+
+  /** A scan is running (KAN-5409). */
+  @Prop({ type: Boolean })
+  readonly scanning?: boolean
 
   /** Why Bluetooth cannot be used here, said plainly. */
   @Prop({ type: Object, default: null })

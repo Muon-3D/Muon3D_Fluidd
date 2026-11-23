@@ -17,7 +17,9 @@
       :bluetooth-off="bluetoothOff"
       :bluetooth-why="bluetoothWhy"
       :blocked-by-page="!!blockedByPage"
+      :scanning="scanBusy"
       @rescan="rescan"
+      @scan="onScan"
       @look-nearby="onLookNearby"
       @address="instanceDialogOpen = true"
       @sign-in="accountDialog = true"
@@ -33,10 +35,13 @@
         :bluetooth-search="bluetoothSearch"
         :bluetooth-off="bluetoothOff"
         :bluetooth-why="bluetoothWhy"
+        :scanning="scanBusy"
         @update:view="setView"
         @add="addSheetOpen = true"
+        @scan="onScan"
         @connect-bluetooth="onConnectOverBluetooth"
       />
+      <scan-results />
 
       <p
         v-if="searching && !page.found.length"
@@ -638,6 +643,7 @@ import PrintersSection from '@/components/printers/PrintersSection.vue'
 import PrinterBench from '@/components/printers/PrinterBench.vue'
 import BenchPrinter, { type BenchAction } from '@/components/printers/BenchPrinter.vue'
 import PrintersWelcome from '@/components/printers/PrintersWelcome.vue'
+import ScanResults from '@/components/printers/ScanResults.vue'
 import AddPrinterSheet from '@/components/printers/AddPrinterSheet.vue'
 import FoundList from '@/components/printers/FoundList.vue'
 import OfflineList from '@/components/printers/OfflineList.vue'
@@ -691,6 +697,7 @@ const routeHold = new RouteLabelHold()
     PrinterBench,
     BenchPrinter,
     PrintersWelcome,
+    ScanResults,
     AddPrinterSheet,
     FoundList,
     OfflineList,
