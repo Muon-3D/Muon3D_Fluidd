@@ -13,6 +13,11 @@ export const getters: GetterTree<HistoryState, RootState> = {
   },
 
   /**
+   * The last year of jobs for the year grid; empty until asked for.
+   */
+  getYearJobs: (state) => state.yearJobs ?? [],
+
+  /**
    * Return a history item given a job id.
    */
   getHistoryById: (state) => (jobId: string) => {

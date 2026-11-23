@@ -4,6 +4,7 @@
     :class="{ 'hist--phone': isMobileViewport }"
     data-tid="history-page"
   >
+    <year-glance v-if="yearSpool && items.length" />
     <div
       v-if="items.length"
       class="hist__bar"
@@ -467,6 +468,8 @@ import {
 } from '@/services/history/model'
 import getFilePaths from '@/util/get-file-paths'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
+import YearGlance from '@/components/widgets/history/YearGlance.vue'
+import { yearSpoolEnabled } from '@/services/flags'
 import TonePill from '@/components/printers/TonePill.vue'
 
 interface Row {
@@ -492,7 +495,7 @@ interface Row {
  * ··· (or a tap on a phone) offers Print again, its details and Remove from
  * history.
  */
-@Component({ components: { SegPicker, TonePill } })
+@Component({ components: { SegPicker, TonePill, YearGlance } })
 export default class History extends Mixins(OverviewMixin, BrowserMixin) {
   filter: HistoryFilter = 'all'
   query = ''
@@ -502,6 +505,9 @@ export default class History extends Mixins(OverviewMixin, BrowserMixin) {
   readonly rangeDays = RANGE_DAYS
   readonly rangeLabel = rangeLabel
   readonly longDuration = longDuration
+
+  /** The year grid and spool ring above the rollup: off unless the build says VITE_CONTROL_YEAR_SPOOL=true. */
+  readonly yearSpool = yearSpoolEnabled()
 
   get items (): HistoryItem[] {
     return (this.$store.getters['history/getHistory'] as HistoryItem[]) ?? []

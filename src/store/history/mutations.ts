@@ -27,6 +27,13 @@ export const mutations: MutationTree<HistoryState> = {
   },
 
   /**
+   * Applies the last year of jobs (the year grid), apart from the list.
+   */
+  setYearJobs (state, payload: { jobs?: HistoryItem[] }) {
+    if (payload && payload.jobs !== undefined) Vue.set(state, 'yearJobs', payload.jobs)
+  },
+
+  /**
    * Adds a history item.
    */
   setAddHistory (state, payload: HistoryItem) {

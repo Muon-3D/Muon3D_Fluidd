@@ -494,6 +494,16 @@ export const SocketActions = {
     )
   },
 
+  /** The jobs started since a unix time, into history/yearJobs (not the list History shows). */
+  async serverHistoryYear (since: number) {
+    baseEmit(
+      'server.history.list', {
+        dispatch: 'history/onYearList',
+        params: { since, limit: 5000, order: 'desc' }
+      }
+    )
+  },
+
   async serverHistoryTotals () {
     baseEmit(
       'server.history.totals', {

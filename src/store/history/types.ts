@@ -4,6 +4,8 @@ export interface HistoryState {
   count: number;
   jobs: HistoryItem[];
   job_totals: HistoryRollUp;
+  /** The last year of jobs, kept apart from `jobs` for the year grid (flag VITE_CONTROL_YEAR_SPOOL). */
+  yearJobs?: HistoryItem[];
 }
 
 export interface HistoryItem {

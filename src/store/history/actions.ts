@@ -54,6 +54,15 @@ export const actions: ActionTree<HistoryState, RootState> = {
   },
 
   /**
+   * Update the store with the last year of history (the year grid).
+   */
+  async onYearList ({ commit }, payload) {
+    if (payload) {
+      commit('setYearJobs', payload)
+    }
+  },
+
+  /**
    * History has changed, update the data.
    */
   async onHistoryChange ({ commit }, payload: { action: string; job: HistoryItem }) {

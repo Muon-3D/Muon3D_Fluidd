@@ -15,7 +15,7 @@ const PORT = VITE_PORT
 export default defineConfig({
   testDir: '.',
   // e2e/offline needs a production build and its own config (playwright.offline.config.ts).
-  testIgnore: ['offline/**'],
+  testIgnore: ['offline/**', 'year/**'], // e2e/year runs with its flag on: playwright.year.config.ts
   globalSetup: './global-setup.ts',
   // The whole run, warm-up included: a cold vite in CI can take minutes.
   // 37 min, under the 40-min job limit in .github/workflows/e2e.yml (D-117), leaving

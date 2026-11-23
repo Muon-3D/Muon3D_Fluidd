@@ -25,6 +25,8 @@ interface ImportMetaEnv {
   readonly VITE_MODELS_URL?: string
   /** What the service's assertions are addressed to: an identifier, not an address. VITE_MODELS_URL when that is set, else the production audience. */
   readonly VITE_MODELS_AUDIENCE?: string
+  /** Feature flag, off unless "true": History's year grid and spool ring (services/flags). */
+  readonly VITE_CONTROL_YEAR_SPOOL?: string
   readonly VERSION: string
   readonly HASH: string
   /** The full commit this build was made from (vite.config.inject-version.ts). */
