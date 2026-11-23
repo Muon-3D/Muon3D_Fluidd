@@ -92,7 +92,8 @@
 
 <script lang="ts">
 import { Component, Vue } from 'vue-property-decorator'
-import { emptyLine, foundAnything, progressLine, scanState } from '@/services/scan'
+import { emptyLine, foundAnything, progressLine } from '@/services/scan/text'
+import { scanState } from '@/services/scan/state'
 
 /** What the scan found and what it is doing (KAN-5409). */
 @Component({})

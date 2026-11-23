@@ -1,18 +1,19 @@
 /**
  * The page's scan (KAN-5409): the real sources wired into `runScan`.
  */
-import Vue from 'vue'
 import { cloudApi } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
 import { lookNearby, nearbyState, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { bluetoothWhy } from '@/services/muon-ble/unavailable'
 import { reachSecureNameNow } from '@/services/secure-origin/hosted'
-import { newScanState, runScan, type ScanDeps, type ScanState } from './scan'
+import { runScan, type ScanDeps } from './scan'
+import { newScanState } from './text'
+
+import { scanState } from './state'
 
 export * from './scan'
 
-/** Read by the Scan results on the Printers page and in the welcome. */
-export const scanState: ScanState = Vue.observable(newScanState())
+export { scanState }
 
 /** The real sources. Signed out, there are no account printers to ask for. */
 export function liveScanDeps (): ScanDeps {
