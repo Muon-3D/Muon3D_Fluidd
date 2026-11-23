@@ -1,16 +1,19 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import * as THREE from 'three'
 import type { AccessoryFrame } from '../accessory-motion'
 import {
   buildAccurateAccessories,
   ACCURATE_CONNECTOR_MESH,
   CONNECTOR_FROM_Z,
+  SOCKET_CAP_NODE,
   splitConnector
 } from '../accurate/accessories'
 
 /** The GLB's toolhead end, cut down: the carriage with its sleeve (socket inside, connector outside) and the hose's joints. */
-function scene () {
+function scene (options: { crossing?: boolean; headZ?: number } = {}) {
   const root = new THREE.Group()
+  // Neither the scene nor the carriage sits at the origin, as in the app.
+  root.position.set(13, -4, 9)
   const m1 = new THREE.Group()
   m1.name = 'M1'
   root.add(m1)
@@ -24,10 +27,10 @@ function scene () {
   gantry.name = 'M1_Y_Gantry'
   const carriage = new THREE.Group()
   carriage.name = 'M1_X_Carriage'
-  carriage.position.set(0, 0, 0)
+  carriage.position.set(6, 3, 0)
   const hoseHead = new THREE.Object3D()
   hoseHead.name = 'hose_head'
-  hoseHead.position.set(-8, -87, 115)
+  hoseHead.position.set(-8 - 6, -87 - 3, options.headZ ?? 115)
   // One mesh, as in the GLB: a socket at Z 73 to 86 and a connector at Z 87 to 127.
   const sleeveGeometry = new THREE.BufferGeometry()
   const boxes = [[73, 86], [87, 127]]
@@ -35,10 +38,16 @@ function scene () {
   const indices: number[] = []
   boxes.forEach(([z0, z1], k) => {
     const o = positions.length / 3
-    for (const z of [z0, z1]) for (const [x, y] of [[-20, -97], [5, -97], [5, -77], [-20, -77]]) positions.push(x, y, z)
+    for (const z of [z0, z1]) for (const [x, y] of [[-20, -97], [5, -97], [5, -77], [-20, -77]]) positions.push(x - 6, y - 3, z)
     for (const [a, b, c] of [[0, 1, 2], [0, 2, 3], [4, 6, 5], [4, 7, 6], [0, 4, 5], [0, 5, 1], [3, 2, 6], [3, 6, 7], [0, 3, 7], [0, 7, 4], [1, 5, 6], [1, 6, 2]]) indices.push(o + a, o + b, o + c)
     expect(k).toBeLessThan(2)
   })
+  if (options.crossing) {
+    // Long wall triangles from inside the socket to inside the connector, across the cut plane, as the GLB's sleeve wall has.
+    const o = positions.length / 3
+    for (const z of [80, 100]) for (const x of [-20, 5]) positions.push(x - 6, -97 - 3, z)
+    indices.push(o, o + 1, o + 3, o, o + 3, o + 2)
+  }
   sleeveGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
   sleeveGeometry.setIndex(indices)
   const sleeve = new THREE.Mesh(sleeveGeometry, new THREE.MeshStandardMaterial())
@@ -58,6 +67,12 @@ const frame = (attached: boolean, clip: 'detach' | 'attach' | null = null, t = 0
   spool: true
 }) as unknown as AccessoryFrame
 
+/** The same box in the scene's own frame (the root is not at the origin), where the cut plane is. */
+function sceneBox (root: THREE.Object3D, mesh: THREE.Mesh): THREE.Box3 {
+  root.updateMatrixWorld(true)
+  return worldBox(mesh).applyMatrix4(new THREE.Matrix4().copy(root.matrixWorld).invert())
+}
+
 /** The box round the vertices the mesh's triangles use, in the scene (the parts share one vertex buffer, so the geometry's own box is of all of it). */
 function worldBox (mesh: THREE.Mesh): THREE.Box3 {
   mesh.updateWorldMatrix(true, false)
@@ -73,8 +88,8 @@ describe('the toolhead removed: the tube connector goes out with the hose', () =
     const { root, sleeve } = scene()
     const connector = splitConnector(root, sleeve)!
     expect(connector).toBeTruthy()
-    expect(worldBox(connector).min.z).toBeGreaterThanOrEqual(CONNECTOR_FROM_Z)
-    expect(worldBox(sleeve).max.z).toBeLessThan(CONNECTOR_FROM_Z)
+    expect(sceneBox(root, connector).min.z).toBeGreaterThanOrEqual(CONNECTOR_FROM_Z)
+    expect(sceneBox(root, sleeve).max.z).toBeLessThan(CONNECTOR_FROM_Z)
     expect(connector.parent).toBe(sleeve.parent)
   })
 
@@ -134,5 +149,55 @@ describe('the toolhead removed: the tube connector goes out with the hose', () =
     acc.apply(frame(true), false)
     expect(hoseHead.position.distanceTo(rest)).toBeLessThan(1e-6)
     expect(connector.position.length()).toBeLessThan(1e-6)
+  })
+})
+
+describe('the toolhead removed: faces across the cut, the socket cap and the guard', () => {
+  it('moves faces that cross the cut plane with the connector, leaving none of them on the socket', () => {
+    const { root, sleeve } = scene({ crossing: true })
+    const connector = splitConnector(root, sleeve)!
+    // Nothing of the socket reaches the plane; the crossing wall (Z 80 to 100) is in the connector.
+    expect(sceneBox(root, sleeve).max.z).toBeLessThan(CONNECTOR_FROM_Z)
+    expect(sceneBox(root, connector).min.z).toBeCloseTo(80, 4)
+    expect(sleeve.geometry.index!.count + connector.geometry.index!.count).toBe(36 * 2 + 6)
+  })
+
+  it('closes the socket mouth with a dark disc at the cut plane, once, that stays put with the toolhead', () => {
+    const { root, carriage, sleeve } = scene({ crossing: true })
+    const acc = buildAccurateAccessories(root, new THREE.Group())
+    const caps = carriage.children.filter(c => c.name === SOCKET_CAP_NODE) as THREE.Mesh[]
+    expect(caps).toHaveLength(1)
+    const cap = caps[0]
+    const box = sceneBox(root, cap)
+    expect(box.min.z).toBeCloseTo(CONNECTOR_FROM_Z, 4)
+    expect(box.max.z).toBeCloseTo(CONNECTOR_FROM_Z, 4)
+    // It covers the sleeve's mouth (25 by 20 mm, so about a 12.5 mm radius).
+    const mouth = sceneBox(root, sleeve)
+    expect(box.getCenter(new THREE.Vector3()).x).toBeCloseTo(mouth.getCenter(new THREE.Vector3()).x, 3)
+    expect(box.getSize(new THREE.Vector3()).x).toBeGreaterThan(20)
+    expect(((cap.material as THREE.MeshStandardMaterial).color.getHex())).toBeLessThan(0x202020)
+    // Not rebuilt per frame, and it does not travel with the hose.
+    const before = cap.matrix.clone()
+    acc.apply(frame(false), false)
+    acc.apply(frame(true, 'attach', 0.4), false)
+    expect(carriage.children.filter(c => c.name === SOCKET_CAP_NODE)).toHaveLength(1)
+    expect(cap.position.distanceTo(new THREE.Vector3().setFromMatrixPosition(before))).toBe(0)
+  })
+
+  it('skips the cut and warns when the cut piece is far from the hose head, leaving the model as it was', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { root, carriage, sleeve } = scene({ headZ: 30 })
+      const count = sleeve.geometry.index!.count
+      const acc = buildAccurateAccessories(root, new THREE.Group())
+      expect(warn).toHaveBeenCalled()
+      expect(acc.missing).toContain(ACCURATE_CONNECTOR_MESH)
+      expect(sleeve.geometry.index!.count).toBe(count)
+      expect(carriage.children.some(c => c.name.startsWith('M1_TubeConnector'))).toBe(false)
+      expect(carriage.children.some(c => c.name === SOCKET_CAP_NODE)).toBe(false)
+      expect(() => { acc.apply(frame(false), false); acc.apply(frame(true), false) }).not.toThrow()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

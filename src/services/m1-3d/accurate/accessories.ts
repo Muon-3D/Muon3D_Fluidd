@@ -93,14 +93,30 @@ function arc (a: THREE.Vector3, b: THREE.Vector3, lift: number, k: number, out: 
     s * s * a.z + 2 * s * k * cz + k * k * b.z)
 }
 
+/** The connector's cut must lie within this many mm of the hose's head joint, or the cut is skipped (the mesh was renumbered). */
+export const CONNECTOR_GUARD_MM = 5
+/** The mouth's rim is read off the socket's vertices this close to its open end. */
+const MOUTH_BAND_MM = 3
+export const SOCKET_CAP_NODE = 'M1_ToolheadSocketCap'
+
+export interface SplitOptions {
+  /** Called with the cut piece's box in the scene's frame before anything is changed; false skips the cut. */
+  accept?: (box: THREE.Box3) => boolean;
+  /** Close the socket's open mouth with a dark disc (once, here at load). */
+  cap?: boolean;
+}
+
 /**
  * Cuts the tube connector (the faces past the carriage body's end face) out
  * of the toolhead's sleeve mesh into a mesh of its own, a sibling of it, so it
  * can move with the hose's end. Both share the sleeve's vertex data; only
- * the triangle lists differ. Returns the connector, or null if no face lies
- * past the end face.
+ * the triangle lists differ. A face that crosses the cut plane goes with the
+ * connector (it must not stay behind as a sliver on the socket). With `cap`,
+ * the socket's cut mouth is closed with a small dark disc, built here once.
+ * Returns the connector, or null if no face lies past the end face or
+ * `accept` refuses the piece.
  */
-export function splitConnector (root: THREE.Object3D, sleeve: THREE.Mesh): THREE.Mesh | null {
+export function splitConnector (root: THREE.Object3D, sleeve: THREE.Mesh, options: SplitOptions = {}): THREE.Mesh | null {
   const geometry = sleeve.geometry
   const index = geometry.index
   const position = geometry.getAttribute('position')
@@ -108,18 +124,29 @@ export function splitConnector (root: THREE.Object3D, sleeve: THREE.Mesh): THREE
   root.updateMatrixWorld(true)
   const toScene = new THREE.Matrix4().copy(root.matrixWorld).invert().multiply(sleeve.matrixWorld)
   const at = new THREE.Vector3()
-  const z = new Float32Array(position.count)
-  for (let i = 0; i < position.count; i++) z[i] = at.fromBufferAttribute(position, i).applyMatrix4(toScene).z
+  const xs = new Float32Array(position.count)
+  const ys = new Float32Array(position.count)
+  const zs = new Float32Array(position.count)
+  for (let i = 0; i < position.count; i++) {
+    at.fromBufferAttribute(position, i).applyMatrix4(toScene)
+    xs[i] = at.x; ys[i] = at.y; zs[i] = at.z
+  }
   const src = index.array
   const Index = src.constructor as Uint16ArrayConstructor | Uint32ArrayConstructor
   const stays: number[] = []
   const goes: number[] = []
+  const goesBox = new THREE.Box3()
   for (let i = 0; i < src.length; i += 3) {
     const a = src[i]; const b = src[i + 1]; const c = src[i + 2]
-    const to = (z[a] + z[b] + z[c]) / 3 >= CONNECTOR_FROM_Z ? goes : stays
-    to.push(a, b, c)
+    // Any corner past the plane: the face is the connector's (a crossing face goes too).
+    const past = zs[a] >= CONNECTOR_FROM_Z || zs[b] >= CONNECTOR_FROM_Z || zs[c] >= CONNECTOR_FROM_Z
+    if (past) {
+      goes.push(a, b, c)
+      for (const v of [a, b, c]) goesBox.expandByPoint(at.set(xs[v], ys[v], zs[v]))
+    } else stays.push(a, b, c)
   }
   if (!goes.length) return null
+  if (options.accept && !options.accept(goesBox)) return null
   const part = new THREE.BufferGeometry()
   for (const name of Object.keys(geometry.attributes)) part.setAttribute(name, geometry.getAttribute(name))
   part.setIndex(new THREE.BufferAttribute(new Index(goes), 1))
@@ -136,7 +163,34 @@ export function splitConnector (root: THREE.Object3D, sleeve: THREE.Mesh): THREE
   connector.quaternion.copy(sleeve.quaternion)
   connector.scale.copy(sleeve.scale)
   sleeve.parent.add(connector)
+  if (options.cap && stays.length) capMouth(root, sleeve, stays, xs, ys, zs)
   return connector
+}
+
+/** Closes the socket's cut mouth with a dark disc at `CONNECTOR_FROM_Z`, fitted to the rim the remaining faces end in. */
+function capMouth (root: THREE.Object3D, sleeve: THREE.Mesh, stays: number[], xs: Float32Array, ys: Float32Array, zs: Float32Array) {
+  let top = -Infinity
+  for (const v of stays) top = Math.max(top, zs[v])
+  const rim = new THREE.Box3()
+  const at = new THREE.Vector3()
+  for (const v of stays) if (zs[v] >= top - MOUTH_BAND_MM) rim.expandByPoint(at.set(xs[v], ys[v], zs[v]))
+  const size = rim.getSize(new THREE.Vector3())
+  const radius = Math.max(size.x, size.y) / 2
+  if (!(radius > 0) || !sleeve.parent) return
+  const centre = rim.getCenter(new THREE.Vector3())
+  const cap = new THREE.Mesh(
+    new THREE.CircleGeometry(radius, 32),
+    new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.9, metalness: 0, side: THREE.DoubleSide }))
+  cap.name = SOCKET_CAP_NODE
+  // The disc is laid in the scene's frame, then taken into the sleeve's parent's, so it rides with the carriage.
+  root.updateMatrixWorld(true)
+  sleeve.parent.updateWorldMatrix(true, false)
+  const local = new THREE.Matrix4()
+    .copy(sleeve.parent.matrixWorld).invert()
+    .multiply(root.matrixWorld)
+    .multiply(new THREE.Matrix4().makeTranslation(centre.x, centre.y, CONNECTOR_FROM_Z))
+  local.decompose(cap.position, cap.quaternion, cap.scale)
+  sleeve.parent.add(cap)
 }
 
 /**
@@ -304,10 +358,21 @@ export function buildAccurateAccessories (root: THREE.Object3D, cargo: THREE.Obj
     const restWorld = hoseHead.getWorldPosition(new THREE.Vector3())
     // The connector rides with the hose's end, so nothing of it stays seated in the toolhead.
     const sleeve = root.getObjectByName(ACCURATE_CONNECTOR_MESH) as THREE.Mesh | undefined
-    const connector = sleeve?.isMesh ? splitConnector(root, sleeve) : null
+    // Only cut where the cut piece is the connector at the hose's head joint; if the GLB was renumbered, leave the model as it was.
+    const headScene = root.worldToLocal(restWorld.clone())
+    let guardFailed = false
+    const accept = (box: THREE.Box3) => {
+      const ok = box.distanceToPoint(headScene) <= CONNECTOR_GUARD_MM
+      if (!ok) guardFailed = true
+      return ok
+    }
+    const connector = sleeve?.isMesh ? splitConnector(root, sleeve, { accept, cap: true }) : null
     if (!connector) missing.push(ACCURATE_CONNECTOR_MESH)
+    if (guardFailed) console.warn(`m1-3d: ${ACCURATE_CONNECTOR_MESH} cut piece is not at ${ACCURATE_ACCESSORY_NODES.hoseHead}; the tube connector stays on the toolhead`)
     const backing = root.getObjectByName(ACCURATE_CONNECTOR_BACKING) as THREE.Mesh | undefined
-    const backingPart = backing?.isMesh ? splitConnector(root, backing) : null
+    // The backing is cut only when the sleeve was, so the two never disagree.
+    const backingPart = connector && backing?.isMesh ? splitConnector(root, backing, { accept }) : null
+    if (connector && backing?.isMesh && !backingPart) console.warn(`m1-3d: could not cut the connector out of ${ACCURATE_CONNECTOR_BACKING}; its sleeve stays on the toolhead`)
     const parts = [connector, backingPart].filter((m): m is THREE.Mesh => !!m)
     // Detached, the end lies on the table in front of the chassis fitting, clear of the base: out from the wall, and along it toward the head's side.
     const wallOut = new THREE.Vector3().subVectors(baseWorld, (baseNode ? new THREE.Box3().setFromObject(baseNode) : whole).getCenter(tmpA)).setY(0).normalize()
