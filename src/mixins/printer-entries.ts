@@ -79,14 +79,17 @@ function printerSaidAddr (e: DirectoryEntry): string | null {
 /** How Connect locally would reach this printer from this page (KAN-2529). */
 function localRouteOf (e: DirectoryEntry): LocalRoute {
   const id = e.cloud?.id ?? e.endpointId
+  const nearby = id ? nearbyOf(id) : undefined
   return localRoute({
     hosted: mayTrySecureName(),
     host: e.host,
-    secureName: secureNameOf(e.cloud),
+    // The account's own name for the printer, else the one the service gives a printer beside this browser (KAN-5459):
+    // an Open printer is for anyone, signed in or not.
+    secureName: secureNameOf(e.cloud) ?? secureNameOf({ secure_name: nearby?.secureName }),
     pageHost: window.location.hostname,
     mdnsHost: e.lan?.mdnsHost ?? e.saved?.find(s => s.mdnsHost)?.mdnsHost ?? mdnsHostFromName(e.cloud?.name ?? e.name),
     printerSaid: printerSaidAddr(e),
-    nearby: id ? nearbyOf(id) : undefined,
+    nearby,
     nearbyChecked: discoveryState.cloudChecked,
     blockedByPage: !!discoveryState.blockedByPage
   })

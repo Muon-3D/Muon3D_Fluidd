@@ -109,6 +109,34 @@ test.describe('signed in', () => {
   })
 })
 
+test.describe('signed out, a printer beside this browser (KAN-5459)', () => {
+  test.use({ signedIn: false })
+
+  test('Scan lists a same-network printer with a certificate as secure, and one without as .local', async ({ page }) => {
+    const probed: string[] = []
+    await noBluetooth(page)
+    await mockConsole(page, [], [
+      { printer_id: 'p-sloe', name: 'Sloe b26d', model: 'M1', linked: true, local_addrs: ['192.168.1.20'], secure_name: SLOE_NAME },
+      { printer_id: 'p-walnut', name: 'Walnut 8987', model: 'M1', linked: false, local_addrs: ['192.168.1.30'] }
+    ])
+    await mockProbe(page, [SLOE_NAME], probed)
+    await page.goto('/')
+    await ready(page)
+
+    await page.getByTestId('scan-printers').click()
+
+    const secure = page.getByTestId('scan-secure')
+    await expect(secure).toHaveCount(1)
+    await expect(secure).toContainText('On this network (secure)')
+    await expect(secure.getByTestId('scan-open-secure')).toHaveAttribute('href', `https://${SLOE_NAME}/`)
+    await expect(secure.getByTestId('scan-open-secure')).toHaveAttribute('target', '_self')
+    const local = page.getByTestId('scan-local')
+    await expect(local).toHaveCount(1)
+    await expect(local.getByTestId('scan-open-local')).toHaveAttribute('href', 'http://muon-walnut-8987.local/')
+    expect(probed).toEqual([`${SLOE_NAME}/muon/secure-probe.txt credentials=none`])
+  })
+})
+
 test.describe('signed out, empty welcome', () => {
   test.use({ signedIn: false })
 

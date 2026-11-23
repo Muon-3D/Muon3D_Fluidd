@@ -743,7 +743,7 @@ export const cloudApi = {
   startLink: (printerId: string) => request<{ ok: boolean }>('POST', '/v1/links/start', { printer_id: printerId }),
   /** Printers on this browser's network, as the Muon3D service sees them. No sign-in needed. */
   nearby: () =>
-    request<{ printers: Array<{ printer_id: string, name: string, model: string, linked: boolean, local_addrs?: string[] }> }>('GET', '/v1/links/nearby'),
+    request<{ printers: Array<{ printer_id: string, name: string, model: string, linked: boolean, local_addrs?: string[], secure_name?: string | null }> }>('GET', '/v1/links/nearby'),
   linkState: (id: string) => request<{ printer_id: string, state: LinkState }>('GET', `/v1/links/${id}`),
   getLayout: () => request<{ layout: any }>('GET', '/v1/fleet/layout'),
   putLayout: (layout: unknown, stillMine?: () => boolean) => request<{ ok: boolean }>('PUT', '/v1/fleet/layout', { layout }, storedToken(), true, stillMine),
