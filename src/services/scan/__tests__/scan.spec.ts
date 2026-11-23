@@ -58,11 +58,8 @@ describe('runScan', () => {
     }))
     expect(st.phase).toBe('done')
     expect(st.secure.map(p => [p.name, p.url])).toEqual([['Sloe', `https://${SLOE}/`]])
-    // Alder did not answer securely and Walnut has no secure name: both are offered by their own page, not secure.
-    expect(st.local.map(p => [p.name, p.url])).toEqual([
-      ['Alder 6601', 'http://muon-alder-6601.local/'],
-      ['Walnut 8987', 'http://muon-walnut-8987.local/']
-    ])
+    // Alder did not answer securely and Walnut has no secure name: neither is offered by an address of its own.
+    expect(st.local).toEqual([])
     expect(st.heard).toBe(heard)
     expect(foundAnything(st)).toBe(true)
   })
@@ -102,10 +99,10 @@ describe('runScan', () => {
       expect(st.local).toEqual([])
     })
 
-    it('one that does not answer keeps the .local fallback', async () => {
+    it('one that does not answer is not offered by any address', async () => {
       const st = await runScan(deps({ nearby: async () => [withName('p1', 'Sloe b26d', SLOE)], reach: async () => false }))
       expect(st.secure).toEqual([])
-      expect(st.local.map(p => p.url)).toEqual(['http://muon-sloe-b26d.local/'])
+      expect(st.local).toEqual([])
     })
 
     it('none at all (an older console, or no certificate): the old behaviour, nothing probed', async () => {
@@ -113,7 +110,7 @@ describe('runScan', () => {
       const st = await runScan(deps({ nearby: async () => [withName('p1', 'Sloe b26d'), withName('p2', 'Alder 6601', null)], reach }))
       expect(reach).not.toHaveBeenCalled()
       expect(st.secure).toEqual([])
-      expect(st.local).toHaveLength(2)
+      expect(st.local).toEqual([])
     })
 
     it('probes only names under our zone', async () => {
@@ -175,7 +172,7 @@ describe('runScan', () => {
       nearby: async () => [near('p3', 'Walnut 8987')]
     }))
     expect(st.cloud).toBe('done')
-    expect(st.local).toHaveLength(1)
+    expect(st.local).toEqual([])
   })
 
   it('says why Bluetooth was skipped', async () => {

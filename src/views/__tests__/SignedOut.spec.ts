@@ -27,7 +27,7 @@ describe('nearby printer state after signing out', () => {
     await settle()
     expect(w.find('[data-tid="nearby-status"]').exists()).toBe(true)
     expect(w.find('[data-tid="nearby-status"]').text()).toBe(label)
-    expect(w.find('a[href="http://127.0.0.1:9876/"]').exists()).toBe(true)
+    expect(w.find('[data-tid="nearby-open"]').exists()).toBe(true)
     w.destroy()
   })
   it.each([[401, 'Needs access'], [503, 'Error']] as const)('keeps Open available when the status read answers %s', async (status, label) => {
@@ -36,7 +36,7 @@ describe('nearby printer state after signing out', () => {
     await settle()
     expect(w.find('[data-tid="nearby-status"]').exists()).toBe(true)
     expect(w.find('[data-tid="nearby-status"]').text()).toBe(label)
-    expect(w.find('a[href="http://127.0.0.1:9876/"]').exists()).toBe(true)
+    expect(w.find('[data-tid="nearby-open"]').exists()).toBe(true)
     w.destroy()
   })
   it('says status is unavailable when local access is blocked', async () => {

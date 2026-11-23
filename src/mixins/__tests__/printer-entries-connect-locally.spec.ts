@@ -4,7 +4,8 @@
  * KAN-2529: Connect locally from the hosted page.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import PrinterEntriesMixin, { setNavigate } from '../printer-entries'
+import PrinterEntriesMixin from '../printer-entries'
+import { connectInPlace } from '@/services/muon-cloud/connect-in-place'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { discoveryState } from '@/services/muon-cloud/discovery'
 import type { DirectoryEntry } from '@/services/muon-cloud/directory'
@@ -12,8 +13,10 @@ import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 type Fn = (this: unknown, ...a: unknown[]) => unknown
 const methods = (PrinterEntriesMixin as unknown as { options: { methods: Record<string, Fn> } }).options.methods
 
+vi.mock('@/services/muon-cloud/connect-in-place', async (orig) => ({ ...(await orig<object>()), connectInPlace: vi.fn() }))
+const inPlace = vi.mocked(connectInPlace)
+
 const NAME = 'abcdefghijklmnopqrst.muonlan.net'
-const MARKER = 'muon3d-secure-origin-1'
 
 const entry = (secureName: string | null): DirectoryEntry => ({
   key: 'cloud:p1',
@@ -31,6 +34,10 @@ const entry = (secureName: string | null): DirectoryEntry => ({
 
 const component = () => ({
   notice: null as string | null,
+  routeProblem: null as { line: string, choices: Array<{ id: string }> } | null,
+  routeProblemEntry: null as unknown,
+  askMuonLocal: false,
+  failRoute: methods.failRoute,
   $store: { state: { socket: { open: false, ready: false } } },
   afterOpen: vi.fn(),
   run: vi.fn(async (_k: string, work: () => Promise<boolean>) => { await work() }),
@@ -47,66 +54,51 @@ beforeEach(() => {
   forgetSecureReach()
   sessionStorage.clear()
   nav.mockReset()
-  setNavigate(nav)
+  inPlace.mockReset()
+  inPlace.mockResolvedValue({ ok: false, why: 'unreachable' })
   discoveryState.cloud = []
   discoveryState.cloudChecked = true
   vi.unstubAllGlobals()
 })
 
-describe('Connect locally on the hosted page (KAN-2529)', () => {
-  it('with a secure name: enabled, probes it, then opens it', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => MARKER })))
+describe('Connect locally on the hosted page (KAN-2529, KAN-5459)', () => {
+  it('with a secure name: enabled, and connects in place, with no change of address', async () => {
+    inPlace.mockResolvedValue({ ok: true })
     const c = component()
     const e = entry(NAME)
-    expect(action(c, e)).toMatchObject({ disabled: false, hint: 'Opens its secure address' })
+    expect(action(c, e)).toMatchObject({ disabled: false, hint: 'Connects on your network, in this tab' })
     await methods.connectLocal.call(c, e)
-    expect(nav).toHaveBeenCalledWith(`https://${NAME}/`)
+    expect(inPlace).toHaveBeenCalledWith(expect.objectContaining({ name: NAME }))
+    expect(nav).not.toHaveBeenCalled()
+    expect(c.routeProblem).toBeNull()
   })
 
-  it('with a secure name that does not answer: falls to the service address, else says why', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('blocked') }))
+  it('picked, with a secure name that does not answer: stays local, says so, offers the other routes, tries none', async () => {
     const c = component()
     await methods.connectLocal.call(c, entry(NAME))
     expect(nav).not.toHaveBeenCalled()
-    expect(c.notice).toMatch(/Couldn't reach Boxwood at its secure address/)
+    expect(c.routeProblem?.line).toBe("Couldn't connect to Boxwood on this network.")
+    expect(c.routeProblem?.choices.map(x => x.id)).toEqual(['cloud', 'bluetooth', 'muon-local'])
     expect(c.connectCloud).not.toHaveBeenCalled()
-    forgetSecureReach()
-    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
-    await methods.connectLocal.call(c, entry(NAME))
-    expect(nav).toHaveBeenCalledWith('http://192.168.1.20/')
   })
 
-  it('with only the service\'s addresses: enabled, and navigates THIS tab to http://<addr>/ (not the hotspot), with no popup', async () => {
+  it('picked, with the browser refusing local network access: the one plain line', async () => {
+    inPlace.mockResolvedValue({ ok: false, why: 'blocked' })
+    const c = component()
+    await methods.connectLocal.call(c, entry(NAME))
+    expect(c.routeProblem?.line).toBe(
+      "Your browser blocked access to printers on your network. Allow 'local network access' for control.muon3d.com in the address bar, then try again."
+    )
+  })
+
+  it('with only the addresses from the service (no secure name): not usable from this page, and never opens an address', async () => {
     discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['10.42.0.1', '192.168.1.20'] }]
     const c = component()
     const e = entry(null)
-    expect(action(c, e)).toMatchObject({ disabled: false, hint: "Opens the printer's own page on your network, in this tab" })
+    expect(action(c, e)).toMatchObject({ disabled: true })
     await methods.connectLocal.call(c, e)
-    expect(nav).toHaveBeenCalledWith('http://192.168.1.20/')
-  })
-
-  it('opens the printer by its .local name in this tab when the name is known, never window.open', async () => {
-    const open = vi.fn()
-    vi.stubGlobal('open', open)
-    discoveryState.cloud = [{ printerId: 'p1', name: 'Sloe b26d', model: 'M1', linked: true, localAddrs: ['192.168.1.78'] }]
-    const e = entry(null)
-    e.name = 'Sloe b26d'
-    e.cloud = { ...e.cloud, name: 'Sloe b26d' } as never
-    await methods.connectLocal.call(component(), e)
-    expect(nav).toHaveBeenCalledWith('http://muon-sloe-b26d.local/')
-    expect(open).not.toHaveBeenCalled()
-  })
-
-  it('matches the printer id from the service without case, so a printer beside this browser is found (KAN-3581)', async () => {
-    discoveryState.cloud = [{ printerId: 'P1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
-    await methods.connectLocal.call(component(), entry(null))
-    expect(nav).toHaveBeenCalledWith('http://192.168.1.20/')
-  })
-
-  it('a bad address from the console is never opened', async () => {
-    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['evil.example', 'a@evil'] }]
-    await methods.connectLocal.call(component(), entry(null))
     expect(nav).not.toHaveBeenCalled()
+    expect(inPlace).not.toHaveBeenCalled()
   })
 
   it('a busy row keeps "Still opening" instead of the unreachable notice', async () => {
@@ -127,8 +119,6 @@ describe('Connect locally on the hosted page (KAN-2529)', () => {
 
   it('with neither: greyed out with an honest reason', () => {
     const c = component()
-    expect(action(c, entry(null))).toMatchObject({ disabled: true, hint: 'Not found on this network' })
-    discoveryState.cloudChecked = false
-    expect(action(c, entry(null))).toMatchObject({ disabled: true, hint: "This browser can't reach it from this page" })
+    expect(action(c, entry(null))).toMatchObject({ disabled: true })
   })
 })

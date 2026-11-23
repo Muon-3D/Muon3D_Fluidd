@@ -142,14 +142,20 @@
                 <span data-tid="nearby-status">{{ printer.status }}</span>
                 <span>{{ printer.host }}</span>
               </span>
-              <a
+              <button
+                type="button"
                 class="lib-btn lib-btn--sm"
-                :href="`http://${printer.host}/`"
                 data-tid="nearby-open"
-                @click="openNearby($event, printer)"
-              >Open</a>
+                @click="openNearby(printer)"
+              >
+                Open
+              </button>
             </div>
           </div>
+          <printer-route-problem
+            :ask="askLocal"
+            @cancel="askLocal = false"
+          />
         </section>
       </div>
 
@@ -170,9 +176,12 @@ import { cloudApi } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
 import { centralLoginEnabled, consoleServesPage, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
 import { nearbyHost, pageIsSecure, printerHealth } from '@/services/muon-cloud/discovery'
-import { mayTrySecureName, reachSecureName, secureNameOf } from '@/services/secure-origin/hosted'
+import { mayTrySecureName, secureNameOf } from '@/services/secure-origin/hosted'
 import { printerStatusWord } from '@/util/printer-status-word'
 import { describe } from '@/services/account/state'
+import PrinterRouteProblem from '@/components/muon-cloud/PrinterRouteProblem.vue'
+import { openOnNetwork } from '@/services/muon-cloud/connect-in-place'
+import { printerHomePath } from '@/services/printer-pages'
 import { finishSignIn, forgotPassword, passkeySignIn } from '@/services/account/sign-in'
 import { cancelledPasskey, passkeysSupported } from '@/services/account/webauthn'
 import { forgetSignedOut, readSignedOut, reasonLine, type SignedOutNote } from '@/services/account/signed-out-note'
@@ -185,6 +194,7 @@ import '@/scss/muon3d-account.scss'
  */
 @Component({
   components: {
+    PrinterRouteProblem,
     PrinterThumb,
     CloudAccountDialog: () => import('@/components/muon-cloud/CloudAccountDialog.vue')
   }
@@ -193,6 +203,7 @@ export default class SignedOut extends Vue {
   note: SignedOutNote | null = null
   nearby: Array<{ id: string, name: string, host: string, status: string, secureName: string | null }> = []
   busy = false
+  askLocal = false
   error = ''
   resetSent = false
   accountDialog = false
@@ -261,13 +272,18 @@ export default class SignedOut extends Vue {
    * Open, for anyone (KAN-5459): the printer's own https name first when the service gave one and it answers, in
    * this same tab; its `.local` page otherwise (the link's own href).
    */
-  async openNearby (ev: Event, printer: { secureName: string | null }) {
-    if (!printer.secureName || !mayTrySecureName()) return
-    ev.preventDefault()
-    const href = (ev.currentTarget as HTMLAnchorElement | null)?.href
-    const name = printer.secureName
-    const reached = await reachSecureName(name).catch(() => false)
-    window.location.assign(reached ? `https://${name}/` : (href ?? `https://${name}/`))
+  async openNearby (printer: { id: string, name: string, secureName: string | null }) {
+    this.error = ''
+    this.askLocal = false
+    if (!printer.secureName || !mayTrySecureName()) {
+      this.askLocal = true
+      return
+    }
+    // In place (KAN-5459): this tab stays on the console. muon3d.local only when asked and chosen.
+    const r = await openOnNetwork({ name: printer.secureName, label: printer.name, printerId: printer.id })
+    if (r.opened) this.$router.push(printerHomePath()).catch(() => {})
+    if (r.line) this.error = r.line
+    this.askLocal = r.ask
   }
 
   signIn () {

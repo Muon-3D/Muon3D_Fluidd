@@ -5,7 +5,7 @@
  * An automatic move records no choice and never opens a tab; a person's click does.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import PrinterEntriesMixin, { setNavigate } from '../printer-entries'
+import PrinterEntriesMixin from '../printer-entries'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { discoveryState } from '@/services/muon-cloud/discovery'
 import { chooseRouteMode, routeMode } from '@/services/muon-cloud/route-choice'
@@ -42,12 +42,12 @@ const component = () => ({
 })
 
 const tab = vi.fn()
+
 beforeEach(() => {
   forgetSecureReach()
   sessionStorage.clear()
   chooseRouteMode('p1', 'auto')
   tab.mockReset()
-  setNavigate(tab)
   discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
   discoveryState.cloudChecked = true
   vi.unstubAllGlobals()
@@ -68,12 +68,26 @@ describe('route hold on the hosted page', () => {
     expect(routeMode('p1')).toBe('auto')
   })
 
-  it('an explicit Connect locally that leaves for the printer page leaves the held route as it was', async () => {
+  it('a picked Connect locally that cannot connect stays local: held, told, no tab, no other route tried', async () => {
     chooseRouteMode('p1', 'cloud')
-    await methods.connectLocal.call(component(), entry())
-    expect(tab).toHaveBeenCalledWith('http://192.168.1.20/')
-    // Held 'lan' would be undialable when the person comes back to this https page.
-    expect(routeMode('p1')).toBe('cloud')
+    const c = { ...component(), routeProblem: null as { line: string, choices: Array<{ id: string }> } | null, routeProblemEntry: null, failRoute: methods.failRoute }
+    await methods.connectLocal.call(c, entry())
+    expect(tab).not.toHaveBeenCalled()
+    expect(routeMode('p1')).toBe('lan')
+    expect(c.routeProblem?.line).toMatch(/Couldn't connect to Boxwood/)
+    expect(c.routeProblem?.choices.map(x => x.id)).toEqual(expect.arrayContaining(['cloud', 'bluetooth', 'muon-local']))
+    expect(c.connectCloud).not.toHaveBeenCalled()
+    expect(c.connectOverBluetooth).not.toHaveBeenCalled()
+  })
+
+  it('an unpicked click that cannot connect locally goes through Muon3D, with no tab', async () => {
+    const c = { ...component(), askMuonLocal: false }
+    c.connectCloud.mockResolvedValue(true)
+    await methods.connectLocal.call(c, entry(), false, false)
+    expect(c.connectCloud).toHaveBeenCalledWith(expect.anything(), undefined, true)
+    expect(c.askMuonLocal).toBe(false)
+    expect(routeMode('p1')).toBe('auto')
+    expect(tab).not.toHaveBeenCalled()
   })
 
   it('tapping a printer heard over Bluetooth is an automatic move: it records no choice', async () => {

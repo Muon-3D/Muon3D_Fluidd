@@ -17,8 +17,14 @@
       {{ progress }}
     </p>
 
+    <printer-route-problem
+      :problem="problem ? { line: problem, choices: [] } : null"
+      :ask="ask"
+      @cancel="ask = false"
+    />
+
     <div
-      v-if="state.secure.length || state.local.length"
+      v-if="state.secure.length"
       class="rows"
     >
       <div
@@ -32,30 +38,14 @@
           <span class="row__title">{{ p.name }}</span>
           <span class="row__sub">On this network (secure)</span>
         </div>
-        <a
-          :href="p.url"
+        <button
+          type="button"
           class="btn btn--primary btn--sm"
-          target="_self"
           data-tid="scan-open-secure"
-        >Open</a>
-      </div>
-      <div
-        v-for="p in state.local"
-        :key="`l-${p.id}`"
-        class="row"
-        data-tid="scan-local"
-      >
-        <span class="row__icon"><frame-icon name="printer" /></span>
-        <div class="row__text">
-          <span class="row__title">{{ p.name }}</span>
-          <span class="row__sub">On this network. No secure address yet.</span>
-        </div>
-        <a
-          :href="p.url"
-          class="btn btn--sm"
-          target="_self"
-          data-tid="scan-open-local"
-        >Open {{ p.host }} (not secure)</a>
+          @click="openSecure(p)"
+        >
+          Open
+        </button>
       </div>
     </div>
 
@@ -94,10 +84,26 @@
 import { Component, Vue } from 'vue-property-decorator'
 import { emptyLine, foundAnything, progressLine } from '@/services/scan/text'
 import { scanState } from '@/services/scan/state'
+import PrinterRouteProblem from '@/components/muon-cloud/PrinterRouteProblem.vue'
 
 /** What the scan found and what it is doing (KAN-5409). */
-@Component({})
+@Component({ components: { PrinterRouteProblem } })
 export default class ScanResults extends Vue {
+  problem = ''
+  ask = false
+
+  /** Open a printer found securely: connected in place in this tab (KAN-5459), never an address change. */
+  async openSecure (p: { id: string, name: string, secureName: string }) {
+    this.problem = ''
+    this.ask = false
+    const { openOnNetwork } = await import('@/services/muon-cloud/connect-in-place')
+    const { printerHomePath } = await import('@/services/printer-pages')
+    const r = await openOnNetwork({ name: p.secureName, label: p.name, printerId: p.id })
+    if (r.opened) this.$router.push(printerHomePath()).catch(() => {})
+    this.problem = r.line ?? ''
+    this.ask = r.ask
+  }
+
   get state () {
     return scanState
   }
