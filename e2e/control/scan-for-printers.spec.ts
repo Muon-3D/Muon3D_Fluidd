@@ -138,6 +138,13 @@ test.describe('signed out, a printer beside this browser (KAN-5459)', () => {
     await page.getByTestId('muon-local-cancel').click()
     await expect(page.getByTestId('muon-local-question')).toHaveCount(0)
     expect(page.url()).toBe(here)
+
+    // Only Open leaves the page, and only for muon3d.local.
+    await page.route('http://muon3d.local/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>offline</title>' }))
+    await secure.getByTestId('scan-open-secure').click()
+    await expect(page.getByTestId('muon-local-question')).toBeVisible()
+    await page.getByTestId('muon-local-open').click()
+    await expect(page).toHaveURL('http://muon3d.local/')
   })
 })
 

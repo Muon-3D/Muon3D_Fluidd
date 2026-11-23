@@ -77,7 +77,7 @@ describe('Connect locally on the hosted page (KAN-2529, KAN-5459)', () => {
     const c = component()
     await methods.connectLocal.call(c, entry(NAME))
     expect(nav).not.toHaveBeenCalled()
-    expect(c.routeProblem?.line).toBe("Couldn't connect to Boxwood on this network.")
+    expect(c.routeProblem?.line).toBe("Couldn't connect locally.")
     expect(c.routeProblem?.choices.map(x => x.id)).toEqual(['cloud', 'bluetooth', 'muon-local'])
     expect(c.connectCloud).not.toHaveBeenCalled()
   })

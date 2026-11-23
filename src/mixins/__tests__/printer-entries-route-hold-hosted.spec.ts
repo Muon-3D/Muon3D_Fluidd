@@ -74,7 +74,7 @@ describe('route hold on the hosted page', () => {
     await methods.connectLocal.call(c, entry())
     expect(tab).not.toHaveBeenCalled()
     expect(routeMode('p1')).toBe('lan')
-    expect(c.routeProblem?.line).toMatch(/Couldn't connect to Boxwood/)
+    expect(c.routeProblem?.line).toMatch(/Couldn't connect locally/)
     expect(c.routeProblem?.choices.map(x => x.id)).toEqual(expect.arrayContaining(['cloud', 'bluetooth', 'muon-local']))
     expect(c.connectCloud).not.toHaveBeenCalled()
     expect(c.connectOverBluetooth).not.toHaveBeenCalled()

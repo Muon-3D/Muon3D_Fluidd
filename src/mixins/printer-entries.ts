@@ -748,7 +748,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     const blocked = !result.ok && result.why === 'blocked'
     if (picked) {
       this.notice = null
-      this.failRoute(e, 'local', blocked ? LOCAL_ACCESS_BLOCKED : `Couldn't connect to ${e.name} on this network.`)
+      this.failRoute(e, 'local', blocked ? LOCAL_ACCESS_BLOCKED : "Couldn't connect locally.")
       return false
     }
     if (blocked) this.notice = LOCAL_ACCESS_BLOCKED
