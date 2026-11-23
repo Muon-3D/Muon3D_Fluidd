@@ -35,6 +35,7 @@ import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import { bluetoothWhy as whyNoBluetooth, type BluetoothWhy } from '@/services/muon-ble/unavailable'
 import { isPrinter, lookNearby, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
+import { scanForPrinters, scanState } from '@/services/scan'
 import { startPairing } from '@/services/muon-ble/pairing'
 import { bleRetryState, retryBluetooth } from '@/services/muon-ble/retry'
 import { bluetoothCarrying, reconnectBluetooth, releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
@@ -193,6 +194,42 @@ async function openManagedRoute (e: DirectoryEntry, route?: 'relay' | BleDevice,
  * printers this way, so a printer behaves the same in either. Each keeps
  * the dialogs these open in its own template.
  */
+/** What follows a Bluetooth pick: open the account's printer, set up a new one, or say where it is listed. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function afterBluetoothPick (vm: any, heard: NearbyPrinter | null) {
+  // A dismissed chooser is the person's answer: silent. A failed read already
+  // shows its own message (nearbyState.error).
+  if (!heard) return
+  if (!heard.endpointId) {
+    vm.notice = `Couldn't tell which printer ${heard.display || heard.localName || 'that device'} is. ` +
+      'Move closer to it and try again.'
+    return
+  }
+  const entry = vm.directory.cloud.find((c: DirectoryEntry) => c.cloud && isPrinter(heard, c.cloud.id))
+  if (entry) {
+    await vm.connectOverBluetooth(entry, heard)
+    return
+  }
+  // Not on this account. If the account's printers have not loaded, it may be one of them.
+  if (!cloudState.ready) {
+    vm.notice = 'Your printers are still loading. Try Connect over Bluetooth again in a moment.'
+    return
+  }
+  // The out-of-box path: a printer nobody has set up goes to its set-up (or its link), as from Look nearby.
+  const nearbyEntry = vm.directory.found.find((f: DirectoryEntry) => f.nearby?.deviceId === heard.deviceId)
+  const known = vm.directory.local.find((l: DirectoryEntry) => l.nearby?.deviceId === heard.deviceId) ??
+    (nearbyEntry?.row?.action === 'open' ? nearbyEntry : undefined)
+  if (known) {
+    await vm.pairNearbyPrinter(heard, known.key, true)
+    return
+  }
+  if (nearbyEntry) {
+    await vm.openFoundEntry(nearbyEntry)
+    return
+  }
+  vm.notice = `${heard.display || heard.localName || 'That printer'} was found over Bluetooth. It is listed with the printers found nearby.`
+}
+
 @Component
 export default class PrinterEntriesMixin extends Mixins(StateMixin) {
   get deletionPending (): boolean {
@@ -337,38 +374,18 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    */
   async onConnectOverBluetooth () {
     this.notice = null
-    const heard = await lookNearby()
-    // A dismissed chooser is the person's answer: silent. A failed read already
-    // shows its own message (nearbyState.error).
-    if (!heard) return
-    if (!heard.endpointId) {
-      this.notice = `Couldn't tell which printer ${heard.display || heard.localName || 'that device'} is. ` +
-        'Move closer to it and try again.'
-      return
-    }
-    const entry = this.directory.cloud.find(c => c.cloud && isPrinter(heard, c.cloud.id))
-    if (entry) {
-      await this.connectOverBluetooth(entry, heard)
-      return
-    }
-    // Not on this account. If the account's printers have not loaded, it may be one of them.
-    if (!cloudState.ready) {
-      this.notice = 'Your printers are still loading. Try Connect over Bluetooth again in a moment.'
-      return
-    }
-    // The out-of-box path: a printer nobody has set up goes to its set-up (or its link), as from Look nearby.
-    const nearbyEntry = this.directory.found.find(f => f.nearby?.deviceId === heard.deviceId)
-    const known = this.directory.local.find(l => l.nearby?.deviceId === heard.deviceId) ??
-      (nearbyEntry?.row?.action === 'open' ? nearbyEntry : undefined)
-    if (known) {
-      await this.pairNearbyPrinter(heard, known.key, true)
-      return
-    }
-    if (nearbyEntry) {
-      await this.openFoundEntry(nearbyEntry)
-      return
-    }
-    this.notice = `${heard.display || heard.localName || 'That printer'} was found over Bluetooth. It is listed with the printers found nearby.`
+    await afterBluetoothPick(this, await lookNearby())
+  }
+
+  /** The Printers page's "Scan for printers" (KAN-5409): one click runs every source; a printer picked over Bluetooth is then opened as ever. */
+  get scanBusy () {
+    return scanState.phase === 'scanning'
+  }
+
+  async onScan () {
+    this.notice = null
+    // Straight from the click: the Bluetooth chooser needs the gesture.
+    await afterBluetoothPick(this, await scanForPrinters())
   }
 
   // -- what each printer offers ----------------------------------------------

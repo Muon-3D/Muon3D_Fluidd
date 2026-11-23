@@ -14,6 +14,17 @@
       Nothing has turned up on this network. Keep this page open while your printer starts: it appears here by itself.
     </p>
 
+    <button
+      type="button"
+      class="btn btn--primary"
+      data-tid="scan-printers"
+      :disabled="scanning"
+      @click="$emit('scan')"
+    >
+      {{ scanning ? 'Scanning…' : 'Scan for printers' }}
+    </button>
+    <scan-results />
+
     <div class="welcome__search">
       <v-progress-circular
         v-if="searching"
@@ -126,6 +137,7 @@
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import BluetoothWhyText from './BluetoothWhyText.vue'
+import ScanResults from './ScanResults.vue'
 import type { BluetoothWhy } from '@/services/muon-ble/unavailable'
 
 /**
@@ -133,7 +145,7 @@ import type { BluetoothWhy } from '@/services/muon-ble/unavailable'
  * what is missing, one muted line for how to fix it, and the ways to find
  * the first printer.
  */
-@Component({ components: { BluetoothWhyText } })
+@Component({ components: { BluetoothWhyText, ScanResults } })
 export default class PrintersWelcome extends Vue {
   @Prop({ type: Boolean })
   readonly signedIn?: boolean
@@ -156,6 +168,10 @@ export default class PrintersWelcome extends Vue {
 
   @Prop({ type: Boolean })
   readonly blockedByPage?: boolean
+
+  /** A scan is running (KAN-5409). */
+  @Prop({ type: Boolean })
+  readonly scanning?: boolean
 }
 </script>
 

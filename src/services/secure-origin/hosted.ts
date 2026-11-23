@@ -97,3 +97,9 @@ export function clearRelayChoice (printerId: string) {
   ids.delete(printerId)
   writeRelay(ids)
 }
+
+/** Like reachSecureName, but asks again now: a scan the person started wants the answer of this moment (KAN-5409). */
+export function reachSecureNameNow (name: string): Promise<boolean> {
+  if (!inFlight.has(name)) reach.delete(name)
+  return reachSecureName(name)
+}
