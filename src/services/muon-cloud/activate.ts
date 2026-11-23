@@ -358,7 +358,6 @@ async function openLocalPrinter (instance: InstanceConfig, mine: number): Promis
         activationState.error = reach === 'asking'
           ? `Let ${location.host} look for devices on your local network when the browser asks, then open ${name} again.`
           : `This browser does not let ${location.host} reach ${name} on your network.`
-        activationState.fallbackUrl = `${instance.apiUrl.replace(/\/+$/, '')}/`
       }
       return false
     }

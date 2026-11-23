@@ -134,7 +134,7 @@ describe('pageCanReach', () => {
 })
 
 describe('activateLocalPrinter', () => {
-  it('leaves Fluidd where it was, and offers the printer page, when the browser blocks it', async () => {
+  it('leaves Fluidd where it was, and offers no printer address, when the browser blocks it', async () => {
     servedOver('https:')
     browserSays('blocks')
     moonraker(true)
@@ -143,7 +143,7 @@ describe('activateLocalPrinter', () => {
     expect(init.appInit).not.toHaveBeenCalled()
     expect(socket.close).not.toHaveBeenCalled()
     expect(activationState.error).toContain('Muon-boxwood-367a')
-    expect(activationState.fallbackUrl).toBe('http://192.168.1.153/')
+    expect(activationState.fallbackUrl).toBeNull()
   })
 
   it('connects and reports success when the printer answers', async () => {
@@ -187,7 +187,7 @@ describe('activateLocalPrinter', () => {
 
     expect(await activateLocalPrinter(printer)).toBe(false)
     expect(activationState.error).toContain('when the browser asks')
-    expect(activationState.fallbackUrl).toBe('http://192.168.1.153/')
+    expect(activationState.fallbackUrl).toBeNull()
   })
 
   it('offers no page for the printer\'s own hotspot address, which nobody on the home network reaches', async () => {

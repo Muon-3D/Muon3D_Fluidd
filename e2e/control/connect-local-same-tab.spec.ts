@@ -1,14 +1,15 @@
 /**
  * Jack's 17 Nov walk of control.muon3d.com with Boxwood (his) and Sloe (Harry's), both on his Wi-Fi.
  *
- * - KAN-3581/3582/3584: Connect locally finds a printer the service puts beside this browser and sends
- *   THIS tab to http://<host>.local/ (the printer's own Control). No popup, no new page.
+ * - KAN-3581/3582/3584, now KAN-5459: Connect locally finds a printer the service puts beside this browser and
+ *   connects to it IN PLACE over its secure name (https/wss://<label>.muonlan.net). The tab never goes to a
+ *   printer's own address; a failure stays local, says so and offers the other routes.
  * - KAN-3586: a printer that is someone else's offers no Link to my account and no Connect through Muon3D.
  * - KAN-3585: a printer that refuses this browser's status reads says Needs access, never Connecting for good.
  *
  * The page has to be https for Control to behave as the hosted site, and the local server is not: the
  * app is served at https://control.e2e.test by proxying every request of that origin to it. The printer's
- * own page (http://muon-sloe-b26d.local/) is a stub; nothing leaves the browser.
+ * secure origin is a stub (the probe answers, or is refused); nothing leaves the browser.
  */
 import type { Page } from '@playwright/test'
 import { test, expect, ready } from '../fixtures'
@@ -19,6 +20,7 @@ import { MOCK_PORT, VITE_PORT } from '../ports'
 test.use({ serviceWorkers: 'block', signedIn: true })
 
 const HOSTED = 'https://control.e2e.test'
+const SECURE = 'abcdefghijklmnopqrst.muonlan.net'
 const SLOE = { id: '8f21abcd'.repeat(8), name: 'Sloe b26d' }
 const item = (page: Page, name: string) => page.locator('.v-list-item').getByText(name, { exact: true })
 
@@ -35,16 +37,34 @@ async function hostedPage (page: Page) {
   })
 }
 
-async function nearby (page: Page, printers: Array<{ id: string, name: string, linked: boolean, addrs: string[] }>) {
+async function nearby (page: Page, printers: Array<{ id: string, name: string, linked: boolean, addrs: string[], secure?: string }>) {
   await page.route(`${CONSOLE}/v1/links/nearby`, route => route.fulfill({
     status: 200,
     contentType: 'application/json',
     headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key' },
-    body: JSON.stringify({ printers: printers.map(p => ({ printer_id: p.id, name: p.name, model: 'M1', linked: p.linked, local_addrs: p.addrs })) })
+    body: JSON.stringify({
+      printers: printers.map(p => ({
+        printer_id: p.id, name: p.name, model: 'M1', linked: p.linked, local_addrs: p.addrs, ...(p.secure ? { secure_name: p.secure } : {})
+      }))
+    })
   }))
 }
 
-/** What the printer itself serves at its own address: a stub, and a record of what was asked for. */
+/** The printer's secure origin: the paths asked of it, and whether Moonraker's /server/info answers (the in-place probe). */
+async function secureOrigin (page: Page, answers: boolean) {
+  const seen: string[] = []
+  await page.route(/^https:\/\/[a-z2-7]{20}\.muonlan\.net\/.*/, route => {
+    const path = new URL(route.request().url()).pathname
+    seen.push(path)
+    if (answers && path === '/server/info') {
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"result":{"klippy_state":"ready"}}' })
+    }
+    return route.abort('connectionrefused')
+  })
+  return seen
+}
+
+/** What the printer itself would serve at its own address: a stub, and a record of what was asked for. Nothing should ask. */
 async function printerPages (page: Page, hosts: string[]) {
   const asked: string[] = []
   // Nothing in a spec reaches a real printer: any private address not stubbed below is refused here.
@@ -79,70 +99,89 @@ async function optionsOf (page: Page, name: string) {
 }
 
 test.describe('Connect locally from the hosted page', () => {
-  test('Boxwood on the same Wi-Fi: Connect locally moves THIS tab to its .local page, with no popup', async ({ page, context, account }) => {
+  test('Boxwood on the same Wi-Fi with a secure name: Connect locally connects IN PLACE, the address stays, no popup', async ({ page, context, account }) => {
     const pages: string[] = []
     context.on('page', p => pages.push(p.url()))
     const asked = await printerPages(page, ['muon-boxwood-367a.local', '192.168.1.20'])
-    await start(page, account, [{ id: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, linked: true, addrs: ['10.42.0.1', '192.168.1.20'] }], false)
+    const seen = await secureOrigin(page, true)
+    await start(page, account, [{ id: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, linked: true, addrs: ['10.42.0.1', '192.168.1.20'], secure: SECURE }], false)
     await optionsOf(page, ROUTE_PRINTER.name)
     await expect(item(page, 'Connect locally')).toBeVisible()
     await expect(page.getByText('Not found on this network')).toHaveCount(0)
     await item(page, 'Connect locally').click()
-    await expect(page).toHaveURL('http://muon-boxwood-367a.local/')
-    await expect(page.locator('#printer-own-control')).toBeVisible()
-    expect(asked).toEqual(['http://muon-boxwood-367a.local/'])
+    // The in-place attempt: Moonraker on the secure name. The mock cannot serve the rest of a TLS printer origin.
+    await expect.poll(() => seen).toContain('/server/info')
+    await expect(page).toHaveURL(`${HOSTED}/`)
+    expect(asked).toEqual([])
     expect(pages).toEqual([])
     expect(context.pages()).toHaveLength(1)
-    // Leaving for the printer's page chooses no route here: back on this page nothing is held that cannot be dialled.
-    await page.goBack()
-    await ready(page)
-    expect(await page.evaluate(() => sessionStorage.getItem('muon.route.modes') ?? '')).not.toContain('lan')
   })
 
-  test('a renamed printer (Living Room) has no guessable .local name: Connect locally opens its listed host', async ({ page, account }) => {
+  test('a picked Connect locally whose secure name does not answer stays local: the message and the other routes, no .local, no IP', async ({ page, context, account }) => {
+    const pages: string[] = []
+    context.on('page', p => pages.push(p.url()))
+    const asked = await printerPages(page, ['muon-boxwood-367a.local', '192.168.1.20'])
+    await secureOrigin(page, false)
+    await start(page, account, [{ id: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, linked: true, addrs: ['192.168.1.20'], secure: SECURE }], false)
+    await optionsOf(page, ROUTE_PRINTER.name)
+    await item(page, 'Connect locally').click()
+    await expect(page.getByTestId('route-problem-line')).toContainText("Couldn't connect locally.")
+    await expect(page.getByTestId('route-choice-cloud')).toBeVisible()
+    await expect(page).toHaveURL(`${HOSTED}/`)
+    // The muon3d.local choice only asks; nothing leaves the page until Open is clicked.
+    await page.getByTestId('route-choice-muon-local').click()
+    await expect(page.getByTestId('muon-local-question')).toBeVisible()
+    await page.getByTestId('muon-local-cancel').click()
+    await expect(page.getByTestId('muon-local-question')).toHaveCount(0)
+    await expect(page).toHaveURL(`${HOSTED}/`)
+    expect(asked).toEqual([])
+    expect(pages).toEqual([])
+  })
+
+  test('a renamed printer (Living Room) has no guessable .local name: Connect locally goes to no guessed or listed host', async ({ page, account }) => {
     const asked = await printerPages(page, ['muon-living-room.local', 'lounge-pi.local'])
     await start(page, account, [{ id: ROUTE_PRINTER.id, name: 'Living Room', linked: true, addrs: ['lounge-pi.local'] }], false, 'Living Room')
     await optionsOf(page, 'Living Room')
-    await item(page, 'Connect locally').click()
-    await expect(page).toHaveURL('http://lounge-pi.local/')
-    expect(asked).toEqual(['http://lounge-pi.local/'])
+    await expect(page.locator('.v-list-item', { hasText: 'Connect locally' })).toContainText('Needs its secure address')
+    await item(page, 'Connect locally').click({ force: true }).catch(() => undefined)
+    await expect(page).toHaveURL(`${HOSTED}/`)
+    expect(asked).toEqual([])
   })
 
-  test('Sloe, not mine: it opens at its .local name in this tab, and offers no Link or Muon3D route', async ({ page, context, account }) => {
+  test('Sloe, not mine: Connect locally tries its secure name in this tab, and offers no Link or Muon3D route', async ({ page, context, account }) => {
     const pages: string[] = []
     context.on('page', p => pages.push(p.url()))
     const asked = await printerPages(page, ['muon-sloe-b26d.local', '192.168.1.78'])
+    const seen = await secureOrigin(page, true)
     await start(page, account, [
       { id: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, linked: true, addrs: ['192.168.1.20'] },
-      { id: SLOE.id, name: SLOE.name, linked: true, addrs: ['192.168.1.78'] }
+      { id: SLOE.id, name: SLOE.name, linked: true, addrs: ['192.168.1.78'], secure: SECURE }
     ], true)
     await optionsOf(page, SLOE.name)
     await expect(item(page, 'Connect locally')).toBeVisible()
     await expect(item(page, 'Link to my account')).toHaveCount(0)
     await expect(item(page, 'Connect through Muon3D')).toHaveCount(0)
     await item(page, 'Connect locally').click()
-    await expect(page).toHaveURL('http://muon-sloe-b26d.local/')
-    expect(asked).toEqual(['http://muon-sloe-b26d.local/'])
+    await expect.poll(() => seen).toContain('/server/info')
+    await expect(page).toHaveURL(`${HOSTED}/`)
+    expect(asked).toEqual([])
     expect(pages).toEqual([])
   })
 
-  // KAN-4898: Sloe's relay keeps dropping, so the service's nearby list (same public IP + relay link) is empty,
-  // yet the printer told Control its name (identity, read over Bluetooth and kept with the saved printer).
-  test('Sloe with an empty nearby list: Connect locally offers the name the printer reported, and says where it goes', async ({ page, context, account }) => {
+  // KAN-4898: Sloe's relay keeps dropping, so the nearby list is empty, yet the printer told Control its name. That name
+  // is a printer's own address: never navigated to (KAN-5459). Without a secure name there is no local route from here.
+  test('Sloe with an empty nearby list: the name the printer reported is not opened; Connect locally says it needs the secure address', async ({ page, context, account }) => {
     const pages: string[] = []
     context.on('page', p => pages.push(p.url()))
     const asked = await printerPages(page, ['muon-sloe-b26d.local'])
     await start(page, account, [], true)
     await optionsOf(page, SLOE.name)
-    await expect(item(page, 'Connect locally')).toBeVisible()
     const entry = page.locator('.v-list-item', { hasText: 'Connect locally' })
-    await expect(entry).toContainText("Opens the printer's own page in this tab")
-    await expect(entry).not.toContainText('Not found on this network')
-    await item(page, 'Connect locally').click()
-    // Not vouched for by the service, so it says where the tab is going and what to do if it does not load.
-    await expect(page.getByText("Opening muon-sloe-b26d.local. If it doesn't load, join the same Wi-Fi as Sloe b26d.")).toBeVisible()
-    await expect(page).toHaveURL('http://muon-sloe-b26d.local/')
-    expect(asked).toEqual(['http://muon-sloe-b26d.local/'])
+    await expect(entry).toBeVisible()
+    await expect(entry).toContainText('Needs its secure address')
+    await item(page, 'Connect locally').click({ force: true }).catch(() => undefined)
+    await expect(page).toHaveURL(`${HOSTED}/`)
+    expect(asked).toEqual([])
     expect(pages).toEqual([])
   })
 

@@ -5,7 +5,7 @@ import { cloudApi } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
 import { lookNearby, nearbyState, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { bluetoothWhy } from '@/services/muon-ble/unavailable'
-import { reachSecureNameNow } from '@/services/secure-origin/hosted'
+import { probeSecureApi } from '@/services/muon-cloud/connect-in-place'
 import { runScan, type ScanDeps } from './scan'
 import { newScanState } from './text'
 
@@ -35,7 +35,8 @@ export function liveScanDeps (): ScanDeps {
         secureName: p.secure_name ?? null
       }))
     },
-    reach: reachSecureNameNow,
+    // The same question an Open then asks: does Moonraker answer this page over the secure name.
+    reach: async (name: string) => (await probeSecureApi(name)) === 'reached',
     bluetooth: canBluetooth ? () => lookNearby() : null,
     bluetoothUnavailable: bluetoothWhy()?.text ?? null,
     pageHost: location.hostname

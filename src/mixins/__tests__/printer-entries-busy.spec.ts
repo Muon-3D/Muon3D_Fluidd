@@ -15,6 +15,7 @@ const discovery = vi.hoisted(() => ({
 const activation = vi.hoisted(() => ({
   activateCloudPrinter: vi.fn(),
   activateLocalPrinter: vi.fn(),
+  SwitchSuperseded: class SwitchSuperseded extends Error {},
   activationState: { switching: null as string | null, error: null as string | null, fallbackUrl: null }
 }))
 vi.mock('@/services/muon-cloud/discovery', () => discovery)
