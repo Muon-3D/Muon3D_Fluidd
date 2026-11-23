@@ -60,6 +60,8 @@ export interface CloudNearbyPrinter {
   linked: boolean;
   /** Its addresses on this network, for opening it locally. */
   localAddrs: string[];
+  /** Its own HTTPS name, `<label>.<zone>`, when it holds a certificate (KAN-5459). Absent from an older console. */
+  secureName?: string | null;
 }
 
 export interface LanPrinter {
@@ -199,7 +201,8 @@ export async function refreshCloudNearby () {
       name: p.name,
       model: p.model,
       linked: !!p.linked,
-      localAddrs: p.local_addrs ?? []
+      localAddrs: p.local_addrs ?? [],
+      secureName: p.secure_name ?? null
     }))
     for (const p of discoveryState.cloud) foundThroughService(p).catch(() => {})
   } catch {
@@ -352,7 +355,7 @@ export function lanOpenLinks (accountPrinters: Array<{ id: string, secure_name?:
   for (const p of discoveryState.cloud) {
     const host = nearbyHost(p.localAddrs)
     // A printer this browser has already proven it reaches on its secure address: that link keeps the lock.
-    const secure = secureNameOf(accountPrinters.find(a => a.id === p.printerId))
+    const secure = secureNameOf(accountPrinters.find(a => a.id === p.printerId)) ?? secureNameOf({ secure_name: p.secureName })
     if (secure && knownReachable(secure)) links.push({ name: p.name, url: `https://${secure}/` })
     else if (host) links.push({ name: p.name, url: `http://${host}/` })
   }

@@ -61,7 +61,7 @@
         data-tid="found-secure"
       >
         <template v-if="openLinks.length">
-          Control doesn't scan your network from this secure page. Open a printer on your network:
+          Printers on your network:
           <a
             v-for="link in openLinks"
             :key="link.url"
@@ -70,7 +70,7 @@
           >{{ link.name }}: Open on this network</a>
         </template>
         <template v-else>
-          Control doesn't scan your network from this secure page. A printer on your network can be opened by its address, or over Bluetooth.
+          Use Scan for printers to look for printers on your network, or open one by its address or over Bluetooth.
         </template>
       </p>
       <p

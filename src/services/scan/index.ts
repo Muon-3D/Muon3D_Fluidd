@@ -31,7 +31,8 @@ export function liveScanDeps (): ScanDeps {
         name: p.name,
         model: p.model,
         linked: !!p.linked,
-        localAddrs: p.local_addrs ?? []
+        localAddrs: p.local_addrs ?? [],
+        secureName: p.secure_name ?? null
       }))
     },
     reach: reachSecureNameNow,

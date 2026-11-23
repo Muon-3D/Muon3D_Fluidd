@@ -145,6 +145,8 @@
               <a
                 class="lib-btn lib-btn--sm"
                 :href="`http://${printer.host}/`"
+                data-tid="nearby-open"
+                @click="openNearby($event, printer)"
               >Open</a>
             </div>
           </div>
@@ -168,6 +170,7 @@ import { cloudApi } from '@/services/muon-cloud/api'
 import { cloudState } from '@/services/muon-cloud/state'
 import { centralLoginEnabled, consoleServesPage, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
 import { nearbyHost, pageIsSecure, printerHealth } from '@/services/muon-cloud/discovery'
+import { mayTrySecureName, reachSecureName, secureNameOf } from '@/services/secure-origin/hosted'
 import { printerStatusWord } from '@/util/printer-status-word'
 import { describe } from '@/services/account/state'
 import { finishSignIn, forgotPassword, passkeySignIn } from '@/services/account/sign-in'
@@ -188,7 +191,7 @@ import '@/scss/muon3d-account.scss'
 })
 export default class SignedOut extends Vue {
   note: SignedOutNote | null = null
-  nearby: Array<{ id: string, name: string, host: string, status: string }> = []
+  nearby: Array<{ id: string, name: string, host: string, status: string, secureName: string | null }> = []
   busy = false
   error = ''
   resetSent = false
@@ -238,7 +241,7 @@ export default class SignedOut extends Vue {
     try {
       const { printers } = await cloudApi.nearby()
       this.nearby = printers
-        .map(p => ({ id: p.printer_id, name: p.name, host: nearbyHost(p.local_addrs ?? []) ?? '', status: 'Checking…' }))
+        .map(p => ({ id: p.printer_id, name: p.name, host: nearbyHost(p.local_addrs ?? []) ?? '', status: 'Checking…', secureName: secureNameOf(p) }))
         .filter(p => p.host)
       // No http from the https site (I-134): the name stands without a status.
       if (pageIsSecure()) {
@@ -252,6 +255,19 @@ export default class SignedOut extends Vue {
     } catch {
       this.nearby = []
     }
+  }
+
+  /**
+   * Open, for anyone (KAN-5459): the printer's own https name first when the service gave one and it answers, in
+   * this same tab; its `.local` page otherwise (the link's own href).
+   */
+  async openNearby (ev: Event, printer: { secureName: string | null }) {
+    if (!printer.secureName || !mayTrySecureName()) return
+    ev.preventDefault()
+    const href = (ev.currentTarget as HTMLAnchorElement | null)?.href
+    const name = printer.secureName
+    const reached = await reachSecureName(name).catch(() => false)
+    window.location.assign(reached ? `https://${name}/` : (href ?? `https://${name}/`))
   }
 
   signIn () {

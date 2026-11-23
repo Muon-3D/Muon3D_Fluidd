@@ -5,7 +5,8 @@
  * closest real thing, with no typing, from ONE click. It runs three sources in parallel:
  *
  * - Cloud: the account's printers (each with its own secure name) and the console's same-network list
- *   (printers that connect from this browser's public address). Each secure name is probed over https
+ *   (printers that connect from this browser's public address, with their own secure name once they hold a
+ *   certificate). Each secure name is probed over https
  *   (the existing probe and marker check, names under our zone only, no credentials sent). A printer that
  *   answers is "On this network (secure)" and opens over https in the same tab.
  * - Bluetooth: the chooser, when the browser has Web Bluetooth. It needs a user gesture, so the click that
@@ -67,11 +68,15 @@ async function scanCloud (deps: ScanDeps, st: ScanState) {
 
   // Only names under our zone are ever probed (secureNameOf), each once, all at the same time.
   const seen = new Set<string>()
-  const candidates = mine.flatMap(p => {
-    const secureName = secureNameOf(p)
-    if (!secureName || seen.has(secureName)) return []
-    seen.add(secureName)
-    return [{ id: p.id, name: p.name, secureName }]
+  // Account printers first, then the same-network list's own `secure_name` (KAN-5459): a printer the person does
+  // not own, or signed out, is probed the same way. The same name is probed once.
+  const candidates = [
+    ...mine.map(p => ({ id: p.id, name: p.name, secureName: secureNameOf(p) })),
+    ...beside.map(p => ({ id: p.printerId, name: p.name, secureName: secureNameOf({ secure_name: p.secureName }) }))
+  ].flatMap(c => {
+    if (!c.secureName || seen.has(c.secureName)) return []
+    seen.add(c.secureName)
+    return [{ id: c.id, name: c.name, secureName: c.secureName }]
   })
   const reached = new Set<string>()
   await Promise.all(candidates.map(async c => {
