@@ -53,7 +53,7 @@ test('a narrower tile shows fewer commands, dropping from the tail (negative con
   await page.setViewportSize({ width: 390, height: 900 })
   await expect.poll(() => chips(page).count()).toBeLessThan(wide)
   const keys = await page.locator('[data-tile="macros"] [data-tid="macro-chip"]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.macro))
-  expect(keys).toEqual(['load', 'unload'])
+  expect(keys).toEqual(['load', 'unload', 'purge'])
 })
 
 test('only macros the printer has are shown (negative control: Purge line and Lights off absent without them)', async ({ page, open }) => {

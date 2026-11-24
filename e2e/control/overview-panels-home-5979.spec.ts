@@ -1,6 +1,6 @@
 /**
  * KAN-5979 / KAN-5980 (Jack, 24 Nov): the four Overview panels (Hotend, Bed, Position,
- * Print mode) are the same width; the Trackpad has one Home all and one Home XY; the
+ * Print mode) are the same width; the Trackpad has the one Home all; the
  * trackpad's head follows the printer's live position.
  */
 import type { Page } from '@playwright/test'
@@ -50,24 +50,20 @@ for (const width of [1440, 360, 320]) {
   test.describe(`Home at ${width} px`, () => {
     test.beforeEach(async ({ page }) => { await page.setViewportSize({ width, height: 900 }) })
 
-    test('one Home all and one Home XY on the whole Overview, and each sends its own G-code', async ({ page, open }) => {
+    test('one Home all on the whole Overview, it sends G28, and there is no Home XY', async ({ page, open }) => {
       const printer = await start(page)
       await open('/')
       await expect(trackpad(page).getByTestId('move-homes')).toBeVisible()
       await expect(page.getByRole('button', { name: 'Home all' })).toHaveCount(1)
-      await expect(page.getByRole('button', { name: 'Home XY' })).toHaveCount(1)
-      // Nothing else on the page is a second Home all, a combined X-Y home, or a Quick command that homes.
-      await expect(page.getByRole('button', { name: /Home X ?Y/i })).toHaveCount(1)
+      // Nothing else on the page is a second Home all, an X-Y-only home (KAN-1963), or a Quick command that homes.
+      await expect(page.getByRole('button', { name: /Home X ?Y/i })).toHaveCount(0)
       await expect(page.locator('[data-tile="macros"] [data-macro="home"]')).toHaveCount(0)
-      // Both sit above the pad.
+      // Home all sits above the pad.
       const homes = (await trackpad(page).getByTestId('move-homes').boundingBox())!
       const pad = (await trackpad(page).getByTestId('move-trackpad').boundingBox())!
       expect(homes.y + homes.height).toBeLessThan(pad.y)
       await page.getByRole('button', { name: 'Home all' }).click()
       await expect.poll(() => printer.gcode).toEqual(['G28'])
-      await expect(page.getByRole('button', { name: 'Home XY' })).toBeEnabled()
-      await page.getByRole('button', { name: 'Home XY' }).click()
-      await expect.poll(() => printer.gcode).toEqual(['G28', 'G28 X Y'])
     })
   })
 }

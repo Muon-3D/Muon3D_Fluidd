@@ -17,7 +17,7 @@ export interface QuickDefault {
   gcode?: string;
 }
 
-// Home all is not here (KAN-5980): the Trackpad's header has the one Home all, plus Home XY.
+// Home all is not here (KAN-5980): the Trackpad's header has the one Home all.
 export const QUICK_DEFAULTS: QuickDefault[] = [
   { id: 'load', title: 'Load filament', icon: 'spool', names: ['LOAD_FILAMENT'] },
   { id: 'unload', title: 'Unload filament', icon: 'spool', names: ['UNLOAD_FILAMENT'] },

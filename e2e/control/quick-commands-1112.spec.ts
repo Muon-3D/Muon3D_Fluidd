@@ -47,9 +47,9 @@ test.describe('OV-29: Quick commands grows with its size', () => {
       const chips = tile(page).locator('[data-tid="macro-chip"]')
       if (size === 'L') {
         // L is the full-width, two-row tile (I-542): its set follows the printer's names, not a count (see overview-i542.spec.ts).
-        await expect(tile(page).locator('[data-macro="home"]')).toHaveCount(1)
-        // A phone has room for three; Purge line is the fourth in the priority order.
-        await expect(tile(page).locator('[data-macro="purge"]')).toHaveCount(isMobile ? 0 : 1)
+        await expect(tile(page).locator('[data-macro="home"]')).toHaveCount(0) // Home all is the Trackpad's alone (KAN-5980)
+        // A phone has room for three: Load, Unload and Purge line (Home all is not a Quick command).
+        await expect(tile(page).locator('[data-macro="purge"]')).toHaveCount(1)
         await expect(tile(page).getByTestId('macros-all')).toBeVisible()
         return
       }

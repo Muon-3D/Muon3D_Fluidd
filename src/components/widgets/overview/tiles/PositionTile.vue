@@ -83,7 +83,7 @@ import TileShell from './TileShell.vue'
 /**
  * Where the head is, live, and whether it is homed. Press an axis to type a
  * number (it goes through moveTo: the same checks as the Trackpad); an axis that is
- * not homed says so and has its own small Home. Motors off is the small icon in the
+ * not homed says so (Home all is in the Trackpad header; KAN-5980). Motors off is the small icon in the
  * header. The endstops are not in a menu here any more.
  */
 @Component({ components: { TileShell } })

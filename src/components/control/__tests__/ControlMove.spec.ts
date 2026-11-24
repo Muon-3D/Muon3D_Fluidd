@@ -258,15 +258,12 @@ it('Motors off sends M84 at once, and is only in the menu', async () => {
   s.wrapper.destroy()
 })
 
-it('has one Home all (G28) and one Home XY (G28 X Y) in the header, above the pad (KAN-5980)', async () => {
+it('has one Home all (G28) in the header and no Home XY (KAN-1963: Home is always a full G28)', async () => {
   const s = show()
   expect(s.wrapper.findAll('[data-tid="home-all"]')).toHaveLength(1)
-  expect(s.wrapper.findAll('[data-tid="home-xy"]')).toHaveLength(1)
-  expect(s.wrapper.find('.move__hhomes [data-tid="home-xy"]').exists()).toBe(true)
+  expect(s.wrapper.find('[data-tid="home-xy"]').exists()).toBe(false)
   await s.wrapper.find('[data-tid="home-all"]').trigger('click')
   expect(sent()).toEqual(['G28'])
-  await s.wrapper.find('[data-tid="home-xy"]').trigger('click')
-  expect(sent()).toEqual(['G28', 'G28 X Y'])
   s.wrapper.destroy()
 })
 
