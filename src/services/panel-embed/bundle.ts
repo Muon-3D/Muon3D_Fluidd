@@ -136,16 +136,19 @@ const DB_STORE = 'copies'
 export function indexedDbStore (factory: IDBFactory | undefined = typeof indexedDB === 'undefined' ? undefined : indexedDB): PanelStore | null {
   if (!factory) return null
   let opening: Promise<IDBDatabase> | null = null
-  const db = () => opening ??= new Promise<IDBDatabase>((resolve, reject) => {
-    try {
-      const request = factory.open(DB_NAME, 1)
-      request.onupgradeneeded = () => { request.result.createObjectStore(DB_STORE) }
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error)
-    } catch (error) {
-      reject(error)
-    }
-  })
+  const db = () => {
+    opening ??= new Promise<IDBDatabase>((resolve, reject) => {
+      try {
+        const request = factory.open(DB_NAME, 1)
+        request.onupgradeneeded = () => { request.result.createObjectStore(DB_STORE) }
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      } catch (error) {
+        reject(error)
+      }
+    })
+    return opening
+  }
   const run = async <T>(mode: IDBTransactionMode, work: (objects: IDBObjectStore) => IDBRequest<T>): Promise<T> => {
     const open = await db()
     return new Promise<T>((resolve, reject) => {
@@ -177,7 +180,10 @@ function clearLegacyCopies () {
 }
 
 let shared: PanelCopies | null = null
-const own = (): PanelCopies => shared ??= createCopies(indexedDbStore())
+const own = (): PanelCopies => {
+  shared ??= createCopies(indexedDbStore())
+  return shared
+}
 
 /** The page's own copies: IndexedDB, with memory in front of it. */
 export const defaultCopies: PanelCopies = {

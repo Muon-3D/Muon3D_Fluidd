@@ -392,7 +392,6 @@ export default class M1Screen extends Mixins(ControlMixin) {
   }
 
   get connectionKey (): string {
-    const s = this.$store.state.socket
     // Which printer, and whether Klipper is up. A socket that drops and returns is the same screen (it shakes hands again), not a new printer.
     return `${this.$store.state.config.apiUrl ?? ''}|${this.$store.state.printer.printer.webhooks?.state ?? ''}`
   }
