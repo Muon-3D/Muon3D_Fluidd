@@ -11,6 +11,13 @@
       >
         {{ problem.line }}
       </p>
+      <p
+        v-if="problem.detail"
+        class="route-problem__line"
+        data-tid="route-problem-detail"
+      >
+        {{ problem.detail }}
+      </p>
       <div class="route-problem__buttons">
         <button
           v-for="c in problem.choices"
@@ -59,6 +66,7 @@ import { MUON_LOCAL_QUESTION, openMuonLocal } from '@/services/muon-cloud/muon-l
 
 export interface RouteProblem {
   line: string;
+  detail?: string;
   choices: Array<{ id: string, label: string }>;
 }
 
