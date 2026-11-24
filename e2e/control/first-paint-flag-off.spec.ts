@@ -17,7 +17,7 @@ test('with the flag off the loader is the plain bar and wordmark, and first pain
     }).observe(document, { subtree: true, childList: true, attributes: true })
   })
   await page.goto(PRINTER)
-  await expect(page.locator('.muon-loader__word').or(page.locator('.v-application'))).toBeVisible()
+  await expect(page.locator('.muon-loader__word').or(page.locator('.v-application')).first()).toBeVisible()
   await ready(page)
   await expect(page.getByTestId('printer-switch')).toContainText('Boxwood')
   const seen = await page.evaluate(() => (window as unknown as { __seen: { rim: boolean, style: boolean } }).__seen)
