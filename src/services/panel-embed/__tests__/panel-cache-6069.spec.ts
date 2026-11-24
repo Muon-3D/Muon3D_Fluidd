@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { gzipSync } from 'node:zlib'
 import { createCopies, loadPanelBundle, MAX_PRINTERS, PANEL_URL, PANEL_URL_MOONRAKER, type PanelCopy, type PanelFetch, type PanelStore } from '../bundle'

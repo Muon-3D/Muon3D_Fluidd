@@ -219,8 +219,9 @@ export async function pageText (data: unknown): Promise<string | null> {
   else return null
   if (bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
     if (typeof DecompressionStream === 'undefined') return null
-    const unzipped = new Blob([bytes as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream('gzip'))
-    return new Response(unzipped).text()
+    const source = new Response(bytes as unknown as BodyInit).body
+    if (!source) return null
+    return new Response(source.pipeThrough(new DecompressionStream('gzip'))).text()
   }
   return new TextDecoder().decode(bytes)
 }
