@@ -1280,6 +1280,12 @@ export default class ControlMove extends Mixins(ControlMixin, DevGuardMixin) {
     &:disabled { opacity: 0.45; cursor: default; }
   }
 
+  /* 320 px phones: the header has no room for the word, so Home all shows the icon alone (its label is the aria-label). */
+  @media (max-width: 340px) {
+    .move__hbtn:not(.move__hbtn--z) { width: 34px; padding: 0; }
+    .move__hbtn:not(.move__hbtn--z) > span { display: none; }
+  }
+
   .move__hbtn--icon,
   .move__hbtn--xy,
   .move__hbtn--z {
