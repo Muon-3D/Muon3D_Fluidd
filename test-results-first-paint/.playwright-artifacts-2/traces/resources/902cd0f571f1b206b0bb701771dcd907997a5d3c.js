@@ -1,0 +1,27 @@
+import Vue from "/.vite-e2e/4291/deps/vue.js?v=9b9fafc7";
+import { CHART_RANGES } from "/src/services/charts/model.ts";
+const RANGE_KEY = "muon3d.charts.range.v3";
+function readRange() {
+  try {
+    const saved = Number(localStorage.getItem(RANGE_KEY));
+    if (CHART_RANGES.some((r) => r.value === saved)) return saved;
+  } catch {
+  }
+  return 600;
+}
+export const chartsPage = Vue.observable({
+  range: readRange(),
+  /** Bumped by the header's Add chart; the page opens the chart editor. */
+  addTick: 0,
+  /** The chart to start from (a preset's title); empty, a custom chart. */
+  addPreset: ""
+});
+export function setChartsRange(seconds) {
+  chartsPage.range = seconds;
+  try {
+    localStorage.setItem(RANGE_KEY, String(seconds));
+  } catch {
+  }
+}
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInBhZ2Utc3RhdGUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IFZ1ZSBmcm9tICd2dWUnXG5pbXBvcnQgeyBDSEFSVF9SQU5HRVMgfSBmcm9tICcuL21vZGVsJ1xuXG5jb25zdCBSQU5HRV9LRVkgPSAnbXVvbjNkLmNoYXJ0cy5yYW5nZS52MydcblxuZnVuY3Rpb24gcmVhZFJhbmdlICgpOiBudW1iZXIge1xuICB0cnkge1xuICAgIGNvbnN0IHNhdmVkID0gTnVtYmVyKGxvY2FsU3RvcmFnZS5nZXRJdGVtKFJBTkdFX0tFWSkpXG4gICAgaWYgKENIQVJUX1JBTkdFUy5zb21lKHIgPT4gci52YWx1ZSA9PT0gc2F2ZWQpKSByZXR1cm4gc2F2ZWRcbiAgfSBjYXRjaCB7XG4gICAgLy8gVGhlIGRlZmF1bHQgYmVsb3cuXG4gIH1cbiAgcmV0dXJuIDYwMFxufVxuXG4vKipcbiAqIFdoYXQgdGhlIENoYXJ0cyBoZWFkZXIgYW5kIHRoZSBDaGFydHMgcGFnZSBzaGFyZTogdGhlIGhlYWRlciBob2xkcyB0aGVcbiAqIHRpbWUgcmFuZ2UgYW5kIEFkZCBjaGFydCwgYW5kIHRoZSBwYWdlIGhvbGRzIHRoZSBjaGFydHMgdGhleSBhY3Qgb24uXG4gKi9cbmV4cG9ydCBjb25zdCBjaGFydHNQYWdlID0gVnVlLm9ic2VydmFibGUoe1xuICByYW5nZTogcmVhZFJhbmdlKCksXG4gIC8qKiBCdW1wZWQgYnkgdGhlIGhlYWRlcidzIEFkZCBjaGFydDsgdGhlIHBhZ2Ugb3BlbnMgdGhlIGNoYXJ0IGVkaXRvci4gKi9cbiAgYWRkVGljazogMCxcbiAgLyoqIFRoZSBjaGFydCB0byBzdGFydCBmcm9tIChhIHByZXNldCdzIHRpdGxlKTsgZW1wdHksIGEgY3VzdG9tIGNoYXJ0LiAqL1xuICBhZGRQcmVzZXQ6ICcnXG59KVxuXG5leHBvcnQgZnVuY3Rpb24gc2V0Q2hhcnRzUmFuZ2UgKHNlY29uZHM6IG51bWJlcikge1xuICBjaGFydHNQYWdlLnJhbmdlID0gc2Vjb25kc1xuICB0cnkge1xuICAgIGxvY2FsU3RvcmFnZS5zZXRJdGVtKFJBTkdFX0tFWSwgU3RyaW5nKHNlY29uZHMpKVxuICB9IGNhdGNoIHtcbiAgICAvLyBLZXB0IGZvciB0aGlzIHZpc2l0IG9ubHkuXG4gIH1cbn1cbiJdLCJtYXBwaW5ncyI6IkFBQUEsT0FBTyxTQUFTO0FBQ2hCLFNBQVMsb0JBQW9CO0FBRTdCLE1BQU0sWUFBWTtBQUVsQixTQUFTLFlBQXFCO0FBQzVCLE1BQUk7QUFDRixVQUFNLFFBQVEsT0FBTyxhQUFhLFFBQVEsU0FBUyxDQUFDO0FBQ3BELFFBQUksYUFBYSxLQUFLLE9BQUssRUFBRSxVQUFVLEtBQUssRUFBRyxRQUFPO0FBQUEsRUFDeEQsUUFBUTtBQUFBLEVBRVI7QUFDQSxTQUFPO0FBQ1Q7QUFNTyxhQUFNLGFBQWEsSUFBSSxXQUFXO0FBQUEsRUFDdkMsT0FBTyxVQUFVO0FBQUE7QUFBQSxFQUVqQixTQUFTO0FBQUE7QUFBQSxFQUVULFdBQVc7QUFDYixDQUFDO0FBRU0sZ0JBQVMsZUFBZ0IsU0FBaUI7QUFDL0MsYUFBVyxRQUFRO0FBQ25CLE1BQUk7QUFDRixpQkFBYSxRQUFRLFdBQVcsT0FBTyxPQUFPLENBQUM7QUFBQSxFQUNqRCxRQUFRO0FBQUEsRUFFUjtBQUNGOyIsIm5hbWVzIjpbXX0=

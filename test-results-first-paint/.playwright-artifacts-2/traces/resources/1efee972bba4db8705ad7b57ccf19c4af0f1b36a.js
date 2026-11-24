@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/camera/CameraActions.vue?vue&type=style&index=0&scoped=c3625f2f&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/camera/CameraActions.vue?vue&type=style&index=0&scoped=c3625f2f&lang.scss"
+const __vite__css = ".camera-actions[data-v-c3625f2f] {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n.camera-actions__round[data-v-c3625f2f] {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 44px;\n  height: 44px;\n  border-radius: 50%;\n  background: var(--m3d-surface-2);\n  color: var(--m3d-text);\n}\n.camera-actions__key[data-v-c3625f2f] {\n  margin-left: 8px;\n  padding: 1px 6px;\n  border-radius: 6px;\n  background: var(--m3d-fill, rgba(255, 255, 255, 0.08));\n  box-shadow: none;\n  color: var(--m3d-text-muted);\n  font-family: var(--m3d-font-mono, monospace);\n  font-size: 11px;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

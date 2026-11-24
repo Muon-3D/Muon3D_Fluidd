@@ -23,9 +23,10 @@ describe('what the rim follows: the real start-up steps', () => {
     expect(names).toEqual([STAGES[0], STAGES[1], 'Asking the printer', STAGES[2], STAGES[3], STAGES[3]])
   })
 
-  it('never says Starting Klipper before the printer has said it is starting', () => {
+  it('never says Starting Klipper before server.info has answered', () => {
     expect(readStartup(asking).label).not.toMatch(/Klipper/)
     expect(readStartup(klipperStarting).label).toBe('Starting Klipper')
+    expect(readStartup(facts({ klippyState: 'disconnected', klippyConnected: false, socketReady: false })).label).toBe('Starting Klipper')
   })
 
   it('the rim target only ever goes up through a normal start', () => {
@@ -149,6 +150,14 @@ describe('the picture over time', () => {
     const f = p.frame(GIVE_UP_S + 0.1)
     expect(f.done).toBe(true)
     expect(f.outcome).toBe('handover')
+  })
+
+  it('leaves by the overall limit even if ready arrives just before it', () => {
+    const p = new FirstPaint(0, { loaderMark: ENTRY_MARK })
+    p.update(klipperStarting, 0.1)
+    p.update(up, GIVE_UP_S - 0.1)
+    expect(p.frame(GIVE_UP_S - 0.05).done).toBe(false)
+    expect(p.frame(GIVE_UP_S + 0.01).done).toBe(true)
   })
 
   it('hands a printer that will not connect to the connecting screen sooner', () => {

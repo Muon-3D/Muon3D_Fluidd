@@ -68,10 +68,12 @@ export function mountFirstPaint ({ follow, release }: Hooks): void {
   const label = document.createElement('p')
   label.className = 'muon-first-paint__label'
   label.dataset.tid = 'first-paint-label'
-  label.setAttribute('aria-live', 'polite')
   box.append(canvas, label)
   loader.classList.add('muon-loader--first-paint')
   loader.appendChild(box)
+  // The page under the splash is not ready to be read until it goes.
+  const app = document.getElementById('app')
+  app?.setAttribute('aria-busy', 'true')
   loader.setAttribute('aria-valuemin', '0')
   loader.setAttribute('aria-valuemax', '100')
 
@@ -122,6 +124,7 @@ export function mountFirstPaint ({ follow, release }: Hooks): void {
     window.removeEventListener('resize', onResize)
     box.dataset.animating = 'false'
     box.dataset.done = 'true'
+    app?.removeAttribute('aria-busy')
     // The loader leaves; its fade is App's (removeLoader), which now isn't held.
     release()
     loaderGone.then(() => style.remove())

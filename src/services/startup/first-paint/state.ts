@@ -1,5 +1,5 @@
 import Vue from 'vue'
-import type { StartupFacts } from './progress'
+import { GIVE_UP_S, type StartupFacts } from './progress'
 
 /**
  * The thin, always-loaded side of first paint (KAN-5929): whether the loader
@@ -37,5 +37,15 @@ export function followStartupFacts (cb: (facts: StartupFacts) => void): void {
 /** Starts first paint: the loader waits, and the view is fetched. If it can't be, the loader goes as it always did. */
 export function startFirstPaint (): void {
   holdLoaderForFirstPaint()
-  import('./view').then(m => m.mountFirstPaint({ follow: followStartupFacts, release: releaseLoaderFromFirstPaint })).catch(() => releaseLoaderFromFirstPaint())
+  // The view's own give-ups only run once it has loaded: if its chunk never arrives, the loader goes anyway.
+  const bail = setTimeout(releaseLoaderFromFirstPaint, GIVE_UP_S * 1000)
+  import('./view')
+    .then(m => {
+      clearTimeout(bail)
+      m.mountFirstPaint({ follow: followStartupFacts, release: releaseLoaderFromFirstPaint })
+    })
+    .catch(() => {
+      clearTimeout(bail)
+      releaseLoaderFromFirstPaint()
+    })
 }

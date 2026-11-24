@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/settings/StepChips.vue?vue&type=style&index=0&scoped=f173089a&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/settings/StepChips.vue?vue&type=style&index=0&scoped=f173089a&lang.scss"
+const __vite__css = ".step-chips[data-v-f173089a] {\n  display: flex;\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 6px;\n}\n.step-chips__chip[data-v-f173089a] {\n  min-width: 40px;\n  height: 32px;\n  padding: 0 10px;\n  border-radius: 10px;\n  background: var(--m3d-surface-2);\n  color: var(--m3d-text);\n  font-family: var(--m3d-font-mono, monospace);\n  font-size: 13px;\n  font-weight: 600;\n  text-align: center;\n}\n.step-chips__chip[data-v-f173089a]:disabled {\n  opacity: 0.5;\n  cursor: default;\n}\n.step-chips__input[data-v-f173089a] {\n  width: 72px;\n  outline: none;\n  box-shadow: inset 0 0 0 1.5px var(--m3d-accent);\n}\n.step-chips__add[data-v-f173089a] {\n  color: var(--m3d-text-muted);\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

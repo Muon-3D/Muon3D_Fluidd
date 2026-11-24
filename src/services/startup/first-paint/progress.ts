@@ -90,8 +90,8 @@ export function readStartup (f: StartupFacts): Reading {
       ? { stage: STAGE_COUNT - 1, within: 1, label: STAGES[3], outcome: 'ready' }
       : { stage: 3, within: 0, label: STAGES[3], outcome: 'waiting' }
   }
-  // Connected, Klipper not up yet. Only name Klipper once the printer has said it is starting.
-  return { stage: 2, within: 0, label: f.klippyState === 'startup' ? STAGES[2] : 'Asking the printer', outcome: 'waiting' }
+  // Connected, Klipper not up yet. Only name Klipper once server.info has answered with a state.
+  return { stage: 2, within: 0, label: f.klippyState ? STAGES[2] : 'Asking the printer', outcome: 'waiting' }
 }
 
 /** Where the rim's fill should be, 0 to 1. */
@@ -186,7 +186,7 @@ export class FirstPaint {
         const tf = Math.max(settledAt, logoEnd) + SETTLE_S
         label = t >= tf ? 'Ready' : 'Nearly there'
         fin = t >= tf ? (t - tf) / SWEEP_S : -1
-        done = fin >= 1.2
+        done = fin >= 1.2 || t >= GIVE_UP_S
       }
     }
     return {

@@ -1,16 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mountFirstPaint } from '../view'
 import type { StartupFacts } from '../progress'
+import * as draw from '../draw'
+
+vi.mock('../draw', async importOriginal => ({ ...(await importOriginal<typeof draw>()), drawFrame: vi.fn() }))
 
 const noop = () => {}
 const fakeContext = new Proxy({}, { get: (_t, key) => key === 'canvas' ? undefined : noop, set: () => true }) as unknown as CanvasRenderingContext2D
 
 const up: StartupFacts = { loaderMark: 0.8, routerReady: true, screen: null, socketOpen: true, klippyState: 'ready', klippyConnected: true, socketReady: true }
 const starting: StartupFacts = { ...up, klippyState: 'startup', klippyConnected: false, socketReady: false }
+const connecting: StartupFacts = { ...up, screen: 'connecting', socketOpen: false, klippyState: '', klippyConnected: false, socketReady: false }
 const unreachable: StartupFacts = { ...up, screen: 'unreachable', socketOpen: false }
 
 function setup () {
-  document.body.innerHTML = '<div id="muon-loader" role="progressbar"><div class="muon-loader__bar"></div><div class="muon-loader__word"></div></div>'
+  document.body.innerHTML = '<div id="muon-loader" role="progressbar"><div class="muon-loader__bar"></div><div class="muon-loader__word"></div></div><div id="app"></div>'
   let push: (f: StartupFacts) => void = noop
   const release = vi.fn()
   const follow = (cb: (f: StartupFacts) => void) => { push = cb }
@@ -52,9 +56,18 @@ describe('first paint, on screen', () => {
     const raf = window.requestAnimationFrame
     window.requestAnimationFrame = cb => { frames(); return raf(cb) }
     s.push(starting)
-    vi.advanceTimersByTime(3000)
+    vi.advanceTimersByTime(1000)
+    const drawn = vi.mocked(draw.drawFrame)
+    const before = drawn.mock.calls.length
+    vi.advanceTimersByTime(2000)
     expect(s.release).not.toHaveBeenCalled()
     expect(s.box().dataset.target).toBe('0.50')
+    // While start-up is stuck the frames keep coming and the comet keeps lapping.
+    const stalled = drawn.mock.calls.slice(before)
+    expect(stalled.length).toBeGreaterThan(30)
+    const heads = new Set(stalled.map(c => (c[3] as { head: number }).head.toFixed(2)))
+    expect(heads.size).toBeGreaterThan(20)
+    expect(Math.max(...stalled.map(c => (c[3] as { rim: number }).rim))).toBeLessThanOrEqual(0.5)
     s.push(up)
     vi.advanceTimersByTime(1000)
     // The logo takes its full time even though the printer was quick.
@@ -74,6 +87,24 @@ describe('first paint, on screen', () => {
     s.push(unreachable)
     vi.advanceTimersByTime(50)
     expect(s.release).toHaveBeenCalledTimes(1)
+  })
+
+  it('hands a printer that will not connect to the connecting screen after 8 s', () => {
+    const s = setup()
+    s.push(connecting)
+    vi.advanceTimersByTime(7000)
+    expect(s.release).not.toHaveBeenCalled()
+    expect(s.label()).toBe('Connecting')
+    vi.advanceTimersByTime(1500)
+    expect(s.release).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks the page busy while it holds, and not after', () => {
+    const s = setup()
+    expect(document.getElementById('app')!.getAttribute('aria-busy')).toBe('true')
+    s.push(unreachable)
+    vi.advanceTimersByTime(50)
+    expect(document.getElementById('app')!.hasAttribute('aria-busy')).toBe(false)
   })
 
   it('lets go after the give-up time if nothing ever reports', () => {

@@ -1,0 +1,16 @@
+export const actions = {
+  /**
+   * Reset our store
+   */
+  async reset({ commit }) {
+    commit("setReset");
+  },
+  async onPartUpdate({ commit }, payload) {
+    commit("partUpdate", payload);
+  },
+  async onPrintStatsUpdate({ commit }, payload) {
+    commit("printStatsUpdate", payload);
+  }
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImFjdGlvbnMudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHR5cGUgeyBBY3Rpb25UcmVlIH0gZnJvbSAndnVleCdcbmltcG9ydCB0eXBlIHsgUGFydHNTdGF0ZSB9IGZyb20gJy4vdHlwZXMnXG5pbXBvcnQgdHlwZSB7IFJvb3RTdGF0ZSB9IGZyb20gJy4uL3R5cGVzJ1xuXG5leHBvcnQgY29uc3QgYWN0aW9uczogQWN0aW9uVHJlZTxQYXJ0c1N0YXRlLCBSb290U3RhdGU+ID0ge1xuICAvKipcbiAgICogUmVzZXQgb3VyIHN0b3JlXG4gICAqL1xuICBhc3luYyByZXNldCAoeyBjb21taXQgfSkge1xuICAgIGNvbW1pdCgnc2V0UmVzZXQnKVxuICB9LFxuXG4gIGFzeW5jIG9uUGFydFVwZGF0ZSAoeyBjb21taXQgfSwgcGF5bG9hZCkge1xuICAgIGNvbW1pdCgncGFydFVwZGF0ZScsIHBheWxvYWQpXG4gIH0sXG5cbiAgYXN5bmMgb25QcmludFN0YXRzVXBkYXRlICh7IGNvbW1pdCB9LCBwYXlsb2FkKSB7XG4gICAgY29tbWl0KCdwcmludFN0YXRzVXBkYXRlJywgcGF5bG9hZClcbiAgfVxufVxuIl0sIm1hcHBpbmdzIjoiQUFJTyxhQUFNLFVBQTZDO0FBQUE7QUFBQTtBQUFBO0FBQUEsRUFJeEQsTUFBTSxNQUFPLEVBQUUsT0FBTyxHQUFHO0FBQ3ZCLFdBQU8sVUFBVTtBQUFBLEVBQ25CO0FBQUEsRUFFQSxNQUFNLGFBQWMsRUFBRSxPQUFPLEdBQUcsU0FBUztBQUN2QyxXQUFPLGNBQWMsT0FBTztBQUFBLEVBQzlCO0FBQUEsRUFFQSxNQUFNLG1CQUFvQixFQUFFLE9BQU8sR0FBRyxTQUFTO0FBQzdDLFdBQU8sb0JBQW9CLE9BQU87QUFBQSxFQUNwQztBQUNGOyIsIm5hbWVzIjpbXX0=

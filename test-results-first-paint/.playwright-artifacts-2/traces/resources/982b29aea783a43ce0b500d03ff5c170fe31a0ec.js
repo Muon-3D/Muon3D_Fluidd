@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/maintenance/MaintenanceMesh.vue?vue&type=style&index=0&scoped=1f9066a5&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/maintenance/MaintenanceMesh.vue?vue&type=style&index=0&scoped=1f9066a5&lang.scss"
+const __vite__css = ".mmesh__stats[data-v-1f9066a5] {\n  display: flex;\n  gap: 10px;\n}\n.mmesh__stats > div[data-v-1f9066a5] {\n  flex: 1 1 0;\n  min-width: 0;\n  padding: 10px 12px;\n  border-radius: 12px;\n  background: var(--m3d-surface-2);\n}\n.mmesh__stats small[data-v-1f9066a5] {\n  display: block;\n  color: var(--m3d-text-subtle);\n  font-size: 11px;\n}\n.mmesh__stats b[data-v-1f9066a5] {\n  display: block;\n  overflow: hidden;\n  font-size: 18px;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.mmesh__more[data-v-1f9066a5] {\n  width: 100%;\n  justify-content: center;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))
