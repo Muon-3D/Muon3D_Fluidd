@@ -67,23 +67,44 @@
       >
         <div class="gs__grow">
           <div class="gs__t">
-            {{ item.label }} page
+            {{ item.label }} layout
           </div>
-          <div class="gs__s">
+          <div
+            class="gs__s"
+            :data-tid="`layout-note-${item.page}`"
+          >
             {{ layoutNote(item.page) }}
           </div>
         </div>
-        <button
-          type="button"
-          class="cbtn cbtn--ghost"
-          :disabled="!layoutSaved(item.page)"
-          :data-tid="`layout-reset-${item.page}`"
-          @click="resetPage(item.page)"
-        >
-          Back to the default
-        </button>
+        <div class="gs__pair">
+          <button
+            type="button"
+            class="cbtn cbtn--ghost"
+            :data-tid="`layout-edit-${item.page}`"
+            @click="editPage(item.page)"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            class="cbtn cbtn--ghost"
+            :disabled="layoutIsDefaultFor(item.page)"
+            :data-tid="`layout-reset-${item.page}`"
+            @click="resetPage(item.page)"
+          >
+            Reset
+          </button>
+        </div>
       </div>
     </div>
+    <p
+      v-if="resetFailed"
+      class="gs__warn"
+      role="alert"
+      data-tid="layout-reset-failed"
+    >
+      Couldn't reset the layout. Try again.
+    </p>
     <p class="gs__gh">
       Where the widgets sit is yours on {{ printerName }}: someone else keeps their own. Change it with Edit on the page.
     </p>
@@ -508,6 +529,7 @@ import type { VInput } from '@/types'
 import { SupportedLocales, DateFormats } from '@/globals'
 import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
+import type { TileDefault } from '@/services/overview/layout'
 import type { PrintEtaCalculation, PrintProgressCalculation } from '@/store/config/types'
 import { httpClientActions } from '@/api/httpClientActions'
 import consola from 'consola'
@@ -520,7 +542,7 @@ import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
 import M3Dialog from '@/components/ui/M3Dialog.vue'
 import { activeSlug } from '@/services/printer-pages'
-import { LAYOUT_PAGES, hasSavedLayout, layoutContext, resetLayout, type LayoutPage } from '@/services/layout/layout-access'
+import { LAYOUT_PAGES, hasSavedLayout, layoutContext, layoutDefs, layoutIsDefault, layoutSavedAt, resetLayout, type LayoutPage } from '@/services/layout/layout-access'
 import { scopedPath } from '@/router/printerPagePaths'
 import { slugify } from '@/services/printer-pages/slug'
 import {
@@ -700,20 +722,48 @@ export default class GeneralSettings extends Mixins(StateMixin) {
     return layoutContext(this.$store, this.$route, page)
   }
 
-  layoutSaved (page: LayoutPage): boolean {
-    return hasSavedLayout(this.$store, this.layoutContextFor(page), page)
+  layoutDefsByPage: Partial<Record<LayoutPage, TileDefault[]>> = {}
+
+  created () {
+    for (const { page } of LAYOUT_PAGES) {
+      layoutDefs(page).then(defs => { this.$set(this.layoutDefsByPage, page, defs) }).catch(() => undefined)
+    }
+  }
+
+  /** Nothing of this person's to reset: no saved copy, or it is the default arrangement. */
+  layoutIsDefaultFor (page: LayoutPage): boolean {
+    const context = this.layoutContextFor(page)
+    if (!hasSavedLayout(this.$store, context, page)) return true
+    const defs = this.layoutDefsByPage[page]
+    return defs ? layoutIsDefault(this.$store, context, page, defs) : false
   }
 
   layoutNote (page: LayoutPage): string {
-    if (this.layoutReset === page) return 'Back to the default.'
-    return this.layoutSaved(page) ? 'Arranged by you.' : 'The default layout.'
+    if (this.layoutIsDefaultFor(page)) return 'Default'
+    const at = layoutSavedAt(this.$store, this.layoutContextFor(page), page)
+    return at ? `Yours · changed ${new Date(at).toLocaleString()}` : 'Yours'
   }
 
-  layoutReset: LayoutPage | null = null
+  editPage (page: LayoutPage) {
+    this.$router.push({ path: scopedPath(page === 'control' ? '/control' : '/', activeSlug()), query: { edit: '1' } })
+  }
+
+  resetFailed = false
 
   async resetPage (page: LayoutPage) {
-    await resetLayout(this.$store, page, this.layoutContextFor(page))
-    this.layoutReset = page
+    const label = LAYOUT_PAGES.find(p => p.page === page)?.label ?? page
+    const sure = await this.$confirm(
+      `Reset the ${label} layout on ${this.printerName}? Your widgets go back to where they started.`,
+      { title: `Reset the ${label} layout`, buttonTrueText: 'Reset', buttonFalseText: 'Cancel' }
+    )
+    if (!sure) return
+    try {
+      const defs = this.layoutDefsByPage[page] ?? await layoutDefs(page)
+      await resetLayout(this.$store, page, this.layoutContextFor(page), defs)
+      this.resetFailed = false
+    } catch {
+      this.resetFailed = true
+    }
   }
 
   get locale () {
@@ -1032,6 +1082,18 @@ export default class GeneralSettings extends Mixins(StateMixin) {
   .gs__ctl--wide {
     flex: 0 1 300px;
     width: 300px;
+  }
+
+  .gs__pair {
+    display: flex;
+    flex: none;
+    gap: 8px;
+
+    @media (max-width: 599px) {
+      width: 100%;
+
+      .cbtn { flex: 1 1 0; min-height: 40px; }
+    }
   }
 
   .gs__gh {

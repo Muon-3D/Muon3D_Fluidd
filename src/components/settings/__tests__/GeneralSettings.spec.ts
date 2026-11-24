@@ -10,6 +10,10 @@ vi.mock('@/api/httpClientActions', () => ({
     serverDatabaseItemPost: vi.fn(async () => ({}))
   }
 }))
+vi.mock('@/services/layout/layout-access', async (original) => ({
+  ...(await original<typeof import('@/services/layout/layout-access')>()),
+  layoutDefs: async () => [{ id: 'a', span: 6, rows: 2 }, { id: 'b', span: 6, rows: 2 }]
+}))
 vi.mock('@/util/file-system-entry', () => ({ readFileAsTextAsync: vi.fn(async (file: { text: string }) => file.text) }))
 
 afterEach(() => { vi.clearAllMocks() })
@@ -81,13 +85,31 @@ describe('GeneralSettings', () => {
     expect(wrapper.find('[data-tid="layout-reset-control"]').attributes('disabled')).toBeDefined()
   })
 
-  it('puts the Overview back by removing this person's saved copy, in the printer and in this browser', async () => {
+  it('asks first, then saves the default arrangement itself rather than nothing', async () => {
     const key = 'anonymous__http___boxwood_local'
-    const { wrapper, dispatch } = mount({ layouts: { [key]: { version: 2, tiles: [], hidden: [] } } })
+    const saved = { version: 2, savedAt: 1700000000000, tiles: [{ id: 'b', span: 12, rows: 1 }], hidden: ['a'] }
+    const { wrapper, dispatch, confirm } = mount({ layouts: { [key]: saved } })
+    expect(wrapper.find('[data-tid="layout-note-overview"]').text()).toMatch(/^Yours · changed /)
     const reset = wrapper.find('[data-tid="layout-reset-overview"]')
-    expect(reset.attributes('disabled')).toBeUndefined()
+    await vi.waitFor(() => expect(reset.attributes('disabled')).toBeUndefined())
     await reset.trigger('click')
-    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledWith('config/saveByPath', expect.objectContaining({ path: `uiSettings.overview.layouts.${key}`, value: null, server: true })))
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalled())
+    expect((confirm.mock.calls[0] as unknown[])[0]).toContain('on Boxwood')
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledWith('config/saveByPath', expect.objectContaining({
+      path: `uiSettings.overview.layouts.${key}`,
+      server: true,
+      value: expect.objectContaining({ version: 2, tiles: [{ id: 'a', span: 6, rows: 2 }, { id: 'b', span: 6, rows: 2 }], hidden: [] })
+    })))
+  })
+
+  it('saves nothing when the reset is turned down', async () => {
+    const key = 'anonymous__http___boxwood_local'
+    const { wrapper, dispatch } = mount({ confirm: false, layouts: { [key]: { version: 2, savedAt: 1, tiles: [{ id: 'b', span: 12, rows: 1 }], hidden: ['a'] } } })
+    const reset = wrapper.find('[data-tid="layout-reset-overview"]')
+    await vi.waitFor(() => expect(reset.attributes('disabled')).toBeUndefined())
+    await reset.trigger('click')
+    await Promise.resolve()
+    expect(dispatch).not.toHaveBeenCalledWith('config/saveByPath', expect.anything())
   })
 
   it('shows ISO times as 24-hour, and today\'s lists as one choice each', () => {

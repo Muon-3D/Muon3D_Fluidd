@@ -47,7 +47,7 @@
         >
           <frame-icon name="library" />
         </router-link>
-        <theme-toggle />
+        <theme-toggle v-if="!printerFrame" />
         <cloud-account-menu v-if="!printerFrame" />
       </div>
 

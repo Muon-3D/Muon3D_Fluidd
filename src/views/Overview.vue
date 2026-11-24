@@ -438,6 +438,8 @@ export default class Overview extends Mixins(DevGuardMixin) {
 
   created () {
     this.load()
+    // Printer settings > Layout > Edit opens the page already editing.
+    if (this.$route?.query?.edit && !this.editing) this.startEdit()
   }
 
   mounted () {

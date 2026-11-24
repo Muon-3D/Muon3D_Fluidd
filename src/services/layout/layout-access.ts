@@ -7,8 +7,8 @@
  * through here, so that move is a change to this file alone: the pages and
  * the printer's Layout settings never touch the settings paths themselves.
  */
-import type { LayoutContext } from '@/services/overview/layout-store'
-import { layoutKey, serverLayoutKey } from '@/services/overview/layout'
+import { saveLayout, type LayoutContext } from '@/services/overview/layout-store'
+import { defaultLayout, serverLayoutKey, type TileDefault } from '@/services/overview/layout'
 import { cloudState } from '@/services/muon-cloud/state'
 
 export type LayoutPage = 'overview' | 'control'
@@ -55,8 +55,38 @@ export function saveServerLayout (store: Store, page: LayoutPage, context: Layou
   })
 }
 
-/** Puts this person's page back to the default: no saved copy here or in this browser. */
-export function resetLayout (store: Store, page: LayoutPage, context: LayoutContext, storage: Pick<Storage, 'removeItem'> = localStorage) {
-  try { storage.removeItem(layoutKey(context.accountId, context.printerId, context.page)) } catch { /* the printer's copy goes below */ }
-  return saveServerLayout(store, page, context, null)
+/** When this person's saved layout was written, or null with none. */
+export function layoutSavedAt (store: Store, context: LayoutContext, page: LayoutPage): number | null {
+  const own = savedLayouts(store, page)?.[serverLayoutKey(context.accountId, context.printerId)] as { savedAt?: unknown } | null | undefined
+  return own && typeof own === 'object' && typeof own.savedAt === 'number' ? own.savedAt : null
+}
+
+/** The page's tiles, as the registry defaults them (loaded on demand: the widgets are heavy). */
+export async function layoutDefs (page: LayoutPage): Promise<TileDefault[]> {
+  return page === 'control'
+    ? (await import('@/components/control/registry')).controlTiles as TileDefault[]
+    : (await import('@/components/widgets/overview/registry')).overviewTiles as TileDefault[]
+}
+
+/** True when the saved copy is the default arrangement: nothing for the person to keep or reset. */
+export function layoutIsDefault (store: Store, context: LayoutContext, page: LayoutPage, defs: TileDefault[]): boolean {
+  const own = savedLayouts(store, page)?.[serverLayoutKey(context.accountId, context.printerId)] as { tiles?: unknown, hidden?: unknown } | null | undefined
+  if (!own || typeof own !== 'object') return true
+  const base = defaultLayout(defs)
+  return JSON.stringify({ tiles: own.tiles, hidden: own.hidden }) === JSON.stringify({ tiles: base.tiles, hidden: base.hidden })
+}
+
+function browserStorage (): Pick<Storage, 'getItem' | 'setItem'> | null {
+  try { return localStorage } catch { return null }
+}
+
+/**
+ * Puts this person's page back to the default by saving the default itself,
+ * here and on the printer. Not deleting: a browser holding an older copy
+ * would bring the old arrangement back, and the newer default wins instead.
+ */
+export function resetLayout (store: Store, page: LayoutPage, context: LayoutContext, defs: TileDefault[], storage: Pick<Storage, 'getItem' | 'setItem'> | null = browserStorage()) {
+  const base = defaultLayout(defs)
+  const record = saveLayout(context, base, storage ?? { getItem: () => null, setItem: () => undefined })
+  return saveServerLayout(store, page, context, record)
 }

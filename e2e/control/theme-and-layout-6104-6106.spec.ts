@@ -22,9 +22,14 @@ async function savedSettings (page: Page, value: Record<string, unknown>) {
 }
 
 test.describe('the light/dark switch (KAN-6105)', () => {
-  test('flips the theme and is still flipped after a reload', async ({ page, open }) => {
-    await usePrinter(page, PRESETS.idleHomed())
-    await open('/')
+  // On a phone the bar of an open printer is full beside STOP, so the switch is on the pages that are not a printer's.
+  const toggleHere = async (page: Page) => {
+    await page.goto('/account/appearance')
+    await ready(page)
+  }
+
+  test('flips the theme and is still flipped after a reload', async ({ page }) => {
+    await toggleHere(page)
     const toggle = page.getByTestId('theme-toggle')
     await expect(toggle).toBeVisible()
     await expect(app(page)).toHaveClass(/theme--dark/)
@@ -43,9 +48,22 @@ test.describe('the light/dark switch (KAN-6105)', () => {
     await expect(app(page)).toHaveClass(/theme--dark/)
   })
 
-  test('sits at the right of the bar, inside the screen', async ({ page, open }) => {
-    await usePrinter(page, PRESETS.idleHomed())
-    await open('/')
+  test('light is the thumb on the left with the sun, dark on the right with the moon', async ({ page }) => {
+    await toggleHere(page)
+    const toggle = page.getByTestId('theme-toggle')
+    const side = async () => {
+      const track = (await toggle.locator('.theme-toggle__track').boundingBox())!
+      const thumb = (await toggle.locator('.theme-toggle__thumb').boundingBox())!
+      return (thumb.x + thumb.width / 2) < (track.x + track.width / 2) ? 'left' : 'right'
+    }
+    await expect.poll(side).toBe('right')
+    await toggle.click()
+    await expect(app(page)).toHaveClass(/theme--light/)
+    await expect.poll(side).toBe('left')
+  })
+
+  test('sits at the right of the bar, inside the screen', async ({ page }) => {
+    await toggleHere(page)
     const box = (await page.getByTestId('theme-toggle').boundingBox())!
     const viewport = page.viewportSize()!
     expect(box.y).toBeLessThan(80)
@@ -53,23 +71,50 @@ test.describe('the light/dark switch (KAN-6105)', () => {
     expect(box.x + box.width).toBeGreaterThan(viewport.width / 2)
   })
 
-  test('has no motion when the person asks for none', async ({ page, open }) => {
+  test('has no motion when the person asks for none', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
-    await usePrinter(page, PRESETS.idleHomed())
-    await open('/')
+    await toggleHere(page)
     const thumb = page.getByTestId('theme-toggle').locator('.theme-toggle__thumb')
     await expect(thumb).toBeVisible()
     expect(await thumb.evaluate(el => getComputedStyle(el).transitionDuration)).toBe('0s')
   })
 
-  test('does the same as Account > Appearance, which shows it', async ({ page, open }) => {
-    await usePrinter(page, PRESETS.idleHomed())
-    await open('/account/appearance')
+  test('does the same as Account > Appearance, which shows it', async ({ page }) => {
+    await toggleHere(page)
     const mode = page.getByTestId('setting-theme-mode')
     await expect(mode.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
     await page.getByTestId('theme-toggle').click()
     await expect(app(page)).toHaveClass(/theme--light/)
     await expect(mode.getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  test('with a printer open: on a computer the switch is in the bar; on a phone it is left out and STOP and the bar buttons fit', async ({ page, open, isMobile }) => {
+    await usePrinter(page, PRESETS.idleHomed())
+    await open('/')
+    const viewport = page.viewportSize()!
+    const estop = page.getByTestId('estop').first()
+    await expect(estop).toBeVisible()
+    if (isMobile) {
+      await expect(page.getByTestId('theme-toggle')).toHaveCount(0)
+    } else {
+      await expect(page.getByTestId('theme-toggle')).toBeVisible()
+    }
+    // Every button in the bar is whole on screen, and none sits on another.
+    const boxes: Array<{ x: number, y: number, width: number, height: number }> = []
+    const buttons = page.locator('.app-header button:visible, .app-header a:visible')
+    for (let i = 0; i < await buttons.count(); i++) {
+      const box = await buttons.nth(i).boundingBox()
+      if (!box) continue
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 0.5)
+      boxes.push(box)
+    }
+    const stop = (await estop.boundingBox())!
+    for (const other of boxes) {
+      if (Math.abs(other.x - stop.x) < 1 && Math.abs(other.y - stop.y) < 1) continue
+      const apart = other.x + other.width <= stop.x + 0.5 || stop.x + stop.width <= other.x + 0.5 || other.y + other.height <= stop.y + 0.5 || stop.y + stop.height <= other.y + 0.5
+      expect(apart).toBe(true)
+    }
   })
 })
 
@@ -110,9 +155,14 @@ test.describe('the theme is the account\'s, the layout the printer\'s (KAN-6106)
     await expect(page.getByTestId('setting-theme-mode')).toHaveCount(0)
     await expect(general.getByText('Accent colour')).toHaveCount(0)
     await expect(general.getByText('Light or dark')).toHaveCount(0)
-    // Nothing arranged yet: nothing to put back.
+    // Nothing arranged yet: it says Default, and there is nothing to reset.
+    await expect(page.getByTestId('layout-note-overview')).toHaveText('Default')
     await expect(page.getByTestId('layout-reset-overview')).toBeDisabled()
     await expect(page.getByTestId('layout-reset-control')).toBeDisabled()
+    // Edit opens the page already editing.
+    await page.getByTestId('layout-edit-control').click()
+    await expect(page).toHaveURL(/\/control\?edit=1/)
+    await expect(page.getByTestId('edit-status')).toContainText('Editing the Control layout.')
   })
 
   test('a theme a printer saved before the move is kept: shown, and handed to this browser', async ({ page, open }) => {

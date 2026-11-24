@@ -121,8 +121,8 @@ export default class ThemeToggle extends Vue {
     opacity: 0.8;
   }
 
-  .theme-toggle__far--sun { right: 6px; }
-  .theme-toggle__far--moon { left: 6px; }
+  .theme-toggle__far--sun { left: 6px; }
+  .theme-toggle__far--moon { right: 6px; }
 
   .theme-toggle__thumb {
     position: absolute;
@@ -140,8 +140,8 @@ export default class ThemeToggle extends Vue {
     transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.2, 1);
   }
 
-  // Dark: the thumb sits on the moon's side (left); light: on the sun's (right).
-  .theme-toggle:not(.theme-toggle--dark) .theme-toggle__thumb {
+  // Light: the thumb sits on the sun's side (left); dark: on the moon's (right).
+  .theme-toggle--dark .theme-toggle__thumb {
     transform: translateX(20px);
   }
 
@@ -151,7 +151,7 @@ export default class ThemeToggle extends Vue {
     .theme-toggle__track { width: 36px; height: 22px; }
     .theme-toggle__far { display: none; }
     .theme-toggle__thumb { top: 3px; left: 3px; width: 16px; height: 16px; }
-    .theme-toggle:not(.theme-toggle--dark) .theme-toggle__thumb { transform: translateX(14px); }
+    .theme-toggle--dark .theme-toggle__thumb { transform: translateX(14px); }
   }
 
   @media (prefers-reduced-motion: reduce) {
