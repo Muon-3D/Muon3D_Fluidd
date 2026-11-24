@@ -17,10 +17,15 @@ import type { InstanceConfig } from '@/store/config/types'
 import { printerName } from '@/services/secure-origin'
 import { clearRelayChoice } from '@/services/secure-origin/hosted'
 import { MUON_LOCAL_URL, MUON_LOCAL_QUESTION, openMuonLocal, setLeave } from './muon-local'
-import { activateCloudPrinter, activateLocalPrinter } from './activate'
+import { activateCloudPrinter, activateLocalPrinter, activationState } from './activate'
 import { chooseRouteMode } from './route-choice'
-import { cloudState } from './state'
+import { cloudState, dropCloudConnection, rememberBluetoothOnly } from './state'
 import { lanFetch, localNetworkPermission } from './discovery'
+import { isPrinter, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
+import { heardRecently } from '@/services/muon-ble/heard'
+import { reconnectBluetooth, releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
+import { retryBluetooth } from '@/services/muon-ble/retry'
+import { startPairing } from '@/services/muon-ble/pairing'
 
 /** Said when the browser's local-network question was refused. One line: the person's next step is in it. */
 export const LOCAL_ACCESS_BLOCKED =
@@ -88,9 +93,46 @@ export interface OpenOnNetwork {
 }
 
 /**
+ * The printer's Bluetooth device when it is detected nearby without a chooser: heard in the last 30 seconds, or a
+ * device this browser already holds permission for (what the printer tile's failover uses). Null otherwise; the
+ * chooser needs its own click and is never opened from here.
+ */
+async function detectedNearby (printerId: string): Promise<NearbyPrinter | null> {
+  const now = Date.now()
+  const heard = nearbyState.printers.find(p => !!p.device && isPrinter(p, printerId) && heardRecently(p, now))
+  return heard ?? await permittedPrinterFor(printerId).catch(() => null)
+}
+
+/**
+ * Opens the printer over Bluetooth, as the tile does (pairNearbyPrinter with no held route). A printer that does
+ * not know this browser goes into pairing. Returns whether Bluetooth took it; on a failure nothing stays held.
+ */
+async function openOverBluetooth (printerId: string, label: string, heard: NearbyPrinter): Promise<'opened' | 'pairing' | 'failed'> {
+  chooseRouteMode(printerId, 'auto')
+  if (!cloudState.printers.some(p => p.id === printerId)) rememberBluetoothOnly(printerId, heard.display || heard.localName || label)
+  retryBluetooth(printerId)
+  try {
+    useBluetoothFor(printerId, heard.device)
+    await releaseBluetoothLink(printerId)
+    reconnectBluetooth(printerId)
+    dropCloudConnection(printerId)
+    await activateCloudPrinter(printerId)
+    return 'opened'
+  } catch {
+    if (activationState.pairing === printerId) {
+      await startPairing(printerId).catch(() => {})
+      return 'pairing'
+    }
+    stopUsingBluetoothFor(printerId)
+    return 'failed'
+  }
+}
+
+/**
  * What a click on a printer found on this network does from the hosted page when no route was picked (a scan result,
  * the sign-in page's list): connect in place over its secure name, else Muon3D's relay where the account holds the
- * printer online, else ask about muon3d.local. Never an address of the printer itself.
+ * printer online, else Bluetooth where the printer is detected nearby, else ask about muon3d.local. Signed out there
+ * is no relay: this network, Bluetooth, the question. Never an address of the printer itself.
  */
 export async function openOnNetwork (o: { name: string, label: string, printerId: string }): Promise<OpenOnNetwork> {
   const done = await connectInPlace({ name: o.name, label: o.label, printerId: o.printerId })
@@ -104,7 +146,13 @@ export async function openOnNetwork (o: { name: string, label: string, printerId
     try {
       await activateCloudPrinter(o.printerId)
       return { opened: true, line: blocked ? LOCAL_ACCESS_BLOCKED : null, ask: false }
-    } catch { /* fall to the question */ }
+    } catch { /* fall to Bluetooth */ }
+  }
+  const heard = await detectedNearby(o.printerId)
+  if (heard) {
+    const bt = await openOverBluetooth(o.printerId, o.label, heard)
+    if (bt === 'opened') return { opened: true, line: null, ask: false }
+    if (bt === 'pairing') return { opened: false, line: null, ask: false }
   }
   return { opened: false, line: blocked ? LOCAL_ACCESS_BLOCKED : null, ask: true }
 }

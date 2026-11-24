@@ -6,7 +6,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const activate = vi.hoisted(() => ({ local: vi.fn(), cloud: vi.fn() }))
-vi.mock('../activate', () => ({ activateLocalPrinter: activate.local, activateCloudPrinter: activate.cloud }))
+vi.mock('../activate', () => ({ activateLocalPrinter: activate.local, activateCloudPrinter: activate.cloud, activationState: { pairing: null as string | null } }))
+
+const ble = vi.hoisted(() => ({
+  permitted: vi.fn(),
+  use: vi.fn(),
+  release: vi.fn(),
+  reconnect: vi.fn(),
+  stop: vi.fn(),
+  pair: vi.fn(),
+  retry: vi.fn(),
+  heard: [] as unknown[]
+}))
+vi.mock('@/services/muon-ble/nearby', () => ({
+  isPrinter: (p: { endpointId: string }, id: string) => p.endpointId === id,
+  nearbyState: { get printers () { return ble.heard } },
+  permittedPrinterFor: ble.permitted
+}))
+vi.mock('@/services/muon-ble/link', () => ({
+  useBluetoothFor: ble.use, releaseBluetoothLink: ble.release, reconnectBluetooth: ble.reconnect, stopUsingBluetoothFor: ble.stop
+}))
+vi.mock('@/services/muon-ble/pairing', () => ({ startPairing: ble.pair }))
+vi.mock('@/services/muon-ble/retry', () => ({ retryBluetooth: ble.retry }))
 
 const { connectInPlace, openOnNetwork, probeSecureApi, secureInstance, openMuonLocal, setLeave, MUON_LOCAL_URL, LOCAL_ACCESS_BLOCKED } =
   await import('../connect-in-place')
@@ -24,6 +45,9 @@ beforeEach(() => {
   activate.cloud.mockReset().mockResolvedValue(true)
   cloudState.printers = []
   sessionStorage.clear()
+  ble.heard = []
+  ble.permitted.mockReset().mockResolvedValue(null)
+  for (const k of ['use', 'release', 'reconnect', 'stop', 'pair', 'retry'] as const) ble[k].mockReset().mockResolvedValue(undefined)
 })
 
 describe('the instance', () => {
@@ -97,6 +121,66 @@ describe('opening from a scan result or the sign-in list (Auto)', () => {
     vi.stubGlobal('fetch', refuses())
     permission('denied')
     expect(await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })).toEqual({ opened: false, line: LOCAL_ACCESS_BLOCKED, ask: true })
+  })
+})
+
+describe('Bluetooth between the relay and the question (KAN-5715)', () => {
+  const heard = { device: { id: 'd1' }, endpointId: 'p1', display: 'Sloe', localName: 'sloe', heardAt: Date.now() }
+
+  it('this network failing and Muon3D failing, a printer detected nearby opens over Bluetooth, with no question', async () => {
+    vi.stubGlobal('fetch', refuses())
+    cloudState.printers = [{ id: 'p1', online: true } as never]
+    activate.cloud.mockRejectedValueOnce(new Error('relay down')).mockResolvedValue(true)
+    ble.heard = [heard]
+    const r = await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })
+    expect(r).toEqual({ opened: true, line: null, ask: false })
+    expect(ble.use).toHaveBeenCalledWith('p1', heard.device)
+    expect(activate.cloud).toHaveBeenCalledTimes(2)
+  })
+
+  it('a device this browser may already use counts as detected', async () => {
+    vi.stubGlobal('fetch', refuses())
+    ble.permitted.mockResolvedValue(heard)
+    expect(await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })).toEqual({ opened: true, line: null, ask: false })
+  })
+
+  it('signed out (no relay): this network, then Bluetooth, then the question', async () => {
+    vi.stubGlobal('fetch', refuses())
+    ble.heard = [heard]
+    expect(await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })).toMatchObject({ opened: true, ask: false })
+    expect(activate.cloud).toHaveBeenCalledTimes(1)
+  })
+
+  it('not detected nearby: asks, as before, and the chooser is never opened', async () => {
+    vi.stubGlobal('fetch', refuses())
+    ble.heard = [{ ...heard, heardAt: Date.now() - 60_000 }]
+    expect(await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })).toEqual({ opened: false, line: null, ask: true })
+    expect(ble.use).not.toHaveBeenCalled()
+    expect(activate.cloud).not.toHaveBeenCalled()
+  })
+
+  it('Bluetooth failing leaves no held route and falls to the question', async () => {
+    vi.stubGlobal('fetch', refuses())
+    ble.heard = [heard]
+    activate.cloud.mockRejectedValue(new Error('no link'))
+    expect(await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })).toEqual({ opened: false, line: null, ask: true })
+    expect(ble.stop).toHaveBeenCalledWith('p1')
+  })
+
+  it('this network answering never tries Bluetooth', async () => {
+    vi.stubGlobal('fetch', answers())
+    ble.heard = [heard]
+    await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })
+    expect(ble.permitted).not.toHaveBeenCalled()
+    expect(ble.use).not.toHaveBeenCalled()
+  })
+
+  it('never navigates to the printer', async () => {
+    vi.stubGlobal('fetch', refuses())
+    ble.heard = [heard]
+    const before = window.location.href
+    await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })
+    expect(window.location.href).toBe(before)
   })
 })
 
