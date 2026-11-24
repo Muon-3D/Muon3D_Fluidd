@@ -778,9 +778,10 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     }
     if (busy) return
     const why = result.ok ? 'other' : localFailure(id, result.why, route.kind === 'secure')
-    const line = why === 'blocked' ? LOCAL_ACCESS_BLOCKED
-      : why === 'rebinding' ? REBINDING_LINE
-        : why === 'elsewhere' ? NOT_ON_YOUR_NETWORK : "Couldn't connect locally."
+    let line = "Couldn't connect locally."
+    if (why === 'blocked') line = LOCAL_ACCESS_BLOCKED
+    else if (why === 'rebinding') line = REBINDING_LINE
+    else if (why === 'elsewhere') line = NOT_ON_YOUR_NETWORK
     if (picked) {
       this.notice = null
       this.failRoute(e, 'local', line, why)
