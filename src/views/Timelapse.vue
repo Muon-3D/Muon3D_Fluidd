@@ -419,6 +419,16 @@ export default class Timelapse extends Mixins(StateMixin, FilesMixin, BrowserMix
     this.downloadFile(name, 'timelapse')
   }
 
+  /** The video read for the player is let go when it closes or another one opens. */
+  @Watch('playing')
+  onPlaying (_now: string | null, before: string | null) {
+    this.releaseFileUrl(before)
+  }
+
+  beforeDestroy () {
+    this.releaseFileUrl(this.playing)
+  }
+
   /**
    * Renames a video and the picture saved beside it. A name the folder
    * already holds is refused (a move would write over that file). The picture

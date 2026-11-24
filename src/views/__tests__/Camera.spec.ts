@@ -1,8 +1,10 @@
 import { shallowMount, type Wrapper } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import Camera, { redactCameraUrl } from '../Camera.vue'
 import { cameraPage } from '@/services/camera/page-state'
 import type { WebcamConfig } from '@/store/webcams/types'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
+import { EventBus } from '@/eventBus'
 
 const front: WebcamConfig = {
   uid: 'front',
@@ -166,6 +168,33 @@ describe('Camera stream details on a phone', () => {
     expect(https).not.toContain('#token')
     expect(redactCameraUrl('rtsp://user:pass@camera.local/live')).toBe('rtsp://camera.local/live')
   })
+})
+
+describe('Camera snapshot fallback', () => {
+  for (const remote of [false, true]) {
+    for (const snapshot of ['/webcam/snapshot', 'https://camera.example/snapshot', '']) {
+      it(`opens only reachable snapshots when a frame cannot be saved (remote=${remote}, snapshot=${snapshot})`, async () => {
+        printerTransportBinding.remote = remote
+        const wrapper = mountCamera([{ ...front, snapshot_url: snapshot }])
+        const open = vi.spyOn(window, 'open').mockReturnValue(null)
+        const flash = vi.spyOn(EventBus, '$emit')
+        try {
+          await wrapper.vm.snapshot()
+          if (snapshot && (!remote || snapshot.startsWith('https:'))) {
+            expect(open).toHaveBeenCalledWith(new URL(snapshot, document.URL).toString(), '_blank', 'noopener')
+          } else {
+            expect(open).not.toHaveBeenCalled()
+            expect(flash).toHaveBeenCalledWith("This camera's picture can't be saved from here.", expect.objectContaining({ type: 'warning' }))
+          }
+        } finally {
+          wrapper.destroy()
+          open.mockRestore()
+          flash.mockRestore()
+          printerTransportBinding.remote = false
+        }
+      })
+    }
+  }
 })
 
 describe('Camera v3 layout', () => {

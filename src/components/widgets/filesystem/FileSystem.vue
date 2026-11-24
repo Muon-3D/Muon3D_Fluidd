@@ -918,7 +918,8 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
   }
 
   handleDragStart (item: FileBrowserEntry, items: FileBrowserEntry[], dataTransfer: DataTransfer) {
-    if (item.type === 'file') {
+    // Through Muon3D a file has no address another app could open.
+    if (item.type === 'file' && !this.throughMuon3d) {
       const url = this.createFileUrl(item.name, this.currentPath)
 
       dataTransfer.setData('text/html', `<A HREF="${encodeURI(url)}">${item.filename}</A>`)
