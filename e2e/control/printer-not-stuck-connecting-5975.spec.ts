@@ -11,6 +11,16 @@ import { test, expect, ready } from '../fixtures'
 import { PAIRED_BEFORE } from '../fakes/blePair'
 import { MOCK_PORT } from '../ports'
 
+/** To Printers from the page: the title bar's link on a wide screen, the printer switch's list on a phone. */
+async function allPrinters (page: Page) {
+  const link = page.getByRole('banner').getByRole('link', { name: 'All printers', exact: true })
+  if (await link.count()) await link.click()
+  else {
+    await page.getByTestId('printer-switch').click()
+    await page.getByTestId('all-printers').click()
+  }
+}
+
 test.use({ serviceWorkers: 'block' })
 
 const ID = PAIRED_BEFORE.id
@@ -34,7 +44,7 @@ test('a printer found ready on this network is not left on Connecting when its s
     discoveryState.scanning = false
     discoveryState.finishedAt = Date.now()
   }, { id: ID, apiUrl: API })
-  await page.getByRole('link', { name: /All printers/ }).first().click()
+  await allPrinters(page)
   await expect(tile(page).first()).toBeVisible({ timeout: 30_000 })
   await expect(tile(page).first()).not.toContainText(/Connecting/, { timeout: 30_000 })
 })
