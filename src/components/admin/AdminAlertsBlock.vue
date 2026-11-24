@@ -134,11 +134,11 @@ export default defineComponent({
     },
     watchdogClass (): string { return !this.alerts ? '' : this.alerts.watchdog_ok ? 'good' : 'critical' }
   },
-  watch: { 'portal.epoch' () { void this.load(false) } },
+  watch: { 'portal.epoch' () { this.load(false) } },
   mounted () {
-    void this.load(false)
+    this.load(false)
     const ms = refreshMs(refreshOf(this.$route))
-    if (ms) this.timer = window.setInterval(() => { if (document.visibilityState === 'visible') void this.load(true) }, ms)
+    if (ms) this.timer = window.setInterval(() => { if (document.visibilityState === 'visible') this.load(true) }, ms)
   },
   beforeDestroy () { window.clearInterval(this.timer) },
   methods: {

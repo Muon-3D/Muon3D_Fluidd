@@ -172,7 +172,7 @@ export default class AdminTools extends Vue {
   beforeDestroy () { this.revision++ }
   clearResults () { this.revision++; this.account = null; this.entries = []; this.next = null; this.message = ''; this.busy = false }
   spent () { this.clearResults(); this.message = 'Saved.' }
-  expired () { this.clearResults(); void sync() }
+  expired () { this.clearResults(); sync() }
   date (seconds: number): string { return new Date(seconds * 1000).toLocaleString() }
   failure (error: unknown) {
     if (noteFailure(error)) { this.message = ''; return }

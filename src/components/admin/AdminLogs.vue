@@ -308,13 +308,13 @@ export default defineComponent({
     }
   },
   watch: {
-    filterKey () { this.open = ''; void this.fetchLines() },
+    filterKey () { this.open = ''; this.fetchLines() },
     tail () { this.schedule() },
-    'portal.epoch' () { void this.fetchLines() }
+    'portal.epoch' () { this.fetchLines() }
   },
   mounted () {
     this.draftQ = this.q; this.draftRid = this.rid
-    void this.fetchLines()
+    this.fetchLines()
     this.schedule()
   },
   beforeDestroy () { window.clearInterval(this.timer); this.serial++ },
@@ -364,7 +364,7 @@ export default defineComponent({
     },
     schedule () {
       window.clearInterval(this.timer)
-      if (this.tail) this.timer = window.setInterval(() => { void this.poll() }, TAIL_MS)
+      if (this.tail) this.timer = window.setInterval(() => { this.poll() }, TAIL_MS)
     },
     typing (): boolean {
       const el = document.activeElement as HTMLElement | null

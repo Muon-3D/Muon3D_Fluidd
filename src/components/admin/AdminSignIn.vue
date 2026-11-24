@@ -37,7 +37,7 @@ import { startCentralSignIn } from '@/services/muon-cloud/centralLogin'
  */
 export default defineComponent({
   methods: {
-    go () { void startCentralSignIn({ silent: false, returnTo: this.$route.fullPath }) }
+    go () { startCentralSignIn({ silent: false, returnTo: this.$route.fullPath }) }
   }
 })
 </script>

@@ -353,23 +353,23 @@ export default defineComponent({
   },
   watch: {
     'portal.phase' (phase: string) {
-      if (phase === 'open') void loadCatalog()
+      if (phase === 'open') loadCatalog()
       if (phase === 'signed-out' || phase === 'not-staff') forgetData()
     },
     'portal.now' () {
       // Ten minutes after the session ended, the page's data is dropped (spec S5).
       if (portal.phase === 'ended' && portal.now - portal.endedAt > KEEP_DATA_MS && data.state === 'ok') { forgetData(); this.$root.$emit('admin-drop') }
     },
-    'portal.epoch' () { void this.refreshAlertCount() },
+    'portal.epoch' () { this.refreshAlertCount() },
     '$route.path' () { this.menu = '' }
   },
   mounted () {
-    void load()
-    this.timer = window.setInterval(() => { tick(); void touchIfActive() }, 1000)
-    this.syncTimer = window.setInterval(() => { if (document.visibilityState === 'visible') void sync() }, 60_000)
+    load()
+    this.timer = window.setInterval(() => { tick(); touchIfActive() }, 1000)
+    this.syncTimer = window.setInterval(() => { if (document.visibilityState === 'visible') sync() }, 60_000)
     document.addEventListener('visibilitychange', this.onVisible)
     document.addEventListener('click', this.outside)
-    if (portal.phase === 'open') void loadCatalog()
+    if (portal.phase === 'open') loadCatalog()
   },
   beforeDestroy () {
     window.clearInterval(this.timer); window.clearInterval(this.syncTimer); window.clearTimeout(this.toastTimer)
@@ -380,14 +380,14 @@ export default defineComponent({
     confirm, stay,
     fmt: countdown,
     seen () { noteInput() },
-    onVisible () { if (document.visibilityState === 'visible') void sync() },
+    onVisible () { if (document.visibilityState === 'visible') sync() },
     outside (event: Event) { if (this.menu && !(event.target as HTMLElement | null)?.closest?.('.adm-menuwrap')) this.menu = '' },
     toggle (which: 'session' | 'refresh') { this.menu = this.menu === which ? '' : which },
     isActive (path: string): boolean { return this.$route.path.replace(/\/+$/, '') === path },
     setRange (range: Range) { setQuery(this.$router, this.$route, { range }) },
     setRefresh (refresh: Refresh) { this.menu = ''; setQuery(this.$router, this.$route, { refresh }) },
-    retry () { void load() },
-    switchAccount () { void startCentralSignIn({ silent: false, returnTo: this.$route.fullPath }) },
+    retry () { load() },
+    switchAccount () { startCentralSignIn({ silent: false, returnTo: this.$route.fullPath }) },
     async endSession () {
       await end()
       this.toast = 'Admin session ended.'

@@ -171,18 +171,18 @@ export default defineComponent({
     stale (): boolean { return !!this.updatedAt && this.interval > 0 && this.age * 1000 > 3 * this.interval }
   },
   watch: {
-    range () { this.results = {}; void this.run(false) },
-    job () { this.results = {}; void this.run(false) },
-    section () { this.results = {}; this.updatedAt = 0; void this.run(false) },
+    range () { this.results = {}; this.run(false) },
+    job () { this.results = {}; this.run(false) },
+    section () { this.results = {}; this.updatedAt = 0; this.run(false) },
     interval () { this.schedule() },
-    'data.state' (state: string) { if (state === 'ok') void this.run(false) },
-    'portal.epoch' () { void this.run(false) },
+    'data.state' (state: string) { if (state === 'ok') this.run(false) },
+    'portal.epoch' () { this.run(false) },
     'portal.phase' (phase: string) { if (phase === 'open') this.schedule() }
   },
   mounted () {
     this.$root.$on('admin-drop', this.drop)
-    if (data.state === 'idle' && portal.phase === 'open') void loadCatalog()
-    if (data.state === 'ok') void this.run(false)
+    if (data.state === 'idle' && portal.phase === 'open') loadCatalog()
+    if (data.state === 'ok') this.run(false)
     this.schedule()
     document.addEventListener('visibilitychange', this.onVisible)
   },
@@ -196,14 +196,14 @@ export default defineComponent({
     drop () { this.results = {}; this.updatedAt = 0 },
     schedule () {
       window.clearInterval(this.timer)
-      if (this.interval > 0) this.timer = window.setInterval(() => { if (document.visibilityState === 'visible' && portal.phase === 'open') void this.run(true) }, this.interval)
+      if (this.interval > 0) this.timer = window.setInterval(() => { if (document.visibilityState === 'visible' && portal.phase === 'open') this.run(true) }, this.interval)
     },
     /** Coming back to the tab refreshes at once (the interval does not run while hidden). */
-    onVisible () { if (document.visibilityState === 'visible' && portal.phase === 'open' && this.interval > 0 && this.updatedAt) void this.run(true) },
+    onVisible () { if (document.visibilityState === 'visible' && portal.phase === 'open' && this.interval > 0 && this.updatedAt) this.run(true) },
     tileTarget (id: string): string { return TILE_TARGET.find(([re]) => re.test(id))?.[1] ?? `/admin/${this.section === 'overview' ? '' : this.section}` },
     setJob (job: string) { setQuery(this.$router, this.$route, { job: job === 'muon-console' ? '' : job }) },
-    reload () { void loadCatalog(true) },
-    retryOne (id: string) { void this.run(false, [id]) },
+    reload () { loadCatalog(true) },
+    retryOne (id: string) { this.run(false, [id]) },
     async run (background: boolean, only?: string[]) {
       if (portal.phase !== 'open' || data.state !== 'ok') return
       const ids = only ?? this.ids
