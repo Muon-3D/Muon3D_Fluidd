@@ -26,8 +26,10 @@ const api = vi.hoisted(() => ({
   revokeLink: vi.fn(async () => ({ ok: true })),
   createLink: vi.fn(async () => ({ link: { id: 'l9', printer_id: 'prn-1', role: 'viewer', approve_each: false, max_uses: null, expires_at: null, created_at: 1, url: 'https://muon3d.com/j/NEW' } })),
   answerApproval: vi.fn(async () => ({})),
-  requestAccess: vi.fn(async (...args: string[]) => ({ args, status: 'pending', id: 'rq1', expires_at: 1900000000 })),
-  approval: vi.fn(async (...args: string[]) => ({ args, approval: { id: 'rq1', state: 'pending' } as { id: string, state: string } }))
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  requestAccess: vi.fn(async (_id: string) => ({ status: 'pending', id: 'rq1', expires_at: 1900000000 })),
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  approval: vi.fn(async (_id: string) => ({ approval: { id: 'rq1', state: 'pending' } as { id: string, state: string } }))
 }))
 const unlinkPrinter = vi.hoisted(() => vi.fn(async () => ({})))
 /** The EndpointId the connected printer reports about itself. */
