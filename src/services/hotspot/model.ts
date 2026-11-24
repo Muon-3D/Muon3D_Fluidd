@@ -71,19 +71,21 @@ export function hotspotCountTitle (count: number): string {
  * How a browser that reaches the printer directly (not through Muon3D) says
  * so: "Through hotspot" when the printer says this request came from its
  * hotspot, or, from a printer that doesn't say, when the page is served from
- * the hotspot's own address. Everything that wrote "On this network" asks this.
+ * the hotspot's own address. Otherwise it is "Connected locally" (Jack's spec, KAN-5978): the label of a printer
+ * Control IS connected to directly. "On this network" is for one only detected there, not connected.
  */
 export function networkRouteLabel (
   requesterOnAp: boolean | null | undefined = hotspotState.stations?.requesterOnAp,
   hostname?: string
-): 'Through hotspot' | 'On this network' {
+): 'Through hotspot' | 'Connected locally' {
   const onAp = typeof requesterOnAp === 'boolean' ? requesterOnAp : isHotspotOrigin(hostname)
-  return onAp ? 'Through hotspot' : 'On this network'
+  return onAp ? 'Through hotspot' : 'Connected locally'
 }
 
 /**
  * The route label for one printer card. Only the printer Control is on directly (`active === 'local'`) can have been
- * reached through its own hotspot; every other local card, saved or found, is "On this network". With no answer
+ * reached through its own hotspot, and is "Connected locally" otherwise; every other local card, saved or found, is only
+ * detected: "On this network". With no answer
  * from the printer, the hotspot address counts only when it is that printer's own address (or the card has none).
  */
 export function entryRouteLabel (
@@ -91,12 +93,12 @@ export function entryRouteLabel (
   host: string | null | undefined,
   requesterOnAp: boolean | null | undefined = hotspotState.stations?.requesterOnAp,
   pageHostname?: string
-): 'Through hotspot' | 'On this network' {
+): 'Through hotspot' | 'Connected locally' | 'On this network' {
   if (active !== 'local') return 'On this network'
   if (typeof requesterOnAp === 'boolean') return networkRouteLabel(requesterOnAp)
   const hostName = host ? host.replace(/:\d+$/, '') : null
   const own = !hostName || hostName === HOTSPOT_ADDRESS
-  return own ? networkRouteLabel(null, pageHostname) : 'On this network'
+  return own ? networkRouteLabel(null, pageHostname) : 'Connected locally'
 }
 
 /** "12 min", "45 s", "2 h 5 min": how long a device has been on the hotspot. */
