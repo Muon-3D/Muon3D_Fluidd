@@ -311,6 +311,40 @@ describe('health', () => {
     expect(d.cloud[0]).toMatchObject({ active: 'local', health: 'printing' })
   })
 
+  describe('never stays Connecting while the printer is recognised on this network (KAN-5975)', () => {
+    it('reads a printer the page opened locally, whose socket has not come up, from its probe', () => {
+      const page = saved('http://192.168.137.88', { endpointId: BOXWOOD, active: true })
+      const d = directory({
+        saved: [page],
+        found: [lan('Sloe', '192.168.137.88', BOXWOOD)],
+        local: { apiUrl: page.apiUrl, health: 'connecting', detail: 'Connecting' }
+      })
+      expect(d.local[0]).toMatchObject({ active: 'local', health: 'online' })
+      expect(d.local[0].detail).not.toMatch(/Connecting/)
+    })
+
+    it('reads an account printer with no status yet from its probe', () => {
+      const d = directory({
+        account: [owned(BOXWOOD, 'Sloe')],
+        found: [lan('Sloe', '192.168.137.88', BOXWOOD)]
+      })
+      expect(d.cloud[0].health).toBe('online')
+    })
+
+    it('says On this network for an account printer the service finds beside this browser', () => {
+      const d = directory({
+        account: [owned(BOXWOOD, 'Sloe')],
+        cloudNearby: [nearbyCloud(BOXWOOD, 'Sloe', true, ['192.168.137.88'])]
+      })
+      expect(d.cloud[0]).toMatchObject({ health: 'available', detail: 'On this network' })
+    })
+
+    it('still says Connecting for a printer nothing has answered for', () => {
+      const d = directory({ account: [owned(BOXWOOD, 'Sloe')] })
+      expect(d.cloud[0].health).toBe('connecting')
+    })
+  })
+
   it('reads a cloud printer the service lost from this network instead', () => {
     const d = directory({
       account: [owned(BOXWOOD, 'Boxwood', false)],
