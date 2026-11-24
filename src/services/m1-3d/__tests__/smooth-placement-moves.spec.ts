@@ -4,7 +4,7 @@ import { RESTING } from '../pose'
 
 /**
  * KAN-5983: the head and the bed never jump. A known place is glided to from the DRAWN place; an unknown one holds;
- * reduced motion snaps; the first frame of a stage starts on the printer's place.
+ * the first frame of a stage starts on the printer's place.
  */
 const all = { headX: true, headZ: true, z: true }
 const none = { headX: false, headZ: false, z: false }
@@ -58,12 +58,13 @@ describe('PlacementSmoother, smooth moves (KAN-5983)', () => {
     expect(first.headZ).toBe(held.headZ)
   })
 
-  it('with reduced motion a known place is taken at once, and the stage then stops', () => {
+  it('a move is always a glide, reduced motion or not; only the first frame of a stage starts on the place', () => {
     const s = new PlacementSmoother()
-    s.step(RESTING, all, 0, false)
-    const out = s.step(FAR, all, 16, false)
-    expect(out.headX).toBe(1)
-    expect(s.moving).toBe(false)
+    s.step(RESTING, all, 0)
+    const out = s.step(FAR, all, 16)
+    expect(out.headX).toBeGreaterThan(RESTING.headX)
+    expect(out.headX).toBeLessThan(1)
+    expect(s.moving).toBe(true)
   })
 
   it("the first frame of a stage starts on the printer's place, not flying in from the model's rest", () => {

@@ -65,6 +65,8 @@ for (const width of WIDTHS) {
       await open('/')
       const { stage, parts, canvas } = await ready(page)
       await expect(canvas).toHaveAttribute('data-place', 'unknown')
+      // Past the canvas's own fade-in.
+      await expect(canvas).toHaveCSS('opacity', '1')
       // Over the transition's length and after it, the canvas is fully opaque and unfiltered.
       for (const wait of [0, 300, 700]) {
         await page.waitForTimeout(wait)
@@ -205,6 +207,8 @@ for (const width of WIDTHS) {
       const { stage, canvas } = await ready(page)
       await needAccurate(stage)
       await page.waitForTimeout(1500)
+      // Recording starts here, past the canvas's own fade-in.
+      await page.evaluate(() => { (window as unknown as { __flash: unknown }).__flash = { means: [], opacity: [], blank: 0 } })
       // Homing, an axis at a time, then moves, with the stage resized by a pixel as the layout may do.
       printer.report(at(0, 0, 0, ''))
       await page.waitForTimeout(300)

@@ -1050,7 +1050,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     }
     rig.setSpool(accessories.spool)
     const target = rig.place(f.pose)
-    const placement = smoother.step(target, { headX: f.pose.x !== null, headZ: f.pose.y !== null, z: f.pose.z !== null }, now, liveRenderOptions(width).animate)
+    const placement = smoother.step(target, { headX: f.pose.x !== null, headZ: f.pose.y !== null, z: f.pose.z !== null }, now)
     const unknown = f.pose.x === null || f.pose.y === null || f.pose.z === null
     // Marked while the place is unknown (not homed): the part sits where it was last drawn. Never dimmed (KAN-5982).
     const placeState = unknown ? 'unknown' : 'known'

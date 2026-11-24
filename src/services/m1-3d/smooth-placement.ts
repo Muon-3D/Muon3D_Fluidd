@@ -24,7 +24,7 @@ const ARRIVED = 0.0005
  * first frame of a stage has nothing drawn yet, so a known axis starts on its place instead of flying in from the model's rest.
  * Unknown place (not homed, or no report yet; KAN-5983): the part holds where it is drawn, even through a homing (the
  * printer's own number is not a place while it homes), and once the place is known it eases there from the drawn one.
- * Reduced motion (`animate` false): a known place is taken at once (a short snap, with nothing in between).
+ * Reduced motion does not snap a move: a glide of about 200 ms is short and is how the head is meant to follow (Jack's ask).
  */
 export class PlacementSmoother {
   private shown: ModelPlacement = { ...RESTING }
@@ -33,8 +33,8 @@ export class PlacementSmoother {
   moving = false
 
   /** The place to draw at `now` (ms), given the latest target and which axes of it are known. */
-  step (target: ModelPlacement, known: Known, now: number, animate = true): ModelPlacement {
-    const snap = !animate || this.first
+  step (target: ModelPlacement, known: Known, now: number): ModelPlacement {
+    const snap = this.first
     this.first = false
     // A pause (idle stage, hidden tab, slow frame) must not turn into one big step: the first frame after idle
     // counts as one normal frame, and no frame counts for more than ~3 frames' worth.
