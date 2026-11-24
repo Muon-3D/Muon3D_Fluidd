@@ -11,7 +11,7 @@ test('a same-network printer with no address and no secure name is listed with a
   await page.route(`${CONSOLE}/v1/links/nearby`, route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    headers: { 'access-control-allow-origin': '*' },
+    headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key' },
     body: JSON.stringify({
       printers: [
         { printer_id: 'otter-4b2c', name: 'Otter 4b2c', model: 'M1', linked: false, local_addrs: [] },
