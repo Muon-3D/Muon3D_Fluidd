@@ -19,6 +19,14 @@ const fixture = (name: string) => JSON.parse(readFileSync(join(FIXTURES, name), 
 /** The password the fake network refuses. */
 export const WRONG_PASSWORD = 'not-the-password'
 
+/** Passwords that make the fake printer's join fail with a code, at its phase. */
+export const JOIN_FAILS: Record<string, { code: string, phase: string }> = {
+  [WRONG_PASSWORD]: { code: 'wrong_password', phase: 'authenticating' },
+  'fail-ssid-not-found': { code: 'ssid_not_found', phase: 'associating' },
+  'fail-timeout': { code: 'timeout', phase: 'associating' },
+  'fail-no-address': { code: 'no_address', phase: 'dhcp' }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type State = any
 
@@ -79,8 +87,9 @@ export async function setupPrinter (page: Page, opts: { networks?: State } = {})
         break
       case 'network': {
         const net = state.steps.network
-        if (body.psk === WRONG_PASSWORD) {
-          Object.assign(net, { status: 'pending', error: { code: 'wrong_password', at_phase: 'authenticating', detail: { ssid: body.ssid } } })
+        const fail = JOIN_FAILS[body.psk]
+        if (fail) {
+          Object.assign(net, { status: 'pending', error: { code: fail.code, at_phase: fail.phase, detail: { ssid: body.ssid } } })
         } else {
           Object.assign(net, {
             status: 'done',
