@@ -48,7 +48,7 @@
       @click="advanced = !advanced"
     >
       <span class="pmode__disc-text">
-        <b>Speed, flow and fans</b>
+        <b id="pmode-advanced-title">Speed, flow and fans</b>
         <span data-tid="advanced-summary">{{ summary }}</span>
       </span>
       <frame-icon
@@ -62,6 +62,8 @@
       id="pmode-advanced"
       class="pmode__adv"
       data-tid="advanced"
+      role="group"
+      aria-labelledby="pmode-advanced-title"
     >
       <div class="pmode__row">
         <b>Speed</b>
