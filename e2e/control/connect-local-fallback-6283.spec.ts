@@ -89,11 +89,17 @@ test.describe('Connect locally when the secure name does not answer', () => {
     await expect(page).toHaveURL(`${HOSTED}/`)
   })
 
-  test('Auto: the same failure moves on to Muon3D', async ({ page, account }) => {
-    await unresolvedName(page)
+  test('Auto: the click tries the secure name first, then carries on without leaving the page or signing in', async ({ page, context, account }) => {
+    const asked: string[] = []
+    await page.route(/^https:\/\/[a-z2-7]{20}\.muonlan\.net\/.*/, route => {
+      asked.push(new URL(route.request().url()).pathname)
+      return route.abort('namenotresolved')
+    })
     await start(page, account, true)
     await page.locator('.tile').filter({ hasText: ROUTE_PRINTER.name }).first().click()
-    await expect(page.getByTestId('printer-switch').first()).toContainText(/Boxwood/i)
+    await expect.poll(() => asked).toContain('/server/info')
+    await expect(page.getByRole('heading', { name: /sign-in/i })).toHaveCount(0)
+    expect(context.pages()).toHaveLength(1)
   })
 
   test('another network: "This printer isn\'t on your network", the other routes, and never the sign-in page', async ({ page, context, account }) => {
