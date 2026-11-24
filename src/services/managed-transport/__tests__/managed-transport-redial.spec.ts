@@ -277,10 +277,12 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
       const dials: number[] = []
       const openRelay = vi.fn(async () => { dials.push(Date.now()); return relay('r', []) })
       const regrant = vi.fn(async () => session('fresh'))
+      const reauthorize = vi.fn(async () => session('handoff'))
       const transport = new ManagedIrohPrinterTransport({
         authorizedSession: session('grant-1'),
         createEndpoint: async () => ({ openRelay, close: () => {} }),
         regrant,
+        reauthorize,
         presenceEpoch
       })
       const inner = transport as unknown as Internals
@@ -293,17 +295,60 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
       }
       /** The relay in hand fails, as a transport error does. */
       const drop = () => inner.dropRelay(inner.relayPromise!)
-      return { openRelay, regrant, transport, inner, dials, settle, drop }
+      return { openRelay, regrant, reauthorize, transport, inner, dials, settle, drop }
     }
 
-    it('asks for no new grant while a relay keeps dropping within the window', async () => {
-      const { regrant, openRelay, transport, settle, drop } = setup()
-      for (let i = 0; i < 8; i++) {
-        await settle(transport.fetch('/server/info'))
-        drop()
-      }
-      expect(openRelay).toHaveBeenCalledTimes(8)
+    it('a relay that dies at once makes the next redial ask for a grant, then for a new handoff (printer rebooted between polls)', async () => {
+      // presenceEpoch never moves: the console polls too slowly to see the reboot.
+      const { regrant, reauthorize, openRelay, transport, settle, drop, inner } = setup(() => 0)
+      await settle(transport.fetch('/server/info'))
+      drop()
+      await settle(transport.fetch('/server/info'))
+      expect(regrant).toHaveBeenCalledTimes(1)
+      expect(reauthorize).not.toHaveBeenCalled()
+      drop()
+      await settle(transport.fetch('/server/info'))
+      expect(reauthorize).toHaveBeenCalledTimes(1)
+      expect(regrant).toHaveBeenCalledTimes(1)
+      expect(openRelay).toHaveBeenCalledTimes(3)
+      expect(inner.flaps).toBe(2)
+      // once a relay has stayed up, the next drop asks for nothing
+      await vi.advanceTimersByTimeAsync(STABLE_AFTER_MS)
+      drop()
+      await settle(transport.fetch('/server/info'))
+      expect(regrant).toHaveBeenCalledTimes(1)
+      expect(reauthorize).toHaveBeenCalledTimes(1)
+    })
+
+    it('a printer that refuses with 403 makes the next redial ask for a grant', async () => {
+      const refusing: ManagedIrohRelay = { fetch: async () => new Response('no', { status: 403 }), openWebSocket: async () => { throw new Error('unused') }, close () {} }
+      const openRelay = vi.fn(async () => refusing)
+      const regrant = vi.fn(async () => session('fresh'))
+      const transport = new ManagedIrohPrinterTransport({ authorizedSession: session('grant-1'), createEndpoint: async () => ({ openRelay, close: () => {} }), regrant })
+      const inner = transport as unknown as { relayPromise: Promise<ManagedIrohRelay>, dropRelay: (r: Promise<ManagedIrohRelay>) => void }
+      expect((await transport.fetch('/server/info')).status).toBe(403)
+      expect(openRelay).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(STABLE_AFTER_MS)
+      inner.dropRelay(inner.relayPromise)
+      await transport.fetch('/server/info')
+      expect(regrant).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not dial with a grant that is about to lapse', async () => {
+      const openRelay = vi.fn(async () => relay('r', []))
+      const regrant = vi.fn(async () => session('fresh'))
+      const short = { ...session('short'), expiresAt: new Date(Date.now() + 100_000).toISOString() }
+      const transport = new ManagedIrohPrinterTransport({ authorizedSession: short, createEndpoint: async () => ({ openRelay, close: () => {} }), regrant })
+      const inner = transport as unknown as { relayPromise: Promise<ManagedIrohRelay>, dropRelay: (r: Promise<ManagedIrohRelay>) => void }
+      await transport.fetch('/server/info')
+      await vi.advanceTimersByTimeAsync(STABLE_AFTER_MS)
+      inner.dropRelay(inner.relayPromise)
+      await transport.fetch('/server/info')
       expect(regrant).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(STABLE_AFTER_MS)
+      inner.dropRelay(inner.relayPromise)
+      await transport.fetch('/server/info')
+      expect(regrant).toHaveBeenCalledTimes(1)
     })
 
     it('asks again once the grant is old, and when the console saw the printer return', async () => {
