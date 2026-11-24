@@ -108,7 +108,7 @@ test.describe('"Through hotspot" is for the printer reached through its own hots
     await ready(page)
     await expect(page.locator('[data-tid="hotspot-count"]')).toBeVisible()
     await allPrinters(page)
-    await expect(tileOf(page, /Boxwood/i)).toContainText('On this network')
+    await expect(tileOf(page, /Boxwood/i)).toContainText('Connected locally')
     await expect(tiles(page).filter({ hasText: 'Through hotspot' })).toHaveCount(0)
   })
 })

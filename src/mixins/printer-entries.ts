@@ -124,6 +124,18 @@ function routeActionsOf (e: DirectoryEntry): CardAction[] {
   return routeMenuItems(routeFactsOf(e)).map(({ id, label, icon, hint, disabled }) => ({ id, label, icon, hint, disabled }))
 }
 
+/**
+ * The small route buttons on the Wi-Fi and network page (KAN-5973): one per route that is there now. A route
+ * the printer is on counts as there; one that cannot be used is left out, not greyed.
+ */
+export function routeButtonsOf (e: DirectoryEntry): Array<{ route: Route, id: string, label: string, icon: string, active: boolean }> {
+  const live = liveRouteOf(e)
+  const names: Record<Route, string> = { lan: 'Connect locally', cloud: 'Connect over Muon3D', ble: 'Connect over Bluetooth' }
+  return routeMenuItems({ ...routeFactsOf(e), mode: 'auto', live: null })
+    .filter(i => !i.disabled || i.route === live)
+    .map(i => ({ route: i.route, id: i.id, label: names[i.route], icon: i.icon, active: i.route === live }))
+}
+
 /** What the route menu needs to know about this printer, from the live state. */
 function routeFactsOf (e: DirectoryEntry): RouteMenuFacts {
   const route = localRouteOf(e)
