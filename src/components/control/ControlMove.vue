@@ -1259,6 +1259,10 @@ export default class ControlMove extends Mixins(ControlMixin, DevGuardMixin) {
   /* CT-03: the one Home control sits in the header, beside the title, on the Overview and on Control. */
   .move__hhomes {
     display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+    max-width: 100%;
     gap: 6px;
   }
 
@@ -1295,6 +1299,8 @@ export default class ControlMove extends Mixins(ControlMixin, DevGuardMixin) {
   }
 
   .move__hreason {
+    flex: 1 0 100%;
+    text-align: right;
     font-size: 12px;
     opacity: 0.75;
     align-self: center;

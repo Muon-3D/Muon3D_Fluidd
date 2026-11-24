@@ -41,7 +41,18 @@ test.describe('the four Overview panels are equal', () => {
       }
       // Once the page has settled (the 3D view and the tiles load in after the first paint).
       await expect(page.locator('[data-cell="trackpad"]')).toBeAttached({ timeout: 45_000 })
-      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), { timeout: 20_000 }).toBeLessThanOrEqual(0)
+      // On failure the value names the widest culprits (right edge past the screen), so the report says what overflows.
+      await expect.poll(() => page.evaluate(() => {
+        const over = document.documentElement.scrollWidth - document.documentElement.clientWidth
+        if (over <= 0) return 'none'
+        const wide = [...document.querySelectorAll('body *')]
+          .map(el => ({ el, r: el.getBoundingClientRect() }))
+          .filter(x => x.r.width > 0 && x.r.right > window.innerWidth + 0.5)
+          .sort((a, b) => b.r.right - a.r.right)
+          .slice(0, 6)
+          .map(x => `${x.el.tagName.toLowerCase()}.${String(x.el.className).slice(0, 40)}[${x.el.getAttribute('data-tid') ?? x.el.getAttribute('data-cell') ?? ''}] right=${Math.round(x.r.right)} w=${Math.round(x.r.width)}`)
+        return `${over}px: ${wide.join(' | ')}`
+      }), { timeout: 20_000 }).toBe('none')
     })
   }
 })
