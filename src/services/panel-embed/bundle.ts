@@ -213,7 +213,8 @@ export async function keptCopy (key: string | null, copies: PanelCopies = defaul
 export async function pageText (data: unknown): Promise<string | null> {
   if (typeof data === 'string') return data
   let bytes: Uint8Array
-  if (data instanceof ArrayBuffer) bytes = new Uint8Array(data)
+  // By tag, not instanceof: the buffer may come from another realm (a worker, a test's jsdom).
+  if (Object.prototype.toString.call(data) === '[object ArrayBuffer]') bytes = new Uint8Array(data as ArrayBuffer)
   else if (ArrayBuffer.isView(data)) bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
   else return null
   if (bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
@@ -259,6 +260,7 @@ export async function loadPanelBundle (
     if (url === route.sameOrigin && response.status >= 200 && response.status < 300) {
       decoded = await pageText(response.data).catch(() => null)
       if (!decoded?.includes(EMBED_MARK)) {
+        decoded = undefined
         response = undefined
         continue
       }
