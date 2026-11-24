@@ -19,7 +19,7 @@ test('a same-network printer with no address and no secure name is listed with a
       ]
     })
   }))
-  await page.goto('/')
+  await page.goto('/signed-out')
   await ready(page)
   const nearby = page.getByTestId('signed-out-nearby')
   await expect(nearby).toContainText('Otter')
