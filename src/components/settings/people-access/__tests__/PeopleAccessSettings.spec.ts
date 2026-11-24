@@ -25,7 +25,9 @@ const api = vi.hoisted(() => ({
   withdrawInvite: vi.fn(async () => ({ ok: true })),
   revokeLink: vi.fn(async () => ({ ok: true })),
   createLink: vi.fn(async () => ({ link: { id: 'l9', printer_id: 'prn-1', role: 'viewer', approve_each: false, max_uses: null, expires_at: null, created_at: 1, url: 'https://muon3d.com/j/NEW' } })),
-  answerApproval: vi.fn(async () => ({}))
+  answerApproval: vi.fn(async () => ({})),
+  requestAccess: vi.fn(async (...args: string[]) => ({ args, status: 'pending', id: 'rq1', expires_at: 1900000000 })),
+  approval: vi.fn(async (...args: string[]) => ({ args, approval: { id: 'rq1', state: 'pending' } as { id: string, state: string } }))
 }))
 const unlinkPrinter = vi.hoisted(() => vi.fn(async () => ({})))
 /** The EndpointId the connected printer reports about itself. */
@@ -608,6 +610,107 @@ describe('Allow new devices to ask (I-170, KAN-1374)', () => {
     await sw(w).trigger('click')
     await settle()
     expect(w.find('[data-tid="pa-message"]').text()).toContain('Only the owner can change this.')
+    w.destroy()
+  })
+  describe('asking the owner for access (KAN-5976)', () => {
+    const asStranger = () => {
+      access.state = printerState('viewer')
+      access.capabilities = { protection: 'refused' }
+      cloud.account = { id: 'a3', email: 'ana@example.test', name: 'Ana' }
+      cloud.printers = []
+    }
+
+    it('offers the button to a signed-in person the printer is not shared with, and sends the printer id', async () => {
+      asStranger()
+      const w = open()
+      await settle(); await settle()
+      const send = w.find('[data-tid="pa-ask-send"]')
+      expect(send.text()).toContain('Request cloud access to this printer')
+      await send.trigger('click')
+      await settle()
+      expect(api.requestAccess).toHaveBeenCalledWith('prn-1')
+      expect(w.find('[data-tid="pa-ask-pending"]').text()).toContain('Request sent')
+      expect(w.find('[data-tid="pa-ask-send"]').exists()).toBe(false)
+      w.destroy()
+    })
+
+    it('shows allowed, refused and expired from the console, and lets an expired one be asked again', async () => {
+      asStranger()
+      const w = open()
+      await settle(); await settle()
+      await w.find('[data-tid="pa-ask-send"]').trigger('click')
+      await settle()
+      for (const [state, tid] of [['refused', 'pa-ask-refused'], ['allowed', 'pa-ask-allowed']] as const) {
+        api.approval.mockResolvedValueOnce({ approval: { id: 'rq1', state } })
+        await (w.vm as any).checkAccessRequest()
+        await settle()
+        expect(w.find(`[data-tid="${tid}"]`).exists()).toBe(true)
+        ;(w.vm as any).askState = 'pending'
+        await settle()
+      }
+      api.approval.mockResolvedValueOnce({ approval: { id: 'rq1', state: 'expired' } })
+      await (w.vm as any).checkAccessRequest()
+      await settle()
+      expect(w.find('[data-tid="pa-ask"]').text()).toContain('Nobody answered in a day')
+      expect(w.find('[data-tid="pa-ask-send"]').exists()).toBe(true)
+      w.destroy()
+    })
+
+    it('says so when the console refuses, and sends nothing more', async () => {
+      asStranger()
+      api.requestAccess.mockRejectedValueOnce(new Error('Too many requests today.'))
+      const w = open()
+      await settle(); await settle()
+      await w.find('[data-tid="pa-ask-send"]').trigger('click')
+      await settle()
+      expect(w.find('[data-tid="pa-message"]').text()).toContain('Too many requests today.')
+      expect(w.find('[data-tid="pa-ask-send"]').exists()).toBe(true)
+      w.destroy()
+    })
+
+    it('does not offer it signed out, to the owner, or to someone it is shared with', async () => {
+      asStranger()
+      cloud.account = null
+      let w = open()
+      await settle(); await settle()
+      expect(w.find('[data-tid="pa-ask"]').exists()).toBe(false)
+      w.destroy()
+      asOwner()
+      w = open()
+      await settle(); await settle()
+      expect(w.find('[data-tid="pa-ask"]').exists()).toBe(false)
+      w.destroy()
+      asMember('viewer')
+      w = open()
+      await settle(); await settle()
+      expect(w.find('[data-tid="pa-ask"]').exists()).toBe(false)
+      w.destroy()
+    })
+
+    it('does not offer it when the printer has not said which printer it is', async () => {
+      asStranger()
+      ident.id = null
+      const w = open()
+      await settle(); await settle()
+      expect(w.find('[data-tid="pa-ask"]').exists()).toBe(false)
+      w.destroy()
+    })
+  })
+
+  it('shows the owner an access request by name, with no address', async () => {
+    asOwner()
+    account.approvals = [
+      { id: 'ap3', kind: 'access_request', printer_id: 'prn-1', link_id: null, role: 'viewer', state: 'pending', requester: { name: 'Ana Ruiz' }, created_at: 1, expires_at: 1900000000 }
+    ]
+    const w = open()
+    await settle(); await settle()
+    const row = w.find('[data-tid="pa-request"]')
+    expect(row.text()).toContain('Ana Ruiz wants to join as Viewer')
+    expect(row.text()).toContain('Asked to use this printer')
+    expect(row.text()).not.toContain('invite link')
+    await w.find('[data-tid="pa-request-allow"]').trigger('click')
+    await settle()
+    expect(api.answerApproval).toHaveBeenCalledWith('ap3', true)
     w.destroy()
   })
 })
