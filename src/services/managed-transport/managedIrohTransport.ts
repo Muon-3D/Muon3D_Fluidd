@@ -17,6 +17,19 @@ import type {
 const MAX_DIAL_DELAY_MS = 30_000
 
 /**
+ * KAN-6081: a grant lives 12 h and every ask mints (and pushes to the printer)
+ * a new one, so a redial reuses the grant it holds until it is this old, or
+ * until the console saw the printer go offline and come back.
+ */
+export const REGRANT_AFTER_MS = 10 * 60_000
+
+/** A relay that fails sooner than this after its dial counts as a failed dial for backoff. */
+export const STABLE_AFTER_MS = 30_000
+
+/** The longest wait the flap backoff adds between two dials. */
+export const MAX_FLAP_DELAY_MS = 60_000
+
+/**
  * Dials that fail in a row before a new handoff is asked for. The grant lasts
  * hours, so a failed dial is usually the path, not the grant; but a printer
  * that restarted has forgotten it, and only a new handoff gets back in.
@@ -51,6 +64,12 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
   /** A relay has been up: the printer's grant for this key may since have lapsed or been forgotten. */
   private hadRelay = false
   private nextDialAt = 0
+  /** KAN-6081: when the session in hand was granted by the console (the handoff counts), and the presence epoch then. */
+  private grantedAt = Date.now()
+  private grantedEpoch: number
+  /** Relays that went up and fell again within STABLE_AFTER_MS, in a row. */
+  private flaps = 0
+  private relayUpAt = 0
   private readonly sockets = new Set<PrinterSocket>()
   private currentStatus: ManagedTransportStatus = {
     contractVersion: 'managed-iroh/v1',
@@ -61,6 +80,7 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
   constructor (options: ManagedIrohTransportOptions) {
     this.options = options
     this.session = options.authorizedSession
+    this.grantedEpoch = options.presenceEpoch?.() ?? 0
   }
 
   get status (): ManagedTransportStatus {
@@ -174,8 +194,9 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
     try {
       if (this.failedDials >= REAUTHORIZE_AFTER_FAILURES && this.options.reauthorize) {
         this.session = await this.options.reauthorize()
+        this.noteGranted()
         if (generation !== this.selectionGeneration) throw closed()
-      } else if (this.hadRelay && (this.options.regrant ?? this.options.reauthorize)) {
+      } else if (this.hadRelay && this.grantIsStale() && (this.options.regrant ?? this.options.reauthorize)) {
         // KAN-3636: a printer admits a signed-in owner only while it holds the
         // console's grant for this browser's key, and it forgets one when it
         // restarts or the grant lapses. A redial that goes out without asking
@@ -185,7 +206,10 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
         // direct path that may still work.
         const fresh = await this.regrant()
         if (generation !== this.selectionGeneration) throw closed()
-        if (fresh) this.session = fresh
+        if (fresh) {
+          this.session = fresh
+          this.noteGranted()
+        }
       }
       let endpoint = this.endpoint
       if (!endpoint) {
@@ -204,6 +228,7 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       this.failedDials = 0
       this.nextDialAt = 0
       this.hadRelay = true
+      this.relayUpAt = Date.now()
       return relay
     } catch (error) {
       if (generation === this.selectionGeneration) {
@@ -212,6 +237,16 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       }
       throw error
     }
+  }
+
+  private grantIsStale (): boolean {
+    if (Date.now() - this.grantedAt >= REGRANT_AFTER_MS) return true
+    return (this.options.presenceEpoch?.() ?? 0) !== this.grantedEpoch
+  }
+
+  private noteGranted () {
+    this.grantedAt = Date.now()
+    this.grantedEpoch = this.options.presenceEpoch?.() ?? 0
   }
 
   private async regrant (): Promise<AuthorizedManagedRelaySession | null> {
@@ -233,6 +268,17 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
     if (this.relayPromise !== relay) return
     this.relayPromise = null
     relay.then(r => r.close()).catch(() => {})
+    // KAN-6081: a relay that fell soon after its dial is a failed dial, whatever
+    // the dial itself said; without this the status poll redialled every 3 s.
+    if (this.relayUpAt > 0) {
+      if (Date.now() - this.relayUpAt < STABLE_AFTER_MS) {
+        this.flaps += 1
+        this.nextDialAt = Math.max(this.nextDialAt, Date.now() + Math.min(MAX_FLAP_DELAY_MS, 1000 * 2 ** this.flaps))
+      } else {
+        this.flaps = 0
+      }
+      this.relayUpAt = 0
+    }
   }
 
   private markUnavailableUnlessClosed () {

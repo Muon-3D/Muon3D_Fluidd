@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ManagedIrohPrinterTransport } from '../index'
-import { REGRANT_WAIT_MS } from '../managedIrohTransport'
+import { MAX_FLAP_DELAY_MS, REGRANT_AFTER_MS, REGRANT_WAIT_MS, STABLE_AFTER_MS } from '../managedIrohTransport'
 import type { AuthorizedManagedRelaySession, ManagedIrohRelay } from '../index'
 
 function session (id: string): AuthorizedManagedRelaySession {
@@ -146,6 +146,7 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
     })
 
     await transport.fetch('/server/info')
+    await vi.advanceTimersByTimeAsync(REGRANT_AFTER_MS)
     first.lose()
     await expect(transport.fetch('/server/info')).rejects.toThrow('connection lost')
     await transport.fetch('/server/info')
@@ -214,6 +215,7 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
       await transport.fetch('/server/info')
       // The first dial uses the handoff the transport was made with.
       expect(events).toEqual(['dial:grant-1', 'first:fetch'])
+      await vi.advanceTimersByTimeAsync(REGRANT_AFTER_MS)
       first.lose()
       await expect(transport.fetch('/server/info')).rejects.toThrow('connection lost')
       await transport.fetch('/server/info')
@@ -223,6 +225,7 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
     it('still redials with the grant it has when the console does not answer', async () => {
       const { events, first, transport } = lostThenRedial(() => new Promise(() => {}))
       await transport.fetch('/server/info')
+      await vi.advanceTimersByTimeAsync(REGRANT_AFTER_MS)
       first.lose()
       await expect(transport.fetch('/server/info')).rejects.toThrow('connection lost')
       const again = transport.fetch('/server/info')
@@ -247,6 +250,7 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
         regrant: async () => { throw new Error('console does not see the printer online') }
       })
       await transport.fetch('/server/info')
+      await vi.advanceTimersByTimeAsync(REGRANT_AFTER_MS)
       first.lose()
       await expect(transport.fetch('/server/info')).rejects.toThrow('connection lost')
       await transport.fetch('/server/info')
@@ -257,10 +261,97 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
     it('still redials when the console refuses', async () => {
       const { events, first, transport } = lostThenRedial(async () => { throw new Error('503') })
       await transport.fetch('/server/info')
+      await vi.advanceTimersByTimeAsync(REGRANT_AFTER_MS)
       first.lose()
       await expect(transport.fetch('/server/info')).rejects.toThrow('connection lost')
       await transport.fetch('/server/info')
       expect(events.slice(-2)).toEqual(['dial:grant-1', 'second:fetch'])
+    })
+  })
+
+  // KAN-6081: the console minted a grant every ~4-5 s because each relay drop
+  // was followed by a redial that asked for a new grant, with no backoff.
+  describe('a flapping relay does not hammer the console', () => {
+    type Internals = { relayPromise: Promise<ManagedIrohRelay> | null, dropRelay: (r: Promise<ManagedIrohRelay>) => void, flaps: number }
+    function setup (presenceEpoch?: () => number) {
+      const dials: number[] = []
+      const openRelay = vi.fn(async () => { dials.push(Date.now()); return relay('r', []) })
+      const regrant = vi.fn(async () => session('fresh'))
+      const transport = new ManagedIrohPrinterTransport({
+        authorizedSession: session('grant-1'),
+        createEndpoint: async () => ({ openRelay, close: () => {} }),
+        regrant,
+        presenceEpoch
+      })
+      const inner = transport as unknown as Internals
+      /** Lets the transport run until the request settles, one second of fake time at a time. */
+      const settle = async (p: Promise<unknown>) => {
+        let done = false
+        p.then(() => { done = true }, () => { done = true })
+        for (let i = 0; i < 200 && !done; i++) await vi.advanceTimersByTimeAsync(1000)
+        expect(done).toBe(true)
+      }
+      /** The relay in hand fails, as a transport error does. */
+      const drop = () => inner.dropRelay(inner.relayPromise!)
+      return { openRelay, regrant, transport, inner, dials, settle, drop }
+    }
+
+    it('asks for no new grant while a relay keeps dropping within the window', async () => {
+      const { regrant, openRelay, transport, settle, drop } = setup()
+      for (let i = 0; i < 8; i++) {
+        await settle(transport.fetch('/server/info'))
+        drop()
+      }
+      expect(openRelay).toHaveBeenCalledTimes(8)
+      expect(regrant).not.toHaveBeenCalled()
+    })
+
+    it('asks again once the grant is old, and when the console saw the printer return', async () => {
+      let epoch = 0
+      const { regrant, transport, settle, drop } = setup(() => epoch)
+      await settle(transport.fetch('/server/info'))
+      await vi.advanceTimersByTimeAsync(STABLE_AFTER_MS)
+      drop()
+      await settle(transport.fetch('/server/info'))
+      expect(regrant).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(STABLE_AFTER_MS)
+      epoch = 1
+      drop()
+      await settle(transport.fetch('/server/info'))
+      expect(regrant).toHaveBeenCalledTimes(1)
+      // the epoch was taken with the new grant: no second ask for the same offline blip
+      await vi.advanceTimersByTimeAsync(STABLE_AFTER_MS)
+      drop()
+      await settle(transport.fetch('/server/info'))
+      expect(regrant).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(REGRANT_AFTER_MS)
+      drop()
+      await settle(transport.fetch('/server/info'))
+      expect(regrant).toHaveBeenCalledTimes(2)
+    })
+
+    it('backs off exponentially to a cap, and a stable connection resets it', async () => {
+      const { transport, inner, dials, settle, drop } = setup()
+      const waits: number[] = []
+      await settle(transport.fetch('/server/info'))
+      for (let i = 0; i < 8; i++) {
+        const droppedAt = Date.now()
+        drop()
+        await settle(transport.fetch('/server/info'))
+        waits.push(dials[dials.length - 1] - droppedAt)
+      }
+      // each wait is at least as long as the last (to a 1 s polling step), none past the cap
+      for (let i = 1; i < waits.length; i++) expect(waits[i]).toBeGreaterThanOrEqual(waits[i - 1])
+      expect(waits[3]).toBeGreaterThan(waits[0])
+      expect(Math.max(...waits)).toBeLessThanOrEqual(MAX_FLAP_DELAY_MS + 1000)
+      expect(inner.flaps).toBe(8)
+      // a relay that stays up past the window resets it: the next redial is not held back
+      await vi.advanceTimersByTimeAsync(STABLE_AFTER_MS)
+      const droppedAt = Date.now()
+      drop()
+      expect(inner.flaps).toBe(0)
+      await settle(transport.fetch('/server/info'))
+      expect(dials[dials.length - 1] - droppedAt).toBeLessThanOrEqual(1000)
     })
   })
 })

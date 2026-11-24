@@ -16,6 +16,8 @@ export interface PrinterTransportDependencies {
   handoffSelectedPrinter?: (printerId: string) => Promise<AuthorizedManagedRelaySession>;
   /** Like the handoff, for an ordinary redial: free to refuse when asking would only slow the dial. */
   refreshSelectedPrinter?: (printerId: string) => Promise<AuthorizedManagedRelaySession>;
+  /** Counts the printer's console offline-to-online turns (see ManagedIrohTransportOptions.presenceEpoch). */
+  presenceEpoch?: (printerId: string) => number;
   createManagedEndpoint?: () => Promise<ManagedIrohEndpoint>;
   onManagedStatusChange?: (status: ManagedTransportStatus) => void;
 }
@@ -59,6 +61,7 @@ export async function createPrinterTransportForSelection (
         return session
       }
       : undefined,
+    presenceEpoch: dependencies.presenceEpoch ? () => dependencies.presenceEpoch!(printerId) : undefined,
     onStatusChange: dependencies.onManagedStatusChange
   })
 }
