@@ -376,3 +376,53 @@ describe('savedUpdates', () => {
     expect(savedUpdates(before, found, false)).toEqual([])
   })
 })
+
+describe('one printer is one row, however many sources report it (KAN-5989)', () => {
+  const OTTER = 'a1a1a1a1'.repeat(8)
+  const rows = (d: ReturnType<typeof directory>) => [...d.cloud, ...d.local, ...d.found]
+
+  it('a saved Open printer with no id and the service listing it beside this browser are one row, on this network', () => {
+    const d = directory({
+      saved: [saved('http://muon3d.local', { name: 'Otter · 4B2C' })],
+      cloudNearby: [nearbyCloud(OTTER, 'Otter · 4B2C', false, ['192.168.1.5'])]
+    })
+    expect(rows(d)).toHaveLength(1)
+    expect(d.local[0]).toMatchObject({ endpointId: OTTER, health: 'available', detail: 'On this network' })
+  })
+
+  it('the same printer saved twice with no id, then offline, stays one row', () => {
+    const d = directory({
+      saved: [saved('http://sloe.local', { name: 'Sloe · 11AA' }), saved('http://192.168.1.9', { name: 'Sloe · 11AA' })]
+    })
+    expect(rows(d)).toHaveLength(1)
+    expect(d.local[0].saved).toHaveLength(2)
+    expect(d.local[0].health).toBe('offline')
+  })
+
+  it('one saved with an id and one without, same name, are one row', () => {
+    const d = directory({
+      saved: [saved('http://sloe.local', { name: 'Sloe · 11AA', endpointId: OTTER }), saved('http://192.168.1.9', { name: 'Sloe · 11AA' })]
+    })
+    expect(rows(d)).toHaveLength(1)
+  })
+
+  it('a LAN hit and a service hit for the same id are one row, and a saved address with that name joins it', () => {
+    const d = directory({
+      saved: [saved('http://otter.local', { name: 'Otter · 4B2C' })],
+      found: [lan('Otter · 4B2C', '192.168.1.5', OTTER)],
+      cloudNearby: [nearbyCloud(OTTER.toUpperCase(), 'Otter · 4B2C', false)]
+    })
+    expect(rows(d)).toHaveLength(1)
+  })
+
+  it('an account printer and a nameless-id saved copy are one row', () => {
+    const d = directory({ account: [owned(OTTER, 'Otter · 4B2C')], saved: [saved('http://otter.local', { name: 'Otter · 4B2C' })] })
+    expect(rows(d)).toHaveLength(1)
+    expect(d.cloud[0].saved).toHaveLength(1)
+  })
+
+  it('two different printers on muon3d.local-style addresses stay two rows', () => {
+    const d = directory({ saved: [saved('http://a.local', { name: 'Otter · 4B2C' }), saved('http://b.local', { name: 'Sloe · 11AA' })] })
+    expect(rows(d)).toHaveLength(2)
+  })
+})
