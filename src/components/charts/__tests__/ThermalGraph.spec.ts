@@ -119,6 +119,21 @@ describe('legend', () => {
 })
 
 describe('drawing', () => {
+  it('passes the glass axis colours to the engine and redraws when the theme changes', async () => {
+    const o = makeStore()
+    const wrapper = await mountGraph(o)
+    for (const [dark, colour] of [[false, '#6e6e73'], [true, '#98989d']] as const) {
+      o.store.state.config.uiSettings.theme.isDark = dark
+      await Vue.nextTick()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      const option = handle.setOption.mock.calls.at(-1)![0] as any
+      expect(option.xAxis.axisLabel.color).toBe(colour)
+      expect(option.yAxis[0].axisLabel.color).toBe(colour)
+      expect(option.yAxis[1].axisLabel.color).toBe(colour)
+    }
+    wrapper.destroy()
+  })
+
   it('draws only the series that are on, from the history the store holds', async () => {
     const o = makeStore({ heater_bed: false })
     o.store.getters['charts/getChartData'] = [sample(Date.now() - 2000), sample(Date.now() - 1000)]
