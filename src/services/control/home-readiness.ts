@@ -13,13 +13,18 @@ const obj = (v: unknown): Json | undefined => (v && typeof v === 'object' && !Ar
 const REASONS: Record<string, string> = {
   toolhead_disconnected: 'Connect the toolhead first',
   column_absent: 'Fit the spine first',
+  column_unknown: 'Push the spine lever fully down first',
+  column_reading: 'Checking the spine…',
   column_unlocked: 'Lock the spine first',
-  plate_absent: 'Fit the plate first',
-  plate_down: 'Raise the bed first'
+  plate_absent: 'Fit the plate first'
 }
 
-export const RAISE_BED = 'Raise the bed first'
 const FALLBACK = "The printer isn't ready to home X and Y"
+
+/** z_power.xy_allowed is false when the Z column is absent or part-way: the folded spine blocks the gantry. */
+export function columnReason (zPower: Json | undefined): string {
+  return zPower?.z === 'absent' ? 'Fit the spine first' : 'Push the spine lever fully down first'
+}
 
 export function homeXYReason (missing: readonly string[]): string {
   const first = missing.find(m => typeof m === 'string' && m in REASONS)
@@ -37,11 +42,12 @@ export function homeXYDisabledReason (status: unknown): string {
     const missing = obj(machine?.missing)?.home_xy
     return homeXYReason(Array.isArray(missing) ? missing as string[] : [])
   }
-  if (zPower?.xy_home_allowed === false) return FALLBACK
+  if (zPower?.xy_home_allowed === false) return columnReason(zPower)
   return ''
 }
 
-/** '' when jogging X/Y is allowed (or unknown); the plate is down and touching when z_power says not. */
+/** '' when jogging X/Y is allowed (or unknown); otherwise the spine text from z_power.z. */
 export function xyMoveDisabledReason (status: unknown): string {
-  return obj(obj(status)?.z_power)?.xy_allowed === false ? RAISE_BED : ''
+  const zPower = obj(obj(status)?.z_power)
+  return zPower?.xy_allowed === false ? columnReason(zPower) : ''
 }
