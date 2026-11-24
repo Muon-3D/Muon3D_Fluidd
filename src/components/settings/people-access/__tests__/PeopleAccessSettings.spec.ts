@@ -713,6 +713,24 @@ describe('Allow new devices to ask (I-170, KAN-1374)', () => {
     await w.find('[data-tid="pa-request-allow"]').trigger('click')
     await settle()
     expect(api.answerApproval).toHaveBeenCalledWith('ap3', true)
+    expect(w.find('[data-tid="pa-message"]').text()).toContain('Ana Ruiz can use Boxwood now.')
+    w.destroy()
+  })
+
+  it('forgets a sent request when the printer changes, so another printer does not show it', async () => {
+    access.state = printerState('viewer')
+    access.capabilities = { protection: 'refused' }
+    cloud.account = { id: 'a3', email: 'ana@example.test', name: 'Ana' }
+    cloud.printers = []
+    const w = open()
+    await settle(); await settle()
+    await w.find('[data-tid="pa-ask-send"]').trigger('click')
+    await settle()
+    expect(w.find('[data-tid="pa-ask-pending"]').exists()).toBe(true)
+    ;(w.vm as any).forget()
+    await settle()
+    expect((w.vm as any).askState).toBe('idle')
+    expect((w.vm as any).askId).toBeNull()
     w.destroy()
   })
 })

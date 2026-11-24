@@ -1113,6 +1113,8 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
     this.apiKeyOpen = false
     this.askingOpen = false
     this.asking = null
+    this.askState = 'idle'
+    this.askId = null
   }
 
   /** The account's name for the printer acted on: what every console action and its confirm names. */
@@ -1506,7 +1508,7 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
   }
 
   async answer (request: JoinApproval, allow: boolean) {
-    const who = request.requester?.email ?? 'Someone'
+    const who = request.requester?.name || request.requester?.email || 'Someone'
     await this.run(() => accountApi.answerApproval(request.id, allow), allow ? `${who} can use ${this.printerName} now.` : 'Refused.')
     await loadApprovals().catch(() => {})
     this.refreshCloud()
