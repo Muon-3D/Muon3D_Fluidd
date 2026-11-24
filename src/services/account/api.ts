@@ -162,13 +162,14 @@ export interface InviteLink {
 
 export interface JoinApproval {
   id: string;
-  kind: 'link_join';
+  /** `access_request` is a signed-in person's own ask (KAN-5976): no link, and the requester has a name, never an address. */
+  kind: 'link_join' | 'access_request';
   printer_id: string;
   printer_name?: string;
-  link_id: string;
+  link_id?: string | null;
   role: string;
   state: 'pending' | 'allowed' | 'refused' | 'expired';
-  requester?: { name?: string, email: string, avatar_url?: string | null };
+  requester?: { name?: string, email?: string, avatar_url?: string | null };
   created_at: number;
   expires_at: number;
 }
@@ -288,6 +289,12 @@ export const accountApi = {
   revokeLink: (printerId: string, linkId: string) =>
     json<{ ok: boolean }>('DELETE', `/v1/printers/${encodeURIComponent(printerId)}/links/${encodeURIComponent(linkId)}`),
   approvals: () => json<{ approvals: JoinApproval[] }>('GET', '/v1/approvals'),
+  /** Asks the owner of a printer for a share. Always `pending`, whether or not the printer exists (KAN-5976). */
+  requestAccess: (printerId: string) =>
+    json<{ status: 'pending', id: string, expires_at: number }>('POST', `/v1/printers/${encodeURIComponent(printerId)}/access-requests`),
+  /** One request, read by the person who asked or the owner. */
+  approval: (id: string) =>
+    json<{ approval: JoinApproval }>('GET', `/v1/approvals/${encodeURIComponent(id)}`),
   answerApproval: (id: string, allow: boolean) =>
     json<{ approval: JoinApproval }>('POST', `/v1/approvals/${encodeURIComponent(id)}`, { allow })
 }

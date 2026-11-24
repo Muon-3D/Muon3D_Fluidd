@@ -327,7 +327,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     const apiUrl: string = this.$store.state.config.apiUrl
     if (!apiUrl || apiUrl === MANAGED_API_URL) return null
     let health: PrinterHealth
-    if (!this.socketConnected) health = 'connecting'
+    // KAN-5975: a printer that answered but wants its login never opens the socket; that is "Needs access", not "Connecting".
+    if (!this.socketConnected) health = this.apiConnected && !this.authenticated && !this.socketConnecting ? 'locked' : 'connecting'
     else if (!this.authenticated) health = 'locked'
     else if (!this.klippyReady) health = 'error'
     else if (this.printerPrinting) health = 'printing'

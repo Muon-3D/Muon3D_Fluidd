@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/settings/timelapse/TimelapseSettings.vue?vue&type=style&index=0&scoped=15dd6d48&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/settings/timelapse/TimelapseSettings.vue?vue&type=style&index=0&scoped=15dd6d48&lang.scss"
+const __vite__css = ".m3-sets__fieldset[data-v-15dd6d48] {\n  display: contents;\n  border: 0;\n}\n.tset__value[data-v-15dd6d48] {\n  color: var(--m3d-text-muted);\n  font-size: 14px;\n}\n.tset__pair[data-v-15dd6d48] {\n  display: flex;\n  flex-wrap: wrap;\n  justify-content: flex-end;\n  gap: 8px;\n}\n.tset__locked[data-v-15dd6d48] {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  padding: 6px 0 10px;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

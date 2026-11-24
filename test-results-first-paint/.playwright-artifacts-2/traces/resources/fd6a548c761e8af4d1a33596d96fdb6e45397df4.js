@@ -1,0 +1,13 @@
+export const defaultState = () => {
+  return {
+    availableSpools: [],
+    activeSpool: void 0,
+    connected: false,
+    dialog: {
+      show: false
+    }
+  };
+};
+export const state = defaultState();
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInN0YXRlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgU3Bvb2xtYW5TdGF0ZSB9IGZyb20gJ0Avc3RvcmUvc3Bvb2xtYW4vdHlwZXMnXG5cbmV4cG9ydCBjb25zdCBkZWZhdWx0U3RhdGUgPSAoKTogU3Bvb2xtYW5TdGF0ZSA9PiB7XG4gIHJldHVybiB7XG4gICAgYXZhaWxhYmxlU3Bvb2xzOiBbXSxcbiAgICBhY3RpdmVTcG9vbDogdW5kZWZpbmVkLFxuICAgIGNvbm5lY3RlZDogZmFsc2UsXG4gICAgZGlhbG9nOiB7XG4gICAgICBzaG93OiBmYWxzZVxuICAgIH1cbiAgfVxufVxuXG5leHBvcnQgY29uc3Qgc3RhdGUgPSBkZWZhdWx0U3RhdGUoKVxuIl0sIm1hcHBpbmdzIjoiQUFFTyxhQUFNLGVBQWUsTUFBcUI7QUFDL0MsU0FBTztBQUFBLElBQ0wsaUJBQWlCLENBQUM7QUFBQSxJQUNsQixhQUFhO0FBQUEsSUFDYixXQUFXO0FBQUEsSUFDWCxRQUFRO0FBQUEsTUFDTixNQUFNO0FBQUEsSUFDUjtBQUFBLEVBQ0Y7QUFDRjtBQUVPLGFBQU0sUUFBUSxhQUFhOyIsIm5hbWVzIjpbXX0=
