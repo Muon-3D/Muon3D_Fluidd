@@ -149,6 +149,22 @@ export function searchRows (sources: SearchSources): SearchRow[] {
       continue
     }
     const setUp = p.advert ? !p.advert.unclaimed : null
+    // KAN-5974: this page is connected to it over Bluetooth right now (it stopped advertising while linked): it is
+    // reachable, and a click reconnects with no chooser, not a printer to set up or a stranger to refuse.
+    if (p.held) {
+      rows.push({
+        key: `ble:${p.deviceId}`,
+        name: heardAs(p),
+        host: null,
+        meta: 'Connected · Bluetooth',
+        status: 'connected over Bluetooth',
+        linked: false,
+        canLink: false,
+        nearby: p,
+        action: 'open-bluetooth'
+      })
+      continue
+    }
     rows.push({
       key: `ble:${p.deviceId}`,
       name: heardAs(p),

@@ -37,6 +37,8 @@ test('a printer connected over Bluetooth is still recognised on Printers, and a 
   // Back to Printers, past the 30 s an advertisement counts for.
   await allPrinters(page)
   await expect(page).toHaveURL(/\/$/)
+  // The bench view draws every printer, found or saved, as a tile; the list view draws a found one as a row.
+  await page.getByTestId('view-bench').click()
   const tile = page.locator('[data-tid^="printer-tile-"]').filter({ hasText: 'Alder' }).first()
   await expect(tile).toBeVisible({ timeout: 30_000 })
   await expect(tile).not.toContainText(/offline/i)
