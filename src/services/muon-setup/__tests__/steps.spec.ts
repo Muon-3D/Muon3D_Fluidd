@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { currentStep, frameSteps, previousStep } from '../steps'
+import { currentStep, frameSteps, previousStep, resumedSetup, startParts } from '../steps'
 import type { SetupState } from '../types'
 import newState from './fixtures/state.01-new.json'
 import networkPhone from './fixtures/state.02-network-phone-driver.json'
@@ -58,10 +58,35 @@ describe('Back', () => {
   })
 })
 
+describe('S1 after a restart mid-setup', () => {
+  it('a new printer has not begun, and nothing is ticked', () => {
+    expect(resumedSetup(copy(newState))).toBe(false)
+    expect(startParts(copy(newState)).map(p => p.done)).toEqual([false, false, false, false])
+    expect(resumedSetup(null)).toBe(false)
+    expect(startParts(null).every(p => !p.done)).toBe(true)
+  })
+
+  it('with the language and Wi-Fi done it has begun, and Wi-Fi is ticked', () => {
+    const state = copy(newState)
+    state.steps.language.status = 'done'
+    state.steps.network.status = 'done'
+    expect(resumedSetup(state)).toBe(true)
+    expect(startParts(state).map(p => p.done)).toEqual([true, false, false, false])
+  })
+
+  it('a skipped step counts as settled', () => {
+    const state = copy(newState)
+    state.steps.remote.status = 'skipped'
+    expect(startParts(state)[2].done).toBe(true)
+  })
+})
+
 describe('a state from older printer software, missing a step', () => {
   it('neither the step list nor Back throws', () => {
     const partial = { state: 'in_progress', cursor: 'name', steps: {} } as unknown as SetupState
     expect(() => previousStep(partial)).not.toThrow()
     expect(() => frameSteps(partial, 'name' as never)).not.toThrow()
+    expect(resumedSetup(partial)).toBe(false)
+    expect(startParts(partial).every(p => !p.done)).toBe(true)
   })
 })
