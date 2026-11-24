@@ -40,6 +40,8 @@ type Shape = { d?: string, c?: number[], r?: number[] }
 // The frame's line icons: one stroke weight, drawn on a 24 px grid, so the
 // rail, header and tabs never mix icon sets or squash one to fit.
 const ICONS: Record<string, Shape[]> = {
+  // Fleet (KAN-6113): four small units, each with a status tick.
+  fleet: [{ r: [3, 3, 7.5, 7.5, 2] }, { r: [13.5, 3, 7.5, 7.5, 2] }, { r: [3, 13.5, 7.5, 7.5, 2] }, { r: [13.5, 13.5, 7.5, 7.5, 2] }, { d: 'M5.5 7h3M16 7h3M5.5 17.5h3M16 17.5h3' }],
   printers: [{ r: [3, 3, 7.5, 7.5, 2] }, { r: [13.5, 3, 7.5, 7.5, 2] }, { r: [3, 13.5, 7.5, 7.5, 2] }, { r: [13.5, 13.5, 7.5, 7.5, 2] }],
   overview: [{ d: 'M12 14l4-4' }, { d: 'M3.3 19a10 10 0 1 1 17.4 0' }],
   jobs: [{ d: 'M12 2 2 7l10 5 10-5-10-5z' }, { d: 'm2 17 10 5 10-5' }, { d: 'm2 12 10 5 10-5' }],

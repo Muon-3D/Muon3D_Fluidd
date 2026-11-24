@@ -1,30 +1,17 @@
 /**
- * Whether this account is Muon staff, for the account menu's Admin and Fleet
- * items (KAN-6113). The only signal the console gives is the answer to
- * `POST /v1/admin/session`: 200 or 403 `reauth_required` is a member, 403
- * `staff.required` is not. Anything else (offline, wrong origin, a console
- * without the route) means "not shown". Asked once per account and kept in
- * memory; it never counts as admin activity and needs no passkey.
+ * Whether this account is Muon staff, for the account menu's Admin and Fleet items
+ * (KAN-6113) and the admin route's guard (KAN-6100). The console says so on
+ * `GET /v1/me` (`staff`: `true` or "staff" for staff, "moderator" for a moderator);
+ * a console that does not send it yet means nobody is staff here. This is a convenience gate:
+ * it only hides things, and the console still enforces every call.
  */
-import Vue from 'vue'
-import { AdminError, adminAvailable, staffSession } from './client'
-import { storedToken } from '@/services/muon-cloud/api'
+import type { CloudAccount } from '@/services/muon-cloud/api'
 
-export const membership = Vue.observable({ account: '', staff: false })
-const asked = new Map<string, Promise<boolean>>()
+export type StaffLevel = 'staff' | 'moderator' | ''
 
-export const isStaffMember = (accountId: string): boolean => !!accountId && membership.account === accountId && membership.staff
-
-export function forgetMembership (): void { membership.account = ''; membership.staff = false; asked.clear() }
-
-export async function checkMembership (accountId: string): Promise<boolean> {
-  if (!accountId || !adminAvailable() || !storedToken()) return false
-  let answer = asked.get(accountId)
-  if (!answer) {
-    answer = staffSession().then(() => true, (error: unknown) => error instanceof AdminError && error.status === 403 && error.code === 'console.staff.reauth_required')
-    asked.set(accountId, answer)
-  }
-  const staff = await answer
-  membership.account = accountId; membership.staff = staff
-  return staff
+export function staffLevel (account: Pick<CloudAccount, 'staff'> | null | undefined): StaffLevel {
+  const value = account?.staff
+  return value === true || value === 'staff' ? 'staff' : value === 'moderator' ? 'moderator' : ''
 }
+
+export const isStaff = (account: Pick<CloudAccount, 'staff'> | null | undefined): boolean => staffLevel(account) === 'staff'

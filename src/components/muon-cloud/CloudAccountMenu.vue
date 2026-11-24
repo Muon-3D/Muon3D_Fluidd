@@ -288,6 +288,7 @@
           <!-- Muon staff only (KAN-6113): the console says who they are, and nobody else sees these items. -->
           <template v-if="staff">
             <div class="acct-menu__rule" />
+            <span class="acct-menu__caps">Muon3D staff</span>
             <router-link
               to="/admin"
               class="acct-menu__item"
@@ -309,9 +310,9 @@
               @click="openFleetItem"
             >
               <frame-icon
-                name="printers"
+                name="fleet"
                 small
-              />{{ fleetStage === 'passkey' ? 'Confirming with your passkey…' : fleetStage === 'opening' ? 'Opening Fleet…' : 'Fleet' }}
+              />{{ fleetStage === 'passkey' ? 'Confirming with your passkey…' : fleetStage === 'opening' ? 'Opening Fleet…' : 'Fleet' }}<span class="acct-menu__key">fleet.muon3d.com</span>
             </button>
             <p
               v-if="fleetNote"
@@ -400,7 +401,7 @@ import { Component, Vue, Watch } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
 import { cloudBaseUrl } from '@/services/muon-cloud/api'
 import { reachState, watchCloudReachable } from '@/services/muon-cloud/reachable'
-import { checkMembership, isStaffMember } from '@/services/admin/membership'
+import { isStaff } from '@/services/admin/membership'
 import { fleetFailure, openFleet } from '@/services/admin/client'
 import { absoluteLeft, portal } from '@/services/admin/session'
 import { deletionState } from '@/services/muon-cloud/deletion'
@@ -552,8 +553,6 @@ export default class CloudAccountMenu extends Vue {
   @Watch('menu')
   onMenu (open: boolean) {
     if (open && this.account && this.built('printers')) loadApprovals().catch(() => {})
-    // Asked once per account, on first open: the Admin and Fleet items appear when the console says staff.
-    if (open && this.account) checkMembership(this.account.id).catch(() => {})
     if (!open) this.fleetNote = ''
   }
 
@@ -561,7 +560,7 @@ export default class CloudAccountMenu extends Vue {
   fleetNote = ''
 
   get staff (): boolean {
-    return !!this.account && isStaffMember(this.account.id)
+    return isStaff(this.account)
   }
 
   /** Fleet is staff-only: confirm with the passkey unless a staff session is already open, then hand over. */

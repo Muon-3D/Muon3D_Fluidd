@@ -11,4 +11,16 @@ describe('the hosted staff route', () => {
     expect(isManagedConsolePath('/admin')).toBe(true)
     expect(typeof route.matched[0].components.default).toBe('function')
   })
+  it('has the eleven sections and the four staff tools as children of one shell, all printer-independent', () => {
+    for (const section of ['traffic', 'errors', 'infrastructure', 'endpoints', 'fleet', 'accounts', 'jobs', 'logs', 'alerts', 'releases']) {
+      const route = router.resolve(`/admin/${section}`).route
+      expect(route.meta?.section).toBe(section)
+      expect(route.meta?.printerIndependent).toBe(true)
+      expect(route.matched).toHaveLength(2)
+      expect(isManagedConsolePath(`/admin/${section}`)).toBe(true)
+    }
+    for (const tool of ['accounts', 'audit', 'review', 'handles']) {
+      expect(router.resolve(`/admin/tools/${tool}`).route.name).toBe('Admin-tools')
+    }
+  })
 })

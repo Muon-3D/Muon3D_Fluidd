@@ -241,6 +241,8 @@
         </div>
 
         <admin-sign-in v-if="phase === 'signed-out'" />
+        <!-- A moderator has no portal, but keeps the review queue and handle reservations (spec section 8). -->
+        <router-view v-else-if="moderatorTool" />
         <admin-state-card
           v-else-if="phase === 'not-staff'"
           kind="not-staff"
@@ -304,6 +306,7 @@ import { SECTIONS, TOOLS, data, forgetData, loadCatalog } from '@/services/admin
 import { RANGES, REFRESHES, obs, type Range, type Refresh } from '@/services/admin/obs'
 import { absoluteLeft, confirm, end, idleLeft, load, portal, showsPortal, stay, sync, tick, touchIfActive, noteInput, warning, KEEP_DATA_MS } from '@/services/admin/session'
 import { countdown } from '@/services/admin/format'
+import { staffLevel } from '@/services/admin/membership'
 import { rangeOf, refreshOf, setQuery } from './query'
 import AdminSignIn from './AdminSignIn.vue'
 import AdminStateCard from './AdminStateCard.vue'
@@ -324,6 +327,7 @@ export default defineComponent({
     open (): boolean { return portal.phase === 'open' },
     ended (): boolean { return portal.phase === 'ended' },
     locked (): boolean { return portal.phase === 'not-confirmed' || portal.phase === 'no-passkey' },
+    moderatorTool (): boolean { return portal.phase === 'not-staff' && staffLevel(cloudState.account) === 'moderator' && /^\/admin\/tools\/(review|handles)\/?$/.test(this.$route.path) },
     shown (): boolean { return showsPortal(portal.phase) },
     signedIn (): boolean { return portal.phase !== 'signed-out' && portal.phase !== 'loading' && !!storedToken() },
     email (): string { return cloudState.account?.email ?? '' },

@@ -8,6 +8,8 @@
 import Vue from 'vue'
 import { AdminError, adminAvailable, setSessionProbe, confirmStaff, endStaffSession, staffSession, touchStaffSession, type StaffSession } from './client'
 import { storedToken } from '@/services/muon-cloud/api'
+import { cloudState } from '@/services/muon-cloud/state'
+import { isStaff } from './membership'
 
 export type Phase = 'loading' | 'wrong-origin' | 'signed-out' | 'not-staff' | 'not-confirmed' | 'no-passkey' | 'open' | 'ended' | 'unreachable'
 export type EndReason = '' | 'idle' | 'absolute' | 'ended'
