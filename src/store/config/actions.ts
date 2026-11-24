@@ -13,6 +13,7 @@ import { applyUiStyle } from '@/util/ui-style'
 import { applyGlassIcons } from '@/util/glass-icons'
 import { mergePersonal, pickPersonal, systemPrefersDark, themeModeOf } from '@/services/settings/general'
 import { set } from 'lodash-es'
+import { isDarkFor, readAppearance, resolveAppearance, writeAppearance, type Appearance } from '@/services/settings/appearance'
 
 const parseLanInstances = (value: unknown): InstanceConfig[] => {
   if (typeof value !== 'object' || value == null || !('version' in value) || !('printers' in value)) return []
@@ -288,7 +289,27 @@ export const actions: ActionTree<ConfigState, RootState> = {
       values.theme.isDark = systemPrefersDark()
     }
     commit('setPersonalValues', values)
+    dispatch('applyAppearance')
+  },
+
+  /**
+   * The person's Light/Dark/Auto and accent, which are this browser's rather
+   * than a printer's (KAN-6106): theirs over whatever the printer saved, and a
+   * theme a printer saved before is kept as theirs the first time.
+   */
+  applyAppearance ({ state, commit, dispatch }) {
+    const { appearance, migrate } = resolveAppearance(readAppearance(), state.uiSettings.theme)
+    if (migrate) writeAppearance(migrate)
+    commit('setSaveByPath', { path: 'uiSettings.theme.color', value: appearance.color })
+    commit('setSaveByPath', { path: 'uiSettings.theme.mode', value: appearance.mode })
+    commit('setSaveByPath', { path: 'uiSettings.theme.isDark', value: isDarkFor(appearance.mode) })
     dispatch('onThemeChange', state.uiSettings.theme)
+  },
+
+  /** Saves a choice of accent or Light/Dark/Auto in this browser, and shows it. */
+  setAppearance ({ dispatch }, payload: Partial<Appearance>) {
+    writeAppearance({ ...(readAppearance() ?? {}), ...payload })
+    dispatch('applyAppearance')
   },
 
   /**
@@ -304,7 +325,6 @@ export const actions: ActionTree<ConfigState, RootState> = {
       if (state.sharedPersonal) set(state.sharedPersonal, payload.path, payload.value)
       await dispatch('saveByPath', { path: `uiSettings.${payload.path}`, value: payload.value, server: true })
     }
-    if (payload.path.startsWith('theme.')) dispatch('onThemeChange', state.uiSettings.theme)
   },
 
   /** The device switched between light and dark: Auto follows it. */

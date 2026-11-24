@@ -47,6 +47,7 @@
         >
           <frame-icon name="library" />
         </router-link>
+        <theme-toggle />
         <cloud-account-menu v-if="!printerFrame" />
       </div>
 
@@ -159,6 +160,8 @@
 
         <notices-bell :printer="printerNotices" />
 
+        <theme-toggle />
+
         <cloud-account-menu />
       </div>
 
@@ -222,6 +225,7 @@ import AppSaveConfigAndRestartBtn from './AppSaveConfigAndRestartBtn.vue'
 import AppUploadAndPrintBtn from './AppUploadAndPrintBtn.vue'
 import PrinterSwitchButton from './PrinterSwitchButton.vue'
 import QuickActionsMenu from './QuickActionsMenu.vue'
+import ThemeToggle from './ThemeToggle.vue'
 import FrameMixin from '@/mixins/frame'
 import ServicesMixin from '@/mixins/services'
 import FilesMixin, { uploadErrorText } from '@/mixins/files'
@@ -248,7 +252,8 @@ import type { Device } from '@/store/power/types'
     AppSaveConfigAndRestartBtn,
     AppUploadAndPrintBtn,
     PrinterSwitchButton,
-    QuickActionsMenu
+    QuickActionsMenu,
+    ThemeToggle
   }
 })
 export default class AppBar extends Mixins(FrameMixin, ServicesMixin, FilesMixin, BrowserMixin) {
