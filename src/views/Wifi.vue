@@ -13,6 +13,7 @@
         data-tid="wifi-route-pill"
       >{{ routeText }}</span>
       <span>{{ routeLine }}</span>
+      <route-buttons />
     </p>
     <div class="stiles">
       <wifi-manager-card />
@@ -42,6 +43,7 @@ import BrowserMixin from '@/mixins/browser'
 import WifiManagerCard from '@/components/widgets/wifi/WifiManagerCard.vue'
 import HotspotManagerCard from '@/components/widgets/wifi/HotspotManagerCard.vue'
 import FrameIcon from '@/components/ui/FrameIcon.vue'
+import RouteButtons from '@/components/widgets/wifi/RouteButtons.vue'
 import { cloudState } from '@/services/muon-cloud/state'
 import { isManagedApiUrl } from '@/services/muon-cloud/origin'
 import { bluetoothCarrying, remoteRouteLabel } from '@/services/muon-ble/link'
@@ -55,7 +57,7 @@ import { networkRouteLabel } from '@/services/hotspot/model'
  * and Muon3D (KAN-3601). The hotspot still says so when a remote connection
  * rules changes out.
  */
-@Component({ components: { WifiManagerCard, HotspotManagerCard, FrameIcon } })
+@Component({ components: { WifiManagerCard, HotspotManagerCard, FrameIcon, RouteButtons } })
 export default class Wifi extends Mixins(BrowserMixin) {
   /** Display only, from the connection state Control already has: how this browser reaches the printer. */
   get remote (): boolean {
