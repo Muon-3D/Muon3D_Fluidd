@@ -58,11 +58,8 @@ describe('runScan', () => {
     }))
     expect(st.phase).toBe('done')
     expect(st.secure.map(p => [p.name, p.url])).toEqual([['Sloe', `https://${SLOE}/`]])
-    // Alder did not answer securely and Walnut has no secure name: both are offered by their own page, not secure.
-    expect(st.local.map(p => [p.name, p.url])).toEqual([
-      ['Alder 6601', 'http://muon-alder-6601.local/'],
-      ['Walnut 8987', 'http://muon-walnut-8987.local/']
-    ])
+    // Alder did not answer securely and Walnut has no secure name: neither is offered by an address of its own.
+    expect(st.local).toEqual([])
     expect(st.heard).toBe(heard)
     expect(foundAnything(st)).toBe(true)
   })
@@ -89,6 +86,54 @@ describe('runScan', () => {
     }))
     expect(reach).not.toHaveBeenCalled()
     expect(st.secure).toEqual([])
+  })
+
+  describe('a nearby printer own secure name (KAN-5459)', () => {
+    const withName = (id: string, name: string, secureName?: string | null) => ({ ...near(id, name), secureName })
+
+    it('one that answers is secure, with no account at all', async () => {
+      const reach = vi.fn(async (n: string) => n === SLOE)
+      const st = await runScan(deps({ nearby: async () => [withName('p1', 'Sloe b26d', SLOE)], reach }))
+      expect(reach).toHaveBeenCalledWith(SLOE)
+      expect(st.secure.map(p => [p.name, p.url])).toEqual([['Sloe b26d', `https://${SLOE}/`]])
+      expect(st.local).toEqual([])
+    })
+
+    it('one that does not answer is not offered by any address', async () => {
+      const st = await runScan(deps({ nearby: async () => [withName('p1', 'Sloe b26d', SLOE)], reach: async () => false }))
+      expect(st.secure).toEqual([])
+      expect(st.local).toEqual([])
+    })
+
+    it('none at all (an older console, or no certificate): the old behaviour, nothing probed', async () => {
+      const reach = vi.fn(async () => true)
+      const st = await runScan(deps({ nearby: async () => [withName('p1', 'Sloe b26d'), withName('p2', 'Alder 6601', null)], reach }))
+      expect(reach).not.toHaveBeenCalled()
+      expect(st.secure).toEqual([])
+      expect(st.local).toEqual([])
+    })
+
+    it('probes only names under our zone', async () => {
+      const reach = vi.fn(async () => true)
+      const st = await runScan(deps({
+        nearby: async () => [withName('p1', 'Evil', 'abcdefghijklmnopqrst.example.com'), withName('p2', 'Odd', 'evil.com/#.muonlan.net')],
+        reach
+      }))
+      expect(reach).not.toHaveBeenCalled()
+      expect(st.secure).toEqual([])
+    })
+
+    it('the same name from the account and the nearby list is probed and listed once', async () => {
+      const reach = vi.fn(async () => true)
+      const st = await runScan(deps({
+        accountPrinters: async () => [{ id: 'p1', name: 'Sloe', secure_name: SLOE }],
+        nearby: async () => [withName('p1', 'Sloe b26d', SLOE)],
+        reach
+      }))
+      expect(reach).toHaveBeenCalledTimes(1)
+      expect(st.secure).toHaveLength(1)
+      expect(st.local).toEqual([])
+    })
   })
 
   it('does not wait on a probe that never answers', async () => {
@@ -127,7 +172,7 @@ describe('runScan', () => {
       nearby: async () => [near('p3', 'Walnut 8987')]
     }))
     expect(st.cloud).toBe('done')
-    expect(st.local).toHaveLength(1)
+    expect(st.local).toEqual([])
   })
 
   it('says why Bluetooth was skipped', async () => {

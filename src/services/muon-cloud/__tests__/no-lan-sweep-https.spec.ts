@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   discoverPrinters,
   discoveryState,
-  lanOpenLinks,
   refreshKnownPrinters,
   refreshLanStatus,
   refreshLinkStates
@@ -59,12 +58,9 @@ describe('on the https site', () => {
     expect(discoveryState.finishedAt).toBeGreaterThan(0)
   })
 
-  it('"Search again" does not fetch http either, and offers new-tab links instead', async () => {
+  it('"Search again" does not fetch http either, and offers no printer address', async () => {
     await discoverPrinters(true)
     await new Promise(resolve => setTimeout(resolve, 20))
     expect(insecure()).toEqual([])
-    expect(lanOpenLinks()).toEqual([
-      { name: 'Boxwood', url: 'http://192.168.1.20/' }
-    ])
   })
 })

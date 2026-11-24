@@ -56,33 +56,12 @@
         Looking{{ scanNetwork ? ` on ${scanNetwork}` : '' }} for printers…
       </p>
       <p
-        v-if="secureSite"
-        class="printers__secure"
-        data-tid="found-secure"
-      >
-        <template v-if="openLinks.length">
-          Control doesn't scan your network from this secure page. Open a printer on your network:
-          <a
-            v-for="link in openLinks"
-            :key="link.url"
-            :href="link.url"
-            data-tid="open-on-network"
-          >{{ link.name }}: Open on this network</a>
-        </template>
-        <template v-else>
-          Control doesn't scan your network from this secure page. A printer on your network can be opened by its address, or over Bluetooth.
-        </template>
-      </p>
-      <p
         v-if="blockedByPage"
         class="note"
         data-tid="blocked-by-page"
       >
         This browser won't let this page reach printers by their IP address, because the page was opened by
         name. Add a printer by its name instead, as shown on its screen, such as muon-walnut-8987.
-        <template v-if="blockedByPage.ownUrl">
-          Or <a :href="blockedByPage.ownUrl">open this printer by its IP address</a>, which can reach them all.
-        </template>
       </p>
 
       <!-- Printing now leads: a printer shows in one place, so groups say which of theirs print above. -->
@@ -521,6 +500,12 @@
         data-tid="notice-link"
       >{{ noticeLink }}</a>
     </p>
+    <printer-route-problem
+      :problem="routeProblem"
+      :ask="askMuonLocal"
+      @choose="onProblemChoice"
+      @cancel="cancelMuonLocal"
+    />
     <div
       v-if="nearby.error"
       class="note note--error"
@@ -614,7 +599,7 @@ import FilesMixin from '@/mixins/files'
 import { cloudPrinterConnection, cloudState, saveLayout } from '@/services/muon-cloud/state'
 import { activationState } from '@/services/muon-cloud/activate'
 import { bluetoothCarrying, wantsBluetoothFor } from '@/services/muon-ble/link'
-import { discoverPrinters, discoveryState, lanAddresses, lanFetch, lanOpenLinks, pageIsSecure, refreshCloudNearby, refreshKnownPrinters, refreshLanStatus } from '@/services/muon-cloud/discovery'
+import { discoverPrinters, discoveryState, lanAddresses, lanFetch, refreshCloudNearby, refreshKnownPrinters, refreshLanStatus } from '@/services/muon-cloud/discovery'
 import { afterFirstPaint } from '@/services/startup/idle'
 import { loadedRecord } from '@/services/muon-cloud/status'
 import { jobPicture } from '@/services/printers-page/pictures'
@@ -643,6 +628,7 @@ import PrintersSection from '@/components/printers/PrintersSection.vue'
 import PrinterBench from '@/components/printers/PrinterBench.vue'
 import BenchPrinter, { type BenchAction } from '@/components/printers/BenchPrinter.vue'
 import PrintersWelcome from '@/components/printers/PrintersWelcome.vue'
+import PrinterRouteProblem from '@/components/muon-cloud/PrinterRouteProblem.vue'
 import ScanResults from '@/components/printers/ScanResults.vue'
 import AddPrinterSheet from '@/components/printers/AddPrinterSheet.vue'
 import FoundList from '@/components/printers/FoundList.vue'
@@ -698,6 +684,7 @@ const routeHold = new RouteLabelHold()
     BenchPrinter,
     PrintersWelcome,
     ScanResults,
+    PrinterRouteProblem,
     AddPrinterSheet,
     FoundList,
     OfflineList,
@@ -826,14 +813,6 @@ export default class Printers extends Mixins(PrinterEntriesMixin, BrowserMixin, 
       signedIn: !!this.account,
       routeHold
     })
-  }
-
-  get secureSite (): boolean {
-    return pageIsSecure()
-  }
-
-  get openLinks () {
-    return lanOpenLinks(cloudState.printers)
   }
 
   get mixedContentBlocked (): boolean {
