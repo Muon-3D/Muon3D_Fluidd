@@ -286,10 +286,10 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
       const inner = transport as unknown as Internals
       /** Lets the transport run until the request settles, one second of fake time at a time. */
       const settle = async (p: Promise<unknown>) => {
-        let done = false
-        p.then(() => { done = true }, () => { done = true })
-        for (let i = 0; i < 200 && !done; i++) await vi.advanceTimersByTimeAsync(1000)
-        expect(done).toBe(true)
+        const state = { done: false }
+        p.then(() => { state.done = true }, () => { state.done = true })
+        for (let i = 0; i < 200 && !state.done; i++) await vi.advanceTimersByTimeAsync(1000)
+        expect(state.done).toBe(true)
       }
       /** The relay in hand fails, as a transport error does. */
       const drop = () => inner.dropRelay(inner.relayPromise!)
