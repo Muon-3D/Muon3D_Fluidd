@@ -474,7 +474,7 @@ $('#curves').innerHTML = CURVES.map(([name, note, fn]) => {
 
 /* ------------------------------------------------------------------ loading */
 
-const PRINTERS = [['Boxwood', 'On this network', 'Printing 42 %'], ['Walnut', 'Cloud', 'Idle'], ['Sloe', 'Bluetooth', 'Idle']]
+const PRINTERS = [['Boxwood', 'Connected locally', 'Printing 42 %'], ['Walnut', 'Cloud', 'Idle'], ['Sloe', 'Bluetooth', 'Idle']]
 const prow = (name: string, route: string, state: string) => `<div class="prow"><div class="thumb">${icon('printer')}</div><div><b>${name}</b><span>${route}</span></div><div class="state">${state}</div></div>`
 const skrow = '<div class="prow"><div class="sk box"></div><div><div class="sk line"></div><div class="sk line short"></div></div><div class="sk pill"></div></div>'
 
@@ -540,7 +540,7 @@ plays.overview = async () => {
 
 {
   const route = $('#route')
-  const states: [string, string, string][] = [['lan', 'wifi', 'On this network'], ['cloud', 'cloud', 'Cloud'], ['bluetooth', 'bluetooth', 'Bluetooth'], ['reconnecting', 'sync', 'Reconnecting…'], ['dropped', 'alert', 'Dropped']]
+  const states: [string, string, string][] = [['lan', 'wifi', 'Connected locally'], ['cloud', 'cloud', 'Cloud'], ['bluetooth', 'bluetooth', 'Bluetooth'], ['reconnecting', 'sync', 'Reconnecting…'], ['dropped', 'alert', 'Dropped']]
   $$('#routes button').forEach((b, i) => b.addEventListener('click', () => {
     const [s, ic, label] = states[i]
     if (route.dataset.s === s) return

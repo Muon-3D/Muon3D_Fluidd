@@ -52,7 +52,7 @@ test('Files and editor: Show hidden files is off, keeps its choice, and the head
 test('Wi-Fi and network: the route pill says how Control reaches the printer, and Bluetooth has a row', async ({ page, open }) => {
   await usePrinter(page, PRESETS.idleHomed())
   await open('/wifi')
-  await expect(page.getByTestId('wifi-route-pill')).toHaveText('On this network')
+  await expect(page.getByTestId('wifi-route-pill')).toHaveText('Connected locally')
   await expect(page.getByTestId('wifi-bluetooth')).toContainText('Bluetooth')
   await expect(page.getByTestId('wifi-bluetooth-line')).toContainText('Not carrying this connection')
   // Still no Ethernet entry (the M1 has none).

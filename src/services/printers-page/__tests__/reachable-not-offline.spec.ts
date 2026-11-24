@@ -40,9 +40,9 @@ describe.each([['signed out', false], ['signed in to an account with no printers
     expect(p.offline).toHaveLength(0)
   })
 
-  it('shows a saved printer found on the LAN as Ready on this network', () => {
+  it('shows a saved printer found on the LAN as Ready, connected locally', () => {
     const p = page({ saved: [saved], found: [lan] as never }, signedIn)
-    expect(tiles(p)[0]).toMatchObject({ state: 'ready', detail: 'On this network' })
+    expect(tiles(p)[0]).toMatchObject({ state: 'ready', detail: 'Connected locally' })
   })
 
   it('lists a printer found on the LAN that nobody saved', () => {
@@ -66,9 +66,9 @@ describe('an account printer the console reports offline', () => {
     expect(tiles(p)[0]).toMatchObject({ state: 'ready', detail: 'Via Bluetooth' })
   })
 
-  it('is Ready on this network when the LAN found it and the status read failed', () => {
+  it('is Ready, connected locally when the LAN found it and the status read failed', () => {
     const p = page({ account: [account], status: dead, found: [lan] as never }, true)
-    expect(tiles(p)[0]).toMatchObject({ state: 'ready', detail: 'On this network' })
+    expect(tiles(p)[0]).toMatchObject({ state: 'ready', detail: 'Connected locally' })
     expect(p.offline).toHaveLength(0)
   })
 

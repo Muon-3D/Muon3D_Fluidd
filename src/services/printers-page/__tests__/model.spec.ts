@@ -240,7 +240,7 @@ describe('the Printers page', () => {
       const tiles = page.groups.flatMap(g => g.tiles).concat(page.printingNow)
       const detail = (name: string) => tiles.find(t => t.name === name)?.detail
       expect(detail('Boxwood')).toBe('Through hotspot')
-      expect(detail('Walnut')).toBe('On this network')
+      expect(detail('Walnut')).toBe('Connected locally')
     } finally {
       hotspotState.stations = null
     }
@@ -253,7 +253,7 @@ describe('the Printers page', () => {
         directory: { cloud: [], local: [entry('local:b', { name: 'muon-walnut-8987', active: 'local', host: '192.168.1.40' })], found: [] }
       }))
       const tile = page.groups.flatMap(g => g.tiles).concat(page.printingNow).find(t => t.name === 'Walnut')
-      expect(tile?.detail).toBe('On this network')
+      expect(tile?.detail).toBe('Connected locally')
     } finally {
       vi.unstubAllGlobals()
     }
