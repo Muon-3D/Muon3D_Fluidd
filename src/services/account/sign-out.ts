@@ -60,3 +60,15 @@ export async function endEverySession (): Promise<void> {
     await accountApi.endSession(session.id).catch(() => {})
   }
 }
+
+/**
+ * "Sign out everywhere" (Jack, 24 Nov: one MUON3D account for every surface):
+ * ends every other session of the account, then this browser's, and with it
+ * the console's browser session, so no surface is silently signed in again.
+ * Surfaces that hold a code-exchanged session of their own end with the
+ * browser session the console issued them from.
+ */
+export async function signOutEverywhere (router?: VueRouter): Promise<void> {
+  await endEverySession()
+  await signOutNow('everywhere', { router })
+}

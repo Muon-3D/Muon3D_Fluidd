@@ -4,6 +4,7 @@ import { AccountError } from '@/services/account/client'
 import { storedToken } from '@/services/muon-cloud/api'
 import { confirmAccount } from '@/services/account/confirmation'
 import { accountState, describe } from '@/services/account/state'
+import { stepUpMessage } from '@/services/account/sign-in-errors'
 
 export interface ReauthAsk {
   /** Why it's asked, in a line. */
@@ -11,11 +12,18 @@ export interface ReauthAsk {
   /** The button: "Remove passkey". */
   action?: string;
   danger?: boolean;
+  /** What is being confirmed, as sent (the sheet's `rows`). */
+  rows?: Array<{ label: string, value: string, mono?: boolean }>;
+  /** A small muted line under the buttons, such as a time limit. */
+  note?: string;
+  /** Passkey only: no password fields. */
+  passkeyOnly?: boolean;
 }
 
 interface ReauthDialogState extends Required<ReauthAsk> {
   open: boolean;
   busy: boolean;
+  passkeyBusy: boolean;
   error: string;
 }
 
@@ -28,7 +36,7 @@ interface ReauthDialogState extends Required<ReauthAsk> {
  */
 @Component
 export default class AccountReauthMixin extends Vue {
-  reauthState: ReauthDialogState = { open: false, busy: false, error: '', why: '', action: 'Confirm', danger: false }
+  reauthState: ReauthDialogState = { open: false, busy: false, passkeyBusy: false, error: '', why: '', action: 'Confirm', danger: false, rows: [], note: '', passkeyOnly: false }
   reauthSubmit: ((answer: Reauth) => void) | null = null
   reauthCancel: (() => void) | null = null
   reauthPasskey: (() => Promise<void>) | null = null
@@ -40,6 +48,10 @@ export default class AccountReauthMixin extends Vue {
     return {
       value: this.reauthState.open,
       busy: this.reauthState.busy,
+      passkeyBusy: this.reauthState.passkeyBusy,
+      rows: this.reauthState.rows,
+      note: this.reauthState.note,
+      passkeyOnly: this.reauthState.passkeyOnly,
       error: this.reauthState.error,
       why: this.reauthState.why || undefined,
       action: this.reauthState.action,
@@ -75,7 +87,7 @@ export default class AccountReauthMixin extends Vue {
     }
     if (!initialCurrent()) return null
     return new Promise<T | null>((resolve) => {
-      this.reauthState = { open: true, busy: false, error: '', why: ask.why ?? '', action: ask.action ?? 'Confirm', danger: ask.danger ?? false }
+      this.reauthState = { open: true, busy: false, passkeyBusy: false, error: '', why: ask.why ?? '', action: ask.action ?? 'Confirm', danger: ask.danger ?? false, rows: ask.rows ?? [], note: ask.note ?? '', passkeyOnly: ask.passkeyOnly ?? false }
       const token = storedToken()
       let active = true
       const current = () => active && this.reauthAlive && storedToken() === token && !document.hidden
@@ -88,6 +100,7 @@ export default class AccountReauthMixin extends Vue {
         if (this.reauthState.busy) return
         if (!current()) { finish(null); return }
         this.reauthState.busy = true
+        this.reauthState.passkeyBusy = passkey
         this.reauthState.error = ''
         try {
           if (passkey) await confirmAccount(current)
@@ -99,11 +112,12 @@ export default class AccountReauthMixin extends Vue {
           if (!current()) finish(null)
           else {
             this.reauthState.error = error instanceof DOMException && error.name === 'NotAllowedError'
-              ? 'Passkey confirmation cancelled. No action was sent.'
+              ? stepUpMessage(error)
               : describe(error)
           }
         } finally {
           this.reauthState.busy = false
+          this.reauthState.passkeyBusy = false
         }
       }
       this.reauthSubmit = answer => submit(answer)

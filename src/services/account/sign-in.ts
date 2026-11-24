@@ -12,9 +12,9 @@
  */
 import { storedToken } from '@/services/muon-cloud/api'
 import { handoffUrl, prepareAuthorize, startCentralSignIn } from '@/services/muon-cloud/centralLogin'
-import { accountRequest } from './client'
-import { usePasskey } from './webauthn'
-import type { AccountDetails } from './api'
+import { AccountError, accountRequest } from './client'
+import { createPasskey, usePasskey } from './webauthn'
+import type { AccountDetails, Me, Rekeyed } from './api'
 
 /** How the console lists the page's session, for the moment it lives. */
 export const SIGN_IN_DEVICE = 'Muon3D sign-in'
@@ -41,11 +41,44 @@ export async function codeSignIn (mfaToken: string, code: string): Promise<strin
 }
 
 /** A passkey on this device (it skips the two-step code: a passkey is both factors). */
-export async function passkeySignIn (): Promise<string> {
-  const { ceremony_id: ceremony, options } = await accountRequest<{ ceremony_id: string, options: { publicKey: Record<string, unknown> } }>('POST', '/v1/auth/passkey/options', undefined, { token: null })
-  const credential = await usePasskey(options.publicKey)
-  const answer = await accountRequest<SessionAnswer>('POST', '/v1/auth/passkey', { ceremony_id: ceremony, credential, device: SIGN_IN_DEVICE, refresh: false }, { token: null })
-  return answer.token
+export async function passkeySignIn (options: { conditional?: boolean, signal?: AbortSignal } = {}): Promise<string> {
+  const attempt = async () => {
+    const { ceremony_id: ceremony, options: request } = await accountRequest<{ ceremony_id: string, options: { publicKey: Record<string, unknown> } }>('POST', '/v1/auth/passkey/options', undefined, { token: null })
+    const credential = await usePasskey(request.publicKey, options)
+    const answer = await accountRequest<SessionAnswer>('POST', '/v1/auth/passkey', { ceremony_id: ceremony, credential, device: SIGN_IN_DEVICE, refresh: false }, { token: null })
+    return answer.token
+  }
+  try {
+    return await attempt()
+  } catch (error) {
+    // A ceremony lives 300 s: if it ran out while the sheet was up, ask once more without telling anyone (spec 6.2).
+    if (error instanceof AccountError && (error.errorCode === 'passkey_ceremony_expired' || (error.errorCode === null && /passkey sign-in has expired/i.test(error.message)))) return attempt()
+    throw error
+  }
+}
+
+/** What the nudge needs to know: how many passkeys the account has. Null when it can't be read (never block sign-in on it). */
+export async function passkeyCount (token: string): Promise<number | null> {
+  try {
+    const me = await accountRequest<Me>('GET', '/v1/me', undefined, { token })
+    const count = me.sign_in?.passkeys
+    return typeof count === 'number' ? count : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Adds a passkey with the page's own short session (the nudge, C17). The
+ * console ends the account's other sessions on a credential change and
+ * answers a new one in `session` (KAN-1389): the token to hand off with.
+ * Rejects as the browser does when the sheet is cancelled.
+ */
+export async function addPasskeyAfterSignIn (token: string, name: string): Promise<string> {
+  const { ceremony_id: ceremony, options } = await accountRequest<{ ceremony_id: string, options: { publicKey: Record<string, unknown> } }>('POST', '/v1/me/passkeys/options', undefined, { token })
+  const credential = await createPasskey(options.publicKey)
+  const answer = await accountRequest<Rekeyed>('POST', '/v1/me/passkeys', { ceremony_id: ceremony, credential, name }, { token })
+  return answer.session?.access_token || token
 }
 
 export async function signUp (email: string, password: string, name: string, declaredAge?: number): Promise<string> {

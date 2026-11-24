@@ -11,12 +11,29 @@
  * 404 or 405 and no JSON error. `AccountError.missing` says so, and the
  * pages show "Coming soon" there instead of an error.
  */
-import { CloudError, INSECURE_ORIGIN_MESSAGE, carryConfirmation, cloudBaseUrl, cloudSessionAllowed, refreshOutcome, sessionRefused, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
+import { CloudError, INSECURE_ORIGIN_MESSAGE, carryConfirmation, cloudBaseUrl, cloudSessionAllowed, refreshOutcome, retryAfterOf, sessionRefused, storeRefreshToken, storeToken, storedToken } from '@/services/muon-cloud/api'
 import { deletionRevision, observeDeletion } from '@/services/muon-cloud/deletion'
 
 export class AccountError extends CloudError {
-  constructor (message: string, status: number, body: Record<string, unknown> = {}) {
-    super(message, status, undefined, body)
+  constructor (message: string, status: number, body: Record<string, unknown> = {}, retryAfterMs?: number) {
+    super(message, status, undefined, body, retryAfterMs)
+  }
+
+  /** Seconds the console asked to wait (`Retry-After` on a 429), or null. */
+  get retryAfterS (): number | null {
+    return this.retryAfterMs === undefined ? null : Math.ceil(this.retryAfterMs / 1000)
+  }
+
+  /**
+   * The console's stable error code when its body has one (`{code}` or
+   * `{error: {code}}`), else null. Today the body is only `{error: "<sentence>"}`,
+   * so callers fall back to the sentence (see `sign-in-errors.ts`).
+   */
+  get errorCode (): string | null {
+    const body = this.body as { code?: unknown, error?: unknown }
+    if (typeof body.code === 'string') return body.code
+    const nested = body.error as { code?: unknown } | null
+    return nested && typeof nested === 'object' && typeof nested.code === 'string' ? nested.code : null
   }
 
   /** The console wants the person to confirm it's them (`403 reauth_required`). */
@@ -110,8 +127,13 @@ async function errorOf (response: Response): Promise<AccountError> {
     const parsed = text ? JSON.parse(text) : {}
     if (parsed && typeof parsed === 'object') data = parsed
   } catch { /* an HTML 404 from a console without the route: `missing` */ }
-  const message = typeof data.error === 'string' ? sentence(data.error) : `The Muon3D service answered ${response.status}.`
-  return new AccountError(message, response.status, data)
+  const nested = data.error as { message?: unknown } | null
+  const message = typeof data.error === 'string'
+    ? sentence(data.error)
+    : nested && typeof nested === 'object' && typeof nested.message === 'string'
+      ? sentence(nested.message)
+      : `The Muon3D service answered ${response.status}.`
+  return new AccountError(message, response.status, data, retryAfterOf(response))
 }
 
 /** The console's errors are lower-case clauses ("that code is not right"): shown as sentences. */

@@ -62,6 +62,16 @@ export function passkeysSupported (): boolean {
   return typeof window !== 'undefined' && typeof window.PublicKeyCredential === 'function' && !!navigator.credentials
 }
 
+/** Whether the browser can offer passkeys in a field's autofill (conditional mediation). */
+export async function conditionalPasskeysAvailable (): Promise<boolean> {
+  try {
+    const credential = typeof window !== 'undefined' ? window.PublicKeyCredential as unknown as { isConditionalMediationAvailable?: () => Promise<boolean> } | undefined : undefined
+    return passkeysSupported() && typeof credential?.isConditionalMediationAvailable === 'function' && await credential.isConditionalMediationAvailable() === true
+  } catch {
+    return false
+  }
+}
+
 /** The person cancelled the browser's passkey sheet (or it timed out): not an error to show. */
 export function cancelledPasskey (error: unknown): boolean {
   return error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'AbortError')
@@ -73,8 +83,16 @@ export async function createPasskey (publicKey: Json): Promise<Json> {
   return credentialJson(credential)
 }
 
-export async function usePasskey (publicKey: Json): Promise<Json> {
-  const credential = await navigator.credentials.get({ publicKey: requestOptions(publicKey) }) as PublicKeyCredential | null
+/**
+ * `conditional` asks the browser to offer passkeys in a field's autofill
+ * (`autocomplete="... webauthn"`) instead of opening its sheet; `signal`
+ * aborts it. Without options this is the plain button flow.
+ */
+export async function usePasskey (publicKey: Json, options: { conditional?: boolean, signal?: AbortSignal } = {}): Promise<Json> {
+  const request: CredentialRequestOptions = { publicKey: requestOptions(publicKey) }
+  if (options.conditional) (request as CredentialRequestOptions & { mediation?: string }).mediation = 'conditional'
+  if (options.signal) request.signal = options.signal
+  const credential = await navigator.credentials.get(request) as PublicKeyCredential | null
   if (!credential) throw new DOMException('No passkey was chosen.', 'NotAllowedError')
   return credentialJson(credential)
 }
