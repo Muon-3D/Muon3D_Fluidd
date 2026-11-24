@@ -180,14 +180,20 @@ export function cancelActivation () {
  * chooser. With none, say so in words, never the console's refusal.
  */
 async function holdRememberedBluetooth (printerId: string) {
-  if (cloudState.printers.some(p => p.id === printerId) || wantsBluetoothFor(printerId)) return
-  if (!reachablePrinters().some(p => p.id === printerId)) return
-  const printer = await permittedPrinterFor(printerId).catch(() => null)
-  if (!printer) {
+  let device: Awaited<ReturnType<typeof permittedPrinterFor>> = null
+  try {
+    if (cloudState.printers.some(p => p.id === printerId) || wantsBluetoothFor(printerId)) return
+    if (!reachablePrinters().some(p => p.id === printerId)) return
+    device = await permittedPrinterFor(printerId).catch(() => null)
+  } catch {
+    // Not a printer held only over Bluetooth, as far as anything here can tell: open it as before.
+    return
+  }
+  if (!device) {
     throw new Error(`Couldn't connect to ${printerName(printerId)} over Bluetooth. Bring this computer near it and open it from Printers with Look nearby.`)
   }
   chooseRouteMode(printerId, 'auto')
-  useBluetoothFor(printerId, printer.device)
+  useBluetoothFor(printerId, device.device)
 }
 
 /**
