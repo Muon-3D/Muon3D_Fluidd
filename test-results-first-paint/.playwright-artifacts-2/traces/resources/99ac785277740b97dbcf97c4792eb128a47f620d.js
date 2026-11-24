@@ -1,0 +1,13 @@
+export const getters = {
+  getQueueState: (state) => {
+    return state.queue_state;
+  },
+  getQueuedJobs: (state) => {
+    return state.queued_jobs;
+  },
+  getQueuedJob: (state) => (jobId) => {
+    return state.queued_jobs.findIndex((job) => job.job_id === jobId);
+  }
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImdldHRlcnMudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHR5cGUgeyBHZXR0ZXJUcmVlIH0gZnJvbSAndnVleCdcbmltcG9ydCB0eXBlIHsgSm9iUXVldWVTdGF0ZSB9IGZyb20gJy4vdHlwZXMnXG5pbXBvcnQgdHlwZSB7IFJvb3RTdGF0ZSB9IGZyb20gJy4uL3R5cGVzJ1xuXG5leHBvcnQgY29uc3QgZ2V0dGVyczogR2V0dGVyVHJlZTxKb2JRdWV1ZVN0YXRlLCBSb290U3RhdGU+ID0ge1xuICBnZXRRdWV1ZVN0YXRlOiAoc3RhdGUpID0+IHtcbiAgICByZXR1cm4gc3RhdGUucXVldWVfc3RhdGVcbiAgfSxcblxuICBnZXRRdWV1ZWRKb2JzOiAoc3RhdGUpID0+IHtcbiAgICByZXR1cm4gc3RhdGUucXVldWVkX2pvYnNcbiAgfSxcblxuICBnZXRRdWV1ZWRKb2I6IChzdGF0ZSkgPT4gKGpvYklkOiBzdHJpbmcpID0+IHtcbiAgICByZXR1cm4gc3RhdGUucXVldWVkX2pvYnMuZmluZEluZGV4KGpvYiA9PiBqb2Iuam9iX2lkID09PSBqb2JJZClcbiAgfVxufVxuIl0sIm1hcHBpbmdzIjoiQUFJTyxhQUFNLFVBQWdEO0FBQUEsRUFDM0QsZUFBZSxDQUFDLFVBQVU7QUFDeEIsV0FBTyxNQUFNO0FBQUEsRUFDZjtBQUFBLEVBRUEsZUFBZSxDQUFDLFVBQVU7QUFDeEIsV0FBTyxNQUFNO0FBQUEsRUFDZjtBQUFBLEVBRUEsY0FBYyxDQUFDLFVBQVUsQ0FBQyxVQUFrQjtBQUMxQyxXQUFPLE1BQU0sWUFBWSxVQUFVLFNBQU8sSUFBSSxXQUFXLEtBQUs7QUFBQSxFQUNoRTtBQUNGOyIsIm5hbWVzIjpbXX0=

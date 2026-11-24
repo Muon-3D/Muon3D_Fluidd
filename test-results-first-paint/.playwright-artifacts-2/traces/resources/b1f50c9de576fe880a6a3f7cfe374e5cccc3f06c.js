@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/control/ControlFans.vue?vue&type=style&index=0&scoped=31a77aae&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/control/ControlFans.vue?vue&type=style&index=0&scoped=31a77aae&lang.scss"
+const __vite__css = ".fans-simple[data-v-31a77aae] {\n  display: contents;\n}\n.fans-simple__dim[data-v-31a77aae] {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  color: var(--m3d-text-muted);\n}\n.fans-simple__dim-low[data-v-31a77aae] {\n  opacity: 0.6;\n}\n.fans-simple__rows > .crow + .crow[data-v-31a77aae] {\n  border-top: 1px solid var(--m3d-border);\n}\n.fans__slider[data-v-31a77aae] {\n  flex: 0 1 180px;\n  margin-left: auto;\n}\n.fans__none[data-v-31a77aae] {\n  margin: 0;\n  color: var(--m3d-text-muted);\n  font-size: 13px;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))
