@@ -50,14 +50,14 @@ describe('networkRouteLabel', () => {
   })
 
   it('trusts the printer over the address when it says it did not', () => {
-    expect(networkRouteLabel(false, '10.42.0.1')).toBe('On this network')
+    expect(networkRouteLabel(false, '10.42.0.1')).toBe('Connected locally')
   })
 
   it('falls back to the page address when the printer predates the field', () => {
     expect(networkRouteLabel(null, '10.42.0.1')).toBe('Through hotspot')
     expect(networkRouteLabel(undefined, '10.42.0.1')).toBe('Through hotspot')
-    expect(networkRouteLabel(null, 'boxwood.local')).toBe('On this network')
-    expect(networkRouteLabel(null, '192.168.1.20')).toBe('On this network')
+    expect(networkRouteLabel(null, 'boxwood.local')).toBe('Connected locally')
+    expect(networkRouteLabel(null, '192.168.1.20')).toBe('Connected locally')
   })
 })
 
@@ -80,11 +80,11 @@ describe('entryRouteLabel: only the printer reached through its own hotspot says
   it("uses the page address only for that printer's own page", () => {
     expect(entryRouteLabel('local', '10.42.0.1:80', null, '10.42.0.1')).toBe('Through hotspot')
     expect(entryRouteLabel('local', null, null, '10.42.0.1')).toBe('Through hotspot')
-    expect(entryRouteLabel('local', '192.168.1.40', null, '10.42.0.1')).toBe('On this network')
+    expect(entryRouteLabel('local', '192.168.1.40', null, '10.42.0.1')).toBe('Connected locally')
   })
 
   it("the printer's own answer wins over the address", () => {
-    expect(entryRouteLabel('local', '10.42.0.1', false, '10.42.0.1')).toBe('On this network')
+    expect(entryRouteLabel('local', '10.42.0.1', false, '10.42.0.1')).toBe('Connected locally')
   })
 })
 
