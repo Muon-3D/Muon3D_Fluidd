@@ -117,7 +117,7 @@ test.describe('Connect locally from the hosted page', () => {
     expect(context.pages()).toHaveLength(1)
   })
 
-  test('a picked Connect locally whose secure name does not answer stays local: the message and the other routes, no .local, no IP', async ({ page, context, account }) => {
+  test('a picked Connect locally whose secure name does not answer stays local: the message and the other routes, nothing opened', async ({ page, context, account }) => {
     const pages: string[] = []
     context.on('page', p => pages.push(p.url()))
     const asked = await printerPages(page, ['muon-boxwood-367a.local', '192.168.1.20'])
@@ -125,14 +125,10 @@ test.describe('Connect locally from the hosted page', () => {
     await start(page, account, [{ id: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, linked: true, addrs: ['192.168.1.20'], secure: SECURE }], false)
     await optionsOf(page, ROUTE_PRINTER.name)
     await item(page, 'Connect locally').click()
-    await expect(page.getByTestId('route-problem-line')).toContainText("Couldn't connect locally.")
+    await expect(page.getByTestId('route-problem-line')).toContainText('DNS rebinding protection')
     await expect(page.getByTestId('route-choice-cloud')).toBeVisible()
-    await expect(page).toHaveURL(`${HOSTED}/`)
-    // The muon3d.local choice only asks; nothing leaves the page until Open is clicked.
-    await page.getByTestId('route-choice-muon-local').click()
-    await expect(page.getByTestId('muon-local-question')).toBeVisible()
-    await page.getByTestId('muon-local-cancel').click()
-    await expect(page.getByTestId('muon-local-question')).toHaveCount(0)
+    // The muon3d.local choice is now the printer's own page, opened only by a click (KAN-6283): nothing left yet.
+    await expect(page.getByTestId('route-choice-open-page')).toBeVisible()
     await expect(page).toHaveURL(`${HOSTED}/`)
     expect(asked).toEqual([])
     expect(pages).toEqual([])

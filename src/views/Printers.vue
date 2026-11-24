@@ -492,6 +492,7 @@
     <p
       v-if="notice"
       class="note"
+      data-tid="route-notice"
     >
       {{ notice }}
       <a

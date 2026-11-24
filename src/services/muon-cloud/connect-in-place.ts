@@ -20,7 +20,8 @@ import { MUON_LOCAL_URL, MUON_LOCAL_QUESTION, openMuonLocal, setLeave } from './
 import { activateCloudPrinter, activateLocalPrinter, activationState } from './activate'
 import { chooseRouteMode } from './route-choice'
 import { cloudState, dropCloudConnection, rememberBluetoothOnly } from './state'
-import { lanFetch, localNetworkPermission } from './discovery'
+import { discoveryState, lanFetch, localNetworkPermission } from './discovery'
+import { openableAddr } from './local-route'
 import { isPrinter, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { heardRecently } from '@/services/muon-ble/heard'
 import { reconnectBluetooth, releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
@@ -30,6 +31,45 @@ import { startPairing } from '@/services/muon-ble/pairing'
 /** Said when the browser's local-network question was refused. One line: the person's next step is in it. */
 export const LOCAL_ACCESS_BLOCKED =
   "Your browser blocked access to printers on your network. Allow 'local network access' for control.muon3d.com in the address bar, then try again."
+
+/**
+ * Said when the secure name did not answer although the printer is on this network (KAN-6283): the router's DNS
+ * rebinding protection drops a public name that points at a private address, so the name never resolves.
+ */
+export const REBINDING_LINE = "Your network's router is blocking the printer's secure address (DNS rebinding protection)."
+export const REBINDING_FIX = "To fix it, allow muonlan.net in the router's DNS rebind exceptions, or use another DNS server."
+
+/** Said when the printer is not beside this browser at all: another network. Never a reason to sign in. */
+export const NOT_ON_YOUR_NETWORK = "This printer isn't on your network."
+
+export type LocalFailure = 'blocked' | 'rebinding' | 'elsewhere' | 'other'
+
+/**
+ * Why a local open failed, as far as a browser can tell. A fetch that cannot resolve or connect only says
+ * "TypeError", so the service's own list decides: a printer it puts beside this browser whose secure name still
+ * does not answer is the router blocking the name; one it does not list (after the list was read) is on another
+ * network. Local-network permission denied is its own case (LOCAL_ACCESS_BLOCKED).
+ *
+ * An https page cannot fall back to the printer's IP in place: http://<ip> is blocked as mixed content and
+ * https://<ip> has no valid certificate. The only ways round are another route or the person opening the printer's
+ * own page themselves.
+ */
+export function localFailure (printerId: string | null | undefined, why: string, probed = true): LocalFailure {
+  if (why === 'blocked') return 'blocked'
+  if (why !== 'unreachable') return 'other'
+  const want = printerId?.toLowerCase()
+  const beside = want ? discoveryState.cloud.find(c => c.printerId.toLowerCase() === want) : undefined
+  if (beside) return probed ? 'rebinding' : 'other'
+  return discoveryState.cloudChecked ? 'elsewhere' : 'other'
+}
+
+/** Where the person can open the printer's own page themselves: its address on this network, else muon3d.local. */
+export function ownPageUrl (printerId: string | null | undefined): string {
+  const want = printerId?.toLowerCase()
+  const beside = want ? discoveryState.cloud.find(c => c.printerId.toLowerCase() === want) : undefined
+  const addr = openableAddr(beside, window.location.hostname)
+  return `http://${addr ?? 'muon3d.local'}/`
+}
 
 const PROBE_MS = 8000
 
@@ -142,10 +182,12 @@ export async function openOnNetwork (o: { name: string, label: string, printerId
     return { opened: true, line: null, ask: false }
   }
   const blocked = done.why === 'blocked'
+  const why = localFailure(o.printerId, done.why)
+  const reason = blocked ? LOCAL_ACCESS_BLOCKED : why === 'rebinding' ? `${REBINDING_LINE} ${REBINDING_FIX}` : null
   if (cloudState.printers.some(p => p.id === o.printerId && p.online)) {
     try {
       await activateCloudPrinter(o.printerId)
-      return { opened: true, line: blocked ? LOCAL_ACCESS_BLOCKED : null, ask: false }
+      return { opened: true, line: reason, ask: false }
     } catch { /* fall to Bluetooth */ }
   }
   const heard = await detectedNearby(o.printerId)
@@ -154,7 +196,8 @@ export async function openOnNetwork (o: { name: string, label: string, printerId
     if (bt === 'opened') return { opened: true, line: null, ask: false }
     if (bt === 'pairing') return { opened: false, line: null, ask: false }
   }
-  return { opened: false, line: blocked ? LOCAL_ACCESS_BLOCKED : null, ask: true }
+  if (why === 'elsewhere') return { opened: false, line: NOT_ON_YOUR_NETWORK, ask: false }
+  return { opened: false, line: reason, ask: true }
 }
 
 export { MUON_LOCAL_URL, MUON_LOCAL_QUESTION, openMuonLocal, setLeave }

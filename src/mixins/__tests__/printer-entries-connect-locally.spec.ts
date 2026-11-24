@@ -34,9 +34,11 @@ const entry = (secureName: string | null): DirectoryEntry => ({
 
 const component = () => ({
   notice: null as string | null,
-  routeProblem: null as { line: string, choices: Array<{ id: string }> } | null,
   routeProblemEntry: null as unknown,
   askMuonLocal: false,
+  accountDialog: false,
+  routeProblemUrl: null as string | null,
+  routeProblem: null as { line: string, detail?: string, choices: Array<{ id: string }> } | null,
   failRoute: methods.failRoute,
   $store: { state: { socket: { open: false, ready: false } } },
   afterOpen: vi.fn(),
@@ -73,13 +75,43 @@ describe('Connect locally on the hosted page (KAN-2529, KAN-5459)', () => {
     expect(c.routeProblem).toBeNull()
   })
 
-  it('picked, with a secure name that does not answer: stays local, says so, offers the other routes, tries none', async () => {
+  it('picked, a secure name that does not answer for a printer the service does not put here: another network, no sign-in, no muon3d.local', async () => {
     const c = component()
     await methods.connectLocal.call(c, entry(NAME))
     expect(nav).not.toHaveBeenCalled()
-    expect(c.routeProblem?.line).toBe("Couldn't connect locally.")
-    expect(c.routeProblem?.choices.map(x => x.id)).toEqual(['cloud', 'bluetooth', 'muon-local'])
+    expect(c.routeProblem?.line).toBe("This printer isn't on your network.")
+    expect(c.routeProblem?.choices.map(x => x.id)).toEqual(['cloud'])
     expect(c.connectCloud).not.toHaveBeenCalled()
+    expect(c.accountDialog).toBe(false)
+  })
+
+  it('picked, a secure name that does not answer for a printer beside this browser: the router blocks the name (KAN-6283)', async () => {
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
+    const c = component()
+    await methods.connectLocal.call(c, entry(NAME))
+    expect(c.routeProblem?.line).toBe("Your network's router is blocking the printer's secure address (DNS rebinding protection).")
+    expect(c.routeProblem?.detail).toMatch(/allow muonlan\.net in the router's DNS rebind exceptions/)
+    expect(c.routeProblem?.choices.map(x => x.id)).toEqual(['cloud', 'bluetooth', 'open-page'])
+    expect(c.routeProblemUrl).toBe('http://192.168.1.20/')
+    expect(c.connectCloud).not.toHaveBeenCalled()
+  })
+
+  it('Auto, with the name blocked: says why, then goes on to Muon3D', async () => {
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
+    const c = component()
+    await methods.connectLocal.call(c, entry(NAME), false, false)
+    expect(c.notice).toMatch(/DNS rebinding protection\)\. To fix it, allow muonlan\.net/)
+    expect(c.connectCloud).toHaveBeenCalledOnce()
+  })
+
+  it('Auto, on another network with Muon3D offline: its own line and no muon3d.local question', async () => {
+    const c = component()
+    const e = entry(NAME)
+    ;(e.cloud as { online: boolean }).online = false
+    await methods.connectLocal.call(c, e, false, false)
+    expect(c.routeProblem?.line).toBe("This printer isn't on your network.")
+    expect(c.askMuonLocal).toBe(false)
+    expect(c.accountDialog).toBe(false)
   })
 
   it('picked, with the browser refusing local network access: the one plain line', async () => {

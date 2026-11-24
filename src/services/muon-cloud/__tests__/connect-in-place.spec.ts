@@ -32,6 +32,7 @@ vi.mock('@/services/muon-ble/retry', () => ({ retryBluetooth: ble.retry }))
 const { connectInPlace, openOnNetwork, probeSecureApi, secureInstance, openMuonLocal, setLeave, MUON_LOCAL_URL, LOCAL_ACCESS_BLOCKED } =
   await import('../connect-in-place')
 const { cloudState } = await import('../state')
+const { discoveryState } = await import('../discovery')
 
 const NAME = 'abcdefghijklmnopqrst.muonlan.net'
 
@@ -121,6 +122,26 @@ describe('opening from a scan result or the sign-in list (Auto)', () => {
     vi.stubGlobal('fetch', refuses())
     permission('denied')
     expect(await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })).toEqual({ opened: false, line: LOCAL_ACCESS_BLOCKED, ask: true })
+  })
+
+  it('a printer beside this browser whose name does not resolve: the router blocks it (KAN-6283), and the question stays', async () => {
+    vi.stubGlobal('fetch', refuses())
+    permission('granted')
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Sloe', model: 'M1', linked: true, localAddrs: ['192.168.137.178'] }]
+    discoveryState.cloudChecked = true
+    const r = await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })
+    expect(r.line).toMatch(/^Your network's router is blocking the printer's secure address \(DNS rebinding protection\)\. To fix it, allow muonlan\.net/)
+    expect(r.ask).toBe(true)
+    discoveryState.cloud = []
+  })
+
+  it('a printer the service does not put on this network: says so, with no muon3d.local question', async () => {
+    vi.stubGlobal('fetch', refuses())
+    permission('granted')
+    discoveryState.cloud = []
+    discoveryState.cloudChecked = true
+    expect(await openOnNetwork({ name: NAME, label: 'Sloe', printerId: 'p1' })).toEqual({ opened: false, line: "This printer isn't on your network.", ask: false })
+    discoveryState.cloudChecked = false
   })
 })
 
