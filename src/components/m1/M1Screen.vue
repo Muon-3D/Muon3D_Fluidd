@@ -36,6 +36,13 @@
         Your printer needs an update to show its screen here
       </p>
       <p
+        v-else-if="needsNetwork"
+        class="m1-screen__empty"
+        data-tid="m1-screen-needs-network"
+      >
+        Screen view needs a network connection
+      </p>
+      <p
         v-else-if="unreachable"
         class="m1-screen__empty"
         data-tid="m1-screen-unreachable"
@@ -59,6 +66,7 @@
       <iframe
         v-else-if="served && html"
         ref="frame"
+        :key="frameKey"
         class="m1-screen__frame"
         :srcdoc="html"
         sandbox="allow-scripts"
@@ -91,7 +99,9 @@ import { PanelBridge } from '@/services/panel-embed/bridge'
 import Vue from 'vue'
 import { httpClientActions } from '@/api/httpClientActions'
 import { cloudState } from '@/services/muon-cloud/state'
-import { loadPanelBundle, type PanelBundle } from '@/services/panel-embed/bundle'
+import { loadPanelBundle, PANEL_URL, type PanelBundle } from '@/services/panel-embed/bundle'
+import { bluetoothCarrying } from '@/services/muon-ble/link'
+import { printerTransportBinding } from '@/services/managed-session/httpTransportBinding'
 import { NOTIFY_ACTIONS, PANEL_NAVIGATE_PATH, PANEL_STATE_PATH, gcodeRefusal, refusalNote } from '@/services/panel-embed/allow'
 import { KnobWheel } from '@/services/m1-3d/knob'
 
@@ -100,19 +110,31 @@ const FLY_MS = 380
 /** The bezel's drawn size, and the room the top strip takes, px. */
 const BEZEL_PX = 340
 const STRIP_PX = 64
+/** How long a new frame gets to say hello before it is made again, ms. */
+const HELLO_WAIT_MS = 8000
 
 /**
  * The printer's screen, asked of the printer itself over the route Control uses for it (LAN, Bluetooth, relay), never of
  * this page's origin: hosted Control serves no /panel/. Kept by ETag, so a 304 costs no bundle.
  */
-function panelBundle (key: string | null, onProgress: (loaded: number, total: number) => void): Promise<PanelBundle> {
+function panelBundle (key: string | null, hosted: boolean, onProgress: (loaded: number, total: number) => void): Promise<PanelBundle> {
+  const id = cloudState.activePrinterId
+  const remote = printerTransportBinding.remote
   return loadPanelBundle((url, request) => Vue.$httpClient.get(url, {
-    responseType: 'text',
+    // Bytes, so a gzip body from a route that does not undo it can be unzipped (the loader reads both).
+    responseType: 'arraybuffer',
     transformResponse: [v => v],
     validateStatus: () => true,
     headers: request.headers,
     onDownloadProgress: e => request.onProgress(e.loaded, e.total ?? 0)
-  }), key, onProgress)
+  }), key, onProgress, undefined, {
+    // Over the radio nothing is fetched (KAN-6069).
+    bluetooth: !!id && bluetoothCarrying(id),
+    // A browser negotiates gzip itself on a direct route; Iroh and the relay pass headers through as given.
+    compressed: remote,
+    // Control served by the printer (not the hosted page): its own origin's /panel/ first, never its secure name's (KAN-6062).
+    sameOrigin: !hosted && !remote ? `${window.location.origin}${PANEL_URL}` : null
+  })
 }
 
 /** Each view's bridge, kept out of Vue's reach: Vue must not walk it or its port. */
@@ -152,6 +174,14 @@ export default class M1Screen extends Mixins(ControlMixin) {
 
   /** 'in' before the zoom starts, 'open', then 'out' while it flies back. */
   phase: 'in' | 'open' | 'out' = 'in'
+  /** Bumped to make a new frame, so the screen boots again and says hello again. */
+  frameKey = 0
+  /** Over Bluetooth with no kept copy: the screen is not pulled over the radio. */
+  needsNetwork = false
+  helloTimer = 0
+  helloTries = 0
+  /** The socket connection the bridge was last handed over on. */
+  handshakeConnectionId: number | null = null
   /** /panel/ is served here: null until known. */
   served: boolean | null = null
   /** The printer did not answer over this route: neither the screen nor "needs an update" can be said. */
@@ -212,10 +242,11 @@ export default class M1Screen extends Mixins(ControlMixin) {
       if (this.phase === 'in') this.phase = 'open'
     }))
     this.loading = true
-    const bundle = await panelBundle(this.printerKey, (loaded, total) => { this.loadPercent = total > 0 ? Math.min(100, Math.round(loaded / total * 100)) : null })
+    const bundle = await panelBundle(this.printerKey, !!this.$store.state.config.hostConfig.hosted, (loaded, total) => { this.loadPercent = total > 0 ? Math.min(100, Math.round(loaded / total * 100)) : null })
     this.loading = false
     if (this.phase === 'out' || (this as unknown as { _isDestroyed?: boolean })._isDestroyed) return
-    this.served = bundle.state === 'unknown' ? null : bundle.state === 'yes'
+    this.needsNetwork = bundle.state === 'needs-network'
+    this.served = bundle.state === 'unknown' || bundle.state === 'needs-network' ? null : bundle.state === 'yes'
     this.unreachable = bundle.state === 'unknown'
     if (bundle.state === 'yes') {
       this.html = bundle.html
@@ -255,6 +286,7 @@ export default class M1Screen extends Mixins(ControlMixin) {
   connect () {
     const frame = this.$refs.frame as HTMLIFrameElement | undefined
     if (!frame) return
+    this.handshakeConnectionId = (this.$store.state.socket.connectionId as number | null) ?? null
     bridges.set(this, new PanelBridge(frame, {
       rpc: async (method, params) => {
         const why = this.rpcRefusal(method, params)
@@ -284,6 +316,11 @@ export default class M1Screen extends Mixins(ControlMixin) {
       onRefused: what => this.say(refusalNote(what)),
       onSupport: supported => { this.liveSupported = supported }
     }))
+    // An embed that never says hello (it booted before the bridge listened, or the link stalled it) is sent for again, twice at most.
+    clearTimeout(this.helloTimer)
+    this.helloTimer = window.setTimeout(() => {
+      if (bridges.get(this)?.greeted === false && this.helloTries < 2) { this.helloTries++; this.rehandshake() }
+    }, HELLO_WAIT_MS)
     // Only the websocket's own push while it works; a state poll only while it is down or silent.
     if (this.wsDown) bridges.get(this)?.setPolling(true)
     // Moonraker's notifications, as Control's socket passes them to the store, passed on.
@@ -301,7 +338,32 @@ export default class M1Screen extends Mixins(ControlMixin) {
     })
   }
 
+  /** A fresh frame and a fresh bridge: the embed boots again, says hello, and is handed a new port. */
+  rehandshake () {
+    this.stopActions?.()
+    this.stopActions = null
+    bridges.get(this)?.dispose()
+    bridges.delete(this)
+    this.frameKey++
+    this.$nextTick(() => this.connect())
+  }
+
+  /** The socket came back on a new connection (a Bluetooth reconnect): the embed's port rode the old one, so the handshake runs again. */
+  @Watch('socketConnectionId')
+  onReconnected (id: number | null) {
+    if (id === null || !this.html || !bridges.has(this) || id === this.handshakeConnectionId) return
+    // The first id of a socket that was still identifying when the screen opened: not a reconnect.
+    if (this.handshakeConnectionId === null) { this.handshakeConnectionId = id; return }
+    this.helloTries = 0
+    this.rehandshake()
+  }
+
+  get socketConnectionId (): number | null {
+    return (this.$store.state.socket.connectionId as number | null) ?? null
+  }
+
   beforeDestroy () {
+    clearTimeout(this.helloTimer)
     clearTimeout(this.flyTimer)
     document.removeEventListener('keydown', this.onKey)
     this.stopActions?.()
@@ -331,7 +393,8 @@ export default class M1Screen extends Mixins(ControlMixin) {
 
   get connectionKey (): string {
     const s = this.$store.state.socket
-    return `${this.$store.state.config.apiUrl ?? ''}|${s.connectionId ?? ''}|${s.open ? 1 : 0}|${this.$store.state.printer.printer.webhooks?.state ?? ''}`
+    // Which printer, and whether Klipper is up. A socket that drops and returns is the same screen (it shakes hands again), not a new printer.
+    return `${this.$store.state.config.apiUrl ?? ''}|${this.$store.state.printer.printer.webhooks?.state ?? ''}`
   }
 
   /**
