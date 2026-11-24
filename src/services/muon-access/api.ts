@@ -86,6 +86,9 @@ const viaFluidd: Send = async (method, path, body) => {
   }
 }
 
+/** What a blocked or failed request to another printer says. */
+export const UNREACHED = "This page couldn't reach that printer to ask. Ask at the printer's own screen, or open Control from control.muon3d.com."
+
 /** Straight to another printer on this network. */
 function viaLan (apiUrl: string): Send {
   const base = apiUrl.replace(/\/+$/, '')
@@ -93,9 +96,16 @@ function viaLan (apiUrl: string): Send {
     const query = method === 'GET' && body
       ? `?${new URLSearchParams(Object.entries(body).map(([k, v]) => [k, String(v)]))}`
       : ''
-    const response = await lanFetch(`${base}${path}${query}`, method === 'GET'
-      ? { cache: 'no-store' }
-      : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) })
+    let response: Response
+    try {
+      response = await lanFetch(`${base}${path}${query}`, method === 'GET'
+        ? { cache: 'no-store' }
+        : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) })
+    } catch {
+      // The browser said only "Failed to fetch": a cross-origin block (the printer's CORS list, a private-network rule)
+      // or the printer is not there. Say what the person can do (KAN-5990).
+      throw new AccessRefused(UNREACHED, 0)
+    }
     const data = await response.json().catch(() => null)
     if (!response.ok) return fail(response.status, data?.error?.message)
     return data?.result ?? data
