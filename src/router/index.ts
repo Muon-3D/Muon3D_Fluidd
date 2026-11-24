@@ -16,6 +16,8 @@ import { isStaleChunkError, reloadForNewBuild } from '@/util/stale-build'
 // they reach services/printer-pages, which reaches this router); now all are.
 const Overview = () => import('@/components/foreign/OverviewRoute.vue')
 const Console = () => import('@/views/Console.vue')
+const AdminSectionRoute = () => import('@/components/admin/AdminSectionRoute.vue')
+const AdminTools = () => import('@/components/admin/AdminTools.vue')
 const GcodePreview = () => import('@/views/GcodePreview.vue')
 const Jobs = () => import('@/components/foreign/JobsRoute.vue')
 const Tune = () => import('@/views/Tune.vue')
@@ -290,10 +292,27 @@ const LEGACY_PRINTER_PAGES = [
 
 const routes: Array<RouteConfig> = [
   {
+    // The admin portal (KAN-6100): one shell that owns the staff session and its states
+    // (signed out, not staff, not confirmed, open, ended); children draw only while it is open.
     path: '/admin',
-    name: 'Admin',
-    component: () => import('@/views/Admin.vue'),
-    meta: { printerIndependent: true }
+    component: () => import('@/components/admin/AdminShell.vue'),
+    meta: { printerIndependent: true },
+    children: [
+      { path: '', name: 'Admin', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'overview' } },
+      { path: 'traffic', name: 'Admin-traffic', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'traffic' } },
+      { path: 'errors', name: 'Admin-errors', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'errors' } },
+      { path: 'infrastructure', name: 'Admin-infrastructure', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'infrastructure' } },
+      { path: 'endpoints', name: 'Admin-endpoints', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'endpoints' } },
+      { path: 'fleet', name: 'Admin-fleet', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'fleet' } },
+      { path: 'accounts', name: 'Admin-accounts', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'accounts' } },
+      { path: 'jobs', name: 'Admin-jobs', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'jobs' } },
+      { path: 'logs', name: 'Admin-logs', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'logs' } },
+      { path: 'alerts', name: 'Admin-alerts', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'alerts' } },
+      { path: 'releases', name: 'Admin-releases', component: AdminSectionRoute, meta: { printerIndependent: true, section: 'releases' } },
+      { path: 'tools', redirect: '/admin/tools/accounts' },
+      { path: 'tools/:tool(accounts|audit|review|handles)', name: 'Admin-tools', component: AdminTools, meta: { printerIndependent: true } },
+      { path: '*', redirect: '/admin' }
+    ]
   },
   {
     // Every printer: printing now, your groups, those found on this network
