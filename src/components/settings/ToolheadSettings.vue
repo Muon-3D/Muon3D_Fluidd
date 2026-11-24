@@ -369,10 +369,11 @@
     </fieldset>
 
     <p
+      v-if="isMuonPrinter === true"
       class="mset__note"
       data-tid="moving-no-reverse-z"
     >
-      Reversing Z is gone for everyone: on a bed-moving printer it only crashes the plate.
+      On a Muon printer, Z direction is fixed to protect the plate.
     </p>
   </div>
 </template>

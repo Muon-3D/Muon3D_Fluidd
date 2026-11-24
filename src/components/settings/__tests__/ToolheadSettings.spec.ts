@@ -49,6 +49,17 @@ afterEach(() => mounted.splice(0).forEach(w => w.destroy()))
 const track = <T extends { wrapper: { destroy: () => void } }>(s: T): T => { mounted.push(s.wrapper); return s }
 
 describe('Settings › Moving and extruding', () => {
+  it.each([true, false, null])('shows the fixed-Z note only for a confirmed Muon printer (%s), in either developer state', muon => {
+    for (const dev of [false, true]) {
+      const s = track(show({ muon, dev }))
+      const note = s.wrapper.find('[data-tid="moving-no-reverse-z"]')
+      expect(note.exists()).toBe(muon === true)
+      if (muon === true) expect(note.text()).toBe('On a Muon printer, Z direction is fixed to protect the plate.')
+      expect(s.wrapper.find('[data-tid="moving-reverse-z"]').exists()).toBe(muon === false)
+      expect(s.saved()).toEqual([])
+    }
+  })
+
   it('on a Muon printer: the callout, Gentle/Normal/Fast from max_velocity, the M1 caps and the locked rows', async () => {
     const s = track(show())
     expect(s.wrapper.get('[data-tid="moving-muon-callout"]').text()).toBe('Boxwood is a Muon printer. Speeds stay inside what the M1 is built for. Anything that could damage it is under Developer mode.')
