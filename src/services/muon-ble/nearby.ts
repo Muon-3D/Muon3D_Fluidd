@@ -43,6 +43,11 @@ export interface NearbyPrinter {
   display: string;
   /** From `INFO`; `null` until it is read, or once an advertisement contradicts it. */
   endpointId: string | null;
+  /**
+   * This page connected to the printer (or chose it) and the link has not dropped (KAN-5974): it can be reconnected
+   * with no chooser, so it counts as reachable over Bluetooth whether or not it advertises meanwhile.
+   */
+  held?: boolean;
   /** The latest advertisement's flags; `null` when the browser gave none. */
   advert: BleAdvert | null;
   heardAt: number;
@@ -115,6 +120,7 @@ function upsert (device: BleDevice, fields: { localName?: string | null, endpoin
       localName: '',
       display: '',
       endpointId: null,
+      held: false,
       advert: null,
       heardAt: 0
     }
@@ -139,6 +145,24 @@ function upsert (device: BleDevice, fields: { localName?: string | null, endpoin
     ensureClock()
   }
   return p
+}
+
+/**
+ * Holds `device` as reachable over Bluetooth: this page connected to it or chose it. A device `getDevices` lists that
+ * is connected right now is held the same way (startNearby). It stays held until {@link dropBluetoothHold}.
+ */
+export function holdBluetooth (device: BleDevice, fields: { endpointId?: string | null, localName?: string | null } = {}): NearbyPrinter {
+  const p = upsert(device, { localName: fields.localName ?? device.name, endpointId: fields.endpointId, heard: true })
+  p.held = true
+  return p
+}
+
+/** The link to `device` dropped, or failed to come up: it is no longer claimed as reachable until it is heard again. */
+export function dropBluetoothHold (device: BleDevice) {
+  const p = nearbyState.printers.find(x => x.deviceId === device.id)
+  if (!p || !p.held) return
+  p.held = false
+  p.heardAt = 0
 }
 
 let listening: AbortController | null = null
@@ -192,6 +216,8 @@ export async function startNearby (): Promise<void> {
   for (const device of await rememberedDevices()) {
     if (listening !== controller) return
     if (known[device.id]) watch(device, controller.signal)
+    // Chrome lists it as allowed and its radio link is up now: held, with no advertisement needed.
+    if (known[device.id] && device.gatt?.connected) holdBluetooth(device, { endpointId: known[device.id].endpointId, localName: known[device.id].localName })
   }
 }
 

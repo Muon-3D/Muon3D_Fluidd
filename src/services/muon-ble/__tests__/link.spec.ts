@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bluetoothRouteFor, cappedSegment, MAX_WRITE_SEGMENT, openBleLink, releaseBluetoothLink, stopUsingBluetoothFor, takesBleLinks, useBluetoothFor, wantsBluetoothFor } from '../link'
+import { heardRecently } from '../heard'
+import { nearbyState } from '../nearby'
 import { EID, fakeEndpoint, fakePrinter, info, OTHER_EID } from './fakes'
 
 afterEach(() => {
@@ -180,6 +182,27 @@ describe('the Bluetooth route', () => {
     expect(second).not.toBe(first)
     expect(second?.isOpen()).toBe(true)
     expect(endpoint.addLink).toHaveBeenCalledTimes(2)
+  })
+
+  it('holds the printer as reachable while the link is up and after a deliberate hang-up, and stops when the radio drops (KAN-5974)', async () => {
+    nearbyState.printers.splice(0)
+    const printer = fakePrinter()
+    const { endpoint } = fakeEndpoint()
+    useBluetoothFor(EID, printer.device)
+    await bluetoothRouteFor(endpoint, EID)
+    const sighting = () => nearbyState.printers.find(p => p.deviceId === printer.device.id)!
+    sighting().heardAt = Date.now() - 10 * 60_000
+    expect(heardRecently(sighting())).toBe(true)
+
+    // Leaving the printer hangs up on purpose: it can still be reconnected with no chooser.
+    await releaseBluetoothLink(EID)
+    expect(heardRecently(sighting())).toBe(true)
+
+    // The radio dropping under a live link ends the claim.
+    await bluetoothRouteFor(endpoint, EID)
+    printer.drop()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(heardRecently(sighting())).toBe(false)
   })
 
   it('does nothing with an endpoint that takes no Bluetooth links (the console before muon-link#31)', async () => {

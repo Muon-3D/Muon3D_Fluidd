@@ -17,6 +17,7 @@
  */
 import Vue from 'vue'
 import { onEndpointReplacing } from '@/services/muon-cloud/endpoint-hooks'
+import { dropBluetoothHold, holdBluetooth } from './nearby'
 import {
   decodeInfo,
   gattDroppedMessage,
@@ -528,6 +529,9 @@ export function noteBluetoothDropped (printerId: string, reason: string) {
   if (!routes.has(id)) return
   if (!routeState.dropped[id]) droppedAt.set(id, Date.now())
   Vue.set(routeState.dropped, id, reason)
+  // The link is gone: Control stops claiming the printer is reachable over Bluetooth (KAN-5974).
+  const device = routes.get(id)?.device
+  if (device) dropBluetoothHold(device)
 }
 
 /**
@@ -630,6 +634,9 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
   let link: BleLinkHandle
   try {
     link = route.link = await openBleLink(endpoint, route.device, options)
+  } catch (error) {
+    dropBluetoothHold(route.device)
+    throw error
   } finally {
     Vue.set(routeState.opening, id, false)
   }
@@ -638,6 +645,9 @@ export async function bluetoothRouteFor (endpoint: unknown, printerId: string, o
     route.link = null
     throw new Error('The printer nearby is not the one asked for.')
   }
+  // Held from here until the link drops (KAN-5974): a connected printer stops advertising, and the Printers page
+  // must still say it can be reconnected, with no chooser.
+  holdBluetooth(route.device, { endpointId: id })
   Vue.set(routeState.up, id, true)
   Vue.delete(routeState.fellBack, id)
   Vue.delete(routeState.dropped, id)

@@ -11,7 +11,11 @@
  */
 export const NEARBY_FRESH_MS = 30_000
 
-/** Whether this sighting is recent enough to say the printer is here now. */
-export function heardRecently (p: { heardAt: number } | null | undefined, now = Date.now()): boolean {
-  return !!p && p.heardAt > 0 && now - p.heardAt <= NEARBY_FRESH_MS
+/**
+ * Whether this sighting says the printer is here now: heard in the last 30 s, or held (KAN-5974). A printer this page
+ * connected to over Bluetooth stops advertising while it is linked, so it is held as reachable from the link coming
+ * up until the link drops, however long ago its last advertisement was.
+ */
+export function heardRecently (p: { heardAt: number, held?: boolean } | null | undefined, now = Date.now()): boolean {
+  return !!p && (p.held === true || (p.heardAt > 0 && now - p.heardAt <= NEARBY_FRESH_MS))
 }
