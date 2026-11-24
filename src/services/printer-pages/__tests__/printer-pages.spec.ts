@@ -16,6 +16,7 @@ import {
   isPrintersOwnPage,
   learnActiveIdentity,
   openPrinterAt,
+  pickTarget,
   ownPageHome,
   preferSavedPrinterFor,
   printerPageNeedsLogin,
@@ -411,5 +412,29 @@ describe('ownPageHome (KAN-2008)', () => {
   it('waits for the old behaviour when no printer slug is known', () => {
     expect(ownPageHome('/', 'http://192.168.137.81:8098', null, own)).toBeNull()
     expect(ownPageHome('/', '', 'boxwood-367a', own)).toBeNull()
+  })
+})
+
+describe('which entry opens a shared address on an https page (KAN-5972)', () => {
+  const secure = local('sloe-1a2b', 'https://sloe-1a2b.muonlan.net')
+
+  it('opens an Open printer held here by its secure local address, not through an account that lacks it', () => {
+    cloudState.printers = []
+    expect(pickTarget([secure, cloud('sloe-1a2b', 'ff00')], true)).toBe(secure)
+  })
+
+  it('still opens an account printer through Muon3D', () => {
+    cloudState.printers = [{ id: 'ff00', name: 'Sloe' } as never]
+    expect(pickTarget([secure, cloud('sloe-1a2b', 'ff00')], true)).toMatchObject({ kind: 'cloud' })
+    cloudState.printers = []
+  })
+
+  it('keeps Bluetooth for a held printer whose saved address is plain http, which an https page cannot reach', () => {
+    cloudState.printers = []
+    expect(pickTarget([local('sloe-1a2b', 'http://10.0.0.5'), cloud('sloe-1a2b', 'ff00')], true)).toMatchObject({ kind: 'cloud' })
+  })
+
+  it('prefers the saved printer on a plain http page', () => {
+    expect(pickTarget([secure, cloud('sloe-1a2b', 'ff00')], false)).toBe(secure)
   })
 })

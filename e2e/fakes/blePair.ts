@@ -340,9 +340,12 @@ export async function useNearbyPrinters (page: Page, pick: NearbyFake, options: 
       })
     }
     // `granted`: this browser was allowed the printer in an earlier visit (getDevices lists it before any chooser).
+    // Chrome keeps that permission across a reload: a device chosen once is listed again by getDevices.
+    const keptKey = 'e2eChosen:' + device.id
     let chosen = !!granted
+    try { if (sessionStorage.getItem(keptKey)) chosen = true } catch {}
     const bt: any = new EventTarget()
-    bt.requestDevice = async (options: unknown) => { asked.push(options); chosen = true; return device }
+    bt.requestDevice = async (options: unknown) => { asked.push(options); chosen = true; try { sessionStorage.setItem(keptKey, '1') } catch {} return device }
     bt.getDevices = async () => chosen ? [device] : []
     bt.getAvailability = async () => true
     // The radio goes away: the link drops and nothing connects until it is back.
