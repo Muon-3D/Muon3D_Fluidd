@@ -23,6 +23,7 @@
       v-if="size !== 'S' && heater && !disconnected"
       class="ht__spark"
       :series="seriesKey"
+      :label="name"
       fill
     />
     <span

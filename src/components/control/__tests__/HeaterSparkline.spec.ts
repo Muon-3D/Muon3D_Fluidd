@@ -29,3 +29,17 @@ it('reads nothing when the charts store has no data yet', () => {
   expect(w.attributes('data-state')).toBe('empty')
   w.destroy()
 })
+
+it.each([
+  { name: 'history', data: [at(0, 180), at(30, 210)], empty: false },
+  { name: 'empty history', data: [], empty: true },
+  { name: 'invalid readings', data: [at(0, NaN), at(30, Infinity)], empty: true }
+])('names the heater and $name without announcing a fabricated line', ({ data, empty }) => {
+  const w = mount(HeaterSparkline, { propsData: { series: 'extruder', label: 'Nozzle' }, mocks: { $store: store(data) } })
+  expect(w.attributes('role')).toBe('img')
+  expect(w.attributes('aria-label')).toBe(`Nozzle temperature history${empty ? ', no history yet' : ''}`)
+  expect(w.attributes('aria-hidden')).toBeUndefined()
+  expect(w.find('.spark__line').exists()).toBe(!empty)
+  expect(w.html()).not.toContain('NaN')
+  w.destroy()
+})
