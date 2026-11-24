@@ -37,7 +37,9 @@ for (const width of [390, 1440, 1920]) {
       expect(ids.filter(i => i === 'macros-all')).toHaveLength(1)
       // Negative controls: the test and dev macros are not tiles, and every width keeps its first tile.
       await expect(page.locator('[data-tile="macros"] [data-macro="BUZZ_EXTRUDER"], [data-tile="macros"] [data-macro="TEST_SPEED"]')).toHaveCount(0)
-      await expect(page.locator('[data-tile="macros"] [data-macro="home"]')).toHaveCount(1)
+      // KAN-5980: Home all is the Trackpad's alone, not a Quick command.
+      await expect(page.locator('[data-tile="macros"] [data-macro="home"]')).toHaveCount(0)
+      await expect(page.locator('[data-tile="macros"] [data-macro="load"]')).toHaveCount(1)
     })
   })
 }
@@ -51,7 +53,7 @@ test('a narrower tile shows fewer commands, dropping from the tail (negative con
   await page.setViewportSize({ width: 390, height: 900 })
   await expect.poll(() => chips(page).count()).toBeLessThan(wide)
   const keys = await page.locator('[data-tile="macros"] [data-tid="macro-chip"]').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.macro))
-  expect(keys).toEqual(['home', 'load', 'unload'])
+  expect(keys).toEqual(['load', 'unload'])
 })
 
 test('only macros the printer has are shown (negative control: Purge line and Lights off absent without them)', async ({ page, open }) => {
@@ -119,14 +121,12 @@ test.describe('Position tile', () => {
     expect(printer.moves()).toEqual([])
   })
 
-  test('an axis that is not homed says so and has its own Home; homed ones have none', async ({ page, open }) => {
+  test('an axis that is not homed says so, with no Home button of its own (KAN-5980)', async ({ page, open }) => {
     const printer = await start(page, {}, undefined, 'xy')
     await open('/')
     await expect(page.getByTestId('axis-not-homed')).toHaveCount(1)
-    await expect(page.getByTestId('home-x')).toHaveCount(0)
-    await expect(page.getByTestId('home-y')).toHaveCount(0)
-    await page.getByTestId('home-z').click()
-    await expect.poll(() => printer.gcode).toEqual(['G28 Z'])
+    await expect(page.locator('[data-tile="position"]').getByRole('button', { name: /^Home/ })).toHaveCount(0)
+    expect(printer.gcode).toEqual([])
   })
 })
 
@@ -142,7 +142,7 @@ test.describe('A layout saved before the new row', () => {
     await expect(page.locator('[data-cell="hotend"]')).toBeVisible()
     await page.getByTestId('layout-keep').click()
     await expect(page.getByTestId('layout-migrated')).toHaveCount(0)
-    expect(JSON.parse((await page.evaluate(k => localStorage.getItem(k), KEY))!).version).toBe(2)
+    expect(JSON.parse((await page.evaluate(k => localStorage.getItem(k), KEY))!).version).toBe(3)
   })
 
   test('a layout saved by this version is left alone (negative control: no notice)', async ({ page, open }) => {

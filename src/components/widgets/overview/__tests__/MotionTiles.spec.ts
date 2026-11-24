@@ -18,9 +18,9 @@ describe('PositionTile', () => {
   it('renders with no data as dashes and not homed', () => {
     const w = m(PositionTile, tileStore({ empty: true }))
     expect(w.text()).toContain('Position')
-    // Nothing is homed, so every axis says so and has its own Home (I-542) instead of a number.
+    // Nothing is homed, so every axis says so (no per-axis Home, KAN-5980) instead of a number.
     expect(w.findAll('[data-tid="axis-not-homed"]')).toHaveLength(3)
-    expect(w.findAll('[data-tid^="home-"]')).toHaveLength(3)
+    expect(w.findAll('[data-tid^="home-"]')).toHaveLength(0)
     expect(w.find('[data-tid="tile-state"]').text()).toBe('Not homed')
     w.destroy()
   })
@@ -32,23 +32,14 @@ describe('PositionTile', () => {
     w.destroy()
   })
 
-  it('gives only an axis that is not homed its own Home, and refuses while printing', async () => {
-    const homedAll = m(PositionTile, tileStore())
-    expect(homedAll.find('[data-tid="home-z"]').exists()).toBe(false)
-    homedAll.destroy()
+  it('has no Home button of its own: an axis that is not homed only says so (KAN-5980)', () => {
     const store = tileStore()
     store.state.printer.printer.toolhead.homed_axes = 'xy'
     const w = m(PositionTile, store)
-    expect(w.find('[data-tid="home-x"]').exists()).toBe(false)
-    await w.find('[data-tid="home-z"]').trigger('click')
-    expect(sent()).toEqual(['G28 Z'])
+    expect(w.findAll('button').wrappers.filter(b => /home/i.test(`${b.attributes('aria-label') ?? ''} ${b.text()}`))).toHaveLength(0)
+    expect(w.findAll('[data-tid="axis-not-homed"]')).toHaveLength(1)
+    expect(sent()).toEqual([])
     w.destroy()
-    resetSocket()
-    const busyStore = tileStore({ printing: true })
-    busyStore.state.printer.printer.toolhead.homed_axes = 'xy'
-    const busy = m(PositionTile, busyStore)
-    expect(busy.find('[data-tid="home-z"]').attributes('disabled')).toBeDefined()
-    busy.destroy()
   })
 
   it('has Motors off as a small icon in the header, and no endstops menu', async () => {

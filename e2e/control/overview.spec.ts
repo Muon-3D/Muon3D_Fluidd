@@ -182,7 +182,7 @@ test('the phone layout: one column, small widgets two to a row, the Add widget s
   await expect(cell(page, 'care')).toBeVisible()
 })
 
-test('Jog and Position at size L have no Home all of their own (KAN-1955 / KAN-2023); Position homes only an axis that is not homed (I-542)', async ({ page, open }) => {
+test('Jog and Position at size L have no Home all of their own (KAN-1955 / KAN-2023); Position has no per-axis Home (KAN-5980)', async ({ page, open }) => {
   await open('/')
   await edit(page)
   // Put both back at size L through Add widget (works on the desktop grid and on a phone alike).
@@ -197,7 +197,7 @@ test('Jog and Position at size L have no Home all of their own (KAN-1955 / KAN-2
   await page.getByTestId('edit-done').click()
   await expect(page.locator('[data-tile="jog"]').getByRole('button', { name: /Home all/i })).toHaveCount(0)
   await expect(page.locator('[data-tile="position"]').getByRole('button', { name: /Home all/i })).toHaveCount(0)
-  // Everything is homed on the shared printer: no per-axis Home either.
+  // No per-axis Home on Position.
   await expect(page.locator('[data-tile="position"] [data-tid^="home-"]')).toHaveCount(0)
   await expect(page.getByRole('button', { name: /Home X ?Y/i })).toHaveCount(0)
 })

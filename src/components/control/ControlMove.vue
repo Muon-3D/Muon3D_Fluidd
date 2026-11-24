@@ -16,9 +16,8 @@
         <button
           type="button"
           class="move__hbtn"
-          :class="{ 'move__hbtn--icon': trackpadOnly }"
           :disabled="busy"
-          :aria-label="trackpadOnly ? 'Home all' : undefined"
+          aria-label="Home all"
           title="Home all (G28)"
           data-tid="home-all"
           @click="home()"
@@ -34,7 +33,24 @@
             name="home"
             small
           />
-          <span v-if="!trackpadOnly">Home all</span>
+          <span>Home all</span>
+        </button>
+        <button
+          type="button"
+          class="move__hbtn move__hbtn--xy"
+          :disabled="busy"
+          aria-label="Home XY"
+          title="Home XY (G28 X Y)"
+          data-tid="home-xy"
+          @click="home('XY')"
+        >
+          <v-progress-circular
+            v-if="homing('XY')"
+            indeterminate
+            size="14"
+            width="2"
+          />
+          <span v-else>Home XY</span>
         </button>
         <button
           v-if="!trackpadOnly"

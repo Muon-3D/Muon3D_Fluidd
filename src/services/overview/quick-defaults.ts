@@ -13,12 +13,12 @@ export interface QuickDefault {
   icon: string;
   /** Macro or command names that can stand for this entry, first found wins. Empty: always there. */
   names: string[];
-  /** Sent as typed G-code when it is not a macro on the printer (Home all, Lights off). */
+  /** Sent as typed G-code when it is not a macro on the printer (Lights off). */
   gcode?: string;
 }
 
+// Home all is not here (KAN-5980): the Trackpad's header has the one Home all, plus Home XY.
 export const QUICK_DEFAULTS: QuickDefault[] = [
-  { id: 'home', title: 'Home all', icon: 'home', names: [], gcode: 'G28' },
   { id: 'load', title: 'Load filament', icon: 'spool', names: ['LOAD_FILAMENT'] },
   { id: 'unload', title: 'Unload filament', icon: 'spool', names: ['UNLOAD_FILAMENT'] },
   { id: 'purge', title: 'Purge line', icon: 'nozzle', names: ['PURGE_LINE'] },
@@ -39,7 +39,7 @@ export const QUICK_DEFAULTS: QuickDefault[] = [
  * runs (busy): sent mid-print they would home, probe or heat in the middle of the
  * job. Filament load/unload/cut and Lights off stay available.
  */
-export const QUICK_BUSY_BLOCKED: ReadonlySet<string> = new Set(['home', 'purge', 'clean', 'park', 'center', 'mesh', 'pid-hotend', 'pid-bed', 'probe', 'zpark'])
+export const QUICK_BUSY_BLOCKED: ReadonlySet<string> = new Set(['purge', 'clean', 'park', 'center', 'mesh', 'pid-hotend', 'pid-bed', 'probe', 'zpark'])
 
 /** Left out of the default on purpose (test, dev and one-off macros): they stay under All commands. */
 export const QUICK_LEFT_OUT = ['BUZZ_EXTRUDER', 'STEPLOSS_TEST', 'TEST_SPEED', 'LED_INFO', 'LED_READY', 'CHOME', 'FINETUNE_RESONANCE', 'RESET_CALIBRATION']

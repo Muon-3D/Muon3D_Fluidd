@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defaultLayout, layoutKey, serverLayoutKey, type TileDefault } from '../layout'
-import { loadLayout, saveLayout } from '../layout-store'
+import { loadLayout, saveLayout, staleLayout } from '../layout-store'
 
 const defs: TileDefault[] = [{ id: 'stage', span: 7, rows: 2 }, { id: 'job', span: 5 }, { id: 'bed', span: 3 }]
 const ctx = { accountId: 'acc-1', printerId: 'boxwood' }
@@ -27,7 +27,7 @@ describe('saving and loading the Overview layout', () => {
 
   it('returns the copy to send to the printer settings', () => {
     const record = saveLayout(ctx, mine, memory(), 123)
-    expect(record).toEqual({ version: 2, savedAt: 123, ...mine })
+    expect(record).toEqual({ version: 3, savedAt: 123, ...mine })
   })
 
   it('follows the person to another browser through the printer settings', () => {
@@ -58,6 +58,28 @@ describe('saving and loading the Overview layout', () => {
   it('cleans a saved copy that names tiles it should not', () => {
     const storage = memory({ [layoutKey('acc-1', 'boxwood')]: JSON.stringify({ version: 2, savedAt: 1, tiles: [{ id: 'ghost', span: 4 }, { id: 'job', span: 40, rows: 9 }], hidden: [] }) })
     expect(loadLayout(ctx, undefined, storage, defs)).toEqual({ tiles: [{ id: 'job', span: 12, rows: 4 }], hidden: ['stage', 'bed'] })
+  })
+
+  it('KAN-5979: a version 2 copy is read with the four panels set to equal widths, and nothing else touched', () => {
+    const four = ['hotend', 'bed', 'position', 'mode']
+    const d: TileDefault[] = [{ id: 'stage', span: 7, rows: 2 }, { id: 'job', span: 5 }, { id: 'hotend', span: 3 }, { id: 'bed', span: 3 }, { id: 'position', span: 3 }, { id: 'mode', span: 3 }, { id: 'graph', span: 12 }]
+    const old = { version: 2, savedAt: 1, tiles: [{ id: 'job', span: 5, rows: 1 }, { id: 'mode', span: 5, rows: 1 }, { id: 'hotend', span: 2, rows: 1 }, { id: 'graph', span: 6, rows: 1 }, { id: 'bed', span: 2, rows: 1 }, { id: 'position', span: 4, rows: 1 }], hidden: ['stage'] }
+    const storage = memory({ [layoutKey('acc-1', 'boxwood')]: JSON.stringify(old) })
+    const out = loadLayout(ctx, undefined, storage, d)
+    expect(out.tiles.map(t => t.id)).toEqual(['job', 'mode', 'hotend', 'graph', 'bed', 'position'])
+    expect(out.tiles.filter(t => four.includes(t.id)).map(t => t.span)).toEqual([3, 3, 3, 3])
+    expect(out.tiles.find(t => t.id === 'job')).toEqual({ id: 'job', span: 5, rows: 1 })
+    expect(out.tiles.find(t => t.id === 'graph')).toEqual({ id: 'graph', span: 6, rows: 1 })
+    expect(out.hidden).toEqual(['stage'])
+    // No "new layout" notice for it, and the same from the printer's copy.
+    expect(staleLayout(ctx, undefined, storage, d)).toBe(false)
+    expect(loadLayout(ctx, { [serverLayoutKey('acc-1', 'boxwood')]: old }, memory(), d).tiles.find(t => t.id === 'mode')!.span).toBe(3)
+  })
+
+  it('KAN-5979: a version 3 copy keeps a width the person chose for those panels (negative control)', () => {
+    const d: TileDefault[] = [{ id: 'hotend', span: 3 }, { id: 'bed', span: 3 }]
+    const storage = memory({ [layoutKey('acc-1', 'boxwood')]: JSON.stringify({ version: 3, savedAt: 1, tiles: [{ id: 'hotend', span: 6, rows: 1 }, { id: 'bed', span: 3, rows: 1 }], hidden: [] }) })
+    expect(loadLayout(ctx, undefined, storage, d).tiles[0].span).toBe(6)
   })
 
   it('survives a browser that will not store or read', () => {
