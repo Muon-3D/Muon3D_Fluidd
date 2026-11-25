@@ -101,6 +101,25 @@ async function expectConnected (page: Page, seen: string[]) {
   }, { timeout: 20000 }).toBe('none')
 }
 
+/** The printer's tile says "Connected locally (by address)"; when it does not, the failure says what the page was on. */
+async function expectBadge (page: Page) {
+  await expect.poll(async () => {
+    const text = await page.locator('.tile').filter({ hasText: /Boxwood/i }).first().innerText().catch(() => '')
+    if (text.includes('Connected locally') && text.includes('(by address)')) return 'badge'
+    const state = await page.evaluate(async () => {
+      const { default: store } = await import(/* @vite-ignore */ ['', 'src', 'store', 'index.ts'].join('/'))
+      const st = store.state as any
+      return {
+        apiUrl: st.config.apiUrl,
+        socket: { open: st.socket.open, ready: st.socket.ready, apiConnected: st.socket.apiConnected, connecting: st.socket.connecting },
+        instances: (st.config.instances ?? []).map((i: any) => [i.apiUrl, i.endpointId, i.active]),
+        direct: (await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'direct-address-state.ts'].join('/'))).directAddressState.host
+      }
+    }).catch((e: Error) => ({ unreadable: e.message }))
+    return JSON.stringify({ text, state, asks: (await lanAsks(page)).map(a => a.url) })
+  }, { timeout: 20000 }).toBe('badge')
+}
+
 async function allPrinters (page: Page) {
   const link = page.getByRole('banner').getByRole('link', { name: 'All printers', exact: true })
   if (await link.count()) await link.click()
@@ -138,9 +157,7 @@ test.describe('Connect locally by address when the secure name is blocked', () =
     await expectConnected(page, seen)
     await expect(page).toHaveURL(new RegExp(`^${HOSTED}/boxwood-367a`))
     await allPrinters(page)
-    const tile = page.locator('.tile').filter({ hasText: /Boxwood/i })
-    await expect(tile).toContainText('Connected locally')
-    await expect(tile).toContainText('(by address)')
+    await expectBadge(page)
     // In place on this page, declared local, over the printer's address and never its hotspot; no tab opened.
     const asks = await lanAsks(page)
     expect(asks).toContainEqual({ url: `http://${IP}/server/muon/identity`, space: 'local' })
@@ -156,7 +173,7 @@ test.describe('Connect locally by address when the secure name is blocked', () =
     await expect.poll(async () => (await lanAsks(page)).some(a => a.url.startsWith(`ws://${IP}/websocket`))).toBe(true)
     await expectConnected(page, seen)
     await allPrinters(page)
-    await expect(page.locator('.tile').filter({ hasText: /Boxwood/i })).toContainText('(by address)')
+    await expectBadge(page)
   })
 
   test('another printer answers at that address: it is never shown as this one, and the fallback buttons show', async ({ page, account }) => {
