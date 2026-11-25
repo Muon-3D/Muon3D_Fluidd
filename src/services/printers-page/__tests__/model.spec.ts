@@ -526,9 +526,9 @@ describe('a printer connected by its LAN address (KAN-6283)', () => {
     host: null, active: 'local', saved: [{ name: 'Boxwood', apiUrl: 'http://192.168.1.20', socketUrl: 'ws://192.168.1.20/websocket', active: true }]
   })
 
-  it('reads "Connected locally (by address)", not "Remote, through Muon3D"', () => {
+  it('reads "Connected locally (by address, not encrypted)", not "Remote, through Muon3D"', () => {
     directAddressState.host = '192.168.1.20'
-    expect(lineOf(direct())).toBe('Connected locally (by address)')
+    expect(lineOf(direct())).toBe('Connected locally (by address, not encrypted)')
     directAddressState.host = null
     expect(lineOf(direct())).toBe('Connected locally')
   })

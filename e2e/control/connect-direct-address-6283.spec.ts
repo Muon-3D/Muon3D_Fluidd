@@ -2,7 +2,7 @@
  * KAN-6283, Recommendation A and B (Jack, 25 Nov): the router's DNS rebinding protection drops
  * `<id>.muonlan.net`, so the secure name never resolves. Where the browser has Local Network Access (Chrome,
  * Edge 142+) Control connects to the printer's LAN address IN PLACE, on control.muon3d.com, and says "Connected
- * locally (by address)". Everywhere else, or if the person refuses the browser's question, the printer's own
+ * locally (by address, not encrypted)". Everywhere else, or if the person refuses the browser's question, the printer's own
  * page on this network is the primary button, with Bluetooth beside it.
  *
  * The page is served at an https origin the way connect-local-fallback-6283.spec.ts does. The printer's secure
@@ -108,11 +108,11 @@ async function expectConnected (page: Page, seen: string[]) {
   }, { timeout: 20000 }).toBe('none')
 }
 
-/** The printer's tile says "Connected locally (by address)"; when it does not, the failure says what the page was on. */
+/** The printer's tile says "Connected locally (by address, not encrypted)"; when it does not, the failure says what the page was on. */
 async function expectBadge (page: Page, seen: string[]) {
   await expect.poll(async () => {
     const text = await page.locator('.tile').filter({ hasText: /Boxwood/i }).first().innerText().catch(() => '')
-    if (text.includes('Connected locally') && text.includes('(by address)')) return 'badge'
+    if (text.includes('Connected locally') && text.includes('(by address, not encrypted)')) return 'badge'
     const state = await page.evaluate(async () => {
       const { default: store } = await import(/* @vite-ignore */ ['', 'src', 'store', 'index.ts'].join('/'))
       const st = store.state as any
@@ -190,7 +190,7 @@ test.describe('Connect locally by address when the secure name is blocked', () =
     await expectFallbackButtons(page)
     expect((await lanAsks(page)).some(a => a.url.startsWith('ws://'))).toBe(false)
     await allPrinters(page)
-    await expect(page.locator('.tile').filter({ hasText: /Boxwood/i })).not.toContainText('(by address)')
+    await expect(page.locator('.tile').filter({ hasText: /Boxwood/i })).not.toContainText('by address')
   })
 
   test('a browser without Local Network Access: the printer page on this network is the primary button, with Bluetooth; nothing is dialled', async ({ page, context, account }) => {

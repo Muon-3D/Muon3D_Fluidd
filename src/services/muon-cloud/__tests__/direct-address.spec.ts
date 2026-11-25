@@ -133,7 +133,7 @@ describe('connectByAddress', () => {
     expect(activate).toHaveBeenCalledWith(
       expect.objectContaining({ apiUrl: 'http://192.168.1.20', socketUrl: 'ws://192.168.1.20/websocket', endpointId: ID }), ID
     )
-    expect(byAddressSuffix('http://192.168.1.20')).toBe(' (by address)')
+    expect(byAddressSuffix('http://192.168.1.20')).toBe(' (by address, not encrypted)')
     expect(byAddressSuffix('http://192.168.1.21')).toBe('')
     expect(byAddressSuffix('http://sloe.local')).toBe('')
   })
