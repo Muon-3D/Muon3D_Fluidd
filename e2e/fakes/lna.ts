@@ -24,11 +24,13 @@ export interface LanAsk { url: string, space: string | null }
 
 export async function lna (page: Page, mode: LnaMode, printerIp = '192.168.1.20') {
   // The mock printer is on loopback, which a public https page may not reach without the browser's own permission
-  // (Chrome 142+). What the page asks of it is answered from here instead, so it never depends on that check. Registered
-  // first, so every more specific route (the printer's own, an identity) answers before it. Its socket is already
-  // proxied the same way by usePrinter.
+  // (Chrome 142+). What the page asks of it is answered from here instead, so it never depends on that check. Specs that
+  // use the mock printer register this after it, and the printer's own database route is passed through to it; an
+  // identity registered later answers first. Its socket is proxied the same way by usePrinter, which is why this
+  // runs after it: the page's socket is rewritten to a name that route matches (see the init script below).
   if (mode !== 'unsupported') {
     await page.route(new RegExp(`^http://localhost:${MOCK_PORT}/`), async route => {
+      if (route.request().url().includes('/server/database/item')) return route.fallback()
       const response = await route.fetch()
       await route.fulfill({ response, headers: { ...response.headers(), 'access-control-allow-origin': '*' } })
     })

@@ -63,13 +63,14 @@ async function identity (page: Page, id: string, gate?: Promise<void>) {
 
 /** `who`: what the printer at the address says it is. Registered after the mock printer's own routes, so it answers first. */
 async function start (page: Page, account: Parameters<typeof useAllRoutes>[1], mode: LnaMode, addrs: string[], who?: { id: string, gate?: Promise<void> }) {
-  await lna(page, mode, IP)
   await useAllRoutes(page, account)
   ;(account.printers[0] as unknown as { secure_name: string }).secure_name = SECURE
   // The name never resolves: the router drops it.
   await page.route(/^https:\/\/[a-z2-7]{20}\.muonlan\.net\/.*/, route => route.abort('namenotresolved'))
   await nearby(page, addrs)
   await usePrinter(page, PRESETS.idleHomed(), { ticks: false })
+  // After the mock printer's own socket route: the page's socket must reach it by the address it was rewritten to.
+  await lna(page, mode, IP)
   if (who) await identity(page, who.id, who.gate)
   await hostedPage(page)
   await page.goto(`${HOSTED}/`)
