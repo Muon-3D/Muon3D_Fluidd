@@ -12,6 +12,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect, ready } from '../fixtures'
 import { CONSOLE } from '../fakes/console'
+import { lna, type LnaMode } from '../fakes/lna'
 import { ROUTE_PRINTER, useAllRoutes } from '../fakes/routes'
 import { MOCK_PORT, VITE_PORT } from '../ports'
 
@@ -52,7 +53,9 @@ async function unresolvedName (page: Page) {
   await page.route(/^https:\/\/[a-z2-7]{20}\.muonlan\.net\/.*/, route => route.abort('namenotresolved'))
 }
 
-async function start (page: Page, account: Parameters<typeof useAllRoutes>[1], beside: boolean) {
+/** `mode`: what the browser has of Local Network Access. Not there by default: the printer's own page is what these specs are about. */
+async function start (page: Page, account: Parameters<typeof useAllRoutes>[1], beside: boolean, mode: LnaMode = 'unsupported') {
+  await lna(page, mode, IP)
   await useAllRoutes(page, account)
   ;(account.printers[0] as unknown as { secure_name: string }).secure_name = SECURE
   await nearby(page, beside ? [{ id: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, addrs: [IP], secure: SECURE }] : [])
@@ -78,14 +81,14 @@ test.describe('Connect locally when the secure name does not answer', () => {
     await expect(page.getByTestId('route-problem-line')).toContainText("Your network's router is blocking the printer's secure address (DNS rebinding protection)")
     await expect(page.getByTestId('route-problem-detail')).toContainText("allow muonlan.net in the router's DNS rebind exceptions")
     await expect(page.getByTestId('route-choice-cloud')).toBeVisible()
-    await expect(page.getByTestId('route-choice-open-page')).toContainText(`http://${IP}/`)
+    await expect(page.getByTestId('route-choice-open-page')).toHaveText(`Open ${ROUTE_PRINTER.name} on this network`)
     // Nothing left this page by itself.
     await expect(page).toHaveURL(`${HOSTED}/`)
     expect(pages).toEqual([])
     const opened = context.waitForEvent('page')
     await page.getByTestId('route-choice-open-page').click()
     const popup = await opened
-    await popup.waitForURL(`http://${IP}/`)
+    await popup.waitForURL(`http://${IP}/boxwood-367a`)
     await expect(page).toHaveURL(`${HOSTED}/`)
   })
 
@@ -118,13 +121,8 @@ test.describe('Connect locally when the secure name does not answer', () => {
   })
 
   test('local network access refused: the permission message is unchanged', async ({ page, account }) => {
-    await page.addInitScript(() => {
-      const query = navigator.permissions.query.bind(navigator.permissions)
-      navigator.permissions.query = (d: PermissionDescriptor) =>
-        (d as { name: string }).name === 'local-network-access' ? Promise.resolve({ state: 'denied' } as PermissionStatus) : query(d)
-    })
     await unresolvedName(page)
-    await start(page, account, true)
+    await start(page, account, true, 'denied')
     await connectLocally(page)
     await expect(page.getByTestId('route-problem-line')).toHaveText(
       "Your browser blocked access to printers on your network. Allow 'local network access' for control.muon3d.com in the address bar, then try again."

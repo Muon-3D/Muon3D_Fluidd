@@ -21,7 +21,9 @@ import { activateCloudPrinter, activateLocalPrinter, activationState } from './a
 import { chooseRouteMode } from './route-choice'
 import { cloudState, dropCloudConnection, rememberBluetoothOnly } from './state'
 import { discoveryState, lanFetch, localNetworkPermission } from './discovery'
-import { openableAddr } from './local-route'
+import { mdnsHostFromName, openableAddr } from './local-route'
+import { connectByAddress, directCandidates } from './direct-address'
+import { slugForMdnsHost } from '@/services/printer-pages/slug'
 import { isPrinter, nearbyState, permittedPrinterFor, type NearbyPrinter } from '@/services/muon-ble/nearby'
 import { heardRecently } from '@/services/muon-ble/heard'
 import { reconnectBluetooth, releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor } from '@/services/muon-ble/link'
@@ -50,9 +52,9 @@ export type LocalFailure = 'blocked' | 'rebinding' | 'elsewhere' | 'other'
  * does not answer is the router blocking the name; one it does not list (after the list was read) is on another
  * network. Local-network permission denied is its own case (LOCAL_ACCESS_BLOCKED).
  *
- * An https page cannot fall back to the printer's IP in place: http://<ip> is blocked as mixed content and
- * https://<ip> has no valid certificate. The only ways round are another route or the person opening the printer's
- * own page themselves.
+ * Only a browser with Local Network Access can fall back to the printer's IP in place (direct-address.ts); elsewhere
+ * http://<ip> is mixed content and https://<ip> has no certificate, so the ways round are another route or the person
+ * opening the printer's own page themselves.
  */
 export function localFailure (printerId: string | null | undefined, why: string, probed = true): LocalFailure {
   if (why === 'blocked') return 'blocked'
@@ -63,12 +65,23 @@ export function localFailure (printerId: string | null | undefined, why: string,
   return discoveryState.cloudChecked ? 'elsewhere' : 'other'
 }
 
-/** Where the person can open the printer's own page themselves: its address on this network, else muon3d.local. */
+/**
+ * Where the person can open the printer's own page themselves: its address on this network and the printer's own
+ * route (`/<slug>`, KAN-5313), else muon3d.local. Only an address the service lists beside this browser is used.
+ */
 export function ownPageUrl (printerId: string | null | undefined): string {
   const want = printerId?.toLowerCase()
   const beside = want ? discoveryState.cloud.find(c => c.printerId.toLowerCase() === want) : undefined
   const addr = openableAddr(beside, window.location.hostname)
-  return `http://${addr ?? 'muon3d.local'}/`
+  const slug = slugForMdnsHost(mdnsHostFromName(beside?.name))
+  return `http://${addr ?? 'muon3d.local'}/${addr && slug ? slug : ''}`
+}
+
+/** The addresses of a printer the service lists beside this browser, for a direct connect. */
+export function besideAddrs (printerId: string | null | undefined): string[] {
+  const want = printerId?.toLowerCase()
+  const beside = want ? discoveryState.cloud.find(c => c.printerId.toLowerCase() === want) : undefined
+  return directCandidates(beside?.localAddrs ?? [])
 }
 
 const PROBE_MS = 8000
@@ -181,8 +194,21 @@ export async function openOnNetwork (o: { name: string, label: string, printerId
     clearRelayChoice(o.printerId)
     return { opened: true, line: null, ask: false }
   }
-  const blocked = done.why === 'blocked'
-  const why = localFailure(o.printerId, done.why)
+  let blocked = done.why === 'blocked'
+  let why = localFailure(o.printerId, done.why)
+  // The name did not resolve although the printer is here (KAN-6283): try its address, before Muon3D and Bluetooth.
+  if (why === 'rebinding') {
+    const direct = await connectByAddress({ addrs: besideAddrs(o.printerId), label: o.label, printerId: o.printerId })
+    if (direct.ok) {
+      chooseRouteMode(o.printerId, 'auto')
+      clearRelayChoice(o.printerId)
+      return { opened: true, line: null, ask: false }
+    }
+    if (direct.why === 'blocked') {
+      blocked = true
+      why = 'blocked'
+    }
+  }
   const reason = blocked ? LOCAL_ACCESS_BLOCKED : why === 'rebinding' ? `${REBINDING_LINE} ${REBINDING_FIX}` : null
   if (cloudState.printers.some(p => p.id === o.printerId && p.online)) {
     try {
