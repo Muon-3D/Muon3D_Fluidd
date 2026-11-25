@@ -20,12 +20,12 @@
             data-tid="hotspot-badge"
           ><i />{{ stations.count }} connected</span>
         </h2>
-        <p v-if="compact && deviceStatus && apCredentials && !locked && !remote">
+        <p v-if="compact && deviceStatus && apCredentials && !locked">
           {{ apState ? 'On' : 'Off' }} · {{ apCredentials.ssid }}{{ apCredentials.security_enabled === false ? ' · open' : '' }}
         </p>
       </div>
       <tone-pill
-        v-if="!compact && deviceStatus && apCredentials && !locked && !remote"
+        v-if="!compact && deviceStatus && apCredentials && !locked"
         :tone="apState ? 'ok' : 'off'"
         :dot="apState"
         data-tid="hotspot-state"
@@ -37,8 +37,32 @@
         class="hs__note"
         data-tid="hotspot-off-panel"
       >{{ panelOnlyNote }}</span>
+      <div
+        v-else-if="remote && !deviceStatus && apCredentials && !compact && !locked"
+        class="hs__pair"
+        data-tid="hotspot-pair"
+      >
+        <button
+          type="button"
+          class="cbtn"
+          :disabled="toggling || applying"
+          data-tid="hotspot-turn-on"
+          @click="requestRemoteToggle(true)"
+        >
+          Turn on
+        </button>
+        <button
+          type="button"
+          class="cbtn"
+          :disabled="toggling || applying"
+          data-tid="hotspot-turn-off"
+          @click="requestRemoteToggle(false)"
+        >
+          Turn off
+        </button>
+      </div>
       <toggle-switch
-        v-else-if="!remote"
+        v-else-if="!remote || deviceStatus"
         :value="apState"
         label="Hotspot on"
         :disabled="locked || !apCredentials || !deviceStatus || toggling"
@@ -48,7 +72,7 @@
     </header>
 
     <p
-      v-if="!compact && !locked && !remote"
+      v-if="!compact && !locked && !hotspotProblem"
       class="hs__note"
       data-tid="hotspot-help"
     >
@@ -61,14 +85,23 @@
       @dismiss="refusal = null"
     />
     <p
-      v-if="remote"
+      v-if="hotspotProblem"
       class="hs__note"
+      :data-problem="hotspotProblem.kind"
+      data-tid="hotspot-route-problem"
     >
-      {{ $t('app.wifi.remote_read_only') }}
+      {{ hotspotProblem.message }}
+    </p>
+    <p
+      v-else-if="remote && !compact && !locked && apCredentials && !deviceStatus"
+      class="hs__note"
+      data-tid="hotspot-state-unknown"
+    >
+      {{ $t('app.wifi.state_unknown') }}
     </p>
 
     <div
-      v-if="!locked && !remote && !compact"
+      v-if="!locked && !compact && !hotspotProblem"
       class="hs__body"
       data-tid="hotspot-body"
     >
@@ -268,7 +301,9 @@
     >
       <div class="hs__dialog">
         <h3>{{ $t('app.wifi.modal.warning.title') }}</h3>
-        <p>{{ $t('app.wifi.modal.warning.message') }}</p>
+        <p data-tid="hotspot-warning-text">
+          {{ warningMessage }}
+        </p>
         <div class="hs__buttons hs__buttons--end">
           <button
             type="button"
@@ -295,7 +330,9 @@
     >
       <div class="hs__dialog">
         <h3>{{ $t('app.wifi.modal.warning.title') }}</h3>
-        <p>{{ $t('app.wifi.modal.warning.message') }}</p>
+        <p data-tid="hotspot-warning-text">
+          {{ warningMessage }}
+        </p>
         <div class="hs__buttons hs__buttons--end">
           <button
             type="button"
@@ -338,6 +375,9 @@ import { printerTransportBinding } from '@/services/managed-session/httpTranspor
 import { autoOffIn, connectedFor, dbmLevel, hotspotState } from '@/services/hotspot/model'
 import type { HotspotStations } from '@/services/hotspot/model'
 import { startHotspotPoll } from '@/services/hotspot/poller'
+import { managedNetworkProblem } from '@/services/wifi/network-route'
+import type { ManagedNetworkProblem } from '@/services/wifi/network-route'
+import { remoteWarningKind } from '@/services/wifi/route-warning'
 
 const { onHotspot } = useHotspotCheck()
 
@@ -408,8 +448,38 @@ export default class HotspotManagerCard extends Vue {
   }
 
   @Watch('remote')
-  onRemoteChanged (remote: boolean) {
-    if (!remote) this.fetchConfig()
+  onRemoteChanged () {
+    // What one route said about the hotspot says nothing about the other.
+    this.hotspotProblem = null
+    this.deviceStatus = null
+    this.apCredentials = null
+    this.fetchConfig()
+  }
+
+  /** Why this connection cannot show or change the hotspot, from the last answer; null when it can (or has not been asked). */
+  hotspotProblem: ManagedNetworkProblem | null = null
+
+  /** Over Bluetooth, muon-link has no device status: the stations list, when the printer has one, is the only word on whether it is up. */
+  @Watch('stations')
+  onStationsChanged (stations: HotspotStations | null) {
+    if (!this.remote) return
+    this.deviceStatus = stations
+      ? { device: 'ap0', state: stations.up ? 'connected' : 'disconnected' } as Device
+      : null
+  }
+
+  /** The text before a hotspot change: what this route loses. */
+  get warningMessage (): string {
+    const kind = remoteWarningKind(this.remote)
+    return this.$t(kind ? `app.wifi.modal.warning.${kind}_message` : 'app.wifi.modal.warning.message').toString()
+  }
+
+  /** What a remote on/off choice asked for; null for the switch, which flips what it shows. */
+  toggleTarget: boolean | null = null
+
+  requestRemoteToggle (on: boolean) {
+    this.toggleTarget = on
+    this.showToggleWarningDialog = true
   }
 
   showToggleWarningDialog: boolean = false
@@ -417,7 +487,8 @@ export default class HotspotManagerCard extends Vue {
 
   // “Request” methods show the warning dialog instead of immediately doing the thing
   requestToggle () {
-    if (onHotspot.value) {
+    this.toggleTarget = null
+    if (onHotspot.value || this.remote) {
       this.showToggleWarningDialog = true
     } else {
       // if not on hotspot, just toggle immediately
@@ -428,7 +499,9 @@ export default class HotspotManagerCard extends Vue {
   // “Confirm” methods perform the real action, then hide the dialog
   async confirmToggle () {
     this.showToggleWarningDialog = false
-    await this.changeHotspotState(!this.apState)
+    const target = this.toggleTarget
+    this.toggleTarget = null
+    await this.changeHotspotState(target ?? !this.apState)
   }
 
   async requestApplyChanges () {
@@ -436,8 +509,8 @@ export default class HotspotManagerCard extends Vue {
     const form = this.$refs.apForm as VForm
     if (!form || !(form.validate() && this.isDirty)) return
 
-    if (onHotspot.value) {
-      // if we are on hotspot, show the warning dialog
+    if (onHotspot.value || this.remote) {
+      // on the hotspot, or reaching the printer over a managed route: warn first
       this.showChangeWarningDialog = true
     } else {
       // if not on hotspot, apply changes immediately
@@ -539,8 +612,24 @@ export default class HotspotManagerCard extends Vue {
     }
   }
 
+  /** Over Bluetooth or Muon3D: muon-link's hotspot read gives the name and whether it needs a password; no device status. */
+  private async fetchRemoteConfig () {
+    try {
+      const response = await this.auxApi.ap.apShowCredentialsWifiApShowGet()
+      this.apCredentials = response.data
+      this.hotspotProblem = null
+      this.resetForm()
+    } catch (e) {
+      console.error('Failed to load hotspot config', e)
+      this.hotspotProblem = managedNetworkProblem(e, 'the hotspot')
+      if (this.hotspotProblem || this.takePermissionRefusal(e)) return
+      EventBus.$emit(`${this.$t('app.wifi.msg.hotspot.load_error')} ${moonrakerErrorMessage(e)}`, { type: 'error', timeout: 5000 })
+    }
+  }
+
   private async fetchConfig () {
-    if (this.locked || this.remote) return
+    if (this.locked) return
+    if (this.remote) return this.fetchRemoteConfig()
     try {
       const [statusResponse, credentialsResponse] = await Promise.all([
         this.auxApi.ap.wifiStatusWifiApDeviceStatusGet(),
@@ -617,7 +706,8 @@ export default class HotspotManagerCard extends Vue {
           : null
       }
       const route = routeFor('hotspot-edit', refusedHere)
-      if (route.kind === 'call' && route.path === '/wifi/ap/change') {
+      // Over a managed route there is no /wifi/ap/modify: muon-link takes /change only.
+      if (this.remote || (route.kind === 'call' && route.path === '/wifi/ap/change')) {
         await this.changeAtPrinter()
         this.applying = false
         this.toggleEditing()
@@ -668,9 +758,15 @@ export default class HotspotManagerCard extends Vue {
     }
     try {
       await this.auxApi.apChange(body)
-      EventBus.$emit('Press the knob on the printer to confirm. The hotspot changes when you do.', { type: 'primary', timeout: 10000 })
+      EventBus.$emit(
+        this.remote ? this.$t('app.wifi.hotspot_sent').toString() : 'Press the knob on the printer to confirm. The hotspot changes when you do.',
+        { type: 'primary', timeout: 10000 }
+      )
     } catch (e) {
-      if (this.takePermissionRefusal(e)) {
+      const problem = this.remote ? managedNetworkProblem(e, 'the hotspot') : null
+      if (problem) {
+        EventBus.$emit(problem.message, { type: 'error', timeout: 8000 })
+      } else if (this.takePermissionRefusal(e)) {
         // The store refused this caller; the notice says who may.
       } else if (isPanelOnlyRefusal(e)) {
         EventBus.$emit(panelOnlyMessage('change the hotspot'), { type: 'error', timeout: 8000 })
@@ -794,6 +890,11 @@ export default class HotspotManagerCard extends Vue {
       this.requestedApState = null
       this.apState = this.deviceStatus?.state === 'connected'
       console.error('Hotspot toggle failed', e)
+      const problem = this.remote ? managedNetworkProblem(e, 'the hotspot') : null
+      if (problem) {
+        EventBus.$emit(problem.message, { type: 'error', timeout: 8000 })
+        return
+      }
       if (this.takePermissionRefusal(e)) return
       if (!turnOn && isPanelOnlyRefusal(e)) {
         // Turning the hotspot off has no open route: it is the printer's screen now.
@@ -1144,6 +1245,12 @@ export default class HotspotManagerCard extends Vue {
   }
 
   .hs__buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .hs__pair {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;

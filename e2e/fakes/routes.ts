@@ -138,6 +138,13 @@ function networkAnswer (method, bare, path, body) {
     return json(200, { status: 'connected' })
   }
   if (method === 'DELETE' && tail === '/wifi/forget') return json(200, { status: 'forgotten' })
+  // The hotspot (muon-link NETWORK_ROUTES.md): the name and whether it needs a key, never the key; no device status.
+  if (method === 'GET' && tail === '/hotspot') return json(200, net.hotspot)
+  if (method === 'POST' && tail === '/hotspot/change') {
+    net.hotspotBodies.push(JSON.parse(new TextDecoder().decode(body)))
+    return json(202, { id: 'change-1' })
+  }
+  if (method === 'POST' && (tail === '/hotspot/up' || tail === '/hotspot/down')) return json(200, { status: 'ok' })
   return json(404, { error: 'not_found' })
 }
 
@@ -340,6 +347,9 @@ export async function useAllRoutes (page: Page, account: ConsoleState) {
         stations: null as unknown,
         calls: [] as string[],
         bodies: [] as unknown[],
+        /** What GET /hotspot answers, and the bodies sent to POST /hotspot/change. */
+        hotspot: { ssid: 'Muon-Sloe', security_enabled: true } as unknown,
+        hotspotBodies: [] as unknown[],
         scan: [
           { in_use: true, ssid: 'Workshop', chan: 36, freq: 5180, rate: 540, signal: 78, security: 'WPA2' },
           { in_use: false, ssid: 'Workshop-2G', chan: 6, freq: 2437, rate: 130, signal: 64, security: 'WPA2' },
@@ -462,6 +472,11 @@ export function networkCalls (page: Page): Promise<{ calls: string[], bodies: un
     const n = (window as any).__e2eRoute.network
     return { calls: [...n.calls], bodies: [...n.bodies] }
   })
+}
+
+/** The bodies the page sent to POST /hotspot/change. */
+export function hotspotChanges (page: Page): Promise<unknown[]> {
+  return page.evaluate(() => [...(window as any).__e2eRoute.network.hotspotBodies])
 }
 
 /** How muon-link answers its Wi-Fi routes: normally, as an older one (404), or with the owner's rule turned off (403). */
