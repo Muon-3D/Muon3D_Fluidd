@@ -8,6 +8,7 @@ import { foundOpenFor } from '@/services/muon-cloud/found-open'
 import {
   activateCloudPrinter,
   activateLocalPrinter,
+  localSession,
   activationState,
   cancelActivation,
   SwitchSuperseded,
@@ -252,6 +253,11 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
   /** A found tile on an https page, waiting for sign-in to open through the account. */
   pendingOpen: DirectoryEntry | null = null
   busyKey: string | null = null
+  /**
+   * The row a local connect is on from the click to its end. The secure-name probe, the by-address try and the
+   * routes after them are separate runs, and the row dropped its spinner between them (KAN-6743).
+   */
+  holdKey: string | null = null
   notice: string | null = null
   /** A route the person picked failed: what happened and the other routes as buttons (nothing switches by itself). */
   routeProblem: { line: string, detail?: string, choices: Array<{ id: string, label: string }> } | null = null
@@ -320,9 +326,22 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     return discoveryState.network
   }
 
+  /** The row to show as connecting: the one a run is on, else the one a local connect holds. */
+  get openingKey (): string | null {
+    return this.busyKey ?? this.holdKey
+  }
+
   get savedInstances (): InstanceConfig[] {
     const all: InstanceConfig[] = this.$store.getters['config/getInstances'] ?? []
-    return all.filter(i => i.apiUrl !== MANAGED_API_URL)
+    const saved = all.filter(i => i.apiUrl !== MANAGED_API_URL)
+    // KAN-6743: a printer opened in place (secure name or address) is not always in the saved list (a browser that
+    // already held other printers never adds it). It is the live session all the same: without it the tile took the
+    // account's status read, which has none, and sat on a grey Connecting beside a connected printer.
+    const live = localSession.instance
+    if (live && live.apiUrl === this.$store.state.config.apiUrl && !saved.some(i => i.apiUrl === live.apiUrl)) {
+      return [...saved, live]
+    }
+    return saved
   }
 
   /** The printer Fluidd is on locally, from its own socket. */
@@ -632,7 +651,17 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
     if (activationState.pairing === id) await startPairing(id)
   }
 
+  /** From the click to the end, the row says it is connecting, whichever route is tried (KAN-6743). */
   async openCloudEntry (e: DirectoryEntry) {
+    this.holdKey = e.key
+    try {
+      return await this.openCloudEntryRoutes(e)
+    } finally {
+      this.holdKey = null
+    }
+  }
+
+  async openCloudEntryRoutes (e: DirectoryEntry) {
     // KAN-1279: `active` only says this printer was chosen. With its socket not
     // open and ready the page is empty, and going to it again did nothing.
     const socket = this.$store.state.socket
@@ -804,6 +833,15 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    * Auto: this network, then Muon3D, then Bluetooth, then the question about muon3d.local.
    */
   async connectLocalFromHostedPage (e: DirectoryEntry, route: LocalRoute, picked = true): Promise<boolean | undefined> {
+    this.holdKey = e.key
+    try {
+      return await this.connectLocalFromHostedPageRoutes(e, route, picked)
+    } finally {
+      this.holdKey = null
+    }
+  }
+
+  async connectLocalFromHostedPageRoutes (e: DirectoryEntry, route: LocalRoute, picked = true): Promise<boolean | undefined> {
     const id = e.cloud?.id ?? e.endpointId
     let result: InPlaceResult = { ok: false, why: 'unreachable' }
     // Busy: run says "Still opening" itself, and that stays the answer.

@@ -45,6 +45,13 @@ export const activationState = Vue.observable({
   approvalFor: null as string | null
 })
 
+/**
+ * The printer Control is on locally, in place (its secure name or its address). The saved list holds it only when
+ * this browser had none saved before, so the directory reads it from here: otherwise a printer that is connected
+ * showed the account's idle "Connecting" (KAN-6743).
+ */
+export const localSession = Vue.observable({ instance: null as InstanceConfig | null })
+
 let panelCodePairingOverride: boolean | null = null
 
 /** For tests and the e2e fakes: forces the pairing switch on or off. `null` goes back to the build's own setting. */
@@ -204,6 +211,7 @@ export async function activateCloudPrinter (printerId: string) {
   const mine = ++generation
   const superseded = () => mine !== generation
   noteUserOpen(printerId)
+  localSession.instance = null
   activationState.switching = printerId
   activationState.error = null
   activationState.fallbackUrl = null
@@ -364,13 +372,13 @@ export async function activateLocalPrinter (instance: InstanceConfig, printerId?
     }, LOCAL_OPEN_TIMEOUT_MS)
   })
   try {
-    return await Promise.race([openLocalPrinter(instance, mine), timedOut])
+    return await Promise.race([openLocalPrinter(instance, mine, printerId), timedOut])
   } finally {
     clearTimeout(timer)
   }
 }
 
-async function openLocalPrinter (instance: InstanceConfig, mine: number): Promise<boolean> {
+async function openLocalPrinter (instance: InstanceConfig, mine: number, printerId?: string | null): Promise<boolean> {
   const superseded = () => mine !== generation
   // A cloud switch this one replaces no longer says it is opening.
   activationState.switching = null
@@ -380,6 +388,7 @@ async function openLocalPrinter (instance: InstanceConfig, mine: number): Promis
   try {
     const reach = await pageReach(instance.apiUrl)
     if (reach !== 'reached') {
+      localSession.instance = null
       if (superseded()) throw new SwitchSuperseded()
       const host = hostOf(instance.apiUrl)
       // The printer's own page is offered only where it would open: the
@@ -403,6 +412,7 @@ async function openLocalPrinter (instance: InstanceConfig, mine: number): Promis
       setActiveCloudPrinter(null)
       forgetManagedInstance()
       Vue.$socket?.close()
+      localSession.instance = { ...instance, active: true, ...(!instance.endpointId && printerId ? { endpointId: printerId } : {}) }
       const config = await appInit(instance, store.state.config.hostConfig, { isCurrent: () => !superseded() })
       // Replaced while it loaded: the next switch connects its own printer.
       if (superseded()) throw new SwitchSuperseded()
@@ -410,7 +420,10 @@ async function openLocalPrinter (instance: InstanceConfig, mine: number): Promis
         Vue.$socket.connect(config.apiConfig.socketUrl)
       }
       const connected = config.apiConnected === true
-      if (!connected) activationState.error = `Could not connect to ${name}.`
+      if (!connected) {
+        activationState.error = `Could not connect to ${name}.`
+        localSession.instance = null
+      }
       return connected
     })
   } catch (error) {
