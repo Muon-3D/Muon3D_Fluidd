@@ -24,7 +24,7 @@ describe('allowlist', () => {
     expect(readVerb({ verb: 'motors_off', extra: 'x' })).toEqual({ verb: 'motors_off' })
     expect(readVerb({ verb: 'zadjust', by: -0.0504 })).toEqual({ verb: 'zadjust', by: -0.05 })
     for (const bad of [{ verb: 'speed', percent: 0 }, { verb: 'speed', percent: 501 }, { verb: 'flow', percent: 301 }, { verb: 'flow', percent: 'a' },
-      { verb: 'zadjust', by: 0 }, { verb: 'zadjust', by: 1.5 }, { verb: 'zadjust', by: Number.NaN }]) {
+      { verb: 'zadjust', by: 0 }, { verb: 'zadjust', by: 1.5 }, { verb: 'zadjust', by: 0.2 }, { verb: 'zadjust', by: Number.NaN }]) {
       expect(readVerb(bad)).toBeNull()
     }
   })

@@ -214,7 +214,7 @@ export function gcodeRefusal (script: unknown): string {
 }
 
 /** The most one Z nudge may change the offset by, mm; the panel's steps are 0.01 to 0.1. */
-export const Z_ADJUST_LIMIT_MM = 1
+export const Z_ADJUST_LIMIT_MM = 0.1 // the panel's own largest step; adjustZ itself has no bound
 
 /** The most one jog may move, mm; the panel's own steps are 0.1 to 50. */
 export const JOG_LIMIT_MM = 50

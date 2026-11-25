@@ -95,7 +95,7 @@ describe('tuning verbs from the printer screen', () => {
       motorsOff: () => calls.push('motors_off'),
       adjustZ: (b: number) => calls.push(`zadjust ${b}`),
       ...over
-    } as VerbCtx
+    } as unknown as VerbCtx
     const why = ((M1Screen as unknown as { options: { methods: { runVerb: (v: object) => string } } }).options.methods.runVerb).call(c, v)
     return { why, calls }
   }
