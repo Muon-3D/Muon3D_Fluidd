@@ -28,7 +28,8 @@ const component = () => ({
   notice: '',
   askMuonLocal: false,
   localRouteFor: methods.localRouteFor,
-  connectLocalFromHostedPage: methods.connectLocalFromHostedPage
+  connectLocalFromHostedPage: methods.connectLocalFromHostedPage,
+  connectByAddressFor: methods.connectByAddressFor
 })
 
 function nearby (secureName: string | null) {
