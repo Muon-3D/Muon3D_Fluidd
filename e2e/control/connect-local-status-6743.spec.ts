@@ -154,4 +154,32 @@ test.describe('A local connect shows it is connecting, and the tile says Ready a
     expect((await lanAsks(page)).map(a => a.url).filter(u => u.includes('10.42.0.1'))).toEqual([])
     expect(context.pages()).toHaveLength(1)
   })
+
+  test('the service lists no nearby row, but an address is known from an earlier session: the secure name fails, then it connects by address', async ({ page, account }) => {
+    const KNOWN = '192.168.137.178'
+    await useAllRoutes(page, account)
+    ;(account.printers[0] as unknown as { secure_name: string }).secure_name = SECURE
+    await page.route(/^https:\/\/[a-z2-7]{20}\.muonlan\.net\/.*/, route => route.abort('namenotresolved'))
+    await page.route(`${CONSOLE}/v1/links/nearby`, route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key' },
+      body: JSON.stringify({ printers: [] })
+    }))
+    await usePrinter(page, PRESETS.idleHomed(), { ticks: false })
+    await lna(page, 'granted', KNOWN)
+    await page.route(`${MOCK}/server/muon/identity`, route => route.fulfill({
+      json: { name: ROUTE_PRINTER.name, display: ROUTE_PRINTER.name, endpoint_id: ROUTE_PRINTER.id, derived_name: 'boxwood', suffix: '367a' },
+      headers: { 'access-control-allow-origin': '*' }
+    }))
+    await page.addInitScript(([id, addr]) => {
+      localStorage.setItem('muonKnownLanAddrs', JSON.stringify({ [id]: [addr] }))
+    }, [ROUTE_PRINTER.id, KNOWN])
+    await hostedPage(page)
+    await page.goto(`${HOSTED}/`)
+    await ready(page)
+    await tileOf(page).click()
+    await expect.poll(async () => (await lanAsks(page)).some(a => a.url.startsWith(`ws://${KNOWN}/websocket`))).toBe(true)
+    await expect(page.getByTestId('route-problem-line')).toHaveCount(0)
+  })
 })

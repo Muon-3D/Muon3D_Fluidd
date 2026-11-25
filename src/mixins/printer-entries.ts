@@ -682,7 +682,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         if (result.ok) return true
         let why = localFailure(id, result.ok ? 'failed' : result.why)
         // KAN-6283 (A): the name did not resolve although the printer is here: its address, in place, before Muon3D.
-        if (why === 'rebinding') {
+        if (why === 'rebinding' || knownAddresses(id).length > 0) {
           const direct = await this.connectByAddressFor(e, id)
           if (direct.ok) {
             this.notice = null
@@ -861,7 +861,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       // service or the printer gave, and only the printer that answers as this one.
       // KAN-6743: also when there was no secure name to try at all (a reset, unowned printer has none from the service):
       // the address is then the only local way in, and it was never dialled; the person got the printer's own http page.
-      if (why === 'rebinding' || route.kind !== 'secure') {
+      if (why === 'rebinding' || route.kind !== 'secure' || knownAddresses(id).length > 0) {
         const direct = await this.connectByAddressFor(e, id)
         if (direct.ok) {
           this.notice = null
