@@ -60,6 +60,14 @@ async function otherSaved (page: Page) {
 /** Set once the page has started: from then on the secure name answers only when the spec lets it. */
 const armed = { on: false }
 
+const item = (page: Page, name: string) => page.locator('.v-list-item').getByText(name, { exact: true })
+
+/** Connect locally from the printer's menu: a picked route, held, so nothing else is tried behind it. */
+async function connectLocally (page: Page) {
+  await page.getByRole('button', { name: `Options for ${ROUTE_PRINTER.name}`, exact: true }).first().click()
+  await item(page, 'Connect locally').click()
+}
+
 const tileOf = (page: Page) => page.locator('.tile').filter({ hasText: ROUTE_PRINTER.name }).first()
 
 async function expectSpinnerThenReady (page: Page, release: () => void) {
@@ -126,10 +134,11 @@ test.describe('A local connect shows it is connecting, and the tile says Ready a
     await ready(page)
     const tile = tileOf(page)
     armed.on = true
-    await tile.click()
+    await connectLocally(page)
     await expect(tile.getByTestId('tile-connecting')).toBeVisible()
     release()
     await expect(tile.getByTestId('tile-connecting')).toHaveCount(0)
+    await expect(page.getByTestId('route-problem-line')).toBeVisible()
   })
 
   test('a reset, unowned printer on a Windows hotspot (192.168.137.x), no secure name: Open connects by address, not through its http page', async ({ page, context, account }) => {
@@ -152,7 +161,7 @@ test.describe('A local connect shows it is connecting, and the tile says Ready a
     await hostedPage(page)
     await page.goto(`${HOSTED}/`)
     await ready(page)
-    await tileOf(page).click()
+    await connectLocally(page)
     await expect.poll(async () => (await lanAsks(page)).some(a => a.url.startsWith(`ws://${HOTSPOT_IP}/websocket`))).toBe(true)
     await expect(page.getByTestId('route-problem-line')).toHaveCount(0)
     expect((await lanAsks(page)).map(a => a.url).filter(u => u.includes('10.42.0.1'))).toEqual([])
@@ -182,7 +191,7 @@ test.describe('A local connect shows it is connecting, and the tile says Ready a
     await hostedPage(page)
     await page.goto(`${HOSTED}/`)
     await ready(page)
-    await tileOf(page).click()
+    await connectLocally(page)
     await expect.poll(async () => (await lanAsks(page)).some(a => a.url.startsWith(`ws://${KNOWN}/websocket`))).toBe(true)
     await expect(page.getByTestId('route-problem-line')).toHaveCount(0)
   })
