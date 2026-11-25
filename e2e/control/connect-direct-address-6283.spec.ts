@@ -61,7 +61,8 @@ async function identity (page: Page, id: string, gate?: Promise<void>) {
   })
 }
 
-async function start (page: Page, account: Parameters<typeof useAllRoutes>[1], mode: LnaMode, addrs: string[]) {
+/** `who`: what the printer at the address says it is. Registered after the mock printer's own routes, so it answers first. */
+async function start (page: Page, account: Parameters<typeof useAllRoutes>[1], mode: LnaMode, addrs: string[], who?: { id: string, gate?: Promise<void> }) {
   await lna(page, mode, IP)
   await useAllRoutes(page, account)
   ;(account.printers[0] as unknown as { secure_name: string }).secure_name = SECURE
@@ -69,6 +70,7 @@ async function start (page: Page, account: Parameters<typeof useAllRoutes>[1], m
   await page.route(/^https:\/\/[a-z2-7]{20}\.muonlan\.net\/.*/, route => route.abort('namenotresolved'))
   await nearby(page, addrs)
   await usePrinter(page, PRESETS.idleHomed(), { ticks: false })
+  if (who) await identity(page, who.id, who.gate)
   await hostedPage(page)
   await page.goto(`${HOSTED}/`)
   await ready(page)
@@ -105,8 +107,7 @@ async function expectFallbackButtons (page: Page) {
 test.describe('Connect locally by address when the secure name is blocked', () => {
   test('Chrome with Local Network Access: the browser question is explained first, then it connects in place, by address', async ({ page, context, account }) => {
     let release!: () => void
-    await identity(page, ROUTE_PRINTER.id, new Promise<void>(resolve => { release = resolve }))
-    await start(page, account, 'supported', ['10.42.0.1', IP])
+    await start(page, account, 'supported', ['10.42.0.1', IP], { id: ROUTE_PRINTER.id, gate: new Promise<void>(resolve => { release = resolve }) })
     await connectLocally(page)
     // The browser's question is open: the person is told what it is for before the request that causes it.
     await expect(page.getByTestId('route-notice')).toContainText(PREPROMPT)
@@ -128,8 +129,7 @@ test.describe('Connect locally by address when the secure name is blocked', () =
   })
 
   test('already allowed, Auto: a click on the printer connects by address before Muon3D', async ({ page, account }) => {
-    await identity(page, ROUTE_PRINTER.id)
-    await start(page, account, 'granted', [IP])
+    await start(page, account, 'granted', [IP], { id: ROUTE_PRINTER.id })
     await page.locator('.tile').filter({ hasText: ROUTE_PRINTER.name }).first().click()
     await expect.poll(async () => (await lanAsks(page)).some(a => a.url.startsWith(`ws://${IP}/websocket`))).toBe(true)
     await expect(page.getByTestId('route-problem-line')).toHaveCount(0)
@@ -138,8 +138,7 @@ test.describe('Connect locally by address when the secure name is blocked', () =
   })
 
   test('another printer answers at that address: it is never shown as this one, and the fallback buttons show', async ({ page, account }) => {
-    await identity(page, 'cd34'.repeat(16))
-    await start(page, account, 'granted', [IP])
+    await start(page, account, 'granted', [IP], { id: 'cd34'.repeat(16) })
     await connectLocally(page)
     await expect(page.getByTestId('route-problem-line')).toContainText('DNS rebinding protection')
     await expectFallbackButtons(page)
