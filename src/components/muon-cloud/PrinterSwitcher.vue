@@ -98,7 +98,7 @@
           :key="e.key"
           :entry="e"
           :actions="cloudActions(e)"
-          :busy="busyKey === e.key"
+          :busy="openingKey === e.key"
           @open="openCloudEntry(e)"
           @action="onAction(e, $event)"
         />
@@ -118,7 +118,7 @@
         :key="e.key"
         :entry="e"
         :actions="localActions(e)"
-        :busy="busyKey === e.key"
+        :busy="openingKey === e.key"
         @open="openLocalEntry(e)"
         @action="onAction(e, $event)"
       />
@@ -148,7 +148,7 @@
         :key="e.key"
         :entry="e"
         :actions="foundActions(e)"
-        :busy="busyKey === e.key"
+        :busy="openingKey === e.key"
         @open="openFoundEntry(e)"
         @action="onAction(e, $event)"
       />
