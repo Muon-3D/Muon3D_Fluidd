@@ -3,6 +3,7 @@ import consola from 'consola'
 import type { InstanceConfig } from '@/store/config/types'
 import StateMixin from './state'
 import { cloudState, dropCloudConnection, rememberBluetoothOnly } from '@/services/muon-cloud/state'
+import { addressesOfNetwork, knownAddresses, rememberAddresses } from '@/services/muon-cloud/known-addresses'
 import { localSession } from '@/services/muon-cloud/local-session'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import { foundOpenFor } from '@/services/muon-cloud/found-open'
@@ -801,9 +802,14 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    */
   async connectByAddressFor (e: DirectoryEntry, id: string | null | undefined): Promise<DirectResult> {
     let direct = { ok: false, why: 'unsupported' } as DirectResult
+    // The service's list may lack the printer (a reset one): what it reported over a session now open, every address
+    // saved for it, and the one this browser last connected by are tried after the listed ones.
+    if (id && this.$store.state.server?.system_info?.network && (e.active || bluetoothCarrying(id))) {
+      rememberAddresses(id, addressesOfNetwork(this.$store.state.server.system_info.network))
+    }
     await this.run(e.key, async () => {
       direct = await connectByAddress({
-        addrs: [...besideAddrs(id), e.host, printerSaidAddr(e)],
+        addrs: [...besideAddrs(id), e.host, printerSaidAddr(e), ...(e.saved ?? []).map(s => hostOf(s.apiUrl)), ...knownAddresses(id)],
         label: e.name,
         printerId: id,
         endpointId: e.endpointId,
@@ -811,6 +817,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
         onAsking: () => { this.notice = LNA_PREPROMPT }
       })
       if (direct.ok && id) {
+        rememberAddresses(id, [direct.host])
         clearRelayChoice(id)
         stopUsingBluetoothFor(id)
       }
