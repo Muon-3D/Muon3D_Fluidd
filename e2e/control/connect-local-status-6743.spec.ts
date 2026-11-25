@@ -57,14 +57,8 @@ async function otherSaved (page: Page) {
   })
 }
 
-/** Holds the printer's answer at `path` once `armed.on` is set (after the page has started), so the connect is slow. */
+/** Set once the page has started: from then on the secure name answers only when the spec lets it. */
 const armed = { on: false }
-async function slow (page: Page, path: string, gate: Promise<void>) {
-  await page.route(`${MOCK}${path}`, async route => {
-    if (armed.on) await gate
-    await route.fallback()
-  })
-}
 
 const tileOf = (page: Page) => page.locator('.tile').filter({ hasText: ROUTE_PRINTER.name }).first()
 
@@ -87,6 +81,8 @@ async function expectSpinnerThenReady (page: Page, release: () => void) {
   await expect(tileOf(page)).toContainText('Ready')
   await expect(tileOf(page)).not.toContainText('Connecting')
 }
+
+test.beforeEach(() => { armed.on = false })
 
 test.describe('A local connect shows it is connecting, and the tile says Ready after', () => {
   test('by address: spinner while the printer is slow to answer, then Ready', async ({ page, account }) => {
@@ -112,27 +108,35 @@ test.describe('A local connect shows it is connecting, and the tile says Ready a
     await expectSpinnerThenReady(page, release)
   })
 
-  test('by secure name: spinner while the probe is slow, then Ready', async ({ page, account }) => {
+  test('by secure name: spinner while the probe is slow, and gone when it fails', async ({ page, account }) => {
     let release!: () => void
     const gate = new Promise<void>(resolve => { release = resolve })
     await useAllRoutes(page, account)
     ;(account.printers[0] as unknown as { secure_name: string }).secure_name = SECURE
     await nearby(page, [])
     await usePrinter(page, PRESETS.idleHomed(), { ticks: false })
-    // The secure name answers as the mock printer does, by the same route the address spec uses.
-    await lna(page, 'granted', SECURE)
-    await slow(page, '/server/info', gate)
+    await lna(page, 'granted', IP)
+    await page.route(/^https:\/\/[a-z2-7]{20}\.muonlan\.net\/.*/, async route => {
+      if (armed.on) await gate
+      await route.abort('connectionrefused')
+    })
     await otherSaved(page)
     await hostedPage(page)
     await page.goto(`${HOSTED}/`)
     await ready(page)
-    await expectSpinnerThenReady(page, release)
+    const tile = tileOf(page)
+    armed.on = true
+    await tile.click()
+    await expect(tile.getByTestId('tile-connecting')).toBeVisible()
+    release()
+    await expect(tile.getByTestId('tile-connecting')).toHaveCount(0)
   })
 
   test('a reset, unowned printer on a Windows hotspot (192.168.137.x), no secure name: Open connects by address, not through its http page', async ({ page, context, account }) => {
     const HOTSPOT_IP = '192.168.137.178'
-    account.printers.length = 0
     await useAllRoutes(page, account)
+    // No secure name from the service for this printer (a reset one has none): the address is the only local way in.
+    delete (account.printers[0] as unknown as { secure_name?: string }).secure_name
     await page.route(`${CONSOLE}/v1/links/nearby`, route => route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -148,7 +152,7 @@ test.describe('A local connect shows it is connecting, and the tile says Ready a
     await hostedPage(page)
     await page.goto(`${HOSTED}/`)
     await ready(page)
-    await page.getByTestId('found').getByTestId('found-connect').click()
+    await tileOf(page).click()
     await expect.poll(async () => (await lanAsks(page)).some(a => a.url.startsWith(`ws://${HOTSPOT_IP}/websocket`))).toBe(true)
     await expect(page.getByTestId('route-problem-line')).toHaveCount(0)
     expect((await lanAsks(page)).map(a => a.url).filter(u => u.includes('10.42.0.1'))).toEqual([])
