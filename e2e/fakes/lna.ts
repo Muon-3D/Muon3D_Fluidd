@@ -48,7 +48,12 @@ export async function lna (page: Page, mode: LnaMode, printerIp = '192.168.1.20'
   if (mode !== 'unsupported') {
     await page.route(new RegExp(`^http://localhost:${MOCK_PORT}/`), async route => {
       const response = await route.fetch()
-      await route.fulfill({ response, headers: { ...response.headers(), 'access-control-allow-origin': '*' } })
+      const headers = { ...response.headers(), 'access-control-allow-origin': '*' }
+      if (/\/printer\/objects\//.test(route.request().url())) {
+        delete (headers as Record<string, string>)['content-length']
+        return route.fulfill({ response, headers, body: idle(await response.text()) })
+      }
+      await route.fulfill({ response, headers })
     })
   }
   if (mode !== 'unsupported') {
