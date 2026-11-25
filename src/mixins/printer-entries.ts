@@ -852,7 +852,9 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       // KAN-6283 (A): the secure name did not resolve although the printer is here. Try its address, in place, before
       // Muon3D and Bluetooth, in a browser with Local Network Access. Never anything but a private address the
       // service or the printer gave, and only the printer that answers as this one.
-      if (why === 'rebinding') {
+      // KAN-6743: also when there was no secure name to try at all (a reset, unowned printer has none from the service):
+      // the address is then the only local way in, and it was never dialled; the person got the printer's own http page.
+      if (why === 'rebinding' || route.kind !== 'secure') {
         const direct = await this.connectByAddressFor(e, id)
         if (direct.ok) {
           this.notice = null

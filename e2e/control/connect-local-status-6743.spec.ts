@@ -12,7 +12,7 @@
  */
 import type { Page } from '@playwright/test'
 import { test, expect, ready } from '../fixtures'
-import { lna } from '../fakes/lna'
+import { lna, lanAsks } from '../fakes/lna'
 import { CONSOLE } from '../fakes/console'
 import { ROUTE_PRINTER, useAllRoutes } from '../fakes/routes'
 import { MOCK_PORT, VITE_PORT } from '../ports'
@@ -127,5 +127,31 @@ test.describe('A local connect shows it is connecting, and the tile says Ready a
     await page.goto(`${HOSTED}/`)
     await ready(page)
     await expectSpinnerThenReady(page, release)
+  })
+
+  test('a reset, unowned printer on a Windows hotspot (192.168.137.x), no secure name: Open connects by address, not through its http page', async ({ page, context, account }) => {
+    const HOTSPOT_IP = '192.168.137.178'
+    account.printers.length = 0
+    await useAllRoutes(page, account)
+    await page.route(`${CONSOLE}/v1/links/nearby`, route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key' },
+      body: JSON.stringify({ printers: [{ printer_id: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, model: 'M1', linked: false, local_addrs: ['10.42.0.1', HOTSPOT_IP] }] })
+    }))
+    await usePrinter(page, PRESETS.idleHomed(), { ticks: false })
+    await lna(page, 'granted', HOTSPOT_IP)
+    await page.route(`${MOCK}/server/muon/identity`, route => route.fulfill({
+      json: { name: ROUTE_PRINTER.name, display: ROUTE_PRINTER.name, endpoint_id: ROUTE_PRINTER.id, derived_name: 'boxwood', suffix: '367a' },
+      headers: { 'access-control-allow-origin': '*' }
+    }))
+    await hostedPage(page)
+    await page.goto(`${HOSTED}/`)
+    await ready(page)
+    await page.getByTestId('found').getByTestId('found-connect').click()
+    await expect.poll(async () => (await lanAsks(page)).some(a => a.url.startsWith(`ws://${HOTSPOT_IP}/websocket`))).toBe(true)
+    await expect(page.getByTestId('route-problem-line')).toHaveCount(0)
+    expect((await lanAsks(page)).map(a => a.url).filter(u => u.includes('10.42.0.1'))).toEqual([])
+    expect(context.pages()).toHaveLength(1)
   })
 })
