@@ -14,6 +14,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect, ready } from '../fixtures'
 import { CONSOLE } from '../fakes/console'
+import { lna } from '../fakes/lna'
 import { ROUTE_PRINTER, useAllRoutes } from '../fakes/routes'
 import { MOCK_PORT, VITE_PORT } from '../ports'
 
@@ -79,6 +80,8 @@ async function printerPages (page: Page, hosts: string[]) {
 }
 
 async function start (page: Page, account: Parameters<typeof useAllRoutes>[1], nearbyList: Parameters<typeof nearby>[1], saved: boolean, renamedTo?: string) {
+  // No Local Network Access here: these specs are about the secure name and the printer's own page (KAN-6283 A is in connect-direct-address-6283).
+  await lna(page, 'unsupported')
   await useAllRoutes(page, account)
   if (renamedTo) account.printers[0].name = renamedTo
   if (saved) {

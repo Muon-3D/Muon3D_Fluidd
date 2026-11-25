@@ -8,6 +8,8 @@ import PrinterEntriesMixin from '../printer-entries'
 import { connectInPlace } from '@/services/muon-cloud/connect-in-place'
 import { forgetSecureReach } from '@/services/secure-origin/hosted'
 import { discoveryState } from '@/services/muon-cloud/discovery'
+import { bluetoothSupport } from '@/services/muon-ble/webBluetooth'
+import { connectByAddress, LNA_PREPROMPT } from '@/services/muon-cloud/direct-address'
 import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 
 type Fn = (this: unknown, ...a: unknown[]) => unknown
@@ -15,6 +17,11 @@ const methods = (PrinterEntriesMixin as unknown as { options: { methods: Record<
 
 vi.mock('@/services/muon-cloud/connect-in-place', async (orig) => ({ ...(await orig<object>()), connectInPlace: vi.fn() }))
 const inPlace = vi.mocked(connectInPlace)
+vi.mock('@/services/muon-cloud/direct-address', async (orig) => ({ ...(await orig<object>()), connectByAddress: vi.fn() }))
+const direct = vi.mocked(connectByAddress)
+vi.mock('@/services/muon-ble/webBluetooth', async (orig) => ({ ...(await orig<object>()), bluetoothSupport: vi.fn() }))
+const bluetooth = vi.mocked(bluetoothSupport)
+const withBluetooth = () => bluetooth.mockReturnValue({ supported: true })
 
 const NAME = 'abcdefghijklmnopqrst.muonlan.net'
 
@@ -45,6 +52,7 @@ const component = () => ({
   run: vi.fn(async (_k: string, work: () => Promise<boolean>) => { await work() }),
   localRouteFor: methods.localRouteFor,
   connectLocalFromHostedPage: methods.connectLocalFromHostedPage,
+  connectByAddressFor: methods.connectByAddressFor,
   connectCloud: vi.fn()
 })
 
@@ -58,6 +66,10 @@ beforeEach(() => {
   nav.mockReset()
   inPlace.mockReset()
   inPlace.mockResolvedValue({ ok: false, why: 'unreachable' })
+  bluetooth.mockReset()
+  bluetooth.mockReturnValue({ supported: false, reason: 'unsupported' })
+  direct.mockReset()
+  direct.mockResolvedValue({ ok: false, why: 'unsupported' })
   discoveryState.cloud = []
   discoveryState.cloudChecked = true
   vi.unstubAllGlobals()
@@ -91,8 +103,68 @@ describe('Connect locally on the hosted page (KAN-2529, KAN-5459)', () => {
     await methods.connectLocal.call(c, entry(NAME))
     expect(c.routeProblem?.line).toBe("Your network's router is blocking the printer's secure address (DNS rebinding protection).")
     expect(c.routeProblem?.detail).toMatch(/allow muonlan\.net in the router's DNS rebind exceptions/)
-    expect(c.routeProblem?.choices.map(x => x.id)).toEqual(['cloud', 'bluetooth', 'open-page'])
+    // KAN-6283 (B): the printer's own page first; Bluetooth only where the browser has it.
+    expect(c.routeProblem?.choices).toEqual([{ id: 'open-page', label: 'Open Boxwood on this network' }, { id: 'cloud', label: 'Over Muon3D' }])
     expect(c.routeProblemUrl).toBe('http://192.168.1.20/')
+    expect(c.connectCloud).not.toHaveBeenCalled()
+  })
+
+  it('picked, the name blocked, in a browser with Web Bluetooth: Open on this network, then Connect over Bluetooth', async () => {
+    withBluetooth()
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Sloe b26d', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
+    const c = component()
+    await methods.connectLocal.call(c, entry(NAME))
+    expect(c.routeProblem?.choices.map(x => x.label)).toEqual(['Open Boxwood on this network', 'Connect over Bluetooth', 'Over Muon3D'])
+    // the printer's own route, from its name
+    expect(c.routeProblemUrl).toBe('http://192.168.1.20/sloe-b26d')
+  })
+
+  it('the name blocked: the printer address is tried in place, with the browser question explained first (KAN-6283)', async () => {
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['8.8.8.8', '192.168.1.20'] }]
+    direct.mockImplementation(async o => {
+      o.onAsking?.()
+      return { ok: true, host: '192.168.1.20' }
+    })
+    const c = component()
+    expect(await methods.connectLocal.call(c, entry(NAME))).toBe(true)
+    expect(direct).toHaveBeenCalledOnce()
+    expect(direct.mock.calls[0][0]).toMatchObject({ printerId: 'p1', label: 'Boxwood' })
+    // Only what the service listed is offered; the filter for private ranges is the service's own (direct-address.spec).
+    expect(direct.mock.calls[0][0].addrs).toContain('192.168.1.20')
+    expect(c.notice).toBeNull()
+    expect(c.routeProblem).toBeNull()
+    expect(c.connectCloud).not.toHaveBeenCalled()
+  })
+
+  it('the address attempt says what the browser is about to ask', async () => {
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
+    let said: string | null = null
+    const c = component()
+    direct.mockImplementation(async o => {
+      o.onAsking?.()
+      said = c.notice
+      return { ok: false, why: 'unreachable' }
+    })
+    await methods.connectLocal.call(c, entry(NAME))
+    expect(said).toBe(LNA_PREPROMPT)
+    expect(c.notice).toBeNull()
+    expect(c.routeProblem?.choices[0].id).toBe('open-page')
+  })
+
+  it('the person refuses the address attempt: the permission line, and the printer page is still offered', async () => {
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
+    direct.mockResolvedValue({ ok: false, why: 'blocked' })
+    const c = component()
+    await methods.connectLocal.call(c, entry(NAME))
+    expect(c.routeProblem?.line).toMatch(/blocked access to printers on your network/)
+    expect(c.routeProblem?.choices[0]).toMatchObject({ id: 'open-page' })
+  })
+
+  it('Auto, the name blocked and the address attempt succeeding: connected before Muon3D or Bluetooth are tried', async () => {
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: true, localAddrs: ['192.168.1.20'] }]
+    direct.mockResolvedValue({ ok: true, host: '192.168.1.20' })
+    const c = component()
+    expect(await methods.connectLocal.call(c, entry(NAME), false, false)).toBe(true)
     expect(c.connectCloud).not.toHaveBeenCalled()
   })
 
