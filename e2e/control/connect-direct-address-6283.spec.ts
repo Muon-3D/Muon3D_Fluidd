@@ -81,6 +81,26 @@ async function connectLocally (page: Page) {
   await item(page, 'Connect locally').click()
 }
 
+function consoleOf (page: Page) {
+  const seen: string[] = []
+  page.on('console', m => { if (['error', 'warning'].includes(m.type())) seen.push(m.text().slice(0, 200)) })
+  page.on('pageerror', e => seen.push(`pageerror ${e.message}`.slice(0, 200)))
+  return seen
+}
+
+/** No problem is showing; when one is, the failure says what it is, what the page asked of the LAN and what the console said. */
+async function expectConnected (page: Page, seen: string[]) {
+  await expect.poll(async () => {
+    const problem = await page.getByTestId('route-problem-line').allTextContents()
+    if (!problem.length) return 'none'
+    const why = await page.evaluate(async () => {
+      const m = await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'activate.ts'].join('/'))
+      return m.activationState.error
+    }).catch(() => 'unreadable')
+    return JSON.stringify({ problem, activation: why, asks: await lanAsks(page), console: seen.slice(-8) })
+  }, { timeout: 20000 }).toBe('none')
+}
+
 async function allPrinters (page: Page) {
   const link = page.getByRole('banner').getByRole('link', { name: 'All printers', exact: true })
   if (await link.count()) await link.click()
@@ -106,6 +126,7 @@ async function expectFallbackButtons (page: Page) {
 
 test.describe('Connect locally by address when the secure name is blocked', () => {
   test('Chrome with Local Network Access: the browser question is explained first, then it connects in place, by address', async ({ page, context, account }) => {
+    const seen = consoleOf(page)
     let release!: () => void
     await start(page, account, 'supported', ['10.42.0.1', IP], { id: ROUTE_PRINTER.id, gate: new Promise<void>(resolve => { release = resolve }) })
     await connectLocally(page)
@@ -114,7 +135,7 @@ test.describe('Connect locally by address when the secure name is blocked', () =
     release()
     await page.evaluate(() => (window as any).__lanGrant())
     await expect(page.getByTestId('route-notice')).toHaveCount(0)
-    await expect(page.getByTestId('route-problem-line')).toHaveCount(0)
+    await expectConnected(page, seen)
     await expect(page).toHaveURL(new RegExp(`^${HOSTED}/boxwood-367a`))
     await allPrinters(page)
     const tile = page.locator('.tile').filter({ hasText: /Boxwood/i })
@@ -129,10 +150,11 @@ test.describe('Connect locally by address when the secure name is blocked', () =
   })
 
   test('already allowed, Auto: a click on the printer connects by address before Muon3D', async ({ page, account }) => {
+    const seen = consoleOf(page)
     await start(page, account, 'granted', [IP], { id: ROUTE_PRINTER.id })
     await page.locator('.tile').filter({ hasText: ROUTE_PRINTER.name }).first().click()
     await expect.poll(async () => (await lanAsks(page)).some(a => a.url.startsWith(`ws://${IP}/websocket`))).toBe(true)
-    await expect(page.getByTestId('route-problem-line')).toHaveCount(0)
+    await expectConnected(page, seen)
     await allPrinters(page)
     await expect(page.locator('.tile').filter({ hasText: /Boxwood/i })).toContainText('(by address)')
   })
