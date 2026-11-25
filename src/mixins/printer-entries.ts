@@ -802,6 +802,8 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
    */
   async connectByAddressFor (e: DirectoryEntry, id: string | null | undefined): Promise<DirectResult> {
     let direct = { ok: false, why: 'unsupported' } as DirectResult
+    // The secure name is up for this printer: by-address dialling stops. The two routes never mix on one page.
+    if (e.active && /^https:/i.test(String(this.$store.state.config?.apiUrl ?? '')) && this.$store.state.socket?.open) return { ok: false, why: 'failed' }
     // The service's list may lack the printer (a reset one): what it reported over a session now open, every address
     // saved for it, and the one this browser last connected by are tried after the listed ones.
     if (id && this.$store.state.server?.system_info?.network && (e.active || bluetoothCarrying(id))) {

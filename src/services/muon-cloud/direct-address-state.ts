@@ -10,7 +10,8 @@ export const directAddressState = Vue.observable({ host: null as string | null }
  */
 export function byAddressSuffix (apiUrlOrHost: string | null | undefined): string {
   const host = directAddressState.host
-  if (!host || !apiUrlOrHost) return ''
+  // The secure name (https) is never the by-address route, whatever address was dialled before.
+  if (!host || !apiUrlOrHost || /^https:/i.test(apiUrlOrHost) || /^wss:/i.test(apiUrlOrHost)) return ''
   const bare = apiUrlOrHost.replace(/^[a-z]+:\/\//i, '').replace(/[/?#].*$/, '').replace(/^([^:]+):\d+$/, '$1').replace(/^\[|\]$/g, '').toLowerCase()
   return bare === host ? ' (by address, not encrypted)' : ''
 }

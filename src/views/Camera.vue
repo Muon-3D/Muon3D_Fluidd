@@ -248,6 +248,7 @@ import { activeSlug } from '@/services/printer-pages'
 import { scopedPath } from '@/router/printerPagePaths'
 import { cameraFor, liveFacts, snapshotName, snapshotPlan } from '@/services/camera/model'
 import { cameraPage } from '@/services/camera/page-state'
+import { cameraContext, resolveCameraUrl } from '@/services/camera/secure-url'
 import type { WebcamConfig } from '@/store/webcams/types'
 
 /**
@@ -451,7 +452,9 @@ export default class Camera extends Mixins(OverviewMixin, BrowserMixin) {
       // A frame from another address that doesn't allow it: fall through.
     }
     if (camera.snapshot_url) {
-      window.open(new URL(camera.snapshot_url, document.URL).toString(), '_blank', 'noopener')
+      const snapshot = resolveCameraUrl(camera.snapshot_url, cameraContext(this.$store.state))
+      if (snapshot.blocked) EventBus.$emit(snapshot.reason, { type: 'warning', timeout: 5000 })
+      else window.open(snapshot.url.toString(), '_blank', 'noopener')
     } else {
       EventBus.$emit("This camera's picture can't be saved from here.", { type: 'warning', timeout: 5000 })
     }

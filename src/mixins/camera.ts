@@ -1,6 +1,7 @@
 import Vue from 'vue'
 import { Component, Prop, Ref, Watch } from 'vue-property-decorator'
 import type { WebcamConfig } from '@/store/webcams/types'
+import { cameraContext, resolveCameraUrl } from '@/services/camera/secure-url'
 
 @Component
 export default class CameraMixin extends Vue {
@@ -104,9 +105,9 @@ export default class CameraMixin extends Vue {
   }
 
   buildAbsoluteUrl (url: string) {
-    const { origin } = new URL(document.URL)
-
-    return new URL(url, origin)
+    const resolved = resolveCameraUrl(url, cameraContext(this.$store.state))
+    // An http address on the https page is never loaded: nothing is asked of it (the page says so instead).
+    return resolved.blocked ? new URL('about:blank') : resolved.url
   }
 
   startPlayback () {

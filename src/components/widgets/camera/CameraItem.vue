@@ -4,7 +4,14 @@
     class="camera-container"
     v-on="$listeners"
   >
-    <template v-if="cameraComponent">
+    <div
+      v-if="insecure"
+      class="camera-insecure"
+      data-tid="camera-needs-secure"
+    >
+      {{ insecure }}
+    </div>
+    <template v-else-if="cameraComponent">
       <component
         :is="cameraComponent"
         ref="component-instance"
@@ -62,6 +69,7 @@ import type { CameraFullscreenAction } from '@/store/config/types'
 import { CameraComponents } from '@/dynamicImports'
 import CameraMixin from '@/mixins/camera'
 import { activeSlug } from '@/services/printer-pages'
+import { cameraContext, resolveCameraUrl } from '@/services/camera/secure-url'
 import { scopedPath } from '@/router/printerPagePaths'
 
 @Component({})
@@ -117,6 +125,19 @@ export default class CameraItem extends Vue {
     this.framesPerSecond = ''
   }
 
+  /** "This camera needs a secure address." for an http camera that cannot be moved onto the printer's https origin. */
+  get insecure (): string {
+    const ctx = cameraContext(this.$store.state)
+    for (const address of [this.camera.stream_url, this.camera.snapshot_url]) {
+      if (!address) continue
+      try {
+        const r = resolveCameraUrl(address, ctx)
+        if (r.blocked) return r.reason
+      } catch { /* not an address: the viewer says so */ }
+    }
+    return ''
+  }
+
   get fullscreenMode (): CameraFullscreenAction {
     return this.$store.state.config.uiSettings.general.cameraFullscreenAction
   }
@@ -134,6 +155,12 @@ export default class CameraItem extends Vue {
 </script>
 
 <style lang="scss" scoped>
+  .camera-insecure {
+    padding: 24px 16px;
+    text-align: center;
+    opacity: 0.8;
+  }
+
   .camera-image {
     display: block;
     max-width: 100%;
