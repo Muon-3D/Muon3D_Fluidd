@@ -45,7 +45,7 @@ const component = () => ({
   askMuonLocal: false,
   accountDialog: false,
   routeProblemUrl: null as string | null,
-  routeProblem: null as { line: string, detail?: string, choices: Array<{ id: string }> } | null,
+  routeProblem: null as { line: string, detail?: string, choices: Array<{ id: string, label?: string }> } | null,
   failRoute: methods.failRoute,
   $store: { state: { socket: { open: false, ready: false } } },
   afterOpen: vi.fn(),

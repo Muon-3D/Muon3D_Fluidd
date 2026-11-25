@@ -703,7 +703,7 @@ export default class PrinterEntriesMixin extends Mixins(StateMixin) {
       choices.push({ id: 'bluetooth', label: onNetwork ? 'Connect over Bluetooth' : 'Over Bluetooth' })
     }
     if (picked !== 'cloud' && e.cloud?.online) choices.push({ id: 'cloud', label: 'Over Muon3D' })
-    if (!onNetwork && why !== 'rebinding') {
+    if (!onNetwork) {
       if (picked !== 'local' && localRouteOf(e).kind === 'secure') choices.push({ id: 'local', label: 'On this network' })
       // A printer on another network has no muon3d.local to open from here.
       if (why !== 'elsewhere') choices.push({ id: 'muon-local', label: 'muon3d.local' })
