@@ -11,6 +11,7 @@ import Vue from 'vue'
 import store from '@/store'
 import { appInit } from '@/init'
 import type { InstanceConfig } from '@/store/config/types'
+import { localSession } from './local-session'
 import { Globals } from '@/globals'
 import { bindHttpClientToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
 import { type PrinterTransport } from '@/services/managed-transport'
@@ -44,13 +45,6 @@ export const activationState = Vue.observable({
   /** The printer that wait is for, so Try again dials the same one. */
   approvalFor: null as string | null
 })
-
-/**
- * The printer Control is on locally, in place (its secure name or its address). The saved list holds it only when
- * this browser had none saved before, so the directory reads it from here: otherwise a printer that is connected
- * showed the account's idle "Connecting" (KAN-6743).
- */
-export const localSession = Vue.observable({ instance: null as InstanceConfig | null })
 
 let panelCodePairingOverride: boolean | null = null
 

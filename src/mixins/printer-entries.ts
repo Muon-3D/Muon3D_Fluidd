@@ -3,12 +3,12 @@ import consola from 'consola'
 import type { InstanceConfig } from '@/store/config/types'
 import StateMixin from './state'
 import { cloudState, dropCloudConnection, rememberBluetoothOnly } from '@/services/muon-cloud/state'
+import { localSession } from '@/services/muon-cloud/local-session'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import { foundOpenFor } from '@/services/muon-cloud/found-open'
 import {
   activateCloudPrinter,
   activateLocalPrinter,
-  localSession,
   activationState,
   cancelActivation,
   SwitchSuperseded,
