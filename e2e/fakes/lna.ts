@@ -23,6 +23,24 @@ export type LnaMode = 'supported' | 'granted' | 'denied' | 'unsupported'
 
 export interface LanAsk { url: string, space: string | null }
 
+/**
+ * The mock printer is mid-print. A printer that is printing shows its job, not its route, so the socket says it is
+ * idle: `print_stats` and `idle_timeout` wherever they appear in a reply or a notification.
+ */
+function idle (text: string): string {
+  let body: unknown
+  try { body = JSON.parse(text) } catch { return text }
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return
+    const o = node as Record<string, any>
+    if (o.print_stats && typeof o.print_stats === 'object') o.print_stats = { ...o.print_stats, state: 'standby', filename: '', message: '' }
+    if (o.idle_timeout && typeof o.idle_timeout === 'object') o.idle_timeout = { ...o.idle_timeout, state: 'Idle', printing_time: 0 }
+    for (const v of Object.values(o)) walk(v)
+  }
+  walk(body)
+  return JSON.stringify(body)
+}
+
 export async function lna (page: Page, mode: LnaMode, printerIp = '192.168.1.20') {
   // The mock printer is on loopback, which a public https page may not reach without the browser's own permission
   // (Chrome 142+). What the page asks of it is answered from here instead, so it never depends on that check. An
@@ -42,7 +60,7 @@ export async function lna (page: Page, mode: LnaMode, printerIp = '192.168.1.20'
       const server = new NodeSocket(`ws://localhost:${MOCK_PORT}${target.pathname}${target.search}`)
       const waiting: Array<string | Buffer> = []
       server.on('open', () => { for (const m of waiting.splice(0)) server.send(m) })
-      server.on('message', (data, binary) => ws.send(binary ? (data as Buffer) : data.toString()))
+      server.on('message', (data, binary) => ws.send(binary ? (data as Buffer) : idle(data.toString())))
       server.on('close', () => { ws.close().catch(() => {}) })
       server.on('error', () => { ws.close().catch(() => {}) })
       ws.onMessage(message => { if (server.readyState === NodeSocket.OPEN) server.send(message); else waiting.push(message) })
