@@ -23,6 +23,16 @@ export type LnaMode = 'supported' | 'granted' | 'denied' | 'unsupported'
 export interface LanAsk { url: string, space: string | null }
 
 export async function lna (page: Page, mode: LnaMode, printerIp = '192.168.1.20') {
+  // The mock printer is on loopback, which a public https page may not reach without the browser's own permission
+  // (Chrome 142+). What the page asks of it is answered from here instead, so it never depends on that check. Registered
+  // first, so every more specific route (the printer's own, an identity) answers before it. Its socket is already
+  // proxied the same way by usePrinter.
+  if (mode !== 'unsupported') {
+    await page.route(new RegExp(`^http://localhost:${MOCK_PORT}/`), async route => {
+      const response = await route.fetch()
+      await route.fulfill({ response, headers: { ...response.headers(), 'access-control-allow-origin': '*' } })
+    })
+  }
   await page.addInitScript(({ mode, ip, port }) => {
     const w = window as any
     w.__lan = [] as Array<{ url: string, space: string | null }>
