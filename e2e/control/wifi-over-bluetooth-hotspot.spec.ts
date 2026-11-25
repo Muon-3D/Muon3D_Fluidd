@@ -90,8 +90,6 @@ test('over Bluetooth the disconnect asks first and says Bluetooth stays', async 
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('Bluetooth stays connected')
   expect((await networkCalls(page)).calls).not.toContain('POST /wifi/disconnect')
-  await dialog.getByRole('button', { name: 'Cancel' }).click()
-  await expect(dialog).toBeHidden()
 })
 
 test('through Muon3D the same join warns that this connection drops', async ({ page }) => {

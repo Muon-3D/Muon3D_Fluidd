@@ -820,6 +820,8 @@ export default class HotspotManagerCard extends Vue {
     return [
       (v: string): true | string => {
         if (!this.form.securityEnabled) return true
+        // Over a managed route the key is never shown, so a rename leaves it blank: the printer keeps its key.
+        if (this.remote && v === '' && this.original.securityEnabled) return true
 
         // 1) allow exactly 64 hex digits
         if (/^[0-9A-Fa-f]{64}$/.test(v)) {

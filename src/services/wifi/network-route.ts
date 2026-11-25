@@ -67,7 +67,6 @@ export type ManagedNetworkProblem =
   | { kind: 'not-available', message: string }
   | { kind: 'path-rule', message: string }
   | { kind: 'not-allowed', message: string }
-  | { kind: 'busy', message: string }
 
 /** `what` is the thing being changed, as the sentence names it: "Wi-Fi" or "the hotspot". */
 const notAvailable = (what: string) => `This printer's software can't change ${what} over this connection yet. Update the printer, or use its own network.`
@@ -80,7 +79,6 @@ const NOT_ALLOWED: Record<string, (what: string) => string> = {
   forbidden: what => `This connection isn't paired as a user of the printer yet, so the printer won't show or change ${what} for it. Finish pairing this device with the printer, then try again.`,
   viewer_read_only: what => `This connection can watch the printer but not change ${what}.`
 }
-const BUSY = "The printer's network service didn't answer. Try again in a moment."
 
 /** Reads a failed muon-link network call. Null for anything else (a permission refusal, a join failure). */
 export function managedNetworkProblem (error: unknown, what = 'Wi-Fi'): ManagedNetworkProblem | null {
@@ -91,7 +89,6 @@ export function managedNetworkProblem (error: unknown, what = 'Wi-Fi'): ManagedN
   const code = typeof detail.code === 'string' ? detail.code : typeof body.error === 'string' ? body.error : ''
   if (response.status === 403 && PATH_RULES(what)[code]) return { kind: 'path-rule', message: PATH_RULES(what)[code] }
   if (response.status === 403 && NOT_ALLOWED[code]) return { kind: 'not-allowed', message: NOT_ALLOWED[code](what) }
-  if ((response.status === 502 || response.status === 504) && /^aux_/.test(code)) return { kind: 'busy', message: BUSY }
   // An older muon-link has no such route: a bare 404 with no body of ours.
   if (response.status === 404 && !code) return { kind: 'not-available', message: notAvailable(what) }
   return null
