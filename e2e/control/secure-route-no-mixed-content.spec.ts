@@ -102,15 +102,24 @@ async function allPrinters (page: Page) {
   }
 }
 
-async function startSecure (page: Page, account: Parameters<typeof useAllRoutes>[1], webcams: unknown[]) {
+async function startSecure (page: Page, account: Parameters<typeof useAllRoutes>[1], webcams: unknown[], persisted = false) {
   await lna(page, 'granted', IP)
   await useAllRoutes(page, account)
   ;(account.printers[0] as unknown as { secure_name: string }).secure_name = SECURE
   const secure = await securePrinter(page, { host: SECURE, endpointId: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, webcams })
   await nearby(page, [IP])
   const seen = record(page)
+  if (persisted) {
+    // This browser's old state: a printer saved at its address (it was once connected by address), and the addresses
+    // Control learned for it. The page is opened on that printer's own address, as a reload would.
+    await page.addInitScript(([id, name, ip]) => {
+      localStorage.setItem('appInstances', JSON.stringify([{ name, apiUrl: `http://${ip}`, socketUrl: `ws://${ip}/websocket`, active: true, endpointId: id }]))
+      localStorage.setItem('muonKnownLanAddrs', JSON.stringify({ [id.toLowerCase()]: [ip] }))
+    }, [ROUTE_PRINTER.id, ROUTE_PRINTER.name, IP])
+    seen.start()
+  }
   await hostedPage(page)
-  await page.goto(`${HOSTED}/`)
+  await page.goto(persisted ? `${HOSTED}/boxwood-367a/camera` : `${HOSTED}/`)
   await ready(page)
   return { secure, seen }
 }
@@ -159,6 +168,17 @@ test.describe('The secure-name route never mixes with http or ws', () => {
     await goTo(page, '/camera')
     await expect(page.getByTestId('camera-needs-secure').first()).toContainText('needs a secure address')
     expect(seen.urls.filter(u => u.includes('garage-cam.e2e'))).toEqual([])
+    expect(mixed(seen.urls)).toEqual([])
+  })
+})
+
+test.describe('Old saved state in this browser', () => {
+  test('a printer saved at http://<ip> and a remembered address are never dialled by themselves: load, connect by secure name, zero http or ws', async ({ page, account }) => {
+    const { seen } = await startSecure(page, account, [], true)
+    await connectLocally(page)
+    await expectOnSecureName(page)
+    await goTo(page, '/camera')
+    expect(await lanAsks(page)).toEqual([])
     expect(mixed(seen.urls)).toEqual([])
   })
 })

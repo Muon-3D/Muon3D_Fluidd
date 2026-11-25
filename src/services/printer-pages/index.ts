@@ -332,7 +332,13 @@ export async function openPrinterAt (slug: string): Promise<boolean> {
   try {
     if (target.kind === 'foreign') return true
     if (!openers) return false
-    if (target.kind === 'local') return await openers.activateLocalPrinter(target.instance)
+    if (target.kind === 'local') {
+      // A saved http address is never connected by itself from the https site (the address in the bar, a reload, a
+      // saved route): even the probe is an http request, and the tab loses its lock ("Not secure"). It is opened by
+      // the person, from the printer's tile, which tries the secure name first.
+      if (location.protocol === 'https:' && /^http:/i.test(target.instance.apiUrl)) return false
+      return await openers.activateLocalPrinter(target.instance)
+    }
     await openers.activateCloudPrinter(target.printerId)
     return true
   } finally {
