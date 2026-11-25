@@ -18,6 +18,22 @@ describe('allowlist', () => {
     ]) expect(rpcVerdict(m)).toBe('forward')
   })
 
+  it('reads the tuning verbs field by field', () => {
+    expect(readVerb({ verb: 'speed', percent: 120.4 })).toEqual({ verb: 'speed', percent: 120 })
+    expect(readVerb({ verb: 'flow', percent: 95 })).toEqual({ verb: 'flow', percent: 95 })
+    expect(readVerb({ verb: 'motors_off', extra: 'x' })).toEqual({ verb: 'motors_off' })
+    expect(readVerb({ verb: 'zadjust', by: -0.0504 })).toEqual({ verb: 'zadjust', by: -0.05 })
+    for (const bad of [{ verb: 'speed', percent: 0 }, { verb: 'speed', percent: 501 }, { verb: 'flow', percent: 301 }, { verb: 'flow', percent: 'a' },
+      { verb: 'zadjust', by: 0 }, { verb: 'zadjust', by: 1.5 }, { verb: 'zadjust', by: Number.NaN }]) {
+      expect(readVerb(bad)).toBeNull()
+    }
+  })
+
+  it('forwards the read-only host stats', () => {
+    for (const m of ['machine.system_info', 'machine.proc_stats']) expect(rpcVerdict(m)).toBe('forward')
+    for (const m of ['machine.reboot', 'machine.shutdown', 'machine.services.restart', 'server.muon.access.answer', 'server.muon.access.requests']) expect(rpcVerdict(m)).toBe('refuse')
+  })
+
   it('reads fan and the other verbs by name, field by field', () => {
     expect(readVerb({ verb: 'fan', fan: 'part', percent: 40.4 })).toEqual({ verb: 'fan', fan: 'part', percent: 40 })
     for (const bad of [{ fan: 'part', percent: 101 }, { fan: 'part', percent: -1 }, { fan: 'a b', percent: 5 }, { fan: 7, percent: 5 }, { fan: 'part' }]) {

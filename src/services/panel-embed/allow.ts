@@ -50,7 +50,10 @@ export const RPC_FORWARD: ReadonlySet<string> = new Set([
   'server.job_queue.start',
   'server.job_queue.pause',
   'server.job_queue.jump',
-  'server.temperature_store'
+  'server.temperature_store',
+  // Host stats, read only (the System screen).
+  'machine.system_info',
+  'machine.proc_stats'
 ])
 
 /**
@@ -210,6 +213,9 @@ export function gcodeRefusal (script: unknown): string {
   return ''
 }
 
+/** The most one Z nudge may change the offset by, mm; the panel's steps are 0.01 to 0.1. */
+export const Z_ADJUST_LIMIT_MM = 1
+
 /** The most one jog may move, mm; the panel's own steps are 0.1 to 50. */
 export const JOG_LIMIT_MM = 50
 
@@ -241,6 +247,14 @@ export function readVerb (raw: unknown): Verb | null {
       return null
     case 'filament':
       return r.action === 'load' || r.action === 'unload' ? { verb: 'filament', action: r.action } : null
+    case 'speed':
+      return finite(r.percent) && r.percent >= 1 && r.percent <= 500 ? { verb: 'speed', percent: Math.round(r.percent) } : null
+    case 'flow':
+      return finite(r.percent) && r.percent >= 1 && r.percent <= 300 ? { verb: 'flow', percent: Math.round(r.percent) } : null
+    case 'motors_off':
+      return { verb: 'motors_off' }
+    case 'zadjust':
+      return finite(r.by) && r.by !== 0 && Math.abs(r.by) <= Z_ADJUST_LIMIT_MM ? { verb: 'zadjust', by: Math.round(r.by * 1000) / 1000 } : null
     default:
       return null
   }
