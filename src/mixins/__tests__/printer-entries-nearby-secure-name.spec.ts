@@ -27,6 +27,10 @@ const component = () => ({
   run,
   notice: '',
   askMuonLocal: false,
+  routeProblem: null as { choices: Array<{ id: string }> } | null,
+  routeProblemUrl: null as string | null,
+  routeProblemEntry: null as unknown,
+  failRoute: methods.failRoute,
   localRouteFor: methods.localRouteFor,
   connectLocalFromHostedPage: methods.connectLocalFromHostedPage,
   connectByAddressFor: methods.connectByAddressFor
@@ -56,7 +60,9 @@ describe('Connect locally for a nearby printer that is not on the account', () =
     inPlace.mockResolvedValue({ ok: false, why: 'unreachable' })
     const c = component()
     await methods.connectLocalFromHostedPage.call(c, found, (methods.localRouteFor as Fn).call(c, found), false)
-    expect(c.askMuonLocal).toBe(true)
+    expect(c.askMuonLocal).toBe(false)
+    expect(c.routeProblem?.choices[0]).toMatchObject({ id: 'open-page' })
+    expect(c.routeProblemUrl).toBe('http://192.168.1.20/sloe-b26d')
   })
 
   it('without a secure name from the console there is no local route from this page', () => {
