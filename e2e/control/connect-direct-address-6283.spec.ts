@@ -149,7 +149,7 @@ test.describe('Connect locally by address when the secure name is blocked', () =
   })
 
   test('a browser without Local Network Access: the printer page on this network is the primary button, with Bluetooth; nothing is dialled', async ({ page, context, account }) => {
-    await context.route(new RegExp(`^http://${IP.replace(/\./g, '\.')}/`), route =>
+    await context.route(new RegExp(`^http://${IP.replace(/\./g, '\\.')}/`), route =>
       route.fulfill({ status: 200, contentType: 'text/html', body: '<title>printer</title>' }))
     await start(page, account, 'unsupported', [IP])
     await connectLocally(page)
