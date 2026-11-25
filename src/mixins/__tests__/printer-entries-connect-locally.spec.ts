@@ -205,6 +205,17 @@ describe('Connect locally on the hosted page (KAN-2529, KAN-5459)', () => {
     expect(inPlace).not.toHaveBeenCalled()
   })
 
+  it('no secure name from the service (a reset printer), on a Windows hotspot range: its address is tried in place (KAN-6743)', async () => {
+    discoveryState.cloud = [{ printerId: 'p1', name: 'Boxwood', model: 'M1', linked: false, localAddrs: ['10.42.0.1', '192.168.137.178'] }]
+    direct.mockResolvedValue({ ok: true, host: '192.168.137.178' })
+    const c = component()
+    expect(await methods.connectLocal.call(c, entry(null))).toBe(true)
+    expect(inPlace).not.toHaveBeenCalled()
+    expect(direct).toHaveBeenCalledOnce()
+    expect(direct.mock.calls[0][0].addrs).toContain('192.168.137.178')
+    expect(c.routeProblem).toBeNull()
+  })
+
   it('a busy row keeps "Still opening" instead of the unreachable notice', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('blocked') }))
     const c = { ...component(), busyKey: 'cloud:other' }
