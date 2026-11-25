@@ -126,6 +126,14 @@ test.describe('The secure-name route never mixes with http or ws', () => {
     await goTo(page, '/')
     await goTo(page, '/camera')
     await expect(page.getByTestId('camera-tile')).toBeVisible()
+    // Background discovery on the hosted page asks the service, never an http address.
+    await page.evaluate(async () => {
+      const d = await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'discovery.ts'].join('/'))
+      await d.discoverPrinters(true)
+      await d.lookForPrinters()
+      await d.refreshKnownPrinters()
+      await d.refreshLanStatus()
+    })
     // The printer's address was never dialled, and nothing else went out unencrypted.
     expect(await lanAsks(page)).toEqual([])
     expect(mixed(seen.urls)).toEqual([])
