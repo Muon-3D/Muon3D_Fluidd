@@ -36,7 +36,7 @@ export async function lna (page: Page, mode: LnaMode, printerIp = '192.168.1.20'
   if (mode !== 'unsupported') {
     // The page's socket to the printer's address: answered here, by the mock printer's own socket. (A page script that
     // rewrote it would reach the browser's real socket, which is the loopback check again.)
-    await page.routeWebSocket(new RegExp(`^wss?://${printerIp.replace(/\./g, '\.')}(?::80)?/websocket`), ws => {
+    await page.routeWebSocket(new RegExp(`^wss?://${printerIp.replace(/\./g, '\\.')}(?::80)?/websocket`), ws => {
       page.evaluate(url => (window as any).__lan.push({ url, space: null }), ws.url()).catch(() => {})
       const target = new URL(ws.url())
       const server = new NodeSocket(`ws://localhost:${MOCK_PORT}${target.pathname}${target.search}`)
