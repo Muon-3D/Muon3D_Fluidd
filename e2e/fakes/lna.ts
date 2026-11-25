@@ -16,6 +16,7 @@
  * `bluetooth` gives the page a `navigator.bluetooth` where the engine has none (it only needs to exist).
  */
 import type { Page } from '@playwright/test'
+import NodeSocket from 'ws'
 import { MOCK_PORT } from '../ports'
 
 export type LnaMode = 'supported' | 'granted' | 'denied' | 'unsupported'
@@ -24,14 +25,28 @@ export interface LanAsk { url: string, space: string | null }
 
 export async function lna (page: Page, mode: LnaMode, printerIp = '192.168.1.20') {
   // The mock printer is on loopback, which a public https page may not reach without the browser's own permission
-  // (Chrome 142+). What the page asks of it is answered from here instead, so it never depends on that check. Specs that
-  // use the mock printer register this after it (so not with `database: true`, whose route this would answer first); an
-  // identity registered later answers first. Its socket is proxied the same way by usePrinter, which is why this
-  // runs after it: the page's socket is rewritten to a name that route matches (see the init script below).
+  // (Chrome 142+). What the page asks of it is answered from here instead, so it never depends on that check. An
+  // identity registered after this answers first. (`database: true` on usePrinter would be answered by this first: not used here.)
   if (mode !== 'unsupported') {
     await page.route(new RegExp(`^http://localhost:${MOCK_PORT}/`), async route => {
       const response = await route.fetch()
       await route.fulfill({ response, headers: { ...response.headers(), 'access-control-allow-origin': '*' } })
+    })
+  }
+  if (mode !== 'unsupported') {
+    // The page's socket to the printer's address: answered here, by the mock printer's own socket. (A page script that
+    // rewrote it would reach the browser's real socket, which is the loopback check again.)
+    await page.routeWebSocket(new RegExp(`^wss?://${printerIp.replace(/\./g, '\.')}(?::80)?/websocket`), ws => {
+      page.evaluate(url => (window as any).__lan.push({ url, space: null }), ws.url()).catch(() => {})
+      const target = new URL(ws.url())
+      const server = new NodeSocket(`ws://localhost:${MOCK_PORT}${target.pathname}${target.search}`)
+      const waiting: Array<string | Buffer> = []
+      server.on('open', () => { for (const m of waiting.splice(0)) server.send(m) })
+      server.on('message', (data, binary) => ws.send(binary ? (data as Buffer) : data.toString()))
+      server.on('close', () => { ws.close().catch(() => {}) })
+      server.on('error', () => { ws.close().catch(() => {}) })
+      ws.onMessage(message => { if (server.readyState === NodeSocket.OPEN) server.send(message); else waiting.push(message) })
+      ws.onClose(() => server.close())
     })
   }
   await page.addInitScript(({ mode, ip, port }) => {
@@ -79,14 +94,6 @@ export async function lna (page: Page, mode: LnaMode, printerIp = '192.168.1.20'
       ask(String(url), null)
       return (open as any).call(this, method, toMock(String(url)), ...rest)
     } as typeof open
-
-    const NativeSocket = window.WebSocket
-    window.WebSocket = class extends NativeSocket {
-      constructor (url: string | URL, protocols?: string | string[]) {
-        ask(String(url), null)
-        super(toMock(String(url)), protocols)
-      }
-    } as typeof WebSocket
   }, { mode, ip: printerIp, port: MOCK_PORT })
 }
 
