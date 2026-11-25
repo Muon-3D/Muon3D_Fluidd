@@ -71,6 +71,9 @@ export const actions: ActionTree<ConfigState, RootState> = {
   },
 
   async discoverLanInstances ({ commit }) {
+    // muon/lan-printers.json is the printer's own file. The hosted site has none, so it is never asked for there
+    // (it only logged a 404 in the console).
+    if (['control.muon3d.com', 'app.muon3d.com'].includes(location.hostname)) return
     try {
       const response = await fetch(`${import.meta.env.BASE_URL}muon/lan-printers.json`, {
         cache: 'no-store'
