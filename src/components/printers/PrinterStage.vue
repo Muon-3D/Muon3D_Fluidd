@@ -17,12 +17,11 @@
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import idle from '@/assets/m1/m1-accurate-idle.webp'
-import printing from '@/assets/m1/m1-accurate-printing.webp'
 import type { ThumbState } from '@/components/ui/PrinterThumb.vue'
 
 /**
  * The whole M1 on the theme's stage, never cropped:
- * idle, printing (a part on the plate) or offline (the idle still, dimmed).
+ * one still for every state (the live view and the job card show progress); offline is dimmed.
  */
 @Component({})
 export default class PrinterStage extends Vue {
@@ -33,7 +32,6 @@ export default class PrinterStage extends Vue {
   readonly height?: number
 
   get src (): string {
-    if (this.state === 'printing') return printing
     return idle
   }
 }

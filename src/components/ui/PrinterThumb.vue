@@ -16,11 +16,10 @@
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
 import idle from '@/assets/m1/m1-accurate-idle-thumb.webp'
-import printing from '@/assets/m1/m1-accurate-printing-thumb.webp'
 
 export type ThumbState = 'idle' | 'printing' | 'offline'
 
-/** The M1, small, on the theme's stage: printing, idle or offline. */
+/** The M1, small, on the theme's stage: one still for every state; offline is dimmed. */
 @Component({})
 export default class PrinterThumb extends Vue {
   @Prop({ type: Number, default: 40 })
@@ -30,7 +29,6 @@ export default class PrinterThumb extends Vue {
   readonly state!: ThumbState
 
   get src (): string {
-    if (this.state === 'printing') return printing
     return idle
   }
 }

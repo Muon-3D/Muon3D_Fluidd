@@ -7,14 +7,14 @@ import PrinterThumb from '@/components/ui/PrinterThumb.vue'
 
 const root = path.resolve(__dirname, '../../../..')
 const read = (file: string) => readFileSync(path.join(root, file), 'utf8')
-const stills = ['idle', 'printing'].flatMap(state => [`m1-accurate-${state}.webp`, `m1-accurate-${state}-thumb.webp`])
+const stills = ['m1-accurate-idle.webp', 'm1-accurate-idle-thumb.webp']
 
 describe('printer preview stills (control-polish 4.2)', () => {
   it('PrinterStage and PrinterThumb import the accurate-model stills, not the old JPGs', () => {
     for (const file of ['src/components/printers/PrinterStage.vue', 'src/components/ui/PrinterThumb.vue']) {
       const source = read(file)
       expect(source).toMatch(/m1-accurate-idle(-thumb)?\.webp/)
-      expect(source).toMatch(/m1-accurate-printing(-thumb)?\.webp/)
+      expect(source).not.toContain('m1-accurate-printing')
       expect(source).not.toMatch(/m1\/m1-(idle|printing|offline)(-thumb)?\.jpg/)
       expect(source).not.toContain('mix-blend-mode')
     }
@@ -27,6 +27,7 @@ describe('printer preview stills (control-polish 4.2)', () => {
       expect(size).toBeLessThanOrEqual(file.includes('thumb') ? 4 * 1024 : 60 * 1024)
     }
     for (const old of ['idle', 'printing', 'offline']) {
+      expect(() => statSync(path.join(root, `src/assets/m1/m1-accurate-${old === 'printing' ? 'printing' : 'none'}.webp`))).toThrow()
       expect(() => statSync(path.join(root, `src/assets/m1/m1-${old}.jpg`))).toThrow()
       expect(() => statSync(path.join(root, `src/assets/m1/m1-${old}-thumb.jpg`))).toThrow()
     }
@@ -39,10 +40,10 @@ describe('printer preview stills (control-polish 4.2)', () => {
     for (const token of ['--m3d-stage-grid', '--m3d-stage-glow', '--m3d-stage-shadow']) expect(theme.split(token).length - 1).toBe(2)
   })
 
-  it('each state shows a still; offline reuses the idle one', () => {
+  it('every state shows the one still (no placeholder part on the plate); offline is dimmed', () => {
     const src = (component: any, state: string) => mount(component, { propsData: { state } }).find('img').attributes('src')
     for (const component of [PrinterStage, PrinterThumb]) {
-      expect(src(component, 'idle')).not.toBe(src(component, 'printing'))
+      expect(src(component, 'printing')).toBe(src(component, 'idle'))
       expect(src(component, 'offline')).toBe(src(component, 'idle'))
     }
   })

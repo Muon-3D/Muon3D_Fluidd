@@ -31,7 +31,7 @@ try {
     return (await page.screenshot({ type: 'png' })).toString('base64')
   }
 
-  for (const state of ['idle', 'printing']) {
+  for (const state of ['idle']) // no printing still until the viewer can show a real part (the dev stage's is a placeholder) {
     await page.goto(`${base}?m1shadow=off${state === 'idle' ? '&print=0' : ''}`, { waitUntil: 'networkidle' })
     await page.addStyleTag({ content: `canvas{width:${SIZE}px!important;height:${SIZE}px!important;max-width:none!important;max-height:none!important}` })
     await page.evaluate(() => window.m1Stage.ready)
