@@ -10,7 +10,6 @@ vi.mock('@/plugins/vuetify', () => ({
 vi.mock('@/util/ui-style', () => ({ applyUiStyle: vi.fn() }))
 vi.mock('@/util/glass-icons', () => ({ applyGlassIcons: vi.fn() }))
 
-
 const apply = (color: string, isDark: boolean) =>
   (actions as any).onThemeChange({}, { color, isDark, logo: { light: '#fff', dark: '#000' }, style: 'glass' })
 
