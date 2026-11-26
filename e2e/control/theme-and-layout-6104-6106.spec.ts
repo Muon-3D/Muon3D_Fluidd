@@ -205,11 +205,12 @@ test.describe('the Bluetooth icon (KAN-6104)', () => {
 
     await expect(app(page)).toHaveClass(/theme--dark/)
     await expect.poll(async () => (await contrast(page)).glyphLighter).toBe(false)
-    expect((await contrast(page)).ratio).toBeGreaterThanOrEqual(4.5)
+    // The colours ease in: wait for the ratio, not one reading of it.
+    await expect.poll(async () => (await contrast(page)).ratio).toBeGreaterThanOrEqual(4.5)
 
     await page.getByTestId('theme-toggle').click()
     await expect(app(page)).toHaveClass(/theme--light/)
     await expect.poll(async () => (await contrast(page)).glyphLighter).toBe(true)
-    expect((await contrast(page)).ratio).toBeGreaterThanOrEqual(3)
+    await expect.poll(async () => (await contrast(page)).ratio).toBeGreaterThanOrEqual(3)
   })
 })
