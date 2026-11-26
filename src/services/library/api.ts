@@ -445,6 +445,15 @@ export function createLibraryClient (options: LibraryClientOptions) {
       request<{ id: string, state: string, audience: string, title: string, version: number }>('POST', `${item(id)}/publish`, body),
     /** Your shares, newest first (public ones are your published prints). */
     shares: () => request<unknown>('GET', '/v1/community/shares'),
+    /**
+     * Share one version with chosen people or by link (`POST /v1/community/shares`, sharing-api.md).
+     * `direct` takes one exact public handle as `recipient` (not an email); `link` answers a random
+     * `key` once, which is never asked for again. Both expire after seven days.
+     */
+    share: (body: { item: string, version: number, title: string, audience: 'link' | 'direct', recipient?: string }) =>
+      request<{ id: string, key?: string, state: string, audience: string, title: string, version: number }>('POST', '/v1/community/shares', body),
+    /** Stop sharing (`DELETE /v1/community/shares/:id`, 204). */
+    unshare: (shareId: string) => request<null>('DELETE', `/v1/community/shares/${encodeURIComponent(shareId)}`),
     saved: () => request<CommunitySavesPage>('GET', '/v1/community/saves'),
     /** Save a public print (the Library's heart): the save, new or the one already there. */
     save: (id: string, kind: 'publication' | 'catalogue' = 'publication') => request<CommunitySave>('PUT', '/v1/community/saves', { kind, id }),
