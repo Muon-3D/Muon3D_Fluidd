@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Vue from 'vue'
-import { AccessRefused, AccessUnavailable, capabilityRows, currentPrinterAccess, lanPrinterAccess } from '../api'
+import { AccessRefused, AccessUnavailable, UNREACHED, capabilityRows, currentPrinterAccess, lanPrinterAccess } from '../api'
 
 function answer (body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status })
@@ -135,5 +135,16 @@ describe('the rows a person sees', () => {
 
   it('leaves out what the printer does not report', () => {
     expect(capabilityRows({})).toEqual([])
+  })
+})
+
+describe('asking another printer from a page the browser will not let reach it (KAN-5990)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('says what to do instead of "Failed to fetch"', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch') }))
+    await expect(lanPrinterAccess('http://192.168.1.5').request({ kind: 'join' })).rejects.toMatchObject({ message: UNREACHED })
   })
 })

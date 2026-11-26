@@ -3,6 +3,7 @@ import type { DirectoryEntry } from '@/services/muon-cloud/directory'
 import type { CloudPrinter } from '@/services/muon-cloud/api'
 import type { ForeignPrinterRecord, ForeignStatus } from '@/services/foreign-printers/types'
 import { hotspotState } from '@/services/hotspot/model'
+import { directAddressState } from '@/services/muon-cloud/direct-address-state'
 import { groupSummary, heatingTemp, jobName, printersPage, ROUTE_HOLD_MS, RouteLabelHold, type PageSources, type PrinterTile, type TileJob } from '../model'
 
 function entry (key: string, fields: Partial<DirectoryEntry>): DirectoryEntry {
@@ -253,7 +254,7 @@ describe('the Printers page', () => {
         directory: { cloud: [], local: [entry('local:b', { name: 'muon-walnut-8987', active: 'local', host: '192.168.1.40' })], found: [] }
       }))
       const tile = page.groups.flatMap(g => g.tiles).concat(page.printingNow).find(t => t.name === 'Walnut')
-      expect(tile?.detail).toBe('On this network')
+      expect(tile?.detail).toBe('Connected locally')
     } finally {
       vi.unstubAllGlobals()
     }
@@ -512,5 +513,23 @@ describe('route line through a Bluetooth to LAN handoff (KAN-4994)', () => {
 
   it('without a hold, a printer that was never carried shows its own line', () => {
     expect(lineOf(between(), new RouteLabelHold(), 0)).toBe('Remote, through Muon3D')
+  })
+})
+
+describe('a printer connected by its LAN address (KAN-6283)', () => {
+  const lineOf = (e: DirectoryEntry) => {
+    const page = printersPage(sources({ directory: { cloud: [e], local: [], found: [] }, signedIn: true, now: 0 }))
+    return page.groups.flatMap(g => g.tiles).find(t => t.key === e.key)?.detail ?? page.offline.concat(page.other).find(t => t.key === e.key)?.detail
+  }
+  // An account printer opened in place at its address: it is the one Fluidd is on, with no discovered host.
+  const direct = () => cloudEntry('p1', 'Boxwood', {
+    host: null, active: 'local', saved: [{ name: 'Boxwood', apiUrl: 'http://192.168.1.20', socketUrl: 'ws://192.168.1.20/websocket', active: true }]
+  })
+
+  it('reads "Connected locally (by address, not encrypted)", not "Remote, through Muon3D"', () => {
+    directAddressState.host = '192.168.1.20'
+    expect(lineOf(direct())).toBe('Connected locally (by address, not encrypted)')
+    directAddressState.host = null
+    expect(lineOf(direct())).toBe('Connected locally')
   })
 })

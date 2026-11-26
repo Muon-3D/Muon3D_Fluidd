@@ -1,0 +1,69 @@
+import { clampProgress, SocketAdapter, temp } from "/src/services/foreign-printers/adapters/base.ts";
+import { localCameraUrl } from "/src/services/foreign-printers/address.ts";
+export const CREALITY_CAPABILITIES = {
+  pauseResume: true,
+  stop: true,
+  camera: true,
+  listFiles: false,
+  printFromStorage: false,
+  upload: false
+};
+export default class CrealityAdapter extends SocketAdapter {
+  constructor(record, deps) {
+    super(deps);
+    this.record = record;
+  }
+  kind = "creality";
+  capabilities = CREALITY_CAPABILITIES;
+  telemetry = {};
+  async connect() {
+    const host = this.record.host.replace(/:\d+$/, "");
+    return this.openSocket(`ws://${host}:9999`, "wsslicer");
+  }
+  onOpen(socket) {
+    socket.send(JSON.stringify({ method: "get", params: { ReqPrinterPara: 1 } }));
+  }
+  onMessage(data) {
+    if (data === "ok") return;
+    let message;
+    try {
+      message = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (message.ModeCode === "heart_beat") {
+      this.socket?.send("ok");
+      return;
+    }
+    this.telemetry = { ...this.telemetry, ...message };
+    const error = Number(this.telemetry.err?.errcode ?? 0) !== 0;
+    const state = Number(this.telemetry.state);
+    this.setStatus({
+      cameraUrl: localCameraUrl(this.telemetry.cameraUrl ?? this.telemetry.videoUrl, this.record.host),
+      state: error ? "error" : state === 5 ? "paused" : state === 1 ? "printing" : "idle",
+      message: error ? String(this.telemetry.err?.errinfo ?? "Printer error") : null,
+      file: this.telemetry.printFileName ?? null,
+      progress: clampProgress(this.telemetry.printProgress, true),
+      timeLeft: typeof this.telemetry.printLeftTime === "number" ? this.telemetry.printLeftTime : null,
+      temps: [
+        temp("nozzle", this.telemetry.nozzleTemp, this.telemetry.targetNozzleTemp),
+        temp("bed", this.telemetry.bedTemp0, this.telemetry.targetBedTemp0)
+      ].filter((item) => item !== null)
+    });
+  }
+  command(field, value) {
+    this.send(JSON.stringify({ method: "set", params: { [field]: value } }));
+    return Promise.resolve();
+  }
+  pause() {
+    return this.command("pause", 1);
+  }
+  resume() {
+    return this.command("pause", 0);
+  }
+  stop() {
+    return this.command("stop", 1);
+  }
+}
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImNyZWFsaXR5LnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgQWRhcHRlckRlcHMsIEZvcmVpZ25DYXBhYmlsaXRpZXMsIEZvcmVpZ25QcmludGVyUmVjb3JkIH0gZnJvbSAnLi4vdHlwZXMnXG5pbXBvcnQgeyBjbGFtcFByb2dyZXNzLCBTb2NrZXRBZGFwdGVyLCB0ZW1wIH0gZnJvbSAnLi9iYXNlJ1xuaW1wb3J0IHsgbG9jYWxDYW1lcmFVcmwgfSBmcm9tICcuLi9hZGRyZXNzJ1xuXG5leHBvcnQgY29uc3QgQ1JFQUxJVFlfQ0FQQUJJTElUSUVTOiBGb3JlaWduQ2FwYWJpbGl0aWVzID0ge1xuICBwYXVzZVJlc3VtZTogdHJ1ZSxcbiAgc3RvcDogdHJ1ZSxcbiAgY2FtZXJhOiB0cnVlLFxuICBsaXN0RmlsZXM6IGZhbHNlLFxuICBwcmludEZyb21TdG9yYWdlOiBmYWxzZSxcbiAgdXBsb2FkOiBmYWxzZVxufVxuXG5leHBvcnQgZGVmYXVsdCBjbGFzcyBDcmVhbGl0eUFkYXB0ZXIgZXh0ZW5kcyBTb2NrZXRBZGFwdGVyIHtcbiAgcmVhZG9ubHkga2luZCA9ICdjcmVhbGl0eScgYXMgY29uc3RcbiAgcmVhZG9ubHkgY2FwYWJpbGl0aWVzID0gQ1JFQUxJVFlfQ0FQQUJJTElUSUVTXG4gIHByaXZhdGUgdGVsZW1ldHJ5OiBSZWNvcmQ8c3RyaW5nLCBhbnk+ID0ge31cblxuICBjb25zdHJ1Y3RvciAocHJpdmF0ZSByZWFkb25seSByZWNvcmQ6IEZvcmVpZ25QcmludGVyUmVjb3JkLCBkZXBzOiBBZGFwdGVyRGVwcykge1xuICAgIHN1cGVyKGRlcHMpXG4gIH1cblxuICBhc3luYyBjb25uZWN0ICgpOiBQcm9taXNlPHZvaWQ+IHtcbiAgICBjb25zdCBob3N0ID0gdGhpcy5yZWNvcmQuaG9zdC5yZXBsYWNlKC86XFxkKyQvLCAnJylcbiAgICByZXR1cm4gdGhpcy5vcGVuU29ja2V0KGB3czovLyR7aG9zdH06OTk5OWAsICd3c3NsaWNlcicpXG4gIH1cblxuICBwcm90ZWN0ZWQgb25PcGVuIChzb2NrZXQ6IFdlYlNvY2tldCkge1xuICAgIHNvY2tldC5zZW5kKEpTT04uc3RyaW5naWZ5KHsgbWV0aG9kOiAnZ2V0JywgcGFyYW1zOiB7IFJlcVByaW50ZXJQYXJhOiAxIH0gfSkpXG4gIH1cblxuICBwcm90ZWN0ZWQgb25NZXNzYWdlIChkYXRhOiBzdHJpbmcpIHtcbiAgICBpZiAoZGF0YSA9PT0gJ29rJykgcmV0dXJuXG4gICAgbGV0IG1lc3NhZ2U6IGFueVxuICAgIHRyeSB7XG4gICAgICBtZXNzYWdlID0gSlNPTi5wYXJzZShkYXRhKVxuICAgIH0gY2F0Y2gge1xuICAgICAgcmV0dXJuXG4gICAgfVxuICAgIGlmIChtZXNzYWdlLk1vZGVDb2RlID09PSAnaGVhcnRfYmVhdCcpIHtcbiAgICAgIHRoaXMuc29ja2V0Py5zZW5kKCdvaycpXG4gICAgICByZXR1cm5cbiAgICB9XG4gICAgdGhpcy50ZWxlbWV0cnkgPSB7IC4uLnRoaXMudGVsZW1ldHJ5LCAuLi5tZXNzYWdlIH1cbiAgICBjb25zdCBlcnJvciA9IE51bWJlcih0aGlzLnRlbGVtZXRyeS5lcnI/LmVycmNvZGUgPz8gMCkgIT09IDBcbiAgICBjb25zdCBzdGF0ZSA9IE51bWJlcih0aGlzLnRlbGVtZXRyeS5zdGF0ZSlcbiAgICB0aGlzLnNldFN0YXR1cyh7XG4gICAgICBjYW1lcmFVcmw6IGxvY2FsQ2FtZXJhVXJsKHRoaXMudGVsZW1ldHJ5LmNhbWVyYVVybCA/PyB0aGlzLnRlbGVtZXRyeS52aWRlb1VybCwgdGhpcy5yZWNvcmQuaG9zdCksXG4gICAgICBzdGF0ZTogZXJyb3IgPyAnZXJyb3InIDogc3RhdGUgPT09IDUgPyAncGF1c2VkJyA6IHN0YXRlID09PSAxID8gJ3ByaW50aW5nJyA6ICdpZGxlJyxcbiAgICAgIG1lc3NhZ2U6IGVycm9yID8gU3RyaW5nKHRoaXMudGVsZW1ldHJ5LmVycj8uZXJyaW5mbyA/PyAnUHJpbnRlciBlcnJvcicpIDogbnVsbCxcbiAgICAgIGZpbGU6IHRoaXMudGVsZW1ldHJ5LnByaW50RmlsZU5hbWUgPz8gbnVsbCxcbiAgICAgIHByb2dyZXNzOiBjbGFtcFByb2dyZXNzKHRoaXMudGVsZW1ldHJ5LnByaW50UHJvZ3Jlc3MsIHRydWUpLFxuICAgICAgdGltZUxlZnQ6IHR5cGVvZiB0aGlzLnRlbGVtZXRyeS5wcmludExlZnRUaW1lID09PSAnbnVtYmVyJyA/IHRoaXMudGVsZW1ldHJ5LnByaW50TGVmdFRpbWUgOiBudWxsLFxuICAgICAgdGVtcHM6IFtcbiAgICAgICAgdGVtcCgnbm96emxlJywgdGhpcy50ZWxlbWV0cnkubm96emxlVGVtcCwgdGhpcy50ZWxlbWV0cnkudGFyZ2V0Tm96emxlVGVtcCksXG4gICAgICAgIHRlbXAoJ2JlZCcsIHRoaXMudGVsZW1ldHJ5LmJlZFRlbXAwLCB0aGlzLnRlbGVtZXRyeS50YXJnZXRCZWRUZW1wMClcbiAgICAgIF0uZmlsdGVyKChpdGVtKTogaXRlbSBpcyBOb25OdWxsYWJsZTx0eXBlb2YgaXRlbT4gPT4gaXRlbSAhPT0gbnVsbClcbiAgICB9KVxuICB9XG5cbiAgcHJpdmF0ZSBjb21tYW5kIChmaWVsZDogJ3BhdXNlJyB8ICdzdG9wJywgdmFsdWU6IG51bWJlcik6IFByb21pc2U8dm9pZD4ge1xuICAgIHRoaXMuc2VuZChKU09OLnN0cmluZ2lmeSh7IG1ldGhvZDogJ3NldCcsIHBhcmFtczogeyBbZmllbGRdOiB2YWx1ZSB9IH0pKVxuICAgIHJldHVybiBQcm9taXNlLnJlc29sdmUoKVxuICB9XG5cbiAgcGF1c2UgKCk6IFByb21pc2U8dm9pZD4geyByZXR1cm4gdGhpcy5jb21tYW5kKCdwYXVzZScsIDEpIH1cbiAgcmVzdW1lICgpOiBQcm9taXNlPHZvaWQ+IHsgcmV0dXJuIHRoaXMuY29tbWFuZCgncGF1c2UnLCAwKSB9XG4gIHN0b3AgKCk6IFByb21pc2U8dm9pZD4geyByZXR1cm4gdGhpcy5jb21tYW5kKCdzdG9wJywgMSkgfVxufVxuIl0sIm1hcHBpbmdzIjoiQUFDQSxTQUFTLGVBQWUsZUFBZSxZ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

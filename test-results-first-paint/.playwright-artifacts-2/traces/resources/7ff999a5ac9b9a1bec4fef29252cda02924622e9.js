@@ -1,0 +1,25 @@
+export const actions = {
+  /**
+   * Reset our store
+   */
+  async reset({ commit }) {
+    commit("setReset");
+  },
+  async onMatrix({ commit }, payload) {
+    commit("setMatrix", payload);
+  },
+  async onScale({ commit }, payload) {
+    commit("setScale", payload);
+  },
+  async onBoxScale({ commit }, payload) {
+    commit("setBoxScale", payload);
+  },
+  async onWireframe({ commit }, payload) {
+    commit("setWireframe", payload);
+  },
+  async onFlatSurface({ commit }, payload) {
+    commit("setFlatSurface", payload);
+  }
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImFjdGlvbnMudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHR5cGUgeyBBY3Rpb25UcmVlIH0gZnJvbSAndnVleCdcbmltcG9ydCB0eXBlIHsgTWVzaFN0YXRlIH0gZnJvbSAnLi90eXBlcydcbmltcG9ydCB0eXBlIHsgUm9vdFN0YXRlIH0gZnJvbSAnLi4vdHlwZXMnXG5cbmV4cG9ydCBjb25zdCBhY3Rpb25zOiBBY3Rpb25UcmVlPE1lc2hTdGF0ZSwgUm9vdFN0YXRlPiA9IHtcbiAgLyoqXG4gICAqIFJlc2V0IG91ciBzdG9yZVxuICAgKi9cbiAgYXN5bmMgcmVzZXQgKHsgY29tbWl0IH0pIHtcbiAgICBjb21taXQoJ3NldFJlc2V0JylcbiAgfSxcblxuICBhc3luYyBvbk1hdHJpeCAoeyBjb21taXQgfSwgcGF5bG9hZCkge1xuICAgIGNvbW1pdCgnc2V0TWF0cml4JywgcGF5bG9hZClcbiAgfSxcblxuICBhc3luYyBvblNjYWxlICh7IGNvbW1pdCB9LCBwYXlsb2FkKSB7XG4gICAgY29tbWl0KCdzZXRTY2FsZScsIHBheWxvYWQpXG4gIH0sXG5cbiAgYXN5bmMgb25Cb3hTY2FsZSAoeyBjb21taXQgfSwgcGF5bG9hZCkge1xuICAgIGNvbW1pdCgnc2V0Qm94U2NhbGUnLCBwYXlsb2FkKVxuICB9LFxuXG4gIGFzeW5jIG9uV2lyZWZyYW1lICh7IGNvbW1pdCB9LCBwYXlsb2FkKSB7XG4gICAgY29tbWl0KCdzZXRXaXJlZnJhbWUnLCBwYXlsb2FkKVxuICB9LFxuXG4gIGFzeW5jIG9uRmxhdFN1cmZhY2UgKHsgY29tbWl0IH0sIHBheWxvYWQpIHtcbiAgICBjb21taXQoJ3NldEZsYXRTdXJmYWNlJywgcGF5bG9hZClcbiAgfVxufVxuIl0sIm1hcHBpbmdzIjoiQUFJTyxhQUFNLFVBQTRDO0FBQUE7QUFBQTtBQUFBO0FBQUEsRUFJdkQsTUFBTSxNQUFPLEVBQUUsT0FBTyxHQUFHO0FBQ3ZCLFdBQU8sVUFBVTtBQUFBLEVBQ25CO0FBQUEsRUFFQSxNQUFNLFNBQVUsRUFBRSxPQUFPLEdBQUcsU0FBUztBQUNuQyxXQUFPLGFBQWEsT0FBTztBQUFBLEVBQzdCO0FBQUEsRUFFQSxNQUFNLFFBQVMsRUFBRSxPQUFPLEdBQUcsU0FBUztBQUNsQyxXQUFPLFlBQVksT0FBTztBQUFBLEVBQzVCO0FBQUEsRUFFQSxNQUFNLFdBQVksRUFBRSxPQUFPLEdBQUcsU0FBUztBQUNyQyxXQUFPLGVBQWUsT0FBTztBQUFBLEVBQy9CO0FBQUEsRUFFQSxNQUFNLFlBQWEsRUFBRSxPQUFPLEdBQUcsU0FBUztBQUN0QyxXQUFPLGdCQUFnQixPQUFPO0FBQUEsRUFDaEM7QUFBQSxFQUVBLE1BQU0sY0FBZSxFQUFFLE9BQU8sR0FBRyxTQUFTO0FBQ3hDLFdBQU8sa0JBQWtCLE9BQU87QUFBQSxFQUNsQztBQUNGOyIsIm5hbWVzIjpbXX0=

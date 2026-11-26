@@ -516,18 +516,17 @@ export default class M1Parts extends Mixins(ControlMixin) {
     }
   }
 
-  onLeave (e?: PointerEvent) {
+  onLeave () {
     cancelAnimationFrame(this.pickFrame)
     this.pickFrame = 0
     this.pickAt = null
     this.onPoint(null)
-    // Off the stage altogether, the selection lets go (Jack, 11 Nov). Not for a finger (it has no cursor to move off),
-    // a press held (turning the model, or a drag that sends nothing until it is let go), the pointer going onto the
-    // part's own panel or the printer's screen, or the screen open.
-    if (!this.selected || !e || e.pointerType === 'touch' || this.down || this.drag || this.dragPointer !== null || this.screenOpen) return
-    const to = e.relatedTarget as Node | null
-    if (to && this.$el.contains(to)) return
-    this.deselect()
+    // Off the stage the hover goes but the selection stays (Jack, 24 Nov, KAN-5982; it let go on 11 Nov): what a person
+    // picked is theirs to put down (Esc, a click on empty stage, another part). A part that only pointing picked
+    // (the filament) is theirs too once they have left with it selected, so its release timer no longer runs.
+    clearTimeout(this.releaseTimer)
+    this.releaseTimer = 0
+    this.hoverPicked = false
   }
 
   /** Lets the selected part go. */
@@ -553,13 +552,10 @@ export default class M1Parts extends Mixins(ControlMixin) {
     this.releaseTimer = 0
   }
 
-  onLabelLeave (e: PointerEvent) {
+  /** Off the part's panel the selection stays (KAN-5982); only the pointer's hold on it ends. */
+  onLabelLeave () {
     this.labelOver = false
-    if (!this.hoverPicked) return
-    // A menu or dialog the panel opened is part of it.
-    const to = e.relatedTarget as HTMLElement | null
-    if (to?.closest?.('.v-menu__content, .v-dialog, [role="menu"], [role="listbox"], [role="dialog"]')) return
-    this.deselect()
+    this.hoverPicked = false
   }
 
   /** With the printer's screen open, a scroll over the model turns its knob, as the knob on the printer would turn. Only the picture: nothing is sent. */

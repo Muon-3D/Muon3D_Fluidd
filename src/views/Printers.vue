@@ -353,7 +353,7 @@
               :variant="tileVariant"
               :stage-height="150"
               :actions="actionsFor(tile.entry)"
-              :busy="busyKey === tile.key"
+              :busy="openingKey === tile.key"
               :draggable="canGroup && !!tile.entry.cloud"
               @open="openEntry(tile.entry)"
               @action="onAction(tile.entry, $event)"
@@ -393,7 +393,7 @@
           <found-list
             :tiles="foundShown"
             :actions-for="foundActionsFor"
-            :busy-key="busyKey"
+            :busy-key="openingKey"
             :steps-for="connectSteps"
             @action="onFoundRow"
             @cancel="onFoundCancel"
@@ -492,6 +492,7 @@
     <p
       v-if="notice"
       class="note"
+      data-tid="route-notice"
     >
       {{ notice }}
       <a

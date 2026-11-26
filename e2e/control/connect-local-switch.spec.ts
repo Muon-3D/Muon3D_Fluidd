@@ -97,7 +97,7 @@ test.describe('Connect locally', () => {
         await expect.poll(() => where(page)).toMatchObject({ apiUrl: A, socketOpen: true, activeCloud: null, mode: 'lan' })
         await expect(page).toHaveURL(/\/boxwood-367a$/)
         await allPrinters(page)
-        await expect(page.locator('.tile').filter({ hasText: /Boxwood/i })).toContainText('On this network')
+        await expect(page.locator('.tile').filter({ hasText: /Boxwood/i })).toContainText('Connected locally')
       })
     }
   })

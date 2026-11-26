@@ -254,6 +254,28 @@ export function foreignEntries (list: Array<{ record: ForeignPrinterRecord, stat
   }))
 }
 
+/**
+ * The name a saved entry was given, when it is a printer's name and not just an address: the thing left to tell a saved
+ * printer that never recorded its EndpointId from the others (KAN-5989). Empty when there is none.
+ */
+function namedOnly (s: InstanceConfig): string {
+  const name = savedName(s)
+  return name && name !== hostOf(s.apiUrl) && !/^muon3d$/i.test(name) ? name : ''
+}
+
+/**
+ * KAN-5975: "Connecting" is the state of a printer nothing has answered for yet. A printer this page already
+ * recognises on this network has an answer: its probe's own reading (found here), or at least that it is there
+ * (the service finds it beside this browser). Without this a printer whose socket never opened (it wants a sign-in,
+ * or the open stalled) or whose status read never came stayed grey "Connecting" beside a green probe.
+ */
+function settled (health: PrinterHealth, detail: string, lan: LanPrinter | undefined, beside: boolean): { health: PrinterHealth, detail: string } {
+  if (health !== 'connecting') return { health, detail }
+  if (lan) return { health: fromLanHealth(lan.health), detail: lanDetail(lan) }
+  if (beside) return { health: 'available', detail: 'On this network' }
+  return { health, detail }
+}
+
 /** What an entry says when it is out of every other reach and its advert was heard. */
 const NEARBY_DETAIL = 'Nearby · Bluetooth'
 
@@ -283,7 +305,8 @@ export function printerDirectory (src: DirectorySources): Directory {
     const lan = src.found.find(l => !claimedLan.has(l) && sameLanPrinter(l, c.id, c.name))
     if (lan) claimedLan.add(lan)
     const saved = src.saved.filter(s =>
-      s.endpointId === c.id || (!!lan && lanForSaved([lan], s) === lan))
+      s.endpointId === c.id || (!!lan && lanForSaved([lan], s) === lan) ||
+      (!s.endpointId && !!namedOnly(s) && sameExactName(namedOnly(s), c.name)))
     saved.forEach(s => claimedSaved.add(s))
     const localActive = !!activeLocal && saved.some(s => s.apiUrl === activeLocal)
     const active = src.activeCloudId === c.id ? 'cloud' : localActive ? 'local' : null
@@ -303,6 +326,7 @@ export function printerDirectory (src: DirectorySources): Directory {
     } else if (lan || besideBrowser(c.id)) {
       detail = `${detail} · on this network`
     }
+    if (active !== 'cloud') ({ health, detail } = settled(health, detail, lan, besideBrowser(c.id)))
     const nearby = nearbyFor(c.id)
     // KAN-2528: heard over Bluetooth now, so it is not offline: Bluetooth opens it.
     if (health === 'offline' && heard(nearby)) {
@@ -331,12 +355,21 @@ export function printerDirectory (src: DirectorySources): Directory {
   for (const s of src.saved) {
     if (claimedSaved.has(s)) continue
     const lan = lanForSaved(src.found, s)
-    const endpointId = s.endpointId ?? lan?.endpointId ?? null
+    // A saved printer that never recorded its id (an Open printer added by address) is still one printer: the service
+    // that sees it beside this browser names it, and its name says which (KAN-5989).
+    const named = namedOnly(s)
+    const heardAs = !s.endpointId && !lan?.endpointId && named
+      ? src.cloudNearby.find(c => sameExactName(c.name, named))
+      : undefined
+    const endpointId = s.endpointId ?? lan?.endpointId ?? heardAs?.printerId ?? null
     // Saved twice (an address and a name, or two addresses): one entry.
     const same = local.find(e =>
-      (!!endpointId && e.endpointId === endpointId) || (!!lan && e.lan === lan))
+      (!!endpointId && e.endpointId?.toLowerCase() === endpointId.toLowerCase()) || (!!lan && e.lan === lan) ||
+      ((!endpointId || !e.endpointId) && !!named && e.saved.some(o => !!namedOnly(o) && sameExactName(namedOnly(o), named))) ||
+      e.saved.some(o => hostOf(o.apiUrl) === hostOf(s.apiUrl)))
     if (same) {
       same.saved.push(s)
+      if (!same.endpointId && endpointId) same.endpointId = endpointId
       if (s.apiUrl === activeLocal) same.active = 'local'
       continue
     }
@@ -363,6 +396,7 @@ export function printerDirectory (src: DirectorySources): Directory {
       health = src.searching ? 'searching' : 'offline'
       detail = src.searching ? 'Looking for it on this network…' : 'Not found on this network'
     }
+    if (active !== 'cloud') ({ health, detail } = settled(health, detail, lan, besideBrowser(endpointId)))
     local.push({
       key: `local:${s.apiUrl}`,
       section: 'local',
@@ -382,16 +416,17 @@ export function printerDirectory (src: DirectorySources): Directory {
   // An entry whose active saved address was not the first one.
   for (const e of local) {
     if (e.active && src.local && e.health !== src.local.health) {
-      e.health = src.local.health
-      e.detail = src.local.detail
+      const live = settled(src.local.health, src.local.detail, e.lan, besideBrowser(e.endpointId))
+      e.health = live.health
+      e.detail = live.detail
     }
   }
 
-  const listedIds = new Set([...cloud, ...local].map(e => e.endpointId).filter((id): id is string => !!id))
+  const listedIds = new Set([...cloud, ...local].map(e => e.endpointId?.toLowerCase()).filter((id): id is string => !!id))
   const rows = searchRows({
-    found: src.found.filter(l => !claimedLan.has(l) && !(l.endpointId && listedIds.has(l.endpointId))),
+    found: src.found.filter(l => !claimedLan.has(l) && !(l.endpointId && listedIds.has(l.endpointId.toLowerCase()))),
     cloud: src.cloudNearby.filter(c =>
-      !listedIds.has(c.printerId) &&
+      !listedIds.has(c.printerId.toLowerCase()) &&
       ![...claimedLan].some(l => sameLanPrinter(l, c.printerId, c.name))),
     nearby: src.nearby.filter(n => !claimedNearby.has(n) && ![...listedIds].some(id => isPrinter(n, id))),
     // Account printers are listed already; Discovery shows only what is not.

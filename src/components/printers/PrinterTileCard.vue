@@ -50,6 +50,7 @@
         />
         <v-progress-circular
           v-if="busy"
+          data-tid="tile-connecting"
           indeterminate
           size="11"
           width="2"
