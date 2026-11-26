@@ -1,0 +1,14 @@
+import { state } from "/src/store/webcams/state.ts";
+import { getters } from "/src/store/webcams/getters.ts";
+import { actions } from "/src/store/webcams/actions.ts";
+import { mutations } from "/src/store/webcams/mutations.ts";
+const namespaced = true;
+export const webcams = {
+  namespaced,
+  state,
+  getters,
+  actions,
+  mutations
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImluZGV4LnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgTW9kdWxlIH0gZnJvbSAndnVleCdcbmltcG9ydCB7IHN0YXRlIH0gZnJvbSAnLi9zdGF0ZSdcbmltcG9ydCB7IGdldHRlcnMgfSBmcm9tICcuL2dldHRlcnMnXG5pbXBvcnQgeyBhY3Rpb25zIH0gZnJvbSAnLi9hY3Rpb25zJ1xuaW1wb3J0IHsgbXV0YXRpb25zIH0gZnJvbSAnLi9tdXRhdGlvbnMnXG5pbXBvcnQgdHlwZSB7IFdlYmNhbXNTdGF0ZSB9IGZyb20gJy4vdHlwZXMnXG5pbXBvcnQgdHlwZSB7IFJvb3RTdGF0ZSB9IGZyb20gJy4uL3R5cGVzJ1xuXG5jb25zdCBuYW1lc3BhY2VkID0gdHJ1ZVxuXG5leHBvcnQgY29uc3Qgd2ViY2FtczogTW9kdWxlPFdlYmNhbXNTdGF0ZSwgUm9vdFN0YXRlPiA9IHtcbiAgbmFtZXNwYWNlZCxcbiAgc3RhdGUsXG4gIGdldHRlcnMsXG4gIGFjdGlvbnMsXG4gIG11dGF0aW9uc1xufVxuIl0sIm1hcHBpbmdzIjoiQUFDQSxTQUFTLGFBQWE7QUFDdEIsU0FBUyxlQUFlO0FBQ3hCLFNBQVMsZUFBZTtBQUN4QixTQUFTLGlCQUFpQjtBQUkxQixNQUFNLGFBQWE7QUFFWixhQUFNLFVBQTJDO0FBQUEsRUFDdEQ7QUFBQSxFQUNBO0FBQUEsRUFDQTtBQUFBLEVBQ0E7QUFBQSxFQUNBO0FBQ0Y7IiwibmFtZXMiOltdfQ==

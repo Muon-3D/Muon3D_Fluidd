@@ -218,7 +218,7 @@ test('Auto ignores ten short LAN blips and distrusted relay returns, then upgrad
   await lan(page, true)
   await page.clock.resume()
   await expect.poll(() => where(page), { timeout: 45_000 }).toMatchObject({ activeCloud: null, socketOpen: true, mode: 'auto', apiUrl: `http://localhost:${MOCK_PORT}` })
-  await expect(tile(page)).toContainText('On this network')
+  await expect(tile(page)).toContainText('Connected locally')
   // What the session did is the proof that no cloud switch happened: the only fake session it ever opened was Bluetooth (the LAN is the mock printer itself), so it never opened the relay.
   // The tile's own text is not: for ~50 ms of the Bluetooth-to-LAN handoff the entry has no host yet and its cloud record
   // reads "Remote, through Muon3D" (a label, not a connection; cloudUp stays false), and whether a recording catches that

@@ -1,0 +1,21 @@
+import { defaultState } from "/src/store/timelapse/state.ts";
+export const mutations = {
+  /**
+   * Reset state
+   */
+  setReset(state) {
+    Object.assign(state, defaultState());
+  },
+  setSettings(state, payload) {
+    state.settings = payload;
+  },
+  setLastFrame(state, payload) {
+    state.lastFrame = payload;
+    state.renderStatus = void 0;
+  },
+  setRenderStatus(state, payload) {
+    state.renderStatus = payload;
+  }
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIm11dGF0aW9ucy50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgdHlwZSB7IE11dGF0aW9uVHJlZSB9IGZyb20gJ3Z1ZXgnXG5pbXBvcnQgeyBkZWZhdWx0U3RhdGUgfSBmcm9tICcuL3N0YXRlJ1xuaW1wb3J0IHR5cGUgeyBUaW1lbGFwc2VTdGF0ZSwgVGltZWxhcHNlTGFzdEZyYW1lLCBUaW1lbGFwc2VTZXR0aW5ncywgUmVuZGVyU3RhdHVzIH0gZnJvbSAnLi90eXBlcydcblxuZXhwb3J0IGNvbnN0IG11dGF0aW9uczogTXV0YXRpb25UcmVlPFRpbWVsYXBzZVN0YXRlPiA9IHtcbiAgLyoqXG4gICAqIFJlc2V0IHN0YXRlXG4gICAqL1xuICBzZXRSZXNldCAoc3RhdGUpIHtcbiAgICBPYmplY3QuYXNzaWduKHN0YXRlLCBkZWZhdWx0U3RhdGUoKSlcbiAgfSxcblxuICBzZXRTZXR0aW5ncyAoc3RhdGUsIHBheWxvYWQ6IFRpbWVsYXBzZVNldHRpbmdzKSB7XG4gICAgc3RhdGUuc2V0dGluZ3MgPSBwYXlsb2FkXG4gIH0sXG5cbiAgc2V0TGFzdEZyYW1lIChzdGF0ZSwgcGF5bG9hZDogVGltZWxhcHNlTGFzdEZyYW1lKSB7XG4gICAgc3RhdGUubGFzdEZyYW1lID0gcGF5bG9hZFxuICAgIHN0YXRlLnJlbmRlclN0YXR1cyA9IHVuZGVmaW5lZFxuICB9LFxuXG4gIHNldFJlbmRlclN0YXR1cyAoc3RhdGUsIHBheWxvYWQ6IFJlbmRlclN0YXR1cykge1xuICAgIHN0YXRlLnJlbmRlclN0YXR1cyA9IHBheWxvYWRcbiAgfVxufVxuIl0sIm1hcHBpbmdzIjoiQUFDQSxTQUFTLG9CQUFvQjtBQUd0QixhQUFNLFlBQTBDO0FBQUE7QUFBQTtBQUFBO0FBQUEsRUFJckQsU0FBVSxPQUFPO0FBQ2YsV0FBTyxPQUFPLE9BQU8sYUFBYSxDQUFDO0FBQUEsRUFDckM7QUFBQSxFQUVBLFlBQWEsT0FBTyxTQUE0QjtBQUM5QyxVQUFNLFdBQVc7QUFBQSxFQUNuQjtBQUFBLEVBRUEsYUFBYyxPQUFPLFNBQTZCO0FBQ2hELFVBQU0sWUFBWTtBQUNsQixVQUFNLGVBQWU7QUFBQSxFQUN2QjtBQUFBLEVBRUEsZ0JBQWlCLE9BQU8sU0FBdUI7QUFDN0MsVUFBTSxlQUFlO0FBQUEsRUFDdkI7QUFDRjsiLCJuYW1lcyI6W119

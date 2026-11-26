@@ -182,7 +182,7 @@
             /></span>
             <div class="pa-row__text">
               <b>{{ (request.requester && (request.requester.name || request.requester.email)) || 'Someone' }} wants to join as {{ roleWord(request.role) }}</b>
-              <span>Used your invite link · lapses {{ day(request.expires_at) }}</span>
+              <span>{{ request.kind === 'access_request' ? 'Asked to use this printer' : 'Used your invite link' }} · lapses {{ day(request.expires_at) }}</span>
             </div>
             <span class="pa-row__acts">
               <button
@@ -652,6 +652,44 @@
       </router-link>
     </p>
 
+    <div
+      v-if="canRequestAccess"
+      class="pa__note pa-ask"
+      data-tid="pa-ask"
+    >
+      <template v-if="askState === 'idle' || askState === 'expired'">
+        <span v-if="askState === 'expired'">Nobody answered in a day. </span>
+        <span>{{ printerName }} isn't shared with you. You can ask its owner for access over Muon3D.</span>
+        <button
+          type="button"
+          class="lib-btn lib-btn--sm lib-btn--pri"
+          :disabled="busy"
+          data-tid="pa-ask-send"
+          @click="requestAccess()"
+        >
+          Request cloud access to this printer
+        </button>
+      </template>
+      <template v-else-if="askState === 'pending'">
+        <span data-tid="pa-ask-pending">Request sent. The owner has a day to answer; you'll see it here.</span>
+        <button
+          type="button"
+          class="lib-btn lib-btn--sm lib-btn--ghost"
+          :disabled="busy"
+          data-tid="pa-ask-check"
+          @click="checkAccessRequest()"
+        >
+          Check now
+        </button>
+      </template>
+      <template v-else-if="askState === 'allowed'">
+        <span data-tid="pa-ask-allowed">Allowed. {{ printerName }} is now on your printers over Muon3D.</span>
+      </template>
+      <template v-else-if="askState === 'refused'">
+        <span data-tid="pa-ask-refused">The owner didn't allow it.</span>
+      </template>
+    </div>
+
     <p
       v-if="message"
       class="pa__note"
@@ -1075,6 +1113,8 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
     this.apiKeyOpen = false
     this.askingOpen = false
     this.asking = null
+    this.askState = 'idle'
+    this.askId = null
   }
 
   /** The account's name for the printer acted on: what every console action and its confirm names. */
@@ -1468,7 +1508,7 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
   }
 
   async answer (request: JoinApproval, allow: boolean) {
-    const who = request.requester?.email ?? 'Someone'
+    const who = request.requester?.name || request.requester?.email || 'Someone'
     await this.run(() => accountApi.answerApproval(request.id, allow), allow ? `${who} can use ${this.printerName} now.` : 'Refused.')
     await loadApprovals().catch(() => {})
     this.refreshCloud()
@@ -1558,6 +1598,40 @@ export default class PeopleAccessSettings extends Mixins(MuonGatesMixin) {
   /** Signed out on a printer an account owns: the owner's groups need the owner signed in. */
   get signInHint (): boolean {
     return !cloudState.account && this.state?.owner.kind === 'account'
+  }
+
+  /** The one-line state of this person's own request (KAN-5976). */
+  askState: 'idle' | 'pending' | 'allowed' | 'refused' | 'expired' = 'idle'
+  askId: string | null = null
+
+  /**
+   * Signed in, on a printer reached by its own address that this account
+   * doesn't have (neither linked nor shared): it can ask the owner. Through
+   * Muon3D the printer is already theirs, so nothing shows.
+   */
+  get canRequestAccess (): boolean {
+    return !!cloudState.account && !this.cloudPrinter && !!this.reportedEndpoint && !isManagedApiUrl(this.$store.state.config.apiUrl)
+  }
+
+  async requestAccess () {
+    const id = this.reportedEndpoint
+    if (!id) return
+    const sent = await this.run(async () => {
+      const answer = await accountApi.requestAccess(id)
+      this.askId = answer.id
+      this.askState = 'pending'
+    }, 'Request sent.')
+    if (!sent) this.askState = 'idle'
+  }
+
+  async checkAccessRequest () {
+    const id = this.askId
+    if (!id) return
+    await this.run(async () => {
+      const { approval } = await accountApi.approval(id)
+      this.askState = approval.state
+      if (approval.state === 'allowed') this.refreshCloud()
+    })
   }
 }
 </script>

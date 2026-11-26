@@ -11,6 +11,7 @@ import type { AccessoryFrame } from '../accessory-motion'
 import { m1 } from '../load'
 import { buildAccurateSpool, type AccurateSpool } from './spool'
 import { buildPlateDecal, buildPowerPlug } from './fittings'
+import { buildPanelSeeThrough, type PanelSeeThrough } from './panel-see-through'
 
 /**
  * The loaded accurate M1 as the viewer drives it: the head and the bed
@@ -48,6 +49,8 @@ export interface AccurateRig {
   spool: AccurateSpool;
   /** The plug in the power socket (fittings.ts), or null without the base. */
   plug: THREE.Object3D | null;
+  /** The toolhead and the cross rail, fading clear while the camera looks at the panel (panel-see-through.ts). */
+  panelView: PanelSeeThrough;
 }
 
 /** How much of the scene shows through the plate when it is plain transparent. */
@@ -113,10 +116,13 @@ export function buildAccurateRig (scene: THREE.Group): AccurateRig {
   if (accessories.missing.length) console.warn(`[m1] the accurate M1 lacks ${accessories.missing.join(', ')}; those parts stay still`)
 
   const lights = buildAccurateLights(scene)
+  // Last, so it takes the head's materials as the other builders left them.
+  const panelView = buildPanelSeeThrough(scene)
 
   let cheap = false
   return {
     lights,
+    panelView,
     root: scene,
     cargo,
     printFrame,

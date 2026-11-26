@@ -4,7 +4,7 @@
  * - How many devices are on the printer's hotspot shows bottom-left (the rail on a desktop, over the tab
  *   bar's corner on a phone), whatever route Control reaches the printer by: this network, Bluetooth, Muon3D.
  * - It is hidden when the printer has no such answer (a 404) or its hotspot is down.
- * - Through the hotspot the route says "Through hotspot", not "On this network".
+ * - Through the hotspot the route says "Through hotspot", not "Connected locally".
  * - The hotspot card lists who is connected when the printer says, and shows only the count when it doesn't.
  *
  * The printer's answers are faked: page.route on this network, muon-link's own route (e2e/fakes/routes.ts)
@@ -80,11 +80,11 @@ test.describe('this network', () => {
     await expect(page.getByTestId('wifi-route-pill')).toHaveText('Through hotspot')
   })
 
-  test('the route stays "On this network" when the printer says it did not', async ({ page, open }) => {
+  test('the route stays "Connected locally" when the printer says it did not', async ({ page, open }) => {
     await stationsOnLan(page, { up: true, count: 1, auto_off_at: null, requester_on_ap: false })
     await open('/wifi')
     await expect(count(page)).toBeVisible()
-    await expect(page.getByTestId('wifi-route-pill')).toHaveText('On this network')
+    await expect(page.getByTestId('wifi-route-pill')).toHaveText('Connected locally')
   })
 
   test('the hotspot card lists each device when the printer sends them', async ({ page, open }) => {
