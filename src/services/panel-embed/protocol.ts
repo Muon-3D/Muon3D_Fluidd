@@ -132,6 +132,11 @@ export type Verb =
   | { verb: 'heat', heater: 'extruder' | 'heater_bed', target: number }
   | { verb: 'fan', fan: string, percent: number }
   | { verb: 'filament', action: 'load' | 'unload' }
+  // Control's own speed factor (1 to 500), flow factor (1 to 300), motors off and Z nudge (mm, at most 1).
+  | { verb: 'speed', percent: number }
+  | { verb: 'flow', percent: number }
+  | { verb: 'motors_off' }
+  | { verb: 'zadjust', by: number }
 
 export type VerbRequest = { id: number, kind: 'verb' } & Verb
 

@@ -1,0 +1,14 @@
+import { state } from "/src/store/power/state.ts";
+import { getters } from "/src/store/power/getters.ts";
+import { actions } from "/src/store/power/actions.ts";
+import { mutations } from "/src/store/power/mutations.ts";
+const namespaced = true;
+export const power = {
+  namespaced,
+  state,
+  getters,
+  actions,
+  mutations
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImluZGV4LnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgTW9kdWxlIH0gZnJvbSAndnVleCdcbmltcG9ydCB7IHN0YXRlIH0gZnJvbSAnLi9zdGF0ZSdcbmltcG9ydCB7IGdldHRlcnMgfSBmcm9tICcuL2dldHRlcnMnXG5pbXBvcnQgeyBhY3Rpb25zIH0gZnJvbSAnLi9hY3Rpb25zJ1xuaW1wb3J0IHsgbXV0YXRpb25zIH0gZnJvbSAnLi9tdXRhdGlvbnMnXG5pbXBvcnQgdHlwZSB7IERldmljZVBvd2VyU3RhdGUgfSBmcm9tICcuL3R5cGVzJ1xuaW1wb3J0IHR5cGUgeyBSb290U3RhdGUgfSBmcm9tICcuLi90eXBlcydcblxuY29uc3QgbmFtZXNwYWNlZCA9IHRydWVcblxuZXhwb3J0IGNvbnN0IHBvd2VyOiBNb2R1bGU8RGV2aWNlUG93ZXJTdGF0ZSwgUm9vdFN0YXRlPiA9IHtcbiAgbmFtZXNwYWNlZCxcbiAgc3RhdGUsXG4gIGdldHRlcnMsXG4gIGFjdGlvbnMsXG4gIG11dGF0aW9uc1xufVxuIl0sIm1hcHBpbmdzIjoiQUFDQSxTQUFTLGFBQWE7QUFDdEIsU0FBUyxlQUFlO0FBQ3hCLFNBQVMsZUFBZTtBQUN4QixTQUFTLGlCQUFpQjtBQUkxQixNQUFNLGFBQWE7QUFFWixhQUFNLFFBQTZDO0FBQUEsRUFDeEQ7QUFBQSxFQUNBO0FBQUEsRUFDQTtBQUFBLEVBQ0E7QUFBQSxFQUNBO0FBQ0Y7IiwibmFtZXMiOltdfQ==

@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/ui/AppColorPicker.vue?vue&type=style&index=0&scoped=63357bdc&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/ui/AppColorPicker.vue?vue&type=style&index=0&scoped=63357bdc&lang.scss"
+const __vite__css = ".color-input div[data-v-63357bdc] {\n  margin: 0 2px;\n  text-align: center;\n}\n.theme--light .color-input div[data-v-63357bdc]:not(:first-child) {\n  color: rgba(0, 0, 0, 0.45);\n}\n.theme--dark .color-input div[data-v-63357bdc]:not(:first-child) {\n  color: rgba(232, 236, 238, 0.45);\n}\n[data-v-63357bdc] .v-text-field__slot input {\n  text-align: center;\n}\n[data-v-63357bdc] .v-input--dense .v-input__slot {\n  min-height: 32px !important;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

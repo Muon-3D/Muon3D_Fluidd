@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/settings/ToolheadSettings.vue?vue&type=style&index=0&scoped=442c2109&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/settings/ToolheadSettings.vue?vue&type=style&index=0&scoped=442c2109&lang.scss"
+const __vite__css = ".m3-sets__fieldset[data-v-442c2109] {\n  display: contents;\n  border: 0;\n}\n.mset__callout[data-v-442c2109] {\n  display: flex;\n  align-items: flex-start;\n  gap: 10px;\n  padding: 12px 16px;\n  border-radius: 16px;\n  background: var(--m3d-surface);\n  font-size: 13px;\n}\n.mset__value[data-v-442c2109] {\n  color: var(--m3d-text-muted);\n  font-size: 14px;\n}\n.mset__locked[data-v-442c2109] {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  padding: 6px 0 10px;\n}\n.mset__note[data-v-442c2109] {\n  margin: 0 4px;\n  color: var(--m3d-text-subtle);\n  font-size: 12px;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))
