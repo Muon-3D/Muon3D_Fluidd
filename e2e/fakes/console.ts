@@ -28,9 +28,9 @@ export interface ConsoleState {
   exports?: Array<Record<string, unknown> & { id: string }>;
   printers: ConsolePrinter[];
   /** `/v1/me/preferences`, kept across reloads; null answers 404, as a console from before it. */
-  preferences: Record<string, boolean> | null;
+  preferences: Record<string, unknown> | null;
   /** Bodies PUT to `/v1/me/preferences`, in order. */
-  preferencePatches: Array<Record<string, boolean>>;
+  preferencePatches: Array<Record<string, unknown>>;
   seen: string[];
   /** Per printer: its people (shares), pending email invites and invite links, for its owner. */
   shares: Record<string, unknown[]>;
@@ -52,7 +52,7 @@ export function consoleState (over: Partial<ConsoleState> = {}): ConsoleState {
   return {
     account: { id: 'acct-e2e', email: 'jack@example.test', name: 'Jack' },
     printers: [],
-    preferences: { email_access_requests: true, email_shared_with_you: true, email_community: false, email_news: false },
+    preferences: { email_access_requests: true, email_shared_with_you: true, email_community: false, email_news: false, library_defaults: { visibility: 'private', licence: null } },
     preferencePatches: [],
     seen: [],
     shares: {},
@@ -174,6 +174,10 @@ export async function answerConsole (route: Route, state: ConsoleState) {
   if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
   switch (url.pathname) {
     case '/v1/me': return json(route, { account: { ...state.account, display_name: state.account.name }, endpoint_id: null })
+    case '/v1/me/deletion/cancel': {
+      state.account.deletion = null
+      return json(route, { ok: true, account: state.account })
+    }
     case '/v1/me/assertion': return json(route, { assertion: 'e2e-assertion', expires_at: Math.floor(Date.now() / 1000) + 3600 })
     case '/v1/printers': return json(route, { printers: state.printers })
     case '/v1/me/notices': return json(route, { notices: [], unread: 0, next: null })
@@ -181,9 +185,14 @@ export async function answerConsole (route: Route, state: ConsoleState) {
     case '/v1/me/preferences': {
       if (!state.preferences) return route.fulfill({ status: 404, contentType: 'text/html', headers: { 'access-control-allow-origin': '*' }, body: 'Not Found' })
       if (request.method() === 'PUT') {
-        const patch = request.postDataJSON() as Record<string, boolean>
+        const patch = request.postDataJSON() as Record<string, unknown>
         state.preferencePatches.push(patch)
-        for (const [key, value] of Object.entries(patch)) if (key in state.preferences) state.preferences[key] = value
+        for (const [key, value] of Object.entries(patch)) {
+          if (key === 'library_defaults') {
+            const current = (state.preferences.library_defaults ?? { visibility: 'private', licence: null }) as Record<string, unknown>
+            state.preferences.library_defaults = { ...current, ...(value as object) }
+          } else if (key in state.preferences) state.preferences[key] = value
+        }
       }
       return json(route, { preferences: state.preferences })
     }
