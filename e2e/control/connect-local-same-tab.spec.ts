@@ -137,6 +137,34 @@ test.describe('Connect locally from the hosted page', () => {
     expect(pages).toEqual([])
   })
 
+  // KAN-5459 (Jack's spec): Chrome's local-network-access question was refused (the address-bar setting says Block), so
+  // the probe of the printer's secure name fails and Control says what to allow, instead of a bare "couldn't connect".
+  test('Chrome blocked local network access: Connect locally says what to allow, in one line, and the page stays', async ({ page, context, account }) => {
+    const pages: string[] = []
+    context.on('page', p => pages.push(p.url()))
+    await page.addInitScript(() => {
+      const ask = navigator.permissions.query.bind(navigator.permissions)
+      navigator.permissions.query = (descriptor: PermissionDescriptor) => (descriptor as { name: string }).name === 'local-network-access'
+        ? Promise.resolve({ state: 'denied', name: 'local-network-access', onchange: null } as unknown as PermissionStatus)
+        : ask(descriptor)
+    })
+    const asked = await printerPages(page, ['muon-boxwood-367a.local', '192.168.1.20'])
+    const seen = await secureOrigin(page, false)
+    await start(page, account, [{ id: ROUTE_PRINTER.id, name: ROUTE_PRINTER.name, linked: true, addrs: ['192.168.1.20'], secure: SECURE }], false)
+    await optionsOf(page, ROUTE_PRINTER.name)
+    await item(page, 'Connect locally').click()
+    // The probe went out to the secure name and was refused by the browser.
+    await expect.poll(() => seen).toContain('/server/info')
+    const line = page.getByTestId('route-problem-line')
+    await expect(line).toHaveText("Your browser blocked access to printers on your network. Allow 'local network access' for control.muon3d.com in the address bar, then try again.")
+    await expect(line).not.toContainText("Couldn't connect locally")
+    // The other routes are offered, as for any failed pick.
+    await expect(page.getByTestId('route-choice-cloud')).toBeVisible()
+    await expect(page).toHaveURL(`${HOSTED}/`)
+    expect(asked).toEqual([])
+    expect(pages).toEqual([])
+  })
+
   test('a renamed printer (Living Room) has no guessable .local name: Connect locally goes to no guessed or listed host', async ({ page, account }) => {
     const asked = await printerPages(page, ['muon-living-room.local', 'lounge-pi.local'])
     await start(page, account, [{ id: ROUTE_PRINTER.id, name: 'Living Room', linked: true, addrs: ['lounge-pi.local'] }], false, 'Living Room')
