@@ -39,6 +39,7 @@ export function tileStore (options: Options = {}) {
   set('spoolman/getAvailable', false)
   set('jobQueue/getQueuedJobs', [])
   set('history/getUniqueHistory', () => [])
+  set('config/getDisplayName', 'Boxwood')
   set('mesh/getSupportsBedMesh', true)
   set('server/componentSupport', () => false)
   set('power/getDevices', [])
