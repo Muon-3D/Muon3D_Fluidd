@@ -1,0 +1,17 @@
+export const defaultState = () => {
+  return {
+    uploads: [],
+    download: null,
+    currentPaths: {},
+    disk_usage: {
+      total: 0,
+      used: 0,
+      free: 0
+    },
+    rootFiles: {},
+    pathFiles: {}
+  };
+};
+export const state = defaultState();
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInN0YXRlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgRmlsZXNTdGF0ZSB9IGZyb20gJy4vdHlwZXMnXG5cbmV4cG9ydCBjb25zdCBkZWZhdWx0U3RhdGUgPSAoKTogRmlsZXNTdGF0ZSA9PiB7XG4gIHJldHVybiB7XG4gICAgdXBsb2FkczogW10sXG4gICAgZG93bmxvYWQ6IG51bGwsXG4gICAgY3VycmVudFBhdGhzOiB7fSxcbiAgICBkaXNrX3VzYWdlOiB7XG4gICAgICB0b3RhbDogMCxcbiAgICAgIHVzZWQ6IDAsXG4gICAgICBmcmVlOiAwXG4gICAgfSxcbiAgICByb290RmlsZXM6IHt9LFxuICAgIHBhdGhGaWxlczoge31cbiAgfVxufVxuXG5leHBvcnQgY29uc3Qgc3RhdGUgPSBkZWZhdWx0U3RhdGUoKVxuIl0sIm1hcHBpbmdzIjoiQUFFTyxhQUFNLGVBQWUsTUFBa0I7QUFDNUMsU0FBTztBQUFBLElBQ0wsU0FBUyxDQUFDO0FBQUEsSUFDVixVQUFVO0FBQUEsSUFDVixjQUFjLENBQUM7QUFBQSxJQUNmLFlBQVk7QUFBQSxNQUNWLE9BQU87QUFBQSxNQUNQLE1BQU07QUFBQSxNQUNOLE1BQU07QUFBQSxJQUNSO0FBQUEsSUFDQSxXQUFXLENBQUM7QUFBQSxJQUNaLFdBQVcsQ0FBQztBQUFBLEVBQ2Q7QUFDRjtBQUVPLGFBQU0sUUFBUSxhQUFhOyIsIm5hbWVzIjpbXX0=

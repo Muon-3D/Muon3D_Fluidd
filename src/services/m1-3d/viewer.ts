@@ -10,6 +10,7 @@ import { CROSSFADE_MS, type AccessoryFrame } from './accessory-motion'
 import { CONTENTS_ORDER, flattenGlass } from './glass-material'
 import { createRenderGate } from './render-gate'
 import { createFrameLoop } from './frame-loop'
+import type { PanelSeeThrough } from './accurate/panel-see-through'
 import { FrameWatch, wantsCheapGlass } from './glass-cost'
 import { glassChoice } from './render-options'
 import { liveRenderOptions, modelSettings } from './device-settings'
@@ -117,6 +118,8 @@ export interface DrawnState {
   colour: number | null;
   /** How much shows through the build plate, 0 to 1, on the accurate model. */
   seeThrough: number | null;
+  /** How solid the toolhead and rail are drawn, 1 solid to about 0.1 at the panel view (the accurate model), else null. */
+  headSee: number | null;
   /** The camera's angle down from straight above, radians (0 looks straight down). */
   phi: number;
   /** Where the nozzle tip is drawn, in CSS pixels from the canvas's top left (the accurate model, with the head homed), else null. */
@@ -182,6 +185,8 @@ interface Rig {
   setColour: (colour: number) => void;
   /** Swaps the transmissive glass for a plain one, if this model has any. */
   useCheapGlass: () => void;
+  /** The toolhead and rail fading clear at the panel view (accurate model only). */
+  panelView: PanelSeeThrough | null;
   /** Whether the spool is drawn now, and whether the power socket is filled. */
   fittings: () => { spool: boolean, plug: boolean, colour: number | null, seeThrough: number | null };
 }
@@ -496,6 +501,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       plateOffBox: parts.plateOffBox,
       setColour: parts.setColour,
       useCheapGlass () { /* the simple model's glass is already flat */ },
+      panelView: null,
       fittings: () => ({ spool: !!spool?.visible, plug: !!powerPort, colour: null, seeThrough: null })
     }
   }
@@ -527,6 +533,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       plateOffBox: a.plateOffBox,
       setColour: colour => a.spool.setColour(colour),
       useCheapGlass () { a.useCheapGlass() },
+      panelView: a.panelView,
       fittings: () => ({ spool: a.spool.shown(), plug: !!a.plug, colour: a.spool.colour(), seeThrough: plateSeeThrough(a.root) })
     }
   }
@@ -559,6 +566,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     plateOffBox: new THREE.Box3(),
     setColour () { /* nothing yet */ },
     useCheapGlass () { /* nothing yet */ },
+    panelView: null,
     fittings: () => ({ spool: false, plug: false, colour: null, seeThrough: null })
   }
   scene.add(rig.root)
@@ -1022,6 +1030,15 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     Object.assign(traceShown, { trace, version: trace.version, count: trace.count })
   }
 
+  /**
+   * The toolhead and the rail fade clear while the camera looks at the panel, and come back after (KAN-5984). With
+   * reduced motion (or animations off) they switch at once. `fade` false is for a model just adopted: it takes the view's state with no fade.
+   */
+  function showPanelView (fade = true) {
+    rig.panelView?.set(viewMode === 'screen', performance.now(), fade && liveRenderOptions(width).animate)
+    invalidate()
+  }
+
   /** Puts everything where the printer has it now; whether it is still moving. */
   function follow (now: number): boolean {
     if (!sync) return false
@@ -1035,7 +1052,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     const target = rig.place(f.pose)
     const placement = smoother.step(target, { headX: f.pose.x !== null, headZ: f.pose.y !== null, z: f.pose.z !== null }, now)
     const unknown = f.pose.x === null || f.pose.y === null || f.pose.z === null
-    // Subtly faded while the place is unknown (not homed): the part sits where it was last drawn.
+    // Marked while the place is unknown (not homed): the part sits where it was last drawn. Never dimmed (KAN-5982).
     const placeState = unknown ? 'unknown' : 'known'
     if (canvas.dataset.place !== placeState) canvas.dataset.place = placeState
     const { x: poseX, y: poseY } = f.pose
@@ -1060,7 +1077,8 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     showTrace()
     rig.apply(accessories, f.partGone)
     drawnAccessories = accessories
-    return f.moving || accessories.animating || smoother.moving
+    const fading = rig.panelView?.step(now) ?? false
+    return f.moving || accessories.animating || smoother.moving || fading
   }
 
   /**
@@ -1156,7 +1174,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       if (watch.slow) cheapenGlass('slow')
     }
     viewer.onFrame?.()
-    viewer.onDraw?.({ model: rig.kind, accessories: drawnAccessories, ...rig.fittings(), nozzle: nozzlePx, phi: view.phi, knob: knobNode ? { angle: knobAngle, pushed: knobIn > 0.5, ...knobPx(), rim: knobRimPx(), presses: knobPresses, peak: knobPeak, arc: knobArc } : null, strand: strandPx() })
+    viewer.onDraw?.({ model: rig.kind, accessories: drawnAccessories, ...rig.fittings(), headSee: rig.panelView?.level() ?? null, nozzle: nozzlePx, phi: view.phi, knob: knobNode ? { angle: knobAngle, pushed: knobIn > 0.5, ...knobPx(), rim: knobRimPx(), presses: knobPresses, peak: knobPeak, arc: knobArc } : null, strand: strandPx() })
     const turning = Math.abs(view.goalTheta - view.theta) > 1e-3 || Math.abs(view.goalPhi - view.phi) > 1e-3 ||
       Math.abs(leanGoal.theta - lean.theta) > 1e-4 || Math.abs(leanGoal.phi - lean.phi) > 1e-4 || Math.abs(leanGoal.closer - lean.closer) > 1e-3 ||
       !!flight
@@ -1287,6 +1305,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
       zoomGoal = mode === 'screen' ? 1 : 0
       if (mode === 'screen' || viewMode === 'screen') flight = from
       viewMode = mode
+      showPanelView()
       showPlate(mode === 'free')
       aimLean()
       invalidate()
@@ -1389,6 +1408,10 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
     renderer.setPixelRatio(liveRenderOptions(w).pixelRatio)
     renderer.setSize(w, h, false)
     restyle()
+    // Drawn at once, in this very frame: setSize empties the canvas, so waiting for the next animation frame lets the
+    // browser show one blank (white) frame of the stage between (KAN-5983).
+    if (lastDraw) lastDraw = Number.NEGATIVE_INFINITY
+    draw()
     invalidate()
   })
   resize.observe(canvas)
@@ -1435,6 +1458,7 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
         saveData: (navigator as unknown as { connection?: { saveData?: boolean } }).connection?.saveData
       })) cheapenGlass('device')
     }
+    showPanelView(false)
     lastPlacement = ''
     knobNode = undefined
     strandEnd = undefined

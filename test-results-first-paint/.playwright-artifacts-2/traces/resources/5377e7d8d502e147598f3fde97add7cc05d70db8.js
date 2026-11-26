@@ -1,0 +1,9 @@
+export const defaultState = () => {
+  return {
+    queue_state: "paused",
+    queued_jobs: []
+  };
+};
+export const state = defaultState();
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInN0YXRlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgSm9iUXVldWVTdGF0ZSB9IGZyb20gJy4vdHlwZXMnXG5cbmV4cG9ydCBjb25zdCBkZWZhdWx0U3RhdGUgPSAoKTogSm9iUXVldWVTdGF0ZSA9PiB7XG4gIHJldHVybiB7XG4gICAgcXVldWVfc3RhdGU6ICdwYXVzZWQnLFxuICAgIHF1ZXVlZF9qb2JzOiBbXVxuICB9XG59XG5cbmV4cG9ydCBjb25zdCBzdGF0ZSA9IGRlZmF1bHRTdGF0ZSgpXG4iXSwibWFwcGluZ3MiOiJBQUVPLGFBQU0sZUFBZSxNQUFxQjtBQUMvQyxTQUFPO0FBQUEsSUFDTCxhQUFhO0FBQUEsSUFDYixhQUFhLENBQUM7QUFBQSxFQUNoQjtBQUNGO0FBRU8sYUFBTSxRQUFRLGFBQWE7IiwibmFtZXMiOltdfQ==

@@ -99,6 +99,10 @@ test.describe('desktop pointer', () => {
     await page.mouse.click(at.x, at.y)
     await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'plate')
     await page.mouse.move(5, 5)
+    // Off the stage it stays (Jack, 24 Nov, KAN-5982); Esc lets it go.
+    await page.waitForTimeout(500)
+    await expect(page.getByTestId('m1-parts-label')).toHaveAttribute('data-part', 'plate')
+    await page.keyboard.press('Escape')
     await expect(page.getByTestId('m1-parts-label')).toHaveCount(0)
 
     // With nothing selected, a drag that starts on the part turns the model and selects nothing.

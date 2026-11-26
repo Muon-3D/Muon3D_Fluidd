@@ -1,0 +1,14 @@
+import { state } from "/src/store/server/state.ts";
+import { getters } from "/src/store/server/getters.ts";
+import { actions } from "/src/store/server/actions.ts";
+import { mutations } from "/src/store/server/mutations.ts";
+const namespaced = true;
+export const server = {
+  namespaced,
+  state,
+  getters,
+  actions,
+  mutations
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImluZGV4LnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgTW9kdWxlIH0gZnJvbSAndnVleCdcbmltcG9ydCB7IHN0YXRlIH0gZnJvbSAnLi9zdGF0ZSdcbmltcG9ydCB7IGdldHRlcnMgfSBmcm9tICcuL2dldHRlcnMnXG5pbXBvcnQgeyBhY3Rpb25zIH0gZnJvbSAnLi9hY3Rpb25zJ1xuaW1wb3J0IHsgbXV0YXRpb25zIH0gZnJvbSAnLi9tdXRhdGlvbnMnXG5pbXBvcnQgdHlwZSB7IFNlcnZlclN0YXRlIH0gZnJvbSAnLi90eXBlcydcbmltcG9ydCB0eXBlIHsgUm9vdFN0YXRlIH0gZnJvbSAnLi4vdHlwZXMnXG5cbmNvbnN0IG5hbWVzcGFjZWQgPSB0cnVlXG5cbmV4cG9ydCBjb25zdCBzZXJ2ZXI6IE1vZHVsZTxTZXJ2ZXJTdGF0ZSwgUm9vdFN0YXRlPiA9IHtcbiAgbmFtZXNwYWNlZCxcbiAgc3RhdGUsXG4gIGdldHRlcnMsXG4gIGFjdGlvbnMsXG4gIG11dGF0aW9uc1xufVxuIl0sIm1hcHBpbmdzIjoiQUFDQSxTQUFTLGFBQWE7QUFDdEIsU0FBUyxlQUFlO0FBQ3hCLFNBQVMsZUFBZTtBQUN4QixTQUFTLGlCQUFpQjtBQUkxQixNQUFNLGFBQWE7QUFFWixhQUFNLFNBQXlDO0FBQUEsRUFDcEQ7QUFBQSxFQUNBO0FBQUEsRUFDQTtBQUFBLEVBQ0E7QUFBQSxFQUNBO0FBQ0Y7IiwibmFtZXMiOltdfQ==

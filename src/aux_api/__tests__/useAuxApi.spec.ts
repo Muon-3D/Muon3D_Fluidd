@@ -84,7 +84,7 @@ describe('useAuxApi', () => {
     expect(socket).not.toHaveBeenCalled()
   })
 
-  it('sends the hotspot and the rest of /server/aux nowhere over Iroh, and is back on the network once released', async () => {
+  it('sends the hotspot device status and the rest of /server/aux nowhere over Iroh, and is back on the network once released', async () => {
     const adapter = networkAdapter()
     const httpClient = useHttpClient(adapter)
     const fetch = vi.fn<Parameters<PrinterTransport['fetch']>, ReturnType<PrinterTransport['fetch']>>(async () => new Response(
@@ -95,8 +95,8 @@ describe('useAuxApi', () => {
     // What appInit is given for a cloud printer: a placeholder, never dialled.
     await pointAt('https://muon-cloud.invalid')
 
-    // muon-link refuses every /server/aux/ request over Iroh (07 §3): the hotspot has no muon-link route here.
-    await expect(useAuxApi().ap.apDownWifiApDownPost()).rejects.toBeInstanceOf(RemoteAuxRefused)
+    // muon-link refuses every /server/aux/ request over Iroh (07 §3): the hotspot's device status has no muon-link route.
+    await expect(useAuxApi().ap.wifiStatusWifiApDeviceStatusGet()).rejects.toBeInstanceOf(RemoteAuxRefused)
     await expect(useAuxApi().wifi.getDetailsWifiShowGet('Cafe')).rejects.toBeInstanceOf(RemoteAuxRefused)
     expect(fetch.mock.calls.map(([path]) => path).filter(path => path.startsWith('/server/aux'))).toEqual([])
     expect(adapter).not.toHaveBeenCalled()

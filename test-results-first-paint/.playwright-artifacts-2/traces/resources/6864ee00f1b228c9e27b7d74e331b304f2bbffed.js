@@ -1,0 +1,6 @@
+import Vue from "/.vite-e2e/4291/deps/vue.js?v=9b9fafc7";
+export const cameraPage = Vue.observable({
+  subtitle: ""
+});
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInBhZ2Utc3RhdGUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IFZ1ZSBmcm9tICd2dWUnXG5cbi8qKiBXaGF0IENhbWVyYSdzIGhlYWRlciBzaGFyZXMgd2l0aCB0aGUgcGFnZTogdGhlIGxpbmUgdW5kZXIgaXRzIHRpdGxlLiAqL1xuZXhwb3J0IGNvbnN0IGNhbWVyYVBhZ2UgPSBWdWUub2JzZXJ2YWJsZSh7XG4gIHN1YnRpdGxlOiAnJ1xufSlcbiJdLCJtYXBwaW5ncyI6IkFBQUEsT0FBTyxTQUFTO0FBR1QsYUFBTSxhQUFhLElBQUksV0FBVztBQUFBLEVBQ3ZDLFVBQVU7QUFDWixDQUFDOyIsIm5hbWVzIjpbXX0=

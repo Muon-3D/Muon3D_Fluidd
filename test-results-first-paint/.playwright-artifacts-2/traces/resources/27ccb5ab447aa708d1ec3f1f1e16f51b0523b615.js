@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/control/TaskFold.vue?vue&type=style&index=0&scoped=6bee6980&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/control/TaskFold.vue?vue&type=style&index=0&scoped=6bee6980&lang.scss"
+const __vite__css = ".task-fold__trigger[data-v-6bee6980] {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  width: 100%;\n  padding: 12px 0;\n  color: var(--m3d-text);\n  text-align: left;\n  font: inherit;\n}\n.task-fold__trigger[data-v-6bee6980]:focus-visible {\n  outline: 2px solid var(--m3d-accent);\n  outline-offset: 2px;\n}\n.task-fold__summary[data-v-6bee6980] {\n  flex: 1;\n  color: var(--m3d-text-subtle);\n  font-size: 12px;\n}\n.task-fold__panel[data-v-6bee6980] {\n  padding-bottom: 12px;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

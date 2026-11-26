@@ -167,6 +167,9 @@ import { GoKeys } from '@/util/go-keys'
 import { isGcodeFile, isModelFile } from '@/services/jobs/model'
 import JobReadyDialog from './components/jobs/JobReadyDialog.vue'
 import { loaderCanGo, rememberTheme, removeLoader, startupState } from '@/services/startup/loader'
+import { firstPaintEnabled } from '@/services/flags'
+import { firstPaintState, reportStartup } from '@/services/startup/first-paint/state'
+import { ENTRY_MARK, type StartupFacts } from '@/services/startup/first-paint/progress'
 import { saveSnapshotStatus } from '@/services/startup/snapshot'
 import { deletionState, deletionBlocksView } from '@/services/muon-cloud/deletion'
 import { Globals } from '@/globals'
@@ -242,7 +245,30 @@ export default class App extends Mixins(StateMixin, FrameMixin, FilesMixin, Brow
       screen: this.connection.screen,
       cachedShown: startupState.cachedShown,
       msSinceMount: performance.now() - this.mountedAt
-    })
+    }) && !firstPaintState.holding
+  }
+
+  /**
+   * What start-up has really reached, for first paint's rim (KAN-5929). Only
+   * with the flag on: off, it is null and nothing watches it.
+   */
+  get startupFacts (): StartupFacts | null {
+    if (!firstPaintEnabled()) return null
+    const info = this.$store.getters['server/getInfo'] as { klippy_state?: string, klippy_connected?: boolean }
+    return {
+      loaderMark: ENTRY_MARK,
+      routerReady: this.routerReady,
+      screen: this.connection.screen,
+      socketOpen: this.socketConnected,
+      klippyState: info.klippy_state ?? '',
+      klippyConnected: !!info.klippy_connected,
+      socketReady: !!this.$store.state.socket.ready
+    }
+  }
+
+  @Watch('startupFacts', { immediate: true })
+  onStartupFacts (facts: StartupFacts | null) {
+    if (facts) reportStartup(facts)
   }
 
   @Watch('loaderReady')

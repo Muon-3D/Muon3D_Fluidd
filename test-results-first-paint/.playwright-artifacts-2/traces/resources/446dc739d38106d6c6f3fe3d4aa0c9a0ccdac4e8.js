@@ -1,0 +1,20 @@
+import Vue from "/.vite-e2e/4291/deps/vue.js?v=9b9fafc7";
+import { defaultState } from "/src/store/sensors/state.ts";
+export const mutations = {
+  /**
+   * Reset state
+   */
+  setReset(state) {
+    Object.assign(state, defaultState());
+  },
+  setSensorsList(state, payload) {
+    state.sensors = payload.sensors;
+  },
+  setSensorUpdate(state, payload) {
+    for (const sensorKey in payload) {
+      Vue.set(state.sensors[sensorKey], "values", payload[sensorKey]);
+    }
+  }
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIm11dGF0aW9ucy50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgVnVlIGZyb20gJ3Z1ZSdcbmltcG9ydCB0eXBlIHsgTXV0YXRpb25UcmVlIH0gZnJvbSAndnVleCdcbmltcG9ydCB0eXBlIHsgTW9vbnJha2VyU2Vuc29ycywgTW9vbnJha2VyU2Vuc29yc1N0YXRlIH0gZnJvbSAnLi90eXBlcydcbmltcG9ydCB7IGRlZmF1bHRTdGF0ZSB9IGZyb20gJy4vc3RhdGUnXG5cbmV4cG9ydCBjb25zdCBtdXRhdGlvbnM6IE11dGF0aW9uVHJlZTxNb29ucmFrZXJTZW5zb3JzU3RhdGU+ID0ge1xuICAvKipcbiAgICogUmVzZXQgc3RhdGVcbiAgICovXG4gIHNldFJlc2V0IChzdGF0ZSkge1xuICAgIE9iamVjdC5hc3NpZ24oc3RhdGUsIGRlZmF1bHRTdGF0ZSgpKVxuICB9LFxuXG4gIHNldFNlbnNvcnNMaXN0IChzdGF0ZSwgcGF5bG9hZDogeyBzZW5zb3JzOiBNb29ucmFrZXJTZW5zb3JzIH0pIHtcbiAgICBzdGF0ZS5zZW5zb3JzID0gcGF5bG9hZC5zZW5zb3JzXG4gIH0sXG5cbiAgc2V0U2Vuc29yVXBkYXRlIChzdGF0ZSwgcGF5bG9hZDogTW9vbnJha2VyU2Vuc29ycykge1xuICAgIGZvciAoY29uc3Qgc2Vuc29yS2V5IGluIHBheWxvYWQpIHtcbiAgICAgIFZ1ZS5zZXQoc3RhdGUuc2Vuc29yc1tzZW5zb3JLZXldLCAndmFsdWVzJywgcGF5bG9hZFtzZW5zb3JLZXldKVxuICAgIH1cbiAgfVxufVxuIl0sIm1hcHBpbmdzIjoiQUFBQSxPQUFPLFNBQVM7QUFHaEIsU0FBUyxvQkFBb0I7QUFFdEIsYUFBTSxZQUFpRDtBQUFBO0FBQUE7QUFBQTtBQUFBLEVBSTVELFNBQVUsT0FBTztBQUNmLFdBQU8sT0FBTyxPQUFPLGFBQWEsQ0FBQztBQUFBLEVBQ3JDO0FBQUEsRUFFQSxlQUFnQixPQUFPLFNBQXdDO0FBQzdELFVBQU0sVUFBVSxRQUFRO0FBQUEsRUFDMUI7QUFBQSxFQUVBLGdCQUFpQixPQUFPLFNBQTJCO0FBQ2pELGVBQVcsYUFBYSxTQUFTO0FBQy9CLFVBQUksSUFBSSxNQUFNLFFBQVEsU0FBUyxHQUFHLFVBQVUsUUFBUSxTQUFTLENBQUM7QUFBQSxJQUNoRTtBQUFBLEVBQ0Y7QUFDRjsiLCJuYW1lcyI6W119

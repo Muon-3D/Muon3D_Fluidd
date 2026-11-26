@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/node_modules/vuetify/src/components/VDataTable/VEditDialog.sass");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/node_modules/vuetify/src/components/VDataTable/VEditDialog.sass"
+const __vite__css = ".theme--light.v-small-dialog__menu-content, .theme--light.v-small-dialog__actions {\n  background: #FFFFFF;\n}\n\n.theme--dark.v-small-dialog__menu-content, .theme--dark.v-small-dialog__actions {\n  background: #1a1f22;\n}\n\n.v-small-dialog {\n  display: block;\n}\n.v-small-dialog__activator {\n  cursor: pointer;\n}\n.v-small-dialog__activator__content {\n  display: inline-block;\n}\n.v-small-dialog__content {\n  padding: 0 16px;\n}\n.v-small-dialog__actions {\n  padding: 8px;\n  text-align: right;\n  white-space: pre;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

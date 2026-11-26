@@ -1,0 +1,9 @@
+export const defaultState = () => {
+  return {
+    webcams: [],
+    activeWebcam: "all"
+  };
+};
+export const state = defaultState();
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInN0YXRlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgV2ViY2Ftc1N0YXRlIH0gZnJvbSAnLi90eXBlcydcblxuZXhwb3J0IGNvbnN0IGRlZmF1bHRTdGF0ZSA9ICgpOiBXZWJjYW1zU3RhdGUgPT4ge1xuICByZXR1cm4ge1xuICAgIHdlYmNhbXM6IFtdLFxuICAgIGFjdGl2ZVdlYmNhbTogJ2FsbCdcbiAgfVxufVxuXG5leHBvcnQgY29uc3Qgc3RhdGUgPSBkZWZhdWx0U3RhdGUoKVxuIl0sIm1hcHBpbmdzIjoiQUFFTyxhQUFNLGVBQWUsTUFBb0I7QUFDOUMsU0FBTztBQUFBLElBQ0wsU0FBUyxDQUFDO0FBQUEsSUFDVixjQUFjO0FBQUEsRUFDaEI7QUFDRjtBQUVPLGFBQU0sUUFBUSxhQUFhOyIsIm5hbWVzIjpbXX0=

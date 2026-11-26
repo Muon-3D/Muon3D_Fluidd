@@ -1,0 +1,8 @@
+export const defaultState = () => {
+  return {
+    sensors: {}
+  };
+};
+export const state = defaultState();
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInN0YXRlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgTW9vbnJha2VyU2Vuc29yc1N0YXRlIH0gZnJvbSAnLi90eXBlcydcblxuZXhwb3J0IGNvbnN0IGRlZmF1bHRTdGF0ZSA9ICgpOiBNb29ucmFrZXJTZW5zb3JzU3RhdGUgPT4ge1xuICByZXR1cm4ge1xuICAgIHNlbnNvcnM6IHt9XG4gIH1cbn1cblxuZXhwb3J0IGNvbnN0IHN0YXRlID0gZGVmYXVsdFN0YXRlKClcbiJdLCJtYXBwaW5ncyI6IkFBRU8sYUFBTSxlQUFlLE1BQTZCO0FBQ3ZELFNBQU87QUFBQSxJQUNMLFNBQVMsQ0FBQztBQUFBLEVBQ1o7QUFDRjtBQUVPLGFBQU0sUUFBUSxhQUFhOyIsIm5hbWVzIjpbXX0=

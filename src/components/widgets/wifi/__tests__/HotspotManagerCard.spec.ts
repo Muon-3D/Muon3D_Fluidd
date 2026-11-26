@@ -457,19 +457,68 @@ describe('HotspotManagerCard over Iroh (07 §3)', () => {
     vi.useRealTimers()
   })
 
-  it('shows one line in place of the card, and asks the printer nothing', async () => {
+  it('reads the hotspot over muon-link and shows its form, never the Aux device status', async () => {
     printerTransportBinding.remote = true
     const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
     await vi.advanceTimersByTimeAsync(5000)
 
-    expect(wrapper.text()).toContain('app.wifi.remote_read_only')
+    expect(apShowCredentials).toHaveBeenCalledTimes(1)
     expect(apDeviceStatus).not.toHaveBeenCalled()
-    expect(apShowCredentials).not.toHaveBeenCalled()
-    expect(wrapper.findAll('v-text-field-stub').length).toBe(0)
+    expect(wrapper.text()).not.toContain('app.wifi.remote_read_only')
+    expect(wrapper.find('[data-tid="hotspot-edit"]').exists()).toBe(true)
+    // The route cannot say whether it is up: two plain buttons in place of the switch, and a line saying why.
+    expect(wrapper.find('[data-tid="hotspot-turn-on"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tid="hotspot-turn-off"]').exists()).toBe(true)
+    expect(wrapper.find('[data-tid="hotspot-state-unknown"]').exists()).toBe(true)
     wrapper.destroy()
   })
 
-  it('loads once the printer is reached on its own network again', async () => {
+  it('asks before turning it on, then sends the one call', async () => {
+    printerTransportBinding.remote = true
+    const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+    await vi.advanceTimersByTimeAsync(0)
+
+    await wrapper.find('[data-tid="hotspot-turn-on"]').trigger('click')
+    expect((wrapper.vm as any).showToggleWarningDialog).toBe(true)
+    expect(apUp).not.toHaveBeenCalled()
+
+    await (wrapper.vm as any).confirmToggle()
+    expect(apUp).toHaveBeenCalledTimes(1)
+    expect(apDown).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('changes the name through /change, never /modify, after a warning', async () => {
+    printerTransportBinding.remote = true
+    apChange.mockResolvedValue({ status: 202, data: { id: 'c1' } })
+    const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+    await vi.advanceTimersByTimeAsync(0)
+    const vm = wrapper.vm as any
+    vm.toggleEditing()
+    vm.form.ssid = 'Muon-New'
+    vm.$refs.apForm = { validate: () => true }
+    await vm.requestApplyChanges()
+    expect(vm.showChangeWarningDialog).toBe(true)
+    expect(apChange).not.toHaveBeenCalled()
+
+    await vm.confirmApply()
+    expect(apChange).toHaveBeenCalledWith({ ssid: 'Muon-New' })
+    expect(apModify).not.toHaveBeenCalled()
+    wrapper.destroy()
+  })
+
+  it('says so, in place of the form, when this muon-link has no hotspot route', async () => {
+    printerTransportBinding.remote = true
+    apShowCredentials.mockRejectedValue({ response: { status: 404, data: 'Not Found' } })
+    const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(wrapper.find('[data-tid="hotspot-route-problem"]').text()).toContain("can't change the hotspot over this connection yet")
+    expect(wrapper.find('[data-tid="hotspot-body"]').exists()).toBe(false)
+    wrapper.destroy()
+  })
+
+  it('loads the device status once the printer is reached on its own network again', async () => {
     printerTransportBinding.remote = true
     const wrapper = shallowMount(HotspotManagerCard, { mocks: mocks() })
     await vi.advanceTimersByTimeAsync(0)
@@ -477,7 +526,8 @@ describe('HotspotManagerCard over Iroh (07 §3)', () => {
     printerTransportBinding.remote = false
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(apShowCredentials).toHaveBeenCalledTimes(1)
+    expect(apShowCredentials).toHaveBeenCalledTimes(2)
+    expect(apDeviceStatus).toHaveBeenCalled()
     wrapper.destroy()
   })
 })

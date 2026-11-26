@@ -1,0 +1,21 @@
+import { SocketActions } from "/src/api/socketActions.ts";
+export const actions = {
+  async reset({ commit }) {
+    commit("setReset");
+  },
+  async init() {
+    SocketActions.serverSensorsList();
+  },
+  async onSensorsList({ commit }, payload) {
+    if (payload) {
+      commit("setSensorsList", payload);
+    }
+  },
+  async onSensorUpdate({ commit }, payload) {
+    if (payload) {
+      commit("setSensorUpdate", payload);
+    }
+  }
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImFjdGlvbnMudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHR5cGUgeyBBY3Rpb25UcmVlIH0gZnJvbSAndnVleCdcbmltcG9ydCB0eXBlIHsgTW9vbnJha2VyU2Vuc29ycywgTW9vbnJha2VyU2Vuc29yc1N0YXRlIH0gZnJvbSAnLi90eXBlcydcbmltcG9ydCB0eXBlIHsgUm9vdFN0YXRlIH0gZnJvbSAnLi4vdHlwZXMnXG5pbXBvcnQgeyBTb2NrZXRBY3Rpb25zIH0gZnJvbSAnQC9hcGkvc29ja2V0QWN0aW9ucydcblxuZXhwb3J0IGNvbnN0IGFjdGlvbnM6IEFjdGlvblRyZWU8TW9vbnJha2VyU2Vuc29yc1N0YXRlLCBSb290U3RhdGU+ID0ge1xuICBhc3luYyByZXNldCAoeyBjb21taXQgfSkge1xuICAgIGNvbW1pdCgnc2V0UmVzZXQnKVxuICB9LFxuXG4gIGFzeW5jIGluaXQgKCkge1xuICAgIFNvY2tldEFjdGlvbnMuc2VydmVyU2Vuc29yc0xpc3QoKVxuICB9LFxuXG4gIGFzeW5jIG9uU2Vuc29yc0xpc3QgKHsgY29tbWl0IH0sIHBheWxvYWQ6IHsgc2Vuc29yczogTW9vbnJha2VyU2Vuc29ycyB9KSB7XG4gICAgaWYgKHBheWxvYWQpIHtcbiAgICAgIGNvbW1pdCgnc2V0U2Vuc29yc0xpc3QnLCBwYXlsb2FkKVxuICAgIH1cbiAgfSxcblxuICBhc3luYyBvblNlbnNvclVwZGF0ZSAoeyBjb21taXQgfSwgcGF5bG9hZDogTW9vbnJha2VyU2Vuc29ycykge1xuICAgIGlmIChwYXlsb2FkKSB7XG4gICAgICBjb21taXQoJ3NldFNlbnNvclVwZGF0ZScsIHBheWxvYWQpXG4gICAgfVxuICB9XG59XG4iXSwibWFwcGluZ3MiOiJBQUdBLFNBQVMscUJBQXFCO0FBRXZCLGFBQU0sVUFBd0Q7QUFBQSxFQUNuRSxNQUFNLE1BQU8sRUFBRSxPQUFPLEdBQUc7QUFDdkIsV0FBTyxVQUFVO0FBQUEsRUFDbkI7QUFBQSxFQUVBLE1BQU0sT0FBUTtBQUNaLGtCQUFjLGtCQUFrQjtBQUFBLEVBQ2xDO0FBQUEsRUFFQSxNQUFNLGNBQWUsRUFBRSxPQUFPLEdBQUcsU0FBd0M7QUFDdkUsUUFBSSxTQUFTO0FBQ1gsYUFBTyxrQkFBa0IsT0FBTztBQUFBLElBQ2xDO0FBQUEsRUFDRjtBQUFBLEVBRUEsTUFBTSxlQUFnQixFQUFFLE9BQU8sR0FBRyxTQUEyQjtBQUMzRCxRQUFJLFNBQVM7QUFDWCxhQUFPLG1CQUFtQixPQUFPO0FBQUEsSUFDbkM7QUFBQSxFQUNGO0FBQ0Y7IiwibmFtZXMiOltdfQ==

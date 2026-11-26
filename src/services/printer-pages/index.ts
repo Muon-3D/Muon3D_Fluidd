@@ -136,10 +136,24 @@ export function resolveSlug (slug: string, printers: PrinterTarget[] = knownPrin
     if (new Set(bySuffix.map(p => p.slug)).size === 1) matches = bySuffix
   }
   if (!matches.length) return null
-  const preferCloud = typeof window !== 'undefined' && window.location.protocol === 'https:'
-  const pick = (kind: PrinterTarget['kind']) => matches.find(m => m.kind === kind)
-  return matches.find(target => target.kind === 'foreign') ??
-    (preferCloud ? pick('cloud') ?? pick('local') : pick('local') ?? pick('cloud')) ?? null
+  return pickTarget(matches, typeof window !== 'undefined' && window.location.protocol === 'https:')
+}
+
+/**
+ * Which of the entries that share an address opens it. A foreign one first; on an https page an account printer
+ * goes through Muon3D. KAN-5972: a printer held here but not on the account (an Open one) has no Muon3D route, so
+ * the page's own secure route to it wins over that entry.
+ */
+export function pickTarget (matches: PrinterTarget[], https: boolean): PrinterTarget | null {
+  const foreign = matches.find(target => target.kind === 'foreign')
+  if (foreign) return foreign
+  const cloud = matches.find(m => m.kind === 'cloud')
+  const local = matches.find(m => m.kind === 'local')
+  if (!https) return local ?? cloud ?? null
+  const onAccount = cloud?.kind === 'cloud' && cloudState.printers.some(p => p.id === cloud.printerId)
+  const reachableHere = local?.kind === 'local' && /^https:/i.test(local.instance.apiUrl)
+  if (cloud && !onAccount && reachableHere) return local ?? null
+  return cloud ?? local ?? null
 }
 
 /** The slug of the printer Fluidd is on now, or null with none. */
