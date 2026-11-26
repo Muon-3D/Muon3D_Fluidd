@@ -143,12 +143,19 @@ for (const path of ['/', '/control']) {
       expect(printer.gcode).toEqual([])
     })
 
-    test('the confirm stays required: with no answer from the person, nothing is sent', async ({ page, open }) => {
-      const { posts } = await printerWith(page, false, { status: 500, json: { error: 'boom' } })
+    test('a confirm that fails twice says so, leaves the plate unconfirmed, and the next try needs the person again (KAN-7043)', async ({ page, open }) => {
+      const { printer, posts } = await printerWith(page, false, { status: 500, json: { error: 'boom' } })
       await open(path)
+      await ask(page)
+      await page.getByTestId('confirm-ok').click()
+      await expect(page.getByTestId('plate-clear-message')).toContainText("Couldn't confirm the plate is clear.")
+      // One confirm from the person, sent twice by Control, and nothing after that on its own.
+      expect(posts).toHaveLength(2)
       await expect(notice(page)).toBeVisible()
-      await expect(notice(page).getByTestId('plate-clear-btn')).toBeEnabled()
-      expect(posts).toEqual([])
+      await expect(page.getByTestId('confirm')).toHaveCount(0)
+      await ask(page)
+      expect(posts).toHaveLength(2)
+      expect(printer.gcode).toEqual([])
     })
 
     test('plate_cleared true: no notice', async ({ page, open }) => {
