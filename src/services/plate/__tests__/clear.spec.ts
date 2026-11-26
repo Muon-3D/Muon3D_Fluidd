@@ -69,8 +69,24 @@ describe('confirmPlateClear', () => {
     await confirmPlateClear(true, { post })
     expect(post.mock.calls[1][0]).toBe('/muon-link/plate/clear')
   })
-  it('a network failure is failed', async () => {
+  it('a network failure is failed, after one more try', async () => {
     const post = vi.fn().mockRejectedValue(new Error('Network Error'))
-    expect(await confirmPlateClear(false, { post })).toEqual({ kind: 'failed', message: FAILED_MESSAGE })
+    expect(await confirmPlateClear(false, { post }, 0)).toEqual({ kind: 'failed', message: FAILED_MESSAGE })
+    expect(post).toHaveBeenCalledTimes(2)
+  })
+  it('a printer not ready on the first try, ready on the second, is cleared (KAN-7043)', async () => {
+    const post = vi.fn()
+      .mockResolvedValueOnce({ status: 409, data: { error: 'busy' } })
+      .mockResolvedValueOnce({ status: 200, data: { cleared: true } })
+    expect(await confirmPlateClear(false, { post }, 0)).toEqual({ kind: 'cleared' })
+    expect(post).toHaveBeenCalledTimes(2)
+  })
+  it('a refusal or an unavailable printer is final: sent once, never retried', async () => {
+    const refused = vi.fn().mockResolvedValue({ status: 403, data: { detail: { code: 'permission_restricted', message: 'No.' } } })
+    expect((await confirmPlateClear(false, { post: refused }, 0)).kind).toBe('refused')
+    expect(refused).toHaveBeenCalledTimes(1)
+    const unavailable = vi.fn().mockResolvedValue({ status: 503, data: { detail: { code: 'plate_clear_unavailable' } } })
+    expect((await confirmPlateClear(false, { post: unavailable }, 0)).kind).toBe('unavailable')
+    expect(unavailable).toHaveBeenCalledTimes(1)
   })
 })

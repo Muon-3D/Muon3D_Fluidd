@@ -114,6 +114,9 @@ export function setActiveCloudPrinter (id: string | null) {
 const statusConnections = new Map<string, Promise<PrinterTransport>>()
 const grants = new Map<string, Promise<AccessHandoff>>()
 const polling = new Set<string>()
+/** KAN-6081: per printer, how often the console saw it go from not online to online, and whether it was online at the last poll. */
+const presenceEpochs = new Map<string, number>()
+const wasOnline = new Map<string, boolean>()
 let sessionAbort = new AbortController()
 let endpointRegistration: Promise<void> | null = null
 let stopPollTimer: (() => void) | null = null
@@ -306,7 +309,7 @@ async function statusConnection (printerId: string): Promise<PrinterTransport> {
     const signal = sessionAbort.signal
     existing = createPrinterTransportForSelection(
       { kind: 'managed-iroh', printerId },
-      { handoffSelectedPrinter: id => handoff(id, signal), refreshSelectedPrinter: id => refreshHandoff(id, signal), createManagedEndpoint: managedEndpointFactory }
+      { handoffSelectedPrinter: id => handoff(id, signal), refreshSelectedPrinter: id => refreshHandoff(id, signal), presenceEpoch: id => presenceEpochs.get(id) ?? 0, createManagedEndpoint: managedEndpointFactory }
     )
     statusConnections.set(printerId, existing)
     const pending = existing
@@ -364,6 +367,8 @@ async function pollOne (printer: CloudPrinter) {
   const refused = () => { if (!cloudState.status[printer.id]) unavailable('refused') }
   const overBluetooth = wantsBluetoothFor(printer.id)
   const presence = bluetoothCarrying(printer.id) ? 'online' : consolePresence(printer)
+  if (presence === 'online' && wasOnline.get(printer.id) === false) presenceEpochs.set(printer.id, (presenceEpochs.get(printer.id) ?? 0) + 1)
+  wasOnline.set(printer.id, presence === 'online')
   if (presence !== 'online') unavailable(presence)
   if ((presence === 'offline' && !overBluetooth) || polling.has(printer.id)) return
   // I-129: a Bluetooth route that keeps failing backs off, then stops.

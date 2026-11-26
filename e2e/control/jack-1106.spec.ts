@@ -63,9 +63,9 @@ test.describe('materials', () => {
 })
 
 test.describe('theme', () => {
-  test('Settings offers no flat theme: glass is the only one', async ({ page, open }) => {
-    await open(`${PRINTER}/settings#theme`)
-    const theme = page.getByTestId('theme-settings')
+  test('Settings (General) offers no flat theme: glass is the only one', async ({ page, open }) => {
+    await open(`${PRINTER}/settings#general`)
+    const theme = page.getByTestId('general-settings')
     await expect(theme).toBeVisible()
     await expect(theme.getByText('Panels')).toHaveCount(0)
     await expect(theme.getByText(/flat/i)).toHaveCount(0)
@@ -75,7 +75,7 @@ test.describe('theme', () => {
 
   test('a printer that saved the flat theme gets glass, in the store as well as on screen', async ({ page, open }) => {
     await savedSettings(page, { theme: { color: '#80D6D1', isDark: true, logo: { src: 'logo_fluidd.svg' }, backgroundLogo: false, style: 'flat' } })
-    await open(`${PRINTER}/settings#theme`)
+    await open(`${PRINTER}/settings#general`)
     await expect(page.locator('html')).toHaveAttribute('data-m3d-style', 'glass')
     expect(await storeValue(page, 'config.uiSettings.theme.style')).toBe('glass')
     expect(await page.evaluate(() => localStorage.getItem('muon.uiStyle'))).toBe('glass')
@@ -86,8 +86,8 @@ test.describe('logo behind the pages', () => {
   test('Settings has no such switch, and a printer that saved it on shows no watermark', async ({ page, open }) => {
     // The switch drew the Fluidd logo at 4% opacity, mostly off the corner of the screen: it did nothing anyone could see.
     await savedSettings(page, { theme: { color: '#80D6D1', isDark: true, logo: { src: 'logo_fluidd.svg' }, backgroundLogo: true, style: 'glass' } })
-    await open(`${PRINTER}/settings#theme`)
-    const theme = page.getByTestId('theme-settings')
+    await open(`${PRINTER}/settings#general`)
+    const theme = page.getByTestId('general-settings')
     await expect(theme).toBeVisible()
     // The saved "on" did load, so the missing watermark is not for want of the setting.
     expect(await storeValue(page, 'config.uiSettings.theme.backgroundLogo')).toBe(true)

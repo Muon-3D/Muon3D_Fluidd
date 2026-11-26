@@ -96,9 +96,12 @@
         Account
       </router-link>
 
+      <!-- Appearance is this browser's: it needs no sign-in and works on a printer's own page. -->
+      <account-appearance v-if="current.id === 'appearance'" />
+
       <!-- Signed out: the account is what these pages are about. -->
       <section
-        v-if="!ready"
+        v-else-if="!ready"
         class="lib-empty lib-surface"
       >
         <p>Reading your account…</p>
@@ -247,6 +250,7 @@ import { accountState, loadMe } from '@/services/account/state'
 import AccountOverview from '@/components/account/AccountOverview.vue'
 import AccountProfile from '@/components/account/AccountProfile.vue'
 import AccountPlan from '@/components/account/AccountPlan.vue'
+import AccountAppearance from '@/components/account/AccountAppearance.vue'
 import { beginSignOut } from '@/services/account/sign-out'
 import LibrarySettings from '@/components/settings/LibrarySettings.vue'
 import CloudAccountDialog from '@/components/muon-cloud/CloudAccountDialog.vue'
@@ -265,6 +269,7 @@ import '@/scss/muon3d-account.scss'
  */
 @Component({
   components: {
+    AccountAppearance,
     AccountOverview,
     AccountProfile,
     AccountSecurity: () => import('@/components/account/AccountSecurity.vue'),

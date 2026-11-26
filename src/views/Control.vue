@@ -188,7 +188,8 @@ import ControlActions from '@/components/control/ControlActions.vue'
 import PlateClearBar from '@/components/ui/PlateClearBar.vue'
 import MachineFaultBar from '@/components/ui/MachineFaultBar.vue'
 import { controlTiles, type ControlTileDef } from '@/components/control/registry'
-import { addTile, defaultLayout, moveBy, nudgeSize, removeTile, serverLayoutKey, type OverviewLayout, type PlacedTile } from '@/services/overview/layout'
+import { addTile, defaultLayout, moveBy, nudgeSize, removeTile, type OverviewLayout, type PlacedTile } from '@/services/overview/layout'
+import { layoutContext, savedLayouts, saveServerLayout } from '@/services/layout/layout-access'
 import { loadLayout, saveLayout, type LayoutContext } from '@/services/overview/layout-store'
 
 type DrawnTile = ControlTileDef & PlacedTile
@@ -216,15 +217,11 @@ export default class Control extends Mixins(BrowserMixin) {
   get editing (): boolean { return this.draft !== null }
 
   get context (): LayoutContext {
-    return {
-      accountId: cloudState.account?.id ?? null,
-      printerId: cloudState.activePrinterId ?? this.$route?.params?.printer ?? this.$store.state.config.apiUrl ?? null,
-      page: 'control'
-    }
+    return layoutContext(this.$store, this.$route, 'control')
   }
 
   get savedLayouts (): Record<string, unknown> | undefined {
-    return this.$store.state.config.uiSettings?.control?.layouts
+    return savedLayouts(this.$store, 'control')
   }
 
   get current (): OverviewLayout { return this.draft ?? this.layout }
@@ -249,6 +246,8 @@ export default class Control extends Mixins(BrowserMixin) {
 
   created () {
     this.load()
+    // Printer settings > Layout > Edit opens the page already editing.
+    if (this.$route?.query?.edit && !this.editing) this.startEdit()
   }
 
   mounted () {
@@ -291,12 +290,7 @@ export default class Control extends Mixins(BrowserMixin) {
     if (!draft) return
     if (JSON.stringify(draft) !== JSON.stringify(this.layout)) {
       const record = saveLayout(this.context, draft, localStorage)
-      this.$store.dispatch('config/saveByPath', {
-        // Only this person's key on this printer, never the whole map.
-        path: `uiSettings.control.layouts.${serverLayoutKey(this.context.accountId, this.context.printerId)}`,
-        value: record,
-        server: true
-      })
+      saveServerLayout(this.$store, 'control', this.context, record)
       this.layout = { tiles: record.tiles, hidden: record.hidden }
     }
     this.draft = null
