@@ -333,13 +333,14 @@ async function expectJackLayout (page: Page) {
   expect(graph.y).toBeGreaterThan(hotend.y + hotend.height - 2)
   expect(Math.abs(graph.x - grid.x)).toBeLessThan(2)
   expect(Math.abs(graph.width - grid.width)).toBeLessThan(2)
-  // The Trackpad, Jog on its right with Lighting under it, ending level with the Trackpad; the row above splits at the same column.
+  // The Trackpad, Jog on its right with Lighting under it, ending level with the Trackpad; the four panels above are equal.
   expect(trackpad.y).toBeGreaterThan(graph.y + graph.height - 2)
   expect(jog.x).toBeGreaterThan(trackpad.x + trackpad.width - 2)
   expect(Math.abs(jog.y - trackpad.y)).toBeLessThan(2)
   expect(lighting.y).toBeGreaterThan(jog.y + jog.height - 2)
   expect(Math.abs(lighting.y + lighting.height - (trackpad.y + trackpad.height))).toBeLessThan(2)
-  expect(Math.abs(mode.x - jog.x)).toBeLessThan(2)
+  // KAN-5979: the four panels are the same width (3 columns each).
+  for (const b of [bed, position, mode]) expect(Math.abs(b.width - hotend.width)).toBeLessThan(2)
   // Quick commands, the full width under all of it.
   expect(macros.y).toBeGreaterThan(trackpad.y + trackpad.height - 2)
   expect(Math.abs(macros.x - grid.x)).toBeLessThan(2)
@@ -370,7 +371,7 @@ test.describe('KAN-2029: the default layout', () => {
     // The widths and heights (columns, rows) of the sizes each tile offers.
     const SIZES: Record<string, Record<string, [number, number]>> = {
       graph: { S: [3, 1], M: [6, 1], L: [12, 1] },
-      mode: { S: [5, 1], M: [6, 1] },
+      mode: { S: [3, 1], M: [6, 1] },
       macros: { S: [3, 1], M: [8, 1], L: [12, 1] }
     }
     // This test is about where tiles go, not the 3D view: with no WebGL the stage draws its fallback at the same size,

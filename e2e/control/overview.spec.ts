@@ -199,5 +199,6 @@ test('Jog and Position at size L have no Home all of their own (KAN-1955 / KAN-2
   await expect(page.locator('[data-tile="position"]').getByRole('button', { name: /Home all/i })).toHaveCount(0)
   // No per-axis Home on Position.
   await expect(page.locator('[data-tile="position"] [data-tid^="home-"]')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /Home X ?Y/i })).toHaveCount(0)
+  // Home XY (KAN-6008) is only the trackpad's header button, never on Jog or Position.
+  await expect(page.locator('[data-tile="jog"], [data-tile="position"]').getByRole('button', { name: /Home X ?Y/i })).toHaveCount(0)
 })

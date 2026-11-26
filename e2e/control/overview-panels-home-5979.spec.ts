@@ -41,7 +41,18 @@ test.describe('the four Overview panels are equal', () => {
       }
       // Once the page has settled (the 3D view and the tiles load in after the first paint).
       await expect(page.locator('[data-cell="trackpad"]')).toBeAttached({ timeout: 45_000 })
-      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), { timeout: 20_000 }).toBeLessThanOrEqual(0)
+      // On failure the value names the widest culprits (right edge past the screen), so the report says what overflows.
+      await expect.poll(() => page.evaluate(() => {
+        const over = document.documentElement.scrollWidth - document.documentElement.clientWidth
+        if (over <= 0) return 'none'
+        const wide = [...document.querySelectorAll('body *')]
+          .map(el => ({ el, r: el.getBoundingClientRect() }))
+          .filter(x => x.r.width > 0 && x.r.right > window.innerWidth + 0.5)
+          .sort((a, b) => b.r.right - a.r.right)
+          .slice(0, 6)
+          .map(x => `${x.el.tagName.toLowerCase()}.${String(x.el.className).slice(0, 40)}[${x.el.getAttribute('data-tid') ?? x.el.getAttribute('data-cell') ?? ''}] right=${Math.round(x.r.right)} w=${Math.round(x.r.width)}`)
+        return `${over}px: ${wide.join(' | ')}`
+      }), { timeout: 20_000 }).toBe('none')
     })
   }
 })
@@ -50,13 +61,13 @@ for (const width of [1440, 360, 320]) {
   test.describe(`Home at ${width} px`, () => {
     test.beforeEach(async ({ page }) => { await page.setViewportSize({ width, height: 900 }) })
 
-    test('one Home all on the whole Overview, it sends G28, and there is no Home XY', async ({ page, open }) => {
+    test('one Home all on the whole Overview, it sends G28, and Home XY sends G28 X Y (KAN-6008)', async ({ page, open }) => {
       const printer = await start(page)
       await open('/')
       await expect(trackpad(page).getByTestId('move-homes')).toBeVisible()
       await expect(page.getByRole('button', { name: 'Home all' })).toHaveCount(1)
-      // Nothing else on the page is a second Home all, an X-Y-only home (KAN-1963), or a Quick command that homes.
-      await expect(page.getByRole('button', { name: /Home X ?Y/i })).toHaveCount(0)
+      // Nothing else on the page is a second Home all or a Quick command that homes; the one Home XY is the header's.
+      await expect(page.getByRole('button', { name: /Home X ?Y/i })).toHaveCount(1)
       await expect(page.locator('[data-tile="macros"] [data-macro="home"]')).toHaveCount(0)
       // Home all sits above the pad.
       const homes = (await trackpad(page).getByTestId('move-homes').boundingBox())!
@@ -64,6 +75,18 @@ for (const width of [1440, 360, 320]) {
       expect(homes.y + homes.height).toBeLessThan(pad.y)
       await page.getByRole('button', { name: 'Home all' }).click()
       await expect.poll(() => printer.gcode).toEqual(['G28'])
+      await page.getByRole('button', { name: 'Home XY' }).click()
+      await expect.poll(() => printer.gcode).toEqual(['G28', 'G28 X Y'])
+    })
+
+    test('Home XY is disabled with its reason when Klipper reports home_xy not ready (KAN-6008)', async ({ page, open }) => {
+      const printer = await usePrinter(page, overlay(PRESETS.idleHomed(), { m1_machine: { ready: { home_xy: false }, missing: { home_xy: ['toolhead_disconnected'] } } }))
+      await open('/')
+      const btn = trackpad(page).getByRole('button', { name: 'Home XY' })
+      await expect(btn).toBeDisabled()
+      await expect(trackpad(page).getByTestId('home-xy-reason')).toHaveText('Connect the toolhead first')
+      await btn.click({ force: true })
+      expect(printer.gcode).toEqual([])
     })
   })
 }
