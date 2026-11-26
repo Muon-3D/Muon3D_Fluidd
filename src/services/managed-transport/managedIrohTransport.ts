@@ -262,9 +262,8 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
    * answer, and it must not loop.
    */
   private noteRefused (relay: Promise<ManagedIrohRelay>) {
-    const alreadySuspect = this.grantSuspect
     this.grantSuspect = true
-    if (alreadySuspect || Date.now() - this.grantedAt < STABLE_AFTER_MS || this.relayPromise !== relay) return
+    if (Date.now() - this.grantedAt < STABLE_AFTER_MS || this.relayPromise !== relay) return
     this.failedDials += 1
     this.relayPromise = null
     setTimeout(() => { relay.then(r => r.close()).catch(() => {}) }, 5000)
