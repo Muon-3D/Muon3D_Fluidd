@@ -140,7 +140,7 @@
               <span class="acct-row__label">
                 <b>{{ printer.name }}</b>
                 <span data-tid="nearby-status">{{ printer.status }}</span>
-                <span>{{ printer.host }}</span>
+                <span v-if="printer.host">{{ printer.host }}</span>
               </span>
               <button
                 type="button"
@@ -253,13 +253,18 @@ export default class SignedOut extends Vue {
       const { printers } = await cloudApi.nearby()
       this.nearby = printers
         .map(p => ({ id: p.printer_id, name: p.name, host: nearbyHost(p.local_addrs ?? []) ?? '', status: 'Checking…', secureName: secureNameOf(p) }))
-        .filter(p => p.host)
+      // A printer the service lists is shown whether or not it gave an address or a secure name (KAN-5988): one with
+      // neither is on this network, reachable by Bluetooth or its own page, and says so.
       // No http from the https site (I-134): the name stands without a status.
       if (pageIsSecure()) {
-        for (const printer of this.nearby) printer.status = ''
+        for (const printer of this.nearby) printer.status = printer.secureName ? '' : 'On this network, no secure address yet'
         return
       }
       await Promise.all(this.nearby.map(async printer => {
+        if (!printer.host) {
+          printer.status = 'On this network'
+          return
+        }
         const health = await printerHealth(`http://${printer.host}`)
         printer.status = printerStatusWord(health?.state ?? null)
       }))

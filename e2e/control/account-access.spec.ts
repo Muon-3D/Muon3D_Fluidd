@@ -48,7 +48,7 @@ test('the Account nav has the agreed names, in three groups', async ({ page, acc
   await expect(nav).toBeVisible()
   await expect(nav.locator('.acct-nav__group')).toHaveText(['You', 'Access', 'Everything else'])
   await expect(nav.locator('.acct-nav__item .acct-nav__label')).toHaveText([
-    'Profile', 'Sign-in and security', 'Printers and access', 'Your devices', 'Apps and agents',
+    'Profile', 'Appearance', 'Sign-in and security', 'Printers and access', 'Your devices', 'Apps and agents',
     'Notifications', 'Library and storage', 'Plan', 'Your data', 'Sign out'
   ])
   if (isMobile) return
