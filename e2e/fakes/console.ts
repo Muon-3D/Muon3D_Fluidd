@@ -40,6 +40,8 @@ export interface ConsoleState {
   approvals: unknown[];
   /** The community identity (`/v1/me/community-identity`), when a test needs it; otherwise the fake answers {}. */
   identity?: { declared_age: number | null, declared_at: number | null, can_community: boolean, can_public: boolean, identity_public: boolean, revision: number, projection_pending: boolean };
+  /** The account's access tokens (`/v1/tokens`), when a test needs them. A made token's secret is a fake. */
+  tokens?: Array<Record<string, unknown> & { id: string }>;
   /** The account's sessions (`/v1/me/sessions`), when a test needs them: the console's own shape. */
   sessions?: Array<Record<string, unknown> & { id: string, current: boolean }>;
   /** Answer matching requests with a status ("PATCH /v1/me"): the console failing. */
@@ -47,6 +49,9 @@ export interface ConsoleState {
   /** Every request that changes something (not a GET), with its body: `DELETE /v1/printers/p1/shares/s1`. */
   changes: Array<{ call: string, body: unknown }>;
 }
+
+/** The fake console's made-token secret: a test value, not a credential. */
+export const FAKE_TOKEN = 'mpat_e2e_' + 'x'.repeat(34)
 
 export function consoleState (over: Partial<ConsoleState> = {}): ConsoleState {
   return {
@@ -162,6 +167,22 @@ export async function answerConsole (route: Route, state: ConsoleState) {
   if (list && request.method() === 'GET') {
     const [, id, kind] = list
     return json(route, { [kind]: state[kind as 'shares' | 'invites' | 'links'][decodeURIComponent(id)] ?? [] })
+  }
+  if (state.tokens && url.pathname === '/v1/tokens') {
+    if (request.method() === 'GET') return json(route, { tokens: state.tokens })
+    if (request.method() === 'POST') {
+      const body = request.postDataJSON() as { name: string, scopes: string[], printer_ids?: string[], expires_in_days: number, ask_mode: string }
+      const now = Math.floor(Date.now() / 1000)
+      const made = { id: `tok-${state.tokens.length + 1}`, name: body.name, prefix: 'mpat_e2e', scopes: body.scopes, printer_ids: body.printer_ids ?? null, ask_mode: body.ask_mode, expires_at: now + body.expires_in_days * 86_400, created_at: now, last_used_at: null, status: 'active' }
+      state.tokens = [made, ...state.tokens]
+      return json(route, { ...made, token: FAKE_TOKEN })
+    }
+  }
+  const token = url.pathname.match(/^\/v1\/tokens\/([^/]+)$/)
+  if (state.tokens && token && request.method() === 'DELETE') {
+    const id = decodeURIComponent(token[1])
+    state.tokens = state.tokens.map(t => t.id === id ? { ...t, status: 'revoked' } : t)
+    return json(route, { id, revoked: true })
   }
   if (state.sessions && url.pathname === '/v1/me/sessions') {
     if (request.method() === 'GET') return json(route, { sessions: state.sessions })
