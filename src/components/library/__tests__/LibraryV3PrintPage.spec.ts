@@ -217,7 +217,8 @@ describe('Library v3 print page: review findings', () => {
     expect(bare.find('[data-tid="library-print-report"]').exists()).toBe(false)
     const addressed = await page()
     expect(addressed.find('[data-tid="library-print-share"]').exists()).toBe(true)
-    expect(addressed.find('[data-tid="library-print-report"]').attributes('href')).toBe('https://library.muon3d.com/p/pocket-robot#report')
+    // Reporting happens in the app now (LibraryV3ReportBlock.spec.ts), not on the website.
+    expect(addressed.find('[data-tid="library-print-report"]').attributes('href')).toBeUndefined()
   })
 
   it('Slice and print goes to the slicer with the library parameter, version and file', async () => {
