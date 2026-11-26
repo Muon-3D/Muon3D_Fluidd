@@ -40,6 +40,12 @@
 
   .btn--sm { height: 32px; padding: 0 12px; font-size: 13px; }
   .btn--primary { background: var(--m3d-accent); color: var(--m3d-on-accent, #00201e); }
+
+  // A button's icon takes the button's own colour (KAN-6104). Vuetify paints a
+  // .v-icon in the theme's text colour (white in dark, near-black in light),
+  // which on the accent fill was white on a pale accent and dark on a deep one:
+  // the Bluetooth glyph read backwards. --m3d-on-accent is chosen against the fill.
+  .btn .v-icon { color: inherit !important; }
   .btn--ghost { background: transparent; color: var(--m3d-text-muted); }
 
   .icon-btn {

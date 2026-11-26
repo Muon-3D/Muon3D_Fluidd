@@ -10,13 +10,17 @@ vi.mock('@/api/httpClientActions', () => ({
     serverDatabaseItemPost: vi.fn(async () => ({}))
   }
 }))
+vi.mock('@/services/layout/layout-access', async (original) => ({
+  ...(await original<typeof import('@/services/layout/layout-access')>()),
+  layoutDefs: async () => [{ id: 'a', span: 6, rows: 2 }, { id: 'b', span: 6, rows: 2 }]
+}))
 vi.mock('@/util/file-system-entry', () => ({ readFileAsTextAsync: vi.fn(async (file: { text: string }) => file.text) }))
 
 afterEach(() => { vi.clearAllMocks() })
 
 const stubs = { 'v-text-field': true, 'v-select': true, 'v-combobox': true, 'v-icon': true, 'router-link': true }
 
-function mount (over: { general?: Record<string, unknown>, theme?: Record<string, unknown>, devices?: unknown[], confirm?: boolean } = {}) {
+function mount (over: { general?: Record<string, unknown>, theme?: Record<string, unknown>, devices?: unknown[], confirm?: boolean, layouts?: Record<string, unknown> } = {}) {
   const dispatch = vi.fn()
   const confirm = vi.fn(async () => over.confirm ?? true)
   const general = {
@@ -38,9 +42,10 @@ function mount (over: { general?: Record<string, unknown>, theme?: Record<string
       $rules: { required: true },
       $globals: { APP_NAME: 'Control' },
       $confirm: confirm,
+      $route: { params: {} },
       $store: {
         dispatch,
-        state: { config: { uiSettings: { general, theme: { color: '#80d6d1', isDark: true, ...over.theme } } } },
+        state: { config: { apiUrl: 'http://boxwood.local', uiSettings: { general, theme: { color: '#80d6d1', isDark: true, ...over.theme }, overview: { layouts: over.layouts ?? {} }, control: { layouts: {} } } } },
         getters: { 'config/getDisplayName': 'Boxwood', 'server/isMuonPrinter': true, 'power/getDevices': over.devices ?? [], 'printer/getPins': [] }
       }
     },
@@ -53,15 +58,19 @@ const segValue = (wrapper: ReturnType<typeof mount>['wrapper'], tid: string) =>
   wrapper.find(`[data-tid="${tid}"]`).attributes('value')
 
 describe('GeneralSettings', () => {
-  it('has the storyboard groups in order, and none of the old Theme card', () => {
+  it('has the storyboard groups in order, and no Theme card', () => {
     const { wrapper } = mount()
     expect(wrapper.findAll('h2').wrappers.map(h => h.text())).toEqual([
-      'This printer', 'Look', 'Language and time', 'Ask before', 'Overview and the top bar', 'Keyboard', 'These settings', 'More'
+      'This printer', 'Layout', 'Language and time', 'Ask before', 'Overview and the top bar', 'Keyboard', 'These settings', 'More'
     ])
     for (const gone of ['Panels', 'Flat', 'Logo behind the pages', 'A community theme', 'Camera switch on Overview']) {
       expect(wrapper.text()).not.toContain(gone)
     }
-    expect(wrapper.text()).toContain('These are yours on this printer: someone else on Boxwood keeps their own.')
+    expect(wrapper.text()).toContain('Where the widgets sit is yours on Boxwood: someone else keeps their own.')
+    // The theme is the account's now (KAN-6106): neither the colours nor Light or dark are here.
+    expect(wrapper.find('[data-tid="theme-settings"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid="setting-theme-mode"]').exists()).toBe(false)
+    expect(wrapper.find('[data-tid="layout-settings"]').exists()).toBe(true)
   })
 
   it('reads the model from the printer, with no serial when it reports none', async () => {
@@ -70,19 +79,37 @@ describe('GeneralSettings', () => {
     expect(wrapper.find('[data-tid="setting-model"]').text()).toBe('Muon M1')
   })
 
-  it('saves a swatch as this person\'s accent, and marks none for an older free colour', async () => {
-    const { wrapper, dispatch } = mount({ theme: { color: '#123456' } })
-    expect(wrapper.findAll('[role="radio"][aria-checked="true"]')).toHaveLength(0)
-    await wrapper.find('[data-tid="accent-blue"]').trigger('click')
-    expect(dispatch).toHaveBeenCalledWith('config/savePersonal', { path: 'theme.color', value: '#7aa7ff' })
+  it('offers Back to the default only for a page this person has arranged', () => {
+    const { wrapper } = mount()
+    expect(wrapper.find('[data-tid="layout-reset-overview"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-tid="layout-reset-control"]').attributes('disabled')).toBeDefined()
   })
 
-  it('saves Light as mode and isDark together', async () => {
-    const { wrapper, dispatch } = mount()
-    expect(segValue(wrapper, 'setting-theme-mode')).toBe('dark')
-    wrapper.findComponent({ name: 'SegPicker' }).vm.$emit('input', 'light')
-    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledWith('config/savePersonal', { path: 'theme.isDark', value: false }))
-    expect(dispatch).toHaveBeenCalledWith('config/savePersonal', { path: 'theme.mode', value: 'light' })
+  it('asks first, then saves the default arrangement itself rather than nothing', async () => {
+    const key = 'anonymous__http___boxwood_local'
+    const saved = { version: 2, savedAt: 1700000000000, tiles: [{ id: 'b', span: 12, rows: 1 }], hidden: ['a'] }
+    const { wrapper, dispatch, confirm } = mount({ layouts: { [key]: saved } })
+    expect(wrapper.find('[data-tid="layout-note-overview"]').text()).toMatch(/^Yours · changed /)
+    const reset = wrapper.find('[data-tid="layout-reset-overview"]')
+    await vi.waitFor(() => expect(reset.attributes('disabled')).toBeUndefined())
+    await reset.trigger('click')
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalled())
+    expect((confirm.mock.calls[0] as unknown[])[0]).toContain('on Boxwood')
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledWith('config/saveByPath', expect.objectContaining({
+      path: `uiSettings.overview.layouts.${key}`,
+      server: true,
+      value: expect.objectContaining({ version: 2, tiles: [{ id: 'a', span: 6, rows: 2 }, { id: 'b', span: 6, rows: 2 }], hidden: [] })
+    })))
+  })
+
+  it('saves nothing when the reset is turned down', async () => {
+    const key = 'anonymous__http___boxwood_local'
+    const { wrapper, dispatch } = mount({ confirm: false, layouts: { [key]: { version: 2, savedAt: 1, tiles: [{ id: 'b', span: 12, rows: 1 }], hidden: ['a'] } } })
+    const reset = wrapper.find('[data-tid="layout-reset-overview"]')
+    await vi.waitFor(() => expect(reset.attributes('disabled')).toBeUndefined())
+    await reset.trigger('click')
+    await Promise.resolve()
+    expect(dispatch).not.toHaveBeenCalledWith('config/saveByPath', expect.anything())
   })
 
   it('shows ISO times as 24-hour, and today\'s lists as one choice each', () => {

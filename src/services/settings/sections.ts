@@ -35,7 +35,7 @@ export interface SettingsSection {
 const has = (component: string) => (c: SettingsContext) => c.components.includes(component)
 
 export const SETTINGS_SECTIONS: SettingsSection[] = [
-  { id: 'general', label: 'General', anchors: ['general', 'theme'], icon: 'settings', blurb: 'How Control looks and behaves on this printer', keywords: ['theme', 'language', 'units', 'name', 'backup', 'reset'] },
+  { id: 'general', label: 'General', anchors: ['general', 'layout', 'theme'], icon: 'settings', blurb: 'How Control looks and behaves on this printer', keywords: ['layout', 'language', 'units', 'name', 'backup', 'reset'] },
   { id: 'network', label: 'Wi-Fi and network', anchors: [], icon: 'wifi', blurb: "The printer's Wi-Fi and how it is reached", keywords: ['wifi', 'wi-fi', 'hotspot', 'ip', 'internet'], page: '/wifi' },
   {
     id: 'access',

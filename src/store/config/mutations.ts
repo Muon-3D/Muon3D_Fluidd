@@ -1,6 +1,6 @@
 import Vue from 'vue'
 import type { MutationTree } from 'vuex'
-import type { ConfigState, UiSettings, SaveByPath, InstanceConfig, InitConfig, UiStyle, PersonalSettings } from './types'
+import type { ThemeMode, ConfigState, UiSettings, SaveByPath, InstanceConfig, InitConfig, UiStyle, PersonalSettings } from './types'
 import { defaultState } from './state'
 import { Globals } from '@/globals'
 import { cloneDeep, mergeWith, set } from 'lodash-es'
@@ -73,6 +73,11 @@ export const mutations: MutationTree<ConfigState> = {
 
   setSharedPersonal (state, payload: PersonalSettings | null) {
     state.sharedPersonal = payload
+  },
+
+  /** `mode` is not in the default theme, so it needs Vue.set to be reactive (the Appearance picker reads it). */
+  setThemeMode (state, mode: ThemeMode) {
+    Vue.set(state.uiSettings.theme, 'mode', mode)
   },
 
   /** The personal settings in effect: someone's own over the printer's. */
