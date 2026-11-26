@@ -109,6 +109,11 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       const response = await (await relay).fetch(path, init, progress)
       this.assertOpen()
       if (response.status === 401 || response.status === 403) this.noteRefused(relay)
+      else if (this.relayUpAt > 0 && Date.now() - this.relayUpAt >= STABLE_AFTER_MS) {
+        // An answer from a relay that has stayed up: the path is good, so failed dials stop counting.
+        this.failedDials = 0
+        this.flaps = 0
+      }
       this.updateStatus('connected', 'IdleStatus')
       return response
     } catch (error) {
