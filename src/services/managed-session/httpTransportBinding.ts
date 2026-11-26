@@ -173,7 +173,13 @@ async function withDownloadProgress (
       event: { lengthComputable: !!total, loaded, total: total ?? 0 }
     })
   }
-  return new Response(new Blob(chunks as BlobPart[]), {
+  const whole = new Uint8Array(loaded)
+  let at = 0
+  for (const chunk of chunks) {
+    whole.set(chunk, at)
+    at += chunk.byteLength
+  }
+  return new Response(whole, {
     status: response.status,
     statusText: response.statusText,
     headers: response.headers
