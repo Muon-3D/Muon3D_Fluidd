@@ -308,7 +308,7 @@ segment($('#theme'), i => {
   const app = $('#app')
   app.classList.toggle('theme--dark', !i)
   app.classList.toggle('theme--light', !!i)
-  app.style.setProperty('--v-primary-base', i ? '#2c8782' : '#80d6d1')
+  app.style.setProperty('--v-primary-base', i ? '#1e7f79' : '#80d6d1')
 })
 segment($('#width'), i => document.body.classList.toggle('phone', !!i))
 $('#reduce').addEventListener('click', e => {

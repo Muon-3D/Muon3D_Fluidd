@@ -39,18 +39,18 @@ export default new Vuetify({
         logo: '#80D6D1'
       },
       light: {
-        primary: '#2E8580',
-        'primary-offset': '#256B67',
+        primary: '#1E7F79',
+        'primary-offset': '#19706B',
         secondary: '#56626A',
         success: '#2C8657',
         warning: '#A8761E',
         error: '#C23B32',
-        info: '#2E8580',
+        info: '#1E7F79',
         'card-heading': '#FFFFFF',
         btncolor: '#F6F8F9',
         drawer: '#FFFFFF',
         appbar: '#FFFFFF',
-        logo: '#2E8580'
+        logo: '#1E7F79'
       }
     }
   }
