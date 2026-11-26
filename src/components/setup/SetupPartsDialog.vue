@@ -76,7 +76,7 @@ const SIZE = 320
 @Component({ components: { M3Dialog } })
 export default class SetupPartsDialog extends Vue {
   /** A held print the person closed: shown again only for a new hold. */
-  dismissedGate: unknown = null
+  dismissedGate: { since: unknown } | null = null
   raf = 0
   t0 = 0
   /** Whether the frame loop is on (the pop-up open, motion allowed): for the specs. */
@@ -102,7 +102,7 @@ export default class SetupPartsDialog extends Vue {
   get steps (): SetupStep[] {
     const pending = partsGate.pending
     if (pending) return missingFor(this.status, pending.action)
-    if (this.dismissedGate !== null && this.dismissedGate === this.gateSince) return []
+    if (this.dismissedGate !== null && this.dismissedGate.since === this.gateSince) return []
     return gateMissing(this.status)
   }
 
@@ -174,7 +174,7 @@ export default class SetupPartsDialog extends Vue {
 
   dismiss () {
     clearPending()
-    this.dismissedGate = this.gateSince
+    this.dismissedGate = { since: this.gateSince }
     this.stop()
   }
 

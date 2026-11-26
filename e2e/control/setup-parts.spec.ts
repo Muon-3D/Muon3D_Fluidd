@@ -152,6 +152,9 @@ test('a print the printer is holding for a part opens the pop-up by itself, and 
   await expect(popup(page)).toBeHidden()
 })
 
+/** Lets the page take the status it was just sent and paint once more: two frames, not a fixed wait. */
+const twoFrames = (page: Page) => page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+
 test('closing the pop-up sends nothing, and fitting the part afterwards does not run Home', async ({ page, open }) => {
   const { printer, status } = await start(page, ['spine'])
   await open('/control')
@@ -160,7 +163,7 @@ test('closing the pop-up sends nothing, and fitting the part afterwards does not
   await page.getByTestId('m3-dlg-close').click()
   await expect(popup(page)).toBeHidden()
   printer.report({ ...status, ...machine([]) })
-  await page.waitForTimeout(500)
+  await twoFrames(page)
   expect(printer.gcode).toEqual([])
 })
 
@@ -184,7 +187,7 @@ test('reduced motion: one still frame, drawn once, and the loop never runs', asy
   await expect.poll(() => drawn(page)).toBeGreaterThan(200)
   await expect(canvas(page)).toHaveAttribute('data-running', 'false')
   const first = await canvas(page).evaluate((el: HTMLCanvasElement) => el.toDataURL())
-  await page.waitForTimeout(1200)
+  await twoFrames(page)
   expect(await canvas(page).evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(first)
 })
 
