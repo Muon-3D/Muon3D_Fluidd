@@ -20,7 +20,7 @@ const openMenu = async (page: Page, open: (path: string) => Promise<unknown>) =>
 }
 
 test('a staff account sees Admin and Fleet; Fleet opens fleet.muon3d.com in this tab', async ({ page, open, account, context }) => {
-  account.staff = true
+  account.staffRole = 'staff'
   await page.route('https://fleet.muon3d.com/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Fleet</title><p>Fleet</p>' }))
   await openMenu(page, open)
   await expect(page.getByTestId('account-staff-group')).toHaveText('Muon3D staff')
@@ -33,14 +33,14 @@ test('a staff account sees Admin and Fleet; Fleet opens fleet.muon3d.com in this
 })
 
 test('Admin goes to /admin', async ({ page, open, account }) => {
-  account.staff = 'staff'
+  account.staffRole = 'staff'
   await openMenu(page, open)
   await page.getByTestId('account-admin').click()
   await expect(page).toHaveURL(/\/admin$/)
 })
 
 test('a moderator sees the group with Admin only: no Fleet, no Grafana', async ({ page, open, account }) => {
-  account.staff = 'moderator'
+  account.staffRole = 'moderator'
   await openMenu(page, open)
   await expect(page.getByTestId('account-staff-group')).toBeVisible()
   await expect(page.getByTestId('account-admin')).toBeVisible()
@@ -48,9 +48,9 @@ test('a moderator sees the group with Admin only: no Fleet, no Grafana', async (
   await expect(page.getByText('Grafana')).toHaveCount(0)
 })
 
-for (const [label, value] of [['a normal user (no field)', undefined], ['false', false], ['an unknown value', 'owner'], ['a malformed value', { role: 'staff' }]] as const) {
+for (const [label, value] of [['a console without the field', undefined], ['null', null], ['true (the old shape)', true], ['an unknown value', 'owner'], ['a malformed value', { role: 'staff' }]] as const) {
   test(`${label} sees no staff group at all`, async ({ page, open, account }) => {
-    account.staff = value
+    account.staffRole = value
     await openMenu(page, open)
     await expect(page.getByTestId('account-staff-group')).toHaveCount(0)
     await expect(page.getByTestId('account-admin')).toHaveCount(0)

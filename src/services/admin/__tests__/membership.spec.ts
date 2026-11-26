@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { staffMenuItems, staffRole } from '../membership'
 
 describe('staffRole fails closed', () => {
-  it.each([[true, 'staff'], ['staff', 'staff'], ['moderator', 'moderator']])('%s is %s', (value, role) => {
-    expect(staffRole({ staff: value as never })).toBe(role)
+  it.each([['staff', 'staff'], ['moderator', 'moderator']])('%s is %s', (value, role) => {
+    expect(staffRole({ staff_role: value as never })).toBe(role)
   })
-  it.each([[undefined], [false], [null], ['owner'], ['Staff'], [1], [{ role: 'staff' }], [['staff']]])('%j is nobody', (value) => {
-    expect(staffRole({ staff: value as never })).toBeNull()
+  it.each([[undefined], [true], [false], [null], ['owner'], ['Staff'], [1], [{ role: 'staff' }], [['staff']]])('%j is nobody', (value) => {
+    expect(staffRole({ staff_role: value as never })).toBeNull()
   })
   it('no account is nobody', () => {
     expect(staffRole(null)).toBeNull()

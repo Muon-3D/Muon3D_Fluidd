@@ -24,8 +24,8 @@ export interface ConsolePrinter {
 
 export interface ConsoleState {
   account: { id: string, email: string, name: string, created_at?: number, deletion?: { requested_at: number, delete_after: number } | null };
-  /** `GET /v1/me`'s `staff` field (KAN-5207), when a test needs it: absent for everyone else, as on a console from before KAN-6108. */
-  staff?: unknown;
+  /** `GET /v1/me`'s `staff_role` field (KAN-5207), when a test needs it: absent for everyone else, as on a console from before KAN-6108. */
+  staffRole?: unknown;
   /** `/v1/me/exports`, when a test needs it: the data requests. A POST files a queued one. */
   exports?: Array<Record<string, unknown> & { id: string }>;
   printers: ConsolePrinter[];
@@ -175,7 +175,7 @@ export async function answerConsole (route: Route, state: ConsoleState) {
   }
   if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key', 'access-control-allow-methods': '*' } })
   switch (url.pathname) {
-    case '/v1/me': return json(route, { account: { ...state.account, display_name: state.account.name }, endpoint_id: null, ...(state.staff === undefined ? {} : { staff: state.staff }) })
+    case '/v1/me': return json(route, { account: { ...state.account, display_name: state.account.name }, endpoint_id: null, ...(state.staffRole === undefined ? {} : { staff_role: state.staffRole }) })
     case '/v1/me/assertion': return json(route, { assertion: 'e2e-assertion', expires_at: Math.floor(Date.now() / 1000) + 3600 })
     case '/v1/printers': return json(route, { printers: state.printers })
     case '/v1/me/notices': return json(route, { notices: [], unread: 0, next: null })
