@@ -44,6 +44,14 @@
       <scan-results />
 
       <p
+        v-if="view === 'bench'"
+        class="note"
+        data-tid="bench-preview"
+      >
+        Bench preview · Your groups, arranged as benches. Grid and List are still available.
+      </p>
+
+      <p
         v-if="searching && !page.found.length"
         class="printers__looking"
         data-tid="printers-looking"

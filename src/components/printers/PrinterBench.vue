@@ -2,6 +2,7 @@
   <section
     class="bench"
     :class="[`bench--${kind}`, { 'bench--over': over, 'bench--folded': folded }]"
+    :aria-label="title || 'Printer bench'"
   >
     <header class="bench__head">
       <span
@@ -57,7 +58,7 @@
       >
         <span
           v-for="d in dots"
-          :key="d.tone"
+          :key="d.word"
           :class="`bench__dot bench__dot--${d.tone}`"
         ><i />{{ d.count }} {{ d.word }}</span>
         <span v-if="!dots.length">Empty</span>
@@ -84,7 +85,7 @@
       </button>
     </header>
     <div
-      v-show="!folded"
+      v-if="!folded"
       class="bench__top"
     >
       <slot />
@@ -94,7 +95,7 @@
 
 <script lang="ts">
 import { Component, Prop, Vue } from 'vue-property-decorator'
-import type { PrinterTile, TileTone } from '@/services/printers-page/model'
+import { heatingTemp, needsYou, type PrinterTile, type TileTone } from '@/services/printers-page/model'
 
 const FOLDED_KEY = 'muon3d.printers.folded'
 
@@ -163,9 +164,11 @@ export default class PrinterBench extends Vue {
   get dots (): Array<{ tone: TileTone, count: number, word: string }> {
     const n = (f: (t: PrinterTile) => boolean) => this.tiles.filter(f).length
     return ([
-      { tone: 'run', count: n(t => t.state === 'printing'), word: 'printing' },
+      { tone: 'run', count: n(t => t.state === 'printing' && heatingTemp(t.job) === null), word: 'printing' },
       { tone: 'ok', count: n(t => t.state === 'ready'), word: 'ready' },
-      { tone: 'warn', count: n(t => t.tone === 'warn' || t.tone === 'err'), word: 'need you' },
+      { tone: 'warn', count: n(t => t.state === 'printing' && heatingTemp(t.job) !== null), word: 'heating' },
+      { tone: 'err', count: n(t => needsYou(t.state)), word: 'need you' },
+      { tone: 'warn', count: n(t => t.tone === 'warn' && !needsYou(t.state)), word: 'waiting' },
       { tone: 'off', count: n(t => t.tone === 'off'), word: 'asleep' },
       { tone: 'info', count: n(t => t.tone === 'info'), word: 'new' }
     ] as Array<{ tone: TileTone, count: number, word: string }>).filter(d => d.count)
@@ -305,6 +308,7 @@ export default class PrinterBench extends Vue {
   .bench__dot--run i { background: var(--m3d-accent); }
   .bench__dot--ok i { background: var(--m3d-success); }
   .bench__dot--warn i { background: var(--m3d-warning); }
+  .bench__dot--err i { background: var(--m3d-danger); }
   .bench__dot--info i { background: var(--m3d-text-muted); }
 
   .bench__caption {

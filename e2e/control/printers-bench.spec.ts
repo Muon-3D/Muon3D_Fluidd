@@ -76,6 +76,60 @@ async function toBench (page: Page) {
   await expect(page.getByTestId('view-bench')).toHaveAttribute('aria-pressed', 'true')
 }
 
+async function captureBench (page: Page, isMobile: boolean, kind: string) {
+  const directory = process.env.E2E_SCREENSHOT_DIR
+  if (!directory) return
+  await page.getByTestId('toast-close').first().click({ timeout: 500 }).catch(() => {})
+  await page.locator('.pdraw').evaluateAll(elements => Promise.all(elements
+    .flatMap(el => el.getAnimations({ subtree: true }))
+    .filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+    .map(animation => animation.finished.catch(() => null))))
+  await page.screenshot({ path: `${directory}/2235-${kind}-${isMobile ? 'phone' : 'desktop'}.png`, fullPage: true })
+}
+
+test('provisional benches expose one group and no folded printer controls, without retaining other views', async ({ page, isMobile }) => {
+  await usePrinter(page, { print_stats: { state: 'standby' }, pause_resume: { is_paused: false } })
+  await openPrinters(page)
+  await expect(page.getByTestId('bench-preview')).toHaveCount(0)
+  await toBench(page)
+  const bench = page.getByRole('region', { name: 'Saved in this browser', exact: true })
+  await expect(page.getByTestId('bench-preview')).toContainText('Bench preview')
+  await expect(bench.locator('[data-tid^="printer-tile-"]')).toHaveCount(1)
+  await bench.getByTestId('bench-fold').click()
+  await expect(page.locator('[data-tid^="printer-tile-"]')).toHaveCount(0)
+  await expect(bench.getByTestId('bench-summary')).toContainText('1 ready')
+  await page.reload()
+  await ready(page)
+  await expect(bench.getByTestId('bench-fold')).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.locator('[data-tid^="printer-tile-"]')).toHaveCount(0)
+  await bench.getByTestId('bench-fold').click()
+  for (const view of ['grid', 'list', 'bench']) {
+    await page.getByTestId(`view-${view}`).click()
+    await expect(page.locator('[data-tid^="printer-tile-"]')).toHaveCount(1)
+    await expect(page.locator('.bench')).toHaveCount(view === 'bench' ? 1 : 0)
+    await expect(page.getByTestId('bench-preview')).toHaveCount(view === 'bench' ? 1 : 0)
+  }
+  await captureBench(page, isMobile, 'saved')
+})
+
+test('a paused printer contributes to the red need-you count, not a heating count', async ({ page }) => {
+  await usePrinter(page, { print_stats: { state: 'paused' }, pause_resume: { is_paused: true } })
+  await openPrinters(page)
+  await toBench(page)
+  const summary = page.getByTestId('group-saved').getByTestId('bench-summary')
+  await expect(summary).toHaveText('1 need you')
+  await expect(summary.locator('.bench__dot--warn')).toHaveCount(0)
+  const red = await page.evaluate(() => {
+    const probe = document.createElement('i')
+    probe.style.color = 'var(--m3d-danger)'
+    document.body.appendChild(probe)
+    const colour = getComputedStyle(probe).color
+    probe.remove()
+    return colour
+  })
+  await expect(summary.locator('.bench__dot i')).toHaveCSS('background-color', red)
+})
+
 test('Bench is a third view: this browser\'s printer stands on its bench, drawn printing with its part growing', async ({ page }) => {
   await openPrinters(page)
   await toBench(page)
@@ -118,6 +172,9 @@ test('a printer still heating shows Heating and its temperature in amber, not th
     return colour
   })
   await expect.poll(() => state.evaluate(el => getComputedStyle(el).color)).toBe(amber)
+  const summary = page.getByTestId('group-saved').getByTestId('bench-summary')
+  await expect(summary).toHaveText('1 heating')
+  await expect(summary.locator('.bench__dot i')).toHaveCSS('background-color', amber)
 })
 
 test('the view is kept, and Grid and List are as they were', async ({ page }) => {
@@ -148,6 +205,24 @@ test('a bench folds away, and stays folded', async ({ page }) => {
 
 test.describe('signed in', () => {
   test.use({ signedIn: true })
+
+  test('account groups use single named benches and an empty bench stays honest across views', async ({ page, isMobile }) => {
+    await withAccountPrinters(page, [cloudPrinter('p-elm', 'Elm'), cloudPrinter('p-cedar', 'Cedar')], [
+      { id: 'workshop', name: 'Workshop', printers: ['p-elm', 'p-cedar'] },
+      { id: 'empty', name: 'Spare bench', printers: [] }
+    ])
+    await openPrinters(page)
+    for (const view of ['bench', 'grid', 'list', 'bench']) {
+      await page.getByTestId(`view-${view}`).click()
+      for (const id of ['p-elm', 'p-cedar']) await expect(page.getByTestId(`printer-tile-cloud:${id}`)).toHaveCount(1)
+      if (view === 'bench') {
+        const workshop = page.getByRole('region', { name: 'Workshop', exact: true })
+        await expect(workshop.locator('[data-tid^="printer-tile-"]')).toHaveCount(2)
+        await expect(page.getByRole('region', { name: 'Spare bench', exact: true }).getByTestId('bench-summary')).toHaveText('Empty')
+      } else await expect(page.locator('.bench')).toHaveCount(0)
+    }
+    await captureBench(page, isMobile, 'groups')
+  })
 
   test('your groups are benches; a printer shared with you sits on its shelf tagged with who shared it', async ({ page }) => {
     await withAccountPrinters(page, [
