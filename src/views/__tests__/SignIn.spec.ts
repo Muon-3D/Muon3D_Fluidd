@@ -21,6 +21,8 @@ function open () {
   const w = shallowMount(SignIn, {
     mocks: { $route: { query: { continue: '/authorize?client_id=fluidd&state=s' } } },
     stubs: {
+      AuthCard: { props: ['title', 'sub'], template: '<section><h1>{{ title }}</h1><p>{{ sub }}</p><slot /><div class="alt"><slot name="alt" /></div></section>' },
+      'router-link': { props: ['to'], template: '<a :href="to" v-bind="$attrs"><slot /></a>' },
       'v-card': box,
       'v-card-title': box,
       'v-card-subtitle': box,
@@ -28,7 +30,7 @@ function open () {
       'v-card-actions': box,
       'v-alert': { template: '<div v-bind="$attrs"><slot /></div>' },
       'v-form': { template: '<form @submit="$emit(`submit`, $event)"><slot /></form>' },
-      'v-text-field': { props: ['value'], template: '<label><input :value="value" @input="$emit(`input`, $event.target.value)"></label>' },
+      'v-text-field': { props: ['value'], template: '<label><input :value="value" @input="$emit(`input`, $event.target.value)"><slot name="append" /></label>' },
       'v-btn': { template: '<button type="button" v-on="$listeners"><slot /></button>' },
       AppBtn: { template: '<button v-on="$listeners"><slot /></button>' }
     }
@@ -122,5 +124,34 @@ describe('Sign in to Muon3D', () => {
     await w.find('form').trigger('submit'); await settle()
     expect(tid(w, 'sign-in-error').attributes('aria-live')).toBe('assertive')
     expect(tid(w, 'sign-in-error').text()).toContain('could not be reached')
+  })
+
+  it('switches between Sign in and Create account on the card, not by a link', async () => {
+    const { w } = open()
+    expect(tid(w, 'sign-in-tab').attributes('aria-selected')).toBe('true')
+    expect(tid(w, 'sign-in-submit').text()).toBe('Continue')
+    await tid(w, 'sign-up-tab').trigger('click')
+    expect(w.find('h1').text()).toBe('Create your Muon3D account')
+    expect(tid(w, 'sign-up-tab').attributes('aria-selected')).toBe('true')
+    expect(tid(w, 'sign-up-age').exists()).toBe(true)
+    expect(tid(w, 'sign-in-passkey').exists()).toBe(false)
+    await tid(w, 'sign-in-tab').trigger('click')
+    expect(w.find('h1').text()).toBe('Sign in to Muon3D')
+  })
+
+  it('offers the printer\'s own login under Continue', () => {
+    const { w } = open()
+    expect(tid(w, 'sign-in-printer').attributes('href')).toBe('/login')
+    expect(w.find('.alt').text()).toContain('Printing on this network only?')
+  })
+
+  it('swaps the fields for Forgot and comes back in the same card', async () => {
+    const { w } = open()
+    await tid(w, 'sign-in-forgot').trigger('click')
+    expect(tid(w, 'sign-in-tab').exists()).toBe(false)
+    expect(tid(w, 'sign-in-password').exists()).toBe(false)
+    expect(tid(w, 'sign-in-printer').exists()).toBe(false)
+    await tid(w, 'sign-in-back').trigger('click')
+    expect(tid(w, 'sign-in-password').exists()).toBe(true)
   })
 })
