@@ -35,6 +35,11 @@ export interface CloudAccount {
   name: string;
   created_at: number;
   deletion?: { requested_at: number, delete_after: number } | null;
+  /**
+   * Muon staff (KAN-5207): `true` or `"staff"` for staff, `"moderator"` for a moderator, absent for everyone else
+   * and for a console that does not send it yet (KAN-6108). Same shape as #556. Only a convenience gate: the console enforces.
+   */
+  staff?: boolean | string;
 }
 
 export interface CloudPrinter {
@@ -668,7 +673,7 @@ async function request<T> (method: string, path: string, body?: unknown, token: 
   return data as T
 }
 
-type MeAnswer = { account: CloudAccount, endpoint_id: string | null, session_id?: string | null }
+type MeAnswer = { account: CloudAccount, endpoint_id: string | null, session_id?: string | null, staff?: boolean | string }
 
 /**
  * KAN-2509: the id of the session this tab is signed in with, as `/v1/me` names it. It is stable across refresh
@@ -678,6 +683,8 @@ type MeAnswer = { account: CloudAccount, endpoint_id: string | null, session_id?
 let knownSession: { accountId: string, id: string } | null = null
 
 function noteSessionId (answer: MeAnswer): MeAnswer {
+  // `staff` may sit beside `account` or inside it: the account carries it either way.
+  if (answer.account && answer.staff !== undefined && answer.account.staff === undefined) answer.account.staff = answer.staff
   if (typeof answer.session_id === 'string' && answer.session_id && answer.account?.id) knownSession = { accountId: answer.account.id, id: answer.session_id }
   return answer
 }

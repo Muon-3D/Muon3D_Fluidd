@@ -285,6 +285,39 @@
               small
             />Link a printer
           </button>
+          <!-- Muon3D staff only (KAN-5207): the console says who they are; nobody else sees this group. -->
+          <template v-if="staffItems.length">
+            <div class="acct-menu__rule" />
+            <span
+              class="acct-menu__caps"
+              data-tid="account-staff-group"
+            >Muon3D staff</span>
+            <router-link
+              v-if="staffItems.includes('admin')"
+              to="/admin"
+              class="acct-menu__item"
+              role="menuitem"
+              data-tid="account-admin"
+              @click.native="menu = false"
+            >
+              <frame-icon
+                name="shield"
+                small
+              />Admin
+            </router-link>
+            <a
+              v-if="staffItems.includes('fleet')"
+              :href="fleetUrl"
+              class="acct-menu__item"
+              role="menuitem"
+              data-tid="account-fleet"
+            >
+              <frame-icon
+                name="printers"
+                small
+              />Fleet<span class="acct-menu__key">fleet.muon3d.com</span>
+            </a>
+          </template>
           <div class="acct-menu__rule" />
           <button
             type="button"
@@ -362,6 +395,7 @@
 import { Component, Vue, Watch } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
 import { cloudBaseUrl } from '@/services/muon-cloud/api'
+import { FLEET_URL, staffMenuItems, staffRole } from '@/services/admin/membership'
 import { reachState, watchCloudReachable } from '@/services/muon-cloud/reachable'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import type { InstanceConfig } from '@/store/config/types'
@@ -512,6 +546,12 @@ export default class CloudAccountMenu extends Vue {
   @Watch('menu')
   onMenu (open: boolean) {
     if (open && this.account && this.built('printers')) loadApprovals().catch(() => {})
+  }
+
+  readonly fleetUrl = FLEET_URL
+
+  get staffItems () {
+    return staffMenuItems(staffRole(this.account))
   }
 
   built (id: AccountSectionId): boolean {
