@@ -99,6 +99,9 @@
   --m3d-stage-hi: #3a4247;
   --m3d-stage-mid: #283034;
   --m3d-stage-lo: #1b2023;
+  --m3d-stage-grid: rgb(232 236 238 / 6%);
+  --m3d-stage-glow: 9%;
+  --m3d-stage-shadow: rgb(0 0 0 / 45%);
 }
 
 .v-application.theme--light {
@@ -121,6 +124,9 @@
   --m3d-stage-hi: #eceef0;
   --m3d-stage-mid: #d8dbdf;
   --m3d-stage-lo: #c4c8cd;
+  --m3d-stage-grid: rgb(18 23 25 / 7%);
+  --m3d-stage-glow: 7%;
+  --m3d-stage-shadow: rgb(18 23 25 / 22%);
 }
 
 /*

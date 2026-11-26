@@ -68,8 +68,11 @@ sync.setAccessories(accessoriesFrom(printer, prompt), performance.now(), true)
 if (query.get('reduced') === '1') sync.accessories.reducedMotion = true
 viewer.follow(sync)
 const path = printPath()
-viewer.setPrint(path, 0xc00a66)
-sync.setFileDone(path.count)
+// ?print=0: the empty plate (tools/m1-preview-render.mjs).
+if (query.get('print') !== '0') {
+  viewer.setPrint(path, 0xc00a66)
+  sync.setFileDone(path.count)
+}
 
 let resolveReady!: () => void
 const ready = new Promise<void>(resolve => { resolveReady = resolve })

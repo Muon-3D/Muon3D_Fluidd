@@ -444,6 +444,11 @@ export function createViewer (canvas: HTMLCanvasElement): M1Viewer {
   ground.position.y = -0.4
   ground.receiveShadow = true
   ground.visible = detail.shadows
+  // ?m1shadow=off: no shadow at all, for tools/m1-preview-render.mjs (the stills' stage draws its own floor shadow).
+  if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('m1shadow') === 'off') {
+    ground.visible = false
+    key.castShadow = false
+  }
   scene.add(ground)
 
   // The part, the lines no file drew, and the line being laid now, all in the filament's colour.
