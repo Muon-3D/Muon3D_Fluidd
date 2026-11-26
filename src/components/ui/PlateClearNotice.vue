@@ -81,6 +81,13 @@ export default class PlateClearNotice extends Vue {
     return this.owner && this.result?.kind === 'refused'
   }
 
+  /** The notice went away (the dialog closed, the page changed): a late answer is not shown. */
+  gone = false
+
+  beforeDestroy () {
+    this.gone = true
+  }
+
   async ask () {
     if (this.busy || this.done) return
     this.busy = true
@@ -90,13 +97,16 @@ export default class PlateClearNotice extends Vue {
         buttonTrueText: 'The plate is clear',
         buttonFalseText: 'Cancel'
       })
-      if (!yes) return
+      if (!yes || this.gone) return
       this.message = ''
-      this.result = await confirmPlateClear(this.managed, this.$httpClient)
-      if (this.result.kind === 'cleared') this.done = true
-      else this.message = this.result.message
+      const result = await confirmPlateClear(this.managed, this.$httpClient)
+      // The retry waits a moment: if the notice went away meanwhile, there is nothing to update.
+      if (this.gone) return
+      this.result = result
+      if (result.kind === 'cleared') this.done = true
+      else this.message = result.message
     } finally {
-      this.busy = false
+      if (!this.gone) this.busy = false
     }
   }
 }
