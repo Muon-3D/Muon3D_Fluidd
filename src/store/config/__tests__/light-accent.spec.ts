@@ -1,6 +1,7 @@
 // KAN-6497: the company teal on the light theme is the design system's fixed #1e7f79
 // (tokens v0.6.1), not a darkened copy of the dark accent. Other accents still darken.
 import { describe, expect, it, vi } from 'vitest'
+import { actions } from '../actions' // vi.mock calls below are hoisted above this import
 
 const theme: any = vi.hoisted(() => ({ dark: false, currentTheme: {}, themes: { dark: {}, light: {} } }))
 vi.mock('@/plugins/vuetify', () => ({
@@ -9,7 +10,6 @@ vi.mock('@/plugins/vuetify', () => ({
 vi.mock('@/util/ui-style', () => ({ applyUiStyle: vi.fn() }))
 vi.mock('@/util/glass-icons', () => ({ applyGlassIcons: vi.fn() }))
 
-import { actions } from '../actions'
 
 const apply = (color: string, isDark: boolean) =>
   (actions as any).onThemeChange({}, { color, isDark, logo: { light: '#fff', dark: '#000' }, style: 'glass' })
