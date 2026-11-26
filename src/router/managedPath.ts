@@ -18,5 +18,7 @@ const MANAGED_CONSOLE_PATHS = new Set<string>([
 export function isManagedConsolePath (path: string): boolean {
   // Vue Router accepts a trailing slash on these routes. The shell must use
   // the same classification or it draws the printer watermark over sign-in.
-  return MANAGED_CONSOLE_PATHS.has(path.replace(/\/+$/, '') || '/')
+  const clean = path.replace(/\/+$/, '') || '/'
+  // The admin portal's sections and staff tools (KAN-6100) are all the console's own pages.
+  return MANAGED_CONSOLE_PATHS.has(clean) || clean.startsWith('/admin/')
 }

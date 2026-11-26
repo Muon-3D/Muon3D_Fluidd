@@ -2,7 +2,8 @@ import { cloudBaseUrl, storedToken, refreshSession } from '@/services/muon-cloud
 import { usePasskey } from '@/services/account/webauthn'
 import { MODELS_AUDIENCE, MODELS_SERVICE_URL } from '@/services/library/transport'
 
-export interface StaffSession { actor: string; staff_expires_at: number }
+/** The staff session (D-204): `staff_expires_at` ends the 60-minute window, `staff_idle_expires_at` the 15-minute idle limit; `server_time` is the console's clock (all unix seconds). The two newer fields are absent from a console before the session rules. */
+export interface StaffSession { actor: string; staff_expires_at: number; staff_idle_expires_at?: number; server_time?: number }
 export interface AdminAccount {
   id: string; name: string; email: string; email_verified: boolean;
   created_at: number; delete_after: number | null; sessions: number;
@@ -12,22 +13,34 @@ export interface Lookup { account: AdminAccount | null; staff_expires_at: number
 export interface AuditEntry { id: number; actor: string; action: string; target?: string | null; reason: string; result: string; at: number }
 export interface AuditPage { entries: AuditEntry[]; next: number | null; staff_expires_at?: number }
 export class AdminError extends Error {
-  constructor (message: string, readonly status: number, readonly expired = false) { super(message) }
+  /** `code` is the console's error code (`console.staff.required`); `reason` is why a session ended: `absolute`, `idle` or `ended`. */
+  constructor (message: string, readonly status: number, readonly expired = false, readonly code = '', readonly reason = '') { super(message) }
 }
 
 export function adminAvailable (page = window.location.href, console = cloudBaseUrl(), framed = window.top !== window.self): boolean {
-  const origin = new URL(page).origin
-  return !framed && ['https://control.muon3d.com', 'https://app.muon3d.com'].includes(origin) && console === origin
+  const url = new URL(page)
+  // A local development build served by its own console (the e2e tests) counts as hosted Control.
+  const local = ['localhost', '127.0.0.1'].includes(url.hostname)
+  return !framed && (['https://control.muon3d.com', 'https://app.muon3d.com'].includes(url.origin) || local) && console === url.origin
 }
 
 const FLEET_NOT_ON = 'Fleet sign-in is not turned on yet.'
 
-async function send<T> (origin: string, path: string, token: string, body: unknown): Promise<T> {
+/** Marks a request the user did not cause (a poll, the tail): the console checks the session but does not count it as activity. */
+export const BACKGROUND_HEADER = 'x-muon-background'
+
+/** The console's error code from either body shape it uses. */
+export function errorCode (data: any): string {
+  const value = data?.code ?? data?.error?.code ?? data?.error
+  return typeof value === 'string' ? value : ''
+}
+
+async function send<T> (origin: string, path: string, token: string, body: unknown, background = false): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${origin}${path}`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(background ? { [BACKGROUND_HEADER]: '1' } : {}) },
       body: JSON.stringify(body),
       cache: 'no-store',
       credentials: 'omit',
@@ -36,9 +49,12 @@ async function send<T> (origin: string, path: string, token: string, body: unkno
     })
   } catch { throw new AdminError('Staff tools could not be reached. Try again.', 0) }
   let data: any
+  if (response.status === 204) return undefined as T
   try { data = JSON.parse(await response.text()) } catch { throw new AdminError('Staff tools sent an unreadable answer.', response.status) }
   if (!response.ok) {
-    const expired = response.status === 401 || data.staff_reauth_required === true
+    const code = errorCode(data)
+    const reason = typeof data?.reason === 'string' ? data.reason : ''
+    const expired = response.status === 401 || data.staff_reauth_required === true || code === 'console.staff.reauth_required'
     if (response.status === 400 && /not turned on/i.test(String(data?.error ?? data?.message ?? data?.detail ?? ''))) throw new AdminError(FLEET_NOT_ON, 400)
     throw new AdminError(expired
       ? 'Confirm staff access again.'
@@ -46,24 +62,30 @@ async function send<T> (origin: string, path: string, token: string, body: unkno
         ? 'Staff access is required on Control.'
         : response.status === 429
           ? 'Too many requests. Try again in a minute.'
-          : 'The request could not be completed. Check your details and try again.', response.status, expired)
+          : 'The request could not be completed. Check your details and try again.', response.status, expired, code, reason)
   }
   return data as T
 }
 
-async function consoleRequest<T> (path: string, body: unknown, retry401 = true): Promise<T> {
+export async function consoleRequest<T> (path: string, body: unknown, retry401 = true, background = false): Promise<T> {
   if (!adminAvailable()) throw new AdminError('Open staff tools on Control.', 403)
   let token = storedToken()
   if (!token) throw new AdminError('Sign in to use staff tools.', 401, true)
-  try { return await send<T>(cloudBaseUrl(), path, token, body) } catch (error) {
+  try { return await send<T>(cloudBaseUrl(), path, token, body, background) } catch (error) {
     if (!retry401 || !(error instanceof AdminError) || error.status !== 401 || !await refreshSession()) throw error
     token = storedToken()
     if (!token) throw error
-    return await send<T>(cloudBaseUrl(), path, token, body)
+    return await send<T>(cloudBaseUrl(), path, token, body, background)
   }
 }
 
 /** A real #36 ceremony, explicitly for staff; membership is checked afterwards. */
+/** The staff session as the console reports it. Never counts as activity. */
+export const staffSession = (): Promise<StaffSession> => consoleRequest('/v1/admin/session', {}, true, true)
+/** User input with no request of its own: counts as activity. */
+export const touchStaffSession = (): Promise<StaffSession> => consoleRequest('/v1/admin/session/touch', {})
+export const endStaffSession = (): Promise<void> => consoleRequest('/v1/admin/session/end', {})
+
 export async function confirmStaff (): Promise<StaffSession> {
   const options = await consoleRequest<{ ceremony_id: string; options: { publicKey: Record<string, any> }; expires_at: number }>(
     '/v1/me/reauth/passkey/options', { purpose: 'staff' })
@@ -141,9 +163,14 @@ export async function sourceBlob (source: NonNullable<CommandResult['source']>, 
   return new Blob([bytes], { type: 'application/octet-stream' })
 }
 
-/** A fresh ceremony for every mutation. No write proof reaches this client and no mutation retries automatically. */
+let sessionOpen: () => boolean = () => false
+/** The portal's session tells this file whether a staff session is already open (session.ts sets it). */
+export function setSessionProbe (probe: () => boolean): void { sessionOpen = probe }
+
+/** A passkey ceremony for a mutation only when no staff session is open. No write proof reaches this client and no mutation retries automatically. */
 export async function staffCommand (command: StaffCommand, account = false, current: () => boolean = () => true): Promise<CommandResult> {
-  if (isStaffMutation(command.action)) await confirmStaff()
+  // One staff session covers every action (D-204): a ceremony only when none is open.
+  if (isStaffMutation(command.action) && !sessionOpen()) await confirmStaff()
   if (!current()) throw new AdminError('The page changed. No command was sent.', 0)
   try {
     return await consoleRequest<CommandResult>(account ? '/v1/admin/accounts/action' : '/v1/admin/community', command, false)

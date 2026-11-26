@@ -285,6 +285,44 @@
               small
             />Link a printer
           </button>
+          <!-- Muon staff only (KAN-6113): the console says who they are, and nobody else sees these items. -->
+          <template v-if="staff">
+            <div class="acct-menu__rule" />
+            <span class="acct-menu__caps">Muon3D staff</span>
+            <router-link
+              to="/admin"
+              class="acct-menu__item"
+              role="menuitem"
+              data-tid="account-admin"
+              @click.native="menu = false"
+            >
+              <frame-icon
+                name="shield"
+                small
+              />Admin
+            </router-link>
+            <button
+              type="button"
+              class="acct-menu__item"
+              role="menuitem"
+              data-tid="account-fleet"
+              :disabled="fleetStage !== ''"
+              @click="openFleetItem"
+            >
+              <frame-icon
+                name="fleet"
+                small
+              />{{ fleetStage === 'passkey' ? 'Confirming with your passkey…' : fleetStage === 'opening' ? 'Opening Fleet…' : 'Fleet' }}<span class="acct-menu__key">fleet.muon3d.com</span>
+            </button>
+            <p
+              v-if="fleetNote"
+              class="acct-menu__note"
+              role="alert"
+              data-tid="account-fleet-error"
+            >
+              {{ fleetNote }}
+            </p>
+          </template>
           <div class="acct-menu__rule" />
           <button
             type="button"
@@ -363,6 +401,9 @@ import { Component, Vue, Watch } from 'vue-property-decorator'
 import { cloudState } from '@/services/muon-cloud/state'
 import { cloudBaseUrl } from '@/services/muon-cloud/api'
 import { reachState, watchCloudReachable } from '@/services/muon-cloud/reachable'
+import { isStaff } from '@/services/admin/membership'
+import { fleetFailure, openFleet } from '@/services/admin/client'
+import { absoluteLeft, portal } from '@/services/admin/session'
 import { deletionState } from '@/services/muon-cloud/deletion'
 import type { InstanceConfig } from '@/store/config/types'
 import { consoleServesPage } from '@/services/muon-cloud/centralLogin'
@@ -512,6 +553,23 @@ export default class CloudAccountMenu extends Vue {
   @Watch('menu')
   onMenu (open: boolean) {
     if (open && this.account && this.built('printers')) loadApprovals().catch(() => {})
+    if (!open) this.fleetNote = ''
+  }
+
+  fleetStage: '' | 'passkey' | 'opening' = ''
+  fleetNote = ''
+
+  get staff (): boolean {
+    return isStaff(this.account)
+  }
+
+  /** Fleet is staff-only: confirm with the passkey unless a staff session is already open, then hand over. */
+  async openFleetItem () {
+    if (this.fleetStage) return
+    this.fleetNote = ''
+    try {
+      await openFleet({ confirmed: portal.phase === 'open' && absoluteLeft() > 15, onStage: stage => { this.fleetStage = stage } })
+    } catch (error) { this.fleetNote = fleetFailure(error) } finally { this.fleetStage = '' }
   }
 
   built (id: AccountSectionId): boolean {
