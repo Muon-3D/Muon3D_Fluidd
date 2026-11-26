@@ -805,7 +805,7 @@ export function shareRefusal (error: unknown, handle = ''): string {
 
 /** A link share: the key rides in the fragment, which browsers never send to a server. */
 export function shareLinkUrl (id: string, key: string): string {
-  return `${LIBRARY_ORIGIN}/s/${encodeURIComponent(id)}#${encodeURIComponent(key)}`
+  return `${LIBRARY_ORIGIN}/p/${encodeURIComponent(id)}#${encodeURIComponent(key)}`
 }
 
 const HANDLE = /^[a-z][a-z0-9._]{2,23}$/

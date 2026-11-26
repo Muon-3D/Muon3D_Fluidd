@@ -253,7 +253,7 @@ describe('Library v3 Share with people you choose, and by link', () => {
   })
 
   it('link audience shows the key once as a fragment URL, and Copy copies it', async () => {
-    const share = shareMock({ key: 'd9a1c2b3-0000-4000-8000-123456789abc' })
+    const share = shareMock({ key: 'd9a1c2b3000040008000123456789abc' })
     const writeText = vi.fn(async () => undefined)
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     const { w } = await sharePage(share)
@@ -262,7 +262,7 @@ describe('Library v3 Share with people you choose, and by link', () => {
     await flush()
     expect(share).toHaveBeenCalledWith({ item: 'a', version: 3, title: 'Print a', audience: 'link' })
     const url = (tid(w, 'library-share-link-url').element as HTMLInputElement).value
-    expect(url).toBe('https://library.muon3d.com/s/sh1#d9a1c2b3-0000-4000-8000-123456789abc')
+    expect(url).toBe('https://library.muon3d.com/p/sh1#d9a1c2b3000040008000123456789abc')
     const parsed = new URL(url)
     expect(parsed.search).toBe('')
     expect(parsed.pathname).not.toContain('d9a1c2b3')
