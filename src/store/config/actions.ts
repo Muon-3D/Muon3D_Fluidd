@@ -301,7 +301,7 @@ export const actions: ActionTree<ConfigState, RootState> = {
     const { appearance, migrate } = resolveAppearance(readAppearance(), state.uiSettings.theme)
     if (migrate) writeAppearance(migrate)
     commit('setSaveByPath', { path: 'uiSettings.theme.color', value: appearance.color })
-    commit('setSaveByPath', { path: 'uiSettings.theme.mode', value: appearance.mode })
+    commit('setThemeMode', appearance.mode)
     commit('setSaveByPath', { path: 'uiSettings.theme.isDark', value: isDarkFor(appearance.mode) })
     dispatch('onThemeChange', state.uiSettings.theme)
   },
