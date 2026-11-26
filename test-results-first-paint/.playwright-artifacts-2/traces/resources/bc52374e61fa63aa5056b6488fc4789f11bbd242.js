@@ -1,0 +1,127 @@
+export const defaultState = () => {
+  return {
+    printer: {
+      endstops: {},
+      bed_mesh: {
+        profile_name: ""
+      },
+      heaters: {
+        available_heaters: [],
+        available_sensors: []
+      },
+      info: {
+        state: "",
+        state_message: ""
+      },
+      configfile: {
+        warnings: [],
+        save_config_pending: false,
+        save_config_pending_items: {},
+        config: {
+          virtual_sdcard: {},
+          pause_resume: {},
+          display_status: {},
+          "gcode_macro CANCEL_PRINT": {}
+        },
+        settings: {
+          bed_mesh: {},
+          fan: {},
+          printer: {
+            max_accel_to_decel: 500,
+            minimum_cruise_ratio: 0.5,
+            max_accel: 1e3,
+            max_velocity: 100,
+            square_corner_velocity: 3,
+            kinematics: "none"
+          },
+          virtual_sdcard: {},
+          pause_resume: {},
+          display_status: {},
+          "gcode_macro cancel_print": {},
+          extruder: {
+            max_extrude_only_velocity: 100,
+            max_extrude_only_distance: 100
+          }
+        }
+      },
+      objects: [],
+      idle_timeout: {
+        state: ""
+      },
+      print_stats: {
+        state: "",
+        print_duration: 0,
+        total_duration: 0,
+        filament_used: 0,
+        filename: ""
+      },
+      display_status: {
+        progress: 0,
+        message: ""
+      },
+      virtual_sdcard: {
+        file_position: 0,
+        is_active: false,
+        progress: 0
+      },
+      toolhead: {
+        estimated_print_time: 0,
+        homed_axes: "",
+        max_accel: 0,
+        max_accel_to_decel: null,
+        minimum_cruise_ratio: null,
+        max_velocity: 0,
+        position: [0, 0, 0, 0],
+        axis_minimum: [],
+        axis_maximum: [],
+        print_time: 0,
+        square_corner_velocity: 0,
+        extruder: ""
+      },
+      motion_report: {
+        live_position: [0, 0, 0, 0],
+        live_velocity: 0,
+        live_extruder_velocity: 0
+      },
+      firmware_retraction: {
+        retract_length: 0,
+        unretract_extra_length: 0,
+        unretract_speed: 0,
+        retract_speed: 0
+      },
+      current_file: {
+        estimated_time: 0,
+        filament_total: 0,
+        thumbnails: []
+      },
+      gcode: {
+        commands: null
+      },
+      gcode_move: {
+        gcode_position: [0, 0, 0, 0],
+        homing_origin: [],
+        speed: 0
+      },
+      manual_probe: {
+        is_active: false,
+        z_position: null,
+        z_position_lower: null,
+        z_position_upper: null
+      },
+      bed_screws: {
+        is_active: false,
+        state: null,
+        current_screw: 0,
+        accepted_screws: 0
+      },
+      screws_tilt_adjust: {},
+      webhooks: {
+        state: "",
+        state_message: ""
+      }
+    }
+  };
+};
+export const state = defaultState();
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInN0YXRlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgUHJpbnRlclN0YXRlIH0gZnJvbSAnLi90eXBlcydcblxuLyoqXG4gKiBNYWludGFpbnMgdGhlIHN0YXRlIG9mIHRoZSBwcmludGVyLCBieSB3YXkgb2YgbW9vbnJha2VyIG5vdGlmaWNhdGlvbnMuXG4gKiBXZSBzaG91bGQgbmV2ZXIgZGlyZWN0bHkgbW9kaWZ5IGRhdGEgaGVyZS5cbiAqL1xuZXhwb3J0IGNvbnN0IGRlZmF1bHRTdGF0ZSA9ICgpOiBQcmludGVyU3RhdGUgPT4ge1xuICByZXR1cm4ge1xuICAgIHByaW50ZXI6IHtcbiAgICAgIGVuZHN0b3BzOiB7fSxcbiAgICAgIGJlZF9tZXNoOiB7XG4gICAgICAgIHByb2ZpbGVfbmFtZTogJydcbiAgICAgIH0sXG4gICAgICBoZWF0ZXJzOiB7XG4gICAgICAgIGF2YWlsYWJsZV9oZWF0ZXJzOiBbXSxcbiAgICAgICAgYXZhaWxhYmxlX3NlbnNvcnM6IFtdXG4gICAgICB9LFxuICAgICAgaW5mbzoge1xuICAgICAgICBzdGF0ZTogJycsXG4gICAgICAgIHN0YXRlX21lc3NhZ2U6ICcnXG4gICAgICB9LFxuICAgICAgY29uZmlnZmlsZToge1xuICAgICAgICB3YXJuaW5nczogW10sXG4gICAgICAgIHNhdmVfY29uZmlnX3BlbmRpbmc6IGZhbHNlLFxuICAgICAgICBzYXZlX2NvbmZpZ19wZW5kaW5nX2l0ZW1zOiB7fSxcbiAgICAgICAgY29uZmlnOiB7XG4gICAgICAgICAgdmlydHVhbF9zZGNhcmQ6IHt9LFxuICAgICAgICAgIHBhdXNlX3Jlc3VtZToge30sXG4gICAgICAgICAgZGlzcGxheV9zdGF0dXM6IHt9LFxuICAgICAgICAgICdnY29kZV9tYWNybyBDQU5DRUxfUFJJTlQnOiB7fVxuICAgICAgICB9LFxuICAgICAgICBzZXR0aW5nczoge1xuICAgICAgICAgIGJlZF9tZXNoOiB7fSxcbiAgICAgICAgICBmYW46IHt9LFxuICAgICAgICAgIHByaW50ZXI6IHtcbiAgICAgICAgICAgIG1heF9hY2NlbF90b19kZWNlbDogNTAwLFxuICAgICAgICAgICAgbWluaW11bV9jcnVpc2VfcmF0aW86IDAuNSxcbiAgICAgICAgICAgIG1heF9hY2NlbDogMTAwMCxcbiAgICAgICAgICAgIG1heF92ZWxvY2l0eTogMTAwLFxuICAgICAgICAgICAgc3F1YXJlX2Nvcm5lcl92ZWxvY2l0eTogMyxcbiAgICAgICAgICAgIGtpbmVtYXRpY3M6ICdub25lJ1xuICAgICAgICAgIH0sXG4gICAgICAgICAgdmlydHVhbF9zZGNhcmQ6IHt9LFxuICAgICAgICAgIHBhdXNlX3Jlc3VtZToge30sXG4gICAgICAgICAgZGlzcGxheV9zdGF0dXM6IHt9LFxuICAgICAgICAgICdnY29kZV9tYWNybyBjYW5jZWxfcHJpbnQnOiB7fSxcbiAgICAgICAgICBleHRydWRlcjoge1xuICAgICAgICAgICAgbWF4X2V4dHJ1ZGVfb25seV92ZWxvY2l0eTogMTAwLFxuICAgICAgICAgICAgbWF4X2V4dHJ1ZGVfb25seV9kaXN0YW5jZTogMTAwXG4gICAgICAgICAgfVxuICAgICAgICB9XG4gICAgICB9LFxuICAgICAgb2JqZWN0czogW10sXG4gICAgICBpZGxlX3RpbWVvdXQ6IHtcbiAgICAgICAgc3RhdGU6ICcnXG4gICAgICB9LFxuICAgICAgcHJpbnRfc3RhdHM6IHtcbiAgICAgICAgc3RhdGU6ICcnLFxuICAgICAgICBwcmludF9kdXJhdGlvbjogMCxcbiAgICAgICAgdG90YWxfZHVyYXRpb246IDAsXG4gICAgICAgIGZpbGFtZW50X3VzZWQ6IDAsXG4gICAgICAgIGZpbGVuYW1lOiAnJ1xuICAgICAgfSxcbiAgICAgIGRpc3BsYXlfc3RhdHVzOiB7XG4gICAgICAgIHByb2dyZXNzOiAwLFxuICAgICAgICBtZXNzYWdlOiAnJ1xuICAgICAgfSxcbiAgICAgIHZpcnR1YWxfc2RjYXJkOiB7XG4gICAgICAgIGZpbGVfcG9zaXRpb246IDAsXG4gICAgICAgIGlzX2FjdGl2ZTogZmFsc2UsXG4gICAgICAgIHByb2dyZXNzOiAwXG4gICAgICB9LFxuICAgICAgdG9vbGhlYWQ6IHtcbiAgICAgICAgZXN0aW1hdGVkX3ByaW50X3RpbWU6IDAsXG4gICAgICAgIGhvbWVkX2F4ZXM6ICcnLFxuICAgICAgICBtYXhfYWNjZWw6IDAsXG4gICAgICAgIG1heF9hY2NlbF90b19kZWNlbDogbnVsbCxcbiAgICAgICAgbWluaW11bV9jcnVpc2VfcmF0aW86IG51bGwsXG4gICAgICAgIG1heF92ZWxvY2l0eTogMCxcbiAgICAgICAgcG9zaXRpb246IFswLCAwLCAwLCAwXSxcbiAgICAgICAgYXhpc19taW5pbXVtOiBbXSxcbiAgICAgICAgYXhpc19tYXhpbXVtOiBbXSxcbiAgICAgICAgcHJpbnRfdGltZTogMCxcbiAgICAgICAgc3F1YXJlX2Nvcm5lcl92ZWxvY2l0eTogMCxcbiAgICAgICAgZXh0cnVkZXI6ICcnXG4gICAgICB9LFxuICAgICAgbW90aW9uX3JlcG9ydDoge1xuICAgICAgICBsaXZlX3Bvc2l0aW9uOiBbMCwgMCwgMCwgMF0sXG4gICAgICAgIGxpdmVfdmVsb2NpdHk6IDAsXG4gICAgICAgIGxpdmVfZXh0cnVkZXJfdmVsb2NpdHk6IDBcbiAgICAgIH0sXG4gICAgICBmaXJtd2FyZV9yZXRyYWN0aW9uOiB7XG4gICAgICAgIHJldHJhY3RfbGVuZ3RoOiAwLFxuICAgICAgICB1bnJldHJhY3RfZXh0cmFfbGVuZ3RoOiAwLFxuICAgICAgICB1bnJldHJhY3Rfc3BlZWQ6IDAsXG4gICAgICAgIHJldHJhY3Rfc3BlZWQ6IDBcbiAgICAgIH0sXG4gICAgICBjdXJyZW50X2ZpbGU6IHtcbiAgICAgICAgZXN0aW1hdGVkX3RpbWU6IDAsXG4gICAgICAgIGZpbGFtZW50X3RvdGFsOiAwLFxuICAgICAgICB0aHVtYm5haWxzOiBbXVxuICAgICAgfSxcbiAgICAgIGdjb2RlOiB7XG4gICAgICAgIGNvbW1hbmRzOiBudWxsXG4gICAgICB9LFxuICAgICAgZ2NvZGVfbW92ZToge1xuICAgICAgICBnY29kZV9wb3NpdGlvbjogWzAsIDAsIDAsIDBdLFxuICAgICAgICBob21pbmdfb3JpZ2luOiBbXSxcbiAgICAgICAgc3BlZWQ6IDBcbiAgICAgIH0sXG4gICAgICBtYW51YWxfcHJvYmU6IHtcbiAgICAgICAgaXNfYWN0aXZlOiBmYWxzZSxcbiAgICAgICAgel9wb3NpdGlvbjogbnVsbCxcbiAgICAgICAgel9wb3NpdGlvbl9sb3dlcjogbnVsbCxcbiAgICAgICAgel9wb3NpdGlvbl91cHBlcjogbnVsbFxuICAgICAgfSxcbiAgICAgIGJlZF9zY3Jld3M6IHtcbiAgICAgICAgaXNfYWN0aXZlOiBmYWxzZSxcbiAgICAgICAgc3RhdGU6IG51bGwsXG4gICAgICAgIGN1cnJlbnRfc2NyZXc6IDAsXG4gICAgICAgIGFjY2VwdGVkX3NjcmV3czogMFxuICAgICAgfSxcbiAgICAgIHNjcmV3c190aWx0X2FkanVzdDoge30sXG4gICAgICB3ZWJob29rczoge1xuICAgICAgICBzdGF0ZTogJycsXG4gICAgICAgIHN0YXRlX21lc3NhZ2U6ICcnXG4gICAgICB9XG4gICAgfVxuICB9XG59XG5cbmV4cG9ydCBjb25zdCBzdGF0ZSA9IGRlZmF1bHRTdGF0ZSgpXG4iXSwibWFwcGluZ3MiOiJBQU1PLGFBQU0sZUFBZSxNQUFvQjtBQUM5QyxTQUFPO0FBQUEsSUFDTCxTQUFTO0FBQUEsTUFDUCxVQUFVLENBQUM7QUFBQSxNQUNYLFVBQVU7QUFBQSxRQUNSLGNBQWM7QUFBQSxNQUNoQjtBQUFBLE1BQ0EsU0FBUztBQUFBLFFBQ1AsbUJBQW1CLENBQUM7QUFBQSxRQUNwQixtQkFBbUIsQ0FBQztBQUFBLE1BQ3RCO0FBQUEsTUFDQSxNQUFNO0FBQUEsUUFDSixPQUFPO0FBQUEsUUFDUCxlQUFlO0FBQUEsTUFDakI7QUFBQSxNQUNBLFlBQVk7QUFBQSxRQUNWLFVBQVUsQ0FBQztBQUFBLFFBQ1gscUJBQXFCO0FBQUEsUUFDckIsMkJBQTJCLENBQUM7QUFBQSxRQUM1QixRQUFRO0FBQUEsVUFDTixnQkFB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

@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/settings/cameras/CameraPreview.vue?vue&type=style&index=0&scoped=64b3a90b&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/settings/cameras/CameraPreview.vue?vue&type=style&index=0&scoped=64b3a90b&lang.scss"
+const __vite__css = ".cprev[data-v-64b3a90b] {\n  position: relative;\n  aspect-ratio: 16/9;\n  overflow: hidden;\n  border-radius: 22px;\n  background: #0b0b0c;\n  box-shadow: inset 0 0 0 1px var(--m3d-border);\n}\n.cprev__view[data-v-64b3a90b] {\n  display: block;\n  width: 100%;\n  height: 100%;\n  object-fit: contain;\n  border: 0;\n}\n.cprev__none[data-v-64b3a90b] {\n  display: grid;\n  height: 100%;\n  margin: 0;\n  place-items: center;\n  color: var(--m3d-text-muted);\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

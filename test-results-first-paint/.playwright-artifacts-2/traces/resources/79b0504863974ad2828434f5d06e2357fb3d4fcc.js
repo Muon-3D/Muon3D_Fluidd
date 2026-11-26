@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/node_modules/vuetify/src/components/VParallax/VParallax.sass");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/node_modules/vuetify/src/components/VParallax/VParallax.sass"
+const __vite__css = ".v-parallax {\n  position: relative;\n  overflow: hidden;\n  z-index: 0;\n}\n.v-parallax__image-container {\n  position: absolute;\n  top: 0;\n  left: 0;\n  right: 0;\n  bottom: 0;\n  z-index: 1;\n  contain: strict;\n}\n.v-parallax__image {\n  position: absolute;\n  bottom: 0;\n  left: 50%;\n  min-width: 100%;\n  min-height: 100%;\n  display: none;\n  transform: translate(-50%, 0);\n  will-change: transform;\n  transition: 0.3s opacity cubic-bezier(0.25, 0.8, 0.5, 1);\n  z-index: 1;\n}\n.v-parallax__content {\n  color: #FFFFFF;\n  height: 100%;\n  z-index: 2;\n  position: relative;\n  display: flex;\n  flex-direction: column;\n  justify-content: center;\n  padding: 0 1rem;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

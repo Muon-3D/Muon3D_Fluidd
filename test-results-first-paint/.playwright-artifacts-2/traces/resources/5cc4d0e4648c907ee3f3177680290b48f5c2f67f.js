@@ -1,0 +1,9 @@
+export function shortDuration(seconds) {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
+}
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInNob3J0LWR1cmF0aW9uLnRzIl0sInNvdXJjZXNDb250ZW50IjpbIi8qKiBNaW51dGVzLCBvciBob3VycyBhbmQgbWludXRlcywgYXMgaW4gXCIxNG0gbGVmdFwiIGFuZCBcIjJoIDVtIGxlZnRcIi4gKi9cbmV4cG9ydCBmdW5jdGlvbiBzaG9ydER1cmF0aW9uIChzZWNvbmRzOiBudW1iZXIpOiBzdHJpbmcge1xuICBjb25zdCBtaW51dGVzID0gTWF0aC5tYXgoMSwgTWF0aC5yb3VuZChzZWNvbmRzIC8gNjApKVxuICBpZiAobWludXRlcyA8IDYwKSByZXR1cm4gYCR7bWludXRlc31tYFxuICBjb25zdCBob3VycyA9IE1hdGguZmxvb3IobWludXRlcyAvIDYwKVxuICBjb25zdCByZXN0ID0gbWludXRlcyAlIDYwXG4gIHJldHVybiByZXN0ID8gYCR7aG91cnN9aCAke3Jlc3R9bWAgOiBgJHtob3Vyc31oYFxufVxuIl0sIm1hcHBpbmdzIjoiQUFDTyxnQkFBUyxjQUFlLFNBQXlCO0FBQ3RELFFBQU0sVUFBVSxLQUFLLElBQUksR0FBRyxLQUFLLE1BQU0sVUFBVSxFQUFFLENBQUM7QUFDcEQsTUFBSSxVQUFVLEdBQUksUUFBTyxHQUFHLE9BQU87QUFDbkMsUUFBTSxRQUFRLEtBQUssTUFBTSxVQUFVLEVBQUU7QUFDckMsUUFBTSxPQUFPLFVBQVU7QUFDdkIsU0FBTyxPQUFPLEdBQUcsS0FBSyxLQUFLLElBQUksTUFBTSxHQUFHLEtBQUs7QUFDL0M7IiwibmFtZXMiOltdfQ==

@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/control/ControlPositionReadout.vue?vue&type=style&index=0&scoped=ca42faa0&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/control/ControlPositionReadout.vue?vue&type=style&index=0&scoped=ca42faa0&lang.scss"
+const __vite__css = ".posread[data-v-ca42faa0] {\n  display: contents;\n}\n.posread__cell[data-v-ca42faa0] {\n  display: flex;\n  flex: 1 1 70px;\n  flex-direction: column;\n  min-width: 0;\n  padding: 7px 10px;\n  border-radius: 12px;\n  background: var(--m3d-surface-2);\n  font-family: var(--m3d-font-mono);\n  font-size: 14px;\n  font-weight: 600;\n  font-variant-numeric: tabular-nums;\n}\n.posread__cell small[data-v-ca42faa0] {\n  color: var(--m3d-text-muted);\n  font-family: inherit;\n  font-size: 10px;\n  letter-spacing: 0.08em;\n}\n.posread--stack .posread__cell[data-v-ca42faa0] {\n  align-items: center;\n  justify-content: center;\n  background: none;\n  text-align: center;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))
