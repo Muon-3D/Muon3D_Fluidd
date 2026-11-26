@@ -30,6 +30,7 @@ import { presetCommands } from '@/util/temperature-preset'
 import { zAdjustCommand } from '@/services/control/z-adjust'
 import { endOwnMotion, handMoveSettling, headStatus, lockHandMove, noteOwnMotion, ownMotionActive, releaseHandMove, scriptsInFlight, meshSpan, planMove, readNoGo, type MovePlan, type NoGoConfig, type Place } from '@/services/control/safe-move'
 import Vue from 'vue'
+import { needParts } from '@/services/setup-anim/gate'
 import { EventBus } from '@/eventBus'
 import type { LoadedFilament } from '@/services/jobs/model'
 import { fastPercent, materialMaxFlow, peakFlow, speedChoices, type SpeedChoice } from '@/services/control/speed'
@@ -610,6 +611,9 @@ export default class ControlMixin extends Mixins(TypedCommandsMixin, ToolheadMix
 
   home (axes = '') {
     if (!this.controlReady || this.busy) return
+    // Parts the printer says Home still needs (toolhead, spine, lever, plate): the pop-up shows them, and the homing goes ahead when they are fitted (KAN-6012).
+    const action = axes === 'Z' ? 'home_z' : axes === 'XY' ? 'home_xy' : 'home'
+    if (needParts(this.$store.state.printer.printer, action, () => this.home(axes))) return
     this.sendGcode(axes ? `G28 ${axes.split('').join(' ')}` : 'G28', this.homeWait(axes))
   }
 
