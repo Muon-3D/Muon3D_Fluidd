@@ -40,7 +40,7 @@ export function bindHttpClientToPrinterTransport (
     const path = requestPath(httpClient, config)
     let previous = 0
     const started = performance.now()
-    const response = await withTimeout(config, transport.fetch(path, requestInit(config), (loaded, total) => {
+    const received = await withTimeout(config, transport.fetch(path, requestInit(config), (loaded, total) => {
       if (config.signal?.aborted) return
       const seconds = (performance.now() - started) / 1000
       config.onUploadProgress?.({
@@ -55,6 +55,9 @@ export function bindHttpClientToPrinterTransport (
       })
       previous = loaded
     }))
+
+    // The transport reports upload progress only; a download is counted here, as the body arrives.
+    const response = await withDownloadProgress(received, config)
 
     const answer = {
       data: await responseData(response, config),
@@ -132,6 +135,49 @@ function requestInit (config: InternalAxiosRequestConfig): RequestInit {
       : config.data as BodyInit | null | undefined,
     signal: config.signal as AbortSignal | undefined
   }
+}
+
+/**
+ * Reads the body while telling `onDownloadProgress` how much has come (the
+ * transport's own progress callback is for uploads), and hands back an
+ * equivalent response. Nothing is done when nobody listens, or for a stream.
+ */
+async function withDownloadProgress (
+  response: Response,
+  config: InternalAxiosRequestConfig
+): Promise<Response> {
+  const report = config.onDownloadProgress
+  if (!report || !response.body || config.responseType === 'stream') return response
+  if (response.status < 200 || response.status > 599) return response
+  const total = Number(response.headers.get('content-length')) || undefined
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  const started = performance.now()
+  let loaded = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    chunks.push(value)
+    const bytes = value.byteLength
+    loaded += bytes
+    if (config.signal?.aborted) continue
+    const seconds = (performance.now() - started) / 1000
+    report({
+      loaded,
+      total,
+      progress: total ? Math.min(1, loaded / total) : undefined,
+      bytes,
+      rate: seconds > 0 ? loaded / seconds : undefined,
+      lengthComputable: !!total,
+      download: true,
+      event: { lengthComputable: !!total, loaded, total: total ?? 0 }
+    })
+  }
+  return new Response(new Blob(chunks as BlobPart[]), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  })
 }
 
 async function responseData (
