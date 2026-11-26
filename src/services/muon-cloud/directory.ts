@@ -263,6 +263,19 @@ function namedOnly (s: InstanceConfig): string {
   return name && name !== hostOf(s.apiUrl) && !/^muon3d$/i.test(name) ? name : ''
 }
 
+/**
+ * KAN-5975: "Connecting" is the state of a printer nothing has answered for yet. A printer this page already
+ * recognises on this network has an answer: its probe's own reading (found here), or at least that it is there
+ * (the service finds it beside this browser). Without this a printer whose socket never opened (it wants a sign-in,
+ * or the open stalled) or whose status read never came stayed grey "Connecting" beside a green probe.
+ */
+function settled (health: PrinterHealth, detail: string, lan: LanPrinter | undefined, beside: boolean): { health: PrinterHealth, detail: string } {
+  if (health !== 'connecting') return { health, detail }
+  if (lan) return { health: fromLanHealth(lan.health), detail: lanDetail(lan) }
+  if (beside) return { health: 'available', detail: 'On this network' }
+  return { health, detail }
+}
+
 /** What an entry says when it is out of every other reach and its advert was heard. */
 const NEARBY_DETAIL = 'Nearby · Bluetooth'
 
@@ -313,6 +326,7 @@ export function printerDirectory (src: DirectorySources): Directory {
     } else if (lan || besideBrowser(c.id)) {
       detail = `${detail} · on this network`
     }
+    if (active !== 'cloud') ({ health, detail } = settled(health, detail, lan, besideBrowser(c.id)))
     const nearby = nearbyFor(c.id)
     // KAN-2528: heard over Bluetooth now, so it is not offline: Bluetooth opens it.
     if (health === 'offline' && heard(nearby)) {
@@ -382,6 +396,7 @@ export function printerDirectory (src: DirectorySources): Directory {
       health = src.searching ? 'searching' : 'offline'
       detail = src.searching ? 'Looking for it on this network…' : 'Not found on this network'
     }
+    if (active !== 'cloud') ({ health, detail } = settled(health, detail, lan, besideBrowser(endpointId)))
     local.push({
       key: `local:${s.apiUrl}`,
       section: 'local',
@@ -401,8 +416,9 @@ export function printerDirectory (src: DirectorySources): Directory {
   // An entry whose active saved address was not the first one.
   for (const e of local) {
     if (e.active && src.local && e.health !== src.local.health) {
-      e.health = src.local.health
-      e.detail = src.local.detail
+      const live = settled(src.local.health, src.local.detail, e.lan, besideBrowser(e.endpointId))
+      e.health = live.health
+      e.detail = live.detail
     }
   }
 

@@ -1,0 +1,37 @@
+import { SocketActions } from "/src/api/socketActions.ts";
+import { parseProtectionStatus } from "/src/store/protection/helpers.ts";
+export const actions = {
+  /**
+   * Reset our store
+   */
+  async reset({ commit }) {
+    commit("setReset");
+  },
+  /**
+   * Moonraker lists `muon_protection` among its components. Ask for the level
+   * as this browser sees it; `caller_has_identity` is per connection, which is
+   * why a change notification is answered by asking again rather than by
+   * trusting the level it carries.
+   */
+  async init({ commit }) {
+    commit("setSupported", true);
+    SocketActions.serverMuonGetProtection();
+  },
+  async onStatus({ commit, dispatch, getters, rootGetters }, payload) {
+    const wasLocked = getters.isLocked;
+    commit("setStatus", parseProtectionStatus(payload));
+    if (wasLocked && !getters.isLocked && rootGetters["server/componentSupport"]("update_manager")) {
+      dispatch("version/init", void 0, { root: true });
+    }
+  },
+  /**
+   * Moonraker refused a protected call. That is the first sign the level may
+   * have changed, so ask what it is now rather than keep offering a control
+   * that will be refused again.
+   */
+  async onRefused({ dispatch, state }) {
+    if (state.supported) dispatch("init");
+  }
+};
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImFjdGlvbnMudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHR5cGUgeyBBY3Rpb25UcmVlIH0gZnJvbSAndnVleCdcbmltcG9ydCB0eXBlIHsgUHJvdGVjdGlvblN0YXRlIH0gZnJvbSAnLi90eXBlcydcbmltcG9ydCB0eXBlIHsgUm9vdFN0YXRlIH0gZnJvbSAnLi4vdHlwZXMnXG5pbXBvcnQgeyBTb2NrZXRBY3Rpb25zIH0gZnJvbSAnQC9hcGkvc29ja2V0QWN0aW9ucydcbmltcG9ydCB7IHBhcnNlUHJvdGVjdGlvblN0YXR1cyB9IGZyb20gJy4vaGVscGVycydcblxuZXhwb3J0IGNvbnN0IGFjdGlvbnM6IEFjdGlvblRyZWU8UHJvdGVjdGlvblN0YXRlLCBSb290U3RhdGU+ID0ge1xuICAvKipcbiAgICogUmVzZXQgb3VyIHN0b3JlXG4gICAqL1xuICBhc3luYyByZXNldCAoeyBjb21taXQgfSkge1xuICAgIGNvbW1pdCgnc2V0UmVzZXQnKVxuICB9LFxuXG4gIC8qKlxuICAgKiBNb29ucmFrZXIgbGlzdHMgYG11b25fcHJvdGVjdGlvbmAgYW1vbmcgaXRzIGNvbXBvbmVudHMuIEFzayBmb3IgdGhlIGxldmVsXG4gICAqIGFzIHRoaXMgYnJvd3NlciBzZWVzIGl0OyBgY2FsbGVyX2hhc19pZGVudGl0eWAgaXMgcGVyIGNvbm5lY3Rpb24sIHdoaWNoIGlzXG4gICAqIHdoeSBhIGNoYW5nZSBub3RpZmljYXRpb24gaXMgYW5zd2VyZWQgYnkgYXNraW5nIGFnYWluIHJhdGhlciB0aGFuIGJ5XG4gICAqIHRydXN0aW5nIHRoZSBsZXZlbCBpdCBjYXJyaWVzLlxuICAgKi9cbiAgYXN5bmMgaW5pdCAoeyBjb21taXQgfSkge1xuICAgIGNvbW1pdCgnc2V0U3VwcG9ydGVkJywgdHJ1ZSlcbiAgICBTb2NrZXRBY3Rpb25zLnNlcnZlck11b25HZXRQcm90ZWN0aW9uKClcbiAgfSxcblxuICBhc3luYyBvblN0YXR1cyAoeyBjb21taXQsIGRpc3BhdGNoLCBnZXR0ZXJzLCByb290R2V0dGVycyB9LCBwYXlsb2FkKSB7XG4gICAgY29uc3Qgd2FzTG9ja2VkOiBib29sZWFuID0gZ2V0dGVycy5pc0xvY2tlZFxuICAgIGNvbW1pdCgnc2V0U3RhdHVzJywgcGFyc2VQcm90ZWN0aW9uU3RhdHVzKHBheWxvYWQpKVxuXG4gICAgLy8gVGhlIHVwZGF0ZSBwYW5lbCdzIGZpcnN0IHJlcXVlc3Qgd2FzIHJlZnVzZWQgd2hpbGUgdGhpcyBicm93c2VyIHdhc1xuICAgIC8vIGxvY2tlZCBvdXQuIEFzayBhZ2FpbiBub3cgdGhhdCBpdCB3aWxsIGJlIGFuc3dlcmVkLlxuICAgIGlmICh3YXNMb2NrZWQgJiYgIWdldHRlcnMuaXNMb2NrZWQgJiYgcm9vdEdldHRlcnNbJ3NlcnZlci9jb21wb25lbnRTdXBwb3J0J10oJ3VwZGF0ZV9tYW5hZ2VyJykpIHtcbiAgICAgIGRpc3BhdGNoKCd2ZXJzaW9uL2luaXQnLCB1bmRlZmluZWQsIHsgcm9vdDogdHJ1ZSB9KVxuICAgIH1cbiAgfSxcblxuICAvKipcbiAgICogTW9vbnJha2VyIHJlZnVzZWQgYSBwcm90ZWN0ZWQgY2FsbC4gVGhhdCBpcyB0aGUgZmlyc3Qgc2lnbiB0aGUgbGV2ZWwgbWF5XG4gICAqIGhhdmUgY2hhbmdlZCwgc28gYXNrIHdoYXQgaXQgaXMgbm93IHJhdGhlciB0aGFuIGtlZXAgb2ZmZXJpbmcgYSBjb250cm9sXG4gICAqIHRoYXQgd2lsbCBiZSByZWZ1c2VkIGFnYWluLlxuICAgKi9cbiAgYXN5bmMgb25SZWZ1c2VkICh7IGRpc3BhdGNoLCBzdGF0ZSB9KSB7XG4gICAgaWYgKHN0YXRlLnN1cHBvcnRlZCkgZGlzcGF0Y2goJ2luaXQnKVxuICB9XG59XG4iXSwibWFwcGluZ3MiOiJBQUdBLFNBQVMscUJBQXFCO0FBQzlCLFNBQVMsNkJBQTZCO0FBRS9CLGFBQU0sVUFBa0Q7QUFBQTtBQUFBO0FBQUE7QUFBQSxFQUk3RCxNQUFNLE1BQU8sRUFBRSxPQUFPLEdBQUc7QUFDdkIsV0FBTyxVQUFVO0FBQUEsRUFDbkI7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxFQVFBLE1BQU0sS0FBTSxFQUFFLE9BQU8sR0FBRztBQUN0QixXQUFPLGdCQUFnQixJQUFJO0FBQzNCLGtCQUFjLHdCQUF3QjtBQUFBLEVBQ3hDO0FBQUEsRUFFQSxNQUFNLFNBQVUsRUFBRSxRQUFRLFVBQVUsU0FBUyxZQUFZLEdBQUcsU0FBUztBQUNuRSxVQUFNLFlBQXFCLFFBQVE7QUFDbkMsV0FBTyxhQUFhLHNCQUFzQixPQUFPLENBQUM7QUFJbEQsUUFBSSxhQUFhLENBQUMsUUFBUSxZQUFZLFlBQVkseUJBQXlCLEVBQUUsZ0JBQWdCLEdBQUc7QUFDOUYsZUFBUyxnQkFBZ0IsUUFBVyxFQUFFLE1BQU0sS0FBSyxDQUFDO0FBQUEsSUFDcEQ7QUFBQSxFQUNGO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLEVBT0EsTUFBTSxVQUFXLEVBQUUsVUFBVSxNQUFNLEdBQUc7QUFDcEMsUUFBSSxNQUFNLFVBQVcsVUFBUyxNQUFNO0FBQUEsRUFDdEM7QUFDRjsiLCJuYW1lcyI6W119

@@ -2,6 +2,7 @@ import type { Directory, DirectoryEntry } from '@/services/muon-cloud/directory'
 import type { PrinterStatus } from '@/services/muon-cloud/state'
 import { printerNameParts } from '@/util/printer-name'
 import { entryRouteLabel } from '@/services/hotspot/model'
+import { byAddressSuffix } from '@/services/muon-cloud/direct-address-state'
 import type { ForeignStatus } from '@/services/foreign-printers/types'
 
 /** What a printer is doing, in the words the page uses. */
@@ -228,7 +229,7 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
     : e.active ? src.activeJob : statusJob(statusFor(e, src.status))
   const parts = printerNameParts(e.name)
   const viaBluetooth = e.route === 'bluetooth'
-  const remote = !viaBluetooth && state !== 'nearby' && (e.active === 'cloud' || (!e.host && !!e.cloud))
+  const remote = !viaBluetooth && state !== 'nearby' && (e.active === 'cloud' || (e.active !== 'local' && !e.host && !!e.cloud))
   let label: string
   switch (state) {
     case 'printing': label = job?.progress != null ? `${job.progress}%` : 'Printing'; break
@@ -247,7 +248,7 @@ function tileFor (e: DirectoryEntry, src: PageSources, groupName: string | null)
   if ((state === 'printing' || state === 'paused') && job?.file) {
     detail = jobName(job.file) ?? e.detail
   } else if (state === 'ready') {
-    const line = viaBluetooth ? 'Via Bluetooth' : remote ? 'Remote, through Muon3D' : entryRouteLabel(e.active, e.host)
+    const line = viaBluetooth ? 'Via Bluetooth' : remote ? 'Remote, through Muon3D' : entryRouteLabel(e.active, e.host) + (e.active === 'local' ? [e.host, ...(e.saved ?? []).map(s => s.apiUrl)].map(byAddressSuffix).find(Boolean) ?? '' : '')
     // A route is carrying when Bluetooth is bound, the LAN has an address, or the relay or a local socket is the one Fluidd is on.
     const carrying = viaBluetooth || !!e.host || e.active !== null
     detail = src.routeHold ? src.routeHold.line(e.key, line, carrying, src.now ?? Date.now()) : line

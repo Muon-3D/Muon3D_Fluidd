@@ -80,3 +80,44 @@ describe('heat targets from the printer screen', () => {
     expect(heatRefusal(settings, 'extruder', Number.NaN)).not.toBe('')
   })
 })
+
+describe('tuning verbs from the printer screen', () => {
+  type VerbCtx = Record<string, unknown> & { calls: string[] }
+  const run = (v: object, over: Record<string, unknown> = {}): { why: string, calls: string[] } => {
+    const calls: string[] = []
+    const c = {
+      controlReady: true,
+      controlLock: 'locked',
+      busy: false,
+      isHomed: () => true,
+      setSpeed: (p: number) => calls.push(`speed ${p}`),
+      setFlow: (p: number) => calls.push(`flow ${p}`),
+      motorsOff: () => calls.push('motors_off'),
+      adjustZ: (b: number) => calls.push(`zadjust ${b}`),
+      ...over
+    } as unknown as VerbCtx
+    const why = ((M1Screen as unknown as { options: { methods: { runVerb: (v: object) => string } } }).options.methods.runVerb).call(c, v)
+    return { why, calls }
+  }
+
+  it('speed and flow call Control own setters, also while printing', () => {
+    expect(run({ verb: 'speed', percent: 120 }, { busy: true })).toEqual({ why: '', calls: ['speed 120'] })
+    expect(run({ verb: 'flow', percent: 95 }, { busy: true })).toEqual({ why: '', calls: ['flow 95'] })
+  })
+
+  it('the Z nudge calls adjustZ, also while printing, and needs Z homed', () => {
+    expect(run({ verb: 'zadjust', by: -0.05 }, { busy: true })).toEqual({ why: '', calls: ['zadjust -0.05'] })
+    expect(run({ verb: 'zadjust', by: 0.05 }, { isHomed: () => false })).toEqual({ why: 'Home the printer first.', calls: [] })
+  })
+
+  it('motors off is refused while busy, else Control motorsOff', () => {
+    expect(run({ verb: 'motors_off' }, { busy: true })).toEqual({ why: 'Not while the printer is busy.', calls: [] })
+    expect(run({ verb: 'motors_off' })).toEqual({ why: '', calls: ['motors_off'] })
+  })
+
+  it('every one is refused while Control is locked', () => {
+    for (const v of [{ verb: 'speed', percent: 100 }, { verb: 'flow', percent: 100 }, { verb: 'zadjust', by: 0.05 }, { verb: 'motors_off' }]) {
+      expect(run(v, { controlReady: false })).toEqual({ why: 'locked', calls: [] })
+    }
+  })
+})

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { yearSpoolEnabled } from '..'
+import { firstPaintEnabled, yearSpoolEnabled } from '..'
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -18,5 +18,26 @@ describe('the year and spool flag', () => {
   it('is on for "true", from the build', () => {
     vi.stubEnv('VITE_CONTROL_YEAR_SPOOL', 'true')
     expect(yearSpoolEnabled()).toBe(true)
+  })
+})
+
+describe('the first paint flag', () => {
+  it('is off by default', () => {
+    expect(firstPaintEnabled()).toBe(false)
+  })
+
+  it.each(['', 'false', '1', 'yes', 'TRUE', ' true'])('is off for %j: only "true" turns it on', (value) => {
+    vi.stubEnv('VITE_CONTROL_FIRST_PAINT', value)
+    expect(firstPaintEnabled()).toBe(false)
+  })
+
+  it('is on for "true", from the build', () => {
+    vi.stubEnv('VITE_CONTROL_FIRST_PAINT', 'true')
+    expect(firstPaintEnabled()).toBe(true)
+  })
+
+  it('is separate from the year flag', () => {
+    vi.stubEnv('VITE_CONTROL_YEAR_SPOOL', 'true')
+    expect(firstPaintEnabled()).toBe(false)
   })
 })

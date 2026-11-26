@@ -405,8 +405,20 @@ export default class M1Screen extends Mixins(ControlMixin) {
    */
   runVerb (v: Verb): string {
     if (!this.controlReady) return this.controlLock
+    // Speed and flow are tuned during a print: Control's own setSpeed and setFlow have no busy gate either.
+    if (v.verb === 'speed') { this.setSpeed(v.percent); return '' }
+    if (v.verb === 'flow') { this.setFlow(v.percent); return '' }
+    // The Z nudge (babystep) is Control's own adjustZ, which gates itself and works mid-print.
+    if (v.verb === 'zadjust') {
+      if (!this.isHomed('Z')) return 'Home the printer first.'
+      this.adjustZ(v.by)
+      return ''
+    }
     if (this.busy) return 'Not while the printer is busy.'
     switch (v.verb) {
+      case 'motors_off':
+        this.motorsOff()
+        return ''
       case 'jog': {
         if (!this.isHomed(v.axis)) return 'Home the printer first.'
         const wait = this.handMoveWait()

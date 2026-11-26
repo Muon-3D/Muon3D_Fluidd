@@ -11,17 +11,19 @@ import Vue from 'vue'
 import store from '@/store'
 import { appInit } from '@/init'
 import type { InstanceConfig } from '@/store/config/types'
+import { localSession } from './local-session'
 import { Globals } from '@/globals'
 import { bindHttpClientToPrinterTransport } from '@/services/managed-session/httpTransportBinding'
 import { type PrinterTransport } from '@/services/managed-transport'
-import { borrowCloudPrinter, cloudState, dropCloudConnection, printerName, setActiveCloudPrinter } from './state'
+import { borrowCloudPrinter, cloudState, dropCloudConnection, printerName, reachablePrinters, setActiveCloudPrinter } from './state'
 import { MANAGED_API_URL, MANAGED_SOCKET_URL } from './origin'
-import { noteRelayLost, noteUserOpen } from './route-choice'
+import { chooseRouteMode, noteRelayLost, noteUserOpen } from './route-choice'
 import { requestRefused } from '@/services/managed-transport/refusal'
 import { isOwnHotspot, pageReach } from './discovery'
 import { forgetGrantedRole, grantedRoleFor, readGrantedRole } from '@/services/muon-ble/granted-role'
 import { carriedByBluetooth } from '@/services/muon-ble/carried'
-import { releaseBluetoothLink, stopUsingBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
+import { releaseBluetoothLink, stopUsingBluetoothFor, useBluetoothFor, wantsBluetoothFor } from '@/services/muon-ble/link'
+import { permittedPrinterFor } from '@/services/muon-ble/nearby'
 import { pairableRefusal, type PairableRefusal } from '@/services/muon-ble/refusal'
 import { onApprovalWatch, type ApprovalWatch } from './approval'
 
@@ -173,6 +175,29 @@ export function cancelActivation () {
 }
 
 /**
+ * A printer this browser holds but no account does (an Open printer opened over Bluetooth, KAN-5972) has no Muon3D
+ * route: after a refresh nothing holds its Bluetooth device any more, and asking the console for it said "no such
+ * printer". Its device is the one the browser remembers permission for (getDevices), so hold it again, with no
+ * chooser. With none, say so in words, never the console's refusal.
+ */
+async function holdRememberedBluetooth (printerId: string) {
+  let device: Awaited<ReturnType<typeof permittedPrinterFor>> = null
+  try {
+    if (cloudState.printers.some(p => p.id === printerId) || wantsBluetoothFor(printerId)) return
+    if (!reachablePrinters().some(p => p.id === printerId)) return
+    device = await permittedPrinterFor(printerId).catch(() => null)
+  } catch {
+    // Not a printer held only over Bluetooth, as far as anything here can tell: open it as before.
+    return
+  }
+  if (!device) {
+    throw new Error(`Couldn't connect to ${printerName(printerId)} over Bluetooth. Bring this computer near it and open it from Printers with Look nearby.`)
+  }
+  chooseRouteMode(printerId, 'auto')
+  useBluetoothFor(printerId, device.device)
+}
+
+/**
  * Points Fluidd at a cloud printer. Rejects with `SwitchSuperseded` when
  * another printer is opened before this one is on.
  */
@@ -180,6 +205,7 @@ export async function activateCloudPrinter (printerId: string) {
   const mine = ++generation
   const superseded = () => mine !== generation
   noteUserOpen(printerId)
+  localSession.instance = null
   activationState.switching = printerId
   activationState.error = null
   activationState.fallbackUrl = null
@@ -196,6 +222,7 @@ export async function activateCloudPrinter (printerId: string) {
   let transport = null as PrinterTransport | null
   const open = async () => {
     try {
+      await holdRememberedBluetooth(printerId)
       // The printer Fluidd is on stays usable while the grant comes.
       const borrowed = transport = await borrowCloudPrinter(printerId)
       if (superseded()) throw new SwitchSuperseded()
@@ -262,7 +289,7 @@ export async function activateCloudPrinter (printerId: string) {
       // The relay did not work for this printer: auto mode stays off it for a while (a refusal says nothing about a route).
       if (!wantsBluetoothFor(printerId) && !requestRefused(error)) noteRelayLost(printerId)
       const refusal = wantsBluetoothFor(printerId) ? pairableRefusal(error) : null
-      activationState.error = refusal ? notPairedMessage(refusal) : (error as Error).message
+      activationState.error = refusal ? notPairedMessage(refusal) : errorText(error)
       activationState.pairing = refusal && panelCodePairing() ? printerId : null
       // Timed out before this printer was bound: the one Fluidd is on stays.
       const bound = !(error instanceof RemoteOpenTimeout) || (!!transport && current?.transport === transport)
@@ -284,6 +311,17 @@ export async function activateCloudPrinter (printerId: string) {
     clearTimeout(timer)
     if (!superseded()) activationState.switching = null
   }
+}
+
+/** An error's words; never "[object Object]" for a refusal that is not an Error. */
+function errorText (error: unknown): string {
+  const message = (error as { message?: unknown } | null)?.message
+  if (typeof message === 'string' && message) return message
+  if (typeof message === 'object' && message) {
+    const inner = (message as { message?: unknown }).message
+    if (typeof inner === 'string' && inner) return inner
+  }
+  return typeof error === 'string' ? error : 'Could not open the printer.'
 }
 
 function hostOf (apiUrl: string): string {
@@ -328,13 +366,13 @@ export async function activateLocalPrinter (instance: InstanceConfig, printerId?
     }, LOCAL_OPEN_TIMEOUT_MS)
   })
   try {
-    return await Promise.race([openLocalPrinter(instance, mine), timedOut])
+    return await Promise.race([openLocalPrinter(instance, mine, printerId), timedOut])
   } finally {
     clearTimeout(timer)
   }
 }
 
-async function openLocalPrinter (instance: InstanceConfig, mine: number): Promise<boolean> {
+async function openLocalPrinter (instance: InstanceConfig, mine: number, printerId?: string | null): Promise<boolean> {
   const superseded = () => mine !== generation
   // A cloud switch this one replaces no longer says it is opening.
   activationState.switching = null
@@ -344,6 +382,7 @@ async function openLocalPrinter (instance: InstanceConfig, mine: number): Promis
   try {
     const reach = await pageReach(instance.apiUrl)
     if (reach !== 'reached') {
+      localSession.instance = null
       if (superseded()) throw new SwitchSuperseded()
       const host = hostOf(instance.apiUrl)
       // The printer's own page is offered only where it would open: the
@@ -367,6 +406,7 @@ async function openLocalPrinter (instance: InstanceConfig, mine: number): Promis
       setActiveCloudPrinter(null)
       forgetManagedInstance()
       Vue.$socket?.close()
+      localSession.instance = { ...instance, active: true, ...(!instance.endpointId && printerId ? { endpointId: printerId } : {}) }
       const config = await appInit(instance, store.state.config.hostConfig, { isCurrent: () => !superseded() })
       // Replaced while it loaded: the next switch connects its own printer.
       if (superseded()) throw new SwitchSuperseded()
@@ -374,7 +414,10 @@ async function openLocalPrinter (instance: InstanceConfig, mine: number): Promis
         Vue.$socket.connect(config.apiConfig.socketUrl)
       }
       const connected = config.apiConnected === true
-      if (!connected) activationState.error = `Could not connect to ${name}.`
+      if (!connected) {
+        activationState.error = `Could not connect to ${name}.`
+        localSession.instance = null
+      }
       return connected
     })
   } catch (error) {

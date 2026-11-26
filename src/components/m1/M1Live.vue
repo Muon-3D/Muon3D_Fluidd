@@ -361,13 +361,15 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
    * even when a slow renderer draws none of its frames. Written straight to
    * the element, not through Vue, since it runs every frame.
    */
-  markDrawn ({ model, accessories: a, spool, plug, colour, seeThrough, phi, nozzle, knob, strand }: DrawnState) {
+  markDrawn ({ model, accessories: a, spool, plug, colour, seeThrough, headSee, phi, nozzle, knob, strand }: DrawnState) {
     const el = this.$el as HTMLElement | undefined
     if (!el?.dataset) return
     const marks: Record<string, string> = { model, spool: spool ? 'on' : 'off', plug: plug ? 'on' : 'off' }
     // Where the nozzle is drawn (px from the canvas's top left) and how the knob sits: for tests, written only when they change.
     marks.filamentColour = colour === null ? '' : `#${colour.toString(16).padStart(6, '0')}`
     marks.plateSee = seeThrough === null ? '' : seeThrough.toFixed(2)
+    // How solid the toolhead and rail are drawn (1 solid; about 0.1 while the camera looks at the panel).
+    marks.headSee = headSee === null ? '' : headSee.toFixed(2)
     marks.cameraPhi = phi.toFixed(3)
     marks.nozzle = nozzle ? `${nozzle.x},${nozzle.y}` : ''
     marks.knob = knob ? knob.angle.toFixed(2) : ''
@@ -691,11 +693,11 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     }
   }
 
-  /* The place of the head or bed isn't known (not homed): they sit where they were last drawn, faded a little. */
-  .m1-live :deep(.m1-live__canvas[data-place='unknown']) {
-    opacity: 0.72;
-    transition: opacity 0.4s ease;
-  }
+  /*
+   * data-place='unknown' (not homed) marks the canvas but never dims it (KAN-5982: the whole stage went grey, and
+   * flipped between grey and clear as each axis homed, which read as a white flash, KAN-5983). The head and bed
+   * simply hold where they were last drawn; "not homed" is said in words (M1Parts' toolhead line, the position tile).
+   */
 
   .m1-live--still :deep(.m1-live__canvas) {
     transition: none;

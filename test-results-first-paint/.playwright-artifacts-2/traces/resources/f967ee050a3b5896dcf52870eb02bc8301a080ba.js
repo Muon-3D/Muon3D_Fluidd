@@ -1,0 +1,6 @@
+import.meta.env = {"BASE_URL": "/", "BUILD_COMMIT": "d1270d4565e29ad81538c770c7dd4b9bf74ff076", "DEV": true, "HASH": "d1270d4\n", "MODE": "development", "PROD": false, "SSR": false, "VERSION": "1.31.0-rc.7", "VITE_CONTROL_FIRST_PAINT": "true", "VUE_APP_I18N_FALLBACK_LOCALE": "en", "VUE_APP_I18N_LOCALE": "en", "VUE_MUON_SLICER_URL": "/slicer/embed.html"};import { consola, LogLevels } from "/.vite-e2e/4291/deps/consola.js?v=9b9fafc7";
+consola.wrapAll();
+consola.level = LogLevels.warn;
+if (import.meta.env.DEV) consola.level = LogLevels.verbose;
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInNldHVwQ29uc29sYS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBjb25zb2xhLCBMb2dMZXZlbHMgfSBmcm9tICdjb25zb2xhJ1xuXG4vLyBDb25maWd1cmUgQ29uc29sYVxuY29uc29sYS53cmFwQWxsKClcbmNvbnNvbGEubGV2ZWwgPSBMb2dMZXZlbHMud2FyblxuXG5pZiAoaW1wb3J0Lm1ldGEuZW52LkRFVikgY29uc29sYS5sZXZlbCA9IExvZ0xldmVscy52ZXJib3NlXG4iXSwibWFwcGluZ3MiOiJBQUFBLFNBQVMsU0FBUyxpQkFBaUI7QUFHbkMsUUFBUSxRQUFRO0FBQ2hCLFFBQVEsUUFBUSxVQUFVO0FBRTFCLElBQUksWUFBWSxJQUFJLElBQUssU0FBUSxRQUFRLFVBQVU7IiwibmFtZXMiOltdfQ==

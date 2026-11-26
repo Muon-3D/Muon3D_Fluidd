@@ -49,3 +49,19 @@ describe('PrinterOpening: the printer comes online (KAN-3783)', () => {
     expect(openPrinterAt).not.toHaveBeenCalled()
   })
 })
+
+describe('PrinterOpening: Try again (KAN-5972)', () => {
+  it('clears the error and opens the printer again, every time it is pressed', () => {
+    openPrinterAt.mockClear()
+    cloudState.printers = [] as never
+    activationState.switching = null
+    activationState.error = "Couldn't connect to Sloe over Bluetooth."
+    const wrapper = shallowMount(PrinterOpening, { localVue, vuetify: new Vuetify(), propsData: { slug: 'sloe-1a2b' } })
+    ;(wrapper.vm as unknown as { retry: () => void }).retry()
+    expect(activationState.error).toBeNull()
+    expect(openPrinterAt).toHaveBeenCalledWith('sloe-1a2b')
+    activationState.error = 'Still no answer.'
+    ;(wrapper.vm as unknown as { retry: () => void }).retry()
+    expect(openPrinterAt).toHaveBeenCalledTimes(2)
+  })
+})
