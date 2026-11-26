@@ -22,10 +22,66 @@ export interface ConsolePrinter {
   [key: string]: unknown;
 }
 
+export interface AgentEvent { id: number, event: string, data: unknown }
+
+export interface AgentsFake {
+  /** `GET /v1/agents` → `connections`. */
+  connections: Array<Record<string, unknown>>;
+  /** The stream: each connection gets those after its `Last-Event-ID`, then a ping, then ends. */
+  events: AgentEvent[];
+  /** Ids it holds no longer: a `Last-Event-ID` below this gets `event: reset`. */
+  oldest: number;
+  /** The `Last-Event-ID` each stream connection sent ('' for none). */
+  lastEventIds: string[];
+  /** `POST /v1/agents/{id}/revoke`, in order. */
+  revoked: string[];
+  /** The newest id the last answer covered: a reconnect with no id carries on from it, as if held open. */
+  cursor?: number;
+}
+
+export function agentsFake (over: Partial<AgentsFake> = {}): AgentsFake {
+  return { connections: [], events: [], oldest: 0, lastEventIds: [], revoked: [], ...over }
+}
+
+/** Add an event to the stream, numbered after the last. */
+export function pushAgentEvent (agents: AgentsFake, event: string, data: unknown): number {
+  const id = (agents.events[agents.events.length - 1]?.id ?? agents.oldest) + 1
+  agents.events.push({ id, event, data })
+  return id
+}
+
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, idempotency-key, last-event-id' }
+
+/**
+ * One stream connection: `route.fulfill` can't hold a body open, so each
+ * answer ends after what's due and Control reconnects with its last id, as
+ * it does when the console drops it.
+ */
+function agentStream (route: Route, agents: AgentsFake) {
+  const header = route.request().headers()['last-event-id'] ?? ''
+  agents.lastEventIds.push(header)
+  const last = header === '' ? null : Number(header)
+  const newest = agents.events[agents.events.length - 1]?.id ?? agents.oldest
+  let body = ''
+  let from = last ?? agents.cursor ?? newest
+  agents.cursor = newest
+  if (last !== null && last < agents.oldest) {
+    body += `id: ${newest}\nevent: reset\ndata: {"v":1}\n\n`
+    from = newest
+  }
+  for (const e of agents.events) {
+    if (e.id > from) body += `id: ${e.id}\nevent: ${e.event}\ndata: ${JSON.stringify(e.data)}\n\n`
+  }
+  body += ': ping\n\n'
+  return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'text/event-stream', 'cache-control': 'no-store' }, body })
+}
+
 export interface ConsoleState {
   account: { id: string, email: string, name: string, created_at?: number, deletion?: { requested_at: number, delete_after: number } | null };
   /** `/v1/me/exports`, when a test needs it: the data requests. A POST files a queued one. */
   exports?: Array<Record<string, unknown> & { id: string }>;
+  /** Agents on the account's printers; undefined means the API is not available. */
+  agents?: AgentsFake;
   printers: ConsolePrinter[];
   /** `/v1/me/preferences`, kept across reloads; null answers 404, as a console from before it. */
   preferences: Record<string, boolean> | null;
@@ -107,6 +163,24 @@ export async function answerConsole (route: Route, state: ConsoleState) {
   if (owned && request.method() === 'DELETE') {
     state.printers = state.printers.filter(p => p.id !== decodeURIComponent(owned[1]))
     return json(route, { ok: true })
+  }
+  const agents = state.agents
+  const revoke = url.pathname.match(/^\/v1\/agents\/([^/]+)\/revoke$/)
+  if (url.pathname.startsWith('/v1/agents')) {
+    if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { ...CORS, 'access-control-allow-methods': '*' } })
+    if (!agents) return json(route, {}, 404)
+    if (url.pathname === '/v1/agents/events') return agentStream(route, agents)
+    if (url.pathname === '/v1/agents') return json(route, { connections: agents.connections })
+    if (revoke && request.method() === 'POST') {
+      const id = decodeURIComponent(revoke[1])
+      agents.revoked.push(id)
+      const row = agents.connections.find(c => (c.agent as { id?: string } | null)?.id === id)
+      if (!row) return json(route, { error: 'no such agent' }, 404)
+      row.status = 'revoked'
+      pushAgentEvent(agents, 'agent.revoked', { v: 1, at: new Date().toISOString(), agent: row.agent, printers: row.printers })
+      return route.fulfill({ status: 204, headers: CORS })
+    }
+    return json(route, { error: 'not found' }, 404)
   }
   if (state.identity && url.pathname === '/v1/me/community-identity') {
     if (request.method() === 'PATCH') {

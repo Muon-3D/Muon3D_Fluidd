@@ -56,7 +56,7 @@ function open (confirm = true, attachTo?: HTMLElement) {
   const $confirm = vi.fn(async () => confirm)
   const w = mount(AccountConnectedApps, {
     mocks: { $confirm },
-    stubs: { 'frame-icon': true, 'router-link': { props: ['to'], template: '<a :href="to"><slot /></a>' } },
+    stubs: { 'account-connected-services': true, 'frame-icon': true, 'router-link': { props: ['to'], template: '<a :href="to"><slot /></a>' } },
     ...(attachTo ? { attachTo } : {})
   })
   return { w, $confirm }

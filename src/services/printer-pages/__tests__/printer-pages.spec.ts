@@ -15,6 +15,7 @@ import {
   isActiveSlug,
   isPrintersOwnPage,
   learnActiveIdentity,
+  learnedEndpointId,
   openPrinterAt,
   pickTarget,
   ownPageHome,
@@ -45,6 +46,7 @@ const cloud = (slug: string, printerId: string): PrinterTarget => ({ kind: 'clou
 afterEach(() => {
   printerPagesState.learned = {}
   printerPagesState.aliases = {}
+  printerPagesState.endpoints = {}
   localStorage.clear()
 })
 
@@ -177,6 +179,7 @@ describe("a printer's identity, answered after Fluidd moved to another printer",
     await expect(learning).resolves.toBeNull()
     expect(printerPagesState.aliases).toEqual({})
     expect(printerPagesState.learned).toEqual({})
+    expect(learnedEndpointId(WALNUT)).toBeNull()
     expect(activeSlug()).toBe(slugForCloudPrinter({ id: BOXWOOD_ID, name: 'Boxwood · 367A' }))
     expect(isActiveSlug('walnut-8987')).toBe(false)
   })
@@ -186,6 +189,7 @@ describe("a printer's identity, answered after Fluidd moved to another printer",
     vi.spyOn(httpClientActions, 'get').mockResolvedValue({ data: { result: walnutIdentity } } as never)
     await expect(learnActiveIdentity()).resolves.toBe('walnut-8987')
     expect(activeSlug()).toBe('walnut-8987')
+    expect(learnedEndpointId(`${WALNUT.toUpperCase()}/`)).toBe('a'.repeat(64))
   })
 })
 
