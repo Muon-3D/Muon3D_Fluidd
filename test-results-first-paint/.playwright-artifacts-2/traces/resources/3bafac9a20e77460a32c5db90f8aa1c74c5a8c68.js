@@ -1,0 +1,7 @@
+import Vue from "/.vite-e2e/4291/deps/vue.js?v=9b9fafc7";
+export const timelapsePage = Vue.observable({
+  /** Bumped by the header's Refresh; the page reads the timelapse folder again. */
+  refreshTick: 0
+});
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInBhZ2Utc3RhdGUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IFZ1ZSBmcm9tICd2dWUnXG5cbi8qKiBXaGF0IHRoZSBUaW1lbGFwc2UgaGVhZGVyIGFuZCBpdHMgcGFnZSBzaGFyZTogdGhlIGhlYWRlcidzIG1lbnUgYXNrcywgdGhlIHBhZ2UgcmVhZHMgdGhlIGZvbGRlciBhZ2Fpbi4gKi9cbmV4cG9ydCBjb25zdCB0aW1lbGFwc2VQYWdlID0gVnVlLm9ic2VydmFibGUoe1xuICAvKiogQnVtcGVkIGJ5IHRoZSBoZWFkZXIncyBSZWZyZXNoOyB0aGUgcGFnZSByZWFkcyB0aGUgdGltZWxhcHNlIGZvbGRlciBhZ2Fpbi4gKi9cbiAgcmVmcmVzaFRpY2s6IDBcbn0pXG4iXSwibWFwcGluZ3MiOiJBQUFBLE9BQU8sU0FBUztBQUdULGFBQU0sZ0JBQWdCLElBQUksV0FBVztBQUFBO0FBQUEsRUFFMUMsYUFBYTtBQUNmLENBQUM7IiwibmFtZXMiOltdfQ==

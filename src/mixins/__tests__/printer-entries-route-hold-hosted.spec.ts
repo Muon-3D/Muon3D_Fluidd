@@ -36,6 +36,7 @@ const component = () => ({
   run: vi.fn(async (_k: string, work: () => Promise<boolean>) => { await work() }),
   localRouteFor: methods.localRouteFor,
   connectLocalFromHostedPage: methods.connectLocalFromHostedPage,
+  connectByAddressFor: methods.connectByAddressFor,
   localInstance: methods.localInstance,
   connectOverBluetooth: vi.fn(),
   connectCloud: vi.fn()

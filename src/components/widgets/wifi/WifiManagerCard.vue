@@ -278,7 +278,7 @@
       <div class="wf__dialog">
         <h3>{{ $t('app.wifi.modal.disconnect.title') }}</h3>
         <p v-if="!onHotspot">
-          {{ $t('app.wifi.modal.disconnect.message') }}
+          {{ disconnectMessage }}
         </p>
         <div class="wf__buttons">
           <button
@@ -305,7 +305,9 @@
     >
       <div class="wf__dialog">
         <h3>{{ $t('app.wifi.modal.warning.title') }}</h3>
-        <p>{{ onHotspot ? $t('app.wifi.modal.warning.hotspot_message') : $t('app.wifi.modal.warning.message') }}</p>
+        <p data-tid="wifi-warning-text">
+          {{ warningMessage }}
+        </p>
         <div class="wf__buttons">
           <button
             type="button"
@@ -375,6 +377,7 @@ import type { DeviceWifi } from '@/aux_api/models/device-wifi'
 import { useHotspotCheck } from '@/aux_api/useHotspotCheck'
 import { wifiProbe } from '@/services/wifi/saved-probe'
 import { managedNetworkProblem } from '@/services/wifi/network-route'
+import { remoteWarningKind } from '@/services/wifi/route-warning'
 import type { ManagedNetworkProblem } from '@/services/wifi/network-route'
 import { EventBus } from '@/eventBus'
 import { moonrakerErrorMessage } from '@/store/protection/helpers'
@@ -447,6 +450,19 @@ export default class WifiManagerCard extends Vue {
   // route, or the owner turned the route off, and the note says which.
   get remote (): boolean {
     return printerTransportBinding.remote
+  }
+
+  /** The text before a join: what this route loses when the printer changes network. */
+  get warningMessage (): string {
+    const kind = remoteWarningKind(this.remote)
+    if (kind) return this.$t(`app.wifi.modal.warning.${kind}_message`).toString()
+    return (this.onHotspot ? this.$t('app.wifi.modal.warning.hotspot_message') : this.$t('app.wifi.modal.warning.message')).toString()
+  }
+
+  /** The text before a disconnect, likewise. */
+  get disconnectMessage (): string {
+    const kind = remoteWarningKind(this.remote)
+    return this.$t(kind ? `app.wifi.modal.disconnect.${kind}_message` : 'app.wifi.modal.disconnect.message').toString()
   }
 
   /** Why this connection can't change Wi-Fi, from the last answer; null when it can (or has not been asked). */

@@ -1032,6 +1032,8 @@ app:
     freqency: Freqency
     change: Change
     remote_read_only: The hotspot can only be changed on the printer's own network.
+    state_unknown: This connection can't tell whether the hotspot is on. Choose Turn on or Turn off.
+    hotspot_sent: Sent. The hotspot changes in a moment, unless the printer asks for a knob press.
     password:
       too-short: Too short
       too-long: Too long
@@ -1041,6 +1043,8 @@ app:
       disconnect:
         title: Confirm Disconnect
         message: If you disconnect now, the web UI may lose connection. Continue?
+        ble_message: Bluetooth stays connected. The printer leaves its Wi-Fi network, so any connection over Wi-Fi drops. Continue?
+        cloud_message: This page reaches the printer through Muon3D, which runs over its Wi-Fi. If you disconnect now, this connection drops until you reconnect it. Continue?
       warning:
         title: 'Warning: Modify Network'
         message: >-
@@ -1050,6 +1054,13 @@ app:
           This device is on the printer's hotspot. Joining another network can
           move the hotspot to that network's channel, so this page may drop off
           for a few seconds. Rejoin the hotspot if it does.
+        ble_message: >-
+          Bluetooth stays connected while the printer changes network. Any
+          connection to it over Wi-Fi or the hotspot may drop for a moment.
+        cloud_message: >-
+          You are reaching this printer through Muon3D, which runs over its
+          Wi-Fi. Changing the network drops this connection until the printer
+          is back online. Connect over Bluetooth first to stay connected.
     msg:
       connect:
         success: Sucessfully Connected to

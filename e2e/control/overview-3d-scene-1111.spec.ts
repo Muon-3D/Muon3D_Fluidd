@@ -1,6 +1,6 @@
 /**
  * Overview, the 3D scene finished (Jack's 11 Nov notes, KAN-2093..2102): the
- * selection lets go when the pointer leaves the stage; hovering the spool picks
+ * selection stays when the pointer leaves the stage (changed 24 Nov, KAN-5982); hovering the spool picks
  * the filament; the bed is see-through; a click on the screen flies the camera
  * straight down onto it with the model's knob beside it, and a scroll or a
  * click there turns or presses that knob; the drag's line starts at the nozzle;
@@ -70,7 +70,7 @@ async function findFilament (page: Page, parts: Locator): Promise<{ x: number, y
   throw new Error('the filament never lit anywhere on the stage')
 }
 
-test('the selection lets go when the pointer leaves the stage, but not onto its own panel', async ({ page, open, isMobile }) => {
+test('the selection stays when the pointer leaves the stage or goes onto its own panel', async ({ page, open, isMobile }) => {
   test.skip(isMobile, 'a finger has no cursor to move off the stage')
   const printer = await usePrinter(page, PRESETS.idleHomed())
   await open('/')
@@ -88,15 +88,16 @@ test('the selection lets go when the pointer leaves the stage, but not onto its 
   await page.waitForTimeout(400)
   await expect(parts).toHaveAttribute('data-selected', 'plate')
 
-  // Back over the model, then off it altogether: it lets go.
+  // Back over the model, then off it altogether: it stays (KAN-5982, Jack 24 Nov; it let go on 11 Nov).
   await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.7, { steps: 4 })
   await expect(parts).toHaveAttribute('data-selected', 'plate')
   await page.mouse.move(5, 5, { steps: 4 })
-  await expect(parts).toHaveAttribute('data-selected', '')
+  await page.waitForTimeout(800)
+  await expect(parts).toHaveAttribute('data-selected', 'plate')
   expect(printer.gcode).toEqual([])
 })
 
-test('hovering the spool picks the filament and opens its panel; moving away lets go', async ({ page, open, isMobile }) => {
+test('hovering the spool picks the filament and opens its panel; leaving the stage keeps it', async ({ page, open, isMobile }) => {
   test.skip(isMobile, 'hover is a desktop pointer thing; the phone taps the filament chip')
   const printer = await usePrinter(page, overlay(PRESETS.idleHomed(), M1_MACROS))
   await open('/')
@@ -125,9 +126,10 @@ test('hovering the spool picks the filament and opens its panel; moving away let
     await expect(parts).toHaveAttribute('data-selected', 'filament')
   }
 
-  // Off the panel and off the stage: it lets go.
+  // Off the panel and off the stage: it stays (KAN-5982).
   await page.mouse.move(5, 5, { steps: 4 })
-  await expect(parts).toHaveAttribute('data-selected', '')
+  await page.waitForTimeout(800)
+  await expect(parts).toHaveAttribute('data-selected', 'filament')
   expect(printer.gcode).toEqual([])
 })
 

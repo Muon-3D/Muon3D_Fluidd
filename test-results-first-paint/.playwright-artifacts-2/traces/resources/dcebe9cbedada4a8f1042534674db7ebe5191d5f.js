@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/printers/PrinterStage.vue?vue&type=style&index=0&scoped=f3d02c30&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/printers/PrinterStage.vue?vue&type=style&index=0&scoped=f3d02c30&lang.scss"
+const __vite__css = ".printer-stage[data-v-f3d02c30] {\n  position: relative;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  overflow: hidden;\n  border-radius: 18px;\n  /* The product shot is on white and multiplied in, so its stage stays light in either theme; the live M1 draws its own. */\n  background: radial-gradient(120% 90% at 50% 40%, #eceef0 0%, #d8dbdf 62%, #c4c8cd 100%);\n}\n.printer-stage--off[data-v-f3d02c30] {\n  background: radial-gradient(120% 90% at 50% 40%, #d9d9dd 0%, #bdbdc3 70%, #a8a8af 100%);\n}\n.printer-stage__m1[data-v-f3d02c30] {\n  display: block;\n  max-width: 92%;\n  max-height: 92%;\n  object-fit: contain;\n  mix-blend-mode: multiply;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

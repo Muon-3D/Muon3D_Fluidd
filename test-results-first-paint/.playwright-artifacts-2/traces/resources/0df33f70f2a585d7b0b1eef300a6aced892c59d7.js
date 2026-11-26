@@ -1,0 +1,10 @@
+const blur = (element) => {
+  element.onfocus = (event) => {
+    if (event.target instanceof HTMLElement) {
+      event.target.blur();
+    }
+  };
+};
+export default blur;
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImJsdXIudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHR5cGUgeyBGdW5jdGlvbkRpcmVjdGl2ZSB9IGZyb20gJ3Z1ZSdcblxuY29uc3QgYmx1cjogRnVuY3Rpb25EaXJlY3RpdmU8SFRNTEVsZW1lbnQ+ID0gKGVsZW1lbnQpID0+IHtcbiAgZWxlbWVudC5vbmZvY3VzID0gKGV2ZW50KSA9PiB7XG4gICAgaWYgKGV2ZW50LnRhcmdldCBpbnN0YW5jZW9mIEhUTUxFbGVtZW50KSB7XG4gICAgICBldmVudC50YXJnZXQuYmx1cigpXG4gICAgfVxuICB9XG59XG5cbmV4cG9ydCBkZWZhdWx0IGJsdXJcbiJdLCJtYXBwaW5ncyI6IkFBRUEsTUFBTSxPQUF1QyxDQUFDLFlBQVk7QUFDeEQsVUFBUSxVQUFVLENBQUMsVUFBVTtBQUMzQixRQUFJLE1BQU0sa0JBQWtCLGFBQWE7QUFDdkMsWUFBTSxPQUFPLEtBQUs7QUFBQSxJQUNwQjtBQUFBLEVBQ0Y7QUFDRjtBQUVBLGVBQWU7IiwibmFtZXMiOltdfQ==

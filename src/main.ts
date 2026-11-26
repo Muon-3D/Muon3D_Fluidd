@@ -51,6 +51,8 @@ import { LOADER_ID, setLoaderProgress, startupState } from './services/startup/l
 import { readSnapshot, renderCachedState } from './services/startup/snapshot'
 import { afterFirstPaint, NO_PREFETCH_PATHS, prefetchRoutes } from './services/startup/idle'
 import { retireProStorage } from './services/retired-storage'
+import { firstPaintEnabled } from './services/flags'
+import { startFirstPaint } from './services/startup/first-paint/state'
 
 // Register global directives.
 import Blur from '@/directives/blur'
@@ -71,7 +73,8 @@ setLoaderProgress(0.8)
 // What the printers last showed goes up while the socket connects; the
 // loader's wordmark stays when there is none (/setup, /sign-in, first run).
 const cachedSlot = document.querySelector<HTMLElement>(`#${LOADER_ID} .muon-loader__cached`)
-startupState.cachedShown = !!cachedSlot && renderCachedState(cachedSlot, readSnapshot(), window.location.pathname)
+// First paint (KAN-5929, flag) takes the whole first screen: the cached last state would sit under it.
+startupState.cachedShown = !firstPaintEnabled() && !!cachedSlot && renderCachedState(cachedSlot, readSnapshot(), window.location.pathname)
 if (startupState.cachedShown) document.getElementById(LOADER_ID)?.classList.add('muon-loader--cached')
 
 // The first frame's two pages' chunks, fetched in parallel with appInit;
@@ -121,6 +124,9 @@ applyGlassIcons(vuetify.framework.icons.values as unknown as Record<string, unkn
 
 followMotionSetting()
 followStartup(store)
+
+// Behind VITE_CONTROL_FIRST_PAINT: the rim and the printed wordmark take the loader's place until start-up is done.
+if (firstPaintEnabled()) startFirstPaint()
 
 const mountApp = () => {
   Vue.config.productionTip = false

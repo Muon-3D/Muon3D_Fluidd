@@ -13,3 +13,13 @@
 export function yearSpoolEnabled (): boolean {
   return import.meta.env.VITE_CONTROL_YEAR_SPOOL === 'true'
 }
+
+/**
+ * First paint (KAN-5929, design lab round 2 "loading"): while Control starts, a
+ * rim that fills with the real start-up steps and the wordmark printed the way
+ * an M1 prints it, in place of the plain loading bar. Off by default. Turn on
+ * with VITE_CONTROL_FIRST_PAINT=true.
+ */
+export function firstPaintEnabled (): boolean {
+  return import.meta.env.VITE_CONTROL_FIRST_PAINT === 'true'
+}

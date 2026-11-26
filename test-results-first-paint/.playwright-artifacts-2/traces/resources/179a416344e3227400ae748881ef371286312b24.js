@@ -1,0 +1,6 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/widgets/console/Console.vue?vue&type=style&index=0&scoped=6323946b&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
+const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/widgets/console/Console.vue?vue&type=style&index=0&scoped=6323946b&lang.scss"
+const __vite__css = ".console[data-v-6323946b] {\n  position: relative;\n  display: block;\n}\n.console-item[data-v-6323946b] {\n  white-space: pre-wrap;\n}\n.console-wrapper[data-v-6323946b] {\n  font-family: var(--m3d-font-mono);\n  font-size: 0.8125rem;\n  line-height: 1.6;\n  padding: 8px 16px;\n}\n.console-wrapper--sm[data-v-6323946b] {\n  font-size: 11px;\n}\n.console-wrapper--lg[data-v-6323946b] {\n  font-size: 14.5px;\n}\n.console-scroller[data-v-6323946b] {\n  height: 300px;\n}\n.console-scroller-fullscreen[data-v-6323946b] {\n  height: calc(100vh - 240px);\n  height: calc(100svh - 240px);\n}\n.v-input[data-v-6323946b] {\n  flex: 0 0 auto;\n}\n[data-v-6323946b] .vue-recycle-scroller__item-wrapper {\n  overflow: revert;\n}"
+__vite__updateStyle(__vite__id, __vite__css)
+import.meta.hot.accept()
+import.meta.hot.prune(() => __vite__removeStyle(__vite__id))
