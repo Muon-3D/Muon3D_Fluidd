@@ -97,6 +97,7 @@
         <spool-selection-dialog />
         <action-command-prompt-dialog />
         <job-ready-dialog />
+        <setup-parts-dialog />
 
         <bluetooth-pair-dialog />
         <approval-wait-host />
@@ -196,6 +197,7 @@ import { Globals } from '@/globals'
     BluetoothPairDialog: () => import('@/components/muon-ble/BluetoothPairDialog.vue'),
     ApprovalWaitHost: () => import('@/components/muon-cloud/ApprovalWaitHost.vue'),
     JobReadyDialog,
+    SetupPartsDialog: () => import('@/components/setup/SetupPartsDialog.vue'),
     SpoolSelectionDialog,
     FileSystemDownloadDialog,
     ActionCommandPromptDialog,

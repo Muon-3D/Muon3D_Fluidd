@@ -151,6 +151,11 @@ export default class RouteButtons extends Mixins(PrinterEntriesMixin) {
     }
   }
 
+  // The glyph follows the button's colour, whichever theme paints the icon font.
+  .route-buttons__btn :deep(.v-icon) {
+    color: inherit !important;
+  }
+
   .route-buttons__btn--active {
     background: var(--m3d-surface-2);
     color: var(--m3d-text);

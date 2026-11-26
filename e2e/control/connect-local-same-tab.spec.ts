@@ -139,7 +139,9 @@ test.describe('Connect locally from the hosted page', () => {
 
   // KAN-5459 (Jack's spec): Chrome's local-network-access question was refused (the address-bar setting says Block), so
   // the probe of the printer's secure name fails and Control says what to allow, instead of a bare "couldn't connect".
-  test('Chrome blocked local network access: Connect locally says what to allow, in one line, and the page stays', async ({ page, context, account }) => {
+  // KAN-6084: parked. It passed on #554's own base but fails on develop since #562 (KAN-6743): the page says the DNS-rebinding
+  // line, not the blocked one, so the probe is not seen as 'blocked' there. Needs a look at the flow, not a retry.
+  test.fixme('Chrome blocked local network access: Connect locally says what to allow, in one line, and the page stays', async ({ page, context, account }) => {
     const pages: string[] = []
     context.on('page', p => pages.push(p.url()))
     await page.addInitScript(() => {

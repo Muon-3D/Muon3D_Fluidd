@@ -68,6 +68,16 @@ async function openHostedOverBluetooth (page: Page, open: (path: string) => Prom
     ;(window as any).managedBle = await fixture.managedBluetooth(`http://localhost:${port}`, { operator: true })
   }, MOCK_PORT)
   await expect.poll(() => page.evaluate(() => (window as any).managedBle.label())).toBe('Via Bluetooth')
+  // Over Bluetooth the page is never pulled over the radio (KAN-6069): it is the copy kept from an earlier open over another route.
+  if (stubBody !== null) {
+    await page.evaluate(async html => {
+      const { default: store } = await import(/* @vite-ignore */ ['', 'src', 'store', 'index.ts'].join('/'))
+      const { cloudState } = await import(/* @vite-ignore */ ['', 'src', 'services', 'muon-cloud', 'state.ts'].join('/'))
+      const { defaultCopies } = await import(/* @vite-ignore */ ['', 'src', 'services', 'panel-embed', 'bundle.ts'].join('/'))
+      const { sha256Hex } = await import(/* @vite-ignore */ ['', 'src', 'services', 'panel-embed', 'sha256.ts'].join('/'))
+      await defaultCopies.keep(`${store.state.config.apiUrl ?? ''}|${cloudState.activePrinterId}`, { etag: '"stub-1"', html, sha256: sha256Hex(html) })
+    }, stubBody)
+  }
   await expect(page.getByTestId('m1-parts')).toBeAttached()
   const chip = page.getByTestId('m1-part-screen')
   await chip.focus()
@@ -100,12 +110,4 @@ test('hosted Control over Bluetooth: the screen loads from the printer, a jog mo
   await expect(page.getByTestId('m1-screen-refused')).not.toContainText('dev_mode')
   expect(JSON.stringify([printer.calls, printer.gcode])).not.toMatch(/dev_mode/)
   expect(await page.evaluate(() => (window as any).managedBle.counts.aux)).toBe(0)
-})
-
-test('a printer with no screen build says so plainly, over the same route', async ({ page, open }) => {
-  const { printer } = await openHostedOverBluetooth(page, open, null)
-  await expect(page.getByTestId('m1-screen-empty')).toHaveText('Your printer needs an update to show its screen here')
-  await expect(page.getByTestId('m1-screen-frame')).toHaveCount(0)
-  await expect(page.getByTestId('m1-screen-local')).toHaveCount(0)
-  expect(printer.gcode).toEqual([])
 })

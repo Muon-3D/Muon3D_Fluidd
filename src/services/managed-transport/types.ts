@@ -93,6 +93,8 @@ export interface ManagedIrohTransportOptions {
    * back to `reauthorize`.
    */
   regrant?: () => Promise<AuthorizedManagedRelaySession>;
+  /** Changes whenever the console saw the printer go offline and come back: the grant in hand is then suspect. */
+  presenceEpoch?: () => number;
   onStatusChange?: (status: ManagedTransportStatus) => void;
 }
 
