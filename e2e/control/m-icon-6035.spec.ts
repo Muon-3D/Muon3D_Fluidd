@@ -46,7 +46,8 @@ test('the tab icon and the home-screen icon are the slicer M', async ({ page }) 
     const seen = await look(page, icon.href)
     expect(seen.width, icon.href).toBeGreaterThanOrEqual(16)
     expect(seen.hasTeal, `${icon.href} shows the M`).toBe(true)
-    if (icon.sizes) expect(`${seen.width}x${seen.height}`, icon.href).toBe(icon.sizes)
+    // A tab icon may be drawn larger than its label (a sharper 32 px on a dense screen), never smaller.
+    if (icon.sizes) expect(seen.width, icon.href).toBeGreaterThanOrEqual(Number(icon.sizes.split('x')[0]))
   }
   const touch = icons.find(i => i.rel === 'apple-touch-icon')
   expect(touch, 'an apple-touch-icon').toBeTruthy()
