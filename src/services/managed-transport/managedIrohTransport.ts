@@ -108,7 +108,7 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
     try {
       const response = await (await relay).fetch(path, init, progress)
       this.assertOpen()
-      if (response.status === 401 || response.status === 403) this.grantSuspect = true
+      if (response.status === 401 || response.status === 403) this.noteRefused(relay)
       this.updateStatus('connected', 'IdleStatus')
       return response
     } catch (error) {
@@ -117,7 +117,7 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       if (init?.signal?.aborted) throw error
       // A permission refusal is an answer, not a dead path: the relay stays.
       if (requestRefused(error)) {
-        this.grantSuspect = true
+        this.noteRefused(relay)
         this.updateStatus('connected', 'IdleStatus')
         throw error
       }
@@ -152,7 +152,7 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       return socket
     } catch (error) {
       if (requestRefused(error)) {
-        this.grantSuspect = true
+        this.noteRefused(relay)
         this.updateStatus('connected', 'IdleStatus')
         throw error
       }
@@ -247,6 +247,22 @@ export class ManagedIrohPrinterTransport implements PrinterTransport {
       }
       throw error
     }
+  }
+
+  /**
+   * The printer refused a request (401/403) on this grant. It is suspect, and a failed dial counts toward asking for a
+   * new handoff. A grant the printer forgot would otherwise leave a live relay refused for ever: nothing redials. So a
+   * grant older than STABLE_AFTER_MS is retired once (the relay is closed a little later, so the refused answer can
+   * still be read) and the next dial renews it. A grant just minted is left alone: this is then a real permission
+   * answer, and it must not loop.
+   */
+  private noteRefused (relay: Promise<ManagedIrohRelay>) {
+    const alreadySuspect = this.grantSuspect
+    this.grantSuspect = true
+    if (alreadySuspect || Date.now() - this.grantedAt < STABLE_AFTER_MS || this.relayPromise !== relay) return
+    this.failedDials += 1
+    this.relayPromise = null
+    setTimeout(() => { relay.then(r => r.close()).catch(() => {}) }, 5000)
   }
 
   private grantIsStale (): boolean {

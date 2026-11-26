@@ -320,18 +320,25 @@ describe('ManagedIrohPrinterTransport re-dialling', () => {
       expect(reauthorize).toHaveBeenCalledTimes(1)
     })
 
-    it('a printer that refuses with 403 makes the next redial ask for a grant', async () => {
+    it('a printer that refuses with 403 on an old grant makes the next call redial with a new one, once', async () => {
       const refusing: ManagedIrohRelay = { fetch: async () => new Response('no', { status: 403 }), openWebSocket: async () => { throw new Error('unused') }, close () {} }
       const openRelay = vi.fn(async () => refusing)
       const regrant = vi.fn(async () => session('fresh'))
       const transport = new ManagedIrohPrinterTransport({ authorizedSession: session('grant-1'), createEndpoint: async () => ({ openRelay, close: () => {} }), regrant })
-      const inner = transport as unknown as { relayPromise: Promise<ManagedIrohRelay>, dropRelay: (r: Promise<ManagedIrohRelay>) => void }
+      // Just minted: a refusal is a real answer and never redials.
+      expect((await transport.fetch('/server/info')).status).toBe(403)
       expect((await transport.fetch('/server/info')).status).toBe(403)
       expect(openRelay).toHaveBeenCalledTimes(1)
+      expect(regrant).not.toHaveBeenCalled()
+      // An old grant the printer refuses is retired: the next call dials again and asks for a grant, once.
       await vi.advanceTimersByTimeAsync(STABLE_AFTER_MS)
-      inner.dropRelay(inner.relayPromise)
-      await transport.fetch('/server/info')
+      expect((await transport.fetch('/server/info')).status).toBe(403)
+      expect((await transport.fetch('/server/info')).status).toBe(403)
+      expect(openRelay).toHaveBeenCalledTimes(2)
       expect(regrant).toHaveBeenCalledTimes(1)
+      // And not again until the new grant is old in its turn.
+      expect((await transport.fetch('/server/info')).status).toBe(403)
+      expect(openRelay).toHaveBeenCalledTimes(2)
     })
 
     it('does not dial with a grant that is about to lapse', async () => {
