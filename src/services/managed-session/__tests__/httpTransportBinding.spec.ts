@@ -71,7 +71,7 @@ describe('the Iroh HTTP binding', () => {
 
   it('leaves a body with no listener, and a 304, untouched', async () => {
     const client = axios.create({ validateStatus: () => true })
-    release = bindHttpClientToPrinterTransport(client, transportAnswering(async () => ({ status: 304, statusText: '', headers: new Headers(), body: new ReadableStream() }) as unknown as Response))
+    release = bindHttpClientToPrinterTransport(client, transportAnswering(async () => ({ status: 304, statusText: '', headers: new Headers(), body: new ReadableStream(), text: async () => '' }) as unknown as Response))
     const response = await client.get('/panel/', { onDownloadProgress: vi.fn() })
     expect(response.status).toBe(304)
   })
