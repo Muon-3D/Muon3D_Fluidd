@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { actions } from '../actions'
 import { mutations } from '../mutations'
 import { defaultState } from '../state'
@@ -19,7 +19,9 @@ function store (state: ConfigState = defaultState()) {
 }
 
 describe('personal settings on a printer', () => {
-  it("put someone's own Look and Ask before over the printer's, and back when they go", async () => {
+  beforeEach(() => { localStorage.clear() })
+
+  it("put someone's own Ask before over the printer's, and back when they go; their old theme moves to this browser", async () => {
     const { state, commit, dispatch } = store()
     commit('setInitUiSettings', {
       theme: { color: '#80d6d1', isDark: true },
@@ -31,7 +33,8 @@ describe('personal settings on a printer', () => {
     expect(state.uiSettings.general.confirmOnEstop).toBe(true)
 
     await dispatch('applyPersonal', 'anonymous')
-    expect(state.uiSettings.theme.color).toBe('#80d6d1')
+    // The theme is this browser's now (KAN-6106): the colour jack's printer copy held was handed over, and stays.
+    expect(state.uiSettings.theme.color).toBe('#ffb36b')
     expect(state.uiSettings.general.confirmOnEstop).toBe(false)
   })
 

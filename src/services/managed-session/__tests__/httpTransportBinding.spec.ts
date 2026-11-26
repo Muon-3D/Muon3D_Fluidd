@@ -51,6 +51,31 @@ describe('the Iroh HTTP binding', () => {
       .toEqual([[0, 100, 0, 0], [25, 100, 0.25, 25], [100, 100, 1, 75]])
   })
 
+  it('reports download progress as the body arrives, and still hands over the bytes', async () => {
+    const client = axios.create()
+    const progress = vi.fn()
+    release = bindHttpClientToPrinterTransport(client, transportAnswering(async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start (controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3]))
+          controller.enqueue(new Uint8Array([4, 5]))
+          controller.close()
+        }
+      })
+      return new Response(body, { status: 200, headers: { 'content-length': '5' } })
+    }))
+    const response = await client.get('/panel/', { responseType: 'arraybuffer', onDownloadProgress: progress })
+    expect(progress.mock.calls.map(([event]) => [event.loaded, event.total, event.progress])).toEqual([[3, 5, 0.6], [5, 5, 1]])
+    expect(Array.from(new Uint8Array(response.data))).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it('leaves a body with no listener, and a 304, untouched', async () => {
+    const client = axios.create({ validateStatus: () => true })
+    release = bindHttpClientToPrinterTransport(client, transportAnswering(async () => ({ status: 304, statusText: '', headers: new Headers(), body: new ReadableStream(), text: async () => '' }) as unknown as Response))
+    const response = await client.get('/panel/', { onDownloadProgress: vi.fn() })
+    expect(response.status).toBe(304)
+  })
+
   it.each([400, 403, 404, 500, 503])('rejects a %i, as axios settles one on the network', async (status) => {
     const client = axios.create({ baseURL: 'https://muon-cloud.invalid' })
     release = bindHttpClientToPrinterTransport(client, transportAnswering(answer(status, { error: { message: 'no' } })))

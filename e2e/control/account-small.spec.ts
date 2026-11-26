@@ -49,7 +49,7 @@ test.describe('Notifications', () => {
     account.preferences = null
     await open('/account/notifications')
     await expect(page.getByTestId('notify-soon')).toContainText('Email choices come soon')
-    for (const cell of await page.getByRole('switch').all()) await expect(cell).toBeDisabled()
+    for (const cell of await page.locator('[role="switch"]:not([data-tid="theme-toggle"])').all()) await expect(cell).toBeDisabled()
     await expect(page.getByRole('alert')).toHaveCount(0)
     expect(account.seen.filter(s => s.startsWith('PUT'))).toEqual([])
   })

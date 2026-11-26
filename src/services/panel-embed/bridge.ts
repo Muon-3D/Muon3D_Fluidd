@@ -58,6 +58,9 @@ export class PanelBridge {
   /** The objects the embed subscribed to (null = all), for forwarding status updates. */
   private watched: Set<string> | undefined = undefined
   refused = 0
+  /** The embed has said hello and been handed its port. */
+  private greetedOnce = false
+  get greeted (): boolean { return this.greetedOnce }
   /** The embed's protocol version (it said so in its hello); the panel state goes only to version 2 and up. */
   private version = 1
   /** The last panel state Control knows, and whether this printer has one at all. */
@@ -92,6 +95,7 @@ export class PanelBridge {
     // A frame that could reach Control's own origin is not one to hand a port to.
     if ((this.frame.getAttribute('sandbox') ?? '').split(' ').includes('allow-same-origin')) return
     this.port?.close()
+    this.greetedOnce = true
     this.watched = undefined
     this.version = data.version
     const channel = new MessageChannel()

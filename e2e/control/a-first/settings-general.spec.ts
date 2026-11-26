@@ -1,6 +1,6 @@
 /**
- * Settings › General (v3 storyboard): this printer, Look (five accents and
- * Dark/Light/Auto, glass only), language and time, Ask before (E-STOP asks
+ * Settings › General (v3 storyboard): this printer, Layout (the theme moved to
+ * Account › Appearance, KAN-6106), language and time, Ask before (E-STOP asks
  * only when someone turns it on), Overview and the top bar, and a copy of
  * these settings that shows what it changes before it is restored. The
  * settings database is useDatabase's, so nothing reaches the shared mock.
@@ -25,13 +25,12 @@ async function setUp (page: Page, options: { power?: boolean } = {}) {
 
 const general = (page: Page) => page.getByTestId('general-settings')
 const saves = (db: { posts: () => Array<Record<string, any>> }, key: string) => db.posts().filter(p => p.key === key).map(p => p.value)
-const appTheme = (page: Page) => page.locator('.v-application').first()
 
 test('the page has the storyboard groups, and no Flat, logo or community theme', async ({ page, open }) => {
   const { printer } = await setUp(page)
   await open('/settings#general')
   await expect(general(page)).toBeVisible()
-  for (const title of ['This printer', 'Look', 'Language and time', 'Ask before', 'Overview and the top bar', 'Keyboard', 'These settings', 'More']) {
+  for (const title of ['This printer', 'Layout', 'Language and time', 'Ask before', 'Overview and the top bar', 'Keyboard', 'These settings', 'More']) {
     await expect(general(page).getByRole('heading', { name: title, exact: true })).toBeVisible()
   }
   await expect(page.getByTestId('setting-model')).toHaveText('Muon M1')
@@ -54,41 +53,6 @@ test('a serial the printer reports is shown with the model', async ({ page, open
   }))
   await open('/settings#general')
   await expect(page.getByTestId('setting-model')).toHaveText('Muon M1 · serial M1-0042')
-})
-
-test('an accent swatch is saved as this person\'s own, and is still picked after a reload', async ({ page, open }) => {
-  const { db } = await setUp(page)
-  await open('/settings#general')
-  const look = page.getByTestId('theme-settings')
-  await expect(look.getByRole('radio', { name: 'Teal' })).toHaveAttribute('aria-checked', 'true')
-  await look.getByRole('radio', { name: 'Blue' }).click()
-  await expect.poll(() => saves(db, `${PERSONAL}.theme.color`)).toEqual(['#7aa7ff'])
-  // The printer's own colour is left for everyone else.
-  expect(saves(db, 'uiSettings.theme.color')).toEqual([])
-
-  await page.reload()
-  await expect(page.getByTestId('theme-settings').getByRole('radio', { name: 'Blue' })).toHaveAttribute('aria-checked', 'true')
-})
-
-test('Light, Dark and Auto: Auto follows the device', async ({ page, open }) => {
-  const { db } = await setUp(page)
-  await open('/settings#general')
-  const mode = page.getByTestId('setting-theme-mode')
-  await expect(mode.getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true')
-  await mode.getByRole('radio', { name: 'Light' }).click()
-  await expect(appTheme(page)).toHaveClass(/theme--light/)
-  await expect.poll(() => saves(db, `${PERSONAL}.theme.mode`)).toEqual(['light'])
-
-  await page.emulateMedia({ colorScheme: 'dark' })
-  await mode.getByRole('radio', { name: 'Auto' }).click()
-  await expect(appTheme(page)).toHaveClass(/theme--dark/)
-  await page.emulateMedia({ colorScheme: 'light' })
-  await expect(appTheme(page)).toHaveClass(/theme--light/)
-
-  await mode.getByRole('radio', { name: 'Dark' }).click()
-  await expect(appTheme(page)).toHaveClass(/theme--dark/)
-  await page.emulateMedia({ colorScheme: 'light' })
-  await expect(appTheme(page)).toHaveClass(/theme--dark/)
 })
 
 test('E-STOP: off by default it stops at once; turned on (which asks), it asks first', async ({ page, open }) => {
@@ -284,15 +248,14 @@ test.describe('time zone from Control (KAN-3603)', () => {
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 
-  test('the groups are full width and a swatch is still one tap', async ({ page, open }) => {
-    const { db } = await setUp(page)
+  test('the groups are full width and the layout buttons are in reach', async ({ page, open }) => {
+    await setUp(page)
     await open(`${PRINTER}/settings#general`)
-    const look = page.getByTestId('theme-settings')
-    await expect(look).toBeVisible()
-    const box = await look.boundingBox()
+    const layout = page.getByTestId('layout-settings')
+    await expect(layout).toBeVisible()
+    const box = await layout.boundingBox()
     expect(box!.width).toBeGreaterThan(390 - 48)
-    await look.getByRole('radio', { name: 'Orange' }).click()
-    await expect.poll(() => saves(db, `${PERSONAL}.theme.color`)).toEqual(['#ffb36b'])
+    await expect(layout.getByTestId('layout-reset-overview')).toBeVisible()
     await expect(page.getByTestId('estop').first()).toBeVisible()
   })
 })

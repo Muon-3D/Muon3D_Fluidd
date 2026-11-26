@@ -124,6 +124,40 @@ for (const path of ['/', '/control']) {
       await expect(notice(page)).toBeVisible()
     })
 
+    test('a first confirm that fails and a second that works clears the plate: asked once, sent twice (KAN-7043)', async ({ page, open }) => {
+      const status = { ...PRESETS.idleHomed(), ...machine(false) }
+      const printer = await usePrinter(page, status, { components: MUON })
+      let posts = 0
+      await page.route(new RegExp(`:${MOCK_PORT}/server/aux/plate/clear`), async route => {
+        posts += 1
+        if (posts === 1) return route.fulfill({ status: 409, json: { error: 'not ready' } })
+        await route.fulfill({ status: 200, json: { cleared: true } })
+        printer.report({ ...status, ...machine(true) })
+      })
+      await open(path)
+      await ask(page)
+      await page.getByTestId('confirm-ok').click()
+      await expect(notice(page)).toHaveCount(0)
+      await expect(page.getByTestId('confirm')).toHaveCount(0)
+      expect(posts).toBe(2)
+      expect(printer.gcode).toEqual([])
+    })
+
+    test('a confirm that fails twice says so, leaves the plate unconfirmed, and the next try needs the person again (KAN-7043)', async ({ page, open }) => {
+      const { printer, posts } = await printerWith(page, false, { status: 500, json: { error: 'boom' } })
+      await open(path)
+      await ask(page)
+      await page.getByTestId('confirm-ok').click()
+      await expect(page.getByTestId('plate-clear-message')).toContainText("Couldn't confirm the plate is clear.")
+      // One confirm from the person, sent twice by Control, and nothing after that on its own.
+      expect(posts).toHaveLength(2)
+      await expect(notice(page)).toBeVisible()
+      await expect(page.getByTestId('confirm')).toHaveCount(0)
+      await ask(page)
+      expect(posts).toHaveLength(2)
+      expect(printer.gcode).toEqual([])
+    })
+
     test('plate_cleared true: no notice', async ({ page, open }) => {
       await printerWith(page, true)
       await open(path)

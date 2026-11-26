@@ -76,12 +76,29 @@ interface Http {
   post: (url: string, data?: unknown, config?: Record<string, unknown>) => Promise<{ status: number, data: unknown }>
 }
 
-/** Sends the confirm: one POST, no body. A network failure is `failed`. */
-export async function confirmPlateClear (managed: boolean, http: Http): Promise<PlateClearResult> {
+/** How long a failed confirm waits before the one retry, ms. */
+export const RETRY_AFTER_MS = 1200
+
+/** One POST, no body. A network failure is `failed`. */
+async function sendOnce (managed: boolean, http: Http): Promise<PlateClearResult> {
   try {
     const r = await http.post(plateClearPath(managed), undefined, { validateStatus: () => true })
     return plateClearOutcome(r.status, r.data)
   } catch {
     return { kind: 'failed', message: FAILED_MESSAGE }
   }
+}
+
+/**
+ * Sends the confirm. The person has already said the plate is clear, so a
+ * confirm that fails in transit or because the printer was not ready (it was
+ * still settling after a print that ended in error: KAN-7043) is sent once
+ * more after a moment, on their say-so: it is the same confirm, never a
+ * skipped one. An answer the printer meant (refused, unavailable) is final.
+ */
+export async function confirmPlateClear (managed: boolean, http: Http, retryAfterMs: number = RETRY_AFTER_MS): Promise<PlateClearResult> {
+  const first = await sendOnce(managed, http)
+  if (first.kind !== 'failed') return first
+  await new Promise(resolve => setTimeout(resolve, retryAfterMs))
+  return sendOnce(managed, http)
 }

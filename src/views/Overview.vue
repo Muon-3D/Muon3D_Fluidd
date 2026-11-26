@@ -295,11 +295,12 @@ import PlateClearBar from '@/components/ui/PlateClearBar.vue'
 import MachineFaultBar from '@/components/ui/MachineFaultBar.vue'
 import { overviewTiles, type OverviewTileDef } from '@/components/widgets/overview/registry'
 import {
-  addTile, defaultLayout, dropIndex, moveBy, moveTile, nudgeSize, removeTile, resizeTile, serverLayoutKey, sizeKeyOf,
+  addTile, defaultLayout, dropIndex, moveBy, moveTile, nudgeSize, removeTile, resizeTile, sizeKeyOf,
   type OverviewLayout, type PlacedTile, type Slot
 } from '@/services/overview/layout'
 import { reducedMotion, springCurve, springKeyframes } from '@/services/overview/spring'
 import { searchWidgets, treatAsMuon, widgetCategories, widgetsFor, type WidgetCategory } from '@/services/overview/widgets'
+import { layoutContext, savedLayouts, saveServerLayout } from '@/services/layout/layout-access'
 import { loadLayout, saveLayout, staleLayout, type LayoutContext } from '@/services/overview/layout-store'
 
 /** A tile as drawn: what the registry says it is, at the size the layout gives it. */
@@ -354,12 +355,12 @@ export default class Overview extends Mixins(DevGuardMixin) {
   }
 
   get context (): LayoutContext {
-    return { accountId: cloudState.account?.id ?? null, printerId: cloudState.activePrinterId ?? this.$route?.params?.printer ?? this.$store.state.config.apiUrl ?? null }
+    return layoutContext(this.$store, this.$route, 'overview')
   }
 
   /** What this printer's settings hold, which fills in after the page opens. */
   get savedLayouts (): Record<string, unknown> | undefined {
-    return this.$store.state.config.uiSettings?.overview?.layouts
+    return savedLayouts(this.$store, 'overview')
   }
 
   get current (): OverviewLayout { return this.draft ?? this.layout }
@@ -437,6 +438,8 @@ export default class Overview extends Mixins(DevGuardMixin) {
 
   created () {
     this.load()
+    // Printer settings > Layout > Edit opens the page already editing.
+    if (this.$route?.query?.edit && !this.editing) this.startEdit()
   }
 
   mounted () {
@@ -468,11 +471,7 @@ export default class Overview extends Mixins(DevGuardMixin) {
   /** Writes the new default as this person's own, so the notice goes and the layout stays. */
   keepNew () {
     const record = saveLayout(this.context, this.layout, localStorage)
-    this.$store.dispatch('config/saveByPath', {
-      path: `uiSettings.overview.layouts.${serverLayoutKey(this.context.accountId, this.context.printerId)}`,
-      value: record,
-      server: true
-    })
+    saveServerLayout(this.$store, 'overview', this.context, record)
     this.migrated = false
   }
 
@@ -495,13 +494,7 @@ export default class Overview extends Mixins(DevGuardMixin) {
     this.sheet = false
     if (JSON.stringify(draft) !== JSON.stringify(this.layout)) {
       const record = saveLayout(this.context, draft, localStorage)
-      this.$store.dispatch('config/saveByPath', {
-        // Only this person's key on this printer, never the whole map: another
-        // person's tab saving from an older copy must not wipe this layout.
-        path: `uiSettings.overview.layouts.${serverLayoutKey(this.context.accountId, this.context.printerId)}`,
-        value: record,
-        server: true
-      })
+      saveServerLayout(this.$store, 'overview', this.context, record)
       this.layout = { tiles: record.tiles, hidden: record.hidden }
     }
     this.draft = null

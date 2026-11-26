@@ -53,62 +53,60 @@
     </div>
 
     <h2 class="gs__gt">
-      Look
+      Layout
     </h2>
     <div
-      id="theme"
+      id="layout"
       class="gs__list"
-      data-tid="theme-settings"
+      data-tid="layout-settings"
     >
-      <div class="gs__row">
+      <div
+        v-for="item in layoutPages"
+        :key="item.page"
+        class="gs__row"
+      >
         <div class="gs__grow">
           <div class="gs__t">
-            Accent colour
+            {{ item.label }} layout
           </div>
-          <div class="gs__s">
-            Buttons, switches and highlights. Glass is the only look.
+          <div
+            class="gs__s"
+            :data-tid="`layout-note-${item.page}`"
+          >
+            {{ layoutNote(item.page) }}
           </div>
         </div>
-        <div
-          class="gs__swatches"
-          role="radiogroup"
-          aria-label="Accent colour"
-        >
+        <div class="gs__pair">
           <button
-            v-for="accent in accents"
-            :key="accent.color"
             type="button"
-            role="radio"
-            class="gs__swatch"
-            :class="{ 'gs__swatch--on': accentOn === accent.color }"
-            :style="{ background: accent.color }"
-            :aria-label="accent.name"
-            :aria-checked="accentOn === accent.color ? 'true' : 'false'"
-            :data-tid="`accent-${accent.name.toLowerCase()}`"
-            @click="setAccent(accent.color)"
-          />
+            class="cbtn cbtn--ghost"
+            :data-tid="`layout-edit-${item.page}`"
+            @click="editPage(item.page)"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            class="cbtn cbtn--ghost"
+            :disabled="layoutIsDefaultFor(item.page)"
+            :data-tid="`layout-reset-${item.page}`"
+            @click="resetPage(item.page)"
+          >
+            Reset
+          </button>
         </div>
-      </div>
-      <div class="gs__row">
-        <div class="gs__grow">
-          <div class="gs__t">
-            Light or dark
-          </div>
-          <div class="gs__s">
-            Auto follows this device.
-          </div>
-        </div>
-        <seg-picker
-          :options="modeOptions"
-          :value="mode"
-          label="Light or dark"
-          data-tid="setting-theme-mode"
-          @input="setMode"
-        />
       </div>
     </div>
+    <p
+      v-if="resetFailed"
+      class="gs__warn"
+      role="alert"
+      data-tid="layout-reset-failed"
+    >
+      Couldn't reset the layout. Try again.
+    </p>
     <p class="gs__gh">
-      These are yours on this printer: someone else on {{ printerName }} keeps their own.
+      Where the widgets sit is yours on {{ printerName }}: someone else keeps their own. Change it with Edit on the page.
     </p>
 
     <h2 class="gs__gt">
@@ -531,7 +529,8 @@ import type { VInput } from '@/types'
 import { SupportedLocales, DateFormats } from '@/globals'
 import type { OutputPin } from '@/store/printer/types'
 import type { Device } from '@/store/power/types'
-import type { PrintEtaCalculation, PrintProgressCalculation, ThemeConfig, ThemeMode } from '@/store/config/types'
+import type { TileDefault } from '@/services/overview/layout'
+import type { PrintEtaCalculation, PrintProgressCalculation } from '@/store/config/types'
 import { httpClientActions } from '@/api/httpClientActions'
 import consola from 'consola'
 import { printerNameParts } from '@/util/printer-name'
@@ -543,11 +542,12 @@ import ToggleSwitch from '@/components/control/ToggleSwitch.vue'
 import SegPicker, { type SegOption } from '@/components/control/SegPicker.vue'
 import M3Dialog from '@/components/ui/M3Dialog.vue'
 import { activeSlug } from '@/services/printer-pages'
+import { LAYOUT_PAGES, hasSavedLayout, layoutContext, layoutDefs, layoutIsDefault, layoutSavedAt, resetLayout, type LayoutPage } from '@/services/layout/layout-access'
 import { scopedPath } from '@/router/printerPagePaths'
 import { slugify } from '@/services/printer-pages/slug'
 import {
-  ACCENTS, accentFor, copyFileName, etaChoiceOf, etaStoredFor, modelLine, progressChoiceOf, progressStoredFor,
-  restoreChanges, serialFromIdentity, systemPrefersDark, themeModeOf,
+  copyFileName, etaChoiceOf, etaStoredFor, modelLine, progressChoiceOf, progressStoredFor,
+  restoreChanges, serialFromIdentity,
   type EtaChoice, type ProgressChoice, type RestoreChange
 } from '@/services/settings/general'
 
@@ -562,16 +562,9 @@ interface PendingRestore {
   components: { ToggleSwitch, SegPicker, M3Dialog }
 })
 export default class GeneralSettings extends Mixins(StateMixin) {
-  accents = ACCENTS
   serial: string | null = null
   restore: PendingRestore | null = null
   restoring = false
-
-  modeOptions: SegOption[] = [
-    { value: 'dark', label: 'Dark' },
-    { value: 'light', label: 'Light' },
-    { value: 'auto', label: 'Auto' }
-  ]
 
   timeOptions: SegOption[] = [
     { value: 'hours24', label: '24-hour' },
@@ -665,10 +658,6 @@ export default class GeneralSettings extends Mixins(StateMixin) {
     return this.$store.state.config.uiSettings.general
   }
 
-  get theme (): ThemeConfig {
-    return this.$store.state.config.uiSettings.theme
-  }
-
   savePersonal (path: string, value: unknown) {
     return this.$store.dispatch('config/savePersonal', { path, value })
   }
@@ -725,21 +714,56 @@ export default class GeneralSettings extends Mixins(StateMixin) {
     return scopedPath('/settings', activeSlug())
   }
 
-  get accentOn (): string | null {
-    return accentFor(this.theme.color)?.color ?? null
+  get layoutPages () {
+    return LAYOUT_PAGES
   }
 
-  setAccent (color: string) {
-    this.savePersonal('theme.color', color)
+  layoutContextFor (page: LayoutPage) {
+    return layoutContext(this.$store, this.$route, page)
   }
 
-  get mode (): ThemeMode {
-    return themeModeOf(this.theme)
+  layoutDefsByPage: Partial<Record<LayoutPage, TileDefault[]>> = {}
+
+  created () {
+    for (const { page } of LAYOUT_PAGES) {
+      layoutDefs(page).then(defs => { this.$set(this.layoutDefsByPage, page, defs) }).catch(() => undefined)
+    }
   }
 
-  async setMode (mode: ThemeMode) {
-    await this.savePersonal('theme.mode', mode)
-    await this.savePersonal('theme.isDark', mode === 'auto' ? systemPrefersDark() : mode === 'dark')
+  /** Nothing of this person's to reset: no saved copy, or it is the default arrangement. */
+  layoutIsDefaultFor (page: LayoutPage): boolean {
+    const context = this.layoutContextFor(page)
+    if (!hasSavedLayout(this.$store, context, page)) return true
+    const defs = this.layoutDefsByPage[page]
+    return defs ? layoutIsDefault(this.$store, context, page, defs) : false
+  }
+
+  layoutNote (page: LayoutPage): string {
+    if (this.layoutIsDefaultFor(page)) return 'Default'
+    const at = layoutSavedAt(this.$store, this.layoutContextFor(page), page)
+    return at ? `Yours · changed ${new Date(at).toLocaleString()}` : 'Yours'
+  }
+
+  editPage (page: LayoutPage) {
+    this.$router.push({ path: scopedPath(page === 'control' ? '/control' : '/', activeSlug()), query: { edit: '1' } })
+  }
+
+  resetFailed = false
+
+  async resetPage (page: LayoutPage) {
+    const label = LAYOUT_PAGES.find(p => p.page === page)?.label ?? page
+    const sure = await this.$confirm(
+      `Reset the ${label} layout on ${this.printerName}? Your widgets go back to where they started.`,
+      { title: `Reset the ${label} layout`, buttonTrueText: 'Reset', buttonFalseText: 'Cancel' }
+    )
+    if (!sure) return
+    try {
+      const defs = this.layoutDefsByPage[page] ?? await layoutDefs(page)
+      await resetLayout(this.$store, page, this.layoutContextFor(page), defs)
+      this.resetFailed = false
+    } catch {
+      this.resetFailed = true
+    }
   }
 
   get locale () {
@@ -1060,28 +1084,16 @@ export default class GeneralSettings extends Mixins(StateMixin) {
     width: 300px;
   }
 
-  .gs__swatches {
-    display: inline-flex;
+  .gs__pair {
+    display: flex;
     flex: none;
-    gap: 10px;
-  }
+    gap: 8px;
 
-  .gs__swatch {
-    width: 28px;
-    height: 28px;
-    border: 0;
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+    @media (max-width: 599px) {
+      width: 100%;
 
-    &:focus-visible {
-      outline: 2px solid var(--m3d-text);
-      outline-offset: 2px;
+      .cbtn { flex: 1 1 0; min-height: 40px; }
     }
-  }
-
-  .gs__swatch--on {
-    box-shadow: 0 0 0 2px var(--m3d-surface), 0 0 0 4px var(--m3d-text);
   }
 
   .gs__gh {
