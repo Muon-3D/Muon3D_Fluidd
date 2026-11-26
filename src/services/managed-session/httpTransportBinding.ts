@@ -148,7 +148,8 @@ async function withDownloadProgress (
 ): Promise<Response> {
   const report = config.onDownloadProgress
   if (!report || !response.body || config.responseType === 'stream') return response
-  if (response.status < 200 || response.status > 599) return response
+  // No body by definition: a Response cannot be rebuilt with one.
+  if (response.status < 200 || response.status > 599 || [204, 205, 304].includes(response.status)) return response
   const total = Number(response.headers.get('content-length')) || undefined
   const reader = response.body.getReader()
   const chunks: Uint8Array[] = []
