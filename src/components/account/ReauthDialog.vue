@@ -6,23 +6,48 @@
     :tone="danger ? 'danger' : ''"
     :persistent="busy"
     max-width="440"
+    content-class="m3-dlg-frame--sheet"
     data-tid="reauth-dialog"
     @close="cancel"
   >
     <p class="m3-dlg__text">
       {{ why }}
     </p>
+    <dl
+      v-if="rows.length"
+      class="m3-dlg__panel m3-dlg__rows"
+      data-tid="reauth-rows"
+    >
+      <div
+        v-for="row in rows"
+        :key="row.label"
+      >
+        <dt>{{ row.label }}</dt>
+        <dd :class="{ 'is-mono': row.mono }">
+          {{ row.value }}
+        </dd>
+      </div>
+    </dl>
     <button
       v-if="hasPasskey"
       type="button"
       class="cbtn cbtn--primary"
       :disabled="busy"
+      :aria-busy="passkeyBusy ? 'true' : undefined"
       data-tid="reauth-passkey"
       @click="$emit('passkey')"
     >
-      Confirm with passkey
+      <frame-icon name="key" />
+      {{ passkeyBusy ? 'Waiting for your passkey…' : 'Confirm with passkey' }}
     </button>
-    <template v-if="hasPassword">
+    <p
+      v-if="note"
+      class="m3-dlg__note"
+      data-tid="reauth-note"
+    >
+      {{ note }}
+    </p>
+    <template v-if="hasPassword && !passkeyOnly">
       <label class="m3-field">
         <span class="m3-field__label">Password</span>
         <span class="m3-field__box">
@@ -58,7 +83,7 @@
       </label>
     </template>
     <p
-      v-else-if="!hasPasskey"
+      v-else-if="!hasPasskey && !passkeyOnly"
       class="m3-dlg__text"
     >
       This account has no password. Sign out and sign in again, then do this within ten minutes.
@@ -81,7 +106,7 @@
         Cancel
       </button>
       <button
-        v-if="hasPassword"
+        v-if="hasPassword && !passkeyOnly"
         type="button"
         class="cbtn"
         :class="danger ? 'cbtn--danger' : 'cbtn--primary'"
@@ -98,6 +123,7 @@
 <script lang="ts">
 import { Component, Prop, Vue, Watch } from 'vue-property-decorator'
 import M3Dialog from '@/components/ui/M3Dialog.vue'
+import FrameIcon from '@/components/ui/FrameIcon.vue'
 import type { Reauth } from '@/services/account/api'
 
 /**
@@ -107,7 +133,7 @@ import type { Reauth } from '@/services/account/api'
  * (`403 reauth_required`). `submit` hands the answer to the parent, which
  * tries again and shows `error` if the console still refuses.
  */
-@Component({ components: { M3Dialog } })
+@Component({ components: { M3Dialog, FrameIcon } })
 export default class ReauthDialog extends Vue {
   @Prop({ type: Boolean, required: true })
   readonly value!: boolean
@@ -135,6 +161,22 @@ export default class ReauthDialog extends Vue {
 
   @Prop({ type: Boolean, default: false })
   readonly busy!: boolean
+
+  /** The browser's passkey sheet is up. */
+  @Prop({ type: Boolean, default: false })
+  readonly passkeyBusy!: boolean
+
+  /** What is being confirmed, shown exactly as sent (a Fleet request: "Request", "Role", "Target", "Reason"). */
+  @Prop({ type: Array, default: () => [] })
+  readonly rows!: Array<{ label: string, value: string, mono?: boolean }>
+
+  /** A small muted line, e.g. a time limit. */
+  @Prop({ type: String, default: '' })
+  readonly note!: string
+
+  /** Passkey only: the password and code fields are never drawn (admin, Fleet). */
+  @Prop({ type: Boolean, default: false })
+  readonly passkeyOnly!: boolean
 
   @Prop({ type: String, default: '' })
   readonly error!: string

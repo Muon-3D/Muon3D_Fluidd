@@ -23,6 +23,15 @@
       >
         Sign out everywhere else…
       </button>
+      <button
+        type="button"
+        class="lib-btn lib-btn--dng"
+        :disabled="busy"
+        data-tid="sessions-everywhere"
+        @click="signOutAll"
+      >
+        Sign out everywhere
+      </button>
     </div>
 
     <!-- 1 · Signed in to your account. -->
@@ -166,7 +175,7 @@ import { accountApi } from '@/services/account/api'
 import { AccountError, isMissing } from '@/services/account/client'
 import { accountState, describe, loadSessions } from '@/services/account/state'
 import { agoText, devicesFrom, listText, type AccountSectionId, type Device } from '@/services/account/model'
-import { beginSignOut } from '@/services/account/sign-out'
+import { beginSignOut, signOutEverywhere } from '@/services/account/sign-out'
 import AcctMore from './AcctMore.vue'
 
 /** Signed in for less than this, and not this browser: "New". */
@@ -243,6 +252,25 @@ export default class AccountSessions extends Vue {
     } finally {
       this.busy = false
       this.refresh()
+    }
+  }
+
+  /** Every device, then this browser: the whole MUON3D account, on every surface (KAN-6114). */
+  async signOutAll () {
+    const sure = await this.$confirm('This signs your MUON3D account out of every browser, the phone app and every device. Your printers keep printing.', {
+      title: 'Sign out everywhere?',
+      buttonTrueText: 'Sign out everywhere',
+      danger: true
+    })
+    if (!sure) return
+    this.busy = true
+    this.error = ''
+    this.message = ''
+    try {
+      await signOutEverywhere(this.$router)
+    } catch (error) {
+      this.error = describe(error)
+      this.busy = false
     }
   }
 

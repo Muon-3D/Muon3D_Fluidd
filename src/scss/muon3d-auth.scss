@@ -1,0 +1,366 @@
+/*
+ * The MUON3D sign-in card and the step-up sheet (KAN-6114, spec 4.1-4.7).
+ * Plain CSS over the --m3d-* tokens, no Vuetify, so another app can copy
+ * the compiled file. One card, in one place: the console's /#/sign-in.
+ */
+
+.auth-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--m3d-bg);
+  color: var(--m3d-text);
+}
+
+.auth-brand {
+  margin: 0 0 20px;
+  font-family: var(--m3d-font-display, 'Krona One', sans-serif);
+  font-size: 0.9375rem;
+  letter-spacing: 0.22em;
+  color: var(--m3d-text);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  box-sizing: border-box;
+  padding: 32px;
+  border: 1px solid var(--m3d-border);
+  border-radius: 16px;
+  background: var(--m3d-surface);
+  color: var(--m3d-text);
+}
+
+.auth-title {
+  margin: 0 0 6px;
+  font-family: var(--m3d-font-display, 'Krona One', sans-serif);
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 400;
+}
+
+.auth-sub {
+  margin: 0 0 24px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--m3d-text-muted);
+}
+
+.auth-sub strong {
+  color: var(--m3d-text);
+  font-weight: 600;
+}
+
+.auth-alert {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--m3d-surface-2);
+  box-shadow: inset 0 0 0 1px var(--m3d-border);
+}
+
+.auth-alert strong {
+  display: block;
+  font-weight: 600;
+}
+
+.auth-alert--error {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--m3d-danger) 55%, transparent);
+}
+
+.auth-alert--warning {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--m3d-warning, var(--m3d-danger)) 55%, transparent);
+}
+
+.auth-alert__extra {
+  color: var(--m3d-text-muted);
+}
+
+.auth-muted {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--m3d-text-muted);
+}
+
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  font-size: 12px;
+  color: var(--m3d-text-subtle);
+}
+
+.auth-or::before,
+.auth-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--m3d-border);
+}
+
+.auth-foot {
+  margin: 22px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--m3d-text-muted);
+}
+
+.auth-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--m3d-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-link:focus-visible,
+.auth-method .cbtn:focus-visible,
+.auth-providers button:focus-visible {
+  outline: 2px solid var(--m3d-accent);
+  outline-offset: 1px;
+}
+
+/* One block per method; the badge straddles its top edge. */
+.auth-method {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-method + .auth-method {
+  margin-top: 0;
+}
+
+.auth-method .cbtn,
+.auth-method .cbtn--lg {
+  width: 100%;
+}
+
+.cbtn--lg {
+  height: 44px;
+}
+
+.auth-badge {
+  position: absolute;
+  top: -9px;
+  right: 14px;
+  z-index: 1;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--m3d-text);
+  background: color-mix(in srgb, var(--m3d-accent) 14%, var(--m3d-surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--m3d-accent) 45%, transparent);
+  pointer-events: none;
+}
+
+.auth-method--email .auth-badge {
+  top: -1px;
+}
+
+.auth-field-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--m3d-danger);
+}
+
+.auth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.auth-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.auth-pw {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-pw input {
+  flex: 1 1 0;
+}
+
+/* Greyed providers: in the tab order, announced as dimmed, never acting. */
+.auth-providers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.auth-providers button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--m3d-border);
+  color: var(--m3d-text-subtle);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: not-allowed;
+}
+
+.auth-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--m3d-text);
+  color: var(--m3d-surface);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.auth-providers button:hover .auth-tip,
+.auth-providers button:focus-visible .auth-tip,
+.auth-providers button.is-tipped .auth-tip {
+  visibility: visible;
+}
+
+.auth-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 0 16px;
+  border-radius: 50%;
+  color: var(--m3d-accent);
+  background: color-mix(in srgb, var(--m3d-accent) 14%, var(--m3d-surface));
+}
+
+.auth-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+@media (max-width: 480px) {
+  .auth-page {
+    padding: 24px 16px;
+  }
+
+  .auth-brand {
+    margin-bottom: 16px;
+  }
+
+  .auth-card {
+    padding: 24px 20px;
+  }
+
+  .auth-card .m3-field__box input {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 340px) {
+  .auth-providers {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Step-up sheet: a bottom sheet on phones (spec 4.7). */
+.m3-dlg__rows {
+  margin: 0;
+}
+
+.m3-dlg__rows > div {
+  display: flex;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.m3-dlg__rows > div + div {
+  border-top: 1px solid var(--m3d-border);
+}
+
+.m3-dlg__rows dt {
+  flex: 0 0 64px;
+  color: var(--m3d-text-muted);
+}
+
+.m3-dlg__rows dd {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  color: var(--m3d-text);
+  overflow-wrap: anywhere;
+}
+
+.m3-dlg__rows dd.is-mono {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px;
+}
+
+@media (max-width: 480px) {
+  .v-dialog.m3-dlg-frame--sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: 100% !important;
+    margin: 0;
+    max-height: 90dvh;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .m3-dlg-frame--sheet .m3-dlg {
+    border-radius: 16px 16px 0 0;
+    padding-bottom: calc(22px + env(safe-area-inset-bottom));
+  }
+
+  .m3-dlg-frame--sheet .m3-dlg::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 0 auto 10px;
+    border-radius: 2px;
+    background: var(--m3d-border-strong);
+  }
+
+  .m3-dlg-frame--sheet .m3-dlg__body {
+    overflow-y: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m3-dlg-frame--sheet {
+    transition: none !important;
+    animation: none !important;
+  }
+}
