@@ -9,6 +9,7 @@
  *
  *   test('…', async ({ page, models, open }) => { await open('/library?view=discover') })
  */
+import { readFileSync } from 'node:fs'
 import { test as base, expect, type Page } from '@playwright/test'
 import { modelService, serveModels, type ModelServiceState } from './fakes/models'
 import { consoleState, serveConsole, signIn, useConsole, type ConsoleState } from './fakes/console'
@@ -79,9 +80,11 @@ export const test = base.extend<Options & Fixtures>({
     await use()
   }, { auto: true }],
   printerAddress: [async ({ page, printerHosted }, use) => {
+    // Read from disk, not route.fetch()ed from vite: a fetch that vite resets under load (ECONNRESET, KAN-7298) throws out
+    // of the handler, which leaves the request unanswered and page.goto waiting until the test is cut off.
+    // vite serves public/config.json as is, so the file is what the page would have got.
     await page.route('**/config.json', async route => {
-      const response = await route.fetch()
-      const config = await response.json()
+      const config = JSON.parse(readFileSync(new URL('../public/config.json', import.meta.url), 'utf8'))
       config.blacklist = [...(config.blacklist ?? []), 'localhost', '127.0.0.1']
       config.endpoints = [`http://localhost:${MOCK_PORT}`]
       // Only the printer-hosted Library tests change how Control is served;
@@ -91,7 +94,7 @@ export const test = base.extend<Options & Fixtures>({
         config.hosted = false
         config.blacklist = config.blacklist.filter((host: string) => host !== 'localhost')
       }
-      await route.fulfill({ response, json: config })
+      await route.fulfill({ json: config })
     })
     await use()
   }, { auto: true }],
