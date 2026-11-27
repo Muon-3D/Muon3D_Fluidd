@@ -146,7 +146,7 @@ export default class JogTile extends Mixins(OverviewMixin) {
     return JOG_STEPS.map(v => ({ value: v, label: this.size === 'S' ? String(v) : `${v} mm` }))
   }
 
-  get canMoveXY (): boolean { return this.controlReady && !this.busy && this.isHomed('XY') }
+  get canMoveXY (): boolean { return this.controlReady && !this.busy && this.isHomed('XY') && !this.xyMoveReason }
   get canMoveZ (): boolean { return this.controlReady && !this.busy && this.isHomed('Z') }
 
   /** Plate up / Plate down on a Muon printer (it prints upside down); Z+ and Z− on others. */

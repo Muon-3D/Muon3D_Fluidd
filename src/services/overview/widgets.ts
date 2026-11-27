@@ -40,11 +40,11 @@ export const widgetMeta: WidgetMeta[] = [
   { id: 'filament', title: 'Filament', category: 'Print', blurb: 'The spool in the printer, by type and colour.', sizes: [S(), M(5), L(5, 2)], size: 'M', defaultOn: true },
   // Jack's own default (KAN-2029): the printer, job and filament on top; then Print mode and Position
   // side by side, Temperatures all the way across, then the Trackpad, Jog, and Quick commands under Jog.
-  // I-542 mock: one row of their own widgets under the printer view: Hotend, Bed, Position, Print mode, Motors off (2+2+3 columns over the Trackpad, 5 over Jog and Lighting: everything splits at column 7).
-  { id: 'hotend', title: 'Hotend', category: 'Temperature', blurb: 'Hotend temperature and target.', sizes: [S(1, 2), M(6)], size: 'S', defaultOn: true },
-  { id: 'bed', title: 'Bed', category: 'Temperature', blurb: 'Bed temperature and target.', sizes: [S(1, 2), M(6)], size: 'S', defaultOn: true },
+  // I-542 mock: one row of their own widgets under the printer view: Hotend, Bed, Position and Print mode, KAN-5979: all four the same width (3 columns each).
+  { id: 'hotend', title: 'Hotend', category: 'Temperature', blurb: 'Hotend temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: true },
+  { id: 'bed', title: 'Bed', category: 'Temperature', blurb: 'Bed temperature and target.', sizes: [S(), M(6)], size: 'S', defaultOn: true },
   { id: 'position', title: 'Position', category: 'Motion', blurb: 'Where the head is, and whether it is homed.', sizes: [S(), M(4), L(8)], size: 'S', defaultOn: true },
-  { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(1, 5), M(6)], size: 'S', defaultOn: true, legacy: ['speed'] },
+  { id: 'mode', title: 'Print mode', category: 'Print', blurb: 'Quiet, Normal or Turbo in one tap.', sizes: [S(), M(6)], size: 'S', defaultOn: true, legacy: ['speed'] },
   { id: 'graph', title: 'Temperatures', category: 'Temperature', blurb: 'The temperature graph. Hotend, bed and chamber show to begin with.', sizes: [S(), M(6), L(12)], size: 'L', defaultOn: true },
   // Jack's picks B (KAN-2077/2119): the Trackpad is a narrow, tall block on the left (4 columns, 3 rows); Jog is
   // the wide variant on its right (8 columns, 2 rows), and Quick commands sits directly under Jog, out to the right

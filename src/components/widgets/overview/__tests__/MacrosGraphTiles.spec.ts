@@ -55,7 +55,7 @@ describe('MacrosTile', () => {
     Vue.set(store.getters, 'printer/getAvailableCommands', { BED_MESH_CALIBRATE: {}, LOAD_FILAMENT: {}, LED_MODE: {} })
     const w = mount(MacrosTile, tileMount(store, { propsData: { size: 'L' }, stubs: { ...tileMount(store).stubs, 'control-macros': true } }))
     await w.vm.$nextTick()
-    expect(w.find('[data-macro="home"]').attributes('disabled')).toBeDefined()
+    expect(w.find('[data-macro="home"]').exists()).toBe(false) // KAN-5980: Home all is the Trackpad's alone
     expect(w.find('[data-macro="mesh"]').attributes('disabled')).toBeDefined()
     expect(w.find('[data-macro="load"]').attributes('disabled')).toBeUndefined()
     expect(w.find('[data-macro="lights-off"]').attributes('disabled')).toBeUndefined()

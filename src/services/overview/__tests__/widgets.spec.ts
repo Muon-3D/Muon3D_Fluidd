@@ -21,17 +21,15 @@ describe('the default layout', () => {
 
   it('has one row of their own widgets under it: Hotend, Bed, Position, Print mode, then Temperatures across (I-542)', () => {
     expect(ids.slice(3, 8)).toEqual(['hotend', 'bed', 'position', 'mode', 'graph'])
-    expect(at('hotend')).toMatchObject({ span: 2, rows: 1 })
-    expect(at('bed')).toMatchObject({ span: 2, rows: 1 })
-    expect(at('position')).toMatchObject({ span: 3, rows: 1 })
-    expect(at('mode')).toMatchObject({ span: 5, rows: 1 })
+    for (const id of ['hotend', 'bed', 'position', 'mode']) expect(at(id)).toMatchObject({ span: 3, rows: 1 })
     expect(at('graph')).toMatchObject({ span: 12, rows: 1 })
     expect(ids).not.toContain('motors')
   })
 
-  it('lines the row up with the columns below: everything splits at column 7 (I-542)', () => {
-    expect(at('hotend').span + at('bed').span + at('position').span).toBe(at('trackpad').span)
-    expect(at('mode').span).toBe(at('jog').span)
+  it('makes the four panels the same width and fills the row (KAN-5979); the Trackpad and Jog still split at column 7', () => {
+    const w = ['hotend', 'bed', 'position', 'mode'].map(id => at(id).span)
+    expect(new Set(w).size).toBe(1)
+    expect(w.reduce((a, b) => a + b, 0)).toBe(12)
     expect(at('trackpad').span + at('jog').span).toBe(12)
   })
 
@@ -193,7 +191,7 @@ describe('migrating a saved layout', () => {
   it('maps the old Speed / flow tile to Print mode, in the same place', () => {
     const out = readLayout(saved([{ id: 'job', span: 5, rows: 1 }, { id: 'speed', span: 3, rows: 1 }, { id: 'graph', span: 12, rows: 1 }]), defs)!
     expect(out.tiles.map(t => t.id)).toEqual(['job', 'mode', 'graph'])
-    expect(out.tiles[1]).toEqual({ id: 'mode', span: 5, rows: 1 })
+    expect(out.tiles[1]).toEqual({ id: 'mode', span: 3, rows: 1 })
     expect(out.hidden).not.toContain('speed')
     expect(out.hidden).not.toContain('mode')
   })
