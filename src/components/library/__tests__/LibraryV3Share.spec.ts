@@ -195,3 +195,124 @@ describe('Library v3 Share a print', () => {
     expect(tid(w, 'library-share-needs').text()).toBe('It needs a saved version: save it from Slice.')
   })
 })
+
+describe('Library v3 Share with people you choose, and by link', () => {
+  const shareMock = (over: Record<string, unknown> = {}) => vi.fn(async (body: { audience: string }) => ({ id: 'sh1', state: 'active', audience: body.audience, title: 'Print a', version: 3, ...over }))
+
+  async function sharePage (share: Publish, props: Record<string, unknown> = { itemId: 'a' }) {
+    profile.mockResolvedValue(ready)
+    const publish = vi.fn()
+    setLibraryClient({ publish, share, item: vi.fn(async (id: string) => item(id)) } as never)
+    const w = mount(LibrarySharePage, { propsData: { items: [item('a'), item('b', { setups: [] })], ...props }, stubs: { 'frame-icon': true, 'router-link': { template: '<a><slot /></a>' } } })
+    wrappers.push(w)
+    await flush()
+    return { w, publish }
+  }
+
+  it('shows all four audiences, Only me and Everyone included', async () => {
+    const { w } = await sharePage(shareMock())
+    for (const id of ['private', 'direct', 'link', 'public']) expect(tid(w, `library-share-audience-${id}`).exists()).toBe(true)
+    expect(tid(w, 'library-share-audience-direct').text()).toBe('People you choose')
+    expect(tid(w, 'library-share-audience-link').text()).toBe('Anyone with the link')
+  })
+
+  it('says the G-code is not shared and a 3MF keeps its metadata', async () => {
+    const { w } = await sharePage(shareMock())
+    await tid(w, 'library-share-audience-link').trigger('click')
+    expect(tid(w, 'library-share-what').text()).toContain('G-code is not shared')
+    expect(tid(w, 'library-share-what').text()).toContain('metadata')
+    expect(tid(w, 'library-share-what').text()).toContain('7 days')
+  })
+
+  it('sends audience direct with the recipient handle and nothing else (no publication, no email)', async () => {
+    const share = shareMock()
+    const { w, publish } = await sharePage(share)
+    await tid(w, 'library-share-audience-direct').trigger('click')
+    expect(tid(w, 'library-share-publish').attributes('disabled')).toBe('disabled')
+    expect(tid(w, 'library-share-needs').text()).toBe('Type at least one handle.')
+    await tid(w, 'library-share-handles').setValue('@Maker.One')
+    await tid(w, 'library-share-publish').trigger('click')
+    await flush()
+    expect(share).toHaveBeenCalledTimes(1)
+    expect(share).toHaveBeenCalledWith({ item: 'a', version: 3, title: 'Print a', audience: 'direct', recipient: 'maker.one' })
+    expect(publish).not.toHaveBeenCalled()
+    expect(tid(w, 'library-share-done').text()).toContain('@maker.one')
+  })
+
+  it('shares with several handles, one share each, and refuses an email as a handle', async () => {
+    const share = shareMock()
+    const { w } = await sharePage(share)
+    await tid(w, 'library-share-audience-direct').trigger('click')
+    await tid(w, 'library-share-handles').setValue('me@example.com')
+    expect(tid(w, 'library-share-needs').text()).toContain('a handle')
+    expect(tid(w, 'library-share-publish').attributes('disabled')).toBe('disabled')
+    await tid(w, 'library-share-handles').setValue('anna, @ben  anna')
+    await tid(w, 'library-share-publish').trigger('click')
+    await flush()
+    expect(share.mock.calls.map((c: unknown[]) => (c[0] as { recipient: string }).recipient)).toEqual(['anna', 'ben'])
+  })
+
+  it('link audience shows the key once as a fragment URL, and Copy copies it', async () => {
+    const share = shareMock({ key: 'd9a1c2b3000040008000123456789abc' })
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const { w } = await sharePage(share)
+    await tid(w, 'library-share-audience-link').trigger('click')
+    await tid(w, 'library-share-publish').trigger('click')
+    await flush()
+    expect(share).toHaveBeenCalledWith({ item: 'a', version: 3, title: 'Print a', audience: 'link' })
+    const url = (tid(w, 'library-share-link-url').element as HTMLInputElement).value
+    expect(url).toBe('https://library.muon3d.com/p/sh1#d9a1c2b3000040008000123456789abc')
+    const parsed = new URL(url)
+    expect(parsed.search).toBe('')
+    expect(parsed.pathname).not.toContain('d9a1c2b3')
+    expect(tid(w, 'library-share-link-once').text()).toContain('shown once')
+    await tid(w, 'library-share-link-copy').trigger('click')
+    await flush()
+    expect(writeText).toHaveBeenCalledWith(url)
+    expect(tid(w, 'library-share-link-done').text()).toContain('Link copied')
+    await tid(w, 'library-share-link-done-back').trigger('click')
+    expect(w.emitted('back')).toHaveLength(1)
+  })
+
+  it('shows the server refusal in plain words: unknown handle, blocked, rate limit', async () => {
+    const refuse = (code: string, message: string, status: number) => vi.fn(async () => { throw new LibraryError(code, message, status) })
+    const cases: Array<[Publish, string]> = [
+      [refuse('recipient_not_found', 'no such recipient', 404), 'No one has the handle @ghost'],
+      [refuse('blocked', 'blocked', 403), '@ghost can\'t be shared with'],
+      [refuse('rate_limited', 'slow down', 429), 'Wait a while']
+    ]
+    for (const [share, text] of cases) {
+      const { w } = await sharePage(share)
+      await tid(w, 'library-share-audience-direct').trigger('click')
+      await tid(w, 'library-share-handles').setValue('ghost')
+      await tid(w, 'library-share-publish').trigger('click')
+      await flush()
+      expect(tid(w, 'library-share-error').text()).toContain(text)
+      expect(tid(w, 'library-share-done').exists()).toBe(false)
+    }
+  })
+
+  it('a link refusal is shown and no link appears', async () => {
+    const { w } = await sharePage(vi.fn(async () => { throw new LibraryError('share_limit', 'You have 100 shares open.', 429) }))
+    await tid(w, 'library-share-audience-link').trigger('click')
+    await tid(w, 'library-share-publish').trigger('click')
+    await flush()
+    expect(tid(w, 'library-share-error').exists()).toBe(true)
+    expect(tid(w, 'library-share-link-done').exists()).toBe(false)
+  })
+
+  it('Everyone still publishes for review and Only me still sends nothing', async () => {
+    const share = shareMock()
+    const { w, publish } = await sharePage(share)
+    await tid(w, 'library-share-audience-private').trigger('click')
+    await tid(w, 'library-share-publish').trigger('click')
+    expect(share).not.toHaveBeenCalled()
+    expect(publish).not.toHaveBeenCalled()
+    expect(w.emitted('back')).toHaveLength(1)
+    expect(tid(w, 'library-share-licence').exists()).toBe(false)
+    await tid(w, 'library-share-audience-public').trigger('click')
+    expect(tid(w, 'library-share-licence').exists()).toBe(true)
+    expect(tid(w, 'library-share-audience-line').text()).toContain('reviewed first')
+  })
+})

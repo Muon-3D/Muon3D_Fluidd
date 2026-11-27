@@ -20,7 +20,7 @@
         </p>
       </div>
       <div
-        v-if="!done && !setup"
+        v-if="!done && !setup && !linkShare"
         class="mshare__go"
       >
         <button
@@ -31,7 +31,7 @@
           data-tid="library-share-publish"
           @click="publish"
         >
-          {{ busy ? 'Publishing…' : audience === 'public' ? 'Publish' : 'Keep it in Yours' }}
+          {{ busy ? (audience === 'public' ? 'Publishing…' : 'Sharing…') : audience === 'public' ? 'Publish' : audience === 'private' ? 'Keep it in Yours' : 'Share' }}
         </button>
         <span
           v-if="needs"
@@ -42,15 +42,79 @@
       </div>
     </header>
 
+    <!-- A link was made: its key is shown this once. -->
+    <section
+      v-if="linkShare"
+      class="lib-empty lib-surface mshare__state"
+      role="status"
+      data-tid="library-share-link-done"
+    >
+      <h2>Your link</h2>
+      <input
+        type="text"
+        readonly
+        class="mshare__link"
+        aria-label="Link"
+        :value="linkShare.url"
+        data-tid="library-share-link-url"
+        @focus="$event.target.select()"
+      >
+      <p
+        class="mshare__warn"
+        data-tid="library-share-link-once"
+      >
+        This link is shown once. We don't keep it, so copy it now. Anyone who has it can open this print for 7 days, until you stop sharing. If you lose it, make a new link.
+      </p>
+      <p
+        v-if="linkNote"
+        class="mshare__muted"
+        role="status"
+      >
+        {{ linkNote }}
+      </p>
+      <div class="lib-empty__actions">
+        <button
+          type="button"
+          class="lib-btn lib-btn--pri"
+          data-tid="library-share-link-copy"
+          @click="copyLink"
+        >
+          Copy link
+        </button>
+        <button
+          type="button"
+          class="lib-btn"
+          data-tid="library-share-link-done-back"
+          @click="$emit('back')"
+        >
+          Done
+        </button>
+      </div>
+    </section>
+
     <!-- Sent: what happens next. -->
     <section
-      v-if="done"
+      v-else-if="done"
       class="lib-empty lib-surface mshare__state"
       role="status"
       data-tid="library-share-done"
     >
-      <h2>Sent for review</h2>
-      <p>{{ done.title }} shows in Discover once it has been reviewed, usually within a day. You'll find it in Yours under Shared by you.</p>
+      <template v-if="done.direct">
+        <h2>Shared</h2>
+        <p>{{ done.title }} is shared with {{ done.direct.map(h => '@' + h).join(', ') }} for 7 days. You can stop sharing from Yours.</p>
+        <p
+          v-if="done.failed && done.failed.length"
+          class="mshare__error"
+          role="alert"
+          data-tid="library-share-partial"
+        >
+          {{ done.failed.join(' ') }}
+        </p>
+      </template>
+      <template v-else>
+        <h2>Sent for review</h2>
+        <p>{{ done.title }} shows in Discover once it has been reviewed, usually within a day. You'll find it in Yours under Shared by you.</p>
+      </template>
       <div class="lib-empty__actions">
         <button
           type="button"
@@ -267,6 +331,7 @@
 
       <!-- Licence and credit: one choice, and the rights. -->
       <section
+        v-if="audience === 'public'"
         class="mshare__tile"
         aria-label="Licence and credit"
         data-tid="library-share-licence"
@@ -357,8 +422,34 @@
             {{ a.label }}
           </button>
         </div>
-        <p class="mshare__muted">
-          {{ audience === 'public' ? 'Everyone: it is reviewed first, then shows in Discover, usually within a day.' : 'Only you: it stays in Yours, and nobody else sees it.' }}
+        <p
+          class="mshare__muted"
+          data-tid="library-share-audience-line"
+        >
+          {{ audienceLine }}
+        </p>
+        <label
+          v-if="audience === 'direct'"
+          class="mshare__field"
+        >
+          <span>Handles of the people to share with</span>
+          <input
+            v-model="handles"
+            type="text"
+            placeholder="@maker, @another"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            data-tid="library-share-handles"
+          >
+          <span class="mshare__muted">Exact public handles, separated by commas. Not email addresses.</span>
+        </label>
+        <p
+          v-if="audience === 'direct' || audience === 'link'"
+          class="mshare__muted"
+          data-tid="library-share-what"
+        >
+          Shares the project and its picture only. The G-code is not shared. A 3MF keeps its own settings and metadata inside the file, so whoever opens it can see them. It stops working after 7 days, or when you stop sharing.
         </p>
       </section>
     </div>
@@ -381,6 +472,7 @@ import { libraryClient, libraryState } from '@/services/library/store'
 import { loadThumbnail, thumbnailFor } from '@/services/library/thumbnails'
 import { printFacts, setupLine } from '@/services/library/format'
 import { communityApi } from '@/services/account/community'
+import { LIBRARY_ORIGIN } from '@/services/account/profile'
 
 /** The categories the model service takes (community-api.md), as Discover's chips name them. */
 export const SHARE_CATEGORIES = [
@@ -431,15 +523,37 @@ export default class LibrarySharePage extends Vue {
   tag = ''
   licence = 'CC-BY-4.0'
   rights = false
-  audience: 'public' | 'private' = 'public'
+  audience: 'public' | 'private' | 'direct' | 'link' = 'public'
+  handles = ''
+  linkShare: { url: string } | null = null
+  linkNote = ''
   ai: 'no' | 'partly' | 'yes' = 'no'
   busy = false
   error = ''
-  done: { title: string } | null = null
+  done: { title: string, direct?: string[], failed?: string[] } | null = null
   setup: { title: string, text: string, action?: string, to?: string } | null = null
   categories = SHARE_CATEGORIES
   licences = SHARE_LICENCES
-  audiences: Array<{ id: 'public' | 'private', label: string }> = [{ id: 'private', label: 'Only me' }, { id: 'public', label: 'Everyone' }]
+  audiences: Array<{ id: 'public' | 'private' | 'direct' | 'link', label: string }> = [
+    { id: 'private', label: 'Only me' },
+    { id: 'public', label: 'Everyone' },
+    { id: 'direct', label: 'People you choose' },
+    { id: 'link', label: 'Anyone with the link' }
+  ]
+
+  get audienceLine (): string {
+    switch (this.audience) {
+      case 'public': return 'Everyone: it is reviewed first, then shows in Discover, usually within a day.'
+      case 'direct': return 'People you choose: only the handles you name can open it.'
+      case 'link': return 'Anyone with the link: whoever has the link can open it. You get the link once.'
+      default: return 'Only you: it stays in Yours, and nobody else sees it.'
+    }
+  }
+
+  /** The handles typed: lowercase, no @, no repeats. */
+  get handleList (): string[] {
+    return [...new Set(this.handles.split(/[\s,;]+/).map(h => h.trim().replace(/^@/, '').toLowerCase()).filter(Boolean))]
+  }
 
   created () {
     this.checkProfile()
@@ -500,6 +614,17 @@ export default class LibrarySharePage extends Vue {
   get needs (): string {
     if (this.busy || this.audience === 'private') return ''
     if (!this.item || !this.shareable(this.item)) return 'Choose one of your prints.'
+    if (this.audience === 'direct' || this.audience === 'link') {
+      if (!this.title.trim()) return 'Give it a title.'
+      if (this.item.version == null) return 'It needs a saved version: save it from Slice.'
+      if (this.audience === 'direct') {
+        if (!this.handleList.length) return 'Type at least one handle.'
+        const bad = this.handleList.find(h => !HANDLE.test(h))
+        if (bad) return `"${bad}" isn't a handle: 3 to 24 letters, numbers, dots or underscores, starting with a letter.`
+        if (this.handleList.length > 10) return 'Share with up to 10 people at a time.'
+      }
+      return ''
+    }
     if (!this.gcode) return 'It needs a G-code: slice it first.'
     if (!this.title.trim()) return 'Give it a title.'
     if (this.item.version == null) return 'It needs a saved version: save it from Slice.'
@@ -513,7 +638,7 @@ export default class LibrarySharePage extends Vue {
     const now = ids.indexOf(group === 'category' ? this.category : this.audience)
     const next = ids[(now + by + ids.length) % ids.length]
     if (group === 'category') this.category = next
-    else this.audience = next as 'public' | 'private'
+    else this.audience = next as 'public' | 'private' | 'direct' | 'link'
     this.$nextTick(() => {
       const box = (event.currentTarget as HTMLElement | null)
       ;(box?.querySelector('[aria-checked="true"]') as HTMLElement | null)?.focus()
@@ -566,7 +691,60 @@ export default class LibrarySharePage extends Vue {
   get canPublish (): boolean {
     if (this.busy || !this.item || this.setup || !this.shareable(this.item)) return false
     if (this.audience === 'private') return true
+    if (this.audience === 'direct' || this.audience === 'link') return !this.needs
     return this.gcode && !!this.title.trim() && this.rights && this.item.version != null
+  }
+
+  /** People you choose (one share per handle) or a link (its key comes back once). */
+  async shareWith (item: LibraryItem) {
+    this.busy = true
+    this.error = ''
+    try {
+      const now = await libraryClient().item(item.id)
+      if (!this.shareable(now)) throw new Error('This print cannot be shared now: it is no longer one of your own prints.')
+      if (now.version == null) throw new Error('This print has no saved version now. Save it from Slice, then share it.')
+      const title = this.title.trim()
+      if (this.audience === 'link') {
+        const share = await libraryClient().share({ item: item.id, version: now.version, title, audience: 'link' })
+        if (!share.key) throw new Error('The Library made the link but sent no key. Stop sharing it from Yours and try again.')
+        // The key stays in the fragment: it is never sent to a server when the link is opened.
+        this.linkShare = { url: shareLinkUrl(share.id, share.key) }
+        this.$emit('published', share.id)
+        return
+      }
+      const sent: string[] = []
+      const failed: string[] = []
+      for (const handle of this.handleList) {
+        try {
+          const share = await libraryClient().share({ item: item.id, version: now.version, title, audience: 'direct', recipient: handle })
+          sent.push(handle)
+          this.$emit('published', share.id)
+        } catch (error) {
+          if (error instanceof LibraryError && error.code === 'community_setup_required') { this.setup = SETUP; return }
+          if (error instanceof LibraryError && error.code === 'email_unverified') { this.setup = EMAIL; return }
+          failed.push(shareRefusal(error, handle))
+        }
+      }
+      if (sent.length) this.done = { title, direct: sent, failed }
+      else this.error = failed.join(' ')
+    } catch (error) {
+      if (error instanceof LibraryError && error.code === 'community_setup_required') this.setup = SETUP
+      else if (error instanceof LibraryError && error.code === 'email_unverified') this.setup = EMAIL
+      else this.error = shareRefusal(error)
+    } finally {
+      this.busy = false
+    }
+  }
+
+  /** Copy the link; where the browser won't, say so and leave it selectable. */
+  async copyLink () {
+    if (!this.linkShare) return
+    try {
+      await navigator.clipboard.writeText(this.linkShare.url)
+      this.linkNote = 'Link copied.'
+    } catch {
+      this.linkNote = 'Copying was blocked. Select the link above and copy it yourself.'
+    }
   }
 
   async publish () {
@@ -575,6 +753,10 @@ export default class LibrarySharePage extends Vue {
     // Only me: nothing to send; it stays in Yours.
     if (this.audience === 'private') {
       this.$emit('back')
+      return
+    }
+    if (this.audience === 'direct' || this.audience === 'link') {
+      await this.shareWith(item)
       return
     }
     this.addTag()
@@ -608,6 +790,25 @@ export default class LibrarySharePage extends Vue {
     }
   }
 }
+
+/** What a person reads when the service refuses a share, in plain words. */
+export function shareRefusal (error: unknown, handle = ''): string {
+  if (error instanceof LibraryError) {
+    const who = handle ? `@${handle}` : 'that person'
+    const text = `${error.code} ${error.message}`.toLowerCase()
+    if (error.status === 429 || text.includes('rate') || text.includes('too many') || text.includes('limit')) return 'You have shared a lot just now, or have too many shares open. Wait a while, or stop sharing something, then try again.'
+    if (text.includes('block')) return `${who} can't be shared with.`
+    if (error.status === 404 || text.includes('recipient') || text.includes('handle') || text.includes('not_found')) return handle ? `No one has the handle @${handle}. Check the spelling.` : 'That print or person was not found.'
+  }
+  return describeLibraryError(error)
+}
+
+/** A link share: the key rides in the fragment, which browsers never send to a server. */
+export function shareLinkUrl (id: string, key: string): string {
+  return `${LIBRARY_ORIGIN}/p/${encodeURIComponent(id)}#${encodeURIComponent(key)}`
+}
+
+const HANDLE = /^[a-z][a-z0-9._]{2,23}$/
 
 const SETUP = {
   title: 'Set up your public profile first',
