@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { clearNearby, isPrinter, lookNearby, nearbyState, permittedPrinterFor, rememberedName, startNearby, stopNearby } from '../nearby'
+import { clearNearby, dropBluetoothHold, holdBluetooth, isPrinter, lookNearby, nearbyState, permittedPrinterFor, rememberedName, startNearby, stopNearby } from '../nearby'
 import { heardRecently } from '../heard'
 import { chooserOptions } from '../webBluetooth'
 import { advert, EID, fakeBluetooth, fakePrinter, OTHER_EID, removeBluetooth } from './fakes'
@@ -178,5 +178,28 @@ describe('the name remembered for the chooser (KAN-2516)', () => {
     expect(chooserOptions({ endpointId: 'short-id', name: rememberedName('short-id') }).filters).toEqual([
       expect.objectContaining({ name: 'walnut-8987' })
     ])
+  })
+})
+
+describe('a printer this page is connected to over Bluetooth (KAN-5974)', () => {
+  it('stays reachable after its last advertisement, until the link drops', () => {
+    const device = fakePrinter().device
+    const p = holdBluetooth(device, { endpointId: EID })
+    // It stopped advertising when the link came up: the last sighting is long ago.
+    p.heardAt = Date.now() - 10 * 60_000
+    expect(heardRecently(p)).toBe(true)
+    expect(isPrinter(p, EID)).toBe(true)
+
+    dropBluetoothHold(device)
+    expect(heardRecently(p)).toBe(false)
+  })
+
+  it('is held at once when Chrome lists it as allowed and its radio link is up', async () => {
+    const printer = fakePrinter()
+    await printer.device.gatt.connect()
+    localStorage.setItem('muon.ble.printers', JSON.stringify({ 'dev-walnut': { endpointId: EID, localName: 'walnut-8987' } }))
+    fakeBluetooth({ remembered: [printer.device] })
+    await startNearby()
+    expect(nearbyState.printers.find(p => p.deviceId === 'dev-walnut')?.held).toBe(true)
   })
 })
