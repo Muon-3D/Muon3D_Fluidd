@@ -1,5 +1,5 @@
 /**
- * KAN-5207: the "Muon3D staff" group in the account menu. Staff see Admin and Fleet,
+ * KAN-5207: the "Muon3D staff" group in the account menu. An admin sees Admin and Fleet,
  * a moderator sees Admin only, and a normal user, or a console that does not send the
  * field yet, sees no group at all. No passkey prompt decides any of it.
  */
@@ -19,8 +19,8 @@ const openMenu = async (page: Page, open: (path: string) => Promise<unknown>) =>
   await expect(page.getByTestId('account-open').first()).toBeVisible()
 }
 
-test('a staff account sees Admin and Fleet; Fleet opens fleet.muon3d.com in this tab', async ({ page, open, account, context }) => {
-  account.staffRole = 'staff'
+test('an admin account sees Admin and Fleet; Fleet opens fleet.muon3d.com in this tab', async ({ page, open, account, context }) => {
+  account.staffRole = 'admin'
   await page.route('https://fleet.muon3d.com/**', route => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Fleet</title><p>Fleet</p>' }))
   await openMenu(page, open)
   await expect(page.getByTestId('account-staff-group')).toHaveText('Muon3D staff')
@@ -33,7 +33,7 @@ test('a staff account sees Admin and Fleet; Fleet opens fleet.muon3d.com in this
 })
 
 test('Admin goes to /admin', async ({ page, open, account }) => {
-  account.staffRole = 'staff'
+  account.staffRole = 'admin'
   await openMenu(page, open)
   await page.getByTestId('account-admin').click()
   await expect(page).toHaveURL(/\/admin$/)
@@ -48,7 +48,7 @@ test('a moderator sees the group with Admin only: no Fleet, no Grafana', async (
   await expect(page.getByText('Grafana')).toHaveCount(0)
 })
 
-for (const [label, value] of [['a console without the field', undefined], ['null', null], ['true (the old shape)', true], ['an unknown value', 'owner'], ['a malformed value', { role: 'staff' }]] as const) {
+for (const [label, value] of [['a console without the field', undefined], ['null', null], ['true (the old shape)', true], ['an unknown value', 'owner'], ['the old "staff" value', 'staff'], ['a malformed value', { role: 'admin' }]] as const) {
   test(`${label} sees no staff group at all`, async ({ page, open, account }) => {
     account.staffRole = value
     await openMenu(page, open)
