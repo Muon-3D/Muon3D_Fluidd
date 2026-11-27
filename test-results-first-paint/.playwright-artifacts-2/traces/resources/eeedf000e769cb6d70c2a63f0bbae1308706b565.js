@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/ui/PrinterThumb.vue?vue&type=style&index=0&scoped=f0524efd&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/ui/PrinterThumb.vue?vue&type=style&index=0&scoped=f0524efd&lang.scss"
-const __vite__css = ".printer-thumb[data-v-f0524efd] {\n  display: inline-flex;\n  flex: none;\n  overflow: hidden;\n  background: radial-gradient(120% 90% at 50% 40%, #fbfbfc 0%, #e4e4e8 62%, #cfcfd4 100%);\n}\n.printer-thumb img[data-v-f0524efd] {\n  display: block;\n  width: 100%;\n  height: 100%;\n  object-fit: cover;\n  mix-blend-mode: multiply;\n}\n.printer-thumb--off[data-v-f0524efd] {\n  background: radial-gradient(120% 90% at 50% 40%, #d9d9dd 0%, #bdbdc3 70%, #a8a8af 100%);\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

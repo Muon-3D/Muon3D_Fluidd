@@ -1,6 +1,0 @@
-const escapeRegExp = (value) => {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-};
-export default escapeRegExp;
-
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImVzY2FwZS1yZWdleHAudHMiXSwic291cmNlc0NvbnRlbnQiOlsiLy8gaHR0cHM6Ly9kZXZlbG9wZXIubW96aWxsYS5vcmcvZW4tVVMvZG9jcy9XZWIvSmF2YVNjcmlwdC9HdWlkZS9SZWd1bGFyX0V4cHJlc3Npb25zI2VzY2FwaW5nXG5cbmNvbnN0IGVzY2FwZVJlZ0V4cCA9ICh2YWx1ZTogc3RyaW5nKSA9PiB7XG4gIHJldHVybiB2YWx1ZS5yZXBsYWNlKC9bLiorP14ke30oKXxbXFxdXFxcXF0vZywgJ1xcXFwkJicpXG59XG5cbmV4cG9ydCBkZWZhdWx0IGVzY2FwZVJlZ0V4cFxuIl0sIm1hcHBpbmdzIjoiQUFFQSxNQUFNLGVBQWUsQ0FBQyxVQUFrQjtBQUN0QyxTQUFPLE1BQU0sUUFBUSx1QkFBdUIsTUFBTTtBQUNwRDtBQUVBLGVBQWU7IiwibmFtZXMiOltdfQ==

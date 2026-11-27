@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/node_modules/vuetify/src/components/VColorPicker/VColorPickerEdit.sass");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/node_modules/vuetify/src/components/VColorPicker/VColorPickerEdit.sass"
-const __vite__css = ".v-color-picker__edit {\n  margin-top: 24px;\n  display: flex;\n}\n\n.v-color-picker__input {\n  width: 100%;\n  display: flex;\n  flex-wrap: wrap;\n  justify-content: center;\n  text-align: center;\n}\n.v-application--is-ltr .v-color-picker__input:not(:last-child) {\n  margin-right: 8px;\n}\n.v-application--is-rtl .v-color-picker__input:not(:last-child) {\n  margin-left: 8px;\n}\n.v-color-picker__input input {\n  border-radius: 4px;\n  margin-bottom: 8px;\n  min-width: 0;\n  outline: none;\n  text-align: center;\n  width: 100%;\n  height: 28px;\n}\n.v-color-picker__input span {\n  font-size: 0.75rem;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

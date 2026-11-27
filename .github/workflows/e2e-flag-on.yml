@@ -1,0 +1,105 @@
+# Flag-on end-to-end tests (KAN-7307). The accounts sign-in, the history year grid and first paint are behind
+# build-time flags that are OFF in every shipped build, so the main E2E workflow never draws them. Each config
+# below starts its own vite with its flag ON (the flags are set inside the playwright configs' webServer env,
+# not here, and not in any .env or build workflow). Light on purpose: manual run, plus PRs that touch these
+# specs or the code they exercise. No push or schedule trigger.
+name: E2E flag-on
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'e2e/accounts/**'
+      - 'e2e/year/**'
+      - 'e2e/first-paint/**'
+      - 'e2e/playwright.accounts.config.ts'
+      - 'e2e/playwright.year.config.ts'
+      - 'e2e/playwright.first-paint.config.ts'
+      - 'e2e/global-setup.ts'
+      - 'e2e/fixtures.ts'
+      - 'e2e/ports.ts'
+      - 'e2e/mock/**'
+      - 'src/services/muon-cloud/**'
+      - 'src/services/flags/**'
+      - 'src/components/widgets/history/YearGlance.vue'
+      - 'src/views/History.vue'
+      - 'src/store/history/**'
+      - 'src/main.ts'
+      - 'index.html'
+      - '.github/workflows/e2e-flag-on.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-flag-on-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flag-on:
+    name: Playwright flag-on (accounts, year, first paint)
+    runs-on: ${{ vars.LINUX_RUNS_ON || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    env:
+      NODE_OPTIONS: --experimental-websocket
+      PYTHON: python3
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          python3 -m pip install -r e2e/mock/requirements.txt
+
+      - name: Read Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Chromium
+        run: |
+          npx playwright install chromium
+          if ! node -e "require('@playwright/test').chromium.launch().then(b => b.close()).catch(e => { console.error(e); process.exit(1) })"; then
+            timeout 300 npx playwright install --with-deps chromium
+          fi
+
+      # The three configs share the mock printer port, so they run one after another.
+      # if: !cancelled() so one failing config does not hide the others.
+      - name: Accounts sign-in (VITE_CONTROL_ACCOUNTS_SIGNIN on)
+        run: npm run test:e2e:accounts
+
+      - name: History year grid (VITE_CONTROL_YEAR_SPOOL on)
+        if: ${{ !cancelled() }}
+        run: npm run test:e2e:year
+
+      - name: First paint (VITE_CONTROL_FIRST_PAINT on)
+        if: ${{ !cancelled() }}
+        run: npm run test:e2e:first-paint
+
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-flag-on-traces
+          path: |
+            test-results-accounts/
+            test-results-year/
+            test-results-first-paint/
+          retention-days: 1
+          if-no-files-found: ignore

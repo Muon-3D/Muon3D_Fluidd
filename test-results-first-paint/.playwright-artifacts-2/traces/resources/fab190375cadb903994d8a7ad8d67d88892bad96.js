@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/node_modules/vuetify/src/components/VColorPicker/VColorPickerCanvas.sass");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/node_modules/vuetify/src/components/VColorPicker/VColorPickerCanvas.sass"
-const __vite__css = ".v-color-picker__canvas {\n  position: relative;\n  overflow: hidden;\n  contain: strict;\n}\n.v-color-picker__canvas-dot {\n  position: absolute;\n  top: 0;\n  left: 0;\n  width: 15px;\n  height: 15px;\n  background: transparent;\n  border-radius: 50%;\n  box-shadow: 0px 0px 0px 1.5px white, inset 0px 0px 1px 1.5px rgba(0, 0, 0, 0.3);\n}\n.v-color-picker__canvas-dot--disabled {\n  box-shadow: 0px 0px 0px 1.5px rgba(255, 255, 255, 0.7), inset 0px 0px 1px 1.5px rgba(0, 0, 0, 0.3);\n}\n.v-color-picker__canvas:hover .v-color-picker__canvas-dot {\n  will-change: transform;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

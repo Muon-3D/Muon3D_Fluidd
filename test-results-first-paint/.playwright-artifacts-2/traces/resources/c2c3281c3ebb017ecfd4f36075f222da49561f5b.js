@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/node_modules/vuetify/src/components/VResponsive/VResponsive.sass");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/node_modules/vuetify/src/components/VResponsive/VResponsive.sass"
-const __vite__css = ".v-responsive {\n  position: relative;\n  overflow: hidden;\n  flex: 1 0 auto;\n  max-width: 100%;\n  display: flex;\n}\n.v-responsive__content {\n  flex: 1 0 0px;\n  max-width: 100%;\n}\n.v-application--is-ltr .v-responsive__sizer ~ .v-responsive__content {\n  margin-left: -100%;\n}\n.v-application--is-rtl .v-responsive__sizer ~ .v-responsive__content {\n  margin-right: -100%;\n}\n.v-responsive__sizer {\n  transition: padding-bottom 0.2s cubic-bezier(0.25, 0.8, 0.5, 1);\n  flex: 1 0 0px;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

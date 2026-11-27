@@ -1,6 +1,0 @@
-const isKeyOf = (key, parent) => {
-  return key in parent;
-};
-export default isKeyOf;
-
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlzLWtleS1vZi50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJjb25zdCBpc0tleU9mID0gPFQgZXh0ZW5kcyBvYmplY3Q+KGtleTogUHJvcGVydHlLZXksIHBhcmVudDogVCk6IGtleSBpcyBrZXlvZiBUID0+IHtcbiAgcmV0dXJuIGtleSBpbiBwYXJlbnRcbn1cblxuZXhwb3J0IGRlZmF1bHQgaXNLZXlPZlxuIl0sIm1hcHBpbmdzIjoiQUFBQSxNQUFNLFVBQVUsQ0FBbUIsS0FBa0IsV0FBOEI7QUFDakYsU0FBTyxPQUFPO0FBQ2hCO0FBRUEsZUFBZTsiLCJuYW1lcyI6W119

@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/muon-ble/BluetoothPairDialog.vue?vue&type=style&index=0&scoped=5c4d0950&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/muon-ble/BluetoothPairDialog.vue?vue&type=style&index=0&scoped=5c4d0950&lang.scss"
-const __vite__css = ".muon-ble-pair__label[data-v-5c4d0950] {\n  margin: 0 0 8px;\n  font-size: var(--m3d-text-xs);\n  color: var(--m3d-text-muted);\n  text-align: center;\n}\n.muon-ble-pair__body[data-v-5c4d0950] {\n  font-size: var(--m3d-text-sm);\n  color: var(--m3d-text-muted);\n  margin: 12px 0 0;\n}\n.muon-ble-pair__wait[data-v-5c4d0950] {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n.muon-ble-pair__error[data-v-5c4d0950] {\n  font-size: var(--m3d-text-sm);\n  color: var(--m3d-danger, #d32f2f);\n  margin: 8px 0 0;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

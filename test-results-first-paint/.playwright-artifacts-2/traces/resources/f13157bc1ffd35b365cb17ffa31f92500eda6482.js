@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/maintenance/MaintenanceWear.vue?vue&type=style&index=0&scoped=9a771fab&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/maintenance/MaintenanceWear.vue?vue&type=style&index=0&scoped=9a771fab&lang.scss"
-const __vite__css = ".mwear__stats[data-v-9a771fab] {\n  display: flex;\n  gap: 10px;\n}\n.mwear__stats > div[data-v-9a771fab] {\n  flex: 1 1 0;\n  min-width: 0;\n  padding: 10px 12px;\n  border-radius: 12px;\n  background: var(--m3d-surface-2);\n}\n.mwear__stats small[data-v-9a771fab] {\n  display: block;\n  color: var(--m3d-text-subtle);\n  font-size: 11px;\n}\n.mwear__stats b[data-v-9a771fab] {\n  font-size: 18px;\n  font-variant-numeric: tabular-nums;\n}\n.mwear__note[data-v-9a771fab] {\n  margin: 0;\n  color: var(--m3d-text-muted);\n  font-size: 13px;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))
