@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/layout/HotspotCount.vue?vue&type=style&index=0&scoped=44c4a080&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/layout/HotspotCount.vue?vue&type=style&index=0&scoped=44c4a080&lang.scss"
-const __vite__css = ".hotspot-count[data-v-44c4a080] {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  height: 24px;\n  padding: 0 10px;\n  border-radius: 10px 10px 0 0;\n  background: color-mix(in srgb, var(--m3d-success) 22%, var(--m3d-surface-2));\n  color: var(--m3d-success);\n  font-size: 12px;\n  font-weight: 700;\n  white-space: nowrap;\n}\n.hotspot-count__dot[data-v-44c4a080] {\n  width: 6px;\n  height: 6px;\n  border-radius: 50%;\n  background: currentcolor;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

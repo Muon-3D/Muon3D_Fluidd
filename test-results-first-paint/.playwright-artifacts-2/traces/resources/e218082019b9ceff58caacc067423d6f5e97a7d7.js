@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/node_modules/vuetify/src/components/VChipGroup/VChipGroup.sass");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/node_modules/vuetify/src/components/VChipGroup/VChipGroup.sass"
-const __vite__css = ".v-chip-group .v-chip {\n  margin: 4px 8px 4px 0;\n}\n.v-chip-group .v-chip--active {\n  color: inherit;\n}\n.v-chip-group .v-chip--active.v-chip--no-color:after {\n  opacity: 0.22;\n}\n.v-chip-group .v-chip--active.v-chip--no-color:focus:after {\n  opacity: 0.32;\n}\n\n.v-chip-group .v-slide-group__content {\n  padding: 4px 0;\n}\n\n.v-chip-group--column .v-slide-group__content {\n  white-space: normal;\n  flex-wrap: wrap;\n  max-width: 100%;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

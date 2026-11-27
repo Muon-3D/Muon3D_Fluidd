@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/node_modules/vuetify/src/components/VBottomSheet/VBottomSheet.sass");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/node_modules/vuetify/src/components/VBottomSheet/VBottomSheet.sass"
-const __vite__css = ".bottom-sheet-transition-enter {\n  transform: translateY(100%);\n}\n.bottom-sheet-transition-leave-to {\n  transform: translateY(100%);\n}\n\n.v-bottom-sheet.v-dialog {\n  align-self: flex-end;\n  border-radius: 0;\n  flex: 0 1 auto;\n  margin: 0;\n  overflow: visible;\n}\n.v-bottom-sheet.v-dialog.v-bottom-sheet--inset {\n  max-width: 70%;\n}\n@media only screen and (max-width: 599.98px) {\n  .v-bottom-sheet.v-dialog.v-bottom-sheet--inset {\n    max-width: none;\n  }\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

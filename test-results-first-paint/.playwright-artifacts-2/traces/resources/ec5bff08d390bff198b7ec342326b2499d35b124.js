@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/widgets/overview/tiles/ZOffsetTile.vue?vue&type=style&index=0&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/widgets/overview/tiles/ZOffsetTile.vue?vue&type=style&index=0&lang.scss"
-const __vite__css = ".zo__step {\n  position: absolute;\n  top: 46px;\n  right: 18px;\n  display: inline-flex;\n  gap: 8px;\n}\n.zo__round {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 40px;\n  height: 40px;\n  border-radius: 50%;\n  background: var(--m3d-surface-2);\n  cursor: pointer;\n}\n.zo__round .frame-icon {\n  color: var(--m3d-text);\n}\n.zo__round:disabled {\n  opacity: 0.4;\n  cursor: default;\n}\n.zo__pop {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

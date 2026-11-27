@@ -1,5 +1,0 @@
-const externalUrlRegExp = /(https?:\/\/\S+)/gi;
-const linkExternalUrls = (text) => text.replace(externalUrlRegExp, '<a target="_blank" href="$1">$1</a>');
-export default linkExternalUrls;
-
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImxpbmstZXh0ZXJuYWwtdXJscy50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJjb25zdCBleHRlcm5hbFVybFJlZ0V4cCA9IC8oaHR0cHM/OlxcL1xcL1xcUyspL2dpXG5cbmNvbnN0IGxpbmtFeHRlcm5hbFVybHMgPSAodGV4dDogc3RyaW5nKSA9PiB0ZXh0LnJlcGxhY2UoZXh0ZXJuYWxVcmxSZWdFeHAsICc8YSB0YXJnZXQ9XCJfYmxhbmtcIiBocmVmPVwiJDFcIj4kMTwvYT4nKVxuXG5leHBvcnQgZGVmYXVsdCBsaW5rRXh0ZXJuYWxVcmxzXG4iXSwibWFwcGluZ3MiOiJBQUFBLE1BQU0sb0JBQW9CO0FBRTFCLE1BQU0sbUJBQW1CLENBQUMsU0FBaUIsS0FBSyxRQUFRLG1CQUFtQixxQ0FBcUM7QUFFaEgsZUFBZTsiLCJuYW1lcyI6W119

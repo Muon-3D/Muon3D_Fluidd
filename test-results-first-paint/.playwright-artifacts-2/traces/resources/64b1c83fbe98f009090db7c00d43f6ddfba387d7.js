@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/widgets/wifi/PermissionRefusalNotice.vue?vue&type=style&index=0&scoped=1424587d&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/widgets/wifi/PermissionRefusalNotice.vue?vue&type=style&index=0&scoped=1424587d&lang.scss"
-const __vite__css = ".prn[data-v-1424587d] {\n  display: flex;\n  flex-direction: column;\n  gap: 8px;\n  padding: 12px 14px;\n  border: 1px solid var(--m3d-line, rgba(128, 128, 128, 0.35));\n  border-radius: 10px;\n}\n.prn__text[data-v-1424587d],\n.prn__detail[data-v-1424587d] {\n  margin: 0;\n  font-size: 14px;\n}\n.prn__detail[data-v-1424587d] {\n  opacity: 0.75;\n  font-size: 13px;\n}\n.prn__actions[data-v-1424587d] {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 8px;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

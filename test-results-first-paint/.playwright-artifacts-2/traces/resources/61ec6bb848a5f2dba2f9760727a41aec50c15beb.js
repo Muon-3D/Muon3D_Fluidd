@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/node_modules/vuetify/src/components/VImg/VImg.sass");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/node_modules/vuetify/src/components/VImg/VImg.sass"
-const __vite__css = ".theme--light.v-image {\n  color: rgba(0, 0, 0, 0.87);\n}\n\n.theme--dark.v-image {\n  color: #e8ecee;\n}\n\n.v-image {\n  z-index: 0;\n}\n\n.v-image__image,\n.v-image__placeholder {\n  z-index: -1;\n  position: absolute;\n  top: 0;\n  left: 0;\n  width: 100%;\n  height: 100%;\n}\n\n.v-image__image {\n  background-repeat: no-repeat;\n}\n.v-image__image--preload {\n  filter: blur(2px);\n}\n.v-image__image--contain {\n  background-size: contain;\n}\n.v-image__image--cover {\n  background-size: cover;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

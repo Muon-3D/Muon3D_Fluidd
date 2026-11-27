@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/node_modules/vuetify/src/components/VColorPicker/VColorPickerSwatches.sass");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/node_modules/vuetify/src/components/VColorPicker/VColorPickerSwatches.sass"
-const __vite__css = ".v-color-picker__swatches {\n  overflow-y: auto;\n}\n.v-color-picker__swatches > div {\n  display: flex;\n  flex-wrap: wrap;\n  justify-content: center;\n  padding: 8px;\n}\n\n.v-color-picker__swatch {\n  display: flex;\n  flex-direction: column;\n  margin-bottom: 10px;\n}\n\n.v-color-picker__color {\n  position: relative;\n  height: 18px;\n  max-height: 18px;\n  width: 45px;\n  margin: 2px 4px;\n  border-radius: 2px;\n  user-select: none;\n  overflow: hidden;\n  background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAGElEQVQYlWNgYGCQwoKxgqGgcJA5h3yFAAs8BRWVSwooAAAAAElFTkSuQmCC) repeat;\n  cursor: pointer;\n}\n.v-color-picker__color > div {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 100%;\n  height: 100%;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

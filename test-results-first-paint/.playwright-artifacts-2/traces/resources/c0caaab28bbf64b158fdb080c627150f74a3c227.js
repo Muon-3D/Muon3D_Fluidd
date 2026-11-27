@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/widgets/filesystem/FileSystemDownloadDialog.vue?vue&type=style&index=0&scoped=fe71da3d&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/widgets/filesystem/FileSystemDownloadDialog.vue?vue&type=style&index=0&scoped=fe71da3d&lang.scss"
-const __vite__css = ".dl[data-v-fe71da3d] {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  width: min(320px, 60vw);\n}\n.dl__title[data-v-fe71da3d] {\n  overflow: hidden;\n  font-weight: 600;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.dl__bar[data-v-fe71da3d] {\n  height: 4px;\n  border-radius: 2px;\n  background: var(--m3d-surface-2);\n  overflow: hidden;\n}\n.dl__bar span[data-v-fe71da3d] {\n  display: block;\n  height: 100%;\n  border-radius: inherit;\n  background: var(--m3d-accent);\n  transition: width var(--m3d-duration-base) linear;\n}\n.dl__facts[data-v-fe71da3d] {\n  color: var(--m3d-text-muted);\n  font-size: 12px;\n  font-variant-numeric: tabular-nums;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

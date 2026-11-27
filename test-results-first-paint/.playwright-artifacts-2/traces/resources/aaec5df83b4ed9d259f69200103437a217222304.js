@@ -1,9 +1,0 @@
-export const defaultState = () => {
-  return {
-    supported: null,
-    status: null
-  };
-};
-export const state = defaultState();
-
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInN0YXRlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgUHJvdGVjdGlvblN0YXRlIH0gZnJvbSAnLi90eXBlcydcblxuZXhwb3J0IGNvbnN0IGRlZmF1bHRTdGF0ZSA9ICgpOiBQcm90ZWN0aW9uU3RhdGUgPT4ge1xuICByZXR1cm4ge1xuICAgIHN1cHBvcnRlZDogbnVsbCxcbiAgICBzdGF0dXM6IG51bGxcbiAgfVxufVxuXG5leHBvcnQgY29uc3Qgc3RhdGUgPSBkZWZhdWx0U3RhdGUoKVxuIl0sIm1hcHBpbmdzIjoiQUFFTyxhQUFNLGVBQWUsTUFBdUI7QUFDakQsU0FBTztBQUFBLElBQ0wsV0FBVztBQUFBLElBQ1gsUUFBUTtBQUFBLEVBQ1Y7QUFDRjtBQUVPLGFBQU0sUUFBUSxhQUFhOyIsIm5hbWVzIjpbXX0=

@@ -38,7 +38,7 @@ concurrency:
 jobs:
   flag-on:
     name: Playwright flag-on (accounts, year, first paint)
-    runs-on: ${{ fromJSON(vars.LINUX_RUNS_ON) }}
+    runs-on: ${{ vars.LINUX_RUNS_ON || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
       NODE_OPTIONS: --experimental-websocket

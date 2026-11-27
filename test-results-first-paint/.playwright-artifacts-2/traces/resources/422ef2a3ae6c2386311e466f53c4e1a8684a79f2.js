@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/layout/SecureAddressBanner.vue?vue&type=style&index=0&scoped=eb461419&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/layout/SecureAddressBanner.vue?vue&type=style&index=0&scoped=eb461419&lang.scss"
-const __vite__css = ".secure-address[data-v-eb461419] {\n  display: flex;\n  align-items: center;\n  gap: 12px;\n  margin: 0 0 16px;\n  padding: 10px 16px;\n  border-radius: 16px;\n  color: var(--m3d-text);\n  background: var(--m3d-surface);\n}\n.secure-address__icon[data-v-eb461419] {\n  flex: none;\n  color: var(--m3d-text-muted);\n}\n.secure-address__text[data-v-eb461419] {\n  display: flex;\n  flex: 1;\n  flex-wrap: wrap;\n  gap: 2px 10px;\n  min-width: 0;\n  font-size: 14px;\n}\n.secure-address__text span[data-v-eb461419] {\n  color: var(--m3d-text-muted);\n}\n.secure-address__actions[data-v-eb461419] {\n  display: flex;\n  flex: none;\n  gap: 8px;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

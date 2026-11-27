@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/timelapse/TimelapseActions.vue?vue&type=style&index=0&scoped=9cfb6a3c&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/timelapse/TimelapseActions.vue?vue&type=style&index=0&scoped=9cfb6a3c&lang.scss"
-const __vite__css = ".tl-actions[data-v-9cfb6a3c] {\n  display: flex;\n  align-items: center;\n  justify-content: flex-end;\n  gap: 10px;\n}\n.tl-actions__settings[data-v-9cfb6a3c] {\n  text-decoration: none;\n}\n.tl-actions__round[data-v-9cfb6a3c] {\n  display: inline-flex;\n  flex: none;\n  align-items: center;\n  justify-content: center;\n  width: 44px;\n  height: 44px;\n  border-radius: 50%;\n  background: var(--m3d-surface-2);\n  color: var(--m3d-text);\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

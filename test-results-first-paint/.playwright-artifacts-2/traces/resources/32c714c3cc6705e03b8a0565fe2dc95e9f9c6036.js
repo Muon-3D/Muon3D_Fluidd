@@ -1,8 +1,0 @@
-export const defaultState = () => {
-  return {
-    devices: []
-  };
-};
-export const state = defaultState();
-
-//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbInN0YXRlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB0eXBlIHsgRGV2aWNlUG93ZXJTdGF0ZSB9IGZyb20gJy4vdHlwZXMnXG5cbmV4cG9ydCBjb25zdCBkZWZhdWx0U3RhdGUgPSAoKTogRGV2aWNlUG93ZXJTdGF0ZSA9PiB7XG4gIHJldHVybiB7XG4gICAgZGV2aWNlczogW11cbiAgfVxufVxuXG5leHBvcnQgY29uc3Qgc3RhdGUgPSBkZWZhdWx0U3RhdGUoKVxuIl0sIm1hcHBpbmdzIjoiQUFFTyxhQUFNLGVBQWUsTUFBd0I7QUFDbEQsU0FBTztBQUFBLElBQ0wsU0FBUyxDQUFDO0FBQUEsRUFDWjtBQUNGO0FBRU8sYUFBTSxRQUFRLGFBQWE7IiwibmFtZXMiOltdfQ==

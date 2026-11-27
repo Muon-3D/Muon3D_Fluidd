@@ -1,2 +1,0 @@
-{"type":"receive","time":1795522966333.794,"opcode":1,"data":"{\"type\":\"connected\"}"}
-{"type":"send","time":1795522972212.457,"opcode":1,"data":"{\"type\":\"custom\",\"event\":\"vite-pwa-plugin:dev-ready\"}"}

@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/node_modules/vuetify/src/components/VOtpInput/VOtpInput.sass");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/node_modules/vuetify/src/components/VOtpInput/VOtpInput.sass"
-const __vite__css = ".theme--light.v-otp-input .v-input .v-input__control .v-input__slot {\n  background: #FFFFFF;\n}\n\n.theme--dark.v-otp-input .v-input .v-input__control .v-input__slot {\n  background: #303030;\n}\n\n.v-otp-input {\n  display: flex;\n  flex-wrap: wrap;\n  flex: 1 1 auto;\n  margin-right: -4px;\n  margin-left: -4px;\n}\n.v-otp-input input {\n  text-align: center;\n}\n.v-otp-input .v-input {\n  margin: 0;\n  flex: 1 0 32px;\n  max-width: 100%;\n  width: 100%;\n  padding: 4px;\n}\n.v-otp-input .v-input.v-otp-input--plain fieldset {\n  display: none;\n}\n.v-otp-input .v-input input[type=number]::-webkit-outer-spin-button,\n.v-otp-input .v-input input[type=number]::-webkit-inner-spin-button {\n  -webkit-appearance: none;\n  margin: 0;\n}\n.v-otp-input .v-input input[type=number] {\n  -moz-appearance: textfield;\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))

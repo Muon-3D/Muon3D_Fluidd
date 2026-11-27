@@ -1,6 +1,0 @@
-import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/muon-ble/BluetoothCodeBoxes.vue?vue&type=style&index=0&scoped=cffe1530&lang.scss");/* unplugin-vue-components disabled */import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from "/@vite/client"
-const __vite__id = "C:/Users/jack/wt-5929-g1/src/components/muon-ble/BluetoothCodeBoxes.vue?vue&type=style&index=0&scoped=cffe1530&lang.scss"
-const __vite__css = ".ble-code[data-v-cffe1530] {\n  display: flex;\n  justify-content: center;\n  gap: 6px;\n  margin: 4px 0 16px;\n}\n.ble-code span[data-v-cffe1530] {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 40px;\n  height: 52px;\n  border: 1px solid var(--m3d-border);\n  border-radius: var(--m3d-radius-md);\n  background: var(--m3d-surface-2);\n  font-family: var(--m3d-font-mono);\n  font-size: 26px;\n  font-weight: var(--m3d-weight-semibold);\n  color: var(--m3d-text);\n}\n.ble-code span.is-gap[data-v-cffe1530] {\n  margin-left: 12px;\n}\n@media (max-width: 380px) {\n.ble-code span[data-v-cffe1530] {\n    width: 34px;\n    height: 46px;\n    font-size: 22px;\n}\n}"
-__vite__updateStyle(__vite__id, __vite__css)
-import.meta.hot.accept()
-import.meta.hot.prune(() => __vite__removeStyle(__vite__id))
