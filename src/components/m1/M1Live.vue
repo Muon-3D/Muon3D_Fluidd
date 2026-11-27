@@ -677,6 +677,12 @@ export default class M1Live extends Mixins(MaintenanceMixin) {
     inset: 0;
   }
 
+  /* The live canvas is opaque and draws its own grid and floor shadow, so the stage's are hidden once it shows. */
+  .m1-live--on::before,
+  .m1-live--on::after {
+    display: none;
+  }
+
   /* The canvas is made in code (and kept between views), so it has no scope of its own. */
   .m1-live :deep(.m1-live__canvas) {
     position: absolute;
