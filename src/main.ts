@@ -1,3 +1,6 @@
+// A return from accounts is taken off the address before anything else runs (KAN-7197).
+import './services/muon-cloud/early-callback'
+
 // Styles
 import '@/scss/global.scss'
 import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'

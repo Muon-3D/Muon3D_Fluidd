@@ -21,10 +21,12 @@
  * The console's own sign-in page, which `/authorize` sends a browser to with
  * `continue`, is `views/SignIn.vue`; `safeContinue` below is its guard.
  */
-import { CONSOLE_ORIGINS, clientId, cloudApi, cloudBaseUrl, cloudSessionAllowed, sameConsole, setSessionRecovery, storedRefreshToken, storedToken, storeRefreshToken, storeToken } from './api'
+import { CONSOLE_ORIGINS, authServerUrl, clientId, cloudApi, cloudBaseUrl, cloudSessionAllowed, sameConsole, setSessionRecovery, storedRefreshToken, storedToken, storeRefreshToken, storeToken } from './api'
 import { challengeFor, newState, newVerifier } from './pkce'
 import { refreshServiceWorker } from '@/util/service-worker-update'
 import { isPrinterSecureOrigin } from '@/services/secure-origin'
+import { accountsSignInEnabled } from './accounts'
+import { readSignedOut } from '@/services/account/signed-out-note'
 
 const PENDING_KEY = 'muon.cloud.authorize'
 const SILENT_KEY = 'muon.cloud.silent'
@@ -59,6 +61,8 @@ function session (): Storage | null {
 
 /** Whether this page signs in through the central login: the console serves it. */
 export function centralLoginEnabled (location: Pick<Location, 'origin' | 'protocol' | 'hostname'> = window.location): boolean {
+  // KAN-7197: signing in through accounts.muon3d.com (flag and exact-origin gated; never a printer's address).
+  if (accountsSignInEnabled(location)) return cloudSessionAllowed(location)
   // A printer's own secure address signs in through the console as the
   // `printer-local` client (KAN-2198); its redirect URI is that address.
   // Only to a real console: with none configured the base URL is the printer itself.
@@ -135,7 +139,7 @@ export async function prepareAuthorize (options: { silent: boolean, returnTo?: s
   const store = session()
   store?.setItem(PENDING_KEY, JSON.stringify(pending))
   if (options.silent) store?.setItem(SILENT_KEY, '1')
-  return authorizeUrl(cloudBaseUrl(), {
+  return authorizeUrl(authServerUrl(), {
     redirectUri: redirectUri(),
     challenge: await challengeFor(verifier),
     state,
@@ -156,6 +160,8 @@ export function isAuthCallback (search: string): boolean {
 /** Whether to try a background `prompt=none` check on this load. */
 export function shouldTrySilentSignIn (location: Pick<Location, 'origin' | 'protocol' | 'hostname' | 'search' | 'pathname'> = window.location): boolean {
   if (!centralLoginEnabled(location)) return false
+  // Through accounts there is no hidden fetch: the cookie is on another origin. See `checkCentralSession`.
+  if (accountsSignInEnabled(location)) return false
   // The silent check is a same-origin fetch of the console's `/authorize`; a
   // printer's address is another origin, so it signs in with a top-level trip.
   if (isPrinterSecureOrigin(location)) return false
@@ -178,6 +184,13 @@ export function shouldTrySilentSignIn (location: Pick<Location, 'origin' | 'prot
  * A failed/unsupported check leaves the app usable and never navigates.
  */
 export async function checkCentralSession (): Promise<void> {
+  if (accountsSignInEnabled()) {
+    if (!shouldRedirectToAccounts()) return
+    // Once per tab: whatever comes back, this tab does not ask again until a sign-in succeeds.
+    session()?.setItem(SILENT_KEY, '1')
+    await startCentralSignIn({ silent: true })
+    return
+  }
   if (!shouldTrySilentSignIn() || session()?.getItem(PENDING_KEY)) return
   session()?.setItem(SILENT_KEY, '1')
   await silentSignIn(null)
@@ -236,6 +249,25 @@ async function silentSignIn (failedRefresh: string | null): Promise<boolean> {
   }
 }
 
+/** Pages that sign a person in or out themselves: no automatic trip to accounts from them. */
+const NO_AUTO_TRIP = /^\/(?:sign-in|sign-out|signed-out|setup)(?:\/|$)/
+
+/**
+ * Through accounts: whether this load should go to `/authorize?prompt=none` now. Only with no token of any kind
+ * (a refresh token keeps a session alive on its own), no trip pending or already made by this tab, no sign-out
+ * in the last quarter hour, and not on a return from `/authorize`.
+ */
+export function shouldRedirectToAccounts (location: Pick<Location, 'origin' | 'protocol' | 'hostname' | 'search' | 'pathname'> = window.location): boolean {
+  if (!accountsSignInEnabled(location) || !cloudSessionAllowed(location)) return false
+  if (storedToken() || storedRefreshToken()) return false
+  const store = session()
+  if (store?.getItem(SILENT_KEY) || store?.getItem(PENDING_KEY)) return false
+  if (readSignedOut()) return false
+  const query = new URLSearchParams(location.search)
+  for (const name of ['code', 'error', 'state', 'iss']) if (query.has(name)) return false
+  return !NO_AUTO_TRIP.test(location.pathname)
+}
+
 /** Least time between two recoveries in a tab, so a console that keeps refusing is not asked in a loop. */
 const RECOVERY_GAP_MS = 60000
 let lastRecovery = 0
@@ -247,6 +279,7 @@ let lastRecovery = 0
  * serves this page.
  */
 export async function recoverCentralSession (failedRefresh: string, now: number = Date.now()): Promise<boolean> {
+  if (accountsSignInEnabled()) return false // the refresh token is the keep-alive; no token means a top-level trip
   if (!centralLoginEnabled() || isPrinterSecureOrigin()) return false
   if (lastRecovery && now - lastRecovery < RECOVERY_GAP_MS) return false
   lastRecovery = now
@@ -265,9 +298,11 @@ setSessionRecovery((failedRefresh) => recoverCentralSession(failedRefresh))
  * puts the address back to where the trip started. Pure but for the tab's
  * own storage and the history entry it rewrites.
  */
-export function takeCallback (location: Pick<Location, 'search'> = window.location, consoleUrl: string = cloudBaseUrl()): CallbackResult {
-  if (!isAuthCallback(location.search)) return { outcome: 'none' }
+export function takeCallback (location: Pick<Location, 'search'> = window.location, consoleUrl: string = authServerUrl()): CallbackResult {
   const query = new URLSearchParams(location.search)
+  // Through accounts a return with an `iss` and no `state` is still a return: it is scrubbed and refused.
+  const returned = isAuthCallback(location.search) || (accountsSignInEnabled() && query.has('iss') && (query.has('code') || query.has('error')))
+  if (!returned) return { outcome: 'none' }
 
   const store = session()
   let pending: Pending | null = null
@@ -287,7 +322,8 @@ export function takeCallback (location: Pick<Location, 'search'> = window.locati
   // The console names itself by one URL (MUON_CONSOLE_URL) whichever of its
   // two names it was reached by (KAN-414), so either name is this console.
   const iss = query.get('iss')
-  if (iss === null || !sameConsole(iss, consoleUrl)) {
+  const issuerOk = accountsSignInEnabled() ? iss !== null && iss.replace(/\/$/, '') === consoleUrl.replace(/\/$/, '') : iss !== null && sameConsole(iss, consoleUrl)
+  if (!issuerOk) {
     return { outcome: 'error', message: 'That sign-in came from the wrong place. Sign in again.', returnTo }
   }
 
@@ -302,6 +338,26 @@ export function takeCallback (location: Pick<Location, 'search'> = window.locati
     store?.setItem(RETURNED_KEY, String(Date.now()))
   } catch { /* no storage */ }
   return { outcome: 'code', code, verifier: pending.verifier, returnTo }
+}
+
+/** The return from accounts, taken off the address at start-up (before anything else runs), until the app uses it. */
+let early: CallbackResult | null = null
+
+/** Through accounts only: reads and scrubs a return from `/authorize` at once, keeping the outcome for `takeCallbackOnce`. */
+export function captureCallbackEarly (): void {
+  if (!accountsSignInEnabled()) return
+  const result = takeCallback()
+  early = result.outcome === 'none' ? null : result
+}
+
+/** The return from `/authorize` this load, whether it was taken at start-up or is still on the address. */
+export function takeCallbackOnce (): CallbackResult {
+  if (early) {
+    const result = early
+    early = null
+    return result
+  }
+  return takeCallback()
 }
 
 /** What a printer's address says when the console refuses the account for that printer. */
@@ -395,9 +451,10 @@ export function signOutCentral (doc: Document = document): void {
   holdSilentSignIn()
   const form = doc.createElement('form')
   form.method = 'POST'
-  form.action = `${cloudBaseUrl()}/logout`
+  // Through accounts, the browser session to end is accounts'; its `/logout` ends it and every session issued from it.
+  form.action = `${authServerUrl()}/logout`
   form.style.display = 'none'
-  for (const [name, value] of Object.entries({ client_id: clientId(), post_logout_redirect_uri: redirectUri() })) {
+  for (const [name, value] of Object.entries({ client_id: clientId(), post_logout_redirect_uri: redirectUri(), state: newState() })) {
     const input = doc.createElement('input')
     input.type = 'hidden'
     input.name = name

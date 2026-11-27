@@ -9,6 +9,7 @@
 import { confirmedAccountId, currentAccount, rotateConfirmed } from './account-events'
 import { clearDeletion, deletionRevision, observeDeletion } from './deletion'
 import { isPrinterSecureOrigin } from '@/services/secure-origin'
+import { accountsOrigin, accountsSignInEnabled } from './accounts'
 import { rememberRelayUrl } from './relay'
 import { noteCloudReached, noteCloudUnreachable } from './outage'
 export { deletionState } from './deletion'
@@ -199,6 +200,14 @@ export function cloudBaseUrl (): string {
   return window.location.origin
 }
 
+/**
+ * Where `/authorize`, `/token` and `/logout` are: the accounts issuer when sign-in goes through accounts
+ * (KAN-7197, flag and origin gated), otherwise the console, as before. `/v1` calls stay on `cloudBaseUrl()`.
+ */
+export function authServerUrl (): string {
+  return accountsSignInEnabled() ? accountsOrigin() : cloudBaseUrl()
+}
+
 export function setCloudBaseUrl (url: string | null) {
   writeStorage(URL_KEY, url)
 }
@@ -318,7 +327,7 @@ async function tokenRequest (form: Record<string, string>, signal?: AbortSignal)
   if (!cloudSessionAllowed()) refuseOnInsecureOrigin()
   let response: Response
   try {
-    response = await fetch(`${cloudBaseUrl()}/token`, {
+    response = await fetch(`${authServerUrl()}/token`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(form).toString(),

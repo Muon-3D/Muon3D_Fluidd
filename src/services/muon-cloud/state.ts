@@ -22,7 +22,8 @@ import {
   type AccessHandoff
 } from './api'
 import { watchFocus } from './focus-check'
-import { centralLoginEnabled, clearSilentAttempt, holdSilentSignIn, redirectUri, signInAgainOnPrinterOrigin, signOutCentral, takeCallback } from './centralLogin'
+import { accountsSignInEnabled } from './accounts'
+import { centralLoginEnabled, clearSilentAttempt, holdSilentSignIn, redirectUri, signInAgainOnPrinterOrigin, signOutCentral, startCentralSignIn, takeCallbackOnce } from './centralLogin'
 import { cloudUnreachable } from './outage'
 import { browserEndpoint, forgetBrowserKey, managedEndpointFactory } from './iroh'
 import { createPrinterTransportForSelection, type AuthorizedManagedRelaySession, type PrinterTransport, type PrinterSocket } from '@/services/managed-transport'
@@ -843,7 +844,7 @@ setSessionHooks({
  */
 async function completeCentralSignIn (): Promise<string | null> {
   if (!centralLoginEnabled()) return null
-  const result = takeCallback()
+  const result = takeCallbackOnce()
   switch (result.outcome) {
     case 'none':
       return null
@@ -858,6 +859,8 @@ async function completeCentralSignIn (): Promise<string | null> {
       }
       return result.returnTo
     case 'signed_out':
+      // Through accounts, `login_required` after a bounce-back goes on to accounts' own sign-in (KAN-7197).
+      if (accountsSignInEnabled()) await startCentralSignIn({ silent: false, returnTo: result.returnTo })
       return result.returnTo
     case 'error':
       cloudState.error = result.message
