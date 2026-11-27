@@ -234,4 +234,20 @@ describe('signing out', () => {
     expect(fields.state).toMatch(/\S{8,}/)
     form.remove()
   })
+
+  it('with the flag off the form is exactly as before: client_id and post_logout_redirect_uri only, and the pending state is untouched', async () => {
+    vi.stubEnv('VITE_CONTROL_ACCOUNTS_SIGNIN', '')
+    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {})
+    await prepareAuthorize({ silent: false })
+    const pending = sessionStorage.getItem(PENDING)
+    signOutCentral(document)
+    const form = document.body.querySelector('form')!
+    expect(form.action).toBe(`${CONTROL}/logout`)
+    expect(Array.from(form.querySelectorAll('input')).map(i => [i.name, i.value])).toEqual([
+      ['client_id', 'fluidd'],
+      ['post_logout_redirect_uri', `${CONTROL}/`]
+    ])
+    expect(sessionStorage.getItem(PENDING)).toBe(pending)
+    form.remove()
+  })
 })

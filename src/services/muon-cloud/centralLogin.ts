@@ -454,7 +454,11 @@ export function signOutCentral (doc: Document = document): void {
   // Through accounts, the browser session to end is accounts'; its `/logout` ends it and every session issued from it.
   form.action = `${authServerUrl()}/logout`
   form.style.display = 'none'
-  for (const [name, value] of Object.entries({ client_id: clientId(), post_logout_redirect_uri: redirectUri(), state: newState() })) {
+  const fields: Record<string, string> = { client_id: clientId(), post_logout_redirect_uri: redirectUri() }
+  // Through accounts only. A random value kept nowhere: nothing reads it on the way back, so it cannot touch the
+  // stored authorize state. Everywhere else the form is exactly what it always was.
+  if (accountsSignInEnabled()) fields.state = newState()
+  for (const [name, value] of Object.entries(fields)) {
     const input = doc.createElement('input')
     input.type = 'hidden'
     input.name = name
