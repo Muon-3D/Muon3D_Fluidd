@@ -23,7 +23,7 @@ export interface Palette {
 /** Control's glass tokens (muon3d-glass.scss), with the lab's amber for a fresh layer. */
 export const PALETTES: Record<'dark' | 'light', Palette> = {
   dark: { bg: '#000000', ink: '#f5f5f7', mute: '#98989d', faint: 'rgba(255,255,255,.07)', line: 'rgba(255,255,255,.16)', teal: '#80d6d1', amber: '#e8b04b' },
-  light: { bg: '#f2f2f7', ink: '#1d1d1f', mute: '#6e6e73', faint: 'rgba(15,23,25,.08)', line: 'rgba(15,23,25,.18)', teal: '#2c8782', amber: '#d38d1b' }
+  light: { bg: '#f2f2f7', ink: '#1d1d1f', mute: '#6e6e73', faint: 'rgba(15,23,25,.08)', line: 'rgba(15,23,25,.18)', teal: '#1e7f79', amber: '#d38d1b' }
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))

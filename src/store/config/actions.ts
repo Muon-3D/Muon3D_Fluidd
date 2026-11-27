@@ -15,6 +15,9 @@ import { mergePersonal, pickPersonal, systemPrefersDark, themeModeOf } from '@/s
 import { set } from 'lodash-es'
 import { isDarkFor, readAppearance, resolveAppearance, writeAppearance, type Appearance } from '@/services/settings/appearance'
 
+/** Light-theme accent, design tokens v0.6.1 (--m3d-accent). */
+const LIGHT_TEAL = '#1e7f79'
+
 const parseLanInstances = (value: unknown): InstanceConfig[] => {
   if (typeof value !== 'object' || value == null || !('version' in value) || !('printers' in value)) return []
   const feed = value as { version: unknown; printers: unknown }
@@ -110,8 +113,13 @@ export const actions: ActionTree<ConfigState, RootState> = {
 
     // A pale accent that reads well on a dark surface is illegible as text on
     // a white one, so the light theme uses a darkened copy of the same hue.
+    // The company teal is the exception: its light-theme value is the design
+    // system's fixed accent (tokens v0.6.1, KAN-6497), not a darkened copy.
     let primary = new TinyColor(payload.color)
     if (!payload.isDark) {
+      if (primary.toHex().toLowerCase() === '80d6d1') {
+        primary = new TinyColor(LIGHT_TEAL)
+      }
       while (primary.getLuminance() > 0.2) {
         primary = primary.darken(4)
       }
