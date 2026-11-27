@@ -121,6 +121,18 @@ export interface PublicPublication {
   licence?: string | null;
 }
 
+/** The reasons the model service takes for a report of a print (community_surfaces.rs). */
+export type ReportReason = 'weapon' | 'illegal' | 'copyright' | 'licence' | 'personal_data' | 'safety'
+
+export interface ReportBody {
+  command: string;
+  target: string;
+  target_kind: 'share';
+  sender: string;
+  reason: ReportReason;
+  text: string;
+}
+
 /** What a published print says about itself (model service src/publication.rs). */
 export interface PublishDetails {
   licence: string;
@@ -478,6 +490,14 @@ export function createLibraryClient (options: LibraryClientOptions) {
     item: (id: string) => request<LibraryItem>('GET', item(id)),
     versions: (id: string) => request<{ versions: Version[] }>('GET', `${item(id)}/versions`),
     publicPublication: (id: string) => request<PublicPublication>('GET', `/v1/public/publications/${encodeURIComponent(id)}`),
+    /**
+     * Report a public print (`POST /v1/public/contact`, model service community_surfaces.rs; the body the
+     * Library web's reportForm sends): `command` is 32 hex characters (a repeat of it is answered, not counted
+     * again), `sender` a reply email, `text` 8 to 2000 characters. 429 `contact_limit` after 10 in a day.
+     */
+    reportPrint: (body: ReportBody) => request<{ received: boolean }>('POST', '/v1/public/contact', body),
+    /** Block the maker of a public print (`POST /v1/shares/:id/block`, src/sharing_routes.rs; the web sends `{}`): 200 `{ok:true}`. */
+    blockMaker: (shareId: string) => request<{ ok: boolean }>('POST', `/v1/shares/${encodeURIComponent(shareId)}/block`, {}),
     modelContext: async (id: string) => {
       const context = await request<ModelContext>('GET', `/v1/library/publications/${encodeURIComponent(id)}/context`)
       if (!context || typeof context.owner !== 'boolean' || !Array.isArray(context.versions) || !Array.isArray(context.runs)) throw new LibraryError('protocol', 'The Library sent an unreadable model history.')

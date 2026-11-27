@@ -566,13 +566,13 @@
         >
           Share
         </button>
-        <a
-          :href="`${pageHref}#report`"
-          target="_blank"
-          rel="noopener"
-          class="mlib-link"
-          data-tid="library-print-report"
-        >Report this model</a>
+        <library-report-block
+          v-if="!(context && context.owner)"
+          :print-id="publication.id || card.id"
+          :maker="makerName"
+          :signed-in="signedIn"
+          @sign-in="signIn"
+        />
       </footer>
     </template>
   </section>
@@ -584,6 +584,7 @@ import PhotoFace from '@/components/account/profile/PhotoFace.vue'
 import { publicAvatarUrl } from '@/services/account/avatar'
 import LibraryShelf from './LibraryShelf.vue'
 import LibraryState from './LibraryState.vue'
+import LibraryReportBlock from './LibraryReportBlock.vue'
 import LibraryPublicationMixin from '@/mixins/library-publication'
 import { LIBRARY_URL } from '@/services/library/discover'
 import { agoText } from '@/services/library/format'
@@ -611,7 +612,7 @@ function historyProblem (error: unknown): 'off' | 'offline' | 'failed' {
  * people made from it and the remixes built on it, as shelves. What it does
  * with the print is mixins/library-publication.ts, shared with the quick look.
  */
-@Component({ components: { LibraryShelf, LibraryState, PhotoFace } })
+@Component({ components: { LibraryShelf, LibraryState, LibraryReportBlock, PhotoFace } })
 export default class LibraryPrintPage extends Mixins(LibraryPublicationMixin) {
   /** The card being read for Print (MuonLibrary's), for the Print button. */
   @Prop({ type: String, default: '' }) readonly printing!: string
