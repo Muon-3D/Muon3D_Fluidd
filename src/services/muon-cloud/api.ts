@@ -36,7 +36,7 @@ export interface CloudAccount {
   created_at: number;
   deletion?: { requested_at: number, delete_after: number } | null;
   /**
-   * Muon staff (KAN-5207): `"staff"` or `"moderator"`, `null` or absent for everyone else and for a console that does
+   * Muon staff (KAN-5207): `"admin"` or `"moderator"`, `null` or absent for everyone else and for a console that does
    * not send it yet. Read from `GET /v1/me`'s `staff_role`. Only a convenience gate: the console enforces.
    */
   staff_role?: string | null;
