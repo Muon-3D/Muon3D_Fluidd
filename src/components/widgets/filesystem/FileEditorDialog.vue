@@ -52,11 +52,24 @@
             class="warning--text ml-3 text-body-2"
             data-tid="files-unsaved"
           >{{ changed }} {{ changed === 1 ? 'line' : 'lines' }} unsaved</span>
+          <span
+            v-if="defaultStatus"
+            class="text--secondary ml-3 text-body-2"
+            data-tid="files-editor-default-status"
+          >{{ defaultStatus === 'changed' ? 'Different from its Muon3D default' : 'Yours: there is no default for this file' }}</span>
         </v-toolbar-title>
 
         <v-spacer />
 
         <v-toolbar-items>
+          <app-btn
+            v-if="canResetDefault && !readonly"
+            :disabled="!ready"
+            data-tid="files-reset-default"
+            @click="$emit('reset-default', acceptDefault)"
+          >
+            Reset to default
+          </app-btn>
           <app-btn
             v-if="strictGuard && dirty && !readonly"
             data-tid="files-undo"
@@ -139,6 +152,15 @@
           </app-btn>
         </v-toolbar-items>
       </v-toolbar>
+
+      <p
+        v-if="defaultError"
+        role="alert"
+        class="px-4 py-2 mb-0 error--text"
+        data-tid="files-default-error"
+      >
+        {{ defaultError }}
+      </p>
 
       <file-editor
         v-if="contents !== undefined && !useTextOnlyEditor"
@@ -227,6 +249,15 @@ export default class FileEditorDialog extends Mixins(StateMixin, BrowserMixin) {
   /** Files' tile: leaving with unsaved changes always asks, and the editor says what's unsaved and what restarting does. */
   @Prop({ type: Boolean })
   readonly strictGuard?: boolean
+
+  @Prop({ type: String, default: '' })
+  readonly defaultStatus!: string
+
+  @Prop({ type: String, default: '' })
+  readonly defaultError!: string
+
+  @Prop({ type: Boolean, default: false })
+  readonly canResetDefault!: boolean
 
   @Ref('editor')
   readonly editor?: FileEditor
@@ -335,6 +366,11 @@ export default class FileEditorDialog extends Mixins(StateMixin, BrowserMixin) {
 
   undo () {
     this.updatedContent = this.lastSavedContent
+  }
+
+  acceptDefault (contents: string) {
+    this.updatedContent = contents
+    this.lastSavedContent = contents
   }
 
   // The setting asks before the X drops edits; leaving the page or the site always asks in Files.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changedLines, downloadsOnly, opensInEditor, orderRoots, restartNote, tapDownloads } from '../model'
+import { changedLines, compareWithDefaults, defaultTags, downloadsOnly, listedFiles, opensInEditor, orderRoots, resetRestartNote, restartNote, tapDownloads } from '../model'
 
 describe('Files\' folders', () => {
   it('downloads the logs and nothing else by root', () => {
@@ -42,5 +42,41 @@ describe('saving', () => {
     expect(changedLines('a\nb\nc', 'a\nB\nc')).toBe(1)
     expect(changedLines('a\nb', 'a\nb\nc\nd')).toBe(2)
     expect(changedLines('same', 'same')).toBe(0)
+  })
+})
+
+describe('configuration defaults', () => {
+  const file = (path: string, size = 10, modified = 1) => ({ path, size, modified })
+
+  it('compares sizes and timestamps, leaves equal-size edits for a content check, and skips backups', () => {
+    expect(compareWithDefaults([
+      file('same.cfg'), file('changed.cfg', 11), file('check.cfg', 10, 2), file('own.cfg'), file('backups/old.cfg')
+    ], [file('same.cfg'), file('changed.cfg'), file('check.cfg')])).toEqual({
+      'same.cfg': 'same', 'changed.cfg': 'changed', 'check.cfg': 'check', 'own.cfg': 'yours'
+    })
+  })
+
+  it('marks changed folders but not folders containing only personal files or unresolved comparisons', () => {
+    expect(defaultTags({ 'macros/start.cfg': 'changed', 'own/file.cfg': 'yours', 'other/check.cfg': 'check', 'same.cfg': 'same' }))
+      .toEqual({ 'macros/start.cfg': 'changed', macros: 'changed', 'own/file.cfg': 'yours' })
+  })
+
+  it('handles empty listings and a configuration with no corresponding defaults', () => {
+    expect(compareWithDefaults([], [])).toEqual({})
+    expect(defaultTags({})).toEqual({})
+    expect(compareWithDefaults([file('yours.cfg')], [])).toEqual({ 'yours.cfg': 'yours' })
+    expect(listedFiles({ result: [] })).toEqual([])
+    expect(listedFiles([file('core.cfg')])).toEqual([file('core.cfg')])
+  })
+
+  it('does not turn a missing or malformed listing into a list of personal files', () => {
+    for (const reply of [undefined, null, { error: 'denied' }, { result: {} }, [{ path: 'bad.cfg' }]]) {
+      expect(() => listedFiles(reply)).toThrow('file listing')
+    }
+  })
+
+  it('offers a restart only outside a print and explains the deferred restart during one', () => {
+    expect(resetRestartNote('Boxwood', false)).toBe("Boxwood uses it after Klipper restarts. It isn't printing, so it's safe now.")
+    expect(resetRestartNote('Boxwood', true)).toContain("restarting stops the print. Restart once it's done.")
   })
 })

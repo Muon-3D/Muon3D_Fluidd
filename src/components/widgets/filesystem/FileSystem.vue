@@ -36,6 +36,22 @@
       </template>
     </file-system-toolbar>
 
+    <p
+      v-if="defaultsError"
+      class="px-4 py-2 mb-0 error--text"
+      role="alert"
+      data-tid="files-default-error"
+    >
+      {{ defaultsError }}
+      <button
+        type="button"
+        class="ml-2"
+        @click="refreshDefaults"
+      >
+        Try again
+      </button>
+    </p>
+
     <file-system-bulk-actions
       v-if="selected.length > 0"
       :tile="tile"
@@ -51,6 +67,7 @@
     <file-system-browser
       v-if="headers"
       v-model="selected"
+      :default-tags="visibleDefaultTags"
       :headers="visibleHeaders"
       :root="currentRoot"
       :dense="dense"
@@ -99,6 +116,10 @@
       :path="fileEditorDialogState.path || currentPath"
       :root="fileEditorDialogState.root || currentRoot"
       :strict-guard="tile"
+      :default-status="editorDefaultTag || ''"
+      :default-error="defaultsError"
+      :can-reset-default="canResetDefault"
+      @reset-default="resetDefault"
       @save="handleSaveFileChanges"
       @dirty="$emit('dirty', $event)"
     />
@@ -177,7 +198,8 @@ import consola from 'consola'
 import { EventBus } from '@/eventBus'
 import { activeSlug } from '@/services/printer-pages'
 import { pathCrumbs, type Crumb } from '@/services/files/manager'
-import { downloadsOnly, opensInEditor, tapDownloads } from '@/services/files/model'
+import { compareWithDefaults, defaultTags, downloadsOnly, listedFiles, opensInEditor, resetRestartNote, tapDownloads, type DefaultTag } from '@/services/files/model'
+import { devModeState, refreshDevMode } from '@/services/dev-mode/state'
 import { filesView } from '@/services/files/view'
 import { scopedPath } from '@/router/printerPagePaths'
 
@@ -263,6 +285,117 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
 
   // Maintains any selected items and their state.
   selected: FileBrowserEntry[] = []
+
+  defaults: Record<string, DefaultTag> = Object.create(null)
+  defaultsError = ''
+  resettingDefault = false
+  defaultsRequest = 0
+  defaultsGone = false
+
+  get comparesDefaults (): boolean {
+    return !this.defaultsGone && !!this.tile && this.currentRoot === 'config' && devModeState.enabled === true &&
+      this.$store.getters['server/isMuonPrinter'] === true && this.socketConnected && !this.rootProperties.readonly
+  }
+
+  get defaultsKey (): string {
+    return this.comparesDefaults
+      ? JSON.stringify([this.panelTarget, this.currentPath, this.files.map(f => [f.name, f.size, f.modified])])
+      : ''
+  }
+
+  @Watch('defaultsKey', { immediate: true })
+  async refreshDefaults () {
+    const request = ++this.defaultsRequest
+    const key = this.defaultsKey
+    this.defaults = Object.create(null)
+    this.defaultsError = ''
+    if (!key) return
+    const current = () => request === this.defaultsRequest && key === this.defaultsKey
+    try {
+      const [mine, originals] = await Promise.all(['config', 'defaults'].map(root => SocketActions.serverFilesListRoot(root)))
+      if (!current()) return
+      const states = compareWithDefaults(listedFiles(mine), listedFiles(originals))
+      for (const [path, state] of Object.entries(states)) {
+        if (!current()) return
+        if (state !== 'check') continue
+        const slash = path.lastIndexOf('/')
+        const dir = slash < 0 ? '' : `/${path.slice(0, slash)}`
+        const filename = path.slice(slash + 1)
+        const copies = await Promise.all(['config', 'defaults'].map(root =>
+          this.getFile<string>(filename, `${root}${dir}`, 0, { responseType: 'text', transformResponse: [v => v] })))
+        states[path] = copies[0].data === copies[1].data ? 'same' : 'changed'
+      }
+      if (current()) this.defaults = defaultTags(states)
+    } catch {
+      if (current()) this.defaultsError = 'Cannot compare your configuration with the defaults. Try again.'
+    }
+  }
+
+  get visibleDefaultTags (): Record<string, DefaultTag> {
+    if (!this.comparesDefaults) return {}
+    const prefix = this.visiblePath ? `${this.visiblePath}/` : ''
+    return Object.fromEntries(Object.entries(this.defaults)
+      .filter(([path]) => path.startsWith(prefix) && !path.slice(prefix.length).includes('/'))
+      .map(([path, tag]) => [path.slice(prefix.length), tag]))
+  }
+
+  get editorDefaultTag (): DefaultTag | undefined {
+    const editor = this.fileEditorDialogState
+    if (!this.comparesDefaults || !editor.open || editor.target !== this.panelTarget || editor.root !== 'config') return
+    const path = `${editor.path}/${editor.filename}`.slice('config/'.length)
+    return this.defaults[path]
+  }
+
+  get canResetDefault (): boolean {
+    return this.editorDefaultTag === 'changed' && !this.fileEditorDialogState.readonly
+  }
+
+  async resetDefault (accept?: (contents: string) => void) {
+    if (!this.canResetDefault || this.resettingDefault) return
+    const editor = this.fileEditorDialogState
+    const target = this.panelTarget
+    const current = () => this.comparesDefaults && this.panelTarget === target &&
+      this.fileEditorDialogState === editor && editor.open && !editor.readonly && editor.root === 'config'
+    const dir = editor.path.slice('config'.length).replace(/^\//, '')
+    this.resettingDefault = true
+    editor.loading = true
+    try {
+      const ok = await this.$confirm(`Replace ${editor.filename} with its Muon3D default? Unsaved changes to this file will be lost.`, {
+        title: 'Reset to default?', buttonTrueText: 'Reset to default', buttonFalseText: 'Cancel'
+      })
+      if (!ok || !current()) return
+      if (await refreshDevMode() !== true) {
+        if (this.panelTarget === target && this.fileEditorDialogState === editor) this.defaultsError = 'The printer did not confirm Developer mode. The file was not changed.'
+        return
+      }
+      if (!current()) return
+      const original = await this.getFile<string>(editor.filename, dir ? `defaults/${dir}` : 'defaults', 0, { responseType: 'text', transformResponse: [v => v] })
+      if (!current()) return
+      const saved = await this.uploadFiles([new File([original.data], editor.filename)], dir, 'config', false, current)
+      if (!saved || saved.length !== 1) throw new Error('The file was not saved')
+      if (!current()) return
+      editor.contents = original.data
+      accept?.(original.data)
+      this.defaultsError = ''
+      if (this.busy) {
+        EventBus.$emit(resetRestartNote(this.printerName, true), { type: 'warning', timeout: 8000 })
+      } else {
+        const restart = await this.$confirm(resetRestartNote(this.printerName, false), {
+          title: 'Restart Klipper now?', buttonTrueText: 'Restart Klipper', buttonFalseText: 'Not now'
+        })
+        if (restart && current() && !this.busy) {
+          SocketActions.printerFirmwareRestart()
+          await this._klipperReset()
+        }
+      }
+      if (current()) await this.refreshDefaults()
+    } catch {
+      if (current()) this.defaultsError = 'Could not complete the reset. Check the file before trying again.'
+    } finally {
+      this.resettingDefault = false
+      editor.loading = false
+    }
+  }
 
   // Maintains the file editor dialog state.
   fileEditorDialogState: any = {
@@ -546,6 +679,7 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
   }
 
   beforeDestroy () {
+    this.defaultsGone = true
     if (this.tile && this.fileEditorDialogState.open) this.view.sheetOpen = false
   }
 
@@ -759,6 +893,9 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
   }
 
   async handleFileOpenDialog (file: AppFile, mode: 'edit' | 'view' | undefined = undefined, line = 0, at?: { path: string, root: string, readonly: boolean }) {
+    const target = this.panelTarget
+    const path = at?.path ?? this.currentPath
+    const root = at?.root ?? this.currentRoot
     try {
       const viewOnly = mode
         ? mode === 'view'
@@ -797,8 +934,9 @@ export default class FileSystem extends Mixins(StateMixin, FilesMixin, ServicesM
           loading: false,
           readonly: !!at?.readonly || file.permissions === 'r' || this.rootProperties.readonly,
           line,
-          path: at?.path ?? '',
-          root: at?.root ?? ''
+          path,
+          root,
+          target
         }
       }
     } catch (error: unknown) {

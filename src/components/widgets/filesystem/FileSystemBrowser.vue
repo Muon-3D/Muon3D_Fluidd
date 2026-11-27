@@ -90,7 +90,13 @@
             </td>
 
             <td class="fs-name">
-              {{ item.name }}
+              <span>{{ item.name }}</span>
+              <small
+                v-if="defaultTags[item.name] === 'changed' || defaultTags[item.name] === 'yours'"
+                class="ml-2 text--secondary"
+                data-tid="files-default-status"
+                :title="defaultTags[item.name] === 'changed' ? 'Different from its Muon3D default' : 'There is no default for this file'"
+              >{{ defaultTags[item.name] }}</small>
             </td>
 
             <td
@@ -325,6 +331,9 @@ export default class FileSystemBrowser extends Mixins(FilesMixin) {
 
   @Prop({ type: Array<FileBrowserEntry>, required: true })
   readonly files!: FileBrowserEntry[]
+
+  @Prop({ type: Object, default: () => Object.create(null) })
+  readonly defaultTags!: Record<string, 'changed' | 'yours'>
 
   @Prop({ type: Boolean })
   readonly dense?: boolean

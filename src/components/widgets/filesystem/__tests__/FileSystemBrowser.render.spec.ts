@@ -47,6 +47,12 @@ function mountBrowser (count: number, extra: Record<string, unknown> = {}) {
 }
 
 describe('FileSystemBrowser rows', () => {
+  it('shows changed and personal file tags without changing the file names', () => {
+    const wrapper = mountBrowser(3, { root: 'config', defaultTags: { 'part-0000.gcode': 'changed', 'part-0001.gcode': 'yours' } })
+    expect(wrapper.findAll('[data-tid="files-default-status"]').wrappers.map(w => w.text()).sort()).toEqual(['changed', 'yours'])
+    expect(wrapper.findAll('td.fs-name > span').wrappers.map(w => w.text())).toContain('part-0000.gcode')
+    wrapper.destroy()
+  })
   it('draws every row of a short folder', () => {
     const wrapper = mountBrowser(12)
     expect(wrapper.findAll('tr.row-select')).toHaveLength(12)
